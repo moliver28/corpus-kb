@@ -1,0 +1,75 @@
+# Corpus-KB: Configuration
+# All tunable parameters for the local RAG system.
+
+server:
+  name: corpus-kb
+  transport: stdio              # stdio | http
+  host: localhost
+  port: 8010
+
+storage:
+  path: ~/.corpus-kb
+  lancedb_uri: ~/.corpus-kb/lancedb
+  graph_db: ~/.corpus-kb/graph.db
+
+embedding:
+  provider: ollama
+  model: nomic-embed-text
+  base_url: http://localhost:11434
+  batch_size: 64
+  dimension: 768
+
+chunking:
+  max_size: 2048                # Max chars per chunk
+  overlap: 100
+  code:
+    enabled: true
+    max_size: 2500
+    parser: tree-sitter
+    supported_languages:
+      - python
+      - javascript
+      - typescript
+      - rust
+      - go
+      - java
+      - cpp
+      - ruby
+      - php
+      - swift
+      - kotlin
+      - scala
+      - lua
+      - haskell
+      - elixir
+      - clojure
+  markdown:
+    enabled: true
+    heading_levels: [1, 2, 3]
+    max_section_size: 3000
+  text:
+    enabled: true
+    strategy: semantic
+    min_sentences: 3
+    max_sentences: 30
+  hierarchy:
+    store_parent: true
+    store_siblings: true
+    max_context_depth: 3
+
+search:
+  hybrid: true
+  rrf_k: 60
+  expand_context: false
+  context_expansion:
+    include_parent: true
+    include_siblings: true
+    max_siblings: 5
+  enable_reranker: false
+  reranker_model: BAAI/bge-reranker-v2-m3
+
+graph:
+  backend: sqlite               # sqlite | graphqlite | latticedb (future)
+  extract_entities: true
+  extractor: regex              # regex | llm | hybrid
+  max_traversal_depth: 5

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "corpus-kb": {
+      "command": "uv",
+      "args": ["run", "--directory", "F:\\Documents\\OpenCode\\Corpus\\corpus-kb", "src\\server.py"]
+    }
+  }
+}
