@@ -31,7 +31,7 @@ def main():
         config = {
             "storage": {"path": os.path.join(tmp, "lancedb")},
             "graph": {"backend": "sqlite", "db_path": os.path.join(tmp, "graph.db")},
-            "embedding": {"model": "qwen3-embedding:8b-q8_0", "dimensions": 4096},
+            "embedding": {"model": "nomic-embed-text", "dimensions": 768, "batch_size": 32},
         }
 
         print("\n[1] Initializing server...")
@@ -48,11 +48,11 @@ def main():
         from chunking.hierarchy import HierarchyResolver
         from rag.embedder import OllamaEmbedder
 
-        store = LanceDBStore(config["storage"]["path"], dimensions=4096)
+        embedder = OllamaEmbedder()
+        store = LanceDBStore(config["storage"]["path"], dimensions=embedder.dimensions)
         graph = create_graph_store(config)
         detector = FileTypeDetector()
         resolver = HierarchyResolver()
-        embedder = OllamaEmbedder()
 
         # Create sample content
         sample_code = """def hello():
