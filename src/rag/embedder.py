@@ -14,8 +14,8 @@ from typing import Optional
 from utils.models import Chunk
 
 # Default embedding model and dimensions
-DEFAULT_MODEL = "nomic-embed-text"
-DEFAULT_DIMENSIONS = 768
+DEFAULT_MODEL = "qwen3-embedding:8b-q8_0"
+DEFAULT_DIMENSIONS = 4096
 
 
 class OllamaEmbedder:

@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from storage.lancedb_store import LanceDBStore
+from storage.duckdb_engine import DuckDBEngine
 from storage.graph_store import GraphStore
 from chunking.detector import FileTypeDetector, detect_file_type
 from chunking.hierarchy import HierarchyResolver
@@ -27,6 +28,7 @@ def _ingest_single_file(
     store: LanceDBStore,
     graph: GraphStore,
     resolver: HierarchyResolver,
+    database: Optional[DuckDBEngine] = None,
 ) -> dict:
     """Ingest a single file: detect type → chunk → embed → store → graph."""
     path = Path(file_path)
@@ -43,11 +45,15 @@ def _ingest_single_file(
     # Resolve hierarchy
     chunks = resolver.resolve(raw_chunks)
 
-    # Create document record
+    # Create document record with extracted metadata
+    stat = path.stat()
     doc = Document(
         source=str(path),
         source_type=file_type,
-        metadata={"size_bytes": path.stat().st_size},
+        metadata={
+            "size_bytes": stat.st_size,
+            "language": file_type,
+        },
         chunk_count=len(chunks),
     )
 
@@ -73,6 +79,13 @@ def _ingest_single_file(
                 },
             )
 
+    # Auto-populate relational database
+    if database is not None:
+        try:
+            database.sync_from_lancedb(store)
+        except Exception:
+            pass  # Non-blocking
+
     return {
         "doc_id": doc.doc_id,
         "source": doc.source,
@@ -91,6 +104,7 @@ def _ingest_text(
     store: LanceDBStore,
     graph: GraphStore,
     resolver: HierarchyResolver,
+    database: Optional[DuckDBEngine] = None,
 ) -> dict:
     """Ingest raw text."""
     if not file_type:
@@ -109,6 +123,7 @@ def _ingest_text(
     doc = Document(
         source=source,
         source_type=file_type,
+        metadata={"language": file_type},
         chunk_count=len(chunks),
     )
 
@@ -119,6 +134,13 @@ def _ingest_text(
 
     store.insert_document(doc)
     store.insert_chunks(chunks)
+
+    # Auto-populate relational database
+    if database is not None:
+        try:
+            database.sync_from_lancedb(store)
+        except Exception:
+            pass  # Non-blocking
 
     return {
         "doc_id": doc.doc_id,
@@ -135,6 +157,7 @@ def register_tools(
     store: LanceDBStore,
     graph: GraphStore,
     resolver: HierarchyResolver,
+    database: Optional[DuckDBEngine] = None,
 ):
     """Register all ingest tools with the MCP server."""
 
@@ -142,7 +165,7 @@ def register_tools(
     def ingest_file(file_path: str) -> dict:
         """Ingest a single file. Auto-detects code/markdown/text."""
         return _ingest_single_file(
-            file_path, detector, embedder, store, graph, resolver
+            file_path, detector, embedder, store, graph, resolver, database
         )
 
     @mcp.tool()
@@ -150,7 +173,7 @@ def register_tools(
                     file_type: Optional[str] = None) -> dict:
         """Ingest raw text with optional type hint (code/markdown/text)."""
         return _ingest_text(
-            text, source, file_type, detector, embedder, store, graph, resolver
+            text, source, file_type, detector, embedder, store, graph, resolver, database
         )
 
     @mcp.tool()
@@ -174,7 +197,7 @@ def register_tools(
             if f.is_file() and f.suffix.lower() in supported:
                 try:
                     result = _ingest_single_file(
-                        str(f), detector, embedder, store, graph, resolver
+                        str(f), detector, embedder, store, graph, resolver, database
                     )
                     results.append(result)
                 except Exception as e:

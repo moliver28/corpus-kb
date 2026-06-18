@@ -47,11 +47,13 @@ class TextChunker(Chunker):
         use_semantic: bool = False,
         gap_threshold: float = 0.3,
         window_size: int = 3,
+        model: str = "qwen3-embedding:8b-q8_0",
     ):
         self.max_size = max_size
         self.use_semantic = use_semantic
         self.gap_threshold = gap_threshold
         self.window_size = window_size
+        self.model = model
 
     def chunk(self, text: str, file_path: Optional[str] = None) -> list[Chunk]:
         """Split text into chunks using configured strategy."""
@@ -175,7 +177,7 @@ class TextChunker(Chunker):
             for i in range(0, len(sentences), batch_size):
                 batch = sentences[i:i + batch_size]
                 resp = ollama.embed(
-                    model="nomic-embed-text",
+                    model=self.model,
                     input=batch,
                 )
                 embeddings.extend(resp.embeddings)

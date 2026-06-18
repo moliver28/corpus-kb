@@ -69,15 +69,37 @@ def create_server(config: dict | None = None) -> FastMCP:
     from rag.embedder import OllamaEmbedder
 
     # Storage
-    store = LanceDBStore(storage_path)
-    duckdb = DuckDBEngine(storage_path)
+    embed_dim = embedding_config.get("dimensions", 4096)
+    store = LanceDBStore(storage_path, dimensions=embed_dim)
+
+    # Relational database — persistent DuckDB with defined schemas
+    database_config = cfg.get("database", {})
+    db_name = database_config.get("filename", "corpus.db")
+    duckdb = DuckDBEngine(storage_path, db_name=db_name)
+    auto_sync = database_config.get("auto_sync", True)
 
     # Graph
     graph_config = {"graph": {"backend": graph_backend, "path": graph_path}}
     graph = create_graph_store(graph_config)
 
-    # Chunking
-    detector = FileTypeDetector()
+    # Chunking — use embedding model for semantic text chunking
+    from chunking.code_chunker import CodeChunker
+    from chunking.markdown_chunker import MarkdownChunker
+    from chunking.text_chunker import TextChunker
+
+    embed_model = embedding_config.get("model", "qwen3-embedding:8b-q8_0")
+    chunk_max = chunking_config.get("max_size", 4096)
+    chunk_overlap = chunking_config.get("overlap", 200)
+
+    detector = FileTypeDetector({
+        "code": CodeChunker(max_size=chunking_config.get("code", {}).get("max_size", 5000)),
+        "markdown": MarkdownChunker(max_size=chunking_config.get("markdown", {}).get("max_section_size", 5000)),
+        "text": TextChunker(
+            max_size=chunk_max,
+            use_semantic=True,
+            model=embed_model,
+        ),
+    })
     resolver = HierarchyResolver()
 
     # Embedding
@@ -86,6 +108,13 @@ def create_server(config: dict | None = None) -> FastMCP:
         dimensions=embedding_config.get("dimensions", 768),
         batch_size=embedding_config.get("batch_size", 10),
     )
+
+    # Auto-sync existing data from LanceDB into relational tables
+    if auto_sync:
+        try:
+            duckdb.sync_from_lancedb(store)
+        except Exception:
+            pass  # Non-blocking — first-run edge case
 
     # ------------------------------------------------------------------
     # Create FastMCP server
@@ -102,17 +131,17 @@ system for agentic code editors via MCP.
 
 1. **Ingest**: Files (auto-detects code/markdown/text), raw text, directories
 2. **Search**: Hybrid search (vector + full-text + RRF fusion)
-3. **Graph**: Entity-relation knowledge graph with BFS traversal
-4. **SQL**: Full SQL queries over the RAG data via DuckDB
+3. **Relational DB**: Full SQL queries, tags, metadata over structured tables
+4. **Graph**: Entity-relation knowledge graph with BFS traversal
 5. **Versioning**: Time-travel, tags, and database statistics
 
 ## Quick Start
 
 1. `ingest_file` to add a code file or document
 2. `search` to find relevant chunks
-3. `search_context` for expanded context around results
-4. `sql_query` for analytical queries
-5. `add_entity` + `add_relation` to build a knowledge graph
+3. `sql_query` to run analytical queries
+4. `add_entity` + `add_relation` to build a knowledge graph
+5. `tag_document` + `get_document_tags` to organize your corpus
 """,
     )
 
@@ -123,13 +152,13 @@ system for agentic code editors via MCP.
     from tools.ingest_tools import register_tools as reg_ingest
     from tools.search_tools import register_tools as reg_search
     from tools.graph_tools import register_tools as reg_graph
-    from tools.sql_tools import register_tools as reg_sql
+    from tools.database_tools import register_tools as reg_database
     from tools.version_tools import register_tools as reg_version
 
-    reg_ingest(mcp, detector, embedder, store, graph, resolver)
+    reg_ingest(mcp, detector, embedder, store, graph, resolver, duckdb)
     reg_search(mcp, store, embedder)
     reg_graph(mcp, graph)
-    reg_sql(mcp, duckdb)
+    reg_database(mcp, duckdb, store)
     reg_version(mcp, store, graph)
 
     # ------------------------------------------------------------------

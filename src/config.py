@@ -89,16 +89,16 @@ def get_default_config() -> dict[str, Any]:
             "db_path": str(Path.cwd() / "data" / "graph.db"),
         },
         "embedding": {
-            "model": "nomic-embed-text",
-            "dimensions": 768,
-            "batch_size": 10,
+            "model": "qwen3-embedding:8b-q8_0",
+            "dimensions": 4096,
+            "batch_size": 128,
         },
         "chunking": {
-            "max_size": 2048,
-            "overlap": 100,
+            "max_size": 4096,
+            "overlap": 200,
         },
         "search": {
             "rrf_k": 60,
-            "expand_context": False,
+            "expand_context": True,
         },
     }

@@ -31,7 +31,7 @@ def main():
         config = {
             "storage": {"path": os.path.join(tmp, "lancedb")},
             "graph": {"backend": "sqlite", "db_path": os.path.join(tmp, "graph.db")},
-            "embedding": {"model": "nomic-embed-text", "dimensions": 768},
+            "embedding": {"model": "qwen3-embedding:8b-q8_0", "dimensions": 4096},
         }
 
         print("\n[1] Initializing server...")
@@ -48,7 +48,7 @@ def main():
         from chunking.hierarchy import HierarchyResolver
         from rag.embedder import OllamaEmbedder
 
-        store = LanceDBStore(config["storage"]["path"])
+        store = LanceDBStore(config["storage"]["path"], dimensions=4096)
         graph = create_graph_store(config)
         detector = FileTypeDetector()
         resolver = HierarchyResolver()
@@ -131,15 +131,15 @@ Run `pip install corpus-kb` to get started.
         # SQL
         from storage.duckdb_engine import DuckDBEngine
 
-        engine = DuckDBEngine(config["storage"]["path"])
+        db = DuckDBEngine(config["storage"]["path"])
+        db.sync_from_lancedb(store)
 
         print("\n[6] SQL: chunk count by source_type...")
-        sql_result = engine.execute(
+        sql_result = db.execute(
             "SELECT source_type, COUNT(*) as cnt FROM chunks GROUP BY source_type"
         )
-        if sql_result.get("rows"):
-            for row in sql_result["rows"]:
-                print(f"    {row[0]}: {row[1]}")
+        for row in sql_result.get("rows", []):
+            print(f"    {row[0]}: {row[1]}")
 
         # Graph
         print("\n[7] Searching graph entities...")

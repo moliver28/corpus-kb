@@ -41,8 +41,9 @@ def _safe_json_load(value, expected_type=list):
 class LanceDBStore:
     """Manages all LanceDB table operations."""
 
-    def __init__(self, uri: str):
+    def __init__(self, uri: str, dimensions: int = 4096):
         self.uri = _resolve_uri(uri)
+        self.dimensions = dimensions
         os.makedirs(self.uri, exist_ok=True)
         self.db = lancedb.connect(self.uri)
         self._ensure_tables()
@@ -71,7 +72,7 @@ class LanceDBStore:
                         pa.field("chunk_id", pa.utf8()),
                         pa.field("doc_id", pa.utf8()),
                         pa.field("text", pa.utf8()),
-                        pa.field("vector", pa.list_(pa.float32(), 768)),
+                        pa.field("vector", pa.list_(pa.float32(), self.dimensions)),
                         pa.field("chunk_index", pa.int32()),
                         pa.field("source", pa.utf8()),
                         pa.field("source_type", pa.utf8()),

@@ -12,19 +12,23 @@ storage:
   lancedb_uri: ~/.corpus-kb/lancedb
   graph_db: ~/.corpus-kb/graph.db
 
+database:
+  filename: corpus.db           # Persistent DuckDB file (in storage.path)
+  auto_sync: true               # Auto-sync LanceDB → relational on startup + ingest
+
 embedding:
   provider: ollama
-  model: nomic-embed-text
+  model: qwen3-embedding:8b-q8_0  # 8B params, 4096d, MTEB #1
   base_url: http://localhost:11434
-  batch_size: 64
-  dimension: 768
+  batch_size: 128                 # Max batch for Ollama embed API
+  dimension: 4096                 # Max native dimension
 
 chunking:
-  max_size: 2048                # Max chars per chunk
-  overlap: 100
+  max_size: 4096                 # Bigger chunks for 4096d embedding space
+  overlap: 200
   code:
     enabled: true
-    max_size: 2500
+    max_size: 5000               # Large entities fit in one chunk
     parser: tree-sitter
     supported_languages:
       - python
@@ -46,27 +50,27 @@ chunking:
   markdown:
     enabled: true
     heading_levels: [1, 2, 3]
-    max_section_size: 3000
+    max_section_size: 5000
   text:
     enabled: true
-    strategy: semantic
+    strategy: semantic           # Uses qwen3-embedding for topic-gap detection
     min_sentences: 3
-    max_sentences: 30
+    max_sentences: 40
   hierarchy:
     store_parent: true
     store_siblings: true
-    max_context_depth: 3
+    max_context_depth: 5
 
 search:
   hybrid: true
   rrf_k: 60
-  expand_context: false
+  expand_context: true
   context_expansion:
     include_parent: true
     include_siblings: true
-    max_siblings: 5
-  enable_reranker: false
-  reranker_model: BAAI/bge-reranker-v2-m3
+    max_siblings: 8
+  enable_reranker: false        # Set true + install a generative LLM (e.g. qwen3:0.6b) for LLM reranking
+  reranker_model: qwen3:0.6b
 
 graph:
   backend: sqlite               # sqlite | graphqlite | latticedb (future)
