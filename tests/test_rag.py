@@ -22,7 +22,7 @@ class TestOllamaEmbedder:
         from rag.embedder import OllamaEmbedder
         e = OllamaEmbedder()
         vec = e.embed("hello world")
-        assert len(vec) == 768
+        assert len(vec) == e.dimensions
         # Either real values or zeros if Ollama unavailable
         assert all(isinstance(v, float) for v in vec)
 
@@ -31,7 +31,7 @@ class TestOllamaEmbedder:
         e = OllamaEmbedder()
         vecs = e.embed_batch(["a", "b", "c"])
         assert len(vecs) == 3
-        assert all(len(v) == 768 for v in vecs)
+        assert all(len(v) == e.dimensions for v in vecs)
 
     def test_embed_batch_empty(self):
         from rag.embedder import OllamaEmbedder
@@ -52,7 +52,7 @@ class TestOllamaEmbedder:
         chunks = [Chunk(text="hello"), Chunk(text="world")]
         result = e.embed_chunks(chunks)
         assert all(c.vector is not None for c in result)
-        assert all(len(c.vector) == 768 for c in result)
+        assert all(len(c.vector) == e.dimensions for c in result)
 
     def test_clear_cache(self):
         from rag.embedder import OllamaEmbedder

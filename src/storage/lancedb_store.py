@@ -171,6 +171,8 @@ class LanceDBStore:
                       filters: Optional[dict] = None) -> list[SearchResult]:
         """Vector search with optional SQL-style filters."""
         tbl = self.chunks_table
+        if tbl.count_rows() == 0:
+            return []
         query = tbl.search(query_embedding)
 
         if filters:

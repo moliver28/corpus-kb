@@ -104,8 +104,8 @@ def create_server(config: dict | None = None) -> FastMCP:
 
     # Embedding
     embedder = OllamaEmbedder(
-        model=embedding_config.get("model", "nomic-embed-text"),
-        dimensions=embedding_config.get("dimensions", 768),
+        model=embedding_config.get("model", "qwen3-embedding:8b-q8_0"),
+        dimensions=embedding_config.get("dimensions", 4096),
         batch_size=embedding_config.get("batch_size", 10),
     )
 

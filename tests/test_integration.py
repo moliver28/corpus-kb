@@ -100,14 +100,14 @@ def no_ollama():
     orig_chunks = OllamaEmbedder.embed_chunks
 
     def _embed(self, text):
-        return [0.0] * 768
+        return [0.0] * self.dimensions
 
     def _batch(self, texts):
-        return [[0.0] * 768 for _ in texts]
+        return [[0.0] * self.dimensions for _ in texts]
 
     def _chunks(self, chunks):
         for c in chunks:
-            c.vector = [0.0] * 768
+            c.vector = [0.0] * self.dimensions
         return chunks
 
     OllamaEmbedder.embed = _embed
@@ -122,7 +122,7 @@ def no_ollama():
 @pytest.fixture
 def store(tmp_path):
     uri = str(tmp_path / "lancedb")
-    return LanceDBStore(uri)
+    return LanceDBStore(uri, dimensions=768)
 
 
 @pytest.fixture
@@ -441,6 +441,10 @@ def _verify_tool_names(mcp):
         "list_versions", "create_tag", "get_stats",
         "checkout_version", "restore_version", "create_branch",
         "list_branches", "switch_branch",
+        # database_tools
+        "sql_execute", "sql_tables",
+        "add_tag", "tag_document", "untag_document", "get_document_tags",
+        "set_metadata", "get_metadata", "sync_database", "query_document_stats",
     }
     missing = expected - tool_names
     extra = tool_names - expected
@@ -473,7 +477,7 @@ class TestToolRegistration:
         from tools.ingest_tools import register_tools as r_ingest
         from tools.search_tools import register_tools as r_search
         from tools.graph_tools import register_tools as r_graph
-        from tools.sql_tools import register_tools as r_sql
+        from tools.database_tools import register_tools as r_database
         from tools.version_tools import register_tools as r_version
 
         call_count_before = mcp.tool.call_count
@@ -490,13 +494,13 @@ class TestToolRegistration:
         graph_count = mcp.tool.call_count - call_count_before - ingest_count - search_count
         assert graph_count == 5, f"Expected 5 graph tools, got {graph_count}"
 
-        r_sql(mcp, duckdb)
-        sql_count = mcp.tool.call_count - call_count_before - ingest_count - search_count - graph_count
-        assert sql_count == 1, f"Expected 1 SQL tool, got {sql_count}"
+        r_database(mcp, duckdb, store)
+        db_count = mcp.tool.call_count - call_count_before - ingest_count - search_count - graph_count
+        assert db_count == 11, f"Expected 11 database tools, got {db_count}"
 
         r_version(mcp, store, graph)
         total = mcp.tool.call_count - call_count_before
-        assert total == 23, f"Expected 23 total tools, got {total}"
+        assert total == 33, f"Expected 33 total tools, got {total}"
 
 
 # ---------------------------------------------------------------------------
