@@ -2,9 +2,9 @@
   "mcpServers": {
     "corpus-kb": {
       "name": "Corpus-KB",
-      "description": "Local RAG system — search, ingest, knowledge graph, SQL queries",
+      "description": "Local RAG system — search, ingest, knowledge graph, SQL queries over your code and documents",
       "command": "corpus-kb",
-      "args": [],
+      "args": ["--transport", "stdio"],
       "env": {},
       "disabled": false,
       "autoApprove": [
@@ -17,7 +17,13 @@
         "list_versions",
         "list_branches",
         "get_entity_relations",
-        "search_graph"
+        "search_graph",
+        "sql_query",
+        "sql_tables",
+        "get_document_tags",
+        "get_metadata",
+        "query_document_stats",
+        "sync_database"
       ]
     }
   }

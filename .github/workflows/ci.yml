@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  OLLAMA_MODEL: "nomic-embed-text"
+
+jobs:
+  test:
+    name: "test (ubuntu-latest)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq build-essential
+
+      - name: Install package
+        run: |
+          pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-asyncio
+
+      - name: Cache Ollama models
+        id: cache-ollama
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-${{ env.OLLAMA_MODEL }}
+
+      - name: Install and start Ollama
+        if: steps.cache-ollama.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          sleep 5
+          ollama pull ${{ env.OLLAMA_MODEL }}
+
+      - name: Start Ollama (cached models)
+        if: steps.cache-ollama.outputs.cache-hit == 'true'
+        run: |
+          ollama serve &
+          sleep 3
+
+      - name: Verify Ollama is running
+        run: |
+          curl -s http://localhost:11434/api/tags | head -5
+          echo "Ollama ready"
+
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=short --durations=10
+
+      - name: Run demo smoke test
+        run: python scripts/demo.py

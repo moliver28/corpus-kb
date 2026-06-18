@@ -1,5 +1,7 @@
 # Corpus-KB
 
+[![CI](https://github.com/moliver28/corpus-kb/actions/workflows/ci.yml/badge.svg)](https://github.com/moliver28/corpus-kb/actions/workflows/ci.yml)
+
 Local end-to-end RAG system for agentic code editors.
 
 Exposes retrieval-augmented generation capabilities via MCP (Model Context Protocol)
