@@ -18,10 +18,10 @@ database:
 
 embedding:
   provider: ollama
-  model: qwen3-embedding:8b-q8_0  # 8B params, 4096d, MTEB #1
+  model: nomic-embed-text          # ~274 MB, 768d. For better quality, upgrade to qwen3-embedding:8b-q8_0 (8 GB, 4096d, MTEB #1)
   base_url: http://localhost:11434
-  batch_size: 128                 # Max batch for Ollama embed API
-  dimension: 4096                 # Max native dimension
+  batch_size: 32                   # Safe batch size for most models. Increase to 128 for qwen3.
+  dimensions: 768                  # Embedding dimensions; matches nomic-embed-text
 
 chunking:
   max_size: 4096                 # Bigger chunks for 4096d embedding space
@@ -53,7 +53,7 @@ chunking:
     max_section_size: 5000
   text:
     enabled: true
-    strategy: semantic           # Uses qwen3-embedding for topic-gap detection
+    strategy: semantic           # Uses embedding model for topic-gap detection
     min_sentences: 3
     max_sentences: 40
   hierarchy:

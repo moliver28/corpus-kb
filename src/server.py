@@ -87,7 +87,7 @@ def create_server(config: dict | None = None) -> FastMCP:
     from chunking.markdown_chunker import MarkdownChunker
     from chunking.text_chunker import TextChunker
 
-    embed_model = embedding_config.get("model", "qwen3-embedding:8b-q8_0")
+    embed_model = embedding_config.get("model", "nomic-embed-text")
     chunk_max = chunking_config.get("max_size", 4096)
     chunk_overlap = chunking_config.get("overlap", 200)
 
@@ -104,9 +104,9 @@ def create_server(config: dict | None = None) -> FastMCP:
 
     # Embedding
     embedder = OllamaEmbedder(
-        model=embedding_config.get("model", "qwen3-embedding:8b-q8_0"),
-        dimensions=embedding_config.get("dimensions", 4096),
-        batch_size=embedding_config.get("batch_size", 10),
+        model=embedding_config.get("model", "nomic-embed-text"),
+        dimensions=embedding_config.get("dimensions", 768),
+        batch_size=embedding_config.get("batch_size", 32),
     )
 
     # Auto-sync existing data from LanceDB into relational tables

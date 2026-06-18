@@ -14,8 +14,9 @@ from typing import Optional
 from utils.models import Chunk
 
 # Default embedding model and dimensions
-DEFAULT_MODEL = "qwen3-embedding:8b-q8_0"
-DEFAULT_DIMENSIONS = 4096
+# For better quality, switch to qwen3-embedding:8b-q8_0 (8 GB, 4096d, MTEB #1)
+DEFAULT_MODEL = "nomic-embed-text"
+DEFAULT_DIMENSIONS = 768
 
 
 class OllamaEmbedder:
@@ -42,7 +43,7 @@ class OllamaEmbedder:
         self._cache_max = cache_size
 
     def embed(self, text: str) -> list[float]:
-        """Embed a single text string. Returns a 768-d vector."""
+        """Embed a single text string. Returns a vector matching self.dimensions."""
         cache_key = self._cache_key(text)
         cached = self._cache.get(cache_key)
         if cached is not None:

@@ -47,7 +47,7 @@ class TextChunker(Chunker):
         use_semantic: bool = False,
         gap_threshold: float = 0.3,
         window_size: int = 3,
-        model: str = "qwen3-embedding:8b-q8_0",
+        model: str = "nomic-embed-text",
     ):
         self.max_size = max_size
         self.use_semantic = use_semantic
