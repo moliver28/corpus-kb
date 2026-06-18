@@ -1,13 +1,13 @@
-from .ingest_tools import register_ingest_tools
-from .search_tools import register_search_tools
-from .graph_tools import register_graph_tools
-from .sql_tools import register_sql_tools
-from .version_tools import register_version_tools
+from .ingest_tools import register_tools as register_ingest
+from .search_tools import register_tools as register_search
+from .graph_tools import register_tools as register_graph
+from .sql_tools import register_tools as register_sql
+from .version_tools import register_tools as register_version
 
 __all__ = [
-    "register_ingest_tools",
-    "register_search_tools",
-    "register_graph_tools",
-    "register_sql_tools",
-    "register_version_tools",
+    "register_ingest",
+    "register_search",
+    "register_graph",
+    "register_sql",
+    "register_version",
 ]

@@ -42,4 +42,4 @@ where = ["src"]
 "*" = ["*.yaml"]
 
 [project.scripts]
-corpus-kb = "src.server:main"
+corpus-kb = "server:main"
