@@ -248,7 +248,7 @@ class DuckDBEngine:
 
             # Check if this was a write operation (no result set)
             if result.description is None:
-                affected = self.conn.fetchreq("SELECT changes()").fetchone()[0]
+                affected = self.conn.execute("SELECT changes()").fetchone()[0]
                 return {"affected_rows": affected}
 
             columns = [desc[0] for desc in result.description]

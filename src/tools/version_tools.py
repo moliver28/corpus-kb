@@ -61,8 +61,8 @@ def register_tools(mcp, store: LanceDBStore, graph: GraphStore):
         return {
             "total_documents": stats.total_documents,
             "total_chunks": stats.total_chunks,
-            "total_entities": graph_stats.get("entity_count", 0),
-            "total_relations": graph_stats.get("relation_count", 0),
+            "total_entities": graph_stats.get("total_entities", 0),
+            "total_relations": graph_stats.get("total_relations", 0),
             "current_version": stats.current_version,
             "storage_path": stats.storage_path,
         }

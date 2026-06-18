@@ -69,7 +69,7 @@ def create_server(config: dict | None = None) -> FastMCP:
     from rag.embedder import OllamaEmbedder
 
     # Storage
-    embed_dim = embedding_config.get("dimensions", 4096)
+    embed_dim = embedding_config.get("dimensions", 768)
     store = LanceDBStore(storage_path, dimensions=embed_dim)
 
     # Relational database — persistent DuckDB with defined schemas

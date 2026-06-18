@@ -124,19 +124,20 @@ def register_tools(mcp, graph: GraphStore):
             List of relations with source/target info.
         """
         # Use neighbors with depth=1 to get relations
+        # get_neighbors returns list of {"entity": Entity, "relation": {...}}
         neighbors = graph.get_neighbors(entity_id, depth=1)
         relations = []
         seen = set()
         for n in neighbors:
-            for rel in n.get("relations", []):
-                rel_id = rel.get("relation_id", "")
-                if rel_id and rel_id not in seen:
-                    seen.add(rel_id)
-                    relations.append({
-                        "relation_id": rel_id,
-                        "source_id": rel.get("source_id", ""),
-                        "target_id": rel.get("target_id", ""),
-                        "type": rel.get("rel_type", ""),
-                        "weight": rel.get("weight", 1.0),
-                    })
+            rel = n.get("relation", {})
+            rel_id = rel.get("relation_id", "")
+            if rel_id and rel_id not in seen:
+                seen.add(rel_id)
+                relations.append({
+                    "relation_id": rel_id,
+                    "source_id": rel.get("source_id", ""),
+                    "target_id": rel.get("target_id", ""),
+                    "type": rel.get("rel_type", ""),
+                    "weight": rel.get("weight", 1.0),
+                })
         return relations
