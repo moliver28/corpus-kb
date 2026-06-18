@@ -1,12 +1,11 @@
 {
-  "mcpServers": {
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
     "corpus-kb": {
-      "name": "Corpus-KB",
+      "type": "local",
       "description": "Local RAG system — search, ingest, knowledge graph, SQL queries over your code and documents",
-      "command": "corpus-kb",
-      "args": ["--transport", "stdio"],
-      "env": {},
-      "disabled": false,
+      "command": ["corpus-kb", "--transport", "stdio"],
+      "environment": {},
       "autoApprove": [
         "search",
         "search_context",
