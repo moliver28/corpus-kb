@@ -19,6 +19,7 @@ import os
 import sys
 from pathlib import Path
 
+import json
 import yaml
 from mcp.server.fastmcp import FastMCP
 
@@ -158,6 +159,115 @@ system for agentic code editors via MCP.
         if not chunk:
             return f"Chunk not found: {chunk_id}"
         return chunk.get("text", "")
+
+    @mcp.resource("doc://{doc_id}")
+    def doc_resource(doc_id: str) -> str:
+        """Full document info with all its chunks."""
+        doc = store.get_document(doc_id)
+        if not doc:
+            return f"Document not found: {doc_id}"
+
+        chunks = store.chunks_table.search().where(
+            f"doc_id = '{doc_id}'"
+        ).limit(10000).to_list()
+
+        parts = [
+            f"# Document: {doc.get('source', 'unknown')}\n",
+            f"- **ID**: {doc_id}",
+            f"- **Source Type**: {doc.get('source_type', 'unknown')}",
+            f"- **Chunk Count**: {doc.get('chunk_count', len(chunks))}",
+            f"- **Created**: {doc.get('created_at', 'unknown')}",
+        ]
+
+        if doc.get("metadata"):
+            meta = doc["metadata"]
+            if isinstance(meta, str):
+                meta = json.loads(meta)
+            if meta:
+                parts.append(f"- **Metadata**: {meta}")
+
+        parts.append(f"\n## Chunks ({len(chunks)})\n")
+
+        for c in sorted(chunks, key=lambda x: x.get("chunk_index", 0)):
+            idx = c.get("chunk_index", 0)
+            text = c.get("text", "")
+            ctype = c.get("chunk_type", "paragraph")
+            parts.append(f"### Chunk [{idx}] ({ctype})")
+            if text:
+                parts.append(f"{text}\n")
+
+        return "\n".join(parts)
+
+    @mcp.resource("graph://{entity_id}")
+    def graph_resource(entity_id: str) -> str:
+        """Entity details with all relations."""
+        entity = graph.get_entity(entity_id)
+        if not entity:
+            return f"Entity not found: {entity_id}"
+
+        meta = entity.metadata or {}
+
+        parts = [
+            f"# Entity: {entity.name}",
+            f"- **ID**: {entity.entity_id}",
+            f"- **Type**: {entity.type}",
+            f"- **Created**: {entity.created_at}",
+        ]
+        if meta:
+            parts.append(f"- **Metadata**: {meta}")
+
+        neighbors = graph.get_neighbors(entity_id)
+        if neighbors:
+            parts.append(f"\n## Relations ({len(neighbors)})\n")
+            for n in neighbors:
+                ent = n.get("entity", {})
+                rel = n.get("relation", {})
+                if hasattr(ent, "name"):
+                    ent_name = ent.name
+                elif isinstance(ent, dict):
+                    ent_name = ent.get("name", "unknown")
+                else:
+                    ent_name = str(ent)
+                rtype = rel.get("relation_type", "related_to") if isinstance(rel, dict) else "related_to"
+                direction = rel.get("direction", "") if isinstance(rel, dict) else ""
+                parts.append(f"- **{direction}** [{rtype}] → {ent_name}")
+        else:
+            parts.append("\nNo relations found.")
+
+        return "\n".join(parts)
+
+    @mcp.resource("search://{query}")
+    def search_resource(query: str) -> str:
+        """Search results as formatted text."""
+        vector = embedder.embed(query)
+        results = store.search_vector(vector, k=10)
+
+        parts = [f"# Search Results: {query}\n"]
+        for i, r in enumerate(results):
+            parts.append(
+                f"### Result [{i}] (score: {r.score:.4f})\n"
+                f"- **Source**: {r.source}\n"
+                f"- **Doc**: {r.doc_id}\n"
+                f"- **Type**: {r.chunk_type}\n"
+                f"{r.text}\n"
+            )
+
+        return "\n".join(parts)
+
+    @mcp.resource("versions://")
+    def versions_resource() -> str:
+        """Version tree."""
+        versions = store.list_versions()
+
+        parts = ["# Version Tree\n"]
+        for v in versions:
+            tag = f" ({v.tag})" if v.tag else ""
+            parts.append(f"- **Version {v.version}**{tag} — {v.timestamp}")
+
+        if not versions:
+            parts.append("No versions available.")
+
+        return "\n".join(parts)
 
     return mcp
 

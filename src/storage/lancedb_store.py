@@ -275,6 +275,24 @@ class LanceDBStore:
         ver = from_version or tbl.version
         tbl.tags.create(f"branch:{name}", ver)
 
+    def list_branches(self) -> list[str]:
+        """List all branch names."""
+        tbl = self.chunks_table
+        return [
+            t["name"].replace("branch:", "", 1)
+            for t in tbl.tags.list()
+            if t["name"].startswith("branch:")
+        ]
+
+    def switch_branch(self, name: str):
+        """Switch to a branch (checkout its tagged version)."""
+        tbl = self.chunks_table
+        for t in tbl.tags.list():
+            if t["name"] == f"branch:{name}":
+                tbl.checkout(t["version"])
+                return
+        raise ValueError(f"Branch not found: {name}")
+
     # ------------------------------------------------------------------
     # Stats
     # ------------------------------------------------------------------

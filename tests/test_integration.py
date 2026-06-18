@@ -434,10 +434,13 @@ def _verify_tool_names(mcp):
         return
     expected = {
         "ingest_file", "ingest_text", "ingest_directory",
-        "search", "search_context",
+        "list_documents", "delete_document",
+        "search", "search_context", "search_similar", "retrieve_context",
         "add_entity", "add_relation", "search_graph", "bfs", "get_entity_relations",
         "sql_query",
         "list_versions", "create_tag", "get_stats",
+        "checkout_version", "restore_version", "create_branch",
+        "list_branches", "switch_branch",
     }
     missing = expected - tool_names
     extra = tool_names - expected
@@ -477,11 +480,11 @@ class TestToolRegistration:
 
         r_ingest(mcp, det, embedder_obj, store, graph, res)
         ingest_count = mcp.tool.call_count - call_count_before
-        assert ingest_count == 3, f"Expected 3 ingest tools, got {ingest_count}"
+        assert ingest_count == 5, f"Expected 5 ingest tools, got {ingest_count}"
 
         r_search(mcp, store, embedder_obj)
         search_count = mcp.tool.call_count - call_count_before - ingest_count
-        assert search_count == 2, f"Expected 2 search tools, got {search_count}"
+        assert search_count == 4, f"Expected 4 search tools, got {search_count}"
 
         r_graph(mcp, graph)
         graph_count = mcp.tool.call_count - call_count_before - ingest_count - search_count
@@ -493,7 +496,7 @@ class TestToolRegistration:
 
         r_version(mcp, store, graph)
         total = mcp.tool.call_count - call_count_before
-        assert total == 14, f"Expected 14 total tools, got {total}"
+        assert total == 23, f"Expected 23 total tools, got {total}"
 
 
 # ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ Tools:
 
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 from storage.lancedb_store import LanceDBStore
@@ -86,6 +87,62 @@ def register_tools(
             expanded.append(result_dict)
 
         return expanded
+
+    @mcp.tool()
+    def search_similar(
+        chunk_id: str,
+        k: int = 5,
+    ) -> list[dict]:
+        """Find chunks similar to a given chunk by ID.
+
+        Args:
+            chunk_id: ID of the source chunk.
+            k: Number of similar results to return (max 20).
+
+        Returns:
+            List of similar chunks with scores and text snippets.
+        """
+        k = min(k, 20)
+        chunk = store.get_chunk(chunk_id)
+        if not chunk:
+            return [{"error": f"Chunk not found: {chunk_id}"}]
+        text = chunk.get("text", "")
+        vector = embedder.embed(text)
+        results = store.search_vector(vector, k=k)
+        return [_result_to_dict(r) for r in results]
+
+    @mcp.tool()
+    def retrieve_context(
+        query: str,
+        k: int = 5,
+        filters: Optional[str] = None,
+    ) -> str:
+        """Search and return results formatted for LLM context building.
+
+        Args:
+            query: Natural language query.
+            k: Number of results (max 20).
+            filters: Optional JSON string of filter conditions.
+
+        Returns:
+            Formatted string with source citations.
+        """
+        k = min(k, 20)
+        parsed_filters = None
+        if filters:
+            try:
+                parsed_filters = json.loads(filters)
+            except json.JSONDecodeError:
+                return f"Invalid filters JSON: {filters}"
+
+        vector = embedder.embed(query)
+        results = store.search_hybrid(query, vector, k=k, filters=parsed_filters)
+
+        parts = []
+        for i, r in enumerate(results):
+            parts.append(f"---\nSource [{i}]: {r.source}\n{r.text}\n---")
+
+        return "\n".join(parts)
 
 
 def _result_to_dict(r: SearchResult) -> dict:

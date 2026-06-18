@@ -1,9 +1,24 @@
 {
   "mcpServers": {
     "corpus-kb": {
-      "command": "uv",
-      "args": ["run", "--directory", "F:\\Documents\\OpenCode\\Corpus\\corpus-kb", "src\\server.py"],
-      "env": {}
+      "name": "Corpus-KB",
+      "description": "Local RAG system — search, ingest, knowledge graph, SQL queries",
+      "command": "corpus-kb",
+      "args": [],
+      "env": {},
+      "disabled": false,
+      "autoApprove": [
+        "search",
+        "search_context",
+        "search_similar",
+        "retrieve_context",
+        "list_documents",
+        "get_stats",
+        "list_versions",
+        "list_branches",
+        "get_entity_relations",
+        "search_graph"
+      ]
     }
   }
 }

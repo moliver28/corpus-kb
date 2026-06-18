@@ -9,6 +9,8 @@ Tools:
 
 from __future__ import annotations
 
+from typing import Optional
+
 from storage.lancedb_store import LanceDBStore
 from storage.graph_store import GraphStore
 
@@ -64,3 +66,48 @@ def register_tools(mcp, store: LanceDBStore, graph: GraphStore):
             "current_version": stats.current_version,
             "storage_path": stats.storage_path,
         }
+
+    @mcp.tool()
+    async def checkout_version(version: int) -> dict:
+        """Check out a specific table version for time-travel queries."""
+        try:
+            store.checkout(version)
+            return {"version": version, "status": "checked_out"}
+        except Exception as e:
+            return {"version": version, "status": "error", "message": str(e)}
+
+    @mcp.tool()
+    async def restore_version(version: int) -> dict:
+        """Restore the table to a specific version."""
+        try:
+            store.restore(version)
+            return {"version": version, "status": "restored"}
+        except Exception as e:
+            return {"version": version, "status": "error", "message": str(e)}
+
+    @mcp.tool()
+    async def create_branch(branch_name: str, from_version: Optional[int] = None) -> dict:
+        """Create a new branch from an optional version."""
+        try:
+            store.create_branch(branch_name, from_version)
+            return {"branch": branch_name, "from_version": from_version, "status": "created"}
+        except Exception as e:
+            return {"branch": branch_name, "status": "error", "message": str(e)}
+
+    @mcp.tool()
+    async def list_branches() -> list[dict]:
+        """List all branches."""
+        try:
+            branches = store.list_branches()
+            return [{"name": b} for b in branches]
+        except Exception as e:
+            return [{"status": "error", "message": str(e)}]
+
+    @mcp.tool()
+    async def switch_branch(branch_name: str) -> dict:
+        """Switch to a specified branch."""
+        try:
+            store.switch_branch(branch_name)
+            return {"branch": branch_name, "status": "switched"}
+        except Exception as e:
+            return {"branch": branch_name, "status": "error", "message": str(e)}

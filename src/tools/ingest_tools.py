@@ -184,3 +184,29 @@ def register_tools(
                     })
 
         return results
+
+    @mcp.tool()
+    def list_documents() -> list[dict]:
+        """List all ingested documents with their metadata."""
+        docs = store.list_documents()
+        return [
+            {
+                "doc_id": d["doc_id"],
+                "source": d["source"],
+                "source_type": d["source_type"],
+                "chunk_count": d["chunk_count"],
+                "created_at": str(d["created_at"]),
+            }
+            for d in docs
+        ]
+
+    @mcp.tool()
+    def delete_document(doc_id: str) -> dict:
+        """Delete an ingested document by its doc_id."""
+        try:
+            store.delete_document(doc_id)
+            return {"doc_id": doc_id, "status": "deleted"}
+        except KeyError:
+            return {"doc_id": doc_id, "status": "not_found"}
+        except Exception as e:
+            return {"doc_id": doc_id, "status": "error", "message": str(e)}
