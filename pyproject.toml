@@ -10,20 +10,6 @@ authors = [
     { name = "Michael Oliver" },
 ]
 
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.11",
-    "Topic :: Software Development :: Libraries :: Application Frameworks",
-    "Topic :: Text Processing :: Indexing",
-]
-
-[project.urls]
-Homepage = "https://github.com/moliver28/corpus-kb"
-Repository = "https://github.com/moliver28/corpus-kb.git"
-Documentation = "https://github.com/moliver28/corpus-kb"
-
 dependencies = [
     "mcp[cli]>=1.0",
     "lancedb>=0.12",
@@ -40,6 +26,20 @@ dependencies = [
     "pydantic>=2.0",
     "rich>=13.0",
 ]
+
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Text Processing :: Indexing",
+]
+
+[project.urls]
+Homepage = "https://github.com/moliver28/corpus-kb"
+Repository = "https://github.com/moliver28/corpus-kb.git"
+Documentation = "https://github.com/moliver28/corpus-kb"
 
 [project.optional-dependencies]
 graphqlite = ["graphqlite>=0.4"]
