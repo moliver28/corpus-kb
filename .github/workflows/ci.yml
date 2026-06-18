@@ -15,9 +15,27 @@ env:
   OLLAMA_MODEL: "nomic-embed-text"
 
 jobs:
+  validate-configs:
+    name: "validate-configs (ubuntu-latest)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Validate config files
+        run: python scripts/validate_configs.py
+
   test:
     name: "test (ubuntu-latest)"
     runs-on: ubuntu-latest
+    needs: validate-configs
 
     steps:
       - uses: actions/checkout@v4

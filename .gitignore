@@ -19,6 +19,13 @@ Thumbs.db
 
 # OpenCode runtime
 .omo/
+.opencode/
+.slim/
+.codegraph/
+
+# Runtime data
+corpus-kb/
+.pytest_cache/
 
 # Backups
 *.bak
