@@ -17,5 +17,14 @@ data/
 .DS_Store
 Thumbs.db
 
+# OpenCode runtime
+.omo/
+
+# Backups
+*.bak
+
+# Temporary scripts
+scripts/_*.ps1
+
 # Environment
 .env
