@@ -86,13 +86,29 @@ class SQLiteGraphStore(GraphStore):
         Args:
             db_path: Path to SQLite database file.
         """
-        self.db_path = Path(db_path)
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.db_path = Path(db_path) if not isinstance(db_path, Path) else db_path
+        
+        # For in-memory databases, use shared cache mode
+        if str(self.db_path) == ":memory:":
+            self.db_uri = "file::memory:?cache=shared"
+            self._use_uri = True
+        else:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            self.db_uri = str(self.db_path)
+            self._use_uri = False
+        
         self._init_schema()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get a database connection, handling both file and in-memory databases."""
+        if self._use_uri:
+            return sqlite3.connect(self.db_uri, uri=True)
+        else:
+            return sqlite3.connect(self.db_path)
 
     def _init_schema(self) -> None:
         """Initialize database schema."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS entities (
@@ -138,7 +154,7 @@ class SQLiteGraphStore(GraphStore):
         """Add an entity to the graph."""
         import json
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO entities
@@ -161,7 +177,7 @@ class SQLiteGraphStore(GraphStore):
         """Add a relation between two entities."""
         import json
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO relations
@@ -183,7 +199,7 @@ class SQLiteGraphStore(GraphStore):
         """Get an entity by ID."""
         import json
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT * FROM entities WHERE entity_id = ?", (entity_id,)
@@ -205,7 +221,7 @@ class SQLiteGraphStore(GraphStore):
         """Search entities by name and optional type."""
         import json
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             if entity_type:
                 rows = conn.execute(
@@ -235,7 +251,7 @@ class SQLiteGraphStore(GraphStore):
         """Get all relations for an entity."""
         import json
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
@@ -266,7 +282,7 @@ class SQLiteGraphStore(GraphStore):
         queue = deque([(start_entity_id, 0)])
         result = {"start": start_entity_id, "nodes": {}, "edges": []}
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
 
             while queue:
