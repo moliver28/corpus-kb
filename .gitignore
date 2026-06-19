@@ -24,7 +24,6 @@ Thumbs.db
 .codegraph/
 
 # Runtime data
-corpus-kb/
 .pytest_cache/
 
 # Backups
