@@ -46,6 +46,8 @@ class HybridSearcher:
         k: int = 10,
         source_type: Optional[str] = None,
         file_path: Optional[str] = None,
+        relevance_floor: float = 0.3,
+        excluded_chunk_types: Optional[list[str]] = None,
     ) -> list[SearchResult]:
         """Run hybrid search with RRF fusion.
 
@@ -54,6 +56,8 @@ class HybridSearcher:
             k: Number of top results to return.
             source_type: Optional filter ("code", "markdown", "text").
             file_path: Optional file path filter.
+            relevance_floor: Minimum vector score to include (default 0.3).
+            excluded_chunk_types: Chunk types to exclude (default ["heading", "toc", "inventory"]).
 
         Returns:
             List of SearchResult objects sorted by RRF score (descending).
@@ -70,7 +74,9 @@ class HybridSearcher:
                                       file_path=file_path)
 
         # 3. Merge via RRF using LanceDBStore's implementation
-        merged = self.store._rrf_fuse(vector_results, fts_results, k=self.rrf_k)
+        merged = self.store._rrf_fuse(vector_results, fts_results, k=self.rrf_k,
+                                      relevance_floor=relevance_floor,
+                                      excluded_chunk_types=excluded_chunk_types)
 
         # 4. Truncate to requested count
         return merged[:k]
