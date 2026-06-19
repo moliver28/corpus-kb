@@ -1,0 +1,70 @@
+{
+  "name": "Corpus-KB CI Gate Configuration",
+  "description": "Local validation mirrors GitHub Actions CI checks - catch failures before pushing",
+  "version": "1.0",
+  "gates": {
+    "commit-message": {
+      "enabled": true,
+      "rules": [
+        {
+          "name": "Capital letter start",
+          "pattern": "^[A-Z]",
+          "error": "Commit message must start with capital letter"
+        },
+        {
+          "name": "Length 10-500 chars",
+          "minChars": 10,
+          "maxChars": 500,
+          "error": "Commit message must be 10-500 characters (actual: {length})"
+        },
+        {
+          "name": "No dangerous keywords",
+          "forbiddenPatterns": ["force-push", "filter-branch", "reset --hard", "rm -rf", "Remove-Item.*Recurse"],
+          "error": "Commit message contains dangerous operation keyword: {keyword}"
+        }
+      ]
+    },
+    "config-files": {
+      "enabled": true,
+      "required": [
+        {
+          "path": "opencode.json",
+          "description": "OpenCode MCP server configuration"
+        },
+        {
+          "path": "mcp-configs/cursor.json",
+          "description": "Cursor IDE MCP configuration"
+        }
+      ]
+    },
+    "code-quality": {
+      "enabled": true,
+      "checks": [
+        {
+          "name": "ruff-lint",
+          "command": "ruff check src/",
+          "critical": true
+        },
+        {
+          "name": "ruff-format",
+          "command": "ruff format --check src/",
+          "critical": true
+        },
+        {
+          "name": "pyright",
+          "command": "pyright src/",
+          "critical": true
+        },
+        {
+          "name": "pytest",
+          "command": "pytest tests/ -v",
+          "critical": true
+        }
+      ]
+    }
+  },
+  "hooks": {
+    "pre-commit": "Validate files before staging",
+    "pre-push": "Run full CI gate checks before pushing"
+  }
+}
