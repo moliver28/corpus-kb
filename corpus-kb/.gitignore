@@ -1,0 +1,37 @@
+﻿# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+
+# Data
+data/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# OpenCode runtime
+.omo/
+.opencode/
+.slim/
+.codegraph/
+
+# Runtime data
+data/corpus-kb/
+.pytest_cache/
+
+# Backups
+*.bak
+
+# Temporary scripts
+scripts/_*.ps1
+
+# Environment
+.env
