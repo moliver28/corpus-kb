@@ -25,27 +25,5 @@
         "sync_database"
       ]
     }
-  },
-  "permission": {
-    "bash": {
-      "git reset --hard *": "deny",
-      "git reset --hard": "deny",
-      "git push --force *": "deny",
-      "git push --force-with-lease *": "deny",
-      "git push --force": "deny",
-      "git push --force-with-lease": "deny",
-      "git clean -fd *": "deny",
-      "git clean -fdx *": "deny",
-      "git clean -fd": "deny",
-      "git clean -fdx": "deny",
-      "git filter-branch *": "deny",
-      "git filter-branch": "deny",
-      "rm -rf *": "ask",
-      "rm -rf": "ask",
-      "sudo *": "ask",
-      "sudo": "ask",
-      "del /s /q *": "ask",
-      "Remove-Item -Recurse -Force *": "ask"
-    }
   }
 }
