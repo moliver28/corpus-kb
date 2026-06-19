@@ -152,7 +152,6 @@ class TestHybridSearcher:
         Then:  TOC chunks should be filtered out (before fix fails, after fix passes)
         """
         from storage.lancedb_store import LanceDBStore
-        from utils.models import Chunk, Document
 
         # Create test chunks: one content chunk, one TOC chunk
         content_chunk = SearchResult(
