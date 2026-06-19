@@ -71,6 +71,11 @@ class GraphStore(ABC):
         """Breadth-first search from a starting entity."""
         pass
 
+    @abstractmethod
+    def close(self) -> None:
+        """Close the graph store and release resources."""
+        pass
+
 
 # ============================================================================
 # SQLite Implementation (Level 1)
@@ -333,6 +338,14 @@ class SQLiteGraphStore(GraphStore):
                             queue.append((next_id, depth + 1))
 
         return result
+
+    def close(self) -> None:
+        """Close the graph store and release resources.
+        
+        For SQLite, this is a no-op since connections are managed per-operation.
+        Provided for interface compatibility.
+        """
+        pass
 
 
 # ============================================================================

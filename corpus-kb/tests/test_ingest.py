@@ -5,7 +5,6 @@ Test suite for markdown/text entity extraction in the ingest pipeline.
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -232,87 +231,75 @@ The API gateway routes requests.
 class TestGraphStore:
     """Test graph store operations."""
 
-    def test_graph_store_add_entity(self) -> None:
+    def test_graph_store_add_entity(self, graph_store_tmp) -> None:
         """Given an entity, when add_entity is called, then entity is stored and retrievable."""
         # Given
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "test.db"
-            graph_store = SQLiteGraphStore(db_path)
+        entity = Entity(
+            name="TestService",
+            entity_type="CLASS",
+            source_type="code",
+            source_document_id="doc-123",
+        )
 
-            entity = Entity(
-                name="TestService",
-                entity_type="CLASS",
-                source_type="code",
-                source_document_id="doc-123",
-            )
+        # When
+        entity_id = graph_store_tmp.add_entity(entity)
 
-            # When
-            entity_id = graph_store.add_entity(entity)
+        # Then
+        assert entity_id == entity.entity_id
+        retrieved = graph_store_tmp.get_entity(entity_id)
+        assert retrieved is not None
+        assert retrieved.name == "TestService"
+        assert retrieved.entity_type == "CLASS"
 
-            # Then
-            assert entity_id == entity.entity_id
-            retrieved = graph_store.get_entity(entity_id)
-            assert retrieved is not None
-            assert retrieved.name == "TestService"
-            assert retrieved.entity_type == "CLASS"
-
-    def test_graph_store_search_entities(self) -> None:
+    def test_graph_store_search_entities(self, graph_store_tmp) -> None:
         """Given entities in the store, when search_entities is called, then matching entities are returned."""
         # Given
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "test.db"
-            graph_store = SQLiteGraphStore(db_path)
+        entity1 = Entity(
+            name="UserService",
+            entity_type="CLASS",
+            source_type="code",
+        )
+        entity2 = Entity(
+            name="AuthService",
+            entity_type="CLASS",
+            source_type="code",
+        )
 
-            entity1 = Entity(
-                name="UserService",
-                entity_type="CLASS",
-                source_type="code",
-            )
-            entity2 = Entity(
-                name="AuthService",
-                entity_type="CLASS",
-                source_type="code",
-            )
+        graph_store_tmp.add_entity(entity1)
+        graph_store_tmp.add_entity(entity2)
 
-            graph_store.add_entity(entity1)
-            graph_store.add_entity(entity2)
+        # When
+        results = graph_store_tmp.search_entities("Service")
 
-            # When
-            results = graph_store.search_entities("Service")
+        # Then
+        assert len(results) == 2
+        names = {e.name for e in results}
+        assert "UserService" in names
+        assert "AuthService" in names
 
-            # Then
-            assert len(results) == 2
-            names = {e.name for e in results}
-            assert "UserService" in names
-            assert "AuthService" in names
-
-    def test_graph_store_search_entities_by_type(self) -> None:
+    def test_graph_store_search_entities_by_type(self, graph_store_tmp) -> None:
         """Given entities of different types, when search_entities is called with type filter, then only matching type is returned."""
         # Given
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "test.db"
-            graph_store = SQLiteGraphStore(db_path)
+        entity1 = Entity(
+            name="UserService",
+            entity_type="CLASS",
+            source_type="code",
+        )
+        entity2 = Entity(
+            name="authenticate",
+            entity_type="FUNCTION",
+            source_type="code",
+        )
 
-            entity1 = Entity(
-                name="UserService",
-                entity_type="CLASS",
-                source_type="code",
-            )
-            entity2 = Entity(
-                name="authenticate",
-                entity_type="FUNCTION",
-                source_type="code",
-            )
+        graph_store_tmp.add_entity(entity1)
+        graph_store_tmp.add_entity(entity2)
 
-            graph_store.add_entity(entity1)
-            graph_store.add_entity(entity2)
+        # When
+        results = graph_store_tmp.search_entities("Service", entity_type="CLASS")
 
-            # When
-            results = graph_store.search_entities("Service", entity_type="CLASS")
-
-            # Then
-            assert len(results) == 1
-            assert results[0].name == "UserService"
+        # Then
+        assert len(results) == 1
+        assert results[0].name == "UserService"
 
 
 # ============================================================================
@@ -323,7 +310,7 @@ class TestGraphStore:
 class TestIngestIntegration:
     """Integration tests for the full ingest pipeline."""
 
-    def test_markdown_entities_extracted_end_to_end(self) -> None:
+    def test_markdown_entities_extracted_end_to_end(self, graph_store_tmp) -> None:
         """Given markdown file, when ingested, then entities are extracted and stored in graph."""
         # Given
         markdown_content = """# API Documentation
@@ -342,35 +329,26 @@ Create a new user.
 The API returns standard HTTP error codes.
 """
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a temporary markdown file
-            md_file = Path(tmpdir) / "api.md"
-            md_file.write_text(markdown_content)
+        config = {
+            "graph": {"extract_entities": True, "backend": "sqlite"},
+            "storage": {"graph_db": str(graph_store_tmp.db_path)},
+        }
 
-            # Create graph store
-            db_path = Path(tmpdir) / "graph.db"
-            graph_store = SQLiteGraphStore(db_path)
+        # When
+        result = ingest_text(
+            text=markdown_content,
+            source_type="markdown",
+            graph_store=graph_store_tmp,
+            config=config,
+        )
 
-            config = {
-                "graph": {"extract_entities": True, "backend": "sqlite"},
-                "storage": {"graph_db": str(db_path)},
-            }
+        # Then
+        assert result["status"] == "success"
+        assert result["entity_count"] > 0
 
-            # When
-            result = ingest_text(
-                text=markdown_content,
-                source_type="markdown",
-                graph_store=graph_store,
-                config=config,
-            )
+        # Verify entities are in graph store
+        entities = graph_store_tmp.search_entities("Authentication")
+        assert len(entities) > 0
 
-            # Then
-            assert result["status"] == "success"
-            assert result["entity_count"] > 0
-
-            # Verify entities are in graph store
-            entities = graph_store.search_entities("Authentication")
-            assert len(entities) > 0
-
-            entities = graph_store.search_entities("Endpoints")
-            assert len(entities) > 0
+        entities = graph_store_tmp.search_entities("Endpoints")
+        assert len(entities) > 0
