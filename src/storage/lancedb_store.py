@@ -375,21 +375,18 @@ class LanceDBStore:
                   fts_results: list[SearchResult],
                   k: float = 60.0,
                   relevance_floor: float = 0.3,
-                  excluded_chunk_types: Optional[list[str]] = None) -> list[SearchResult]:
-        """Reciprocal Rank Fusion with relevance floor and chunk type filtering.
+                  excluded_chunk_types: list[str] | None = None) -> list[SearchResult]:
+        """Reciprocal Rank Fusion with relevance floor and noise filtering.
 
         Each result's final score = sum(1 / (k + rank(result))) across both rankings.
+        Results below relevance_floor are excluded. Heading-only/TOC chunks filtered out.
         
         Args:
-            vector_results: Results from vector search.
-            fts_results: Results from full-text search.
-            k: RRF constant (default 60.0).
-            relevance_floor: Minimum vector score to include (default 0.3 for nomic-embed-text).
-            excluded_chunk_types: Chunk types to exclude (default ["heading", "toc", "inventory"]).
-        
-        Returns:
-            Ranked list of SearchResult, filtered by relevance and chunk type.
-            If all chunks filtered, returns top-k by relevance from original results.
+            vector_results: Results from vector search (already ranked)
+            fts_results: Results from full-text search (already ranked)
+            k: RRF constant (higher = more weight to FTS)
+            relevance_floor: Drop chunks with vector_score < this threshold
+            excluded_chunk_types: Chunk types to exclude (e.g. ["heading", "toc"])
         """
         if excluded_chunk_types is None:
             excluded_chunk_types = ["heading", "toc", "inventory"]
@@ -397,36 +394,38 @@ class LanceDBStore:
         scores: dict[str, float] = {}
         result_map: dict[str, SearchResult] = {}
 
+        # Process vector results
         for rank, r in enumerate(vector_results):
+            # Apply relevance floor: drop chunks below threshold
+            if r.score < relevance_floor:
+                continue
+            # Exclude noise chunk types
+            if r.chunk_type in excluded_chunk_types:
+                continue
             scores[r.chunk_id] = scores.get(r.chunk_id, 0.0) + 1.0 / (k + rank + 1)
             result_map[r.chunk_id] = r
 
+        # Process FTS results
         for rank, r in enumerate(fts_results):
+            # FTS doesn't use vector scores, but exclude noise chunk types
+            if r.chunk_type in excluded_chunk_types:
+                continue
             scores[r.chunk_id] = scores.get(r.chunk_id, 0.0) + 1.0 / (k + rank + 1)
             if r.chunk_id not in result_map:
                 result_map[r.chunk_id] = r
+
+        # If all results filtered, return top-k from originals that passed type check
+        if not scores:
+            fallback = [r for r in vector_results + fts_results 
+                       if r.chunk_type not in excluded_chunk_types]
+            return fallback[:10]
 
         ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
         results = []
         for chunk_id, score in ranked:
             r = result_map[chunk_id]
-            
-            # Filter by chunk type
-            if r.chunk_type in excluded_chunk_types:
-                continue
-            
-            # Filter by relevance floor (use vector score as proxy for relevance)
-            if r.score < relevance_floor:
-                continue
-            
             r.score = score
             results.append(r)
-
-        # Edge case: if all chunks filtered, return top-k by original relevance
-        if not results:
-            all_results = list(result_map.values())
-            all_results.sort(key=lambda x: x.score, reverse=True)
-            return all_results[:int(k)]
 
         return results
