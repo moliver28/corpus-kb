@@ -100,7 +100,7 @@ def _ingest_text(
 
 
 def ingest_file(
-    file_path: str,
+    file_path: str | Path,
     graph_store: Optional[Any] = None,
     config: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
