@@ -6,10 +6,9 @@ Pure dataclasses with serialization methods for LanceDB round-tripping.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Optional
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 

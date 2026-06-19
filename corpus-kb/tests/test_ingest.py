@@ -5,13 +5,9 @@ Test suite for markdown/text entity extraction in the ingest pipeline.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
 
-import pytest
 
 from src.graph.extractor import extract_entities
-from src.storage.graph_store import SQLiteGraphStore
 from src.tools.ingest_tools import ingest_text
 from src.utils.models import Entity
 

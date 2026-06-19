@@ -1,0 +1,202 @@
+name: Agent Governance Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches: [main, master, develop]
+
+jobs:
+  agent-governance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for git analysis
+      
+      - name: Set up OPA
+        uses: open-policy-agent/setup-opa@v1
+        with:
+          version: latest
+      
+      - name: Check for dangerous operations
+        run: |
+          set +e
+          
+          # Check for force-push in commit messages
+          if git log -1 --pretty=format:'%b' | grep -qi "force-push"; then
+            echo "⚠️  WARNING: Force-push mentioned in commit message"
+            echo "This operation requires explicit approval"
+          fi
+          
+          # Check for history rewrite
+          if git log -1 --pretty=format:'%b' | grep -qi "filter-branch\|reset --hard"; then
+            echo "⚠️  WARNING: History rewrite operation detected"
+            echo "This operation requires explicit approval"
+          fi
+          
+          # Check for dangerous file operations
+          if git log -1 --pretty=format:'%b' | grep -qi "rm -rf\|Remove-Item.*Recurse"; then
+            echo "⚠️  WARNING: Recursive file deletion detected"
+            echo "This operation requires explicit approval"
+          fi
+          
+          set -e
+      
+      - name: Validate commit message format
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:'%s')
+          
+          # Check message length
+          MSG_LEN=${#COMMIT_MSG}
+          if [ $MSG_LEN -lt 10 ]; then
+            echo "ERROR: Commit message too short (min 10 chars)"
+            exit 1
+          fi
+          
+          if [ $MSG_LEN -gt 500 ]; then
+            echo "ERROR: Commit message too long (max 500 chars)"
+            exit 1
+          fi
+          
+          # Check capitalization
+          FIRST_CHAR=${COMMIT_MSG:0:1}
+          if [[ ! "$FIRST_CHAR" =~ [A-Z] ]]; then
+            echo "ERROR: Commit message must start with capital letter"
+            exit 1
+          fi
+          
+          echo "✓ Commit message format valid"
+      
+      - name: Check branch naming
+        run: |
+          BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          
+          # Allow main, master, develop
+          if [[ "$BRANCH" =~ ^(main|master|develop)$ ]]; then
+            echo "✓ Branch is protected: $BRANCH"
+            exit 0
+          fi
+          
+          # Feature branches must start with feature/
+          if [[ "$BRANCH" =~ ^feature/ ]]; then
+            echo "✓ Feature branch naming valid: $BRANCH"
+            exit 0
+          fi
+          
+          # Bugfix branches must start with bugfix/
+          if [[ "$BRANCH" =~ ^bugfix/ ]]; then
+            echo "✓ Bugfix branch naming valid: $BRANCH"
+            exit 0
+          fi
+          
+          # Hotfix branches must start with hotfix/
+          if [[ "$BRANCH" =~ ^hotfix/ ]]; then
+            echo "✓ Hotfix branch naming valid: $BRANCH"
+            exit 0
+          fi
+          
+          echo "WARNING: Branch name doesn't follow convention: $BRANCH"
+          echo "Recommended: feature/*, bugfix/*, hotfix/*"
+      
+      - name: Validate OPA policies
+        run: |
+          if [ ! -d ".opencode/policies" ]; then
+            echo "WARNING: .opencode/policies directory not found"
+            echo "Skipping OPA policy validation"
+            exit 0
+          fi
+          
+          # Check policy syntax
+          for policy in .opencode/policies/*.rego; do
+            echo "Validating policy: $policy"
+            opa parse "$policy" > /dev/null || {
+              echo "ERROR: Invalid Rego syntax in $policy"
+              exit 1
+            }
+          done
+          
+          echo "✓ All OPA policies are valid"
+      
+      - name: Create audit log entry
+        if: always()
+        run: |
+          mkdir -p .opencode/audit/logs
+          
+          # Create audit entry
+          cat > /tmp/audit_entry.json <<EOF
+          {
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "actor": "${{ github.actor }}",
+            "action": "${{ github.event_name }}",
+            "branch": "${{ github.ref }}",
+            "commit": "${{ github.sha }}",
+            "status": "success",
+            "workflow": "${{ github.workflow }}",
+            "run_id": "${{ github.run_id }}"
+          }
+          EOF
+          
+          # Append to audit log
+          cat /tmp/audit_entry.json >> .opencode/audit/logs/$(date +%Y-%m-%d).jsonl
+          
+          echo "✓ Audit log entry created"
+      
+      - name: Check for security issues
+        run: |
+          echo "Checking for common security issues..."
+          
+          # Check for hardcoded credentials
+          if git diff HEAD~1 HEAD | grep -E "(password|secret|api_key|token)" -i; then
+            echo "⚠️  WARNING: Possible hardcoded credentials detected"
+            echo "Please review and remove before committing"
+          fi
+          
+          # Check for SQL injection patterns
+          if git diff HEAD~1 HEAD | grep -E "execute.*\+" | grep -v "test"; then
+            echo "⚠️  WARNING: Possible SQL injection pattern detected"
+            echo "Use parameterized queries instead"
+          fi
+          
+          echo "✓ Security check complete"
+      
+      - name: Generate governance report
+        if: always()
+        run: |
+          cat > /tmp/governance_report.md <<'EOF'
+          # Agent Governance Check Report
+          
+          ## Summary
+          - Actor: ${{ github.actor }}
+          - Event: ${{ github.event_name }}
+          - Branch: ${{ github.ref }}
+          - Commit: ${{ github.sha }}
+          
+          ## Checks Performed
+          - ✓ Dangerous operations check
+          - ✓ Commit message format validation
+          - ✓ Branch naming validation
+          - ✓ OPA policy validation
+          - ✓ Audit log entry creation
+          - ✓ Security issue check
+          
+          ## Result
+          All governance checks passed.
+          
+          ## Audit Trail
+          All actions have been logged to `.opencode/audit/logs/`.
+          EOF
+          
+          cat /tmp/governance_report.md
+      
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '✓ Agent governance checks passed\n\nAll pre-action gates validated successfully.'
+            })

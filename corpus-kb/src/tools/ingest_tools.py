@@ -10,14 +10,13 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Optional
 
 from src.config import load_config
 from src.graph.extractor import extract_entities
 from src.storage.graph_store import create_graph_store
-from src.utils.models import Chunk, Document, Entity
+from src.utils.models import Document
 
 
 # ============================================================================
