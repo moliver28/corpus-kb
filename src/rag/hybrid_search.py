@@ -46,6 +46,8 @@ class HybridSearcher:
         k: int = 10,
         source_type: Optional[str] = None,
         file_path: Optional[str] = None,
+        relevance_floor: float = 0.3,
+        excluded_chunk_types: Optional[list[str]] = None,
     ) -> list[SearchResult]:
         """Run hybrid search with RRF fusion.
 
@@ -54,6 +56,8 @@ class HybridSearcher:
             k: Number of top results to return.
             source_type: Optional filter ("code", "markdown", "text").
             file_path: Optional file path filter.
+            relevance_floor: Minimum vector score to include (default 0.3).
+            excluded_chunk_types: Chunk types to exclude (default ["heading", "toc", "inventory"]).
 
         Returns:
             List of SearchResult objects sorted by RRF score (descending).
@@ -69,8 +73,10 @@ class HybridSearcher:
                                       source_type=source_type,
                                       file_path=file_path)
 
-        # 3. Merge via RRF
-        merged = self._rrf_merge(vector_results, fts_results, k=self.rrf_k)
+        # 3. Merge via RRF using LanceDBStore's implementation
+        merged = self.store._rrf_fuse(vector_results, fts_results, k=self.rrf_k,
+                                      relevance_floor=relevance_floor,
+                                      excluded_chunk_types=excluded_chunk_types)
 
         # 4. Truncate to requested count
         return merged[:k]
@@ -113,35 +119,4 @@ class HybridSearcher:
 
         return filters if filters else None
 
-    def _rrf_merge(
-        self,
-        *ranked_lists: list[SearchResult],
-        k: int = 60,
-    ) -> list[SearchResult]:
-        """Reciprocal Rank Fusion merge of multiple ranked lists.
 
-        Each result list contributes score = 1 / (k + position).
-        Results present in multiple lists get boosted scores.
-        """
-        from collections import OrderedDict
-
-        scores: dict[str, tuple[float, SearchResult]] = OrderedDict()
-
-        for ranked_list in ranked_lists:
-            for rank, result in enumerate(ranked_list):
-                if result.chunk_id not in scores:
-                    scores[result.chunk_id] = (0.0, result)
-                current_score, _ = scores[result.chunk_id]
-                scores[result.chunk_id] = (
-                    current_score + 1.0 / (k + rank + 1),
-                    result,
-                )
-
-        # Sort by RRF score descending
-        sorted_results = sorted(
-            scores.values(),
-            key=lambda x: x[0],
-            reverse=True,
-        )
-
-        return [result for score, result in sorted_results]

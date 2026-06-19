@@ -205,7 +205,8 @@ class LanceDBStore:
 
     def search_hybrid(self, query_text: str, query_embedding: list[float],
                       k: int = 10, filters: Optional[dict] = None,
-                      rrf_k: float = 60.0) -> list[SearchResult]:
+                      rrf_k: float = 60.0, relevance_floor: float = 0.3,
+                      excluded_chunk_types: Optional[list[str]] = None) -> list[SearchResult]:
         """Hybrid search: vector + FTS fused via Reciprocal Rank Fusion.
 
         Args:
@@ -214,6 +215,8 @@ class LanceDBStore:
             k: Number of results to return.
             filters: Optional SQL filters (dict of column -> value).
             rrf_k: RRF constant (default 60).
+            relevance_floor: Minimum vector score to include (default 0.3).
+            excluded_chunk_types: Chunk types to exclude (default ["heading", "toc", "inventory"]).
 
         Returns:
             Ranked list of SearchResult with fused scores.
@@ -221,7 +224,9 @@ class LanceDBStore:
         vec_results = self.search_vector(query_embedding, k * 2, filters)
         fts_results = self.search_fts(query_text, k * 2, filters)
 
-        return self._rrf_fuse(vec_results, fts_results, k=rrf_k)[:k]
+        return self._rrf_fuse(vec_results, fts_results, k=rrf_k,
+                             relevance_floor=relevance_floor,
+                             excluded_chunk_types=excluded_chunk_types)[:k]
 
     def ensure_fts_index(self):
         """Ensure FTS index exists on the chunks table."""
@@ -368,11 +373,27 @@ class LanceDBStore:
     @staticmethod
     def _rrf_fuse(vector_results: list[SearchResult],
                   fts_results: list[SearchResult],
-                  k: float = 60.0) -> list[SearchResult]:
-        """Reciprocal Rank Fusion.
+                  k: float = 60.0,
+                  relevance_floor: float = 0.3,
+                  excluded_chunk_types: Optional[list[str]] = None) -> list[SearchResult]:
+        """Reciprocal Rank Fusion with relevance floor and chunk type filtering.
 
         Each result's final score = sum(1 / (k + rank(result))) across both rankings.
+        
+        Args:
+            vector_results: Results from vector search.
+            fts_results: Results from full-text search.
+            k: RRF constant (default 60.0).
+            relevance_floor: Minimum vector score to include (default 0.3 for nomic-embed-text).
+            excluded_chunk_types: Chunk types to exclude (default ["heading", "toc", "inventory"]).
+        
+        Returns:
+            Ranked list of SearchResult, filtered by relevance and chunk type.
+            If all chunks filtered, returns top-k by relevance from original results.
         """
+        if excluded_chunk_types is None:
+            excluded_chunk_types = ["heading", "toc", "inventory"]
+        
         scores: dict[str, float] = {}
         result_map: dict[str, SearchResult] = {}
 
@@ -390,7 +411,22 @@ class LanceDBStore:
         results = []
         for chunk_id, score in ranked:
             r = result_map[chunk_id]
+            
+            # Filter by chunk type
+            if r.chunk_type in excluded_chunk_types:
+                continue
+            
+            # Filter by relevance floor (use vector score as proxy for relevance)
+            if r.score < relevance_floor:
+                continue
+            
             r.score = score
             results.append(r)
+
+        # Edge case: if all chunks filtered, return top-k by original relevance
+        if not results:
+            all_results = list(result_map.values())
+            all_results.sort(key=lambda x: x.score, reverse=True)
+            return all_results[:int(k)]
 
         return results

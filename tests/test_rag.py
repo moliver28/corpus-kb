@@ -110,22 +110,20 @@ class TestHybridSearcher:
         results = hs.fts_search("test", k=5)
         assert isinstance(results, list)
 
-    def test_rrf_merge_single_list(self, tmp_store, embedder):
+    def test_rrf_fuse_single_list(self, tmp_store, embedder):
         """RRF with one list should maintain order."""
-        from rag.hybrid_search import HybridSearcher
-        hs = HybridSearcher(tmp_store, embedder)
+        from storage.lancedb_store import LanceDBStore
         results = [
             SearchResult(chunk_id="a", text="a", score=0.9, source="test"),
             SearchResult(chunk_id="b", text="b", score=0.8, source="test"),
         ]
-        merged = hs._rrf_merge(results, k=60)
+        merged = LanceDBStore._rrf_fuse(results, [], k=60.0)
         assert len(merged) == 2
         assert merged[0].chunk_id == "a"
 
-    def test_rrf_merge_two_lists(self, tmp_store, embedder):
+    def test_rrf_fuse_two_lists(self, tmp_store, embedder):
         """Items appearing in both lists should get priority."""
-        from rag.hybrid_search import HybridSearcher
-        hs = HybridSearcher(tmp_store, embedder)
+        from storage.lancedb_store import LanceDBStore
         list_a = [
             SearchResult(chunk_id="a", text="a", score=0.9, source="test"),
             SearchResult(chunk_id="b", text="b", score=0.8, source="test"),
@@ -134,7 +132,7 @@ class TestHybridSearcher:
             SearchResult(chunk_id="b", text="b", score=0.7, source="test"),
             SearchResult(chunk_id="c", text="c", score=0.6, source="test"),
         ]
-        merged = hs._rrf_merge(list_a, list_b, k=60)
+        merged = LanceDBStore._rrf_fuse(list_a, list_b, k=60.0)
         # "b" appears in both lists -> highest RRF score
         assert merged[0].chunk_id == "b"
 
@@ -144,6 +142,50 @@ class TestHybridSearcher:
         hs = HybridSearcher(tmp_store, embedder)
         results = hs.search("test query", k=5)
         assert isinstance(results, list)
+
+    def test_rrf_excludes_toc_chunks(self, tmp_store, embedder):
+        """RED test: RRF should exclude TOC/heading chunks with low relevance.
+
+        Given: Vector and FTS results containing TOC chunks (chunk_type='toc')
+               with zero or very low vector scores
+        When:  _rrf_fuse() is called
+        Then:  TOC chunks should be filtered out (before fix fails, after fix passes)
+        """
+        from storage.lancedb_store import LanceDBStore
+        from utils.models import Chunk, Document
+
+        # Create test chunks: one content chunk, one TOC chunk
+        content_chunk = SearchResult(
+            chunk_id="content_1",
+            text="def authenticate(user): return verify_token(user)",
+            score=0.85,  # High relevance
+            source="auth.py",
+            chunk_type="function",
+        )
+
+        toc_chunk = SearchResult(
+            chunk_id="toc_1",
+            text="# Table of Contents\n1. Authentication\n2. Authorization",
+            score=0.0,  # Zero relevance (navigation only)
+            source="README.md",
+            chunk_type="toc",
+        )
+
+        # Simulate vector search results (content + TOC)
+        vector_results = [content_chunk, toc_chunk]
+
+        # Simulate FTS results (just content)
+        fts_results = [content_chunk]
+
+        # Call RRF fusion with default params
+        # BEFORE FIX: TOC chunk will be included in results
+        # AFTER FIX: TOC chunk will be filtered out
+        merged = LanceDBStore._rrf_fuse(vector_results, fts_results, k=60.0)
+
+        # Verify TOC chunks are excluded
+        chunk_ids = [r.chunk_id for r in merged]
+        assert "toc_1" not in chunk_ids, "TOC chunks should be filtered out by relevance floor"
+        assert "content_1" in chunk_ids, "Content chunks should be retained"
 
 
 # ============================================================================
