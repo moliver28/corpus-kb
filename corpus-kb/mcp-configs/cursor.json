@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "corpus-kb": {
+      "name": "Corpus-KB",
+      "description": "Local RAG system — search, ingest, knowledge graph, SQL queries over your code and documents",
+      "command": "corpus-kb",
+      "args": ["--transport", "stdio"],
+      "env": {}
+    }
+  }
+}
