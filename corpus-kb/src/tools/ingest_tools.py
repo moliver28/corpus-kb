@@ -118,7 +118,9 @@ def ingest_file(
         config = load_config()
 
     if graph_store is None:
-        graph_db_path = config.get("storage", {}).get("graph_db", "~/.corpus-kb/graph.db")
+        graph_db_path = config.get("storage", {}).get(
+            "graph_db", "~/.corpus-kb/graph.db"
+        )
         graph_backend = config.get("graph", {}).get("backend", "sqlite")
         graph_store = create_graph_store(graph_backend, graph_db_path)
 
@@ -136,7 +138,18 @@ def ingest_file(
     suffix = file_path.suffix.lower()
     if suffix in {".md", ".markdown", ".rst"}:
         source_type = "markdown"
-    elif suffix in {".py", ".js", ".ts", ".rs", ".go", ".java", ".cpp", ".c", ".rb", ".php"}:
+    elif suffix in {
+        ".py",
+        ".js",
+        ".ts",
+        ".rs",
+        ".go",
+        ".java",
+        ".cpp",
+        ".c",
+        ".rb",
+        ".php",
+    }:
         source_type = "code"
     else:
         source_type = "text"
@@ -155,7 +168,9 @@ def ingest_file(
         entity_map = _ingest_code(text, document.document_id, graph_store, config)
         entity_count = len(entity_map)
     else:  # markdown or text
-        entity_map = _ingest_text(text, document.document_id, source_type, graph_store, config)
+        entity_map = _ingest_text(
+            text, document.document_id, source_type, graph_store, config
+        )
         entity_count = len(entity_map)
 
     return {
@@ -190,7 +205,9 @@ def ingest_text(
         config = load_config()
 
     if graph_store is None:
-        graph_db_path = config.get("storage", {}).get("graph_db", "~/.corpus-kb/graph.db")
+        graph_db_path = config.get("storage", {}).get(
+            "graph_db", "~/.corpus-kb/graph.db"
+        )
         graph_backend = config.get("graph", {}).get("backend", "sqlite")
         graph_store = create_graph_store(graph_backend, graph_db_path)
 
@@ -212,7 +229,9 @@ def ingest_text(
         entity_map = _ingest_code(text, document.document_id, graph_store, config)
         entity_count = len(entity_map)
     else:  # markdown or text
-        entity_map = _ingest_text(text, document.document_id, source_type, graph_store, config)
+        entity_map = _ingest_text(
+            text, document.document_id, source_type, graph_store, config
+        )
         entity_count = len(entity_map)
 
     return {
@@ -244,7 +263,9 @@ def ingest_directory(
         config = load_config()
 
     if graph_store is None:
-        graph_db_path = config.get("storage", {}).get("graph_db", "~/.corpus-kb/graph.db")
+        graph_db_path = config.get("storage", {}).get(
+            "graph_db", "~/.corpus-kb/graph.db"
+        )
         graph_backend = config.get("graph", {}).get("backend", "sqlite")
         graph_store = create_graph_store(graph_backend, graph_db_path)
 
@@ -254,10 +275,28 @@ def ingest_directory(
 
     # Supported extensions
     supported_extensions = {
-        ".py", ".js", ".ts", ".tsx", ".jsx",
-        ".rs", ".go", ".java", ".cpp", ".c", ".h", ".hpp",
-        ".rb", ".php", ".swift", ".kt", ".scala", ".lua",
-        ".md", ".markdown", ".rst", ".txt",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".rs",
+        ".go",
+        ".java",
+        ".cpp",
+        ".c",
+        ".h",
+        ".hpp",
+        ".rb",
+        ".php",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".lua",
+        ".md",
+        ".markdown",
+        ".rst",
+        ".txt",
     }
 
     results = []

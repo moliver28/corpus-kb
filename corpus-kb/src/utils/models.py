@@ -41,7 +41,9 @@ class Chunk(BaseModel):
     embedding: Optional[list[float]] = None
     source_type: str  # "code" | "markdown" | "text"
     entity_name: Optional[str] = None  # For code chunks: function/class name
-    entity_type: Optional[str] = None  # For code chunks: "function" | "class" | "module"
+    entity_type: Optional[str] = (
+        None  # For code chunks: "function" | "class" | "module"
+    )
     start_line: Optional[int] = None
     end_line: Optional[int] = None
     parent_chunk_id: Optional[str] = None

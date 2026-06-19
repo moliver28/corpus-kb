@@ -24,28 +24,31 @@ from typing import Any
 
 # Valid tool names extracted from the corpus-kb MCP server.
 # These are the only values allowed in autoApprove lists.
-VALID_TOOL_NAMES: frozenset[str] = frozenset({
-    "search",
-    "search_context",
-    "search_similar",
-    "retrieve_context",
-    "list_documents",
-    "get_stats",
-    "list_versions",
-    "list_branches",
-    "get_entity_relations",
-    "search_graph",
-    "sql_query",
-    "sql_tables",
-    "get_document_tags",
-    "get_metadata",
-    "query_document_stats",
-    "sync_database",
-})
+VALID_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "search",
+        "search_context",
+        "search_similar",
+        "retrieve_context",
+        "list_documents",
+        "get_stats",
+        "list_versions",
+        "list_branches",
+        "get_entity_relations",
+        "search_graph",
+        "sql_query",
+        "sql_tables",
+        "get_document_tags",
+        "get_metadata",
+        "query_document_stats",
+        "sync_database",
+    }
+)
 
 # ---------------------------------------------------------------------------
 # OpenCode native format validator
 # ---------------------------------------------------------------------------
+
 
 def validate_opencode_config(config: dict[str, Any]) -> list[str]:
     """Validate an OpenCode native format config (mcp key).
@@ -77,11 +80,15 @@ def validate_opencode_config(config: dict[str, Any]) -> list[str]:
 
     # mcp key (not mcpServers)
     if "mcp" not in config:
-        errors.append("Missing required 'mcp' key — OpenCode format uses 'mcp', not 'mcpServers'")
+        errors.append(
+            "Missing required 'mcp' key — OpenCode format uses 'mcp', not 'mcpServers'"
+        )
         return errors
 
     if "mcpServers" in config:
-        errors.append("Found 'mcpServers' key — this is the old format; use 'mcp' for OpenCode")
+        errors.append(
+            "Found 'mcpServers' key — this is the old format; use 'mcp' for OpenCode"
+        )
 
     mcp = config["mcp"]
     if not isinstance(mcp, dict) or not mcp:
@@ -142,6 +149,7 @@ def _validate_opencode_tool(prefix: str, tool_config: dict[str, Any]) -> list[st
 # ---------------------------------------------------------------------------
 # Claude Code format validator
 # ---------------------------------------------------------------------------
+
 
 def validate_claude_config(config: dict[str, Any]) -> list[str]:
     """Validate a Claude Code format config (mcpServers key).
@@ -227,6 +235,7 @@ def _validate_claude_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
 # Cursor format validator
 # ---------------------------------------------------------------------------
 
+
 def validate_cursor_config(config: dict[str, Any]) -> list[str]:
     """Validate a Cursor format config (mcpServers key, no autoApprove).
 
@@ -296,6 +305,7 @@ def _validate_cursor_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
 # Cross-config consistency checks
 # ---------------------------------------------------------------------------
 
+
 def check_cross_config_consistency(
     opencode_config: dict[str, Any] | None,
     claude_config: dict[str, Any] | None,
@@ -361,9 +371,7 @@ def check_cross_config_consistency(
             desc_details = "; ".join(
                 f"{fmt}: '{desc}'" for fmt, desc in descriptions.items()
             )
-            errors.append(
-                f"Description mismatch for tool '{tool}': {desc_details}"
-            )
+            errors.append(f"Description mismatch for tool '{tool}': {desc_details}")
 
     return errors
 
@@ -371,6 +379,7 @@ def check_cross_config_consistency(
 # ---------------------------------------------------------------------------
 # File-level validation (loads from disk)
 # ---------------------------------------------------------------------------
+
 
 def load_json(path: Path) -> dict:
     """Load and parse a JSON file."""
@@ -420,7 +429,9 @@ def validate_all(project_root: Path | None = None) -> list[str]:
                 errs = validate_cursor_config(config)
                 errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
             else:
-                errors.append(f"mcp-configs/{filename}: unknown config format, skipping")
+                errors.append(
+                    f"mcp-configs/{filename}: unknown config format, skipping"
+                )
     else:
         errors.append("mcp-configs/ directory not found")
 
@@ -430,7 +441,9 @@ def validate_all(project_root: Path | None = None) -> list[str]:
     else:
         opencode_config = None
 
-    cross_errors = check_cross_config_consistency(opencode_config, claude_config, cursor_config)
+    cross_errors = check_cross_config_consistency(
+        opencode_config, claude_config, cursor_config
+    )
     errors.extend(f"Cross-config: {e}" for e in cross_errors)
 
     # 4. Check for old format backup (informational)
@@ -439,7 +452,9 @@ def validate_all(project_root: Path | None = None) -> list[str]:
         bak_config = load_json(bak_path)
         bak_errors = validate_opencode_config(bak_config)
         if not bak_errors:
-            errors.append("opencode.json.bak: unexpectedly passes OpenCode validation (should be old format)")
+            errors.append(
+                "opencode.json.bak: unexpectedly passes OpenCode validation (should be old format)"
+            )
 
     return errors
 
@@ -447,6 +462,7 @@ def validate_all(project_root: Path | None = None) -> list[str]:
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     """Run validation and exit with appropriate code."""

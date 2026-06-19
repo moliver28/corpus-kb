@@ -6,7 +6,6 @@ Test suite for markdown/text entity extraction in the ingest pipeline.
 from __future__ import annotations
 
 
-
 from src.graph.extractor import extract_entities
 from src.tools.ingest_tools import ingest_text
 from src.utils.models import Entity
@@ -83,7 +82,10 @@ The API protocol follows REST standards.
         # Then
         entity_names = {e.name for e in entities}
         # Should extract concept keywords
-        assert any("Authentication" in name or "Caching" in name or "Api" in name for name in entity_names)
+        assert any(
+            "Authentication" in name or "Caching" in name or "Api" in name
+            for name in entity_names
+        )
 
     def test_extract_entities_with_source_document_id(self) -> None:
         """Given markdown and a source_document_id, when extract_entities is called, then entities include the document ID."""
@@ -92,7 +94,9 @@ The API protocol follows REST standards.
         doc_id = "doc-123"
 
         # When
-        entities = extract_entities(markdown_text, source_type="markdown", source_document_id=doc_id)
+        entities = extract_entities(
+            markdown_text, source_type="markdown", source_document_id=doc_id
+        )
 
         # Then
         assert len(entities) > 0

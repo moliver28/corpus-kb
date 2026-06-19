@@ -32,13 +32,13 @@ DEFAULT_PATHS = [
 
 def load_config(path: Optional[str] = None) -> dict[str, Any]:
     """Load config from a YAML file, merged with env var overrides.
-    
+
     Args:
         path: Optional explicit config file path
-        
+
     Returns:
         Configuration dictionary with env var overrides applied
-        
+
     Config discovery order:
         1. Explicit path argument
         2. CORPUS_KB_CONFIG environment variable

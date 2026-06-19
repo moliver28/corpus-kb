@@ -57,7 +57,9 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    def search_entities(self, name: str, entity_type: Optional[str] = None) -> list[Entity]:
+    def search_entities(
+        self, name: str, entity_type: Optional[str] = None
+    ) -> list[Entity]:
         """Search entities by name and optional type."""
         pass
 
@@ -92,7 +94,7 @@ class SQLiteGraphStore(GraphStore):
             db_path: Path to SQLite database file.
         """
         self.db_path = Path(db_path) if not isinstance(db_path, Path) else db_path
-        
+
         # For in-memory databases, use shared cache mode
         if str(self.db_path) == ":memory:":
             self.db_uri = "file::memory:?cache=shared"
@@ -101,7 +103,7 @@ class SQLiteGraphStore(GraphStore):
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self.db_uri = str(self.db_path)
             self._use_uri = False
-        
+
         self._init_schema()
 
     def _get_connection(self) -> sqlite3.Connection:
@@ -222,7 +224,9 @@ class SQLiteGraphStore(GraphStore):
             metadata=json.loads(row["metadata"]) if row["metadata"] else {},
         )
 
-    def search_entities(self, name: str, entity_type: Optional[str] = None) -> list[Entity]:
+    def search_entities(
+        self, name: str, entity_type: Optional[str] = None
+    ) -> list[Entity]:
         """Search entities by name and optional type."""
         import json
 
@@ -341,7 +345,7 @@ class SQLiteGraphStore(GraphStore):
 
     def close(self) -> None:
         """Close the graph store and release resources.
-        
+
         For SQLite, this is a no-op since connections are managed per-operation.
         Provided for interface compatibility.
         """
