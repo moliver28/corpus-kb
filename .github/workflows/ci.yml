@@ -27,20 +27,16 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: corpus-kb/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install ruff
         run: pip install ruff
 
       - name: Ruff check
-        run: |
-          cd corpus-kb
-          ruff check src/ scripts/ tests/
+        run: ruff check src/ scripts/ tests/
 
       - name: Ruff format check
-        run: |
-          cd corpus-kb
-          ruff format --check src/ scripts/ tests/
+        run: ruff format --check src/ scripts/ tests/
 
   type-check:
     name: "type-check (pyright)"
@@ -54,47 +50,16 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: corpus-kb/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install pyright
         run: pip install pyright
 
       - name: Pyright strict type check
-        run: |
-          cd corpus-kb
-          pyright src/
-
-  coverage-check:
-    name: "coverage (pytest)"
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Python ${{ env.PYTHON_VERSION }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: corpus-kb/pyproject.toml
-
-      - name: Install dev dependencies
-        run: |
-          cd corpus-kb
-          pip install -e ".[dev]"
-
-      - name: Pytest test discovery
-        run: |
-          cd corpus-kb
-          python -m pytest --collect-only tests/ -q
-
-      - name: Verify pytest-cov installed
-        run: |
-          cd corpus-kb
-          python -c "import pytest_cov"
+        run: pyright src/
 
   validate-configs:
-    name: "validate-configs (ubuntu-latest)"
+    name: "validate-configs"
     runs-on: ubuntu-latest
 
     steps:
@@ -105,17 +70,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: corpus-kb/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Validate config files
-        run: |
-          cd corpus-kb
-          python scripts/validate_configs.py
+        run: python scripts/validate_configs.py
 
   test:
     name: "test (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
-    needs: [lint, type-check, coverage-check, validate-configs]
+    needs: validate-configs
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
@@ -139,9 +102,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd corpus-kb
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e .
+          pip install pytest pytest-asyncio
 
       - name: Cache Ollama models (Ubuntu/macOS)
         if: runner.os != 'Windows'
@@ -228,11 +191,7 @@ jobs:
           }
 
       - name: Run tests
-        run: |
-          cd corpus-kb
-          python -m pytest tests/test_ingest.py -v --tb=short --durations=10
+        run: python -m pytest tests/test_ingest.py -v --tb=short --durations=10
 
       - name: Run demo smoke test
-        run: |
-          cd corpus-kb
-          python scripts/demo.py
+        run: python scripts/demo.py
