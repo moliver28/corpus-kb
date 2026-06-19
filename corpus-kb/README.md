@@ -450,3 +450,5 @@ PRs and issues welcome. The project follows a few conventions:
 ## License
 
 MIT. See [LICENSE](LICENSE) for details.
+#   F r e s h   C I   t r i g g e r  
+ 
