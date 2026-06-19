@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Optional
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ============================================================================
@@ -21,6 +21,20 @@ from pydantic import BaseModel, Field
 
 class Chunk(BaseModel):
     """A chunk of text from a document."""
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "chunk_id": "chunk-123",
+                "document_id": "doc-456",
+                "text": "def hello(): pass",
+                "source_type": "code",
+                "entity_name": "hello",
+                "entity_type": "function",
+            }
+        },
+    )
 
     chunk_id: str = Field(default_factory=lambda: str(uuid4()))
     document_id: str
@@ -38,21 +52,22 @@ class Chunk(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "chunk_id": "chunk-123",
-                "document_id": "doc-456",
-                "text": "def hello(): pass",
-                "source_type": "code",
-                "entity_name": "hello",
-                "entity_type": "function",
-            }
-        }
-
 
 class Document(BaseModel):
     """A document (file or raw text)."""
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "document_id": "doc-456",
+                "path": "/path/to/file.py",
+                "source_type": "code",
+                "content": "...",
+                "size_bytes": 1024,
+            }
+        },
+    )
 
     document_id: str = Field(default_factory=lambda: str(uuid4()))
     path: str  # File path or "raw_text"
@@ -63,17 +78,6 @@ class Document(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "document_id": "doc-456",
-                "path": "/path/to/file.py",
-                "source_type": "code",
-                "content": "...",
-                "size_bytes": 1024,
-            }
-        }
 
 
 class SearchResult(BaseModel):
@@ -99,6 +103,19 @@ class SearchResult(BaseModel):
 class Entity(BaseModel):
     """An entity in the knowledge graph."""
 
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "entity_id": "ent-123",
+                "name": "UserService",
+                "entity_type": "CLASS",
+                "source_type": "code",
+                "source_document_id": "doc-456",
+            }
+        },
+    )
+
     entity_id: str = Field(default_factory=lambda: str(uuid4()))
     name: str
     entity_type: str  # "CONCEPT" | "CLASS" | "FUNCTION" | "MODULE" | "PERSON" | "PLACE"
@@ -107,20 +124,21 @@ class Entity(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "entity_id": "ent-123",
-                "name": "UserService",
-                "entity_type": "CLASS",
-                "source_type": "code",
-                "source_document_id": "doc-456",
-            }
-        }
-
 
 class Relation(BaseModel):
     """A relation between two entities."""
+
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_schema_extra={
+            "example": {
+                "relation_id": "rel-123",
+                "source_entity_id": "ent-123",
+                "target_entity_id": "ent-456",
+                "relation_type": "CALLS",
+            }
+        },
+    )
 
     relation_id: str = Field(default_factory=lambda: str(uuid4()))
     source_entity_id: str
@@ -128,16 +146,6 @@ class Relation(BaseModel):
     relation_type: str  # "CALLS" | "DEPENDS_ON" | "CONTAINS" | "REFERENCES"
     metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "relation_id": "rel-123",
-                "source_entity_id": "ent-123",
-                "target_entity_id": "ent-456",
-                "relation_type": "CALLS",
-            }
-        }
 
 
 # ============================================================================
