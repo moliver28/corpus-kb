@@ -16,7 +16,7 @@ jobs:
           fetch-depth: 0
       - name: Validate Conventional Commits
         run: |
-          # Use PR base/head SHAs when available, otherwise compare to origin/main
+          # Use PR base/head SHAs when available, otherwise compare to origin/master
           if [[ -n "${{ github.event.pull_request.base.sha }}" ]]; then
             BASE="${{ github.event.pull_request.base.sha }}"
             HEAD="${{ github.event.pull_request.head.sha }}"
