@@ -4,11 +4,11 @@
   "command": {
     "check-ci": {
       "description": "Validate all CI gates (commit message, configs, code quality) before pushing",
-      "prompt": "Run the CI gate validation for corpus-kb. Check: 1) Commit message format (capital letter, 10-500 chars, no dangerous keywords), 2) Config files exist (opencode.json, cursor.json), 3) Code quality (ruff lint/format, pyright, pytest). Report results and tell me if it's safe to push."
+      "template": "Run the CI gate validation for corpus-kb. Check: 1) Commit message format (capital letter, 10-500 chars, no dangerous keywords), 2) Config files exist (opencode.json, cursor.json), 3) Code quality (ruff lint/format, pyright, pytest). Report results and tell me if it's safe to push."
     },
     "pre-push": {
       "description": "Complete CI validation before push - run this before 'git push'",
-      "prompt": "Run full corpus-kb CI validation with code quality checks enabled. Use the ci-guard skill to validate everything. If all pass, confirm safe to push. If any fail, show me exactly what needs fixing."
+      "template": "Run full corpus-kb CI validation with code quality checks enabled. Use the ci-guard skill to validate everything. If all pass, confirm safe to push. If any fail, show me exactly what needs fixing."
     }
   },
   "skills": {
