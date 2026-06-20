@@ -35,6 +35,7 @@ from server import create_server
 # ---------------------------------------------------------------------------
 
 PY_CODE = '''
+# project utilities
 def hello(name):
     """Say hello."""
     return f"Hello, {name}!"
