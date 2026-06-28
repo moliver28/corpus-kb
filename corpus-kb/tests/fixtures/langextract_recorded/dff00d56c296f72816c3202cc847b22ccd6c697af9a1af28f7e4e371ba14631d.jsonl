@@ -1,0 +1,3 @@
+{"extraction_class": "Person", "extraction_text": "Bob Johnson", "char_interval": {"start_pos": 0, "end_pos": 11}, "confidence": 0.93}
+{"extraction_class": "Organization", "extraction_text": "Microsoft", "char_interval": {"start_pos": 19, "end_pos": 28}, "confidence": 0.91}
+{"extraction_class": "Place", "extraction_text": "Seattle", "char_interval": {"start_pos": 32, "end_pos": 39}, "confidence": 0.87}
