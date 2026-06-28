@@ -58,5 +58,11 @@ where = ["src"]
 [tool.setuptools.package-data]
 "*" = ["*.yaml"]
 
+[tool.pytest.ini_options]
+markers = [
+    "requires_ollama: mark test as needing a running Ollama service",
+    "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
+]
+
 [project.scripts]
 corpus-kb = "server:main"
