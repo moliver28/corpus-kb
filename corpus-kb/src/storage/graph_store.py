@@ -11,10 +11,11 @@ MCP tools never change; only the backend swaps.
 
 from __future__ import annotations
 
+import importlib
 import sqlite3
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 
 from src.utils.models import Entity, Relation
 
@@ -51,6 +52,28 @@ class GraphStore(ABC):
         """
         pass
 
+    def batch_add_entities(self, entities: list[Entity]) -> list[str]:
+        """Add multiple entities to the graph.
+
+        Args:
+            entities: List of Entity objects.
+
+        Returns:
+            List of entity_id strings.
+        """
+        return [self.add_entity(entity) for entity in entities]
+
+    def batch_add_relations(self, relations: list[Relation]) -> list[str]:
+        """Add multiple relations to the graph.
+
+        Args:
+            relations: List of Relation objects.
+
+        Returns:
+            List of relation_id strings.
+        """
+        return [self.add_relation(relation) for relation in relations]
+
     @abstractmethod
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         """Get an entity by ID."""
@@ -69,7 +92,7 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict:
+    def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
         """Breadth-first search from a starting entity."""
         pass
 
@@ -94,11 +117,14 @@ class SQLiteGraphStore(GraphStore):
             db_path: Path to SQLite database file.
         """
         self.db_path = Path(db_path) if not isinstance(db_path, Path) else db_path
+        self._persistent_conn: Optional[sqlite3.Connection] = None
 
-        # For in-memory databases, use shared cache mode
+        # For in-memory databases, use shared cache mode and keep a persistent
+        # connection so the database survives between per-operation connections.
         if str(self.db_path) == ":memory:":
             self.db_uri = "file::memory:?cache=shared"
             self._use_uri = True
+            self._persistent_conn = sqlite3.connect(self.db_uri, uri=True)
         else:
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
             self.db_uri = str(self.db_path)
@@ -156,6 +182,28 @@ class SQLiteGraphStore(GraphStore):
                 "CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target_entity_id)"
             )
             conn.commit()
+            self._migrate_provenance_columns()
+
+    def _migrate_provenance_columns(self) -> None:
+        """Idempotently add provenance columns to entities and relations tables."""
+        provenance_columns = {
+            "chunk_id": "TEXT",
+            "source_start_char": "INTEGER",
+            "source_end_char": "INTEGER",
+            "confidence": "REAL",
+            "extractor_id": "TEXT",
+        }
+        with self._get_connection() as conn:
+            for table in ("entities", "relations"):
+                existing = {
+                    row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+                }
+                for column, col_type in provenance_columns.items():
+                    if column not in existing:
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
+                        )
+            conn.commit()
 
     def add_entity(self, entity: Entity) -> str:
         """Add an entity to the graph."""
@@ -165,8 +213,9 @@ class SQLiteGraphStore(GraphStore):
             conn.execute(
                 """
                 INSERT OR REPLACE INTO entities
-                (entity_id, name, entity_type, source_type, source_document_id, metadata)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (entity_id, name, entity_type, source_type, source_document_id, metadata,
+                 chunk_id, source_start_char, source_end_char, confidence, extractor_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entity.entity_id,
@@ -175,6 +224,11 @@ class SQLiteGraphStore(GraphStore):
                     entity.source_type,
                     entity.source_document_id,
                     json.dumps(entity.metadata),
+                    entity.chunk_id,
+                    entity.source_start_char,
+                    entity.source_end_char,
+                    entity.confidence,
+                    entity.extractor_id,
                 ),
             )
             conn.commit()
@@ -188,8 +242,9 @@ class SQLiteGraphStore(GraphStore):
             conn.execute(
                 """
                 INSERT OR REPLACE INTO relations
-                (relation_id, source_entity_id, target_entity_id, relation_type, metadata)
-                VALUES (?, ?, ?, ?, ?)
+                (relation_id, source_entity_id, target_entity_id, relation_type, metadata,
+                 chunk_id, source_start_char, source_end_char, confidence, extractor_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     relation.relation_id,
@@ -197,10 +252,84 @@ class SQLiteGraphStore(GraphStore):
                     relation.target_entity_id,
                     relation.relation_type,
                     json.dumps(relation.metadata),
+                    relation.chunk_id,
+                    relation.source_start_char,
+                    relation.source_end_char,
+                    relation.confidence,
+                    relation.extractor_id,
                 ),
             )
             conn.commit()
         return relation.relation_id
+
+    def batch_add_entities(self, entities: list[Entity]) -> list[str]:
+        """Add multiple entities to the SQLite graph in one statement."""
+        import json
+
+        if not entities:
+            return []
+
+        with self._get_connection() as conn:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO entities
+                (entity_id, name, entity_type, source_type, source_document_id, metadata,
+                 chunk_id, source_start_char, source_end_char, confidence, extractor_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        entity.entity_id,
+                        entity.name,
+                        entity.entity_type,
+                        entity.source_type,
+                        entity.source_document_id,
+                        json.dumps(entity.metadata),
+                        entity.chunk_id,
+                        entity.source_start_char,
+                        entity.source_end_char,
+                        entity.confidence,
+                        entity.extractor_id,
+                    )
+                    for entity in entities
+                ],
+            )
+            conn.commit()
+        return [entity.entity_id for entity in entities]
+
+    def batch_add_relations(self, relations: list[Relation]) -> list[str]:
+        """Add multiple relations to the SQLite graph in one statement."""
+        import json
+
+        if not relations:
+            return []
+
+        with self._get_connection() as conn:
+            conn.executemany(
+                """
+                INSERT OR REPLACE INTO relations
+                (relation_id, source_entity_id, target_entity_id, relation_type, metadata,
+                 chunk_id, source_start_char, source_end_char, confidence, extractor_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        relation.relation_id,
+                        relation.source_entity_id,
+                        relation.target_entity_id,
+                        relation.relation_type,
+                        json.dumps(relation.metadata),
+                        relation.chunk_id,
+                        relation.source_start_char,
+                        relation.source_end_char,
+                        relation.confidence,
+                        relation.extractor_id,
+                    )
+                    for relation in relations
+                ],
+            )
+            conn.commit()
+        return [relation.relation_id for relation in relations]
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         """Get an entity by ID."""
@@ -221,6 +350,11 @@ class SQLiteGraphStore(GraphStore):
             entity_type=row["entity_type"],
             source_type=row["source_type"],
             source_document_id=row["source_document_id"],
+            chunk_id=row["chunk_id"],
+            source_start_char=row["source_start_char"],
+            source_end_char=row["source_end_char"],
+            confidence=row["confidence"],
+            extractor_id=row["extractor_id"],
             metadata=json.loads(row["metadata"]) if row["metadata"] else {},
         )
 
@@ -242,7 +376,7 @@ class SQLiteGraphStore(GraphStore):
                     "SELECT * FROM entities WHERE name LIKE ?", (f"%{name}%",)
                 ).fetchall()
 
-        entities = []
+        entities: list[Entity] = []
         for row in rows:
             entities.append(
                 Entity(
@@ -251,6 +385,11 @@ class SQLiteGraphStore(GraphStore):
                     entity_type=row["entity_type"],
                     source_type=row["source_type"],
                     source_document_id=row["source_document_id"],
+                    chunk_id=row["chunk_id"],
+                    source_start_char=row["source_start_char"],
+                    source_end_char=row["source_end_char"],
+                    confidence=row["confidence"],
+                    extractor_id=row["extractor_id"],
                     metadata=json.loads(row["metadata"]) if row["metadata"] else {},
                 )
             )
@@ -270,7 +409,7 @@ class SQLiteGraphStore(GraphStore):
                 (entity_id, entity_id),
             ).fetchall()
 
-        relations = []
+        relations: list[Relation] = []
         for row in rows:
             relations.append(
                 Relation(
@@ -278,18 +417,24 @@ class SQLiteGraphStore(GraphStore):
                     source_entity_id=row["source_entity_id"],
                     target_entity_id=row["target_entity_id"],
                     relation_type=row["relation_type"],
+                    chunk_id=row["chunk_id"],
+                    source_start_char=row["source_start_char"],
+                    source_end_char=row["source_end_char"],
+                    confidence=row["confidence"],
+                    extractor_id=row["extractor_id"],
                     metadata=json.loads(row["metadata"]) if row["metadata"] else {},
                 )
             )
         return relations
 
-    def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict:
+    def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
         """Breadth-first search from a starting entity."""
         from collections import deque
 
-        visited = set()
-        queue = deque([(start_entity_id, 0)])
-        result = {"start": start_entity_id, "nodes": {}, "edges": []}
+        visited: set[str] = set()
+        queue: deque[tuple[str, int]] = deque([(start_entity_id, 0)])
+        nodes: dict[str, object] = {}
+        edges: list[object] = []
 
         with self._get_connection() as conn:
             conn.row_factory = sqlite3.Row
@@ -308,7 +453,7 @@ class SQLiteGraphStore(GraphStore):
                 ).fetchone()
 
                 if entity_row:
-                    result["nodes"][entity_id] = {
+                    nodes[entity_id] = {
                         "name": entity_row["name"],
                         "type": entity_row["entity_type"],
                         "depth": depth,
@@ -324,7 +469,7 @@ class SQLiteGraphStore(GraphStore):
                     ).fetchall()
 
                     for rel_row in relation_rows:
-                        result["edges"].append(
+                        edges.append(
                             {
                                 "source": rel_row["source_entity_id"],
                                 "target": rel_row["target_entity_id"],
@@ -341,15 +486,16 @@ class SQLiteGraphStore(GraphStore):
                         if next_id not in visited:
                             queue.append((next_id, depth + 1))
 
-        return result
+        return {"start": start_entity_id, "nodes": nodes, "edges": edges}
 
     def close(self) -> None:
         """Close the graph store and release resources.
 
-        For SQLite, this is a no-op since connections are managed per-operation.
-        Provided for interface compatibility.
+        For SQLite, this closes the optional persistent in-memory connection.
         """
-        pass
+        if self._persistent_conn is not None:
+            self._persistent_conn.close()
+            self._persistent_conn = None
 
 
 # ============================================================================
@@ -374,9 +520,9 @@ def create_graph_store(backend: str, db_path: str | Path) -> GraphStore:
         return SQLiteGraphStore(db_path)
     elif backend == "graphqlite":
         try:
-            from src.storage.graphqlite_store import GraphQLiteStore
-
-            return GraphQLiteStore(db_path)
+            module = importlib.import_module("src.storage.graphqlite_store")
+            cls = getattr(module, "GraphQLiteStore")
+            return cast(GraphStore, cls(db_path))
         except ImportError:
             raise ValueError(
                 "GraphQLite backend requires: pip install graphqlite"

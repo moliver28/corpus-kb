@@ -1,0 +1,21 @@
+entity_types:
+  - Class
+  - Function
+  - Method
+  - Variable
+  - Concept
+  - Person
+  - Place
+  - Organization
+  - Event
+
+relation_types:
+  - CALLS
+  - DEPENDS_ON
+  - CONTAINS
+  - IMPLEMENTS
+  - INHERITS_FROM
+  - MENTIONS
+  - RELATED_TO
+  - PART_OF
+  - LOCATED_IN

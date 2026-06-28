@@ -6,8 +6,8 @@ Pure dataclasses with serialization methods for LanceDB round-tripping.
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Any, Optional
+from datetime import datetime, timezone
+from typing import Literal, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -50,8 +50,10 @@ class Chunk(BaseModel):
     sibling_order: Optional[int] = None
     sibling_count: Optional[int] = None
     heading_path: Optional[list[str]] = None  # For markdown: ["# Title", "## Section"]
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    source_start_char: Optional[int] = None
+    source_end_char: Optional[int] = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Document(BaseModel):
@@ -76,9 +78,9 @@ class Document(BaseModel):
     content: str
     size_bytes: int
     chunk_count: int = 0
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class SearchResult(BaseModel):
@@ -93,7 +95,7 @@ class SearchResult(BaseModel):
     parent_chunk_id: Optional[str] = None
     sibling_order: Optional[int] = None
     heading_path: Optional[list[str]] = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 # ============================================================================
@@ -122,8 +124,13 @@ class Entity(BaseModel):
     entity_type: str  # "CONCEPT" | "CLASS" | "FUNCTION" | "MODULE" | "PERSON" | "PLACE"
     source_type: str  # "code" | "markdown" | "text"
     source_document_id: Optional[str] = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    chunk_id: Optional[str] = None
+    source_start_char: Optional[int] = None
+    source_end_char: Optional[int] = None
+    confidence: Optional[float] = None
+    extractor_id: Optional[Literal["regex", "langextract"]] = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class Relation(BaseModel):
@@ -145,8 +152,13 @@ class Relation(BaseModel):
     source_entity_id: str
     target_entity_id: str
     relation_type: str  # "CALLS" | "DEPENDS_ON" | "CONTAINS" | "REFERENCES"
-    metadata: dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    chunk_id: Optional[str] = None
+    source_start_char: Optional[int] = None
+    source_end_char: Optional[int] = None
+    confidence: Optional[float] = None
+    extractor_id: Optional[Literal["regex", "langextract"]] = None
+    metadata: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 # ============================================================================
