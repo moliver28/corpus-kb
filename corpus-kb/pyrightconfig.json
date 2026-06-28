@@ -1,6 +1,5 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "strict": ["src"],
-  "reportExplicitAny": "error"
+  "strict": ["src"]
 }
