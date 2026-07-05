@@ -7,7 +7,7 @@ Pure dataclasses with serialization methods for LanceDB round-tripping.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -128,7 +128,7 @@ class Entity(BaseModel):
     source_start_char: Optional[int] = None
     source_end_char: Optional[int] = None
     confidence: Optional[float] = None
-    extractor_id: Optional[Literal["regex", "langextract"]] = None
+    extractor_id: Optional[str] = None
     metadata: dict[str, object] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -156,7 +156,7 @@ class Relation(BaseModel):
     source_start_char: Optional[int] = None
     source_end_char: Optional[int] = None
     confidence: Optional[float] = None
-    extractor_id: Optional[Literal["regex", "langextract"]] = None
+    extractor_id: Optional[str] = None
     metadata: dict[str, object] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 

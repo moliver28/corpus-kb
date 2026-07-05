@@ -65,9 +65,7 @@ class TestLangExtractExtractor:
             source_type="text",
         )
 
-        extractor = LangExtractExtractor(
-            fixture_dir=_FIXTURE_DIR, live_fallback=False
-        )
+        extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
         entities, relations = extractor.extract(
             [chunk], ontology, source_document_id="doc-alice"
         )
@@ -92,9 +90,7 @@ class TestLangExtractExtractor:
             source_type="text",
         )
 
-        extractor = LangExtractExtractor(
-            fixture_dir=_FIXTURE_DIR, live_fallback=False
-        )
+        extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
         with pytest.raises(OntologyViolationError) as exc_info:
             extractor.extract([chunk], ontology, source_document_id="doc-banned")
 
@@ -112,9 +108,7 @@ class TestLangExtractExtractor:
             source_type="text",
         )
 
-        extractor = LangExtractExtractor(
-            fixture_dir=_FIXTURE_DIR, live_fallback=False
-        )
+        extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
         entities, _relations = extractor.extract(
             [chunk], ontology, source_document_id="doc-offsets"
         )
@@ -151,9 +145,7 @@ class TestLangExtractExtractor:
             source_type="text",
         )
 
-        extractor = LangExtractExtractor(
-            fixture_dir=_FIXTURE_DIR, live_fallback=False
-        )
+        extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
         entities_a, _ = extractor.extract(
             [chunk_a], ontology, source_document_id="doc-a"
         )
@@ -178,12 +170,8 @@ class TestLangExtractExtractor:
                 [missing_chunk], ontology, source_document_id="doc-missing"
             )
 
-        assert (
-            _FIXTURE_DIR / f"{_sha256(text_a)}.jsonl"
-        ).exists()
-        assert (
-            _FIXTURE_DIR / f"{_sha256(text_b)}.jsonl"
-        ).exists()
+        assert (_FIXTURE_DIR / f"{_sha256(text_a)}.jsonl").exists()
+        assert (_FIXTURE_DIR / f"{_sha256(text_b)}.jsonl").exists()
 
     def test_fixture_path_never_calls_live_extract(
         self, monkeypatch: pytest.MonkeyPatch
@@ -203,9 +191,7 @@ class TestLangExtractExtractor:
             source_type="text",
         )
 
-        extractor = LangExtractExtractor(
-            fixture_dir=_FIXTURE_DIR, live_fallback=False
-        )
+        extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
         entities, relations = extractor.extract(
             [chunk], ontology, source_document_id="doc-network"
         )

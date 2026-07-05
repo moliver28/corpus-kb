@@ -45,9 +45,7 @@ class TestOntologyLoader:
 
 
 class TestGraphSchemaMigration:
-    def test_fresh_db_migration_adds_columns_idempotently(
-        self, tmp_path: Path
-    ) -> None:
+    def test_fresh_db_migration_adds_columns_idempotently(self, tmp_path: Path) -> None:
         db_path = tmp_path / "fresh.db"
         assert not _table_columns(db_path, "entities") & _PROVENANCE_COLUMNS
         assert not _table_columns(db_path, "relations") & _PROVENANCE_COLUMNS

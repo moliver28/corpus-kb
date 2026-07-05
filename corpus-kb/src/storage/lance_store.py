@@ -49,14 +49,19 @@ class LanceDBStore:
         self._ensure_table()
 
     def _ensure_table(self) -> None:
-        """Open an existing table or create it idempotently."""
+        """Open an existing table or create it with the required schema."""
+        required = {field.name for field in self._schema}
         if self._table_name in self._db.list_tables().tables:
-            self._table = self._db.open_table(self._table_name)
-        else:
-            self._table = self._db.create_table(
-                self._table_name,
-                schema=self._schema,
-            )
+            table = self._db.open_table(self._table_name)
+            existing = {field.name for field in table.schema}
+            if required <= existing:
+                self._table = table
+                return
+            self._db.drop_table(self._table_name)
+        self._table = self._db.create_table(
+            self._table_name,
+            schema=self._schema,
+        )
 
     def add_chunks(self, chunks: list[Chunk]) -> None:
         """Add or update chunks in the vector store.
@@ -127,6 +132,12 @@ class LanceDBStore:
                 )
             )
         return out
+
+    def count_rows(self) -> int:
+        """Return the number of rows in the table."""
+        if self._table is None:
+            raise RuntimeError("store is closed")
+        return self._table.count_rows()
 
     def close(self) -> None:
         """Release the table reference."""

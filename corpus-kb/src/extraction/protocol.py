@@ -23,6 +23,8 @@ class OntologyViolationError(Exception):
 class Extractor(Protocol):
     """Protocol for pluggable ontology-driven extractors."""
 
+    extractor_id: str
+
     def extract(
         self,
         chunks: list[Chunk],

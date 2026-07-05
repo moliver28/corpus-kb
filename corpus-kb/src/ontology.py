@@ -21,9 +21,7 @@ class Ontology(BaseModel):
 
     @field_validator("entity_types", "relation_types")
     @classmethod
-    def _non_empty_unique(
-        cls, values: list[str], info: ValidationInfo
-    ) -> list[str]:
+    def _non_empty_unique(cls, values: list[str], info: ValidationInfo) -> list[str]:
         if not values:
             raise ValueError(f"{info.field_name} must be non-empty")
         if len(set(values)) != len(values):
@@ -35,8 +33,7 @@ class Ontology(BaseModel):
         overlap = set(self.entity_types) & set(self.relation_types)
         if overlap:
             raise ValueError(
-                "entity_types and relation_types must be disjoint; "
-                f"overlap: {overlap}"
+                f"entity_types and relation_types must be disjoint; overlap: {overlap}"
             )
         return self
 

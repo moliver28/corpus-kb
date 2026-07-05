@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from src.extraction.protocol import OntologyViolationError
 from src.graph.extractor import extract_entities
 from src.ontology import Ontology
@@ -20,7 +18,7 @@ _REGEX_TYPE_MAP = {
 class RegexExtractor:
     """Extractor wrapping the legacy regex entity extraction logic."""
 
-    extractor_id: Literal["regex"] = "regex"
+    extractor_id: str = "regex"
 
     def extract(
         self,

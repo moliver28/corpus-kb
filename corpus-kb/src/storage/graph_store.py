@@ -17,7 +17,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional, cast
 
-from src.utils.models import Entity, Relation
+from src.utils.models import Chunk, Document, Entity, Relation
 
 
 # ============================================================================
@@ -101,6 +101,22 @@ class GraphStore(ABC):
         """Close the graph store and release resources."""
         pass
 
+    def add_document(self, document: Document) -> str:
+        """Persist a Document record.
+
+        Backends that support provenance tables should override this method.
+        The default raises NotImplementedError.
+        """
+        raise NotImplementedError
+
+    def add_chunk(self, chunk: Chunk) -> str:
+        """Persist a Chunk record.
+
+        Backends that support provenance tables should override this method.
+        The default raises NotImplementedError.
+        """
+        raise NotImplementedError
+
 
 # ============================================================================
 # SQLite Implementation (Level 1)
@@ -183,6 +199,46 @@ class SQLiteGraphStore(GraphStore):
             )
             conn.commit()
             self._migrate_provenance_columns()
+            self._init_provenance_tables()
+
+    def _init_provenance_tables(self) -> None:
+        """Create idempotent documents/chunks provenance tables."""
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS documents (
+                    document_id TEXT PRIMARY KEY,
+                    path TEXT,
+                    source_type TEXT NOT NULL,
+                    content TEXT,
+                    size_bytes INTEGER,
+                    chunk_count INTEGER DEFAULT 0,
+                    metadata TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS chunks (
+                    chunk_id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    text TEXT,
+                    source_type TEXT NOT NULL,
+                    source_start_char INTEGER,
+                    source_end_char INTEGER,
+                    start_line INTEGER,
+                    end_line INTEGER,
+                    metadata TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id)"
+            )
+            conn.commit()
 
     def _migrate_provenance_columns(self) -> None:
         """Idempotently add provenance columns to entities and relations tables."""
@@ -196,7 +252,8 @@ class SQLiteGraphStore(GraphStore):
         with self._get_connection() as conn:
             for table in ("entities", "relations"):
                 existing = {
-                    row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+                    row[1]
+                    for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
                 }
                 for column, col_type in provenance_columns.items():
                     if column not in existing:
@@ -262,6 +319,24 @@ class SQLiteGraphStore(GraphStore):
             conn.commit()
         return relation.relation_id
 
+    def _validate_chunk_ids(
+        self, conn: sqlite3.Connection, chunk_ids: set[str]
+    ) -> None:
+        """Raise ValueError if any referenced chunk_id does not exist."""
+        if not chunk_ids:
+            return
+        placeholders = ", ".join("?" for _ in chunk_ids)
+        existing = {
+            row[0]
+            for row in conn.execute(
+                f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({placeholders})",
+                tuple(chunk_ids),
+            ).fetchall()
+        }
+        missing = chunk_ids - existing
+        if missing:
+            raise ValueError(f"Chunk IDs not found: {sorted(missing)}")
+
     def batch_add_entities(self, entities: list[Entity]) -> list[str]:
         """Add multiple entities to the SQLite graph in one statement."""
         import json
@@ -270,6 +345,10 @@ class SQLiteGraphStore(GraphStore):
             return []
 
         with self._get_connection() as conn:
+            chunk_ids = {
+                entity.chunk_id for entity in entities if entity.chunk_id is not None
+            }
+            self._validate_chunk_ids(conn, chunk_ids)
             conn.executemany(
                 """
                 INSERT OR REPLACE INTO entities
@@ -305,6 +384,12 @@ class SQLiteGraphStore(GraphStore):
             return []
 
         with self._get_connection() as conn:
+            chunk_ids = {
+                relation.chunk_id
+                for relation in relations
+                if relation.chunk_id is not None
+            }
+            self._validate_chunk_ids(conn, chunk_ids)
             conn.executemany(
                 """
                 INSERT OR REPLACE INTO relations
@@ -330,6 +415,57 @@ class SQLiteGraphStore(GraphStore):
             )
             conn.commit()
         return [relation.relation_id for relation in relations]
+
+    def add_document(self, document: Document) -> str:
+        """Persist a Document record."""
+        import json
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO documents
+                (document_id, path, source_type, content, size_bytes, chunk_count, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    document.document_id,
+                    document.path,
+                    document.source_type,
+                    document.content,
+                    document.size_bytes,
+                    document.chunk_count,
+                    json.dumps(document.metadata),
+                ),
+            )
+            conn.commit()
+        return document.document_id
+
+    def add_chunk(self, chunk: Chunk) -> str:
+        """Persist a Chunk record."""
+        import json
+
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO chunks
+                (chunk_id, document_id, text, source_type,
+                 source_start_char, source_end_char, start_line, end_line, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    chunk.chunk_id,
+                    chunk.document_id,
+                    chunk.text,
+                    chunk.source_type,
+                    chunk.source_start_char,
+                    chunk.source_end_char,
+                    chunk.start_line,
+                    chunk.end_line,
+                    json.dumps(chunk.metadata),
+                ),
+            )
+            conn.commit()
+        return chunk.chunk_id
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         """Get an entity by ID."""

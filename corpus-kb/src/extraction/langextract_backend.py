@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 from src.extraction._langextract_types import (
     Extraction,
@@ -28,7 +28,7 @@ class LangExtractExtractor:
     CI runs deterministically without live LLM calls.
     """
 
-    extractor_id: Literal["langextract"] = "langextract"
+    extractor_id: str = "langextract"
 
     def __init__(
         self,
@@ -64,9 +64,7 @@ class LangExtractExtractor:
                 chunk, ontology, source_document_id
             )
             entities.extend(chunk_entities)
-            relations.extend(
-                _derive_relations(chunk_entities, chunk, ontology)
-            )
+            relations.extend(_derive_relations(chunk_entities, chunk, ontology))
 
         return entities, relations
 
@@ -120,9 +118,7 @@ class LangExtractExtractor:
             if fixture_path.exists():
                 return _load_fixture(fixture_path)
             if not self.live_fallback:
-                raise FileNotFoundError(
-                    f"No LangExtract fixture for text hash {key}"
-                )
+                raise FileNotFoundError(f"No LangExtract fixture for text hash {key}")
 
         if self._lx is None:
             self._lx = import_langextract()
@@ -167,22 +163,15 @@ def _load_fixture(path: Path) -> list[NormalizedExtraction]:
                 interval = cast(dict[str, object], interval_raw)
                 start_raw = interval.get("start_pos")
                 end_raw = interval.get("end_pos")
-                if (
-                    isinstance(start_raw, int)
-                    and not isinstance(start_raw, bool)
-                ):
+                if isinstance(start_raw, int) and not isinstance(start_raw, bool):
                     start = start_raw
-                if (
-                    isinstance(end_raw, int)
-                    and not isinstance(end_raw, bool)
-                ):
+                if isinstance(end_raw, int) and not isinstance(end_raw, bool):
                     end = end_raw
 
             conf_raw = raw.get("confidence")
             confidence = (
                 float(conf_raw)
-                if isinstance(conf_raw, (int, float))
-                and not isinstance(conf_raw, bool)
+                if isinstance(conf_raw, (int, float)) and not isinstance(conf_raw, bool)
                 else None
             )
 
