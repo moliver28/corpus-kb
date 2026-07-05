@@ -7,6 +7,7 @@ from typing import cast
 
 import pytest
 
+from src.storage._lance_typed import connect
 from src.storage.lance_store import LanceDBStore
 from src.utils.models import Chunk
 
@@ -96,3 +97,29 @@ def test_missing_embedding_falls_back_to_zero_vector(tmp_path: Path) -> None:
     results = store.search([1.0] + [0.0] * (_DIM - 1), k=1)
     assert len(results) == 1
     assert results[0].embedding == [0.0] * _DIM
+
+
+def test_schema_mismatch_raises_runtime_error(tmp_path: Path) -> None:
+    """Creating a store on a table with missing columns raises RuntimeError."""
+    import pyarrow as pa
+
+    # Create a table with only chunk_id and vector (missing source_type, document_id)
+    db = connect(str(tmp_path))
+    partial_schema = pa.schema(
+        [
+            pa.field("chunk_id", pa.string()),
+            pa.field("vector", pa.list_(pa.float32(), _DIM)),
+        ]
+    )
+    db.create_table("chunks", schema=partial_schema)
+
+    # Now constructing a LanceDBStore expecting all 4 columns should raise
+    with pytest.raises(RuntimeError, match="schema does not match"):
+        LanceDBStore(str(tmp_path), _DIM)
+
+
+def test_invalid_uri_raises(tmp_path: Path) -> None:
+    """Passing a URI that cannot be created raises an exception."""
+    # Using a NUL-device path on Windows or an impossible path on Unix
+    with pytest.raises((RuntimeError, OSError, Exception)):
+        LanceDBStore("Z:/<>|invalid*path?/lancedb", _DIM)

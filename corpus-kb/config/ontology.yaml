@@ -1,21 +1,21 @@
 entity_types:
-  - Class
-  - Function
-  - Method
-  - Variable
-  - Concept
+  - Document
+  - Section
+  - Chunk
   - Person
-  - Place
-  - Organization
-  - Event
+  - Org
+  - Product
+  - Concept
+  - Claim
+  - Metric
 
 relation_types:
-  - CALLS
-  - DEPENDS_ON
-  - CONTAINS
-  - IMPLEMENTS
-  - INHERITS_FROM
-  - MENTIONS
-  - RELATED_TO
   - PART_OF
-  - LOCATED_IN
+  - MENTIONS
+  - DEFINED_AS
+  - AUTHORED_BY
+  - CITES
+  - SUPPORTS
+  - CONTRADICTS
+  - RELATED_TO
+  - INSTANCE_OF

@@ -103,6 +103,8 @@ The pipeline works like this:
 
 **100% local** - Ollama does the embeddings. No OpenAI key, no cloud API, no Docker required. Your code never leaves your machine.
 
+**Ontology ingestion pipeline** - The ingestion pipeline partitions files, chunks them respecting AST boundaries, embeds via Ollama, extracts entities and relations using an ontology-constrained extractor, and stores everything transactionally. Graph writes (documents, chunks, entities, relations) are wrapped in a single SQLite transaction for atomicity --- if extraction fails mid-pipeline, all graph writes roll back. The ontology constrains entity types to 9 categories (Document, Section, Chunk, Person, Org, Product, Concept, Claim, Metric) and relation types to 9 categories (PART_OF, MENTIONS, DEFINED_AS, AUTHORED_BY, CITES, SUPPORTS, CONTRADICTS, RELATED_TO, INSTANCE_OF). See [docs/INGESTION.md](docs/INGESTION.md) for full pipeline documentation.
+
 ---
 
 ## Editor Integration

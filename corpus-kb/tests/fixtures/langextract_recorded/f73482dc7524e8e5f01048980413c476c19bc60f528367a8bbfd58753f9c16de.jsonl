@@ -1,1 +1,1 @@
-{"extraction_class": "Function", "extraction_text": "POST /users", "char_interval": {"start_pos": 0, "end_pos": 11}, "confidence": 0.9}
+{"extraction_class": "Document", "extraction_text": "POST /users", "char_interval": {"start_pos": 0, "end_pos": 11}, "confidence": 0.9}

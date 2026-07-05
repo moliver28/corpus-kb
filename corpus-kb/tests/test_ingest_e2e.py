@@ -36,7 +36,7 @@ def _build_config(tmp_path: Path) -> dict[str, object]:
 
 
 def _chunk_map(store: SQLiteGraphStore) -> dict[str, str]:
-    with store._get_connection() as conn:
+    with store._open_connection() as conn:
         return {
             row[0]: row[1]
             for row in conn.execute("SELECT chunk_id, text FROM chunks").fetchall()

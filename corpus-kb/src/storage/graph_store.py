@@ -15,6 +15,8 @@ import importlib
 import sqlite3
 from abc import ABC, abstractmethod
 from pathlib import Path
+from collections.abc import Generator
+from contextlib import AbstractContextManager, contextmanager
 from typing import Optional, cast
 
 from src.utils.models import Chunk, Document, Entity, Relation
@@ -101,6 +103,11 @@ class GraphStore(ABC):
         """Close the graph store and release resources."""
         pass
 
+    @abstractmethod
+    def transaction(self) -> AbstractContextManager[None]:
+        """Return a context manager that wraps graph writes in a transaction."""
+        pass
+
     def add_document(self, document: Document) -> str:
         """Persist a Document record.
 
@@ -134,6 +141,7 @@ class SQLiteGraphStore(GraphStore):
         """
         self.db_path = Path(db_path) if not isinstance(db_path, Path) else db_path
         self._persistent_conn: Optional[sqlite3.Connection] = None
+        self._txn_conn: Optional[sqlite3.Connection] = None
 
         # For in-memory databases, use shared cache mode and keep a persistent
         # connection so the database survives between per-operation connections.
@@ -148,16 +156,47 @@ class SQLiteGraphStore(GraphStore):
 
         self._init_schema()
 
-    def _get_connection(self) -> sqlite3.Connection:
-        """Get a database connection, handling both file and in-memory databases."""
+    def _open_connection(self) -> sqlite3.Connection:
+        """Open a new database connection with PRAGMA foreign_keys=ON.
+
+        Enables ``PRAGMA foreign_keys=ON`` on every connection because SQLite
+        disables foreign-key enforcement by default and resets it per
+        connection. Application-level validation in ``batch_add_entities``
+        and ``_validate_chunk_ids`` handles the ``chunk_id`` / ``document_id``
+        references because those columns are nullable.
+        """
         if self._use_uri:
-            return sqlite3.connect(self.db_uri, uri=True)
+            conn = sqlite3.connect(self.db_uri, uri=True)
         else:
-            return sqlite3.connect(self.db_path)
+            conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA foreign_keys=ON")
+        return conn
+
+    @contextmanager
+    def _conn(self) -> Generator[sqlite3.Connection, None, None]:
+        """Yield a connection for a single operation.
+
+        Inside a transaction, yields the shared transaction connection
+        without committing or closing. Outside a transaction, opens a
+        new connection, commits on success, rolls back on exception,
+        and closes.
+        """
+        if self._txn_conn is not None:
+            yield self._txn_conn
+        else:
+            conn = self._open_connection()
+            try:
+                yield conn
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
 
     def _init_schema(self) -> None:
         """Initialize database schema."""
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS entities (
@@ -197,13 +236,12 @@ class SQLiteGraphStore(GraphStore):
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_relations_target ON relations(target_entity_id)"
             )
-            conn.commit()
             self._migrate_provenance_columns()
             self._init_provenance_tables()
 
     def _init_provenance_tables(self) -> None:
         """Create idempotent documents/chunks provenance tables."""
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS documents (
@@ -238,7 +276,6 @@ class SQLiteGraphStore(GraphStore):
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chunks_document ON chunks(document_id)"
             )
-            conn.commit()
 
     def _migrate_provenance_columns(self) -> None:
         """Idempotently add provenance columns to entities and relations tables."""
@@ -249,7 +286,7 @@ class SQLiteGraphStore(GraphStore):
             "confidence": "REAL",
             "extractor_id": "TEXT",
         }
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             for table in ("entities", "relations"):
                 existing = {
                     row[1]
@@ -260,13 +297,18 @@ class SQLiteGraphStore(GraphStore):
                         conn.execute(
                             f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"
                         )
-            conn.commit()
 
     def add_entity(self, entity: Entity) -> str:
-        """Add an entity to the graph."""
+        """Add an entity to the graph.
+
+        Raises:
+            ValueError: If ``entity.chunk_id`` references a non-existent chunk.
+        """
         import json
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
+            if entity.chunk_id is not None:
+                self._validate_chunk_ids(conn, {entity.chunk_id})
             conn.execute(
                 """
                 INSERT OR REPLACE INTO entities
@@ -288,14 +330,13 @@ class SQLiteGraphStore(GraphStore):
                     entity.extractor_id,
                 ),
             )
-            conn.commit()
         return entity.entity_id
 
     def add_relation(self, relation: Relation) -> str:
         """Add a relation between two entities."""
         import json
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO relations
@@ -316,7 +357,6 @@ class SQLiteGraphStore(GraphStore):
                     relation.extractor_id,
                 ),
             )
-            conn.commit()
         return relation.relation_id
 
     def _validate_chunk_ids(
@@ -344,7 +384,7 @@ class SQLiteGraphStore(GraphStore):
         if not entities:
             return []
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             chunk_ids = {
                 entity.chunk_id for entity in entities if entity.chunk_id is not None
             }
@@ -373,7 +413,6 @@ class SQLiteGraphStore(GraphStore):
                     for entity in entities
                 ],
             )
-            conn.commit()
         return [entity.entity_id for entity in entities]
 
     def batch_add_relations(self, relations: list[Relation]) -> list[str]:
@@ -383,7 +422,7 @@ class SQLiteGraphStore(GraphStore):
         if not relations:
             return []
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             chunk_ids = {
                 relation.chunk_id
                 for relation in relations
@@ -413,14 +452,13 @@ class SQLiteGraphStore(GraphStore):
                     for relation in relations
                 ],
             )
-            conn.commit()
         return [relation.relation_id for relation in relations]
 
     def add_document(self, document: Document) -> str:
         """Persist a Document record."""
         import json
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO documents
@@ -437,14 +475,13 @@ class SQLiteGraphStore(GraphStore):
                     json.dumps(document.metadata),
                 ),
             )
-            conn.commit()
         return document.document_id
 
     def add_chunk(self, chunk: Chunk) -> str:
         """Persist a Chunk record."""
         import json
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO chunks
@@ -464,14 +501,13 @@ class SQLiteGraphStore(GraphStore):
                     json.dumps(chunk.metadata),
                 ),
             )
-            conn.commit()
         return chunk.chunk_id
 
     def get_entity(self, entity_id: str) -> Optional[Entity]:
         """Get an entity by ID."""
         import json
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             row = conn.execute(
                 "SELECT * FROM entities WHERE entity_id = ?", (entity_id,)
@@ -500,7 +536,7 @@ class SQLiteGraphStore(GraphStore):
         """Search entities by name and optional type."""
         import json
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             if entity_type:
                 rows = conn.execute(
@@ -535,7 +571,7 @@ class SQLiteGraphStore(GraphStore):
         """Get all relations for an entity."""
         import json
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             rows = conn.execute(
                 """
@@ -572,7 +608,7 @@ class SQLiteGraphStore(GraphStore):
         nodes: dict[str, object] = {}
         edges: list[object] = []
 
-        with self._get_connection() as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
 
             while queue:
@@ -623,6 +659,33 @@ class SQLiteGraphStore(GraphStore):
                             queue.append((next_id, depth + 1))
 
         return {"start": start_entity_id, "nodes": nodes, "edges": edges}
+
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        """Context manager wrapping graph writes in a SQLite transaction.
+
+        All write methods called inside this context reuse the same
+        connection so their writes are atomic. On exception, all
+        uncommitted writes are rolled back.
+
+        Raises:
+            RuntimeError: If called inside an already-active transaction.
+        """
+        if self._txn_conn is not None:
+            raise RuntimeError("Nested transactions are not supported")
+        conn = self._open_connection()
+        conn.execute("PRAGMA foreign_keys=ON")
+        self._txn_conn = conn
+        conn.execute("BEGIN")
+        try:
+            yield
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            self._txn_conn = None
+            conn.close()
 
     def close(self) -> None:
         """Close the graph store and release resources.

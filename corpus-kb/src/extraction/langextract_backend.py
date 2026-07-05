@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from pathlib import Path
 from typing import cast
 
@@ -91,6 +92,17 @@ class LangExtractExtractor:
             start = extraction.start_pos
             end = extraction.end_pos
             if start is None or end is None:
+                continue
+
+            text_length = len(text)
+            if start < 0 or end > text_length or start >= end:
+                logging.warning(
+                    "Skipping invalid extraction offsets for '%s': start=%d, end=%d, text_length=%d",
+                    extraction.extraction_text,
+                    start,
+                    end,
+                    text_length,
+                )
                 continue
 
             entities.append(
@@ -198,6 +210,9 @@ def _normalize_extraction(extraction: Extraction) -> NormalizedExtraction:
     )
 
 
+MAX_RELATIONS_PER_CHUNK = 10
+
+
 def _derive_relations(
     entities: list[Entity], chunk: Chunk, ontology: Ontology
 ) -> list[Relation]:
@@ -217,6 +232,14 @@ def _derive_relations(
                     metadata={},
                 )
             )
+            if len(relations) >= MAX_RELATIONS_PER_CHUNK:
+                logging.warning(
+                    "Relation cap reached for chunk %s: generated at least %d, keeping %d",
+                    chunk.chunk_id,
+                    MAX_RELATIONS_PER_CHUNK,
+                    MAX_RELATIONS_PER_CHUNK,
+                )
+                return relations
     return relations
 
 

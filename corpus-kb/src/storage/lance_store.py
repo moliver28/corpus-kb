@@ -57,7 +57,12 @@ class LanceDBStore:
             if required <= existing:
                 self._table = table
                 return
-            self._db.drop_table(self._table_name)
+            missing = required - existing
+            raise RuntimeError(
+                f"LanceDB table '{self._table_name}' schema does not match the "
+                f"expected vectors-only schema. Missing columns: {sorted(missing)}. "
+                f"Manual migration required: back up the data, drop the table, and re-ingest."
+            )
         self._table = self._db.create_table(
             self._table_name,
             schema=self._schema,

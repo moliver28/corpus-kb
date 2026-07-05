@@ -29,10 +29,34 @@ def _table_columns(db_path: Path, table: str) -> set[str]:
 
 
 class TestOntologyLoader:
-    def test_load_default_ontology_has_nine_plus_nine_types(self) -> None:
+    _EXPECTED_ENTITY_TYPES = [
+        "Document",
+        "Section",
+        "Chunk",
+        "Person",
+        "Org",
+        "Product",
+        "Concept",
+        "Claim",
+        "Metric",
+    ]
+
+    _EXPECTED_RELATION_TYPES = [
+        "PART_OF",
+        "MENTIONS",
+        "DEFINED_AS",
+        "AUTHORED_BY",
+        "CITES",
+        "SUPPORTS",
+        "CONTRADICTS",
+        "RELATED_TO",
+        "INSTANCE_OF",
+    ]
+
+    def test_load_default_ontology_has_exact_plan_types(self) -> None:
         ontology = load_ontology("config/ontology.yaml")
-        assert len(ontology.entity_types) == 9
-        assert len(ontology.relation_types) == 9
+        assert ontology.entity_types == self._EXPECTED_ENTITY_TYPES
+        assert ontology.relation_types == self._EXPECTED_RELATION_TYPES
         assert set(ontology.entity_types).isdisjoint(ontology.relation_types)
 
     def test_load_malformed_ontology_empty_relation_types_raises(
