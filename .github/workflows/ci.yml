@@ -191,4 +191,5 @@ jobs:
           }
 
       - name: Run tests
-        run: python -m pytest corpus-kb/tests/test_ingest.py -v --tb=short --durations=10 --rootdir corpus-kb/
+        working-directory: corpus-kb
+        run: python -m pytest tests/test_ingest.py -v --tb=short --durations=10
