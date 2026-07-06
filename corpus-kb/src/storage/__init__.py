@@ -5,7 +5,7 @@ Exports the public storage classes used by the ingest and search pipelines.
 
 from __future__ import annotations
 
-from src.storage.graph_store import GraphStore, SQLiteGraphStore, create_graph_store
-from src.storage.lance_store import LanceDBStore
+from .graph_store import GraphStore, SQLiteGraphStore, create_graph_store
+from .lance_store import LanceDBStore
 
 __all__ = ["GraphStore", "SQLiteGraphStore", "create_graph_store", "LanceDBStore"]

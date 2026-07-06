@@ -12,8 +12,8 @@ from src.ontology import Ontology, load_ontology
 from src.partitioning import ElementProxy, partition as unstructured_partition
 from src.chunking.unstructured_chunker import chunk_elements
 from src.rag import OllamaEmbedder
-from src.storage.graph_store import GraphStore, create_graph_store
-from src.storage.lance_store import LanceDBStore
+from storage.graph_store import GraphStore, create_graph_store
+from storage.lance_store import LanceDBStore
 from src.utils.models import Chunk, Document, Entity, Relation
 
 

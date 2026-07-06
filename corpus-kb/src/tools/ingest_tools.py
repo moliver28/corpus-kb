@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from src.storage.graph_store import GraphStore
-from src.tools.ingest_common import (
+from storage.graph_store import GraphStore
+from .ingest_common import (
     graph_store_from_config,
     load_config_or_pass,
     run_pipeline,

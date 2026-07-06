@@ -11,7 +11,7 @@ from typing import Optional, cast
 
 import pyarrow as pa
 
-from src.storage._lance_typed import LanceDBTable, connect
+from ._lance_typed import LanceDBTable, connect
 from src.utils.models import Chunk
 
 
