@@ -1,3 +1,17 @@
+# CI Pipeline for Corpus-KB
+#
+# Architecture note: The git repo root contains TWO source trees:
+#   1. src/          — legacy code from master (DO NOT lint/test this)
+#   2. corpus-kb/src/ — active development tree (ALL CI paths point here)
+#
+# Every path in this workflow is prefixed with corpus-kb/ to ensure CI
+# validates the active code, not the legacy duplicate. See issue #29 for
+# the follow-up plan to remove the legacy tree and convert to relative imports.
+#
+# CI Gate Order: lint → type-check → validate-configs → test (3 OSes)
+# Tests depend on validate-configs passing. fail-fast: false so all OS
+# results are visible even if one fails.
+
 name: CI
 
 on:
@@ -15,6 +29,9 @@ env:
   OLLAMA_MODEL: "nomic-embed-text"
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Lint: ruff check + format check (fast, ~10s, no deps needed)
+  # ─────────────────────────────────────────────────────────────────────
   lint:
     name: "lint (ruff)"
     runs-on: ubuntu-latest
@@ -27,17 +44,30 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
+          # Cache key uses corpus-kb/ pyproject.toml, not the root one
           cache-dependency-path: corpus-kb/pyproject.toml
 
       - name: Install ruff
         run: pip install ruff
 
       - name: Ruff check
+        # Paths point at corpus-kb/ subdirectory, NOT root src/
         run: ruff check corpus-kb/src/ corpus-kb/tests/
 
       - name: Ruff format check
         run: ruff format --check corpus-kb/src/ corpus-kb/tests/
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Type-check: pyright in basic mode (warnings downgraded, see
+  # corpus-kb/pyrightconfig.json for which rules are warnings vs errors)
+  #
+  # Project deps are installed so pyright can resolve imports like
+  # pydantic, ollama, lancedb, etc. Without this, pyright reports
+  # false-positive "reportMissingImports" errors.
+  #
+  # working-directory: corpus-kb ensures pyright picks up the local
+  # pyrightconfig.json. Running from the repo root would ignore it.
+  # ─────────────────────────────────────────────────────────────────────
   type-check:
     name: "type-check (pyright)"
     runs-on: ubuntu-latest
@@ -53,14 +83,24 @@ jobs:
           cache-dependency-path: corpus-kb/pyproject.toml
 
       - name: Install pyright and project deps
+        # Project deps are needed so pyright can resolve third-party imports.
+        # Without this, pyright reports 147+ false-positive missing-import errors.
         run: |
           pip install pyright
           pip install -e corpus-kb/.
 
       - name: Pyright strict type check
+        # Must run from corpus-kb/ so pyright finds pyrightconfig.json.
+        # The config downgrades pre-existing type issues to warnings:
+        #   reportAttributeAccessIssue, reportCallIssue,
+        #   reportArgumentType, reportReturnType → "warning"
         working-directory: corpus-kb
         run: pyright src/
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Validate-configs: checks MCP config JSON files for format correctness
+  # and cross-config consistency. Fast, no deps needed beyond stdlib.
+  # ─────────────────────────────────────────────────────────────────────
   validate-configs:
     name: "validate-configs"
     runs-on: ubuntu-latest
@@ -78,6 +118,27 @@ jobs:
       - name: Validate config files
         run: python corpus-kb/scripts/validate_configs.py
 
+  # ─────────────────────────────────────────────────────────────────────
+  # Test: 3-OS matrix (ubuntu, windows, macos) with Ollama
+  #
+  # Ollama install strategy per OS:
+  #   Ubuntu:  curl | sh (works reliably)
+  #   macOS:   brew install ollama (curl | sh fails on macOS runners)
+  #   Windows: OllamaSetup.exe /S with 120s timeout + continue-on-error
+  #            (silent installer often hangs on GitHub Actions Windows runners)
+  #
+  # Windows-specific fixes:
+  #   - python-magic-bin installed to fix "access violation" crash from
+  #     the `magic` library (unstructured dependency needs libmagic binary)
+  #   - continue-on-error on Ollama install/pull/verify so tests can run
+  #     in degraded mode (zero-vector fallback) when Ollama is unavailable
+  #
+  # Test step:
+  #   - working-directory: corpus-kb so pytest resolves imports correctly
+  #     (the editable install adds corpus-kb/src/ to sys.path, but running
+  #     from the repo root would shadow it with the legacy src/ tree)
+  #   - timeout-minutes: 10 prevents hung tests from blocking CI
+  # ─────────────────────────────────────────────────────────────────────
   test:
     name: "test (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
@@ -104,6 +165,11 @@ jobs:
           sudo apt-get install -y -qq build-essential
 
       - name: Install dependencies
+        # shell: bash ensures the if-statement works on all OSes (Windows
+        # defaults to powershell which has different if-syntax)
+        # python-magic-bin provides the libmagic DLL that the `unstructured`
+        # package needs on Windows. Without it, Python crashes with
+        # "Windows fatal exception: access violation" in magic.compat.py
         run: |
           python -m pip install --upgrade pip
           pip install -e corpus-kb/.
@@ -133,6 +199,9 @@ jobs:
           sleep 5
 
       - name: Install Ollama (macOS)
+        # brew install is used instead of curl | sh because the install.sh
+        # script fails on GitHub Actions macOS runners (exit code 1).
+        # See RCA: .omo/plans/ci-rca.md
         if: runner.os == 'macOS'
         run: |
           brew install ollama
@@ -140,6 +209,14 @@ jobs:
           sleep 5
 
       - name: Install Ollama (Windows)
+        # continue-on-error: true because the OllamaSetup.exe silent
+        # installer (/S) frequently hangs or fails on GitHub Actions
+        # Windows runners. When it fails, tests run in degraded mode
+        # (OllamaEmbedder catches ConnectionError and returns zero vectors).
+        #
+        # The 120s Wait-Process timeout prevents indefinite hangs. If the
+        # installer hasn't finished in 2 minutes, we kill it and proceed.
+        # GITHUB_PATH is set so subsequent steps can find ollama.exe.
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: powershell
@@ -165,6 +242,9 @@ jobs:
           }
 
       - name: Pull embedding model
+        # continue-on-error: true because ollama may not be installed
+        # (Windows install may have failed). Tests use zero-vector
+        # fallback when the model is unavailable.
         continue-on-error: true
         run: ollama pull ${{ env.OLLAMA_MODEL }}
 
@@ -181,6 +261,8 @@ jobs:
           done
 
       - name: Verify Ollama (Windows)
+        # continue-on-error: true — if Ollama isn't running, tests
+        # proceed in degraded mode (zero-vector embeddings)
         if: runner.os == 'Windows'
         continue-on-error: true
         shell: powershell
@@ -203,6 +285,13 @@ jobs:
           }
 
       - name: Run tests
+        # working-directory: corpus-kb is CRITICAL. Without it, pytest
+        # runs from the repo root where the legacy src/ tree shadows the
+        # editable install's corpus-kb/src/, causing ModuleNotFoundError.
+        # See issue #29 for the follow-up to fix imports permanently.
+        # timeout-minutes: 10 prevents hung Ollama connection attempts
+        # from blocking CI indefinitely (Windows TCP timeout can be 21s+
+        # per attempt × 13 tests × multiple embed calls).
         working-directory: corpus-kb
         timeout-minutes: 10
         run: python -m pytest tests/test_ingest.py -v --tb=short --durations=10
