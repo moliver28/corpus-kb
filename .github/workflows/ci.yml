@@ -52,8 +52,10 @@ jobs:
           cache: pip
           cache-dependency-path: corpus-kb/pyproject.toml
 
-      - name: Install pyright
-        run: pip install pyright
+      - name: Install pyright and project deps
+        run: |
+          pip install pyright
+          pip install -e corpus-kb/.
 
       - name: Pyright strict type check
         run: pyright corpus-kb/src/
@@ -130,7 +132,7 @@ jobs:
       - name: Install Ollama (macOS)
         if: runner.os == 'macOS'
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          brew install ollama
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
 
