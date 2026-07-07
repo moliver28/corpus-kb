@@ -58,7 +58,8 @@ jobs:
           pip install -e corpus-kb/.
 
       - name: Pyright strict type check
-        run: pyright corpus-kb/src/
+        working-directory: corpus-kb
+        run: pyright src/
 
   validate-configs:
     name: "validate-configs"
