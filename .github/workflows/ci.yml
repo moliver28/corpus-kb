@@ -142,16 +142,25 @@ jobs:
         run: |
           Write-Host "Installing Ollama on Windows..."
           $ProgressPreference = 'SilentlyContinue'
+          $OllamaDir = "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama"
+          New-Item -ItemType Directory -Path $OllamaDir -Force | Out-Null
           Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "OllamaSetup.exe" -ErrorAction Stop
-          Start-Process -FilePath "OllamaSetup.exe" -ArgumentList "/S" -Wait -ErrorAction Stop
-          Write-Host "Ollama installed"
-          $OllamaPath = "C:\Users\$env:USERNAME\AppData\Local\Programs\Ollama\ollama.exe"
+          $proc = Start-Process -FilePath "OllamaSetup.exe" -ArgumentList "/S" -PassThru -ErrorAction Stop
+          $proc | Wait-Process -Timeout 120 -ErrorAction SilentlyContinue
+          if (-not $proc.HasExited) {
+            Write-Host "Installer timed out after 120s, killing..."
+            $proc.Kill()
+          }
+          $OllamaPath = "$OllamaDir\ollama.exe"
           if (-not (Test-Path $OllamaPath)) {
-            Write-Host "ERROR: Ollama not found at expected path"
+            Write-Host "Ollama not found at $OllamaPath, trying PATH..."
+            $OllamaPath = (Get-Command ollama.exe -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $OllamaPath) {
+            Write-Host "ERROR: Ollama not found"
             throw "Ollama executable not found"
           }
           Write-Host "Starting Ollama service..."
-          Start-Service -Name "Ollama" -ErrorAction SilentlyContinue
           Start-Process -FilePath $OllamaPath -ArgumentList "serve" -WindowStyle Hidden
           Start-Sleep -Seconds 5
 
