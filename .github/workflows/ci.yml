@@ -152,9 +152,7 @@ jobs:
           Start-Sleep -Seconds 5
 
       - name: Pull embedding model
-        shell: ${{ runner.os == 'Windows' && 'powershell' || 'bash' }}
-        run: |
-          ollama pull ${{ env.OLLAMA_MODEL }}
+        run: ollama pull ${{ env.OLLAMA_MODEL }}
 
       - name: Verify Ollama (Ubuntu/macOS)
         if: runner.os != 'Windows'
