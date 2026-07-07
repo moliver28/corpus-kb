@@ -1,0 +1,2 @@
+{"extraction_class": "Concept", "extraction_text": "Machine learning", "char_interval": {"start_pos": 0, "end_pos": 16}, "confidence": 0.9}
+{"extraction_class": "Concept", "extraction_text": "artificial intelligence", "char_interval": {"start_pos": 32, "end_pos": 55}, "confidence": 0.9}

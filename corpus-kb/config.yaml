@@ -1,0 +1,31 @@
+# Corpus-KB: Configuration
+server:
+  name: corpus-kb
+  transport: stdio
+  host: localhost
+  port: 8010
+
+storage:
+  lancedb_uri: ./data/lancedb
+  graph_db: ./data/graph.db
+
+embedding:
+  provider: ollama
+  model: nomic-embed-text
+  base_url: http://localhost:11434
+  batch_size: 32
+  dimensions: 768
+
+chunking:
+  max_size: 4096
+  overlap: 200
+
+search:
+  rrf_k: 60
+  expand_context: true
+
+graph:
+  extractor: langextract
+  fixture_dir: tests/fixtures/langextract_recorded
+  live_fallback: false
+  ontology_path: config/ontology.yaml

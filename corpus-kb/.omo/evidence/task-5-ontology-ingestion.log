@@ -1,0 +1,39 @@
+﻿# Task 5 Evidence Log
+Generated: 2026-06-27T21:52:07.0288227-07:00
+
+## pytest tests/test_extraction.py -v
+============================= test session starts =============================
+platform win32 -- Python 3.11.5, pytest-9.1.0, pluggy-1.6.0 -- F:\Documents\OpenCode\Corpus\corpus-kb\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: F:\Documents\OpenCode\Corpus\corpus-kb
+configfile: pyproject.toml
+plugins: anyio-4.14.0, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 10 items
+
+tests/test_extraction.py::TestRegexExtractor::test_regex_extractor_returns_entities_with_expected_provenance PASSED [ 10%]
+tests/test_extraction.py::TestLangExtractExtractor::test_recorded_fixture_returns_entities_and_relations PASSED [ 20%]
+tests/test_extraction.py::TestLangExtractExtractor::test_banned_entity_type_raises_ontology_violation PASSED [ 30%]
+tests/test_extraction.py::TestLangExtractExtractor::test_fixture_entity_offsets_are_strict PASSED [ 40%]
+tests/test_extraction.py::TestLangExtractExtractor::test_fixtures_are_input_hash_keyed_and_missing_raises PASSED [ 50%]
+tests/test_extraction.py::TestLangExtractExtractor::test_fixture_path_never_calls_live_extract PASSED [ 60%]
+tests/test_extraction.py::TestExtractorFactory::test_factory_returns_regex_extractor PASSED [ 70%]
+tests/test_extraction.py::TestExtractorFactory::test_factory_returns_langextract_extractor PASSED [ 80%]
+tests/test_extraction.py::TestExtractorFactory::test_factory_defaults_to_langextract PASSED [ 90%]
+tests/test_extraction.py::TestExtractorFactory::test_factory_llamaindex_raises_not_implemented PASSED [100%]
+
+============================= 10 passed in 0.70s ==============================
+EXIT_CODE: 0
+
+## pyright src/extraction/
+0 errors, 0 warnings, 0 informations
+Python was not found; run without arguments to install from the Microsoft Store, or disable this shortcut from Settings > Apps > Advanced app settings > App execution aliases.
+EXIT_CODE: 0
+
+## ruff check src/extraction/
+All checks passed!
+EXIT_CODE: 0
+
+## git diff origin/master -- corpus-kb/tests/test_ingest.py
+(empty - no changes)
+EXIT_CODE: 0
