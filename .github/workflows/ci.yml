@@ -201,4 +201,5 @@ jobs:
 
       - name: Run tests
         working-directory: corpus-kb
+        timeout-minutes: 10
         run: python -m pytest tests/test_ingest.py -v --tb=short --durations=10
