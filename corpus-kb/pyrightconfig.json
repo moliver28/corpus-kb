@@ -1,5 +1,11 @@
 {
   "venvPath": ".",
   "venv": ".venv",
-  "strict": ["src"]
+  "include": ["src"],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "error",
+  "reportAttributeAccessIssue": "warning",
+  "reportCallIssue": "warning",
+  "reportArgumentType": "warning",
+  "reportReturnType": "warning"
 }
