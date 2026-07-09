@@ -17,10 +17,7 @@ Requires Postgres running with schema loaded.
 from __future__ import annotations
 
 import asyncio
-import json
-import socket
 import sys
-import time
 from pathlib import Path
 from uuid import UUID
 

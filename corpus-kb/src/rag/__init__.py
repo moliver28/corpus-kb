@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from ..rag.embedder import FakeEmbedder, OllamaEmbedder
+from src.rag.embedder import FakeEmbedder, OllamaEmbedder
 
 __all__ = ["FakeEmbedder", "OllamaEmbedder"]

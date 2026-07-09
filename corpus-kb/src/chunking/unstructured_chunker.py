@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from ..partitioning import ElementProxy
-from ..utils.models import Chunk
+from src.partitioning import ElementProxy
+from src.utils.models import Chunk
 
 _CATEGORY_TO_SOURCE_TYPE = {
     "CodeSnippet": "code",

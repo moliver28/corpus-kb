@@ -6,7 +6,7 @@ import importlib
 from dataclasses import dataclass
 from typing import Callable, Protocol, cast, runtime_checkable
 
-from ..ontology import Ontology
+from src.ontology import Ontology
 
 
 @dataclass(frozen=True, slots=True)

@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from ..chunking.unstructured_chunker import chunk_elements
+from src.chunking.unstructured_chunker import chunk_elements
 
 __all__ = ["chunk_elements"]

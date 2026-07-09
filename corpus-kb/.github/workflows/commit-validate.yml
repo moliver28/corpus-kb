@@ -1,0 +1,37 @@
+﻿name: Validate Commit Messages
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches-ignore:
+      - master  # Fire on all non-master pushes for corpus-kb test scenarios
+
+jobs:
+  validate-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate Conventional Commits
+        run: |
+          # Use PR base/head SHAs when available, otherwise compare to origin/master
+          if [[ -n "${{ github.event.pull_request.base.sha }}" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="origin/master"
+            HEAD="HEAD"
+          fi
+          git log --format=%B ${BASE}..${HEAD} | while read -r msg; do
+            if [[ -z "$msg" ]]; then continue; fi
+            # Skip Co-authored-by and other footers
+            if [[ "$msg" =~ ^[A-Z][a-z]+-.*: ]]; then continue; fi
+            if [[ ! $msg =~ ^(feat|fix|docs|chore|test|refactor|perf)(\(.+\))?!?:\ .{1,} ]]; then
+              echo "FAIL: Commit message '$msg' does not follow Conventional Commits"
+              echo "   Expected: feat(scope): message or fix: message"
+              exit 1
+            fi
+          done
+          echo "PASS: All commit messages are valid"

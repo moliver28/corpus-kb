@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from ..ontology import Ontology
-from ..utils.models import Chunk, Entity, Relation
+from src.ontology import Ontology
+from src.utils.models import Chunk, Entity, Relation
 
 
 class OntologyViolationError(Exception):

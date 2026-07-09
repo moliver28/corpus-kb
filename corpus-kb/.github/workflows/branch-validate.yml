@@ -1,0 +1,22 @@
+﻿name: Validate Branch Naming
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches-ignore:
+      - master  # Fire on all non-master pushes for corpus-kb test scenarios
+
+jobs:
+  validate-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name (GitFlow)
+        run: |
+          BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
+          if [[ ! $BRANCH_NAME =~ ^([Ff]eature|[Bb]ugfix|[Hh]otfix|[Dd]ocs|[Cc]hore|[Rr]elease)/[-a-zA-Z0-9]+$ ]]; then
+            echo "FAIL: Branch name '$BRANCH_NAME' does not match GitFlow pattern"
+            echo "   Expected: feature/*, bugfix/*, hotfix/*, docs/*, chore/*, release/*"
+            exit 1
+          fi
+          echo "PASS: Branch name '$BRANCH_NAME' is valid"

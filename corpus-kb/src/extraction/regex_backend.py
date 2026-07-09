@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from ..extraction.protocol import OntologyViolationError
-from ..graph.extractor import extract_entities
-from ..ontology import Ontology
-from ..utils.models import Chunk, Entity, Relation
+from src.extraction.protocol import OntologyViolationError
+from src.graph.extractor import extract_entities
+from src.ontology import Ontology
+from src.utils.models import Chunk, Entity, Relation
 
 
 _REGEX_TYPE_MAP = {

@@ -12,7 +12,7 @@ from typing import Optional, cast
 import pyarrow as pa
 
 from ._lance_typed import LanceDBTable, connect
-from ..utils.models import Chunk
+from src.utils.models import Chunk
 
 
 class LanceDBStore:

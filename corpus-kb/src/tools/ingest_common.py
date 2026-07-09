@@ -6,15 +6,15 @@ import logging
 from pathlib import Path
 from typing import Optional, cast
 
-from ..config import load_config
-from ..extraction import create_extractor
-from ..ontology import Ontology, load_ontology
-from ..partitioning import ElementProxy, partition as unstructured_partition
-from ..chunking.unstructured_chunker import chunk_elements
-from ..rag import OllamaEmbedder
+from src.config import load_config
+from src.extraction import create_extractor
+from src.ontology import Ontology, load_ontology
+from src.partitioning import ElementProxy, partition as unstructured_partition
+from src.chunking.unstructured_chunker import chunk_elements
+from src.rag import OllamaEmbedder
 from storage.graph_store import GraphStore, create_graph_store
 from storage.lance_store import LanceDBStore
-from ..utils.models import Chunk, Document, Entity, Relation
+from src.utils.models import Chunk, Document, Entity, Relation
 
 
 def load_config_or_pass(config: Optional[dict[str, object]]) -> dict[str, object]:
@@ -223,7 +223,7 @@ def extract_with_fallback(
         except (FileNotFoundError, ImportError, ModuleNotFoundError):
             pass
 
-    from ..extraction import RegexExtractor
+    from src.extraction import RegexExtractor
 
     fallback = RegexExtractor()
     entities, relations = fallback.extract(chunks, ontology, source_document_id)

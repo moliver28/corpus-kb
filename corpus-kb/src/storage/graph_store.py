@@ -19,7 +19,7 @@ from collections.abc import Generator
 from contextlib import AbstractContextManager, contextmanager
 from typing import Optional, cast
 
-from ..utils.models import Chunk, Document, Entity, Relation
+from src.utils.models import Chunk, Document, Entity, Relation
 
 
 # ============================================================================
