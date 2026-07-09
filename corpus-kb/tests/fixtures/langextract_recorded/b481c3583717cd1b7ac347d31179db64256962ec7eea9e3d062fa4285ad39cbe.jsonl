@@ -1,0 +1,3 @@
+{"extraction_class": "Person", "extraction_text": "Alice Smith", "char_interval": {"start_pos": 0, "end_pos": 11}, "confidence": 0.95}
+{"extraction_class": "Org", "extraction_text": "Acme Corporation", "char_interval": {"start_pos": 21, "end_pos": 37}, "confidence": 0.9}
+{"extraction_class": "Document", "extraction_text": "New York", "char_interval": {"start_pos": 41, "end_pos": 49}, "confidence": 0.88}

@@ -1,0 +1,2 @@
+{"extraction_class": "Person", "extraction_text": "Alice", "char_interval": {"start_pos": 0, "end_pos": 5}, "confidence": 0.9}
+{"extraction_class": "Person", "extraction_text": "Bob", "char_interval": {"start_pos": 30, "end_pos": 33}, "confidence": 0.9}

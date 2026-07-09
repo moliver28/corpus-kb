@@ -1,0 +1,1 @@
+"""Domain layer — aggregates, events, commands, queries."""

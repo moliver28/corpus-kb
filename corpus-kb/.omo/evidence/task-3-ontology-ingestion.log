@@ -1,0 +1,19 @@
+﻿============================= test session starts =============================
+platform win32 -- Python 3.11.5, pytest-9.1.0, pluggy-1.6.0 -- F:\Documents\OpenCode\Corpus\corpus-kb\.venv\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: F:\Documents\OpenCode\Corpus\corpus-kb
+configfile: pyproject.toml
+plugins: anyio-4.14.0, asyncio-1.4.0, cov-7.1.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 7 items
+
+tests/test_embedder.py::TestOllamaEmbedderLive::test_embed_returns_vector_of_configured_dimensions PASSED [ 14%]
+tests/test_embedder.py::TestOllamaEmbedderLive::test_embed_batch_returns_three_vectors_of_same_dimension PASSED [ 28%]
+tests/test_embedder.py::TestOllamaEmbedderCache::test_cache_hit_avoids_second_network_call PASSED [ 42%]
+tests/test_embedder.py::TestOllamaEmbedderDegradation::test_dead_port_returns_zero_vector_and_logs_warning PASSED [ 57%]
+tests/test_embedder.py::TestFakeEmbedder::test_embed_returns_deterministic_vector_of_configured_dimensions PASSED [ 71%]
+tests/test_embedder.py::TestFakeEmbedder::test_different_texts_produce_different_vectors PASSED [ 85%]
+tests/test_embedder.py::TestFakeEmbedder::test_embed_batch_returns_vectors_for_each_text PASSED [100%]
+
+============================= 7 passed in 11.61s ==============================
+EXIT_CODE=0

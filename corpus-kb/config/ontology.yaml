@@ -1,0 +1,21 @@
+entity_types:
+  - Document
+  - Section
+  - Chunk
+  - Person
+  - Org
+  - Product
+  - Concept
+  - Claim
+  - Metric
+
+relation_types:
+  - PART_OF
+  - MENTIONS
+  - DEFINED_AS
+  - AUTHORED_BY
+  - CITES
+  - SUPPORTS
+  - CONTRADICTS
+  - RELATED_TO
+  - INSTANCE_OF

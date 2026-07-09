@@ -1,0 +1,3 @@
+This is a sample text file.
+It has multiple lines.
+The ontology pipeline should chunk it.

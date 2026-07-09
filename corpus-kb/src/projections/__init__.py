@@ -1,0 +1,1 @@
+"""Projections — async event subscribers (embeddings, documents, checkpoints, DLQ)."""
