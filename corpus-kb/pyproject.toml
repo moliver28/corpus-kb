@@ -27,6 +27,11 @@ dependencies = [
     "pydantic>=2.0",
     "rich>=13.0",
     "unstructured>=0.13",
+    "asyncpg>=0.29.0",
+    "pgvector>=0.3.0",
+    "eventsourcing>=9.0",
+    "starlette>=0.35",
+    "uvicorn>=0.24",
 ]
 
 classifiers = [
