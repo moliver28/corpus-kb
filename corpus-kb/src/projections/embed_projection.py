@@ -104,9 +104,7 @@ class EmbedChunksProjection:
             await self._checkpoint.update_checkpoint(
                 PROJECTION_NAME, tenant_id, event_id, event_timestamp
             )
-            logger.debug(
-                "Embedded %d chunks for tenant %s", len(chunks), tenant_id
-            )
+            logger.debug("Embedded %d chunks for tenant %s", len(chunks), tenant_id)
 
         except Exception as exc:
             logger.error("Embed projection failed: %s", exc)

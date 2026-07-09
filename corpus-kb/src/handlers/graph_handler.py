@@ -24,7 +24,11 @@ class GraphHandler:
         self._pool = pool
 
     async def handle_search_graph(
-        self, tenant_id: UUID, query: str, entity_type: Optional[str] = None, limit: int = 100
+        self,
+        tenant_id: UUID,
+        query: str,
+        entity_type: Optional[str] = None,
+        limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Search entities by name (case-insensitive contains)."""
         async with self._pool.acquire() as conn:
@@ -36,14 +40,19 @@ class GraphHandler:
                     """SELECT entity_id, name, entity_type, metadata
                        FROM entities WHERE tenant_id = $1 AND name ILIKE $2 AND entity_type = $3
                        ORDER BY name LIMIT $4""",
-                    str(tenant_id), f"%{query}%", entity_type, limit,
+                    str(tenant_id),
+                    f"%{query}%",
+                    entity_type,
+                    limit,
                 )
             else:
                 rows = await conn.fetch(
                     """SELECT entity_id, name, entity_type, metadata
                        FROM entities WHERE tenant_id = $1 AND name ILIKE $2
                        ORDER BY name LIMIT $3""",
-                    str(tenant_id), f"%{query}%", limit,
+                    str(tenant_id),
+                    f"%{query}%",
+                    limit,
                 )
             return [dict(r) for r in rows]
 
@@ -67,7 +76,9 @@ class GraphHandler:
                        WHERE b.depth < $3
                    )
                    SELECT DISTINCT entity_id, name, entity_type, depth FROM bfs ORDER BY depth, name""",
-                str(start_entity_id), str(tenant_id), max_depth,
+                str(start_entity_id),
+                str(tenant_id),
+                max_depth,
             )
             return [dict(r) for r in rows]
 
@@ -89,9 +100,11 @@ class GraphHandler:
                    WHERE r.tenant_id = $1
                      AND (r.source_entity_id = $2 OR r.target_entity_id = $2)
                    ORDER BY r.relation_type""",
-                str(tenant_id), str(entity_id),
+                str(tenant_id),
+                str(entity_id),
             )
             return [dict(r) for r in rows]
+
 
 # ============================================================================
 # Singleton
@@ -103,7 +116,9 @@ _graph_handler: Optional["GraphHandler"] = None
 def get_graph_handler() -> "GraphHandler":
     global _graph_handler
     if _graph_handler is None:
-        raise RuntimeError("GraphHandler not initialized. Call set_graph_handler() during startup.")
+        raise RuntimeError(
+            "GraphHandler not initialized. Call set_graph_handler() during startup."
+        )
     return _graph_handler
 
 

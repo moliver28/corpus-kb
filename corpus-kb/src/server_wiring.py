@@ -169,9 +169,7 @@ async def run_all(services: dict[str, object]) -> None:
     from uuid import UUID
 
     default_tenant = UUID("00000000-0000-0000-0000-000000000001")
-    projection_task = asyncio.create_task(
-        embed_projection.run(default_tenant)
-    )
+    projection_task = asyncio.create_task(embed_projection.run(default_tenant))
 
     # Start HTTP server via uvicorn
     config_obj = uvicorn.Config(
@@ -235,6 +233,7 @@ def main() -> None:
     if args.transport == "stdio":
         # MCP stdio mode: run FastMCP server only (no HTTP/socket)
         logger.info("Starting in stdio mode (MCP only)")
+
         # TODO: wire FastMCP server here
         # For now, just run the HTTP server
         async def _run() -> None:
@@ -243,6 +242,7 @@ def main() -> None:
                 await run_all(services)
             finally:
                 await shutdown(services)
+
         asyncio.run(_run())
     else:
         # HTTP/SSE mode: start all protocols

@@ -24,7 +24,9 @@ class VersioningHandler:
     async def handle_list_versions(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all aggregate versions from the event store."""
         async with self._pool.acquire() as conn:
-            await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id))
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
+            )
             try:
                 rows = await conn.fetch(
                     """SELECT aggregate_id, MAX(version) as max_version, COUNT(*) as event_count,
@@ -38,12 +40,23 @@ class VersioningHandler:
     async def handle_get_stats(self, tenant_id: UUID) -> dict[str, Any]:
         """Get database statistics."""
         async with self._pool.acquire() as conn:
-            await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id))
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
+            )
             stats = {}
-            for table in ["documents", "chunks", "chunks_vectors", "entities", "relations", "tags"]:
+            for table in [
+                "documents",
+                "chunks",
+                "chunks_vectors",
+                "entities",
+                "relations",
+                "tags",
+            ]:
                 stats[table] = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
             try:
-                stats["total_events"] = await conn.fetchval("SELECT COUNT(*) FROM event_store")
+                stats["total_events"] = await conn.fetchval(
+                    "SELECT COUNT(*) FROM event_store"
+                )
             except Exception:
                 stats["total_events"] = 0  # event_store table not created yet
             return stats
@@ -51,7 +64,9 @@ class VersioningHandler:
     async def handle_sql_tables(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all tables in the schema."""
         async with self._pool.acquire() as conn:
-            await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id))
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
+            )
             rows = await conn.fetch(
                 """SELECT tablename as name, tableowner as owner FROM pg_tables
                    WHERE schemaname = 'public' ORDER BY tablename"""
@@ -61,7 +76,9 @@ class VersioningHandler:
     async def handle_query_document_stats(self, tenant_id: UUID) -> dict[str, Any]:
         """Get aggregate document statistics."""
         async with self._pool.acquire() as conn:
-            await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id))
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
+            )
             total_docs = await conn.fetchval("SELECT COUNT(*) FROM documents")
             total_chunks = await conn.fetchval("SELECT COUNT(*) FROM chunks")
             total_vectors = await conn.fetchval("SELECT COUNT(*) FROM chunks_vectors")
@@ -81,6 +98,7 @@ class VersioningHandler:
                 "by_source_type": [dict(r) for r in by_type],
             }
 
+
 # ============================================================================
 # Singleton
 # ============================================================================
@@ -91,7 +109,9 @@ _versioning_handler: Optional["VersioningHandler"] = None
 def get_versioning_handler() -> "VersioningHandler":
     global _versioning_handler
     if _versioning_handler is None:
-        raise RuntimeError("VersioningHandler not initialized. Call set_versioning_handler() during startup.")
+        raise RuntimeError(
+            "VersioningHandler not initialized. Call set_versioning_handler() during startup."
+        )
     return _versioning_handler
 
 

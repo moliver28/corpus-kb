@@ -40,7 +40,9 @@ class QueryHandler:
     set the tenant context via SET LOCAL, then execute parameterized SQL.
     """
 
-    def __init__(self, pool: asyncpg.Pool, embedder: Optional[OllamaEmbedder] = None) -> None:
+    def __init__(
+        self, pool: asyncpg.Pool, embedder: Optional[OllamaEmbedder] = None
+    ) -> None:
         self._pool = pool
         self._embedder = embedder
 
@@ -48,7 +50,8 @@ class QueryHandler:
         """Hybrid search: vector similarity + full-text search with RRF fusion."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", str(query.tenant_id)
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(query.tenant_id),
             )
 
             # 1. Vector search (if embedder available)
@@ -130,7 +133,8 @@ class QueryHandler:
         """Execute a read-only SQL query."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", str(query.tenant_id)
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(query.tenant_id),
             )
             rows = await conn.fetch(query.sql, *query.params.values())
             return [dict(row) for row in rows]
@@ -141,7 +145,8 @@ class QueryHandler:
         """List documents with pagination."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", str(query.tenant_id)
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(query.tenant_id),
             )
             rows = await conn.fetch(
                 """
@@ -172,7 +177,8 @@ class QueryHandler:
         """List entities, optionally filtered by type."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", str(query.tenant_id)
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(query.tenant_id),
             )
             if query.entity_type:
                 rows = await conn.fetch(
@@ -215,7 +221,8 @@ class QueryHandler:
         """Find chunks similar to a given chunk via vector distance."""
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", str(query.tenant_id)
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(query.tenant_id),
             )
             rows = await conn.fetch(
                 """
@@ -262,7 +269,8 @@ class QueryHandler:
         expanded: list[SearchResult] = []
         async with self._pool.acquire() as conn:
             await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", str(query.tenant_id)
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(query.tenant_id),
             )
             for result in base_results:
                 expanded.append(result)

@@ -70,9 +70,7 @@ class CommandHandler:
         """Ingest raw text: run pipeline → create Document aggregate → fire events."""
         return self._run_ingest(cmd.text, cmd.source_type, cmd.source, cmd.tenant_id)
 
-    def handle_ingest_directory(
-        self, cmd: IngestDirectoryCommand
-    ) -> dict[str, object]:
+    def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, object]:
         """Ingest all files in a directory."""
         dir_path = Path(cmd.directory_path)
         if not dir_path.is_dir():
@@ -172,7 +170,9 @@ class CommandHandler:
         fire Ingested + ChunksAdded events for the event sourcing audit trail.
         """
         # 1. Run the existing pipeline (preserves all existing behavior)
-        result = run_pipeline(text, source_type, source_path, self._config, self._graph_store)
+        result = run_pipeline(
+            text, source_type, source_path, self._config, self._graph_store
+        )
 
         if result.get("status") != "success":
             return result

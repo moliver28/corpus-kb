@@ -47,12 +47,15 @@ class BertExtractor(Extractor):
 
         try:
             import spacy
+
             self._spacy = spacy
             try:
                 self._nlp = spacy.load("en_core_web_sm")
                 logger.info("spaCy en_core_web_sm loaded")
             except OSError:
-                logger.warning("spaCy model not found. Run: python -m spacy download en_core_web_sm")
+                logger.warning(
+                    "spaCy model not found. Run: python -m spacy download en_core_web_sm"
+                )
                 self._nlp = None
         except ImportError:
             logger.warning("spaCy not installed. Run: pip install spacy")
@@ -61,6 +64,7 @@ class BertExtractor(Extractor):
 
         if self._nlp is None:
             from .regex_backend import RegexExtractor
+
             self._fallback = RegexExtractor(ontology)
             logger.info("Using regex fallback for NER")
 

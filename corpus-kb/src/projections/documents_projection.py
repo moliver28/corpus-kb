@@ -67,9 +67,7 @@ class DocumentsProjection:
                 PROJECTION_NAME, tenant_id, event_id, event_type, str(exc)
             )
 
-    async def _project_document(
-        self, tenant_id: UUID, payload: dict[str, Any]
-    ) -> None:
+    async def _project_document(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """INSERT into documents table."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -100,9 +98,7 @@ class DocumentsProjection:
                 json.dumps(payload.get("metadata", {})),
             )
 
-    async def _project_chunks(
-        self, tenant_id: UUID, payload: dict[str, Any]
-    ) -> None:
+    async def _project_chunks(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """INSERT into chunks table (text only, no vectors)."""
         chunk_texts = payload.get("chunk_texts", [])
         if not chunk_texts:
@@ -130,9 +126,7 @@ class DocumentsProjection:
                     text,
                 )
 
-    async def _project_entity(
-        self, tenant_id: UUID, payload: dict[str, Any]
-    ) -> None:
+    async def _project_entity(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """INSERT into entities table."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -153,9 +147,7 @@ class DocumentsProjection:
                 json.dumps(payload.get("metadata", {})),
             )
 
-    async def _project_relation(
-        self, tenant_id: UUID, payload: dict[str, Any]
-    ) -> None:
+    async def _project_relation(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """INSERT into relations table."""
         async with self._pool.acquire() as conn:
             await conn.execute(

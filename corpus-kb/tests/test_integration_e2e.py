@@ -50,7 +50,9 @@ async def db_conn():
 @pytest.fixture
 async def clean_db(db_conn):
     """Clean all projection tables before each test."""
-    await db_conn.execute("TRUNCATE chunks_vectors, chunks, documents, entities, relations CASCADE")
+    await db_conn.execute(
+        "TRUNCATE chunks_vectors, chunks, documents, entities, relations CASCADE"
+    )
     yield
 
 
