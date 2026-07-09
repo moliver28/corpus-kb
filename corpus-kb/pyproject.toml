@@ -72,3 +72,4 @@ markers = [
 
 [project.scripts]
 corpus-kb = "server:main"
+# CI trigger
