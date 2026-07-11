@@ -3,9 +3,6 @@ name: Validate Commit Messages
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
-    branches-ignore:
-      - master  # Fire on all non-master pushes for corpus-kb test scenarios
 
 jobs:
   validate-commits:
