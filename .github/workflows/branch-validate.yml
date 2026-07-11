@@ -6,6 +6,7 @@ on:
 
 jobs:
   validate-branch:
+    name: Validate Branch Naming
     runs-on: ubuntu-latest
     steps:
       - name: Validate branch name (GitFlow)
