@@ -59,10 +59,11 @@ jobs:
             exit 1
           fi
           
-          # Check capitalization
-          FIRST_CHAR=${COMMIT_MSG:0:1}
-          if [[ ! "$FIRST_CHAR" =~ [A-Z] ]]; then
-            echo "ERROR: Commit message must start with capital letter"
+          # Check conventional commit format (feat:, fix:, docs:, etc.)
+          # Accept both lowercase (feat:) and uppercase (Feat:) first letter
+          if [[ ! $COMMIT_MSG =~ ^(feat|fix|docs|chore|test|refactor|perf|build|ci|style)(\(.+\))?!?:\ .{1,} ]]; then
+            echo "ERROR: Commit message must follow Conventional Commits format"
+            echo "   Expected: feat(scope): message or fix: message"
             exit 1
           fi
           
