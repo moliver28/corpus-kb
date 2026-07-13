@@ -49,27 +49,38 @@ jobs:
       
       - name: Validate commit message format
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:'%s')
-          
-          # Check message length
-          MSG_LEN=${#COMMIT_MSG}
-          if [ $MSG_LEN -lt 10 ]; then
-            echo "ERROR: Commit message too short (min 10 chars)"
-            exit 1
+          # On PRs, validate every commit in the range. On pushes, validate HEAD.
+          if [[ -n "${{ github.event.pull_request.base.sha }}" ]]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD_REF="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="HEAD~1"
+            HEAD_REF="HEAD"
           fi
           
-          if [ $MSG_LEN -gt 500 ]; then
-            echo "ERROR: Commit message too long (max 500 chars)"
-            exit 1
-          fi
-          
-          # Check conventional commit format (feat:, fix:, docs:, etc.)
-          # Accept both lowercase (feat:) and uppercase (Feat:) first letter
-          if [[ ! $COMMIT_MSG =~ ^(feat|fix|docs|chore|test|refactor|perf|build|ci|style)(\(.+\))?!?:\ .{1,} ]]; then
-            echo "ERROR: Commit message must follow Conventional Commits format"
-            echo "   Expected: feat(scope): message or fix: message"
-            exit 1
-          fi
+          git log --format=%s ${BASE}..${HEAD_REF} | while read -r COMMIT_MSG; do
+            if [[ -z "$COMMIT_MSG" ]]; then continue; fi
+            # Skip merge commits (e.g. "Merge abc123 into def456")
+            if [[ "$COMMIT_MSG" =~ ^Merge\  ]]; then continue; fi
+            # Skip Co-authored-by and other footers
+            if [[ "$COMMIT_MSG" =~ ^[A-Z][a-z]+-.*: ]]; then continue; fi
+            
+            MSG_LEN=${#COMMIT_MSG}
+            if [ $MSG_LEN -lt 10 ]; then
+              echo "ERROR: Commit message too short (min 10 chars): '$COMMIT_MSG'"
+              exit 1
+            fi
+            if [ $MSG_LEN -gt 500 ]; then
+              echo "ERROR: Commit message too long (max 500 chars): '$COMMIT_MSG'"
+              exit 1
+            fi
+            if [[ ! $COMMIT_MSG =~ ^(feat|fix|docs|chore|test|refactor|perf|build|ci|style)(\(.+\))?!?:\ .{1,} ]]; then
+              echo "ERROR: Commit message must follow Conventional Commits format: '$COMMIT_MSG'"
+              echo "   Expected: feat(scope): message or fix: message"
+              exit 1
+            fi
+            echo "✓ Valid: $COMMIT_MSG"
+          done
           
           echo "✓ Commit message format valid"
       
