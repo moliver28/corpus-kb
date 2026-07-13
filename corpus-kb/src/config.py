@@ -90,6 +90,7 @@ def load_config(path: Optional[str] = None) -> dict[str, object]:
         ("graph", "db_path"): "CORPUS_KB_GRAPH_PATH",
         ("server", "transport"): "CORPUS_KB_TRANSPORT",
         ("server", "port"): "CORPUS_KB_PORT",
+        ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
     }
 
     for (section, key), env_var in env_overrides.items():
@@ -137,5 +138,8 @@ def get_default_config() -> dict[str, object]:
         "search": {
             "rrf_k": 60,
             "expand_context": True,
+        },
+        "database": {
+            "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
         },
     }

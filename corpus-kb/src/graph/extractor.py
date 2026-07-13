@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 from typing import Optional
 
-from src.utils.models import Entity
+from ..utils.models import Entity
 
 
 # ============================================================================
