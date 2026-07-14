@@ -36,12 +36,13 @@ async def ingest_text(
     source_type: str = "text",
     config: Optional[dict[str, object]] = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
+    source: str = "raw_text",
 ) -> dict[str, object]:
-    """Ingest raw text with optional type hint."""
+    """Ingest raw text with optional type hint and source identifier."""
     if source_type not in {"code", "markdown", "text"}:
         return {"status": "error", "message": f"Invalid source_type: {source_type}"}
     config = load_config_or_pass(config)
-    return await run_pipeline(text, source_type, "raw_text", config, pg_pool, tenant_id)
+    return await run_pipeline(text, source_type, source, config, pg_pool, tenant_id)
 
 
 async def ingest_directory(
@@ -116,7 +117,19 @@ async def delete_document(
     pg_pool: asyncpg.Pool,
     config: Optional[dict[str, object]] = None,
 ) -> dict[str, object]:
-    """Delete a document by ID."""
+    """Delete a document by ID and all related rows."""
+    try:
+        async with pg_pool.acquire() as conn:
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                "00000000-0000-0000-0000-000000000001",
+            )
+            await conn.execute(
+                "DELETE FROM documents WHERE doc_id = $1",
+                document_id,
+            )
+    except Exception as exc:
+        return {"status": "error", "message": f"Delete failed: {exc}"}
     return {"status": "success", "document_id": document_id}
 
 
