@@ -21,7 +21,7 @@ import httpx
 from ollama import Client
 from ollama._types import EmbedResponse
 
-from src.config import load_config
+from ..config import load_config
 
 logger = logging.getLogger(__name__)
 

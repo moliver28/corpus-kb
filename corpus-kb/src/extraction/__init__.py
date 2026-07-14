@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import cast
 
-from src.extraction.langextract_backend import LangExtractExtractor
-from src.extraction.protocol import Extractor, OntologyViolationError
-from src.extraction.regex_backend import RegexExtractor
+from .langextract_backend import LangExtractExtractor
+from .protocol import Extractor, OntologyViolationError
+from .regex_backend import RegexExtractor
 
 
 def create_extractor(config: dict[str, object]) -> Extractor:

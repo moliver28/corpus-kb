@@ -13,14 +13,14 @@ from typing import Optional
 
 import asyncpg
 
-from src.config import load_config
-from src.extraction import create_extractor
-from src.ontology import Ontology, load_ontology
-from src.partitioning import ElementProxy, partition as unstructured_partition
-from src.chunking.unstructured_chunker import chunk_elements
-from src.rag import OllamaEmbedder
-from src.storage.rag_backend import RagBackend
-from src.utils.models import Chunk, Document, Entity, Relation
+from ..config import load_config
+from ..extraction import create_extractor
+from ..ontology import Ontology, load_ontology
+from ..partitioning import ElementProxy, partition as unstructured_partition
+from ..chunking.unstructured_chunker import chunk_elements
+from ..rag import OllamaEmbedder
+from ..storage.rag_backend import RagBackend
+from ..utils.models import Chunk, Document, Entity, Relation
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ def extract_with_fallback(
         except (FileNotFoundError, ImportError, ModuleNotFoundError):
             pass
 
-    from src.extraction import RegexExtractor
+    from ..extraction import RegexExtractor
 
     fallback = RegexExtractor()
     entities, relations = fallback.extract(chunks, ontology, source_document_id)

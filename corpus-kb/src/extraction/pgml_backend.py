@@ -10,9 +10,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from src.extraction.protocol import Extractor
-from src.ontology import Ontology
-from src.utils.models import Chunk, Entity, Relation
+from .protocol import Extractor
+from ..ontology import Ontology
+from ..utils.models import Chunk, Entity, Relation
 
 logger = logging.getLogger(__name__)
 

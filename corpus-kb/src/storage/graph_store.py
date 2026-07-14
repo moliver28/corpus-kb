@@ -17,7 +17,7 @@ from typing import Optional
 
 import asyncpg
 
-from src.utils.models import Chunk, Document, Entity, Relation
+from ..utils.models import Chunk, Document, Entity, Relation
 
 logger = logging.getLogger(__name__)
 

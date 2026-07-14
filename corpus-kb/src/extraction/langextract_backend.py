@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import cast
 
-from src.extraction._langextract_types import (
+from ._langextract_types import (
     Extraction,
     LangExtractModule,
     NormalizedExtraction,
@@ -16,9 +16,9 @@ from src.extraction._langextract_types import (
     build_prompt_description,
     import_langextract,
 )
-from src.extraction.protocol import OntologyViolationError
-from src.ontology import Ontology
-from src.utils.models import Chunk, Entity, Relation
+from .protocol import OntologyViolationError
+from ..ontology import Ontology
+from ..utils.models import Chunk, Entity, Relation
 
 
 class LangExtractExtractor:
