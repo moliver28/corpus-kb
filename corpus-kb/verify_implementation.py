@@ -8,9 +8,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.graph.extractor import extract_entities
-from src.storage.graph_store import SQLiteGraphStore
+from src.storage.graph_store import PostgresGraphStore
 from src.tools.ingest_tools import ingest_text
 from src.utils.models import Entity
+import asyncpg
 
 
 def test_entity_extraction():
@@ -45,28 +46,30 @@ def test_graph_store():
     print("TEST 2: Graph Store Operations")
     print("=" * 60)
 
-    import tempfile
+    import asyncio
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / "test.db"
-        graph_store = SQLiteGraphStore(db_path)
+    pool = asyncio.run(asyncpg.create_pool(
+        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+    ))
+    graph_store = PostgresGraphStore(pool)
 
-        entity = Entity(
-            name="TestService",
-            entity_type="CLASS",
-            source_type="code",
-            source_document_id="doc-123",
-        )
+    entity = Entity(
+        name="TestService",
+        entity_type="CLASS",
+        source_type="code",
+        source_document_id="doc-123",
+    )
 
-        entity_id = graph_store.add_entity(entity)
-        print(f"✓ Added entity: {entity.name} (ID: {entity_id})")
+    entity_id = asyncio.run(graph_store.add_entity(entity))
+    print(f"✓ Added entity: {entity.name} (ID: {entity_id})")
 
-        retrieved = graph_store.get_entity(entity_id)
-        assert retrieved is not None, "Entity not retrieved!"
-        assert retrieved.name == "TestService", "Entity name mismatch!"
-        print(f"✓ Retrieved entity: {retrieved.name}")
+    retrieved = asyncio.run(graph_store.get_entity(entity_id))
+    assert retrieved is not None, "Entity not retrieved!"
+    assert retrieved.name == "TestService", "Entity name mismatch!"
+    print(f"✓ Retrieved entity: {retrieved.name}")
+    asyncio.run(pool.close())
 
-        print("✓ PASS: Graph store operations work\n")
+    print("✓ PASS: Graph store operations work\n")
 
 
 def test_ingest_text():
@@ -83,8 +86,8 @@ Tokens are cached for performance.
 """
 
     config = {
-        "graph": {"extract_entities": True, "backend": "sqlite"},
-        "storage": {"graph_db": ":memory:"},
+        "graph": {"extract_entities": True, "backend": "postgres"},
+        "database": {"connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"},
     }
 
     result = ingest_text(
@@ -111,8 +114,8 @@ def test_ingest_text_disabled():
 
     markdown_text = "# MyService\nA service."
     config = {
-        "graph": {"extract_entities": False, "backend": "sqlite"},
-        "storage": {"graph_db": ":memory:"},
+        "graph": {"extract_entities": False, "backend": "postgres"},
+        "database": {"connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"},
     }
 
     result = ingest_text(

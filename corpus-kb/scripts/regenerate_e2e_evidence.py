@@ -3,101 +3,77 @@
 Runs the full ingest pipeline on tests/fixtures/ontology_sample.md and
 captures: document_id, chunk_ids with char offsets + text_preview,
 entity_ids with extractor_id/entity_type/chunk_id/char offsets,
-relation_ids with relation_type/extractor_id, and lance_row_count.
+relation_ids with relation_type/extractor_id, and pg_chunk_count.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
-import tempfile
 from pathlib import Path
 from typing import cast
+
+import asyncpg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.config import load_config
-from src.storage.graph_store import SQLiteGraphStore
 from src.tools.ingest_tools import ingest_file
 
 
-def main() -> None:
+async def main() -> None:
     fixture_dir = Path("tests/fixtures/langextract_recorded")
     sample_md = Path("tests/fixtures/ontology_sample.md")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
-        config = load_config()
-        storage = cast(dict[str, object], config.setdefault("storage", {}))
-        storage["lancedb_uri"] = str(tmp_path / "lancedb")
-        storage["graph_db"] = str(tmp_path / "graph.db")
-        graph = cast(dict[str, object], config.setdefault("graph", {}))
-        graph["extractor"] = "langextract"
-        graph["fixture_dir"] = str(fixture_dir.resolve())
-        graph["live_fallback"] = False
-        embedding = cast(dict[str, object], config.setdefault("embedding", {}))
-        embedding.setdefault("model", "nomic-embed-text")
-        embedding.setdefault("dimensions", 768)
-        embedding.setdefault("base_url", "http://localhost:11434")
-        embedding.setdefault("batch_size", 32)
+    config = load_config()
+    graph = cast(dict[str, object], config.setdefault("graph", {}))
+    graph["extractor"] = "langextract"
+    graph["fixture_dir"] = str(fixture_dir.resolve())
+    graph["live_fallback"] = False
+    embedding = cast(dict[str, object], config.setdefault("embedding", {}))
+    embedding.setdefault("model", "nomic-embed-text")
+    embedding.setdefault("dimensions", 768)
+    embedding.setdefault("base_url", "http://localhost:11434")
+    embedding.setdefault("batch_size", 32)
 
-        store = SQLiteGraphStore(tmp_path / "graph.db")
-        result = ingest_file(str(sample_md), graph_store=store, config=config)
+    db_cfg = cast(dict[str, object], config.setdefault("database", {}))
+    conn_str = db_cfg.get("connection_string", "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb")
 
-        # Collect chunk, entity, and relation details
-        import sqlite3
+    pool = await asyncpg.create_pool(conn_str)
+    try:
+        result = await ingest_file(str(sample_md), pool, config=config)
 
+        # Collect chunk, entity, and relation details from Postgres
         chunks_data: list[dict[str, object]] = []
         entities_data: list[dict[str, object]] = []
         relations_data: list[dict[str, object]] = []
 
-        conn = store._open_connection()
-        try:
-            conn.row_factory = sqlite3.Row
-            for row in conn.execute(
-                "SELECT chunk_id, source_start_char, source_end_char, text "
-                "FROM chunks WHERE document_id = ? ORDER BY source_start_char",
-                (result["document_id"],),
-            ).fetchall():
-                text_preview = (row["text"] or "")[:80]
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                "00000000-0000-0000-0000-000000000001",
+            )
+            rows = await conn.fetch(
+                "SELECT chunk_id::text, text FROM chunks WHERE doc_id = $1 ORDER BY chunk_index",
+                result["document_id"],
+            )
+            for row in rows:
                 chunks_data.append({
                     "chunk_id": row["chunk_id"],
-                    "source_start_char": row["source_start_char"],
-                    "source_end_char": row["source_end_char"],
-                    "text_preview": text_preview,
+                    "text_preview": (row["text"] or "")[:80],
                 })
 
-            for row in conn.execute(
-                "SELECT entity_id, name, entity_type, extractor_id, chunk_id, "
-                "source_start_char, source_end_char "
-                "FROM entities WHERE source_document_id = ?",
-                (result["document_id"],),
-            ).fetchall():
+            rows = await conn.fetch(
+                "SELECT entity_id::text, name, entity_type, metadata::text FROM entities WHERE source_document_id = $1",
+                result["document_id"],
+            )
+            for row in rows:
                 entities_data.append({
                     "entity_id": row["entity_id"],
                     "name": row["name"],
                     "entity_type": row["entity_type"],
-                    "extractor_id": row["extractor_id"],
-                    "chunk_id": row["chunk_id"],
-                    "source_start_char": row["source_start_char"],
-                    "source_end_char": row["source_end_char"],
                 })
-
-            for row in conn.execute(
-                "SELECT relation_id, relation_type, extractor_id "
-                "FROM relations WHERE chunk_id IN "
-                "(SELECT chunk_id FROM chunks WHERE document_id = ?)",
-                (result["document_id"],),
-            ).fetchall():
-                relations_data.append({
-                    "relation_id": row["relation_id"],
-                    "relation_type": row["relation_type"],
-                    "extractor_id": row["extractor_id"],
-                })
-        finally:
-            conn.close()
-
-        store.close()
 
         evidence = {
             "status": result["status"],
@@ -108,7 +84,8 @@ def main() -> None:
             "chunk_count": result["chunk_count"],
             "entity_count": result["entity_count"],
             "relation_count": result["relation_count"],
-            "lance_row_count": result["lance_row_count"],
+            "pg_chunk_count": result.get("pg_chunk_count", 0),
+            "pg_vector_count": result.get("pg_vector_count", 0),
             "degraded": result["degraded"],
             "extractor_id": result["extractor_id"],
             "errors": result["errors"],
@@ -116,6 +93,8 @@ def main() -> None:
             "entities": entities_data,
             "relations": relations_data,
         }
+    finally:
+        await pool.close()
 
     out_path = Path(".omo/evidence/task-8-pr-review-fixes.json")
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,10 +103,10 @@ def main() -> None:
     print(f"  chunks: {len(chunks_data)}")
     print(f"  entities: {len(entities_data)}")
     print(f"  relations: {len(relations_data)}")
-    print(f"  lance_row_count: {evidence['lance_row_count']}")
+    print(f"  pg_chunk_count: {evidence['pg_chunk_count']}")
     print(f"  degraded: {evidence['degraded']}")
     print(f"  errors: {evidence['errors']}")
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

@@ -1,4 +1,12 @@
-"""Ollama-backed embedder with SHA256-keyed LRU cache and graceful degradation."""
+"""Embedders for Corpus-KB.
+
+OllamaEmbedder: calls a local Ollama instance, caching results in memory.
+PgmlEmbedder: calls PostgresML for in-database embeddings.
+FakeEmbedder: deterministic embedder for CI / degraded mode.
+
+On connection failure all embedders log a warning and return zero-vectors
+so callers can continue operating in degraded mode.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +16,7 @@ import random
 from collections import OrderedDict
 from typing import Optional, cast
 
+import asyncpg
 import httpx
 from ollama import Client
 from ollama._types import EmbedResponse
@@ -112,6 +121,59 @@ def _int_or_default(config: dict[str, object], key: str, default: int) -> int:
     if isinstance(value, str):
         return int(value)
     return default
+
+
+class PgmlEmbedder:
+    """Embedder that calls PostgresML for in-database embeddings.
+
+    Uses ``SELECT pgml.embed('model', text)`` via asyncpg.
+    On connection failure logs a warning and returns zero-vectors.
+    """
+
+    def __init__(
+        self,
+        config: Optional[dict[str, object]] = None,
+        pool: Optional[asyncpg.Pool] = None,
+    ) -> None:
+        self._config = config or load_config()
+        embedding = cast(dict[str, object], self._config.get("embedding", {}))
+        self.model = _str_or_default(embedding, "model", "nomic-embed-text")
+        self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self._pool = pool
+
+    async def embed(self, text: str) -> list[float]:
+        """Return a single embedding vector for ``text``."""
+        result = await self.embed_batch([text])
+        return result[0]
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Return embedding vectors for ``texts`` via PostgresML.
+
+        Falls back to zero-vectors on connection failure.
+        """
+        if not texts:
+            return []
+        if self._pool is None:
+            logger.warning("PgmlEmbedder has no pool; returning zero vectors.")
+            return [[0.0] * self.dimensions for _ in texts]
+
+        results: list[list[float]] = []
+        try:
+            async with self._pool.acquire() as conn:
+                for text in texts:
+                    row = await conn.fetchrow(
+                        "SELECT pgml.embed($1, $2) AS vector",
+                        self.model,
+                        text,
+                    )
+                    if row and row["vector"]:
+                        results.append(list(row["vector"]))
+                    else:
+                        results.append([0.0] * self.dimensions)
+        except Exception as exc:
+            logger.warning("PostgresML embed failed: %s; returning zero vectors.", exc)
+            return [[0.0] * self.dimensions for _ in texts]
+        return results
 
 
 class FakeEmbedder:

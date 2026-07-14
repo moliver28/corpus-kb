@@ -46,6 +46,10 @@ def create_extractor(config: dict[str, object]) -> Extractor:
             return LangExtractExtractor(
                 fixture_dir=fixture_dir, live_fallback=live_fallback
             )
+        case "pgml":
+            from src.extraction.pgml_backend import PgmlExtractor
+
+            return PgmlExtractor()
         case "llamaindex":
             raise NotImplementedError(
                 "llamaindex extractor is deferred to a later phase"
@@ -58,6 +62,7 @@ __all__ = [
     "Extractor",
     "LangExtractExtractor",
     "OntologyViolationError",
+    "PgmlExtractor",
     "RegexExtractor",
     "create_extractor",
 ]

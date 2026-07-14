@@ -114,14 +114,8 @@ def get_default_config() -> dict[str, object]:
             "host": "localhost",
             "port": 8010,
         },
-        "storage": {
-            "path": str(Path.cwd() / "data" / "lancedb"),
-            "lancedb_uri": "./data/lancedb",
-            "graph_db": "./data/graph.db",
-        },
         "graph": {
-            "backend": "sqlite",
-            "db_path": str(Path.cwd() / "data" / "graph.db"),
+            "backend": "postgres",
             "extractor": "langextract",
         },
         "embedding": {
@@ -138,6 +132,7 @@ def get_default_config() -> dict[str, object]:
         "search": {
             "rrf_k": 60,
             "expand_context": True,
+            "index_type": "hnsw",
         },
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
