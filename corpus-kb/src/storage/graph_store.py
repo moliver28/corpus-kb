@@ -107,9 +107,7 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    async def bfs(
-        self, start_entity_id: str, max_depth: int = 5
-    ) -> dict[str, object]:
+    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
         """Breadth-first search from a starting entity."""
         pass
 
@@ -359,9 +357,7 @@ class PostgresGraphStore(GraphStore):
         finally:
             await self._release_conn(conn)
 
-    async def bfs(
-        self, start_entity_id: str, max_depth: int = 5
-    ) -> dict[str, object]:
+    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
         """Breadth-first search using a recursive CTE."""
         conn = await self._get_conn()
         try:
@@ -424,7 +420,9 @@ class PostgresGraphStore(GraphStore):
                 document.size_bytes,
                 json.dumps(document.metadata),
             )
-            return str(row["doc_id"])
+            if row:
+                return str(row["doc_id"])
+            return document.document_id
         finally:
             await self._release_conn(conn)
 

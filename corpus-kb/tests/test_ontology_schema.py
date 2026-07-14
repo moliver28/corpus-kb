@@ -12,13 +12,27 @@ from src.ontology import load_ontology
 
 class TestOntologyLoader:
     _EXPECTED_ENTITY_TYPES = [
-        "Document", "Section", "Chunk", "Person", "Org",
-        "Product", "Concept", "Claim", "Metric",
+        "Document",
+        "Section",
+        "Chunk",
+        "Person",
+        "Org",
+        "Product",
+        "Concept",
+        "Claim",
+        "Metric",
     ]
 
     _EXPECTED_RELATION_TYPES = [
-        "PART_OF", "MENTIONS", "DEFINED_AS", "AUTHORED_BY",
-        "CITES", "SUPPORTS", "CONTRADICTS", "RELATED_TO", "INSTANCE_OF",
+        "PART_OF",
+        "MENTIONS",
+        "DEFINED_AS",
+        "AUTHORED_BY",
+        "CITES",
+        "SUPPORTS",
+        "CONTRADICTS",
+        "RELATED_TO",
+        "INSTANCE_OF",
     ]
 
     def test_load_default_ontology_has_exact_plan_types(self) -> None:

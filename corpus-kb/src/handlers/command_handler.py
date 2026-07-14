@@ -72,9 +72,13 @@ class CommandHandler:
 
     async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
         """Ingest raw text: run pipeline → create Document aggregate → fire events."""
-        return await self._run_ingest(cmd.text, cmd.source_type, cmd.source, cmd.tenant_id)
+        return await self._run_ingest(
+            cmd.text, cmd.source_type, cmd.source, cmd.tenant_id
+        )
 
-    async def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, object]:
+    async def handle_ingest_directory(
+        self, cmd: IngestDirectoryCommand
+    ) -> dict[str, object]:
         """Ingest all files in a directory."""
         dir_path = Path(cmd.directory_path)
         if not dir_path.is_dir():

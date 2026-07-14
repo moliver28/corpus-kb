@@ -25,7 +25,9 @@ async def ingest_file(
     if not path.exists():
         return {"status": "error", "message": f"File not found: {path}"}
     text = path.read_text(encoding="utf-8")
-    return await run_pipeline(text, _detect_source_type(path), str(path), config, pg_pool, tenant_id)
+    return await run_pipeline(
+        text, _detect_source_type(path), str(path), config, pg_pool, tenant_id
+    )
 
 
 async def ingest_text(
@@ -55,9 +57,28 @@ async def ingest_directory(
         return {"status": "error", "message": f"Directory not found: {directory_path}"}
 
     supported_extensions = {
-        ".py", ".js", ".ts", ".tsx", ".jsx", ".rs", ".go", ".java",
-        ".cpp", ".c", ".h", ".hpp", ".rb", ".php", ".swift", ".kt",
-        ".scala", ".lua", ".md", ".markdown", ".rst", ".txt",
+        ".py",
+        ".js",
+        ".ts",
+        ".tsx",
+        ".jsx",
+        ".rs",
+        ".go",
+        ".java",
+        ".cpp",
+        ".c",
+        ".h",
+        ".hpp",
+        ".rb",
+        ".php",
+        ".swift",
+        ".kt",
+        ".scala",
+        ".lua",
+        ".md",
+        ".markdown",
+        ".rst",
+        ".txt",
     }
 
     results: list[dict[str, object]] = []
@@ -104,7 +125,16 @@ def _detect_source_type(path: Path) -> str:
     if suffix in {".md", ".markdown", ".rst"}:
         return "markdown"
     if suffix in {
-        ".py", ".js", ".ts", ".rs", ".go", ".java", ".cpp", ".c", ".rb", ".php",
+        ".py",
+        ".js",
+        ".ts",
+        ".rs",
+        ".go",
+        ".java",
+        ".cpp",
+        ".c",
+        ".rb",
+        ".php",
     }:
         return "code"
     return "text"

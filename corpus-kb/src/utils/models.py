@@ -152,6 +152,7 @@ class Relation(BaseModel):
     source_entity_id: str
     target_entity_id: str
     relation_type: str  # "CALLS" | "DEPENDS_ON" | "CONTAINS" | "REFERENCES"
+    weight: float = 1.0
     chunk_id: Optional[str] = None
     source_start_char: Optional[int] = None
     source_end_char: Optional[int] = None

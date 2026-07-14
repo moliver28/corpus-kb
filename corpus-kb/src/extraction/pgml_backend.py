@@ -48,9 +48,7 @@ class PgmlExtractor:
         """
         if self._pool is None:
             logger.info("PgmlExtractor has no pool; falling back to RegexExtractor.")
-            return self._get_fallback().extract(
-                chunks, ontology, source_document_id
-            )
+            return self._get_fallback().extract(chunks, ontology, source_document_id)
 
         try:
             import asyncio
@@ -62,9 +60,7 @@ class PgmlExtractor:
             logger.warning(
                 "PostgresML NER failed: %s; falling back to RegexExtractor.", exc
             )
-            return self._get_fallback().extract(
-                chunks, ontology, source_document_id
-            )
+            return self._get_fallback().extract(chunks, ontology, source_document_id)
 
     async def _extract_async(
         self,

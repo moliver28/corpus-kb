@@ -38,7 +38,10 @@ async def main() -> None:
     embedding.setdefault("batch_size", 32)
 
     db_cfg = cast(dict[str, object], config.setdefault("database", {}))
-    conn_str = db_cfg.get("connection_string", "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb")
+    conn_str = db_cfg.get(
+        "connection_string",
+        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb",
+    )
 
     pool = await asyncpg.create_pool(conn_str)
     try:
@@ -59,21 +62,25 @@ async def main() -> None:
                 result["document_id"],
             )
             for row in rows:
-                chunks_data.append({
-                    "chunk_id": row["chunk_id"],
-                    "text_preview": (row["text"] or "")[:80],
-                })
+                chunks_data.append(
+                    {
+                        "chunk_id": row["chunk_id"],
+                        "text_preview": (row["text"] or "")[:80],
+                    }
+                )
 
             rows = await conn.fetch(
                 "SELECT entity_id::text, name, entity_type, metadata::text FROM entities WHERE source_document_id = $1",
                 result["document_id"],
             )
             for row in rows:
-                entities_data.append({
-                    "entity_id": row["entity_id"],
-                    "name": row["name"],
-                    "entity_type": row["entity_type"],
-                })
+                entities_data.append(
+                    {
+                        "entity_id": row["entity_id"],
+                        "name": row["name"],
+                        "entity_type": row["entity_type"],
+                    }
+                )
 
         evidence = {
             "status": result["status"],

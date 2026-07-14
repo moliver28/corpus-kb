@@ -48,9 +48,11 @@ def test_graph_store():
 
     import asyncio
 
-    pool = asyncio.run(asyncpg.create_pool(
-        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-    ))
+    pool = asyncio.run(
+        asyncpg.create_pool(
+            "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+        )
+    )
     graph_store = PostgresGraphStore(pool)
 
     entity = Entity(
@@ -87,7 +89,9 @@ Tokens are cached for performance.
 
     config = {
         "graph": {"extract_entities": True, "backend": "postgres"},
-        "database": {"connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"},
+        "database": {
+            "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+        },
     }
 
     result = ingest_text(
@@ -115,7 +119,9 @@ def test_ingest_text_disabled():
     markdown_text = "# MyService\nA service."
     config = {
         "graph": {"extract_entities": False, "backend": "postgres"},
-        "database": {"connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"},
+        "database": {
+            "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+        },
     }
 
     result = ingest_text(

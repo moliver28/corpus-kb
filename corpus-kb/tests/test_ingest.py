@@ -54,8 +54,7 @@ The design pattern uses a caching strategy for performance.
         entities = extract_entities(text, source_type="text")
         entity_names = {e.name for e in entities}
         assert any(
-            "Authentication" in name or "Caching" in name
-            for name in entity_names
+            "Authentication" in name or "Caching" in name for name in entity_names
         )
 
     def test_extract_entities_with_source_document_id(self) -> None:
@@ -96,7 +95,9 @@ Tokens are cached for performance.
 """
         config = {
             "graph": {"extract_entities": True, "backend": "postgres"},
-            "database": {"connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"},
+            "database": {
+                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+            },
         }
         result = await ingest_text(
             text=markdown_text,
@@ -115,7 +116,9 @@ Tokens are cached for performance.
         markdown_text = "# MyService\nA service."
         config = {
             "graph": {"extract_entities": False, "backend": "postgres"},
-            "database": {"connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"},
+            "database": {
+                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+            },
         }
         result = await ingest_text(
             text=markdown_text,
@@ -132,7 +135,9 @@ Tokens are cached for performance.
         text = "Some text"
         config = {
             "graph": {"extract_entities": True, "backend": "postgres"},
-            "database": {"connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"},
+            "database": {
+                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+            },
         }
         result = await ingest_text(
             text=text,
