@@ -77,10 +77,10 @@ All active code is under `corpus-kb/`:
 
 - `corpus-kb/src/server.py` — FastMCP entrypoint and CLI (`--transport stdio|sse`, `--port`, `--config`)
 - `corpus-kb/src/chunking/` — File type detection → chunker dispatch. Strategy pattern: CodeChunker (tree-sitter AST), MarkdownChunker (heading boundaries), TextChunker (semantic gap detection). Also `unstructured_chunker.py` for Unstructured element → Chunk mapping.
-- `corpus-kb/src/storage/` — Three backends: LanceDB (vectors via `lance_store.py` + `_lance_typed.py`), DuckDB (relational SQL), GraphStore (abstract ABC → SQLite implementation in `graph_store.py` with transaction support).
-- `corpus-kb/src/rag/` — OllamaEmbedder (SHA256 cache, zero-vector fallback on failure), HybridSearcher (vector + FTS + RRF fusion), Reranker (identity pass-through). Also `FakeEmbedder` for CI/degraded mode.
-- `corpus-kb/src/tools/` — MCP tools across 6 modules. `ingest_common.py` is the pipeline orchestrator (partition → chunk → embed → extract → store). `ingest_tools.py` is the thin MCP tool wrapper.
-- `corpus-kb/src/extraction/` — Pluggable ontology extractor: `protocol.py` (Extractor Protocol), `regex_backend.py` (zero-dep fallback), `langextract_backend.py` (LLM-based with fixture support), `_langextract_types.py` (typed Protocol wrappers for langextract).
+- `corpus-kb/src/storage/` — Single backend: `PostgresGraphStore` (asyncpg + RLS). Implements the `GraphStore` ABC. The old `LanceDBStore` and `SQLiteGraphStore` have been removed. The `GraphStore` ABC supports future backends (Apache AGE via openCypher).
+- `corpus-kb/src/rag/` — OllamaEmbedder (SHA256 cache, zero-vector fallback on failure), PgmlEmbedder (PostgresML in-database embeddings), HybridSearcher (vector + FTS + RRF fusion), Reranker (identity pass-through). Also `FakeEmbedder` for CI/degraded mode.
+- `corpus-kb/src/tools/` — MCP tools across 6 modules. `ingest_common.py` is the pipeline orchestrator (partition → chunk → embed → extract → store). `ingest_tools.py` is the thin MCP tool wrapper. All ingest functions are async and write directly to Postgres via asyncpg.
+- `corpus-kb/src/extraction/` — Pluggable ontology extractor: `protocol.py` (Extractor Protocol), `regex_backend.py` (zero-dep fallback), `langextract_backend.py` (LLM-based with fixture support), `pgml_backend.py` (PostgresML ONNX NER with regex fallback).
 - `corpus-kb/src/ontology.py` — Ontology loader and Pydantic model (entity_types, relation_types with validation).
 - `corpus-kb/src/partitioning.py` — Unstructured partition wrapper with typed ElementProxy.
 - `corpus-kb/src/config.py` — Config loader with defaults, deep_update, and env var overrides.
@@ -103,7 +103,7 @@ All modules under `corpus-kb/src/` currently use absolute `from src.xxx` imports
 - `chunking/__init__.py`, `chunking/unstructured_chunker.py`
 - `extraction/__init__.py`, `extraction/protocol.py`, `extraction/regex_backend.py`, `extraction/langextract_backend.py`, `extraction/_langextract_types.py`
 - `rag/__init__.py`, `rag/embedder.py`
-- `storage/graph_store.py`, `storage/lance_store.py`
+- `storage/graph_store.py`
 - `tools/ingest_common.py` (partial — some imports still use `from src.`)
 - `tests/conftest.py`, `tests/test_ingest.py`
 
@@ -120,10 +120,10 @@ All modules under `corpus-kb/src/` currently use absolute `from src.xxx` imports
 - TDD for new features. Tests go in `corpus-kb/tests/` mirroring `src/` structure.
 - Integration tests mock Ollama (zero-vector fallback via `OllamaEmbedder` catching `ConnectionError`). Tests degrade gracefully when Ollama is unavailable.
 - Tests need `pip install -e corpus-kb/.` (editable install) to resolve imports without `sys.path` hacks.
-- `pytest-asyncio` is a dev dependency but async fixtures are not in wide use yet.
+- `pytest-asyncio` is a dev dependency. `asyncio_mode = "auto"` is set in `pyproject.toml`.
 - Config validation tests live in `tests/test_validate_configs.py` and import from `scripts/validate_configs.py` directly.
 - LangExtract fixtures are SHA256-keyed JSONL files in `tests/fixtures/langextract_recorded/` for deterministic CI runs without live LLM calls.
-- `conftest.py` provides `graph_store_tmp` fixture (temporary SQLiteGraphStore) and skips `requires_hi_res` tests on Windows (detectron2 unavailable).
+- `conftest.py` provides `pg_pool` fixture (asyncpg pool for Postgres tests) and `graph_store` fixture (PostgresGraphStore). Tests requiring Postgres are marked `@pytest.mark.asyncio`.
 
 ## Environment Variable Overrides
 
@@ -131,11 +131,10 @@ These override `config.yaml` values at runtime. Use `src/config.py`'s `load_conf
 
 | Variable | Config Key |
 |---|---|
-| `CORPUS_KB_STORAGE_PATH` | `storage.path` |
+| `CORPUS_KB_DATABASE_URL` | `database.connection_string` |
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` |
 | `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` |
-| `CORPUS_KB_GRAPH_PATH` | `graph.db_path` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
@@ -143,12 +142,13 @@ These override `config.yaml` values at runtime. Use `src/config.py`'s `load_conf
 
 The abstract `GraphStore` class in `corpus-kb/src/storage/graph_store.py` is the contract for all graph backends. To add a new backend:
 
-1. Subclass `GraphStore` and implement all `@abstractmethod` methods.
-2. Add a factory branch in `create_graph_store()`.
-3. **Do not** modify MCP graph tools — they call the interface, not the implementation.
+1. Subclass `GraphStore` and implement all `@abstractmethod` methods (all async).
+2. The `PostgresGraphStore` implementation uses asyncpg with RLS and recursive CTE BFS.
+3. When Apache AGE is available, set `graph.backend: age` in config to use openCypher `MATCH` instead of recursive CTEs.
+4. **Do not** modify MCP graph tools — they call the interface, not the implementation.
 
-The SQLiteGraphStore implementation includes:
-- Transactional writes via `@contextmanager transaction()` — all graph writes (document, chunks, entities, relations) are atomic
+The `PostgresGraphStore` implementation includes:
+- Transactional writes via `@asynccontextmanager transaction()` — all graph writes (document, chunks, entities, relations) are atomic
 - Provenance tables (documents, chunks) with FK enforcement (`PRAGMA foreign_keys=ON` per connection)
 - Batch operations (`batch_add_entities`, `batch_add_relations`) with application-level validation
 - Relation cap (`MAX_RELATIONS_PER_CHUNK = 10`) to prevent combinatorial explosion
@@ -171,4 +171,4 @@ The SQLiteGraphStore implementation includes:
 See `codemap.md` for full architecture. Per-folder codemaps at:
 `src/codemap.md`, `src/chunking/codemap.md`, `src/storage/codemap.md`, `src/rag/codemap.md`, `src/tools/codemap.md`, `src/utils/codemap.md`, `scripts/codemap.md`.
 
-Default embedding model: `nomic-embed-text` (768d). Upgradeable to `qwen3-embedding:8b-q8_0` (4096d).
+Default embedding model: `nomic-embed-text` (768d). Upgradeable to `qwen3-embedding:8b-q8_0` (4096d). PostgresML (`pgml`) also supported for in-database embeddings.

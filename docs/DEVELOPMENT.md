@@ -35,8 +35,8 @@ corpus-kb/
 │   │   └── dlq.py              # Dead-letter queue
 │   ├── chunking/               # File detection and chunkers
 │   ├── rag/                    # Embedder, hybrid search, reranker
-│   ├── storage/                # Graph store implementations
-│   ├── extraction/             # Entity/relation extractors
+│   ├── storage/                # PostgresGraphStore (asyncpg + RLS)
+│   ├── extraction/             # Entity/relation extractors (regex, langextract, pgml)
 │   ├── tools/                  # MCP tool modules
 │   └── utils/                  # Shared models
 ├── tests/                      # Pytest suite

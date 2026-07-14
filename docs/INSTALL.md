@@ -2,8 +2,6 @@
 
 This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **PostgreSQL 17** with **pgvector** and **Apache AGE**, **Python 3.11 or newer**, and **Ollama** for local embeddings.
 
-If you are upgrading from an older LanceDB/DuckDB/SQLite build, see the [Admin guide](ADMIN.md#migrating-from-the-old-storage-layer).
-
 ---
 
 ## Prerequisites
@@ -148,9 +146,11 @@ chunking:
 search:
   rrf_k: 60
   expand_context: true
+  index_type: hnsw
 
 graph:
-  extractor: regex
+  backend: postgres
+  extractor: langextract
   ontology_path: config/ontology.yaml
 ```
 
