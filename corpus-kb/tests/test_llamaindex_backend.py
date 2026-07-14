@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from src.storage.llamaindex_backend import (
@@ -35,14 +39,11 @@ async def test_initialize_ollama_unreachable_raises() -> None:
 async def test_dimension_mismatch_raises() -> None:
     """Configured dimensions that do not match the store raise DimensionMismatchError."""
     backend = LlamaIndexPostgresBackend(_config("http://localhost:11434", 512))
-    # Patch the Ollama check so we reach the PGVectorStore creation step.
-    backend._ollama_embedding = _FakeEmbedder()  # type: ignore[assignment]
-    with pytest.raises(DimensionMismatchError):
-        await backend.initialize()
-
-
-class _FakeEmbedder:
-    """Stand-in OllamaEmbedding that never makes network calls."""
-
-    async def aget_text_embedding(self, text: str) -> list[float]:
-        return [0.0] * 768
+    backend._ollama_embedding = AsyncMock()  # type: ignore[assignment]
+    fake_store = type("FakeStore", (), {"embed_dim": 768})()
+    with patch(
+        "src.storage.llamaindex_backend.PGVectorStore.from_params",
+        return_value=fake_store,
+    ):
+        with pytest.raises(DimensionMismatchError):
+            await backend.initialize()

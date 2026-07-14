@@ -28,7 +28,7 @@ from domain.models import (
     SearchResult,
     SearchSimilarQuery,
 )
-from rag.embedder import OllamaEmbedder
+from src.rag.embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
 

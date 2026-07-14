@@ -29,12 +29,17 @@ async def initialize_postgres_pool(
     connection_string: str,
 ) -> asyncpg.Pool:
     """Create and return an asyncpg connection pool."""
-    pool = await asyncpg.create_pool(
-        connection_string,
-        min_size=5,
-        max_size=20,
-        command_timeout=60.0,
-    )
+    try:
+        pool = await asyncpg.create_pool(
+            connection_string,
+            min_size=5,
+            max_size=20,
+            command_timeout=60.0,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to connect to Postgres at {connection_string}: {exc}"
+        ) from exc
     logger.info("asyncpg pool created")
     return pool
 
@@ -110,7 +115,7 @@ async def startup(
     set_dlq_handler(dlq_handler)
 
     # Embedder for projection
-    from rag.embedder import OllamaEmbedder
+    from src.rag.embedder import OllamaEmbedder
 
     embedder = OllamaEmbedder(cfg)
     embed_projection = EmbedChunksProjection(

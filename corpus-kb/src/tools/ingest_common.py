@@ -85,6 +85,8 @@ def embed_chunks(
         vectors = embedder.embed_batch(texts)
         for chunk, vector in zip(chunks, vectors, strict=True):
             chunk.embedding = vector
+        if vectors and all(all(v == 0.0 for v in vector) for vector in vectors):
+            return True, "Connection failed: OllamaEmbedder returned zero vectors"
         return False, None
     except Exception as exc:
         return True, f"{type(exc).__name__}: {exc}"
