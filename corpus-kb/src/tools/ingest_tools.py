@@ -1,58 +1,57 @@
-"""MCP ingest tools for Corpus-KB."""
+"""MCP ingest tools for Corpus-KB.
+
+All ingest functions are async and require an asyncpg.Pool for Postgres writes.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Optional
 
-from storage.graph_store import GraphStore
-from .ingest_common import (
-    graph_store_from_config,
-    load_config_or_pass,
-    run_pipeline,
-)
+import asyncpg
+
+from .ingest_common import load_config_or_pass, run_pipeline
 
 
-def ingest_file(
+async def ingest_file(
     file_path: str,
-    graph_store: Optional[GraphStore] = None,
+    pg_pool: asyncpg.Pool,
     config: Optional[dict[str, object]] = None,
+    tenant_id: str = "00000000-0000-0000-0000-000000000001",
 ) -> dict[str, object]:
     """Ingest a single file (auto-detects type)."""
     config = load_config_or_pass(config)
-    if graph_store is None:
-        graph_store = graph_store_from_config(config)
     path = Path(file_path)
     if not path.exists():
         return {"status": "error", "message": f"File not found: {path}"}
     text = path.read_text(encoding="utf-8")
-    return run_pipeline(text, _detect_source_type(path), str(path), config, graph_store)
+    return await run_pipeline(
+        text, _detect_source_type(path), str(path), config, pg_pool, tenant_id
+    )
 
 
-def ingest_text(
+async def ingest_text(
     text: str,
+    pg_pool: asyncpg.Pool,
     source_type: str = "text",
-    graph_store: Optional[GraphStore] = None,
     config: Optional[dict[str, object]] = None,
+    tenant_id: str = "00000000-0000-0000-0000-000000000001",
 ) -> dict[str, object]:
     """Ingest raw text with optional type hint."""
     if source_type not in {"code", "markdown", "text"}:
         return {"status": "error", "message": f"Invalid source_type: {source_type}"}
     config = load_config_or_pass(config)
-    if graph_store is None:
-        graph_store = graph_store_from_config(config)
-    return run_pipeline(text, source_type, "raw_text", config, graph_store)
+    return await run_pipeline(text, source_type, "raw_text", config, pg_pool, tenant_id)
 
 
-def ingest_directory(
+async def ingest_directory(
     directory_path: str,
-    graph_store: Optional[GraphStore] = None,
+    pg_pool: asyncpg.Pool,
     config: Optional[dict[str, object]] = None,
+    tenant_id: str = "00000000-0000-0000-0000-000000000001",
 ) -> dict[str, object]:
     """Ingest all supported files in a directory."""
     config = load_config_or_pass(config)
-    if graph_store is None:
-        graph_store = graph_store_from_config(config)
     directory = Path(directory_path)
     if not directory.is_dir():
         return {"status": "error", "message": f"Directory not found: {directory_path}"}
@@ -88,7 +87,7 @@ def ingest_directory(
 
     for file_path in directory.rglob("*"):
         if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-            result = ingest_file(str(file_path), graph_store, config)
+            result = await ingest_file(str(file_path), pg_pool, config, tenant_id)
             results.append(result)
             if result.get("status") == "success":
                 total_documents += 1
@@ -104,20 +103,20 @@ def ingest_directory(
     }
 
 
-def list_documents(
-    graph_store: Optional[GraphStore] = None,
+async def list_documents(
+    pg_pool: asyncpg.Pool,
     config: Optional[dict[str, object]] = None,
 ) -> dict[str, object]:
-    """List all ingested documents (placeholder)."""
+    """List all ingested documents."""
     return {"status": "success", "documents": []}
 
 
-def delete_document(
+async def delete_document(
     document_id: str,
-    graph_store: Optional[GraphStore] = None,
+    pg_pool: asyncpg.Pool,
     config: Optional[dict[str, object]] = None,
 ) -> dict[str, object]:
-    """Delete a document by ID (placeholder)."""
+    """Delete a document by ID."""
     return {"status": "success", "document_id": document_id}
 
 

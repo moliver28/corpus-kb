@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import importlib
 import sys
-from pathlib import Path
 
+import asyncpg
 import pytest
-
-from src.storage.graph_store import SQLiteGraphStore
 
 
 def pytest_configure(config: object) -> None:
@@ -19,6 +17,10 @@ def pytest_configure(config: object) -> None:
     config.addinivalue_line(
         "markers",
         "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
+    )
+    config.addinivalue_line(
+        "markers",
+        "requires_postgres: mark test as needing a running Postgres instance",
     )
 
 
@@ -34,8 +36,29 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 
 @pytest.fixture
-def graph_store_tmp(tmp_path: Path) -> SQLiteGraphStore:
-    """Provide a temporary SQLite graph store for tests."""
-    store = SQLiteGraphStore(tmp_path / "graph.db")
+async def pg_pool():
+    """Provide an asyncpg connection pool for tests.
+
+    Skips tests if Postgres is not available.
+    """
+    try:
+        pool = await asyncpg.create_pool(
+            "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
+            min_size=1,
+            max_size=2,
+            timeout=5,
+        )
+    except Exception:
+        pytest.skip("Postgres not available")
+    yield pool
+    await pool.close()
+
+
+@pytest.fixture
+async def graph_store(pg_pool):
+    """Provide a PostgresGraphStore for tests."""
+    from src.storage.graph_store import PostgresGraphStore
+
+    store = PostgresGraphStore(pg_pool)
     yield store
-    store.close()
+    await store.close()

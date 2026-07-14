@@ -5,10 +5,6 @@ server:
   host: localhost
   port: 8010
 
-storage:
-  lancedb_uri: ./data/lancedb
-  graph_db: ./data/graph.db
-
 embedding:
   provider: ollama
   model: nomic-embed-text
@@ -23,9 +19,14 @@ chunking:
 search:
   rrf_k: 60
   expand_context: true
+  index_type: hnsw
 
 graph:
+  backend: postgres
   extractor: langextract
   fixture_dir: tests/fixtures/langextract_recorded
   live_fallback: false
   ontology_path: config/ontology.yaml
+
+database:
+  connection_string: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb

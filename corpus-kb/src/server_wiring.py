@@ -81,7 +81,7 @@ async def startup(
     from handlers.query_handler import set_query_handler, QueryHandler
     from handlers.idempotency import set_idempotency_checker, IdempotencyChecker
 
-    command_handler = get_command_handler(cfg)
+    command_handler = get_command_handler(cfg, pool)
     query_handler = QueryHandler(pool)
     set_query_handler(query_handler)
     set_idempotency_checker(IdempotencyChecker(pool))

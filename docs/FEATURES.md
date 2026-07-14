@@ -32,11 +32,11 @@ The ingest pipeline runs five stages:
 
 1. **Partition** - Break the file into semantic elements.
 2. **Chunk** - Group elements into coherent chunks.
-3. **Embed** - Send each chunk to Ollama and store the vector.
+3. **Embed** - Send each chunk to the configured embedding provider (Ollama or PostgresML) and store the vector in Postgres via pgvector.
 4. **Extract** - Run the ontology-aware extractor to find entities and relations.
-5. **Store** - Persist chunks, vectors, entities, and relations. The event store records what happened for audit and replay.
+5. **Store** - Persist chunks, vectors, entities, and relations directly to Postgres. The event store records what happened for audit and replay.
 
-If Ollama is unavailable, embedding falls back to zero vectors and the pipeline continues. Errors are collected in the response so you know what happened.
+If the embedding provider is unavailable, embedding falls back to zero vectors and the pipeline continues. Errors are collected in the response so you know what happened.
 
 ---
 
@@ -103,10 +103,11 @@ The event store is the source of truth; the Postgres tables are read models that
 
 ## Configurable embeddings
 
-Switch embedding models by changing `config.yaml`:
+Switch embedding providers and models by changing `config.yaml`:
 
 ```yaml
 embedding:
+  provider: ollama  # "ollama" | "pgml"
   model: nomic-embed-text
   dimensions: 768
   batch_size: 32
@@ -116,9 +117,19 @@ For higher quality, use a larger model:
 
 ```yaml
 embedding:
+  provider: ollama
   model: qwen3-embedding:8b-q8_0
   dimensions: 4096
   batch_size: 128
+```
+
+To use PostgresML for in-database embeddings (requires the `pgml` extension):
+
+```yaml
+embedding:
+  provider: pgml
+  model: intfloat/e5-small-v2
+  dimensions: 768
 ```
 
 Make sure the `dimensions` value matches the model and that the `chunks_vectors` table was created with a compatible vector size. The default schema uses `vector(4096)` so either 768 or 4096 works as long as you keep the setting consistent.
@@ -169,7 +180,6 @@ When connected through MCP, editors can call these tools:
 | Version | `switch_branch` | Switch branch |
 | Stats | `get_stats` | Database statistics |
 | Stats | `query_document_stats` | Aggregate document statistics |
-| Sync | `sync_database` | Sync LanceDB into relational tables |
 
 The full HTTP equivalents are listed in [API.md](API.md).
 

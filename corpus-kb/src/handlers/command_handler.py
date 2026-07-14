@@ -1,12 +1,12 @@
 """Command handler — dispatches commands to domain aggregates.
 
-Wraps the existing ingest_common pipeline (partition → chunk → embed → extract → store)
+Wraps the ingest pipeline (partition → chunk → embed → extract → store)
 and creates eventsourcing aggregates + events for audit trail.
 
 Usage:
     from handlers.command_handler import get_command_handler
-    handler = get_command_handler()
-    result = handler.handle_ingest_file(IngestFileCommand(file_path='test.py'))
+    handler = get_command_handler(pool)
+    result = await handler.handle_ingest_file(IngestFileCommand(file_path='test.py'))
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ import logging
 from pathlib import Path
 from typing import Optional
 from uuid import UUID
+
+import asyncpg
 
 from domain.aggregates import Document, Entity, Relation
 from domain.application import get_app
@@ -26,26 +28,28 @@ from domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
-from tools.ingest_common import (
-    graph_store_from_config,
-    load_config_or_pass,
-    run_pipeline,
-)
+from tools.ingest_common import load_config_or_pass, run_pipeline
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 class CommandHandler:
     """Dispatches commands to domain aggregates via the eventsourcing app.
 
-    For ingest commands: calls the existing ingest_common pipeline, then
+    For ingest commands: calls the ingest pipeline (async), then
     creates a Document aggregate + fires events for audit trail.
     For entity/relation commands: creates aggregates directly.
     """
 
-    def __init__(self, config: Optional[dict[str, object]] = None) -> None:
+    def __init__(
+        self,
+        config: Optional[dict[str, object]] = None,
+        pool: Optional[asyncpg.Pool] = None,
+    ) -> None:
         self._config = load_config_or_pass(config)
-        self._graph_store = graph_store_from_config(self._config)
+        self._pool = pool
         self._app = None  # lazy init — only needed when Postgres is up
 
     @property
@@ -55,7 +59,7 @@ class CommandHandler:
             self._app = get_app()
         return self._app
 
-    def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, object]:
+    async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, object]:
         """Ingest a file: run pipeline → create Document aggregate → fire events."""
         path = Path(cmd.file_path)
         if not path.exists():
@@ -64,13 +68,17 @@ class CommandHandler:
         text = path.read_text(encoding="utf-8")
         source_type = cmd.source_type or _detect_source_type(cmd.file_path)
 
-        return self._run_ingest(text, source_type, cmd.file_path, cmd.tenant_id)
+        return await self._run_ingest(text, source_type, cmd.file_path, cmd.tenant_id)
 
-    def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
+    async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
         """Ingest raw text: run pipeline → create Document aggregate → fire events."""
-        return self._run_ingest(cmd.text, cmd.source_type, cmd.source, cmd.tenant_id)
+        return await self._run_ingest(
+            cmd.text, cmd.source_type, cmd.source, cmd.tenant_id
+        )
 
-    def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, object]:
+    async def handle_ingest_directory(
+        self, cmd: IngestDirectoryCommand
+    ) -> dict[str, object]:
         """Ingest all files in a directory."""
         dir_path = Path(cmd.directory_path)
         if not dir_path.is_dir():
@@ -81,7 +89,7 @@ class CommandHandler:
         for file_path in sorted(dir_path.glob(pattern)):
             if file_path.is_file():
                 try:
-                    result = self.handle_ingest_file(
+                    result = await self.handle_ingest_file(
                         IngestFileCommand(
                             tenant_id=cmd.tenant_id,
                             file_path=str(file_path),
@@ -143,7 +151,6 @@ class CommandHandler:
 
     def handle_delete_document(self, cmd: DeleteDocumentCommand) -> dict[str, object]:
         """Delete a document by marking the aggregate as deleted."""
-        # Reconstruct aggregate from event store
         doc_events = list(self.app.repository.get(cmd.doc_id))
         if not doc_events:
             raise ValueError(f"Document not found: {cmd.doc_id}")
@@ -154,7 +161,7 @@ class CommandHandler:
         logger.info("Deleted document %s", cmd.doc_id)
         return {"status": "success", "doc_id": str(cmd.doc_id)}
 
-    def _run_ingest(
+    async def _run_ingest(
         self,
         text: str,
         source_type: str,
@@ -164,14 +171,22 @@ class CommandHandler:
         """Run the ingest pipeline and create eventsourcing aggregates.
 
         The pipeline (ingest_common.run_pipeline) handles:
-        partition → chunk → embed → extract → store (LanceDB + graph_store)
+        partition → chunk → embed → extract → store (Postgres directly)
 
         After the pipeline succeeds, we create a Document aggregate and
         fire Ingested + ChunksAdded events for the event sourcing audit trail.
         """
-        # 1. Run the existing pipeline (preserves all existing behavior)
-        result = run_pipeline(
-            text, source_type, source_path, self._config, self._graph_store
+        if self._pool is None:
+            raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
+
+        # 1. Run the pipeline (async, writes directly to Postgres)
+        result = await run_pipeline(
+            text,
+            source_type,
+            source_path,
+            self._config,
+            self._pool,
+            str(tenant_id),
         )
 
         if result.get("status") != "success":
@@ -219,11 +234,12 @@ _command_handler: Optional[CommandHandler] = None
 
 def get_command_handler(
     config: Optional[dict[str, object]] = None,
+    pool: Optional[asyncpg.Pool] = None,
 ) -> CommandHandler:
     """Get or create the singleton CommandHandler."""
     global _command_handler
     if _command_handler is None:
-        _command_handler = CommandHandler(config)
+        _command_handler = CommandHandler(config, pool)
     return _command_handler
 
 

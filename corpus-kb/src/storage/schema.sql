@@ -118,6 +118,11 @@ CREATE TABLE IF NOT EXISTS chunks_vectors (
 -- Vector search index (ivfflat for cosine distance)
 CREATE INDEX idx_chunks_vectors_ivfflat ON chunks_vectors USING ivfflat (vector vector_cosine_ops) WITH (lists = 100);
 
+-- HNSW index (better recall for 1M+ vectors, slower build)
+CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw
+    ON chunks_vectors USING hnsw (vector vector_cosine_ops)
+    WITH (m = 16, ef_construction = 200);
+
 CREATE INDEX idx_chunks_vectors_tenant ON chunks_vectors(tenant_id);
 CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
 
@@ -181,6 +186,13 @@ ALTER TABLE relations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY relations_tenant_isolation ON relations
     USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
     WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+
+-- ============================================================================
+-- 7b. Apache AGE Graph Namespace (optional — requires AGE extension)
+-- ============================================================================
+-- If Apache AGE extension is loaded, create a graph namespace for openCypher
+-- queries. PostgresGraphStore uses cypher() when graph.backend = "age".
+-- To enable: CREATE EXTENSION IF NOT EXISTS age; SELECT * FROM age_create_graph('corpus_kb');
 
 -- ============================================================================
 -- 8. Projection Checkpoints (catch-up subscription state)
