@@ -37,12 +37,19 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 @pytest.fixture
 async def pg_pool():
-    """Provide an asyncpg connection pool for tests."""
-    pool = await asyncpg.create_pool(
-        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
-        min_size=2,
-        max_size=5,
-    )
+    """Provide an asyncpg connection pool for tests.
+
+    Skips tests if Postgres is not available.
+    """
+    try:
+        pool = await asyncpg.create_pool(
+            "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
+            min_size=1,
+            max_size=2,
+            timeout=5,
+        )
+    except Exception:
+        pytest.skip("Postgres not available")
     yield pool
     await pool.close()
 
