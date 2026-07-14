@@ -121,6 +121,12 @@ async def startup(
     docs_projection = DocumentsProjection(pool, checkpoint_mgr, dlq_handler)
     set_documents_projection(docs_projection)
 
+    # 4b. LlamaIndex RAG backend (additive, Ollama-only)
+    from storage.llamaindex_backend import LlamaIndexPostgresBackend
+
+    rag_backend = LlamaIndexPostgresBackend(cfg)
+    await rag_backend.initialize()
+
     # 5. HTTP app
     from api.http import create_http_app
 
@@ -143,6 +149,7 @@ async def startup(
         "http_app": http_app,
         "socket_server": socket_server,
         "config": cfg,
+        "rag_backend": rag_backend,
     }
 
 

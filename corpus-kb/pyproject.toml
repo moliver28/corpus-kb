@@ -29,6 +29,10 @@ dependencies = [
     "eventsourcing>=9.0",
     "starlette>=0.35",
     "uvicorn>=0.24",
+    "llama-index-core>=0.11",
+    "llama-index-vector-stores-postgres>=0.2",
+    "llama-index-llms-ollama>=0.4",
+    "llama-index-embeddings-ollama>=0.4",
 ]
 
 classifiers = [

@@ -19,6 +19,7 @@ from src.ontology import Ontology, load_ontology
 from src.partitioning import ElementProxy, partition as unstructured_partition
 from src.chunking.unstructured_chunker import chunk_elements
 from src.rag import OllamaEmbedder
+from src.storage.rag_backend import RagBackend
 from src.utils.models import Chunk, Document, Entity, Relation
 
 logger = logging.getLogger(__name__)
@@ -301,6 +302,7 @@ async def run_pipeline(
     config: dict[str, object],
     pg_pool: asyncpg.Pool,
     tenant_id: str = DEFAULT_TENANT_ID,
+    rag_backend: RagBackend | None = None,
 ) -> dict[str, object]:
     """Run the full ingest pipeline: partition, chunk, embed, extract, store.
 
@@ -363,6 +365,17 @@ async def run_pipeline(
         except Exception as exc:
             logging.warning("Entity extraction failed: %s", exc)
             errors.append(f"ExtractionError: {exc}")
+
+    # Mirror chunks into LlamaIndex RAG backend (additive path)
+    if rag_backend is not None:
+        try:
+            await rag_backend.ingest(
+                document.document_id,
+                [c.model_dump() for c in chunks],
+            )
+        except Exception as exc:
+            logging.warning("LlamaIndex ingest failed: %s", exc)
+            errors.append(f"LlamaIndexError: {exc}")
 
     # Update document chunk_count
     document.chunk_count = len(chunks)
