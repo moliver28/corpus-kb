@@ -29,14 +29,12 @@ class LlamaIndexPostgresBackend:
         db_cfg = config.get("database", {})
         emb_cfg = config.get("embedding", {})
 
-        self._connection_string = str(
-            db_cfg.get("connection_string", "")
-        ) or str(config.get("database_connection_string", ""))
+        self._connection_string = str(db_cfg.get("connection_string", "")) or str(
+            config.get("database_connection_string", "")
+        )
         self._embed_model = str(emb_cfg.get("model", "nomic-embed-text"))
         self._embed_dimensions = int(emb_cfg.get("dimensions", 768))
-        self._embed_base_url = str(
-            emb_cfg.get("base_url", "http://localhost:11434")
-        )
+        self._embed_base_url = str(emb_cfg.get("base_url", "http://localhost:11434"))
 
         self._vector_store: PGVectorStore | None = None
         self._ollama_embedding = OllamaEmbedding(
