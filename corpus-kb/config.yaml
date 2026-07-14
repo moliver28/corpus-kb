@@ -33,5 +33,13 @@ llamaindex:
   docstore: disabled
   embed_dim: 768
 
+installer:
+  auto_detect: true
+  profiles:
+    minimal: { ram_gb_max: 8, vram_gb_max: 0, model: "nomic-embed-text", llm: "qwen3:0.6b" }
+    balanced: { ram_gb_max: 16, vram_gb_max: 4, model: "nomic-embed-text", llm: "qwen3:4b" }
+    performance: { ram_gb_max: 999, vram_gb_max: 8, model: "qwen3-embedding:8b-q8_0", llm: "qwen3:14b" }
+
 database:
   connection_string: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
+  auto_migrate: true
