@@ -67,6 +67,18 @@ You can filter by source type (`code`, `markdown`, `text`) and request surroundi
 
 Entities and relations are first-class citizens. The extractor recognizes things like classes, functions, concepts, people, organizations, and products, then links them with typed relations such as `PART_OF`, `MENTIONS`, `DEFINED_AS`, and `RELATED_TO`.
 
+### Ontology-aware extraction
+
+Entity and relation types are defined in `config/ontology.yaml`. The extractor validates every extracted entity and relation against this vocabulary, rejecting types that don't match. This prevents noise from inconsistent typing.
+
+Three extraction backends are available:
+
+| Backend | Config value | Description |
+|---------|-------------|-------------|
+| Regex | `regex` | Zero-dependency fallback. Fast, deterministic, no LLM calls. |
+| LangExtract | `langextract` | LLM-based extraction with recorded fixtures for deterministic CI. |
+| PostgresML | `pgml` | In-database ONNX NER with regex fallback. Requires `pgml` extension. |
+
 You can:
 
 - Search entities by name or type.
@@ -136,6 +148,30 @@ Make sure the `dimensions` value matches the model and that the `chunks_vectors`
 
 ---
 
+## LlamaIndex RAG backend
+
+In addition to the built-in PostgresGraphStore search path, Corpus-KB includes an optional LlamaIndex RAG backend that uses PGVectorStore for vector storage and Ollama for local embeddings.
+
+```mermaid
+flowchart LR
+    Ingest --> GraphStore[PostgresGraphStore<br/>chunks + entities + relations]
+    Ingest --> LlamaIndex[LlamaIndexPostgresBackend<br/>PGVectorStore + Ollama]
+    Query --> GraphStore
+    Query --> LlamaIndex
+```
+
+Key features:
+
+- **PGVectorStore** for HNSW-indexed vector search in Postgres.
+- **Ollama embeddings** — never falls back to OpenAI or cloud providers.
+- **Dimension mismatch detection** — raises `DimensionMismatchError` if configured dimensions don't match the store.
+- **RagBackend protocol** — `src/storage/rag_backend.py` defines a `Protocol` interface so future backends can be added without changing callers.
+- **Additive** — the LlamaIndex backend runs alongside the existing PostgresGraphStore path, not replacing it.
+
+The backend is defined in `src/storage/llamaindex_backend.py` and implements the `RagBackend` protocol from `src/storage/rag_backend.py`.
+
+---
+
 ## Multi-tenancy ready
 
 Every table has row-level security policies keyed to `app.current_tenant_id`. The default tenant is `00000000-0000-0000-0000-000000000001`. In the future, adding real multi-tenancy is a matter of issuing tenant-scoped tokens and setting the tenant context per request.
@@ -149,7 +185,7 @@ When connected through MCP, editors can call these tools:
 | Category | Tool | Description |
 |----------|------|-------------|
 | Ingest | `ingest_file` | Ingest a single file |
-| Ingest | `ingest_text` | Ingest raw text with a type hint |
+| Ingest | `ingest_text` | Ingest raw text with a type hint and optional source identifier |
 | Ingest | `ingest_directory` | Recursively ingest a directory |
 | Ingest | `list_documents` | List ingested documents |
 | Ingest | `delete_document` | Delete a document |

@@ -65,7 +65,6 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` |
 | `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` |
-| `CORPUS_KB_GRAPH_PATH` | `graph.db_path` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
@@ -86,6 +85,21 @@ erDiagram
     tags ||--o{ document_tags : used
     documents ||--o{ metadata : stores
 ```
+
+### Migrations
+
+Schema changes are managed through idempotent SQL migrations in `corpus-kb/migrations/`. The migration runner (`scripts/migrate.py`) tracks applied migrations in `corpus.schema_migrations` and runs each unapplied file inside a transaction.
+
+```bash
+# Run migrations
+export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
+python scripts/migrate.py
+
+# Or use the installer
+python scripts/install.py install --apply
+```
+
+Re-running is safe — already-applied migrations are skipped.
 
 ### Projection tables
 
@@ -174,7 +188,7 @@ Set `CORPUS_KB_DATABASE_URL` or add `database.connection_string` to `config.yaml
 
 ### `relation "documents" does not exist`
 
-Load `src/storage/schema.sql`.
+Run migrations (`python scripts/migrate.py`) or load the schema SQL manually (`psql -f corpus-kb/migrations/001_corpus_schema.sql`).
 
 ### Vector search returns empty results
 

@@ -9,11 +9,19 @@ This page is for contributors and anyone who wants to understand how Corpus-KB i
 ```
 corpus-kb/
 ├── config.yaml                 # Runtime configuration
+├── config/ontology.yaml        # Entity/relation type vocabulary
 ├── pyproject.toml              # Package metadata and dependencies
+├── pyrightconfig.json          # Pyright type-checker config (basic mode)
+├── migrations/                 # Idempotent SQL migrations
+│   ├── 001_corpus_schema.sql
+│   ├── 002_corpus_rag_schema.sql
+│   └── 003_enable_extensions.sql
 ├── src/
 │   ├── server.py               # Legacy FastMCP entrypoint
 │   ├── server_wiring.py        # New async startup: HTTP, socket, MCP, projections
 │   ├── config.py               # Config loader with env overrides
+│   ├── ontology.py             # Ontology loader and Pydantic model
+│   ├── partitioning.py         # Unstructured partition wrapper
 │   ├── api/
 │   │   ├── http.py             # Starlette REST routes
 │   │   └── socket.py           # JSON-RPC socket server
@@ -33,17 +41,19 @@ corpus-kb/
 │   │   ├── documents_projection.py
 │   │   ├── checkpoint.py
 │   │   └── dlq.py              # Dead-letter queue
-│   ├── chunking/               # File detection and chunkers
+│   ├── chunking/               # File detection and chunkers (tree-sitter, markdown, text)
 │   ├── rag/                    # Embedder, hybrid search, reranker
-│   ├── storage/                # PostgresGraphStore (asyncpg + RLS)
+│   ├── storage/                # PostgresGraphStore, LlamaIndexPostgresBackend, RagBackend protocol
 │   ├── extraction/             # Entity/relation extractors (regex, langextract, pgml)
-│   ├── tools/                  # MCP tool modules
+│   ├── tools/                  # MCP tool modules (ingest_common, ingest_tools)
 │   └── utils/                  # Shared models
 ├── tests/                      # Pytest suite
 ├── scripts/
-│   ├── demo.py                 # Smoke test
-│   ├── setup.sh                # macOS / Linux install
-│   └── setup.ps1               # Windows install
+│   ├── install.py              # Full-stack installer (doctor + install --apply)
+│   ├── migrate.py              # Idempotent SQL migration runner
+│   ├── validate_configs.py     # MCP config validator (CI gate)
+│   └── demo.py                 # Smoke test
+├── docs/INGESTION.md           # Full pipeline documentation
 └── mcp-configs/                # Editor MCP configs
 ```
 
@@ -87,7 +97,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Install Postgres 17 with pgvector and AGE, create the database, and load `src/storage/schema.sql`. See [INSTALL.md](INSTALL.md) for platform details.
+Install Postgres 17 with pgvector and AGE, create the database, and run migrations (`python scripts/migrate.py`). See [INSTALL.md](INSTALL.md) for platform details. Or use the installer: `python scripts/install.py install --apply`.
 
 ---
 

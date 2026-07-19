@@ -98,11 +98,36 @@ pip install -e ".[graphqlite,dev]"
 
 ## Step 4: Load the schema
 
+The easiest way is to use the migration runner:
+
 ```bash
-psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb -f src/storage/schema.sql
+cd corpus-kb
+export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
+python scripts/migrate.py
 ```
 
-This creates the 12 projection tables plus tenants, event-sourcing checkpoint, DLQ, idempotency, tags, and metadata tables. It also enables RLS policies and inserts the default tenant placeholder.
+Migrations are idempotent — re-running is a no-op. They are tracked in `corpus.schema_migrations`.
+
+Alternatively, load the schema SQL manually:
+
+```bash
+psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
+  -f corpus-kb/migrations/001_corpus_schema.sql
+```
+
+This creates the projection tables plus tenants, event-sourcing checkpoint, DLQ, idempotency, tags, and metadata tables. It also enables RLS policies and inserts the default tenant placeholder.
+
+### Using the installer
+
+You can also let the installer handle database creation and migrations:
+
+```bash
+cd corpus-kb
+python scripts/install.py doctor      # read-only diagnostics
+python scripts/install.py install --apply   # guided setup with per-step confirmation
+```
+
+The installer detects your hardware profile, creates the database if needed, runs migrations, pulls the recommended Ollama model, and writes a config file to `~/.corpus-kb/config.yaml`.
 
 ---
 
@@ -162,7 +187,6 @@ You can also use environment variables. These override any value in `config.yaml
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` |
 | `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` |
-| `CORPUS_KB_GRAPH_PATH` | `graph.db_path` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
@@ -224,7 +248,7 @@ Re-run `CREATE EXTENSION` as a superuser on the `corpus_kb` database.
 
 ### `relation "documents" does not exist`
 
-Load `src/storage/schema.sql` before starting the server.
+Load the schema via migrations (`python scripts/migrate.py`) or manually (`psql -f corpus-kb/migrations/001_corpus_schema.sql`) before starting the server.
 
 ### Ollama connection errors
 
