@@ -77,35 +77,35 @@ All active code is under `corpus-kb/`:
 
 - `corpus-kb/src/server.py` — FastMCP entrypoint and CLI (`--transport stdio|sse`, `--port`, `--config`)
 - `corpus-kb/src/chunking/` — File type detection → chunker dispatch. Strategy pattern: CodeChunker (tree-sitter AST), MarkdownChunker (heading boundaries), TextChunker (semantic gap detection). Also `unstructured_chunker.py` for Unstructured element → Chunk mapping.
-- `corpus-kb/src/storage/` — Single backend: `PostgresGraphStore` (asyncpg + RLS). Implements the `GraphStore` ABC. The old `LanceDBStore` and `SQLiteGraphStore` have been removed. The `GraphStore` ABC supports future backends (Apache AGE via openCypher).
+- `corpus-kb/src/storage/` — Single backend: `PostgresGraphStore` (asyncpg + RLS). Implements the `GraphStore` ABC. The old `LanceDBStore` and `SQLiteGraphStore` have been removed. Also includes `LlamaIndexPostgresBackend` (PGVectorStore + Ollama) and `RagBackend` Protocol for future backends.
 - `corpus-kb/src/rag/` — OllamaEmbedder (SHA256 cache, zero-vector fallback on failure), PgmlEmbedder (PostgresML in-database embeddings), HybridSearcher (vector + FTS + RRF fusion), Reranker (identity pass-through). Also `FakeEmbedder` for CI/degraded mode.
-- `corpus-kb/src/tools/` — MCP tools across 6 modules. `ingest_common.py` is the pipeline orchestrator (partition → chunk → embed → extract → store). `ingest_tools.py` is the thin MCP tool wrapper. All ingest functions are async and write directly to Postgres via asyncpg.
+- `corpus-kb/src/tools/` — MCP tools across 6 modules. `ingest_common.py` is the pipeline orchestrator (partition → chunk → embed → extract → store). `ingest_tools.py` is the thin MCP tool wrapper. All ingest functions are async and write directly to Postgres via asyncpg. `ingest_text` accepts an optional `source` parameter for custom source identifiers. `delete_document` removes a document and cascades to chunks/entities/relations.
 - `corpus-kb/src/extraction/` — Pluggable ontology extractor: `protocol.py` (Extractor Protocol), `regex_backend.py` (zero-dep fallback), `langextract_backend.py` (LLM-based with fixture support), `pgml_backend.py` (PostgresML ONNX NER with regex fallback).
 - `corpus-kb/src/ontology.py` — Ontology loader and Pydantic model (entity_types, relation_types with validation).
 - `corpus-kb/src/partitioning.py` — Unstructured partition wrapper with typed ElementProxy.
 - `corpus-kb/src/config.py` — Config loader with defaults, deep_update, and env var overrides.
 - `corpus-kb/config.yaml` — Primary config. Also `config/ontology.yaml` for entity/relation type vocabulary.
+- `corpus-kb/scripts/install.py` — Full-stack intelligent installer with `doctor` (read-only diagnostics) and `install --apply` (guided setup with per-step confirmation).
+- `corpus-kb/scripts/migrate.py` — Idempotent SQL migration runner. Tracks applied migrations in `corpus.schema_migrations`.
 - `corpus-kb/scripts/validate_configs.py` — Validates all MCP config JSON files. Must pass in CI.
+- `corpus-kb/migrations/` — SQL migration files (`001_corpus_schema.sql`, `002_corpus_rag_schema.sql`, `003_enable_extensions.sql`).
 - `corpus-kb/docs/INGESTION.md` — Full pipeline documentation (partition, chunk, embed, extract, store, error handling, fixture system).
 - `mcp-configs/` — Per-editor MCP config files. `opencode.json` uses `"mcp"` key (new format), `claude-code.json` and `cursor.json` use `"mcpServers"` (legacy). **Do not** use `mcpServers` in OpenCode format.
 
 ## Import Convention (IMPORTANT)
 
-All modules under `corpus-kb/src/` currently use absolute `from src.xxx` imports (e.g., `from src.config import load_config`). This works because the editable install adds `corpus-kb/src/` to `sys.path`, but it is fragile — running from the repo root causes the legacy `src/` tree to shadow the active one. **Issue #29** tracks converting these to relative imports.
+All modules under `corpus-kb/src/` use **relative imports** (e.g., `from ..config import load_config`, `from .graph_store import PostgresGraphStore`). This was resolved in issue #29 (commit `fe3dc9e`).
 
-**Already converted** (in PR #28):
-- `storage/__init__.py` — `from .graph_store`, `from .lance_store`
-- `storage/lance_store.py` — `from ._lance_typed`
-- `tools/ingest_common.py` — `from storage.graph_store`, `from storage.lance_store`
-- `tools/ingest_tools.py` — `from storage.graph_store`, `from .ingest_common`
+**Tests** under `corpus-kb/tests/` use **absolute** `from src.xxx` imports because pytest top-level test modules cannot use relative imports. This is intentional and correct.
 
-**Still using `from src.xxx`** (to be converted in issue #29):
-- `chunking/__init__.py`, `chunking/unstructured_chunker.py`
-- `extraction/__init__.py`, `extraction/protocol.py`, `extraction/regex_backend.py`, `extraction/langextract_backend.py`, `extraction/_langextract_types.py`
-- `rag/__init__.py`, `rag/embedder.py`
-- `storage/graph_store.py`
-- `tools/ingest_common.py` (partial — some imports still use `from src.`)
-- `tests/conftest.py`, `tests/test_ingest.py`
+**5 remaining `from src.` imports in `src/`** (intentional — these are cross-package references that break when imported as top-level packages by callers using `from rag.embedder import ...`):
+- `server_wiring.py` — `from src.rag.embedder import OllamaEmbedder`
+- `handlers/query_handler.py` — `from src.rag.embedder import OllamaEmbedder`
+- `projections/embed_projection.py` — `from src.rag.embedder import OllamaEmbedder`
+- `extraction/__init__.py` — `from src.extraction.pgml_backend import PgmlExtractor`
+- `extraction/pgml_backend.py` — `from src.extraction.regex_backend import RegexExtractor`
+
+These were changed from relative (`from ..rag.embedder`) back to absolute (`from src.rag.embedder`) because the relative form caused `ImportError: attempted relative import beyond top-level package` when `rag` was imported as a top-level package.
 
 ## Data Model Conventions
 
@@ -161,10 +161,12 @@ The `PostgresGraphStore` implementation includes:
 
 ## Known Issues (check open GitHub issues before fixing)
 
-- **#13 (HIGH BUG)**: Knowledge graph stays empty after ingest. Entity extraction pipeline is broken — entities/relations are not being populated despite `extract_entities: true`. (Partially addressed by PR #28's ontology pipeline, but legacy `src/graph/extractor.py` may still be broken.)
-- **#15/#16 (HIGH/MEDIUM BUG)**: `setup.sh` does not produce a working install on clean macOS and has several minor defects.
-- **#17 (HIGH FEATURE)**: Zero-data-loss shutdown/restart with transactional ingest.
-- **#29 (MEDIUM TASK)**: Convert `from src.xxx` absolute imports to relative imports across `corpus-kb/src/` to eliminate the dual-source-tree shadowing issue.
+- **#13 (HIGH BUG)**: ✅ Resolved — ontology pipeline cherry-picked and adapted to Postgres (commit `6d62175`). Entity/relation extraction now works via `src/extraction/` with regex, langextract, and pgml backends.
+- **#15/#16 (HIGH/MEDIUM BUG)**: ✅ Resolved — `setup.sh` replaced by full-stack installer `scripts/install.py` (commit `dc17c25`). Use `corpus-kb doctor` and `corpus-kb install --apply`.
+- **#17 (HIGH FEATURE)**: Zero-data-loss shutdown/restart with transactional ingest. Not yet implemented.
+- **#29 (MEDIUM TASK)**: ✅ Mostly resolved — `corpus-kb/src/` converted to relative imports (commit `fe3dc9e`). 5 files remain using `from src.` due to top-level package import constraints (see Import Convention section above).
+- **#31 (MEDIUM FEATURE)**: Upgrade NER extraction to BERT/transformer models. Not yet implemented.
+- **#2 (MEDIUM TASK)**: PyPI publish. Not yet implemented.
 
 ## Repository Map
 

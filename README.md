@@ -12,8 +12,11 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 
 - **Hybrid search** that blends vector similarity, full-text search, and rank fusion
 - **Knowledge graph** with entities, relations, and BFS traversal
+- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML)
+- **LlamaIndex RAG backend** with PGVectorStore and Ollama for local vector search
 - **Event sourcing** for audit trails and time-travel queries
 - **Multi-tenant Postgres** with row-level security on every table
+- **Full-stack installer** with hardware detection, profile-based recommendations, and guided setup
 - **MCP, HTTP, and socket APIs** so any editor or script can talk to it
 
 ---
@@ -79,7 +82,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 From zero to a working system in about ten minutes:
 
 ```bash
-# 1. Install Postgres 17 with pgvector and Apache AGE, then create a database
+# 1. Install Postgres 17 with pgvector, then create a database
 #    See docs/INSTALL.md for platform-specific steps.
 
 # 2. Clone the repo
@@ -89,9 +92,14 @@ cd corpus-kb
 # 3. Install the package
 pip install -e ".[dev]"
 
-# 4. Load the schema
-psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
-  -f corpus-kb/src/storage/schema.sql
+# 4. Run the installer (detects hardware, creates DB, runs migrations, pulls models)
+cd corpus-kb
+python scripts/install.py doctor     # read-only diagnostics
+python scripts/install.py install --apply   # guided setup with confirmations
+
+# Or load the schema manually:
+#   psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
+#     -f corpus-kb/migrations/001_corpus_schema.sql
 
 # 5. Pull the embedding model
 ollama pull nomic-embed-text
@@ -124,12 +132,13 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
 | Page | What it covers |
 |------|----------------|
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
-| [Features](docs/FEATURES.md) | Ingest, search, graph, tags, metadata, versioning, embedding models |
+| [Features](docs/FEATURES.md) | Ingest, search, graph, tags, metadata, versioning, embedding models, LlamaIndex RAG |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
 | [API](docs/API.md) | HTTP routes, request bodies, curl examples, MCP tool reference |
 | [Development](docs/DEVELOPMENT.md) | Architecture deep dive, testing, PR workflow, conventions |
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
+| [Ingestion](corpus-kb/docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
 
 ---
 
