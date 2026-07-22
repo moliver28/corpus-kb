@@ -2,6 +2,18 @@
 
 from __future__ import annotations
 
-from .embedder import FakeEmbedder, OllamaEmbedder
+from .embedder import (
+    FakeEmbedder,
+    OllamaEmbedder,
+    PgmlEmbedder,
+    aembed_batch,
+    create_embedder,
+)
 
-__all__ = ["FakeEmbedder", "OllamaEmbedder"]
+__all__ = [
+    "FakeEmbedder",
+    "OllamaEmbedder",
+    "PgmlEmbedder",
+    "aembed_batch",
+    "create_embedder",
+]

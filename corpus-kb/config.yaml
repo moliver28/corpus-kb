@@ -6,7 +6,8 @@ server:
   port: 8010
 
 embedding:
-  provider: ollama
+  provider: pgml
+  fallback_provider: ollama
   model: nomic-embed-text
   base_url: http://localhost:11434
   batch_size: 32

@@ -119,7 +119,8 @@ def get_default_config() -> dict[str, object]:
             "extractor": "langextract",
         },
         "embedding": {
-            "provider": "ollama",
+            "provider": "pgml",
+            "fallback_provider": "ollama",
             "model": "nomic-embed-text",
             "base_url": "http://localhost:11434",
             "batch_size": 32,

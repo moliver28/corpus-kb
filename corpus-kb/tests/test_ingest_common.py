@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+import pytest
+
+from src.rag.embedder import OllamaEmbedder
 from src.tools.ingest_common import (
     _extract_entities_flag,
     _extractor_name,
@@ -56,10 +61,164 @@ def test_ontology_with_fallback_path() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_embed_chunks_dead_port_returns_degraded_tuple() -> None:
+class _FakePgmlConn:
+    """Fake asyncpg connection answering pgml.embed(TEXT[]) calls."""
+
+    def __init__(
+        self,
+        dimensions: int = 768,
+        *,
+        fail: bool = False,
+        zero: bool = False,
+    ) -> None:
+        self.dimensions = dimensions
+        self.fail = fail
+        self.zero = zero
+        self.fetch_calls: list[tuple[str, str, list[str]]] = []
+
+    async def fetch(
+        self, sql: str, model: str, texts: list[str]
+    ) -> list[dict[str, list[float]]]:
+        self.fetch_calls.append((sql, model, list(texts)))
+        if self.fail:
+            raise RuntimeError("pgml extension unavailable")
+        value = 0.0 if self.zero else 0.5
+        return [{"embed": [value] * self.dimensions} for _ in texts]
+
+
+class _FakePool:
+    """Fake asyncpg.Pool: acquire() returns an async context manager."""
+
+    def __init__(self, conn: _FakePgmlConn) -> None:
+        self._conn = conn
+
+    def acquire(self) -> _FakePool:
+        return self
+
+    async def __aenter__(self) -> _FakePgmlConn:
+        return self._conn
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+def _pgml_ingest_config(**overrides: object) -> dict[str, object]:
+    """pgml-primary config whose ollama fallback points at a dead port."""
+    embedding: dict[str, object] = {
+        "provider": "pgml",
+        "fallback_provider": "ollama",
+        "model": "nomic-embed-text",
+        "base_url": "http://localhost:65432",
+        "batch_size": 100,
+        "dimensions": 768,
+    }
+    embedding.update(overrides)
+    return {"embedding": embedding}
+
+
+async def test_embed_chunks_pgml_primary_success() -> None:
+    """pgml primary produces real vectors: not degraded, fallback never needed."""
+    conn = _FakePgmlConn()
+    chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
+
+    degraded, error = await embed_chunks(
+        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+    )
+
+    assert degraded is False
+    assert error is None
+    assert chunks[0].embedding == [0.5] * 768
+    assert len(conn.fetch_calls) == 1
+
+
+async def test_embed_chunks_pgml_zero_vectors_falls_back_to_ollama(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pgml zero-vectors: fallback ollama repopulates real vectors, degraded=True.
+
+    The degraded flag must reflect that the primary failed (not misleading
+    success), and the stale zero-vectors must not persist as embeddings.
+    """
+    conn = _FakePgmlConn(zero=True)
+    real_vector = [0.7] * 768
+    monkeypatch.setattr(
+        OllamaEmbedder,
+        "embed_batch",
+        lambda self, texts: [list(real_vector) for _ in texts],
+    )
+    chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
+
+    degraded, error = await embed_chunks(
+        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+    )
+
+    assert degraded is True
+    assert error is not None
+    assert "pgml" in error and "ollama" in error
+    assert chunks[0].embedding == real_vector
+
+
+async def test_embed_chunks_pgml_sql_error_falls_back_to_ollama(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pgml SQL failure (extension missing): fallback ollama vectors, degraded=True."""
+    conn = _FakePgmlConn(fail=True)
+    real_vector = [0.9] * 768
+    monkeypatch.setattr(
+        OllamaEmbedder,
+        "embed_batch",
+        lambda self, texts: [list(real_vector) for _ in texts],
+    )
+    chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
+
+    degraded, error = await embed_chunks(
+        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+    )
+
+    assert degraded is True
+    assert error is not None
+    assert chunks[0].embedding == real_vector
+
+
+async def test_embed_chunks_both_providers_fail_returns_zero_vectors() -> None:
+    """pgml zeros + dead-port ollama fallback: degraded, zeros, message names both."""
+    conn = _FakePgmlConn(zero=True)
+    chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
+
+    degraded, error = await embed_chunks(
+        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+    )
+
+    assert degraded is True
+    assert error is not None
+    assert "both returned zero vectors" in error
+    assert "pgml" in error and "ollama" in error
+    assert chunks[0].embedding == [0.0] * 768
+
+
+async def test_embed_chunks_same_provider_skips_fallback_attempt() -> None:
+    """provider == fallback_provider: fallback is not attempted a second time."""
+    conn = _FakePgmlConn(zero=True)
+    chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
+
+    degraded, error = await embed_chunks(
+        chunks,
+        _pgml_ingest_config(fallback_provider="pgml"),
+        pool=_FakePool(conn),  # type: ignore[arg-type]
+    )
+
+    assert degraded is True
+    assert error is not None
+    assert "PgmlEmbedder returned zero vectors" in error
+    assert len(conn.fetch_calls) == 1
+    assert chunks[0].embedding == [0.0] * 768
+
+
+async def test_embed_chunks_dead_port_returns_degraded_tuple() -> None:
     """embed_chunks with a dead port returns (True, error_string)."""
     config: dict[str, object] = {
         "embedding": {
+            "provider": "ollama",
             "model": "nomic-embed-text",
             "dimensions": 768,
             "base_url": "http://localhost:99999",
@@ -67,17 +226,18 @@ def test_embed_chunks_dead_port_returns_degraded_tuple() -> None:
         }
     }
     chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
-    degraded, error = embed_chunks(chunks, config)
+    degraded, error = await embed_chunks(chunks, config)
     assert degraded is True
     assert error is not None
     assert isinstance(error, str)
     assert len(error) > 0
 
 
-def test_embed_chunks_success_returns_ok_tuple() -> None:
+async def test_embed_chunks_success_returns_ok_tuple() -> None:
     """embed_chunks with a working Ollama returns (False, None)."""
     config: dict[str, object] = {
         "embedding": {
+            "provider": "ollama",
             "model": "nomic-embed-text",
             "dimensions": 768,
             "base_url": "http://localhost:11434",
@@ -85,7 +245,7 @@ def test_embed_chunks_success_returns_ok_tuple() -> None:
         }
     }
     chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
-    degraded, error = embed_chunks(chunks, config)
+    degraded, error = await embed_chunks(chunks, config)
     # If Ollama is running, this should be (False, None).
     # If not running, it should be (True, error_string).
     assert isinstance(degraded, bool)

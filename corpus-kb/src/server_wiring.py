@@ -114,10 +114,10 @@ async def startup(
     set_checkpoint_manager(checkpoint_mgr)
     set_dlq_handler(dlq_handler)
 
-    # Embedder for projection
-    from src.rag.embedder import OllamaEmbedder
+    # Embedder for projection (provider selected by embedding.provider)
+    from src.rag import create_embedder
 
-    embedder = OllamaEmbedder(cfg)
+    embedder = create_embedder(cfg, pool)
     embed_projection = EmbedChunksProjection(
         pool, embedder, checkpoint_mgr, dlq_handler
     )
