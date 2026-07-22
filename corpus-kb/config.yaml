@@ -43,3 +43,9 @@ installer:
 database:
   connection_string: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
   auto_migrate: true
+
+# LLM for chat + text generation via local Ollama HTTP API
+# (replaces archived pgai; no cloud APIs — nothing leaves the machine).
+llm:
+  model: qwen3:4b
+  base_url: http://localhost:11434

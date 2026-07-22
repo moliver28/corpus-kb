@@ -134,6 +134,10 @@ def get_default_config() -> dict[str, object]:
             "expand_context": True,
             "index_type": "hnsw",
         },
+        "llm": {
+            "model": "qwen3:4b",
+            "base_url": "http://localhost:11434",
+        },
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
         },
