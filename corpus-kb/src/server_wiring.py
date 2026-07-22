@@ -18,11 +18,46 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import asyncpg
 
+if TYPE_CHECKING:
+    from src.storage.graph_store import GraphStore
+
 logger = logging.getLogger(__name__)
+
+
+async def create_graph_store(
+    cfg: dict[str, object],
+    pool: asyncpg.Pool,
+) -> "GraphStore":
+    """Instantiate the configured GraphStore backend.
+
+    backend="age" tries AgeGraphStore first and falls back to
+    PostgresGraphStore when Apache AGE is unavailable. backend="postgres"
+    selects PostgresGraphStore directly.
+    """
+    from src.storage import AgeGraphStore, AgeUnavailableError, PostgresGraphStore
+
+    graph_cfg = cfg.get("graph", {})
+    backend = graph_cfg.get("backend", "age")
+
+    if backend == "age":
+        try:
+            store: "GraphStore" = AgeGraphStore(pool)
+            await store.search_entities("")  # probe AGE availability
+            return store
+        except AgeUnavailableError as exc:
+            logger.warning(
+                "Apache AGE graph backend unavailable: %s. "
+                "Falling back to PostgresGraphStore.",
+                exc,
+            )
+            return PostgresGraphStore(pool)
+    if backend == "postgres":
+        return PostgresGraphStore(pool)
+    raise ValueError(f"Unknown graph backend: {backend!r}. Use 'age' or 'postgres'.")
 
 
 async def initialize_postgres_pool(
@@ -96,7 +131,8 @@ async def startup(
     from handlers.tag_handler import TagHandler, set_tag_handler
     from handlers.versioning_handler import VersioningHandler, set_versioning_handler
 
-    set_graph_handler(GraphHandler(pool))
+    graph_store = await create_graph_store(cfg, pool)
+    set_graph_handler(GraphHandler(graph_store))
     set_tag_handler(TagHandler(pool))
     set_versioning_handler(VersioningHandler(pool))
 

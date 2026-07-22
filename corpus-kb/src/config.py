@@ -115,7 +115,7 @@ def get_default_config() -> dict[str, object]:
             "port": 8010,
         },
         "graph": {
-            "backend": "postgres",
+            "backend": "age",
             "extractor": "langextract",
         },
         "embedding": {
