@@ -11,9 +11,9 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
-from uuid import UUID
 
 import asyncpg
 
@@ -31,6 +31,22 @@ from domain.models import (
 from src.rag.embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
+
+
+def _fusion_payload(rows: list[dict[str, Any]]) -> str:
+    """Serialize one hybrid-search side to the JSONB shape corpus.rrf_fusion expects."""
+    return json.dumps(
+        [
+            {
+                "chunk_id": str(row["chunk_id"]),
+                "text": row["text"],
+                "source": row["source"],
+                "doc_id": str(row["doc_id"]),
+                "score": float(row["score"]),
+            }
+            for row in rows
+        ]
+    )
 
 
 class QueryHandler:
@@ -78,7 +94,7 @@ class QueryHandler:
                     logger.warning("Vector search failed: %s", exc)
 
             # 2. Full-text search
-            fts_results = await conn.fetch(
+            fts_results: list[dict[str, Any]] = await conn.fetch(
                 """
                 SELECT c.chunk_id, c.text, c.doc_id, d.source,
                        ts_rank(to_tsvector('english', c.text), plainto_tsquery('english', $1)) AS score
@@ -94,39 +110,33 @@ class QueryHandler:
                 query.k * 2,
             )
 
-            # 3. RRF fusion
-            rrf_k = 60
-            scores: dict[str, float] = {}
-            texts: dict[str, str] = {}
-            sources: dict[str, str] = {}
-            doc_ids: dict[str, str] = {}
-
-            for rank, row in enumerate(vector_results):
-                cid = str(row["chunk_id"])
-                scores[cid] = scores.get(cid, 0.0) + 1.0 / (rrf_k + rank + 1)
-                texts[cid] = row["text"]
-                sources[cid] = row["source"]
-                doc_ids[cid] = str(row["doc_id"])
-
-            for rank, row in enumerate(fts_results):
-                cid = str(row["chunk_id"])
-                scores[cid] = scores.get(cid, 0.0) + 1.0 / (rrf_k + rank + 1)
-                texts[cid] = row["text"]
-                sources[cid] = row["source"]
-                doc_ids[cid] = str(row["doc_id"])
-
-            # Sort by RRF score, take top k
-            ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[: query.k]
+            # 3. RRF fusion in PostgreSQL (migrations/006_rrf_fusion.sql)
+            try:
+                fused_rows = await conn.fetch(
+                    """
+                    SELECT chunk_id, text, source, doc_id, score
+                    FROM corpus.rrf_fusion($1::jsonb, $2::jsonb, $3, $4)
+                    """,
+                    _fusion_payload(vector_results),
+                    _fusion_payload(fts_results),
+                    query.k,
+                    60,
+                )
+            except asyncpg.UndefinedFunctionError as exc:
+                raise RuntimeError(
+                    "corpus.rrf_fusion() is not installed — apply migration 006 "
+                    "(corpus-kb/migrations/006_rrf_fusion.sql) via scripts/migrate.py"
+                ) from exc
 
             return [
                 SearchResult(
-                    chunk_id=UUID(cid),
-                    text=texts[cid],
-                    score=score,
-                    source=sources[cid],
-                    doc_id=UUID(doc_ids[cid]),
+                    chunk_id=row["chunk_id"],
+                    text=row["text"],
+                    score=row["score"],
+                    source=row["source"],
+                    doc_id=row["doc_id"],
                 )
-                for cid, score in ranked
+                for row in fused_rows
             ]
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
