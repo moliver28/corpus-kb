@@ -30,6 +30,23 @@ DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_CONFIG_DIR = Path.home() / ".corpus-kb"
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.yaml"
 
+# PostgreSQL server extensions required by migrations 004/005.
+EXTENSIONS: tuple[tuple[str, str], ...] = (
+    ("age", "Apache AGE"),
+    ("pgml", "PostgresML"),
+)
+EXTENSION_REMEDIATION = (
+    "use the Corpus-KB docker-compose stack (corpus-kb setup) which bundles "
+    "both extensions, or install manually: https://age.apache.org/ and "
+    "https://github.com/postgresml/postgresml"
+)
+
+# Best-effort native package candidates per platform: {os: (manager, [packages])}.
+_EXTENSION_PACKAGES: dict[str, tuple[str, list[str]]] = {
+    "Linux": ("apt", ["postgresql-17-age", "postgresql-17-pgml"]),
+    "Darwin": ("brew", ["apache-age", "postgresml"]),
+}
+
 
 def _detect_gpu_vram_gb() -> float:
     """Return total GPU VRAM in GB, or 0.0 if pynvml is unavailable."""
@@ -121,6 +138,30 @@ async def check_ollama(base_url: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+async def check_extensions(
+    connection_string: str,
+) -> dict[str, tuple[bool, str]] | None:
+    """Return {name: (installed, version)} for AGE/pgml, or None if unreachable.
+
+    None distinguishes "could not check" from "checked and missing" so the
+    doctor report never claims an extension is absent when it was never read.
+    """
+    try:
+        conn = await asyncpg.connect(connection_string, timeout=3)
+    except Exception:
+        return None
+    try:
+        rows = await conn.fetch(
+            "SELECT extname, extversion FROM pg_extension "
+            "WHERE extname = ANY($1::text[])",
+            [name for name, _ in EXTENSIONS],
+        )
+    finally:
+        await conn.close()
+    versions = {row["extname"]: row["extversion"] for row in rows}
+    return {name: (name in versions, versions.get(name, "")) for name, _ in EXTENSIONS}
+
+
 def print_doctor_report(info: dict[str, Any]) -> None:
     """Print read-only diagnostic report."""
     print("\n=== Corpus-KB Doctor ===")
@@ -130,8 +171,23 @@ def print_doctor_report(info: dict[str, Any]) -> None:
     print(f"RAM:          {info['ram_gb']} GB")
     print(f"GPU VRAM:     {info['vram_gb']} GB")
     print(f"Profile:      {info['profile']}")
-    print(f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'} ({info['postgres_msg']})")
-    print(f"Ollama:       {'OK' if info['ollama_ok'] else 'UNREACHABLE'} ({info['ollama_msg']})")
+    print(
+        f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'} ({info['postgres_msg']})"
+    )
+    print(
+        f"Ollama:       {'OK' if info['ollama_ok'] else 'UNREACHABLE'} ({info['ollama_msg']})"
+    )
+    print("Extensions:")
+    extensions = info.get("extensions")
+    for name, label in EXTENSIONS:
+        if extensions is None:
+            print(f"  {label} ({name}): UNKNOWN (Postgres unreachable; cannot verify)")
+        else:
+            installed, version = extensions[name]
+            if installed:
+                print(f"  {label} ({name}): OK v{version}")
+            else:
+                print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
     print("\nRecommended commands (run with --apply to execute):")
     print("  1. pip install -e .[dev]")
     print("  2. corpus-kb install --apply")
@@ -152,6 +208,9 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     )
     info["postgres_ok"], info["postgres_msg"] = (
         await check_postgres(conn_str) if conn_str else (False, "no connection string")
+    )
+    info["extensions"] = (
+        await check_extensions(conn_str) if info["postgres_ok"] else None
     )
 
     emb_cfg = config.get("embedding", {})
@@ -178,8 +237,50 @@ def install_python_deps() -> int:
     return result.returncode
 
 
+def _package_install_cmd(manager: str, package: str) -> list[str]:
+    """Build the platform package-install command (non-interactive, fail-fast)."""
+    if manager == "apt":
+        return ["sudo", "-n", "apt-get", "install", "-y", package]
+    return ["brew", "install", package]
+
+
+def install_extension_packages(apply: bool) -> int:
+    """Best-effort native install of the AGE + pgml Postgres server packages.
+
+    Returns 0 on a dry run or when every package install succeeds; returns 1
+    with a clear remediation message when the platform is unsupported or a
+    package manager fails. Never raises and never skips silently.
+    """
+    print("\n  PostgreSQL server extensions (AGE + pgml):")
+    system = platform.system()
+    candidate = _EXTENSION_PACKAGES.get(system)
+    if candidate is None:
+        print(f"  ERROR: AGE and pgml have no supported native installer on {system}.")
+        print(f"  Remediation: {EXTENSION_REMEDIATION}")
+        return 1
+    manager, packages = candidate
+    if not apply:
+        print(f"  (dry run) would install via {manager}: {', '.join(packages)}")
+        return 0
+    rc = 0
+    for package in packages:
+        print(f"  Installing {package} via {manager} (best-effort)...")
+        try:
+            result = subprocess.run(_package_install_cmd(manager, package))
+        except OSError as exc:
+            print(f"  ERROR: could not run {manager}: {exc}")
+            print(f"  Remediation: {EXTENSION_REMEDIATION}")
+            rc = 1
+            continue
+        if result.returncode != 0:
+            print(f"  WARNING: {package} install failed (exit {result.returncode}).")
+            print(f"  Remediation: {EXTENSION_REMEDIATION}")
+            rc = 1
+    return rc
+
+
 async def install_database(conn_str: str, apply: bool) -> int:
-    """Create database and run migrations if confirmed."""
+    """Create database, install extensions, and run migrations if confirmed."""
     print("\n[Step 2/5] PostgreSQL database setup...")
     if not apply or not confirm("Create database (if needed) and run migrations."):
         print("  Skipped.")
@@ -203,11 +304,19 @@ async def install_database(conn_str: str, apply: bool) -> int:
     except Exception as exc:
         print(f"  Database creation step failed (continuing): {exc}")
 
+    # Install AGE + pgml server packages before migrations 004/005 need them.
+    ext_rc = install_extension_packages(apply)
+
     # Run migrations.
     from migrate import run_migrations
 
-    await run_migrations(conn_str)
-    return 0
+    try:
+        await run_migrations(conn_str)
+    except Exception as exc:
+        print(f"  ERROR: migrations failed: {exc}")
+        print(f"  If AGE or pgml are missing on this server: {EXTENSION_REMEDIATION}")
+        return 1
+    return ext_rc
 
 
 def install_ollama_model(model: str, apply: bool) -> int:
@@ -244,7 +353,9 @@ def write_config(profile: str, config: dict[str, Any], force: bool) -> int:
     }
 
     DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DEFAULT_CONFIG_PATH.write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
+    DEFAULT_CONFIG_PATH.write_text(
+        yaml.safe_dump(output, sort_keys=False), encoding="utf-8"
+    )
     print(f"  Wrote {DEFAULT_CONFIG_PATH}")
     return 0
 
@@ -265,9 +376,9 @@ async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
     profile_cfg = profiles.get(info["profile"], {})
     model = profile_cfg.get("model", "nomic-embed-text")
 
-    conn_str = str(config.get("database", {}).get("connection_string", "")) or os.environ.get(
-        "CORPUS_KB_DATABASE_URL", ""
-    )
+    conn_str = str(
+        config.get("database", {}).get("connection_string", "")
+    ) or os.environ.get("CORPUS_KB_DATABASE_URL", "")
 
     print("\n=== Corpus-KB Installer ===")
     print(f"Detected profile: {info['profile']}")
