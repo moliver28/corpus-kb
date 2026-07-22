@@ -116,7 +116,7 @@ def get_default_config() -> dict[str, object]:
         },
         "graph": {
             "backend": "age",
-            "extractor": "langextract",
+            "extractor": "pgml",
         },
         "embedding": {
             "provider": "pgml",

@@ -6,15 +6,19 @@ from typing import Any
 
 import pytest
 
+from src.extraction.pgml_backend import PgmlExtractor
+from src.extraction.regex_backend import RegexExtractor
+from src.ontology import load_ontology
 from src.rag.embedder import OllamaEmbedder
 from src.tools.ingest_common import (
     _extract_entities_flag,
     _extractor_name,
     embed_chunks,
+    extract_with_fallback,
     load_config_or_pass,
     ontology,
 )
-from src.utils.models import Chunk
+from src.utils.models import Chunk, Entity
 
 
 # ---------------------------------------------------------------------------
@@ -274,12 +278,6 @@ def test_extractor_name_with_explicit_value() -> None:
     assert _extractor_name(config) == "langextract"
 
 
-def test_extractor_name_defaults_to_regex() -> None:
-    """_extractor_name defaults to 'regex' when not configured."""
-    config: dict[str, object] = {"graph": {}}
-    assert _extractor_name(config) == "regex"
-
-
 # ---------------------------------------------------------------------------
 # _extract_entities_flag
 # ---------------------------------------------------------------------------
@@ -301,3 +299,221 @@ def test_extract_entities_flag_defaults_true() -> None:
     """_extract_entities_flag defaults to True when not configured."""
     config: dict[str, object] = {"graph": {}}
     assert _extract_entities_flag(config) is True
+
+
+# ---------------------------------------------------------------------------
+# extract_with_fallback
+# ---------------------------------------------------------------------------
+
+
+class _FakePoolNoConn:
+    """Minimal asyncpg.Pool stand-in for extraction tests."""
+
+    def acquire(self) -> "_FakePoolNoConn":
+        return self
+
+    async def __aenter__(self) -> "_FakePoolNoConn":
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
+    """When pgml succeeds, extractor_id honestly reports 'pgml'."""
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology = load_ontology("config/ontology.yaml")
+
+    class _HappyPgml(PgmlExtractor):
+        extractor_id = "pgml"
+
+        def __init__(self) -> None:
+            super().__init__(pool=None)
+
+        async def aextract(
+            self, chunks: list[Chunk], ont: Any, source_document_id: str
+        ) -> tuple[list[Entity], list[Any]]:
+            return [
+                Entity(
+                    name="Acme",
+                    entity_type="Org",
+                    source_type="text",
+                    source_document_id=source_document_id,
+                    chunk_id=chunks[0].chunk_id,
+                    confidence=None,
+                    extractor_id="pgml",
+                    metadata={},
+                )
+            ], []
+
+    import src.tools.ingest_common as ingest_module
+    import src.extraction as extraction_module
+
+    original_create_extractor = ingest_module.create_extractor
+    extraction_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
+    ingest_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
+    try:
+        entities, relations, extractor_id = await extract_with_fallback(
+            [chunk],
+            ontology,
+            "doc-pgml",
+            {"graph": {"extractor": "pgml"}},
+            pool=_FakePoolNoConn(),
+        )
+        assert extractor_id == "pgml"
+        assert len(entities) == 1
+    finally:
+        extraction_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+        ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+
+
+async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() -> None:
+    """pgml failure cascades to langextract; langextract failure cascades to regex."""
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology = load_ontology("config/ontology.yaml")
+    calls: list[str] = []
+
+    class _FailingPgml(PgmlExtractor):
+        extractor_id = "pgml"
+
+        def __init__(self) -> None:
+            super().__init__(pool=None)
+
+        async def aextract(
+            self, chunks: list[Chunk], ont: Any, source_document_id: str
+        ) -> tuple[list[Entity], list[Any]]:
+            calls.append("pgml")
+            raise RuntimeError("pgml unavailable")
+
+    class _FailingLangextract:
+        extractor_id = "langextract"
+
+        def extract(
+            self, chunks: list[Chunk], ont: Any, source_document_id: str
+        ) -> tuple[list[Entity], list[Any]]:
+            calls.append("langextract")
+            raise ImportError("langextract missing")
+
+    import src.tools.ingest_common as ingest_module
+    import src.extraction as extraction_module
+
+    original_create_extractor = ingest_module.create_extractor
+
+    def _fake_create_extractor(config: dict[str, object], pool: Any = None) -> Any:
+        graph = config.get("graph", {})
+        assert isinstance(graph, dict)
+        name = graph.get("extractor", "pgml")
+        if name == "pgml":
+            return _FailingPgml()
+        if name == "langextract":
+            return _FailingLangextract()
+        return RegexExtractor()
+
+    extraction_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
+    ingest_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
+    try:
+        entities, relations, extractor_id = await extract_with_fallback(
+            [chunk],
+            ontology,
+            "doc-cascade",
+            {"graph": {"extractor": "pgml"}},
+            pool=_FakePoolNoConn(),
+        )
+        assert calls == ["pgml", "langextract"]
+        assert extractor_id == "regex"
+        assert len(entities) >= 0
+    finally:
+        extraction_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+        ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+
+
+async def test_extract_with_fallback_langextract_success_honors_id() -> None:
+    """When only langextract succeeds, extractor_id honestly reports 'langextract'."""
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology = load_ontology("config/ontology.yaml")
+    calls: list[str] = []
+
+    class _FailingPgml(PgmlExtractor):
+        extractor_id = "pgml"
+
+        def __init__(self) -> None:
+            super().__init__(pool=None)
+
+        async def aextract(
+            self, chunks: list[Chunk], ont: Any, source_document_id: str
+        ) -> tuple[list[Entity], list[Any]]:
+            calls.append("pgml")
+            raise RuntimeError("pgml unavailable")
+
+    class _HappyLangextract:
+        extractor_id = "langextract"
+
+        def extract(
+            self, chunks: list[Chunk], ont: Any, source_document_id: str
+        ) -> tuple[list[Entity], list[Any]]:
+            calls.append("langextract")
+            return [
+                Entity(
+                    name="Acme",
+                    entity_type="Org",
+                    source_type="text",
+                    source_document_id=source_document_id,
+                    chunk_id=chunks[0].chunk_id,
+                    confidence=None,
+                    extractor_id="langextract",
+                    metadata={},
+                )
+            ], []
+
+    import src.tools.ingest_common as ingest_module
+    import src.extraction as extraction_module
+
+    original_create_extractor = ingest_module.create_extractor
+
+    def _fake_create_extractor(config: dict[str, object], pool: Any = None) -> Any:
+        graph = config.get("graph", {})
+        assert isinstance(graph, dict)
+        name = graph.get("extractor", "pgml")
+        if name == "pgml":
+            return _FailingPgml()
+        if name == "langextract":
+            return _HappyLangextract()
+        return RegexExtractor()
+
+    extraction_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
+    ingest_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
+    try:
+        entities, relations, extractor_id = await extract_with_fallback(
+            [chunk],
+            ontology,
+            "doc-lang",
+            {"graph": {"extractor": "pgml"}},
+            pool=_FakePoolNoConn(),
+        )
+        assert calls == ["pgml", "langextract"]
+        assert extractor_id == "langextract"
+        assert len(entities) == 1
+    finally:
+        extraction_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+        ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+
+
+async def test_extract_with_fallback_unknown_extractor_raises() -> None:
+    """An unsupported extractor name propagates as ValueError, not silent regex."""
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology = load_ontology("config/ontology.yaml")
+
+    with pytest.raises(ValueError, match="Unsupported graph extractor: bogus"):
+        await extract_with_fallback(
+            [chunk],
+            ontology,
+            "doc-bogus",
+            {"graph": {"extractor": "bogus"}},
+            pool=_FakePoolNoConn(),
+        )
+
+
+def test_extractor_name_defaults_to_pgml() -> None:
+    """_extractor_name defaults to 'pgml' when not configured."""
+    config: dict[str, object] = {"graph": {}}
+    assert _extractor_name(config) == "pgml"

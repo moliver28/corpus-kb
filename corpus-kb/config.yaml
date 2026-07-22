@@ -24,7 +24,7 @@ search:
 
 graph:
   backend: age
-  extractor: langextract
+  extractor: pgml
   fixture_dir: tests/fixtures/langextract_recorded
   live_fallback: false
   ontology_path: config/ontology.yaml

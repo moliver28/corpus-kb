@@ -11,6 +11,7 @@ from unittest.mock import MagicMock
 from src.extraction import (
     LangExtractExtractor,
     OntologyViolationError,
+    PgmlExtractor,
     RegexExtractor,
     create_extractor,
 )
@@ -212,12 +213,40 @@ class TestExtractorFactory:
         extractor = create_extractor({"graph": {"extractor": "langextract"}})
         assert isinstance(extractor, LangExtractExtractor)
 
-    def test_factory_defaults_to_langextract(self) -> None:
-        """Given no explicit extractor, factory defaults to langextract."""
+    def test_factory_defaults_to_pgml(self) -> None:
+        """Given no explicit extractor, factory defaults to pgml."""
         extractor = create_extractor({"graph": {}})
+        assert isinstance(extractor, PgmlExtractor)
+
+    def test_factory_explicit_langextract_returns_langextract(self) -> None:
+        """Given config graph.extractor=langextract, factory returns LangExtractExtractor."""
+        extractor = create_extractor({"graph": {"extractor": "langextract"}})
         assert isinstance(extractor, LangExtractExtractor)
 
     def test_factory_llamaindex_raises_not_implemented(self) -> None:
         """Given config graph.extractor=llamaindex, factory raises NotImplementedError."""
         with pytest.raises(NotImplementedError):
             create_extractor({"graph": {"extractor": "llamaindex"}})
+
+    def test_factory_returns_pgml_extractor_with_pool(self) -> None:
+        """Given config graph.extractor=pgml, factory returns PgmlExtractor holding pool."""
+        sentinel = object()
+        extractor = create_extractor({"graph": {"extractor": "pgml"}}, pool=sentinel)
+        assert isinstance(extractor, PgmlExtractor)
+        assert extractor._pool is sentinel
+
+    def test_factory_pgml_uses_pool_and_returns_distinct_instances(self) -> None:
+        """PgmlExtractor receives its own pool; two calls do not share state."""
+        pool_a = object()
+        pool_b = object()
+        extractor_a = create_extractor({"graph": {"extractor": "pgml"}}, pool=pool_a)
+        extractor_b = create_extractor({"graph": {"extractor": "pgml"}}, pool=pool_b)
+        assert isinstance(extractor_a, PgmlExtractor)
+        assert isinstance(extractor_b, PgmlExtractor)
+        assert extractor_a._pool is pool_a
+        assert extractor_b._pool is pool_b
+
+    def test_factory_unknown_extractor_raises_value_error(self) -> None:
+        """Given an unsupported extractor name, factory raises ValueError."""
+        with pytest.raises(ValueError, match="Unsupported graph extractor: bogus"):
+            create_extractor({"graph": {"extractor": "bogus"}})

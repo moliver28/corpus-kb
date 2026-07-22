@@ -70,15 +70,18 @@ result includes `degraded: true` and an error message in the `errors` list.
 
 ### Stage 4: Extract
 
-Entities and relations are extracted from chunks using either the
-LangExtract backend (LLM-based, ontology-aware) or the RegexExtractor
-(rule-based, ontology-agnostic fallback). Extraction is capped at 10
-relations per chunk to prevent quadratic explosion. LangExtract offsets
-are validated --- invalid offsets (negative, start >= end, out of bounds)
-are skipped with a warning.
+Entities and relations are extracted from chunks using a configurable
+chain. The default primary extractor is ``PostgresML NER`` (``pgml``),
+which runs ONNX NER models inside Postgres via ``pgml.transform()``.
+When pgml is unavailable, the pipeline falls back to LangExtract
+(LLM-based, ontology-aware), then to RegexExtractor (rule-based,
+ontology-agnostic fallback). Extraction is capped at 10 relations per
+chunk to prevent quadratic explosion. LangExtract offsets are validated
+--- invalid offsets (negative, start >= end, out of bounds) are skipped
+with a warning.
 
-- **Files**: `src/extraction/langextract_backend.py`, `src/extraction/regex_backend.py`
-- **Config**: `graph.extractor: langextract | regex`, `graph.extract_entities: true`
+- **Files**: `src/extraction/pgml_backend.py`, `src/extraction/langextract_backend.py`, `src/extraction/regex_backend.py`
+- **Config**: `graph.extractor: pgml | langextract | regex`, `graph.extract_entities: true`
 
 ### Stage 5: Store
 
@@ -137,14 +140,18 @@ If not set, defaults to `config/ontology.yaml`.
 
 ## Extractor Seam
 
-The pipeline supports two extractors via a strategy pattern:
+The pipeline supports three extractors via a strategy pattern:
 
-1. **LangExtract** (`graph.extractor: langextract`): LLM-based extraction
+1. **PostgresML NER** (`graph.extractor: pgml`, default): ONNX NER inside
+   Postgres via ``pgml.transform()``. Falls back to LangExtract, then to
+   RegexExtractor when pgml is unavailable.
+
+2. **LangExtract** (`graph.extractor: langextract`): LLM-based extraction
    with ontology-aware type enforcement. Uses recorded fixtures for
    deterministic test runs. Falls back to RegexExtractor on import error
    or empty extraction.
 
-2. **RegexExtractor** (`graph.extractor: regex`): Rule-based extraction
+3. **RegexExtractor** (`graph.extractor: regex`): Rule-based extraction
    using heading patterns and camelCase splitting. Ontology-agnostic ---
    produces `CONCEPT` and `CLASS` types regardless of ontology config.
 
@@ -152,13 +159,15 @@ The pipeline supports two extractors via a strategy pattern:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `graph.extractor` | `regex` | Extractor: `langextract` or `regex` |
+| `graph.extractor` | `pgml` | Extractor: `pgml`, `langextract`, or `regex` |
 | `graph.extract_entities` | `true` | Enable entity extraction |
 | `graph.ontology_path` | `config/ontology.yaml` | Path to ontology YAML |
-| `graph.backend` | `sqlite` | Graph store backend |
+| `graph.backend` | `age` | Graph store backend |
 | `storage.graph_db` | `./data/graph.db` | SQLite graph DB path |
 | `storage.lancedb_uri` | (none) | LanceDB vector store URI |
-| `embedding.model` | `nomic-embed-text` | Ollama embedding model |
+| `embedding.provider` | `pgml` | Embedding provider |
+| `embedding.fallback_provider` | `ollama` | Fallback embedding provider |
+| `embedding.model` | `nomic-embed-text` | Embedding model |
 | `embedding.dimensions` | `768` | Vector dimensions |
 | `embedding.base_url` | `http://localhost:11434` | Ollama API URL |
 
