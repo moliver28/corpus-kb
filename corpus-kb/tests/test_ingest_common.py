@@ -122,7 +122,9 @@ async def test_embed_chunks_pgml_primary_success() -> None:
     chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
 
     degraded, error = await embed_chunks(
-        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+        chunks,
+        _pgml_ingest_config(),
+        pool=_FakePool(conn),  # type: ignore[arg-type]
     )
 
     assert degraded is False
@@ -149,7 +151,9 @@ async def test_embed_chunks_pgml_zero_vectors_falls_back_to_ollama(
     chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
 
     degraded, error = await embed_chunks(
-        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+        chunks,
+        _pgml_ingest_config(),
+        pool=_FakePool(conn),  # type: ignore[arg-type]
     )
 
     assert degraded is True
@@ -172,7 +176,9 @@ async def test_embed_chunks_pgml_sql_error_falls_back_to_ollama(
     chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
 
     degraded, error = await embed_chunks(
-        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+        chunks,
+        _pgml_ingest_config(),
+        pool=_FakePool(conn),  # type: ignore[arg-type]
     )
 
     assert degraded is True
@@ -186,7 +192,9 @@ async def test_embed_chunks_both_providers_fail_returns_zero_vectors() -> None:
     chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
 
     degraded, error = await embed_chunks(
-        chunks, _pgml_ingest_config(), pool=_FakePool(conn)  # type: ignore[arg-type]
+        chunks,
+        _pgml_ingest_config(),
+        pool=_FakePool(conn),  # type: ignore[arg-type]
     )
 
     assert degraded is True
