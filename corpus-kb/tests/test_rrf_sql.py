@@ -302,7 +302,10 @@ async def test_handle_search_calls_sql_rrf_function() -> None:
     mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    handler = QueryHandler(pool=mock_pool)  # no embedder -> vector side empty
+    handler = QueryHandler(
+        pool=mock_pool,
+        config={"embedding": {"provider": "ollama", "model": "nomic-embed-text"}},
+    )  # no embedder -> vector side empty
     results = await handler.handle_search(SearchQuery(query="test", k=5))
 
     fusion_call = mock_conn.fetch.call_args_list[1]
@@ -336,6 +339,9 @@ async def test_handle_search_missing_rrf_function_is_loud() -> None:
     mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    handler = QueryHandler(pool=mock_pool)
+    handler = QueryHandler(
+        pool=mock_pool,
+        config={"embedding": {"provider": "ollama", "model": "nomic-embed-text"}},
+    )
     with pytest.raises(RuntimeError, match="006"):
         await handler.handle_search(SearchQuery(query="test", k=5))

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 import asyncpg
 
@@ -28,6 +28,7 @@ from domain.models import (
     SearchResult,
     SearchSimilarQuery,
 )
+from src.config import load_config
 from src.rag.embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
@@ -57,10 +58,14 @@ class QueryHandler:
     """
 
     def __init__(
-        self, pool: asyncpg.Pool, embedder: Optional[OllamaEmbedder] = None
+        self,
+        pool: asyncpg.Pool,
+        embedder: Optional[OllamaEmbedder] = None,
+        config: Optional[dict[str, object]] = None,
     ) -> None:
         self._pool = pool
         self._embedder = embedder
+        self._config = config or load_config()
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: vector similarity + full-text search with RRF fusion."""
@@ -70,9 +75,37 @@ class QueryHandler:
                 str(query.tenant_id),
             )
 
-            # 1. Vector search (if embedder available)
+            # 1. Vector search
             vector_results: list[dict[str, Any]] = []
-            if self._embedder:
+            embedding_cfg = cast(dict[str, object], self._config.get("embedding", {}))
+            provider = str(embedding_cfg.get("provider", "pgml"))
+
+            if provider == "pgml":
+                try:
+                    model = str(embedding_cfg.get("model", "nomic-embed-text"))
+                    vector_results = await conn.fetch(
+                        """
+                        SELECT c.chunk_id, c.text, c.doc_id, d.source,
+                               1 - (cv.vector <=> (
+                                   SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
+                               )::vector) AS score
+                        FROM chunks_vectors cv
+                        JOIN chunks c ON cv.chunk_id = c.chunk_id
+                        JOIN documents d ON c.doc_id = d.doc_id
+                        WHERE cv.tenant_id = $3
+                        ORDER BY cv.vector <=> (
+                            SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
+                        )::vector ASC
+                        LIMIT $4
+                        """,
+                        model,
+                        query.query,
+                        str(query.tenant_id),
+                        query.k * 2,
+                    )
+                except Exception as exc:
+                    logger.warning("Vector search failed: %s", exc)
+            elif provider == "ollama" and self._embedder:
                 try:
                     query_vector = self._embedder.embed(query.query)
                     vector_results = await conn.fetch(
@@ -92,6 +125,10 @@ class QueryHandler:
                     )
                 except Exception as exc:
                     logger.warning("Vector search failed: %s", exc)
+            elif provider != "ollama":
+                raise ValueError(
+                    f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'"
+                )
 
             # 2. Full-text search
             fts_results: list[dict[str, Any]] = await conn.fetch(
