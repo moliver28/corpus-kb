@@ -253,6 +253,25 @@ class TestPgmlEmbedderBatch:
         assert vector == [0.5] * 768
         assert len(conn.fetch_calls) == 1
 
+    async def test_embed_batch_one_thousand_chunks_uses_at_most_ten_sql_calls(
+        self,
+    ) -> None:
+        """1000 texts with batch_size=100 must use <=10 TEXT[] SQL round-trips."""
+        conn = _FakePgmlConn()
+        embedder = PgmlEmbedder(_pgml_config(batch_size=100), pool=_FakePool(conn))  # type: ignore[arg-type]
+
+        texts = [f"chunk-{i}" for i in range(1000)]
+        vectors = await embedder.embed_batch(texts)
+
+        assert len(vectors) == 1000
+        assert len(conn.fetch_calls) <= 10
+        total_texts = sum(len(call[2]) for call in conn.fetch_calls)
+        assert total_texts == 1000
+        for sql, model, batch in conn.fetch_calls:
+            assert "::text[]" in sql
+            assert model == "nomic-embed-text"
+            assert len(batch) <= 100
+
 
 class TestCreateEmbedder:
     def test_pgml_provider_returns_pgml_embedder(self) -> None:
