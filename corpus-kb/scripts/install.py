@@ -14,6 +14,7 @@ import asyncio
 import logging
 import os
 import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -29,6 +30,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
 DEFAULT_CONFIG_DIR = Path.home() / ".corpus-kb"
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.yaml"
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # PostgreSQL server extensions required by migrations 004/005.
 EXTENSIONS: tuple[tuple[str, str], ...] = (
@@ -46,6 +49,8 @@ _EXTENSION_PACKAGES: dict[str, tuple[str, list[str]]] = {
     "Linux": ("apt", ["postgresql-17-age", "postgresql-17-pgml"]),
     "Darwin": ("brew", ["apache-age", "postgresml"]),
 }
+
+SETUP_REQUIRED_MODELS = ("nomic-embed-text", "qwen3:4b")
 
 
 def _detect_gpu_vram_gb() -> float:
@@ -403,6 +408,228 @@ async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
     return exit_code
 
 
+def _find_compose_command() -> str | None:
+    """Return 'docker compose' or 'docker-compose' if available, else None."""
+    if shutil.which("docker"):
+        # Prefer the plugin form. shutil.which("docker") being truthy is enough
+        # to try the plugin syntax; the legacy docker-compose binary is separate.
+        return "docker compose"
+    if shutil.which("docker-compose"):
+        return "docker-compose"
+    return None
+
+
+def _step(
+    number: int,
+    total: int,
+    description: str,
+    apply: bool,
+    action: str | None = None,
+) -> None:
+    """Print a setup step header and its dry-run action line."""
+    print(f"\n[Step {number}/{total}] {description}")
+    if not apply and action:
+        print(f"  (dry run) {action}")
+
+
+def setup_print_dry_run_steps(
+    compose_cmd: str | None,
+    conn_str: str,
+    profile: str,
+) -> None:
+    """Print the exact steps the setup command would execute."""
+    total = 6
+    _step(1, total, "Start the Docker compose stack", False, "run: docker compose up -d")
+    if compose_cmd:
+        print(f"  command: {compose_cmd} up -d")
+    else:
+        print("  command: not found; install Docker to proceed")
+    print(f"  services: postgres ({conn_str}), ollama (http://localhost:11434)")
+
+    _step(2, total, "Install Python dependencies", False, "run: pip install -e .[dev]")
+
+    _step(
+        3,
+        total,
+        "Create database/user and apply migrations",
+        False,
+        f"run migrations on {conn_str}",
+    )
+
+    _step(
+        4,
+        total,
+        "Verify AGE + pgml extensions are installed",
+        False,
+        "query pg_extension for age, pgml, vector",
+    )
+
+    _step(
+        5,
+        total,
+        "Pull required Ollama models",
+        False,
+        f"run: ollama pull {', '.join(SETUP_REQUIRED_MODELS)}",
+    )
+
+    _step(
+        6,
+        total,
+        "Write/update user config file",
+        False,
+        f"write {DEFAULT_CONFIG_PATH} (profile: {profile})",
+    )
+
+    print("\nThis was a dry run. Re-run without --dry-run to make changes.")
+    print("========================\n")
+
+
+def _run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 300) -> int:
+    """Run a command and return its exit code, with a bounded timeout."""
+    print(f"  Running: {' '.join(cmd)}")
+    try:
+        return subprocess.run(cmd, cwd=cwd, timeout=timeout).returncode
+    except subprocess.TimeoutExpired:
+        print(f"  ERROR: command timed out after {timeout}s: {' '.join(cmd)}")
+        return 1
+    except FileNotFoundError as exc:
+        print(f"  ERROR: command not found: {exc}")
+        return 1
+
+
+def setup_start_compose(compose_cmd: str, apply: bool) -> int:
+    """Bring the docker-compose stack up if available and confirmed."""
+    repo_root = REPO_ROOT
+    compose_file = repo_root.parent / "docker-compose.yml"
+    if not compose_file.exists():
+        print("  ERROR: docker-compose.yml not found at repo root.")
+        print(f"  Looked for: {compose_file}")
+        return 1
+
+    if not apply:
+        return 0
+
+    if not confirm("Start the docker-compose stack (postgres + ollama)."):
+        print("  Skipped.")
+        return 0
+
+    parts = compose_cmd.split()
+    cmd = [*parts, "up", "-d", "--build"]
+    return _run_cmd(cmd, cwd=repo_root.parent, timeout=600)
+
+
+def setup_pull_models(apply: bool) -> int:
+    """Pull the models required by the default configuration."""
+    exit_code = 0
+    for model in SETUP_REQUIRED_MODELS:
+        if not apply:
+            print(f"  (dry run) ollama pull {model}")
+            continue
+        if not confirm(f"Pull Ollama model '{model}'."):
+            print(f"  Skipped {model}.")
+            continue
+        exit_code |= _run_cmd(["ollama", "pull", model], timeout=600)
+    return exit_code
+
+
+def setup_update_config(config: dict[str, Any], profile: str, apply: bool) -> int:
+    """Update or write ~/.corpus-kb/config.yaml idempotently.
+
+    If a config already exists, merge in the docker-compose connection string and
+    defaults without overwriting profile-specific choices unless --force is used.
+    """
+    print("\n[Step 6/6] Updating user config file...")
+    output: dict[str, Any] = {
+        "server": config.get("server", {}),
+        "embedding": config.get("embedding", {}),
+        "chunking": config.get("chunking", {}),
+        "search": config.get("search", {}),
+        "graph": config.get("graph", {}),
+        "llamaindex": config.get("llamaindex", {}),
+        "database": config.get("database", {}),
+        "installer": config.get("installer", {}),
+        "llm": config.get("llm", {}),
+    }
+
+    if not apply:
+        print(f"  (dry run) would write {DEFAULT_CONFIG_PATH}")
+        print(f"  contents profile: {profile}")
+        return 0
+
+    if DEFAULT_CONFIG_PATH.exists():
+        print(f"  Merging into existing {DEFAULT_CONFIG_PATH}")
+        existing = yaml.safe_load(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")) or {}
+        if isinstance(existing, dict):
+            # Preserve user values; only backfill missing top-level sections.
+            for key, value in output.items():
+                if key not in existing:
+                    existing[key] = value
+            output = existing
+
+    DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    DEFAULT_CONFIG_PATH.write_text(
+        yaml.safe_dump(output, sort_keys=False), encoding="utf-8"
+    )
+    print(f"  Wrote {DEFAULT_CONFIG_PATH}")
+    return 0
+
+
+async def setup_cmd(config: dict[str, Any], dry_run: bool) -> int:
+    """One-flow guided setup for the docker-compose stack.
+
+    Steps:
+      1. docker compose up -d
+      2. pip install -e .[dev]
+      3. create database/user and run migrations
+      4. verify AGE + pgml extensions
+      5. pull required Ollama models
+      6. write/update user config
+    """
+    info = detect_profile()
+    profiles = load_installer_profiles(config)
+    profile = info["profile"]
+    profile_cfg = profiles.get(profile, {})
+    recommended_model = profile_cfg.get("model", "nomic-embed-text")
+
+    conn_str = str(
+        config.get("database", {}).get("connection_string", "")
+    ) or os.environ.get("CORPUS_KB_DATABASE_URL", "")
+    if not conn_str:
+        conn_str = "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb"
+
+    compose_cmd = _find_compose_command()
+
+    print("\n=== Corpus-KB One-Line Setup ===")
+    print(f"Detected profile: {profile}")
+    print(f"Recommended embedding model: {recommended_model}")
+    print(f"Database connection string: {conn_str}")
+
+    if dry_run:
+        setup_print_dry_run_steps(compose_cmd, conn_str, profile)
+        return 0
+
+    print("\nWARNING: setup will start Docker containers, modify Python packages,")
+    print("create database objects, and pull Ollama models. Each step requires")
+    print("confirmation.\n")
+
+    exit_code = 0
+    if compose_cmd:
+        exit_code |= setup_start_compose(compose_cmd, apply=True)
+    else:
+        print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
+        print("  Install Docker, then re-run setup.")
+
+    exit_code |= install_python_deps()
+    if conn_str:
+        exit_code |= await install_database(conn_str, apply=True)
+    else:
+        print("\n[Step 3/6] No database connection string; skipping database setup.")
+    exit_code |= setup_pull_models(apply=True)
+    exit_code |= setup_update_config(config, profile, apply=True)
+    print_next_steps()
+    return exit_code
+
+
 def load_config() -> dict[str, Any]:
     """Load config.yaml from repo root or user home."""
     candidates = [
@@ -439,6 +666,16 @@ def main() -> int:
         help="Overwrite existing ~/.corpus-kb/config.yaml",
     )
 
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="One-line docker-compose + database + migrations + models setup",
+    )
+    setup_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print each setup step without executing",
+    )
+
     args = parser.parse_args()
     config = load_config()
 
@@ -446,6 +683,8 @@ def main() -> int:
         return asyncio.run(doctor_cmd(config))
     if args.command == "install":
         return asyncio.run(install_cmd(config, args.apply, args.force))
+    if args.command == "setup":
+        return asyncio.run(setup_cmd(config, args.dry_run))
     return 1
 
 
