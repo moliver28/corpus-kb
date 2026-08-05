@@ -9,11 +9,15 @@ from .embedder import (
     aembed_batch,
     create_embedder,
 )
+from .reranker import IdentityReranker, PgmlReranker, create_reranker
 
 __all__ = [
     "FakeEmbedder",
+    "IdentityReranker",
     "OllamaEmbedder",
     "PgmlEmbedder",
+    "PgmlReranker",
     "aembed_batch",
     "create_embedder",
+    "create_reranker",
 ]

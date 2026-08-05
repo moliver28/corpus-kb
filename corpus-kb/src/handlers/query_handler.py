@@ -30,6 +30,7 @@ from domain.models import (
 )
 from src.config import load_config
 from src.rag.embedder import OllamaEmbedder
+from src.rag.reranker import Reranker, create_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,7 @@ class QueryHandler:
         self._pool = pool
         self._embedder = embedder
         self._config = config or load_config()
+        self._reranker: Reranker = create_reranker(self._config, pool)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: vector similarity + full-text search with RRF fusion."""
@@ -165,7 +167,7 @@ class QueryHandler:
                     "(corpus-kb/migrations/006_rrf_fusion.sql) via scripts/migrate.py"
                 ) from exc
 
-            return [
+            fused_results = [
                 SearchResult(
                     chunk_id=row["chunk_id"],
                     text=row["text"],
@@ -175,6 +177,11 @@ class QueryHandler:
                 )
                 for row in fused_rows
             ]
+
+        # 4. Optional cross-encoder reranking of the fused top-k (default:
+        # identity pass-through). Runs outside the handler's connection so a
+        # max_size=1 pool cannot deadlock on the reranker's own acquire.
+        return await self._reranker.rerank(query.query, fused_results)
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a read-only SQL query."""

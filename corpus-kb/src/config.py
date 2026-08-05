@@ -134,6 +134,8 @@ def get_default_config() -> dict[str, object]:
             "rrf_k": 60,
             "expand_context": True,
             "index_type": "hnsw",
+            "reranker": "none",
+            "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
         },
         "llm": {
             "model": "qwen3:4b",
