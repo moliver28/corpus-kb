@@ -439,7 +439,9 @@ def setup_print_dry_run_steps(
 ) -> None:
     """Print the exact steps the setup command would execute."""
     total = 6
-    _step(1, total, "Start the Docker compose stack", False, "run: docker compose up -d")
+    _step(
+        1, total, "Start the Docker compose stack", False, "run: docker compose up -d"
+    )
     if compose_cmd:
         print(f"  command: {compose_cmd} up -d")
     else:

@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import asyncpg
+
 from .protocol import Extractor
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
@@ -25,7 +27,7 @@ class PgmlExtractor:
 
     extractor_id: str = "pgml"
 
-    def __init__(self, pool: Optional[object] = None) -> None:
+    def __init__(self, pool: Optional[asyncpg.Pool] = None) -> None:
         self._pool = pool
         self._fallback: Optional[Extractor] = None
 
@@ -91,12 +93,11 @@ class PgmlExtractor:
         source_document_id: str,
     ) -> tuple[list[Entity], list[Relation]]:
         """Async extraction via pgml.transform()."""
-        import asyncpg
-
         entities: list[Entity] = []
         seen_names: set[str] = set()
 
-        pool: asyncpg.Pool = self._pool  # type: ignore[assignment]
+        pool = self._pool
+        assert pool is not None
         async with pool.acquire() as conn:
             for chunk in chunks:
                 if not chunk.text or not chunk.text.strip():
