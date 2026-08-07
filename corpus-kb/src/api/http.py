@@ -13,6 +13,7 @@ Routes:
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 from uuid import UUID
@@ -20,8 +21,29 @@ from uuid import UUID
 from starlette.applications import Starlette
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse as _StarletteJSONResponse
 from starlette.routing import Route
+
+
+class JSONResponse(_StarletteJSONResponse):
+    """JSONResponse that serializes non-native types (UUID, datetime) via str().
+
+    Handler methods return raw asyncpg rows whose columns include UUID and
+    timestamp objects. Starlette's default json.dumps cannot serialize those
+    and raises 'Object of type UUID is not JSON serializable'. Routing every
+    response through this subclass fixes it uniformly, so individual routes
+    do not each have to remember to coerce their result.
+    """
+
+    def render(self, content: Any) -> bytes:
+        return json.dumps(
+            content,
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=None,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
 
 from src.domain.models import (
     AddEntityCommand,
