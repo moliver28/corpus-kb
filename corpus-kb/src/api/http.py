@@ -73,7 +73,7 @@ async def ingest_file(request: Request) -> JSONResponse:
             source_type=body.get("source_type"),
         )
         handler = get_command_handler()
-        result = handler.handle_ingest_file(cmd)
+        result = await handler.handle_ingest_file(cmd)
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse(
@@ -97,7 +97,7 @@ async def ingest_text(request: Request) -> JSONResponse:
             source_type=body.get("source_type", "text"),
         )
         handler = get_command_handler()
-        result = handler.handle_ingest_text(cmd)
+        result = await handler.handle_ingest_text(cmd)
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse(
@@ -120,7 +120,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
             recursive=body.get("recursive", True),
         )
         handler = get_command_handler()
-        result = handler.handle_ingest_directory(cmd)
+        result = await handler.handle_ingest_directory(cmd)
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse(
