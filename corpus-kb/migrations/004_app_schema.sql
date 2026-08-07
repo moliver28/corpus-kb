@@ -1,11 +1,11 @@
 -- ============================================================================
--- Corpus-KB Postgres Schema with Multi-Tenant RLS
+-- Corpus-KB Application Schema (migration 004)
 -- ============================================================================
--- SUPERSEDED: this file is not applied by scripts/migrate.py. It documents
--- the intended schema; migrations/004_app_schema.sql is the corrected copy
--- that migrate.py actually runs (vector(768) instead of vector(4096), plus
--- guarded ivfflat/hnsw index creation). Edit both files together if the
--- schema changes, or this file will drift and mislead the next reader.
+-- This is the schema the application code actually queries. Migrations
+-- 001-003 created a separate, unused corpus.sources/corpus.nodes schema and
+-- the corpus_rag namespace; this migration adds the real tables. See
+-- src/storage/schema.sql for the annotated source of truth this is derived
+-- from — keep both in sync if the schema changes.
 -- ============================================================================
 
 -- ============================================================================
@@ -25,7 +25,6 @@ CREATE TABLE IF NOT EXISTS tenants (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Default single-tenant placeholder
 INSERT INTO tenants (tenant_id, name)
 VALUES ('00000000-0000-0000-0000-000000000001', 'default')
 ON CONFLICT DO NOTHING;
@@ -33,8 +32,8 @@ ON CONFLICT DO NOTHING;
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY tenants_tenant_isolation ON tenants
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 3. Documents Table (projection from DocumentIngested events)
@@ -62,8 +61,8 @@ CREATE INDEX idx_documents_hash ON documents(file_hash);
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY documents_tenant_isolation ON documents
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 4. Chunks Table (projection from ChunksAdded events — text only, no vectors)
@@ -90,38 +89,46 @@ CREATE TABLE IF NOT EXISTS chunks (
 CREATE INDEX idx_chunks_tenant ON chunks(tenant_id);
 CREATE INDEX idx_chunks_doc ON chunks(doc_id);
 CREATE INDEX idx_chunks_tenant_doc ON chunks(tenant_id, doc_id);
--- Full-text search index
 CREATE INDEX idx_chunks_fts ON chunks USING gin (to_tsvector('english', text));
 
 ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY chunks_tenant_isolation ON chunks
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 5. Chunks_Vectors Table (async embedding projection — pgvector)
 -- ============================================================================
--- Vectors are DERIVED DATA: computed async from chunks.text.
--- Configurable embedding model via embedding_model column.
--- RLS enabled directly on this table (NOT inherited via FK).
+-- Column width matches the DEFAULT configured model (nomic-embed-text,
+-- 768d). pgvector rejects inserts that don't match the declared width
+-- exactly, and caps ivfflat/hnsw indexing at 2000 dimensions — a column
+-- wide enough for qwen3-embedding:8b-q8_0 (4096d) could never be indexed.
+-- Switching the default model requires ALTER COLUMN vector TYPE vector(N)
+-- and accepting sequential-scan search above 2000 dimensions.
 
 CREATE TABLE IF NOT EXISTS chunks_vectors (
     chunk_id UUID PRIMARY KEY REFERENCES chunks(chunk_id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL,
-    vector vector(4096),
+    vector vector(768),
     embedding_model VARCHAR(255) NOT NULL DEFAULT 'nomic-embed-text',
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT vector_not_null CHECK (vector IS NOT NULL)
 );
 
--- Vector search index (ivfflat for cosine distance)
-CREATE INDEX idx_chunks_vectors_ivfflat ON chunks_vectors USING ivfflat (vector vector_cosine_ops) WITH (lists = 100);
+DO $$
+BEGIN
+    EXECUTE 'CREATE INDEX idx_chunks_vectors_ivfflat ON chunks_vectors USING ivfflat (vector vector_cosine_ops) WITH (lists = 100)';
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Skipping ivfflat index on chunks_vectors.vector: %', SQLERRM;
+END $$;
 
--- HNSW index (better recall for 1M+ vectors, slower build)
-CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw
-    ON chunks_vectors USING hnsw (vector vector_cosine_ops)
-    WITH (m = 16, ef_construction = 200);
+DO $$
+BEGIN
+    EXECUTE 'CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw ON chunks_vectors USING hnsw (vector vector_cosine_ops) WITH (m = 16, ef_construction = 200)';
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Skipping hnsw index on chunks_vectors.vector: %', SQLERRM;
+END $$;
 
 CREATE INDEX idx_chunks_vectors_tenant ON chunks_vectors(tenant_id);
 CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
@@ -129,8 +136,8 @@ CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
 ALTER TABLE chunks_vectors ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY chunks_vectors_tenant_isolation ON chunks_vectors
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 6. Entities Table (knowledge graph nodes)
@@ -155,8 +162,8 @@ CREATE INDEX idx_entities_name ON entities(name);
 ALTER TABLE entities ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY entities_tenant_isolation ON entities
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 7. Relations Table (knowledge graph edges)
@@ -182,17 +189,9 @@ CREATE INDEX idx_relations_tenant_target ON relations(tenant_id, target_entity_i
 
 ALTER TABLE relations ENABLE ROW LEVEL SECURITY;
 
--- Simplified RLS: just check tenant_id directly (FK integrity guarantees same-tenant entities)
 CREATE POLICY relations_tenant_isolation ON relations
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
-
--- ============================================================================
--- 7b. Apache AGE Graph Namespace (optional — requires AGE extension)
--- ============================================================================
--- If Apache AGE extension is loaded, create a graph namespace for openCypher
--- queries. PostgresGraphStore uses cypher() when graph.backend = "age".
--- To enable: CREATE EXTENSION IF NOT EXISTS age; SELECT * FROM age_create_graph('corpus_kb');
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 8. Projection Checkpoints (catch-up subscription state)
@@ -212,8 +211,8 @@ CREATE INDEX idx_checkpoints_tenant ON projection_checkpoints(tenant_id);
 ALTER TABLE projection_checkpoints ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY checkpoints_tenant_isolation ON projection_checkpoints
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 9. Projection DLQ (Dead-Letter Queue for failed projections)
@@ -240,8 +239,8 @@ CREATE INDEX idx_dlq_unresolved ON projection_dlq(tenant_id, resolved) WHERE res
 ALTER TABLE projection_dlq ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY dlq_tenant_isolation ON projection_dlq
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
 -- ============================================================================
 -- 10. Idempotency Keys (command deduplication)
@@ -264,24 +263,9 @@ CREATE INDEX idx_idempotency_tenant ON idempotency_keys(tenant_id);
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY idempotency_tenant_isolation ON idempotency_keys
-    USING (tenant_id = current_setting('app.current_tenant_id', true)::UUID)
-    WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::UUID);
+    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
 
--- ============================================================================
--- END SCHEMA
--- ============================================================================
--- Notes:
--- 1. The eventsourcing library creates event_store + snapshot_store tables
---    via its PostgresFactory — do NOT create those here.
--- 2. RLS uses current_setting('app.current_tenant_id', true) with the
---    'true' flag so it returns NULL instead of error if unset (safer).
--- 3. All vector operations go through chunks_vectors which has its own
---    RLS policy — vector search is tenant-isolated.
--- 4. The embedding_model column allows swapping between nomic-embed-text
---    (768d) and qwen3-embedding:8b-q8_0 (4096d) via config.
--- 5. To set tenant context: SET LOCAL app.current_tenant_id = '<uuid>';
---    (done in postgres_setup.py setup_tenant_context())
--- ============================================================================
 -- ============================================================================
 -- 11. Tags Table
 -- ============================================================================
