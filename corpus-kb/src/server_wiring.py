@@ -86,8 +86,15 @@ async def startup(
     from src.handlers.query_handler import set_query_handler, QueryHandler
     from src.handlers.idempotency import set_idempotency_checker, IdempotencyChecker
 
+    # Shared embedder: the query side needs it for vector search, the embed
+    # projection needs it to backfill vectors. Without it here, handle_search
+    # silently skips vector search and degrades to full-text only.
+    from src.rag.embedder import OllamaEmbedder
+
+    embedder = OllamaEmbedder(cfg)
+
     command_handler = get_command_handler(cfg, pool)
-    query_handler = QueryHandler(pool)
+    query_handler = QueryHandler(pool, embedder)
     set_query_handler(query_handler)
     set_idempotency_checker(IdempotencyChecker(pool))
 
@@ -114,10 +121,7 @@ async def startup(
     set_checkpoint_manager(checkpoint_mgr)
     set_dlq_handler(dlq_handler)
 
-    # Embedder for projection
-    from src.rag.embedder import OllamaEmbedder
-
-    embedder = OllamaEmbedder(cfg)
+    # Embedder for projection (constructed above, shared with the query handler)
     embed_projection = EmbedChunksProjection(
         pool, embedder, checkpoint_mgr, dlq_handler
     )
