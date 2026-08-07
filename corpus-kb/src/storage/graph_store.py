@@ -17,6 +17,7 @@ from typing import Optional
 
 import asyncpg
 
+from .tenant_conn import tenant_connection
 from ..utils.models import Chunk, Document, Entity, Relation
 
 logger = logging.getLogger(__name__)
@@ -158,22 +159,20 @@ class PostgresGraphStore(GraphStore):
         self._pool = pool
         self._tenant_id = tenant_id
         self._conn: Optional[asyncpg.Connection] = None
+        self._owned_ctx = None
 
     async def _get_conn(self) -> asyncpg.Connection:
-        """Return the current transaction connection, or acquire one from the pool."""
+        """Return the current transaction connection, or acquire a tenant-scoped one."""
         if self._conn is not None:
             return self._conn
-        conn = await self._pool.acquire()
-        await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)",
-            self._tenant_id,
-        )
-        return conn
+        self._owned_ctx = tenant_connection(self._pool, self._tenant_id)
+        return await self._owned_ctx.__aenter__()
 
     async def _release_conn(self, conn: asyncpg.Connection) -> None:
-        """Release a connection back to the pool if it was acquired (not in a transaction)."""
-        if self._conn is None and conn is not None:
-            await self._pool.release(conn)
+        """Close the tenant-scoped transaction opened by _get_conn (not in an explicit transaction)."""
+        if self._conn is None and getattr(self, "_owned_ctx", None) is not None:
+            await self._owned_ctx.__aexit__(None, None, None)
+            self._owned_ctx = None
 
     async def add_entity(self, entity: Entity) -> str:
         """Insert an entity into the entities table."""

@@ -280,7 +280,6 @@ class TestGraphStore:
             name="TestService",
             entity_type="CLASS",
             source_type="code",
-            source_document_id="doc-123",
         )
         entity_id = await store.add_entity(entity)
         assert entity_id is not None
