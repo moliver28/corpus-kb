@@ -25,9 +25,11 @@ async def ingest_file(
     path = Path(file_path)
     if not path.exists():
         return {"status": "error", "message": f"File not found: {path}"}
-    text = path.read_text(encoding="utf-8")
+    # Do NOT read the bytes here: run_pipeline(is_file=True) partitions the file
+    # via Unstructured and derives its text from the parsed elements, so binary
+    # formats (PDF, DOCX, ...) work instead of failing on a UTF-8 decode.
     return await run_pipeline(
-        text,
+        "",
         _detect_source_type(path),
         str(path),
         config,
@@ -89,6 +91,20 @@ async def ingest_directory(
         ".markdown",
         ".rst",
         ".txt",
+        # Research artifacts (parsed via Unstructured): reports, transcripts,
+        # exports. Per-file failures are caught below, so an unsupported one
+        # never aborts the batch.
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".pptx",
+        ".html",
+        ".htm",
+        ".csv",
+        ".eml",
+        ".epub",
+        ".vtt",
+        ".srt",
     }
 
     results: list[dict[str, object]] = []

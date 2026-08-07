@@ -65,11 +65,13 @@ class CommandHandler:
         if not path.exists():
             raise FileNotFoundError(f"File not found: {cmd.file_path}")
 
-        text = path.read_text(encoding="utf-8")
+        # run_pipeline(is_file=True) partitions the file via Unstructured and
+        # derives its text, so binary formats (PDF, DOCX, ...) ingest instead of
+        # failing on a UTF-8 decode of the raw bytes.
         source_type = cmd.source_type or _detect_source_type(cmd.file_path)
 
         return await self._run_ingest(
-            text, source_type, cmd.file_path, cmd.tenant_id, is_file=True
+            "", source_type, cmd.file_path, cmd.tenant_id, is_file=True
         )
 
     async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:

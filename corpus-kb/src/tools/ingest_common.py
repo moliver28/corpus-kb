@@ -56,8 +56,56 @@ def elements_for_text(text: str) -> list[ElementProxy]:
     ]
 
 
+CAPTION_SUFFIXES = {".vtt", ".srt"}
+
+
+def read_caption_text(path: Path) -> str:
+    """Flatten a WebVTT/SRT caption file to plain transcript text.
+
+    Unstructured does not recognize caption formats, but interview transcripts
+    are commonly exported as .vtt/.srt. Strip the header, cue numbers, and
+    timestamp lines, keeping only the spoken text.
+    """
+    lines: list[str] = []
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        if line == "WEBVTT" or line.startswith("NOTE"):
+            continue
+        if "-->" in line:  # timestamp cue
+            continue
+        if line.isdigit():  # SRT cue number
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def read_pdf_text(path: Path) -> str:
+    """Extract text from a PDF with pypdf (already a dependency).
+
+    Unstructured's PDF path pulls a heavy image/OCR stack just to import, which
+    is overkill for the text-based reports UX research produces. pypdf handles
+    those directly. Scanned/image-only PDFs yield little text and would need a
+    separate OCR path.
+    """
+    from pypdf import PdfReader
+
+    reader = PdfReader(str(path))
+    return "\n\n".join((page.extract_text() or "").strip() for page in reader.pages)
+
+
 def elements_for_file(path: Path) -> list[ElementProxy]:
-    """Partition a file into unstructured elements for chunking."""
+    """Partition a file into unstructured elements for chunking.
+
+    Caption transcripts (.vtt/.srt) and PDFs are handled with lightweight
+    dedicated readers; everything else goes through Unstructured.
+    """
+    suffix = path.suffix.lower()
+    if suffix in CAPTION_SUFFIXES:
+        return elements_for_text(read_caption_text(path))
+    if suffix == ".pdf":
+        return elements_for_text(read_pdf_text(path))
     return unstructured_partition(path)
 
 
@@ -306,13 +354,17 @@ async def run_pipeline(
         size_bytes, chunk_count, entity_count, relation_count,
         pg_chunk_count, pg_vector_count, degraded, extractor_id, entities, errors.
     """
-    document = build_document(path, source_type, text)
-
     if is_file:
+        # Let Unstructured parse the file (PDF, DOCX, HTML, etc.) and derive the
+        # document text from the extracted elements. Do NOT read the file as
+        # UTF-8 first: binary formats would raise UnicodeDecodeError before ever
+        # reaching the partitioner.
         elements = elements_for_file(Path(path))
+        text = "\n\n".join(e.text for e in elements if e.text)
     else:
         elements = elements_for_text(text)
 
+    document = build_document(path, source_type, text)
     chunks = chunk_elements(elements, text, document.document_id)
 
     errors: list[str] = []
