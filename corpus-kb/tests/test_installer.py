@@ -83,6 +83,26 @@ async def test_doctor_gpu_detected() -> None:
     assert "ollama pull qwen3-embedding:8b-q8_0" in output
 
 
+def test_load_config_applies_database_url_env_var_override(monkeypatch, tmp_path):
+    """CORPUS_KB_DATABASE_URL must win even when config.yaml already has a value."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        "database:\n  connection_string: postgresql://wrong:wrong@localhost:5433/wrong\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(
+        "CORPUS_KB_DATABASE_URL",
+        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb",
+    )
+
+    config = install.load_config()
+
+    assert (
+        config["database"]["connection_string"]
+        == "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+    )
+
+
 class _Mem:
     """Tiny psutil virtual_memory stub."""
 

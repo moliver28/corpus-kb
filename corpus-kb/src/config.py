@@ -135,6 +135,6 @@ def get_default_config() -> dict[str, object]:
             "index_type": "hnsw",
         },
         "database": {
-            "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
+            "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb",
         },
     }

@@ -147,9 +147,7 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     info["recommended_model"] = profile.get("model", "nomic-embed-text")
 
     db_cfg = config.get("database", {})
-    conn_str = str(db_cfg.get("connection_string", "")) or os.environ.get(
-        "CORPUS_KB_DATABASE_URL", ""
-    )
+    conn_str = str(db_cfg.get("connection_string", ""))
     info["postgres_ok"], info["postgres_msg"] = (
         await check_postgres(conn_str) if conn_str else (False, "no connection string")
     )
@@ -265,9 +263,7 @@ async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
     profile_cfg = profiles.get(info["profile"], {})
     model = profile_cfg.get("model", "nomic-embed-text")
 
-    conn_str = str(config.get("database", {}).get("connection_string", "")) or os.environ.get(
-        "CORPUS_KB_DATABASE_URL", ""
-    )
+    conn_str = str(config.get("database", {}).get("connection_string", ""))
 
     print("\n=== Corpus-KB Installer ===")
     print(f"Detected profile: {info['profile']}")
@@ -293,15 +289,20 @@ async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
 
 
 def load_config() -> dict[str, Any]:
-    """Load config.yaml from repo root or user home."""
-    candidates = [
-        Path("config.yaml"),
-        DEFAULT_CONFIG_PATH,
-    ]
-    for path in candidates:
-        if path.exists():
-            return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    return {}
+    """Load config with defaults and CORPUS_KB_* environment variable overrides.
+
+    Delegates to config.load_config() so the installer's view of the
+    connection string, embedding settings, etc. always matches what the
+    running server will actually use.
+    """
+    # Add src to path so we can import config module
+    src_path = Path(__file__).parent.parent / "src"
+    if str(src_path) not in sys.path:
+        sys.path.insert(0, str(src_path))
+
+    from config import load_config as load_full_config
+
+    return load_full_config()
 
 
 def main() -> int:
