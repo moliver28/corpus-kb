@@ -7,12 +7,25 @@ projections read their checkpoint and process events from that point.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any, Optional, Union
 from uuid import UUID
 
 import asyncpg
 
 from ..storage.tenant_conn import tenant_connection
+
+
+def _as_datetime(value: Union[str, datetime]) -> datetime:
+    """Coerce an event timestamp to a datetime for the TIMESTAMPTZ column.
+
+    asyncpg binds TIMESTAMPTZ parameters from datetime objects, not strings, so
+    callers that pass an ISO-8601 string (or str(row["created_at"])) would raise
+    a DataError. Accept either form here so the checkpoint write is robust.
+    """
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +56,7 @@ class CheckpointManager:
         projection_name: str,
         tenant_id: UUID,
         last_event_id: UUID,
-        last_event_timestamp: str,
+        last_event_timestamp: Union[str, datetime],
     ) -> None:
         """Update or insert checkpoint after processing an event."""
         async with tenant_connection(self._pool, tenant_id) as conn:
@@ -61,7 +74,7 @@ class CheckpointManager:
                 projection_name,
                 str(tenant_id),
                 str(last_event_id),
-                last_event_timestamp,
+                _as_datetime(last_event_timestamp),
             )
             logger.debug(
                 "Checkpoint updated: %s tenant=%s event=%s",
