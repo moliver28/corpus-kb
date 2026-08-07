@@ -14,6 +14,9 @@ import pytest
 from src.domain.models import SearchQuery
 from src.handlers.idempotency import IdempotencyChecker
 from src.handlers.query_handler import QueryHandler
+from src.handlers.graph_handler import GraphHandler
+from src.handlers.tag_handler import TagHandler
+from src.handlers.versioning_handler import VersioningHandler
 
 pytestmark = pytest.mark.asyncio
 
@@ -42,3 +45,23 @@ async def test_idempotency_check_then_record_does_not_crash(pg_pool):
     cached_after = await checker.check(tenant_id, command_id)
     assert cached_after is not None
     assert cached_after["command_type"] == "TestCommand"
+
+
+async def test_graph_handler_search_graph_does_not_crash(pg_pool):
+    handler = GraphHandler(pg_pool)
+    results = await handler.handle_search_graph(UUID(DEFAULT_TENANT_ID), "anything")
+    assert results == []
+
+
+async def test_tag_handler_add_tag_does_not_crash(pg_pool):
+    handler = TagHandler(pg_pool)
+    tenant_id = UUID(DEFAULT_TENANT_ID)
+    tag_name = f"test-tag-{uuid4().hex[:8]}"
+    result = await handler.handle_add_tag(tenant_id, tag_name)
+    assert result.get("name") == tag_name
+
+
+async def test_versioning_handler_get_stats_does_not_crash(pg_pool):
+    handler = VersioningHandler(pg_pool)
+    stats = await handler.handle_get_stats(UUID(DEFAULT_TENANT_ID))
+    assert "documents" in stats

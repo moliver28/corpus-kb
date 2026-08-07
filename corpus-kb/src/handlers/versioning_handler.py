@@ -12,6 +12,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..storage.tenant_conn import tenant_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,10 +25,7 @@ class VersioningHandler:
 
     async def handle_list_versions(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all aggregate versions from the event store."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             try:
                 rows = await conn.fetch(
                     """SELECT aggregate_id, MAX(version) as max_version, COUNT(*) as event_count,
@@ -39,10 +38,7 @@ class VersioningHandler:
 
     async def handle_get_stats(self, tenant_id: UUID) -> dict[str, Any]:
         """Get database statistics."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             stats = {}
             for table in [
                 "documents",
@@ -63,10 +59,7 @@ class VersioningHandler:
 
     async def handle_sql_tables(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all tables in the schema."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             rows = await conn.fetch(
                 """SELECT tablename as name, tableowner as owner FROM pg_tables
                    WHERE schemaname = 'public' ORDER BY tablename"""
@@ -75,10 +68,7 @@ class VersioningHandler:
 
     async def handle_query_document_stats(self, tenant_id: UUID) -> dict[str, Any]:
         """Get aggregate document statistics."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             total_docs = await conn.fetchval("SELECT COUNT(*) FROM documents")
             total_chunks = await conn.fetchval("SELECT COUNT(*) FROM chunks")
             total_vectors = await conn.fetchval("SELECT COUNT(*) FROM chunks_vectors")

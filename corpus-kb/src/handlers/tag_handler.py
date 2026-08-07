@@ -8,6 +8,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..storage.tenant_conn import tenant_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -24,10 +26,7 @@ class TagHandler:
         color: Optional[str] = None,
         description: Optional[str] = None,
     ) -> dict[str, Any]:
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             row = await conn.fetchrow(
                 """INSERT INTO tags (tenant_id, name, color, description)
                    VALUES ($1, $2, $3, $4) ON CONFLICT (tenant_id, name) DO NOTHING
@@ -42,10 +41,7 @@ class TagHandler:
     async def handle_tag_document(
         self, tenant_id: UUID, doc_id: UUID, tag: str
     ) -> dict[str, Any]:
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             tag_row = await conn.fetchrow(
                 "SELECT tag_id FROM tags WHERE tenant_id=$1 AND name=$2",
                 str(tenant_id),
@@ -73,10 +69,7 @@ class TagHandler:
     async def handle_untag_document(
         self, tenant_id: UUID, doc_id: UUID, tag: str
     ) -> dict[str, Any]:
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """DELETE FROM document_tags WHERE doc_id=$1 AND tenant_id=$2 AND tag_id=(
                        SELECT tag_id FROM tags WHERE tenant_id=$2 AND name=$3)""",
@@ -89,10 +82,7 @@ class TagHandler:
     async def handle_get_document_tags(
         self, tenant_id: UUID, doc_id: UUID
     ) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             rows = await conn.fetch(
                 """SELECT t.name, t.color, t.description FROM tags t
                    JOIN document_tags dt ON t.tag_id = dt.tag_id
@@ -105,10 +95,7 @@ class TagHandler:
     async def handle_set_metadata(
         self, tenant_id: UUID, key: str, value: str, doc_id: Optional[UUID] = None
     ) -> dict[str, Any]:
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """INSERT INTO metadata (key, value, doc_id, tenant_id)
                    VALUES ($1, $2, $3, $4) ON CONFLICT (key, tenant_id, doc_id) DO UPDATE SET value = $2""",
@@ -122,10 +109,7 @@ class TagHandler:
     async def handle_get_metadata(
         self, tenant_id: UUID, key: Optional[str] = None, doc_id: Optional[UUID] = None
     ) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             if key and doc_id:
                 rows = await conn.fetch(
                     "SELECT key, value, doc_id FROM metadata WHERE key=$1 AND tenant_id=$2 AND doc_id=$3",

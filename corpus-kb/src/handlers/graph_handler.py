@@ -14,6 +14,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..storage.tenant_conn import tenant_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,10 +33,7 @@ class GraphHandler:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Search entities by name (case-insensitive contains)."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             if entity_type:
                 rows = await conn.fetch(
                     """SELECT entity_id, name, entity_type, metadata
@@ -60,10 +59,7 @@ class GraphHandler:
         self, tenant_id: UUID, start_entity_id: UUID, max_depth: int = 3
     ) -> list[dict[str, Any]]:
         """BFS traversal using recursive CTE (works without AGE Cypher too)."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             rows = await conn.fetch(
                 """WITH RECURSIVE bfs AS (
                        SELECT e.entity_id, e.name, e.entity_type, 0 as depth
@@ -86,10 +82,7 @@ class GraphHandler:
         self, tenant_id: UUID, entity_id: UUID
     ) -> list[dict[str, Any]]:
         """Get all relations for an entity (both outgoing and incoming)."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             rows = await conn.fetch(
                 """SELECT r.relation_id, r.relation_type, r.weight,
                           r.source_entity_id, r.target_entity_id,
