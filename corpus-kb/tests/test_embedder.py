@@ -10,11 +10,33 @@ from ollama._types import EmbedResponse
 
 from src.rag.embedder import FakeEmbedder, OllamaEmbedder
 
+_LIVE_MODEL = "qwen3-embedding:8b-q8_0"
+_OLLAMA_URL = "http://localhost:11434"
+
+
+def _ollama_model_available(model: str, base_url: str = _OLLAMA_URL) -> bool:
+    """True only if Ollama is reachable and the given model is pulled.
+
+    The live embedding tests need a specific (large, optional) model present.
+    Without this gate they FAIL on a 404 when the model is absent; with it they
+    SKIP, matching how requires_hi_res / optional deps degrade elsewhere.
+    """
+    try:
+        import httpx
+
+        resp = httpx.get(f"{base_url}/api/tags", timeout=3.0)
+        resp.raise_for_status()
+        tags = {m.get("name") for m in resp.json().get("models", [])}
+        return model in tags or f"{model}:latest" in tags
+    except Exception:
+        return False
+
+
 _LIVE_CONFIG: dict[str, object] = {
     "embedding": {
         "provider": "ollama",
-        "model": "qwen3-embedding:8b-q8_0",
-        "base_url": "http://localhost:11434",
+        "model": _LIVE_MODEL,
+        "base_url": _OLLAMA_URL,
         "batch_size": 32,
         "dimensions": 4096,
     }
@@ -42,6 +64,10 @@ _DEAD_PORT_CONFIG: dict[str, object] = {
 
 
 @pytest.mark.requires_ollama
+@pytest.mark.skipif(
+    not _ollama_model_available(_LIVE_MODEL),
+    reason=f"live embedding test needs the {_LIVE_MODEL} model pulled (ollama pull {_LIVE_MODEL})",
+)
 class TestOllamaEmbedderLive:
     def test_embed_returns_vector_of_configured_dimensions(self) -> None:
         embedder = OllamaEmbedder(_LIVE_CONFIG)
