@@ -146,7 +146,7 @@ async def search(request: Request) -> JSONResponse:
         handler = get_query_handler()
         results = await handler.handle_search(query)
         return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
+            {"status": "success", "result": [r.model_dump(mode='json') for r in results]}
         )
     except Exception as exc:
         return JSONResponse(
@@ -171,7 +171,7 @@ async def search_similar(request: Request) -> JSONResponse:
         handler = get_query_handler()
         results = await handler.handle_search_similar(query)
         return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
+            {"status": "success", "result": [r.model_dump(mode='json') for r in results]}
         )
     except Exception as exc:
         return JSONResponse(
@@ -197,7 +197,7 @@ async def search_context(request: Request) -> JSONResponse:
         handler = get_query_handler()
         results = await handler.handle_search_context(query)
         return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
+            {"status": "success", "result": [r.model_dump(mode='json') for r in results]}
         )
     except Exception as exc:
         return JSONResponse(
@@ -246,7 +246,7 @@ async def list_documents(request: Request) -> JSONResponse:
         handler = get_query_handler()
         results = await handler.handle_list_documents(query)
         return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
+            {"status": "success", "result": [r.model_dump(mode='json') for r in results]}
         )
     except Exception as exc:
         return JSONResponse(
@@ -272,7 +272,7 @@ async def list_entities(request: Request) -> JSONResponse:
         handler = get_query_handler()
         results = await handler.handle_list_entities(query)
         return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
+            {"status": "success", "result": [r.model_dump(mode='json') for r in results]}
         )
     except Exception as exc:
         return JSONResponse(

@@ -152,7 +152,7 @@ class JSONRPCServer:
                 k=params.get("k", 10),
             )
             results = await get_query_handler().handle_search(query)
-            return {"status": "success", "result": [r.model_dump() for r in results]}
+            return {"status": "success", "result": [r.model_dump(mode='json') for r in results]}
 
         elif method == "list_documents":
             from src.handlers.query_handler import get_query_handler
@@ -164,7 +164,7 @@ class JSONRPCServer:
                 offset=params.get("offset", 0),
             )
             results = await get_query_handler().handle_list_documents(query)
-            return {"status": "success", "result": [r.model_dump() for r in results]}
+            return {"status": "success", "result": [r.model_dump(mode='json') for r in results]}
 
         elif method == "add_entity":
             from src.handlers.command_handler import get_command_handler

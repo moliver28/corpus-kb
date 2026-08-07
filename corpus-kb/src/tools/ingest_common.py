@@ -325,7 +325,11 @@ async def run_pipeline(
 
     # Write document + chunks + vectors to Postgres
     try:
-        await ingest_store.store_document(document)
+        document_id = await ingest_store.store_document(document)
+        document.document_id = document_id
+        # Update chunk references to use the actual stored document ID
+        for chunk in chunks:
+            chunk.document_id = document_id
         pg_chunk_count = await ingest_store.store_chunks(chunks)
         pg_vector_count = await ingest_store.store_vectors(chunks)
     except Exception as exc:
