@@ -39,7 +39,9 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 async def pg_pool():
     """Provide an asyncpg connection pool for tests.
 
-    Skips tests if Postgres is not available.
+    Skips tests if Postgres is not available. Uses the disposable
+    corpus_kb_test database (migrations 004+ required) -- never point
+    this at the primary corpus_kb database, tests run destructive DDL.
     """
     try:
         pool = await asyncpg.create_pool(
@@ -59,6 +61,4 @@ async def graph_store(pg_pool):
     """Provide a PostgresGraphStore for tests."""
     from src.storage.graph_store import PostgresGraphStore
 
-    store = PostgresGraphStore(pg_pool)
-    yield store
-    await store.close()
+    return PostgresGraphStore(pg_pool)

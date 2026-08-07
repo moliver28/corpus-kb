@@ -143,7 +143,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_idempotency_prevents_duplicates(self, clean_db, db_conn):
         """Test 4: Send same command twice → verify deduplication."""
-        from handlers.idempotency import IdempotencyChecker
+        from src.handlers.idempotency import IdempotencyChecker
         from uuid import uuid4
 
         checker = IdempotencyChecker(db_conn.__dict__.get("_pool", db_conn))
@@ -222,7 +222,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_projection_checkpoint_roundtrip(self, clean_db, db_conn):
         """Test 8: Checkpoint manager can set and get checkpoints."""
-        from projections.checkpoint import CheckpointManager
+        from src.projections.checkpoint import CheckpointManager
 
         mgr = CheckpointManager(db_conn.__dict__.get("_pool", db_conn))
 
@@ -246,7 +246,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_dlq_record_and_list(self, clean_db, db_conn):
         """Test 9: DLQ can record and list failures."""
-        from projections.dlq import DLQHandler
+        from src.projections.dlq import DLQHandler
 
         handler = DLQHandler(db_conn.__dict__.get("_pool", db_conn))
 

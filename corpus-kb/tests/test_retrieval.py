@@ -38,6 +38,10 @@ async def test_hybrid_search_rrf_fusion() -> None:
     """Vector and FTS results are fused via RRF ranking."""
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
+    mock_transaction = MagicMock()
+    mock_transaction.__aenter__ = AsyncMock(return_value=None)
+    mock_transaction.__aexit__ = AsyncMock(return_value=False)
+    mock_conn.transaction = MagicMock(return_value=mock_transaction)
     mock_conn.fetch = AsyncMock(
         side_effect=[
             [

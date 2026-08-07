@@ -5,9 +5,11 @@ from __future__ import annotations
 import pytest
 
 from src.graph.extractor import extract_entities
-from src.storage.graph_store import PostgresGraphStore
+from src.storage.tenant_conn import tenant_connection
 from src.tools.ingest_tools import delete_document, ingest_text
 from src.utils.models import Entity
+
+DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 # ============================================================================
@@ -189,7 +191,7 @@ Tokens are cached for performance.
         assert second["status"] == "success"
         assert second["document_id"] == doc_id
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
             rows = await conn.fetch(
                 "SELECT COUNT(*) AS cnt FROM documents WHERE source = $1", source
             )
@@ -258,11 +260,37 @@ Tokens are cached for performance.
         delete_result = await delete_document(doc_id, pg_pool)
         assert delete_result["status"] == "success"
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
             rows = await conn.fetch(
                 "SELECT COUNT(*) AS cnt FROM documents WHERE doc_id = $1", doc_id
             )
             assert rows[0]["cnt"] == 0
+
+    @pytest.mark.asyncio
+    async def test_ingest_file(self, tmp_path, pg_pool) -> None:
+        """Ingesting a file should read and process it successfully."""
+        import tempfile
+
+        markdown_content = "# FileIngestTest\n## Overview\nTesting file ingestion.\n"
+        config = {
+            "graph": {"extract_entities": True, "backend": "postgres"},
+            "database": {
+                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+            },
+        }
+
+        # Create a temporary markdown file
+        temp_file = tmp_path / "test_doc.md"
+        temp_file.write_text(markdown_content, encoding="utf-8")
+
+        # Import ingest_file here to avoid circular imports
+        from src.tools.ingest_tools import ingest_file
+
+        result = await ingest_file(str(temp_file), pg_pool, config)
+        assert result["status"] == "success"
+        assert "document_id" in result
+        assert "chunk_count" in result
+        assert result["chunk_count"] > 0
 
 
 # ============================================================================
@@ -271,10 +299,15 @@ Tokens are cached for performance.
 
 
 class TestGraphStore:
-    """Test graph store operations via PostgresGraphStore."""
+    """Test graph store operations via PostgresGraphStore.
+
+    Tests PostgresGraphStore with RLS tenant context.
+    """
 
     @pytest.mark.asyncio
     async def test_graph_store_add_entity(self, pg_pool) -> None:
+        from src.storage.graph_store import PostgresGraphStore
+
         store = PostgresGraphStore(pg_pool)
         entity = Entity(
             name="TestService",
@@ -289,6 +322,8 @@ class TestGraphStore:
 
     @pytest.mark.asyncio
     async def test_graph_store_search_entities(self, pg_pool) -> None:
+        from src.storage.graph_store import PostgresGraphStore
+
         store = PostgresGraphStore(pg_pool)
         e1 = Entity(name="SearchServiceTest1", entity_type="CLASS", source_type="code")
         e2 = Entity(name="SearchServiceTest2", entity_type="CLASS", source_type="code")
