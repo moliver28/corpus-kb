@@ -177,7 +177,10 @@ class TestLangExtractExtractor:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Given existing fixtures, langextract.extract is never invoked."""
-        import langextract as lx
+        lx = pytest.importorskip(
+            "langextract",
+            reason="langextract is an optional extra; install with pip install -e '.[langextract]'",
+        )
 
         mock = MagicMock()
         monkeypatch.setattr(lx, "extract", mock)
