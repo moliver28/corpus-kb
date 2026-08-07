@@ -20,6 +20,7 @@ import asyncpg
 from projections.checkpoint import CheckpointManager
 from projections.dlq import DLQHandler
 from src.rag.embedder import OllamaEmbedder
+from src.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -73,11 +74,7 @@ class EmbedChunksProjection:
 
                 vectors = self._embedder.embed_batch(batch_texts)
 
-                async with self._pool.acquire() as conn:
-                    await conn.execute(
-                        "SELECT set_config('app.current_tenant_id', $1, true)",
-                        str(tenant_id),
-                    )
+                async with tenant_connection(self._pool, tenant_id) as conn:
                     for j, (text, vector) in enumerate(
                         zip(batch_texts, vectors, strict=True)
                     ):

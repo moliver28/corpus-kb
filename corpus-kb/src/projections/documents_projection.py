@@ -20,6 +20,7 @@ import asyncpg
 
 from projections.checkpoint import CheckpointManager
 from projections.dlq import DLQHandler
+from src.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -69,11 +70,7 @@ class DocumentsProjection:
 
     async def _project_document(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """INSERT into documents table."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO documents
@@ -104,11 +101,7 @@ class DocumentsProjection:
         if not chunk_texts:
             return
 
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             for i, text in enumerate(chunk_texts):
                 chunk_id = str(UUID(int=0))  # placeholder — real ID from event
                 doc_id = str(payload.get("aggregate_id", ""))
@@ -128,11 +121,7 @@ class DocumentsProjection:
 
     async def _project_entity(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """INSERT into entities table."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO entities
@@ -149,11 +138,7 @@ class DocumentsProjection:
 
     async def _project_relation(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """INSERT into relations table."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO relations

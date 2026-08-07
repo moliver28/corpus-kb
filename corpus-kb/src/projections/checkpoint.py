@@ -12,6 +12,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..storage.tenant_conn import tenant_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,11 +27,7 @@ class CheckpointManager:
         self, projection_name: str, tenant_id: UUID
     ) -> Optional[dict[str, Any]]:
         """Get the last processed event for a projection."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             row = await conn.fetchrow(
                 """
                 SELECT last_event_id, last_event_timestamp, checkpoint_timestamp
@@ -48,11 +46,7 @@ class CheckpointManager:
         last_event_timestamp: str,
     ) -> None:
         """Update or insert checkpoint after processing an event."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO projection_checkpoints
@@ -83,11 +77,7 @@ class CheckpointManager:
         limit: int = 1000,
     ) -> list[dict[str, Any]]:
         """Get events since the last checkpoint timestamp."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             if last_event_timestamp:
                 rows = await conn.fetch(
                     """

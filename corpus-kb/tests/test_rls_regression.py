@@ -7,6 +7,7 @@ in the same explicit transaction.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -17,6 +18,8 @@ from src.handlers.query_handler import QueryHandler
 from src.handlers.graph_handler import GraphHandler
 from src.handlers.tag_handler import TagHandler
 from src.handlers.versioning_handler import VersioningHandler
+from src.projections.checkpoint import CheckpointManager
+from src.projections.dlq import DLQHandler
 
 pytestmark = pytest.mark.asyncio
 
@@ -65,3 +68,27 @@ async def test_versioning_handler_get_stats_does_not_crash(pg_pool):
     handler = VersioningHandler(pg_pool)
     stats = await handler.handle_get_stats(UUID(DEFAULT_TENANT_ID))
     assert "documents" in stats
+
+
+async def test_checkpoint_manager_update_then_get_does_not_crash(pg_pool):
+    mgr = CheckpointManager(pg_pool)
+    tenant_id = UUID(DEFAULT_TENANT_ID)
+    event_id = uuid4()
+    event_timestamp = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+
+    await mgr.update_checkpoint("TestProjection", tenant_id, event_id, event_timestamp)
+    checkpoint = await mgr.get_checkpoint("TestProjection", tenant_id)
+    assert checkpoint is not None
+    assert str(checkpoint["last_event_id"]) == str(event_id)
+
+
+async def test_dlq_handler_record_then_list_does_not_crash(pg_pool):
+    dlq = DLQHandler(pg_pool)
+    tenant_id = UUID(DEFAULT_TENANT_ID)
+    event_id = uuid4()
+
+    await dlq.record_failure(
+        "TestProjection", tenant_id, event_id, "TestEvent", "boom"
+    )
+    failures = await dlq.list_failures("TestProjection", tenant_id)
+    assert any(str(f["event_id"]) == str(event_id) for f in failures)

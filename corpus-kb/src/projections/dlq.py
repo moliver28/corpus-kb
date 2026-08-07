@@ -12,6 +12,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..storage.tenant_conn import tenant_connection
+
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
@@ -33,11 +35,7 @@ class DLQHandler:
         error_stacktrace: Optional[str] = None,
     ) -> None:
         """Record a failed projection to the DLQ."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO projection_dlq
@@ -68,11 +66,7 @@ class DLQHandler:
         self, projection_name: str, tenant_id: UUID
     ) -> list[dict[str, Any]]:
         """List unresolved DLQ entries for a projection."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             rows = await conn.fetch(
                 """
                 SELECT dlq_id, projection_name, event_id, event_type,
@@ -87,11 +81,7 @@ class DLQHandler:
 
     async def mark_resolved(self, dlq_id: UUID, tenant_id: UUID) -> None:
         """Mark a DLQ entry as resolved after successful retry."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 "UPDATE projection_dlq SET resolved = TRUE WHERE dlq_id = $1",
                 str(dlq_id),
@@ -100,11 +90,7 @@ class DLQHandler:
 
     async def is_permanent_failure(self, dlq_id: UUID, tenant_id: UUID) -> bool:
         """Check if a DLQ entry has exceeded max retries."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             count = await conn.fetchval(
                 "SELECT retry_count FROM projection_dlq WHERE dlq_id = $1",
                 str(dlq_id),
