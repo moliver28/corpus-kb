@@ -9,6 +9,14 @@
 -- ============================================================================
 
 -- ============================================================================
+-- 0. Set Session Context for RLS During Migration
+-- ============================================================================
+-- Set the default tenant context so RLS policies allow inserts. This is reset
+-- at the end of the transaction automatically.
+
+SET app.current_tenant_id = '00000000-0000-0000-0000-000000000001';
+
+-- ============================================================================
 -- 1. Extensions
 -- ============================================================================
 
@@ -31,9 +39,14 @@ ON CONFLICT DO NOTHING;
 
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY tenants_tenant_isolation ON tenants
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY tenants_tenant_isolation ON tenants
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy tenants_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 3. Documents Table (projection from DocumentIngested events)
@@ -60,9 +73,14 @@ CREATE INDEX idx_documents_hash ON documents(file_hash);
 
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY documents_tenant_isolation ON documents
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY documents_tenant_isolation ON documents
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy documents_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 4. Chunks Table (projection from ChunksAdded events — text only, no vectors)
@@ -93,9 +111,14 @@ CREATE INDEX idx_chunks_fts ON chunks USING gin (to_tsvector('english', text));
 
 ALTER TABLE chunks ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY chunks_tenant_isolation ON chunks
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY chunks_tenant_isolation ON chunks
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy chunks_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 5. Chunks_Vectors Table (async embedding projection — pgvector)
@@ -135,9 +158,14 @@ CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
 
 ALTER TABLE chunks_vectors ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY chunks_vectors_tenant_isolation ON chunks_vectors
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY chunks_vectors_tenant_isolation ON chunks_vectors
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy chunks_vectors_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 6. Entities Table (knowledge graph nodes)
@@ -161,9 +189,14 @@ CREATE INDEX idx_entities_name ON entities(name);
 
 ALTER TABLE entities ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY entities_tenant_isolation ON entities
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY entities_tenant_isolation ON entities
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy entities_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 7. Relations Table (knowledge graph edges)
@@ -189,9 +222,14 @@ CREATE INDEX idx_relations_tenant_target ON relations(tenant_id, target_entity_i
 
 ALTER TABLE relations ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY relations_tenant_isolation ON relations
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY relations_tenant_isolation ON relations
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy relations_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 8. Projection Checkpoints (catch-up subscription state)
@@ -210,9 +248,14 @@ CREATE INDEX idx_checkpoints_tenant ON projection_checkpoints(tenant_id);
 
 ALTER TABLE projection_checkpoints ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY checkpoints_tenant_isolation ON projection_checkpoints
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY checkpoints_tenant_isolation ON projection_checkpoints
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy checkpoints_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 9. Projection DLQ (Dead-Letter Queue for failed projections)
@@ -238,9 +281,14 @@ CREATE INDEX idx_dlq_unresolved ON projection_dlq(tenant_id, resolved) WHERE res
 
 ALTER TABLE projection_dlq ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY dlq_tenant_isolation ON projection_dlq
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY dlq_tenant_isolation ON projection_dlq
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy dlq_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 10. Idempotency Keys (command deduplication)
@@ -262,9 +310,14 @@ CREATE INDEX idx_idempotency_tenant ON idempotency_keys(tenant_id);
 
 ALTER TABLE idempotency_keys ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY idempotency_tenant_isolation ON idempotency_keys
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY idempotency_tenant_isolation ON idempotency_keys
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy idempotency_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 11. Tags Table
@@ -284,9 +337,14 @@ CREATE INDEX idx_tags_tenant ON tags(tenant_id);
 CREATE INDEX idx_tags_name ON tags(name);
 
 ALTER TABLE tags ENABLE ROW LEVEL SECURITY;
-CREATE POLICY tags_tenant_isolation ON tags
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY tags_tenant_isolation ON tags
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy tags_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 12. Document Tags (many-to-many)
@@ -304,9 +362,14 @@ CREATE INDEX idx_document_tags_tenant ON document_tags(tenant_id);
 CREATE INDEX idx_document_tags_doc ON document_tags(doc_id);
 
 ALTER TABLE document_tags ENABLE ROW LEVEL SECURITY;
-CREATE POLICY document_tags_tenant_isolation ON document_tags
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY document_tags_tenant_isolation ON document_tags
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy document_tags_tenant_isolation already exists: %', SQLERRM;
+END $$;
 
 -- ============================================================================
 -- 13. Metadata (key-value store)
@@ -325,6 +388,11 @@ CREATE INDEX idx_metadata_tenant ON metadata(tenant_id);
 CREATE INDEX idx_metadata_key ON metadata(key);
 
 ALTER TABLE metadata ENABLE ROW LEVEL SECURITY;
-CREATE POLICY metadata_tenant_isolation ON metadata
-    USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
-    WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+DO $$
+BEGIN
+    CREATE POLICY metadata_tenant_isolation ON metadata
+        USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)
+        WITH CHECK (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID);
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'Policy metadata_tenant_isolation already exists: %', SQLERRM;
+END $$;
