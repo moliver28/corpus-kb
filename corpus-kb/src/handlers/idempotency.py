@@ -22,6 +22,8 @@ from uuid import UUID
 
 import asyncpg
 
+from ..storage.tenant_conn import tenant_connection
+
 logger = logging.getLogger(__name__)
 
 
@@ -35,11 +37,7 @@ class IdempotencyChecker:
         self, tenant_id: UUID, command_id: UUID
     ) -> Optional[dict[str, Any]]:
         """Check if command already executed. Returns cached result or None."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             row = await conn.fetchrow(
                 """
                 SELECT command_type, command_payload, result, created_at
@@ -62,11 +60,7 @@ class IdempotencyChecker:
         result: Optional[dict[str, Any]] = None,
     ) -> None:
         """Record command execution for future deduplication."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        async with tenant_connection(self._pool, tenant_id) as conn:
             import json
 
             await conn.execute(

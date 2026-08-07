@@ -29,6 +29,7 @@ from domain.models import (
     SearchSimilarQuery,
 )
 from src.rag.embedder import OllamaEmbedder
+from src.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,7 @@ class QueryHandler:
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: vector similarity + full-text search with RRF fusion."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-
+        async with tenant_connection(self._pool, query.tenant_id) as conn:
             # 1. Vector search (if embedder available)
             vector_results: list[dict[str, Any]] = []
             if self._embedder:
@@ -131,11 +127,7 @@ class QueryHandler:
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a read-only SQL query."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
+        async with tenant_connection(self._pool, query.tenant_id) as conn:
             rows = await conn.fetch(query.sql, *query.params.values())
             return [dict(row) for row in rows]
 
@@ -143,11 +135,7 @@ class QueryHandler:
         self, query: ListDocumentsQuery
     ) -> list[DocumentResult]:
         """List documents with pagination."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
+        async with tenant_connection(self._pool, query.tenant_id) as conn:
             rows = await conn.fetch(
                 """
                 SELECT doc_id, source, source_type, chunk_count, created_at
@@ -175,11 +163,7 @@ class QueryHandler:
         self, query: ListEntitiesQuery
     ) -> list[EntityResult]:
         """List entities, optionally filtered by type."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
+        async with tenant_connection(self._pool, query.tenant_id) as conn:
             if query.entity_type:
                 rows = await conn.fetch(
                     """
@@ -219,11 +203,7 @@ class QueryHandler:
         self, query: SearchSimilarQuery
     ) -> list[SearchResult]:
         """Find chunks similar to a given chunk via vector distance."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
+        async with tenant_connection(self._pool, query.tenant_id) as conn:
             rows = await conn.fetch(
                 """
                 SELECT c.chunk_id, c.text, c.doc_id, d.source,
@@ -267,11 +247,7 @@ class QueryHandler:
         )
         # Expand each result with surrounding chunks
         expanded: list[SearchResult] = []
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
+        async with tenant_connection(self._pool, query.tenant_id) as conn:
             for result in base_results:
                 expanded.append(result)
                 context = await conn.fetch(
