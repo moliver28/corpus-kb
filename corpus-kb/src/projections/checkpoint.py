@@ -15,19 +15,27 @@ import asyncpg
 
 from ..storage.tenant_conn import tenant_connection
 
+logger = logging.getLogger(__name__)
+
 
 def _as_datetime(value: Union[str, datetime]) -> datetime:
-    """Coerce an event timestamp to a datetime for the TIMESTAMPTZ column.
+    """Coerce an event timestamp to a timezone-aware datetime for TIMESTAMPTZ.
 
     asyncpg binds TIMESTAMPTZ parameters from datetime objects, not strings, so
     callers that pass an ISO-8601 string (or str(row["created_at"])) would raise
-    a DataError. Accept either form here so the checkpoint write is robust.
+    a DataError. Accept either form here so the checkpoint write is robust. A
+    naive (offset-less) string is rejected loudly rather than silently anchored
+    to the session timezone, which would store the wrong instant.
     """
     if isinstance(value, datetime):
         return value
-    return datetime.fromisoformat(value.replace("Z", "+00:00"))
-
-logger = logging.getLogger(__name__)
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError(
+            f"checkpoint timestamp {value!r} has no timezone offset; "
+            "pass a UTC ISO-8601 string (e.g. ending in 'Z' or '+00:00')"
+        )
+    return parsed
 
 
 class CheckpointManager:

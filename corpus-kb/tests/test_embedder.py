@@ -64,11 +64,18 @@ _DEAD_PORT_CONFIG: dict[str, object] = {
 
 
 @pytest.mark.requires_ollama
-@pytest.mark.skipif(
-    not _ollama_model_available(_LIVE_MODEL),
-    reason=f"live embedding test needs the {_LIVE_MODEL} model pulled (ollama pull {_LIVE_MODEL})",
-)
 class TestOllamaEmbedderLive:
+    @pytest.fixture(autouse=True)
+    def _require_live_model(self) -> None:
+        # Probe at setup time (only when a test in this class is actually
+        # selected), not at import/collection time, so unrelated pytest runs
+        # never pay the network round-trip.
+        if not _ollama_model_available(_LIVE_MODEL):
+            pytest.skip(
+                f"live embedding test needs the {_LIVE_MODEL} model pulled "
+                f"(ollama pull {_LIVE_MODEL})"
+            )
+
     def test_embed_returns_vector_of_configured_dimensions(self) -> None:
         embedder = OllamaEmbedder(_LIVE_CONFIG)
         vector = embedder.embed("hello")
