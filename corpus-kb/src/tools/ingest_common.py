@@ -20,6 +20,7 @@ from ..partitioning import ElementProxy, partition as unstructured_partition
 from ..chunking.unstructured_chunker import chunk_elements
 from ..rag import OllamaEmbedder
 from ..storage.rag_backend import RagBackend
+from ..storage.tenant_conn import tenant_connection
 from ..utils.models import Chunk, Document, Entity, Relation
 
 logger = logging.getLogger(__name__)
@@ -147,11 +148,7 @@ class PostgresIngestStore:
 
     async def store_document(self, document: Document) -> str:
         """Insert a document into the documents table."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             row = await conn.fetchrow(
                 """
                 INSERT INTO documents (doc_id, tenant_id, source, source_type,
@@ -176,11 +173,7 @@ class PostgresIngestStore:
         if not chunks:
             return 0
         count = 0
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             for chunk in chunks:
                 chunk_index = (
                     chunk.sibling_order if chunk.sibling_order is not None else count
@@ -214,11 +207,7 @@ class PostgresIngestStore:
         if not chunks:
             return 0
         count = 0
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             for chunk in chunks:
                 if chunk.embedding is None:
                     continue
@@ -243,11 +232,7 @@ class PostgresIngestStore:
         if not entities:
             return 0
         count = 0
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             for entity in entities:
                 await conn.execute(
                     """
@@ -271,11 +256,7 @@ class PostgresIngestStore:
         if not relations:
             return 0
         count = 0
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             for relation in relations:
                 await conn.execute(
                     """

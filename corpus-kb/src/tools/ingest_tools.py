@@ -10,6 +10,7 @@ from typing import Optional
 
 import asyncpg
 
+from ..storage.tenant_conn import tenant_connection
 from .ingest_common import load_config_or_pass, run_pipeline
 
 
@@ -119,11 +120,9 @@ async def delete_document(
 ) -> dict[str, object]:
     """Delete a document by ID and all related rows."""
     try:
-        async with pg_pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                "00000000-0000-0000-0000-000000000001",
-            )
+        async with tenant_connection(
+            pg_pool, "00000000-0000-0000-0000-000000000001"
+        ) as conn:
             await conn.execute(
                 "DELETE FROM documents WHERE doc_id = $1",
                 document_id,
