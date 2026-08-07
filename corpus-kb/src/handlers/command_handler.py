@@ -68,12 +68,14 @@ class CommandHandler:
         text = path.read_text(encoding="utf-8")
         source_type = cmd.source_type or _detect_source_type(cmd.file_path)
 
-        return await self._run_ingest(text, source_type, cmd.file_path, cmd.tenant_id)
+        return await self._run_ingest(
+            text, source_type, cmd.file_path, cmd.tenant_id, is_file=True
+        )
 
     async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
         """Ingest raw text: run pipeline → create Document aggregate → fire events."""
         return await self._run_ingest(
-            cmd.text, cmd.source_type, cmd.source, cmd.tenant_id
+            cmd.text, cmd.source_type, cmd.source, cmd.tenant_id, is_file=False
         )
 
     async def handle_ingest_directory(
@@ -167,6 +169,7 @@ class CommandHandler:
         source_type: str,
         source_path: str,
         tenant_id: UUID,
+        is_file: bool,
     ) -> dict[str, object]:
         """Run the ingest pipeline and create eventsourcing aggregates.
 
@@ -187,6 +190,7 @@ class CommandHandler:
             self._config,
             self._pool,
             str(tenant_id),
+            is_file=is_file,
         )
 
         if result.get("status") != "success":

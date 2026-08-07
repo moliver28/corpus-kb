@@ -286,6 +286,7 @@ async def run_pipeline(
     pg_pool: asyncpg.Pool,
     tenant_id: str = DEFAULT_TENANT_ID,
     rag_backend: RagBackend | None = None,
+    is_file: bool = False,
 ) -> dict[str, object]:
     """Run the full ingest pipeline: partition, chunk, embed, extract, store.
 
@@ -294,10 +295,11 @@ async def run_pipeline(
     Args:
         text: The full text content to ingest.
         source_type: One of "code", "markdown", "text".
-        path: Source path or "raw_text".
+        path: Source path or a custom source identifier.
         config: Pipeline config dict.
         pg_pool: asyncpg connection pool for Postgres writes.
         tenant_id: Tenant ID for RLS.
+        is_file: True if path points to a file; False if path is raw text source ID.
 
     Returns:
         Result dict with keys: status, document_id, path, source_type,
@@ -306,10 +308,10 @@ async def run_pipeline(
     """
     document = build_document(path, source_type, text)
 
-    if path == "raw_text":
-        elements = elements_for_text(text)
-    else:
+    if is_file:
         elements = elements_for_file(Path(path))
+    else:
+        elements = elements_for_text(text)
 
     chunks = chunk_elements(elements, text, document.document_id)
 

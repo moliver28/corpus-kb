@@ -27,7 +27,13 @@ async def ingest_file(
         return {"status": "error", "message": f"File not found: {path}"}
     text = path.read_text(encoding="utf-8")
     return await run_pipeline(
-        text, _detect_source_type(path), str(path), config, pg_pool, tenant_id
+        text,
+        _detect_source_type(path),
+        str(path),
+        config,
+        pg_pool,
+        tenant_id,
+        is_file=True,
     )
 
 
@@ -43,7 +49,9 @@ async def ingest_text(
     if source_type not in {"code", "markdown", "text"}:
         return {"status": "error", "message": f"Invalid source_type: {source_type}"}
     config = load_config_or_pass(config)
-    return await run_pipeline(text, source_type, source, config, pg_pool, tenant_id)
+    return await run_pipeline(
+        text, source_type, source, config, pg_pool, tenant_id, is_file=False
+    )
 
 
 async def ingest_directory(
