@@ -1,11 +1,11 @@
-"""Idempotency layer — prevents duplicate command execution.
+"""Idempotency layer - prevents duplicate command execution.
 
 Checks idempotency_keys table before executing a command.
 If the key exists, returns cached result. If not, executes
 and records the result for future deduplication.
 
 Usage:
-    from handlers.idempotency import IdempotencyChecker
+    from src.handlers.idempotency import IdempotencyChecker
     checker = IdempotencyChecker(pool)
     cached = await checker.check(tenant_id, command_id)
     if cached:

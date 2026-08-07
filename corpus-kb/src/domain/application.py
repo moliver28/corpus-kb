@@ -5,7 +5,7 @@ Our custom projection tables (documents, chunks, vectors, etc.) are
 updated by async projections that subscribe to events.
 
 Usage:
-    from domain.application import get_app
+    from src.domain.application import get_app
     app = get_app()
     doc = Document(tenant_id=..., source='test.py', source_type='code')
     app.save(doc)  # persists events to event_store
@@ -84,7 +84,7 @@ def get_app(connection_string: Optional[str] = None) -> CorpusApplication:
         if not connection_string:
             # Fall back to config
             try:
-                from config import load_config
+                from src.config import load_config
 
                 cfg = load_config()
                 db_cfg = cfg.get("database", {})

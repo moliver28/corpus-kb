@@ -59,7 +59,7 @@ async def startup(
       - http_app: Starlette app
       - socket_server: JSONRPCServer
     """
-    from config import load_config
+    from src.config import load_config
 
     cfg = config or load_config()
 
@@ -77,14 +77,14 @@ async def startup(
     pool = await initialize_postgres_pool(conn_str)
 
     # 2. Eventsourcing application
-    from domain.application import get_app
+    from src.domain.application import get_app
 
     app = get_app(conn_str)
 
     # 3. Handlers
-    from handlers.command_handler import get_command_handler
-    from handlers.query_handler import set_query_handler, QueryHandler
-    from handlers.idempotency import set_idempotency_checker, IdempotencyChecker
+    from src.handlers.command_handler import get_command_handler
+    from src.handlers.query_handler import set_query_handler, QueryHandler
+    from src.handlers.idempotency import set_idempotency_checker, IdempotencyChecker
 
     command_handler = get_command_handler(cfg, pool)
     query_handler = QueryHandler(pool)
@@ -92,19 +92,19 @@ async def startup(
     set_idempotency_checker(IdempotencyChecker(pool))
 
     # 3b. Graph, Tag, Versioning handlers
-    from handlers.graph_handler import GraphHandler, set_graph_handler
-    from handlers.tag_handler import TagHandler, set_tag_handler
-    from handlers.versioning_handler import VersioningHandler, set_versioning_handler
+    from src.handlers.graph_handler import GraphHandler, set_graph_handler
+    from src.handlers.tag_handler import TagHandler, set_tag_handler
+    from src.handlers.versioning_handler import VersioningHandler, set_versioning_handler
 
     set_graph_handler(GraphHandler(pool))
     set_tag_handler(TagHandler(pool))
     set_versioning_handler(VersioningHandler(pool))
 
     # 4. Projections
-    from projections.embed_projection import set_embed_projection, EmbedChunksProjection
-    from projections.checkpoint import set_checkpoint_manager, CheckpointManager
-    from projections.dlq import set_dlq_handler, DLQHandler
-    from projections.documents_projection import (
+    from src.projections.embed_projection import set_embed_projection, EmbedChunksProjection
+    from src.projections.checkpoint import set_checkpoint_manager, CheckpointManager
+    from src.projections.dlq import set_dlq_handler, DLQHandler
+    from src.projections.documents_projection import (
         set_documents_projection,
         DocumentsProjection,
     )
@@ -127,18 +127,18 @@ async def startup(
     set_documents_projection(docs_projection)
 
     # 4b. LlamaIndex RAG backend (additive, Ollama-only)
-    from storage.llamaindex_backend import LlamaIndexPostgresBackend
+    from src.storage.llamaindex_backend import LlamaIndexPostgresBackend
 
     rag_backend = LlamaIndexPostgresBackend(cfg)
     await rag_backend.initialize()
 
     # 5. HTTP app
-    from api.http import create_http_app
+    from src.api.http import create_http_app
 
     http_app = create_http_app()
 
     # 6. Socket server
-    from api.socket import get_socket_server
+    from src.api.socket import get_socket_server
 
     socket_server = get_socket_server()
 

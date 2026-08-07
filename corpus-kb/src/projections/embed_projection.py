@@ -17,8 +17,8 @@ from uuid import UUID
 
 import asyncpg
 
-from projections.checkpoint import CheckpointManager
-from projections.dlq import DLQHandler
+from src.projections.checkpoint import CheckpointManager
+from src.projections.dlq import DLQHandler
 from src.rag.embedder import OllamaEmbedder
 from src.storage.tenant_conn import tenant_connection
 

@@ -1,10 +1,10 @@
 """Command handler — dispatches commands to domain aggregates.
 
-Wraps the ingest pipeline (partition → chunk → embed → extract → store)
+Wraps the ingest pipeline (partition > chunk > embed > extract > store)
 and creates eventsourcing aggregates + events for audit trail.
 
 Usage:
-    from handlers.command_handler import get_command_handler
+    from src.handlers.command_handler import get_command_handler
     handler = get_command_handler(pool)
     result = await handler.handle_ingest_file(IngestFileCommand(file_path='test.py'))
 """
@@ -18,9 +18,9 @@ from uuid import UUID
 
 import asyncpg
 
-from domain.aggregates import Document, Entity, Relation
-from domain.application import get_app
-from domain.models import (
+from src.domain.aggregates import Document, Entity, Relation
+from src.domain.application import get_app
+from src.domain.models import (
     AddEntityCommand,
     AddRelationCommand,
     DeleteDocumentCommand,
@@ -28,7 +28,7 @@ from domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
-from tools.ingest_common import load_config_or_pass, run_pipeline
+from src.tools.ingest_common import load_config_or_pass, run_pipeline
 
 logger = logging.getLogger(__name__)
 

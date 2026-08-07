@@ -1,10 +1,10 @@
-"""Query handler — read-side queries via asyncpg + pgvector.
+"""Query handler - read-side queries via asyncpg + pgvector.
 
 All queries use parameterized SQL with SET LOCAL app.current_tenant_id
-for RLS enforcement. No SQLAlchemy — asyncpg only.
+for RLS enforcement. No SQLAlchemy - asyncpg only.
 
 Usage:
-    from handlers.query_handler import get_query_handler
+    from src.handlers.query_handler import get_query_handler
     handler = get_query_handler()
     results = await handler.handle_search(SearchQuery(query="test", k=10))
 """
@@ -17,7 +17,7 @@ from uuid import UUID
 
 import asyncpg
 
-from domain.models import (
+from src.domain.models import (
     DocumentResult,
     EntityResult,
     ListDocumentsQuery,
