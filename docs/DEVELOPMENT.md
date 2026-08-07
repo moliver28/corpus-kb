@@ -83,7 +83,7 @@ Key concepts:
 
 ### RLS isolation
 
-Every database connection runs `SET LOCAL app.current_tenant_id = '<uuid>'` before querying. Postgres RLS policies filter rows by that setting. This keeps tenant data isolated without changing SQL queries.
+Every database connection acquired via `tenant_connection()` (`src/storage/tenant_conn.py`) runs `SELECT set_config('app.current_tenant_id', $1, true)` inside an explicit transaction before querying. Postgres RLS policies filter rows by that setting. This keeps tenant data isolated without changing SQL queries.
 
 ---
 

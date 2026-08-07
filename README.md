@@ -99,14 +99,14 @@ python scripts/install.py install --apply   # guided setup with confirmations
 
 # Or load the schema manually:
 #   psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
-#     -f corpus-kb/migrations/001_corpus_schema.sql
+#     -f corpus-kb/migrations/004_app_schema.sql
 
 # 5. Pull the embedding model
 ollama pull nomic-embed-text
 
-# 6. Start the server
+# 6. Start the server (run from inside the corpus-kb/ directory)
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
-python -m corpus-kb.src.server_wiring --transport http --port 8010
+python -m src.server_wiring --transport http --port 8010
 ```
 
 In another terminal:

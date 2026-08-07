@@ -188,7 +188,7 @@ Set `CORPUS_KB_DATABASE_URL` or add `database.connection_string` to `config.yaml
 
 ### `relation "documents" does not exist`
 
-Run migrations (`python scripts/migrate.py`) or load the schema SQL manually (`psql -f corpus-kb/migrations/001_corpus_schema.sql`).
+Run migrations (`python scripts/migrate.py`) or load the schema SQL manually (`psql -f corpus-kb/migrations/004_app_schema.sql`).
 
 ### Vector search returns empty results
 

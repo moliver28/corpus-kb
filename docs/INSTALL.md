@@ -112,10 +112,10 @@ Alternatively, load the schema SQL manually:
 
 ```bash
 psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
-  -f corpus-kb/migrations/001_corpus_schema.sql
+  -f corpus-kb/migrations/004_app_schema.sql
 ```
 
-This creates the projection tables plus tenants, event-sourcing checkpoint, DLQ, idempotency, tags, and metadata tables. It also enables RLS policies and inserts the default tenant placeholder.
+This creates the projection tables plus tenants, event-sourcing checkpoint, DLQ, idempotency, tags, and metadata tables. It also enables RLS policies and inserts the default tenant placeholder. (`001_corpus_schema.sql` predates this schema and is unrelated — do not use it.)
 
 ### Using the installer
 
@@ -139,7 +139,7 @@ Download Ollama from [ollama.com](https://ollama.com) and start it. Then pull an
 ollama pull nomic-embed-text
 ```
 
-`nomic-embed-text` is the default: about 274 MB, 768 dimensions, and fast on CPU. For higher quality, pull `qwen3-embedding:8b-q8_0` and update `config.yaml` to `dimensions: 4096`.
+`nomic-embed-text` is the default: about 274 MB, 768 dimensions, and fast on CPU. For higher quality, pull `qwen3-embedding:8b-q8_0` and update `config.yaml` to `dimensions: 4096` — this also requires `ALTER TABLE chunks_vectors ALTER COLUMN vector TYPE vector(4096)`, and disables ANN indexing on that column (pgvector caps `ivfflat`/`hnsw` indexing at 2000 dimensions; search still works, just as a sequential scan).
 
 ---
 
@@ -179,7 +179,7 @@ graph:
   ontology_path: config/ontology.yaml
 ```
 
-You can also use environment variables. These override any value in `config.yaml`:
+You can also use environment variables. These override any value in `config.yaml` when the server or `scripts/install.py` loads config (both delegate to `src/config.py::load_config()`):
 
 | Variable | Maps to |
 |----------|---------|
@@ -248,7 +248,7 @@ Re-run `CREATE EXTENSION` as a superuser on the `corpus_kb` database.
 
 ### `relation "documents" does not exist`
 
-Load the schema via migrations (`python scripts/migrate.py`) or manually (`psql -f corpus-kb/migrations/001_corpus_schema.sql`) before starting the server.
+Load the schema via migrations (`python scripts/migrate.py`) or manually (`psql -f corpus-kb/migrations/004_app_schema.sql`) before starting the server.
 
 ### Ollama connection errors
 
