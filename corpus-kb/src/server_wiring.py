@@ -246,6 +246,11 @@ def main() -> None:
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     )
 
+    from src.config import load_config
+
+    cfg = load_config()
+    cfg.setdefault("server", {})["port"] = args.port
+
     if args.transport == "stdio":
         # MCP stdio mode: run FastMCP server only (no HTTP/socket)
         logger.info("Starting in stdio mode (MCP only)")
@@ -253,7 +258,7 @@ def main() -> None:
         # TODO: wire FastMCP server here
         # For now, just run the HTTP server
         async def _run() -> None:
-            services = await startup()
+            services = await startup(cfg)
             try:
                 await run_all(services)
             finally:
@@ -265,7 +270,7 @@ def main() -> None:
         logger.info("Starting in %s mode on port %d", args.transport, args.port)
 
         async def _run() -> None:
-            services = await startup()
+            services = await startup(cfg)
             try:
                 await run_all(services)
             finally:
