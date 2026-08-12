@@ -123,18 +123,20 @@ END $$;
 -- ============================================================================
 -- 5. Chunks_Vectors Table (async embedding projection — pgvector)
 -- ============================================================================
--- Column width matches the DEFAULT configured model (nomic-embed-text,
--- 768d). pgvector rejects inserts that don't match the declared width
--- exactly, and caps ivfflat/hnsw indexing at 2000 dimensions — a column
--- wide enough for qwen3-embedding:8b-q8_0 (4096d) could never be indexed.
--- Switching the default model requires ALTER COLUMN vector TYPE vector(N)
--- and accepting sequential-scan search above 2000 dimensions.
+-- Column width matches the DEFAULT configured model (qwen3-embedding:8b,
+-- 4096d). pgvector rejects inserts that don't match the declared width
+-- exactly, and caps ivfflat/hnsw indexing at 2000 dimensions, so this width
+-- can never be ANN-indexed; search runs as a sequential scan instead (fine
+-- at the scale of a single research study's corpus). Switching to a
+-- narrower model (e.g. nomic-embed-text, 768d) requires
+-- ALTER COLUMN vector TYPE vector(N) and re-embedding existing rows —
+-- dimensions cannot be mixed in one column.
 
 CREATE TABLE IF NOT EXISTS chunks_vectors (
     chunk_id UUID PRIMARY KEY REFERENCES chunks(chunk_id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL,
-    vector vector(768),
-    embedding_model VARCHAR(255) NOT NULL DEFAULT 'nomic-embed-text',
+    vector vector(4096),
+    embedding_model VARCHAR(255) NOT NULL DEFAULT 'qwen3-embedding:8b',
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT vector_not_null CHECK (vector IS NOT NULL)
 );

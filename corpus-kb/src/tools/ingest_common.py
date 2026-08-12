@@ -250,7 +250,7 @@ class PostgresIngestStore:
                 count += 1
         return count
 
-    async def store_vectors(self, chunks: list[Chunk]) -> int:
+    async def store_vectors(self, chunks: list[Chunk], embedding_model: str) -> int:
         """Insert chunk vectors into the chunks_vectors table. Returns count."""
         if not chunks:
             return 0
@@ -270,7 +270,7 @@ class PostgresIngestStore:
                     chunk.chunk_id,
                     self._tenant_id,
                     vector_str,
-                    "nomic-embed-text",
+                    embedding_model,
                 )
                 count += 1
         return count
@@ -383,7 +383,8 @@ async def run_pipeline(
         for chunk in chunks:
             chunk.document_id = document_id
         pg_chunk_count = await ingest_store.store_chunks(chunks)
-        pg_vector_count = await ingest_store.store_vectors(chunks)
+        embedding_model = str(_nested_dict(config, "embedding").get("model", "nomic-embed-text"))
+        pg_vector_count = await ingest_store.store_vectors(chunks, embedding_model)
     except Exception as exc:
         logging.warning("Postgres write failed: %s", exc)
         errors.append(f"PostgresWriteError: {exc}")

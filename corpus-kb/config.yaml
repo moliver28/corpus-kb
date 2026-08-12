@@ -7,10 +7,10 @@ server:
 
 embedding:
   provider: ollama
-  model: nomic-embed-text
+  model: qwen3-embedding:8b
   base_url: http://localhost:11434
-  batch_size: 32
-  dimensions: 768
+  batch_size: 16
+  dimensions: 4096
 
 chunking:
   max_size: 4096
@@ -31,7 +31,7 @@ graph:
 llamaindex:
   cache: disabled
   docstore: disabled
-  embed_dim: 768
+  embed_dim: 4096
 
 installer:
   auto_detect: true
