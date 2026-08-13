@@ -106,10 +106,12 @@ class CommandHandler:
                         {"status": "error", "path": str(file_path), "error": str(exc)}
                     )
 
+        failed = [r for r in results if r.get("status") != "success"]
         return {
-            "status": "success",
+            "status": "error" if failed else "success",
             "directory": cmd.directory_path,
             "files_processed": len(results),
+            "files_failed": len(failed),
             "results": results,
         }
 

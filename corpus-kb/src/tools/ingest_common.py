@@ -216,23 +216,30 @@ class PostgresIngestStore:
             )
             return str(row["doc_id"])
 
-    async def store_chunks(self, chunks: list[Chunk]) -> int:
-        """Insert chunks into the chunks table. Returns count inserted."""
+    async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
+        """Insert chunks into the chunks table. Returns the chunk_ids actually inserted.
+
+        A chunk whose (tenant_id, doc_id, chunk_index) already exists is skipped
+        (ON CONFLICT DO NOTHING) -- its chunk_id is a fresh UUID generated for
+        this call and was never written, so callers must not treat it as
+        present (store_vectors would hit a foreign-key violation otherwise).
+        """
         if not chunks:
-            return 0
-        count = 0
+            return set()
+        inserted: set[str] = set()
         async with tenant_connection(self._pool, self._tenant_id) as conn:
-            for chunk in chunks:
+            for count, chunk in enumerate(chunks):
                 chunk_index = (
                     chunk.sibling_order if chunk.sibling_order is not None else count
                 )
-                await conn.execute(
+                row = await conn.fetchrow(
                     """
                     INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
                         text, source_type, entity_name, heading_path, file_path,
                         start_line, end_line, metadata)
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                     ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
+                    RETURNING chunk_id
                     """,
                     chunk.chunk_id,
                     self._tenant_id,
@@ -247,8 +254,9 @@ class PostgresIngestStore:
                     chunk.end_line,
                     json.dumps(chunk.metadata),
                 )
-                count += 1
-        return count
+                if row is not None:
+                    inserted.add(str(row["chunk_id"]))
+        return inserted
 
     async def store_vectors(self, chunks: list[Chunk], embedding_model: str) -> int:
         """Insert chunk vectors into the chunks_vectors table. Returns count."""
@@ -275,19 +283,28 @@ class PostgresIngestStore:
                 count += 1
         return count
 
-    async def store_entities(self, entities: list[Entity]) -> int:
-        """Insert entities into the entities table. Returns count."""
+    async def store_entities(self, entities: list[Entity]) -> dict[str, str]:
+        """Insert entities into the entities table.
+
+        Returns a map of each input entity's original entity_id to the
+        entity_id actually persisted for it. An entity whose (tenant_id,
+        name, entity_type) already exists is skipped (ON CONFLICT DO
+        NOTHING) -- its real, pre-existing entity_id differs from the
+        fresh one generated for this call, so callers building relations
+        must remap through this dict rather than assume the original id.
+        """
         if not entities:
-            return 0
-        count = 0
+            return {}
+        resolved: dict[str, str] = {}
         async with tenant_connection(self._pool, self._tenant_id) as conn:
             for entity in entities:
-                await conn.execute(
+                row = await conn.fetchrow(
                     """
                     INSERT INTO entities (entity_id, tenant_id, name, entity_type,
                         source_document_id, metadata)
                     VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
+                    RETURNING entity_id
                     """,
                     entity.entity_id,
                     self._tenant_id,
@@ -296,8 +313,21 @@ class PostgresIngestStore:
                     entity.source_document_id,
                     json.dumps(entity.metadata),
                 )
-                count += 1
-        return count
+                if row is not None:
+                    resolved[str(entity.entity_id)] = str(row["entity_id"])
+                else:
+                    existing = await conn.fetchrow(
+                        """
+                        SELECT entity_id FROM entities
+                        WHERE tenant_id = $1 AND name = $2 AND entity_type = $3
+                        """,
+                        self._tenant_id,
+                        entity.name,
+                        entity.entity_type,
+                    )
+                    if existing is not None:
+                        resolved[str(entity.entity_id)] = str(existing["entity_id"])
+        return resolved
 
     async def store_relations(self, relations: list[Relation]) -> int:
         """Insert relations into the relations table. Returns count."""
@@ -375,21 +405,40 @@ async def run_pipeline(
 
     ingest_store = PostgresIngestStore(pg_pool, tenant_id)
 
-    # Write document + chunks + vectors to Postgres
+    # Write document + chunks + vectors to Postgres. Each store call commits
+    # its own transaction independently, so a later call's failure must not
+    # zero out an earlier call's already-committed count.
+    pg_chunk_count = 0
+    pg_vector_count = 0
     try:
         document_id = await ingest_store.store_document(document)
         document.document_id = document_id
         # Update chunk references to use the actual stored document ID
         for chunk in chunks:
             chunk.document_id = document_id
-        pg_chunk_count = await ingest_store.store_chunks(chunks)
-        embedding_model = str(_nested_dict(config, "embedding").get("model", "nomic-embed-text"))
-        pg_vector_count = await ingest_store.store_vectors(chunks, embedding_model)
     except Exception as exc:
-        logging.warning("Postgres write failed: %s", exc)
+        logging.warning("Postgres document write failed: %s", exc)
         errors.append(f"PostgresWriteError: {exc}")
-        pg_chunk_count = 0
-        pg_vector_count = 0
+
+    inserted_chunk_ids: set[str] = set()
+    try:
+        inserted_chunk_ids = await ingest_store.store_chunks(chunks)
+        pg_chunk_count = len(inserted_chunk_ids)
+    except Exception as exc:
+        logging.warning("Postgres chunk write failed: %s", exc)
+        errors.append(f"PostgresWriteError: {exc}")
+
+    # Only chunks that were actually inserted this call have a row in
+    # `chunks` to satisfy chunks_vectors' foreign key -- a chunk skipped by
+    # store_chunks' ON CONFLICT DO NOTHING (an unchanged re-ingest) keeps its
+    # freshly-generated chunk_id un-persisted, so embedding it would fail.
+    new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
+    try:
+        embedding_model = str(_nested_dict(config, "embedding").get("model", "nomic-embed-text"))
+        pg_vector_count = await ingest_store.store_vectors(new_chunks, embedding_model)
+    except Exception as exc:
+        logging.warning("Postgres vector write failed: %s", exc)
+        errors.append(f"PostgresWriteError: {exc}")
 
     # Extract entities and relations
     entities: list[Entity] = []
@@ -401,7 +450,18 @@ async def run_pipeline(
                 chunks, ontology(config), document.document_id, config
             )
             if entities:
-                await ingest_store.store_entities(entities)
+                resolved_ids = await ingest_store.store_entities(entities)
+                for entity in entities:
+                    resolved = resolved_ids.get(str(entity.entity_id))
+                    if resolved is not None:
+                        entity.entity_id = resolved
+                for relation in relations:
+                    relation.source_entity_id = resolved_ids.get(
+                        str(relation.source_entity_id), relation.source_entity_id
+                    )
+                    relation.target_entity_id = resolved_ids.get(
+                        str(relation.target_entity_id), relation.target_entity_id
+                    )
             if relations:
                 await ingest_store.store_relations(relations)
         except Exception as exc:
@@ -425,9 +485,17 @@ async def run_pipeline(
         await ingest_store.store_document(document)
     except Exception as exc:
         logging.warning("Document update failed: %s", exc)
+        errors.append(f"PostgresWriteError: {exc}")
+
+    # A dead Ollama (EmbeddingError) is an already-handled, non-fatal
+    # degradation -- surfaced via `degraded` and kept in `errors` for
+    # visibility, but it must not flip status to "error" on its own.
+    # Anything else here (a Postgres write failing, extraction blowing up)
+    # means data genuinely didn't land, so it does.
+    hard_errors = [e for e in errors if not e.startswith("EmbeddingError:")]
 
     return {
-        "status": "success",
+        "status": "error" if hard_errors else "success",
         "document_id": document.document_id,
         "path": path,
         "source_type": source_type,

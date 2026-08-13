@@ -62,7 +62,7 @@ class TestConfig:
         database = config.get("database", {})
         graph = config.get("graph", {})
 
-        assert embedding.get("model") == "nomic-embed-text"
-        assert embedding.get("dimensions") == 768
+        assert embedding.get("model") == "qwen3-embedding:8b"
+        assert embedding.get("dimensions") == 4096
         assert database.get("connection_string") is not None
         assert graph.get("extractor") == "langextract"
