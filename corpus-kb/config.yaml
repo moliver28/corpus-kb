@@ -20,6 +20,55 @@ search:
   rrf_k: 60
   expand_context: true
   index_type: hnsw
+  rerank:
+    enabled: true
+    model: qwen3-reranker:8b
+    base_url: http://localhost:11434
+    batch_size: 16
+    over_retrieve_n: 60
+    score_floor: 0.15
+    calibration: minmax
+  self_query:
+    enabled: true
+    model: qwen3:4b
+    base_url: http://localhost:11434
+    timeout_seconds: 8
+  matryoshka_enabled: false
+  matryoshka_dim: 1024
+  candidate_multiplier: 8
+  hnsw_ef_search: 100
+
+contextual:
+  enabled: false          # feature-flagged; enabled per-source_type at ingest time (Task 12/16)
+  enabled_source_types: ["interview", "research"]
+  model: qwen3:4b
+  base_url: http://localhost:11434
+  temperature: 0.0
+  fixture_dir: tests/fixtures/contextual_recorded
+  live_fallback: false
+
+judge:
+  enabled: true
+  model: qwen3:4b
+  base_url: http://localhost:11434
+  max_claims: 20
+
+routing:
+  enabled: true
+  confidence_threshold: 0.35
+  prototypes:
+    semantic:
+      - "what does the document say about X"
+      - "explain the concept of X"
+      - "summarize the section on X"
+    relational:
+      - "how many documents mention X"
+      - "count the chunks by type"
+      - "aggregate statistics across the corpus"
+    graph:
+      - "what is related to X"
+      - "how is X connected to Y"
+      - "what entities are linked to X"
 
 graph:
   backend: postgres
