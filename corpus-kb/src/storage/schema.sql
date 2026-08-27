@@ -144,6 +144,15 @@ CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
 -- The following column was added by migration 007 (chunk dedup + provenance):
 --   dimensions INT  -- embedding vector dimensionality, backfilled to 4096
 
+-- The following column and index were added by migration 010 (matryoshka
+-- two-tier ANN index, Feature 4, default off):
+--   vector_1024 vector(1024)  -- front-sliced, L2-renormalized 4096d vector
+--   CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw_1024
+--       ON chunks_vectors USING hnsw (vector_1024 vector_cosine_ops)
+--       WITH (m = 16, ef_construction = 200);
+--   (guarded in a DO block; warns and skips instead of failing if HNSW on
+--   vector_1024 is unsupported)
+
 ALTER TABLE chunks_vectors ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY chunks_vectors_tenant_isolation ON chunks_vectors
