@@ -1,0 +1,3 @@
+{"extraction_class": "Product", "extraction_text": "ServiceA", "char_interval": {"start_pos": 0, "end_pos": 8}, "confidence": 0.9}
+{"extraction_class": "Product", "extraction_text": "ServiceB", "char_interval": {"start_pos": 20, "end_pos": 28}, "confidence": 0.9}
+{"extraction_class": "DEPENDS_ON", "extraction_text": "depends on", "attributes": {"subject": "ServiceA", "object": "ServiceB", "confidence": 0.82}}

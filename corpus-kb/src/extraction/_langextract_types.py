@@ -18,6 +18,7 @@ class NormalizedExtraction:
     start_pos: int | None
     end_pos: int | None
     confidence: float | None
+    attributes: dict[str, object] | None = None
 
 
 @runtime_checkable
@@ -35,6 +36,7 @@ class Extraction(Protocol):
     extraction_class: str
     extraction_text: str
     char_interval: CharInterval | None
+    attributes: dict[str, object] | None
 
 
 @runtime_checkable
@@ -75,6 +77,13 @@ def build_prompt_description(ontology: Ontology) -> str:
     return (
         "Extract entities from the provided text with exact character offsets. "
         f"Allowed entity types: {ontology.entity_types}. "
+        "Also extract directed relations between the entities you found: for each "
+        "relation, emit an extraction whose extraction_class is one of the allowed "
+        "relation types below, and whose attributes dict contains 'subject' (the "
+        "exact text of the source entity), 'object' (the exact text of the target "
+        "entity), and 'confidence' (a float between 0 and 1). Only emit a relation "
+        "when both the subject and object were also extracted as entities in the "
+        "same text. "
         f"Allowed relation types: {ontology.relation_types}."
     )
 
@@ -92,6 +101,41 @@ def build_examples(lx: LangExtractModule, ontology: Ontology) -> list[object]:
             lx.data.ExampleData(
                 text=f"Example of {entity_type}.",
                 extractions=[extraction],
+            )
+        )
+
+    if ontology.relation_types and len(ontology.entity_types) >= 2:
+        subject_type, object_type = ontology.entity_types[0], ontology.entity_types[1]
+        relation_type = ontology.relation_types[0]
+        subject_text = f"Example{subject_type}"
+        object_text = f"Example{object_type}"
+        example_text = f"{subject_text} relates to {object_text}."
+        subject_extraction = lx.data.Extraction(
+            extraction_class=subject_type,
+            extraction_text=subject_text,
+            char_interval=lx.data.CharInterval(start_pos=0, end_pos=len(subject_text)),
+        )
+        object_start = example_text.index(object_text)
+        object_extraction = lx.data.Extraction(
+            extraction_class=object_type,
+            extraction_text=object_text,
+            char_interval=lx.data.CharInterval(
+                start_pos=object_start, end_pos=object_start + len(object_text)
+            ),
+        )
+        relation_extraction = lx.data.Extraction(
+            extraction_class=relation_type,
+            extraction_text="relates to",
+            attributes={
+                "subject": subject_text,
+                "object": object_text,
+                "confidence": 0.9,
+            },
+        )
+        examples.append(
+            lx.data.ExampleData(
+                text=example_text,
+                extractions=[subject_extraction, object_extraction, relation_extraction],
             )
         )
     return examples
