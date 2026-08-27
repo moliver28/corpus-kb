@@ -87,6 +87,14 @@ CREATE TABLE IF NOT EXISTS chunks (
     UNIQUE (tenant_id, doc_id, chunk_index)
 );
 
+-- The following columns were added by migration 007 (chunk dedup + provenance):
+--   chunk_hash VARCHAR(64)        -- content hash for dedup
+--   source_timestamp TIMESTAMPTZ  -- upstream source's own timestamp, for supersede comparisons
+--   superseded_at TIMESTAMPTZ     -- set when a newer chunk_hash replaces this row
+--   tombstoned_at TIMESTAMPTZ     -- set when the source content is removed
+-- Also added by migration 007: idx_chunks_active (tenant_id, doc_id) WHERE
+-- tombstoned_at IS NULL AND superseded_at IS NULL, and idx_chunks_hash on chunk_hash.
+
 CREATE INDEX idx_chunks_tenant ON chunks(tenant_id);
 CREATE INDEX idx_chunks_doc ON chunks(doc_id);
 CREATE INDEX idx_chunks_tenant_doc ON chunks(tenant_id, doc_id);
@@ -125,6 +133,9 @@ CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw
 
 CREATE INDEX idx_chunks_vectors_tenant ON chunks_vectors(tenant_id);
 CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
+
+-- The following column was added by migration 007 (chunk dedup + provenance):
+--   dimensions INT  -- embedding vector dimensionality, backfilled to 4096
 
 ALTER TABLE chunks_vectors ENABLE ROW LEVEL SECURITY;
 
