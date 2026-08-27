@@ -104,9 +104,29 @@ class OllamaEmbedder:
 
         return [list(vector) for vector in response.embeddings]
 
+    def embed_matryoshka(self, text: str, dim: int) -> list[float]:
+        """Matryoshka-truncated embedding: reuses embed(), no extra network call."""
+        return _slice_normalize(self.embed(text), dim)
+
+    def embed_batch_matryoshka(self, texts: list[str], dim: int) -> list[list[float]]:
+        return [_slice_normalize(v, dim) for v in self.embed_batch(texts)]
+
 
 def _sha256_key(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _slice_normalize(vec: list[float], dim: int) -> list[float]:
+    """Front-slice to `dim` dimensions and L2-renormalize (matryoshka truncation).
+
+    A zero vector (the degraded-mode signal from a failed embed call) stays
+    all-zero rather than dividing by zero.
+    """
+    sliced = vec[:dim]
+    norm = sum(x * x for x in sliced) ** 0.5
+    if norm == 0.0:
+        return sliced
+    return [x / norm for x in sliced]
 
 
 def _str_or_default(config: dict[str, object], key: str, default: str) -> str:
@@ -198,6 +218,13 @@ class FakeEmbedder:
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return deterministic vectors for ``texts``."""
         return [self._vector_for(text) for text in texts]
+
+    def embed_matryoshka(self, text: str, dim: int) -> list[float]:
+        """Matryoshka-truncated embedding: reuses embed(), no extra network call."""
+        return _slice_normalize(self.embed(text), dim)
+
+    def embed_batch_matryoshka(self, texts: list[str], dim: int) -> list[list[float]]:
+        return [_slice_normalize(v, dim) for v in self.embed_batch(texts)]
 
     def _vector_for(self, text: str) -> list[float]:
         seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)
