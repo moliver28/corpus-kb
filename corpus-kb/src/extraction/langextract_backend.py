@@ -61,11 +61,19 @@ class LangExtractExtractor:
         relations: list[Relation] = []
 
         for chunk in chunks:
-            chunk_entities = self._extract_chunk_entities(
+            chunk_entities, chunk_relation_extractions = self._extract_chunk_entities(
                 chunk, ontology, source_document_id
             )
             entities.extend(chunk_entities)
-            relations.extend(_derive_relations(chunk_entities, chunk, ontology))
+            relations.extend(
+                _parse_typed_relations(
+                    chunk_relation_extractions,
+                    chunk_entities,
+                    chunk,
+                    ontology,
+                    self.extractor_id,
+                )
+            )
 
         return entities, relations
 
@@ -74,14 +82,19 @@ class LangExtractExtractor:
         chunk: Chunk,
         ontology: Ontology,
         source_document_id: str,
-    ) -> list[Entity]:
+    ) -> tuple[list[Entity], list[NormalizedExtraction]]:
         text = chunk.text
         if not text:
-            return []
+            return [], []
 
         extractions = self._load_extractions(text, ontology)
         entities: list[Entity] = []
+        relation_extractions: list[NormalizedExtraction] = []
         for extraction in extractions:
+            if extraction.extraction_class in ontology.relation_types:
+                relation_extractions.append(extraction)
+                continue
+
             if extraction.extraction_class not in ontology.entity_types:
                 raise OntologyViolationError(
                     kind="entity_type",
@@ -119,7 +132,7 @@ class LangExtractExtractor:
                     metadata={"text": text},
                 )
             )
-        return entities
+        return entities, relation_extractions
 
     def _load_extractions(
         self, text: str, ontology: Ontology
@@ -187,6 +200,9 @@ def _load_fixture(path: Path) -> list[NormalizedExtraction]:
                 else None
             )
 
+            attrs_raw = raw.get("attributes")
+            attributes = attrs_raw if isinstance(attrs_raw, dict) else None
+
             extractions.append(
                 NormalizedExtraction(
                     extraction_class=cls,
@@ -194,6 +210,7 @@ def _load_fixture(path: Path) -> list[NormalizedExtraction]:
                     start_pos=start,
                     end_pos=end,
                     confidence=confidence,
+                    attributes=attributes,
                 )
             )
     return extractions
@@ -201,60 +218,54 @@ def _load_fixture(path: Path) -> list[NormalizedExtraction]:
 
 def _normalize_extraction(extraction: Extraction) -> NormalizedExtraction:
     interval = extraction.char_interval
+    attributes = getattr(extraction, "attributes", None)
     return NormalizedExtraction(
         extraction_class=extraction.extraction_class,
         extraction_text=extraction.extraction_text,
         start_pos=interval.start_pos if interval else None,
         end_pos=interval.end_pos if interval else None,
         confidence=None,
+        attributes=attributes if isinstance(attributes, dict) else None,
     )
 
 
 MAX_RELATIONS_PER_CHUNK = 10
 
 
-def _derive_relations(
-    entities: list[Entity], chunk: Chunk, ontology: Ontology
+def _parse_typed_relations(
+    relation_extractions: list[NormalizedExtraction],
+    entities: list[Entity],
+    chunk: Chunk,
+    ontology: Ontology,
+    extractor_id: str,
 ) -> list[Relation]:
-    relation_type = _pick_relation_type(ontology)
+    by_name = {e.name: e for e in entities}
     relations: list[Relation] = []
-    for idx, source in enumerate(entities):
-        for target in entities[idx + 1 :]:
-            confidence = _relation_confidence(source, target)
-            relations.append(
-                Relation(
-                    source_entity_id=source.entity_id,
-                    target_entity_id=target.entity_id,
-                    relation_type=relation_type,
-                    chunk_id=chunk.chunk_id,
-                    confidence=confidence,
-                    extractor_id=LangExtractExtractor.extractor_id,
-                    metadata={},
-                )
+    for extraction in relation_extractions:
+        if extraction.extraction_class not in ontology.relation_types:
+            raise OntologyViolationError(
+                kind="relation_type", value=extraction.extraction_class, allowed=ontology.relation_types,
             )
-            if len(relations) >= MAX_RELATIONS_PER_CHUNK:
-                logging.warning(
-                    "Relation cap reached for chunk %s: generated at least %d, keeping %d",
-                    chunk.chunk_id,
-                    MAX_RELATIONS_PER_CHUNK,
-                    MAX_RELATIONS_PER_CHUNK,
-                )
-                return relations
+        attrs = extraction.attributes or {}
+        subject = by_name.get(str(attrs.get("subject", "")))
+        obj = by_name.get(str(attrs.get("object", "")))
+        if subject is None or obj is None:
+            logging.warning(
+                "Dropping unresolved relation triple '%s' in chunk %s: subject/object not found among extracted entities.",
+                extraction.extraction_class, chunk.chunk_id,
+            )
+            continue
+        relations.append(
+            Relation(
+                source_entity_id=subject.entity_id,
+                target_entity_id=obj.entity_id,
+                relation_type=extraction.extraction_class,
+                chunk_id=chunk.chunk_id,
+                confidence=attrs.get("confidence"),
+                extractor_id=extractor_id,
+                metadata={},
+            )
+        )
+        if len(relations) >= MAX_RELATIONS_PER_CHUNK:
+            break
     return relations
-
-
-def _pick_relation_type(ontology: Ontology) -> str:
-    for candidate in ("MENTIONS", "RELATED_TO"):
-        if candidate in ontology.relation_types:
-            return candidate
-    if ontology.relation_types:
-        return ontology.relation_types[0]
-    raise OntologyViolationError(
-        kind="relation_type", value="", allowed=ontology.relation_types
-    )
-
-
-def _relation_confidence(source: Entity, target: Entity) -> float | None:
-    if source.confidence is not None and target.confidence is not None:
-        return (source.confidence + target.confidence) / 2.0
-    return source.confidence if source.confidence is not None else target.confidence

@@ -202,6 +202,54 @@ class TestLangExtractExtractor:
         assert mock.call_count == 0
 
 
+def test_typed_relation_has_directed_predicate_and_confidence() -> None:
+    from src.extraction.langextract_backend import LangExtractExtractor
+    from src.ontology import load_ontology
+    from src.utils.models import Chunk
+
+    ontology = load_ontology("config/ontology.yaml")
+    extractor = LangExtractExtractor(fixture_dir="tests/fixtures/langextract_recorded", live_fallback=False)
+    chunk = Chunk(document_id="d1", text="ServiceA depends on ServiceB for auth.", source_type="text")
+    entities, relations = extractor.extract([chunk], ontology, "d1")
+    assert any(r.relation_type not in {"MENTIONS", "RELATED_TO"} for r in relations)
+    assert all(r.confidence is not None for r in relations)
+    assert all(r.chunk_id == chunk.chunk_id for r in relations)
+
+
+def test_unresolved_relation_endpoint_is_dropped(tmp_path) -> None:
+    """A relation triple whose subject/object was never extracted as an
+    entity in the same chunk is dropped, not fabricated. Self-contained:
+    writes its own temp fixture rather than depending on the shared
+    fixture directory, so it needs no precomputed hash."""
+    import hashlib
+    import json as json_module
+
+    from src.extraction.langextract_backend import LangExtractExtractor
+    from src.ontology import load_ontology
+    from src.utils.models import Chunk
+
+    text = "An unresolved relation test chunk with no matching entities."
+    key = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    fixture_dir = tmp_path / "fixtures"
+    fixture_dir.mkdir()
+    (fixture_dir / f"{key}.jsonl").write_text(
+        json_module.dumps(
+            {
+                "extraction_class": "DEPENDS_ON",
+                "extraction_text": "depends on",
+                "attributes": {"subject": "GhostA", "object": "GhostB", "confidence": 0.9},
+            }
+        )
+        + "\n"
+    )
+    ontology = load_ontology("config/ontology.yaml")
+    extractor = LangExtractExtractor(fixture_dir=str(fixture_dir), live_fallback=False)
+    chunk = Chunk(document_id="d1", text=text, source_type="text")
+    entities, relations = extractor.extract([chunk], ontology, "d1")
+    assert entities == []
+    assert relations == []
+
+
 class TestExtractorFactory:
     def test_factory_returns_regex_extractor(self) -> None:
         """Given config graph.extractor=regex, factory returns RegexExtractor."""

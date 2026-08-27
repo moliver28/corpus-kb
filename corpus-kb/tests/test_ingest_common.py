@@ -50,7 +50,7 @@ def test_ontology_with_explicit_path() -> None:
     config: dict[str, object] = {"graph": {"ontology_path": "config/ontology.yaml"}}
     ont = ontology(config)
     assert len(ont.entity_types) == 9
-    assert len(ont.relation_types) == 9
+    assert len(ont.relation_types) == 11
 
 
 def test_ontology_with_fallback_path() -> None:

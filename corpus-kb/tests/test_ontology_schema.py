@@ -33,6 +33,8 @@ class TestOntologyLoader:
         "CONTRADICTS",
         "RELATED_TO",
         "INSTANCE_OF",
+        "DEPENDS_ON",
+        "CALLS",
     ]
 
     def test_load_default_ontology_has_exact_plan_types(self) -> None:
