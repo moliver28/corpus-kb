@@ -133,3 +133,15 @@ def test_extract_entities_flag_defaults_true() -> None:
     """_extract_entities_flag defaults to True when not configured."""
     config: dict[str, object] = {"graph": {}}
     assert _extract_entities_flag(config) is True
+
+
+# ---------------------------------------------------------------------------
+# Chunk model: dedup + contextual retrieval fields
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_model_has_dedup_and_contextual_fields() -> None:
+    c = Chunk(document_id="d", text="x", source_type="text")
+    assert c.chunk_hash is None
+    assert c.source_timestamp is None
+    assert c.context_blurb is None
