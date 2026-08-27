@@ -54,6 +54,9 @@ class Chunk(BaseModel):
     source_end_char: Optional[int] = None
     metadata: dict[str, object] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    chunk_hash: Optional[str] = None
+    source_timestamp: Optional[datetime] = None
+    context_blurb: Optional[str] = None
 
 
 class Document(BaseModel):

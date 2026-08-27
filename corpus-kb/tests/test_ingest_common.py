@@ -517,3 +517,16 @@ def test_extractor_name_defaults_to_pgml() -> None:
     """_extractor_name defaults to 'pgml' when not configured."""
     config: dict[str, object] = {"graph": {}}
     assert _extractor_name(config) == "pgml"
+
+
+# ---------------------------------------------------------------------------
+# Chunk model: dedup + contextual retrieval fields
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_model_has_dedup_and_contextual_fields() -> None:
+    c = Chunk(document_id="d", text="x", source_type="text")
+    assert c.chunk_hash is None
+    assert c.source_timestamp is None
+    assert c.context_blurb is None
+
