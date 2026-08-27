@@ -95,6 +95,13 @@ CREATE TABLE IF NOT EXISTS chunks (
 -- Also added by migration 007: idx_chunks_active (tenant_id, doc_id) WHERE
 -- tombstoned_at IS NULL AND superseded_at IS NULL, and idx_chunks_hash on chunk_hash.
 
+-- The following column was added by migration 009 (contextual retrieval blurb):
+--   context_blurb TEXT  -- LLM-generated contextual summary prepended for retrieval
+-- Also added by migration 009: idx_chunks_fts_contextual, a GIN index over
+-- to_tsvector('english', coalesce(context_blurb,'') || ' ' || text). The
+-- original idx_chunks_fts (text-only) is left in place; the query layer
+-- switches to the contextual expression in this same release.
+
 CREATE INDEX idx_chunks_tenant ON chunks(tenant_id);
 CREATE INDEX idx_chunks_doc ON chunks(doc_id);
 CREATE INDEX idx_chunks_tenant_doc ON chunks(tenant_id, doc_id);
