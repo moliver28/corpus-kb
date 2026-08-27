@@ -185,6 +185,18 @@ CREATE TABLE IF NOT EXISTS relations (
     UNIQUE (tenant_id, source_entity_id, target_entity_id, relation_type)
 );
 
+-- The following columns were added by migration 008 (typed relations provenance):
+--   chunk_id UUID          -- source chunk the triple was extracted from (FK to chunks, ON DELETE SET NULL)
+--   confidence FLOAT       -- extractor-reported confidence score
+--   extractor_id VARCHAR(100)   -- identifier of the extraction pipeline/tool
+--   model_version VARCHAR(100)  -- LLM model version used for extraction
+--   prompt_version VARCHAR(50)  -- extraction prompt version
+-- Also added by migration 008: idx_relations_chunk on chunk_id, and the unique
+-- constraint relations_triple_chunk_uniq (tenant_id, source_entity_id,
+-- target_entity_id, relation_type, chunk_id), replacing the narrower
+-- (tenant_id, source_entity_id, target_entity_id, relation_type) constraint so
+-- the same triple asserted in different chunks keeps separate provenance rows.
+
 CREATE INDEX idx_relations_tenant ON relations(tenant_id);
 CREATE INDEX idx_relations_source ON relations(source_entity_id);
 CREATE INDEX idx_relations_target ON relations(target_entity_id);
