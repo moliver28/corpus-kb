@@ -120,10 +120,10 @@ def get_default_config() -> dict[str, object]:
         },
         "embedding": {
             "provider": "ollama",
-            "model": "nomic-embed-text",
+            "model": "qwen3-embedding:8b",
             "base_url": "http://localhost:11434",
-            "batch_size": 32,
-            "dimensions": 768,
+            "batch_size": 16,
+            "dimensions": 4096,
         },
         "chunking": {
             "max_size": 4096,

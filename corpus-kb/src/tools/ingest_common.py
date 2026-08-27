@@ -434,7 +434,7 @@ async def run_pipeline(
     # freshly-generated chunk_id un-persisted, so embedding it would fail.
     new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
     try:
-        embedding_model = str(_nested_dict(config, "embedding").get("model", "nomic-embed-text"))
+        embedding_model = str(_nested_dict(config, "embedding").get("model", "qwen3-embedding:8b"))
         pg_vector_count = await ingest_store.store_vectors(new_chunks, embedding_model)
     except Exception as exc:
         logging.warning("Postgres vector write failed: %s", exc)
