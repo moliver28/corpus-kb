@@ -11,7 +11,15 @@ from typing import Optional
 import asyncpg
 
 from ..storage.tenant_conn import tenant_connection
-from .ingest_common import load_config_or_pass, run_pipeline
+from .ingest_common import ingest_text, load_config_or_pass, run_pipeline
+
+__all__ = [
+    "ingest_file",
+    "ingest_text",
+    "ingest_directory",
+    "list_documents",
+    "delete_document",
+]
 
 
 async def ingest_file(
@@ -36,23 +44,6 @@ async def ingest_file(
         pg_pool,
         tenant_id,
         is_file=True,
-    )
-
-
-async def ingest_text(
-    text: str,
-    pg_pool: asyncpg.Pool,
-    source_type: str = "text",
-    config: Optional[dict[str, object]] = None,
-    tenant_id: str = "00000000-0000-0000-0000-000000000001",
-    source: str = "raw_text",
-) -> dict[str, object]:
-    """Ingest raw text with optional type hint and source identifier."""
-    if source_type not in {"code", "markdown", "text"}:
-        return {"status": "error", "message": f"Invalid source_type: {source_type}"}
-    config = load_config_or_pass(config)
-    return await run_pipeline(
-        text, source_type, source, config, pg_pool, tenant_id, is_file=False
     )
 
 

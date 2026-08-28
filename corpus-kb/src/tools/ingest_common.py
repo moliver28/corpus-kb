@@ -6,8 +6,10 @@ The ingest pipeline is async — callers must await run_pipeline().
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +28,10 @@ from ..utils.models import Chunk, Document, Entity, Relation
 logger = logging.getLogger(__name__)
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def load_config_or_pass(config: Optional[dict[str, object]]) -> dict[str, object]:
@@ -120,17 +126,21 @@ def build_document(path: str, source_type: str, text: str) -> Document:
 
 
 def embed_chunks(
-    chunks: list[Chunk], config: dict[str, object]
+    chunks: list[Chunk], config: dict[str, object], text_override: Optional[dict[str, str]] = None,
 ) -> tuple[bool, str | None]:
     """Embed chunk texts via Ollama, returning (degraded, error_message).
 
     On success, each chunk's ``embedding`` field is populated. On failure,
     returns ``(True, "ExceptionType: message")`` so the caller can report
-    structured error info.
+    structured error info. ``text_override``, if provided, is keyed by
+    chunk_id (str) and takes precedence over ``chunk.text`` -- used to embed
+    the contextualized (blurb + text) form instead of raw chunk text.
     """
     try:
         embedder = OllamaEmbedder(config)
-        texts = [chunk.text for chunk in chunks]
+        texts = [
+            (text_override or {}).get(str(chunk.chunk_id), chunk.text) for chunk in chunks
+        ]
         vectors = embedder.embed_batch(texts)
         for chunk, vector in zip(chunks, vectors, strict=True):
             chunk.embedding = vector
@@ -194,72 +204,89 @@ class PostgresIngestStore:
         self._pool = pool
         self._tenant_id = tenant_id
 
-    async def store_document(self, document: Document) -> str:
-        """Insert a document into the documents table."""
+    async def store_document(self, document: Document, file_hash: Optional[str] = None) -> tuple[str, bool]:
+        """Insert/update a document. Returns (doc_id, unchanged) -- unchanged=True
+        short-circuits run_pipeline's chunk/vector/extraction work."""
         async with tenant_connection(self._pool, self._tenant_id) as conn:
+            if file_hash is not None:
+                existing = await conn.fetchrow(
+                    "SELECT doc_id::text, file_hash FROM documents WHERE tenant_id = $1 AND source = $2",
+                    self._tenant_id, document.path,
+                )
+                if existing is not None and existing["file_hash"] == file_hash:
+                    return existing["doc_id"], True
             row = await conn.fetchrow(
                 """
                 INSERT INTO documents (doc_id, tenant_id, source, source_type,
-                    chunk_count, file_size, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    chunk_count, file_size, file_hash, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 ON CONFLICT (tenant_id, source) DO UPDATE
-                SET chunk_count = $5, file_size = $6, updated_at = NOW()
+                SET chunk_count = $5, file_size = $6, file_hash = $7, updated_at = NOW()
                 RETURNING doc_id::text
                 """,
-                document.document_id,
-                self._tenant_id,
-                document.path,
-                document.source_type,
-                document.chunk_count,
-                document.size_bytes,
-                json.dumps(document.metadata),
+                document.document_id, self._tenant_id, document.path, document.source_type,
+                document.chunk_count, document.size_bytes, file_hash, json.dumps(document.metadata),
             )
-            return str(row["doc_id"])
+            return row["doc_id"], False
 
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
-        """Insert chunks into the chunks table. Returns the chunk_ids actually inserted.
-
-        A chunk whose (tenant_id, doc_id, chunk_index) already exists is skipped
-        (ON CONFLICT DO NOTHING) -- its chunk_id is a fresh UUID generated for
-        this call and was never written, so callers must not treat it as
-        present (store_vectors would hit a foreign-key violation otherwise).
-        """
+        """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding."""
         if not chunks:
             return set()
-        inserted: set[str] = set()
+        needs_embedding: set[str] = set()
         async with tenant_connection(self._pool, self._tenant_id) as conn:
             for count, chunk in enumerate(chunks):
-                chunk_index = (
-                    chunk.sibling_order if chunk.sibling_order is not None else count
+                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
+                existing = await conn.fetchrow(
+                    "SELECT chunk_id, chunk_hash FROM chunks WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
+                    self._tenant_id, chunk.document_id, chunk_index,
                 )
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
-                        text, source_type, entity_name, heading_path, file_path,
-                        start_line, end_line, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                    ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
-                    RETURNING chunk_id
-                    """,
-                    chunk.chunk_id,
-                    self._tenant_id,
-                    chunk.document_id,
-                    chunk_index,
-                    chunk.text,
-                    chunk.source_type,
-                    chunk.entity_name,
-                    json.dumps(chunk.heading_path) if chunk.heading_path else None,
-                    chunk.metadata.get("file_path") if chunk.metadata else None,
-                    chunk.start_line,
-                    chunk.end_line,
-                    json.dumps(chunk.metadata),
-                )
-                if row is not None:
-                    inserted.add(str(row["chunk_id"]))
-        return inserted
+                if existing is None:
+                    row = await conn.fetchrow(
+                        """
+                        INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
+                            text, source_type, entity_name, heading_path, file_path,
+                            start_line, end_line, metadata, chunk_hash, source_timestamp, context_blurb)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                        ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
+                        RETURNING chunk_id
+                        """,
+                        chunk.chunk_id, self._tenant_id, chunk.document_id, chunk_index,
+                        chunk.text, chunk.source_type, chunk.entity_name,
+                        json.dumps(chunk.heading_path) if chunk.heading_path else None,
+                        chunk.metadata.get("file_path") if chunk.metadata else None,
+                        chunk.start_line, chunk.end_line, json.dumps(chunk.metadata),
+                        chunk.chunk_hash, chunk.source_timestamp, chunk.context_blurb,
+                    )
+                    if row is not None:
+                        needs_embedding.add(str(row["chunk_id"]))
+                elif existing["chunk_hash"] != chunk.chunk_hash:
+                    await conn.execute(
+                        """
+                        UPDATE chunks SET text = $1, chunk_hash = $2, source_timestamp = $3,
+                            context_blurb = $4, metadata = $5, superseded_at = NULL, tombstoned_at = NULL
+                        WHERE chunk_id = $6
+                        """,
+                        chunk.text, chunk.chunk_hash, chunk.source_timestamp,
+                        chunk.context_blurb, json.dumps(chunk.metadata), existing["chunk_id"],
+                    )
+                    needs_embedding.add(str(existing["chunk_id"]))
+                # else: hash unchanged, no-op -- neither inserted nor re-embedded
+            await conn.execute(
+                "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "
+                "AND chunk_index >= $3 AND tombstoned_at IS NULL",
+                self._tenant_id, chunks[0].document_id if chunks else None, len(chunks),
+            )
+        return needs_embedding
 
-    async def store_vectors(self, chunks: list[Chunk], embedding_model: str) -> int:
-        """Insert chunk vectors into the chunks_vectors table. Returns count."""
+    async def store_vectors(
+        self,
+        chunks: list[Chunk],
+        embedding_model: str,
+        dimensions: int = 4096,
+        vectors_1024: Optional[dict[str, list[float]]] = None,
+    ) -> int:
+        """Insert chunk vectors. vectors_1024, if provided, is keyed by chunk_id (str)."""
         if not chunks:
             return 0
         count = 0
@@ -268,17 +295,17 @@ class PostgresIngestStore:
                 if chunk.embedding is None:
                     continue
                 vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
+                v1024 = (vectors_1024 or {}).get(str(chunk.chunk_id))
+                v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
                 await conn.execute(
                     """
-                    INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, embedding_model)
-                    VALUES ($1, $2, $3::vector, $4)
+                    INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, vector_1024, embedding_model, dimensions)
+                    VALUES ($1, $2, $3::vector, $4::vector, $5, $6)
                     ON CONFLICT (chunk_id) DO UPDATE
-                    SET vector = $3::vector, embedding_model = $4, embedded_at = NOW()
+                    SET vector = $3::vector, vector_1024 = COALESCE($4::vector, chunks_vectors.vector_1024),
+                        embedding_model = $5, dimensions = $6, embedded_at = NOW()
                     """,
-                    chunk.chunk_id,
-                    self._tenant_id,
-                    vector_str,
-                    embedding_model,
+                    chunk.chunk_id, self._tenant_id, vector_str, v1024_str, embedding_model, dimensions,
                 )
                 count += 1
         return count
@@ -397,29 +424,34 @@ async def run_pipeline(
     document = build_document(path, source_type, text)
     chunks = chunk_elements(elements, text, document.document_id)
 
-    errors: list[str] = []
-    degraded, embed_err = embed_chunks(chunks, config)
-    if embed_err is not None:
-        logging.warning("embed_chunks: %s", embed_err)
-        errors.append(f"EmbeddingError: {embed_err}")
-
     ingest_store = PostgresIngestStore(pg_pool, tenant_id)
+    file_hash = _sha256(text)
 
-    # Write document + chunks + vectors to Postgres. Each store call commits
-    # its own transaction independently, so a later call's failure must not
-    # zero out an earlier call's already-committed count.
+    document_id, unchanged = await ingest_store.store_document(document, file_hash=file_hash)
+    if unchanged:
+        return {
+            "status": "skipped", "document_id": document_id, "path": path,
+            "source_type": source_type, "reason": "unchanged", "errors": [],
+        }
+    document.document_id = document_id
+    for chunk in chunks:
+        chunk.document_id = document_id
+        chunk.chunk_hash = _sha256(chunk.text)
+        chunk.source_timestamp = (
+            datetime.fromtimestamp(Path(path).stat().st_mtime, tz=timezone.utc)
+            if is_file else datetime.now(timezone.utc)
+        )
+
+    contextual_cfg = _nested_dict(config, "contextual")
+    if contextual_cfg.get("enabled", False):
+        from ..rag.contextualizer import ContextGenerator
+        blurbs = ContextGenerator(config).generate_blurbs(text, [c.text for c in chunks])
+        for chunk, blurb in zip(chunks, blurbs):
+            chunk.context_blurb = blurb or None
+
+    errors: list[str] = []
     pg_chunk_count = 0
     pg_vector_count = 0
-    try:
-        document_id = await ingest_store.store_document(document)
-        document.document_id = document_id
-        # Update chunk references to use the actual stored document ID
-        for chunk in chunks:
-            chunk.document_id = document_id
-    except Exception as exc:
-        logging.warning("Postgres document write failed: %s", exc)
-        errors.append(f"PostgresWriteError: {exc}")
-
     inserted_chunk_ids: set[str] = set()
     try:
         inserted_chunk_ids = await ingest_store.store_chunks(chunks)
@@ -428,14 +460,32 @@ async def run_pipeline(
         logging.warning("Postgres chunk write failed: %s", exc)
         errors.append(f"PostgresWriteError: {exc}")
 
-    # Only chunks that were actually inserted this call have a row in
-    # `chunks` to satisfy chunks_vectors' foreign key -- a chunk skipped by
-    # store_chunks' ON CONFLICT DO NOTHING (an unchanged re-ingest) keeps its
-    # freshly-generated chunk_id un-persisted, so embedding it would fail.
     new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
+
+    embed_texts_override = {
+        str(c.chunk_id): (f"{c.context_blurb}\n\n{c.text}" if c.context_blurb else c.text)
+        for c in new_chunks
+    }
+    degraded, embed_err = embed_chunks(new_chunks, config, text_override=embed_texts_override)
+    if embed_err is not None:
+        logging.warning("embed_chunks: %s", embed_err)
+        errors.append(f"EmbeddingError: {embed_err}")
+
+    matryoshka_cfg = _nested_dict(config, "search")
+    vectors_1024: dict[str, list[float]] = {}
+    if bool(matryoshka_cfg.get("matryoshka_enabled", False)) and not degraded:
+        from ..rag.embedder import _slice_normalize
+        dim = int(matryoshka_cfg.get("matryoshka_dim", 1024))
+        for c in new_chunks:
+            if c.embedding is not None:
+                vectors_1024[str(c.chunk_id)] = _slice_normalize(c.embedding, dim)
+
     try:
         embedding_model = str(_nested_dict(config, "embedding").get("model", "qwen3-embedding:8b"))
-        pg_vector_count = await ingest_store.store_vectors(new_chunks, embedding_model)
+        dimensions = int(_nested_dict(config, "embedding").get("dimensions", 4096))
+        pg_vector_count = await ingest_store.store_vectors(
+            new_chunks, embedding_model, dimensions=dimensions, vectors_1024=vectors_1024 or None,
+        )
     except Exception as exc:
         logging.warning("Postgres vector write failed: %s", exc)
         errors.append(f"PostgresWriteError: {exc}")
@@ -482,7 +532,7 @@ async def run_pipeline(
     # Update document chunk_count
     document.chunk_count = len(chunks)
     try:
-        await ingest_store.store_document(document)
+        await ingest_store.store_document(document, file_hash=file_hash)
     except Exception as exc:
         logging.warning("Document update failed: %s", exc)
         errors.append(f"PostgresWriteError: {exc}")
@@ -510,3 +560,25 @@ async def run_pipeline(
         "entities": {entity.name: entity.entity_id for entity in entities},
         "errors": errors,
     }
+
+
+async def ingest_text(
+    text: str,
+    pg_pool: asyncpg.Pool,
+    source_type: str = "text",
+    config: Optional[dict[str, object]] = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    source: str = "raw_text",
+) -> dict[str, object]:
+    """Ingest raw text with optional type hint and source identifier.
+
+    Lives here (rather than only in ``ingest_tools``) so tests and other
+    ingest-side code can import it alongside ``run_pipeline`` without a
+    circular import; ``ingest_tools.ingest_text`` re-exports this function.
+    """
+    if source_type not in {"code", "markdown", "text"}:
+        return {"status": "error", "message": f"Invalid source_type: {source_type}"}
+    config = load_config_or_pass(config)
+    return await run_pipeline(
+        text, source_type, source, config, pg_pool, tenant_id, is_file=False
+    )
