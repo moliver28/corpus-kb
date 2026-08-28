@@ -530,3 +530,30 @@ def test_chunk_model_has_dedup_and_contextual_fields() -> None:
     assert c.source_timestamp is None
     assert c.context_blurb is None
 
+
+# ---------------------------------------------------------------------------
+# Content-hash dedup helper
+# ---------------------------------------------------------------------------
+
+
+def test_sha256_is_deterministic() -> None:
+    from src.tools.ingest_common import _sha256
+
+    assert _sha256("hello") == _sha256("hello")
+    assert _sha256("hello") != _sha256("world")
+
+
+# ---------------------------------------------------------------------------
+# Contextual retrieval: source_type allowlist gating
+# ---------------------------------------------------------------------------
+
+
+def test_contextual_enabled_flag_respects_source_type_allowlist() -> None:
+    from src.tools.ingest_common import _contextual_enabled
+
+    cfg = {"contextual": {"enabled": False, "enabled_source_types": ["interview", "research"]}}
+    assert _contextual_enabled(cfg, source_type="interview") is True
+    assert _contextual_enabled(cfg, source_type="code") is False
+
+    cfg_forced_on = {"contextual": {"enabled": True, "enabled_source_types": []}}
+    assert _contextual_enabled(cfg_forced_on, source_type="anything") is True

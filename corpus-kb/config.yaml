@@ -79,6 +79,8 @@ graph:
   fixture_dir: tests/fixtures/langextract_recorded
   live_fallback: false
   ontology_path: config/ontology.yaml
+  model_version: langextract-default
+  prompt_version: v1
 
 llamaindex:
   cache: disabled

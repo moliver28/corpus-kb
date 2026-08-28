@@ -46,6 +46,21 @@ def _nested_dict(config: dict[str, object], key: str) -> dict[str, object]:
     return {}
 
 
+def _contextual_enabled(config: dict[str, object], source_type: str) -> bool:
+    """Return True if contextual retrieval should run for this source_type.
+
+    Contextualization is on unconditionally when ``contextual.enabled`` is
+    True. Otherwise it is on only for source_types listed in
+    ``contextual.enabled_source_types`` (default-on allowlist for
+    interview/research data per the approved feature default).
+    """
+    cfg = _nested_dict(config, "contextual")
+    if bool(cfg.get("enabled", False)):
+        return True
+    allowlist = cfg.get("enabled_source_types", [])
+    return isinstance(allowlist, list) and source_type in allowlist
+
+
 def ontology(config: dict[str, object]) -> Ontology:
     """Load the ontology from ``graph.ontology_path`` in config, falling back to default."""
     graph = _nested_dict(config, "graph")
@@ -421,8 +436,20 @@ class PostgresIngestStore:
                 count += 1
         return count
 
-    async def store_relations(self, relations: list[Relation]) -> int:
-        """Insert relations into the relations table. Returns count."""
+    async def store_relations(
+        self,
+        relations: list[Relation],
+        model_version: Optional[str] = None,
+        prompt_version: Optional[str] = None,
+    ) -> int:
+        """Insert relations into the relations table. Returns count.
+
+        model_version/prompt_version label which extractor configuration
+        produced these relations (read from graph.model_version/
+        graph.prompt_version in config by the run_pipeline caller); None
+        for relations added through a path with no extractor provenance
+        (e.g. the direct add_relation graph-tool API).
+        """
         if not relations:
             return 0
         count = 0
@@ -435,9 +462,10 @@ class PostgresIngestStore:
                 await conn.execute(
                     """
                     INSERT INTO relations (relation_id, tenant_id, source_entity_id,
-                        target_entity_id, relation_type, weight, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
-                    ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type)
+                        target_entity_id, relation_type, weight, metadata,
+                        chunk_id, confidence, extractor_id, model_version, prompt_version)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type, chunk_id)
                     DO NOTHING
                     """,
                     relation.relation_id,
@@ -447,6 +475,11 @@ class PostgresIngestStore:
                     relation.relation_type,
                     relation.weight if relation.weight else 1.0,
                     json.dumps(relation.metadata),
+                    relation.chunk_id,
+                    relation.confidence,
+                    relation.extractor_id,
+                    model_version,
+                    prompt_version,
                 )
                 count += 1
         return count
@@ -511,8 +544,7 @@ async def run_pipeline(
             if is_file else datetime.now(timezone.utc)
         )
 
-    contextual_cfg = _nested_dict(config, "contextual")
-    if contextual_cfg.get("enabled", False):
+    if _contextual_enabled(config, source_type):
         from ..rag.contextualizer import ContextGenerator
         blurbs = ContextGenerator(config).generate_blurbs(text, [c.text for c in chunks])
         for chunk, blurb in zip(chunks, blurbs):
@@ -575,7 +607,12 @@ async def run_pipeline(
             if entities:
                 await ingest_store.store_entities(entities)
             if relations:
-                await ingest_store.store_relations(relations)
+                graph_cfg = _nested_dict(config, "graph")
+                await ingest_store.store_relations(
+                    relations,
+                    model_version=graph_cfg.get("model_version"),
+                    prompt_version=graph_cfg.get("prompt_version"),
+                )
         except Exception as exc:
             logging.warning("Entity extraction failed: %s", exc)
             errors.append(f"ExtractionError: {exc}")
