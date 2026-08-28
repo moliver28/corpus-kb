@@ -90,11 +90,25 @@ async def startup(
     # projection needs it to backfill vectors. Without it here, handle_search
     # silently skips vector search and degrades to full-text only.
     from src.rag.embedder import OllamaEmbedder
+    from src.rag.reranker import build_reranker
+    from src.rag.self_query import SelfQueryParser
+    from src.rag.judge import OllamaJudge
 
     embedder = OllamaEmbedder(cfg)
 
+    reranker = build_reranker(cfg)
+    self_query_parser = SelfQueryParser(cfg) if (cfg.get("search", {}) or {}).get("self_query", {}).get("enabled", False) else None
+    judge = OllamaJudge(cfg) if (cfg.get("judge", {}) or {}).get("enabled", False) else None
+
     command_handler = get_command_handler(cfg, pool)
-    query_handler = QueryHandler(pool, embedder)
+    query_handler = QueryHandler(
+        pool,
+        embedder,
+        reranker=reranker,
+        self_query_parser=self_query_parser,
+        judge=judge,
+        config=cfg,
+    )
     set_query_handler(query_handler)
     set_idempotency_checker(IdempotencyChecker(pool))
 
@@ -106,6 +120,12 @@ async def startup(
     set_graph_handler(GraphHandler(pool))
     set_tag_handler(TagHandler(pool))
     set_versioning_handler(VersioningHandler(pool))
+
+    # 3c. Router handler (adaptive routing across vector/SQL/graph backends)
+    from src.handlers.router_handler import RouterHandler, set_router_handler
+
+    router_handler = RouterHandler(query_handler, GraphHandler(pool), VersioningHandler(pool), embedder, cfg)
+    set_router_handler(router_handler)
 
     # 4. Projections
     from src.projections.embed_projection import set_embed_projection, EmbedChunksProjection
@@ -159,6 +179,7 @@ async def startup(
         "socket_server": socket_server,
         "config": cfg,
         "rag_backend": rag_backend,
+        "router_handler": router_handler,
     }
 
 
