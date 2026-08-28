@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from ollama import ResponseError
+
 from src.rag.self_query import ParsedQuery, Predicate, build_filter_sql, SelfQueryParser
 
 
@@ -41,3 +43,19 @@ def test_parser_falls_back_on_client_error(monkeypatch) -> None:
     monkeypatch.setattr(parser, "_client_chat", _raise)
     result = parser.parse("pdf reports from last week")
     assert result == ParsedQuery(semantic_query="pdf reports from last week", predicates=[])
+
+
+def test_parser_falls_back_when_model_not_pulled(monkeypatch) -> None:
+    """Regression test: a fresh install with self_query.enabled=true (the
+    approved default) and its configured chat model never pulled must
+    degrade to unfiltered search, not raise. Found via a live end-to-end
+    smoke test: /api/search returned a hard 400 because ollama.ResponseError
+    ("model not found") wasn't in the caught exception tuple."""
+    parser = SelfQueryParser({"search": {"self_query": {"model": "not-a-real-model"}}})
+
+    def _raise(*_a: object, **_k: object) -> None:
+        raise ResponseError("model 'not-a-real-model' not found", status_code=404)
+
+    monkeypatch.setattr(parser, "_client_chat", _raise)
+    result = parser.parse("quarterly budget notes")
+    assert result == ParsedQuery(semantic_query="quarterly budget notes", predicates=[])

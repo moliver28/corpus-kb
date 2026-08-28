@@ -28,7 +28,7 @@ from typing import Optional, Protocol, cast, runtime_checkable
 
 import asyncpg
 import httpx
-from ollama import Client
+from ollama import Client, ResponseError
 
 from ..config import load_config
 from ..domain.models import SearchResult
@@ -178,7 +178,11 @@ class OllamaReranker:
                     self._cache.popitem(last=False)
                 scores.append(value)
             return scores
-        except (ConnectionError, OSError, httpx.NetworkError) as exc:
+        except (ConnectionError, OSError, httpx.NetworkError, ResponseError) as exc:
+            # ResponseError covers "model not found" (e.g. qwen3-reranker not
+            # pulled) -- an application-level Ollama error, not a network
+            # failure, but just as fatal to reranking and just as safe to
+            # degrade from: fall back to RRF order rather than break search.
             logger.warning("Reranker unavailable at %s: %s; falling back to RRF order.", self.base_url, exc)
             return None
 
