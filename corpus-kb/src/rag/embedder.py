@@ -39,10 +39,10 @@ class OllamaEmbedder:
         self._config = config or load_config()
         embedding = cast(dict[str, object], self._config.get("embedding", {}))
 
-        self.model = _str_or_default(embedding, "model", "nomic-embed-text")
+        self.model = _str_or_default(embedding, "model", "qwen3-embedding:8b")
         self.base_url = _str_or_default(embedding, "base_url", "http://localhost:11434")
         self.batch_size = _int_or_default(embedding, "batch_size", 32)
-        self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self.dimensions = _int_or_default(embedding, "dimensions", 4096)
 
         self._client = Client(host=self.base_url)
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
@@ -157,8 +157,8 @@ class PgmlEmbedder:
     ) -> None:
         self._config = config or load_config()
         embedding = cast(dict[str, object], self._config.get("embedding", {}))
-        self.model = _str_or_default(embedding, "model", "nomic-embed-text")
-        self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self.model = _str_or_default(embedding, "model", "qwen3-embedding:8b")
+        self.dimensions = _int_or_default(embedding, "dimensions", 4096)
         self._pool = pool
 
     async def embed(self, text: str) -> list[float]:
@@ -209,7 +209,7 @@ class FakeEmbedder:
             dict[str, object],
             (config or load_config()).get("embedding", {}),
         )
-        self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self.dimensions = _int_or_default(embedding, "dimensions", 4096)
 
     def embed(self, text: str) -> list[float]:
         """Return a deterministic vector for ``text``."""
