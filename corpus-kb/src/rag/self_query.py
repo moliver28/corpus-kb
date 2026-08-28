@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Optional, cast
 
 import httpx
-from ollama import Client
+from ollama import Client, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +93,11 @@ class SelfQueryParser:
                 ):
                     predicates.append(Predicate(target=target, op=op, value=value, key=key))
             return ParsedQuery(semantic_query=semantic_query, predicates=predicates)
-        except (ConnectionError, OSError, httpx.NetworkError, json.JSONDecodeError, KeyError) as exc:
+        except (ConnectionError, OSError, httpx.NetworkError, ResponseError, json.JSONDecodeError, KeyError) as exc:
+            # ResponseError covers "model not found" -- this is the failure
+            # mode a fresh install with self_query.enabled=true (the approved
+            # default) hits immediately if its configured chat model was
+            # never pulled. Must degrade to unfiltered search, not 400 it.
             logger.warning("Self-query parser unavailable/invalid: %s; using unfiltered query.", exc)
             return ParsedQuery(semantic_query=query, predicates=[])
 

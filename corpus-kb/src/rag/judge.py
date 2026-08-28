@@ -13,7 +13,7 @@ import logging
 from typing import Optional, cast
 
 import httpx
-from ollama import Client
+from ollama import Client, ResponseError
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,8 @@ class OllamaJudge:
             if isinstance(claims, list):
                 return [str(c) for c in claims][: self.max_claims]
             return []
-        except (ConnectionError, OSError, httpx.NetworkError, json.JSONDecodeError) as exc:
+        except (ConnectionError, OSError, httpx.NetworkError, ResponseError, json.JSONDecodeError) as exc:
+            # ResponseError covers "model not found" (chat model not pulled).
             logger.warning("Judge decompose unavailable: %s", exc)
             return []
 
@@ -57,7 +58,7 @@ class OllamaJudge:
                 label = "unsupported"
             confidence = float(data.get("confidence", 0.0))
             return label, confidence
-        except (ConnectionError, OSError, httpx.NetworkError, json.JSONDecodeError, ValueError) as exc:
+        except (ConnectionError, OSError, httpx.NetworkError, ResponseError, json.JSONDecodeError, ValueError) as exc:
             logger.warning("Judge entail unavailable: %s", exc)
             return "unsupported", 0.0
 
