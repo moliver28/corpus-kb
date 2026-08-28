@@ -278,26 +278,7 @@ class QueryHandler:
             ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
             # 4. Reranking (post-RRF, pre-truncation)
-            if self._reranker is not None and ranked:
-                candidates = ranked[:over_retrieve_n]
-                cand_texts = [texts[cid] for cid, _ in candidates]
-                raw_scores = await asyncio.to_thread(
-                    self._reranker.score, semantic_query, cand_texts
-                )
-                if raw_scores is not None:
-                    floor = float(self._rerank_cfg.get("score_floor", 0.15))
-                    lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
-                    span = (hi - lo) or 1.0
-                    calibrated = [
-                        (cid, (s - lo) / span)
-                        for (cid, _), s in zip(candidates, raw_scores)
-                    ]
-                    calibrated = [(cid, s) for cid, s in calibrated if s >= floor]
-                    calibrated.sort(key=lambda x: (x[1], x[0]), reverse=True)
-                    ranked = calibrated
-            ranked = ranked[: query.k]
-
-            return [
+            base_results = [
                 SearchResult(
                     chunk_id=UUID(cid),
                     text=texts[cid],
@@ -314,6 +295,51 @@ class QueryHandler:
                 )
                 for cid, score in ranked
             ]
+
+            if self._reranker is None:
+                return base_results[: query.k]
+
+            if callable(getattr(self._reranker, "score", None)):
+                candidates = ranked[:over_retrieve_n]
+                cand_texts = [texts[cid] for cid, _ in candidates]
+                raw_scores = await asyncio.to_thread(
+                    self._reranker.score, semantic_query, cand_texts
+                )
+                if raw_scores is None:
+                    return base_results[: query.k]
+                floor = float(self._rerank_cfg.get("score_floor", 0.15))
+                lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
+                span = (hi - lo) or 1.0
+                calibrated = [
+                    (cid, (s - lo) / span)
+                    for (cid, _), s in zip(candidates, raw_scores)
+                ]
+                calibrated = [(cid, s) for cid, s in calibrated if s >= floor]
+                calibrated.sort(key=lambda x: (x[1], x[0]), reverse=True)
+                return [
+                    SearchResult(
+                        chunk_id=UUID(cid),
+                        text=texts[cid],
+                        score=s,
+                        source=sources[cid],
+                        doc_id=UUID(doc_ids[cid]),
+                        file_path=provenance[cid].get("file_path"),
+                        start_line=provenance[cid].get("start_line"),
+                        end_line=provenance[cid].get("end_line"),
+                        chunk_index=provenance[cid].get("chunk_index"),
+                        heading_path=json.loads(provenance[cid]["heading_path"])
+                        if provenance[cid].get("heading_path")
+                        else None,
+                    )
+                    for cid, s in calibrated
+                ][: query.k]
+
+            if callable(getattr(self._reranker, "rerank", None)):
+                return await self._reranker.rerank(
+                    semantic_query, base_results[: query.k]
+                )
+
+            return base_results[: query.k]
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a read-only SQL query."""

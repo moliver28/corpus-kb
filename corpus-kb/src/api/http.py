@@ -31,10 +31,12 @@ from domain.models import (
     IngestTextCommand,
     ListDocumentsQuery,
     ListEntitiesQuery,
+    RoutedQuery,
     SQLQuery,
     SearchContextQuery,
     SearchQuery,
     SearchSimilarQuery,
+    VerifyAnswerQuery,
 )
 
 logger = logging.getLogger(__name__)
@@ -142,6 +144,7 @@ async def search(request: Request) -> JSONResponse:
             query=body["query"],
             k=body.get("k", 10),
             source_type=body.get("source_type"),
+            self_query=body.get("self_query"),
         )
         handler = get_query_handler()
         results = await handler.handle_search(query)
@@ -199,6 +202,42 @@ async def search_context(request: Request) -> JSONResponse:
         return JSONResponse(
             {"status": "success", "result": [r.model_dump() for r in results]}
         )
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
+            status_code=400,
+        )
+
+
+async def verify(request: Request) -> JSONResponse:
+    """POST /api/verify — claim-level groundedness verification against cited chunks."""
+    from src.handlers.query_handler import get_query_handler
+
+    body = await _parse_body(request)
+    try:
+        query = VerifyAnswerQuery(answer=body.get("answer", ""), chunk_ids=body.get("chunk_ids", []))
+        result = await get_query_handler().handle_verify_answer(query)
+        return JSONResponse({"status": "success", "result": result.model_dump(mode="json")})
+    except Exception as exc:
+        return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
+
+
+async def route_query(request: Request) -> JSONResponse:
+    """POST /api/query — adaptive routing across vector/SQL/graph backends."""
+    from src.handlers.router_handler import get_router_handler
+
+    body = await _parse_body(request)
+    try:
+        query = RoutedQuery(
+            tenant_id=UUID(
+                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
+            ),
+            query=body["query"],
+            k=body.get("k", 10),
+        )
+        handler = get_router_handler()
+        result = await handler.handle_routed_query(query)
+        return JSONResponse({"status": "success", "result": result.model_dump(mode="json")})
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
@@ -585,6 +624,8 @@ def create_http_app() -> Starlette:
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),
+        Route("/api/verify", verify, methods=["POST"]),
+        Route("/api/query", route_query, methods=["POST"]),
         Route("/api/query/sql", query_sql, methods=["POST"]),
         Route("/api/documents", list_documents, methods=["GET"]),
         Route("/api/entities", list_entities, methods=["GET"]),
