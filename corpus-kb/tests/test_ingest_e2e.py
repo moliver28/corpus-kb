@@ -8,8 +8,10 @@ from typing import cast
 import pytest
 
 from src.config import load_config
+from src.domain.models import DEFAULT_TENANT_ID
 from src.ontology import load_ontology
 from src.storage.graph_store import PostgresGraphStore
+from src.storage.tenant_conn import tenant_connection
 from src.tools.ingest_tools import ingest_file
 from src.utils.models import Entity
 
@@ -27,9 +29,21 @@ def _build_config() -> dict[str, object]:
     return config
 
 
+async def _delete_document(pg_pool, source: str) -> None:
+    """Remove any prior row for `source` so a test's "first ingest" is
+    genuinely fresh. corpus_kb_test is a shared, persistent database across
+    test runs (see conftest.py), and content-hash dedup (migration 007)
+    means a fixed source string re-ingested with unchanged content returns
+    "skipped" rather than "success" on any run after the first -- tests
+    using a fixed source/path must clean up their own row first."""
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
+        await conn.execute("DELETE FROM documents WHERE tenant_id = $1 AND source = $2", str(DEFAULT_TENANT_ID), source)
+
+
 @pytest.mark.asyncio
 async def test_ontology_ingest_markdown_fixture(pg_pool) -> None:
     """Ingest the ontology sample fixture and verify the full pipeline."""
+    await _delete_document(pg_pool, str(_SAMPLE_MD))
     config = _build_config()
     ontology = load_ontology(str(_ONTOLOGY_PATH))
 
@@ -63,3 +77,36 @@ async def test_entity_chunk_fk_rejected(pg_pool) -> None:
     # Postgres entities table doesn't have FK on chunk_id — should succeed
     result = await store.add_entity(bad_entity)
     assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_reingest_unchanged_is_skipped(pg_pool) -> None:
+    from src.tools.ingest_common import ingest_text
+
+    source = "test-skip-unchanged"
+    await _delete_document(pg_pool, source)
+    config = {"graph": {"extract_entities": False}, "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096}}
+    text = "# Doc\nStable content.\n"
+    first = await ingest_text(text=text, pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    assert first["status"] == "success"
+    second = await ingest_text(text=text, pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    assert second["status"] == "skipped"
+
+
+@pytest.mark.asyncio
+async def test_edit_and_reingest_supersedes_changed_chunk(pg_pool) -> None:
+    from src.tools.ingest_common import ingest_text
+
+    config = {"graph": {"extract_entities": False}, "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096}}
+    source = "test-edit-reingest"
+    await _delete_document(pg_pool, source)
+    await ingest_text(text="# Doc\nOriginal text.\n", pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    result = await ingest_text(text="# Doc\nEdited text now.\n", pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    assert result["status"] == "success"
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
+        row = await conn.fetchrow(
+            "SELECT text, tombstoned_at FROM chunks c JOIN documents d ON c.doc_id = d.doc_id WHERE d.source = $1 ORDER BY chunk_index LIMIT 1",
+            source,
+        )
+    assert "Edited" in row["text"]
+    assert row["tombstoned_at"] is None
