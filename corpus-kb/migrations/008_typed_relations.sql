@@ -22,6 +22,7 @@ CREATE INDEX IF NOT EXISTS idx_relations_chunk ON relations(chunk_id);
 DO $$
 BEGIN
   ALTER TABLE relations DROP CONSTRAINT IF EXISTS relations_tenant_id_source_entity_id_target_entity_id_relation_type_key;
+  ALTER TABLE relations DROP CONSTRAINT IF EXISTS relations_tenant_id_source_entity_id_target_entity_id_relat_key;
   ALTER TABLE relations ADD CONSTRAINT relations_triple_chunk_uniq
     UNIQUE (tenant_id, source_entity_id, target_entity_id, relation_type, chunk_id);
 EXCEPTION WHEN OTHERS THEN

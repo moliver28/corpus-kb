@@ -110,3 +110,38 @@ async def test_edit_and_reingest_supersedes_changed_chunk(pg_pool) -> None:
         )
     assert "Edited" in row["text"]
     assert row["tombstoned_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_stored_relations_have_provenance(pg_pool) -> None:
+    from src.tools.ingest_common import ingest_text
+
+    source = "test-relation-provenance"
+    await _delete_document(pg_pool, source)
+    config = {
+        "graph": {
+            "extract_entities": True, "extractor": "langextract",
+            "fixture_dir": "tests/fixtures/langextract_recorded", "live_fallback": False,
+            "model_version": "test-model-v1", "prompt_version": "test-prompt-v1",
+        },
+    }
+    text = "ServiceA depends on ServiceB for auth."
+    result = await ingest_text(text=text, pg_pool=pg_pool, source_type="text", config=config, source=source)
+    assert result["status"] == "success"
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT r.relation_type, r.confidence, r.chunk_id, r.extractor_id, r.model_version, r.prompt_version
+            FROM relations r
+            JOIN chunks c ON c.chunk_id = r.chunk_id
+            JOIN documents d ON d.doc_id = c.doc_id
+            WHERE d.source = $1
+            LIMIT 1
+            """,
+            source,
+        )
+    assert row is not None
+    assert row["confidence"] is not None
+    assert row["chunk_id"] is not None
+    assert row["model_version"] == "test-model-v1"
+    assert row["prompt_version"] == "test-prompt-v1"

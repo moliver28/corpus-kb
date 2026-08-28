@@ -117,6 +117,8 @@ def get_default_config() -> dict[str, object]:
         "graph": {
             "backend": "postgres",
             "extractor": "langextract",
+            "model_version": "langextract-default",
+            "prompt_version": "v1",
         },
         "embedding": {
             "provider": "ollama",
