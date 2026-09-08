@@ -112,8 +112,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-          cache: pip
-          cache-dependency-path: corpus-kb/pyproject.toml
 
       - name: Validate config files
         run: python corpus-kb/scripts/validate_configs.py
