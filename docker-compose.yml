@@ -1,0 +1,55 @@
+# One-line full-stack setup for Corpus-KB.
+#
+# Starts:
+#   * PostgreSQL 17 with pgvector, Apache AGE, and PostgresML
+#   * Ollama for local LLM + embedding inference
+#
+# The database service uses the project's default credentials:
+#   user: corpus_user   password: corpus_pass   database: corpus_kb   port: 5433
+# so config.yaml / src/config.py connect out of the box.
+#
+# Usage:
+#   docker compose up -d          # start the stack
+#   docker compose down -v        # stop and remove data volumes
+#
+# The custom postgres image is built from docker/postgres/Dockerfile.
+services:
+  postgres:
+    build:
+      context: docker/postgres
+      dockerfile: Dockerfile
+    container_name: corpus-kb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: corpus_user
+      POSTGRES_PASSWORD: corpus_pass
+      POSTGRES_DB: corpus_kb
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U corpus_user -d corpus_kb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: corpus-kb-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsSL http://localhost:11434/api/tags >> /dev/null"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+volumes:
+  postgres_data:
+  ollama_data:

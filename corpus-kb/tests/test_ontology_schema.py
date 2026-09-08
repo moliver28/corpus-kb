@@ -65,4 +65,4 @@ class TestConfig:
         assert embedding.get("model") == "nomic-embed-text"
         assert embedding.get("dimensions") == 768
         assert database.get("connection_string") is not None
-        assert graph.get("extractor") == "langextract"
+        assert graph.get("extractor") == "pgml"

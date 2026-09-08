@@ -1,7 +1,8 @@
 """EmbedChunksProjection — async vector embedding projection.
 
-Subscribes to ChunksAdded events. For each chunk, calls the embedding
-service (Ollama) and inserts the vector into chunks_vectors (pgvector).
+Subscribes to ChunksAdded events. For each chunk, calls the configured
+embedding provider (pgml in-database by default, Ollama as fallback) and
+inserts the vector into chunks_vectors (pgvector).
 
 Configurable embedding model via config (nomic-embed-text 768d or
 qwen3-embedding:8b-q8_0 4096d). Vectors are derived data — never
@@ -19,7 +20,7 @@ import asyncpg
 
 from projections.checkpoint import CheckpointManager
 from projections.dlq import DLQHandler
-from src.rag.embedder import OllamaEmbedder
+from src.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class EmbedChunksProjection:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        embedder: OllamaEmbedder,
+        embedder: OllamaEmbedder | PgmlEmbedder,
         checkpoint: CheckpointManager,
         dlq: DLQHandler,
     ) -> None:
@@ -71,7 +72,7 @@ class EmbedChunksProjection:
                 batch_texts = chunks[i : i + BATCH_SIZE]
                 batch_ids = chunk_ids[i : i + BATCH_SIZE] if chunk_ids else []
 
-                vectors = self._embedder.embed_batch(batch_texts)
+                vectors = await aembed_batch(self._embedder, batch_texts)
 
                 async with self._pool.acquire() as conn:
                     await conn.execute(
@@ -159,7 +160,7 @@ _embed_projection: Optional[EmbedChunksProjection] = None
 
 def get_embed_projection(
     pool: Optional[asyncpg.Pool] = None,
-    embedder: Optional[OllamaEmbedder] = None,
+    embedder: Optional[OllamaEmbedder | PgmlEmbedder] = None,
 ) -> EmbedChunksProjection:
     global _embed_projection
     if _embed_projection is None:

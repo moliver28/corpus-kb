@@ -10,6 +10,8 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
+import asyncpg
+
 from .protocol import Extractor
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
@@ -25,7 +27,7 @@ class PgmlExtractor:
 
     extractor_id: str = "pgml"
 
-    def __init__(self, pool: Optional[object] = None) -> None:
+    def __init__(self, pool: Optional[asyncpg.Pool] = None) -> None:
         self._pool = pool
         self._fallback: Optional[Extractor] = None
 
@@ -54,8 +56,30 @@ class PgmlExtractor:
             import asyncio
 
             return asyncio.get_event_loop().run_until_complete(
-                self._extract_async(chunks, ontology, source_document_id)
+                self.aextract(chunks, ontology, source_document_id)
             )
+        except Exception as exc:
+            logger.warning(
+                "PostgresML NER failed: %s; falling back to RegexExtractor.", exc
+            )
+            return self._get_fallback().extract(chunks, ontology, source_document_id)
+
+    async def aextract(
+        self,
+        chunks: list[Chunk],
+        ontology: Ontology,
+        source_document_id: str,
+    ) -> tuple[list[Entity], list[Relation]]:
+        """Async extraction via PostgresML NER.
+
+        If pgml is not available or any error occurs, falls back to RegexExtractor.
+        """
+        if self._pool is None:
+            logger.info("PgmlExtractor has no pool; falling back to RegexExtractor.")
+            return self._get_fallback().extract(chunks, ontology, source_document_id)
+
+        try:
+            return await self._extract_async(chunks, ontology, source_document_id)
         except Exception as exc:
             logger.warning(
                 "PostgresML NER failed: %s; falling back to RegexExtractor.", exc
@@ -69,12 +93,11 @@ class PgmlExtractor:
         source_document_id: str,
     ) -> tuple[list[Entity], list[Relation]]:
         """Async extraction via pgml.transform()."""
-        import asyncpg
-
         entities: list[Entity] = []
         seen_names: set[str] = set()
 
-        pool: asyncpg.Pool = self._pool  # type: ignore[assignment]
+        pool = self._pool
+        assert pool is not None
         async with pool.acquire() as conn:
             for chunk in chunks:
                 if not chunk.text or not chunk.text.strip():

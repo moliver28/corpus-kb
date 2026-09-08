@@ -126,9 +126,13 @@ def _int_or_default(config: dict[str, object], key: str, default: int) -> int:
 class PgmlEmbedder:
     """Embedder that calls PostgresML for in-database embeddings.
 
-    Uses ``SELECT pgml.embed('model', text)`` via asyncpg.
+    Sends each sub-batch of at most ``batch_size`` texts in a single
+    ``SELECT * FROM pgml.embed($1, $2::text[])`` call via asyncpg.
     On connection failure logs a warning and returns zero-vectors.
     """
+
+    DEFAULT_BATCH_SIZE = 100
+    MAX_BATCH_SIZE = 100
 
     def __init__(
         self,
@@ -139,6 +143,10 @@ class PgmlEmbedder:
         embedding = cast(dict[str, object], self._config.get("embedding", {}))
         self.model = _str_or_default(embedding, "model", "nomic-embed-text")
         self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        raw_batch_size = _int_or_default(
+            embedding, "batch_size", self.DEFAULT_BATCH_SIZE
+        )
+        self.batch_size = max(1, min(self.MAX_BATCH_SIZE, raw_batch_size))
         self._pool = pool
 
     async def embed(self, text: str) -> list[float]:
@@ -149,6 +157,8 @@ class PgmlEmbedder:
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for ``texts`` via PostgresML.
 
+        One SQL round-trip per sub-batch of at most ``batch_size`` texts;
+        the whole sub-batch is sent as a single TEXT[] array parameter.
         Falls back to zero-vectors on connection failure.
         """
         if not texts:
@@ -160,16 +170,23 @@ class PgmlEmbedder:
         results: list[list[float]] = []
         try:
             async with self._pool.acquire() as conn:
-                for text in texts:
-                    row = await conn.fetchrow(
-                        "SELECT pgml.embed($1, $2) AS vector",
+                for start in range(0, len(texts), self.batch_size):
+                    batch = texts[start : start + self.batch_size]
+                    rows = await conn.fetch(
+                        "SELECT * FROM pgml.embed($1, $2::text[])",
                         self.model,
-                        text,
+                        batch,
                     )
-                    if row and row["vector"]:
-                        results.append(list(row["vector"]))
-                    else:
-                        results.append([0.0] * self.dimensions)
+                    if len(rows) != len(batch):
+                        logger.warning(
+                            "pgml.embed returned %d rows for %d texts; "
+                            "returning zero vectors for this sub-batch.",
+                            len(rows),
+                            len(batch),
+                        )
+                        results.extend([[0.0] * self.dimensions for _ in batch])
+                        continue
+                    results.extend(list(row["embed"]) for row in rows)
         except Exception as exc:
             logger.warning("PostgresML embed failed: %s; returning zero vectors.", exc)
             return [[0.0] * self.dimensions for _ in texts]
@@ -203,3 +220,39 @@ class FakeEmbedder:
         seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)
         rng = random.Random(seed)
         return [rng.uniform(-1.0, 1.0) for _ in range(self.dimensions)]
+
+
+DEFAULT_EMBEDDING_PROVIDER = "pgml"
+
+
+def create_embedder(
+    config: Optional[dict[str, object]] = None,
+    pool: Optional[asyncpg.Pool] = None,
+) -> OllamaEmbedder | PgmlEmbedder:
+    """Return the embedder selected by ``embedding.provider`` in config.
+
+    - ``"pgml"`` (default): PgmlEmbedder, embedding in-database via the pool.
+      Without a pool it still constructs, but returns zero-vectors.
+    - ``"ollama"``: OllamaEmbedder, embedding via a local Ollama instance.
+
+    Raises ``ValueError`` for any other provider.
+    """
+    cfg = config or load_config()
+    embedding = cast(dict[str, object], cfg.get("embedding", {}))
+    provider = _str_or_default(embedding, "provider", DEFAULT_EMBEDDING_PROVIDER)
+    if provider == "pgml":
+        return PgmlEmbedder(cfg, pool)
+    if provider == "ollama":
+        return OllamaEmbedder(cfg)
+    raise ValueError(
+        f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'"
+    )
+
+
+async def aembed_batch(
+    embedder: OllamaEmbedder | PgmlEmbedder, texts: list[str]
+) -> list[list[float]]:
+    """Embed ``texts`` with either embedder, awaiting the async pgml path."""
+    if isinstance(embedder, PgmlEmbedder):
+        return await embedder.embed_batch(texts)
+    return embedder.embed_batch(texts)

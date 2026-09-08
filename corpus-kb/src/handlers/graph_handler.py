@@ -1,9 +1,10 @@
-"""Graph handler — graph tools using Apache AGE Cypher queries.
+"""Graph handler — graph query tools backed by a pluggable GraphStore.
 
-Uses the AGE extension for Cypher-based graph traversal:
-  - search_graph: search entities by name
-  - bfs: BFS traversal from a starting entity
-  - get_entity_relations: get all relations for an entity
+Public methods remain unchanged; internals delegate to the injected store:
+  - handle_search_graph -> graph_store.search_entities
+  - handle_bfs -> graph_store.bfs + graph_store.get_entity (to preserve shape)
+  - handle_get_entity_relations -> graph_store.get_entity_relations +
+    graph_store.get_entity (for source/target names)
 """
 
 from __future__ import annotations
@@ -12,16 +13,17 @@ import logging
 from typing import Any, Optional
 from uuid import UUID
 
-import asyncpg
+from src.storage.graph_store import GraphStore
+from src.utils.models import Entity, Relation
 
 logger = logging.getLogger(__name__)
 
 
 class GraphHandler:
-    """Graph query handler using Apache AGE Cypher."""
+    """Graph query handler that delegates to an injected GraphStore backend."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self._pool = pool
+    def __init__(self, graph_store: GraphStore) -> None:
+        self._graph_store = graph_store
 
     async def handle_search_graph(
         self,
@@ -31,79 +33,68 @@ class GraphHandler:
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Search entities by name (case-insensitive contains)."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
-            if entity_type:
-                rows = await conn.fetch(
-                    """SELECT entity_id, name, entity_type, metadata
-                       FROM entities WHERE tenant_id = $1 AND name ILIKE $2 AND entity_type = $3
-                       ORDER BY name LIMIT $4""",
-                    str(tenant_id),
-                    f"%{query}%",
-                    entity_type,
-                    limit,
-                )
-            else:
-                rows = await conn.fetch(
-                    """SELECT entity_id, name, entity_type, metadata
-                       FROM entities WHERE tenant_id = $1 AND name ILIKE $2
-                       ORDER BY name LIMIT $3""",
-                    str(tenant_id),
-                    f"%{query}%",
-                    limit,
-                )
-            return [dict(r) for r in rows]
+        entities = await self._graph_store.search_entities(query, entity_type)
+        return [_entity_to_response(entity) for entity in entities[:limit]]
 
     async def handle_bfs(
         self, tenant_id: UUID, start_entity_id: UUID, max_depth: int = 3
     ) -> list[dict[str, Any]]:
-        """BFS traversal using recursive CTE (works without AGE Cypher too)."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
+        """BFS traversal from a starting entity; result shape preserved via get_entity."""
+        result = await self._graph_store.bfs(str(start_entity_id), max_depth)
+        visited = result.get("visited", {})
+        response: list[dict[str, Any]] = []
+        for entity_id, depth in visited.items():
+            entity = await self._graph_store.get_entity(entity_id)
+            if entity is None:
+                entity = Entity(
+                    entity_id=entity_id,
+                    name="",
+                    entity_type="",
+                    source_type="code",
+                )
+            response.append(
+                {
+                    "entity_id": entity_id,
+                    "name": entity.name,
+                    "entity_type": entity.entity_type,
+                    "depth": depth,
+                }
             )
-            rows = await conn.fetch(
-                """WITH RECURSIVE bfs AS (
-                       SELECT e.entity_id, e.name, e.entity_type, 0 as depth
-                       FROM entities e WHERE e.entity_id = $1 AND e.tenant_id = $2
-                       UNION ALL
-                       SELECT e2.entity_id, e2.name, e2.entity_type, b.depth + 1
-                       FROM bfs b
-                       JOIN relations r ON r.source_entity_id = b.entity_id AND r.tenant_id = $2
-                       JOIN entities e2 ON e2.entity_id = r.target_entity_id AND e2.tenant_id = $2
-                       WHERE b.depth < $3
-                   )
-                   SELECT DISTINCT entity_id, name, entity_type, depth FROM bfs ORDER BY depth, name""",
-                str(start_entity_id),
-                str(tenant_id),
-                max_depth,
-            )
-            return [dict(r) for r in rows]
+        return sorted(response, key=lambda row: (row["depth"], row["name"]))
 
     async def handle_get_entity_relations(
         self, tenant_id: UUID, entity_id: UUID
     ) -> list[dict[str, Any]]:
         """Get all relations for an entity (both outgoing and incoming)."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
-            rows = await conn.fetch(
-                """SELECT r.relation_id, r.relation_type, r.weight,
-                          r.source_entity_id, r.target_entity_id,
-                          se.name as source_name, te.name as target_name
-                   FROM relations r
-                   JOIN entities se ON r.source_entity_id = se.entity_id
-                   JOIN entities te ON r.target_entity_id = te.entity_id
-                   WHERE r.tenant_id = $1
-                     AND (r.source_entity_id = $2 OR r.target_entity_id = $2)
-                   ORDER BY r.relation_type""",
-                str(tenant_id),
-                str(entity_id),
-            )
-            return [dict(r) for r in rows]
+        relations = await self._graph_store.get_entity_relations(str(entity_id))
+        return [
+            await _relation_to_response(self._graph_store, rel) for rel in relations
+        ]
+
+
+def _entity_to_response(entity: Entity) -> dict[str, Any]:
+    return {
+        "entity_id": entity.entity_id,
+        "name": entity.name,
+        "entity_type": entity.entity_type,
+        "metadata": entity.metadata,
+    }
+
+
+async def _relation_to_response(
+    store: GraphStore, relation: Relation
+) -> dict[str, Any]:
+    source = await store.get_entity(relation.source_entity_id)
+    target = await store.get_entity(relation.target_entity_id)
+    return {
+        "relation_id": relation.relation_id,
+        "relation_type": relation.relation_type,
+        "weight": relation.weight,
+        "source_entity_id": relation.source_entity_id,
+        "target_entity_id": relation.target_entity_id,
+        "source_name": source.name if source else "",
+        "target_name": target.name if target else "",
+    }
 
 
 # ============================================================================

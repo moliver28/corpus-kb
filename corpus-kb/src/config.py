@@ -115,11 +115,12 @@ def get_default_config() -> dict[str, object]:
             "port": 8010,
         },
         "graph": {
-            "backend": "postgres",
-            "extractor": "langextract",
+            "backend": "age",
+            "extractor": "pgml",
         },
         "embedding": {
-            "provider": "ollama",
+            "provider": "pgml",
+            "fallback_provider": "ollama",
             "model": "nomic-embed-text",
             "base_url": "http://localhost:11434",
             "batch_size": 32,
@@ -133,6 +134,12 @@ def get_default_config() -> dict[str, object]:
             "rrf_k": 60,
             "expand_context": True,
             "index_type": "hnsw",
+            "reranker": "none",
+            "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        },
+        "llm": {
+            "model": "qwen3:4b",
+            "base_url": "http://localhost:11434",
         },
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",

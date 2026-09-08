@@ -15,10 +15,11 @@ import asyncpg
 
 from ..config import load_config
 from ..extraction import create_extractor
+from ..extraction.pgml_backend import PgmlExtractor
 from ..ontology import Ontology, load_ontology
 from ..partitioning import ElementProxy, partition as unstructured_partition
 from ..chunking.unstructured_chunker import chunk_elements
-from ..rag import OllamaEmbedder
+from ..rag import aembed_batch, create_embedder
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
 
@@ -70,23 +71,76 @@ def build_document(path: str, source_type: str, text: str) -> Document:
     )
 
 
-def embed_chunks(
-    chunks: list[Chunk], config: dict[str, object]
+def _all_zero(vectors: list[list[float]]) -> bool:
+    """Return True when every vector is entirely zeros (embedder failure marker)."""
+    return all(all(v == 0.0 for v in vector) for vector in vectors)
+
+
+def _assign_embeddings(chunks: list[Chunk], vectors: list[list[float]]) -> None:
+    for chunk, vector in zip(chunks, vectors, strict=True):
+        chunk.embedding = vector
+
+
+async def embed_chunks(
+    chunks: list[Chunk],
+    config: dict[str, object],
+    pool: Optional[asyncpg.Pool] = None,
 ) -> tuple[bool, str | None]:
-    """Embed chunk texts via Ollama, returning (degraded, error_message).
+    """Embed chunk texts via the configured provider, returning (degraded, error).
+
+    The primary embedder is selected by ``embedding.provider`` (default
+    ``"pgml"``). When the primary returns zero-vectors, the
+    ``embedding.fallback_provider`` embedder (default ``"ollama"``) is tried
+    and its vectors repopulate the chunks. ``degraded`` is True whenever the
+    primary failed — even when the fallback produced real vectors — so the
+    flag always reflects which embedder actually produced the embeddings.
 
     On success, each chunk's ``embedding`` field is populated. On failure,
     returns ``(True, "ExceptionType: message")`` so the caller can report
     structured error info.
     """
     try:
-        embedder = OllamaEmbedder(config)
+        embedding_cfg = _nested_dict(config, "embedding")
+        provider_value = embedding_cfg.get("provider")
+        provider = provider_value if isinstance(provider_value, str) else "pgml"
+
+        embedder = create_embedder(config, pool)
         texts = [chunk.text for chunk in chunks]
-        vectors = embedder.embed_batch(texts)
-        for chunk, vector in zip(chunks, vectors, strict=True):
-            chunk.embedding = vector
-        if vectors and all(all(v == 0.0 for v in vector) for vector in vectors):
-            return True, "Connection failed: OllamaEmbedder returned zero vectors"
+        vectors = await aembed_batch(embedder, texts)
+
+        if vectors and _all_zero(vectors):
+            fallback_value = embedding_cfg.get("fallback_provider")
+            fallback_provider = (
+                fallback_value if isinstance(fallback_value, str) else "ollama"
+            )
+            if fallback_provider == provider:
+                _assign_embeddings(chunks, vectors)
+                return (
+                    True,
+                    f"Connection failed: {type(embedder).__name__} "
+                    "returned zero vectors",
+                )
+            fallback_config = dict(config)
+            fallback_embedding = dict(embedding_cfg)
+            fallback_embedding["provider"] = fallback_provider
+            fallback_config["embedding"] = fallback_embedding
+            fallback_embedder = create_embedder(fallback_config, pool)
+            fallback_vectors = await aembed_batch(fallback_embedder, texts)
+            if fallback_vectors and not _all_zero(fallback_vectors):
+                _assign_embeddings(chunks, fallback_vectors)
+                return (
+                    True,
+                    f"Connection failed: {provider} returned zero vectors; "
+                    f"embeddings produced by fallback {fallback_provider}",
+                )
+            _assign_embeddings(chunks, vectors)
+            return (
+                True,
+                f"Connection failed: {provider} and fallback "
+                f"{fallback_provider} both returned zero vectors",
+            )
+
+        _assign_embeddings(chunks, vectors)
         return False, None
     except Exception as exc:
         return True, f"{type(exc).__name__}: {exc}"
@@ -95,26 +149,74 @@ def embed_chunks(
 def _extractor_name(config: dict[str, object]) -> str:
     graph = _nested_dict(config, "graph")
     raw = graph.get("extractor")
-    return raw if isinstance(raw, str) else "regex"
+    return raw if isinstance(raw, str) else "pgml"
 
 
-def extract_with_fallback(
+async def extract_with_fallback(
     chunks: list[Chunk],
     ontology: Ontology,
     source_document_id: str,
     config: dict[str, object],
+    pool: Optional[asyncpg.Pool] = None,
 ) -> tuple[list[Entity], list[Relation], str]:
-    """Extract entities and relations, falling back to RegexExtractor on failure."""
+    """Extract entities and relations, falling back through the extractor chain.
+
+    Order depends on ``graph.extractor``:
+
+    - ``pgml``: PostgresML NER -> LangExtract -> RegexExtractor
+    - ``langextract``: LangExtract -> RegexExtractor
+    - ``regex``: RegexExtractor only
+
+    The returned ``extractor_id`` always names the extractor that actually
+    produced the output.
+    """
     extractor_name = _extractor_name(config)
 
-    if extractor_name == "langextract":
-        extractor = create_extractor(config)
+    # Reject unknown extractor names explicitly so we never silently fall back
+    # to regex when the user configured something unsupported.
+    if extractor_name not in {"pgml", "langextract", "regex"}:
+        create_extractor(config, pool=pool)
+
+    if extractor_name == "pgml":
         try:
-            entities, relations = extractor.extract(
+            pgml_extractor = create_extractor(config, pool=pool)
+            if isinstance(pgml_extractor, PgmlExtractor):
+                entities, relations = await pgml_extractor.aextract(
+                    chunks, ontology, source_document_id
+                )
+            else:
+                entities, relations = pgml_extractor.extract(
+                    chunks, ontology, source_document_id
+                )
+            if entities:
+                return (
+                    entities,
+                    relations,
+                    _actual_extractor_id(entities, pgml_extractor.extractor_id),
+                )
+        except Exception:
+            pass
+
+    if extractor_name in ("pgml", "langextract"):
+        try:
+            lang_extractor = create_extractor(
+                {
+                    **config,
+                    "graph": {
+                        **_nested_dict(config, "graph"),
+                        "extractor": "langextract",
+                    },
+                }
+            )
+            entities, relations = lang_extractor.extract(
                 chunks, ontology, source_document_id
             )
             if entities:
-                return entities, relations, extractor.extractor_id
+                return (
+                    entities,
+                    relations,
+                    _actual_extractor_id(entities, lang_extractor.extractor_id),
+                )
         except (FileNotFoundError, ImportError, ModuleNotFoundError):
             pass
 
@@ -122,7 +224,22 @@ def extract_with_fallback(
 
     fallback = RegexExtractor()
     entities, relations = fallback.extract(chunks, ontology, source_document_id)
-    return entities, relations, fallback.extractor_id
+    return entities, relations, _actual_extractor_id(entities, fallback.extractor_id)
+
+
+def _actual_extractor_id(entities: list[Entity], fallback_id: str) -> str:
+    """Return the extractor_id that actually produced the entities.
+
+    Extractors that internally fall back to RegexExtractor may leave
+    entities with a different ``extractor_id`` than the wrapper's own id.
+    When every entity agrees on a different id, report that id honestly.
+    """
+    if not entities:
+        return fallback_id
+    ids = {entity.extractor_id for entity in entities if entity.extractor_id}
+    if len(ids) == 1:
+        return ids.pop()
+    return fallback_id
 
 
 def _extract_entities_flag(config: dict[str, object]) -> bool:
@@ -333,7 +450,7 @@ async def run_pipeline(
     chunks = chunk_elements(elements, text, document.document_id)
 
     errors: list[str] = []
-    degraded, embed_err = embed_chunks(chunks, config)
+    degraded, embed_err = await embed_chunks(chunks, config, pool=pg_pool)
     if embed_err is not None:
         logging.warning("embed_chunks: %s", embed_err)
         errors.append(f"EmbeddingError: {embed_err}")
@@ -357,8 +474,8 @@ async def run_pipeline(
     extractor_id = "none"
     if _extract_entities_flag(config):
         try:
-            entities, relations, extractor_id = extract_with_fallback(
-                chunks, ontology(config), document.document_id, config
+            entities, relations, extractor_id = await extract_with_fallback(
+                chunks, ontology(config), document.document_id, config, pool=pg_pool
             )
             if entities:
                 await ingest_store.store_entities(entities)

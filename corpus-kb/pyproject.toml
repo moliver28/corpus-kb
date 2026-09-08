@@ -75,3 +75,4 @@ asyncio_mode = "auto"
 
 [project.scripts]
 corpus-kb = "server:main"
+corpus-kb-setup = "scripts.install:main"

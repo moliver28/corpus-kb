@@ -2,19 +2,24 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Optional, cast
 
 from .langextract_backend import LangExtractExtractor
+from .pgml_backend import PgmlExtractor
 from .protocol import Extractor, OntologyViolationError
 from .regex_backend import RegexExtractor
 
 
-def create_extractor(config: dict[str, object]) -> Extractor:
+def create_extractor(
+    config: dict[str, object], pool: Optional[object] = None
+) -> Extractor:
     """Create an extractor from the configuration dictionary.
 
     Args:
         config: Application configuration. Reads ``graph.extractor``,
-            defaulting to ``"langextract"``.
+            defaulting to ``"pgml"``.
+        pool: Optional asyncpg pool for database-backed extractors
+            (currently ``pgml``).
 
     Returns:
         Configured extractor instance.
@@ -24,12 +29,12 @@ def create_extractor(config: dict[str, object]) -> Extractor:
         ValueError: For an unknown extractor name.
     """
     graph_config = config.get("graph", {})
-    extractor_name = "langextract"
+    extractor_name = "pgml"
     fixture_dir: str | None = None
     live_fallback = False
     if isinstance(graph_config, dict):
         typed_config = cast(dict[str, object], graph_config)
-        raw_name = typed_config.get("extractor", "langextract")
+        raw_name = typed_config.get("extractor", "pgml")
         if isinstance(raw_name, str):
             extractor_name = raw_name
         raw_fixture_dir = typed_config.get("fixture_dir")
@@ -47,9 +52,7 @@ def create_extractor(config: dict[str, object]) -> Extractor:
                 fixture_dir=fixture_dir, live_fallback=live_fallback
             )
         case "pgml":
-            from src.extraction.pgml_backend import PgmlExtractor
-
-            return PgmlExtractor()
+            return PgmlExtractor(pool=pool)
         case "llamaindex":
             raise NotImplementedError(
                 "llamaindex extractor is deferred to a later phase"

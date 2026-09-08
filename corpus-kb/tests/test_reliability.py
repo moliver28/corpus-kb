@@ -18,10 +18,11 @@ async def test_postgres_unavailable_raises() -> None:
         )
 
 
-def test_ollama_unavailable_degraded() -> None:
+@pytest.mark.asyncio
+async def test_ollama_unavailable_degraded() -> None:
     """embed_chunks returns (True, error_string) when Ollama is unreachable."""
     chunks = [Chunk(text="hello", source_type="text", document_id="doc-1")]
-    degraded, message = embed_chunks(
+    degraded, message = await embed_chunks(
         chunks,
         {
             "embedding": {
