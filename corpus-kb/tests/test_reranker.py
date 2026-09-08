@@ -128,7 +128,15 @@ async def test_identity_reranker_empty_input() -> None:
 async def test_pgml_reranker_reorders_by_cross_encoder_score() -> None:
     """pgml.rank scores reorder results; original RRF scores are preserved."""
     results = [_result("first", 0.9), _result("second", 0.8), _result("third", 0.7)]
-    pool = _make_pool(fetch_return=[{"score": 0.1}, {"score": 0.9}, {"score": 0.5}])
+    # pgml.rank emits rows in RANK order (highest score first), keyed by
+    # corpus_id — not in input order. The reranker must map by corpus_id.
+    pool = _make_pool(
+        fetch_return=[
+            {"corpus_id": 1, "score": 0.9},
+            {"corpus_id": 2, "score": 0.5},
+            {"corpus_id": 0, "score": 0.1},
+        ]
+    )
     reranker = PgmlReranker(config=PGML_CONFIG, pool=pool)
 
     out = await reranker.rerank("query text", results)
@@ -194,7 +202,9 @@ async def test_pgml_reranker_empty_input_issues_no_sql() -> None:
 async def test_pgml_reranker_empty_query_is_bound_parameter() -> None:
     """An empty query string is forwarded as a bound parameter, not rejected."""
     results = [_result("a"), _result("b")]
-    pool = _make_pool(fetch_return=[{"score": 0.2}, {"score": 0.8}])
+    pool = _make_pool(
+        fetch_return=[{"corpus_id": 1, "score": 0.8}, {"corpus_id": 0, "score": 0.2}]
+    )
     reranker = PgmlReranker(config=PGML_CONFIG, pool=pool)
 
     out = await reranker.rerank("", results)
@@ -210,7 +220,7 @@ async def test_pgml_reranker_score_count_mismatch_returns_unreranked(
 ) -> None:
     """A score/result count mismatch is distrusted: keep the fused order."""
     results = [_result("a"), _result("b"), _result("c")]
-    pool = _make_pool(fetch_return=[{"score": 0.5}])
+    pool = _make_pool(fetch_return=[{"corpus_id": 0, "score": 0.5}])
     reranker = PgmlReranker(config=PGML_CONFIG, pool=pool)
 
     with caplog.at_level(logging.WARNING):
@@ -245,7 +255,7 @@ async def test_handle_search_pgml_reranker_reorders_fused_results() -> None:
         },
         {"chunk_id": cid2, "text": "beta", "source": "s1", "doc_id": did, "score": 0.8},
     ]
-    rank_rows = [{"score": 0.1}, {"score": 0.9}]
+    rank_rows = [{"corpus_id": 1, "score": 0.9}, {"corpus_id": 0, "score": 0.1}]
     # provider=ollama without embedder -> vector side empty; fetch order:
     # fts, fusion, rank.
     pool = _make_pool(fetch_side_effect=[[fts_row], fused_rows, rank_rows])

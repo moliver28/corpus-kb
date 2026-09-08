@@ -54,8 +54,10 @@ class PgmlReranker:
 
     Sends the query and the fused result texts as bound parameters to
     ``pgml.rank(model, query, texts::text[])`` and reorders the results by
-    the returned scores (descending, stable). The ``SearchResult.score``
-    field keeps its RRF fusion value — only the order changes.
+    the returned scores (descending, stable), mapping each score back to
+    its input document via ``corpus_id`` — pgml.rank emits rows in rank
+    order, not input order. The ``SearchResult.score`` field keeps its
+    RRF fusion value — only the order changes.
 
     On missing pool, pgml failure, timeout, or a score/result count
     mismatch, logs a warning and returns the input unchanged.
@@ -84,7 +86,7 @@ class PgmlReranker:
         try:
             async with self._pool.acquire() as conn:
                 rows = await conn.fetch(
-                    "SELECT score FROM pgml.rank($1, $2, $3::text[]) AS score",
+                    "SELECT corpus_id, score FROM pgml.rank($1, $2, $3::text[])",
                     self.model,
                     query,
                     [r.text for r in results],
@@ -94,17 +96,27 @@ class PgmlReranker:
             logger.warning("pgml.rank() failed: %s; returning unreranked results.", exc)
             return results
 
-        scores = [float(row["score"]) for row in rows]
-        if len(scores) != len(results):
+        # pgml.rank emits one row per document in RANK order (best first),
+        # keyed by corpus_id = the document's index in the input array.
+        # Map scores back by corpus_id — never by row position.
+        scores: list[Optional[float]] = [None] * len(results)
+        for row in rows:
+            idx = int(row["corpus_id"])
+            if 0 <= idx < len(results):
+                scores[idx] = float(row["score"])
+        matched = sum(score is not None for score in scores)
+        if matched != len(results):
             logger.warning(
-                "pgml.rank() returned %d scores for %d results; "
+                "pgml.rank() returned scores for %d of %d results; "
                 "returning unreranked results.",
-                len(scores),
+                matched,
                 len(results),
             )
             return results
 
-        order = sorted(range(len(results)), key=lambda i: scores[i], reverse=True)
+        order = sorted(
+            range(len(results)), key=lambda i: cast(float, scores[i]), reverse=True
+        )
         return [results[i] for i in order]
 
 
