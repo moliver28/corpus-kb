@@ -48,7 +48,7 @@ jobs:
           cache-dependency-path: corpus-kb/pyproject.toml
 
       - name: Install ruff
-        run: pip install ruff
+        run: pip install ruff==0.15.18
 
       - name: Ruff check
         # Paths point at corpus-kb/ subdirectory, NOT root src/
