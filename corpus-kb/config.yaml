@@ -25,6 +25,7 @@ search:
   reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
   rerank:
     enabled: true
+    backend: null
     model: qwen3-reranker:8b
     base_url: http://localhost:11434
     batch_size: 16

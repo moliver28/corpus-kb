@@ -11,6 +11,13 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 ## What you get
 
 - **Hybrid search** that blends vector similarity, full-text search, and rank fusion
+- **Content-hash deduplication** with supersede and tombstone semantics so re-ingesting unchanged files is a no-op
+- **Contextual retrieval** that prepends a document-level blurb to each chunk for better embedding and FTS recall
+- **Matryoshka two-tier retrieval** (optional 1024d HNSW index plus exact full-dimension rescore)
+- **Reranker pipeline** with identity, PostgresML, and Ollama backends
+- **Self-query filters** that extract structured predicates from natural language
+- **Groundedness judge** with `POST /api/verify` claim-level verification
+- **Adaptive query routing** with `POST /api/query` confidence-based dispatch across semantic, relational, and graph backends
 - **Knowledge graph** with entities, relations, and BFS traversal
 - **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML)
 - **LlamaIndex RAG backend** with PGVectorStore and Ollama for local vector search
