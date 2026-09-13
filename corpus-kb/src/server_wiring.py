@@ -132,8 +132,14 @@ async def startup(
     embedder = create_embedder(cfg, pool)
 
     reranker = create_reranker(cfg, pool)
-    self_query_parser = SelfQueryParser(cfg) if (cfg.get("search", {}) or {}).get("self_query", {}).get("enabled", False) else None
-    judge = OllamaJudge(cfg) if (cfg.get("judge", {}) or {}).get("enabled", False) else None
+    self_query_parser = (
+        SelfQueryParser(cfg)
+        if (cfg.get("search", {}) or {}).get("self_query", {}).get("enabled", False)
+        else None
+    )
+    judge = (
+        OllamaJudge(cfg) if (cfg.get("judge", {}) or {}).get("enabled", False) else None
+    )
 
     command_handler = get_command_handler(cfg, pool)
     query_handler = QueryHandler(
@@ -153,14 +159,17 @@ async def startup(
     from handlers.versioning_handler import VersioningHandler, set_versioning_handler
 
     graph_store = await create_graph_store(cfg, pool)
-    set_graph_handler(GraphHandler(graph_store))
+    graph_handler = GraphHandler(graph_store)
+    set_graph_handler(graph_handler)
     set_tag_handler(TagHandler(pool))
     set_versioning_handler(VersioningHandler(pool))
 
     # 3c. Router handler (adaptive routing across vector/SQL/graph backends)
     from src.handlers.router_handler import RouterHandler, set_router_handler
 
-    router_handler = RouterHandler(query_handler, GraphHandler(graph_store), VersioningHandler(pool), embedder, cfg)
+    router_handler = RouterHandler(
+        query_handler, graph_handler, VersioningHandler(pool), embedder, cfg
+    )
     set_router_handler(router_handler)
 
     # 4. Projections
