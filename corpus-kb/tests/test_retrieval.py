@@ -122,10 +122,12 @@ def test_verify_and_routed_models_import() -> None:
 async def test_handle_search_returns_provenance_fields() -> None:
     """Mirrors test_hybrid_search_rrf_fusion's mock scaffold, extended with
     the five provenance columns on each mocked row. Constructed with no
-    embedder, so handle_search's vector arm is skipped entirely (the
-    `if self._embedder:` guard) and exactly one conn.fetch call happens,
-    for the FTS arm -- matching how test_hybrid_search_rrf_fusion's own
-    sibling test_retrieval_basic exercises the embedder-less path."""
+    embedder and provider=ollama, so handle_search's vector arm is skipped
+    entirely (the `provider == "ollama" and self._embedder` guard) and
+    exactly two conn.fetch calls happen: one for the FTS arm and one for
+    the corpus.rrf_fusion SQL fusion. Provenance is re-attached from the
+    raw FTS rows after fusion, so the returned SearchResult keeps
+    file_path/start_line/etc."""
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
     mock_transaction = MagicMock()
@@ -154,9 +156,12 @@ async def test_handle_search_returns_provenance_fields() -> None:
     mock_pool = MagicMock()
     mock_pool.acquire = MagicMock(return_value=mock_acquire_cm)
 
-    handler = QueryHandler(pool=mock_pool)  # no embedder passed
+    handler = QueryHandler(
+        pool=mock_pool,
+        config={"embedding": {"provider": "ollama"}},  # no embedder -> vector skipped
+    )
     results = await handler.handle_search(SearchQuery(query="hello", k=3))
-    assert mock_conn.fetch.call_count == 1  # only the FTS arm ran
+    assert mock_conn.fetch.call_count == 2  # FTS arm + corpus.rrf_fusion
     assert len(results) == 1
     assert results[0].file_path == "a.py"
     assert results[0].start_line == 10

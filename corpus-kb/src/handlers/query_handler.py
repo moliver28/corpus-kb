@@ -15,7 +15,6 @@ import asyncio
 import json
 import logging
 from typing import Any, Optional
-from uuid import UUID
 
 import asyncpg
 
@@ -34,8 +33,25 @@ from domain.models import (
 )
 from src.config import load_config
 from src.rag.embedder import OllamaEmbedder
+from src.rag.reranker import create_reranker
 
 logger = logging.getLogger(__name__)
+
+
+def _fusion_payload(rows: list[dict[str, Any]]) -> str:
+    """Serialize one hybrid-search side to the JSONB shape corpus.rrf_fusion expects."""
+    return json.dumps(
+        [
+            {
+                "chunk_id": str(row["chunk_id"]),
+                "text": row["text"],
+                "source": row["source"],
+                "doc_id": str(row["doc_id"]),
+                "score": float(row["score"]),
+            }
+            for row in rows
+        ]
+    )
 
 
 class QueryHandler:
@@ -56,10 +72,12 @@ class QueryHandler:
     ) -> None:
         self._pool = pool
         self._embedder = embedder
-        self._reranker = reranker
         self._self_query_parser = self_query_parser
         self._judge = judge
         self._config = config or load_config()
+        self._reranker = (
+            reranker if reranker is not None else create_reranker(self._config, pool)
+        )
         search_cfg = self._config.get("search", {}) or {}
         self._rerank_cfg = search_cfg.get("rerank", {}) or {}
         self._self_query_enabled = bool(
@@ -95,6 +113,21 @@ class QueryHandler:
                 )
             )
 
+        # Computed here (not inside the connection block below) so both the
+        # FTS arm and the post-connection reranker can always reference it,
+        # including when self._embedder is None -- it was previously scoped
+        # inside `if self._embedder:`, which raised UnboundLocalError in the
+        # FTS arm for any embedder-less QueryHandler with a reranker configured.
+        # Only score-based pipeline rerankers (OllamaReranker/FakeReranker,
+        # the `search.rerank` system) over-retrieve candidates; the async
+        # `.rerank` rerankers (IdentityReranker/PgmlReranker) fuse to top-k
+        # directly and must not inflate the vector/FTS LIMIT.
+        over_retrieve_n = (
+            int(self._rerank_cfg.get("over_retrieve_n", 60))
+            if callable(getattr(self._reranker, "score", None))
+            else 0
+        )
+
         async with self._pool.acquire() as conn:
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
@@ -112,16 +145,6 @@ class QueryHandler:
             )
             dedup_predicate = (
                 "AND chunks.tombstoned_at IS NULL AND chunks.superseded_at IS NULL"
-            )
-            # Computed here (not inside the embedder-only block below) so the
-            # FTS arm can always reference it, including when self._embedder
-            # is None -- it was previously scoped inside `if self._embedder:`,
-            # which raised UnboundLocalError in the FTS arm for any
-            # embedder-less QueryHandler with a reranker configured.
-            over_retrieve_n = (
-                int(self._rerank_cfg.get("over_retrieve_n", 60))
-                if self._reranker
-                else 0
             )
 
             # 1. Vector search (pgml in-database, or local Ollama with optional
@@ -251,97 +274,79 @@ class QueryHandler:
                 *params,
             )
 
-            # 3. RRF fusion (Python implementation; scores are reciprocal ranks).
-            rrf_k = 60
-            scores: dict[str, float] = {}
-            texts: dict[str, str] = {}
-            sources: dict[str, str] = {}
-            doc_ids: dict[str, str] = {}
+            # 3. RRF fusion in PostgreSQL (migrations/006_rrf_fusion.sql).
+            try:
+                fused_rows = await conn.fetch(
+                    """
+                    SELECT chunk_id, text, source, doc_id, score
+                    FROM corpus.rrf_fusion($1::jsonb, $2::jsonb, $3, $4)
+                    """,
+                    _fusion_payload(vector_results),
+                    _fusion_payload(fts_results),
+                    query.k,
+                    60,
+                )
+            except asyncpg.UndefinedFunctionError as exc:
+                raise RuntimeError(
+                    "corpus.rrf_fusion() is not installed — apply migration 006 "
+                    "(corpus-kb/migrations/006_rrf_fusion.sql) via scripts/migrate.py"
+                ) from exc
+
+            # Re-attach provenance (file_path/start_line/...) from the raw
+            # vector/FTS rows — corpus.rrf_fusion returns only the five fused
+            # columns, so provenance must be joined back by chunk_id.
             provenance: dict[str, dict[str, Any]] = {}
+            for row in vector_results:
+                provenance.setdefault(str(row["chunk_id"]), dict(row))
+            for row in fts_results:
+                provenance.setdefault(str(row["chunk_id"]), dict(row))
 
-            for rank, row in enumerate(vector_results):
-                cid = str(row["chunk_id"])
-                scores[cid] = scores.get(cid, 0.0) + 1.0 / (rrf_k + rank + 1)
-                texts[cid] = row["text"]
-                sources[cid] = row["source"]
-                doc_ids[cid] = str(row["doc_id"])
-                provenance[cid] = dict(row)
-
-            for rank, row in enumerate(fts_results):
-                cid = str(row["chunk_id"])
-                scores[cid] = scores.get(cid, 0.0) + 1.0 / (rrf_k + rank + 1)
-                texts[cid] = row["text"]
-                sources[cid] = row["source"]
-                doc_ids[cid] = str(row["doc_id"])
-                provenance.setdefault(cid, dict(row))
-
-            ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
-
-            # 4. Reranking (post-RRF, pre-truncation)
-            base_results = [
-                SearchResult(
-                    chunk_id=UUID(cid),
-                    text=texts[cid],
-                    score=score,
-                    source=sources[cid],
-                    doc_id=UUID(doc_ids[cid]),
-                    file_path=provenance[cid].get("file_path"),
-                    start_line=provenance[cid].get("start_line"),
-                    end_line=provenance[cid].get("end_line"),
-                    chunk_index=provenance[cid].get("chunk_index"),
-                    heading_path=json.loads(provenance[cid]["heading_path"])
-                    if provenance[cid].get("heading_path")
-                    else None,
+            def _to_result(row: dict[str, Any]) -> SearchResult:
+                meta = provenance.get(str(row["chunk_id"]), {})
+                heading = meta.get("heading_path")
+                return SearchResult(
+                    chunk_id=row["chunk_id"],
+                    text=row["text"],
+                    score=float(row["score"]),
+                    source=row["source"],
+                    doc_id=row["doc_id"],
+                    file_path=meta.get("file_path"),
+                    start_line=meta.get("start_line"),
+                    end_line=meta.get("end_line"),
+                    chunk_index=meta.get("chunk_index"),
+                    heading_path=json.loads(heading) if heading else None,
                 )
-                for cid, score in ranked
+
+            fused_results = [_to_result(dict(row)) for row in fused_rows]
+
+        # 4. Reranking (post-RRF). Runs outside the handler's connection so a
+        #    max_size=1 pool cannot deadlock on the reranker's own acquire.
+        if self._reranker is None:
+            return fused_results
+
+        if callable(getattr(self._reranker, "score", None)):
+            candidates = fused_results[:over_retrieve_n]
+            cand_texts = [r.text for r in candidates]
+            raw_scores = await asyncio.to_thread(
+                self._reranker.score, semantic_query, cand_texts
+            )
+            if raw_scores is None:
+                return fused_results
+            floor = float(self._rerank_cfg.get("score_floor", 0.15))
+            lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
+            span = (hi - lo) or 1.0
+            reranked = [
+                r.model_copy(update={"score": (s - lo) / span})
+                for r, s in zip(candidates, raw_scores)
             ]
+            reranked = [r for r in reranked if r.score >= floor]
+            reranked.sort(key=lambda r: r.score, reverse=True)
+            return reranked[: query.k]
 
-            if self._reranker is None:
-                return base_results[: query.k]
+        if callable(getattr(self._reranker, "rerank", None)):
+            return await self._reranker.rerank(semantic_query, fused_results)
 
-            if callable(getattr(self._reranker, "score", None)):
-                candidates = ranked[:over_retrieve_n]
-                cand_texts = [texts[cid] for cid, _ in candidates]
-                raw_scores = await asyncio.to_thread(
-                    self._reranker.score, semantic_query, cand_texts
-                )
-                if raw_scores is None:
-                    return base_results[: query.k]
-                floor = float(self._rerank_cfg.get("score_floor", 0.15))
-                lo, hi = (
-                    (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
-                )
-                span = (hi - lo) or 1.0
-                calibrated = [
-                    (cid, (s - lo) / span)
-                    for (cid, _), s in zip(candidates, raw_scores)
-                ]
-                calibrated = [(cid, s) for cid, s in calibrated if s >= floor]
-                calibrated.sort(key=lambda x: (x[1], x[0]), reverse=True)
-                return [
-                    SearchResult(
-                        chunk_id=UUID(cid),
-                        text=texts[cid],
-                        score=s,
-                        source=sources[cid],
-                        doc_id=UUID(doc_ids[cid]),
-                        file_path=provenance[cid].get("file_path"),
-                        start_line=provenance[cid].get("start_line"),
-                        end_line=provenance[cid].get("end_line"),
-                        chunk_index=provenance[cid].get("chunk_index"),
-                        heading_path=json.loads(provenance[cid]["heading_path"])
-                        if provenance[cid].get("heading_path")
-                        else None,
-                    )
-                    for cid, s in calibrated
-                ][: query.k]
-
-            if callable(getattr(self._reranker, "rerank", None)):
-                return await self._reranker.rerank(
-                    semantic_query, base_results[: query.k]
-                )
-
-            return base_results[: query.k]
+        return fused_results
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a read-only SQL query."""
