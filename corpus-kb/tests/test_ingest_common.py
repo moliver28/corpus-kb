@@ -551,7 +551,12 @@ def test_sha256_is_deterministic() -> None:
 def test_contextual_enabled_flag_respects_source_type_allowlist() -> None:
     from src.tools.ingest_common import _contextual_enabled
 
-    cfg = {"contextual": {"enabled": False, "enabled_source_types": ["interview", "research"]}}
+    cfg = {
+        "contextual": {
+            "enabled": False,
+            "enabled_source_types": ["interview", "research"],
+        }
+    }
     assert _contextual_enabled(cfg, source_type="interview") is True
     assert _contextual_enabled(cfg, source_type="code") is False
 

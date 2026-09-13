@@ -244,7 +244,9 @@ def _parse_typed_relations(
     for extraction in relation_extractions:
         if extraction.extraction_class not in ontology.relation_types:
             raise OntologyViolationError(
-                kind="relation_type", value=extraction.extraction_class, allowed=ontology.relation_types,
+                kind="relation_type",
+                value=extraction.extraction_class,
+                allowed=ontology.relation_types,
             )
         attrs = extraction.attributes or {}
         subject = by_name.get(str(attrs.get("subject", "")))
@@ -252,7 +254,8 @@ def _parse_typed_relations(
         if subject is None or obj is None:
             logging.warning(
                 "Dropping unresolved relation triple '%s' in chunk %s: subject/object not found among extracted entities.",
-                extraction.extraction_class, chunk.chunk_id,
+                extraction.extraction_class,
+                chunk.chunk_id,
             )
             continue
         relations.append(

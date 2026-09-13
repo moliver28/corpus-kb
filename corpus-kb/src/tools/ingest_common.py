@@ -130,7 +130,8 @@ async def embed_chunks(
 
         embedder = create_embedder(config, pool)
         texts = [
-            (text_override or {}).get(str(chunk.chunk_id), chunk.text) for chunk in chunks
+            (text_override or {}).get(str(chunk.chunk_id), chunk.text)
+            for chunk in chunks
         ]
         vectors = await aembed_batch(embedder, texts)
 
@@ -301,7 +302,8 @@ class PostgresIngestStore:
             if file_hash is not None:
                 existing = await conn.fetchrow(
                     "SELECT doc_id::text, file_hash FROM documents WHERE tenant_id = $1 AND source = $2",
-                    self._tenant_id, document.path,
+                    self._tenant_id,
+                    document.path,
                 )
                 if existing is not None and existing["file_hash"] == file_hash:
                     return existing["doc_id"], True
@@ -314,8 +316,14 @@ class PostgresIngestStore:
                 SET chunk_count = $5, file_size = $6, file_hash = $7, updated_at = NOW()
                 RETURNING doc_id::text
                 """,
-                document.document_id, self._tenant_id, document.path, document.source_type,
-                document.chunk_count, document.size_bytes, file_hash, json.dumps(document.metadata),
+                document.document_id,
+                self._tenant_id,
+                document.path,
+                document.source_type,
+                document.chunk_count,
+                document.size_bytes,
+                file_hash,
+                json.dumps(document.metadata),
             )
             return row["doc_id"], False
 
@@ -330,10 +338,14 @@ class PostgresIngestStore:
                 self._tenant_id,
             )
             for count, chunk in enumerate(chunks):
-                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
+                chunk_index = (
+                    chunk.sibling_order if chunk.sibling_order is not None else count
+                )
                 existing = await conn.fetchrow(
                     "SELECT chunk_id, chunk_hash FROM chunks WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
-                    self._tenant_id, chunk.document_id, chunk_index,
+                    self._tenant_id,
+                    chunk.document_id,
+                    chunk_index,
                 )
                 if existing is None:
                     row = await conn.fetchrow(
@@ -345,12 +357,21 @@ class PostgresIngestStore:
                         ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
                         RETURNING chunk_id
                         """,
-                        chunk.chunk_id, self._tenant_id, chunk.document_id, chunk_index,
-                        chunk.text, chunk.source_type, chunk.entity_name,
+                        chunk.chunk_id,
+                        self._tenant_id,
+                        chunk.document_id,
+                        chunk_index,
+                        chunk.text,
+                        chunk.source_type,
+                        chunk.entity_name,
                         json.dumps(chunk.heading_path) if chunk.heading_path else None,
                         chunk.metadata.get("file_path") if chunk.metadata else None,
-                        chunk.start_line, chunk.end_line, json.dumps(chunk.metadata),
-                        chunk.chunk_hash, chunk.source_timestamp, chunk.context_blurb,
+                        chunk.start_line,
+                        chunk.end_line,
+                        json.dumps(chunk.metadata),
+                        chunk.chunk_hash,
+                        chunk.source_timestamp,
+                        chunk.context_blurb,
                     )
                     if row is not None:
                         needs_embedding.add(str(row["chunk_id"]))
@@ -361,15 +382,21 @@ class PostgresIngestStore:
                             context_blurb = $4, metadata = $5, superseded_at = NULL, tombstoned_at = NULL
                         WHERE chunk_id = $6
                         """,
-                        chunk.text, chunk.chunk_hash, chunk.source_timestamp,
-                        chunk.context_blurb, json.dumps(chunk.metadata), existing["chunk_id"],
+                        chunk.text,
+                        chunk.chunk_hash,
+                        chunk.source_timestamp,
+                        chunk.context_blurb,
+                        json.dumps(chunk.metadata),
+                        existing["chunk_id"],
                     )
                     needs_embedding.add(str(existing["chunk_id"]))
                 # else: hash unchanged, no-op -- neither inserted nor re-embedded
             await conn.execute(
                 "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "
                 "AND chunk_index >= $3 AND tombstoned_at IS NULL",
-                self._tenant_id, chunks[0].document_id if chunks else None, len(chunks),
+                self._tenant_id,
+                chunks[0].document_id if chunks else None,
+                len(chunks),
             )
         return needs_embedding
 
@@ -394,7 +421,9 @@ class PostgresIngestStore:
                     continue
                 vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
                 v1024 = (vectors_1024 or {}).get(str(chunk.chunk_id))
-                v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
+                v1024_str = (
+                    "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
+                )
                 await conn.execute(
                     """
                     INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, vector_1024, embedding_model, dimensions)
@@ -403,7 +432,12 @@ class PostgresIngestStore:
                     SET vector = $3::vector, vector_1024 = COALESCE($4::vector, chunks_vectors.vector_1024),
                         embedding_model = $5, dimensions = $6, embedded_at = NOW()
                     """,
-                    chunk.chunk_id, self._tenant_id, vector_str, v1024_str, embedding_model, dimensions,
+                    chunk.chunk_id,
+                    self._tenant_id,
+                    vector_str,
+                    v1024_str,
+                    embedding_model,
+                    dimensions,
                 )
                 count += 1
         return count
@@ -529,11 +563,17 @@ async def run_pipeline(
     ingest_store = PostgresIngestStore(pg_pool, tenant_id)
     file_hash = _sha256(text)
 
-    document_id, unchanged = await ingest_store.store_document(document, file_hash=file_hash)
+    document_id, unchanged = await ingest_store.store_document(
+        document, file_hash=file_hash
+    )
     if unchanged:
         return {
-            "status": "skipped", "document_id": document_id, "path": path,
-            "source_type": source_type, "reason": "unchanged", "errors": [],
+            "status": "skipped",
+            "document_id": document_id,
+            "path": path,
+            "source_type": source_type,
+            "reason": "unchanged",
+            "errors": [],
         }
     document.document_id = document_id
     for chunk in chunks:
@@ -541,12 +581,16 @@ async def run_pipeline(
         chunk.chunk_hash = _sha256(chunk.text)
         chunk.source_timestamp = (
             datetime.fromtimestamp(Path(path).stat().st_mtime, tz=timezone.utc)
-            if is_file else datetime.now(timezone.utc)
+            if is_file
+            else datetime.now(timezone.utc)
         )
 
     if _contextual_enabled(config, source_type):
         from ..rag.contextualizer import ContextGenerator
-        blurbs = ContextGenerator(config).generate_blurbs(text, [c.text for c in chunks])
+
+        blurbs = ContextGenerator(config).generate_blurbs(
+            text, [c.text for c in chunks]
+        )
         for chunk, blurb in zip(chunks, blurbs):
             chunk.context_blurb = blurb or None
 
@@ -564,7 +608,9 @@ async def run_pipeline(
     new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
 
     embed_texts_override = {
-        str(c.chunk_id): (f"{c.context_blurb}\n\n{c.text}" if c.context_blurb else c.text)
+        str(c.chunk_id): (
+            f"{c.context_blurb}\n\n{c.text}" if c.context_blurb else c.text
+        )
         for c in new_chunks
     }
     degraded, embed_err = await embed_chunks(
@@ -578,16 +624,22 @@ async def run_pipeline(
     vectors_1024: dict[str, list[float]] = {}
     if bool(matryoshka_cfg.get("matryoshka_enabled", False)) and not degraded:
         from ..rag.embedder import _slice_normalize
+
         dim = int(matryoshka_cfg.get("matryoshka_dim", 1024))
         for c in new_chunks:
             if c.embedding is not None:
                 vectors_1024[str(c.chunk_id)] = _slice_normalize(c.embedding, dim)
 
     try:
-        embedding_model = str(_nested_dict(config, "embedding").get("model", "nomic-embed-text"))
+        embedding_model = str(
+            _nested_dict(config, "embedding").get("model", "nomic-embed-text")
+        )
         dimensions = int(_nested_dict(config, "embedding").get("dimensions", 768))
         pg_vector_count = await ingest_store.store_vectors(
-            new_chunks, embedding_model, dimensions=dimensions, vectors_1024=vectors_1024 or None,
+            new_chunks,
+            embedding_model,
+            dimensions=dimensions,
+            vectors_1024=vectors_1024 or None,
         )
     except Exception as exc:
         logging.warning("Postgres vector write failed: %s", exc)

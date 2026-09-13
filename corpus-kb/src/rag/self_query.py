@@ -71,7 +71,10 @@ class ParsedQuery:
 
 class SelfQueryParser:
     def __init__(self, config: Optional[dict[str, object]] = None) -> None:
-        cfg = cast(dict[str, object], ((config or {}).get("search", {}) or {}).get("self_query", {}) or {})
+        cfg = cast(
+            dict[str, object],
+            ((config or {}).get("search", {}) or {}).get("self_query", {}) or {},
+        )
         self.model = str(cfg.get("model", "qwen3:4b"))
         self.base_url = str(cfg.get("base_url", "http://localhost:11434"))
         self.timeout_seconds = float(cfg.get("timeout_seconds", 8))
@@ -89,16 +92,29 @@ class SelfQueryParser:
                 value = str(p.get("value", ""))
                 key = p.get("key")
                 if target in SPECIAL_TARGETS or (
-                    target in ALLOWED_COLUMNS and op in cast(set, ALLOWED_COLUMNS[target]["ops"])
+                    target in ALLOWED_COLUMNS
+                    and op in cast(set, ALLOWED_COLUMNS[target]["ops"])
                 ):
-                    predicates.append(Predicate(target=target, op=op, value=value, key=key))
+                    predicates.append(
+                        Predicate(target=target, op=op, value=value, key=key)
+                    )
             return ParsedQuery(semantic_query=semantic_query, predicates=predicates)
-        except (ConnectionError, OSError, httpx.NetworkError, ResponseError, json.JSONDecodeError, KeyError) as exc:
+        except (
+            ConnectionError,
+            OSError,
+            httpx.NetworkError,
+            ResponseError,
+            json.JSONDecodeError,
+            KeyError,
+        ) as exc:
             # ResponseError covers "model not found" -- this is the failure
             # mode a fresh install with self_query.enabled=true (the approved
             # default) hits immediately if its configured chat model was
             # never pulled. Must degrade to unfiltered search, not 400 it.
-            logger.warning("Self-query parser unavailable/invalid: %s; using unfiltered query.", exc)
+            logger.warning(
+                "Self-query parser unavailable/invalid: %s; using unfiltered query.",
+                exc,
+            )
             return ParsedQuery(semantic_query=query, predicates=[])
 
     def _client_chat(self, query: str) -> str:
@@ -109,7 +125,10 @@ class SelfQueryParser:
         )
         response = self._client.chat(
             model=self.model,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": query}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": query},
+            ],
             format=_JSON_SCHEMA,
             options={"temperature": 0},
         )
@@ -117,7 +136,9 @@ class SelfQueryParser:
         return str(message.get("content", "{}"))
 
 
-def build_filter_sql(predicates: list[Predicate], start_index: int) -> tuple[str, list[object]]:
+def build_filter_sql(
+    predicates: list[Predicate], start_index: int
+) -> tuple[str, list[object]]:
     """Build a parameterized ' AND ...' fragment. Never interpolates raw values."""
     if not predicates:
         return "", []
@@ -140,7 +161,9 @@ def build_filter_sql(predicates: list[Predicate], start_index: int) -> tuple[str
             params.append(pred.key or "")
             params.append(pred.value)
             idx += 2
-        elif pred.target in ALLOWED_COLUMNS and pred.op in cast(set, ALLOWED_COLUMNS[pred.target]["ops"]):
+        elif pred.target in ALLOWED_COLUMNS and pred.op in cast(
+            set, ALLOWED_COLUMNS[pred.target]["ops"]
+        ):
             clauses.append(f"{pred.target} {pred.op} ${idx}")
             params.append(pred.value)
             idx += 1

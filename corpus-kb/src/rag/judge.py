@@ -37,7 +37,13 @@ class OllamaJudge:
             if isinstance(claims, list):
                 return [str(c) for c in claims][: self.max_claims]
             return []
-        except (ConnectionError, OSError, httpx.NetworkError, ResponseError, json.JSONDecodeError) as exc:
+        except (
+            ConnectionError,
+            OSError,
+            httpx.NetworkError,
+            ResponseError,
+            json.JSONDecodeError,
+        ) as exc:
             # ResponseError covers "model not found" (chat model not pulled).
             logger.warning("Judge decompose unavailable: %s", exc)
             return []
@@ -58,14 +64,24 @@ class OllamaJudge:
                 label = "unsupported"
             confidence = float(data.get("confidence", 0.0))
             return label, confidence
-        except (ConnectionError, OSError, httpx.NetworkError, ResponseError, json.JSONDecodeError, ValueError) as exc:
+        except (
+            ConnectionError,
+            OSError,
+            httpx.NetworkError,
+            ResponseError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
             logger.warning("Judge entail unavailable: %s", exc)
             return "unsupported", 0.0
 
     def _client_chat(self, system: str, user: str) -> str:
         response = self._client.chat(
             model=self.model,
-            messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
             options={"temperature": 0},
         )
         message = response.get("message", {}) if isinstance(response, dict) else {}

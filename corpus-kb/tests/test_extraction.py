@@ -208,8 +208,14 @@ def test_typed_relation_has_directed_predicate_and_confidence() -> None:
     from src.utils.models import Chunk
 
     ontology = load_ontology("config/ontology.yaml")
-    extractor = LangExtractExtractor(fixture_dir="tests/fixtures/langextract_recorded", live_fallback=False)
-    chunk = Chunk(document_id="d1", text="ServiceA depends on ServiceB for auth.", source_type="text")
+    extractor = LangExtractExtractor(
+        fixture_dir="tests/fixtures/langextract_recorded", live_fallback=False
+    )
+    chunk = Chunk(
+        document_id="d1",
+        text="ServiceA depends on ServiceB for auth.",
+        source_type="text",
+    )
     entities, relations = extractor.extract([chunk], ontology, "d1")
     assert any(r.relation_type not in {"MENTIONS", "RELATED_TO"} for r in relations)
     assert all(r.confidence is not None for r in relations)
@@ -237,7 +243,11 @@ def test_unresolved_relation_endpoint_is_dropped(tmp_path) -> None:
             {
                 "extraction_class": "DEPENDS_ON",
                 "extraction_text": "depends on",
-                "attributes": {"subject": "GhostA", "object": "GhostB", "confidence": 0.9},
+                "attributes": {
+                    "subject": "GhostA",
+                    "object": "GhostB",
+                    "confidence": 0.9,
+                },
             }
         )
         + "\n"

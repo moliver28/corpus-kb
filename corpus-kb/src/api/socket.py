@@ -195,7 +195,9 @@ class JSONRPCServer:
             from src.handlers.query_handler import get_query_handler
             from src.domain.models import VerifyAnswerQuery
 
-            query = VerifyAnswerQuery(answer=params.get("answer", ""), chunk_ids=params.get("chunk_ids", []))
+            query = VerifyAnswerQuery(
+                answer=params.get("answer", ""), chunk_ids=params.get("chunk_ids", [])
+            )
             result = await get_query_handler().handle_verify_answer(query)
             return {"status": "success", "result": result.model_dump(mode="json")}
 

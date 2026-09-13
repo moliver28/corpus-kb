@@ -308,7 +308,9 @@ class QueryHandler:
                 if raw_scores is None:
                     return base_results[: query.k]
                 floor = float(self._rerank_cfg.get("score_floor", 0.15))
-                lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
+                lo, hi = (
+                    (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
+                )
                 span = (hi - lo) or 1.0
                 calibrated = [
                     (cid, (s - lo) / span)
@@ -543,9 +545,7 @@ class QueryHandler:
         from src.domain.models import ClaimVerdict
 
         if not query.chunk_ids or self._judge is None:
-            return VerifyAnswerResult(
-                verdicts=[], groundedness=0.0, abstained=True
-            )
+            return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT chunk_id, text FROM chunks WHERE tenant_id = $1 AND chunk_id = ANY($2)",
@@ -554,14 +554,10 @@ class QueryHandler:
             )
         cited_texts = [row["text"] for row in rows]
         if not cited_texts:
-            return VerifyAnswerResult(
-                verdicts=[], groundedness=0.0, abstained=True
-            )
+            return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
         claims = self._judge.decompose(query.answer)
         if not claims:
-            return VerifyAnswerResult(
-                verdicts=[], groundedness=0.0, abstained=True
-            )
+            return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
         verdicts: list[ClaimVerdict] = []
         for claim in claims:
             label, confidence = self._judge.entail(claim, cited_texts)

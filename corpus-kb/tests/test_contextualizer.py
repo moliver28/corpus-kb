@@ -10,12 +10,16 @@ _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "contextual_recorded"
 
 
 def test_missing_fixture_with_live_fallback_false_returns_empty() -> None:
-    gen = ContextGenerator({"contextual": {"fixture_dir": str(_FIXTURE_DIR), "live_fallback": False}})
+    gen = ContextGenerator(
+        {"contextual": {"fixture_dir": str(_FIXTURE_DIR), "live_fallback": False}}
+    )
     assert gen.generate_blurb("full document text", "a chunk with no fixture") == ""
 
 
 def test_client_error_degrades_to_empty_string(monkeypatch) -> None:
-    gen = ContextGenerator({"contextual": {"live_fallback": True, "fixture_dir": str(_FIXTURE_DIR)}})
+    gen = ContextGenerator(
+        {"contextual": {"live_fallback": True, "fixture_dir": str(_FIXTURE_DIR)}}
+    )
 
     def _raise(*_args: object, **_kwargs: object) -> None:
         raise ConnectionError("no ollama")
@@ -25,6 +29,8 @@ def test_client_error_degrades_to_empty_string(monkeypatch) -> None:
 
 
 def test_generate_blurbs_returns_one_per_chunk() -> None:
-    gen = ContextGenerator({"contextual": {"fixture_dir": str(_FIXTURE_DIR), "live_fallback": False}})
+    gen = ContextGenerator(
+        {"contextual": {"fixture_dir": str(_FIXTURE_DIR), "live_fallback": False}}
+    )
     blurbs = gen.generate_blurbs("doc text", ["chunk one", "chunk two"])
     assert blurbs == ["", ""]

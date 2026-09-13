@@ -31,24 +31,52 @@ async def test_self_query_predicate_narrows_results(pg_pool) -> None:
     "text"-type sibling document is excluded, and this test's own
     "markdown" document is present.
     """
-    config = {"graph": {"extract_entities": False}, "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096}}
+    config = {
+        "graph": {"extract_entities": False},
+        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+    }
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         await conn.execute(
             "DELETE FROM documents WHERE tenant_id = $1 AND source = ANY($2)",
-            str(DEFAULT_TENANT_ID), ["test-filter-markdown", "test-filter-text"],
+            str(DEFAULT_TENANT_ID),
+            ["test-filter-markdown", "test-filter-text"],
         )
     unique_phrase = "zzyzx quixotic narwhal budget spend"
-    md_result = await ingest_text(text=f"{unique_phrase} markdown edition", pg_pool=pg_pool, source_type="markdown", config=config, source="test-filter-markdown")
-    txt_result = await ingest_text(text=f"{unique_phrase} text edition", pg_pool=pg_pool, source_type="text", config=config, source="test-filter-text")
+    md_result = await ingest_text(
+        text=f"{unique_phrase} markdown edition",
+        pg_pool=pg_pool,
+        source_type="markdown",
+        config=config,
+        source="test-filter-markdown",
+    )
+    txt_result = await ingest_text(
+        text=f"{unique_phrase} text edition",
+        pg_pool=pg_pool,
+        source_type="text",
+        config=config,
+        source="test-filter-text",
+    )
     assert md_result["status"] == "success"
     assert txt_result["status"] == "success"
 
     class _StubParser:
         def parse(self, query: str) -> ParsedQuery:
-            return ParsedQuery(semantic_query=query, predicates=[Predicate(target="documents.source_type", op="=", value="markdown")])
+            return ParsedQuery(
+                semantic_query=query,
+                predicates=[
+                    Predicate(target="documents.source_type", op="=", value="markdown")
+                ],
+            )
 
-    handler = QueryHandler(pg_pool, embedder=FakeEmbedder(config), self_query_parser=_StubParser(), config={"search": {"self_query": {"enabled": True}}})
-    results = await handler.handle_search(SearchQuery(query=unique_phrase, k=20, self_query=True))
+    handler = QueryHandler(
+        pg_pool,
+        embedder=FakeEmbedder(config),
+        self_query_parser=_StubParser(),
+        config={"search": {"self_query": {"enabled": True}}},
+    )
+    results = await handler.handle_search(
+        SearchQuery(query=unique_phrase, k=20, self_query=True)
+    )
     result_sources = {r.source for r in results}
     assert len(results) > 0, "predicate matched zero rows -- test proves nothing"
     assert "test-filter-markdown" in result_sources

@@ -38,7 +38,11 @@ async def _delete_document(pg_pool, source: str) -> None:
     (migration 007) would otherwise return "skipped" on any run after the
     first."""
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
-        await conn.execute("DELETE FROM documents WHERE tenant_id = $1 AND source = $2", str(DEFAULT_TENANT_ID), source)
+        await conn.execute(
+            "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
+            str(DEFAULT_TENANT_ID),
+            source,
+        )
 
 
 @pytest.mark.asyncio

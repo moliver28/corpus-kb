@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import pytest
 
+from src.domain.models import DEFAULT_TENANT_ID
 from src.graph.extractor import extract_entities
 from src.storage.graph_store import PostgresGraphStore
+from src.storage.tenant_conn import tenant_connection
 from src.tools.ingest_tools import delete_document, ingest_text
 from src.utils.models import Entity
 
@@ -177,7 +179,11 @@ Tokens are cached for performance.
             },
         }
         async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
-            await conn.execute("DELETE FROM documents WHERE tenant_id = $1 AND source = $2", DEFAULT_TENANT_ID, source)
+            await conn.execute(
+                "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
+                DEFAULT_TENANT_ID,
+                source,
+            )
 
         first = await ingest_text(
             text=markdown_text,
@@ -218,7 +224,11 @@ Tokens are cached for performance.
             },
         }
         async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
-            await conn.execute("DELETE FROM documents WHERE tenant_id = $1 AND source = $2", DEFAULT_TENANT_ID, source)
+            await conn.execute(
+                "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
+                DEFAULT_TENANT_ID,
+                source,
+            )
 
         first = await ingest_text(
             text=first_text,
@@ -259,7 +269,11 @@ Tokens are cached for performance.
             },
         }
         async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
-            await conn.execute("DELETE FROM documents WHERE tenant_id = $1 AND source = $2", DEFAULT_TENANT_ID, source)
+            await conn.execute(
+                "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
+                DEFAULT_TENANT_ID,
+                source,
+            )
 
         result = await ingest_text(
             text=markdown_text,

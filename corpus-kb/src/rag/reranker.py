@@ -167,7 +167,11 @@ class OllamaReranker:
                     prompt=prompt,
                     options={"temperature": 0},
                 )
-                raw = response.get("response", "") if isinstance(response, dict) else str(response)
+                raw = (
+                    response.get("response", "")
+                    if isinstance(response, dict)
+                    else str(response)
+                )
                 try:
                     value = float(raw.strip())
                 except ValueError:
@@ -183,7 +187,11 @@ class OllamaReranker:
             # pulled) -- an application-level Ollama error, not a network
             # failure, but just as fatal to reranking and just as safe to
             # degrade from: fall back to RRF order rather than break search.
-            logger.warning("Reranker unavailable at %s: %s; falling back to RRF order.", self.base_url, exc)
+            logger.warning(
+                "Reranker unavailable at %s: %s; falling back to RRF order.",
+                self.base_url,
+                exc,
+            )
             return None
 
 
@@ -194,7 +202,9 @@ class FakeReranker:
         return [self._score_one(query, text) for text in texts]
 
     def _score_one(self, query: str, text: str) -> float:
-        seed = int(hashlib.sha256((query + "\x00" + text).encode("utf-8")).hexdigest(), 16)
+        seed = int(
+            hashlib.sha256((query + "\x00" + text).encode("utf-8")).hexdigest(), 16
+        )
         return random.Random(seed).uniform(0.0, 1.0)
 
 
@@ -204,7 +214,9 @@ def _cache_key(query: str, text: str) -> str:
 
 def build_reranker(config: dict[str, object]) -> Optional[object]:
     """Build the configured reranker, or None if disabled."""
-    rerank_cfg = cast(dict[str, object], (config.get("search", {}) or {}).get("rerank", {}) or {})
+    rerank_cfg = cast(
+        dict[str, object], (config.get("search", {}) or {}).get("rerank", {}) or {}
+    )
     if not rerank_cfg.get("enabled", False):
         return None
     if rerank_cfg.get("backend") == "fake":

@@ -42,7 +42,9 @@ def test_parser_falls_back_on_client_error(monkeypatch) -> None:
 
     monkeypatch.setattr(parser, "_client_chat", _raise)
     result = parser.parse("pdf reports from last week")
-    assert result == ParsedQuery(semantic_query="pdf reports from last week", predicates=[])
+    assert result == ParsedQuery(
+        semantic_query="pdf reports from last week", predicates=[]
+    )
 
 
 def test_parser_falls_back_when_model_not_pulled(monkeypatch) -> None:

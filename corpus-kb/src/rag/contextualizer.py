@@ -52,7 +52,9 @@ class ContextGenerator:
         try:
             return self._client_generate(document_text[:_MAX_DOC_CHARS], chunk_text)
         except Exception as exc:  # never raise into ingest
-            logger.warning("Contextualizer unavailable: %s; chunk stays blurb-free.", exc)
+            logger.warning(
+                "Contextualizer unavailable: %s; chunk stays blurb-free.", exc
+            )
             return ""
 
     def _client_generate(self, document_text: str, chunk_text: str) -> str:
@@ -62,7 +64,11 @@ class ContextGenerator:
             prompt=prompt,
             options={"temperature": self.temperature},
         )
-        text = response.get("response", "") if isinstance(response, dict) else str(response)
+        text = (
+            response.get("response", "")
+            if isinstance(response, dict)
+            else str(response)
+        )
         return text.strip()
 
     def generate_blurbs(self, document_text: str, chunks: list[str]) -> list[str]:

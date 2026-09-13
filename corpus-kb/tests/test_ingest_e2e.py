@@ -37,7 +37,11 @@ async def _delete_document(pg_pool, source: str) -> None:
     "skipped" rather than "success" on any run after the first -- tests
     using a fixed source/path must clean up their own row first."""
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
-        await conn.execute("DELETE FROM documents WHERE tenant_id = $1 AND source = $2", str(DEFAULT_TENANT_ID), source)
+        await conn.execute(
+            "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
+            str(DEFAULT_TENANT_ID),
+            source,
+        )
 
 
 @pytest.mark.asyncio
@@ -85,11 +89,18 @@ async def test_reingest_unchanged_is_skipped(pg_pool) -> None:
 
     source = "test-skip-unchanged"
     await _delete_document(pg_pool, source)
-    config = {"graph": {"extract_entities": False}, "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096}}
+    config = {
+        "graph": {"extract_entities": False},
+        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+    }
     text = "# Doc\nStable content.\n"
-    first = await ingest_text(text=text, pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    first = await ingest_text(
+        text=text, pg_pool=pg_pool, source_type="markdown", config=config, source=source
+    )
     assert first["status"] == "success"
-    second = await ingest_text(text=text, pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    second = await ingest_text(
+        text=text, pg_pool=pg_pool, source_type="markdown", config=config, source=source
+    )
     assert second["status"] == "skipped"
 
 
@@ -97,11 +108,26 @@ async def test_reingest_unchanged_is_skipped(pg_pool) -> None:
 async def test_edit_and_reingest_supersedes_changed_chunk(pg_pool) -> None:
     from src.tools.ingest_common import ingest_text
 
-    config = {"graph": {"extract_entities": False}, "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096}}
+    config = {
+        "graph": {"extract_entities": False},
+        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+    }
     source = "test-edit-reingest"
     await _delete_document(pg_pool, source)
-    await ingest_text(text="# Doc\nOriginal text.\n", pg_pool=pg_pool, source_type="markdown", config=config, source=source)
-    result = await ingest_text(text="# Doc\nEdited text now.\n", pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    await ingest_text(
+        text="# Doc\nOriginal text.\n",
+        pg_pool=pg_pool,
+        source_type="markdown",
+        config=config,
+        source=source,
+    )
+    result = await ingest_text(
+        text="# Doc\nEdited text now.\n",
+        pg_pool=pg_pool,
+        source_type="markdown",
+        config=config,
+        source=source,
+    )
     assert result["status"] == "success"
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         row = await conn.fetchrow(
@@ -120,13 +146,18 @@ async def test_stored_relations_have_provenance(pg_pool) -> None:
     await _delete_document(pg_pool, source)
     config = {
         "graph": {
-            "extract_entities": True, "extractor": "langextract",
-            "fixture_dir": "tests/fixtures/langextract_recorded", "live_fallback": False,
-            "model_version": "test-model-v1", "prompt_version": "test-prompt-v1",
+            "extract_entities": True,
+            "extractor": "langextract",
+            "fixture_dir": "tests/fixtures/langextract_recorded",
+            "live_fallback": False,
+            "model_version": "test-model-v1",
+            "prompt_version": "test-prompt-v1",
         },
     }
     text = "ServiceA depends on ServiceB for auth."
-    result = await ingest_text(text=text, pg_pool=pg_pool, source_type="text", config=config, source=source)
+    result = await ingest_text(
+        text=text, pg_pool=pg_pool, source_type="text", config=config, source=source
+    )
     assert result["status"] == "success"
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         row = await conn.fetchrow(

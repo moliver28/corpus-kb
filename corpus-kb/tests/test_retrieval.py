@@ -96,8 +96,16 @@ def test_search_query_and_result_have_new_fields() -> None:
     assert q.self_query is True
 
     r = SearchResult(
-        chunk_id=uuid4(), text="t", score=0.5, source="s", doc_id=uuid4(),
-        file_path="a.py", start_line=1, end_line=2, chunk_index=0, heading_path=["A"],
+        chunk_id=uuid4(),
+        text="t",
+        score=0.5,
+        source="s",
+        doc_id=uuid4(),
+        file_path="a.py",
+        start_line=1,
+        end_line=2,
+        chunk_index=0,
+        heading_path=["A"],
     )
     assert r.file_path == "a.py"
 
@@ -175,23 +183,39 @@ async def test_handle_search_filters_tombstoned_and_superseded(pg_pool) -> None:
     from src.rag.embedder import FakeEmbedder
     from src.tools.ingest_common import ingest_text
 
-    config = {"graph": {"extract_entities": False}, "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096}}
+    config = {
+        "graph": {"extract_entities": False},
+        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+    }
     source = "test-search-tombstone-filter"
     unique_phrase = "kerflumph vermillion second section marker"
     async with pg_pool.acquire() as conn:
-        await conn.execute("DELETE FROM documents WHERE tenant_id = $1 AND source = $2", str(DEFAULT_TENANT_ID), source)
+        await conn.execute(
+            "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
+            str(DEFAULT_TENANT_ID),
+            source,
+        )
 
-    result = await ingest_text(text=f"# Doc\n{unique_phrase}.\n", pg_pool=pg_pool, source_type="markdown", config=config, source=source)
+    result = await ingest_text(
+        text=f"# Doc\n{unique_phrase}.\n",
+        pg_pool=pg_pool,
+        source_type="markdown",
+        config=config,
+        source=source,
+    )
     assert result["status"] == "success"
 
     handler = QueryHandler(pg_pool, embedder=FakeEmbedder(config))
     before = await handler.handle_search(SearchQuery(query=unique_phrase, k=10))
-    assert any(unique_phrase in r.text for r in before), "sanity check: chunk must be findable before tombstoning"
+    assert any(unique_phrase in r.text for r in before), (
+        "sanity check: chunk must be findable before tombstoning"
+    )
 
     async with pg_pool.acquire() as conn:
         updated = await conn.execute(
             "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2",
-            str(DEFAULT_TENANT_ID), result["document_id"],
+            str(DEFAULT_TENANT_ID),
+            result["document_id"],
         )
     assert updated == "UPDATE 1"
 

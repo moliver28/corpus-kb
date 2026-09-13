@@ -215,9 +215,13 @@ async def verify(request: Request) -> JSONResponse:
 
     body = await _parse_body(request)
     try:
-        query = VerifyAnswerQuery(answer=body.get("answer", ""), chunk_ids=body.get("chunk_ids", []))
+        query = VerifyAnswerQuery(
+            answer=body.get("answer", ""), chunk_ids=body.get("chunk_ids", [])
+        )
         result = await get_query_handler().handle_verify_answer(query)
-        return JSONResponse({"status": "success", "result": result.model_dump(mode="json")})
+        return JSONResponse(
+            {"status": "success", "result": result.model_dump(mode="json")}
+        )
     except Exception as exc:
         return JSONResponse({"status": "error", "message": str(exc)}, status_code=500)
 
@@ -237,7 +241,9 @@ async def route_query(request: Request) -> JSONResponse:
         )
         handler = get_router_handler()
         result = await handler.handle_routed_query(query)
-        return JSONResponse({"status": "success", "result": result.model_dump(mode="json")})
+        return JSONResponse(
+            {"status": "success", "result": result.model_dump(mode="json")}
+        )
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},

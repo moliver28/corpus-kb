@@ -135,7 +135,11 @@ def build_examples(lx: LangExtractModule, ontology: Ontology) -> list[object]:
         examples.append(
             lx.data.ExampleData(
                 text=example_text,
-                extractions=[subject_extraction, object_extraction, relation_extraction],
+                extractions=[
+                    subject_extraction,
+                    object_extraction,
+                    relation_extraction,
+                ],
             )
         )
     return examples
