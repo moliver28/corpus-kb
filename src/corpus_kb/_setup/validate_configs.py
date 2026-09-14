@@ -393,7 +393,7 @@ def validate_all(project_root: Path | None = None) -> list[str]:
     Returns a combined list of error strings.
     """
     if project_root is None:
-        project_root = Path(__file__).resolve().parent.parent
+        project_root = Path(__file__).resolve().parent.parent.parent.parent
 
     errors: list[str] = []
 
@@ -466,7 +466,7 @@ def validate_all(project_root: Path | None = None) -> list[str]:
 
 def main() -> None:
     """Run validation and exit with appropriate code."""
-    project_root = Path(__file__).resolve().parent.parent
+    project_root = Path(__file__).resolve().parent.parent.parent.parent
     errors = validate_all(project_root)
 
     if errors:
