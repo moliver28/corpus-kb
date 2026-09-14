@@ -16,7 +16,8 @@ from typing import cast
 
 import asyncpg
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+# Editable-install safety: the corpus_kb package lives under repo-root/src.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from corpus_kb.config import load_config
 from corpus_kb.tools.ingest_tools import ingest_file
@@ -70,7 +71,8 @@ async def main() -> None:
                 )
 
             rows = await conn.fetch(
-                "SELECT entity_id::text, name, entity_type, metadata::text FROM entities WHERE source_document_id = $1",
+                "SELECT entity_id::text, name, entity_type, metadata::text "
+                "FROM entities WHERE source_document_id = $1",
                 result["document_id"],
             )
             for row in rows:
