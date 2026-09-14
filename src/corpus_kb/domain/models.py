@@ -7,11 +7,9 @@ query handlers, and protocol adapters. They are NOT domain aggregates
 
 from __future__ import annotations
 
-from typing import Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
-
 
 # ============================================================================
 # Default tenant (single-tenant placeholder)
@@ -36,8 +34,8 @@ class IngestFileCommand(DomainCommand):
     """Ingest a file from disk."""
 
     file_path: str
-    content: Optional[str] = None
-    source_type: Optional[str] = None
+    content: str | None = None
+    source_type: str | None = None
 
 
 class IngestTextCommand(DomainCommand):
@@ -90,7 +88,7 @@ class SearchQuery(BaseModel):
     tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
     query: str
     k: int = 10
-    source_type: Optional[str] = None
+    source_type: str | None = None
 
 
 class SQLQuery(BaseModel):
@@ -113,7 +111,7 @@ class ListEntitiesQuery(BaseModel):
     """List entities, optionally filtered by type."""
 
     tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
-    entity_type: Optional[str] = None
+    entity_type: str | None = None
     limit: int = 100
 
 

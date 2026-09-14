@@ -13,9 +13,7 @@ from corpus_kb.utils.models import Chunk
 async def test_postgres_unavailable_raises() -> None:
     """startup() raises RuntimeError when the connection string is invalid."""
     with pytest.raises(RuntimeError):
-        await startup(
-            {"database": {"connection_string": "postgresql://bad:bad@localhost:1/none"}}
-        )
+        await startup({"database": {"connection_string": "postgresql://bad:bad@localhost:1/none"}})
 
 
 @pytest.mark.asyncio

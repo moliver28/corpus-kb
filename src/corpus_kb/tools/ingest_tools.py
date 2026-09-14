@@ -6,7 +6,6 @@ All ingest functions are async and require an asyncpg.Pool for Postgres writes.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import asyncpg
 
@@ -16,7 +15,7 @@ from .ingest_common import load_config_or_pass, run_pipeline
 async def ingest_file(
     file_path: str,
     pg_pool: asyncpg.Pool,
-    config: Optional[dict[str, object]] = None,
+    config: dict[str, object] | None = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
 ) -> dict[str, object]:
     """Ingest a single file (auto-detects type)."""
@@ -34,7 +33,7 @@ async def ingest_text(
     text: str,
     pg_pool: asyncpg.Pool,
     source_type: str = "text",
-    config: Optional[dict[str, object]] = None,
+    config: dict[str, object] | None = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
     source: str = "raw_text",
 ) -> dict[str, object]:
@@ -48,7 +47,7 @@ async def ingest_text(
 async def ingest_directory(
     directory_path: str,
     pg_pool: asyncpg.Pool,
-    config: Optional[dict[str, object]] = None,
+    config: dict[str, object] | None = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
 ) -> dict[str, object]:
     """Ingest all supported files in a directory."""
@@ -106,7 +105,7 @@ async def ingest_directory(
 
 async def list_documents(
     pg_pool: asyncpg.Pool,
-    config: Optional[dict[str, object]] = None,
+    config: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """List all ingested documents."""
     return {"status": "success", "documents": []}
@@ -115,7 +114,7 @@ async def list_documents(
 async def delete_document(
     document_id: str,
     pg_pool: asyncpg.Pool,
-    config: Optional[dict[str, object]] = None,
+    config: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Delete a document by ID and all related rows."""
     try:

@@ -69,12 +69,10 @@ def chunk_elements(
     return chunks
 
 
-def _update_heading_path(
-    heading_path: list[str], element: ElementProxy, text: str
-) -> list[str]:
+def _update_heading_path(heading_path: list[str], element: ElementProxy, text: str) -> list[str]:
     depth = element.metadata.get("category_depth")
     if element.element_type == "Title" and isinstance(depth, int):
-        return heading_path[:depth] + [text]
+        return [*heading_path[:depth], text]
     return heading_path
 
 

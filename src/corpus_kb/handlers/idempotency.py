@@ -17,7 +17,7 @@ Usage:
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -31,9 +31,7 @@ class IdempotencyChecker:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def check(
-        self, tenant_id: UUID, command_id: UUID
-    ) -> Optional[dict[str, Any]]:
+    async def check(self, tenant_id: UUID, command_id: UUID) -> dict[str, Any] | None:
         """Check if command already executed. Returns cached result or None."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -59,7 +57,7 @@ class IdempotencyChecker:
         command_id: UUID,
         command_type: str,
         command_payload: dict[str, Any],
-        result: Optional[dict[str, Any]] = None,
+        result: dict[str, Any] | None = None,
     ) -> None:
         """Record command execution for future deduplication."""
         async with self._pool.acquire() as conn:
@@ -88,10 +86,10 @@ class IdempotencyChecker:
 # Singleton
 # ============================================================================
 
-_checker: Optional[IdempotencyChecker] = None
+_checker: IdempotencyChecker | None = None
 
 
-def get_idempotency_checker(pool: Optional[asyncpg.Pool] = None) -> IdempotencyChecker:
+def get_idempotency_checker(pool: asyncpg.Pool | None = None) -> IdempotencyChecker:
     """Get or create the singleton IdempotencyChecker."""
     global _checker
     if _checker is None:

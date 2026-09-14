@@ -46,9 +46,7 @@ class LlamaIndexPostgresBackend:
     async def initialize(self) -> None:
         """Create the PGVectorStore and verify Ollama is reachable."""
         if not self._connection_string:
-            raise RuntimeError(
-                "LlamaIndexPostgresBackend requires database.connection_string"
-            )
+            raise RuntimeError("LlamaIndexPostgresBackend requires database.connection_string")
 
         # Verify Ollama embedding endpoint is reachable before building store.
         try:
@@ -95,9 +93,7 @@ class LlamaIndexPostgresBackend:
                     **chunk.get("metadata", {}),
                 },
             )
-            node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(
-                node_id=source_id
-            )
+            node.relationships[NodeRelationship.SOURCE] = RelatedNodeInfo(node_id=source_id)
             nodes.append(node)
 
         if not nodes:

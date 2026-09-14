@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
 
 from unstructured.partition.auto import partition as _unstructured_partition
@@ -18,7 +17,7 @@ class ElementProxy:
     text: str
     element_type: str
     element_id: str
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict[str, object])
 
 
@@ -54,7 +53,7 @@ def _to_proxy(element: object) -> ElementProxy:
     element_id = _extract_element_id(element)
 
     metadata: dict[str, object] = {}
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     meta_obj = getattr(element, "metadata", None)
     if meta_obj is not None:
         parent_id_value = getattr(meta_obj, "parent_id", None)

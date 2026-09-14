@@ -12,11 +12,9 @@ Projections subscribe to events and update read models (documents, chunks, vecto
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
 from uuid import UUID
 
 from eventsourcing.domain import Aggregate, event
-
 
 # ============================================================================
 # Document Aggregate
@@ -37,9 +35,9 @@ class Document(Aggregate):
     source: str
     source_type: str = "text"
     chunk_count: int = 0
-    file_size: Optional[int] = None
-    file_hash: Optional[str] = None
-    language: Optional[str] = None
+    file_size: int | None = None
+    file_hash: str | None = None
+    language: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
     @event("Ingested")
@@ -48,10 +46,10 @@ class Document(Aggregate):
         tenant_id: UUID,
         source: str,
         source_type: str = "text",
-        file_size: Optional[int] = None,
-        file_hash: Optional[str] = None,
-        language: Optional[str] = None,
-        metadata: Optional[dict[str, object]] = None,
+        file_size: int | None = None,
+        file_hash: str | None = None,
+        language: str | None = None,
+        metadata: dict[str, object] | None = None,
     ) -> None:
         self.tenant_id = tenant_id
         self.source = source
@@ -101,7 +99,7 @@ class Entity(Aggregate):
         tenant_id: UUID,
         name: str,
         entity_type: str = "concept",
-        metadata: Optional[dict[str, object]] = None,
+        metadata: dict[str, object] | None = None,
     ) -> None:
         self.tenant_id = tenant_id
         self.name = name
@@ -137,7 +135,7 @@ class Relation(Aggregate):
         target_entity_id: UUID,
         relation_type: str = "related_to",
         weight: float = 1.0,
-        metadata: Optional[dict[str, object]] = None,
+        metadata: dict[str, object] | None = None,
     ) -> None:
         self.tenant_id = tenant_id
         self.source_entity_id = source_entity_id

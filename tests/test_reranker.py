@@ -202,9 +202,7 @@ async def test_pgml_reranker_empty_input_issues_no_sql() -> None:
 async def test_pgml_reranker_empty_query_is_bound_parameter() -> None:
     """An empty query string is forwarded as a bound parameter, not rejected."""
     results = [_result("a"), _result("b")]
-    pool = _make_pool(
-        fetch_return=[{"corpus_id": 1, "score": 0.8}, {"corpus_id": 0, "score": 0.2}]
-    )
+    pool = _make_pool(fetch_return=[{"corpus_id": 1, "score": 0.8}, {"corpus_id": 0, "score": 0.2}])
     reranker = PgmlReranker(config=PGML_CONFIG, pool=pool)
 
     out = await reranker.rerank("", results)

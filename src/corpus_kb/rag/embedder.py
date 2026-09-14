@@ -14,7 +14,7 @@ import hashlib
 import logging
 import random
 from collections import OrderedDict
-from typing import Optional, cast
+from typing import cast
 
 import asyncpg
 import httpx
@@ -35,7 +35,7 @@ class OllamaEmbedder:
     so callers can continue operating in degraded mode.
     """
 
-    def __init__(self, config: Optional[dict[str, object]] = None) -> None:
+    def __init__(self, config: dict[str, object] | None = None) -> None:
         self._config = config or load_config()
         embedding = cast(dict[str, object], self._config.get("embedding", {}))
 
@@ -79,7 +79,7 @@ class OllamaEmbedder:
             batch = missing_texts[start : start + batch_size]
             batched_results.extend(self._embed_batch(batch))
 
-        for (idx, text), vector in zip(missing, batched_results):
+        for (idx, text), vector in zip(missing, batched_results, strict=True):
             key = _sha256_key(text)
             self._cache[key] = vector
             self._cache.move_to_end(key)
@@ -136,16 +136,14 @@ class PgmlEmbedder:
 
     def __init__(
         self,
-        config: Optional[dict[str, object]] = None,
-        pool: Optional[asyncpg.Pool] = None,
+        config: dict[str, object] | None = None,
+        pool: asyncpg.Pool | None = None,
     ) -> None:
         self._config = config or load_config()
         embedding = cast(dict[str, object], self._config.get("embedding", {}))
         self.model = _str_or_default(embedding, "model", "nomic-embed-text")
         self.dimensions = _int_or_default(embedding, "dimensions", 768)
-        raw_batch_size = _int_or_default(
-            embedding, "batch_size", self.DEFAULT_BATCH_SIZE
-        )
+        raw_batch_size = _int_or_default(embedding, "batch_size", self.DEFAULT_BATCH_SIZE)
         self.batch_size = max(1, min(self.MAX_BATCH_SIZE, raw_batch_size))
         self._pool = pool
 
@@ -201,7 +199,7 @@ class FakeEmbedder:
     and has length ``dimensions``.
     """
 
-    def __init__(self, config: Optional[dict[str, object]] = None) -> None:
+    def __init__(self, config: dict[str, object] | None = None) -> None:
         embedding = cast(
             dict[str, object],
             (config or load_config()).get("embedding", {}),
@@ -226,8 +224,8 @@ DEFAULT_EMBEDDING_PROVIDER = "pgml"
 
 
 def create_embedder(
-    config: Optional[dict[str, object]] = None,
-    pool: Optional[asyncpg.Pool] = None,
+    config: dict[str, object] | None = None,
+    pool: asyncpg.Pool | None = None,
 ) -> OllamaEmbedder | PgmlEmbedder:
     """Return the embedder selected by ``embedding.provider`` in config.
 
@@ -244,9 +242,7 @@ def create_embedder(
         return PgmlEmbedder(cfg, pool)
     if provider == "ollama":
         return OllamaEmbedder(cfg)
-    raise ValueError(
-        f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'"
-    )
+    raise ValueError(f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'")
 
 
 async def aembed_batch(

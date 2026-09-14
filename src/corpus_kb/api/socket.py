@@ -12,10 +12,11 @@ Error codes:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
-import os
 import sys
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -52,8 +53,9 @@ class JSONRPCServer:
             )
         else:
             # Unix socket
-            if os.path.exists(self._socket_path):
-                os.unlink(self._socket_path)
+            socket_path = Path(self._socket_path)
+            if socket_path.exists():
+                socket_path.unlink()
             logger.info("Socket server starting on: %s", self._socket_path)
             self._server = await asyncio.start_unix_server(
                 self._handle_client, path=self._socket_path
@@ -88,10 +90,8 @@ class JSONRPCServer:
             logger.error("Socket client error: %s", exc)
         finally:
             writer.close()
-            try:
+            with contextlib.suppress(Exception):
                 await writer.wait_closed()
-            except Exception:
-                pass
 
     async def _process_request(self, raw: str) -> dict[str, Any]:
         """Process a single JSON-RPC request."""
@@ -119,8 +119,8 @@ class JSONRPCServer:
         tenant_id = params.get("tenant_id", DEFAULT_TENANT)
 
         if method == "ingest_file":
-            from corpus_kb.handlers.command_handler import get_command_handler
             from corpus_kb.domain.models import IngestFileCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
 
             cmd = IngestFileCommand(
                 tenant_id=UUID(tenant_id),
@@ -131,8 +131,8 @@ class JSONRPCServer:
             return get_command_handler().handle_ingest_file(cmd)
 
         elif method == "ingest_text":
-            from corpus_kb.handlers.command_handler import get_command_handler
             from corpus_kb.domain.models import IngestTextCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
 
             cmd = IngestTextCommand(
                 tenant_id=UUID(tenant_id),
@@ -143,8 +143,8 @@ class JSONRPCServer:
             return get_command_handler().handle_ingest_text(cmd)
 
         elif method == "search":
-            from corpus_kb.handlers.query_handler import get_query_handler
             from corpus_kb.domain.models import SearchQuery
+            from corpus_kb.handlers.query_handler import get_query_handler
 
             query = SearchQuery(
                 tenant_id=UUID(tenant_id),
@@ -155,8 +155,8 @@ class JSONRPCServer:
             return {"status": "success", "result": [r.model_dump() for r in results]}
 
         elif method == "list_documents":
-            from corpus_kb.handlers.query_handler import get_query_handler
             from corpus_kb.domain.models import ListDocumentsQuery
+            from corpus_kb.handlers.query_handler import get_query_handler
 
             query = ListDocumentsQuery(
                 tenant_id=UUID(tenant_id),
@@ -167,8 +167,8 @@ class JSONRPCServer:
             return {"status": "success", "result": [r.model_dump() for r in results]}
 
         elif method == "add_entity":
-            from corpus_kb.handlers.command_handler import get_command_handler
             from corpus_kb.domain.models import AddEntityCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
 
             cmd = AddEntityCommand(
                 tenant_id=UUID(tenant_id),
@@ -179,8 +179,8 @@ class JSONRPCServer:
             return get_command_handler().handle_add_entity(cmd)
 
         elif method == "add_relation":
-            from corpus_kb.handlers.command_handler import get_command_handler
             from corpus_kb.domain.models import AddRelationCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
 
             cmd = AddRelationCommand(
                 tenant_id=UUID(tenant_id),

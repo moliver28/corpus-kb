@@ -58,11 +58,12 @@ def load_config(path: str | None = None) -> dict[str, object]:
             config_path = Path(env_path)
 
     if config_path is not None and config_path.exists():
-        with open(config_path) as f:
+        with config_path.open() as f:
             file_config = cast(dict[str, object], yaml.safe_load(f) or {})
         _deep_update(config, file_config)
     elif (Path.cwd() / "config.yaml").exists():
-        with open(Path.cwd() / "config.yaml") as f:
+        cwd_config = Path.cwd() / "config.yaml"
+        with cwd_config.open() as f:
             file_config = cast(dict[str, object], yaml.safe_load(f) or {})
         _deep_update(config, file_config)
     else:
@@ -70,7 +71,7 @@ def load_config(path: str | None = None) -> dict[str, object]:
 
         ref = resources.files("corpus_kb") / "config.yaml"
         with resources.as_file(ref) as packaged_path:
-            with open(packaged_path) as f:
+            with Path(packaged_path).open() as f:
                 file_config = cast(dict[str, object], yaml.safe_load(f) or {})
             _deep_update(config, file_config)
 

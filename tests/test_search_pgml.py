@@ -76,9 +76,7 @@ async def test_pgml_path_uses_inline_embed_and_never_calls_python_embedder() -> 
 
     embedder.embed.assert_not_called()
 
-    vector_call = (
-        mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
-    )
+    vector_call = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
     sql = vector_call.args[0]
     assert "pgml.embed" in sql
     assert "ARRAY[$2]::text[]" in sql
@@ -125,9 +123,7 @@ async def test_ollama_path_uses_python_embedder() -> None:
     results = await handler.handle_search(SearchQuery(query="hello", k=2))
 
     embedder.embed.assert_called_once_with("hello")
-    vector_call = (
-        mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
-    )
+    vector_call = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
     assert "pgml.embed" not in vector_call.args[0]
     assert vector_call.args[1] == str([0.1] * 768)
 
@@ -194,9 +190,7 @@ async def test_pgml_unavailable_degrades_to_fts_only() -> None:
 
     mock_pool = _make_pool(
         [
-            asyncpg.UndefinedFunctionError(
-                "function pgml.embed(text, text[]) does not exist"
-            ),
+            asyncpg.UndefinedFunctionError("function pgml.embed(text, text[]) does not exist"),
             [fts_row],
             [fused_row],
         ]
@@ -240,9 +234,7 @@ async def test_pgml_path_handles_empty_query() -> None:
     )
     results = await handler.handle_search(SearchQuery(query="", k=2))
 
-    vector_call = (
-        mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
-    )
+    vector_call = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
     assert vector_call.args[2] == ""
     assert len(results) == 1
 
@@ -284,9 +276,7 @@ async def test_default_config_uses_pgml_path() -> None:
     handler = QueryHandler(pool=mock_pool)
     results = await handler.handle_search(SearchQuery(query="defaults", k=2))
 
-    vector_call = (
-        mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
-    )
+    vector_call = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
     assert "pgml.embed" in vector_call.args[0]
     assert vector_call.args[1] == "nomic-embed-text"
     assert len(results) == 1

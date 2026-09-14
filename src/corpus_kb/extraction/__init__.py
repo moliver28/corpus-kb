@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Optional, cast
+from typing import cast
 
 from .langextract_backend import LangExtractExtractor
 from .pgml_backend import PgmlExtractor
@@ -10,9 +10,7 @@ from .protocol import Extractor, OntologyViolationError
 from .regex_backend import RegexExtractor
 
 
-def create_extractor(
-    config: dict[str, object], pool: Optional[object] = None
-) -> Extractor:
+def create_extractor(config: dict[str, object], pool: object | None = None) -> Extractor:
     """Create an extractor from the configuration dictionary.
 
     Args:
@@ -48,15 +46,11 @@ def create_extractor(
         case "regex":
             return RegexExtractor()
         case "langextract":
-            return LangExtractExtractor(
-                fixture_dir=fixture_dir, live_fallback=live_fallback
-            )
+            return LangExtractExtractor(fixture_dir=fixture_dir, live_fallback=live_fallback)
         case "pgml":
             return PgmlExtractor(pool=pool)
         case "llamaindex":
-            raise NotImplementedError(
-                "llamaindex extractor is deferred to a later phase"
-            )
+            raise NotImplementedError("llamaindex extractor is deferred to a later phase")
         case _ as unreachable:
             raise ValueError(f"Unsupported graph extractor: {unreachable}")
 

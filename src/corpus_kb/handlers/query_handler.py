@@ -13,22 +13,22 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.config import load_config
 from corpus_kb.domain.models import (
     DocumentResult,
     EntityResult,
     ListDocumentsQuery,
     ListEntitiesQuery,
-    SQLQuery,
     SearchContextQuery,
     SearchQuery,
     SearchResult,
     SearchSimilarQuery,
+    SQLQuery,
 )
-from corpus_kb.config import load_config
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.reranker import Reranker, create_reranker
 
@@ -61,8 +61,8 @@ class QueryHandler:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        embedder: Optional[OllamaEmbedder] = None,
-        config: Optional[dict[str, object]] = None,
+        embedder: OllamaEmbedder | None = None,
+        config: dict[str, object] | None = None,
     ) -> None:
         self._pool = pool
         self._embedder = embedder
@@ -136,7 +136,10 @@ class QueryHandler:
             fts_results: list[dict[str, Any]] = await conn.fetch(
                 """
                 SELECT c.chunk_id, c.text, c.doc_id, d.source,
-                       ts_rank(to_tsvector('english', c.text), plainto_tsquery('english', $1)) AS score
+                       ts_rank(
+                           to_tsvector('english', c.text),
+                           plainto_tsquery('english', $1)
+                       ) AS score
                 FROM chunks c
                 JOIN documents d ON c.doc_id = d.doc_id
                 WHERE c.tenant_id = $2
@@ -193,9 +196,7 @@ class QueryHandler:
             rows = await conn.fetch(query.sql, *query.params.values())
             return [dict(row) for row in rows]
 
-    async def handle_list_documents(
-        self, query: ListDocumentsQuery
-    ) -> list[DocumentResult]:
+    async def handle_list_documents(self, query: ListDocumentsQuery) -> list[DocumentResult]:
         """List documents with pagination."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -225,9 +226,7 @@ class QueryHandler:
                 for row in rows
             ]
 
-    async def handle_list_entities(
-        self, query: ListEntitiesQuery
-    ) -> list[EntityResult]:
+    async def handle_list_entities(self, query: ListEntitiesQuery) -> list[EntityResult]:
         """List entities, optionally filtered by type."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -269,9 +268,7 @@ class QueryHandler:
                 for row in rows
             ]
 
-    async def handle_search_similar(
-        self, query: SearchSimilarQuery
-    ) -> list[SearchResult]:
+    async def handle_search_similar(self, query: SearchSimilarQuery) -> list[SearchResult]:
         """Find chunks similar to a given chunk via vector distance."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -308,9 +305,7 @@ class QueryHandler:
                 for row in rows
             ]
 
-    async def handle_search_context(
-        self, query: SearchContextQuery
-    ) -> list[SearchResult]:
+    async def handle_search_context(self, query: SearchContextQuery) -> list[SearchResult]:
         """Search with surrounding context chunks."""
         base_results = await self.handle_search(
             SearchQuery(
@@ -365,10 +360,10 @@ class QueryHandler:
 # Singleton
 # ============================================================================
 
-_query_handler: Optional[QueryHandler] = None
+_query_handler: QueryHandler | None = None
 
 
-def get_query_handler(pool: Optional[asyncpg.Pool] = None) -> QueryHandler:
+def get_query_handler(pool: asyncpg.Pool | None = None) -> QueryHandler:
     """Get or create the singleton QueryHandler."""
     global _query_handler
     if _query_handler is None:

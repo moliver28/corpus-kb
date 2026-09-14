@@ -7,10 +7,8 @@ using regex patterns. Returns Entity objects with name, type, and source_type.
 from __future__ import annotations
 
 import re
-from typing import Optional
 
 from ..utils.models import Entity
-
 
 # ============================================================================
 # Entity Type Patterns
@@ -54,7 +52,7 @@ CONCEPT_KEYWORDS = {
 def extract_entities(
     text: str,
     source_type: str = "text",
-    source_document_id: Optional[str] = None,
+    source_document_id: str | None = None,
 ) -> list[Entity]:
     """Extract entities from text or markdown.
 
@@ -80,7 +78,7 @@ def extract_entities(
 
 def _extract_markdown_entities(
     text: str,
-    source_document_id: Optional[str] = None,
+    source_document_id: str | None = None,
 ) -> dict[str, Entity]:
     """Extract entities from markdown (headings, concepts)."""
     entities: dict[str, Entity] = {}
@@ -118,7 +116,7 @@ def _extract_markdown_entities(
 
 def _extract_code_entities(
     text: str,
-    source_document_id: Optional[str] = None,
+    source_document_id: str | None = None,
 ) -> dict[str, Entity]:
     """Extract entities from code (class names, function names)."""
     entities: dict[str, Entity] = {}
@@ -159,7 +157,7 @@ def _extract_code_entities(
 
 def _extract_text_entities(
     text: str,
-    source_document_id: Optional[str] = None,
+    source_document_id: str | None = None,
 ) -> dict[str, Entity]:
     """Extract entities from plain text (concepts, named entities)."""
     entities: dict[str, Entity] = {}

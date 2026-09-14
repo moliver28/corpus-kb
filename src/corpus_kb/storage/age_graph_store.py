@@ -19,7 +19,6 @@ import logging
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Optional
 
 import asyncpg
 
@@ -32,8 +31,7 @@ GRAPH_NAME = "corpus_kb"
 MAX_BFS_DEPTH = 25
 
 _ENTITY_COLUMNS = (
-    "entity_id agtype, name agtype, entity_type agtype, "
-    "metadata agtype, source_document_id agtype"
+    "entity_id agtype, name agtype, entity_type agtype, metadata agtype, source_document_id agtype"
 )
 
 _ADD_ENTITY = """
@@ -133,7 +131,7 @@ def _ag(value: object) -> object:
         return text
 
 
-def _ag_str(value: object) -> Optional[str]:
+def _ag_str(value: object) -> str | None:
     parsed = _ag(value)
     return None if parsed is None else str(parsed)
 
@@ -186,7 +184,7 @@ class AgeGraphStore(GraphStore):
     ) -> None:
         self._pool = pool
         self._tenant_id = tenant_id
-        self._conn: Optional[asyncpg.Connection] = None
+        self._conn: asyncpg.Connection | None = None
         self._age_checked = False
 
     async def _get_conn(self) -> asyncpg.Connection:
@@ -229,23 +227,16 @@ class AgeGraphStore(GraphStore):
             "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age') AS ok"
         )
         if not ext or not ext["ok"]:
-            raise _age_unavailable(
-                "extension 'age' is not installed on this PostgreSQL server"
-            )
+            raise _age_unavailable("extension 'age' is not installed on this PostgreSQL server")
         try:
             graph = await conn.fetchrow(
-                "SELECT EXISTS (SELECT 1 FROM ag_catalog.ag_graph "
-                "WHERE name = $1) AS ok",
+                "SELECT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = $1) AS ok",
                 GRAPH_NAME,
             )
         except asyncpg.PostgresError as exc:
-            raise _age_unavailable(
-                f"cannot inspect ag_catalog.ag_graph: {exc}"
-            ) from exc
+            raise _age_unavailable(f"cannot inspect ag_catalog.ag_graph: {exc}") from exc
         if not graph or not graph["ok"]:
-            raise _age_unavailable(
-                f"graph '{GRAPH_NAME}' does not exist in ag_catalog.ag_graph"
-            )
+            raise _age_unavailable(f"graph '{GRAPH_NAME}' does not exist in ag_catalog.ag_graph")
 
     async def _run_cypher(
         self,
@@ -312,7 +303,7 @@ class AgeGraphStore(GraphStore):
         finally:
             await self._release_conn(conn)
 
-    async def get_entity(self, entity_id: str) -> Optional[Entity]:
+    async def get_entity(self, entity_id: str) -> Entity | None:
         """Fetch an entity vertex by ID."""
         conn = await self._get_conn()
         try:
@@ -325,9 +316,7 @@ class AgeGraphStore(GraphStore):
         finally:
             await self._release_conn(conn)
 
-    async def search_entities(
-        self, name: str, entity_type: Optional[str] = None
-    ) -> list[Entity]:
+    async def search_entities(self, name: str, entity_type: str | None = None) -> list[Entity]:
         """Search entity vertices by case-insensitive name contains + type."""
         conn = await self._get_conn()
         try:
@@ -339,9 +328,7 @@ class AgeGraphStore(GraphStore):
             if entity_type is not None:
                 query = _SEARCH_TYPED
                 params["entity_type"] = entity_type
-            rows = await self._run_cypher(
-                conn, _CypherSpec(query, _ENTITY_COLUMNS), params
-            )
+            rows = await self._run_cypher(conn, _CypherSpec(query, _ENTITY_COLUMNS), params)
             return [_entity_from_row(row) for row in rows]
         finally:
             await self._release_conn(conn)
@@ -369,19 +356,13 @@ class AgeGraphStore(GraphStore):
         try:
             depth = int(max_depth)
         except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"max_depth must be an integer, got {max_depth!r}"
-            ) from exc
+            raise ValueError(f"max_depth must be an integer, got {max_depth!r}") from exc
         if not 1 <= depth <= MAX_BFS_DEPTH:
-            raise ValueError(
-                f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}"
-            )
+            raise ValueError(f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}")
         conn = await self._get_conn()
         try:
             params = {"start_id": start_entity_id, "tenant_id": self._tenant_id}
-            start_rows = await self._run_cypher(
-                conn, _CypherSpec(_BFS_START, "eid agtype"), params
-            )
+            start_rows = await self._run_cypher(conn, _CypherSpec(_BFS_START, "eid agtype"), params)
             visited: dict[str, int] = {}
             if not start_rows:
                 return {
@@ -392,9 +373,7 @@ class AgeGraphStore(GraphStore):
             visited[start_entity_id] = 0
             rows = await self._run_cypher(
                 conn,
-                _CypherSpec(
-                    _BFS_TRAVERSE.format(depth=depth), "eid agtype, depth agtype"
-                ),
+                _CypherSpec(_BFS_TRAVERSE.format(depth=depth), "eid agtype, depth agtype"),
                 params,
             )
             for row in rows:

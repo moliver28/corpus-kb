@@ -7,7 +7,6 @@ from pathlib import Path
 
 import asyncpg
 import pytest
-
 from scripts.migrate import run_migrations
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"

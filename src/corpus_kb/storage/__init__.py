@@ -7,15 +7,15 @@ from __future__ import annotations
 
 from .age_graph_store import AgeGraphStore, AgeUnavailableError
 from .graph_store import GraphStore, PostgresGraphStore
-from .rag_backend import RagBackend, RetrievalResult
 from .llamaindex_backend import LlamaIndexPostgresBackend
+from .rag_backend import RagBackend, RetrievalResult
 
 __all__ = [
     "AgeGraphStore",
     "AgeUnavailableError",
     "GraphStore",
+    "LlamaIndexPostgresBackend",
     "PostgresGraphStore",
     "RagBackend",
     "RetrievalResult",
-    "LlamaIndexPostgresBackend",
 ]

@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def handle_errors(
                         exc,
                     )
                     return _error_dict(exc)
-                except asyncio.TimeoutError as exc:
+                except TimeoutError as exc:
                     last_error = exc
                     logger.warning(
                         "%s timed out (attempt %d/%d)",

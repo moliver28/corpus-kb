@@ -6,12 +6,10 @@ Pure dataclasses with serialization methods for LanceDB round-tripping.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 # ============================================================================
 # Core Data Models
@@ -38,22 +36,20 @@ class Chunk(BaseModel):
     chunk_id: str = Field(default_factory=lambda: str(uuid4()))
     document_id: str
     text: str
-    embedding: Optional[list[float]] = None
+    embedding: list[float] | None = None
     source_type: str  # "code" | "markdown" | "text"
-    entity_name: Optional[str] = None  # For code chunks: function/class name
-    entity_type: Optional[str] = (
-        None  # For code chunks: "function" | "class" | "module"
-    )
-    start_line: Optional[int] = None
-    end_line: Optional[int] = None
-    parent_chunk_id: Optional[str] = None
-    sibling_order: Optional[int] = None
-    sibling_count: Optional[int] = None
-    heading_path: Optional[list[str]] = None  # For markdown: ["# Title", "## Section"]
-    source_start_char: Optional[int] = None
-    source_end_char: Optional[int] = None
+    entity_name: str | None = None  # For code chunks: function/class name
+    entity_type: str | None = None  # For code chunks: "function" | "class" | "module"
+    start_line: int | None = None
+    end_line: int | None = None
+    parent_chunk_id: str | None = None
+    sibling_order: int | None = None
+    sibling_count: int | None = None
+    heading_path: list[str] | None = None  # For markdown: ["# Title", "## Section"]
+    source_start_char: int | None = None
+    source_end_char: int | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Document(BaseModel):
@@ -79,8 +75,8 @@ class Document(BaseModel):
     size_bytes: int
     chunk_count: int = 0
     metadata: dict[str, object] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class SearchResult(BaseModel):
@@ -91,10 +87,10 @@ class SearchResult(BaseModel):
     text: str
     score: float
     source_type: str
-    entity_name: Optional[str] = None
-    parent_chunk_id: Optional[str] = None
-    sibling_order: Optional[int] = None
-    heading_path: Optional[list[str]] = None
+    entity_name: str | None = None
+    parent_chunk_id: str | None = None
+    sibling_order: int | None = None
+    heading_path: list[str] | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
@@ -123,14 +119,14 @@ class Entity(BaseModel):
     name: str
     entity_type: str  # "CONCEPT" | "CLASS" | "FUNCTION" | "MODULE" | "PERSON" | "PLACE"
     source_type: str  # "code" | "markdown" | "text"
-    source_document_id: Optional[str] = None
-    chunk_id: Optional[str] = None
-    source_start_char: Optional[int] = None
-    source_end_char: Optional[int] = None
-    confidence: Optional[float] = None
-    extractor_id: Optional[str] = None
+    source_document_id: str | None = None
+    chunk_id: str | None = None
+    source_start_char: int | None = None
+    source_end_char: int | None = None
+    confidence: float | None = None
+    extractor_id: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class Relation(BaseModel):
@@ -153,13 +149,13 @@ class Relation(BaseModel):
     target_entity_id: str
     relation_type: str  # "CALLS" | "DEPENDS_ON" | "CONTAINS" | "REFERENCES"
     weight: float = 1.0
-    chunk_id: Optional[str] = None
-    source_start_char: Optional[int] = None
-    source_end_char: Optional[int] = None
-    confidence: Optional[float] = None
-    extractor_id: Optional[str] = None
+    chunk_id: str | None = None
+    source_start_char: int | None = None
+    source_end_char: int | None = None
+    confidence: float | None = None
+    extractor_id: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 # ============================================================================
@@ -172,8 +168,8 @@ class Version(BaseModel):
 
     version_id: str
     timestamp: datetime
-    tag: Optional[str] = None
-    description: Optional[str] = None
+    tag: str | None = None
+    description: str | None = None
 
 
 class Branch(BaseModel):

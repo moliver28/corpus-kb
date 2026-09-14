@@ -8,13 +8,12 @@ error, model not found, etc.).
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 import asyncpg
 
-from .protocol import Extractor
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
+from .protocol import Extractor
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +26,9 @@ class PgmlExtractor:
 
     extractor_id: str = "pgml"
 
-    def __init__(self, pool: Optional[asyncpg.Pool] = None) -> None:
+    def __init__(self, pool: asyncpg.Pool | None = None) -> None:
         self._pool = pool
-        self._fallback: Optional[Extractor] = None
+        self._fallback: Extractor | None = None
 
     def _get_fallback(self) -> Extractor:
         if self._fallback is None:
@@ -59,9 +58,7 @@ class PgmlExtractor:
                 self.aextract(chunks, ontology, source_document_id)
             )
         except Exception as exc:
-            logger.warning(
-                "PostgresML NER failed: %s; falling back to RegexExtractor.", exc
-            )
+            logger.warning("PostgresML NER failed: %s; falling back to RegexExtractor.", exc)
             return self._get_fallback().extract(chunks, ontology, source_document_id)
 
     async def aextract(
@@ -81,9 +78,7 @@ class PgmlExtractor:
         try:
             return await self._extract_async(chunks, ontology, source_document_id)
         except Exception as exc:
-            logger.warning(
-                "PostgresML NER failed: %s; falling back to RegexExtractor.", exc
-            )
+            logger.warning("PostgresML NER failed: %s; falling back to RegexExtractor.", exc)
             return self._get_fallback().extract(chunks, ontology, source_document_id)
 
     async def _extract_async(
@@ -130,9 +125,7 @@ class PgmlExtractor:
                             )
                             seen_names.add(name)
 
-        logger.info(
-            "PostgresML NER: %d entities from %d chunks", len(entities), len(chunks)
-        )
+        logger.info("PostgresML NER: %d entities from %d chunks", len(entities), len(chunks))
         return entities, []
 
 

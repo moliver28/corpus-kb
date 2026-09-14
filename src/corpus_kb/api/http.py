@@ -31,10 +31,10 @@ from corpus_kb.domain.models import (
     IngestTextCommand,
     ListDocumentsQuery,
     ListEntitiesQuery,
-    SQLQuery,
     SearchContextQuery,
     SearchQuery,
     SearchSimilarQuery,
+    SQLQuery,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,9 +65,7 @@ async def ingest_file(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         cmd = IngestFileCommand(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             file_path=body["file_path"],
             content=body.get("content"),
             source_type=body.get("source_type"),
@@ -89,9 +87,7 @@ async def ingest_text(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         cmd = IngestTextCommand(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             text=body["text"],
             source=body.get("source", "raw_text"),
             source_type=body.get("source_type", "text"),
@@ -113,9 +109,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         cmd = IngestDirectoryCommand(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             directory_path=body["directory_path"],
             recursive=body.get("recursive", True),
         )
@@ -136,18 +130,14 @@ async def search(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         query = SearchQuery(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             query=body["query"],
             k=body.get("k", 10),
             source_type=body.get("source_type"),
         )
         handler = get_query_handler()
         results = await handler.handle_search(query)
-        return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
-        )
+        return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
@@ -162,17 +152,13 @@ async def search_similar(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         query = SearchSimilarQuery(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             chunk_id=UUID(body["chunk_id"]),
             k=body.get("k", 10),
         )
         handler = get_query_handler()
         results = await handler.handle_search_similar(query)
-        return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
-        )
+        return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
@@ -187,18 +173,14 @@ async def search_context(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         query = SearchContextQuery(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             query=body["query"],
             k=body.get("k", 5),
             context_chunks=body.get("context_chunks", 2),
         )
         handler = get_query_handler()
         results = await handler.handle_search_context(query)
-        return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
-        )
+        return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
@@ -213,9 +195,7 @@ async def query_sql(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         query = SQLQuery(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             sql=body["sql"],
             params=body.get("params", {}),
         )
@@ -236,18 +216,14 @@ async def list_documents(request: Request) -> JSONResponse:
     try:
         query = ListDocumentsQuery(
             tenant_id=UUID(
-                request.query_params.get(
-                    "tenant_id", "00000000-0000-0000-0000-000000000001"
-                )
+                request.query_params.get("tenant_id", "00000000-0000-0000-0000-000000000001")
             ),
             limit=int(request.query_params.get("limit", 100)),
             offset=int(request.query_params.get("offset", 0)),
         )
         handler = get_query_handler()
         results = await handler.handle_list_documents(query)
-        return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
-        )
+        return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
@@ -262,18 +238,14 @@ async def list_entities(request: Request) -> JSONResponse:
     try:
         query = ListEntitiesQuery(
             tenant_id=UUID(
-                request.query_params.get(
-                    "tenant_id", "00000000-0000-0000-0000-000000000001"
-                )
+                request.query_params.get("tenant_id", "00000000-0000-0000-0000-000000000001")
             ),
             entity_type=request.query_params.get("entity_type"),
             limit=int(request.query_params.get("limit", 100)),
         )
         handler = get_query_handler()
         results = await handler.handle_list_entities(query)
-        return JSONResponse(
-            {"status": "success", "result": [r.model_dump() for r in results]}
-        )
+        return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
@@ -288,9 +260,7 @@ async def add_entity(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         cmd = AddEntityCommand(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             name=body["name"],
             entity_type=body.get("entity_type", "concept"),
             metadata=body.get("metadata", {}),
@@ -312,9 +282,7 @@ async def add_relation(request: Request) -> JSONResponse:
     body = await _parse_body(request)
     try:
         cmd = AddRelationCommand(
-            tenant_id=UUID(
-                body.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-            ),
+            tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
             source_entity_id=UUID(body["source_entity_id"]),
             target_entity_id=UUID(body["target_entity_id"]),
             relation_type=body.get("relation_type", "related_to"),
@@ -332,8 +300,8 @@ async def add_relation(request: Request) -> JSONResponse:
 
 
 async def delete_document(request):
-    from corpus_kb.handlers.command_handler import get_command_handler
     from corpus_kb.domain.models import DeleteDocumentCommand
+    from corpus_kb.handlers.command_handler import get_command_handler
 
     doc_id = request.path_params.get("doc_id")
     try:
@@ -593,9 +561,7 @@ def create_http_app() -> Starlette:
         Route("/api/documents/{doc_id}", delete_document, methods=["DELETE"]),
         Route("/api/graph/search", search_graph, methods=["POST"]),
         Route("/api/graph/bfs", bfs_traversal, methods=["POST"]),
-        Route(
-            "/api/graph/relations/{entity_id}", get_entity_relations, methods=["GET"]
-        ),
+        Route("/api/graph/relations/{entity_id}", get_entity_relations, methods=["GET"]),
         Route("/api/tags", add_tag_route, methods=["POST"]),
         Route("/api/documents/{doc_id}/tags", tag_document_route, methods=["POST"]),
         Route("/api/documents/{doc_id}/tags", get_document_tags_route, methods=["GET"]),

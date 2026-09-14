@@ -10,7 +10,7 @@ Public methods remain unchanged; internals delegate to the injected store:
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 from corpus_kb.storage.graph_store import GraphStore
@@ -29,7 +29,7 @@ class GraphHandler:
         self,
         tenant_id: UUID,
         query: str,
-        entity_type: Optional[str] = None,
+        entity_type: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Search entities by name (case-insensitive contains)."""
@@ -67,9 +67,7 @@ class GraphHandler:
     ) -> list[dict[str, Any]]:
         """Get all relations for an entity (both outgoing and incoming)."""
         relations = await self._graph_store.get_entity_relations(str(entity_id))
-        return [
-            await _relation_to_response(self._graph_store, rel) for rel in relations
-        ]
+        return [await _relation_to_response(self._graph_store, rel) for rel in relations]
 
 
 def _entity_to_response(entity: Entity) -> dict[str, Any]:
@@ -81,9 +79,7 @@ def _entity_to_response(entity: Entity) -> dict[str, Any]:
     }
 
 
-async def _relation_to_response(
-    store: GraphStore, relation: Relation
-) -> dict[str, Any]:
+async def _relation_to_response(store: GraphStore, relation: Relation) -> dict[str, Any]:
     source = await store.get_entity(relation.source_entity_id)
     target = await store.get_entity(relation.target_entity_id)
     return {
@@ -101,19 +97,17 @@ async def _relation_to_response(
 # Singleton
 # ============================================================================
 
-_graph_handler: Optional["GraphHandler"] = None
+_graph_handler: GraphHandler | None = None
 
 
-def get_graph_handler() -> "GraphHandler":
+def get_graph_handler() -> GraphHandler:
     global _graph_handler
     if _graph_handler is None:
-        raise RuntimeError(
-            "GraphHandler not initialized. Call set_graph_handler() during startup."
-        )
+        raise RuntimeError("GraphHandler not initialized. Call set_graph_handler() during startup.")
     return _graph_handler
 
 
-def set_graph_handler(handler: "GraphHandler") -> None:
+def set_graph_handler(handler: GraphHandler) -> None:
     global _graph_handler
     _graph_handler = handler
 

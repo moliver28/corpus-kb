@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncpg
 import pytest
 
 from corpus_kb.storage.graph_store import PostgresGraphStore
@@ -41,7 +42,7 @@ async def test_add_relation_nonexistent_entity_raises(pg_pool) -> None:
         target_entity_id="00000000-0000-0000-0000-000000000098",
         relation_type="MENTIONS",
     )
-    with pytest.raises(Exception):
+    with pytest.raises(asyncpg.exceptions.ForeignKeyViolationError):
         await store.add_relation(relation)
 
 

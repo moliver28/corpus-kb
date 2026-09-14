@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 import pytest
@@ -39,7 +39,7 @@ def agjson(value: object) -> str:
 
 
 class FakeTransaction:
-    async def __aenter__(self) -> "FakeTransaction":
+    async def __aenter__(self) -> FakeTransaction:
         return self
 
     async def __aexit__(self, *exc: object) -> bool:
@@ -53,7 +53,7 @@ class FakeConnection:
         self.age_present = age_present
         self.calls: list[tuple[str, str, tuple[Any, ...]]] = []
         self.fetch_result: list[dict[str, Any]] = []
-        self.fetchrow_result: Optional[dict[str, Any]] = None
+        self.fetchrow_result: dict[str, Any] | None = None
         self.fetch_responses: list[tuple[str, list[dict[str, Any]]]] = []
 
     def add_fetch_response(self, needle: str, rows: list[dict[str, Any]]) -> None:
@@ -63,7 +63,7 @@ class FakeConnection:
         self.calls.append(("execute", sql, args))
         return "OK"
 
-    async def fetchrow(self, sql: str, *args: Any) -> Optional[dict[str, Any]]:
+    async def fetchrow(self, sql: str, *args: Any) -> dict[str, Any] | None:
         self.calls.append(("fetchrow", sql, args))
         if "pg_extension" in sql:
             return {"ok": self.age_present}
@@ -142,9 +142,9 @@ def test_all_ten_methods_exist_with_abc_conformant_signatures() -> None:
         assert name in AgeGraphStore.__dict__, f"{name} not implemented"
         impl_sig = inspect.signature(getattr(AgeGraphStore, name))
         abc_sig = inspect.signature(getattr(GraphStore, name))
-        assert list(impl_sig.parameters.values()) == list(
-            abc_sig.parameters.values()
-        ), f"{name} parameters diverge from GraphStore ABC"
+        assert list(impl_sig.parameters.values()) == list(abc_sig.parameters.values()), (
+            f"{name} parameters diverge from GraphStore ABC"
+        )
         assert impl_sig.return_annotation == abc_sig.return_annotation, (
             f"{name} return annotation diverges from GraphStore ABC"
         )
@@ -212,9 +212,7 @@ async def test_bfs_does_not_interpolate_untrusted_start_id(
 
 
 @pytest.mark.parametrize("bad_depth", ["abc", "1; DROP TABLE", "", None, 0, -5, 26])
-async def test_bfs_depth_is_int_cast_and_bounded(
-    store: AgeGraphStore, bad_depth: object
-) -> None:
+async def test_bfs_depth_is_int_cast_and_bounded(store: AgeGraphStore, bad_depth: object) -> None:
     with pytest.raises(ValueError):
         await store.bfs("eid", max_depth=bad_depth)
 
@@ -224,9 +222,7 @@ async def test_bfs_depth_is_int_cast_and_bounded(
 # ============================================================================
 
 
-async def test_add_entity_merges_and_returns_id(
-    conn: FakeConnection, store: AgeGraphStore
-) -> None:
+async def test_add_entity_merges_and_returns_id(conn: FakeConnection, store: AgeGraphStore) -> None:
     entity = make_entity()
     conn.fetch_result = [{"entity_id": agjson(entity.entity_id)}]
     result = await store.add_entity(entity)
@@ -243,9 +239,7 @@ async def test_add_entity_merges_and_returns_id(
 async def test_add_relation_merges_between_matched_entities(
     conn: FakeConnection, store: AgeGraphStore
 ) -> None:
-    relation = Relation(
-        source_entity_id="src-1", target_entity_id="tgt-1", relation_type="CALLS"
-    )
+    relation = Relation(source_entity_id="src-1", target_entity_id="tgt-1", relation_type="CALLS")
     conn.fetch_result = [{"relation_id": agjson(relation.relation_id)}]
     result = await store.add_relation(relation)
     assert result == relation.relation_id
@@ -270,9 +264,7 @@ async def test_add_relation_missing_endpoints_raises(
         await store.add_relation(relation)
 
 
-async def test_get_entity_returns_model(
-    conn: FakeConnection, store: AgeGraphStore
-) -> None:
+async def test_get_entity_returns_model(conn: FakeConnection, store: AgeGraphStore) -> None:
     conn.fetch_result = [
         {
             "entity_id": agjson("eid-1"),
@@ -372,9 +364,7 @@ async def test_bfs_unknown_start_returns_empty_visited(
 async def test_add_document_upserts_with_on_conflict(
     conn: FakeConnection, store: AgeGraphStore
 ) -> None:
-    document = Document(
-        path="/src/x.py", source_type="code", content="...", size_bytes=10
-    )
+    document = Document(path="/src/x.py", source_type="code", content="...", size_bytes=10)
     conn.fetchrow_result = {"doc_id": document.document_id}
     result = await store.add_document(document)
     assert result == document.document_id
@@ -386,15 +376,11 @@ async def test_add_document_upserts_with_on_conflict(
 async def test_add_chunk_uses_sibling_order_as_index(
     conn: FakeConnection, store: AgeGraphStore
 ) -> None:
-    chunk = Chunk(
-        document_id="doc-1", text="def f(): pass", source_type="code", sibling_order=7
-    )
+    chunk = Chunk(document_id="doc-1", text="def f(): pass", source_type="code", sibling_order=7)
     conn.fetchrow_result = {"chunk_id": chunk.chunk_id}
     result = await store.add_chunk(chunk)
     assert result == chunk.chunk_id
-    inserts = [
-        (sql, args) for (m, sql, args) in conn.calls if "INSERT INTO chunks" in sql
-    ]
+    inserts = [(sql, args) for (m, sql, args) in conn.calls if "INSERT INTO chunks" in sql]
     assert inserts
     assert inserts[-1][1][3] == 7
 
@@ -421,9 +407,7 @@ async def test_close_is_noop(pool: FakePool, store: AgeGraphStore) -> None:
 # ============================================================================
 
 
-async def test_tenant_context_scoped_per_store(
-    conn: FakeConnection, pool: FakePool
-) -> None:
+async def test_tenant_context_scoped_per_store(conn: FakeConnection, pool: FakePool) -> None:
     store_a = AgeGraphStore(pool, tenant_id=TENANT_A)
     store_b = AgeGraphStore(pool, tenant_id=TENANT_B)
     await store_a.add_entity(make_entity())
@@ -497,9 +481,7 @@ async def test_live_age_roundtrip_when_available() -> None:
         assert await store.add_entity(e1) == eid1  # upsert is stable
         fetched = await store.get_entity(eid1)
         assert fetched is not None and fetched.name == "AgeRoundtripA"
-        relation = Relation(
-            source_entity_id=eid1, target_entity_id=eid2, relation_type="CALLS"
-        )
+        relation = Relation(source_entity_id=eid1, target_entity_id=eid2, relation_type="CALLS")
         rid = await store.add_relation(relation)
         relations = await store.get_entity_relations(eid1)
         assert any(r.relation_id == rid for r in relations)

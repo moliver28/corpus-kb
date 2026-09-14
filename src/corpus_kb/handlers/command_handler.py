@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
 from uuid import UUID
 
 import asyncpg
@@ -45,8 +44,8 @@ class CommandHandler:
 
     def __init__(
         self,
-        config: Optional[dict[str, object]] = None,
-        pool: Optional[asyncpg.Pool] = None,
+        config: dict[str, object] | None = None,
+        pool: asyncpg.Pool | None = None,
     ) -> None:
         self._config = load_config_or_pass(config)
         self._pool = pool
@@ -72,13 +71,9 @@ class CommandHandler:
 
     async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
         """Ingest raw text: run pipeline → create Document aggregate → fire events."""
-        return await self._run_ingest(
-            cmd.text, cmd.source_type, cmd.source, cmd.tenant_id
-        )
+        return await self._run_ingest(cmd.text, cmd.source_type, cmd.source, cmd.tenant_id)
 
-    async def handle_ingest_directory(
-        self, cmd: IngestDirectoryCommand
-    ) -> dict[str, object]:
+    async def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, object]:
         """Ingest all files in a directory."""
         dir_path = Path(cmd.directory_path)
         if not dir_path.is_dir():
@@ -98,9 +93,7 @@ class CommandHandler:
                     results.append(result)
                 except Exception as exc:
                     logger.warning("Failed to ingest %s: %s", file_path, exc)
-                    results.append(
-                        {"status": "error", "path": str(file_path), "error": str(exc)}
-                    )
+                    results.append({"status": "error", "path": str(file_path), "error": str(exc)})
 
         return {
             "status": "success",
@@ -229,12 +222,12 @@ def _detect_source_type(file_path: str) -> str:
 # Singleton
 # ============================================================================
 
-_command_handler: Optional[CommandHandler] = None
+_command_handler: CommandHandler | None = None
 
 
 def get_command_handler(
-    config: Optional[dict[str, object]] = None,
-    pool: Optional[asyncpg.Pool] = None,
+    config: dict[str, object] | None = None,
+    pool: asyncpg.Pool | None = None,
 ) -> CommandHandler:
     """Get or create the singleton CommandHandler."""
     global _command_handler

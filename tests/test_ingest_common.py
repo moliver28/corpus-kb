@@ -20,7 +20,6 @@ from corpus_kb.tools.ingest_common import (
 )
 from corpus_kb.utils.models import Chunk, Entity
 
-
 # ---------------------------------------------------------------------------
 # load_config_or_pass
 # ---------------------------------------------------------------------------
@@ -80,9 +79,7 @@ class _FakePgmlConn:
         self.zero = zero
         self.fetch_calls: list[tuple[str, str, list[str]]] = []
 
-    async def fetch(
-        self, sql: str, model: str, texts: list[str]
-    ) -> list[dict[str, list[float]]]:
+    async def fetch(self, sql: str, model: str, texts: list[str]) -> list[dict[str, list[float]]]:
         self.fetch_calls.append((sql, model, list(texts)))
         if self.fail:
             raise RuntimeError("pgml extension unavailable")
@@ -309,10 +306,10 @@ def test_extract_entities_flag_defaults_true() -> None:
 class _FakePoolNoConn:
     """Minimal asyncpg.Pool stand-in for extraction tests."""
 
-    def acquire(self) -> "_FakePoolNoConn":
+    def acquire(self) -> _FakePoolNoConn:
         return self
 
-    async def __aenter__(self) -> "_FakePoolNoConn":
+    async def __aenter__(self) -> _FakePoolNoConn:
         return self
 
     async def __aexit__(self, *args: Any) -> bool:
@@ -346,14 +343,14 @@ async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
                 )
             ], []
 
-    import src.tools.ingest_common as ingest_module
     import src.extraction as extraction_module
+    import src.tools.ingest_common as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
     extraction_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
     ingest_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
     try:
-        entities, relations, extractor_id = await extract_with_fallback(
+        entities, _relations, extractor_id = await extract_with_fallback(
             [chunk],
             ontology,
             "doc-pgml",
@@ -394,8 +391,8 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
             calls.append("langextract")
             raise ImportError("langextract missing")
 
-    import src.tools.ingest_common as ingest_module
     import src.extraction as extraction_module
+    import src.tools.ingest_common as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
 
@@ -412,7 +409,7 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
     extraction_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     ingest_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     try:
-        entities, relations, extractor_id = await extract_with_fallback(
+        entities, _relations, extractor_id = await extract_with_fallback(
             [chunk],
             ontology,
             "doc-cascade",
@@ -465,8 +462,8 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
                 )
             ], []
 
-    import src.tools.ingest_common as ingest_module
     import src.extraction as extraction_module
+    import src.tools.ingest_common as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
 
@@ -483,7 +480,7 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
     extraction_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     ingest_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     try:
-        entities, relations, extractor_id = await extract_with_fallback(
+        entities, _relations, extractor_id = await extract_with_fallback(
             [chunk],
             ontology,
             "doc-lang",

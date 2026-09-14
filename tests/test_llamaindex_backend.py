@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from __future__ import annotations
-
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -41,9 +39,11 @@ async def test_dimension_mismatch_raises() -> None:
     backend = LlamaIndexPostgresBackend(_config("http://localhost:11434", 512))
     backend._ollama_embedding = AsyncMock()  # type: ignore[assignment]
     fake_store = type("FakeStore", (), {"embed_dim": 768})()
-    with patch(
-        "src.storage.llamaindex_backend.PGVectorStore.from_params",
-        return_value=fake_store,
+    with (
+        patch(
+            "src.storage.llamaindex_backend.PGVectorStore.from_params",
+            return_value=fake_store,
+        ),
+        pytest.raises(DimensionMismatchError),
     ):
-        with pytest.raises(DimensionMismatchError):
-            await backend.initialize()
+        await backend.initialize()

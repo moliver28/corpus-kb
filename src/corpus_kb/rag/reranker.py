@@ -13,7 +13,7 @@ must never break search.
 from __future__ import annotations
 
 import logging
-from typing import Optional, Protocol, cast, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 import asyncpg
 
@@ -32,9 +32,7 @@ RANK_TIMEOUT_SECONDS = 30.0
 class Reranker(Protocol):
     """Protocol for search-result rerankers."""
 
-    async def rerank(
-        self, query: str, results: list[SearchResult]
-    ) -> list[SearchResult]:
+    async def rerank(self, query: str, results: list[SearchResult]) -> list[SearchResult]:
         """Return ``results`` re-ranked by relevance to ``query``."""
         ...
 
@@ -42,9 +40,7 @@ class Reranker(Protocol):
 class IdentityReranker:
     """Pass-through reranker — returns the fused results unchanged."""
 
-    async def rerank(
-        self, query: str, results: list[SearchResult]
-    ) -> list[SearchResult]:
+    async def rerank(self, query: str, results: list[SearchResult]) -> list[SearchResult]:
         """Return ``results`` as-is; RRF fusion already ranked them."""
         return results
 
@@ -65,17 +61,15 @@ class PgmlReranker:
 
     def __init__(
         self,
-        config: Optional[dict[str, object]] = None,
-        pool: Optional[asyncpg.Pool] = None,
+        config: dict[str, object] | None = None,
+        pool: asyncpg.Pool | None = None,
     ) -> None:
         self._config = config or load_config()
         search = cast(dict[str, object], self._config.get("search", {}))
         self.model = _str_or_default(search, "reranker_model", DEFAULT_RERANKER_MODEL)
         self._pool = pool
 
-    async def rerank(
-        self, query: str, results: list[SearchResult]
-    ) -> list[SearchResult]:
+    async def rerank(self, query: str, results: list[SearchResult]) -> list[SearchResult]:
         """Reorder ``results`` by cross-encoder score via ``pgml.rank()``."""
         if not results:
             return results
@@ -99,7 +93,7 @@ class PgmlReranker:
         # pgml.rank emits one row per document in RANK order (best first),
         # keyed by corpus_id = the document's index in the input array.
         # Map scores back by corpus_id — never by row position.
-        scores: list[Optional[float]] = [None] * len(results)
+        scores: list[float | None] = [None] * len(results)
         for row in rows:
             idx = int(row["corpus_id"])
             if 0 <= idx < len(results):
@@ -107,22 +101,19 @@ class PgmlReranker:
         matched = sum(score is not None for score in scores)
         if matched != len(results):
             logger.warning(
-                "pgml.rank() returned scores for %d of %d results; "
-                "returning unreranked results.",
+                "pgml.rank() returned scores for %d of %d results; returning unreranked results.",
                 matched,
                 len(results),
             )
             return results
 
-        order = sorted(
-            range(len(results)), key=lambda i: cast(float, scores[i]), reverse=True
-        )
+        order = sorted(range(len(results)), key=lambda i: cast(float, scores[i]), reverse=True)
         return [results[i] for i in order]
 
 
 def create_reranker(
-    config: Optional[dict[str, object]] = None,
-    pool: Optional[asyncpg.Pool] = None,
+    config: dict[str, object] | None = None,
+    pool: asyncpg.Pool | None = None,
 ) -> Reranker:
     """Return the reranker selected by ``search.reranker`` in config.
 

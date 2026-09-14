@@ -13,7 +13,6 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
-from typing import Optional
 
 import asyncpg
 
@@ -90,14 +89,12 @@ class GraphStore(ABC):
         return result
 
     @abstractmethod
-    async def get_entity(self, entity_id: str) -> Optional[Entity]:
+    async def get_entity(self, entity_id: str) -> Entity | None:
         """Get an entity by ID."""
         pass
 
     @abstractmethod
-    async def search_entities(
-        self, name: str, entity_type: Optional[str] = None
-    ) -> list[Entity]:
+    async def search_entities(self, name: str, entity_type: str | None = None) -> list[Entity]:
         """Search entities by name and optional type."""
         pass
 
@@ -157,7 +154,7 @@ class PostgresGraphStore(GraphStore):
     ) -> None:
         self._pool = pool
         self._tenant_id = tenant_id
-        self._conn: Optional[asyncpg.Connection] = None
+        self._conn: asyncpg.Connection | None = None
 
     async def _get_conn(self) -> asyncpg.Connection:
         """Return the current transaction connection, or acquire one from the pool."""
@@ -248,7 +245,7 @@ class PostgresGraphStore(GraphStore):
         finally:
             await self._release_conn(conn)
 
-    async def get_entity(self, entity_id: str) -> Optional[Entity]:
+    async def get_entity(self, entity_id: str) -> Entity | None:
         """Fetch an entity by ID."""
         conn = await self._get_conn()
         try:
@@ -275,9 +272,7 @@ class PostgresGraphStore(GraphStore):
         finally:
             await self._release_conn(conn)
 
-    async def search_entities(
-        self, name: str, entity_type: Optional[str] = None
-    ) -> list[Entity]:
+    async def search_entities(self, name: str, entity_type: str | None = None) -> list[Entity]:
         """Search entities by name (LIKE) and optional type filter."""
         conn = await self._get_conn()
         try:

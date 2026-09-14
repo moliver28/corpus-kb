@@ -37,12 +37,8 @@ DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 @pytest.fixture
 async def db_conn():
     """Provide a Postgres connection for tests."""
-    conn = await asyncpg.connect(
-        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-    )
-    await conn.execute(
-        "SELECT set_config('app.current_tenant_id', $1, true)", DEFAULT_TENANT
-    )
+    conn = await asyncpg.connect("postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb")
+    await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", DEFAULT_TENANT)
     yield conn
     await conn.close()
 
@@ -50,9 +46,7 @@ async def db_conn():
 @pytest.fixture
 async def clean_db(db_conn):
     """Clean all projection tables before each test."""
-    await db_conn.execute(
-        "TRUNCATE chunks_vectors, chunks, documents, entities, relations CASCADE"
-    )
+    await db_conn.execute("TRUNCATE chunks_vectors, chunks, documents, entities, relations CASCADE")
     yield
 
 
@@ -62,8 +56,8 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_ingest_file_creates_document(self, clean_db, db_conn):
         """Test 1: Ingest a file → verify document appears in Postgres."""
-        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
         from corpus_kb.domain.models import IngestTextCommand
+        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
 
         reset_command_handler()
         handler = get_command_handler()
@@ -89,8 +83,8 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_search_returns_results(self, clean_db, db_conn):
         """Test 2: Ingest text → search → verify results returned."""
-        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
         from corpus_kb.domain.models import IngestTextCommand
+        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
 
         reset_command_handler()
         handler = get_command_handler()
@@ -107,14 +101,12 @@ class TestE2EIntegration:
         await asyncio.sleep(1.0)
 
         # Search via query handler
-        from corpus_kb.handlers.query_handler import QueryHandler
         from corpus_kb.domain.models import SearchQuery
+        from corpus_kb.handlers.query_handler import QueryHandler
 
         query_handler = QueryHandler(db_conn.__dict__.get("_pool", db_conn))
         # Use direct connection for test
-        results = await query_handler.handle_search(
-            SearchQuery(query="authenticate", k=5)
-        )
+        results = await query_handler.handle_search(SearchQuery(query="authenticate", k=5))
 
         # Results may be empty if projection hasn't run yet
         # This test verifies the query handler doesn't crash
@@ -123,8 +115,8 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_add_entity_via_command(self, clean_db, db_conn):
         """Test 3: Add entity via command handler → verify in Postgres."""
-        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
         from corpus_kb.domain.models import AddEntityCommand
+        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
 
         reset_command_handler()
         handler = get_command_handler()
@@ -143,8 +135,9 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_idempotency_prevents_duplicates(self, clean_db, db_conn):
         """Test 4: Send same command twice → verify deduplication."""
-        from corpus_kb.handlers.idempotency import IdempotencyChecker
         from uuid import uuid4
+
+        from corpus_kb.handlers.idempotency import IdempotencyChecker
 
         checker = IdempotencyChecker(db_conn.__dict__.get("_pool", db_conn))
         cmd_id = uuid4()
@@ -176,7 +169,8 @@ class TestE2EIntegration:
             DEFAULT_TENANT,
         )
         await db_conn.execute(
-            "INSERT INTO documents (doc_id, tenant_id, source, source_type) VALUES ($1, $2, $3, $4)",
+            """INSERT INTO documents
+               (doc_id, tenant_id, source, source_type) VALUES ($1, $2, $3, $4)""",
             str(UUID(int=1)),
             DEFAULT_TENANT,
             "tenant_a_file.py",

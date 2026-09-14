@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -176,11 +176,11 @@ class DocumentsProjection:
 
 # Singleton
 
-_docs_projection: Optional[DocumentsProjection] = None
+_docs_projection: DocumentsProjection | None = None
 
 
 def get_documents_projection(
-    pool: Optional[asyncpg.Pool] = None,
+    pool: asyncpg.Pool | None = None,
 ) -> DocumentsProjection:
     global _docs_projection
     if _docs_projection is None:

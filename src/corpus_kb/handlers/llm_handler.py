@@ -12,7 +12,7 @@ callers can continue operating in degraded mode.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 import httpx
 
@@ -32,7 +32,7 @@ class LlmHandler:
 
     def __init__(
         self,
-        config: Optional[dict[str, object]] = None,
+        config: dict[str, object] | None = None,
         timeout: float = DEFAULT_TIMEOUT_S,
     ) -> None:
         self._config = config or load_config()
@@ -45,7 +45,7 @@ class LlmHandler:
     async def chat(
         self,
         messages: list[dict[str, str]],
-        model: Optional[str] = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Return the chat completion for ``messages`` via /api/chat."""
         use_model = model or self.model
@@ -62,7 +62,7 @@ class LlmHandler:
     async def generate(
         self,
         prompt: str,
-        model: Optional[str] = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         """Return the text generation for ``prompt`` via /api/generate."""
         use_model = model or self.model
@@ -75,9 +75,7 @@ class LlmHandler:
             use_model,
         )
 
-    async def _post(
-        self, url: str, payload: dict[str, Any], model: str
-    ) -> dict[str, Any]:
+    async def _post(self, url: str, payload: dict[str, Any], model: str) -> dict[str, Any]:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(url, json=payload)
@@ -105,16 +103,14 @@ class LlmHandler:
             return {"error": "Ollama returned malformed JSON", "model": model}
 
 
-def _validate_messages(messages: list[dict[str, str]]) -> Optional[str]:
+def _validate_messages(messages: list[dict[str, str]]) -> str | None:
     """Return an error message if ``messages`` is malformed, else None."""
     if not messages:
         return "messages must be a non-empty list"
     for message in messages:
         if not isinstance(message, dict):
             return "each message must be a dict with 'role' and 'content'"
-        if not isinstance(message.get("role"), str) or not isinstance(
-            message.get("content"), str
-        ):
+        if not isinstance(message.get("role"), str) or not isinstance(message.get("content"), str):
             return "each message must have string 'role' and 'content'"
     return None
 

@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 from urllib.parse import urlparse
 
 from eventsourcing.application import Application
@@ -61,10 +60,10 @@ class CorpusApplication(Application):
         super().__init__()
 
 
-_app: Optional[CorpusApplication] = None
+_app: CorpusApplication | None = None
 
 
-def get_app(connection_string: Optional[str] = None) -> CorpusApplication:
+def get_app(connection_string: str | None = None) -> CorpusApplication:
     """Get or create the singleton CorpusApplication instance.
 
     Args:

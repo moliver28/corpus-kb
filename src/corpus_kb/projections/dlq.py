@@ -7,7 +7,7 @@ provides methods to list, retry, and clear failures.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -30,7 +30,7 @@ class DLQHandler:
         event_id: UUID,
         event_type: str,
         error_message: str,
-        error_stacktrace: Optional[str] = None,
+        error_stacktrace: str | None = None,
     ) -> None:
         """Record a failed projection to the DLQ."""
         async with self._pool.acquire() as conn:
@@ -64,9 +64,7 @@ class DLQHandler:
                 error_message,
             )
 
-    async def list_failures(
-        self, projection_name: str, tenant_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def list_failures(self, projection_name: str, tenant_id: UUID) -> list[dict[str, Any]]:
         """List unresolved DLQ entries for a projection."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -114,10 +112,10 @@ class DLQHandler:
 
 # Singleton
 
-_dlq_handler: Optional[DLQHandler] = None
+_dlq_handler: DLQHandler | None = None
 
 
-def get_dlq_handler(pool: Optional[asyncpg.Pool] = None) -> DLQHandler:
+def get_dlq_handler(pool: asyncpg.Pool | None = None) -> DLQHandler:
     global _dlq_handler
     if _dlq_handler is None:
         if pool is None:

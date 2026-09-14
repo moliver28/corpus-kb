@@ -9,7 +9,6 @@ from corpus_kb.storage.graph_store import PostgresGraphStore
 from corpus_kb.tools.ingest_tools import delete_document, ingest_text
 from corpus_kb.utils.models import Entity
 
-
 # ============================================================================
 # Entity Extraction Tests
 # ============================================================================

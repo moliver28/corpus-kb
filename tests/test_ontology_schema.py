@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 import yaml
@@ -11,7 +12,7 @@ from corpus_kb.ontology import load_ontology
 
 
 class TestOntologyLoader:
-    _EXPECTED_ENTITY_TYPES = [
+    _EXPECTED_ENTITY_TYPES: ClassVar[list[str]] = [
         "Document",
         "Section",
         "Chunk",
@@ -23,7 +24,7 @@ class TestOntologyLoader:
         "Metric",
     ]
 
-    _EXPECTED_RELATION_TYPES = [
+    _EXPECTED_RELATION_TYPES: ClassVar[list[str]] = [
         "PART_OF",
         "MENTIONS",
         "DEFINED_AS",
@@ -41,9 +42,7 @@ class TestOntologyLoader:
         assert ontology.relation_types == self._EXPECTED_RELATION_TYPES
         assert set(ontology.entity_types).isdisjoint(ontology.relation_types)
 
-    def test_load_malformed_ontology_empty_relation_types_raises(
-        self, tmp_path: Path
-    ) -> None:
+    def test_load_malformed_ontology_empty_relation_types_raises(self, tmp_path: Path) -> None:
         path = tmp_path / "bad.yaml"
         path.write_text("entity_types:\n  - Class\nrelation_types: []\n")
         with pytest.raises(ValueError):
@@ -55,7 +54,7 @@ class TestConfig:
         config_path = Path("config.yaml")
         assert config_path.exists()
 
-        with open(config_path) as f:
+        with config_path.open() as f:
             config = yaml.safe_load(f) or {}
 
         embedding = config.get("embedding", {})

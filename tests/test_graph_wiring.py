@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import inspect
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -34,7 +34,7 @@ OTHER_TENANT = UUID("00000000-0000-0000-0000-000000000002")
 
 
 class FakeTransaction:
-    async def __aenter__(self) -> "FakeTransaction":
+    async def __aenter__(self) -> FakeTransaction:
         return self
 
     async def __aexit__(self, *exc: object) -> bool:
@@ -49,21 +49,21 @@ class FakePool:
         self.acquire_count = 0
         self.release_count = 0
 
-    async def acquire(self) -> "FakeConnection":
+    async def acquire(self) -> FakeConnection:
         self.acquire_count += 1
         return FakeConnection(pool=self)
 
-    async def release(self, conn: "FakeConnection") -> None:
+    async def release(self, conn: FakeConnection) -> None:
         self.release_count += 1
 
 
 class FakeConnection:
     """asyncpg.Connection fake for AGE probe checks."""
 
-    def __init__(self, *, pool: Optional[FakePool] = None) -> None:
+    def __init__(self, *, pool: FakePool | None = None) -> None:
         self.pool = pool
 
-    async def fetchrow(self, sql: str, *args: object) -> Optional[dict[str, object]]:
+    async def fetchrow(self, sql: str, *args: object) -> dict[str, object] | None:
         if "pg_extension" in sql:
             age_present = True if self.pool is None else self.pool.age_present
             return {"ok": age_present}
@@ -86,7 +86,7 @@ class FakeGraphStore(GraphStore):
     """In-memory GraphStore that records calls and returns deterministic data."""
 
     def __init__(self) -> None:
-        self.search_calls: list[tuple[str, Optional[str]]] = []
+        self.search_calls: list[tuple[str, str | None]] = []
         self.bfs_calls: list[tuple[str, int]] = []
         self.relation_calls: list[str] = []
         self.closed = False
@@ -97,12 +97,10 @@ class FakeGraphStore(GraphStore):
     async def add_relation(self, relation: Relation) -> str:
         return relation.relation_id
 
-    async def get_entity(self, entity_id: str) -> Optional[Entity]:
+    async def get_entity(self, entity_id: str) -> Entity | None:
         return None
 
-    async def search_entities(
-        self, name: str, entity_type: Optional[str] = None
-    ) -> list[Entity]:
+    async def search_entities(self, name: str, entity_type: str | None = None) -> list[Entity]:
         self.search_calls.append((name, entity_type))
         return [
             Entity(
@@ -177,9 +175,7 @@ class TestCreateGraphStore:
         from corpus_kb.storage.graph_store import PostgresGraphStore
 
         class RaisingAgeStore(GraphStore):
-            def __init__(
-                self, pool: object, tenant_id: str = DEFAULT_TENANT_ID
-            ) -> None:
+            def __init__(self, pool: object, tenant_id: str = DEFAULT_TENANT_ID) -> None:
                 raise AgeUnavailableError("age not installed")
 
             async def add_entity(self, entity: Entity) -> str:
@@ -188,20 +184,18 @@ class TestCreateGraphStore:
             async def add_relation(self, relation: Relation) -> str:
                 return ""
 
-            async def get_entity(self, entity_id: str) -> Optional[Entity]:
+            async def get_entity(self, entity_id: str) -> Entity | None:
                 return None
 
             async def search_entities(
-                self, name: str, entity_type: Optional[str] = None
+                self, name: str, entity_type: str | None = None
             ) -> list[Entity]:
                 return []
 
             async def get_entity_relations(self, entity_id: str) -> list[Relation]:
                 return []
 
-            async def bfs(
-                self, start_entity_id: str, max_depth: int = 5
-            ) -> dict[str, object]:
+            async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
                 return {}
 
             async def close(self) -> None:
@@ -227,9 +221,7 @@ class TestCreateGraphStore:
             and "Falling back" in rec.message
             and rec.levelno == logging.WARNING
             for rec in caplog.records
-        ), (
-            f"expected warning about AGE fallback, got: {[r.message for r in caplog.records]}"
-        )
+        ), f"expected warning about AGE fallback, got: {[r.message for r in caplog.records]}"
 
     @pytest.mark.asyncio
     async def test_postgres_backend_returns_postgres_store(self) -> None:
@@ -301,9 +293,7 @@ class TestGraphWiringLiveFallback:
             assert any(
                 "Apache AGE" in rec.message and rec.levelno == logging.WARNING
                 for rec in caplog.records
-            ), (
-                f"expected AGE fallback warning, got: {[r.message for r in caplog.records]}"
-            )
+            ), f"expected AGE fallback warning, got: {[r.message for r in caplog.records]}"
         finally:
             await pool.close()
 

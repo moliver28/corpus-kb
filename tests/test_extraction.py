@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
-from unittest.mock import MagicMock
 
 from corpus_kb.extraction import (
     LangExtractExtractor,
@@ -39,9 +39,7 @@ class TestRegexExtractor:
         )
 
         extractor = RegexExtractor()
-        entities, relations = extractor.extract(
-            [chunk], ontology, source_document_id="doc-regex"
-        )
+        entities, relations = extractor.extract([chunk], ontology, source_document_id="doc-regex")
 
         assert len(entities) >= 1
         assert len(relations) == 0
@@ -67,9 +65,7 @@ class TestLangExtractExtractor:
         )
 
         extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
-        entities, relations = extractor.extract(
-            [chunk], ontology, source_document_id="doc-alice"
-        )
+        entities, relations = extractor.extract([chunk], ontology, source_document_id="doc-alice")
 
         assert len(entities) >= 1
         assert len(relations) >= 1
@@ -147,12 +143,8 @@ class TestLangExtractExtractor:
         )
 
         extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
-        entities_a, _ = extractor.extract(
-            [chunk_a], ontology, source_document_id="doc-a"
-        )
-        entities_b, _ = extractor.extract(
-            [chunk_b], ontology, source_document_id="doc-b"
-        )
+        entities_a, _ = extractor.extract([chunk_a], ontology, source_document_id="doc-a")
+        entities_b, _ = extractor.extract([chunk_b], ontology, source_document_id="doc-b")
 
         names_a = {entity.name for entity in entities_a}
         names_b = {entity.name for entity in entities_b}
@@ -167,16 +159,12 @@ class TestLangExtractExtractor:
             source_type="text",
         )
         with pytest.raises(FileNotFoundError):
-            extractor.extract(
-                [missing_chunk], ontology, source_document_id="doc-missing"
-            )
+            extractor.extract([missing_chunk], ontology, source_document_id="doc-missing")
 
         assert (_FIXTURE_DIR / f"{_sha256(text_a)}.jsonl").exists()
         assert (_FIXTURE_DIR / f"{_sha256(text_b)}.jsonl").exists()
 
-    def test_fixture_path_never_calls_live_extract(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_fixture_path_never_calls_live_extract(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Given existing fixtures, langextract.extract is never invoked."""
         import langextract as lx
 
@@ -193,9 +181,7 @@ class TestLangExtractExtractor:
         )
 
         extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
-        entities, relations = extractor.extract(
-            [chunk], ontology, source_document_id="doc-network"
-        )
+        entities, relations = extractor.extract([chunk], ontology, source_document_id="doc-network")
 
         assert len(entities) >= 1
         assert len(relations) >= 1

@@ -10,11 +10,10 @@ coreference), see GitHub issue: Upgrade NER extraction to BERT/transformer model
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
-from .protocol import Extractor
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
+from .protocol import Extractor
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +39,7 @@ class BertExtractor(Extractor):
 
     extractor_id = "bert"
 
-    def __init__(self, ontology: Optional[Ontology] = None) -> None:
+    def __init__(self, ontology: Ontology | None = None) -> None:
         self._ontology = ontology
         self._nlp = None
         self._fallback = None
@@ -72,7 +71,7 @@ class BertExtractor(Extractor):
         self,
         chunks: list[Chunk],
         ontology: Ontology,
-        source_document_id: Optional[str] = None,
+        source_document_id: str | None = None,
     ) -> tuple[list[Entity], list[Relation]]:
         """Extract entities using spaCy NER. Falls back to regex."""
         if self._nlp is None:

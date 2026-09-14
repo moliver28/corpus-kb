@@ -59,14 +59,10 @@ def _python_rrf_reference(
         doc_ids[cid] = row["doc_id"]
 
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:k]
-    return [
-        (cid, texts[cid], sources[cid], doc_ids[cid], score) for cid, score in ranked
-    ]
+    return [(cid, texts[cid], sources[cid], doc_ids[cid], score) for cid, score in ranked]
 
 
-def _side_rows(
-    prefix: str, n: int, chunk_ids: list[str] | None = None
-) -> list[dict[str, Any]]:
+def _side_rows(prefix: str, n: int, chunk_ids: list[str] | None = None) -> list[dict[str, Any]]:
     """Build one synthetic result side: {chunk_id, text, source, doc_id, score}."""
     rows = []
     for i in range(n):
@@ -161,9 +157,7 @@ async def test_migration_006_double_apply_is_noop() -> None:
 async def test_rrf_fusion_matches_python_on_overlapping_sides(live_conn) -> None:
     """Chunks in both sides accumulate both rank contributions; FTS metadata wins."""
     shared = [str(uuid4()) for _ in range(2)]
-    vector_rows = _side_rows(
-        "vec", 4, chunk_ids=[shared[0], str(uuid4()), shared[1], str(uuid4())]
-    )
+    vector_rows = _side_rows("vec", 4, chunk_ids=[shared[0], str(uuid4()), shared[1], str(uuid4())])
     fts_rows = _side_rows("fts", 3, chunk_ids=[shared[1], shared[0], str(uuid4())])
 
     sql_rows = await _sql_rrf(live_conn, vector_rows, fts_rows, k=10)

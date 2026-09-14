@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -21,8 +21,8 @@ class TagHandler:
         self,
         tenant_id: UUID,
         name: str,
-        color: Optional[str] = None,
-        description: Optional[str] = None,
+        color: str | None = None,
+        description: str | None = None,
     ) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -39,9 +39,7 @@ class TagHandler:
             )
             return dict(row) if row else {"name": name, "status": "already_exists"}
 
-    async def handle_tag_document(
-        self, tenant_id: UUID, doc_id: UUID, tag: str
-    ) -> dict[str, Any]:
+    async def handle_tag_document(self, tenant_id: UUID, doc_id: UUID, tag: str) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
@@ -63,7 +61,8 @@ class TagHandler:
                     tag,
                 )
             await conn.execute(
-                "INSERT INTO document_tags (doc_id, tenant_id, tag_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+                """INSERT INTO document_tags (doc_id, tenant_id, tag_id)
+                   VALUES ($1, $2, $3) ON CONFLICT DO NOTHING""",
                 str(doc_id),
                 str(tenant_id),
                 str(tag_row["tag_id"]),
@@ -86,9 +85,7 @@ class TagHandler:
             )
             return {"status": "success", "doc_id": str(doc_id), "tag": tag}
 
-    async def handle_get_document_tags(
-        self, tenant_id: UUID, doc_id: UUID
-    ) -> list[dict[str, Any]]:
+    async def handle_get_document_tags(self, tenant_id: UUID, doc_id: UUID) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
@@ -103,7 +100,7 @@ class TagHandler:
             return [dict(r) for r in rows]
 
     async def handle_set_metadata(
-        self, tenant_id: UUID, key: str, value: str, doc_id: Optional[UUID] = None
+        self, tenant_id: UUID, key: str, value: str, doc_id: UUID | None = None
     ) -> dict[str, Any]:
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -111,7 +108,8 @@ class TagHandler:
             )
             await conn.execute(
                 """INSERT INTO metadata (key, value, doc_id, tenant_id)
-                   VALUES ($1, $2, $3, $4) ON CONFLICT (key, tenant_id, doc_id) DO UPDATE SET value = $2""",
+                   VALUES ($1, $2, $3, $4)
+                   ON CONFLICT (key, tenant_id, doc_id) DO UPDATE SET value = $2""",
                 key,
                 value,
                 str(doc_id) if doc_id else None,
@@ -120,7 +118,7 @@ class TagHandler:
             return {"status": "success", "key": key, "value": value}
 
     async def handle_get_metadata(
-        self, tenant_id: UUID, key: Optional[str] = None, doc_id: Optional[UUID] = None
+        self, tenant_id: UUID, key: str | None = None, doc_id: UUID | None = None
     ) -> list[dict[str, Any]]:
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -128,7 +126,8 @@ class TagHandler:
             )
             if key and doc_id:
                 rows = await conn.fetch(
-                    "SELECT key, value, doc_id FROM metadata WHERE key=$1 AND tenant_id=$2 AND doc_id=$3",
+                    """SELECT key, value, doc_id FROM metadata
+                       WHERE key=$1 AND tenant_id=$2 AND doc_id=$3""",
                     key,
                     str(tenant_id),
                     str(doc_id),
@@ -157,19 +156,17 @@ class TagHandler:
 # Singleton
 # ============================================================================
 
-_tag_handler: Optional["TagHandler"] = None
+_tag_handler: TagHandler | None = None
 
 
-def get_tag_handler() -> "TagHandler":
+def get_tag_handler() -> TagHandler:
     global _tag_handler
     if _tag_handler is None:
-        raise RuntimeError(
-            "TagHandler not initialized. Call set_tag_handler() during startup."
-        )
+        raise RuntimeError("TagHandler not initialized. Call set_tag_handler() during startup.")
     return _tag_handler
 
 
-def set_tag_handler(handler: "TagHandler") -> None:
+def set_tag_handler(handler: TagHandler) -> None:
     global _tag_handler
     _tag_handler = handler
 

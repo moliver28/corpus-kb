@@ -80,15 +80,11 @@ def validate_opencode_config(config: dict[str, Any]) -> list[str]:
 
     # mcp key (not mcpServers)
     if "mcp" not in config:
-        errors.append(
-            "Missing required 'mcp' key — OpenCode format uses 'mcp', not 'mcpServers'"
-        )
+        errors.append("Missing required 'mcp' key — OpenCode format uses 'mcp', not 'mcpServers'")
         return errors
 
     if "mcpServers" in config:
-        errors.append(
-            "Found 'mcpServers' key — this is the old format; use 'mcp' for OpenCode"
-        )
+        errors.append("Found 'mcpServers' key — this is the old format; use 'mcp' for OpenCode")
 
     mcp = config["mcp"]
     if not isinstance(mcp, dict) or not mcp:
@@ -119,7 +115,8 @@ def _validate_opencode_tool(prefix: str, tool_config: dict[str, Any]) -> list[st
     if command is not None:
         if not isinstance(command, list):
             errors.append(
-                f"{prefix}: 'command' must be an array of strings (e.g. ['corpus-kb', '--transport', 'stdio']), "
+                f"{prefix}: 'command' must be an array of strings "
+                f"(e.g. ['corpus-kb', '--transport', 'stdio']), "
                 f"got {type(command).__name__}"
             )
         elif not command:
@@ -204,12 +201,10 @@ def _validate_claude_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
 
     # command must be a string
     command = tool_config.get("command")
-    if command is not None:
-        if not isinstance(command, str):
-            errors.append(
-                f"{prefix}: 'command' must be a string (e.g. 'corpus-kb'), "
-                f"got {type(command).__name__}"
-            )
+    if command is not None and not isinstance(command, str):
+        errors.append(
+            f"{prefix}: 'command' must be a string (e.g. 'corpus-kb'), got {type(command).__name__}"
+        )
 
     # autoApprove validation (same as OpenCode)
     auto_approve = tool_config.get("autoApprove")
@@ -224,9 +219,7 @@ def _validate_claude_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
         else:
             for tool in auto_approve:
                 if tool not in VALID_TOOL_NAMES:
-                    errors.append(
-                        f"{prefix}: invalid tool name in autoApprove: '{tool}'"
-                    )
+                    errors.append(f"{prefix}: invalid tool name in autoApprove: '{tool}'")
 
     return errors
 
@@ -291,12 +284,10 @@ def _validate_cursor_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
 
     # command must be a string
     command = tool_config.get("command")
-    if command is not None:
-        if not isinstance(command, str):
-            errors.append(
-                f"{prefix}: 'command' must be a string (e.g. 'corpus-kb'), "
-                f"got {type(command).__name__}"
-            )
+    if command is not None and not isinstance(command, str):
+        errors.append(
+            f"{prefix}: 'command' must be a string (e.g. 'corpus-kb'), got {type(command).__name__}"
+        )
 
     return errors
 
@@ -347,7 +338,7 @@ def check_cross_config_consistency(
     # Check all configs define the same set of tool names
     all_tool_names = [set(ts.keys()) for ts in tool_sets.values()]
     reference = all_tool_names[0]
-    for fmt, names in zip(tool_sets.keys(), all_tool_names[1:]):
+    for fmt, names in zip(tool_sets.keys(), all_tool_names[1:], strict=False):
         if names != reference:
             missing = reference - names
             extra = names - reference
@@ -368,9 +359,7 @@ def check_cross_config_consistency(
         descriptions = {fmt: tool_sets[fmt][tool] for fmt in formats}
         unique_descs = set(descriptions.values())
         if len(unique_descs) > 1:
-            desc_details = "; ".join(
-                f"{fmt}: '{desc}'" for fmt, desc in descriptions.items()
-            )
+            desc_details = "; ".join(f"{fmt}: '{desc}'" for fmt, desc in descriptions.items())
             errors.append(f"Description mismatch for tool '{tool}': {desc_details}")
 
     return errors
@@ -383,7 +372,7 @@ def check_cross_config_consistency(
 
 def load_json(path: Path) -> dict:
     """Load and parse a JSON file."""
-    with open(path, "r", encoding="utf-8") as f:
+    with path.open(encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -429,21 +418,14 @@ def validate_all(project_root: Path | None = None) -> list[str]:
                 errs = validate_cursor_config(config)
                 errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
             else:
-                errors.append(
-                    f"mcp-configs/{filename}: unknown config format, skipping"
-                )
+                errors.append(f"mcp-configs/{filename}: unknown config format, skipping")
     else:
         errors.append("mcp-configs/ directory not found")
 
     # 3. Cross-config consistency
-    if opencode_path.exists():
-        opencode_config = load_json(opencode_path)
-    else:
-        opencode_config = None
+    opencode_config = load_json(opencode_path) if opencode_path.exists() else None
 
-    cross_errors = check_cross_config_consistency(
-        opencode_config, claude_config, cursor_config
-    )
+    cross_errors = check_cross_config_consistency(opencode_config, claude_config, cursor_config)
     errors.extend(f"Cross-config: {e}" for e in cross_errors)
 
     # 4. Check for old format backup (informational)

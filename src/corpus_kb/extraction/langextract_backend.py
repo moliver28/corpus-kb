@@ -8,6 +8,8 @@ import logging
 from pathlib import Path
 from typing import cast
 
+from ..ontology import Ontology
+from ..utils.models import Chunk, Entity, Relation
 from ._langextract_types import (
     Extraction,
     LangExtractModule,
@@ -17,8 +19,6 @@ from ._langextract_types import (
     import_langextract,
 )
 from .protocol import OntologyViolationError
-from ..ontology import Ontology
-from ..utils.models import Chunk, Entity, Relation
 
 
 class LangExtractExtractor:
@@ -61,9 +61,7 @@ class LangExtractExtractor:
         relations: list[Relation] = []
 
         for chunk in chunks:
-            chunk_entities = self._extract_chunk_entities(
-                chunk, ontology, source_document_id
-            )
+            chunk_entities = self._extract_chunk_entities(chunk, ontology, source_document_id)
             entities.extend(chunk_entities)
             relations.extend(_derive_relations(chunk_entities, chunk, ontology))
 
@@ -97,7 +95,8 @@ class LangExtractExtractor:
             text_length = len(text)
             if start < 0 or end > text_length or start >= end:
                 logging.warning(
-                    "Skipping invalid extraction offsets for '%s': start=%d, end=%d, text_length=%d",
+                    "Skipping invalid extraction offsets for '%s': "
+                    "start=%d, end=%d, text_length=%d",
                     extraction.extraction_text,
                     start,
                     end,
@@ -121,9 +120,7 @@ class LangExtractExtractor:
             )
         return entities
 
-    def _load_extractions(
-        self, text: str, ontology: Ontology
-    ) -> list[NormalizedExtraction]:
+    def _load_extractions(self, text: str, ontology: Ontology) -> list[NormalizedExtraction]:
         if self.fixture_dir:
             key = _sha256(text)
             fixture_path = self.fixture_dir / f"{key}.jsonl"
@@ -139,15 +136,8 @@ class LangExtractExtractor:
             prompt_description=build_prompt_description(ontology),
             examples=build_examples(self._lx, ontology),
         )
-        if isinstance(result, list):
-            docs = result
-        else:
-            docs = [result]
-        return [
-            _normalize_extraction(extraction)
-            for doc in docs
-            for extraction in doc.extractions
-        ]
+        docs = result if isinstance(result, list) else [result]
+        return [_normalize_extraction(extraction) for doc in docs for extraction in doc.extractions]
 
 
 def _sha256(text: str) -> str:
@@ -156,7 +146,7 @@ def _sha256(text: str) -> str:
 
 def _load_fixture(path: Path) -> list[NormalizedExtraction]:
     extractions: list[NormalizedExtraction] = []
-    with open(path) as f:
+    with path.open() as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -213,9 +203,7 @@ def _normalize_extraction(extraction: Extraction) -> NormalizedExtraction:
 MAX_RELATIONS_PER_CHUNK = 10
 
 
-def _derive_relations(
-    entities: list[Entity], chunk: Chunk, ontology: Ontology
-) -> list[Relation]:
+def _derive_relations(entities: list[Entity], chunk: Chunk, ontology: Ontology) -> list[Relation]:
     relation_type = _pick_relation_type(ontology)
     relations: list[Relation] = []
     for idx, source in enumerate(entities):
@@ -249,9 +237,7 @@ def _pick_relation_type(ontology: Ontology) -> str:
             return candidate
     if ontology.relation_types:
         return ontology.relation_types[0]
-    raise OntologyViolationError(
-        kind="relation_type", value="", allowed=ontology.relation_types
-    )
+    raise OntologyViolationError(kind="relation_type", value="", allowed=ontology.relation_types)
 
 
 def _relation_confidence(source: Entity, target: Entity) -> float | None:

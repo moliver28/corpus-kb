@@ -26,9 +26,7 @@ def test_partition_markdown_auto_round_trip() -> None:
         assert chunk.source_end_char is not None
         assert chunk.source_start_char < chunk.source_end_char
         assert len(chunk.text) > 0
-        assert (
-            original_text[chunk.source_start_char : chunk.source_end_char] == chunk.text
-        )
+        assert original_text[chunk.source_start_char : chunk.source_end_char] == chunk.text
         assert chunk.document_id == "doc-md"
         assert "element_type" in chunk.metadata
         assert "parent_id" in chunk.metadata

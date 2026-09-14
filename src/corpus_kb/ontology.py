@@ -54,7 +54,7 @@ def load_ontology(path: str | Path) -> Ontology:
     if not file_path.exists():
         raise ValueError(f"Ontology file not found: {path}")
 
-    with open(file_path) as f:
+    with file_path.open() as f:
         raw: object = yaml.safe_load(f) or {}
 
     if not isinstance(raw, dict):

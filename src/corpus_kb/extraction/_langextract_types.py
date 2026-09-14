@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Protocol, cast, runtime_checkable
+from typing import Protocol, cast, runtime_checkable
 
 from ..ontology import Ontology
 

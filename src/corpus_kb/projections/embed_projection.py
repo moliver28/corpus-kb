@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -79,12 +79,8 @@ class EmbedChunksProjection:
                         "SELECT set_config('app.current_tenant_id', $1, true)",
                         str(tenant_id),
                     )
-                    for j, (text, vector) in enumerate(
-                        zip(batch_texts, vectors, strict=True)
-                    ):
-                        chunk_id = (
-                            batch_ids[j] if j < len(batch_ids) else str(UUID(int=0))
-                        )
+                    for j, (_text, vector) in enumerate(zip(batch_texts, vectors, strict=True)):
+                        chunk_id = batch_ids[j] if j < len(batch_ids) else str(UUID(int=0))
                         await conn.execute(
                             """
                             INSERT INTO chunks_vectors
@@ -127,9 +123,7 @@ class EmbedChunksProjection:
                 cp = await self._checkpoint.get_checkpoint(PROJECTION_NAME, tenant_id)
                 last_ts = cp["last_event_timestamp"] if cp else None
 
-                events = await self._checkpoint.get_events_since(
-                    tenant_id, last_ts, limit=100
-                )
+                events = await self._checkpoint.get_events_since(tenant_id, last_ts, limit=100)
 
                 if not events:
                     await asyncio.sleep(1.0)  # No events, wait
@@ -155,12 +149,12 @@ class EmbedChunksProjection:
 
 # Singleton
 
-_embed_projection: Optional[EmbedChunksProjection] = None
+_embed_projection: EmbedChunksProjection | None = None
 
 
 def get_embed_projection(
-    pool: Optional[asyncpg.Pool] = None,
-    embedder: Optional[OllamaEmbedder | PgmlEmbedder] = None,
+    pool: asyncpg.Pool | None = None,
+    embedder: OllamaEmbedder | PgmlEmbedder | None = None,
 ) -> EmbedChunksProjection:
     global _embed_projection
     if _embed_projection is None:

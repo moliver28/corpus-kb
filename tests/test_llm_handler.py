@@ -54,9 +54,7 @@ class TestLlmHandlerConfig:
         assert llm["base_url"] == "http://localhost:11434"
 
     def test_custom_config_is_respected(self) -> None:
-        handler = LlmHandler(
-            {"llm": {"model": "qwen3:0.6b", "base_url": "http://host:1234"}}
-        )
+        handler = LlmHandler({"llm": {"model": "qwen3:0.6b", "base_url": "http://host:1234"}})
 
         assert handler.model == "qwen3:0.6b"
         assert handler.base_url == "http://host:1234"
@@ -91,9 +89,7 @@ class TestLlmHandlerChat:
 
     async def test_chat_non_200_returns_error_dict(self) -> None:
         handler = LlmHandler(_CONFIG)
-        post = AsyncMock(
-            return_value=httpx.Response(500, json={"error": "model not found"})
-        )
+        post = AsyncMock(return_value=httpx.Response(500, json={"error": "model not found"}))
 
         with patch.object(httpx.AsyncClient, "post", post):
             result = await handler.chat(_MESSAGES)

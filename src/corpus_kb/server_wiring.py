@@ -16,9 +16,10 @@ All run on the same asyncio event loop.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 import asyncpg
 
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 async def create_graph_store(
     cfg: dict[str, object],
     pool: asyncpg.Pool,
-) -> "GraphStore":
+) -> GraphStore:
     """Instantiate the configured GraphStore backend.
 
     backend="age" tries AgeGraphStore first and falls back to
@@ -45,13 +46,12 @@ async def create_graph_store(
 
     if backend == "age":
         try:
-            store: "GraphStore" = AgeGraphStore(pool)
+            store: GraphStore = AgeGraphStore(pool)
             await store.search_entities("")  # probe AGE availability
             return store
         except AgeUnavailableError as exc:
             logger.warning(
-                "Apache AGE graph backend unavailable: %s. "
-                "Falling back to PostgresGraphStore.",
+                "Apache AGE graph backend unavailable: %s. Falling back to PostgresGraphStore.",
                 exc,
             )
             return PostgresGraphStore(pool)
@@ -72,15 +72,13 @@ async def initialize_postgres_pool(
             command_timeout=60.0,
         )
     except Exception as exc:
-        raise RuntimeError(
-            f"Failed to connect to Postgres at {connection_string}: {exc}"
-        ) from exc
+        raise RuntimeError(f"Failed to connect to Postgres at {connection_string}: {exc}") from exc
     logger.info("asyncpg pool created")
     return pool
 
 
 async def startup(
-    config: Optional[dict[str, object]] = None,
+    config: dict[str, object] | None = None,
 ) -> dict[str, object]:
     """Initialize all components. Returns a dict of initialized services.
 
@@ -100,9 +98,7 @@ async def startup(
 
     # 1. Postgres pool
     db_cfg = cfg.get("database", {})
-    conn_str = db_cfg.get("connection_string", "") or os.environ.get(
-        "CORPUS_KB_DATABASE_URL", ""
-    )
+    conn_str = db_cfg.get("connection_string", "") or os.environ.get("CORPUS_KB_DATABASE_URL", "")
     if not conn_str:
         raise RuntimeError(
             "No database connection string. Set CORPUS_KB_DATABASE_URL or "
@@ -118,8 +114,8 @@ async def startup(
 
     # 3. Handlers
     from corpus_kb.handlers.command_handler import get_command_handler
-    from corpus_kb.handlers.query_handler import set_query_handler, QueryHandler
-    from corpus_kb.handlers.idempotency import set_idempotency_checker, IdempotencyChecker
+    from corpus_kb.handlers.idempotency import IdempotencyChecker, set_idempotency_checker
+    from corpus_kb.handlers.query_handler import QueryHandler, set_query_handler
 
     command_handler = get_command_handler(cfg, pool)
     query_handler = QueryHandler(pool)
@@ -137,13 +133,13 @@ async def startup(
     set_versioning_handler(VersioningHandler(pool))
 
     # 4. Projections
-    from corpus_kb.projections.embed_projection import set_embed_projection, EmbedChunksProjection
-    from corpus_kb.projections.checkpoint import set_checkpoint_manager, CheckpointManager
-    from corpus_kb.projections.dlq import set_dlq_handler, DLQHandler
+    from corpus_kb.projections.checkpoint import CheckpointManager, set_checkpoint_manager
+    from corpus_kb.projections.dlq import DLQHandler, set_dlq_handler
     from corpus_kb.projections.documents_projection import (
-        set_documents_projection,
         DocumentsProjection,
+        set_documents_projection,
     )
+    from corpus_kb.projections.embed_projection import EmbedChunksProjection, set_embed_projection
 
     checkpoint_mgr = CheckpointManager(pool)
     dlq_handler = DLQHandler(pool)
@@ -154,9 +150,7 @@ async def startup(
     from corpus_kb.rag import create_embedder
 
     embedder = create_embedder(cfg, pool)
-    embed_projection = EmbedChunksProjection(
-        pool, embedder, checkpoint_mgr, dlq_handler
-    )
+    embed_projection = EmbedChunksProjection(pool, embedder, checkpoint_mgr, dlq_handler)
     set_embed_projection(embed_projection)
 
     docs_projection = DocumentsProjection(pool, checkpoint_mgr, dlq_handler)
@@ -234,10 +228,8 @@ async def run_all(services: dict[str, object]) -> None:
     finally:
         socket_server.stop()
         projection_task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await projection_task
-        except asyncio.CancelledError:
-            pass
         logger.info("All servers stopped")
 
 

@@ -7,7 +7,7 @@ projections read their checkpoint and process events from that point.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -21,9 +21,7 @@ class CheckpointManager:
     def __init__(self, pool: asyncpg.Pool) -> None:
         self._pool = pool
 
-    async def get_checkpoint(
-        self, projection_name: str, tenant_id: UUID
-    ) -> Optional[dict[str, Any]]:
+    async def get_checkpoint(self, projection_name: str, tenant_id: UUID) -> dict[str, Any] | None:
         """Get the last processed event for a projection."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -79,7 +77,7 @@ class CheckpointManager:
     async def get_events_since(
         self,
         tenant_id: UUID,
-        last_event_timestamp: Optional[str] = None,
+        last_event_timestamp: str | None = None,
         limit: int = 1000,
     ) -> list[dict[str, Any]]:
         """Get events since the last checkpoint timestamp."""
@@ -115,10 +113,10 @@ class CheckpointManager:
 
 # Singleton
 
-_checkpoint_mgr: Optional[CheckpointManager] = None
+_checkpoint_mgr: CheckpointManager | None = None
 
 
-def get_checkpoint_manager(pool: Optional[asyncpg.Pool] = None) -> CheckpointManager:
+def get_checkpoint_manager(pool: asyncpg.Pool | None = None) -> CheckpointManager:
     global _checkpoint_mgr
     if _checkpoint_mgr is None:
         if pool is None:

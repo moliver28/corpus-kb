@@ -39,9 +39,7 @@ async def validate() -> bool:
         return False
 
     conn = await asyncpg.connect(conn_str)
-    await conn.execute(
-        "SELECT set_config('app.current_tenant_id', $1, true)", DEFAULT_TENANT
-    )
+    await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", DEFAULT_TENANT)
 
     all_pass = True
 
@@ -68,9 +66,7 @@ async def validate() -> bool:
     logger.info("Postgres relations: %d", pg_relation_count)
 
     # Check 6: RLS policies exist
-    rls_count = await conn.fetchval(
-        "SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public'"
-    )
+    rls_count = await conn.fetchval("SELECT COUNT(*) FROM pg_policies WHERE schemaname = 'public'")
     if rls_count < 9:
         logger.error("RLS policies missing: found %d, expected >= 9", rls_count)
         all_pass = False
@@ -89,9 +85,7 @@ async def validate() -> bool:
 
     # Check 8: Sample chunk text is not empty
     if pg_chunk_count > 0:
-        sample = await conn.fetchrow(
-            "SELECT chunk_id, text FROM chunks LIMIT 1"
-        )
+        sample = await conn.fetchrow("SELECT chunk_id, text FROM chunks LIMIT 1")
         if sample and sample["text"]:
             logger.info("Sample chunk text: %s...", sample["text"][:80])
         else:
@@ -100,9 +94,7 @@ async def validate() -> bool:
 
     # Check 9: Sample vector has correct dimensions
     if pg_vector_count > 0:
-        vec_sample = await conn.fetchrow(
-            "SELECT vector FROM chunks_vectors LIMIT 1"
-        )
+        vec_sample = await conn.fetchrow("SELECT vector FROM chunks_vectors LIMIT 1")
         if vec_sample and vec_sample["vector"]:
             vec_str = str(vec_sample["vector"])
             # pgvector format: [0.1,0.2,...] — count commas for dimension estimate

@@ -7,7 +7,7 @@ to see the state at that point. No separate versioning table needed.
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -54,9 +54,7 @@ class VersioningHandler:
             ]:
                 stats[table] = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
             try:
-                stats["total_events"] = await conn.fetchval(
-                    "SELECT COUNT(*) FROM event_store"
-                )
+                stats["total_events"] = await conn.fetchval("SELECT COUNT(*) FROM event_store")
             except Exception:
                 stats["total_events"] = 0  # event_store table not created yet
             return stats
@@ -103,10 +101,10 @@ class VersioningHandler:
 # Singleton
 # ============================================================================
 
-_versioning_handler: Optional["VersioningHandler"] = None
+_versioning_handler: VersioningHandler | None = None
 
 
-def get_versioning_handler() -> "VersioningHandler":
+def get_versioning_handler() -> VersioningHandler:
     global _versioning_handler
     if _versioning_handler is None:
         raise RuntimeError(
@@ -115,7 +113,7 @@ def get_versioning_handler() -> "VersioningHandler":
     return _versioning_handler
 
 
-def set_versioning_handler(handler: "VersioningHandler") -> None:
+def set_versioning_handler(handler: VersioningHandler) -> None:
     global _versioning_handler
     _versioning_handler = handler
 

@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from .protocol import OntologyViolationError
 from ..graph.extractor import extract_entities
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
-
+from .protocol import OntologyViolationError
 
 _REGEX_TYPE_MAP = {
     "CONCEPT": "Concept",
@@ -75,6 +74,4 @@ def _map_entity_type(raw_type: str, ontology: Ontology) -> str:
     if ontology.entity_types:
         return ontology.entity_types[0]
 
-    raise OntologyViolationError(
-        kind="entity_type", value=raw_type, allowed=ontology.entity_types
-    )
+    raise OntologyViolationError(kind="entity_type", value=raw_type, allowed=ontology.entity_types)
