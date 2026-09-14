@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+
 def test_all_new_feature_config_blocks_load() -> None:
     from src.config import load_config
 

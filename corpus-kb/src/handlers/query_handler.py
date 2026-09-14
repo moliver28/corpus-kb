@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Optional
 
 import asyncpg
 
@@ -38,7 +37,7 @@ from src.rag.reranker import create_reranker
 logger = logging.getLogger(__name__)
 
 
-def _fusion_payload(rows: list[dict[str, Any]]) -> str:
+def _fusion_payload(rows: list[asyncpg.Record]) -> str:
     """Serialize one hybrid-search side to the JSONB shape corpus.rrf_fusion expects."""
     return json.dumps(
         [
@@ -64,11 +63,11 @@ class QueryHandler:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        embedder: Optional[OllamaEmbedder] = None,
-        reranker: Optional[object] = None,
-        self_query_parser: Optional[object] = None,
-        judge: Optional[object] = None,
-        config: Optional[dict[str, object]] = None,
+        embedder: OllamaEmbedder | None = None,
+        reranker: object | None = None,
+        self_query_parser: object | None = None,
+        judge: object | None = None,
+        config: dict[str, object] | None = None,
     ) -> None:
         self._pool = pool
         self._embedder = embedder
@@ -149,7 +148,7 @@ class QueryHandler:
 
             # 1. Vector search (pgml in-database, or local Ollama with optional
             #    matryoshka two-tier retrieval).
-            vector_results: list[dict[str, Any]] = []
+            vector_results: list[asyncpg.Record] = []
             embedding_cfg = self._config.get("embedding", {}) or {}
             provider = str(embedding_cfg.get("provider", "pgml"))
 
@@ -295,13 +294,13 @@ class QueryHandler:
             # Re-attach provenance (file_path/start_line/...) from the raw
             # vector/FTS rows — corpus.rrf_fusion returns only the five fused
             # columns, so provenance must be joined back by chunk_id.
-            provenance: dict[str, dict[str, Any]] = {}
+            provenance: dict[str, dict[str, object]] = {}
             for row in vector_results:
                 provenance.setdefault(str(row["chunk_id"]), dict(row))
             for row in fts_results:
                 provenance.setdefault(str(row["chunk_id"]), dict(row))
 
-            def _to_result(row: dict[str, Any]) -> SearchResult:
+            def _to_result(row: dict[str, object]) -> SearchResult:
                 meta = provenance.get(str(row["chunk_id"]), {})
                 heading = meta.get("heading_path")
                 return SearchResult(
@@ -348,7 +347,7 @@ class QueryHandler:
 
         return fused_results
 
-    async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
+    async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, object]]:
         """Execute a read-only SQL query."""
         async with self._pool.acquire() as conn:
             await conn.execute(
@@ -586,10 +585,10 @@ class QueryHandler:
 # Singleton
 # ============================================================================
 
-_query_handler: Optional[QueryHandler] = None
+_query_handler: QueryHandler | None = None
 
 
-def get_query_handler(pool: Optional[asyncpg.Pool] = None) -> QueryHandler:
+def get_query_handler(pool: asyncpg.Pool | None = None) -> QueryHandler:
     """Get or create the singleton QueryHandler."""
     global _query_handler
     if _query_handler is None:
