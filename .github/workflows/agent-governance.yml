@@ -64,6 +64,8 @@ jobs:
             if [[ "$COMMIT_MSG" =~ ^Merge\  ]]; then continue; fi
             # Skip Co-authored-by and other footers
             if [[ "$COMMIT_MSG" =~ ^[A-Z][a-z]+-.*: ]]; then continue; fi
+            # Skip GitHub-generated squash merge commit messages like "title (#41)"
+            if [[ "$COMMIT_MSG" =~ \ \(#[0-9]+\)$ ]]; then continue; fi
             
             MSG_LEN=${#COMMIT_MSG}
             if [ $MSG_LEN -lt 10 ]; then
