@@ -89,6 +89,7 @@ def load_config(path: str | None = None) -> dict[str, object]:
         ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
         ("installer", "auto_detect"): "CORPUS_KB_INSTALL_AUTO_DETECT",
         ("installer", "profile"): "CORPUS_KB_INSTALL_PROFILE",
+        ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
     }
 
     for (section, key), env_var in env_overrides.items():
@@ -146,6 +147,7 @@ def get_default_config() -> dict[str, object]:
         },
         "installer": {
             "auto_detect": True,
+            "data_dir": str(Path.home() / ".corpus-kb"),
             "profiles": {
                 "minimal": {
                     "ram_gb_max": 8,

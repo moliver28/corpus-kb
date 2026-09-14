@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime
+import json
 import logging
 import os
 import platform
@@ -51,6 +53,68 @@ _EXTENSION_PACKAGES: dict[str, tuple[str, list[str]]] = {
 }
 
 SETUP_REQUIRED_MODELS = ("nomic-embed-text", "qwen3:4b")
+
+# Resumable installer phases. Order matters: each phase is idempotent and
+# checkpoints to a state file on success so interrupted runs can resume.
+INSTALL_PHASES: tuple[str, ...] = (
+    "compose",
+    "python",
+    "database",
+    "extensions",
+    "models",
+    "config",
+)
+INSTALL_STATE_VERSION = 1
+INSTALL_STATE_FILE_NAME = "install_state.json"
+
+
+def _install_state_dir(config: dict[str, Any]) -> Path:
+    """Return the directory for installer checkpoint state files.
+
+    Honors config.installer.data_dir when present, otherwise defaults to
+    ~/.corpus-kb so the state is user-local and writable.
+    """
+    data_dir = config.get("installer", {}).get("data_dir")
+    if data_dir:
+        return Path(str(data_dir)).expanduser()
+    return DEFAULT_CONFIG_DIR
+
+
+def _install_state_path(config: dict[str, Any]) -> Path:
+    """Return the path to the installer checkpoint state file."""
+    return _install_state_dir(config) / INSTALL_STATE_FILE_NAME
+
+
+def load_install_state(config: dict[str, Any]) -> dict[str, Any]:
+    """Load persisted installer state, returning a fresh state if missing/invalid."""
+    path = _install_state_path(config)
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            data = {}
+        if isinstance(data, dict) and data.get("version") == INSTALL_STATE_VERSION:
+            return data
+    return {
+        "version": INSTALL_STATE_VERSION,
+        "completed": [],
+        "last_run": None,
+    }
+
+
+def save_install_state(state: dict[str, Any], config: dict[str, Any]) -> None:
+    """Persist installer checkpoint state, creating parent directories if needed."""
+    path = _install_state_path(config)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    state["last_run"] = datetime.datetime.now(datetime.UTC).isoformat()
+    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
+
+
+def reset_install_state(config: dict[str, Any]) -> None:
+    """Remove persisted installer state so the next run starts from phase 1."""
+    path = _install_state_path(config)
+    if path.exists():
+        path.unlink()
 
 
 def _detect_gpu_vram_gb() -> float:
@@ -157,8 +221,7 @@ async def check_extensions(
         return None
     try:
         rows = await conn.fetch(
-            "SELECT extname, extversion FROM pg_extension "
-            "WHERE extname = ANY($1::text[])",
+            "SELECT extname, extversion FROM pg_extension WHERE extname = ANY($1::text[])",
             [name for name, _ in EXTENSIONS],
         )
     finally:
@@ -179,9 +242,7 @@ def print_doctor_report(info: dict[str, Any]) -> None:
     print(
         f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'} ({info['postgres_msg']})"
     )
-    print(
-        f"Ollama:       {'OK' if info['ollama_ok'] else 'UNREACHABLE'} ({info['ollama_msg']})"
-    )
+    print(f"Ollama:       {'OK' if info['ollama_ok'] else 'UNREACHABLE'} ({info['ollama_msg']})")
     print("Extensions:")
     extensions = info.get("extensions")
     for name, label in EXTENSIONS:
@@ -214,9 +275,7 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     info["postgres_ok"], info["postgres_msg"] = (
         await check_postgres(conn_str) if conn_str else (False, "no connection string")
     )
-    info["extensions"] = (
-        await check_extensions(conn_str) if info["postgres_ok"] else None
-    )
+    info["extensions"] = await check_extensions(conn_str) if info["postgres_ok"] else None
 
     emb_cfg = config.get("embedding", {})
     ollama_url = str(emb_cfg.get("base_url", DEFAULT_OLLAMA_URL))
@@ -297,9 +356,7 @@ async def install_database(conn_str: str, apply: bool) -> int:
         dbname = parsed.get("database", "corpus_kb")
         maintenance_dsn = conn_str.replace(f"/{dbname}", "/postgres")
         conn = await asyncpg.connect(maintenance_dsn, timeout=5)
-        exists = await conn.fetchval(
-            "SELECT 1 FROM pg_database WHERE datname = $1", dbname
-        )
+        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", dbname)
         if not exists:
             await conn.execute(f'CREATE DATABASE "{dbname}"')
             print(f"  Created database {dbname}")
@@ -313,7 +370,7 @@ async def install_database(conn_str: str, apply: bool) -> int:
     ext_rc = install_extension_packages(apply)
 
     # Run migrations.
-    from migrate import run_migrations
+    from corpus_kb._setup.migrate import run_migrations
 
     try:
         await run_migrations(conn_str)
@@ -358,9 +415,7 @@ def write_config(profile: str, config: dict[str, Any], force: bool) -> int:
     }
 
     DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DEFAULT_CONFIG_PATH.write_text(
-        yaml.safe_dump(output, sort_keys=False), encoding="utf-8"
-    )
+    DEFAULT_CONFIG_PATH.write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
     print(f"  Wrote {DEFAULT_CONFIG_PATH}")
     return 0
 
@@ -381,9 +436,9 @@ async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
     profile_cfg = profiles.get(info["profile"], {})
     model = profile_cfg.get("model", "nomic-embed-text")
 
-    conn_str = str(
-        config.get("database", {}).get("connection_string", "")
-    ) or os.environ.get("CORPUS_KB_DATABASE_URL", "")
+    conn_str = str(config.get("database", {}).get("connection_string", "")) or os.environ.get(
+        "CORPUS_KB_DATABASE_URL", ""
+    )
 
     print("\n=== Corpus-KB Installer ===")
     print(f"Detected profile: {info['profile']}")
@@ -432,23 +487,36 @@ def _step(
         print(f"  (dry run) {action}")
 
 
+def _phase_status(state: dict[str, Any], phase: str) -> str:
+    """Return a short marker showing whether a phase is already completed."""
+    completed = state.get("completed", [])
+    return "(completed)" if phase in completed else ""
+
+
 def setup_print_dry_run_steps(
     compose_cmd: str | None,
     conn_str: str,
     profile: str,
+    state: dict[str, Any] | None = None,
 ) -> None:
     """Print the exact steps the setup command would execute."""
-    total = 6
-    _step(
-        1, total, "Start the Docker compose stack", False, "run: docker compose up -d"
-    )
-    if compose_cmd:
+    if state is None:
+        state = {"completed": []}
+    total = len(INSTALL_PHASES)
+    completed = state.get("completed", [])
+
+    _step(1, total, "Start the Docker compose stack", False, "run: docker compose up -d")
+    if "compose" in completed:
+        print("  status: already completed; will be skipped")
+    elif compose_cmd:
         print(f"  command: {compose_cmd} up -d")
     else:
         print("  command: not found; install Docker to proceed")
     print(f"  services: postgres ({conn_str}), ollama (http://localhost:11434)")
 
     _step(2, total, "Install Python dependencies", False, "run: pip install -e .[dev]")
+    if "python" in completed:
+        print("  status: already completed; will be skipped")
 
     _step(
         3,
@@ -457,6 +525,8 @@ def setup_print_dry_run_steps(
         False,
         f"run migrations on {conn_str}",
     )
+    if "database" in completed:
+        print("  status: already completed; will be skipped")
 
     _step(
         4,
@@ -465,6 +535,8 @@ def setup_print_dry_run_steps(
         False,
         "query pg_extension for age, pgml, vector",
     )
+    if "extensions" in completed:
+        print("  status: already completed; will be skipped")
 
     _step(
         5,
@@ -473,6 +545,8 @@ def setup_print_dry_run_steps(
         False,
         f"run: ollama pull {', '.join(SETUP_REQUIRED_MODELS)}",
     )
+    if "models" in completed:
+        print("  status: already completed; will be skipped")
 
     _step(
         6,
@@ -481,6 +555,8 @@ def setup_print_dry_run_steps(
         False,
         f"write {DEFAULT_CONFIG_PATH} (profile: {profile})",
     )
+    if "config" in completed:
+        print("  status: already completed; will be skipped")
 
     print("\nThis was a dry run. Re-run without --dry-run to make changes.")
     print("========================\n")
@@ -518,6 +594,31 @@ def setup_start_compose(compose_cmd: str, apply: bool) -> int:
     parts = compose_cmd.split()
     cmd = [*parts, "up", "-d", "--build"]
     return _run_cmd(cmd, cwd=repo_root.parent, timeout=600)
+
+
+async def setup_verify_extensions(conn_str: str, apply: bool) -> int:
+    """Verify AGE + pgml extensions are present in Postgres.
+
+    This step is purely diagnostic: migrations are the real gate for whether
+    the extensions are usable. Re-running is a no-op.
+    """
+    print("\n[Step 4/6] Verifying PostgreSQL extensions...")
+    if not conn_str:
+        print("  No database connection string; skipping extension check.")
+        return 0
+
+    extensions = await check_extensions(conn_str)
+    if extensions is None:
+        print("  Could not connect to Postgres; skipping extension check.")
+        return 0
+
+    for name, label in EXTENSIONS:
+        installed, version = extensions[name]
+        if installed:
+            print(f"  {label} ({name}): OK v{version}")
+        else:
+            print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
+    return 0
 
 
 def setup_pull_models(apply: bool) -> int:
@@ -569,14 +670,12 @@ def setup_update_config(config: dict[str, Any], profile: str, apply: bool) -> in
             output = existing
 
     DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DEFAULT_CONFIG_PATH.write_text(
-        yaml.safe_dump(output, sort_keys=False), encoding="utf-8"
-    )
+    DEFAULT_CONFIG_PATH.write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
     print(f"  Wrote {DEFAULT_CONFIG_PATH}")
     return 0
 
 
-async def setup_cmd(config: dict[str, Any], dry_run: bool) -> int:
+async def setup_cmd(config: dict[str, Any], dry_run: bool, fresh: bool) -> int:
     """One-flow guided setup for the docker-compose stack.
 
     Steps:
@@ -586,6 +685,9 @@ async def setup_cmd(config: dict[str, Any], dry_run: bool) -> int:
       4. verify AGE + pgml extensions
       5. pull required Ollama models
       6. write/update user config
+
+    Completed phases are persisted so interrupted runs can resume with
+    ``corpus-kb setup``. Use ``--fresh`` to reset the checkpoint.
     """
     info = detect_profile()
     profiles = load_installer_profiles(config)
@@ -593,21 +695,30 @@ async def setup_cmd(config: dict[str, Any], dry_run: bool) -> int:
     profile_cfg = profiles.get(profile, {})
     recommended_model = profile_cfg.get("model", "nomic-embed-text")
 
-    conn_str = str(
-        config.get("database", {}).get("connection_string", "")
-    ) or os.environ.get("CORPUS_KB_DATABASE_URL", "")
+    conn_str = str(config.get("database", {}).get("connection_string", "")) or os.environ.get(
+        "CORPUS_KB_DATABASE_URL", ""
+    )
     if not conn_str:
         conn_str = "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb"
 
     compose_cmd = _find_compose_command()
 
+    if fresh:
+        reset_install_state(config)
+
+    state = load_install_state(config)
+
     print("\n=== Corpus-KB One-Line Setup ===")
     print(f"Detected profile: {profile}")
     print(f"Recommended embedding model: {recommended_model}")
     print(f"Database connection string: {conn_str}")
+    completed = state.get("completed", [])
+    if completed:
+        print(f"Checkpoint: {len(completed)}/{len(INSTALL_PHASES)} phases completed")
+        print(f"  Completed: {', '.join(completed)}")
 
     if dry_run:
-        setup_print_dry_run_steps(compose_cmd, conn_str, profile)
+        setup_print_dry_run_steps(compose_cmd, conn_str, profile, state)
         return 0
 
     print("\nWARNING: setup will start Docker containers, modify Python packages,")
@@ -615,19 +726,66 @@ async def setup_cmd(config: dict[str, Any], dry_run: bool) -> int:
     print("confirmation.\n")
 
     exit_code = 0
-    if compose_cmd:
+
+    # Phase 1: docker compose stack.
+    if "compose" in completed:
+        print("\n[Step 1/6] Docker compose stack already started; skipping.")
+    elif compose_cmd:
         exit_code |= setup_start_compose(compose_cmd, apply=True)
+        if not exit_code:
+            completed.append("compose")
+            save_install_state(state, config)
     else:
         print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
         print("  Install Docker, then re-run setup.")
 
-    exit_code |= install_python_deps()
-    if conn_str:
+    # Phase 2: Python dependencies.
+    if "python" in completed:
+        print("\n[Step 2/6] Python dependencies already installed; skipping.")
+    else:
+        exit_code |= install_python_deps()
+        if not exit_code:
+            completed.append("python")
+            save_install_state(state, config)
+
+    # Phase 3: database and migrations.
+    if "database" in completed:
+        print("\n[Step 3/6] Database already set up; skipping.")
+    elif conn_str:
         exit_code |= await install_database(conn_str, apply=True)
+        if not exit_code:
+            completed.append("database")
+            save_install_state(state, config)
     else:
         print("\n[Step 3/6] No database connection string; skipping database setup.")
-    exit_code |= setup_pull_models(apply=True)
-    exit_code |= setup_update_config(config, profile, apply=True)
+
+    # Phase 4: extension verification.
+    if "extensions" in completed:
+        print("\n[Step 4/6] Extensions already verified; skipping.")
+    else:
+        exit_code |= await setup_verify_extensions(conn_str, apply=True)
+        if not exit_code:
+            completed.append("extensions")
+            save_install_state(state, config)
+
+    # Phase 5: Ollama models.
+    if "models" in completed:
+        print("\n[Step 5/6] Ollama models already pulled; skipping.")
+    else:
+        exit_code |= setup_pull_models(apply=True)
+        if not exit_code:
+            completed.append("models")
+            save_install_state(state, config)
+
+    # Phase 6: user config.
+    if "config" in completed:
+        print("\n[Step 6/6] User config already written; skipping.")
+    else:
+        exit_code |= setup_update_config(config, profile, apply=True)
+        if not exit_code:
+            completed.append("config")
+            save_install_state(state, config)
+
     print_next_steps()
     return exit_code
 
@@ -681,6 +839,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Print each setup step without executing",
     )
+    setup_parser.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Reset the installer checkpoint and start from phase 1",
+    )
 
     args = parser.parse_args(argv)
     config = load_config()
@@ -690,7 +853,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install":
         return asyncio.run(install_cmd(config, args.apply, args.force))
     if args.command == "setup":
-        return asyncio.run(setup_cmd(config, args.dry_run))
+        return asyncio.run(setup_cmd(config, args.dry_run, args.fresh))
     return 1
 
 
