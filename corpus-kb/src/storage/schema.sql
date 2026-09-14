@@ -87,6 +87,21 @@ CREATE TABLE IF NOT EXISTS chunks (
     UNIQUE (tenant_id, doc_id, chunk_index)
 );
 
+-- The following columns were added by migration 007 (chunk dedup + provenance):
+--   chunk_hash VARCHAR(64)        -- content hash for dedup
+--   source_timestamp TIMESTAMPTZ  -- upstream source's own timestamp, for supersede comparisons
+--   superseded_at TIMESTAMPTZ     -- set when a newer chunk_hash replaces this row
+--   tombstoned_at TIMESTAMPTZ     -- set when the source content is removed
+-- Also added by migration 007: idx_chunks_active (tenant_id, doc_id) WHERE
+-- tombstoned_at IS NULL AND superseded_at IS NULL, and idx_chunks_hash on chunk_hash.
+
+-- The following column was added by migration 009 (contextual retrieval blurb):
+--   context_blurb TEXT  -- LLM-generated contextual summary prepended for retrieval
+-- Also added by migration 009: idx_chunks_fts_contextual, a GIN index over
+-- to_tsvector('english', coalesce(context_blurb,'') || ' ' || text). The
+-- original idx_chunks_fts (text-only) is left in place; the query layer
+-- switches to the contextual expression in this same release.
+
 CREATE INDEX idx_chunks_tenant ON chunks(tenant_id);
 CREATE INDEX idx_chunks_doc ON chunks(doc_id);
 CREATE INDEX idx_chunks_tenant_doc ON chunks(tenant_id, doc_id);
@@ -125,6 +140,18 @@ CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw
 
 CREATE INDEX idx_chunks_vectors_tenant ON chunks_vectors(tenant_id);
 CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
+
+-- The following column was added by migration 007 (chunk dedup + provenance):
+--   dimensions INT  -- embedding vector dimensionality, backfilled to 4096
+
+-- The following column and index were added by migration 010 (matryoshka
+-- two-tier ANN index, Feature 4, default off):
+--   vector_1024 vector(1024)  -- front-sliced, L2-renormalized 4096d vector
+--   CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw_1024
+--       ON chunks_vectors USING hnsw (vector_1024 vector_cosine_ops)
+--       WITH (m = 16, ef_construction = 200);
+--   (guarded in a DO block; warns and skips instead of failing if HNSW on
+--   vector_1024 is unsupported)
 
 ALTER TABLE chunks_vectors ENABLE ROW LEVEL SECURITY;
 
@@ -173,6 +200,18 @@ CREATE TABLE IF NOT EXISTS relations (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (tenant_id, source_entity_id, target_entity_id, relation_type)
 );
+
+-- The following columns were added by migration 008 (typed relations provenance):
+--   chunk_id UUID          -- source chunk the triple was extracted from (FK to chunks, ON DELETE SET NULL)
+--   confidence FLOAT       -- extractor-reported confidence score
+--   extractor_id VARCHAR(100)   -- identifier of the extraction pipeline/tool
+--   model_version VARCHAR(100)  -- LLM model version used for extraction
+--   prompt_version VARCHAR(50)  -- extraction prompt version
+-- Also added by migration 008: idx_relations_chunk on chunk_id, and the unique
+-- constraint relations_triple_chunk_uniq (tenant_id, source_entity_id,
+-- target_entity_id, relation_type, chunk_id), replacing the narrower
+-- (tenant_id, source_entity_id, target_entity_id, relation_type) constraint so
+-- the same triple asserted in different chunks keeps separate provenance rows.
 
 CREATE INDEX idx_relations_tenant ON relations(tenant_id);
 CREATE INDEX idx_relations_source ON relations(source_entity_id);

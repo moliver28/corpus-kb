@@ -50,7 +50,7 @@ def test_ontology_with_explicit_path() -> None:
     config: dict[str, object] = {"graph": {"ontology_path": "config/ontology.yaml"}}
     ont = ontology(config)
     assert len(ont.entity_types) == 9
-    assert len(ont.relation_types) == 9
+    assert len(ont.relation_types) == 11
 
 
 def test_ontology_with_fallback_path() -> None:
@@ -517,3 +517,48 @@ def test_extractor_name_defaults_to_pgml() -> None:
     """_extractor_name defaults to 'pgml' when not configured."""
     config: dict[str, object] = {"graph": {}}
     assert _extractor_name(config) == "pgml"
+
+
+# ---------------------------------------------------------------------------
+# Chunk model: dedup + contextual retrieval fields
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_model_has_dedup_and_contextual_fields() -> None:
+    c = Chunk(document_id="d", text="x", source_type="text")
+    assert c.chunk_hash is None
+    assert c.source_timestamp is None
+    assert c.context_blurb is None
+
+
+# ---------------------------------------------------------------------------
+# Content-hash dedup helper
+# ---------------------------------------------------------------------------
+
+
+def test_sha256_is_deterministic() -> None:
+    from src.tools.ingest_common import _sha256
+
+    assert _sha256("hello") == _sha256("hello")
+    assert _sha256("hello") != _sha256("world")
+
+
+# ---------------------------------------------------------------------------
+# Contextual retrieval: source_type allowlist gating
+# ---------------------------------------------------------------------------
+
+
+def test_contextual_enabled_flag_respects_source_type_allowlist() -> None:
+    from src.tools.ingest_common import _contextual_enabled
+
+    cfg = {
+        "contextual": {
+            "enabled": False,
+            "enabled_source_types": ["interview", "research"],
+        }
+    }
+    assert _contextual_enabled(cfg, source_type="interview") is True
+    assert _contextual_enabled(cfg, source_type="code") is False
+
+    cfg_forced_on = {"contextual": {"enabled": True, "enabled_source_types": []}}
+    assert _contextual_enabled(cfg_forced_on, source_type="anything") is True

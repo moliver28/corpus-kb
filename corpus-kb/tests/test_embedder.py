@@ -291,3 +291,30 @@ class TestCreateEmbedder:
         config: dict[str, object] = {"embedding": {"provider": "cloud-api"}}
         with pytest.raises(ValueError, match="cloud-api"):
             create_embedder(config, pool=None)
+
+
+# ---------------------------------------------------------------------------
+# Matryoshka slice/normalize helpers (Feature 4)
+# ---------------------------------------------------------------------------
+
+
+def test_slice_normalize_produces_unit_vector() -> None:
+    from src.rag.embedder import _slice_normalize
+
+    v = _slice_normalize([3.0, 4.0, 0.0, 0.0], dim=2)
+    assert len(v) == 2
+    norm = sum(x * x for x in v) ** 0.5
+    assert abs(norm - 1.0) < 1e-6
+
+
+def test_slice_normalize_zero_vector_is_safe() -> None:
+    from src.rag.embedder import _slice_normalize
+
+    v = _slice_normalize([0.0, 0.0, 0.0, 0.0], dim=2)
+    assert v == [0.0, 0.0]
+
+
+def test_fake_embedder_matryoshka_matches_dim() -> None:
+    e = FakeEmbedder({"embedding": {"dimensions": 4096}})
+    v = e.embed_matryoshka("x", 1024)
+    assert len(v) == 1024

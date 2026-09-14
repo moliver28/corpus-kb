@@ -10,7 +10,15 @@ from typing import Optional
 
 import asyncpg
 
-from .ingest_common import load_config_or_pass, run_pipeline
+from .ingest_common import ingest_text, load_config_or_pass, run_pipeline
+
+__all__ = [
+    "ingest_file",
+    "ingest_text",
+    "ingest_directory",
+    "list_documents",
+    "delete_document",
+]
 
 
 async def ingest_file(
@@ -24,25 +32,18 @@ async def ingest_file(
     path = Path(file_path)
     if not path.exists():
         return {"status": "error", "message": f"File not found: {path}"}
-    text = path.read_text(encoding="utf-8")
+    # Do NOT read the bytes here: run_pipeline(is_file=True) partitions the file
+    # via Unstructured and derives its text from the parsed elements, so binary
+    # formats (PDF, DOCX, ...) work instead of failing on a UTF-8 decode.
     return await run_pipeline(
-        text, _detect_source_type(path), str(path), config, pg_pool, tenant_id
+        "",
+        _detect_source_type(path),
+        str(path),
+        config,
+        pg_pool,
+        tenant_id,
+        is_file=True,
     )
-
-
-async def ingest_text(
-    text: str,
-    pg_pool: asyncpg.Pool,
-    source_type: str = "text",
-    config: Optional[dict[str, object]] = None,
-    tenant_id: str = "00000000-0000-0000-0000-000000000001",
-    source: str = "raw_text",
-) -> dict[str, object]:
-    """Ingest raw text with optional type hint and source identifier."""
-    if source_type not in {"code", "markdown", "text"}:
-        return {"status": "error", "message": f"Invalid source_type: {source_type}"}
-    config = load_config_or_pass(config)
-    return await run_pipeline(text, source_type, source, config, pg_pool, tenant_id)
 
 
 async def ingest_directory(

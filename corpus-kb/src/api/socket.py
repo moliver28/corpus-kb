@@ -150,9 +150,22 @@ class JSONRPCServer:
                 tenant_id=UUID(tenant_id),
                 query=params["query"],
                 k=params.get("k", 10),
+                self_query=params.get("self_query"),
             )
             results = await get_query_handler().handle_search(query)
             return {"status": "success", "result": [r.model_dump() for r in results]}
+
+        elif method == "query":
+            from src.handlers.router_handler import get_router_handler
+            from src.domain.models import RoutedQuery
+
+            routed_query = RoutedQuery(
+                tenant_id=UUID(tenant_id),
+                query=params["query"],
+                k=params.get("k", 10),
+            )
+            result = await get_router_handler().handle_routed_query(routed_query)
+            return {"status": "success", "result": result.model_dump(mode="json")}
 
         elif method == "list_documents":
             from handlers.query_handler import get_query_handler
@@ -177,6 +190,16 @@ class JSONRPCServer:
                 metadata=params.get("metadata", {}),
             )
             return get_command_handler().handle_add_entity(cmd)
+
+        elif method == "verify_answer":
+            from src.handlers.query_handler import get_query_handler
+            from src.domain.models import VerifyAnswerQuery
+
+            query = VerifyAnswerQuery(
+                answer=params.get("answer", ""), chunk_ids=params.get("chunk_ids", [])
+            )
+            result = await get_query_handler().handle_verify_answer(query)
+            return {"status": "success", "result": result.model_dump(mode="json")}
 
         elif method == "add_relation":
             from handlers.command_handler import get_command_handler

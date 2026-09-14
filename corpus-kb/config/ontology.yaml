@@ -19,3 +19,5 @@ relation_types:
   - CONTRADICTS
   - RELATED_TO
   - INSTANCE_OF
+  - DEPENDS_ON
+  - CALLS
