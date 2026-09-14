@@ -7,11 +7,11 @@ from typing import cast
 
 import pytest
 
-from src.config import load_config
-from src.ontology import load_ontology
-from src.storage.graph_store import PostgresGraphStore
-from src.tools.ingest_tools import ingest_file
-from src.utils.models import Entity
+from corpus_kb.config import load_config
+from corpus_kb.ontology import load_ontology
+from corpus_kb.storage.graph_store import PostgresGraphStore
+from corpus_kb.tools.ingest_tools import ingest_file
+from corpus_kb.utils.models import Entity
 
 _FIXTURE_DIR = Path(__file__).with_name("fixtures") / "langextract_recorded"
 _SAMPLE_MD = Path(__file__).with_name("fixtures") / "ontology_sample.md"

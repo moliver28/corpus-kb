@@ -62,8 +62,8 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_ingest_file_creates_document(self, clean_db, db_conn):
         """Test 1: Ingest a file → verify document appears in Postgres."""
-        from handlers.command_handler import get_command_handler, reset_command_handler
-        from domain.models import IngestTextCommand
+        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
+        from corpus_kb.domain.models import IngestTextCommand
 
         reset_command_handler()
         handler = get_command_handler()
@@ -89,8 +89,8 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_search_returns_results(self, clean_db, db_conn):
         """Test 2: Ingest text → search → verify results returned."""
-        from handlers.command_handler import get_command_handler, reset_command_handler
-        from domain.models import IngestTextCommand
+        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
+        from corpus_kb.domain.models import IngestTextCommand
 
         reset_command_handler()
         handler = get_command_handler()
@@ -107,8 +107,8 @@ class TestE2EIntegration:
         await asyncio.sleep(1.0)
 
         # Search via query handler
-        from handlers.query_handler import QueryHandler
-        from domain.models import SearchQuery
+        from corpus_kb.handlers.query_handler import QueryHandler
+        from corpus_kb.domain.models import SearchQuery
 
         query_handler = QueryHandler(db_conn.__dict__.get("_pool", db_conn))
         # Use direct connection for test
@@ -123,8 +123,8 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_add_entity_via_command(self, clean_db, db_conn):
         """Test 3: Add entity via command handler → verify in Postgres."""
-        from handlers.command_handler import get_command_handler, reset_command_handler
-        from domain.models import AddEntityCommand
+        from corpus_kb.handlers.command_handler import get_command_handler, reset_command_handler
+        from corpus_kb.domain.models import AddEntityCommand
 
         reset_command_handler()
         handler = get_command_handler()
@@ -143,7 +143,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_idempotency_prevents_duplicates(self, clean_db, db_conn):
         """Test 4: Send same command twice → verify deduplication."""
-        from handlers.idempotency import IdempotencyChecker
+        from corpus_kb.handlers.idempotency import IdempotencyChecker
         from uuid import uuid4
 
         checker = IdempotencyChecker(db_conn.__dict__.get("_pool", db_conn))
@@ -203,7 +203,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_http_app_creates(self, clean_db):
         """Test 6: HTTP app can be created without errors."""
-        from api.http import create_http_app
+        from corpus_kb.api.http import create_http_app
 
         app = create_http_app()
         assert app is not None
@@ -212,7 +212,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_socket_server_creates(self, clean_db):
         """Test 7: Socket server can be created without errors."""
-        from api.socket import get_socket_server, reset_socket_server
+        from corpus_kb.api.socket import get_socket_server, reset_socket_server
 
         reset_socket_server()
         server = get_socket_server()
@@ -222,7 +222,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_projection_checkpoint_roundtrip(self, clean_db, db_conn):
         """Test 8: Checkpoint manager can set and get checkpoints."""
-        from projections.checkpoint import CheckpointManager
+        from corpus_kb.projections.checkpoint import CheckpointManager
 
         mgr = CheckpointManager(db_conn.__dict__.get("_pool", db_conn))
 
@@ -246,7 +246,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_dlq_record_and_list(self, clean_db, db_conn):
         """Test 9: DLQ can record and list failures."""
-        from projections.dlq import DLQHandler
+        from corpus_kb.projections.dlq import DLQHandler
 
         handler = DLQHandler(db_conn.__dict__.get("_pool", db_conn))
 
@@ -274,7 +274,7 @@ class TestE2EIntegration:
     @pytest.mark.asyncio
     async def test_error_handling_returns_error_dict(self):
         """Test 10: Error handling decorator returns structured error dict."""
-        from handlers.error_handling import handle_errors
+        from corpus_kb.handlers.error_handling import handle_errors
 
         @handle_errors(timeout_seconds=1.0, max_retries=1)
         async def failing_function():

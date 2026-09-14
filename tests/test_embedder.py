@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from ollama._types import EmbedResponse
 
-from src.rag.embedder import (
+from corpus_kb.rag.embedder import (
     FakeEmbedder,
     OllamaEmbedder,
     PgmlEmbedder,

@@ -18,8 +18,8 @@ import asyncpg
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.config import load_config
-from src.tools.ingest_tools import ingest_file
+from corpus_kb.config import load_config
+from corpus_kb.tools.ingest_tools import ingest_file
 
 
 async def main() -> None:

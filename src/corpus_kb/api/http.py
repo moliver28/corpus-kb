@@ -23,7 +23,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from domain.models import (
+from corpus_kb.domain.models import (
     AddEntityCommand,
     AddRelationCommand,
     IngestDirectoryCommand,
@@ -60,7 +60,7 @@ async def _parse_body(request: Request) -> dict[str, Any]:
 
 async def ingest_file(request: Request) -> JSONResponse:
     """POST /api/ingest/file — ingest a file from disk."""
-    from handlers.command_handler import get_command_handler
+    from corpus_kb.handlers.command_handler import get_command_handler
 
     body = await _parse_body(request)
     try:
@@ -84,7 +84,7 @@ async def ingest_file(request: Request) -> JSONResponse:
 
 async def ingest_text(request: Request) -> JSONResponse:
     """POST /api/ingest/text — ingest raw text."""
-    from handlers.command_handler import get_command_handler
+    from corpus_kb.handlers.command_handler import get_command_handler
 
     body = await _parse_body(request)
     try:
@@ -108,7 +108,7 @@ async def ingest_text(request: Request) -> JSONResponse:
 
 async def ingest_directory(request: Request) -> JSONResponse:
     """POST /api/ingest/directory — ingest all files in a directory."""
-    from handlers.command_handler import get_command_handler
+    from corpus_kb.handlers.command_handler import get_command_handler
 
     body = await _parse_body(request)
     try:
@@ -131,7 +131,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
 
 async def search(request: Request) -> JSONResponse:
     """POST /api/search — hybrid vector + FTS search."""
-    from handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_handler import get_query_handler
 
     body = await _parse_body(request)
     try:
@@ -157,7 +157,7 @@ async def search(request: Request) -> JSONResponse:
 
 async def search_similar(request: Request) -> JSONResponse:
     """POST /api/search/similar — find chunks similar to a given chunk."""
-    from handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_handler import get_query_handler
 
     body = await _parse_body(request)
     try:
@@ -182,7 +182,7 @@ async def search_similar(request: Request) -> JSONResponse:
 
 async def search_context(request: Request) -> JSONResponse:
     """POST /api/search/context — search with surrounding context chunks."""
-    from handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_handler import get_query_handler
 
     body = await _parse_body(request)
     try:
@@ -208,7 +208,7 @@ async def search_context(request: Request) -> JSONResponse:
 
 async def query_sql(request: Request) -> JSONResponse:
     """POST /api/query/sql — execute a read-only SQL query."""
-    from handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_handler import get_query_handler
 
     body = await _parse_body(request)
     try:
@@ -231,7 +231,7 @@ async def query_sql(request: Request) -> JSONResponse:
 
 async def list_documents(request: Request) -> JSONResponse:
     """GET /api/documents — list documents with pagination."""
-    from handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_handler import get_query_handler
 
     try:
         query = ListDocumentsQuery(
@@ -257,7 +257,7 @@ async def list_documents(request: Request) -> JSONResponse:
 
 async def list_entities(request: Request) -> JSONResponse:
     """GET /api/entities — list entities, optionally filtered by type."""
-    from handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_handler import get_query_handler
 
     try:
         query = ListEntitiesQuery(
@@ -283,7 +283,7 @@ async def list_entities(request: Request) -> JSONResponse:
 
 async def add_entity(request: Request) -> JSONResponse:
     """POST /api/entities — add an entity to the knowledge graph."""
-    from handlers.command_handler import get_command_handler
+    from corpus_kb.handlers.command_handler import get_command_handler
 
     body = await _parse_body(request)
     try:
@@ -307,7 +307,7 @@ async def add_entity(request: Request) -> JSONResponse:
 
 async def add_relation(request: Request) -> JSONResponse:
     """POST /api/relations — add a relation between two entities."""
-    from handlers.command_handler import get_command_handler
+    from corpus_kb.handlers.command_handler import get_command_handler
 
     body = await _parse_body(request)
     try:
@@ -332,8 +332,8 @@ async def add_relation(request: Request) -> JSONResponse:
 
 
 async def delete_document(request):
-    from handlers.command_handler import get_command_handler
-    from domain.models import DeleteDocumentCommand
+    from corpus_kb.handlers.command_handler import get_command_handler
+    from corpus_kb.domain.models import DeleteDocumentCommand
 
     doc_id = request.path_params.get("doc_id")
     try:
@@ -346,7 +346,7 @@ async def delete_document(request):
 
 async def search_graph(request: Request) -> JSONResponse:
     """POST /api/graph/search - search entities by name."""
-    from handlers.graph_handler import get_graph_handler
+    from corpus_kb.handlers.graph_handler import get_graph_handler
 
     body = await _parse_body(request)
     try:
@@ -367,7 +367,7 @@ async def search_graph(request: Request) -> JSONResponse:
 
 async def bfs_traversal(request: Request) -> JSONResponse:
     """POST /api/graph/bfs - BFS traversal from an entity."""
-    from handlers.graph_handler import get_graph_handler
+    from corpus_kb.handlers.graph_handler import get_graph_handler
 
     body = await _parse_body(request)
     try:
@@ -387,7 +387,7 @@ async def bfs_traversal(request: Request) -> JSONResponse:
 
 async def get_entity_relations(request: Request) -> JSONResponse:
     """GET /api/graph/relations/{entity_id} - get relations for an entity."""
-    from handlers.graph_handler import get_graph_handler
+    from corpus_kb.handlers.graph_handler import get_graph_handler
 
     entity_id = request.path_params.get("entity_id")
     try:
@@ -406,7 +406,7 @@ async def get_entity_relations(request: Request) -> JSONResponse:
 
 async def add_tag_route(request: Request) -> JSONResponse:
     """POST /api/tags - create a tag."""
-    from handlers.tag_handler import get_tag_handler
+    from corpus_kb.handlers.tag_handler import get_tag_handler
 
     body = await _parse_body(request)
     try:
@@ -427,7 +427,7 @@ async def add_tag_route(request: Request) -> JSONResponse:
 
 async def tag_document_route(request: Request) -> JSONResponse:
     """POST /api/documents/{doc_id}/tags - apply tag to document."""
-    from handlers.tag_handler import get_tag_handler
+    from corpus_kb.handlers.tag_handler import get_tag_handler
 
     body = await _parse_body(request)
     doc_id = request.path_params.get("doc_id")
@@ -448,7 +448,7 @@ async def tag_document_route(request: Request) -> JSONResponse:
 
 async def get_document_tags_route(request: Request) -> JSONResponse:
     """GET /api/documents/{doc_id}/tags - list tags for a document."""
-    from handlers.tag_handler import get_tag_handler
+    from corpus_kb.handlers.tag_handler import get_tag_handler
 
     doc_id = request.path_params.get("doc_id")
     try:
@@ -467,7 +467,7 @@ async def get_document_tags_route(request: Request) -> JSONResponse:
 
 async def set_metadata_route(request: Request) -> JSONResponse:
     """POST /api/metadata - set metadata key-value."""
-    from handlers.tag_handler import get_tag_handler
+    from corpus_kb.handlers.tag_handler import get_tag_handler
 
     body = await _parse_body(request)
     try:
@@ -489,7 +489,7 @@ async def set_metadata_route(request: Request) -> JSONResponse:
 
 async def get_metadata_route(request: Request) -> JSONResponse:
     """GET /api/metadata - get metadata."""
-    from handlers.tag_handler import get_tag_handler
+    from corpus_kb.handlers.tag_handler import get_tag_handler
 
     try:
         handler = get_tag_handler()
@@ -510,7 +510,7 @@ async def get_metadata_route(request: Request) -> JSONResponse:
 
 async def list_versions(request: Request) -> JSONResponse:
     """GET /api/versions - list event store versions."""
-    from handlers.versioning_handler import get_versioning_handler
+    from corpus_kb.handlers.versioning_handler import get_versioning_handler
 
     try:
         handler = get_versioning_handler()
@@ -527,7 +527,7 @@ async def list_versions(request: Request) -> JSONResponse:
 
 async def get_stats(request: Request) -> JSONResponse:
     """GET /api/stats - get database statistics."""
-    from handlers.versioning_handler import get_versioning_handler
+    from corpus_kb.handlers.versioning_handler import get_versioning_handler
 
     try:
         handler = get_versioning_handler()
@@ -544,7 +544,7 @@ async def get_stats(request: Request) -> JSONResponse:
 
 async def sql_tables(request: Request) -> JSONResponse:
     """GET /api/tables - list all database tables."""
-    from handlers.versioning_handler import get_versioning_handler
+    from corpus_kb.handlers.versioning_handler import get_versioning_handler
 
     try:
         handler = get_versioning_handler()
@@ -561,7 +561,7 @@ async def sql_tables(request: Request) -> JSONResponse:
 
 async def document_stats(request: Request) -> JSONResponse:
     """GET /api/document-stats - aggregate document statistics."""
-    from handlers.versioning_handler import get_versioning_handler
+    from corpus_kb.handlers.versioning_handler import get_versioning_handler
 
     try:
         handler = get_versioning_handler()

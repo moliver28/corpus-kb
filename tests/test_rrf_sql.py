@@ -18,8 +18,8 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
-from src.domain.models import SearchQuery
-from src.handlers.query_handler import QueryHandler
+from corpus_kb.domain.models import SearchQuery
+from corpus_kb.handlers.query_handler import QueryHandler
 
 DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
 CONNECT_TIMEOUT = 3

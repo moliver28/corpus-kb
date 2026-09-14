@@ -13,8 +13,8 @@ import logging
 from typing import Any, Optional
 from uuid import UUID
 
-from src.storage.graph_store import GraphStore
-from src.utils.models import Entity, Relation
+from corpus_kb.storage.graph_store import GraphStore
+from corpus_kb.utils.models import Entity, Relation
 
 logger = logging.getLogger(__name__)
 

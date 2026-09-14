@@ -14,8 +14,8 @@ from uuid import UUID, uuid4
 import asyncpg
 import pytest
 
-from src.domain.models import SearchQuery
-from src.handlers.query_handler import QueryHandler
+from corpus_kb.domain.models import SearchQuery
+from corpus_kb.handlers.query_handler import QueryHandler
 
 
 def _make_pool(side_effect: list[object]) -> MagicMock:

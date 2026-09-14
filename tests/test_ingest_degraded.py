@@ -7,8 +7,8 @@ from typing import cast
 
 import pytest
 
-from src.config import load_config
-from src.tools.ingest_tools import ingest_file
+from corpus_kb.config import load_config
+from corpus_kb.tools.ingest_tools import ingest_file
 
 _FIXTURE_DIR = Path(__file__).with_name("fixtures") / "langextract_recorded"
 _SAMPLE_MD = Path(__file__).with_name("fixtures") / "ontology_sample.md"

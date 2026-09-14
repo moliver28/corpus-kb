@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from src.storage.llamaindex_backend import (
+from corpus_kb.storage.llamaindex_backend import (
     DimensionMismatchError,
     LlamaIndexPostgresBackend,
 )

@@ -6,7 +6,7 @@ import inspect
 
 import pytest
 
-from src.tools import ingest_tools
+from corpus_kb.tools import ingest_tools
 
 
 @pytest.mark.asyncio

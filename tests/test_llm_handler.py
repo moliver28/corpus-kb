@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, patch
 import httpx
 import pytest
 
-from src.config import get_default_config
-from src.handlers import LlmHandler
-from src.handlers.llm_handler import LlmHandler as DirectLlmHandler
+from corpus_kb.config import get_default_config
+from corpus_kb.handlers import LlmHandler
+from corpus_kb.handlers.llm_handler import LlmHandler as DirectLlmHandler
 
 _CONFIG: dict[str, object] = {
     "llm": {

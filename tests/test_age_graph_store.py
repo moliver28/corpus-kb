@@ -18,9 +18,9 @@ from typing import Any, Optional
 import asyncpg
 import pytest
 
-from src.storage.age_graph_store import AgeGraphStore, AgeUnavailableError
-from src.storage.graph_store import DEFAULT_TENANT_ID, GraphStore
-from src.utils.models import Chunk, Document, Entity, Relation
+from corpus_kb.storage.age_graph_store import AgeGraphStore, AgeUnavailableError
+from corpus_kb.storage.graph_store import DEFAULT_TENANT_ID, GraphStore
+from corpus_kb.utils.models import Chunk, Document, Entity, Relation
 
 LIVE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
 

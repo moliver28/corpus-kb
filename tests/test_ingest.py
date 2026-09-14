@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from src.graph.extractor import extract_entities
-from src.storage.graph_store import PostgresGraphStore
-from src.tools.ingest_tools import delete_document, ingest_text
-from src.utils.models import Entity
+from corpus_kb.graph.extractor import extract_entities
+from corpus_kb.storage.graph_store import PostgresGraphStore
+from corpus_kb.tools.ingest_tools import delete_document, ingest_text
+from corpus_kb.utils.models import Entity
 
 
 # ============================================================================

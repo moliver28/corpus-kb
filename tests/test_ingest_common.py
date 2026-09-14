@@ -6,11 +6,11 @@ from typing import Any
 
 import pytest
 
-from src.extraction.pgml_backend import PgmlExtractor
-from src.extraction.regex_backend import RegexExtractor
-from src.ontology import load_ontology
-from src.rag.embedder import OllamaEmbedder
-from src.tools.ingest_common import (
+from corpus_kb.extraction.pgml_backend import PgmlExtractor
+from corpus_kb.extraction.regex_backend import RegexExtractor
+from corpus_kb.ontology import load_ontology
+from corpus_kb.rag.embedder import OllamaEmbedder
+from corpus_kb.tools.ingest_common import (
     _extract_entities_flag,
     _extractor_name,
     embed_chunks,
@@ -18,7 +18,7 @@ from src.tools.ingest_common import (
     load_config_or_pass,
     ontology,
 )
-from src.utils.models import Chunk, Entity
+from corpus_kb.utils.models import Chunk, Entity
 
 
 # ---------------------------------------------------------------------------

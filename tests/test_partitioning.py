@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from src.chunking.unstructured_chunker import chunk_elements
-from src.partitioning import partition
+from corpus_kb.chunking.unstructured_chunker import chunk_elements
+from corpus_kb.partitioning import partition
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 

@@ -8,15 +8,15 @@ from pathlib import Path
 import pytest
 from unittest.mock import MagicMock
 
-from src.extraction import (
+from corpus_kb.extraction import (
     LangExtractExtractor,
     OntologyViolationError,
     PgmlExtractor,
     RegexExtractor,
     create_extractor,
 )
-from src.ontology import load_ontology
-from src.utils.models import Chunk
+from corpus_kb.ontology import load_ontology
+from corpus_kb.utils.models import Chunk
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "langextract_recorded"
 

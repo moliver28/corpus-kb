@@ -17,7 +17,7 @@ from typing import Any, Optional, cast
 
 import asyncpg
 
-from domain.models import (
+from corpus_kb.domain.models import (
     DocumentResult,
     EntityResult,
     ListDocumentsQuery,
@@ -28,9 +28,9 @@ from domain.models import (
     SearchResult,
     SearchSimilarQuery,
 )
-from src.config import load_config
-from src.rag.embedder import OllamaEmbedder
-from src.rag.reranker import Reranker, create_reranker
+from corpus_kb.config import load_config
+from corpus_kb.rag.embedder import OllamaEmbedder
+from corpus_kb.rag.reranker import Reranker, create_reranker
 
 logger = logging.getLogger(__name__)
 

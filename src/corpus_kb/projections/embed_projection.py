@@ -18,9 +18,9 @@ from uuid import UUID
 
 import asyncpg
 
-from projections.checkpoint import CheckpointManager
-from projections.dlq import DLQHandler
-from src.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
+from corpus_kb.projections.checkpoint import CheckpointManager
+from corpus_kb.projections.dlq import DLQHandler
+from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
 
 logger = logging.getLogger(__name__)
 

@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Optional
 import asyncpg
 
 if TYPE_CHECKING:
-    from src.storage.graph_store import GraphStore
+    from corpus_kb.storage.graph_store import GraphStore
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ async def create_graph_store(
     PostgresGraphStore when Apache AGE is unavailable. backend="postgres"
     selects PostgresGraphStore directly.
     """
-    from src.storage import AgeGraphStore, AgeUnavailableError, PostgresGraphStore
+    from corpus_kb.storage import AgeGraphStore, AgeUnavailableError, PostgresGraphStore
 
     graph_cfg = cfg.get("graph", {})
     backend = graph_cfg.get("backend", "age")
@@ -112,14 +112,14 @@ async def startup(
     pool = await initialize_postgres_pool(conn_str)
 
     # 2. Eventsourcing application
-    from domain.application import get_app
+    from corpus_kb.domain.application import get_app
 
     app = get_app(conn_str)
 
     # 3. Handlers
-    from handlers.command_handler import get_command_handler
-    from handlers.query_handler import set_query_handler, QueryHandler
-    from handlers.idempotency import set_idempotency_checker, IdempotencyChecker
+    from corpus_kb.handlers.command_handler import get_command_handler
+    from corpus_kb.handlers.query_handler import set_query_handler, QueryHandler
+    from corpus_kb.handlers.idempotency import set_idempotency_checker, IdempotencyChecker
 
     command_handler = get_command_handler(cfg, pool)
     query_handler = QueryHandler(pool)
@@ -127,9 +127,9 @@ async def startup(
     set_idempotency_checker(IdempotencyChecker(pool))
 
     # 3b. Graph, Tag, Versioning handlers
-    from handlers.graph_handler import GraphHandler, set_graph_handler
-    from handlers.tag_handler import TagHandler, set_tag_handler
-    from handlers.versioning_handler import VersioningHandler, set_versioning_handler
+    from corpus_kb.handlers.graph_handler import GraphHandler, set_graph_handler
+    from corpus_kb.handlers.tag_handler import TagHandler, set_tag_handler
+    from corpus_kb.handlers.versioning_handler import VersioningHandler, set_versioning_handler
 
     graph_store = await create_graph_store(cfg, pool)
     set_graph_handler(GraphHandler(graph_store))
@@ -137,10 +137,10 @@ async def startup(
     set_versioning_handler(VersioningHandler(pool))
 
     # 4. Projections
-    from projections.embed_projection import set_embed_projection, EmbedChunksProjection
-    from projections.checkpoint import set_checkpoint_manager, CheckpointManager
-    from projections.dlq import set_dlq_handler, DLQHandler
-    from projections.documents_projection import (
+    from corpus_kb.projections.embed_projection import set_embed_projection, EmbedChunksProjection
+    from corpus_kb.projections.checkpoint import set_checkpoint_manager, CheckpointManager
+    from corpus_kb.projections.dlq import set_dlq_handler, DLQHandler
+    from corpus_kb.projections.documents_projection import (
         set_documents_projection,
         DocumentsProjection,
     )
@@ -151,7 +151,7 @@ async def startup(
     set_dlq_handler(dlq_handler)
 
     # Embedder for projection (provider selected by embedding.provider)
-    from src.rag import create_embedder
+    from corpus_kb.rag import create_embedder
 
     embedder = create_embedder(cfg, pool)
     embed_projection = EmbedChunksProjection(
@@ -163,18 +163,18 @@ async def startup(
     set_documents_projection(docs_projection)
 
     # 4b. LlamaIndex RAG backend (additive, Ollama-only)
-    from storage.llamaindex_backend import LlamaIndexPostgresBackend
+    from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
 
     rag_backend = LlamaIndexPostgresBackend(cfg)
     await rag_backend.initialize()
 
     # 5. HTTP app
-    from api.http import create_http_app
+    from corpus_kb.api.http import create_http_app
 
     http_app = create_http_app()
 
     # 6. Socket server
-    from api.socket import get_socket_server
+    from corpus_kb.api.socket import get_socket_server
 
     socket_server = get_socket_server()
 

@@ -20,9 +20,9 @@ from uuid import UUID
 import asyncpg
 import pytest
 
-from src.storage.age_graph_store import AgeUnavailableError
-from src.storage.graph_store import DEFAULT_TENANT_ID, GraphStore
-from src.utils.models import Entity, Relation
+from corpus_kb.storage.age_graph_store import AgeUnavailableError
+from corpus_kb.storage.graph_store import DEFAULT_TENANT_ID, GraphStore
+from corpus_kb.utils.models import Entity, Relation
 
 TENANT_ID = UUID("00000000-0000-0000-0000-000000000001")
 OTHER_TENANT = UUID("00000000-0000-0000-0000-000000000002")
@@ -160,8 +160,8 @@ class TestCreateGraphStore:
     @pytest.mark.asyncio
     async def test_age_backend_returns_age_store(self) -> None:
         """Given graph.backend="age" and AGE available, return AgeGraphStore."""
-        from src.server_wiring import create_graph_store
-        from src.storage.age_graph_store import AgeGraphStore
+        from corpus_kb.server_wiring import create_graph_store
+        from corpus_kb.storage.age_graph_store import AgeGraphStore
 
         pool = FakePool(age_present=True)
         cfg: dict[str, object] = {"graph": {"backend": "age"}}
@@ -173,8 +173,8 @@ class TestCreateGraphStore:
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Given graph.backend="age" but AGE absent, fall back and warn."""
-        from src.server_wiring import create_graph_store
-        from src.storage.graph_store import PostgresGraphStore
+        from corpus_kb.server_wiring import create_graph_store
+        from corpus_kb.storage.graph_store import PostgresGraphStore
 
         class RaisingAgeStore(GraphStore):
             def __init__(
@@ -234,8 +234,8 @@ class TestCreateGraphStore:
     @pytest.mark.asyncio
     async def test_postgres_backend_returns_postgres_store(self) -> None:
         """Given graph.backend="postgres", return PostgresGraphStore."""
-        from src.server_wiring import create_graph_store
-        from src.storage.graph_store import PostgresGraphStore
+        from corpus_kb.server_wiring import create_graph_store
+        from corpus_kb.storage.graph_store import PostgresGraphStore
 
         pool = object()
         cfg: dict[str, object] = {"graph": {"backend": "postgres"}}
@@ -245,7 +245,7 @@ class TestCreateGraphStore:
     @pytest.mark.asyncio
     async def test_unknown_backend_raises(self) -> None:
         """Given an unknown graph.backend, raise a clear error."""
-        from src.server_wiring import create_graph_store
+        from corpus_kb.server_wiring import create_graph_store
 
         pool = object()
         cfg: dict[str, object] = {"graph": {"backend": "nope"}}
@@ -255,9 +255,9 @@ class TestCreateGraphStore:
     @pytest.mark.asyncio
     async def test_fresh_calls_select_per_current_config(self) -> None:
         """Two fresh wiring calls with different backends yield different stores."""
-        from src.server_wiring import create_graph_store
-        from src.storage.age_graph_store import AgeGraphStore
-        from src.storage.graph_store import PostgresGraphStore
+        from corpus_kb.server_wiring import create_graph_store
+        from corpus_kb.storage.age_graph_store import AgeGraphStore
+        from corpus_kb.storage.graph_store import PostgresGraphStore
 
         age_pool = FakePool(age_present=True)
         postgres_pool = object()
@@ -283,8 +283,8 @@ class TestGraphWiringLiveFallback:
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
         """Given backend="age" on a PG16 server without AGE, fall back gracefully."""
-        from src.server_wiring import create_graph_store
-        from src.storage.graph_store import PostgresGraphStore
+        from corpus_kb.server_wiring import create_graph_store
+        from corpus_kb.storage.graph_store import PostgresGraphStore
 
         dsn = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
         try:
@@ -319,7 +319,7 @@ class TestGraphHandlerDelegation:
     @pytest.mark.asyncio
     async def test_handle_search_graph_delegates(self) -> None:
         """handle_search_graph calls graph_store.search_entities and maps results."""
-        from src.handlers.graph_handler import GraphHandler
+        from corpus_kb.handlers.graph_handler import GraphHandler
 
         fake = FakeGraphStore()
         handler = GraphHandler(fake)
@@ -339,7 +339,7 @@ class TestGraphHandlerDelegation:
     @pytest.mark.asyncio
     async def test_handle_bfs_delegates(self) -> None:
         """handle_bfs calls graph_store.bfs and returns the store result."""
-        from src.handlers.graph_handler import GraphHandler
+        from corpus_kb.handlers.graph_handler import GraphHandler
 
         fake = FakeGraphStore()
         handler = GraphHandler(fake)
@@ -360,7 +360,7 @@ class TestGraphHandlerDelegation:
     @pytest.mark.asyncio
     async def test_handle_get_entity_relations_delegates(self) -> None:
         """handle_get_entity_relations calls graph_store.get_entity_relations."""
-        from src.handlers.graph_handler import GraphHandler
+        from corpus_kb.handlers.graph_handler import GraphHandler
 
         fake = FakeGraphStore()
         handler = GraphHandler(fake)
@@ -382,7 +382,7 @@ class TestGraphHandlerDelegation:
     @pytest.mark.asyncio
     async def test_handler_does_not_acquire_pool_connections(self) -> None:
         """GraphHandler with an injected store does not touch the asyncpg pool."""
-        from src.handlers.graph_handler import GraphHandler
+        from corpus_kb.handlers.graph_handler import GraphHandler
 
         pool = FakePool()
         fake = FakeGraphStore()
@@ -395,7 +395,7 @@ class TestGraphHandlerDelegation:
 
     def test_public_method_signatures_unchanged(self) -> None:
         """The three public handler methods keep their original signatures."""
-        from src.handlers.graph_handler import GraphHandler
+        from corpus_kb.handlers.graph_handler import GraphHandler
 
         search_sig = inspect.signature(GraphHandler.handle_search_graph)
         bfs_sig = inspect.signature(GraphHandler.handle_bfs)

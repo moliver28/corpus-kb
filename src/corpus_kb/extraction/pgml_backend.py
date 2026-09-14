@@ -33,7 +33,7 @@ class PgmlExtractor:
 
     def _get_fallback(self) -> Extractor:
         if self._fallback is None:
-            from src.extraction.regex_backend import RegexExtractor
+            from corpus_kb.extraction.regex_backend import RegexExtractor
 
             self._fallback = RegexExtractor()
         return self._fallback

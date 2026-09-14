@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from src.server_wiring import startup
-from src.tools.ingest_common import embed_chunks
-from src.utils.models import Chunk
+from corpus_kb.server_wiring import startup
+from corpus_kb.tools.ingest_common import embed_chunks
+from corpus_kb.utils.models import Chunk
 
 
 @pytest.mark.asyncio

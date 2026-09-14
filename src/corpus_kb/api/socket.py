@@ -119,8 +119,8 @@ class JSONRPCServer:
         tenant_id = params.get("tenant_id", DEFAULT_TENANT)
 
         if method == "ingest_file":
-            from handlers.command_handler import get_command_handler
-            from domain.models import IngestFileCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
+            from corpus_kb.domain.models import IngestFileCommand
 
             cmd = IngestFileCommand(
                 tenant_id=UUID(tenant_id),
@@ -131,8 +131,8 @@ class JSONRPCServer:
             return get_command_handler().handle_ingest_file(cmd)
 
         elif method == "ingest_text":
-            from handlers.command_handler import get_command_handler
-            from domain.models import IngestTextCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
+            from corpus_kb.domain.models import IngestTextCommand
 
             cmd = IngestTextCommand(
                 tenant_id=UUID(tenant_id),
@@ -143,8 +143,8 @@ class JSONRPCServer:
             return get_command_handler().handle_ingest_text(cmd)
 
         elif method == "search":
-            from handlers.query_handler import get_query_handler
-            from domain.models import SearchQuery
+            from corpus_kb.handlers.query_handler import get_query_handler
+            from corpus_kb.domain.models import SearchQuery
 
             query = SearchQuery(
                 tenant_id=UUID(tenant_id),
@@ -155,8 +155,8 @@ class JSONRPCServer:
             return {"status": "success", "result": [r.model_dump() for r in results]}
 
         elif method == "list_documents":
-            from handlers.query_handler import get_query_handler
-            from domain.models import ListDocumentsQuery
+            from corpus_kb.handlers.query_handler import get_query_handler
+            from corpus_kb.domain.models import ListDocumentsQuery
 
             query = ListDocumentsQuery(
                 tenant_id=UUID(tenant_id),
@@ -167,8 +167,8 @@ class JSONRPCServer:
             return {"status": "success", "result": [r.model_dump() for r in results]}
 
         elif method == "add_entity":
-            from handlers.command_handler import get_command_handler
-            from domain.models import AddEntityCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
+            from corpus_kb.domain.models import AddEntityCommand
 
             cmd = AddEntityCommand(
                 tenant_id=UUID(tenant_id),
@@ -179,8 +179,8 @@ class JSONRPCServer:
             return get_command_handler().handle_add_entity(cmd)
 
         elif method == "add_relation":
-            from handlers.command_handler import get_command_handler
-            from domain.models import AddRelationCommand
+            from corpus_kb.handlers.command_handler import get_command_handler
+            from corpus_kb.domain.models import AddRelationCommand
 
             cmd = AddRelationCommand(
                 tenant_id=UUID(tenant_id),

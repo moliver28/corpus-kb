@@ -57,7 +57,7 @@ async def pg_pool():
 @pytest.fixture
 async def graph_store(pg_pool):
     """Provide a PostgresGraphStore for tests."""
-    from src.storage.graph_store import PostgresGraphStore
+    from corpus_kb.storage.graph_store import PostgresGraphStore
 
     store = PostgresGraphStore(pg_pool)
     yield store

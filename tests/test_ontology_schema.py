@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from src.ontology import load_ontology
+from corpus_kb.ontology import load_ontology
 
 
 class TestOntologyLoader:

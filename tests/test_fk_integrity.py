@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from src.storage.graph_store import PostgresGraphStore
-from src.utils.models import Entity, Relation
+from corpus_kb.storage.graph_store import PostgresGraphStore
+from corpus_kb.utils.models import Entity, Relation
 
 
 @pytest.mark.asyncio

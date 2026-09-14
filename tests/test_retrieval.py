@@ -7,8 +7,8 @@ from uuid import UUID
 
 import pytest
 
-from src.domain.models import SearchQuery, SearchResult
-from src.handlers.query_handler import QueryHandler
+from corpus_kb.domain.models import SearchQuery, SearchResult
+from corpus_kb.handlers.query_handler import QueryHandler
 
 
 @pytest.mark.asyncio

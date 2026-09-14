@@ -18,9 +18,9 @@ from uuid import UUID
 
 import asyncpg
 
-from domain.aggregates import Document, Entity, Relation
-from domain.application import get_app
-from domain.models import (
+from corpus_kb.domain.aggregates import Document, Entity, Relation
+from corpus_kb.domain.application import get_app
+from corpus_kb.domain.models import (
     AddEntityCommand,
     AddRelationCommand,
     DeleteDocumentCommand,
@@ -28,7 +28,7 @@ from domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
-from tools.ingest_common import load_config_or_pass, run_pipeline
+from corpus_kb.tools.ingest_common import load_config_or_pass, run_pipeline
 
 logger = logging.getLogger(__name__)
 

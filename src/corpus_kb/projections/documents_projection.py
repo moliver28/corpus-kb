@@ -18,8 +18,8 @@ from uuid import UUID
 
 import asyncpg
 
-from projections.checkpoint import CheckpointManager
-from projections.dlq import DLQHandler
+from corpus_kb.projections.checkpoint import CheckpointManager
+from corpus_kb.projections.dlq import DLQHandler
 
 logger = logging.getLogger(__name__)
 
