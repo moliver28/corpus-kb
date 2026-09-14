@@ -28,6 +28,7 @@ dependencies = [
     "pgvector>=0.3.0",
     "eventsourcing>=9.0",
     "starlette>=0.35",
+    "typer>=0.15",
     "uvicorn>=0.24",
     "psutil>=6.0",
     "llama-index-core>=0.11",
@@ -62,9 +63,25 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+include = ["corpus_kb*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.yaml"]
+corpus_kb = ["*.yaml", "config/*.yaml", "migrations/*.sql"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = [
+    "E",
+    "F",
+    "I",
+    "N",
+    "W",
+    "UP",
+    "B",
+    "C4",
+    "SIM",
+]
 
 [tool.pytest.ini_options]
 markers = [
@@ -74,5 +91,4 @@ markers = [
 asyncio_mode = "auto"
 
 [project.scripts]
-corpus-kb = "server:main"
-corpus-kb-setup = "scripts.install:main"
+corpus-kb = "corpus_kb.cli:app"
