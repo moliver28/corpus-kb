@@ -249,12 +249,15 @@ async def shutdown(services: dict[str, object]) -> None:
     logger.info("asyncpg pool closed")
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Entry point: initialize and run all services.
 
     Supports --transport (stdio|http|sse) and --port CLI args.
     Default: stdio (MCP over stdin/stdout for editor agents).
     HTTP/SSE: starts Starlette HTTP server + JSON-RPC socket + projections.
+
+    Args:
+        argv: Optional argument list. When omitted, ``sys.argv`` is used.
     """
     import argparse
 
@@ -271,7 +274,7 @@ def main() -> None:
         default=8010,
         help="HTTP server port (default: 8010)",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.INFO,

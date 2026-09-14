@@ -644,8 +644,12 @@ def load_config() -> dict[str, Any]:
     return {}
 
 
-def main() -> int:
-    """CLI entry point for the installer."""
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry point for the installer.
+
+    Args:
+        argv: Optional argument list. When omitted, ``sys.argv`` is used.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
@@ -678,7 +682,7 @@ def main() -> int:
         help="Print each setup step without executing",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     config = load_config()
 
     if args.command == "doctor":
