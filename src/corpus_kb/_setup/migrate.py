@@ -9,13 +9,10 @@ from __future__ import annotations
 
 import logging
 import re
-from pathlib import Path
 
 import asyncpg
 
 logger = logging.getLogger(__name__)
-
-MIGRATIONS_DIR = Path(__file__).with_name("..") / "migrations"
 
 
 async def ensure_migrations_table(conn: asyncpg.Connection) -> None:
@@ -33,46 +30,47 @@ async def ensure_migrations_table(conn: asyncpg.Connection) -> None:
 
 async def applied_migrations(conn: asyncpg.Connection) -> set[str]:
     """Return the set of migration filenames already applied."""
-    rows = await conn.fetch(
-        "SELECT filename FROM corpus.schema_migrations ORDER BY filename"
-    )
+    rows = await conn.fetch("SELECT filename FROM corpus.schema_migrations ORDER BY filename")
     return {row["filename"] for row in rows}
 
 
 async def run_migrations(connection_string: str) -> None:
     """Run all unapplied migrations in order."""
-    migration_dir = MIGRATIONS_DIR.resolve()
-    if not migration_dir.exists():
-        logger.warning("Migrations directory not found: %s", migration_dir)
-        return
+    import importlib.resources as resources
 
-    sql_files = sorted(
-        p
-        for p in migration_dir.iterdir()
-        if p.is_file() and p.suffix == ".sql" and re.match(r"^\d+_", p.name)
-    )
+    ref = resources.files("corpus_kb") / "migrations"
+    with resources.as_file(ref) as migration_dir:
+        if not migration_dir.exists():
+            logger.warning("Migrations directory not found: %s", migration_dir)
+            return
 
-    conn = await asyncpg.connect(connection_string)
-    try:
-        await ensure_migrations_table(conn)
-        done = await applied_migrations(conn)
+        sql_files = sorted(
+            p
+            for p in migration_dir.iterdir()
+            if p.is_file() and p.suffix == ".sql" and re.match(r"^\d+_", p.name)
+        )
 
-        for sql_file in sql_files:
-            if sql_file.name in done:
-                logger.info("Migration already applied: %s", sql_file.name)
-                continue
+        conn = await asyncpg.connect(connection_string)
+        try:
+            await ensure_migrations_table(conn)
+            done = await applied_migrations(conn)
 
-            sql = sql_file.read_text(encoding="utf-8")
-            async with conn.transaction():
-                logger.info("Applying migration: %s", sql_file.name)
-                await conn.execute(sql)
-                await conn.execute(
-                    "INSERT INTO corpus.schema_migrations (filename) VALUES ($1)",
-                    sql_file.name,
-                )
-        logger.info("Migrations complete")
-    finally:
-        await conn.close()
+            for sql_file in sql_files:
+                if sql_file.name in done:
+                    logger.info("Migration already applied: %s", sql_file.name)
+                    continue
+
+                sql = sql_file.read_text(encoding="utf-8")
+                async with conn.transaction():
+                    logger.info("Applying migration: %s", sql_file.name)
+                    await conn.execute(sql)
+                    await conn.execute(
+                        "INSERT INTO corpus.schema_migrations (filename) VALUES ($1)",
+                        sql_file.name,
+                    )
+            logger.info("Migrations complete")
+        finally:
+            await conn.close()
 
 
 async def main() -> None:

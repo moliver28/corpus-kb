@@ -6,19 +6,20 @@ The ingest pipeline is async — callers must await run_pipeline().
 
 from __future__ import annotations
 
+import importlib.resources as resources
 import json
 import logging
 from pathlib import Path
-from typing import Optional
 
 import asyncpg
 
+from ..chunking.unstructured_chunker import chunk_elements
 from ..config import load_config
 from ..extraction import create_extractor
 from ..extraction.pgml_backend import PgmlExtractor
 from ..ontology import Ontology, load_ontology
-from ..partitioning import ElementProxy, partition as unstructured_partition
-from ..chunking.unstructured_chunker import chunk_elements
+from ..partitioning import ElementProxy
+from ..partitioning import partition as unstructured_partition
 from ..rag import aembed_batch, create_embedder
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
-def load_config_or_pass(config: Optional[dict[str, object]]) -> dict[str, object]:
+def load_config_or_pass(config: dict[str, object] | None) -> dict[str, object]:
     """Return the provided config dict, or load the default config if None."""
     return config if config is not None else load_config()
 
@@ -41,19 +42,30 @@ def _nested_dict(config: dict[str, object], key: str) -> dict[str, object]:
 
 
 def ontology(config: dict[str, object]) -> Ontology:
-    """Load the ontology from ``graph.ontology_path`` in config, falling back to default."""
+    """Load the ontology from ``graph.ontology_path`` in config, falling back to default.
+
+    Resolution order:
+        1. Absolute ``graph.ontology_path`` from config.
+        2. ``./config/ontology.yaml`` in the current working directory (dev mode).
+        3. Packaged ``config/ontology.yaml`` shipped with corpus_kb (installed mode).
+    """
     graph = _nested_dict(config, "graph")
     ontology_path = graph.get("ontology_path")
-    if not isinstance(ontology_path, str):
-        ontology_path = "config/ontology.yaml"
-    return load_ontology(ontology_path)
+    if isinstance(ontology_path, str) and Path(ontology_path).is_absolute():
+        return load_ontology(ontology_path)
+
+    cwd_path = Path.cwd() / "config" / "ontology.yaml"
+    if cwd_path.exists():
+        return load_ontology(cwd_path)
+
+    ref = resources.files("corpus_kb") / "config" / "ontology.yaml"
+    with resources.as_file(ref) as packaged_path:
+        return load_ontology(packaged_path)
 
 
 def elements_for_text(text: str) -> list[ElementProxy]:
     """Wrap raw text into a single-element list for the chunking pipeline."""
-    return [
-        ElementProxy(text=text, element_type="NarrativeText", element_id="raw-text")
-    ]
+    return [ElementProxy(text=text, element_type="NarrativeText", element_id="raw-text")]
 
 
 def elements_for_file(path: Path) -> list[ElementProxy]:
@@ -84,7 +96,7 @@ def _assign_embeddings(chunks: list[Chunk], vectors: list[list[float]]) -> None:
 async def embed_chunks(
     chunks: list[Chunk],
     config: dict[str, object],
-    pool: Optional[asyncpg.Pool] = None,
+    pool: asyncpg.Pool | None = None,
 ) -> tuple[bool, str | None]:
     """Embed chunk texts via the configured provider, returning (degraded, error).
 
@@ -110,15 +122,12 @@ async def embed_chunks(
 
         if vectors and _all_zero(vectors):
             fallback_value = embedding_cfg.get("fallback_provider")
-            fallback_provider = (
-                fallback_value if isinstance(fallback_value, str) else "ollama"
-            )
+            fallback_provider = fallback_value if isinstance(fallback_value, str) else "ollama"
             if fallback_provider == provider:
                 _assign_embeddings(chunks, vectors)
                 return (
                     True,
-                    f"Connection failed: {type(embedder).__name__} "
-                    "returned zero vectors",
+                    f"Connection failed: {type(embedder).__name__} returned zero vectors",
                 )
             fallback_config = dict(config)
             fallback_embedding = dict(embedding_cfg)
@@ -157,7 +166,7 @@ async def extract_with_fallback(
     ontology: Ontology,
     source_document_id: str,
     config: dict[str, object],
-    pool: Optional[asyncpg.Pool] = None,
+    pool: asyncpg.Pool | None = None,
 ) -> tuple[list[Entity], list[Relation], str]:
     """Extract entities and relations, falling back through the extractor chain.
 
@@ -185,9 +194,7 @@ async def extract_with_fallback(
                     chunks, ontology, source_document_id
                 )
             else:
-                entities, relations = pgml_extractor.extract(
-                    chunks, ontology, source_document_id
-                )
+                entities, relations = pgml_extractor.extract(chunks, ontology, source_document_id)
             if entities:
                 return (
                     entities,
@@ -208,9 +215,7 @@ async def extract_with_fallback(
                     },
                 }
             )
-            entities, relations = lang_extractor.extract(
-                chunks, ontology, source_document_id
-            )
+            entities, relations = lang_extractor.extract(chunks, ontology, source_document_id)
             if entities:
                 return (
                     entities,
@@ -299,9 +304,7 @@ class PostgresIngestStore:
                 self._tenant_id,
             )
             for chunk in chunks:
-                chunk_index = (
-                    chunk.sibling_order if chunk.sibling_order is not None else count
-                )
+                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
                 await conn.execute(
                     """
                     INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
@@ -442,10 +445,7 @@ async def run_pipeline(
     """
     document = build_document(path, source_type, text)
 
-    if path == "raw_text":
-        elements = elements_for_text(text)
-    else:
-        elements = elements_for_file(Path(path))
+    elements = elements_for_text(text) if path == "raw_text" else elements_for_file(Path(path))
 
     chunks = chunk_elements(elements, text, document.document_id)
 

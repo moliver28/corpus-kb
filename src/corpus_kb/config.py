@@ -1,13 +1,10 @@
 """Configuration loader — loads YAML config with environment variable overrides.
 
 Priority (config discovery):
-1. CORPUS_KB_CONFIG env var (absolute path) — set by MCP for config discovery
-2. --config flag (custom path)
-3. Standard search paths (in order):
-   - ./config.yaml (current working directory)
-   - ./corpus-kb/config.yaml (project subdirectory)
-   - ~/.corpus-kb/config.yaml (user home directory)
-   - /opt/corpus-kb/config.yaml (system-wide installation)
+1. Explicit `path` argument
+2. CORPUS_KB_CONFIG env var (absolute path) — set by MCP for config discovery
+3. ./config.yaml (current working directory, dev mode)
+4. Packaged default via importlib.resources (installed mode)
 
 This allows corpus-kb to be called from any directory and still find its config,
 which is critical for MCP integration where the working directory is unpredictable.
@@ -17,7 +14,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 import yaml
 
@@ -35,15 +32,7 @@ def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
             base[key] = value
 
 
-DEFAULT_PATHS = [
-    Path.cwd() / "config.yaml",
-    Path.cwd() / "corpus-kb" / "config.yaml",
-    Path.home() / ".corpus-kb" / "config.yaml",
-    Path("/opt/corpus-kb/config.yaml"),  # System-wide installation
-]
-
-
-def load_config(path: Optional[str] = None) -> dict[str, object]:
+def load_config(path: str | None = None) -> dict[str, object]:
     """Load config from a YAML file, merged with defaults and env var overrides.
 
     Args:
@@ -55,30 +44,37 @@ def load_config(path: Optional[str] = None) -> dict[str, object]:
     Config discovery order:
         1. Explicit path argument
         2. CORPUS_KB_CONFIG environment variable
-        3. Standard search paths (cwd, ~/.corpus-kb, /opt/corpus-kb)
+        3. ./config.yaml in the current working directory
+        4. Packaged default config.yaml shipped with corpus_kb
     """
-    # 1. Find config file
-    config_path: Optional[Path] = None
+    config = get_default_config()
+
+    config_path: Path | None = None
     if path:
         config_path = Path(path)
     else:
         env_path = os.environ.get("CORPUS_KB_CONFIG")
         if env_path:
             config_path = Path(env_path)
-        else:
-            for p in DEFAULT_PATHS:
-                if p.exists():
-                    config_path = p
-                    break
 
-    # 2. Start with defaults, then overlay file config
-    config = get_default_config()
-    if config_path and config_path.exists():
+    if config_path is not None and config_path.exists():
         with open(config_path) as f:
             file_config = cast(dict[str, object], yaml.safe_load(f) or {})
         _deep_update(config, file_config)
+    elif (Path.cwd() / "config.yaml").exists():
+        with open(Path.cwd() / "config.yaml") as f:
+            file_config = cast(dict[str, object], yaml.safe_load(f) or {})
+        _deep_update(config, file_config)
+    else:
+        import importlib.resources as resources
 
-    # 3. Environment variable overrides
+        ref = resources.files("corpus_kb") / "config.yaml"
+        with resources.as_file(ref) as packaged_path:
+            with open(packaged_path) as f:
+                file_config = cast(dict[str, object], yaml.safe_load(f) or {})
+            _deep_update(config, file_config)
+
+    # Environment variable overrides
     # CORPUS_KB_STORAGE_PATH -> config["storage"]["path"]
     # CORPUS_KB_EMBEDDING_MODEL -> config["embedding"]["model"]
     # CORPUS_KB_GRAPH_BACKEND -> config["graph"]["backend"]
@@ -91,6 +87,8 @@ def load_config(path: Optional[str] = None) -> dict[str, object]:
         ("server", "transport"): "CORPUS_KB_TRANSPORT",
         ("server", "port"): "CORPUS_KB_PORT",
         ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
+        ("installer", "auto_detect"): "CORPUS_KB_INSTALL_AUTO_DETECT",
+        ("installer", "profile"): "CORPUS_KB_INSTALL_PROFILE",
     }
 
     for (section, key), env_var in env_overrides.items():
@@ -99,6 +97,8 @@ def load_config(path: Optional[str] = None) -> dict[str, object]:
             section_dict = cast(dict[str, object], config[section])
             if key == "dimensions" or key == "port":
                 section_dict[key] = int(value)
+            elif key == "auto_detect":
+                section_dict[key] = value.lower() in {"1", "true", "yes", "on"}
             else:
                 section_dict[key] = value
 
@@ -143,5 +143,28 @@ def get_default_config() -> dict[str, object]:
         },
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
+        },
+        "installer": {
+            "auto_detect": True,
+            "profiles": {
+                "minimal": {
+                    "ram_gb_max": 8,
+                    "vram_gb_max": 0,
+                    "model": "nomic-embed-text",
+                    "llm": "qwen3:0.6b",
+                },
+                "balanced": {
+                    "ram_gb_max": 16,
+                    "vram_gb_max": 4,
+                    "model": "nomic-embed-text",
+                    "llm": "qwen3:4b",
+                },
+                "performance": {
+                    "ram_gb_max": 999,
+                    "vram_gb_max": 8,
+                    "model": "qwen3-embedding:8b-q8_0",
+                    "llm": "qwen3:14b",
+                },
+            },
         },
     }
