@@ -91,15 +91,24 @@ def load_config(path: str | None = None) -> dict[str, object]:
         ("installer", "auto_detect"): "CORPUS_KB_INSTALL_AUTO_DETECT",
         ("installer", "profile"): "CORPUS_KB_INSTALL_PROFILE",
         ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
+        ("installer", "database_mode"): "CORPUS_KB_INSTALL_DATABASE_MODE",
+        ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
+        ("installer", "postgres_port"): "CORPUS_KB_INSTALL_POSTGRES_PORT",
+        ("installer", "ollama_mode"): "CORPUS_KB_INSTALL_OLLAMA_MODE",
+        ("installer", "telemetry"): "CORPUS_KB_INSTALL_TELEMETRY",
+        ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
     }
+
+    bool_keys = {"auto_detect", "telemetry", "verify_image_signature"}
+    int_keys = {"dimensions", "port", "postgres_port"}
 
     for (section, key), env_var in env_overrides.items():
         value = os.environ.get(env_var)
         if value is not None:
             section_dict = cast(dict[str, object], config[section])
-            if key == "dimensions" or key == "port":
+            if key in int_keys:
                 section_dict[key] = int(value)
-            elif key == "auto_detect":
+            elif key in bool_keys:
                 section_dict[key] = value.lower() in {"1", "true", "yes", "on"}
             else:
                 section_dict[key] = value
@@ -205,7 +214,13 @@ def get_default_config() -> dict[str, object]:
         },
         "installer": {
             "auto_detect": True,
+            "database_mode": "container",
+            "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
+            "postgres_port": 5433,
+            "ollama_mode": "external",
             "data_dir": str(Path.home() / ".corpus-kb"),
+            "telemetry": False,
+            "verify_image_signature": True,
             "profiles": {
                 "minimal": {
                     "ram_gb_max": 8,
