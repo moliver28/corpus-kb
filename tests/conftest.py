@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 
 import asyncpg
@@ -41,9 +42,13 @@ async def pg_pool():
 
     Skips tests if Postgres is not available.
     """
+    dsn = os.environ.get(
+        "CORPUS_KB_DATABASE_URL",
+        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
+    )
     try:
         pool = await asyncpg.create_pool(
-            "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
+            dsn,
             min_size=1,
             max_size=2,
             timeout=5,

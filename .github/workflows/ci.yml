@@ -131,6 +131,25 @@ jobs:
     name: "test (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
     needs: validate-configs
+    # Service containers are only available on Linux runners. On Windows
+    # and macOS runners this block is ignored, and Postgres-dependent tests
+    # skip cleanly via the pg_pool fixture.
+    services:
+      postgres:
+        image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
+        env:
+          POSTGRES_USER: corpus_user
+          POSTGRES_PASSWORD: corpus_pass
+          POSTGRES_DB: corpus_kb
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      CORPUS_KB_DATABASE_URL: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
