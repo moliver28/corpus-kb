@@ -35,3 +35,10 @@ def test_start_command_registered() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "start" in result.output
+
+
+def test_setup_help_includes_build_local() -> None:
+    """The setup command exposes a --build-local flag."""
+    result = runner.invoke(app, ["setup", "--help"])
+    assert result.exit_code == 0
+    assert "--build-local" in result.output

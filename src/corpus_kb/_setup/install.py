@@ -497,6 +497,7 @@ def setup_print_dry_run_steps(
     compose_cmd: str | None,
     conn_str: str,
     profile: str,
+    build_local: bool = False,
     state: dict[str, Any] | None = None,
 ) -> None:
     """Print the exact steps the setup command would execute."""
@@ -505,14 +506,31 @@ def setup_print_dry_run_steps(
     total = len(INSTALL_PHASES)
     completed = state.get("completed", [])
 
-    _step(1, total, "Start the Docker compose stack", False, "run: docker compose up -d")
+    compose_files = ["compose.yaml"]
+    if build_local:
+        compose_files.append("compose.build-local.yaml")
+    file_flags = " ".join(f"-f {name}" for name in compose_files)
+    build_flag = " --build" if build_local else ""
+    compose_up_cmd = f"{compose_cmd} {file_flags} up -d{build_flag}" if compose_cmd else None
+
+    _step(
+        1,
+        total,
+        "Start the Docker compose stack",
+        False,
+        f"run: {compose_up_cmd}" if compose_up_cmd else None,
+    )
     if "compose" in completed:
         print("  status: already completed; will be skipped")
-    elif compose_cmd:
-        print(f"  command: {compose_cmd} up -d")
+    elif compose_up_cmd:
+        print(f"  command: {compose_up_cmd}")
+        if build_local:
+            print("  build: local docker/postgres/Dockerfile")
+        else:
+            print("  image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17")
     else:
         print("  command: not found; install Docker to proceed")
-    print(f"  services: postgres ({conn_str}), ollama (http://localhost:11434)")
+    print(f"  services: postgres ({conn_str})")
 
     _step(2, total, "Install Python dependencies", False, "run: pip install -e .[dev]")
     if "python" in completed:
@@ -575,24 +593,42 @@ def _run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 300) -> 
         return 1
 
 
-def setup_start_compose(compose_cmd: str, apply: bool) -> int:
+def setup_start_compose(compose_cmd: str, apply: bool, build_local: bool = False) -> int:
     """Bring the docker-compose stack up if available and confirmed."""
     repo_root = REPO_ROOT
-    compose_file = repo_root.parent / "docker-compose.yml"
+    compose_file = repo_root.parent / "compose.yaml"
     if not compose_file.exists():
-        print("  ERROR: docker-compose.yml not found at repo root.")
+        print("  ERROR: compose.yaml not found at repo root.")
         print(f"  Looked for: {compose_file}")
         return 1
+
+    compose_files = [repo_root.parent / "compose.yaml"]
+    if build_local:
+        build_local_file = repo_root.parent / "compose.build-local.yaml"
+        if not build_local_file.exists():
+            print("  ERROR: compose.build-local.yaml not found at repo root.")
+            print(f"  Looked for: {build_local_file}")
+            return 1
+        compose_files.append(build_local_file)
 
     if not apply:
         return 0
 
-    if not confirm("Start the docker-compose stack (postgres + ollama)."):
+    if build_local:
+        action = "Build the Postgres image locally and start the docker-compose stack (postgres)."
+    else:
+        action = "Start the docker-compose stack (postgres)."
+    if not confirm(action):
         print("  Skipped.")
         return 0
 
     parts = compose_cmd.split()
-    cmd = [*parts, "up", "-d", "--build"]
+    file_args: list[str] = []
+    for file in compose_files:
+        file_args.extend(["-f", str(file)])
+    cmd = [*parts, *file_args, "up", "-d"]
+    if build_local:
+        cmd.append("--build")
     return _run_cmd(cmd, cwd=repo_root.parent, timeout=600)
 
 
@@ -675,7 +711,9 @@ def setup_update_config(config: dict[str, Any], profile: str, apply: bool) -> in
     return 0
 
 
-async def setup_cmd(config: dict[str, Any], dry_run: bool, fresh: bool) -> int:
+async def setup_cmd(
+    config: dict[str, Any], dry_run: bool, fresh: bool, build_local: bool = False
+) -> int:
     """One-flow guided setup for the docker-compose stack.
 
     Steps:
@@ -718,7 +756,9 @@ async def setup_cmd(config: dict[str, Any], dry_run: bool, fresh: bool) -> int:
         print(f"  Completed: {', '.join(completed)}")
 
     if dry_run:
-        setup_print_dry_run_steps(compose_cmd, conn_str, profile, state)
+        setup_print_dry_run_steps(
+            compose_cmd, conn_str, profile, build_local=build_local, state=state
+        )
         return 0
 
     print("\nWARNING: setup will start Docker containers, modify Python packages,")
@@ -731,7 +771,7 @@ async def setup_cmd(config: dict[str, Any], dry_run: bool, fresh: bool) -> int:
     if "compose" in completed:
         print("\n[Step 1/6] Docker compose stack already started; skipping.")
     elif compose_cmd:
-        exit_code |= setup_start_compose(compose_cmd, apply=True)
+        exit_code |= setup_start_compose(compose_cmd, apply=True, build_local=build_local)
         if not exit_code:
             completed.append("compose")
             save_install_state(state, config)
@@ -844,6 +884,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Reset the installer checkpoint and start from phase 1",
     )
+    setup_parser.add_argument(
+        "--build-local",
+        action="store_true",
+        help=(
+            "Build the Postgres image from docker/postgres/Dockerfile "
+            "instead of using the pre-built image"
+        ),
+    )
 
     args = parser.parse_args(argv)
     config = load_config()
@@ -853,7 +901,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install":
         return asyncio.run(install_cmd(config, args.apply, args.force))
     if args.command == "setup":
-        return asyncio.run(setup_cmd(config, args.dry_run, args.fresh))
+        return asyncio.run(setup_cmd(config, args.dry_run, args.fresh, args.build_local))
     return 1
 
 

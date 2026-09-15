@@ -55,4 +55,4 @@ RUN apt-get update \
 RUN sed -i "s/#shared_preload_libraries = ''/shared_preload_libraries = 'pgml,age'/" \
         /usr/share/postgresql/postgresql.conf.sample
 
-# Default postgres entrypoint remains; see docker-compose.yml for env vars.
+# Default postgres entrypoint remains; see compose.yaml for env vars.

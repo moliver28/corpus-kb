@@ -1,8 +1,8 @@
-"""Validate the repo-root docker-compose.yml file.
+"""Validate the repo-root compose files.
 
 Docker is not required to run these tests. We use PyYAML to verify that the
-compose file is well-formed and contains the expected services/volumes. Live
-`docker compose up` verification is deferred to the manual QA phase (F3).
+compose files are well-formed and contain the expected services/volumes. Live
+``docker compose up`` verification is deferred to the manual QA phase (F3).
 """
 
 from __future__ import annotations
@@ -15,19 +15,31 @@ import yaml
 
 @pytest.fixture
 def compose_path() -> Path:
-    """Return the absolute path to the repo-root docker-compose.yml.
+    """Return the absolute path to the repo-root compose.yaml.
 
     Path layout:
-        repo-root/docker-compose.yml
+        repo-root/compose.yaml
         repo-root/tests/test_docker_compose.py
     So the compose file is two levels above this test file.
     """
-    return Path(__file__).resolve().parent.parent / "docker-compose.yml"
+    return Path(__file__).resolve().parent.parent / "compose.yaml"
+
+
+@pytest.fixture
+def build_local_path() -> Path:
+    """Return the absolute path to the build-local compose override."""
+    return Path(__file__).resolve().parent.parent / "compose.build-local.yaml"
 
 
 def test_compose_file_exists(compose_path: Path) -> None:
-    """The docker-compose.yml must exist at the repo root."""
-    assert compose_path.exists(), f"docker-compose.yml not found at {compose_path}"
+    """compose.yaml must exist at the repo root."""
+    assert compose_path.exists(), f"compose.yaml not found at {compose_path}"
+
+
+def test_legacy_docker_compose_yml_removed(compose_path: Path) -> None:
+    """The old docker-compose.yml name must not be present."""
+    legacy_path = compose_path.parent / "docker-compose.yml"
+    assert not legacy_path.exists(), f"legacy docker-compose.yml still exists at {legacy_path}"
 
 
 def test_compose_file_parses(compose_path: Path) -> None:
@@ -39,13 +51,14 @@ def test_compose_file_parses(compose_path: Path) -> None:
     assert "volumes" in data
 
 
-def test_postgres_service_configured(compose_path: Path) -> None:
-    """Postgres service uses the project default credentials and port."""
+def test_postgres_service_uses_prebuilt_image(compose_path: Path) -> None:
+    """Postgres service uses the pinned pre-built image by default."""
     data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     services = data["services"]
     assert "postgres" in services
     pg = services["postgres"]
-    assert pg["build"]["context"] == "docker/postgres"
+    assert "build" not in pg, "default compose must use a pre-built image, not build"
+    assert pg["image"] == "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17"
     env = pg["environment"]
     assert env["POSTGRES_USER"] == "corpus_user"
     assert env["POSTGRES_PASSWORD"] == "corpus_pass"
@@ -54,15 +67,33 @@ def test_postgres_service_configured(compose_path: Path) -> None:
     assert "healthcheck" in pg
 
 
-def test_ollama_service_configured(compose_path: Path) -> None:
-    """Ollama service exposes the default port and has a healthcheck."""
+def test_ollama_service_not_in_default_compose(compose_path: Path) -> None:
+    """Ollama must not be part of the default compose stack."""
     data = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
     services = data["services"]
-    assert "ollama" in services
-    ollama = services["ollama"]
-    assert "ollama/ollama:latest" in ollama["image"]
-    assert any("11434:11434" in str(p) for p in ollama["ports"])
-    assert "healthcheck" in ollama
+    assert "ollama" not in services
+
+
+def test_build_local_override_exists(build_local_path: Path) -> None:
+    """The build-local override file must exist at the repo root."""
+    assert build_local_path.exists(), f"compose.build-local.yaml not found at {build_local_path}"
+
+
+def test_build_local_override_parses(build_local_path: Path) -> None:
+    """The build-local override must be valid YAML with a postgres service."""
+    data = yaml.safe_load(build_local_path.read_text(encoding="utf-8"))
+    assert isinstance(data, dict)
+    assert "services" in data
+    assert "postgres" in data["services"]
+
+
+def test_build_local_override_uses_local_dockerfile(build_local_path: Path) -> None:
+    """The build-local override builds from docker/postgres/Dockerfile."""
+    data = yaml.safe_load(build_local_path.read_text(encoding="utf-8"))
+    pg = data["services"]["postgres"]
+    assert "build" in pg
+    assert pg["build"]["context"] == "docker/postgres"
+    assert pg["build"]["dockerfile"] == "Dockerfile"
 
 
 def test_no_port_conflicts(compose_path: Path) -> None:
@@ -76,6 +107,5 @@ def test_no_port_conflicts(compose_path: Path) -> None:
             host_port = parts[-2] if len(parts) > 1 else parts[0]
             if host_port.isdigit():
                 host_ports.add(int(host_port))
-    assert len(host_ports) == 2, f"unexpected host ports: {host_ports}"
+    assert len(host_ports) == 1, f"unexpected host ports: {host_ports}"
     assert 5433 in host_ports
-    assert 11434 in host_ports

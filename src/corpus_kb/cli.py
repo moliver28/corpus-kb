@@ -15,6 +15,14 @@ app = typer.Typer(help="Corpus-KB command-line interface")
 def setup(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print steps without executing"),
     fresh: bool = typer.Option(False, "--fresh", help="Reset checkpoint and start from phase 1"),
+    build_local: bool = typer.Option(
+        False,
+        "--build-local",
+        help=(
+            "Build the Postgres image from docker/postgres/Dockerfile "
+            "instead of using the pre-built image"
+        ),
+    ),
 ) -> int:
     """One-line docker-compose + database + migrations + models setup."""
     from corpus_kb._setup.install import main as install_main
@@ -24,6 +32,8 @@ def setup(
         argv.append("--dry-run")
     if fresh:
         argv.append("--fresh")
+    if build_local:
+        argv.append("--build-local")
     return install_main(argv)
 
 
