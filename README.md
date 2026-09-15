@@ -1,7 +1,5 @@
 # Corpus-KB
 
-[![CI](https://github.com/moliver28/corpus-kb/actions/workflows/ci.yml/badge.svg)](https://github.com/moliver28/corpus-kb/actions/workflows/ci.yml)
-
 **Local RAG system for AI code editors. Ingest your codebase. Ask questions. Get answers. No cloud.**
 
 Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine: Postgres stores the data, Ollama generates embeddings, and a local server exposes the whole thing through MCP tools, HTTP endpoints, and a JSON-RPC socket.
@@ -12,7 +10,7 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 
 - **Hybrid search** that blends vector similarity, full-text search, and rank fusion
 - **Knowledge graph** with entities, relations, and BFS traversal
-- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML)
+- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, BERT)
 - **LlamaIndex RAG backend** with PGVectorStore and Ollama for local vector search
 - **Event sourcing** for audit trails and time-travel queries
 - **Multi-tenant Postgres** with row-level security on every table
@@ -43,7 +41,7 @@ graph TB
 ```
 
 1. **Ingest** a file, directory, or raw text.
-2. The pipeline partitions it into chunks, embeds each chunk through Ollama, extracts entities and relations, and stores the result.
+2. The pipeline partitions it into chunks, embeds each chunk through Ollama or PostgresML, extracts entities and relations, and stores the result.
 3. Commands append events to the event store; async projections write the read models into Postgres.
 4. Your editor queries the read models through search, SQL, or graph traversal.
 
@@ -92,21 +90,20 @@ cd corpus-kb
 # 3. Install the package
 pip install -e ".[dev]"
 
-# 4. Run the installer (detects hardware, creates DB, runs migrations, pulls models)
-cd corpus-kb
-python scripts/install.py doctor     # read-only diagnostics
-python scripts/install.py install --apply   # guided setup with confirmations
+# 4. Run diagnostics and guided setup
+corpus-kb doctor                    # read-only diagnostics
+corpus-kb setup                     # guided setup with confirmations
 
 # Or load the schema manually:
 #   psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
-#     -f corpus-kb/migrations/001_corpus_schema.sql
+#     -f src/corpus_kb/migrations/001_corpus_schema.sql
 
 # 5. Pull the embedding model
 ollama pull nomic-embed-text
 
 # 6. Start the server
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
-python -m corpus-kb.src.server_wiring --transport http --port 8010
+corpus-kb start --transport http --port 8010
 ```
 
 In another terminal:
@@ -115,7 +112,7 @@ In another terminal:
 # Ingest a file
 curl -X POST http://localhost:8010/api/ingest/file \
   -H "Content-Type: application/json" \
-  -d '{"file_path": "corpus-kb/src/server_wiring.py"}'
+  -d '{"file_path": "src/corpus_kb/server_wiring.py"}'
 
 # Search
 curl -X POST http://localhost:8010/api/search \
@@ -138,7 +135,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
 | [Development](docs/DEVELOPMENT.md) | Architecture deep dive, testing, PR workflow, conventions |
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
-| [Ingestion](corpus-kb/docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
+| [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
 
 ---
 

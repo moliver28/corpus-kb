@@ -88,15 +88,15 @@ erDiagram
 
 ### Migrations
 
-Schema changes are managed through idempotent SQL migrations in `corpus-kb/migrations/`. The migration runner (`scripts/migrate.py`) tracks applied migrations in `corpus.schema_migrations` and runs each unapplied file inside a transaction.
+Schema changes are managed through idempotent SQL migrations in `src/corpus_kb/migrations/`. The migration runner (`src/corpus_kb/_setup/migrate.py`) tracks applied migrations in `corpus.schema_migrations` and runs each unapplied file inside a transaction.
 
 ```bash
 # Run migrations
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
-python scripts/migrate.py
+python src/corpus_kb/_setup/migrate.py
 
 # Or use the installer
-python scripts/install.py install --apply
+corpus-kb setup
 ```
 
 Re-running is safe — already-applied migrations are skipped.
@@ -188,7 +188,7 @@ Set `CORPUS_KB_DATABASE_URL` or add `database.connection_string` to `config.yaml
 
 ### `relation "documents" does not exist`
 
-Run migrations (`python scripts/migrate.py`) or load the schema SQL manually (`psql -f corpus-kb/migrations/001_corpus_schema.sql`).
+Run migrations (`python src/corpus_kb/_setup/migrate.py`) or load the schema SQL manually (`psql -f src/corpus_kb/migrations/001_corpus_schema.sql`).
 
 ### Vector search returns empty results
 

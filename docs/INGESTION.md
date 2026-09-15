@@ -234,11 +234,11 @@ It will:
 3. Create the database/user and run all migrations
 4. Verify AGE + pgml extensions are installed
 5. Pull `nomic-embed-text` and `qwen3:4b`
-6. Write/update `~/.corpus-kb/config.yaml`
+6. Write/update the installer config file under `~/.corpus-kb`
 
 The compose stack lives at the repo root (`docker-compose.yml`) and uses
 `corpus_user`/`corpus_pass`/`corpus_kb` on host port `5433`, matching the
-default connection string in `config.yaml` and `src/config.py`.
+default connection string in `config.yaml` and `src/corpus_kb/config.py`.
 
 ## Error Handling
 

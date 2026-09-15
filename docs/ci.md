@@ -4,7 +4,7 @@ OpenCode runs automated validation on all MCP configuration files in CI. This ca
 
 ## How It Works
 
-The validation script (`scripts/validate_configs.py`) runs as the first job in the CI pipeline. It checks three things:
+The validation script (`src/corpus_kb/_setup/validate_configs.py`) runs as the first job in the CI pipeline. It checks three things:
 
 1. **Schema validation per format** — each config file is validated against its expected structure. The root `opencode.json` uses the OpenCode native format. Files under `mcp-configs/` are validated against their respective editor formats.
 
@@ -95,7 +95,7 @@ To add support for a new editor or platform:
 
 1. **Create the config file** at `mcp-configs/<platform>.json` following that platform's MCP server specification.
 
-2. **Add a validator** in `scripts/validate_configs.py`. Create a new validation function that checks:
+2. **Add a validator** in `src/corpus_kb/_setup/validate_configs.py`. Create a new validation function that checks:
    - The correct top-level key (`mcpServers` or equivalent).
    - Required fields per entry (name, description, command, args).
    - Platform-specific constraints (e.g., whether `autoApprove` is supported).
@@ -116,7 +116,7 @@ To add support for a new editor or platform:
 Run the validation script directly:
 
 ```bash
-python scripts/validate_configs.py
+python src/corpus_kb/_setup/validate_configs.py
 ```
 
 Run the test suite:
