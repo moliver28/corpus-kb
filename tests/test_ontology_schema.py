@@ -37,7 +37,13 @@ class TestOntologyLoader:
     ]
 
     def test_load_default_ontology_has_exact_plan_types(self) -> None:
-        ontology_path = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
+        ontology_path = (
+            Path(__file__).resolve().parent.parent
+            / "src"
+            / "corpus_kb"
+            / "config"
+            / "ontology.yaml"
+        )
         ontology = load_ontology(ontology_path)
         assert ontology.entity_types == self._EXPECTED_ENTITY_TYPES
         assert ontology.relation_types == self._EXPECTED_RELATION_TYPES

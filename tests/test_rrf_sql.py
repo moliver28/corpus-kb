@@ -23,7 +23,13 @@ from corpus_kb.handlers.query_handler import QueryHandler
 
 DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
 CONNECT_TIMEOUT = 3
-MIGRATION = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "migrations" / "006_rrf_fusion.sql"
+MIGRATION = (
+    Path(__file__).resolve().parent.parent
+    / "src"
+    / "corpus_kb"
+    / "migrations"
+    / "006_rrf_fusion.sql"
+)
 SCORE_TOLERANCE = 1e-12
 
 

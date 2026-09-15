@@ -7,6 +7,7 @@ from pathlib import Path
 
 import asyncpg
 import pytest
+
 from corpus_kb._setup.migrate import run_migrations
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "migrations"

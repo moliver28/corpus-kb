@@ -14,9 +14,7 @@ import pytest
 
 def _load_install_module() -> ModuleType:
     """Load the installer module without adding it to sys.path."""
-    install_path = (
-        Path(__file__).parent.parent / "src" / "corpus_kb" / "_setup" / "install.py"
-    )
+    install_path = Path(__file__).parent.parent / "src" / "corpus_kb" / "_setup" / "install.py"
     spec = importlib.util.spec_from_file_location("install", install_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)

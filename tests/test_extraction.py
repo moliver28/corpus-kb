@@ -19,7 +19,9 @@ from corpus_kb.ontology import load_ontology
 from corpus_kb.utils.models import Chunk
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "langextract_recorded"
-_ONTOLOGY_PATH = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
+_ONTOLOGY_PATH = (
+    Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
+)
 
 
 def _sha256(text: str) -> str:
