@@ -1,0 +1,31 @@
+name: License baseline check
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+defaults:
+  run:
+    working-directory: corpus-kb
+
+jobs:
+  license-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Verify license baseline is up to date
+        run: python scripts/generate_license_lock.py --check
