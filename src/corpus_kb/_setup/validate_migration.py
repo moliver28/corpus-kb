@@ -27,7 +27,7 @@ DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
 async def validate() -> bool:
     """Run all validation checks. Returns True if all pass."""
-    from config import load_config
+    from corpus_kb.config import load_config
 
     cfg = load_config()
     conn_str = cfg.get("database", {}).get("connection_string", "") or os.environ.get(

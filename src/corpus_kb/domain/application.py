@@ -83,7 +83,7 @@ def get_app(connection_string: str | None = None) -> CorpusApplication:
         if not connection_string:
             # Fall back to config
             try:
-                from config import load_config
+                from corpus_kb.config import load_config
 
                 cfg = load_config()
                 db_cfg = cfg.get("database", {})

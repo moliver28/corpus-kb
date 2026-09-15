@@ -92,7 +92,7 @@ async def startup(
       - http_app: Starlette app
       - socket_server: JSONRPCServer
     """
-    from config import load_config
+    from corpus_kb.config import load_config
 
     cfg = config or load_config()
 
