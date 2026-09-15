@@ -1,0 +1,73 @@
+# Build and publish the pinned PostgreSQL image for Corpus-KB.
+#
+# Publishes ghcr.io/moliver28/corpus-kb-postgres with:
+#   * pg17          - rolling tag for the latest PG17-based build
+#   * 0.1.0-pg17    - immutable tag for this image revision
+#
+# Triggers:
+#   * workflow_dispatch  - on-demand rebuilds
+#   * release published  - when a GitHub Release is published
+name: Build Postgres image
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  packages: write
+  id-token: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: moliver28/corpus-kb-postgres
+  IMAGE_VERSION: 0.1.0
+
+jobs:
+  build-and-push:
+    name: Build and push Postgres image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata and tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=pg17
+            type=raw,value=${{ env.IMAGE_VERSION }}-pg17
+            type=semver,pattern={{version}},prefix=${{ env.IMAGE_VERSION }}-
+            type=semver,pattern={{major}}.{{minor}},prefix=${{ env.IMAGE_VERSION }}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/postgres
+          file: docker/postgres/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            PGVECTOR_VERSION=0.8.6-1.pgdg12+1
+            AGE_VERSION=1.7.0~rc0-1.pgdg12+1
+            PGML_VERSION=2.10.0
