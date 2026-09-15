@@ -1,0 +1,36 @@
+# serializer version: 1
+# name: test_mcp_tool_contract
+  dict({
+    'corpus_kb.tools.ingest_tools': dict({
+      'delete_document': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'document_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'ingest_directory': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'directory_path': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'ingest_file': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'file_path': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'ingest_text': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'source': 'POSITIONAL_OR_KEYWORD',
+        'source_type': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'text': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'list_documents': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+  })
+# ---

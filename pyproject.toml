@@ -55,7 +55,7 @@ Documentation = "https://github.com/moliver28/corpus-kb"
 graphqlite = ["graphqlite>=0.4"]
 langextract = ["langextract"]
 pynvml = ["pynvml"]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=5.0"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=5.0", "syrupy>=4.0"]
 
 [build-system]
 requires = ["setuptools>=68.0"]
