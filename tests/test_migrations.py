@@ -7,9 +7,9 @@ from pathlib import Path
 
 import asyncpg
 import pytest
-from scripts.migrate import run_migrations
+from corpus_kb._setup.migrate import run_migrations
 
-MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
+MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "migrations"
 AGE_MIGRATION = MIGRATIONS_DIR / "004_enable_age.sql"
 PGML_MIGRATION = MIGRATIONS_DIR / "005_enable_pgml.sql"
 

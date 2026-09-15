@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -19,6 +20,8 @@ from corpus_kb.tools.ingest_common import (
     ontology,
 )
 from corpus_kb.utils.models import Chunk, Entity
+
+_ONTOLOGY_PATH = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
 
 # ---------------------------------------------------------------------------
 # load_config_or_pass
@@ -319,7 +322,7 @@ class _FakePoolNoConn:
 async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
     """When pgml succeeds, extractor_id honestly reports 'pgml'."""
     chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
-    ontology = load_ontology("config/ontology.yaml")
+    ontology = load_ontology(_ONTOLOGY_PATH)
 
     class _HappyPgml(PgmlExtractor):
         extractor_id = "pgml"
@@ -343,8 +346,8 @@ async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
                 )
             ], []
 
-    import src.extraction as extraction_module
-    import src.tools.ingest_common as ingest_module
+    import corpus_kb.extraction as extraction_module
+    import corpus_kb.tools.ingest_common as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
     extraction_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
@@ -367,7 +370,7 @@ async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
 async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() -> None:
     """pgml failure cascades to langextract; langextract failure cascades to regex."""
     chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
-    ontology = load_ontology("config/ontology.yaml")
+    ontology = load_ontology(_ONTOLOGY_PATH)
     calls: list[str] = []
 
     class _FailingPgml(PgmlExtractor):
@@ -391,8 +394,8 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
             calls.append("langextract")
             raise ImportError("langextract missing")
 
-    import src.extraction as extraction_module
-    import src.tools.ingest_common as ingest_module
+    import corpus_kb.extraction as extraction_module
+    import corpus_kb.tools.ingest_common as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
 
@@ -427,7 +430,7 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
 async def test_extract_with_fallback_langextract_success_honors_id() -> None:
     """When only langextract succeeds, extractor_id honestly reports 'langextract'."""
     chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
-    ontology = load_ontology("config/ontology.yaml")
+    ontology = load_ontology(_ONTOLOGY_PATH)
     calls: list[str] = []
 
     class _FailingPgml(PgmlExtractor):
@@ -462,8 +465,8 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
                 )
             ], []
 
-    import src.extraction as extraction_module
-    import src.tools.ingest_common as ingest_module
+    import corpus_kb.extraction as extraction_module
+    import corpus_kb.tools.ingest_common as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
 
@@ -498,7 +501,7 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
 async def test_extract_with_fallback_unknown_extractor_raises() -> None:
     """An unsupported extractor name propagates as ValueError, not silent regex."""
     chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
-    ontology = load_ontology("config/ontology.yaml")
+    ontology = load_ontology(_ONTOLOGY_PATH)
 
     with pytest.raises(ValueError, match="Unsupported graph extractor: bogus"):
         await extract_with_fallback(

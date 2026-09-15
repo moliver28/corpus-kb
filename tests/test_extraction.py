@@ -19,6 +19,7 @@ from corpus_kb.ontology import load_ontology
 from corpus_kb.utils.models import Chunk
 
 _FIXTURE_DIR = Path(__file__).parent / "fixtures" / "langextract_recorded"
+_ONTOLOGY_PATH = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
 
 
 def _sha256(text: str) -> str:
@@ -30,7 +31,7 @@ class TestRegexExtractor:
         self,
     ) -> None:
         """Given markdown chunks, RegexExtractor emits regex-sourced entities."""
-        ontology = load_ontology("config/ontology.yaml")
+        ontology = load_ontology(_ONTOLOGY_PATH)
         chunk = Chunk(
             chunk_id="chunk-regex",
             document_id="doc-regex",
@@ -55,7 +56,7 @@ class TestRegexExtractor:
 class TestLangExtractExtractor:
     def test_recorded_fixture_returns_entities_and_relations(self) -> None:
         """Given recorded fixtures, LangExtractExtractor emits typed entities/relations."""
-        ontology = load_ontology("config/ontology.yaml")
+        ontology = load_ontology(_ONTOLOGY_PATH)
         text = "Alice Smith works at Acme Corporation in New York."
         chunk = Chunk(
             chunk_id="chunk-alice",
@@ -78,7 +79,7 @@ class TestLangExtractExtractor:
 
     def test_banned_entity_type_raises_ontology_violation(self) -> None:
         """Given a fixture with a banned entity type, extraction raises."""
-        ontology = load_ontology("config/ontology.yaml")
+        ontology = load_ontology(_ONTOLOGY_PATH)
         text = "This fixture is intentionally banned."
         chunk = Chunk(
             chunk_id="chunk-banned",
@@ -96,7 +97,7 @@ class TestLangExtractExtractor:
 
     def test_fixture_entity_offsets_are_strict(self) -> None:
         """Given recorded fixtures, entity offsets round-trip to chunk.text."""
-        ontology = load_ontology("config/ontology.yaml")
+        ontology = load_ontology(_ONTOLOGY_PATH)
         text = "Alice Smith works at Acme Corporation in New York."
         chunk = Chunk(
             chunk_id="chunk-offsets",
@@ -126,7 +127,7 @@ class TestLangExtractExtractor:
 
     def test_fixtures_are_input_hash_keyed_and_missing_raises(self) -> None:
         """Given distinct inputs, different fixtures load; missing fixture raises."""
-        ontology = load_ontology("config/ontology.yaml")
+        ontology = load_ontology(_ONTOLOGY_PATH)
         text_a = "Alice Smith works at Acme Corporation in New York."
         text_b = "Bob Johnson called Microsoft in Seattle."
         chunk_a = Chunk(
@@ -171,7 +172,7 @@ class TestLangExtractExtractor:
         mock = MagicMock()
         monkeypatch.setattr(lx, "extract", mock)
 
-        ontology = load_ontology("config/ontology.yaml")
+        ontology = load_ontology(_ONTOLOGY_PATH)
         text = "Alice Smith works at Acme Corporation in New York."
         chunk = Chunk(
             chunk_id="chunk-network",

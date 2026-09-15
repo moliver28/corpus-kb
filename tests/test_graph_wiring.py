@@ -210,7 +210,9 @@ class TestCreateGraphStore:
             async def add_chunk(self, chunk: Any) -> str:
                 return ""
 
-        monkeypatch.setattr("src.storage.AgeGraphStore", RaisingAgeStore, raising=False)
+        monkeypatch.setattr(
+            "corpus_kb.storage.AgeGraphStore", RaisingAgeStore, raising=False
+        )
         pool = object()
         cfg: dict[str, object] = {"graph": {"backend": "age"}}
         with caplog.at_level(logging.WARNING):

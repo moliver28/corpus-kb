@@ -41,7 +41,7 @@ async def test_dimension_mismatch_raises() -> None:
     fake_store = type("FakeStore", (), {"embed_dim": 768})()
     with (
         patch(
-            "src.storage.llamaindex_backend.PGVectorStore.from_params",
+            "corpus_kb.storage.llamaindex_backend.PGVectorStore.from_params",
             return_value=fake_store,
         ),
         pytest.raises(DimensionMismatchError),

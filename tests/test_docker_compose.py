@@ -19,10 +19,10 @@ def compose_path() -> Path:
 
     Path layout:
         repo-root/docker-compose.yml
-        repo-root/corpus-kb/tests/test_docker_compose.py
-    So the compose file is three levels above this test file.
+        repo-root/tests/test_docker_compose.py
+    So the compose file is two levels above this test file.
     """
-    return Path(__file__).resolve().parent.parent.parent / "docker-compose.yml"
+    return Path(__file__).resolve().parent.parent / "docker-compose.yml"
 
 
 def test_compose_file_exists(compose_path: Path) -> None:
