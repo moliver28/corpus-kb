@@ -2,7 +2,8 @@
 
 Sub-commands:
   corpus-kb doctor      - read-only system detection and recommendations
-  corpus-kb install     - mutating installation (requires --apply + confirmation)
+  corpus-kb setup       - one-flow guided installer (docker-compose + db + models)
+  corpus-kb install     - legacy mutating installation (requires --apply + confirmation)
 
 All mutating actions require explicit user confirmation via input().
 """
@@ -254,9 +255,9 @@ def print_doctor_report(info: dict[str, Any]) -> None:
                 print(f"  {label} ({name}): OK v{version}")
             else:
                 print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
-    print("\nRecommended commands (run with --apply to execute):")
+    print("\nRecommended commands (drop --dry-run to execute setup):")
     print("  1. pip install -e .[dev]")
-    print("  2. corpus-kb install --apply")
+    print("  2. corpus-kb setup")
     print(f"  3. ollama pull {info['recommended_model']}")
     print("========================\n")
 
