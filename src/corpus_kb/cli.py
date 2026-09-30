@@ -23,6 +23,11 @@ def setup(
             "instead of using the pre-built image"
         ),
     ),
+    skip_image_verify: bool = typer.Option(
+        False,
+        "--skip-image-verify",
+        help="Skip cosign verification of the Postgres container image",
+    ),
 ) -> int:
     """One-line docker-compose + database + migrations + models setup."""
     from corpus_kb._setup.install import main as install_main
@@ -34,6 +39,8 @@ def setup(
         argv.append("--fresh")
     if build_local:
         argv.append("--build-local")
+    if skip_image_verify:
+        argv.append("--skip-image-verify")
     return install_main(argv)
 
 

@@ -474,6 +474,52 @@ def _find_compose_command() -> str | None:
     return None
 
 
+DEFAULT_POSTGRES_IMAGE = "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17"
+
+
+def _verify_postgres_image(image: str, skip_verify: bool) -> None:
+    """Verify the Postgres container image signature using cosign.
+
+    Args:
+        image: Container image reference to verify.
+        skip_verify: When True, verification is skipped and the function returns
+            without invoking cosign.
+
+    Raises:
+        RuntimeError: If cosign is not installed or if verification fails.
+    """
+    if skip_verify:
+        print("  Skipping Postgres image signature verification.")
+        return
+
+    if not shutil.which("cosign"):
+        raise RuntimeError(
+            "cosign is required for Postgres image signature verification. "
+            "Install cosign (https://docs.sigstore.dev/cosign/installation/) "
+            "or disable verification with --skip-image-verify or "
+            "installer.verify_image_signature: false in config.yaml."
+        )
+
+    print(f"  Verifying signature for {image}...")
+    try:
+        subprocess.run(
+            [
+                "cosign",
+                "verify",
+                "--certificate-identity-regexp",
+                r"^https://github\.com/moliver28/corpus-kb/",
+                image,
+            ],
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            f"Postgres image signature verification failed for {image}. "
+            "The image may have been tampered with or was not signed by the "
+            "expected identity. Disable verification only if you trust the image source."
+        ) from exc
+
+
 def _step(
     number: int,
     total: int,
@@ -712,17 +758,22 @@ def setup_update_config(config: dict[str, Any], profile: str, apply: bool) -> in
 
 
 async def setup_cmd(
-    config: dict[str, Any], dry_run: bool, fresh: bool, build_local: bool = False
+    config: dict[str, Any],
+    dry_run: bool,
+    fresh: bool,
+    build_local: bool = False,
+    skip_image_verify: bool = False,
 ) -> int:
     """One-flow guided setup for the docker-compose stack.
 
     Steps:
-      1. docker compose up -d
-      2. pip install -e .[dev]
-      3. create database/user and run migrations
-      4. verify AGE + pgml extensions
-      5. pull required Ollama models
-      6. write/update user config
+      1. verify Postgres image signature (cosign)
+      2. docker compose up -d
+      3. pip install -e .[dev]
+      4. create database/user and run migrations
+      5. verify AGE + pgml extensions
+      6. pull required Ollama models
+      7. write/update user config
 
     Completed phases are persisted so interrupted runs can resume with
     ``corpus-kb setup``. Use ``--fresh`` to reset the checkpoint.
@@ -745,6 +796,11 @@ async def setup_cmd(
         reset_install_state(config)
 
     state = load_install_state(config)
+
+    installer_cfg = config.get("installer", {})
+    postgres_image = str(installer_cfg.get("postgres_image", DEFAULT_POSTGRES_IMAGE))
+    verify_enabled = bool(installer_cfg.get("verify_image_signature", True))
+    skip_image_verify = skip_image_verify or not verify_enabled
 
     print("\n=== Corpus-KB One-Line Setup ===")
     print(f"Detected profile: {profile}")
@@ -771,6 +827,12 @@ async def setup_cmd(
     if "compose" in completed:
         print("\n[Step 1/6] Docker compose stack already started; skipping.")
     elif compose_cmd:
+        if not build_local:
+            try:
+                _verify_postgres_image(postgres_image, skip_image_verify)
+            except RuntimeError as exc:
+                print(f"\n[Step 1/6] ERROR: {exc}")
+                return 1
         exit_code |= setup_start_compose(compose_cmd, apply=True, build_local=build_local)
         if not exit_code:
             completed.append("compose")
@@ -892,6 +954,11 @@ def main(argv: list[str] | None = None) -> int:
             "instead of using the pre-built image"
         ),
     )
+    setup_parser.add_argument(
+        "--skip-image-verify",
+        action="store_true",
+        help="Skip cosign verification of the Postgres container image",
+    )
 
     args = parser.parse_args(argv)
     config = load_config()
@@ -901,7 +968,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "install":
         return asyncio.run(install_cmd(config, args.apply, args.force))
     if args.command == "setup":
-        return asyncio.run(setup_cmd(config, args.dry_run, args.fresh, args.build_local))
+        return asyncio.run(
+            setup_cmd(
+                config,
+                args.dry_run,
+                args.fresh,
+                args.build_local,
+                args.skip_image_verify,
+            )
+        )
     return 1
 
 
