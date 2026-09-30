@@ -421,7 +421,13 @@ async def test_setup_verifies_image_by_default(tmp_path: Path) -> None:
 
     assert result == 0
     assert any(
-        cmd[:4] == ["cosign", "verify", "--certificate-identity-regexp", r"^https://github\.com/moliver28/corpus-kb/"]
+        cmd[:4]
+        == [
+            "cosign",
+            "verify",
+            "--certificate-identity-regexp",
+            r"^https://github\.com/moliver28/corpus-kb/",
+        ]
         and cmd[4] == "ghcr.io/moliver28/corpus-kb-postgres:test"
         for cmd in cosign_calls
     )
