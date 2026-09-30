@@ -1,0 +1,24 @@
+name: Agent config consistency
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  check-agent-configs:
+    name: "check-agent-configs"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check agent config consistency
+        run: python scripts/check_agent_configs.py
