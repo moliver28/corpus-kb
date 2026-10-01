@@ -1,0 +1,42 @@
+# Pre-commit hooks for the corpus-kb repository.
+# Install: `pip install pre-commit && pre-commit install`
+# Run on demand: `pre-commit run --all-files`
+#
+# Only offline / no-network hooks are configured to keep CI and contributor
+# machines fast and hermetic. Network-dependent linters (mypy, pyright) live
+# exclusively in the CI workflow.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        name: Trim trailing whitespace
+      - id: end-of-file-fixer
+        name: Ensure files end with a newline
+      - id: check-yaml
+        name: Validate YAML files
+        exclude: |
+          (?x)^(
+            corpus-kb/migrations/.*\.sql
+          )$
+      - id: check-json
+        name: Validate JSON files
+      - id: check-added-large-files
+        name: Block large files (>500 KB)
+        args: ["--maxkb=500"]
+      - id: mixed-line-ending
+        name: Force LF line endings
+        args: ["--fix=lf"]
+      - id: check-merge-conflict
+        name: Block merge conflict markers
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        name: Ruff lint
+        args: ["--fix"]
+        files: ^(corpus-kb/src|corpus-kb/tests)/
+      - id: ruff-format
+        name: Ruff format
+        files: ^(corpus-kb/src|corpus-kb/tests)/

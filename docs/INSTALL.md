@@ -2,6 +2,8 @@
 
 This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **PostgreSQL 17** with **pgvector** and **Apache AGE**, **Python 3.11 or newer**, and **Ollama** for local embeddings.
 
+All commands assume you are at the repo root.
+
 ---
 
 ## Prerequisites
@@ -88,6 +90,8 @@ source .venv/bin/activate  # on Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
+All remaining commands in this guide run from the repo root.
+
 `[dev]` installs pytest and related tooling. If you want the optional GraphQLite graph backend, add `graphqlite`:
 
 ```bash
@@ -101,9 +105,8 @@ pip install -e ".[graphqlite,dev]"
 The easiest way is to use the migration runner:
 
 ```bash
-cd corpus-kb
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
-python scripts/migrate.py
+python src/corpus_kb/_setup/migrate.py
 ```
 
 Migrations are idempotent — re-running is a no-op. They are tracked in `corpus.schema_migrations`.
@@ -112,7 +115,7 @@ Alternatively, load the schema SQL manually:
 
 ```bash
 psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
-  -f corpus-kb/migrations/001_corpus_schema.sql
+  -f src/corpus_kb/migrations/001_corpus_schema.sql
 ```
 
 This creates the projection tables plus tenants, event-sourcing checkpoint, DLQ, idempotency, tags, and metadata tables. It also enables RLS policies and inserts the default tenant placeholder.
@@ -122,12 +125,13 @@ This creates the projection tables plus tenants, event-sourcing checkpoint, DLQ,
 You can also let the installer handle database creation and migrations:
 
 ```bash
-cd corpus-kb
-python scripts/install.py doctor      # read-only diagnostics
-python scripts/install.py install --apply   # guided setup with per-step confirmation
+corpus-kb doctor      # read-only diagnostics
+corpus-kb setup       # guided setup with per-step confirmation
 ```
 
-The installer detects your hardware profile, creates the database if needed, runs migrations, pulls the recommended Ollama model, and writes a config file to `~/.corpus-kb/config.yaml`.
+The installer detects your hardware profile, creates the database if needed, runs migrations, pulls the recommended Ollama model, and writes its config file under `~/.corpus-kb`.
+
+The root `scripts/install.py` file still exists as a deprecation shim: it warns and delegates to `corpus_kb._setup.install`.
 
 ---
 
@@ -145,7 +149,7 @@ ollama pull nomic-embed-text
 
 ## Step 6: Configure Corpus-KB
 
-Create or edit `config.yaml` in the `corpus-kb/` directory:
+Create or edit `config.yaml` at the repo root:
 
 ```yaml
 server:
@@ -197,13 +201,13 @@ You can also use environment variables. These override any value in `config.yaml
 HTTP mode (starts HTTP + JSON-RPC socket + projections):
 
 ```bash
-python -m src.server_wiring --transport http --port 8010
+corpus-kb start --transport http --port 8010
 ```
 
 MCP stdio mode for editor agents:
 
 ```bash
-corpus-kb --transport stdio
+corpus-kb start --transport stdio
 ```
 
 ---
@@ -215,7 +219,7 @@ Ingest a file:
 ```bash
 curl -X POST http://localhost:8010/api/ingest/file \
   -H "Content-Type: application/json" \
-  -d '{"file_path": "src/server_wiring.py"}'
+  -d '{"file_path": "src/corpus_kb/server_wiring.py"}'
 ```
 
 Search:
@@ -248,7 +252,7 @@ Re-run `CREATE EXTENSION` as a superuser on the `corpus_kb` database.
 
 ### `relation "documents" does not exist`
 
-Load the schema via migrations (`python scripts/migrate.py`) or manually (`psql -f corpus-kb/migrations/001_corpus_schema.sql`) before starting the server.
+Load the schema via migrations (`python src/corpus_kb/_setup/migrate.py`) or manually (`psql -f src/corpus_kb/migrations/001_corpus_schema.sql`) before starting the server.
 
 ### Ollama connection errors
 

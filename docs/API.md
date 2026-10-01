@@ -31,14 +31,14 @@ Ingest a single file from disk.
 ```bash
 curl -X POST http://localhost:8010/api/ingest/file \
   -H "Content-Type: application/json" \
-  -d '{"file_path": "src/server_wiring.py"}'
+  -d '{"file_path": "src/corpus_kb/server_wiring.py"}'
 ```
 
 Request body:
 
 ```json
 {
-  "file_path": "src/server_wiring.py",
+  "file_path": "src/corpus_kb/server_wiring.py",
   "content": "optional override",
   "source_type": "optional code/markdown/text",
   "tenant_id": "00000000-0000-0000-0000-000000000001"

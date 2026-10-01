@@ -165,10 +165,10 @@ Key features:
 - **PGVectorStore** for HNSW-indexed vector search in Postgres.
 - **Ollama embeddings** — never falls back to OpenAI or cloud providers.
 - **Dimension mismatch detection** — raises `DimensionMismatchError` if configured dimensions don't match the store.
-- **RagBackend protocol** — `src/storage/rag_backend.py` defines a `Protocol` interface so future backends can be added without changing callers.
+- **RagBackend protocol** — `src/corpus_kb/storage/rag_backend.py` defines a `Protocol` interface so future backends can be added without changing callers.
 - **Additive** — the LlamaIndex backend runs alongside the existing PostgresGraphStore path, not replacing it.
 
-The backend is defined in `src/storage/llamaindex_backend.py` and implements the `RagBackend` protocol from `src/storage/rag_backend.py`.
+The backend is defined in `src/corpus_kb/storage/llamaindex_backend.py` and implements the `RagBackend` protocol from `src/corpus_kb/storage/rag_backend.py`.
 
 ---
 

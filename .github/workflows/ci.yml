@@ -1,12 +1,11 @@
 # CI Pipeline for Corpus-KB
 #
-# Architecture note: The git repo root contains TWO source trees:
-#   1. src/          — legacy code from master (DO NOT lint/test this)
-#   2. corpus-kb/src/ — active development tree (ALL CI paths point here)
+# Architecture note: The git repo root now contains a SINGLE source tree:
+#   src/          — active development tree (ALL CI paths point here)
 #
-# Every path in this workflow is prefixed with corpus-kb/ to ensure CI
-# validates the active code, not the legacy duplicate. See issue #29 for
-# the follow-up plan to remove the legacy tree and convert to relative imports.
+# Every CI command in this workflow runs from the repo root. The legacy
+# nested corpus-kb subdirectory has been removed. See PR-1 of the
+# installation-ux-ci-quality-overhaul for details.
 #
 # CI Gate Order: lint → type-check → validate-configs → test (3 OSes)
 # Tests depend on validate-configs passing. fail-fast: false so all OS
@@ -44,29 +43,24 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          # Cache key uses corpus-kb/ pyproject.toml, not the root one
-          cache-dependency-path: corpus-kb/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install ruff
         run: pip install ruff==0.15.18
 
       - name: Ruff check
-        # Paths point at corpus-kb/ subdirectory, NOT root src/
-        run: ruff check corpus-kb/src/ corpus-kb/tests/
+        run: ruff check src/ tests/
 
       - name: Ruff format check
-        run: ruff format --check corpus-kb/src/ corpus-kb/tests/
+        run: ruff format --check src/ tests/
 
   # ─────────────────────────────────────────────────────────────────────
   # Type-check: pyright in basic mode (warnings downgraded, see
-  # corpus-kb/pyrightconfig.json for which rules are warnings vs errors)
+  # pyrightconfig.json for which rules are warnings vs errors)
   #
   # Project deps are installed so pyright can resolve imports like
   # pydantic, ollama, lancedb, etc. Without this, pyright reports
   # false-positive "reportMissingImports" errors.
-  #
-  # working-directory: corpus-kb ensures pyright picks up the local
-  # pyrightconfig.json. Running from the repo root would ignore it.
   # ─────────────────────────────────────────────────────────────────────
   type-check:
     name: "type-check (pyright)"
@@ -80,21 +74,20 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: corpus-kb/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install pyright and project deps
         # Project deps are needed so pyright can resolve third-party imports.
         # Without this, pyright reports 147+ false-positive missing-import errors.
         run: |
           pip install pyright
-          pip install -e corpus-kb/.
+          pip install -e ".[dev]"
 
-      - name: Pyright strict type check
-        # Must run from corpus-kb/ so pyright finds pyrightconfig.json.
-        # The config downgrades pre-existing type issues to warnings:
+      - name: Pyright type check
+        # pyrightconfig.json in the repo root downgrades pre-existing type
+        # issues to warnings:
         #   reportAttributeAccessIssue, reportCallIssue,
         #   reportArgumentType, reportReturnType → "warning"
-        working-directory: corpus-kb
         run: pyright src/
 
   # ─────────────────────────────────────────────────────────────────────
@@ -114,7 +107,7 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Validate config files
-        run: python corpus-kb/scripts/validate_configs.py
+        run: python src/corpus_kb/_setup/validate_configs.py
 
   # ─────────────────────────────────────────────────────────────────────
   # Test: 3-OS matrix (ubuntu, windows, macos) with Ollama
@@ -132,9 +125,6 @@ jobs:
   #     in degraded mode (zero-vector fallback) when Ollama is unavailable
   #
   # Test step:
-  #   - working-directory: corpus-kb so pytest resolves imports correctly
-  #     (the editable install adds corpus-kb/src/ to sys.path, but running
-  #     from the repo root would shadow it with the legacy src/ tree)
   #   - timeout-minutes: 10 prevents hung tests from blocking CI
   # ─────────────────────────────────────────────────────────────────────
   test:
@@ -154,7 +144,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: corpus-kb/pyproject.toml
+          cache-dependency-path: pyproject.toml
 
       - name: Install system dependencies (Ubuntu)
         if: runner.os == 'Linux'
@@ -170,8 +160,7 @@ jobs:
         # "Windows fatal exception: access violation" in magic.compat.py
         run: |
           python -m pip install --upgrade pip
-          pip install -e corpus-kb/.
-          pip install pytest pytest-asyncio
+          pip install -e ".[dev]"
           if [ "$RUNNER_OS" = "Windows" ]; then pip install python-magic-bin; fi
         shell: bash
 
@@ -283,13 +272,8 @@ jobs:
           }
 
       - name: Run tests
-        # working-directory: corpus-kb is CRITICAL. Without it, pytest
-        # runs from the repo root where the legacy src/ tree shadows the
-        # editable install's corpus-kb/src/, causing ModuleNotFoundError.
-        # See issue #29 for the follow-up to fix imports permanently.
         # timeout-minutes: 10 prevents hung Ollama connection attempts
         # from blocking CI indefinitely (Windows TCP timeout can be 21s+
-        # per attempt × 13 tests × multiple embed calls).
-        working-directory: corpus-kb
+        # per attempt × multiple embed calls).
         timeout-minutes: 10
-        run: python -m pytest tests/test_ingest.py -v --tb=short --durations=10
+        run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing

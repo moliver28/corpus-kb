@@ -57,12 +57,12 @@ Any MCP-compatible editor: OpenCode, Claude Code, Cursor, VS Code with Cline, an
 Start the server with `--transport stdio`:
 
 ```bash
-corpus-kb --transport stdio
+corpus-kb start --transport stdio
 ```
 
 ## Where is the configuration file?
 
-The loader checks `./config.yaml`, `./corpus-kb/config.yaml`, and `~/.corpus-kb/config.yaml`. Environment variables override any value.
+The loader checks `./config.yaml`, the packaged default inside `src/corpus_kb/config.yaml`, and the installer config under `~/.corpus-kb`. Environment variables override any value.
 
 ## How do I back up my data?
 

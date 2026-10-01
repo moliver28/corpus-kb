@@ -7,54 +7,56 @@ This page is for contributors and anyone who wants to understand how Corpus-KB i
 ## Project structure
 
 ```
-corpus-kb/
-├── config.yaml                 # Runtime configuration
-├── config/ontology.yaml        # Entity/relation type vocabulary
-├── pyproject.toml              # Package metadata and dependencies
-├── pyrightconfig.json          # Pyright type-checker config (basic mode)
-├── migrations/                 # Idempotent SQL migrations
-│   ├── 001_corpus_schema.sql
-│   ├── 002_corpus_rag_schema.sql
-│   └── 003_enable_extensions.sql
-├── src/
-│   ├── server.py               # Legacy FastMCP entrypoint
-│   ├── server_wiring.py        # New async startup: HTTP, socket, MCP, projections
-│   ├── config.py               # Config loader with env overrides
-│   ├── ontology.py             # Ontology loader and Pydantic model
-│   ├── partitioning.py         # Unstructured partition wrapper
+<repo-root>/
+├── config.yaml                      # Runtime configuration
+├── config/ontology.yaml             # Entity/relation type vocabulary
+├── pyproject.toml                   # Package metadata and dependencies
+├── pyrightconfig.json               # Pyright type-checker config (basic mode)
+├── src/corpus_kb/
+│   ├── cli.py                       # Typer CLI (setup, doctor, start)
+│   ├── server_wiring.py             # Async startup: HTTP, socket, MCP, projections
+│   ├── config.py                    # Config loader with env overrides
+│   ├── config.yaml                  # Packaged default config
+│   ├── ontology.py                  # Ontology loader and Pydantic model
+│   ├── partitioning.py              # Unstructured partition wrapper
+│   ├── migrations/                  # Idempotent SQL migrations
+│   │   ├── 001_corpus_schema.sql
+│   │   ├── 002_corpus_rag_schema.sql
+│   │   ├── 003_enable_extensions.sql
+│   │   ├── 004_enable_age.sql
+│   │   ├── 005_enable_pgml.sql
+│   │   └── 006_rrf_fusion.sql
 │   ├── api/
-│   │   ├── http.py             # Starlette REST routes
-│   │   └── socket.py           # JSON-RPC socket server
+│   │   ├── http.py                  # Starlette REST routes
+│   │   └── socket.py                # JSON-RPC socket server
 │   ├── domain/
-│   │   ├── aggregates.py       # Eventsourcing aggregates
-│   │   ├── application.py      # Eventsourcing app factory
-│   │   └── models.py           # Pydantic command/query models
+│   │   ├── aggregates.py            # Eventsourcing aggregates
+│   │   ├── application.py           # Eventsourcing app factory
+│   │   └── models.py                # Pydantic command/query models
 │   ├── handlers/
-│   │   ├── command_handler.py  # Ingest, entity, relation commands
-│   │   ├── query_handler.py    # Search, SQL, list queries
-│   │   ├── graph_handler.py    # Graph traversal
-│   │   ├── tag_handler.py      # Tags and metadata
-│   │   ├── versioning_handler.py  # Versions and stats
-│   │   └── idempotency.py      # Command deduplication
+│   │   ├── command_handler.py       # Ingest, entity, relation commands
+│   │   ├── query_handler.py         # Search, SQL, list queries
+│   │   ├── graph_handler.py         # Graph traversal
+│   │   ├── tag_handler.py           # Tags and metadata
+│   │   ├── versioning_handler.py    # Versions and stats
+│   │   └── idempotency.py           # Command deduplication
 │   ├── projections/
-│   │   ├── embed_projection.py # Async chunk embedding
+│   │   ├── embed_projection.py      # Async chunk embedding
 │   │   ├── documents_projection.py
 │   │   ├── checkpoint.py
-│   │   └── dlq.py              # Dead-letter queue
-│   ├── chunking/               # File detection and chunkers (tree-sitter, markdown, text)
-│   ├── rag/                    # Embedder, hybrid search, reranker
-│   ├── storage/                # PostgresGraphStore, LlamaIndexPostgresBackend, RagBackend protocol
-│   ├── extraction/             # Entity/relation extractors (regex, langextract, pgml)
-│   ├── tools/                  # MCP tool modules (ingest_common, ingest_tools)
-│   └── utils/                  # Shared models
-├── tests/                      # Pytest suite
+│   │   └── dlq.py                   # Dead-letter queue
+│   ├── chunking/                    # File detection and chunkers
+│   ├── rag/                         # Embedder, hybrid search, reranker
+│   ├── storage/                     # Graph stores, LlamaIndex backend, RagBackend protocol
+│   ├── extraction/                  # Entity/relation extractors
+│   ├── tools/                       # MCP tool modules
+│   ├── utils/                       # Shared models
+│   └── _setup/                      # Installer, migration runner, config validator
+├── tests/                           # Pytest suite
 ├── scripts/
-│   ├── install.py              # Full-stack installer (doctor + install --apply)
-│   ├── migrate.py              # Idempotent SQL migration runner
-│   ├── validate_configs.py     # MCP config validator (CI gate)
-│   └── demo.py                 # Smoke test
-├── docs/INGESTION.md           # Full pipeline documentation
-└── mcp-configs/                # Editor MCP configs
+│   └── install.py                   # Backward-compatibility shim
+├── docs/INGESTION.md                # Full pipeline documentation
+└── mcp-configs/                     # Editor MCP configs
 ```
 
 ---
@@ -97,7 +99,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Install Postgres 17 with pgvector and AGE, create the database, and run migrations (`python scripts/migrate.py`). See [INSTALL.md](INSTALL.md) for platform details. Or use the installer: `python scripts/install.py install --apply`.
+Install Postgres 17 with pgvector and AGE, create the database, and run migrations (`python src/corpus_kb/_setup/migrate.py`). See [INSTALL.md](INSTALL.md) for platform details. Or use the installer: `corpus-kb setup`.
 
 ---
 
@@ -111,7 +113,7 @@ pytest
 pytest tests/test_ingest.py -v --tb=short
 
 # With coverage
-pytest --cov=src --cov-report=term-missing
+pytest --cov=corpus_kb --cov-report=term-missing
 ```
 
 Tests that need Ollama are marked with `@pytest.mark.requires_ollama`. Tests that need Unstructured hi_res mode are skipped on Windows because detectron2 is unavailable.
@@ -126,7 +128,7 @@ Tests that need Ollama are marked with `@pytest.mark.requires_ollama`. Tests tha
 - No `type: ignore` comments.
 - 250-line soft limit on source files; split modules that grow past it.
 - TDD for new features.
-- Tests mirror the `src/` structure under `tests/`.
+- Tests mirror the `src/corpus_kb/` structure under `tests/`.
 
 ---
 
