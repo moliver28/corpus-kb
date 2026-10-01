@@ -245,6 +245,22 @@ def generate_lock() -> list[dict[str, Any]]:
     return sorted(entries, key=lambda e: _normalize(e["name"]))
 
 
+def _print_lock_diff(existing: str, generated: str) -> None:
+    """Print a concise diff between the committed and generated locks."""
+    try:
+        old = {e["name"]: e for e in json.loads(existing)}
+        new = {e["name"]: e for e in json.loads(generated)}
+    except json.JSONDecodeError:
+        return
+    for name in sorted(set(old) | set(new)):
+        if name not in old:
+            print(f"  + {name} {new[name]['version']}", file=sys.stderr)
+        elif name not in new:
+            print(f"  - {name} {old[name]['version']}", file=sys.stderr)
+        elif old[name] != new[name]:
+            print(f"  ~ {name}: {old[name]} -> {new[name]}", file=sys.stderr)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate runtime dependency license baseline")
     parser.add_argument(
@@ -268,6 +284,7 @@ def main() -> int:
         if existing != content:
             print(f"License lock is out of date: {args.output}", file=sys.stderr)
             print("Run scripts/generate_license_lock.py to regenerate it.", file=sys.stderr)
+            _print_lock_diff(existing, content)
             return 1
         print("License lock is up to date.")
         return 0
