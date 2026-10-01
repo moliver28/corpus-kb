@@ -55,13 +55,14 @@ async def test_setup_dry_run_lists_all_steps() -> None:
         patch.object(install.psutil, "virtual_memory", return_value=_Mem(8 * 1024**3)),
         patch.object(install.psutil, "cpu_count", return_value=4),
         patch.object(install, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install, "_find_compose_command", return_value="docker compose"),
     ):
         result = await install.setup_cmd(config, dry_run=True, fresh=False)
 
     assert result == 0
     output = stdout_capture.getvalue()
     assert "=== Corpus-KB One-Line Setup ===" in output
-    assert "docker compose up -d" in output
+    assert "docker compose -f compose.yaml up -d" in output
     assert "pip install -e .[dev]" in output
     assert "migrations" in output.lower()
     assert "AGE + pgml" in output
@@ -69,6 +70,38 @@ async def test_setup_dry_run_lists_all_steps() -> None:
     assert "qwen3:4b" in output
     assert "write" in output.lower() and "config.yaml" in output
     assert "This was a dry run" in output
+
+
+@pytest.mark.asyncio
+async def test_setup_dry_run_build_local_lists_local_dockerfile() -> None:
+    """`setup --dry-run --build-local` shows the local Dockerfile build path."""
+    stdout_capture = StringIO()
+    config = {
+        "installer": {
+            "profiles": {
+                "balanced": {
+                    "ram_gb_max": 16,
+                    "vram_gb_max": 4,
+                    "model": "nomic-embed-text",
+                    "llm": "qwen3:4b",
+                }
+            }
+        },
+        "database": {"connection_string": "postgresql://u:p@localhost:5433/db"},
+    }
+    with (
+        patch.object(sys, "stdout", stdout_capture),
+        patch.object(install.psutil, "virtual_memory", return_value=_Mem(8 * 1024**3)),
+        patch.object(install.psutil, "cpu_count", return_value=4),
+        patch.object(install, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install, "_find_compose_command", return_value="docker compose"),
+    ):
+        result = await install.setup_cmd(config, dry_run=True, fresh=False, build_local=True)
+
+    assert result == 0
+    output = stdout_capture.getvalue()
+    assert "docker compose -f compose.yaml -f compose.build-local.yaml up -d --build" in output
+    assert "docker/postgres/Dockerfile" in output
 
 
 @pytest.mark.asyncio

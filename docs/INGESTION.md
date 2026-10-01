@@ -432,7 +432,7 @@ The pipeline supports three extractors via a strategy pattern:
 
 ## One-Line Setup
 
-`corpus-kb setup` is a guided wrapper around the docker-compose stack:
+`corpus-kb setup` is a guided wrapper around the Docker Compose stack:
 
 ```bash
 # Preview every step without side effects
@@ -443,14 +443,14 @@ corpus-kb setup
 ```
 
 It will:
-1. `docker compose up -d` (PostgreSQL 17 + pgvector + AGE + pgml + Ollama)
+1. `docker compose up -d` (PostgreSQL 17 + pgvector + AGE + pgml)
 2. `pip install -e .[dev]`
 3. Create the database/user and run all migrations
 4. Verify AGE + pgml extensions are installed
 5. Pull `nomic-embed-text` and `qwen3:4b`
 6. Write/update the installer config file under `~/.corpus-kb`
 
-The compose stack lives at the repo root (`docker-compose.yml`) and uses
+The compose stack lives at the repo root (`compose.yaml`) and uses
 `corpus_user`/`corpus_pass`/`corpus_kb` on host port `5433`, matching the
 default connection string in `config.yaml` and `src/corpus_kb/config.py`.
 

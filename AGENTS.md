@@ -172,7 +172,7 @@ The `PostgresGraphStore` implementation includes:
 ## Known Issues (check open GitHub issues before fixing)
 
 - **#13 (HIGH BUG)**: ✅ Resolved — ontology pipeline adapted to Postgres. Entity/relation extraction works via `src/corpus_kb/extraction/` with regex, langextract, pgml, and bert backends.
-- **#15/#16 (HIGH/MEDIUM BUG)**: ✅ Resolved — `setup.sh` replaced by full-stack installer `src/corpus_kb/_setup/install.py` and the `corpus-kb setup` CLI command.
+- **#15/#16 (HIGH/MEDIUM BUG)**: ✅ Resolved — Native bash installer retired in favor of the full-stack Python installer at `src/corpus_kb/_setup/install.py` and the `corpus-kb setup` CLI command (container-first default).
 - **#17 (HIGH FEATURE)**: Zero-data-loss shutdown/restart with transactional ingest. Not yet implemented.
 - **#29 (MEDIUM TASK)**: ✅ Resolved — single-tree layout completed. Package now lives at `src/corpus_kb/` with `corpus_kb.*` absolute imports.
 - **#31 (MEDIUM FEATURE)**: Upgrade NER extraction to BERT/transformer models. Partially implemented via `src/corpus_kb/extraction/bert_backend.py`.

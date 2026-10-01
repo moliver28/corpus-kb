@@ -90,6 +90,13 @@ llamaindex:
 
 installer:
   auto_detect: true
+  database_mode: container
+  postgres_image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
+  postgres_port: 5433
+  ollama_mode: external
+  data_dir: ~/.corpus-kb
+  telemetry: false
+  verify_image_signature: true
   profiles:
     minimal: { ram_gb_max: 8, vram_gb_max: 0, model: "nomic-embed-text", llm: "qwen3:0.6b" }
     balanced: { ram_gb_max: 16, vram_gb_max: 4, model: "nomic-embed-text", llm: "qwen3:4b" }

@@ -110,6 +110,57 @@ jobs:
         run: python src/corpus_kb/_setup/validate_configs.py
 
   # ─────────────────────────────────────────────────────────────────────
+  # Build Postgres image: build and push the pinned PostgreSQL image so
+  # downstream release workflows (e.g. .github/workflows/build-postgres-image.yml)
+  # can publish it to GHCR. This job does NOT block the test matrix:
+  #   - continue-on-error: true because apt.postgresml.org is currently
+  #     unreachable from GitHub Actions runners.
+  #   - The test job skips Postgres-dependent tests cleanly when no
+  #     service container is available.
+  # ─────────────────────────────────────────────────────────────────────
+  build-postgres-image:
+    name: "build-postgres-image"
+    runs-on: ubuntu-latest
+    # continue-on-error: true because the upstream apt.postgresml.org
+    # repository is currently unreachable from GitHub Actions runners.
+    # The image is not required by the test matrix (tests skip cleanly
+    # when Postgres is unavailable), so a build failure must not fail
+    # the overall workflow.
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE_TAG: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Postgres image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/postgres
+          file: docker/postgres/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+          platforms: linux/amd64
+          build-args: |
+            PGVECTOR_VERSION=0.8.6-1.pgdg12+1
+            AGE_VERSION=1.7.0~rc0-1.pgdg12+1
+            PGML_VERSION=2.10.0
+
+  # ─────────────────────────────────────────────────────────────────────
   # Test: 3-OS matrix (ubuntu, windows, macos) with Ollama
   #
   # Ollama install strategy per OS:
@@ -130,7 +181,9 @@ jobs:
   test:
     name: "test (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
-    needs: validate-configs
+    needs: [validate-configs]
+    env:
+      CORPUS_KB_DATABASE_URL: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
