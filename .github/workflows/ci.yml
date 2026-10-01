@@ -110,6 +110,47 @@ jobs:
         run: python src/corpus_kb/_setup/validate_configs.py
 
   # ─────────────────────────────────────────────────────────────────────
+  # Build Postgres image: build and push the pinned PostgreSQL image so
+  # the test job's service container can pull it. This job runs before
+  # the test matrix and only on Ubuntu (services are Linux-only anyway).
+  # ─────────────────────────────────────────────────────────────────────
+  build-postgres-image:
+    name: "build-postgres-image"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE_TAG: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Postgres image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/postgres
+          file: docker/postgres/Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_TAG }}
+          platforms: linux/amd64
+          build-args: |
+            PGVECTOR_VERSION=0.8.6-1.pgdg12+1
+            AGE_VERSION=1.7.0~rc0-1.pgdg12+1
+            PGML_VERSION=2.10.0
+
+  # ─────────────────────────────────────────────────────────────────────
   # Test: 3-OS matrix (ubuntu, windows, macos) with Ollama
   #
   # Ollama install strategy per OS:
@@ -130,7 +171,7 @@ jobs:
   test:
     name: "test (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
-    needs: validate-configs
+    needs: [validate-configs, build-postgres-image]
     # Service containers are only available on Linux runners. On Windows
     # and macOS runners this block is ignored, and Postgres-dependent tests
     # skip cleanly via the pg_pool fixture.
