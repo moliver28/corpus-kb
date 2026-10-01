@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import tomllib
 from importlib.metadata import Distribution, distributions
 from pathlib import Path
 from typing import Any
@@ -24,31 +23,60 @@ EXCLUDED_PACKAGES = {
         "pytest-cov",
         "syrupy",
         "coverage",
+        # `pip` and `wheel` ship with the interpreter and aren't runtime
+        # dependencies of the project. `setuptools` is intentionally kept
+        # here because `llama-index-core>=0.11` declares a runtime
+        # `setuptools>=80.9.0` requirement.
+        "pip",
+        "wheel",
     }
 }
 
-LICENSE_TEXT_URLS = {
-    "mit": "https://opensource.org/licenses/MIT",
-    "mit license": "https://opensource.org/licenses/MIT",
-    "bsd": "https://opensource.org/licenses/BSD-3-Clause",
-    "bsd license": "https://opensource.org/licenses/BSD-3-Clause",
-    "bsd-2-clause": "https://opensource.org/licenses/BSD-2-Clause",
-    "bsd-3-clause": "https://opensource.org/licenses/BSD-3-Clause",
-    "apache software license": "https://opensource.org/licenses/Apache-2.0",
-    "apache-2.0": "https://opensource.org/licenses/Apache-2.0",
-    "apache license 2.0": "https://opensource.org/licenses/Apache-2.0",
-    "isc license (iscl)": "https://opensource.org/licenses/ISC",
-    "isc": "https://opensource.org/licenses/ISC",
-    "mozilla public license 2.0 (mpl 2.0)": "https://opensource.org/licenses/MPL-2.0",
-    "mpl-2.0": "https://opensource.org/licenses/MPL-2.0",
-    "python software foundation license": "https://docs.python.org/3/license.html#psf-license",
-    "psf-2.0": "https://docs.python.org/3/license.html#psf-license",
+# Canonical SPDX-like short names for the most common license identifiers
+# encountered in distribution metadata. The key is matched case-insensitively
+# after lowercasing and collapsing whitespace, so "MIT License", "mit",
+# "MIT license" all map to the same canonical "MIT" form. This keeps the
+# lock deterministic across wheels/installs that emit slightly different
+# strings for the same license.
+LICENSE_NORMALIZATION = {
+    "mit": "MIT",
+    "mit license": "MIT",
+    "apache software license": "Apache-2.0",
+    "apache license 2.0": "Apache-2.0",
+    "apache-2.0": "Apache-2.0",
+    "apache-2.0 and mit": "Apache-2.0 AND MIT",
+    "mit and psf-2.0": "MIT AND PSF-2.0",
+    "apache-2.0 and cnri-python": "Apache-2.0 AND CNRI-Python",
+    "apache-2.0 or bsd-2-clause": "Apache-2.0 OR BSD-2-Clause",
+    "bsd license": "BSD-3-Clause",
+    "bsd-3-clause": "BSD-3-Clause",
+    "bsd-2-clause": "BSD-2-Clause",
+    "isc license (iscl)": "ISC",
+    "isc": "ISC",
+    "mozilla public license 2.0 (mpl 2.0)": "MPL-2.0",
+    "mpl-2.0": "MPL-2.0",
+    "mpl-2.0 and mit": "MPL-2.0 AND MIT",
+    "mit-cmu": "MIT-CMU",
+    "python software foundation license": "PSF-2.0",
+    "psf-2.0": "PSF-2.0",
+    "academic free license (afl)": "AFL-3.0",
+    "historical permission notice and disclaimer (hpnd)": "HPND",
+    "gnu library or lesser general public license (lgpl)": "LGPL",
 }
 
-
-def _read_runtime_deps(pyproject_path: Path) -> list[str]:
-    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    return list(data.get("project", {}).get("dependencies", []))
+LICENSE_TEXT_URLS = {
+    "MIT": "https://opensource.org/licenses/MIT",
+    "Apache-2.0": "https://opensource.org/licenses/Apache-2.0",
+    "BSD-2-Clause": "https://opensource.org/licenses/BSD-2-Clause",
+    "BSD-3-Clause": "https://opensource.org/licenses/BSD-3-Clause",
+    "ISC": "https://opensource.org/licenses/ISC",
+    "MPL-2.0": "https://opensource.org/licenses/MPL-2.0",
+    "LGPL": "https://opensource.org/licenses/LGPL-3.0",
+    "PSF-2.0": "https://docs.python.org/3/license.html#psf-license",
+    "AFL-3.0": "https://opensource.org/licenses/AFL-3.0",
+    "HPND": "https://opensource.org/licenses/HPND",
+    "MIT-CMU": "https://github.com/python-pillow/Pillow/blob/main/LICENSE",
+}
 
 
 def _installed_distributions() -> dict[str, Distribution]:
@@ -56,83 +84,69 @@ def _installed_distributions() -> dict[str, Distribution]:
 
 
 def _resolve_packages(
-    root_reqs: list[str],
     installed: dict[str, Distribution],
 ) -> dict[str, Distribution]:
-    try:
-        from packaging.requirements import Requirement
-    except ImportError as exc:  # pragma: no cover
-        raise RuntimeError("packaging is required for dependency resolution") from exc
+    """Return every installed runtime dependency, in deterministic order.
 
-    resolved: dict[str, Distribution] = {}
-    pending = [_normalize(Requirement(req).name) for req in root_reqs]
-    visited = set()
+    Earlier versions of the script walked ``dist.requires`` from the project's
+    root dependencies via BFS, but that approach is sensitive to
+    ``Requirement.marker`` evaluation (extras like ``pyjwt[crypto]`` were
+    skipped because the ``extra == "crypto"`` marker evaluates False in
+    isolation) and to ``dist.requires`` not listing transitive deps of
+    excluded packages (e.g. ``iniconfig``, ``pluggy`` installed because
+    ``pytest-asyncio`` is a transitive requirement). On a fresh
+    ``pip install -e .`` run the resolved set varies by platform/wheel and the
+    lock fails the CI ``license-check`` job. Enumerating every installed
+    distribution except the dev-only / Windows-only excludes gives a stable
+    output that matches what CI materialises.
+    """
+    return {name: dist for name, dist in installed.items() if name not in EXCLUDED_PACKAGES}
 
-    while pending:
-        name = pending.pop()
-        if name in visited or name in EXCLUDED_PACKAGES:
-            continue
-        visited.add(name)
-        dist = installed.get(name)
-        if dist is None:
-            continue
-        resolved[name] = dist
-        for req_str in dist.requires or []:
-            req = Requirement(req_str)
-            req_name = _normalize(req.name)
-            if req_name in EXCLUDED_PACKAGES:
-                continue
-            if req.marker is not None and not req.marker.evaluate():
-                continue
-            pending.append(req_name)
 
-    return resolved
+def _normalize_license(raw: str) -> str:
+    """Map a raw license string to a canonical short form.
+
+    Wheels/installs frequently emit the same license under slightly different
+    strings ("MIT" vs "MIT License", "BSD License" vs "BSD-3-Clause", etc.).
+    Normalizing keeps the lock stable across platforms and packaging tools.
+    """
+    key = raw.strip().lower()
+    if not key:
+        return "UNKNOWN"
+    if key in LICENSE_NORMALIZATION:
+        return LICENSE_NORMALIZATION[key]
+    return raw.strip()
 
 
 def _extract_license(dist: Distribution) -> str:
     # PEP 639 License-Expression is the preferred modern field.
     expr = dist.metadata.get("License-Expression")
     if expr:
-        return expr.strip()
+        return _normalize_license(expr)
 
     classifiers = dist.metadata.get_all("Classifier") or []
     license_classifiers = [c for c in classifiers if c.startswith("License ::")]
     if license_classifiers:
         # Take the most specific (last) classifier, mirroring pip-licenses behavior.
-        return license_classifiers[-1].split("::")[-1].strip()
+        return _normalize_license(license_classifiers[-1].split("::")[-1].strip())
 
     raw = (dist.metadata.get("License") or "").strip()
     if raw and "\n" not in raw and len(raw) < 80:
-        return raw
+        return _normalize_license(raw)
 
     return "UNKNOWN"
 
 
-def _extract_homepage(dist: Distribution, name: str, version: str) -> str:
-    home = dist.metadata.get("Home-page")
-    if home and home.lower() not in {"unknown", ""}:
-        return home
-
-    project_urls = dist.metadata.get_all("Project-URL") or []
-    for url in project_urls:
-        if "homepage" in url.lower() or "source" in url.lower():
-            _, _, link = url.partition(",")
-            link = link.strip()
-            if link:
-                return link
-    if project_urls:
-        _, _, link = project_urls[0].partition(",")
-        link = link.strip()
-        if link:
-            return link
-
+def _extract_homepage(name: str, version: str) -> str:
+    # Deterministic across platforms: always point at the canonical PyPI
+    # project page so we don't drift on Home-page / Project-URL field order
+    # or presence (which can vary between wheels and packaging tools).
     return f"https://pypi.org/project/{name}/{version}/"
 
 
 def _license_text_url(license_name: str, homepage: str) -> str | None:
-    key = license_name.lower()
-    if key in LICENSE_TEXT_URLS:
-        return LICENSE_TEXT_URLS[key]
+    if license_name in LICENSE_TEXT_URLS:
+        return LICENSE_TEXT_URLS[license_name]
     return homepage if "pypi.org" not in homepage else None
 
 
@@ -140,7 +154,7 @@ def _build_lock_entry(dist: Distribution) -> dict[str, Any]:
     name = dist.metadata["Name"]
     version = dist.version
     license_name = _extract_license(dist)
-    homepage = _extract_homepage(dist, name, version)
+    homepage = _extract_homepage(name, version)
     return {
         "name": name,
         "version": version,
@@ -150,22 +164,15 @@ def _build_lock_entry(dist: Distribution) -> dict[str, Any]:
     }
 
 
-def generate_lock(pyproject_path: Path) -> list[dict[str, Any]]:
-    root_reqs = _read_runtime_deps(pyproject_path)
+def generate_lock() -> list[dict[str, Any]]:
     installed = _installed_distributions()
-    resolved = _resolve_packages(root_reqs, installed)
+    resolved = _resolve_packages(installed)
     entries = [_build_lock_entry(dist) for dist in resolved.values()]
     return sorted(entries, key=lambda e: _normalize(e["name"]))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate runtime dependency license baseline")
-    parser.add_argument(
-        "--pyproject",
-        type=Path,
-        default=Path("pyproject.toml"),
-        help="Path to pyproject.toml",
-    )
     parser.add_argument(
         "--output",
         type=Path,
@@ -179,7 +186,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    lock = generate_lock(args.pyproject)
+    lock = generate_lock()
     content = json.dumps(lock, indent=2, ensure_ascii=False) + "\n"
 
     if args.check:

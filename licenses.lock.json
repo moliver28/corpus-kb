@@ -2,239 +2,253 @@
   {
     "name": "aiofiles",
     "version": "25.1.0",
-    "license": "Apache Software License",
-    "homepage": "https://github.com/Tinche/aiofiles#history",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/aiofiles/25.1.0/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "aiohappyeyeballs",
     "version": "2.7.1",
-    "license": "Python Software Foundation License",
-    "homepage": "https://github.com/aio-libs/aiohappyeyeballs/issues",
+    "license": "PSF-2.0",
+    "homepage": "https://pypi.org/project/aiohappyeyeballs/2.7.1/",
     "licenseTextUrl": "https://docs.python.org/3/license.html#psf-license"
   },
   {
     "name": "aiohttp",
     "version": "3.14.3",
     "license": "Apache-2.0 AND MIT",
-    "homepage": "https://github.com/aio-libs/aiohttp",
-    "licenseTextUrl": "https://github.com/aio-libs/aiohttp"
+    "homepage": "https://pypi.org/project/aiohttp/3.14.3/",
+    "licenseTextUrl": null
   },
   {
     "name": "aiosignal",
     "version": "1.4.0",
-    "license": "Apache Software License",
-    "homepage": "https://github.com/aio-libs/aiosignal",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/aiosignal/1.4.0/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "aiosqlite",
     "version": "0.22.1",
-    "license": "MIT License",
-    "homepage": "https://aiosqlite.omnilib.dev",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/aiosqlite/0.22.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "annotated-doc",
     "version": "0.0.5",
     "license": "MIT",
-    "homepage": "https://github.com/fastapi/annotated-doc",
+    "homepage": "https://pypi.org/project/annotated-doc/0.0.5/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "annotated-types",
     "version": "0.8.0",
     "license": "MIT",
-    "homepage": "https://github.com/annotated-types/annotated-types",
+    "homepage": "https://pypi.org/project/annotated-types/0.8.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "anyio",
     "version": "4.15.1",
     "license": "MIT",
-    "homepage": "https://github.com/agronholm/anyio",
+    "homepage": "https://pypi.org/project/anyio/4.15.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "asyncpg",
     "version": "0.31.0",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/MagicStack/asyncpg",
+    "homepage": "https://pypi.org/project/asyncpg/0.31.0/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "attrs",
     "version": "26.1.0",
     "license": "MIT",
-    "homepage": "https://tidelift.com/subscription/pkg/pypi-attrs?utm_source=pypi-attrs&utm_medium=pypi",
+    "homepage": "https://pypi.org/project/attrs/26.1.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "banks",
     "version": "2.5.1",
     "license": "MIT",
-    "homepage": "https://github.com/masci/banks",
+    "homepage": "https://pypi.org/project/banks/2.5.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "beautifulsoup4",
     "version": "4.15.0",
-    "license": "MIT License",
-    "homepage": "https://www.crummy.com/software/BeautifulSoup/bs4/",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/beautifulsoup4/4.15.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "blis",
     "version": "1.3.3",
-    "license": "BSD License",
-    "homepage": "https://github.com/explosion/cython-blis",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/blis/1.3.3/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "catalogue",
     "version": "2.0.10",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/catalogue",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/catalogue/2.0.10/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "certifi",
     "version": "2026.7.22",
-    "license": "Mozilla Public License 2.0 (MPL 2.0)",
-    "homepage": "https://github.com/certifi/python-certifi",
+    "license": "MPL-2.0",
+    "homepage": "https://pypi.org/project/certifi/2026.7.22/",
     "licenseTextUrl": "https://opensource.org/licenses/MPL-2.0"
+  },
+  {
+    "name": "cffi",
+    "version": "2.1.1",
+    "license": "MIT-0",
+    "homepage": "https://pypi.org/project/cffi/2.1.1/",
+    "licenseTextUrl": null
   },
   {
     "name": "charset-normalizer",
     "version": "3.5.2",
     "license": "MIT",
-    "homepage": "https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md",
+    "homepage": "https://pypi.org/project/charset-normalizer/3.5.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "click",
     "version": "8.5.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/pallets/click/",
+    "homepage": "https://pypi.org/project/click/8.5.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "cloudpathlib",
     "version": "0.25.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/drivendataorg/cloudpathlib/issues",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/cloudpathlib/0.25.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "cloudpickle",
     "version": "3.1.2",
-    "license": "BSD License",
-    "homepage": "https://github.com/cloudpipe/cloudpickle",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/cloudpickle/3.1.2/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "colorama",
     "version": "0.4.6",
-    "license": "BSD License",
-    "homepage": "https://github.com/tartley/colorama",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/colorama/0.4.6/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "confection",
     "version": "1.3.3",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/confection",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/confection/1.3.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
+  },
+  {
+    "name": "cryptography",
+    "version": "50.0.2",
+    "license": "Apache-2.0 OR BSD-3-Clause",
+    "homepage": "https://pypi.org/project/cryptography/50.0.2/",
+    "licenseTextUrl": null
   },
   {
     "name": "cymem",
     "version": "2.0.13",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/cymem",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/cymem/2.0.13/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "dataclasses-json",
     "version": "0.6.7",
-    "license": "MIT License",
-    "homepage": "https://github.com/lidatong/dataclasses-json",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/dataclasses-json/0.6.7/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "defusedxml",
     "version": "0.7.1",
-    "license": "Python Software Foundation License",
-    "homepage": "https://github.com/tiran/defusedxml",
+    "license": "PSF-2.0",
+    "homepage": "https://pypi.org/project/defusedxml/0.7.1/",
     "licenseTextUrl": "https://docs.python.org/3/license.html#psf-license"
   },
   {
     "name": "Deprecated",
     "version": "1.3.1",
-    "license": "MIT License",
-    "homepage": "https://github.com/laurent-laporte-pro/deprecated",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/Deprecated/1.3.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "dirtyjson",
     "version": "1.0.8",
-    "license": "Academic Free License (AFL)",
-    "homepage": "https://github.com/codecobblers/dirtyjson",
-    "licenseTextUrl": "https://github.com/codecobblers/dirtyjson"
+    "license": "AFL-3.0",
+    "homepage": "https://pypi.org/project/dirtyjson/1.0.8/",
+    "licenseTextUrl": "https://opensource.org/licenses/AFL-3.0"
   },
   {
     "name": "emoji",
     "version": "2.16.0",
-    "license": "BSD License",
-    "homepage": "https://github.com/carpedm20/emoji/",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/emoji/2.16.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "eventsourcing",
     "version": "9.5.5",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/pyeventsourcing/eventsourcing",
+    "homepage": "https://pypi.org/project/eventsourcing/9.5.5/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "filelock",
     "version": "3.32.7",
     "license": "MIT",
-    "homepage": "https://github.com/tox-dev/py-filelock",
+    "homepage": "https://pypi.org/project/filelock/3.32.7/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "filetype",
     "version": "1.2.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/h2non/filetype.py",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/filetype/1.2.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "frozenlist",
     "version": "1.8.0",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/aio-libs/frozenlist",
+    "homepage": "https://pypi.org/project/frozenlist/1.8.0/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "fsspec",
     "version": "2026.9.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/fsspec/filesystem_spec",
+    "homepage": "https://pypi.org/project/fsspec/2026.9.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "greenlet",
     "version": "3.5.6",
     "license": "MIT AND PSF-2.0",
-    "homepage": "https://greenlet.readthedocs.io",
-    "licenseTextUrl": "https://greenlet.readthedocs.io"
+    "homepage": "https://pypi.org/project/greenlet/3.5.6/",
+    "licenseTextUrl": null
   },
   {
     "name": "griffe",
     "version": "2.3.0",
     "license": "ISC",
-    "homepage": "https://mkdocstrings.github.io/griffe",
+    "homepage": "https://pypi.org/project/griffe/2.3.0/",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
@@ -254,99 +268,106 @@
   {
     "name": "h11",
     "version": "0.16.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/python-hyper/h11",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/h11/0.16.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "html5lib",
     "version": "1.1",
-    "license": "MIT License",
-    "homepage": "https://github.com/html5lib/html5lib-python",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/html5lib/1.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "httpcore",
     "version": "1.0.9",
     "license": "BSD-3-Clause",
-    "homepage": "https://www.encode.io/httpcore/",
+    "homepage": "https://pypi.org/project/httpcore/1.0.9/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "httpcore2",
     "version": "2.13.1",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/pydantic/httpx2",
+    "homepage": "https://pypi.org/project/httpcore2/2.13.1/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "httpx",
     "version": "0.28.1",
-    "license": "BSD License",
-    "homepage": "https://github.com/encode/httpx",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/httpx/0.28.1/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "httpx2",
     "version": "2.13.1",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/pydantic/httpx2",
+    "homepage": "https://pypi.org/project/httpx2/2.13.1/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "idna",
     "version": "3.20",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/kjd/idna",
+    "homepage": "https://pypi.org/project/idna/3.20/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
+  },
+  {
+    "name": "iniconfig",
+    "version": "2.3.0",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/iniconfig/2.3.0/",
+    "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "installer",
     "version": "0.7.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/pypa/installer",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/installer/0.7.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "Jinja2",
     "version": "3.1.6",
-    "license": "BSD License",
-    "homepage": "https://github.com/pallets/jinja/",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/Jinja2/3.1.6/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "joblib",
     "version": "1.6.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://joblib.readthedocs.io",
+    "homepage": "https://pypi.org/project/joblib/1.6.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "jsonschema",
     "version": "4.26.0",
     "license": "MIT",
-    "homepage": "https://github.com/python-jsonschema/jsonschema",
+    "homepage": "https://pypi.org/project/jsonschema/4.26.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "jsonschema-specifications",
     "version": "2025.9.1",
     "license": "MIT",
-    "homepage": "https://github.com/python-jsonschema/jsonschema-specifications",
+    "homepage": "https://pypi.org/project/jsonschema-specifications/2025.9.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "langdetect",
     "version": "1.0.9",
-    "license": "Apache Software License",
-    "homepage": "https://github.com/Mimino666/langdetect",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/langdetect/1.0.9/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "llama-index-core",
     "version": "0.14.25",
     "license": "MIT",
-    "homepage": "https://llamaindex.ai",
+    "homepage": "https://pypi.org/project/llama-index-core/0.14.25/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -360,7 +381,7 @@
     "name": "llama-index-instrumentation",
     "version": "0.6.0",
     "license": "MIT",
-    "homepage": "https://llamaindex.ai",
+    "homepage": "https://pypi.org/project/llama-index-instrumentation/0.6.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -388,588 +409,609 @@
     "name": "llvmlite",
     "version": "0.50.0",
     "license": "UNKNOWN",
-    "homepage": "http://llvmlite.readthedocs.io",
-    "licenseTextUrl": "http://llvmlite.readthedocs.io"
+    "homepage": "https://pypi.org/project/llvmlite/0.50.0/",
+    "licenseTextUrl": null
   },
   {
     "name": "lxml",
     "version": "6.1.3",
     "license": "BSD-3-Clause",
-    "homepage": "https://lxml.de/",
+    "homepage": "https://pypi.org/project/lxml/6.1.3/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "markdown-it-py",
     "version": "4.2.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/executablebooks/markdown-it-py",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/markdown-it-py/4.2.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "MarkupSafe",
     "version": "3.0.3",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/pallets/markupsafe/",
+    "homepage": "https://pypi.org/project/MarkupSafe/3.0.3/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "marshmallow",
     "version": "3.26.2",
-    "license": "MIT License",
-    "homepage": "https://github.com/marshmallow-code/marshmallow",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/marshmallow/3.26.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "mcp",
     "version": "2.2.0",
-    "license": "MIT License",
-    "homepage": "https://modelcontextprotocol.io",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/mcp/2.2.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "mcp-types",
     "version": "2.2.0",
-    "license": "MIT License",
-    "homepage": "https://modelcontextprotocol.io",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/mcp-types/2.2.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "mdurl",
     "version": "0.1.2",
-    "license": "MIT License",
-    "homepage": "https://github.com/executablebooks/mdurl",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/mdurl/0.1.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "multidict",
     "version": "6.9.1",
-    "license": "Apache License 2.0",
-    "homepage": "https://github.com/aio-libs/multidict",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/multidict/6.9.1/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "murmurhash",
     "version": "1.0.15",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/murmurhash",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/murmurhash/1.0.15/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "mypy_extensions",
     "version": "1.1.0",
     "license": "MIT",
-    "homepage": "https://github.com/python/mypy_extensions",
+    "homepage": "https://pypi.org/project/mypy_extensions/1.1.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "nest-asyncio",
     "version": "1.6.0",
-    "license": "BSD License",
-    "homepage": "https://github.com/erdewit/nest_asyncio",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/nest-asyncio/1.6.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "networkx",
     "version": "3.6.1",
     "license": "BSD-3-Clause",
-    "homepage": "https://networkx.org/",
+    "homepage": "https://pypi.org/project/networkx/3.6.1/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "nh3",
     "version": "0.3.7",
     "license": "MIT",
-    "homepage": "https://github.com/messense/nh3",
+    "homepage": "https://pypi.org/project/nh3/0.3.7/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "nltk",
     "version": "3.10.3",
-    "license": "Apache Software License",
-    "homepage": "https://www.nltk.org/",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/nltk/3.10.3/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "numba",
     "version": "0.68.0",
-    "license": "BSD License",
-    "homepage": "https://numba.pydata.org",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/numba/0.68.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "numpy",
     "version": "2.4.6",
     "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
-    "homepage": "https://numpy.org",
-    "licenseTextUrl": "https://numpy.org"
+    "homepage": "https://pypi.org/project/numpy/2.4.6/",
+    "licenseTextUrl": null
   },
   {
     "name": "olefile",
     "version": "0.47",
-    "license": "BSD License",
-    "homepage": "https://www.decalage.info/python/olefileio",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/olefile/0.47/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "ollama",
     "version": "0.6.3",
     "license": "MIT",
-    "homepage": "https://ollama.com",
+    "homepage": "https://pypi.org/project/ollama/0.6.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "opentelemetry-api",
     "version": "1.45.0",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-api",
+    "homepage": "https://pypi.org/project/opentelemetry-api/1.45.0/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "packaging",
     "version": "26.3",
     "license": "Apache-2.0 OR BSD-2-Clause",
-    "homepage": "https://github.com/pypa/packaging",
-    "licenseTextUrl": "https://github.com/pypa/packaging"
+    "homepage": "https://pypi.org/project/packaging/26.3/",
+    "licenseTextUrl": null
   },
   {
     "name": "pgvector",
     "version": "0.5.0",
     "license": "MIT",
-    "homepage": "https://github.com/pgvector/pgvector-python",
+    "homepage": "https://pypi.org/project/pgvector/0.5.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "pillow",
     "version": "12.3.0",
     "license": "MIT-CMU",
-    "homepage": "https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=pypi",
-    "licenseTextUrl": "https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=pypi"
+    "homepage": "https://pypi.org/project/pillow/12.3.0/",
+    "licenseTextUrl": "https://github.com/python-pillow/Pillow/blob/main/LICENSE"
   },
   {
     "name": "platformdirs",
     "version": "4.12.2",
     "license": "MIT",
-    "homepage": "https://github.com/tox-dev/platformdirs",
+    "homepage": "https://pypi.org/project/platformdirs/4.12.2/",
+    "licenseTextUrl": "https://opensource.org/licenses/MIT"
+  },
+  {
+    "name": "pluggy",
+    "version": "1.6.0",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/pluggy/1.6.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "preshed",
     "version": "3.0.13",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/preshed",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/preshed/3.0.13/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "propcache",
     "version": "0.5.4",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/aio-libs/propcache",
+    "homepage": "https://pypi.org/project/propcache/0.5.4/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "psutil",
     "version": "7.2.2",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/giampaolo/psutil",
+    "homepage": "https://pypi.org/project/psutil/7.2.2/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "psycopg2-binary",
     "version": "2.9.13",
-    "license": "GNU Library or Lesser General Public License (LGPL)",
-    "homepage": "https://psycopg.org/",
-    "licenseTextUrl": "https://psycopg.org/"
+    "license": "LGPL",
+    "homepage": "https://pypi.org/project/psycopg2-binary/2.9.13/",
+    "licenseTextUrl": "https://opensource.org/licenses/LGPL-3.0"
+  },
+  {
+    "name": "pycparser",
+    "version": "3.0",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/pycparser/3.0/",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "pydantic",
     "version": "2.13.5",
     "license": "MIT",
-    "homepage": "https://github.com/pydantic/pydantic",
+    "homepage": "https://pypi.org/project/pydantic/2.13.5/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "pydantic_core",
     "version": "2.46.5",
     "license": "MIT",
-    "homepage": "https://github.com/pydantic/pydantic",
+    "homepage": "https://pypi.org/project/pydantic_core/2.46.5/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "Pygments",
     "version": "2.21.0",
     "license": "BSD-2-Clause",
-    "homepage": "https://pygments.org",
+    "homepage": "https://pypi.org/project/Pygments/2.21.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-2-Clause"
   },
   {
     "name": "PyJWT",
     "version": "2.15.1",
     "license": "MIT",
-    "homepage": "https://github.com/jpadilla/pyjwt",
+    "homepage": "https://pypi.org/project/PyJWT/2.15.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "pypdf",
     "version": "6.19.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/py-pdf/pypdf",
+    "homepage": "https://pypi.org/project/pypdf/6.19.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "pypdfium2",
     "version": "5.13.0",
     "license": "BSD-3-Clause, Apache-2.0, dependency licenses",
-    "homepage": "https://github.com/pypdfium2-team/pypdfium2",
-    "licenseTextUrl": "https://github.com/pypdfium2-team/pypdfium2"
+    "homepage": "https://pypi.org/project/pypdfium2/5.13.0/",
+    "licenseTextUrl": null
+  },
+  {
+    "name": "python-dotenv",
+    "version": "1.2.4",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/python-dotenv/1.2.4/",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "python-iso639",
     "version": "2026.7.23",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/jacksonllee/iso639",
+    "homepage": "https://pypi.org/project/python-iso639/2026.7.23/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "python-magic",
     "version": "0.4.27",
-    "license": "MIT License",
-    "homepage": "http://github.com/ahupp/python-magic",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/python-magic/0.4.27/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "python-multipart",
     "version": "0.0.32",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/Kludex/python-multipart",
+    "homepage": "https://pypi.org/project/python-multipart/0.0.32/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "python-oxmsg",
     "version": "0.0.2",
-    "license": "MIT License",
-    "homepage": "https://github.com/scanny/python-oxmsg",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/python-oxmsg/0.0.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "PyYAML",
     "version": "6.0.3",
-    "license": "MIT License",
-    "homepage": "https://pyyaml.org/",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/PyYAML/6.0.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "RapidFuzz",
     "version": "3.14.6",
     "license": "MIT",
-    "homepage": "https://github.com/rapidfuzz/RapidFuzz",
+    "homepage": "https://pypi.org/project/RapidFuzz/3.14.6/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "referencing",
     "version": "0.37.0",
     "license": "MIT",
-    "homepage": "https://github.com/python-jsonschema/referencing",
+    "homepage": "https://pypi.org/project/referencing/0.37.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "regex",
     "version": "2026.9.29",
     "license": "Apache-2.0 AND CNRI-Python",
-    "homepage": "https://github.com/mrabarnett/mrab-regex",
-    "licenseTextUrl": "https://github.com/mrabarnett/mrab-regex"
+    "homepage": "https://pypi.org/project/regex/2026.9.29/",
+    "licenseTextUrl": null
   },
   {
     "name": "requests",
     "version": "2.34.2",
-    "license": "Apache Software License",
-    "homepage": "https://github.com/psf/requests",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/requests/2.34.2/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "requests-toolbelt",
     "version": "1.0.0",
-    "license": "Apache Software License",
-    "homepage": "https://toolbelt.readthedocs.io/",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/requests-toolbelt/1.0.0/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "rich",
     "version": "15.0.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/Textualize/rich",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/rich/15.0.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "rpds-py",
     "version": "2026.6.3",
     "license": "MIT",
-    "homepage": "https://github.com/crate-py/rpds",
+    "homepage": "https://pypi.org/project/rpds-py/2026.6.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "setuptools",
     "version": "84.0.0",
     "license": "MIT",
-    "homepage": "https://github.com/pypa/setuptools",
+    "homepage": "https://pypi.org/project/setuptools/84.0.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "shellingham",
     "version": "1.5.4",
-    "license": "ISC License (ISCL)",
-    "homepage": "https://github.com/sarugaku/shellingham",
+    "license": "ISC",
+    "homepage": "https://pypi.org/project/shellingham/1.5.4/",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
     "name": "six",
     "version": "1.17.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/benjaminp/six",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/six/1.17.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "smart_open",
     "version": "8.0.2",
-    "license": "MIT License",
-    "homepage": "https://github.com/piskvorky/smart_open",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/smart_open/8.0.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "soupsieve",
     "version": "2.10",
     "license": "MIT",
-    "homepage": "https://github.com/facelessuser/soupsieve",
+    "homepage": "https://pypi.org/project/soupsieve/2.10/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "spacy",
     "version": "3.8.16",
-    "license": "MIT License",
-    "homepage": "https://spacy.io",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/spacy/3.8.16/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "spacy-legacy",
     "version": "3.0.12",
-    "license": "MIT License",
-    "homepage": "https://spacy.io",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/spacy-legacy/3.0.12/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "spacy-loggers",
     "version": "1.0.5",
     "license": "MIT",
-    "homepage": "https://github.com/explosion/spacy-loggers",
+    "homepage": "https://pypi.org/project/spacy-loggers/1.0.5/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "SQLAlchemy",
     "version": "2.0.54",
     "license": "MIT",
-    "homepage": "https://www.sqlalchemy.org",
+    "homepage": "https://pypi.org/project/SQLAlchemy/2.0.54/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "srsly",
     "version": "2.5.4",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/srsly",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/srsly/2.5.4/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "sse-starlette",
     "version": "3.5.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/sysid/sse-starlette",
+    "homepage": "https://pypi.org/project/sse-starlette/3.5.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "starlette",
     "version": "1.7.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://github.com/Kludex/starlette",
+    "homepage": "https://pypi.org/project/starlette/1.7.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "tenacity",
     "version": "9.1.4",
-    "license": "Apache Software License",
-    "homepage": "https://github.com/jd/tenacity",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/tenacity/9.1.4/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "thinc",
     "version": "8.3.13",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/thinc",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/thinc/8.3.13/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tiktoken",
     "version": "0.14.0",
     "license": "UNKNOWN",
-    "homepage": "https://github.com/openai/tiktoken",
-    "licenseTextUrl": "https://github.com/openai/tiktoken"
+    "homepage": "https://pypi.org/project/tiktoken/0.14.0/",
+    "licenseTextUrl": null
   },
   {
     "name": "tinytag",
     "version": "2.3.2",
-    "license": "MIT License",
-    "homepage": "https://github.com/tinytag/tinytag",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/tinytag/2.3.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tqdm",
     "version": "4.70.1",
     "license": "MPL-2.0 AND MIT",
-    "homepage": "https://tqdm.github.io",
-    "licenseTextUrl": "https://tqdm.github.io"
+    "homepage": "https://pypi.org/project/tqdm/4.70.1/",
+    "licenseTextUrl": null
   },
   {
     "name": "tree-sitter",
     "version": "0.26.0",
-    "license": "MIT License",
-    "homepage": "https://tree-sitter.github.io/tree-sitter/",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/tree-sitter/0.26.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tree-sitter-go",
     "version": "0.25.0",
     "license": "MIT",
-    "homepage": "https://github.com/tree-sitter/tree-sitter-go",
+    "homepage": "https://pypi.org/project/tree-sitter-go/0.25.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tree-sitter-java",
     "version": "0.23.5",
-    "license": "MIT License",
-    "homepage": "https://github.com/tree-sitter/tree-sitter-java",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/tree-sitter-java/0.23.5/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tree-sitter-javascript",
     "version": "0.25.0",
     "license": "MIT",
-    "homepage": "https://github.com/tree-sitter/tree-sitter-javascript",
+    "homepage": "https://pypi.org/project/tree-sitter-javascript/0.25.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tree-sitter-python",
     "version": "0.25.0",
     "license": "MIT",
-    "homepage": "https://github.com/tree-sitter/tree-sitter-python",
+    "homepage": "https://pypi.org/project/tree-sitter-python/0.25.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tree-sitter-rust",
     "version": "0.24.2",
-    "license": "MIT License",
-    "homepage": "https://github.com/tree-sitter/tree-sitter-rust",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/tree-sitter-rust/0.24.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tree-sitter-typescript",
     "version": "0.23.2",
-    "license": "MIT License",
-    "homepage": "https://github.com/tree-sitter/tree-sitter-typescript",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/tree-sitter-typescript/0.23.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "truststore",
     "version": "0.10.4",
     "license": "MIT",
-    "homepage": "https://github.com/sethmlarson/truststore",
+    "homepage": "https://pypi.org/project/truststore/0.10.4/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "typer",
     "version": "0.27.2",
     "license": "MIT",
-    "homepage": "https://github.com/fastapi/typer",
+    "homepage": "https://pypi.org/project/typer/0.27.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "typing_extensions",
     "version": "4.16.0",
     "license": "PSF-2.0",
-    "homepage": "https://github.com/python/typing_extensions/issues",
+    "homepage": "https://pypi.org/project/typing_extensions/4.16.0/",
     "licenseTextUrl": "https://docs.python.org/3/license.html#psf-license"
   },
   {
     "name": "typing-inspect",
     "version": "0.9.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/ilevkivskyi/typing_inspect",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/typing-inspect/0.9.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "typing-inspection",
     "version": "0.4.4",
     "license": "MIT",
-    "homepage": "https://github.com/pydantic/typing-inspection",
+    "homepage": "https://pypi.org/project/typing-inspection/0.4.4/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "unstructured",
     "version": "0.27.10",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/Unstructured-IO/unstructured",
+    "homepage": "https://pypi.org/project/unstructured/0.27.10/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "unstructured-client",
     "version": "0.46.2",
     "license": "MIT",
-    "homepage": "https://github.com/Unstructured-IO/unstructured-python-client.git",
+    "homepage": "https://pypi.org/project/unstructured-client/0.46.2/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "urllib3",
     "version": "2.8.0",
     "license": "MIT",
-    "homepage": "https://github.com/urllib3/urllib3/blob/main/CHANGES.rst",
+    "homepage": "https://pypi.org/project/urllib3/2.8.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "uvicorn",
     "version": "0.54.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://uvicorn.dev/",
+    "homepage": "https://pypi.org/project/uvicorn/0.54.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "wasabi",
     "version": "1.1.3",
     "license": "MIT",
-    "homepage": "https://github.com/explosion/wasabi",
+    "homepage": "https://pypi.org/project/wasabi/1.1.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "weasel",
     "version": "1.0.0",
-    "license": "MIT License",
-    "homepage": "https://github.com/explosion/weasel/",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/weasel/1.0.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "webencodings",
     "version": "0.6.1",
-    "license": "BSD License",
-    "homepage": "https://github.com/CourtBouillon/webencodings",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/webencodings/0.6.1/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "wrapt",
     "version": "2.5.0",
     "license": "BSD-2-Clause",
-    "homepage": "https://github.com/GrahamDumpleton/wrapt",
+    "homepage": "https://pypi.org/project/wrapt/2.5.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-2-Clause"
   },
   {
     "name": "yarl",
     "version": "1.25.1",
     "license": "Apache-2.0",
-    "homepage": "https://github.com/aio-libs/yarl",
+    "homepage": "https://pypi.org/project/yarl/1.25.1/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   }
 ]
