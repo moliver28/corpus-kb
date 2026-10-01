@@ -3,9 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tomllib
+from collections import deque
 from importlib.metadata import Distribution, distributions
 from pathlib import Path
 from typing import Any
+
+from packaging.markers import Marker, Variable
+from packaging.requirements import Requirement
 
 
 def _normalize(name: str) -> str:
@@ -18,6 +23,10 @@ EXCLUDED_PACKAGES = {
         "corpus-kb",
         "python-magic-bin",
         "pywin32",
+        # `colorama` is only pulled in on Windows (typer/tqdm/wasabi gate it
+        # behind `platform_system == "Windows"` markers). Excluding it keeps
+        # the lock identical whether it is generated on Windows or Linux.
+        "colorama",
         "pytest",
         "pytest-asyncio",
         "pytest-cov",
@@ -83,24 +92,89 @@ def _installed_distributions() -> dict[str, Distribution]:
     return {_normalize(dist.metadata["Name"]): dist for dist in distributions()}
 
 
+def _read_project_dependencies() -> list[Requirement]:
+    """Parse the ``[project] dependencies`` table from ``pyproject.toml``."""
+    pyproject_path = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    return [Requirement(dep) for dep in pyproject["project"]["dependencies"]]
+
+
+def _marker_uses_extra(marker: Marker) -> bool:
+    """Return True if the marker references the ``extra`` variable."""
+
+    def _walk(node: object) -> bool:
+        if isinstance(node, list):
+            return any(_walk(item) for item in node)
+        if isinstance(node, tuple):
+            return any(_walk(item) for item in node)
+        if isinstance(node, Variable):
+            return node.value == "extra"
+        return False
+
+    return _walk(marker._markers)
+
+
+def _requirement_active(req: Requirement, active_extras: frozenset[str]) -> bool:
+    """Decide whether a requirement applies given the parent's active extras.
+
+    ``extra`` markers (e.g. ``extra == "crypto"``) are evaluated against each
+    extra active on the parent, so ``mcp[cli]`` pulls in the ``cli``-gated
+    requirements. Markers that do not reference ``extra`` are evaluated
+    against the default environment.
+    """
+    if req.marker is None:
+        return True
+    if _marker_uses_extra(req.marker):
+        return any(req.marker.evaluate({"extra": extra}) for extra in active_extras)
+    return req.marker.evaluate()
+
+
 def _resolve_packages(
     installed: dict[str, Distribution],
 ) -> dict[str, Distribution]:
-    """Return every installed runtime dependency, in deterministic order.
+    """Resolve the runtime dependency closure via extra-aware BFS.
 
-    Earlier versions of the script walked ``dist.requires`` from the project's
-    root dependencies via BFS, but that approach is sensitive to
-    ``Requirement.marker`` evaluation (extras like ``pyjwt[crypto]`` were
-    skipped because the ``extra == "crypto"`` marker evaluates False in
-    isolation) and to ``dist.requires`` not listing transitive deps of
-    excluded packages (e.g. ``iniconfig``, ``pluggy`` installed because
-    ``pytest-asyncio`` is a transitive requirement). On a fresh
-    ``pip install -e .`` run the resolved set varies by platform/wheel and the
-    lock fails the CI ``license-check`` job. Enumerating every installed
-    distribution except the dev-only / Windows-only excludes gives a stable
-    output that matches what CI materialises.
+    The walk starts from the ``[project] dependencies`` declared in
+    ``pyproject.toml`` and follows each installed distribution's
+    ``Requires-Dist`` metadata. A requirement is included only when its
+    marker is satisfied, so the resolved set is limited to true runtime
+    dependencies regardless of what else is installed in the local
+    environment (dev-only packages such as ``pytest`` are never reachable
+    from the runtime graph). Each queue item carries the extras active on
+    the parent so ``extra == "..."`` markers resolve correctly.
     """
-    return {name: dist for name, dist in installed.items() if name not in EXCLUDED_PACKAGES}
+    queue: deque[tuple[str, frozenset[str]]] = deque()
+    visited: set[tuple[str, frozenset[str]]] = set()
+    resolved: dict[str, Distribution] = {}
+
+    for req in _read_project_dependencies():
+        name = _normalize(req.name)
+        extras = frozenset(req.extras)
+        key = (name, extras)
+        if key not in visited:
+            visited.add(key)
+            queue.append(key)
+
+    while queue:
+        name, active_extras = queue.popleft()
+        dist = installed.get(name)
+        if dist is None:
+            continue
+        resolved[name] = dist
+        for req_str in dist.requires or []:
+            req = Requirement(req_str)
+            child_name = _normalize(req.name)
+            if child_name in EXCLUDED_PACKAGES:
+                continue
+            if not _requirement_active(req, active_extras):
+                continue
+            child_extras = frozenset(req.extras)
+            key = (child_name, child_extras)
+            if key not in visited:
+                visited.add(key)
+                queue.append(key)
+
+    return resolved
 
 
 def _normalize_license(raw: str) -> str:
