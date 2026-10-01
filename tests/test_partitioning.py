@@ -17,7 +17,12 @@ def test_partition_markdown_auto_round_trip() -> None:
     path = _FIXTURES / "ontology_sample.md"
     original_text = path.read_text(encoding="utf-8")
 
-    elements = partition(path, strategy="auto")
+    try:
+        elements = partition(path, strategy="auto")
+    except ImportError as exc:
+        if "partition_md" not in str(exc):
+            raise
+        pytest.skip("partition_md not available")
     chunks = chunk_elements(elements, original_text, document_id="doc-md")
 
     assert len(chunks) > 0

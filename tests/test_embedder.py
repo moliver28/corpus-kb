@@ -7,7 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-from ollama._types import EmbedResponse
+from ollama._types import EmbedResponse, ResponseError
 
 from corpus_kb.rag.embedder import (
     FakeEmbedder,
@@ -49,9 +49,17 @@ _DEAD_PORT_CONFIG: dict[str, object] = {
 
 @pytest.mark.requires_ollama
 class TestOllamaEmbedderLive:
+    def _embed_batch_or_skip(self, embedder: OllamaEmbedder, texts: list[str]) -> list[list[float]]:
+        try:
+            return embedder.embed_batch(texts)
+        except ResponseError as exc:
+            if exc.status_code == 404:
+                pytest.skip("Embedding model not available")
+            raise
+
     def test_embed_returns_vector_of_configured_dimensions(self) -> None:
         embedder = OllamaEmbedder(_LIVE_CONFIG)
-        vector = embedder.embed("hello")
+        vector = self._embed_batch_or_skip(embedder, ["hello"])[0]
 
         assert isinstance(vector, list)
         assert len(vector) == embedder.dimensions
@@ -59,7 +67,7 @@ class TestOllamaEmbedderLive:
 
     def test_embed_batch_returns_three_vectors_of_same_dimension(self) -> None:
         embedder = OllamaEmbedder(_LIVE_CONFIG)
-        vectors = embedder.embed_batch(["alpha", "beta", "gamma"])
+        vectors = self._embed_batch_or_skip(embedder, ["alpha", "beta", "gamma"])
 
         assert len(vectors) == 3
         for vector in vectors:

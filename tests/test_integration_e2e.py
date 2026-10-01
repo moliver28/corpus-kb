@@ -17,27 +17,23 @@ Requires Postgres running with schema loaded.
 from __future__ import annotations
 
 import asyncio
-import sys
-from pathlib import Path
 from uuid import UUID
 
 import asyncpg
 import pytest
-
-# Skip all tests if Postgres not available
-pytestmark = pytest.mark.skipif(
-    sys.platform == "win32" and not Path(r"\\.\pipe\corpus-kb").exists(),
-    reason="Postgres not available",
-)
-
 
 DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 @pytest.fixture
 async def db_conn():
-    """Provide a Postgres connection for tests."""
-    conn = await asyncpg.connect("postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb")
+    """Provide a Postgres connection for tests, skipping when Postgres is unavailable."""
+    try:
+        conn = await asyncpg.connect(
+            "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+        )
+    except (OSError, ConnectionRefusedError):
+        pytest.skip("Postgres not available")
     await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", DEFAULT_TENANT)
     yield conn
     await conn.close()

@@ -169,6 +169,7 @@ class TestLangExtractExtractor:
 
     def test_fixture_path_never_calls_live_extract(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Given existing fixtures, langextract.extract is never invoked."""
+        pytest.importorskip("langextract")
         import langextract as lx
 
         mock = MagicMock()
