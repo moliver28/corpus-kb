@@ -96,3 +96,37 @@ asyncio_mode = "auto"
 
 [project.scripts]
 corpus-kb = "corpus_kb.cli:app"
+
+[tool.commitizen]
+# Customized Conventional Commits driver. The `cz_customize` plugin reads
+# the schema pattern and change type map from the `[tool.commitizen.customize]`
+# table below, which is intentionally tightened to the same prefix set
+# enforced by .github/workflows/commit-validate.yml. Keeping the two in
+# lockstep means a commit that passes `cz check` will also pass the
+# PR-time validator (and vice versa).
+name = "cz_customize"
+# Read/write the project version from PEP 621 [project] metadata.
+version_provider = "pep621"
+version_files = ["pyproject.toml"]
+# Tag published releases as vX.Y.Z.
+tag_format = "v$version"
+# Keep the CHANGELOG in sync with bumped versions.
+update_changelog_on_bump = true
+changelog_file = "CHANGELOG.md"
+
+# `cz_customize` requires a populated `[tool.commitizen.customize]` table.
+# The schema pattern mirrors the regex used by commit-validate.yml so both
+# validators accept the same set of commit messages. The change type map
+# drives the section titles rendered in CHANGELOG.md.
+[tool.commitizen.customize]
+# Allowed commit types: feat, fix, docs, chore, test, refactor, perf.
+# Deliberately excludes build, ci, style, revert, bump, improvement.
+# The schema pattern uses TOML escape doubling (e.g. `\\(S+)`) so the
+# regex that commitizen eventually evaluates contains literal `\(`, `\)`,
+# and `\S` tokens.
+schema_pattern = '(?s)(feat|fix|docs|chore|test|refactor|perf)(\(\S+\))?!?: ([^\n\r]+)((\n\n.*)|(\s*))?$'
+bump_pattern = '^((BREAKING[\-\ ]CHANGE|feat|fix|perf|refactor)(\(.+\))?!?):'
+bump_map = { "BREAKING CHANGE" = "MAJOR", "BREAKING-CHANGE" = "MAJOR", feat = "MINOR", fix = "PATCH", perf = "PATCH", refactor = "PATCH" }
+change_type_map = { feat = "Features", fix = "Bug Fixes", perf = "Performance", refactor = "Refactors", docs = "Documentation", test = "Tests", chore = "Chores" }
+message_template = "{{type}}({{scope}}): {{subject}}"
+schema = "<type>(<scope>): <subject>\n\n<body>\n\n<footer>"

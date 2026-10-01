@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import contextlib
+import subprocess
 import sys
 from collections.abc import Iterator
 from io import StringIO
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -326,9 +328,18 @@ def _minimal_profile() -> dict:
 
 
 @contextlib.contextmanager
-def _phase_mocks(calls: list[str]) -> Iterator[None]:
-    """Patch every setup phase so tests run without Docker/Ollama/Postgres."""
+def _phase_mocks(calls: list[str], *, patch_verify: bool = True) -> Iterator[None]:
+    """Patch every setup phase so tests run without Docker/Ollama/Postgres.
+
+    By default the image-signature verification helper is also patched out so
+    tests do not require cosign. Set patch_verify=False to exercise the real
+    verification logic.
+    """
     with contextlib.ExitStack() as stack:
+        if patch_verify:
+            stack.enter_context(
+                patch.object(install_module, "_verify_postgres_image", return_value=None)
+            )
         stack.enter_context(
             patch.object(
                 install_module,
@@ -379,3 +390,125 @@ def _phase_mocks(calls: list[str]) -> Iterator[None]:
 def _record(calls: list[str], phase: str) -> None:
     """Record that a phase was executed."""
     calls.append(phase)
+
+
+def _cosign_run_stub(calls: list[list[str]]) -> type:
+    """Return a fake subprocess.run that records cosinv invocations as successful."""
+
+    def _fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    return _fake_run
+
+
+@pytest.mark.asyncio
+async def test_setup_verifies_image_by_default(tmp_path: Path) -> None:
+    """By default setup runs cosign verify against the configured postgres image."""
+    config = _minimal_config(tmp_path)
+    config["installer"]["postgres_image"] = "ghcr.io/moliver28/corpus-kb-postgres:test"
+    config["installer"]["verify_image_signature"] = True
+
+    calls: list[str] = []
+    cosign_calls: list[list[str]] = []
+    with (
+        _phase_mocks(calls, patch_verify=False),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+        patch.object(install_module.shutil, "which", return_value="/usr/bin/cosign"),
+        patch.object(install_module.subprocess, "run", side_effect=_cosign_run_stub(cosign_calls)),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=True)
+
+    assert result == 0
+    assert any(
+        cmd[:4]
+        == [
+            "cosign",
+            "verify",
+            "--certificate-identity-regexp",
+            r"^https://github\.com/moliver28/corpus-kb/",
+        ]
+        and cmd[4] == "ghcr.io/moliver28/corpus-kb-postgres:test"
+        for cmd in cosign_calls
+    )
+
+
+@pytest.mark.asyncio
+async def test_setup_skips_image_verify_via_config(tmp_path: Path) -> None:
+    """Config installer.verify_image_signature: false disables cosign verification."""
+    config = _minimal_config(tmp_path)
+    config["installer"]["verify_image_signature"] = False
+
+    calls: list[str] = []
+    cosign_calls: list[list[str]] = []
+    with (
+        _phase_mocks(calls, patch_verify=False),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+        patch.object(install_module.shutil, "which", return_value="/usr/bin/cosign"),
+        patch.object(install_module.subprocess, "run", side_effect=_cosign_run_stub(cosign_calls)),
+    ):
+        result = await install_module.setup_cmd(config, dry_run=False, fresh=True)
+
+    assert result == 0
+    assert not cosign_calls
+
+
+@pytest.mark.asyncio
+async def test_setup_skips_image_verify_via_cli_flag(tmp_path: Path) -> None:
+    """--skip-image-verify disables cosign verification regardless of config."""
+    config = _minimal_config(tmp_path)
+    config["installer"]["verify_image_signature"] = True
+
+    calls: list[str] = []
+    cosign_calls: list[list[str]] = []
+    with (
+        _phase_mocks(calls, patch_verify=False),
+        patch.object(install_module, "_find_compose_command", return_value="docker compose"),
+        patch.object(install_module.shutil, "which", return_value="/usr/bin/cosign"),
+        patch.object(install_module.subprocess, "run", side_effect=_cosign_run_stub(cosign_calls)),
+    ):
+        result = await install_module.setup_cmd(
+            config, dry_run=False, fresh=True, skip_image_verify=True
+        )
+
+    assert result == 0
+    assert not cosign_calls
+
+
+def test_verify_postgres_image_missing_cosign_errors_clearly() -> None:
+    """_verify_postgres_image raises a clear error when cosign is not installed."""
+    with (
+        patch.object(install_module.shutil, "which", return_value=None),
+        pytest.raises(RuntimeError, match="cosign is required"),
+    ):
+        install_module._verify_postgres_image(
+            "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
+            skip_verify=False,
+        )
+
+
+def test_verify_postgres_image_failed_verification_errors_clearly() -> None:
+    """_verify_postgres_image raises a clear error when cosign verify fails."""
+    with (
+        patch.object(install_module.shutil, "which", return_value="/usr/bin/cosign"),
+        patch.object(
+            install_module.subprocess,
+            "run",
+            side_effect=subprocess.CalledProcessError(1, ["cosign", "verify"]),
+        ),
+        pytest.raises(RuntimeError, match="signature verification failed"),
+    ):
+        install_module._verify_postgres_image(
+            "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
+            skip_verify=False,
+        )
+
+
+def test_verify_postgres_image_skip_verify_returns_early() -> None:
+    """_verify_postgres_image is a no-op when skip_verify is True."""
+    with patch.object(install_module.subprocess, "run") as mock_run:
+        install_module._verify_postgres_image(
+            "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
+            skip_verify=True,
+        )
+    mock_run.assert_not_called()

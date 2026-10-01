@@ -56,3 +56,10 @@ def test_setup_help_includes_build_local() -> None:
     result = runner.invoke(app, ["setup", "--help"])
     assert result.exit_code == 0
     assert "--build-local" in _strip_ansi(result.output)
+
+
+def test_setup_help_includes_skip_image_verify() -> None:
+    """The setup command exposes a --skip-image-verify flag."""
+    result = runner.invoke(app, ["setup", "--help"])
+    assert result.exit_code == 0
+    assert "--skip-image-verify" in _strip_ansi(result.output)
