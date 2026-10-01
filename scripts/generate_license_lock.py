@@ -87,6 +87,15 @@ LICENSE_TEXT_URLS = {
     "MIT-CMU": "https://github.com/python-pillow/Pillow/blob/main/LICENSE",
 }
 
+# Some distributions ship platform-specific wheels whose license metadata
+# differs: llvmlite's Linux wheel declares a PEP 639 License-Expression
+# ("BSD-2-Clause AND Apache-2.0 WITH LLVM-exception") while its Windows wheel
+# only ships License-File entries, so the generic extractor reports UNKNOWN.
+# Pin those to a canonical value so the lock is identical on every platform.
+LICENSE_OVERRIDES = {
+    "llvmlite": "BSD-2-Clause AND Apache-2.0 WITH LLVM-exception",
+}
+
 
 def _installed_distributions() -> dict[str, Distribution]:
     return {_normalize(dist.metadata["Name"]): dist for dist in distributions()}
@@ -193,6 +202,10 @@ def _normalize_license(raw: str) -> str:
 
 
 def _extract_license(dist: Distribution) -> str:
+    name = _normalize(dist.metadata["Name"])
+    if name in LICENSE_OVERRIDES:
+        return LICENSE_OVERRIDES[name]
+
     # PEP 639 License-Expression is the preferred modern field.
     expr = dist.metadata.get("License-Expression")
     if expr:

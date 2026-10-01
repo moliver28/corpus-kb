@@ -394,7 +394,7 @@
   {
     "name": "llvmlite",
     "version": "0.50.0",
-    "license": "UNKNOWN",
+    "license": "BSD-2-Clause AND Apache-2.0 WITH LLVM-exception",
     "homepage": "https://pypi.org/project/llvmlite/0.50.0/",
     "licenseTextUrl": null
   },
