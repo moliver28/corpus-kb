@@ -1,6 +1,6 @@
 """Idempotent SQL migration runner for Corpus-KB.
 
-Reads .sql files from corpus-kb/migrations/ sorted lexicographically, tracks
+Reads .sql files from corpus_kb/migrations/ sorted lexicographically, tracks
 applied migrations in corpus.schema_migrations, and runs each unapplied
 migration inside a transaction. Re-running is a no-op.
 """

@@ -214,9 +214,10 @@ class PostgresGraphStore(GraphStore):
             row = await conn.fetchrow(
                 """
                 INSERT INTO relations (relation_id, tenant_id, source_entity_id,
-                    target_entity_id, relation_type, weight, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type)
+                    target_entity_id, relation_type, weight, metadata,
+                    chunk_id, confidence, extractor_id, model_version, prompt_version)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                ON CONFLICT (tenant_id, source_entity_id, target_entity_id, relation_type, chunk_id)
                 DO NOTHING
                 RETURNING relation_id::text
                 """,
@@ -227,6 +228,11 @@ class PostgresGraphStore(GraphStore):
                 relation.relation_type,
                 relation.weight if relation.weight else 1.0,
                 json.dumps(relation.metadata),
+                relation.chunk_id,
+                relation.confidence,
+                relation.extractor_id,
+                None,  # add_relation is the direct graph-tool API path, not the
+                None,  # extraction pipeline -- no extractor provenance to record.
             )
             if row:
                 return str(row["relation_id"])
@@ -235,11 +241,13 @@ class PostgresGraphStore(GraphStore):
                 SELECT relation_id::text FROM relations
                 WHERE tenant_id = $1 AND source_entity_id = $2
                   AND target_entity_id = $3 AND relation_type = $4
+                  AND chunk_id IS NOT DISTINCT FROM $5
                 """,
                 self._tenant_id,
                 relation.source_entity_id,
                 relation.target_entity_id,
                 relation.relation_type,
+                relation.chunk_id,
             )
             return str(row["relation_id"]) if row else relation.relation_id
         finally:

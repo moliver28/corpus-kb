@@ -41,7 +41,7 @@ def _python_rrf_reference(
 ) -> list[tuple[str, str, str, str, float]]:
     """Verbatim port of the pre-refactor Python RRF loop in handle_search.
 
-    Source: git show 21ea364:corpus-kb/src/handlers/query_handler.py, the RRF
+    Source: git show 21ea364:src/corpus_kb/handlers/query_handler.py, the RRF
     block (lines 97-130). chunk_id/doc_id are uuid strings here. Returns
     (chunk_id, text, source, doc_id, score) tuples in fused order.
     """

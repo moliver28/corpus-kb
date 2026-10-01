@@ -117,8 +117,33 @@ async def startup(
     from corpus_kb.handlers.idempotency import IdempotencyChecker, set_idempotency_checker
     from corpus_kb.handlers.query_handler import QueryHandler, set_query_handler
 
+    # Shared embedder: the query side needs it for vector search, the embed
+    # projection needs it to backfill vectors. Without it here, handle_search
+    # silently skips vector search and degrades to full-text only.
+    from corpus_kb.rag import create_embedder
+    from corpus_kb.rag.judge import OllamaJudge
+    from corpus_kb.rag.reranker import create_reranker
+    from corpus_kb.rag.self_query import SelfQueryParser
+
+    embedder = create_embedder(cfg, pool)
+
+    reranker = create_reranker(cfg, pool)
+    self_query_parser = (
+        SelfQueryParser(cfg)
+        if (cfg.get("search", {}) or {}).get("self_query", {}).get("enabled", False)
+        else None
+    )
+    judge = OllamaJudge(cfg) if (cfg.get("judge", {}) or {}).get("enabled", False) else None
+
     command_handler = get_command_handler(cfg, pool)
-    query_handler = QueryHandler(pool)
+    query_handler = QueryHandler(
+        pool,
+        embedder,
+        reranker=reranker,
+        self_query_parser=self_query_parser,
+        judge=judge,
+        config=cfg,
+    )
     set_query_handler(query_handler)
     set_idempotency_checker(IdempotencyChecker(pool))
 
@@ -128,9 +153,18 @@ async def startup(
     from corpus_kb.handlers.versioning_handler import VersioningHandler, set_versioning_handler
 
     graph_store = await create_graph_store(cfg, pool)
-    set_graph_handler(GraphHandler(graph_store))
+    graph_handler = GraphHandler(graph_store)
+    set_graph_handler(graph_handler)
     set_tag_handler(TagHandler(pool))
     set_versioning_handler(VersioningHandler(pool))
+
+    # 3c. Router handler (adaptive routing across vector/SQL/graph backends)
+    from corpus_kb.handlers.router_handler import RouterHandler, set_router_handler
+
+    router_handler = RouterHandler(
+        query_handler, graph_handler, VersioningHandler(pool), embedder, cfg
+    )
+    set_router_handler(router_handler)
 
     # 4. Projections
     from corpus_kb.projections.checkpoint import CheckpointManager, set_checkpoint_manager
@@ -185,6 +219,7 @@ async def startup(
         "socket_server": socket_server,
         "config": cfg,
         "rag_backend": rag_backend,
+        "router_handler": router_handler,
     }
 
 

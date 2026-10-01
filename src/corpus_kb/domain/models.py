@@ -89,6 +89,7 @@ class SearchQuery(BaseModel):
     query: str
     k: int = 10
     source_type: str | None = None
+    self_query: bool | None = None  # None -> use config default
 
 
 class SQLQuery(BaseModel):
@@ -132,6 +133,22 @@ class SearchContextQuery(BaseModel):
     context_chunks: int = 2
 
 
+class VerifyAnswerQuery(BaseModel):
+    """Verify an LLM-generated answer's claims against cited chunks."""
+
+    tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
+    answer: str
+    chunk_ids: list[UUID] = Field(default_factory=list)
+
+
+class RoutedQuery(BaseModel):
+    """Query routed to the most appropriate retrieval strategy."""
+
+    tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
+    query: str
+    k: int = 10
+
+
 # ============================================================================
 # Results
 # ============================================================================
@@ -145,6 +162,11 @@ class SearchResult(BaseModel):
     score: float
     source: str
     doc_id: UUID
+    file_path: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    chunk_index: int | None = None
+    heading_path: list[str] | None = None
 
 
 class DocumentResult(BaseModel):
@@ -164,3 +186,35 @@ class EntityResult(BaseModel):
     name: str
     entity_type: str
     metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ClaimVerdict(BaseModel):
+    """Verdict for a single claim extracted from an answer."""
+
+    claim: str
+    label: str
+    confidence: float
+    cited_chunk_ids: list[UUID]
+
+
+class VerifyAnswerResult(BaseModel):
+    """Result of verifying an answer's claims against cited chunks."""
+
+    verdicts: list[ClaimVerdict]
+    groundedness: float
+    abstained: bool
+
+
+class RouteDecision(BaseModel):
+    """The route chosen for a query, plus confidence and fallback flag."""
+
+    route: str
+    confidence: float
+    fallback: bool
+
+
+class RoutedResult(BaseModel):
+    """Result of a routed query: the decision plus the underlying results."""
+
+    decision: RouteDecision
+    results: list[dict[str, object]]

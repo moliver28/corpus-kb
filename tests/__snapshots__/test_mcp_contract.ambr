@@ -19,14 +19,6 @@
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
-      'ingest_text': dict({
-        'config': 'POSITIONAL_OR_KEYWORD',
-        'pg_pool': 'POSITIONAL_OR_KEYWORD',
-        'source': 'POSITIONAL_OR_KEYWORD',
-        'source_type': 'POSITIONAL_OR_KEYWORD',
-        'tenant_id': 'POSITIONAL_OR_KEYWORD',
-        'text': 'POSITIONAL_OR_KEYWORD',
-      }),
       'list_documents': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',

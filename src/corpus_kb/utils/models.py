@@ -50,6 +50,9 @@ class Chunk(BaseModel):
     source_end_char: int | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    chunk_hash: str | None = None
+    source_timestamp: datetime | None = None
+    context_blurb: str | None = None
 
 
 class Document(BaseModel):
