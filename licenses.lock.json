@@ -8,14 +8,14 @@
   },
   {
     "name": "aiohappyeyeballs",
-    "version": "2.6.2",
+    "version": "2.7.1",
     "license": "Python Software Foundation License",
     "homepage": "https://github.com/aio-libs/aiohappyeyeballs/issues",
     "licenseTextUrl": "https://docs.python.org/3/license.html#psf-license"
   },
   {
     "name": "aiohttp",
-    "version": "3.13.5",
+    "version": "3.14.3",
     "license": "Apache-2.0 AND MIT",
     "homepage": "https://github.com/aio-libs/aiohttp",
     "licenseTextUrl": "https://github.com/aio-libs/aiohttp"
@@ -29,28 +29,28 @@
   },
   {
     "name": "aiosqlite",
-    "version": "0.18.0",
+    "version": "0.22.1",
     "license": "MIT License",
     "homepage": "https://aiosqlite.omnilib.dev",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "annotated-doc",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "license": "MIT",
     "homepage": "https://github.com/fastapi/annotated-doc",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "annotated-types",
-    "version": "0.7.0",
-    "license": "MIT License",
+    "version": "0.8.0",
+    "license": "MIT",
     "homepage": "https://github.com/annotated-types/annotated-types",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "anyio",
-    "version": "4.14.0",
+    "version": "4.15.1",
     "license": "MIT",
     "homepage": "https://github.com/agronholm/anyio",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -71,7 +71,7 @@
   },
   {
     "name": "banks",
-    "version": "2.4.5",
+    "version": "2.5.1",
     "license": "MIT",
     "homepage": "https://github.com/masci/banks",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -99,31 +99,38 @@
   },
   {
     "name": "certifi",
-    "version": "2026.6.17",
+    "version": "2026.7.22",
     "license": "Mozilla Public License 2.0 (MPL 2.0)",
     "homepage": "https://github.com/certifi/python-certifi",
     "licenseTextUrl": "https://opensource.org/licenses/MPL-2.0"
   },
   {
     "name": "charset-normalizer",
-    "version": "3.4.9",
+    "version": "3.5.2",
     "license": "MIT",
     "homepage": "https://github.com/jawah/charset_normalizer/blob/master/CHANGELOG.md",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "click",
-    "version": "8.4.1",
+    "version": "8.5.0",
     "license": "BSD-3-Clause",
     "homepage": "https://github.com/pallets/click/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "cloudpathlib",
-    "version": "0.24.0",
+    "version": "0.25.0",
     "license": "MIT License",
     "homepage": "https://github.com/drivendataorg/cloudpathlib/issues",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
+  },
+  {
+    "name": "cloudpickle",
+    "version": "3.1.2",
+    "license": "BSD License",
+    "homepage": "https://github.com/cloudpipe/cloudpickle",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "colorama",
@@ -176,21 +183,21 @@
   },
   {
     "name": "emoji",
-    "version": "2.15.0",
+    "version": "2.16.0",
     "license": "BSD License",
     "homepage": "https://github.com/carpedm20/emoji/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "eventsourcing",
-    "version": "9.5.4",
+    "version": "9.5.5",
     "license": "BSD-3-Clause",
     "homepage": "https://github.com/pyeventsourcing/eventsourcing",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "filelock",
-    "version": "3.29.0",
+    "version": "3.32.7",
     "license": "MIT",
     "homepage": "https://github.com/tox-dev/py-filelock",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -204,44 +211,44 @@
   },
   {
     "name": "frozenlist",
-    "version": "1.3.3",
-    "license": "Apache Software License",
+    "version": "1.8.0",
+    "license": "Apache-2.0",
     "homepage": "https://github.com/aio-libs/frozenlist",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "fsspec",
-    "version": "2026.4.0",
+    "version": "2026.9.0",
     "license": "BSD-3-Clause",
     "homepage": "https://github.com/fsspec/filesystem_spec",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "greenlet",
-    "version": "2.0.1",
-    "license": "MIT License",
-    "homepage": "https://greenlet.readthedocs.io/",
-    "licenseTextUrl": "https://opensource.org/licenses/MIT"
+    "version": "3.5.6",
+    "license": "MIT AND PSF-2.0",
+    "homepage": "https://greenlet.readthedocs.io",
+    "licenseTextUrl": "https://greenlet.readthedocs.io"
   },
   {
     "name": "griffe",
-    "version": "2.1.0",
+    "version": "2.3.0",
     "license": "ISC",
     "homepage": "https://mkdocstrings.github.io/griffe",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
     "name": "griffecli",
-    "version": "2.1.0",
+    "version": "2.3.0",
     "license": "ISC",
-    "homepage": "https://pypi.org/project/griffecli/2.1.0/",
+    "homepage": "https://pypi.org/project/griffecli/2.3.0/",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
     "name": "griffelib",
-    "version": "2.1.0",
+    "version": "2.3.0",
     "license": "ISC",
-    "homepage": "https://pypi.org/project/griffelib/2.1.0/",
+    "homepage": "https://pypi.org/project/griffelib/2.3.0/",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
@@ -266,6 +273,13 @@
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
+    "name": "httpcore2",
+    "version": "2.13.1",
+    "license": "BSD-3-Clause",
+    "homepage": "https://github.com/pydantic/httpx2",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
+  },
+  {
     "name": "httpx",
     "version": "0.28.1",
     "license": "BSD License",
@@ -273,15 +287,15 @@
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
-    "name": "httpx-sse",
-    "version": "0.4.3",
-    "license": "MIT",
-    "homepage": "https://github.com/florimondmanca/httpx-sse",
-    "licenseTextUrl": "https://opensource.org/licenses/MIT"
+    "name": "httpx2",
+    "version": "2.13.1",
+    "license": "BSD-3-Clause",
+    "homepage": "https://github.com/pydantic/httpx2",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "idna",
-    "version": "3.18",
+    "version": "3.20",
     "license": "BSD-3-Clause",
     "homepage": "https://github.com/kjd/idna",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
@@ -295,15 +309,15 @@
   },
   {
     "name": "Jinja2",
-    "version": "3.1.2",
+    "version": "3.1.6",
     "license": "BSD License",
-    "homepage": "https://palletsprojects.com/p/jinja/",
+    "homepage": "https://github.com/pallets/jinja/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "joblib",
-    "version": "1.2.0",
-    "license": "BSD License",
+    "version": "1.6.0",
+    "license": "BSD-3-Clause",
     "homepage": "https://joblib.readthedocs.io",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
@@ -330,56 +344,56 @@
   },
   {
     "name": "llama-index-core",
-    "version": "0.14.23",
+    "version": "0.14.25",
     "license": "MIT",
     "homepage": "https://llamaindex.ai",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "llama-index-embeddings-ollama",
-    "version": "0.9.0",
+    "version": "0.10.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/llama-index-embeddings-ollama/0.9.0/",
+    "homepage": "https://pypi.org/project/llama-index-embeddings-ollama/0.10.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "llama-index-instrumentation",
-    "version": "0.5.0",
+    "version": "0.6.0",
     "license": "MIT",
     "homepage": "https://llamaindex.ai",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "llama-index-llms-ollama",
-    "version": "0.10.1",
+    "version": "0.11.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/llama-index-llms-ollama/0.10.1/",
+    "homepage": "https://pypi.org/project/llama-index-llms-ollama/0.11.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "llama-index-vector-stores-postgres",
-    "version": "0.8.1",
+    "version": "0.9.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/llama-index-vector-stores-postgres/0.8.1/",
+    "homepage": "https://pypi.org/project/llama-index-vector-stores-postgres/0.9.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "llama-index-workflows",
-    "version": "2.22.2",
+    "version": "2.25.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/llama-index-workflows/2.22.2/",
+    "homepage": "https://pypi.org/project/llama-index-workflows/2.25.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "llvmlite",
-    "version": "0.48.0",
+    "version": "0.50.0",
     "license": "UNKNOWN",
     "homepage": "http://llvmlite.readthedocs.io",
     "licenseTextUrl": "http://llvmlite.readthedocs.io"
   },
   {
     "name": "lxml",
-    "version": "6.1.1",
+    "version": "6.1.3",
     "license": "BSD-3-Clause",
     "homepage": "https://lxml.de/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
@@ -393,9 +407,9 @@
   },
   {
     "name": "MarkupSafe",
-    "version": "2.1.1",
-    "license": "BSD License",
-    "homepage": "https://palletsprojects.com/p/markupsafe/",
+    "version": "3.0.3",
+    "license": "BSD-3-Clause",
+    "homepage": "https://github.com/pallets/markupsafe/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
@@ -407,7 +421,14 @@
   },
   {
     "name": "mcp",
-    "version": "1.28.0",
+    "version": "2.2.0",
+    "license": "MIT License",
+    "homepage": "https://modelcontextprotocol.io",
+    "licenseTextUrl": "https://opensource.org/licenses/MIT"
+  },
+  {
+    "name": "mcp-types",
+    "version": "2.2.0",
     "license": "MIT License",
     "homepage": "https://modelcontextprotocol.io",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -421,8 +442,8 @@
   },
   {
     "name": "multidict",
-    "version": "6.0.2",
-    "license": "Apache Software License",
+    "version": "6.9.1",
+    "license": "Apache License 2.0",
     "homepage": "https://github.com/aio-libs/multidict",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
@@ -434,9 +455,9 @@
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
-    "name": "mypy-extensions",
-    "version": "1.0.0",
-    "license": "MIT License",
+    "name": "mypy_extensions",
+    "version": "1.1.0",
+    "license": "MIT",
     "homepage": "https://github.com/python/mypy_extensions",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
@@ -449,28 +470,28 @@
   },
   {
     "name": "networkx",
-    "version": "3.1",
-    "license": "BSD License",
+    "version": "3.6.1",
+    "license": "BSD-3-Clause",
     "homepage": "https://networkx.org/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "nh3",
-    "version": "0.3.6",
+    "version": "0.3.7",
     "license": "MIT",
     "homepage": "https://github.com/messense/nh3",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "nltk",
-    "version": "3.10.0",
+    "version": "3.10.3",
     "license": "Apache Software License",
     "homepage": "https://www.nltk.org/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "numba",
-    "version": "0.66.0",
+    "version": "0.68.0",
     "license": "BSD License",
     "homepage": "https://numba.pydata.org",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
@@ -491,14 +512,21 @@
   },
   {
     "name": "ollama",
-    "version": "0.6.2",
+    "version": "0.6.3",
     "license": "MIT",
     "homepage": "https://ollama.com",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
+    "name": "opentelemetry-api",
+    "version": "1.45.0",
+    "license": "Apache-2.0",
+    "homepage": "https://github.com/open-telemetry/opentelemetry-python/tree/main/opentelemetry-api",
+    "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
+  },
+  {
     "name": "packaging",
-    "version": "26.2",
+    "version": "26.3",
     "license": "Apache-2.0 OR BSD-2-Clause",
     "homepage": "https://github.com/pypa/packaging",
     "licenseTextUrl": "https://github.com/pypa/packaging"
@@ -512,16 +540,16 @@
   },
   {
     "name": "pillow",
-    "version": "10.4.0",
-    "license": "Historical Permission Notice and Disclaimer (HPND)",
+    "version": "12.3.0",
+    "license": "MIT-CMU",
     "homepage": "https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=pypi",
     "licenseTextUrl": "https://tidelift.com/subscription/pkg/pypi-pillow?utm_source=pypi-pillow&utm_medium=pypi"
   },
   {
     "name": "platformdirs",
-    "version": "3.10.0",
+    "version": "4.12.2",
     "license": "MIT",
-    "homepage": "https://github.com/platformdirs/platformdirs",
+    "homepage": "https://github.com/tox-dev/platformdirs",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -533,8 +561,8 @@
   },
   {
     "name": "propcache",
-    "version": "0.5.2",
-    "license": "Apache Software License",
+    "version": "0.5.4",
+    "license": "Apache-2.0",
     "homepage": "https://github.com/aio-libs/propcache",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
@@ -547,70 +575,56 @@
   },
   {
     "name": "psycopg2-binary",
-    "version": "2.9.12",
+    "version": "2.9.13",
     "license": "GNU Library or Lesser General Public License (LGPL)",
     "homepage": "https://psycopg.org/",
     "licenseTextUrl": "https://psycopg.org/"
   },
   {
     "name": "pydantic",
-    "version": "2.13.4",
+    "version": "2.13.5",
     "license": "MIT",
     "homepage": "https://github.com/pydantic/pydantic",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "pydantic_core",
-    "version": "2.46.4",
+    "version": "2.46.5",
     "license": "MIT",
     "homepage": "https://github.com/pydantic/pydantic",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
-    "name": "pydantic-settings",
-    "version": "2.14.1",
-    "license": "MIT",
-    "homepage": "https://github.com/pydantic/pydantic-settings",
-    "licenseTextUrl": "https://opensource.org/licenses/MIT"
-  },
-  {
     "name": "Pygments",
-    "version": "2.20.0",
+    "version": "2.21.0",
     "license": "BSD-2-Clause",
     "homepage": "https://pygments.org",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-2-Clause"
   },
   {
     "name": "PyJWT",
-    "version": "2.13.0",
+    "version": "2.15.1",
     "license": "MIT",
     "homepage": "https://github.com/jpadilla/pyjwt",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "pypdf",
-    "version": "6.14.2",
+    "version": "6.19.0",
     "license": "BSD-3-Clause",
     "homepage": "https://github.com/py-pdf/pypdf",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "pypdfium2",
-    "version": "5.11.0",
+    "version": "5.13.0",
     "license": "BSD-3-Clause, Apache-2.0, dependency licenses",
     "homepage": "https://github.com/pypdfium2-team/pypdfium2",
     "licenseTextUrl": "https://github.com/pypdfium2-team/pypdfium2"
   },
   {
-    "name": "python-dotenv",
-    "version": "1.2.2",
-    "license": "BSD-3-Clause",
-    "homepage": "https://github.com/theskumar/python-dotenv",
-    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
-  },
-  {
     "name": "python-iso639",
-    "version": "2026.4.20",
+    "version": "2026.7.23",
     "license": "Apache-2.0",
     "homepage": "https://github.com/jacksonllee/iso639",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
@@ -645,7 +659,7 @@
   },
   {
     "name": "RapidFuzz",
-    "version": "3.14.5",
+    "version": "3.14.6",
     "license": "MIT",
     "homepage": "https://github.com/rapidfuzz/RapidFuzz",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -659,7 +673,7 @@
   },
   {
     "name": "regex",
-    "version": "2026.7.10",
+    "version": "2026.9.29",
     "license": "Apache-2.0 AND CNRI-Python",
     "homepage": "https://github.com/mrabarnett/mrab-regex",
     "licenseTextUrl": "https://github.com/mrabarnett/mrab-regex"
@@ -687,14 +701,14 @@
   },
   {
     "name": "rpds-py",
-    "version": "2026.5.1",
+    "version": "2026.6.3",
     "license": "MIT",
     "homepage": "https://github.com/crate-py/rpds",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "setuptools",
-    "version": "83.0.0",
+    "version": "84.0.0",
     "license": "MIT",
     "homepage": "https://github.com/pypa/setuptools",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -714,22 +728,22 @@
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
-    "name": "smart-open",
-    "version": "5.2.1",
+    "name": "smart_open",
+    "version": "8.0.2",
     "license": "MIT License",
     "homepage": "https://github.com/piskvorky/smart_open",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "soupsieve",
-    "version": "2.4",
+    "version": "2.10",
     "license": "MIT",
     "homepage": "https://github.com/facelessuser/soupsieve",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "spacy",
-    "version": "3.8.14",
+    "version": "3.8.16",
     "license": "MIT License",
     "homepage": "https://spacy.io",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -750,28 +764,28 @@
   },
   {
     "name": "SQLAlchemy",
-    "version": "2.0.51",
+    "version": "2.0.54",
     "license": "MIT",
     "homepage": "https://www.sqlalchemy.org",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "srsly",
-    "version": "2.5.3",
+    "version": "2.5.4",
     "license": "MIT License",
     "homepage": "https://github.com/explosion/srsly",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "sse-starlette",
-    "version": "3.4.4",
+    "version": "3.5.0",
     "license": "BSD-3-Clause",
     "homepage": "https://github.com/sysid/sse-starlette",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "starlette",
-    "version": "1.3.1",
+    "version": "1.7.0",
     "license": "BSD-3-Clause",
     "homepage": "https://github.com/Kludex/starlette",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
@@ -792,28 +806,28 @@
   },
   {
     "name": "tiktoken",
-    "version": "0.13.0",
+    "version": "0.14.0",
     "license": "UNKNOWN",
     "homepage": "https://github.com/openai/tiktoken",
     "licenseTextUrl": "https://github.com/openai/tiktoken"
   },
   {
     "name": "tinytag",
-    "version": "2.2.1",
+    "version": "2.3.2",
     "license": "MIT License",
     "homepage": "https://github.com/tinytag/tinytag",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tqdm",
-    "version": "4.68.3",
+    "version": "4.70.1",
     "license": "MPL-2.0 AND MIT",
     "homepage": "https://tqdm.github.io",
     "licenseTextUrl": "https://tqdm.github.io"
   },
   {
     "name": "tree-sitter",
-    "version": "0.25.2",
+    "version": "0.26.0",
     "license": "MIT License",
     "homepage": "https://tree-sitter.github.io/tree-sitter/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
@@ -861,15 +875,22 @@
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
+    "name": "truststore",
+    "version": "0.10.4",
+    "license": "MIT",
+    "homepage": "https://github.com/sethmlarson/truststore",
+    "licenseTextUrl": "https://opensource.org/licenses/MIT"
+  },
+  {
     "name": "typer",
-    "version": "0.26.7",
+    "version": "0.27.2",
     "license": "MIT",
     "homepage": "https://github.com/fastapi/typer",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "typing_extensions",
-    "version": "4.15.0",
+    "version": "4.16.0",
     "license": "PSF-2.0",
     "homepage": "https://github.com/python/typing_extensions/issues",
     "licenseTextUrl": "https://docs.python.org/3/license.html#psf-license"
@@ -883,35 +904,35 @@
   },
   {
     "name": "typing-inspection",
-    "version": "0.4.2",
+    "version": "0.4.4",
     "license": "MIT",
     "homepage": "https://github.com/pydantic/typing-inspection",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "unstructured",
-    "version": "0.24.1",
+    "version": "0.27.10",
     "license": "Apache-2.0",
     "homepage": "https://github.com/Unstructured-IO/unstructured",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "unstructured-client",
-    "version": "0.45.0",
+    "version": "0.46.2",
     "license": "MIT",
     "homepage": "https://github.com/Unstructured-IO/unstructured-python-client.git",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "urllib3",
-    "version": "2.7.0",
+    "version": "2.8.0",
     "license": "MIT",
     "homepage": "https://github.com/urllib3/urllib3/blob/main/CHANGES.rst",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "uvicorn",
-    "version": "0.49.0",
+    "version": "0.54.0",
     "license": "BSD-3-Clause",
     "homepage": "https://uvicorn.dev/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
@@ -932,21 +953,21 @@
   },
   {
     "name": "webencodings",
-    "version": "0.5.1",
+    "version": "0.6.1",
     "license": "BSD License",
-    "homepage": "https://github.com/SimonSapin/python-webencodings",
+    "homepage": "https://github.com/CourtBouillon/webencodings",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "wrapt",
-    "version": "2.2.2",
+    "version": "2.5.0",
     "license": "BSD-2-Clause",
     "homepage": "https://github.com/GrahamDumpleton/wrapt",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-2-Clause"
   },
   {
     "name": "yarl",
-    "version": "1.24.2",
+    "version": "1.25.1",
     "license": "Apache-2.0",
     "homepage": "https://github.com/aio-libs/yarl",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
