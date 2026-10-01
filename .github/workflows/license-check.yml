@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main, master, develop]
 
-defaults:
-  run:
-    working-directory: corpus-kb
-
 jobs:
   license-check:
     runs-on: ubuntu-latest
