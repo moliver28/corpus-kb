@@ -1,6 +1,9 @@
 # Custom PostgreSQL 17 image for Corpus-KB.
+# Base is pinned to postgres:17-bookworm (Debian 12 Bookworm) so the PGDG
+# apt repo resolves to the pgdg12 suite; the unpinned postgres:17 tag now
+# points at Trixie which uses different package versions.
 # Multi-stage build: builder compiles PostgresML from source; runtime copies artifacts.
-FROM postgres:17 AS builder
+FROM postgres:17-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PATH="/root/.cargo/bin:${PATH}"
@@ -9,9 +12,9 @@ ARG POSTGRESML_VERSION=2.10.0
 ARG PGRX_VERSION=0.12.9
 
 # Build dependencies. PostgresML 2.10.0 links against libpython3.10 (pyo3
-# abi3-py310 feature), but the official postgres:17 image is Debian Bookworm
-# and ships Python 3.11. We therefore build Python 3.10 from source and set
-# PYTHON so cargo-pgrx finds the correct interpreter/libraries.
+# abi3-py310 feature), but the postgres:17-bookworm base ships Python 3.11.
+# We therefore build Python 3.10 from source and set PYTHON so cargo-pgrx
+# finds the correct interpreter/libraries.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         build-essential pkg-config cmake libssl-dev libreadline-dev \
@@ -36,7 +39,7 @@ RUN curl -fsSL https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz \
  && rm -rf /tmp/Python-3.10.16
 ENV PYTHON=/usr/local/python3.10/bin/python3.10
 ENV PYTHON_LIB=/usr/local/python3.10/lib
-ENV LD_LIBRARY_PATH="/usr/local/python3.10/lib:${LD_LIBRARY_PATH}"
+ENV LD_LIBRARY_PATH="/usr/local/python3.10/lib"
 
 # Install cargo-pgrx and initialize PG17.
 RUN cargo install cargo-pgrx --version ${PGRX_VERSION} --locked \
@@ -51,7 +54,7 @@ RUN git clone --depth 1 --branch v${POSTGRESML_VERSION} https://github.com/postg
 # ─────────────────────────────────────────────────────────────────
 # Runtime stage
 # ─────────────────────────────────────────────────────────────────
-FROM postgres:17
+FROM postgres:17-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -73,7 +76,7 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         postgresql-17-pgvector=${PGVECTOR_VERSION} \
         postgresql-17-age=${AGE_VERSION} \
-        libpython3.11 libopenblas0 libgomp1 \
+        libopenblas0 libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy PostgresML artifacts from builder.
