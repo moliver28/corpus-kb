@@ -144,6 +144,10 @@ jobs:
           echo "Postgres did not become ready"
           exit 1
 
+      - name: Dump container logs (diagnostics)
+        if: failure()
+        run: docker logs corpus-kb-postgres || true
+
       - name: Verify extensions load
         run: |
           docker exec corpus-kb-postgres \
