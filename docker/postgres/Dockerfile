@@ -2,7 +2,8 @@
 # Base is pinned to postgres:17-bookworm (Debian 12 Bookworm) so the PGDG
 # apt repo resolves to the pgdg12 suite; the unpinned postgres:17 tag now
 # points at Trixie which uses different package versions.
-# Multi-stage build: builder compiles PostgresML from source; runtime copies artifacts.
+# Multi-stage build: builder compiles PostgresML from source and installs the
+# Python 3.10 runtime (stdlib + pgml Python dependencies); runtime copies artifacts.
 FROM postgres:17-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -51,6 +52,22 @@ RUN git clone --depth 1 --branch v${POSTGRESML_VERSION} https://github.com/postg
  && cd postgresml/pgml-extension \
  && cargo pgrx install --release --pg-config=/usr/lib/postgresql/17/bin/pg_config
 
+# Install pgml's Python dependencies into the Python 3.10 interpreter so
+# pgml.embed() has torch, transformers, tokenizers, etc. at runtime.
+WORKDIR /build/postgresml/pgml-extension
+RUN /usr/local/python3.10/bin/python3.10 -m pip install --upgrade pip \
+ && /usr/local/python3.10/bin/python3.10 -m pip install \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        -r requirements.txt
+
+# Collect any non-system shared libraries pgml.so links against (e.g.
+# onnxruntime, libtorch) that live outside the base image's /lib and /usr/lib.
+RUN mkdir -p /pgml-deps \
+ && ldd /usr/lib/postgresql/17/lib/pgml.so \
+      | awk '{print $3}' \
+      | grep -E '^/(usr/local|opt)/' \
+      | xargs -r -I{} cp -L {} /pgml-deps/
+
 # ─────────────────────────────────────────────────────────────────
 # Runtime stage
 # ─────────────────────────────────────────────────────────────────
@@ -84,8 +101,14 @@ COPY --from=builder /usr/lib/postgresql/17/lib/pgml.so /usr/lib/postgresql/17/li
 COPY --from=builder /usr/share/postgresql/17/extension/pgml.control /usr/share/postgresql/17/extension/
 COPY --from=builder /usr/share/postgresql/17/extension/pgml--*.sql /usr/share/postgresql/17/extension/
 
-# Copy Python 3.10 shared library in case pgml.so links against it at load time.
-COPY --from=builder /usr/local/python3.10/lib/libpython3.10.so* /usr/local/lib/
+# Ship the full Python 3.10 runtime (interpreter, stdlib and site-packages
+# including torch/transformers/tokenizers) so pgml.so can auto-initialize and
+# pgml.embed() works.
+COPY --from=builder /usr/local/python3.10 /usr/local/python3.10
+
+# Copy non-system shared libraries pgml.so links against (e.g. onnxruntime,
+# libtorch) that live outside the base image's /lib and /usr/lib.
+COPY --from=builder /pgml-deps/ /usr/local/lib/
 RUN ldconfig
 
 # pgml + AGE must be preloaded.
