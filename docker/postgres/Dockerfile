@@ -55,10 +55,13 @@ RUN git clone --depth 1 --branch v${POSTGRESML_VERSION} https://github.com/postg
 # Install pgml's Python dependencies into the Python 3.10 interpreter so
 # pgml.embed() has torch, transformers, tokenizers, etc. at runtime.
 WORKDIR /build/postgresml/pgml-extension
-RUN /usr/local/python3.10/bin/python3.10 -m pip install --upgrade pip \
+# Filter out CUDA-only packages (vllm, xformers): they have no CPU wheels and
+# are not required for pgml.embed() (transformers path).
+RUN grep -viE '^(vllm|xformers)' requirements.txt > /tmp/requirements-cpu.txt \
+ && /usr/local/python3.10/bin/python3.10 -m pip install --upgrade pip \
  && /usr/local/python3.10/bin/python3.10 -m pip install \
         --extra-index-url https://download.pytorch.org/whl/cpu \
-        -r requirements.txt
+        -r /tmp/requirements-cpu.txt
 
 # Collect any non-system shared libraries pgml.so links against (e.g.
 # onnxruntime, libtorch) that live outside the base image's /lib and /usr/lib.
