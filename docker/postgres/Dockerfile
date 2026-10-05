@@ -41,6 +41,14 @@ RUN curl -fsSL https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz \
 ENV PYTHON=/usr/local/python3.10/bin/python3.10
 ENV PYTHON_LIB=/usr/local/python3.10/lib
 ENV LD_LIBRARY_PATH="/usr/local/python3.10/lib"
+# pyo3 resolves the interpreter via PYO3_PYTHON (a bare PYTHON variable is
+# not honored), and otherwise falls back to `python3` on PATH, which is the
+# system Python 3.11. With the wrong interpreter pgml.so linked against
+# libpython3.11 and the runtime failed with "libpython3.11.so.1.0: cannot
+# open shared object file". Force the interpreter and put 3.10 first on
+# PATH so cargo-pgrx/pyo3 link the libpython3.10 we actually ship.
+ENV PYO3_PYTHON=/usr/local/python3.10/bin/python3.10
+ENV PATH="/usr/local/python3.10/bin:${PATH}"
 
 # Install cargo-pgrx and initialize PG17.
 RUN cargo install cargo-pgrx --version ${PGRX_VERSION} --locked \
@@ -78,6 +86,8 @@ RUN mkdir -p /pgml-deps \
 FROM postgres:17-bookworm
 
 ENV DEBIAN_FRONTEND=noninteractive
+# Make the shipped Python 3.10 shared library discoverable for pgml.so.
+ENV LD_LIBRARY_PATH="/usr/local/python3.10/lib"
 
 ARG PGVECTOR_VERSION=0.8.6-1.pgdg12+1
 ARG AGE_VERSION=1.7.0~rc0-1.pgdg12+1
