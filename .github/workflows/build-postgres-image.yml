@@ -7,6 +7,14 @@
 # Triggers:
 #   * workflow_dispatch  - on-demand rebuilds
 #   * release published  - when a GitHub Release is published
+#
+# Multi-platform strategy: each architecture builds NATIVELY on its own
+# runner (amd64 on ubuntu-latest, arm64 on ubuntu-24.04-arm) and pushes an
+# untagged image by digest; a merge job then stitches the per-platform
+# digests into a single multi-arch manifest list. This avoids QEMU
+# emulation entirely - emulating the PostgresML build (Python PGO + Rust
+# release compile) takes many hours and can exceed the 6h job cap, and the
+# 10GB LRU Actions cache is too small to keep the emulated layers warm.
 name: Build Postgres image
 
 on:
@@ -24,19 +32,77 @@ env:
   IMAGE_VERSION: 0.1.0
 
 jobs:
-  build-and-push:
-    name: Build and push Postgres image
-    runs-on: ubuntu-latest
-
+  build:
+    name: Build ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+      - name: Prepare platform pair
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> "$GITHUB_ENV"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: docker/postgres
+          file: docker/postgres/Dockerfile
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=build-${{ env.PLATFORM_PAIR }}
+          cache-to: type=gha,mode=max,scope=build-${{ env.PLATFORM_PAIR }}
+          build-args: |
+            PGVECTOR_VERSION=0.8.6-1.pgdg12+1
+            AGE_VERSION=1.7.0~rc0-1.pgdg12+1
+            POSTGRESML_VERSION=2.10.0
+            PGRX_VERSION=0.12.9
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge manifests and push tags
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -56,19 +122,9 @@ jobs:
             type=semver,pattern={{version}},prefix=${{ env.IMAGE_VERSION }}-
             type=semver,pattern={{major}}.{{minor}},prefix=${{ env.IMAGE_VERSION }}-
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: docker/postgres
-          file: docker/postgres/Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            PGVECTOR_VERSION=0.8.6-1.pgdg12+1
-            AGE_VERSION=1.7.0~rc0-1.pgdg12+1
-            POSTGRESML_VERSION=2.10.0
-            PGRX_VERSION=0.12.9
+      - name: Create and push multi-arch manifest list
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t \(.)") | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf "$REGISTRY/$IMAGE_NAME@sha256:%s " *)
