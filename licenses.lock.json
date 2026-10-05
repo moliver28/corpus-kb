@@ -554,9 +554,9 @@
   },
   {
     "name": "platformdirs",
-    "version": "4.12.2",
+    "version": "4.12.3",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/platformdirs/4.12.2/",
+    "homepage": "https://pypi.org/project/platformdirs/4.12.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -631,9 +631,9 @@
   },
   {
     "name": "pypdfium2",
-    "version": "5.13.0",
+    "version": "5.14.0",
     "license": "BSD-3-Clause, Apache-2.0, dependency licenses",
-    "homepage": "https://pypi.org/project/pypdfium2/5.13.0/",
+    "homepage": "https://pypi.org/project/pypdfium2/5.14.0/",
     "licenseTextUrl": null
   },
   {
@@ -722,9 +722,9 @@
   },
   {
     "name": "rpds-py",
-    "version": "2026.6.3",
+    "version": "2026.9.1",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/rpds-py/2026.6.3/",
+    "homepage": "https://pypi.org/project/rpds-py/2026.9.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
