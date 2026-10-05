@@ -1,31 +1,99 @@
 # Custom PostgreSQL 17 image for Corpus-KB.
-#
-# Bundles the three Postgres extensions required by the
-# postgres-ecosystem-unification plan:
-#   * pgvector     (vector indexing + similarity search)
-#   * Apache AGE   (openCypher graph queries)
-#   * PostgresML   (in-database embeddings, reranking, ONNX NER)
-#
-# All versions are pinned for reproducible builds:
-#   Base image:    postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
-#   pgvector:      0.8.6-1.pgdg12+1
-#   Apache AGE:    1.7.0~rc0-1.pgdg12+1
-#   PostgresML:    2.10.0
-#
-# No GPU / cloud / pgai dependencies are required. CPU-only runtime is the
-# default; the pgml extension downloads models on demand into the container.
-FROM postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+# Base is pinned to postgres:17-bookworm (Debian 12 Bookworm) so the PGDG
+# apt repo resolves to the pgdg12 suite; the unpinned postgres:17 tag now
+# points at Trixie which uses different package versions.
+# Multi-stage build: builder compiles PostgresML from source and installs the
+# Python 3.10 runtime (stdlib + pgml Python dependencies); runtime copies artifacts.
+FROM postgres:17-bookworm AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PATH="/root/.cargo/bin:${PATH}"
 
-# Pin extension versions as build arguments so the CI workflow can keep them
-# in sync without editing the RUN line directly.
+ARG POSTGRESML_VERSION=2.10.0
+ARG PGRX_VERSION=0.12.9
+
+# Build dependencies. PostgresML 2.10.0 links against libpython3.10 (pyo3
+# abi3-py310 feature), but the postgres:17-bookworm base ships Python 3.11.
+# We therefore build Python 3.10 from source and set PYTHON so cargo-pgrx
+# finds the correct interpreter/libraries.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        build-essential pkg-config cmake libssl-dev libreadline-dev \
+        zlib1g-dev python3-dev python3-pip libopenblas-dev \
+        libclang-dev clang lld git curl ca-certificates gnupg lsb-release \
+        postgresql-server-dev-17 \
+        libffi-dev libncurses-dev libsqlite3-dev libbz2-dev \
+        liblzma-dev uuid-dev libgdbm-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+# Install Rust via rustup (stable toolchain).
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+
+# Install Python 3.10 from source for the PostgresML build.
+RUN curl -fsSL https://www.python.org/ftp/python/3.10.16/Python-3.10.16.tgz \
+    | tar -xzf - -C /tmp \
+ && cd /tmp/Python-3.10.16 \
+ && ./configure --prefix=/usr/local/python3.10 --enable-shared --enable-optimizations \
+ && make -j"$(nproc)" \
+ && make altinstall \
+ && ldconfig \
+ && rm -rf /tmp/Python-3.10.16
+ENV PYTHON=/usr/local/python3.10/bin/python3.10
+ENV PYTHON_LIB=/usr/local/python3.10/lib
+ENV LD_LIBRARY_PATH="/usr/local/python3.10/lib"
+# pyo3 resolves the interpreter via PYO3_PYTHON (a bare PYTHON variable is
+# not honored), and otherwise falls back to `python3` on PATH, which is the
+# system Python 3.11. With the wrong interpreter pgml.so linked against
+# libpython3.11 and the runtime failed with "libpython3.11.so.1.0: cannot
+# open shared object file". Force the interpreter and put 3.10 first on
+# PATH so cargo-pgrx/pyo3 link the libpython3.10 we actually ship.
+ENV PYO3_PYTHON=/usr/local/python3.10/bin/python3.10
+ENV PATH="/usr/local/python3.10/bin:${PATH}"
+
+# Install cargo-pgrx and initialize PG17.
+RUN cargo install cargo-pgrx --version ${PGRX_VERSION} --locked \
+ && cargo pgrx init --pg17=/usr/lib/postgresql/17/bin/pg_config
+
+# Clone and build PostgresML from source.
+WORKDIR /build
+RUN git clone --depth 1 --branch v${POSTGRESML_VERSION} https://github.com/postgresml/postgresml.git \
+ && cd postgresml/pgml-extension \
+ && cargo pgrx install --release --pg-config=/usr/lib/postgresql/17/bin/pg_config
+
+# Install pgml's Python dependencies into the Python 3.10 interpreter so
+# pgml.embed() has torch, transformers, tokenizers, etc. at runtime.
+WORKDIR /build/postgresml/pgml-extension
+# Filter out CUDA-only packages (vllm, xformers, auto-gptq): upstream marks
+# them nvidia-only in requirements.txt and they are not required for
+# pgml.embed() (transformers path).
+RUN grep -viE '^(vllm|xformers|auto-gptq)' requirements.txt > /tmp/requirements-cpu.txt \
+ && /usr/local/python3.10/bin/python3.10 -m pip install --upgrade pip \
+ && /usr/local/python3.10/bin/python3.10 -m pip install \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        -r /tmp/requirements-cpu.txt
+
+# Collect any non-system shared libraries pgml.so links against (e.g.
+# onnxruntime, libtorch) that live outside the base image's /lib and /usr/lib.
+RUN mkdir -p /pgml-deps \
+ && ldd /usr/lib/postgresql/17/lib/pgml.so \
+      | awk '{print $3}' \
+      | grep -E '^/(usr/local|opt)/' \
+      | xargs -r -I{} cp -L {} /pgml-deps/
+
+# ─────────────────────────────────────────────────────────────────
+# Runtime stage
+# ─────────────────────────────────────────────────────────────────
+FROM postgres:17-bookworm
+
+ENV DEBIAN_FRONTEND=noninteractive
+# Make the shipped Python 3.10 shared library discoverable for pgml.so.
+ENV LD_LIBRARY_PATH="/usr/local/python3.10/lib"
+
 ARG PGVECTOR_VERSION=0.8.6-1.pgdg12+1
 ARG AGE_VERSION=1.7.0~rc0-1.pgdg12+1
-ARG PGML_VERSION=2.10.0
+ARG POSTGRESML_VERSION=2.10.0
 
-# Install PGDG key once; the official postgres image already ships PGDG,
-# but we re-add the key explicitly so this Dockerfile stays self-contained.
+# Add PGDG apt repository and install pinned pgvector + AGE.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         ca-certificates curl gnupg lsb-release \
@@ -34,24 +102,30 @@ RUN apt-get update \
     | gpg --dearmor -o /etc/apt/trusted.gpg.d/apt.postgresql.org.gpg \
  && echo "deb [signed-by=/etc/apt/trusted.gpg.d/apt.postgresql.org.gpg] \
         http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
-    > /etc/apt/sources.list.d/pgdg.list
-
-# Add PostgresML APT repository (trusted, no separate GPG key required).
-RUN echo "deb [trusted=yes] https://apt.postgresml.org $(lsb_release -cs) main" \
-    > /etc/apt/sources.list.d/postgresml.list
-
-# Install the extensions at pinned versions. The exact package names map to
-# the installed PG major.
-RUN apt-get update \
+    > /etc/apt/sources.list.d/pgdg.list \
+ && apt-get update \
  && apt-get install -y --no-install-recommends \
         postgresql-17-pgvector=${PGVECTOR_VERSION} \
         postgresql-17-age=${AGE_VERSION} \
-        postgresql-17-pgml=${PGML_VERSION} \
+        libopenblas0 libgomp1 \
  && rm -rf /var/lib/apt/lists/*
 
-# pgml requires shared_preload_libraries to include 'pgml' so its background
-# worker can start. AGE recommends adding 'age' as well. This edits the sample
-# used by the official image's initdb-created cluster.
+# Copy PostgresML artifacts from builder.
+COPY --from=builder /usr/lib/postgresql/17/lib/pgml.so /usr/lib/postgresql/17/lib/
+COPY --from=builder /usr/share/postgresql/17/extension/pgml.control /usr/share/postgresql/17/extension/
+COPY --from=builder /usr/share/postgresql/17/extension/pgml--*.sql /usr/share/postgresql/17/extension/
+
+# Ship the full Python 3.10 runtime (interpreter, stdlib and site-packages
+# including torch/transformers/tokenizers) so pgml.so can auto-initialize and
+# pgml.embed() works.
+COPY --from=builder /usr/local/python3.10 /usr/local/python3.10
+
+# Copy non-system shared libraries pgml.so links against (e.g. onnxruntime,
+# libtorch) that live outside the base image's /lib and /usr/lib.
+COPY --from=builder /pgml-deps/ /usr/local/lib/
+RUN ldconfig
+
+# pgml + AGE must be preloaded.
 RUN sed -i "s/#shared_preload_libraries = ''/shared_preload_libraries = 'pgml,age'/" \
         /usr/share/postgresql/postgresql.conf.sample
 

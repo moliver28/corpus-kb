@@ -127,9 +127,9 @@
   },
   {
     "name": "cloudpathlib",
-    "version": "0.25.0",
+    "version": "0.26.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/cloudpathlib/0.25.0/",
+    "homepage": "https://pypi.org/project/cloudpathlib/0.26.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -414,9 +414,9 @@
   },
   {
     "name": "MarkupSafe",
-    "version": "3.0.3",
+    "version": "3.0.4",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/MarkupSafe/3.0.3/",
+    "homepage": "https://pypi.org/project/MarkupSafe/3.0.4/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
@@ -428,16 +428,16 @@
   },
   {
     "name": "mcp",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/mcp/2.2.0/",
+    "homepage": "https://pypi.org/project/mcp/2.3.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "mcp-types",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/mcp-types/2.2.0/",
+    "homepage": "https://pypi.org/project/mcp-types/2.3.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -554,9 +554,9 @@
   },
   {
     "name": "platformdirs",
-    "version": "4.12.2",
+    "version": "4.12.3",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/platformdirs/4.12.2/",
+    "homepage": "https://pypi.org/project/platformdirs/4.12.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -631,9 +631,9 @@
   },
   {
     "name": "pypdfium2",
-    "version": "5.13.0",
+    "version": "5.14.0",
     "license": "BSD-3-Clause, Apache-2.0, dependency licenses",
-    "homepage": "https://pypi.org/project/pypdfium2/5.13.0/",
+    "homepage": "https://pypi.org/project/pypdfium2/5.14.0/",
     "licenseTextUrl": null
   },
   {
@@ -722,9 +722,9 @@
   },
   {
     "name": "rpds-py",
-    "version": "2026.6.3",
+    "version": "2026.9.1",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/rpds-py/2026.6.3/",
+    "homepage": "https://pypi.org/project/rpds-py/2026.9.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
