@@ -15,9 +15,9 @@
   },
   {
     "name": "aiohttp",
-    "version": "3.14.3",
+    "version": "3.14.4",
     "license": "Apache-2.0 AND MIT",
-    "homepage": "https://pypi.org/project/aiohttp/3.14.3/",
+    "homepage": "https://pypi.org/project/aiohttp/3.14.4/",
     "licenseTextUrl": null
   },
   {
