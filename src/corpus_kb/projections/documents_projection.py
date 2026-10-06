@@ -1,18 +1,24 @@
 """DocumentsProjection — projects events into documents, chunks, entities, relations tables.
 
 Subscribes to:
-  - DocumentIngested → INSERT into documents
-  - ChunksAdded → INSERT into chunks (text only, no vectors)
-  - EntityCreated → INSERT into entities
-  - RelationCreated → INSERT into relations
+  - Document.Ingested → upsert into documents
+  - Document.ChunksAdded → insert into chunks (text only, no vectors)
+  - Entity.Created → insert into entities
+  - Relation.Created → insert into relations
 
-Uses asyncpg + SET LOCAL for RLS enforcement. Idempotent (ON CONFLICT DO NOTHING).
+All writes run inside one transaction per event with the tenant GUC set
+(tenant_connection), because these tables are FORCE-put under row-level
+security. Chunk rows get deterministic ids (uuid5 of document id + position)
+so replays are idempotent — the pre-spike code wrote UUID(int=0) for every
+chunk (todo-11 STEP 0, item (c) defect, fixed).
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
@@ -20,6 +26,9 @@ import asyncpg
 
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
+from corpus_kb.projections.event_reader import event_timestamp_dt
+from corpus_kb.projections.ids import deterministic_chunk_id, deterministic_event_id
+from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +54,14 @@ class DocumentsProjection:
         event_id: UUID,
         event_type: str,
         payload: dict[str, Any],
-        event_timestamp: str,
+        event_timestamp: datetime,
+        last_sequence: int | None = None,
     ) -> None:
-        """Dispatch event to the appropriate projection method."""
+        """Dispatch event to the appropriate projection method.
+
+        ``last_sequence`` (when given) records the global notification_id
+        position in the same checkpoint write.
+        """
         try:
             if event_type == "Ingested":
                 await self._project_document(tenant_id, payload)
@@ -59,7 +73,7 @@ class DocumentsProjection:
                 await self._project_relation(tenant_id, payload)
 
             await self._checkpoint.update_checkpoint(
-                PROJECTION_NAME, tenant_id, event_id, event_timestamp
+                PROJECTION_NAME, tenant_id, event_id, event_timestamp, last_sequence
             )
         except Exception as exc:
             logger.error("DocumentsProjection failed: %s", exc)
@@ -67,13 +81,56 @@ class DocumentsProjection:
                 PROJECTION_NAME, tenant_id, event_id, event_type, str(exc)
             )
 
+    async def run(self, tenant_id: UUID, reader: Any) -> None:
+        """Catch-up loop over the global notification_id sequence.
+
+        ``reader`` is an EventReader bound to the eventsourcing Mapper (the
+        lib's events table is topic/state + notification_id bigserial).
+        Events for OTHER tenants advance the shared sequence but are skipped
+        for projection — the checkpoint records the global position either way,
+        so no event is ever revisited or skipped.
+        """
+        logger.info("DocumentsProjection started for tenant %s", tenant_id)
+        while True:
+            cp = await self._checkpoint.get_checkpoint(PROJECTION_NAME, tenant_id)
+            last_sequence = int(cp["last_sequence"]) if cp and cp["last_sequence"] else 0
+            notifications = await reader.read_since(last_sequence, limit=200)
+            if not notifications:
+                await asyncio.sleep(1.0)
+                continue
+            for notification in notifications:
+                timestamp = event_timestamp_dt(notification.event)
+                event_id = deterministic_event_id(
+                    notification.originator_id, notification.originator_version
+                )
+                event_tenant = getattr(notification.event, "tenant_id", None)
+                if event_tenant is not None and UUID(str(event_tenant)) != tenant_id:
+                    await self._checkpoint.update_checkpoint(
+                        PROJECTION_NAME,
+                        tenant_id,
+                        event_id,
+                        timestamp,
+                        notification.notification_id,
+                    )
+                    continue
+                payload = {
+                    key: value
+                    for key, value in vars(notification.event).items()
+                    if not key.startswith("_")
+                }
+                payload["aggregate_id"] = notification.originator_id
+                await self.process_event(
+                    tenant_id,
+                    event_id,
+                    notification.event_type.split(".")[-1],
+                    payload,
+                    timestamp,
+                    last_sequence=notification.notification_id,
+                )
+
     async def _project_document(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """INSERT into documents table."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        """Upsert into the documents table."""
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO documents
@@ -99,19 +156,20 @@ class DocumentsProjection:
             )
 
     async def _project_chunks(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """INSERT into chunks table (text only, no vectors)."""
+        """Insert chunk rows with deterministic ids (fixes UUID(int=0) defect)."""
         chunk_texts = payload.get("chunk_texts", [])
         if not chunk_texts:
             return
 
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        doc_id = str(payload.get("aggregate_id", ""))
+        try:
+            doc_uuid: UUID = UUID(doc_id)
+        except ValueError:
+            logger.error("ChunksAdded for non-UUID aggregate_id %r; skipping", doc_id)
+            return
+
+        async with tenant_connection(self._pool, tenant_id) as conn:
             for i, text in enumerate(chunk_texts):
-                chunk_id = str(UUID(int=0))  # placeholder — real ID from event
-                doc_id = str(payload.get("aggregate_id", ""))
                 await conn.execute(
                     """
                     INSERT INTO chunks
@@ -119,7 +177,7 @@ class DocumentsProjection:
                     VALUES ($1, $2, $3, $4, $5)
                     ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
                     """,
-                    chunk_id,
+                    str(deterministic_chunk_id(doc_uuid, i)),
                     str(tenant_id),
                     doc_id,
                     i,
@@ -127,12 +185,8 @@ class DocumentsProjection:
                 )
 
     async def _project_entity(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """INSERT into entities table."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        """Insert into the entities table."""
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO entities
@@ -148,12 +202,8 @@ class DocumentsProjection:
             )
 
     async def _project_relation(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """INSERT into relations table."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(tenant_id),
-            )
+        """Insert into the relations table."""
+        async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
                 INSERT INTO relations

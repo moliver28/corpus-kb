@@ -187,11 +187,17 @@ async def startup(
         set_documents_projection,
     )
     from corpus_kb.projections.embed_projection import EmbedChunksProjection, set_embed_projection
+    from corpus_kb.projections.event_reader import EventReader
 
     checkpoint_mgr = CheckpointManager(pool)
     dlq_handler = DLQHandler(pool)
     set_checkpoint_manager(checkpoint_mgr)
     set_dlq_handler(dlq_handler)
+
+    # Shared read path over the eventsourcing lib's events table
+    # (topic/state + notification_id bigserial), decoding via the app Mapper.
+    # The table is lib-owned and named after the application class.
+    event_reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
 
     # Embedder for projection (provider selected by embedding.provider)
     from corpus_kb.rag import create_embedder
@@ -228,6 +234,7 @@ async def startup(
         "query_handler": query_handler,
         "embed_projection": embed_projection,
         "docs_projection": docs_projection,
+        "event_reader": event_reader,
         "http_app": http_app,
         "socket_server": socket_server,
         "config": cfg,
@@ -246,6 +253,8 @@ async def run_all(services: dict[str, object]) -> None:
     http_app = services["http_app"]
     socket_server = services["socket_server"]
     embed_projection = services["embed_projection"]
+    docs_projection = services["docs_projection"]
+    event_reader = services["event_reader"]
     config = services["config"]
 
     server_cfg = config.get("server", {})
@@ -255,11 +264,14 @@ async def run_all(services: dict[str, object]) -> None:
     # Start socket server
     await socket_server.start()
 
-    # Start projection background tasks
+    # Start projection background tasks (ALL registered projections run — the
+    # pre-spike wiring started only embed_projection, leaving DocumentsProjection
+    # constructed but never running).
     from uuid import UUID
 
     default_tenant = UUID("00000000-0000-0000-0000-000000000001")
-    projection_task = asyncio.create_task(embed_projection.run(default_tenant))
+    projection_task = asyncio.create_task(embed_projection.run(default_tenant, event_reader))
+    docs_projection_task = asyncio.create_task(docs_projection.run(default_tenant, event_reader))
 
     # Start HTTP server via uvicorn
     config_obj = uvicorn.Config(
@@ -276,8 +288,10 @@ async def run_all(services: dict[str, object]) -> None:
     finally:
         socket_server.stop()
         projection_task.cancel()
+        docs_projection_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await projection_task
+            await docs_projection_task
         logger.info("All servers stopped")
 
 

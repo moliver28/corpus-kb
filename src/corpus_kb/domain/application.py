@@ -57,6 +57,14 @@ class CorpusApplication(Application):
         for key, value in env.items():
             if key not in os.environ:
                 os.environ[key] = value
+        # Auto-snapshot the Document aggregate (todo-11 STEP 0, item (h)).
+        # The interval is read from CLASS attributes during construction, so
+        # it must be set before super().__init__().
+        interval = int(os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD", "100"))
+        if interval > 0:
+            from corpus_kb.domain.aggregates import Document
+
+            type(self).snapshotting_intervals = {Document: interval}
         super().__init__()
 
 

@@ -267,6 +267,7 @@ class FakeEmbedder:
             (config or load_config()).get("embedding", {}),
         )
         self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self.model = "fake-embedder"
 
     def embed(self, text: str) -> list[float]:
         """Return a deterministic vector for ``text``."""
