@@ -10,6 +10,8 @@ from uuid import UUID
 import asyncpg
 import numpy as np
 
+from corpus_kb.storage.tenant_conn import tenant_connection
+
 
 def _as_array(vector: np.ndarray | list[float] | str) -> np.ndarray:
     """Coerce a vector to float32 ndarray.
@@ -64,9 +66,7 @@ async def materialize_chunk_keyword_hits(
     Returns:
         Summary dict with counts of keywords matched, chunks touched, etc.
     """
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(tenant_id))
-
+    async with tenant_connection(pool, tenant_id) as conn:
         # Get all keywords per code
         keywords_per_code = await conn.fetch(
             """
@@ -140,9 +140,7 @@ async def run_similarity_pooling(
     Returns:
         Summary dict with similarity scores computed, chunk_signals written
     """
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(tenant_id))
-
+    async with tenant_connection(pool, tenant_id) as conn:
         signals_written = 0
 
         # Get all codes with probe vectors
@@ -252,9 +250,7 @@ async def reconcile_coverage(
     Returns:
         Summary with total corpus chunks, pooled, and never-pooled counts
     """
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(tenant_id))
-
+    async with tenant_connection(pool, tenant_id) as conn:
         # Backfill chunk_status for any chunk that was never explicitly
         # seeded into it (the normal case against a real ingested corpus).
         await conn.execute(
@@ -288,6 +284,7 @@ async def reconcile_coverage(
             "SELECT COUNT(*) FROM chunk_status WHERE tenant_id = $1 AND in_any_pool = true",
             tenant_id,
         )
+        total = total or 0
         never_pooled = total - (pooled or 0)
 
     return {
