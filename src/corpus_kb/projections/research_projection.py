@@ -44,6 +44,29 @@ from corpus_kb.projections.research.project_projector import ProjectProjector
 
 logger = logging.getLogger(__name__)
 
+# Events the research projectors own. Legacy tenant-less events (e.g.
+# Document.ChunksAdded from the frozen direct-write path) are SKIPPED before
+# the tenant requirement — the research projection must never DLQ them.
+_HANDLED_EVENTS: frozenset[str] = frozenset(
+    {
+        "Document.Ingested",
+        "Document.TurnsParsed",
+        "Document.ExchangesLinked",
+        "CodebookVersion.Created",
+        "CodebookVersion.CodeAdded",
+        "CodebookVersion.DefinitionRefined",
+        "CodebookVersion.PrototypeUpdated",
+        "CodebookVersion.ThresholdRecalibrated",
+        "CodebookVersion.KeywordSetUpdated",
+        "CodingAssignment.Recorded",
+        "CodingAssignment.Reviewed",
+        "CodingAssignment.SignalRecorded",
+        "CodingRun.Started",
+        "CodingRun.CheckpointComputed",
+        "CodingRun.Stopped",
+    }
+)
+
 
 class ResearchProjection:
     """One checkpoint, five bounded-context projectors."""
@@ -72,6 +95,9 @@ class ResearchProjection:
         event cannot wedge the subscription (retry is a re-run with the
         checkpoint reset, or a DLQ replay).
         """
+        if notification.event_type not in _HANDLED_EVENTS:
+            logger.debug("ResearchProjection ignoring event %s", notification.topic)
+            return
         payload = event_payload(notification)
         try:
             tenant_id = require_tenant(payload, notification)
