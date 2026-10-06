@@ -24,10 +24,10 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.projections._drain import dispatch_notification, drain_sequence
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
-from corpus_kb.projections.event_reader import event_timestamp_dt
-from corpus_kb.projections.ids import deterministic_chunk_id, deterministic_event_id
+from corpus_kb.projections.ids import deterministic_chunk_id
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
@@ -83,17 +83,13 @@ class DocumentsProjection:
 
     async def catch_up(self, reader: Any, tenant_id: UUID) -> int:
         """Drain the sequence until quiescent (bounded passes); event count."""
-        total = 0
-        for _ in range(20):
-            cp = await self._checkpoint.get_checkpoint(PROJECTION_NAME, tenant_id)
-            last_sequence = int(cp["last_sequence"]) if cp and cp["last_sequence"] else 0
-            notifications = await reader.read_since(last_sequence, limit=500)
-            if not notifications:
-                break
-            for notification in notifications:
-                await self._process_notification(notification, tenant_id)
-                total += 1
-        return total
+
+        async def handle(notification: Any) -> None:
+            await dispatch_notification(
+                notification, tenant_id, self._checkpoint, PROJECTION_NAME, self.process_event
+            )
+
+        return await drain_sequence(reader, tenant_id, self._checkpoint, PROJECTION_NAME, handle)
 
     async def run(self, tenant_id: UUID, reader: Any) -> None:
         """Catch-up loop over the global notification_id sequence.
@@ -113,35 +109,9 @@ class DocumentsProjection:
                 await asyncio.sleep(1.0)
                 continue
             for notification in notifications:
-                await self._process_notification(notification, tenant_id)
-
-    async def _process_notification(self, notification: Any, tenant_id: UUID) -> None:
-        timestamp = event_timestamp_dt(notification.event)
-        event_id = deterministic_event_id(
-            notification.originator_id, notification.originator_version
-        )
-        event_tenant = getattr(notification.event, "tenant_id", None)
-        if event_tenant is not None and UUID(str(event_tenant)) != tenant_id:
-            await self._checkpoint.update_checkpoint(
-                PROJECTION_NAME,
-                tenant_id,
-                event_id,
-                timestamp,
-                notification.notification_id,
-            )
-            return
-        payload = {
-            key: value for key, value in vars(notification.event).items() if not key.startswith("_")
-        }
-        payload["aggregate_id"] = notification.originator_id
-        await self.process_event(
-            tenant_id,
-            event_id,
-            notification.event_type.split(".")[-1],
-            payload,
-            timestamp,
-            last_sequence=notification.notification_id,
-        )
+                await dispatch_notification(
+                    notification, tenant_id, self._checkpoint, PROJECTION_NAME, self.process_event
+                )
 
     async def _project_document(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """Upsert into the documents table."""
