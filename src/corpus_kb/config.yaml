@@ -60,6 +60,11 @@ judge:
 research:
   embedder:
     model_revision: "1024"      # G1-promotable embedders emit exactly 1024 dims
+    # G1 promotion (todo 13, explicit committed change — never a runtime write):
+    # winner = naive per-text pooling + deterministic prefix; late chunking
+    # showed no gain on the 52-pair fixture (recall@10 -0.154, MRR -0.496).
+    strategy: naive-prefix      # G1 arm winner: late-chunk | naive-prefix
+    dimensions: 1024            # promotion guard: non-1024 winners HALT (research.promotion)
   ingest:
     watch_interval_s: 10        # research ingest --watch poll interval
 

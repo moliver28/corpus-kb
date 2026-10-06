@@ -32,3 +32,15 @@ def test_load_config_resolves_from_cwd_in_dev_mode() -> None:
     assert "installer" in cfg
     installer_cfg = cast(dict[str, object], cfg["installer"])
     assert installer_cfg["auto_detect"] is True
+
+
+def test_default_config_promotes_g1_winner() -> None:
+    """Promotion is an explicit COMMITTED config change (todo 13, r5)."""
+    from corpus_kb.research.promotion import assert_promotable
+
+    packaged = Path(__file__).parent.parent / "src" / "corpus_kb" / "config.yaml"
+    config = yaml.safe_load(packaged.read_text(encoding="utf-8"))
+    embedder = cast(dict[str, object], config["research"])["embedder"]
+    block = cast(dict[str, object], embedder)
+    assert_promotable(int(block["dimensions"]))  # type: ignore[arg-type]
+    assert block["strategy"] in {"late-chunk", "naive-prefix"}, block["strategy"]
