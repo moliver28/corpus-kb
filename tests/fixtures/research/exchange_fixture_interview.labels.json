@@ -1,0 +1,25 @@
+{
+  "format": "txt",
+  "parse_quality": "verified",
+  "role_expectations": {
+    "Moderator": "moderator",
+    "P1 Dana": "participant",
+    "P2 Ben": "participant"
+  },
+  "expected_turn_count": 11,
+  "expected_exchange_count": 4,
+  "exchange_link_methods": ["adjacency", "adjacency", "adjacency", "adjacency"],
+  "codes": [
+    {
+      "code_id": "onboarding_trust",
+      "name": "Onboarding trust",
+      "definition": "Statements about trust built or broken during onboarding",
+      "question_dependent_units": ["Support responded within the hour"],
+      "explicit_units": ["Honestly rough.", "Going back to your onboarding question"]
+    }
+  ],
+  "gates": {
+    "question_dependent_routes_to_review": true,
+    "moderator_turns_not_codable": true
+  }
+}

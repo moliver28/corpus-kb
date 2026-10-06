@@ -24,5 +24,24 @@
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.research_tools': dict({
+      'research_ingest': dict({
+        'force': 'POSITIONAL_OR_KEYWORD',
+        'path': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'research_ingest_transcript': dict({
+        'file_path': 'POSITIONAL_OR_KEYWORD',
+        'force': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'title': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'supported_suffixes': dict({
+      }),
+    }),
   })
 # ---
