@@ -75,8 +75,11 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
         (FIXTURES / "exchange_fixture_interview.labels.json").read_text(encoding="utf-8")
     )
 
+    project_id = uuid4()
     result = await handler.ingest_transcript(
-        TENANT, str(fixture_dir / "exchange_fixture_interview.md")
+        TENANT,
+        str(fixture_dir / "exchange_fixture_interview.md"),
+        project_id=project_id,
     )
     assert result["status"] == "success"
     assert result["n_turns"] == labels["expected_turn_count"]
@@ -93,6 +96,9 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
     units = await _tenant_counts(research_pool, TENANT, "research_units")
     assert len(units) == labels["expected_turn_count"]
     assert all(r["text"] for r in units), "unit text not resolved from content store"
+    assert all(
+        r["project_id"] is not None and str(r["project_id"]) == str(project_id) for r in units
+    ), "research_units.project_id not resolved from the documents row"
     moderator_units = [
         r for r in units if r["role_in_exchange"] in ("main_question", "probe", "transition")
     ]
@@ -148,8 +154,13 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
             evidence_basis="question_dependent",
             stance="partial",
             confidence="high",
+            signals=[{"tier": 0, "link_score": 0.9, "hedge_flag": False}],
         )
     await projection.catch_up(reader)
+
+    signals = await _tenant_counts(research_pool, TENANT, "research_signals")
+    assert signals, "SignalRecorded produced no research_signals row (M1)"
+    assert all(s["unit_id"] != 0 for s in signals), "signal rows carry unit_id=0"
 
     assignments = await _tenant_counts(research_pool, TENANT, "research_assignments")
     assert len(assignments) == 3
@@ -247,6 +258,29 @@ async def test_dynamic_ingest_two_file_dir_edit_one(research_pool, tmp_path):
     turns = await _tenant_counts(research_pool, TENANT, "research_transcript_text")
     sunny_rows = [t for t in turns if t["text"] == "Sunny, mostly."]
     assert len(sunny_rows) == 1, "turn-text dedup violated for unchanged turns"
+
+
+async def test_watch_once_ingests_dropped_file(research_pool, tmp_path):
+    """M5 regression: --watch detection must INGEST, not just log."""
+    from corpus_kb.research.dynamic_ingest import watch_once
+
+    reader, projection, handler, _ = await _wire(research_pool)
+    dropped = tmp_path / "drop"
+    dropped.mkdir()
+
+    async def ingest_file(path: Path) -> None:
+        await handler.ingest_transcript(TENANT, str(path))
+        await projection.catch_up(reader)
+
+    (dropped / "later.txt").write_text("Moderator: Ready to wrap?\nP1: Yes.\n", encoding="utf-8")
+    n = await watch_once(research_pool, TENANT, dropped, ingest_file)
+    assert n == 1, "watch_once must ingest the dropped file"
+
+    units = await _tenant_counts(research_pool, TENANT, "research_units")
+    assert any(u["text"] == "Yes." for u in units), "watched file never projected"
+
+    n2 = await watch_once(research_pool, TENANT, dropped, ingest_file)
+    assert n2 == 0, "unchanged file must not re-ingest on the next pass"
 
 
 async def test_concurrent_assignment_dispatch_no_contention(research_pool):

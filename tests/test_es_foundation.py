@@ -338,6 +338,33 @@ async def test_tenant_contract_on_all_document_events(pool, reader_and_app):
             )
 
 
+async def test_legacy_events_do_not_dlq(pool, research_pool, reader_and_app):
+    """M4 regression: the research projection must SKIP legacy tenant-less
+    events (ChunksAdded from the frozen direct-write path), never DLQ them."""
+    from uuid import uuid4
+
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.projections.research_projection import ResearchProjection
+    from corpus_kb.rag.embedder import FakeEmbedder
+
+    _, app, _, _ = await _projections(pool, reader_and_app)
+    doc = Document(tenant_id=TENANT, source=f"spike://{uuid4()}")
+    doc.add_chunks(chunk_count=1, chunk_texts=["legacy chunk text"])
+    app.save(doc)
+
+    dlq = DLQHandler(research_pool)
+    before = {str(r["dlq_id"]) for r in await dlq.list_failures("ResearchProjection", TENANT)}
+
+    embedder = ResearchEmbedder(research_pool, FakeEmbedder({"embedding": {"dimensions": 1024}}))
+    projection = ResearchProjection(research_pool, CheckpointManager(research_pool), dlq, embedder)
+    await projection.catch_up(reader_and_app[0])
+
+    after = await dlq.list_failures("ResearchProjection", TENANT)
+    new_rows = [r for r in after if str(r["dlq_id"]) not in before]
+    assert new_rows == [], f"legacy events produced DLQ rows: {new_rows}"
+
+
 async def test_migration_016_rollback_and_reapply(research_pool, research_dsn):
     """rollback_016 drops the research read models + last_sequence and clears
     the research checkpoint; re-applying 016 restores the tables. Must stay
@@ -377,5 +404,12 @@ async def test_migration_016_rollback_and_reapply(research_pool, research_dsn):
             "SELECT count(*) FROM pg_tables WHERE tablename LIKE 'research_%'"
         )
         assert back >= 9, "016 re-apply did not restore research tables"
+        unguarded = await conn.fetch(
+            "SELECT relname FROM pg_class WHERE relname LIKE 'research_%' "
+            "AND relkind='r' AND NOT relrowsecurity"
+        )
+        assert unguarded == [], (
+            f"re-apply left research tables WITHOUT row-level security: {[r[0] for r in unguarded]}"
+        )
     finally:
         await conn.close()
