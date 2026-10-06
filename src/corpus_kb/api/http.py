@@ -7,6 +7,9 @@ Routes:
   POST /api/ingest/file, /api/ingest/text, /api/ingest/directory
   POST /api/search, /api/search/similar, /api/search/context
   POST /api/query/sql
+  POST /api/embed
+  POST /api/coding/embed-codebook, /api/coding/pool, /api/coding/code-batch
+  POST /api/coding/reliability, /api/coding/calibrate-floors, /api/coding/saturation
   GET  /api/documents, /api/entities
   POST /api/entities, /api/relations
 """
@@ -583,6 +586,165 @@ async def document_stats(request: Request) -> JSONResponse:
         )
 
 
+async def embed_text(request: Request) -> JSONResponse:
+    """POST /api/embed — embed text with optional instruction prefix."""
+    import asyncio
+
+    from corpus_kb.handlers.coding_handler import load_instruct
+    from corpus_kb.rag.embedder import OllamaEmbedder
+
+    body = await _parse_body(request)
+    text = str(body.get("text", ""))
+    requested_instructed = bool(body.get("instructed", False))
+
+    if not text:
+        return JSONResponse({"error": "text is required"}, status_code=400)
+
+    try:
+        instruct = load_instruct()
+        payload, was_instructed = (
+            instruct(text) if (requested_instructed and instruct) else (text, False)
+        )
+        # Per-request embedder: single texts gain nothing from a shared cache,
+        # and the blocking Ollama round trip runs off the event loop.
+        vector = await asyncio.to_thread(OllamaEmbedder().embed, payload)
+        return JSONResponse(
+            {"vector": vector, "instructed": was_instructed, "dimensions": len(vector)}
+        )
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
+            status_code=400,
+        )
+
+
+async def coding_embed_codebook(request: Request) -> JSONResponse:
+    """POST /api/coding/embed-codebook — Load codebook and embed each code."""
+    from corpus_kb.handlers.coding_handler import get_coding_handler
+
+    try:
+        body = await _parse_body(request)
+        tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+        codebook = body.get("codebook") or {}
+        result = await get_coding_handler().handle_embed_codebook(tenant_id, codebook)
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc)},
+            status_code=400,
+        )
+
+
+async def coding_pool(request: Request) -> JSONResponse:
+    """POST /api/coding/pool — Run pooling (keyword + similarity)."""
+    from corpus_kb.handlers.coding_handler import get_coding_handler
+
+    try:
+        body = await _parse_body(request)
+        tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+        codebook_version_id = UUID(str(body["codebook_version_id"]))
+        result = await get_coding_handler().handle_pool(tenant_id, codebook_version_id)
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc)},
+            status_code=400,
+        )
+
+
+async def coding_code_batch(request: Request) -> JSONResponse:
+    """POST /api/coding/code-batch — Run batch coding with routing."""
+    from corpus_kb.coding.confidence_routing import Bands
+    from corpus_kb.handlers.coding_handler import get_coding_handler
+
+    try:
+        body = await _parse_body(request)
+        tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+        raw_bands = body.get("bands")
+        bands = Bands(**raw_bands) if raw_bands else None
+        result = await get_coding_handler().handle_code_batch(
+            tenant_id,
+            list(body.get("cells", [])),
+            coder=body.get("coder"),
+            model=body.get("model"),
+            batch_id=body.get("batch_id"),
+            coding_pass=int(body.get("coding_pass", 1)),
+            bands=bands,
+        )
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc)},
+            status_code=400,
+        )
+
+
+async def coding_reliability(request: Request) -> JSONResponse:
+    """POST /api/coding/reliability — Compute reliability (alpha/kappa)."""
+    from corpus_kb.handlers.coding_handler import get_coding_handler
+
+    try:
+        body = await _parse_body(request)
+        tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+        result = await get_coding_handler().handle_reliability(
+            tenant_id,
+            per_code_min=int(body.get("per_code_min", 5)),
+            seed=int(body.get("seed", 17)),
+            code_universe=body.get("code_universe"),
+        )
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc)},
+            status_code=400,
+        )
+
+
+async def coding_calibrate_floors(request: Request) -> JSONResponse:
+    """POST /api/coding/calibrate-floors — Calibrate one code's pool/residual floor."""
+    from corpus_kb.handlers.coding_handler import get_coding_handler
+
+    try:
+        body = await _parse_body(request)
+        tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+        result = await get_coding_handler().handle_calibrate_floors(
+            tenant_id,
+            code_id=str(body["code_id"]),
+            codebook_version_id=UUID(str(body["codebook_version_id"])),
+            positive_chunk_ids=[UUID(str(c)) for c in body.get("positive_chunk_ids", [])],
+            negative_chunk_ids=[UUID(str(c)) for c in body.get("negative_chunk_ids", [])],
+            min_pos=int(body.get("min_pos", 10)),
+            global_fallback=body.get("global_fallback"),
+        )
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc)},
+            status_code=400,
+        )
+
+
+async def coding_saturation(request: Request) -> JSONResponse:
+    """POST /api/coding/saturation — ISR + stop-rule saturation signal."""
+    from corpus_kb.handlers.coding_handler import get_coding_handler
+
+    try:
+        body = await _parse_body(request)
+        tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+        result = await get_coding_handler().handle_saturation(
+            tenant_id,
+            batch_id=body.get("batch_id"),
+            threshold=float(body.get("threshold", 0.05)),
+            min_samples=int(body.get("min_samples", 50)),
+        )
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc)},
+            status_code=400,
+        )
+
+
 def create_http_app() -> Starlette:
     """Create the Starlette HTTP application."""
     routes = [
@@ -595,6 +757,13 @@ def create_http_app() -> Starlette:
         Route("/api/verify", verify, methods=["POST"]),
         Route("/api/query", route_query, methods=["POST"]),
         Route("/api/query/sql", query_sql, methods=["POST"]),
+        Route("/api/embed", embed_text, methods=["POST"]),
+        Route("/api/coding/embed-codebook", coding_embed_codebook, methods=["POST"]),
+        Route("/api/coding/pool", coding_pool, methods=["POST"]),
+        Route("/api/coding/code-batch", coding_code_batch, methods=["POST"]),
+        Route("/api/coding/reliability", coding_reliability, methods=["POST"]),
+        Route("/api/coding/calibrate-floors", coding_calibrate_floors, methods=["POST"]),
+        Route("/api/coding/saturation", coding_saturation, methods=["POST"]),
         Route("/api/documents", list_documents, methods=["GET"]),
         Route("/api/entities", list_entities, methods=["GET"]),
         Route("/api/entities", add_entity, methods=["POST"]),

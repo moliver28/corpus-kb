@@ -111,3 +111,8 @@ database:
 llm:
   model: qwen3:4b
   base_url: http://localhost:11434
+
+# Qualitative coding pipeline behind the /api/coding/* routes.
+coding:
+  coder: qwen3:8b
+  model: qwen3:8b
