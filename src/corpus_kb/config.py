@@ -209,6 +209,10 @@ def get_default_config() -> dict[str, object]:
             "model": "qwen3:4b",
             "base_url": "http://localhost:11434",
         },
+        "coding": {
+            "coder": "qwen3:8b",
+            "model": "qwen3:8b",
+        },
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
         },

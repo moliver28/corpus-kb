@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import functools
 import importlib
 import os
+import socket
 import sys
+from urllib.parse import urlparse
 
 import asyncpg
 import pytest
@@ -23,6 +26,30 @@ def pytest_configure(config: object) -> None:
         "markers",
         "requires_postgres: mark test as needing a running Postgres instance",
     )
+    config.addinivalue_line(
+        "markers",
+        "requires_krippendorff: mark test as needing the krippendorff package",
+    )
+
+
+def _postgres_dsn() -> str:
+    return os.environ.get(
+        "CORPUS_KB_DATABASE_URL",
+        "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _postgres_reachable() -> bool:
+    """TCP-probe the configured Postgres host:port (once per session)."""
+    parsed = urlparse(_postgres_dsn())
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 5432
+    try:
+        with socket.create_connection((host, port), timeout=2):
+            return True
+    except OSError:
+        return False
 
 
 def pytest_runtest_setup(item: pytest.Item) -> None:
@@ -34,6 +61,8 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
             importlib.import_module("detectron2")
         except ImportError:
             pytest.skip("hi_res requires detectron2")
+    if "requires_postgres" in item.keywords and not _postgres_reachable():
+        pytest.skip("Postgres not reachable")
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ import hashlib
 import logging
 import random
 from collections import OrderedDict
-from typing import cast
+from typing import Protocol, cast, runtime_checkable
 
 import asyncpg
 import httpx
@@ -26,6 +26,44 @@ from ..config import load_config
 logger = logging.getLogger(__name__)
 
 MAX_CACHE_SIZE = 10_000
+
+# Query-side instruction for instruction-tuned embedding models (e.g.
+# Qwen3-Embedding). Applied to QUERIES only — documents are embedded raw.
+# Todo 13's G1 ablation tunes the wording here, not at call sites.
+QUERY_INSTRUCTION_PREFIX = (
+    "Instruct: Given a qualitative research query, retrieve relevant interview exchanges\nQuery: "
+)
+
+
+def instruct(text: str) -> str:
+    """Prefix a query with the instruction-tuned embedding instruction.
+
+    Instruction-tuned embedding models expect the instruction on the QUERY
+    side only; instructing documents too degrades retrieval.
+    """
+    return QUERY_INSTRUCTION_PREFIX + text
+
+
+@runtime_checkable
+class Embedder(Protocol):
+    """Structural interface for embedder backends.
+
+    Backends satisfy this without inheriting (structural typing): any object
+    with ``dimensions``, ``embed``, ``embed_batch``, and ``instruct`` is an
+    ``Embedder``. The async PgmlEmbedder is bridged at call sites via
+    ``aembed_batch`` and is not required to provide ``instruct``.
+    """
+
+    dimensions: int
+
+    def embed(self, text: str) -> list[float]:
+        """Return a single embedding vector for ``text``."""
+
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Return embedding vectors for ``texts``, in input order."""
+
+    def instruct(self, text: str) -> str:
+        """Return the query-side instructed text (see module-level instruct)."""
 
 
 class OllamaEmbedder:
@@ -110,6 +148,10 @@ class OllamaEmbedder:
 
     def embed_batch_matryoshka(self, texts: list[str], dim: int) -> list[list[float]]:
         return [_slice_normalize(v, dim) for v in self.embed_batch(texts)]
+
+    def instruct(self, text: str) -> str:
+        """Return the query-side instructed text (see module-level instruct)."""
+        return instruct(text)
 
 
 def _sha256_key(text: str) -> str:
@@ -240,6 +282,10 @@ class FakeEmbedder:
 
     def embed_batch_matryoshka(self, texts: list[str], dim: int) -> list[list[float]]:
         return [_slice_normalize(v, dim) for v in self.embed_batch(texts)]
+
+    def instruct(self, text: str) -> str:
+        """Return the query-side instructed text (see module-level instruct)."""
+        return instruct(text)
 
     def _vector_for(self, text: str) -> list[float]:
         seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)

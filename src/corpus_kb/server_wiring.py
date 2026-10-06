@@ -19,7 +19,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import asyncpg
 
@@ -165,6 +165,19 @@ async def startup(
         query_handler, graph_handler, VersioningHandler(pool), embedder, cfg
     )
     set_router_handler(router_handler)
+
+    # 3d. Coding handler (deductive coding pipeline behind /api/coding/*)
+    from corpus_kb.handlers.coding_handler import CodingHandler, set_coding_handler
+
+    coding_cfg = cast(dict[str, object], cfg.get("coding", {}) or {})
+    set_coding_handler(
+        CodingHandler(
+            pool,
+            embedder,
+            coder=str(coding_cfg.get("coder", "qwen3:8b")),
+            model=str(coding_cfg.get("model", "qwen3:8b")),
+        )
+    )
 
     # 4. Projections
     from corpus_kb.projections.checkpoint import CheckpointManager, set_checkpoint_manager
