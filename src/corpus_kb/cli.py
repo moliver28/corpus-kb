@@ -62,3 +62,109 @@ def start(
 
     server_main(["--transport", transport, "--port", str(port)])
     return 0
+
+
+research_app = typer.Typer(help="Research domain: transcript ingestion")
+app.add_typer(research_app, name="research")
+
+
+def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: bool):
+
+    from corpus_kb.config import load_config
+    from corpus_kb.handlers.research_handler import get_research_handler
+    from corpus_kb.projections.checkpoint import CheckpointManager
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.documents_projection import DocumentsProjection
+    from corpus_kb.projections.embed_projection import EmbedChunksProjection
+    from corpus_kb.projections.event_reader import EventReader
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.projections.research_projection import ResearchProjection
+    from corpus_kb.rag import create_embedder
+
+    async def _run() -> int:
+        import asyncpg
+
+        cfg = load_config()
+        db = cfg.get("database", {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        try:
+            app = _get_app(conn_str)
+            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+            handler = get_research_handler(pool)
+            if watch:
+                from pathlib import Path
+
+                from corpus_kb.research.dynamic_ingest import watch as watch_dir
+
+                research_cfg = cfg.get("research", {}) or {}
+                ingest_cfg = research_cfg.get("ingest", {}) or {}
+                interval = int(ingest_cfg.get("watch_interval_s", 10))
+
+                await watch_dir(pool, _tenant(), Path(path), interval)
+                return 0
+            result = await handler.ingest_path(_tenant(), path, _pid(project_id), force=force)
+            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+            checkpoint = CheckpointManager(pool)
+            dlq = DLQHandler(pool)
+            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
+            docs = DocumentsProjection(pool, checkpoint, dlq)
+            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
+            await projection.catch_up(reader)
+            await docs.catch_up(reader, _tenant())
+            await embeds.catch_up(reader, _tenant())
+            import json
+
+            print(json.dumps(result, indent=2, default=str))
+            return 0 if result.get("status") == "success" else 1
+        finally:
+            await pool.close()
+
+    return _run()
+
+
+_DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
+
+
+def _tenant():
+    from uuid import UUID
+
+    return UUID(_DEFAULT_TENANT)
+
+
+def _pid(project_id: str | None):
+    from uuid import UUID
+
+    return UUID(project_id) if project_id else None
+
+
+def _get_app(conn_str: str):
+    from corpus_kb.domain.application import get_app
+
+    return get_app(conn_str)
+
+
+@research_app.command("ingest-transcript")
+def research_ingest_transcript(
+    path: str = typer.Argument(..., help="Transcript file (txt|vtt|srt|csv|docx)"),
+    project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
+    force: bool = typer.Option(False, "--force", help="Re-ingest even if file hash unchanged"),
+) -> int:
+    """Ingest one transcript: turns -> roles -> exchanges -> event stream."""
+
+    import asyncio
+
+    return asyncio.run(_ingest_coroutine(path, project_id, watch=False, force=force))
+
+
+@research_app.command("ingest")
+def research_ingest(
+    path: str = typer.Argument(..., help="File, directory, or glob"),
+    project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
+    watch: bool = typer.Option(False, "--watch", help="Tail a drop directory forever"),
+    force: bool = typer.Option(False, "--force", help="Re-ingest even if file hash unchanged"),
+) -> int:
+    """Dynamic ingestion with separate file-hash and text-hash dedup."""
+    import asyncio
+
+    return asyncio.run(_ingest_coroutine(path, project_id, watch=watch, force=force))
