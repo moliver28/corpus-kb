@@ -581,11 +581,25 @@
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
+    "name": "psycopg",
+    "version": "3.3.6",
+    "license": "LGPL-3.0-only",
+    "homepage": "https://pypi.org/project/psycopg/3.3.6/",
+    "licenseTextUrl": null
+  },
+  {
     "name": "psycopg2-binary",
     "version": "2.9.13",
     "license": "LGPL",
     "homepage": "https://pypi.org/project/psycopg2-binary/2.9.13/",
     "licenseTextUrl": "https://opensource.org/licenses/LGPL-3.0"
+  },
+  {
+    "name": "psycopg-pool",
+    "version": "3.3.3",
+    "license": "LGPL-3.0-only",
+    "homepage": "https://pypi.org/project/psycopg-pool/3.3.3/",
+    "licenseTextUrl": null
   },
   {
     "name": "pycparser",
@@ -929,6 +943,13 @@
     "license": "MIT",
     "homepage": "https://pypi.org/project/typing-inspection/0.4.4/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
+  },
+  {
+    "name": "tzdata",
+    "version": "2026.5",
+    "license": "Apache-2.0",
+    "homepage": "https://pypi.org/project/tzdata/2026.5/",
+    "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
     "name": "unstructured",
