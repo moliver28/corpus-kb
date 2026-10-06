@@ -23,38 +23,6 @@ MAX_KEYWORDS_PER_EVENT = 200
 
 
 @dataclass
-class CodeDraft:
-    """A code as submitted for inclusion in a version."""
-
-    code_id: UUID
-    name: str
-    definition: str
-    inclusion: str
-    exclusion: str
-    mode: str = "deductive"
-    is_interpretive: bool = False
-    allows_question_dependent: bool = True
-    parent_code_id: UUID | None = None
-    examples: list[str] = field(default_factory=list)
-
-    def to_payload(self) -> dict[str, object]:
-        payload: dict[str, object] = {
-            "code_id": str(self.code_id),
-            "name": self.name,
-            "definition": self.definition,
-            "inclusion": self.inclusion,
-            "exclusion": self.exclusion,
-            "mode": self.mode,
-            "is_interpretive": self.is_interpretive,
-            "allows_question_dependent": self.allows_question_dependent,
-            "examples": self.examples,
-        }
-        if self.parent_code_id is not None:
-            payload["parent_code_id"] = str(self.parent_code_id)
-        return payload
-
-
-@dataclass
 class CodebookVersion(Aggregate):
     """One codebook version's authoritative event chain."""
 

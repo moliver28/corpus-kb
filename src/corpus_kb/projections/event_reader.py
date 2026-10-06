@@ -50,11 +50,6 @@ def event_timestamp_dt(event: Any) -> datetime:
     return datetime.fromtimestamp(int(ts), tz=UTC)
 
 
-def event_timestamp_iso(event: Any) -> str:
-    """ISO timestamp from a decoded event (lib yields int epoch or datetime)."""
-    return event_timestamp_dt(event).isoformat()
-
-
 @dataclass(frozen=True)
 class DomainNotification:
     """One decoded event from the lib's application events table.
@@ -84,13 +79,6 @@ class EventReader:
         self._pool = pool
         self._mapper = mapper
         self._events_table = events_table
-
-    async def max_notification_id(self) -> int:
-        """Current high-water mark of the global event sequence."""
-        row = await self._pool.fetchrow(
-            f"SELECT COALESCE(MAX(notification_id), 0) AS n FROM public.{self._events_table}"
-        )
-        return int(row["n"]) if row else 0
 
     async def read_since(self, last_sequence: int, limit: int = 500) -> list[DomainNotification]:
         """Return events with notification_id > last_sequence, in sequence order."""

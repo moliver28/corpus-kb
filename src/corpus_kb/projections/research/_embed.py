@@ -137,3 +137,34 @@ def _is_unit(vec: list[float]) -> bool:
 
 def _to_pg_vector(vec: list[float]) -> str:
     return "[" + ",".join(f"{float(v):.9g}" for v in vec) + "]"
+
+
+async def apply_unit_embeddings(
+    pool: asyncpg.Pool,
+    embedder: ResearchEmbedder,
+    tenant_id: Any,
+    doc_id: Any,
+    texts_by_sha: dict[str, str],
+) -> None:
+    """Embed unit texts through the cache and maintain embedding_256."""
+    for text_sha, text in texts_by_sha.items():
+        vector = await embedder.embed_cached(tenant_id, text)
+        if vector is None:
+            continue
+        async with tenant_connection(pool, tenant_id) as conn:
+            await conn.execute(
+                """
+                UPDATE research_units SET
+                    embedding = $3::vector,
+                    embedding_256 = l2_normalize(subvector($3::vector, 1, 256)),
+                    embedding_model = $4, model_revision = $5, dimensions = $6
+                WHERE tenant_id = $1 AND doc_id = $2 AND text_sha256 = $7
+                """,
+                str(tenant_id),
+                str(doc_id),
+                "[" + ",".join(f"{v:.9g}" for v in vector) + "]",
+                embedder.model,
+                embedder.model_revision,
+                1024,
+                text_sha,
+            )

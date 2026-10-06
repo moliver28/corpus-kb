@@ -42,20 +42,6 @@ FOLLOW_UP_STARTS = (
 )
 
 
-def type_turns(turns: list[TurnSpec]) -> None:
-    """Assign turn_type/role_in_exchange without an open-exchange context.
-
-    Standalone typing for callers that only need labels; link_exchanges does
-    its own context-aware typing inline.
-    """
-    for turn in turns:
-        if turn.role == "moderator":
-            turn.turn_type = _moderator_type(turn, has_open_exchange=False)
-        else:
-            turn.turn_type = "answer" if turn.is_codable else "other"
-        turn.role_in_exchange = turn.turn_type
-
-
 def _moderator_type(turn: TurnSpec, has_open_exchange: bool) -> str:
     text = turn.text.strip().lower()
     if any(marker in text for marker in OPENER_MARKERS):

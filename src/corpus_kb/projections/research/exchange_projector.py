@@ -19,8 +19,10 @@ from corpus_kb.projections.research._common import (
     event_payload,
     lookup_turn_texts,
     require_tenant,
+    upsert_speaker,
+    upsert_unit,
 )
-from corpus_kb.projections.research._embed import ResearchEmbedder
+from corpus_kb.projections.research._embed import ResearchEmbedder, apply_unit_embeddings
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
@@ -80,14 +82,20 @@ class ExchangeProjector:
         tenant_id = require_tenant(payload, notification)
         doc_id = UUID(str(payload["aggregate_id"]))
         turns = payload.get("turns", [])
-        project_id = _opt_str((payload.get("metadata", {}) or {}).get("project_id"))
 
         shas = [str(t["text_sha256"]) for t in turns]
         texts = await lookup_turn_texts(self._pool, tenant_id, shas)
 
         async with tenant_connection(self._pool, tenant_id) as conn:
+            # The Ingested stage stored project_id on the documents row;
+            # TurnsParsed carries no metadata, so resolve it there.
+            project_id = _opt_str(
+                await conn.fetchval(
+                    "SELECT project_id FROM documents WHERE doc_id = $1", str(doc_id)
+                )
+            )
             for turn in turns:
-                await self._upsert_speaker(conn, tenant_id, doc_id, turn)
+                await upsert_speaker(conn, tenant_id, doc_id, turn)
                 if str(turn["text_sha256"]) not in texts:
                     logger.warning(
                         "TurnsParsed references unknown text_sha256 %s (doc %s seq %s); "
@@ -97,8 +105,8 @@ class ExchangeProjector:
                         turn.get("seq"),
                     )
                     continue
-                await self._upsert_unit(conn, tenant_id, doc_id, project_id, turn, texts)
-        await self._embed_units(tenant_id, doc_id, shas, texts)
+                await upsert_unit(conn, tenant_id, doc_id, project_id, turn, texts)
+        await apply_unit_embeddings(self._pool, self._embedder, tenant_id, doc_id, texts)
 
     async def on_exchanges_linked(self, notification: Any) -> None:
         payload = event_payload(notification)
@@ -152,59 +160,6 @@ class ExchangeProjector:
                     _opt_str(exchange.get("term_origin")),
                 )
 
-    async def _upsert_speaker(
-        self, conn: asyncpg.Connection, tenant_id: UUID, doc_id: UUID, turn: dict[str, Any]
-    ) -> None:
-        await conn.execute(
-            """
-            INSERT INTO research_speakers (tenant_id, doc_id, raw_label, role, role_basis)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (tenant_id, doc_id, raw_label) DO UPDATE SET
-                role = EXCLUDED.role,
-                role_basis = EXCLUDED.role_basis
-            """,
-            str(tenant_id),
-            str(doc_id),
-            str(turn.get("speaker", "unknown")),
-            str(turn.get("role", "unknown")),
-            _opt_str(turn.get("role_basis")),
-        )
-
-    async def _upsert_unit(
-        self,
-        conn: asyncpg.Connection,
-        tenant_id: UUID,
-        doc_id: UUID,
-        project_id: str | None,
-        turn: dict[str, Any],
-        texts: dict[str, str],
-    ) -> None:
-        sha = str(turn["text_sha256"])
-        await conn.execute(
-            """
-            INSERT INTO research_units
-            (tenant_id, doc_id, project_id, speaker_id, seq, t_start, t_end,
-             text, text_sha256, role_in_exchange, is_codable, turn_type)
-            VALUES ($1, $2, $3,
-                    (SELECT speaker_id FROM research_speakers
-                     WHERE tenant_id = $1 AND doc_id = $2 AND raw_label = $4),
-                    $5, $6, $7, $8, $9, $10, $11, $12)
-            ON CONFLICT (tenant_id, doc_id, seq) DO NOTHING
-            """,
-            str(tenant_id),
-            str(doc_id),
-            project_id,
-            str(turn.get("speaker", "unknown")),
-            int(turn["seq"]),
-            turn.get("t_start"),
-            turn.get("t_end"),
-            texts.get(sha),
-            sha,
-            str(turn.get("role_in_exchange", "other")),
-            bool(turn.get("is_codable", True)),
-            _opt_str(turn.get("turn_type")),
-        )
-
     async def _unit_ids(
         self, conn: asyncpg.Connection, tenant_id: UUID, doc_id: UUID, seqs: Any
     ) -> list[int]:
@@ -244,34 +199,6 @@ class ExchangeProjector:
         answers = " ".join(by_id[i] for i in a_ids if by_id.get(i))
         qa = f"Q: {question} A: {answers}" if question or answers else None
         return question or None, qa
-
-    async def _embed_units(
-        self, tenant_id: UUID, doc_id: UUID, shas: list[str], texts: dict[str, str]
-    ) -> None:
-        for sha in shas:
-            text = texts.get(sha)
-            if text is None:
-                continue
-            vector = await self._embedder.embed_cached(tenant_id, text)
-            if vector is None:
-                continue
-            async with tenant_connection(self._pool, tenant_id) as conn:
-                await conn.execute(
-                    """
-                    UPDATE research_units SET
-                        embedding = $3::vector,
-                        embedding_256 = l2_normalize(subvector($3::vector, 1, 256)),
-                        embedding_model = $4, model_revision = $5, dimensions = $6
-                    WHERE tenant_id = $1 AND doc_id = $2 AND text_sha256 = $7
-                    """,
-                    str(tenant_id),
-                    str(doc_id),
-                    "[" + ",".join(f"{v:.9g}" for v in vector) + "]",
-                    self._embedder.model,
-                    self._embedder.model_revision,
-                    1024,
-                    sha,
-                )
 
 
 def _opt_str(value: Any) -> str | None:
