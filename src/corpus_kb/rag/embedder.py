@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import random
 from collections import OrderedDict
 from typing import Protocol, cast, runtime_checkable
@@ -26,6 +27,11 @@ from ..config import load_config
 logger = logging.getLogger(__name__)
 
 MAX_CACHE_SIZE = 10_000
+
+# Boundary normalization tolerance (todo 13, r7): every research vector must
+# be L2-normalized where the embedder emits it; zero vectors (degraded mode)
+# are exempt so the house no-Ollama fallback keeps passing.
+UNIT_NORM_TOLERANCE = 0.02
 
 # Query-side instruction for instruction-tuned embedding models (e.g.
 # Qwen3-Embedding). Applied to QUERIES only — documents are embedded raw.
@@ -156,6 +162,32 @@ class OllamaEmbedder:
 
 def _sha256_key(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def l2_normalize(vec: list[float]) -> list[float]:
+    """L2-normalize a vector at the embedder boundary.
+
+    A ZERO vector (the degraded-mode signal from a failed embed call) stays
+    all-zero rather than dividing by zero — house zero-vector fallback
+    contract (todo 13, r7/r8).
+    """
+    norm = math.sqrt(sum(x * x for x in vec))
+    if norm == 0.0:
+        return vec
+    return [x / norm for x in vec]
+
+
+def assert_unit_or_zero(vec: list[float]) -> None:
+    """Unit-norm boundary assert that NO-OPS on zero vectors.
+
+    Degraded/no-Ollama runs emit zero vectors and must skip-pass (house
+    contract); any other non-unit output is a boundary bug and raises.
+    """
+    norm = math.sqrt(sum(x * x for x in vec))
+    if norm == 0.0:
+        return
+    if abs(norm - 1.0) > UNIT_NORM_TOLERANCE:
+        raise ValueError(f"expected unit-norm vector, got norm {norm:.6f}")
 
 
 def _slice_normalize(vec: list[float], dim: int) -> list[float]:
@@ -320,9 +352,13 @@ def create_embedder(
 
 
 async def aembed_batch(
-    embedder: OllamaEmbedder | PgmlEmbedder, texts: list[str]
+    embedder: OllamaEmbedder | PgmlEmbedder | Embedder, texts: list[str]
 ) -> list[list[float]]:
-    """Embed ``texts`` with either embedder, awaiting the async pgml path."""
+    """Embed ``texts`` with any embedder, awaiting the async pgml path.
+
+    The ``Embedder`` protocol arm (todo 13) lets structural backends such as
+    the late-chunking embedder flow through the same research boundary.
+    """
     if isinstance(embedder, PgmlEmbedder):
         return await embedder.embed_batch(texts)
     return embedder.embed_batch(texts)

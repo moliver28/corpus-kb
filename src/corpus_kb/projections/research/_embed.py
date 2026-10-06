@@ -19,13 +19,12 @@ from typing import Any
 
 import asyncpg
 
-from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
+from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch, assert_unit_or_zero
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
 RESEARCH_DIMENSIONS = 1024
-_UNIT_NORM_TOLERANCE = 0.02
 
 
 class ResearchEmbedder:
@@ -110,7 +109,9 @@ class ResearchEmbedder:
             )
             return None
         sliced = _slice_normalize(raw, RESEARCH_DIMENSIONS)
-        if not _is_unit(sliced):
+        try:
+            assert_unit_or_zero(sliced)
+        except ValueError:
             logger.warning("research embed non-unit output; abstaining")
             return None
         return sliced
@@ -129,10 +130,6 @@ def _slice_normalize(vec: list[float], dim: int) -> list[float]:
     if norm == 0.0:
         return sliced
     return [x / norm for x in sliced]
-
-
-def _is_unit(vec: list[float]) -> bool:
-    return abs(math.sqrt(sum(x * x for x in vec)) - 1.0) <= _UNIT_NORM_TOLERANCE
 
 
 def _to_pg_vector(vec: list[float]) -> str:
