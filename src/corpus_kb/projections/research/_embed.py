@@ -145,10 +145,20 @@ async def apply_unit_embeddings(
     tenant_id: Any,
     doc_id: Any,
     texts_by_sha: dict[str, str],
+    prefixes_by_sha: dict[str, str] | None = None,
 ) -> None:
-    """Embed unit texts through the cache and maintain embedding_256."""
+    """Embed unit texts through the cache and maintain embedding_256.
+
+    The embedded string is the DETERMINISTIC context prefix + clean text
+    (todo-12, v5 5.2 contextual retrieval); the stored text column stays
+    clean for generation and citation. The prefix is a pure function of
+    row context, so rebuilds hit the same cache entries and make zero
+    embedder calls beyond misses.
+    """
+    prefixes = prefixes_by_sha or {}
     for text_sha, text in texts_by_sha.items():
-        vector = await embedder.embed_cached(tenant_id, text)
+        embed_text = f"{prefixes[text_sha]}\n{text}" if prefixes.get(text_sha) else text
+        vector = await embedder.embed_cached(tenant_id, embed_text)
         if vector is None:
             continue
         async with tenant_connection(pool, tenant_id) as conn:
@@ -168,3 +178,43 @@ async def apply_unit_embeddings(
                 1024,
                 text_sha,
             )
+
+
+async def embed_exchange_texts(
+    pool: asyncpg.Pool,
+    embedder: ResearchEmbedder,
+    tenant_id: Any,
+    doc_id: Any,
+    texts_by_exchange_id: dict[int, str],
+) -> int:
+    """Embed exchange qa texts (prefix + qa_text) into research_exchanges.
+
+    The exchange is the interview RETRIEVAL parent and the qa CHILD source:
+    its embedding indexes the combined "Q: ... A: ..." text so queries
+    matching either side of the exchange retrieve it. Cache-backed like the
+    unit path; returns the number of exchange vectors written.
+    """
+    written = 0
+    for exchange_id, embed_text in texts_by_exchange_id.items():
+        vector = await embedder.embed_cached(tenant_id, embed_text)
+        if vector is None:
+            continue
+        async with tenant_connection(pool, tenant_id) as conn:
+            result = await conn.execute(
+                """
+                UPDATE research_exchanges SET
+                    embedding = $3::vector,
+                    embedding_256 = l2_normalize(subvector($3::vector, 1, 256)),
+                    embedding_model = $4, model_revision = $5, dimensions = $6
+                WHERE tenant_id = $1 AND doc_id = $2 AND exchange_id = $7
+                """,
+                str(tenant_id),
+                str(doc_id),
+                "[" + ",".join(f"{v:.9g}" for v in vector) + "]",
+                embedder.model,
+                embedder.model_revision,
+                1024,
+                int(exchange_id),
+            )
+        written += 0 if result.endswith("0") else 1
+    return written

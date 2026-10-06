@@ -90,7 +90,7 @@ def link_exchanges(
 
         if not turn.turn_type:
             turn.turn_type = "answer" if turn.role != "unknown" else "other"
-            turn.role_in_exchange = turn.turn_type
+        turn.role_in_exchange = turn.turn_type
         if open_idx is None or turn.turn_type == "other":
             continue
 

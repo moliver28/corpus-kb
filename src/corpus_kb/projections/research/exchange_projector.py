@@ -22,7 +22,12 @@ from corpus_kb.projections.research._common import (
     upsert_speaker,
     upsert_unit,
 )
-from corpus_kb.projections.research._embed import ResearchEmbedder, apply_unit_embeddings
+from corpus_kb.projections.research._embed import (
+    ResearchEmbedder,
+    apply_unit_embeddings,
+    embed_exchange_texts,
+)
+from corpus_kb.research.chunking import build_context_prefix, speaker_label
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
@@ -88,12 +93,27 @@ class ExchangeProjector:
 
         async with tenant_connection(self._pool, tenant_id) as conn:
             # The Ingested stage stored project_id on the documents row;
-            # TurnsParsed carries no metadata, so resolve it there.
-            project_id = _opt_str(
-                await conn.fetchval(
-                    "SELECT project_id FROM documents WHERE doc_id = $1", str(doc_id)
-                )
+            # TurnsParsed carries no metadata, so resolve it there — together
+            # with the deterministic-prefix context (todo-12, v5 5.2).
+            doc = await conn.fetchrow(
+                """
+                SELECT d.project_id, d.title, d.source_type, p.name AS project_name
+                FROM documents d
+                LEFT JOIN research_projects p ON p.project_id = d.project_id
+                WHERE d.doc_id = $1
+                """,
+                str(doc_id),
             )
+            pseudonyms = {
+                row["raw_label"]: row["pseudonym"]
+                for row in await conn.fetch(
+                    "SELECT raw_label, pseudonym FROM research_speakers "
+                    "WHERE tenant_id = $1 AND doc_id = $2",
+                    str(tenant_id),
+                    str(doc_id),
+                )
+            }
+            project_id = _opt_str(doc["project_id"]) if doc else None
             for turn in turns:
                 await upsert_speaker(conn, tenant_id, doc_id, turn)
                 if str(turn["text_sha256"]) not in texts:
@@ -106,7 +126,8 @@ class ExchangeProjector:
                     )
                     continue
                 await upsert_unit(conn, tenant_id, doc_id, project_id, turn, texts)
-        await apply_unit_embeddings(self._pool, self._embedder, tenant_id, doc_id, texts)
+        prefixes = _turn_prefixes(doc, turns, pseudonyms)
+        await apply_unit_embeddings(self._pool, self._embedder, tenant_id, doc_id, texts, prefixes)
 
     async def on_exchanges_linked(self, notification: Any) -> None:
         payload = event_payload(notification)
@@ -114,7 +135,22 @@ class ExchangeProjector:
         doc_id = UUID(str(payload["aggregate_id"]))
         exchanges = payload.get("exchanges", [])
 
+        embed_texts: dict[int, str] = {}
         async with tenant_connection(self._pool, tenant_id) as conn:
+            doc = await conn.fetchrow(
+                """
+                SELECT d.title, d.source_type, p.name AS project_name
+                FROM documents d
+                LEFT JOIN research_projects p ON p.project_id = d.project_id
+                WHERE d.doc_id = $1
+                """,
+                str(doc_id),
+            )
+            prefix = build_context_prefix(
+                project=_opt_str(doc["project_name"]) if doc else None,
+                doc_title=_opt_str(doc["title"]) if doc else None,
+                source_type=_opt_str(doc["source_type"]) if doc else None,
+            )
             for exchange in exchanges:
                 seq = int(exchange["seq"])
                 q_ids = await self._unit_ids(
@@ -126,7 +162,7 @@ class ExchangeProjector:
                 question_text, qa_text = await self._cached_texts(
                     conn, tenant_id, doc_id, q_ids, a_ids
                 )
-                await conn.execute(
+                row = await conn.fetchrow(
                     """
                     INSERT INTO research_exchanges
                     (tenant_id, doc_id, seq, q_unit_ids, a_unit_ids, topic_id,
@@ -144,6 +180,7 @@ class ExchangeProjector:
                         qa_text = EXCLUDED.qa_text,
                         stance = EXCLUDED.stance,
                         term_origin = EXCLUDED.term_origin
+                    RETURNING exchange_id
                     """,
                     str(tenant_id),
                     str(doc_id),
@@ -159,6 +196,26 @@ class ExchangeProjector:
                     _opt_str(exchange.get("stance")),
                     _opt_str(exchange.get("term_origin")),
                 )
+                exchange_id: int | None = None
+                if row is not None:
+                    exchange_id = int(row["exchange_id"])
+                    # Small-to-big parent link: children resolve to this
+                    # exchange directly at query time.
+                    await conn.execute(
+                        """
+                        UPDATE research_units SET exchange_id = $4
+                        WHERE tenant_id = $1 AND doc_id = $2
+                          AND unit_id = ANY($3::bigint[])
+                        """,
+                        str(tenant_id),
+                        str(doc_id),
+                        q_ids + a_ids,
+                        exchange_id,
+                    )
+                if qa_text and exchange_id is not None:
+                    embed_texts[exchange_id] = prefix + "\n" + qa_text
+        if embed_texts:
+            await embed_exchange_texts(self._pool, self._embedder, tenant_id, doc_id, embed_texts)
 
     async def _unit_ids(
         self, conn: asyncpg.Connection, tenant_id: UUID, doc_id: UUID, seqs: Any
@@ -203,3 +260,30 @@ class ExchangeProjector:
 
 def _opt_str(value: Any) -> str | None:
     return None if value is None else str(value)
+
+
+def _turn_prefixes(
+    doc: Any, turns: list[dict[str, Any]], pseudonyms: dict[str, str | None]
+) -> dict[str, str]:
+    """Deterministic per-turn embed prefixes (todo-12, v5 5.2)."""
+    if doc is None:
+        return {}
+    project = _opt_str(doc["project_name"])
+    title = _opt_str(doc["title"])
+    source_type = _opt_str(doc["source_type"])
+    prefixes: dict[str, str] = {}
+    for turn in turns:
+        label = str(turn.get("speaker", "unknown"))
+        prefixes[str(turn["text_sha256"])] = build_context_prefix(
+            project=project,
+            doc_title=title,
+            source_type=source_type,
+            speaker=speaker_label(label, _opt_str(turn.get("role")), pseudonyms.get(label)),
+            timestamp=_turn_timestamp(turn),
+        )
+    return prefixes
+
+
+def _turn_timestamp(turn: dict[str, Any]) -> str | None:
+    t_start = turn.get("t_start")
+    return f"{float(t_start):g}s" if t_start is not None else None
