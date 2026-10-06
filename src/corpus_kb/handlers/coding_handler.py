@@ -49,18 +49,19 @@ _DISPOSITION = {
 }
 
 
-def load_instruct() -> Callable[[str], tuple[str, bool]] | None:
+def load_instruct() -> Callable[[str], str] | None:
     """Resolve the shared qwen3 instruction-prefix helper, if available.
 
-    `corpus_kb.rag.embedder.instruct` is being added by the embedder-protocol
-    work; until it lands this returns None and instructed embedding degrades to
-    plain embedding instead of failing at import time.
+    `corpus_kb.rag.embedder.instruct` returns the query text prefixed with
+    QUERY_INSTRUCTION_PREFIX (Embedder Protocol); until that module lands
+    this returns None and instructed embedding degrades to plain embedding
+    instead of failing at import time.
     """
     module = importlib.import_module("corpus_kb.rag.embedder")
     fn = getattr(module, "instruct", None)
     if fn is None:
         return None
-    instruct_fn: Callable[[str], tuple[str, bool]] = fn
+    instruct_fn: Callable[[str], str] = fn
     return instruct_fn
 
 
@@ -100,7 +101,7 @@ class CodingHandler:
         instruct = load_instruct()
 
         async def embed_fn(text: str, instructed: bool = False) -> str:
-            payload = instruct(text)[0] if (instructed and instruct) else text
+            payload = instruct(text) if (instructed and instruct) else text
             vector = await self._embed_text(embedder, payload)
             return "[" + ",".join(str(float(v)) for v in vector) + "]"
 

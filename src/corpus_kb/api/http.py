@@ -602,14 +602,16 @@ async def embed_text(request: Request) -> JSONResponse:
 
     try:
         instruct = load_instruct()
-        payload, was_instructed = (
-            instruct(text) if (requested_instructed and instruct) else (text, False)
-        )
+        payload = instruct(text) if (instruct is not None and requested_instructed) else text
         # Per-request embedder: single texts gain nothing from a shared cache,
         # and the blocking Ollama round trip runs off the event loop.
         vector = await asyncio.to_thread(OllamaEmbedder().embed, payload)
         return JSONResponse(
-            {"vector": vector, "instructed": was_instructed, "dimensions": len(vector)}
+            {
+                "vector": vector,
+                "instructed": instruct is not None and requested_instructed,
+                "dimensions": len(vector),
+            }
         )
     except Exception as exc:
         return JSONResponse(
