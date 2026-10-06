@@ -305,6 +305,10 @@ CREATE INDEX IF NOT EXISTS idx_embedding_cache_model ON embedding_cache(tenant_i
 -- 14. RLS policies + FORCE on every new table (012/013 convention)
 -- ----------------------------------------------------------------------------
 
+-- Per-table nested blocks: a failure (e.g. duplicate policy after a rollback
+-- that intentionally kept some tables) warns and CONTINUES with the remaining
+-- tables instead of silently skipping RLS for all of them. DROP POLICY IF
+-- EXISTS makes each table's policy creation idempotent on re-apply.
 DO $$
 DECLARE
     t TEXT;
@@ -315,16 +319,19 @@ BEGIN
         'research_signals','research_runs','research_reviews',
         'ingested_files','embedding_cache'
     ] LOOP
-        EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-        EXECUTE format(
-            'CREATE POLICY %I_tenant_isolation ON %I '
-            'USING (tenant_id = NULLIF(current_setting(''app.current_tenant_id'', true), '''')::UUID) '
-            'WITH CHECK (tenant_id = NULLIF(current_setting(''app.current_tenant_id'', true), '''')::UUID)',
-            t, t);
-        EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+        BEGIN
+            EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
+            EXECUTE format('DROP POLICY IF EXISTS %I_tenant_isolation ON %I', t, t);
+            EXECUTE format(
+                'CREATE POLICY %I_tenant_isolation ON %I '
+                'USING (tenant_id = NULLIF(current_setting(''app.current_tenant_id'', true), '''')::UUID) '
+                'WITH CHECK (tenant_id = NULLIF(current_setting(''app.current_tenant_id'', true), '''')::UUID)',
+                t, t);
+            EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING 'RLS setup failed for %: %', t, SQLERRM;
+        END;
     END LOOP;
-EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'RLS setup problem: %', SQLERRM;
 END $$;
 
 -- ----------------------------------------------------------------------------
