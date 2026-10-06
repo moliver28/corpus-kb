@@ -225,7 +225,12 @@ class ResearchHandler:
         )
         self.app.save(assignment)
         if kwargs.get("signals"):
-            assignment.record_signals(tenant_id=tenant_id, signals=list(kwargs["signals"]))
+            assignment.record_signals(
+                tenant_id=tenant_id,
+                unit_id=int(kwargs["unit_id"]),
+                run_id=UUID(str(kwargs["run_id"])),
+                signals=list(kwargs["signals"]),
+            )
             self.app.save(assignment)
         return {
             "status": "success",

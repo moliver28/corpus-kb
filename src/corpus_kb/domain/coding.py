@@ -134,8 +134,18 @@ class CodingAssignment(Aggregate):
         self.status = "confirmed" if decision == "accept" else "overridden"
 
     @event("SignalRecorded")
-    def record_signals(self, tenant_id: UUID, signals: list[dict[str, object]]) -> None:
-        """Attach uncertainty signals (tier, entropies, flags) for this unit."""
+    def record_signals(
+        self,
+        tenant_id: UUID,
+        unit_id: int,
+        run_id: UUID,
+        signals: list[dict[str, object]],
+    ) -> None:
+        """Attach uncertainty signals (tier, entropies, flags) for this unit.
+
+        unit_id/run_id ride the event signature so the projector can satisfy
+        research_signals' FK without reading aggregate state it does not have.
+        """
         if not 0 < len(signals) <= MAX_SIGNALS_PER_EVENT:
             raise ValueError(f"signal batch must be 1..{MAX_SIGNALS_PER_EVENT}")
         for signal in signals:
