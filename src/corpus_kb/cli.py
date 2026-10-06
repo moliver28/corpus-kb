@@ -92,6 +92,12 @@ def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: boo
             app = _get_app(conn_str)
             reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
             handler = get_research_handler(pool)
+            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+            checkpoint = CheckpointManager(pool)
+            dlq = DLQHandler(pool)
+            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
+            docs = DocumentsProjection(pool, checkpoint, dlq)
+            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
             if watch:
                 from pathlib import Path
 
@@ -101,15 +107,15 @@ def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: boo
                 ingest_cfg = research_cfg.get("ingest", {}) or {}
                 interval = int(ingest_cfg.get("watch_interval_s", 10))
 
-                await watch_dir(pool, _tenant(), Path(path), interval)
+                async def ingest_one(file_path: Path) -> None:
+                    await handler.ingest_transcript(_tenant(), str(file_path), _pid(project_id))
+                    await projection.catch_up(reader)
+                    await docs.catch_up(reader, _tenant())
+                    await embeds.catch_up(reader, _tenant())
+
+                await watch_dir(pool, _tenant(), Path(path), interval, ingest_one)
                 return 0
             result = await handler.ingest_path(_tenant(), path, _pid(project_id), force=force)
-            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-            checkpoint = CheckpointManager(pool)
-            dlq = DLQHandler(pool)
-            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
-            docs = DocumentsProjection(pool, checkpoint, dlq)
-            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
             await projection.catch_up(reader)
             await docs.catch_up(reader, _tenant())
             await embeds.catch_up(reader, _tenant())

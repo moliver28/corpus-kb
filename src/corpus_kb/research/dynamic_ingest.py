@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -136,20 +137,43 @@ async def plan_file(
     )
 
 
+async def watch_once(
+    pool: asyncpg.Pool,
+    tenant_id: UUID,
+    directory: Path,
+    ingest_file: Callable[[Path], Awaitable[object]],
+) -> int:
+    """One drop-directory pass: detect new/changed files and INGEST each.
+
+    Returns the number of files ingested this pass. Detection (file_sha256
+    ledger) and ingestion share the caller's handler so a watched directory
+    behaves exactly like a non-watch ingest.
+    """
+    ingested = 0
+    for path in await scan_path(directory):
+        decision = await plan_file(pool, tenant_id, path)
+        if decision.skipped:
+            continue
+        logger.info("watch: ingesting %s", path)
+        await ingest_file(path)
+        ingested += 1
+    return ingested
+
+
 async def watch(
     pool: asyncpg.Pool,
     tenant_id: UUID,
     directory: Path,
     interval_s: int = DEFAULT_WATCH_INTERVAL_S,
+    ingest_file: Callable[[Path], Awaitable[object]] | None = None,
 ) -> None:
     """Tail a drop-directory forever (todo-20 --watch feed)."""
+    if ingest_file is None:
+        raise ValueError("watch requires an ingest_file callback")
     logger.info("watching %s (interval %ds)", directory, interval_s)
     while True:
         try:
-            for path in await scan_path(directory):
-                decision = await plan_file(pool, tenant_id, path)
-                if not decision.skipped:
-                    logger.info("new/changed file detected: %s", path)
+            await watch_once(pool, tenant_id, directory, ingest_file)
             await asyncio.sleep(interval_s)
         except asyncio.CancelledError:
             raise
