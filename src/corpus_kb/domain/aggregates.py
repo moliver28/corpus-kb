@@ -69,6 +69,31 @@ class Document(Aggregate):
         """Add chunks to the document. Projection handles embedding."""
         self.chunk_count += chunk_count
 
+    @event("TurnsParsed")
+    def add_turn_batch(self, tenant_id: UUID, turns: list[dict[str, object]]) -> None:
+        """Record one BATCH of parsed transcript turns (todo-11 (a)).
+
+        Payloads carry text_sha256 refs + speaker/role, never full turn text
+        (the text lives in the immutable content-addressed store). Batches are
+        capped so no single event can blow the payload budget.
+        """
+        if not 0 < len(turns) <= 50:
+            raise ValueError(f"turn batch must be 1..50 turns, got {len(turns)}")
+        for turn in turns:
+            if not turn.get("text_sha256"):
+                raise ValueError("turn payload missing text_sha256 reference")
+            turn["tenant_id"] = str(tenant_id)
+        self.turn_count = getattr(self, "turn_count", 0) + len(turns)
+
+    @event("ExchangesLinked")
+    def add_exchange_batch(self, tenant_id: UUID, exchanges: list[dict[str, object]]) -> None:
+        """Record one batch of exchange links; corrections are NEW events."""
+        if not 0 < len(exchanges) <= 100:
+            raise ValueError(f"exchange batch must be 1..100, got {len(exchanges)}")
+        for exchange in exchanges:
+            exchange["tenant_id"] = str(tenant_id)
+        self.exchange_count = getattr(self, "exchange_count", 0) + len(exchanges)
+
     @event("Deleted")
     def delete(self) -> None:
         """Mark document as deleted."""

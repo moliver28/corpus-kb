@@ -1,26 +1,37 @@
 """EmbedChunksProjection — async vector embedding projection.
 
-Subscribes to ChunksAdded events. For each chunk, calls the configured
-embedding provider (pgml in-database by default, Ollama as fallback) and
-inserts the vector into chunks_vectors (pgvector).
+Subscribes to Document.ChunksAdded events. For each chunk, calls the
+configured embedding provider (pgml in-database by default, Ollama as
+fallback) and inserts the vector into chunks_vectors (pgvector).
+
+The pre-spike code read a ``chunk_ids`` key the ChunksAdded event never
+emitted and fell back to ``UUID(int=0)`` (todo-11 STEP 0, item (c) defect,
+fixed): chunk ids are now DERIVED with the same deterministic uuid5 the
+DocumentsProjection writes, so both projections agree without widening the
+frozen legacy event payload.
 
 Configurable embedding model via config (nomic-embed-text 768d or
-qwen3-embedding:8b-q8_0 4096d). Vectors are derived data — never
-stored in event payloads.
+qwen3-embedding:8b-q8_0 4096d). Vectors are derived data — never stored in
+event payloads. All writes run in one transaction with the tenant GUC
+(tenant_connection): chunks_vectors is FORCE-put under RLS.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.projections._drain import dispatch_notification, drain_sequence
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
+from corpus_kb.projections.ids import deterministic_chunk_id
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
+from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +43,8 @@ class EmbedChunksProjection:
     """Async projection: ChunksAdded event → embed → pgvector INSERT.
 
     Runs as a background task in the server event loop. Uses checkpoint
-    tracking for crash recovery and DLQ for failed embeddings.
+    tracking (global notification_id position) for crash recovery and the
+    DLQ for failed embeddings.
     """
 
     def __init__(
@@ -54,33 +66,35 @@ class EmbedChunksProjection:
         event_id: UUID,
         event_type: str,
         payload: dict[str, Any],
-        event_timestamp: str,
+        event_timestamp: datetime,
+        last_sequence: int | None = None,
     ) -> None:
         """Process a single ChunksAdded event."""
         if event_type != "ChunksAdded":
             return
 
         chunks = payload.get("chunk_texts", [])
-        chunk_ids = payload.get("chunk_ids", [])
-
         if not chunks:
+            return
+
+        doc_id = str(payload.get("aggregate_id", ""))
+        try:
+            doc_uuid: UUID = UUID(doc_id)
+        except ValueError:
+            logger.error("ChunksAdded for non-UUID aggregate_id %r; skipping", doc_id)
             return
 
         try:
             # Batch embed (10 chunks at a time)
             for i in range(0, len(chunks), BATCH_SIZE):
                 batch_texts = chunks[i : i + BATCH_SIZE]
-                batch_ids = chunk_ids[i : i + BATCH_SIZE] if chunk_ids else []
+                batch_start = i
 
                 vectors = await aembed_batch(self._embedder, batch_texts)
 
-                async with self._pool.acquire() as conn:
-                    await conn.execute(
-                        "SELECT set_config('app.current_tenant_id', $1, true)",
-                        str(tenant_id),
-                    )
-                    for j, (_text, vector) in enumerate(zip(batch_texts, vectors, strict=True)):
-                        chunk_id = batch_ids[j] if j < len(batch_ids) else str(UUID(int=0))
+                async with tenant_connection(self._pool, tenant_id) as conn:
+                    for j, vector in enumerate(vectors):
+                        chunk_id = deterministic_chunk_id(doc_uuid, batch_start + j)
                         await conn.execute(
                             """
                             INSERT INTO chunks_vectors
@@ -91,7 +105,7 @@ class EmbedChunksProjection:
                                 embedding_model = $4,
                                 embedded_at = NOW()
                             """,
-                            chunk_id,
+                            str(chunk_id),
                             str(tenant_id),
                             str(vector),
                             self._embedder.model,
@@ -99,7 +113,7 @@ class EmbedChunksProjection:
 
             # Update checkpoint after success
             await self._checkpoint.update_checkpoint(
-                PROJECTION_NAME, tenant_id, event_id, event_timestamp
+                PROJECTION_NAME, tenant_id, event_id, event_timestamp, last_sequence
             )
             logger.debug("Embedded %d chunks for tenant %s", len(chunks), tenant_id)
 
@@ -113,29 +127,43 @@ class EmbedChunksProjection:
                 str(exc),
             )
 
-    async def run(self, tenant_id: UUID) -> None:
-        """Main loop: poll for events and process them."""
+    async def catch_up(self, reader: Any, tenant_id: UUID) -> int:
+        """Drain the sequence until quiescent (bounded passes); event count."""
+
+        async def handle(notification: Any) -> None:
+            await dispatch_notification(
+                notification, tenant_id, self._checkpoint, PROJECTION_NAME, self.process_event
+            )
+
+        return await drain_sequence(reader, tenant_id, self._checkpoint, PROJECTION_NAME, handle)
+
+    async def run(self, tenant_id: UUID, reader: Any) -> None:
+        """Main loop: poll the global notification_id sequence for events.
+
+        ``reader`` is an EventReader bound to the eventsourcing Mapper.
+        Events belonging to other tenants advance the shared checkpoint
+        position without being projected.
+        """
         self._running = True
         logger.info("EmbedChunksProjection started for tenant %s", tenant_id)
 
         while self._running:
             try:
                 cp = await self._checkpoint.get_checkpoint(PROJECTION_NAME, tenant_id)
-                last_ts = cp["last_event_timestamp"] if cp else None
+                last_sequence = int(cp["last_sequence"]) if cp and cp["last_sequence"] else 0
 
-                events = await self._checkpoint.get_events_since(tenant_id, last_ts, limit=100)
-
-                if not events:
+                notifications = await reader.read_since(last_sequence, limit=100)
+                if not notifications:
                     await asyncio.sleep(1.0)  # No events, wait
                     continue
 
-                for event in events:
-                    await self.process_event(
+                for notification in notifications:
+                    await dispatch_notification(
+                        notification,
                         tenant_id,
-                        event["event_id"],
-                        event["event_type"],
-                        event["payload"],
-                        str(event["created_at"]),
+                        self._checkpoint,
+                        PROJECTION_NAME,
+                        self.process_event,
                     )
             except Exception as exc:
                 logger.error("Projection loop error: %s", exc)

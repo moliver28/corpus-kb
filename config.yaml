@@ -116,3 +116,10 @@ llm:
 coding:
   coder: qwen3:8b
   model: qwen3:8b
+
+# Research domain: transcript ingestion + event-sourced projections.
+research:
+  embedder:
+    model_revision: "1024"      # G1-promotable embedders emit exactly 1024 dims
+  ingest:
+    watch_interval_s: 10        # research ingest --watch poll interval

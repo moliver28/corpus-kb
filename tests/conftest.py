@@ -96,3 +96,83 @@ async def graph_store(pg_pool):
     store = PostgresGraphStore(pg_pool)
     yield store
     await store.close()
+
+
+# ---------------------------------------------------------------------------
+# Research-domain throwaway database (todo-11): requested-only session
+# fixture — tests that never ask for it pay nothing; CI (no Postgres) skips
+# via the requires_postgres marker before the fixture runs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def research_dsn():
+    import asyncio
+    import os
+
+    import research_db
+
+    dsn = asyncio.run(research_db.create_research_db())
+    saved = os.environ.get("CORPUS_KB_DATABASE_URL")
+    saved_snapshot = os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD")
+    research_db.set_env(dsn)
+    asyncio.run(research_db.reset_singletons())
+
+    async def _bind_app() -> None:
+        from corpus_kb.domain.application import get_app
+
+        get_app()  # construct the singleton while env points at the throwaway DB
+
+    asyncio.run(_bind_app())
+    # Restore immediately: the eventsourcing singleton stays bound to the
+    # throwaway DB, but pg_pool-based tests keep their original DSN.
+    if saved is None:
+        os.environ.pop("CORPUS_KB_DATABASE_URL", None)
+    else:
+        os.environ["CORPUS_KB_DATABASE_URL"] = saved
+    if saved_snapshot is None:
+        os.environ.pop("CORPUS_KB_SNAPSHOT_PERIOD", None)
+    else:
+        os.environ["CORPUS_KB_SNAPSHOT_PERIOD"] = saved_snapshot
+    yield dsn
+    asyncio.run(research_db.drop_research_db())
+
+
+@pytest.fixture
+async def research_pool(research_dsn):
+    import asyncpg
+
+    pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=4)
+    yield pool
+    await pool.close()
+
+
+@pytest.fixture
+async def superuser(research_dsn):
+    import research_db
+
+    conn = await research_db.superuser_conn()
+    yield conn
+    await conn.close()
+
+
+@pytest.fixture
+async def reader_and_app(research_dsn):
+    from corpus_kb.domain.application import get_app
+    from corpus_kb.projections.event_reader import EventReader
+
+    app = get_app()
+    pool = await __import__("asyncpg").create_pool(research_dsn)
+    try:
+        yield EventReader(pool, app.mapper, app.recorder.events_table_name), app
+    finally:
+        await pool.close()
+
+
+@pytest.fixture
+async def pool(research_dsn):
+    import asyncpg
+
+    pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=4)
+    yield pool
+    await pool.close()

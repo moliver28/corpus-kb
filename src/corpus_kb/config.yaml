@@ -57,6 +57,12 @@ judge:
   base_url: http://localhost:11434
   max_claims: 20
 
+research:
+  embedder:
+    model_revision: "1024"      # G1-promotable embedders emit exactly 1024 dims
+  ingest:
+    watch_interval_s: 10        # research ingest --watch poll interval
+
 routing:
   enabled: true
   confidence_threshold: 0.35
