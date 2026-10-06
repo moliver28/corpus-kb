@@ -255,10 +255,7 @@ class TestCrossValidationWithKrippendorff:
     confirming parity against a second implementation."""
 
     def test_vendored_alpha_matches_krippendorff_package(self):
-        try:
-            import krippendorff
-        except ImportError:
-            pytest.skip("krippendorff package not available")
+        krippendorff = pytest.importorskip("krippendorff")
 
         sheets = [
             {

@@ -145,10 +145,12 @@ async def propose_theory(
     inclusion = code.get("inclusion_criteria", "")
     exclusion = code.get("exclusion_criteria", "")
 
-    prompt = THEORY_PROMPT.format(
-        definition=definition,
-        inclusion=inclusion,
-        exclusion=exclusion,
+    # .format would interpolate the prompt's literal JSON braces (KeyError '"tradition"');
+    # only these three slots are substitution targets.
+    prompt = (
+        THEORY_PROMPT.replace("{definition}", definition)
+        .replace("{inclusion}", inclusion)
+        .replace("{exclusion}", exclusion)
     )
 
     response = await call_fn(prompt)

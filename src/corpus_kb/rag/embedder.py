@@ -56,11 +56,14 @@ class Embedder(Protocol):
 
     dimensions: int
 
-    def embed(self, text: str) -> list[float]: ...
+    def embed(self, text: str) -> list[float]:
+        """Return a single embedding vector for ``text``."""
 
-    def embed_batch(self, texts: list[str]) -> list[list[float]]: ...
+    def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        """Return embedding vectors for ``texts``, in input order."""
 
-    def instruct(self, text: str) -> str: ...
+    def instruct(self, text: str) -> str:
+        """Return the query-side instructed text (see module-level instruct)."""
 
 
 class OllamaEmbedder:

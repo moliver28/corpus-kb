@@ -130,14 +130,9 @@ def test_validate_coder_output_assign_empty_quote() -> None:
         decision="assign", confidence=0.95, evidence_quote="", rationale="rationale"
     )
 
-    _is_valid, _msg = validate_coder_output(output)
-    # Empty string is falsy, so should fail
-    is_valid_false, _msg_fail = validate_coder_output(output)
-    # Empty string is still a string (truthy in this case), so it depends on implementation
-    # Let's check what the actual behavior is by looking at the validation code
-    # The code checks: if output.decision == "assign" and not output.evidence_quote:
-    # Empty string is falsy in Python, so this should fail
-    assert is_valid_false is False
+    # Empty string is falsy, so an assign without a quote must fail validation.
+    is_valid, _ = validate_coder_output(output)
+    assert is_valid is False
 
 
 def test_validate_coder_output_reject_ignores_quote() -> None:

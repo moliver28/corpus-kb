@@ -59,6 +59,7 @@ async def _connect_or_skip() -> asyncpg.Connection:
         return await asyncpg.connect(_dsn())
     except Exception:
         pytest.skip("Postgres not available")
+        raise  # never reached: pytest.skip raises, but keeps the return type honest
 
 
 async def _apply_coding_migrations(conn: asyncpg.Connection) -> None:
