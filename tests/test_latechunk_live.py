@@ -54,13 +54,14 @@ def test_late_chunk_smoke_emits_1024_unit_norm_spans():
     assert abs(sum(x * x for x in single) ** 0.5 - 1.0) < 0.02
 
 
-class _ZeroLateChunk(LateChunkEmbedder):
-    """Degraded-mode double: no model load, every embed returns zeros."""
+class _ZeroEmbedder:
+    """Degraded-mode structural double: no model load, every embed is zeros."""
 
-    def __init__(self) -> None:
-        self.dimensions = RESEARCH_DIMENSIONS
-        self.model = "zero-stub"
-        self.forward_calls = 0
+    dimensions = RESEARCH_DIMENSIONS
+    model = "zero-stub"
+
+    def embed(self, text: str) -> list[float]:
+        return [0.0] * RESEARCH_DIMENSIONS
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         return [[0.0] * RESEARCH_DIMENSIONS for _ in texts]
@@ -96,7 +97,7 @@ async def test_latechunk_cache_roundtrip_and_zero_vector_rejection(research_pool
     assert len(calls) == calls_after_first, "cache hit = zero embedder calls"
 
     zero_boundary = ResearchEmbedder(
-        research_pool, _ZeroLateChunk(), model_revision="qwen3-0.6b-latechunk-1024"
+        research_pool, _ZeroEmbedder(), model_revision="qwen3-0.6b-latechunk-1024"
     )
     zero_text = "a degraded zero-vector embed must never reach the cache"
     rejected = await zero_boundary.embed_cached(TENANT_UUID, zero_text)
