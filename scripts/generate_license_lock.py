@@ -27,6 +27,10 @@ EXCLUDED_PACKAGES = {
         # behind `platform_system == "Windows"` markers). Excluding it keeps
         # the lock identical whether it is generated on Windows or Linux.
         "colorama",
+        # `tzdata` is only pulled in on Windows (psycopg gates it behind a
+        # `platform_system == "Windows"` marker). Same cross-platform rule
+        # as colorama: exclude so the lock is platform-independent.
+        "tzdata",
         "pytest",
         "pytest-asyncio",
         "pytest-cov",
