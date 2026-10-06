@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
@@ -47,12 +48,37 @@ MAX_EXCHANGES_PER_EVENT = 100
 class ResearchHandler:
     """Event-only command surface for the research domain."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        embed_fn: Callable[[str], list[float]] | None = None,
+    ) -> None:
         self._pool = pool
+        self._embed_fn = embed_fn
+        self._default_embed_fn: Callable[[str], list[float]] | None | None = None
 
     @property
     def app(self):
         return get_app()
+
+    def _link_embed(self) -> Callable[[str], list[float]] | None:
+        """Sync embed fn for cross_ref linking (todo-11 deferred, wired todo-12).
+
+        cosine over moderator questions is document-side similarity: RAW
+        texts on both sides (instruct() is retrieval-query-side only).
+        Ollama down or below-dim model -> zero vectors -> cosine 0 -> the
+        linking layer falls back to adjacency, so this never breaks ingest.
+        """
+        if self._embed_fn is not None:
+            return self._embed_fn
+        if self._default_embed_fn is None:
+            from corpus_kb.rag.embedder import OllamaEmbedder, create_embedder
+
+            embedder = create_embedder()
+            self._default_embed_fn = (
+                embedder.embed if isinstance(embedder, OllamaEmbedder) else None
+            )
+        return self._default_embed_fn
 
     async def ingest_transcript(
         self,
@@ -76,8 +102,8 @@ class ResearchHandler:
             }
 
         parsed = parse_transcript(file_path)
-        map_roles(parsed.turns)
-        exchanges = link_exchanges(parsed.turns)
+        role_mapping = map_roles(parsed.turns)
+        exchanges = link_exchanges(parsed.turns, embed=self._link_embed())
 
         texts_by_sha: dict[str, str] = {}
         for turn in parsed.turns:
@@ -104,7 +130,7 @@ class ResearchHandler:
                 "parse_quality": parsed.parse_quality,
                 "project_name": title or file_path.stem,
                 "role_basis": speaker_role_basis(parsed.turns),
-                "role_mapping": map_roles(parsed.turns),
+                "role_mapping": role_mapping,
             },
         )
         for batch in _batches(parsed.turns, MAX_TURNS_PER_EVENT):
@@ -267,12 +293,15 @@ def _batches(items: list, size: int) -> list[list]:
 _handler: ResearchHandler | None = None
 
 
-def get_research_handler(pool: asyncpg.Pool | None = None) -> ResearchHandler:
+def get_research_handler(
+    pool: asyncpg.Pool | None = None,
+    embed_fn: Callable[[str], list[float]] | None = None,
+) -> ResearchHandler:
     global _handler
     if _handler is None:
         if pool is None:
             raise RuntimeError("ResearchHandler requires an asyncpg pool")
-        _handler = ResearchHandler(pool)
+        _handler = ResearchHandler(pool, embed_fn=embed_fn)
     return _handler
 
 
