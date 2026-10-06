@@ -239,23 +239,23 @@
   },
   {
     "name": "griffe",
-    "version": "2.3.0",
+    "version": "2.3.2",
     "license": "ISC",
-    "homepage": "https://pypi.org/project/griffe/2.3.0/",
+    "homepage": "https://pypi.org/project/griffe/2.3.2/",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
     "name": "griffecli",
-    "version": "2.3.0",
+    "version": "2.3.2",
     "license": "ISC",
-    "homepage": "https://pypi.org/project/griffecli/2.3.0/",
+    "homepage": "https://pypi.org/project/griffecli/2.3.2/",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
     "name": "griffelib",
-    "version": "2.3.0",
+    "version": "2.3.2",
     "license": "ISC",
-    "homepage": "https://pypi.org/project/griffelib/2.3.0/",
+    "homepage": "https://pypi.org/project/griffelib/2.3.2/",
     "licenseTextUrl": "https://opensource.org/licenses/ISC"
   },
   {
