@@ -52,11 +52,11 @@ class CorpusApplication(Application):
     """
 
     def __init__(self, connection_string: str) -> None:
+        # The parsed env is passed EXPLICITLY (the env param wins over
+        # os.environ in construct_env) — mutating os.environ here would make
+        # a later get_app(different_dsn) silently reuse this construction's
+        # POSTGRES_* values and ignore its own argument.
         env = _parse_connection_string(connection_string)
-        # Merge with os.environ (os.environ takes precedence for overrides)
-        for key, value in env.items():
-            if key not in os.environ:
-                os.environ[key] = value
         # Auto-snapshot the Document aggregate (todo-11 STEP 0, item (h)).
         # The interval is read from CLASS attributes during construction, so
         # it must be set before super().__init__().
@@ -65,7 +65,7 @@ class CorpusApplication(Application):
             from corpus_kb.domain.aggregates import Document
 
             type(self).snapshotting_intervals = {Document: interval}
-        super().__init__()
+        super().__init__(env=env)
 
 
 _app: CorpusApplication | None = None
