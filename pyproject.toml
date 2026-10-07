@@ -67,6 +67,14 @@ latechunk = [
     "transformers>=4.51.0",
     "torch>=2.2",
 ]
+# Inductive engine (todo 15, v5 §9): UMAP reduction + HDBSCAN clustering.
+# License-reviewed permissive set: umap-learn BSD-3-Clause, hdbscan BSD-3-Clause
+# (both pull numba/llvmlite/scikit-learn, all BSD-family). CI NEVER installs
+# this extra; the extras-less jobs must stay green (same contract as latechunk).
+inductive = [
+    "umap-learn>=0.5",
+    "hdbscan>=0.8.36",
+]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=5.0", "syrupy>=4.0"]
 
 [build-system]
