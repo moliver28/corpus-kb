@@ -1,4 +1,4 @@
-# Research Math (v5 §8/§12 — deductive scoring, calibration, conformal)
+# Research Math (v5 §8/§9/§12 — deductive scoring, inductive engine, calibration, conformal)
 
 Every formula below states its v5 source and its calibration source so
 maintainers never re-derive policy from code. This file is extended as later
@@ -76,6 +76,82 @@ byte-stable for identical seeds.
 - The live run derives its calibration split leave-one-out over gold
   exemplars (same rebuild discipline as the G2 folds).
 
+## Inductive engine (v5 §9, todo 15)
+
+- **Atomic observations**: one temp-0 LLM summary per codable unit,
+  question-context aware for interviews; the stored row logs
+  `prompt_id` + `model` + `temperature` and the `question_dependent` flag
+  (v5 §9.1). A malformed response degrades to the raw answer text with
+  `parse_fallback` recorded — summaries never crash a run.
+- **Clustering**: summaries are embedded through the shared 1024-d embedder;
+  UMAP (`n_components=10` for clustering — 2-D is display-only,
+  `metric='cosine'`, `random_state=42`, `transform_seed=42`) then HDBSCAN
+  (`min_cluster_size = max(5, ceil(0.01·N))`, `min_samples =
+  min_cluster_size`, cosine). Determinism pins are code constants
+  (`coding/inductive_cluster.py`) and are recorded in every run manifest
+  (r7): identical inputs produce identical clusters (asserted by the
+  extras-installed fixture test). The optional `umap-learn`/`hdbscan` stack
+  is reached ONLY via the typed-Protocol shim
+  (`coding/_inductive_types.py`, house pattern) — without the extra the
+  engine reports `unavailable` and the deductive path is untouched (r8).
+- **Assignment-space contract (r7)**: soft-assignment centroids, drift
+  snapshots, and the Tier-0 entropy all live in the ORIGINAL
+  summary-embedding space; the UMAP output is HDBSCAN's input only, never
+  the assignment space.
+- **Soft cluster-assignment entropy** (v5 §9.3, Student-t kernel): over the
+  `k = clamp(k, 2, 4)` nearest centroids,
+  `q_ij = (1 + d_ij²/a)^(−(a+1)/2) / Σ_j'`, `H_i = −Σ_j q_ij log q_ij`,
+  reported normalized `H_i / log k ∈ [0, 1]` (category-discovery lineage).
+  `d_ij² = 2(1 − cos)` — the squared euclidean distance between
+  unit-normalized vectors (on the unit sphere raw cosine distance compresses
+  toward 1 in high dimensions and erases the kernel's contrast);
+  `a = 0.02` is the kernel-sharpness pin (both recorded in the run
+  manifest). Confident members land well below the gate, between-theme
+  units near 1. High `H_i` is the ONLY gate for the LLM "existing code vs
+  new code" meta-decision (v5 §9.4), and the entropy rows land in
+  `research_signals` (`tier=0`, `soft_cluster_entropy`, `n_clusters`) for
+  todo-16's review-priority refit.
+- **Cadence** (v5 §9.5): centroids refresh per incremental batch (means over
+  members in the original space); a mean cosine drift between consecutive
+  snapshots above `centroid_drift_threshold` (config, default 0.15) triggers
+  an EARLY full re-cluster; a full re-cluster also fires every
+  `recluster_every_batches` batches (config, default 8 — within §9.5's 5-10).
+- **DBCV validity** (r10): HDBSCAN `relative_validity_` (Moulavi et al.
+  2014 — density-appropriate, unlike silhouette on non-convex clusters) is
+  reported per clustering run and tracked against the previous run's
+  checkpoint; a >20% drop (`dbcv_drop_threshold`) sets `dbcv_drop_flag` →
+  re-cluster review. A missing/non-positive baseline never flags.
+- **Noise bucket**: HDBSCAN label −1 units go to `research_noise_queue`
+  (manual-review queue, status `pending`) — never discarded. The queue is a
+  UNION: reduced-space HDBSCAN noise PLUS original-space density outliers
+  (a second HDBSCAN fit over the unit-normalized summaries with the same
+  `min_cluster_size`/`min_samples`/cosine pins). Rationale (measured on the
+  todo-15 fixture): the UMAP fuzzy graph rescues isolated points on small-N
+  qualitative corpora — every injected outlier lands within core distance of
+  a theme after reduction, so the reduced fit alone never emits −1; the
+  original space is already the assignment space (r7), and the queue is
+  review-only, never removing a unit from its cluster.
+- **ISR per batch**: Incremental Sampling Rate (`coding/saturation.py`,
+  `isr(unique_codes, total_applications)`) computed per incremental batch —
+  unique clusters touched / units in the batch — recorded in the CodingRun
+  checkpoint payloads.
+- **Proposed-code governance** (v5 §9.6): every non-noise final cluster
+  lands in `research_proposed_codes` with cluster id, centroid snapshot
+  (PROVENANCE ONLY — summary space; never a scoring prototype, r7), member
+  unit_ids, proposing batch, and run DBCV. Human promotion happens ONLY via
+  the named surface `corpus-kb codebook promote` (CLI) / `codebook_promote`
+  (MCP): member unit_ids → A/QA/Q view embeddings → k-medoids
+  (`build_view_prototypes`) → `PrototypeUpdated` exemplar refs on a NEW
+  `codebook_version` aggregate — prototypes live in the DEDUCTIVE
+  unit-embedding space, rebuilt from the new version's gold (r7 CRITICAL).
+- **Promote-time duplicate gate**: the re-derived answer-view prototypes'
+  max cosine vs every existing code's gold-derived answer prototypes; above
+  `tau_dup` the promotion BLOCKS with a merge suggestion (exit 3 / status
+  `duplicate_blocked`). `tau_dup` is calibrated from gold when prototype
+  geometry exists: `max inter-code prototype cosine + 0.05`, clamped to
+  [0.7, 0.95]; otherwise the config default (0.85). The gate and the
+  comparison both run in the deductive space so the similarity is defined.
+
 ## References
 
 - Guo, Pleiss, Sun, Weinberger (2017), *On Calibration of Modern Neural
@@ -83,4 +159,7 @@ byte-stable for identical seeds.
 - Angelopoulos, Bates et al. (2021), *A Gentle Introduction to Conformal
   Prediction*; Angelopoulos et al. (TACL 2024), arXiv:2405.01976 —
   multi-label conformal sets.
-- v5 §8 (deductive rules), §12 (G2 gate).
+- Moulavi et al. (2014), *Density-Based Clustering Validation* (SDM) —
+  DBCV / HDBSCAN `relative_validity_`.
+- v5 §8 (deductive rules), §9 (inductive pipeline), §7 (abductive
+  sequencing), §12 (G2 gate).

@@ -46,18 +46,22 @@ class LlmHandler:
         self,
         messages: list[dict[str, str]],
         model: str | None = None,
+        options: dict[str, object] | None = None,
     ) -> dict[str, Any]:
-        """Return the chat completion for ``messages`` via /api/chat."""
+        """Return the chat completion for ``messages`` via /api/chat.
+
+        ``options`` rides Ollama's native options block (e.g. temperature);
+        the inductive summaries call it with temperature 0 (v5 §9.1 pin).
+        """
         use_model = model or self.model
         input_error = _validate_messages(messages)
         if input_error is not None:
             logger.warning("LlmHandler.chat rejected input: %s", input_error)
             return {"error": input_error, "model": use_model}
-        return await self._post(
-            f"{self.base_url}/api/chat",
-            {"model": use_model, "messages": messages, "stream": False},
-            use_model,
-        )
+        payload: dict[str, Any] = {"model": use_model, "messages": messages, "stream": False}
+        if options:
+            payload["options"] = options
+        return await self._post(f"{self.base_url}/api/chat", payload, use_model)
 
     async def generate(
         self,

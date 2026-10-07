@@ -25,9 +25,25 @@
       }),
     }),
     'corpus_kb.tools.research_tools': dict({
+      'codebook_promote': dict({
+        'definition': 'POSITIONAL_OR_KEYWORD',
+        'exclusion': 'POSITIONAL_OR_KEYWORD',
+        'inclusion': 'POSITIONAL_OR_KEYWORD',
+        'label': 'POSITIONAL_OR_KEYWORD',
+        'name': 'POSITIONAL_OR_KEYWORD',
+        'pool': 'POSITIONAL_OR_KEYWORD',
+        'proposed_id': 'POSITIONAL_OR_KEYWORD',
+        'tau_dup': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
       'coding_run': dict({
         'cal_alpha': 'POSITIONAL_OR_KEYWORD',
         'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'inductive_run': dict({
         'pool': 'POSITIONAL_OR_KEYWORD',
         'project_id': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
