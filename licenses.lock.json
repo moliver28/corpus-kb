@@ -827,9 +827,9 @@
   },
   {
     "name": "tenacity",
-    "version": "9.1.4",
+    "version": "9.2.1",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/tenacity/9.1.4/",
+    "homepage": "https://pypi.org/project/tenacity/9.2.1/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
