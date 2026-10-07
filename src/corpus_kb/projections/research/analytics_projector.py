@@ -44,6 +44,10 @@ class AnalyticsProjector:
     async def on_checkpoint(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
+        # The event method param is `payload` (CodingRun.add_checkpoint), so
+        # the checkpoint body rides the event under that key — never the
+        # whole event dict (its auto timestamp is not JSON-serializable).
+        checkpoint_body = payload.get("payload", {})
         async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(
                 """
@@ -53,7 +57,7 @@ class AnalyticsProjector:
                 """,
                 str(payload["aggregate_id"]),
                 str(tenant_id),
-                json.dumps(payload.get("checkpoint", payload)),
+                json.dumps(checkpoint_body),
             )
 
     async def on_run_stopped(self, notification: Any) -> None:
