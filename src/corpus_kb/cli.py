@@ -73,6 +73,58 @@ app.add_typer(coding_app, name="coding")
 codebook_app = typer.Typer(help="Codebook governance: human-gated promotion")
 app.add_typer(codebook_app, name="codebook")
 
+review_app = typer.Typer(help="Review queue: execute accept/override decisions")
+app.add_typer(review_app, name="review")
+
+
+def _review_command(decision: str):
+    def _cmd(
+        assignment_id: str = typer.Argument(..., help="CodingAssignment aggregate UUID"),
+        reviewer: str = typer.Option(..., "--reviewer", help="Reviewer identity"),
+        note: str = typer.Option(
+            "", "--note", help="Decision note (link fixes describe the change)"
+        ),
+    ) -> int:
+        """Record one reviewer decision and advance the projections."""
+        import asyncio
+        import json
+
+        from corpus_kb.config import load_config
+
+        async def _run() -> int:
+            from uuid import UUID
+
+            import asyncpg
+
+            cfg = load_config()
+            db = cfg.get("database", {})
+            conn_str = str(db.get("connection_string", ""))
+            pool = await asyncpg.create_pool(conn_str)
+            try:
+                from corpus_kb.research.review_surface import execute_review
+
+                result = await execute_review(
+                    pool,
+                    _tenant(),
+                    conn_str,
+                    UUID(assignment_id),
+                    reviewer,
+                    decision,
+                    note,
+                )
+                print(json.dumps(result, indent=2, default=str))
+                return 0
+            finally:
+                await pool.close()
+
+        return asyncio.run(_run())
+
+    return _cmd
+
+
+review_app.command("accept", help="Confirm the model's assignment")(_review_command("accept"))
+review_app.command("override", help="Overrule the model's assignment")(_review_command("override"))
+
 
 @coding_app.command("run")
 def coding_run(
