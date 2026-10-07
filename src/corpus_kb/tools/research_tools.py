@@ -13,7 +13,13 @@ import asyncpg
 
 from corpus_kb.handlers.research_handler import get_research_handler
 
-__all__ = ["coding_run", "research_ingest", "research_ingest_transcript"]
+__all__ = [
+    "codebook_promote",
+    "coding_run",
+    "inductive_run",
+    "research_ingest",
+    "research_ingest_transcript",
+]
 
 DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
@@ -97,3 +103,91 @@ async def coding_run(
     projection = ResearchProjection(pool, CheckpointManager(pool), DLQHandler(pool), embedder)
     await projection.catch_up(reader)
     return summary
+
+
+async def inductive_run(
+    pool: asyncpg.Pool,
+    project_id: str | None = None,
+    tenant_id: str = DEFAULT_TENANT,
+) -> dict[str, object]:
+    """Launch one inductive pass (v5 §9) and advance projections.
+
+    Summarizes units to atomic observations (temp 0), embeds them, runs the
+    UMAP+HDBSCAN pilot, grows incrementally with soft-entropy signals, and
+    writes the proposed_code log + noise queue. Returns status "unavailable"
+    (never raises) when the optional ``inductive`` extra is absent.
+    """
+    from corpus_kb.config import load_config
+    from corpus_kb.handlers.llm_handler import LlmHandler
+    from corpus_kb.projections.checkpoint import CheckpointManager
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.event_reader import EventReader
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.projections.research_projection import ResearchProjection
+    from corpus_kb.rag import create_embedder
+    from corpus_kb.research.inductive_run import run_inductive
+
+    cfg = load_config()
+    embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+    summary = await run_inductive(
+        pool,
+        UUID(tenant_id),
+        project_id=UUID(project_id) if project_id else None,
+        llm=LlmHandler(cfg),
+        embedder=embedder,
+        cfg=cfg,
+    )
+    app = get_research_handler(pool).app
+    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+    projection = ResearchProjection(pool, CheckpointManager(pool), DLQHandler(pool), embedder)
+    await projection.catch_up(reader)
+    return summary
+
+
+async def codebook_promote(
+    pool: asyncpg.Pool,
+    proposed_id: int,
+    name: str,
+    definition: str,
+    inclusion: str = "",
+    exclusion: str = "",
+    label: str | None = None,
+    tau_dup: float | None = None,
+    tenant_id: str = DEFAULT_TENANT,
+) -> dict[str, object]:
+    """Promote one proposed code into a NEW codebook version (human gate).
+
+    Re-derives prototypes from member units in the deductive space (r7),
+    runs the duplicate gate (tau_dup), then mints CodebookVersion
+    Created + CodeAdded + PrototypeUpdated events; status "duplicate_blocked"
+    with a merge suggestion when the gate fires.
+    """
+    from corpus_kb.config import load_config
+    from corpus_kb.projections.checkpoint import CheckpointManager
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.event_reader import EventReader
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.projections.research_projection import ResearchProjection
+    from corpus_kb.rag import create_embedder
+    from corpus_kb.research.inductive_run import inductive_config
+    from corpus_kb.research.promote_code import promote_proposal
+
+    cfg = load_config()
+    effective_tau = tau_dup if tau_dup is not None else float(str(inductive_config(cfg)["tau_dup"]))
+    result = await promote_proposal(
+        pool,
+        UUID(tenant_id),
+        int(proposed_id),
+        name,
+        definition,
+        inclusion=inclusion,
+        exclusion=exclusion,
+        tau_dup=effective_tau,
+        label=label,
+    )
+    app = get_research_handler(pool).app
+    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+    embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+    projection = ResearchProjection(pool, CheckpointManager(pool), DLQHandler(pool), embedder)
+    await projection.catch_up(reader)
+    return result

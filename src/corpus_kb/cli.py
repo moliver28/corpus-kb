@@ -70,6 +70,9 @@ app.add_typer(research_app, name="research")
 coding_app = typer.Typer(help="Coding subsystem: deductive coding runs")
 app.add_typer(coding_app, name="coding")
 
+codebook_app = typer.Typer(help="Codebook governance: human-gated promotion")
+app.add_typer(codebook_app, name="codebook")
+
 
 @coding_app.command("run")
 def coding_run(
@@ -141,7 +144,6 @@ def _coding_run_coroutine(codebook_version_id: str, project_id: str | None, alph
 
 
 def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: bool):
-
     from corpus_kb.config import load_config
     from corpus_kb.handlers.research_handler import get_research_handler
     from corpus_kb.projections.checkpoint import CheckpointManager
@@ -246,3 +248,156 @@ def research_ingest(
     import asyncio
 
     return asyncio.run(_ingest_coroutine(path, project_id, watch=watch, force=force))
+
+
+@coding_app.command("inductive")
+def coding_inductive(
+    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
+) -> int:
+    """Inductive pass (v5 §9): summaries -> UMAP/HDBSCAN -> proposed codes."""
+    import asyncio
+
+    return asyncio.run(_inductive_coroutine(project_id))
+
+
+def _inductive_coroutine(project_id: str | None):
+    from corpus_kb.config import load_config
+    from corpus_kb.handlers.llm_handler import LlmHandler
+    from corpus_kb.handlers.research_handler import get_research_handler
+    from corpus_kb.projections.checkpoint import CheckpointManager
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.documents_projection import DocumentsProjection
+    from corpus_kb.projections.embed_projection import EmbedChunksProjection
+    from corpus_kb.projections.event_reader import EventReader
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.projections.research_projection import ResearchProjection
+    from corpus_kb.rag import create_embedder
+    from corpus_kb.research.inductive_run import run_inductive
+
+    async def _run() -> int:
+        import json
+
+        import asyncpg
+
+        cfg = load_config()
+        db = cfg.get("database", {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        try:
+            app = _get_app(conn_str)
+            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+            get_research_handler(pool)
+            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+            checkpoint = CheckpointManager(pool)
+            dlq = DLQHandler(pool)
+            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
+            docs = DocumentsProjection(pool, checkpoint, dlq)
+            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
+
+            summary = await run_inductive(
+                pool,
+                _tenant(),
+                project_id=_pid(project_id),
+                llm=LlmHandler(cfg),
+                embedder=embedder,
+                cfg=cfg,
+            )
+            await projection.catch_up(reader)
+            await docs.catch_up(reader, _tenant())
+            await embeds.catch_up(reader, _tenant())
+            print(json.dumps(summary, indent=2, default=str))
+            if summary.get("status") == "unavailable":
+                return 2
+            return 0 if summary.get("status") == "success" else 1
+        finally:
+            await pool.close()
+
+    return _run()
+
+
+@codebook_app.command("promote")
+def codebook_promote(
+    proposed_id: int = typer.Option(..., "--proposed-id", help="research_proposed_codes id"),
+    name: str = typer.Option(..., "--name", help="Human-approved code name"),
+    definition: str = typer.Option(..., "--definition", help="Human-approved definition"),
+    inclusion: str = typer.Option("", "--inclusion", help="Inclusion criteria"),
+    exclusion: str = typer.Option("", "--exclusion", help="Exclusion criteria"),
+    label: str = typer.Option(None, "--label", help="Version label hint (default: cluster terms)"),
+    tau_dup: float = typer.Option(
+        None, "--tau-dup", help="Duplicate-gate threshold (default: calibrated/config)"
+    ),
+) -> int:
+    """Promote one proposed code into a NEW codebook version (human gate)."""
+    import asyncio
+
+    return asyncio.run(
+        _promote_coroutine(proposed_id, name, definition, inclusion, exclusion, label, tau_dup)
+    )
+
+
+def _promote_coroutine(
+    proposed_id: int,
+    name: str,
+    definition: str,
+    inclusion: str,
+    exclusion: str,
+    label: str | None,
+    tau_dup: float | None,
+):
+    from corpus_kb.config import load_config
+    from corpus_kb.projections.checkpoint import CheckpointManager
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.documents_projection import DocumentsProjection
+    from corpus_kb.projections.embed_projection import EmbedChunksProjection
+    from corpus_kb.projections.event_reader import EventReader
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.projections.research_projection import ResearchProjection
+    from corpus_kb.rag import create_embedder
+    from corpus_kb.research.inductive_run import inductive_config
+    from corpus_kb.research.promote_code import promote_proposal
+
+    async def _run() -> int:
+        import json
+
+        import asyncpg
+
+        cfg = load_config()
+        db = cfg.get("database", {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        try:
+            app = _get_app(conn_str)
+            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+            checkpoint = CheckpointManager(pool)
+            dlq = DLQHandler(pool)
+            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
+            docs = DocumentsProjection(pool, checkpoint, dlq)
+            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
+
+            settings = inductive_config(cfg)
+            effective_tau = tau_dup if tau_dup is not None else float(str(settings["tau_dup"]))
+            result = await promote_proposal(
+                pool,
+                _tenant(),
+                proposed_id,
+                name,
+                definition,
+                inclusion=inclusion,
+                exclusion=exclusion,
+                tau_dup=effective_tau,
+                label=label,
+            )
+            await projection.catch_up(reader)
+            await docs.catch_up(reader, _tenant())
+            await embeds.catch_up(reader, _tenant())
+            print(json.dumps(result, indent=2, default=str))
+            if result.get("status") == "promoted":
+                return 0
+            if result.get("status") == "duplicate_blocked":
+                return 3
+            return 1
+        finally:
+            await pool.close()
+
+    return _run()
