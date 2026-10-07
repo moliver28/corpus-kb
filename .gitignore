@@ -19,7 +19,8 @@ Thumbs.db
 
 # OpenCode runtime
 .omo/
-.opencode/
+.opencode/*
+!.opencode/command/
 .slim/
 .codegraph/
 
