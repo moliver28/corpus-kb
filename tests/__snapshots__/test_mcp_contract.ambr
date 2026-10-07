@@ -25,6 +25,13 @@
       }),
     }),
     'corpus_kb.tools.research_tools': dict({
+      'coding_run': dict({
+        'cal_alpha': 'POSITIONAL_OR_KEYWORD',
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
       'research_ingest': dict({
         'force': 'POSITIONAL_OR_KEYWORD',
         'path': 'POSITIONAL_OR_KEYWORD',

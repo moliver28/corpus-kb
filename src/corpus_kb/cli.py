@@ -67,6 +67,78 @@ def start(
 research_app = typer.Typer(help="Research domain: transcript ingestion")
 app.add_typer(research_app, name="research")
 
+coding_app = typer.Typer(help="Coding subsystem: deductive coding runs")
+app.add_typer(coding_app, name="coding")
+
+
+@coding_app.command("run")
+def coding_run(
+    codebook_version_id: str = typer.Option(
+        ..., "--codebook-version-id", help="Codebook version UUID to code against"
+    ),
+    project_id: str = typer.Option(None, "--project-id", help="Restrict to one research project"),
+    alpha: float = typer.Option(
+        0.1, "--alpha", help="Conformal miscoverage level (1-alpha coverage)"
+    ),
+) -> int:
+    """Deductive coding run (v5 §8): three-view scoring + calibrated thresholds."""
+    import asyncio
+
+    return asyncio.run(_coding_run_coroutine(codebook_version_id, project_id, alpha))
+
+
+def _coding_run_coroutine(codebook_version_id: str, project_id: str | None, alpha: float):
+    from corpus_kb.config import load_config
+    from corpus_kb.handlers.research_handler import get_research_handler
+    from corpus_kb.projections.checkpoint import CheckpointManager
+    from corpus_kb.projections.dlq import DLQHandler
+    from corpus_kb.projections.documents_projection import DocumentsProjection
+    from corpus_kb.projections.embed_projection import EmbedChunksProjection
+    from corpus_kb.projections.event_reader import EventReader
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.projections.research_projection import ResearchProjection
+    from corpus_kb.rag import create_embedder
+    from corpus_kb.research.deductive_run import run_deductive
+
+    async def _run() -> int:
+        import asyncpg
+
+        cfg = load_config()
+        db = cfg.get("database", {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        try:
+            app = _get_app(conn_str)
+            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+            get_research_handler(pool)
+            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+            checkpoint = CheckpointManager(pool)
+            dlq = DLQHandler(pool)
+            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
+            docs = DocumentsProjection(pool, checkpoint, dlq)
+            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
+
+            from uuid import UUID as _UUID
+
+            summary = await run_deductive(
+                pool,
+                _tenant(),
+                _UUID(codebook_version_id),
+                project_id=_pid(project_id),
+                cal_alpha=alpha,
+            )
+            await projection.catch_up(reader)
+            await docs.catch_up(reader, _tenant())
+            await embeds.catch_up(reader, _tenant())
+            import json
+
+            print(json.dumps(summary, indent=2, default=str))
+            return 0 if summary.get("status") == "success" else 1
+        finally:
+            await pool.close()
+
+    return _run()
+
 
 def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: bool):
 
