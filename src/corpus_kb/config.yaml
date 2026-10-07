@@ -67,6 +67,14 @@ research:
     dimensions: 1024            # promotion guard: non-1024 winners HALT (research.promotion)
   ingest:
     watch_interval_s: 10        # research ingest --watch poll interval
+  inductive:
+    # Determinism pins (r7) are CODE CONSTANTS (coding/inductive_cluster.py:
+    # UMAP random_state/transform_seed 42, n_components=10, cosine metric) and
+    # are recorded in every run manifest - only governance knobs live here.
+    entropy_threshold: 0.85     # normalized soft-entropy gate for the LLM meta-decision
+    recluster_every_batches: 8  # full re-cluster cadence (v5 9.5: every 5-10 batches)
+    centroid_drift_threshold: 0.15  # mean cosine drift between snapshots -> early refresh
+    tau_dup: 0.85               # promote-time duplicate gate (calibrated from gold when available)
 
 routing:
   enabled: true
