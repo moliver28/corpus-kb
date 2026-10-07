@@ -39,6 +39,14 @@ CANDIDATE_MULTIPLIER = 8
 RERANK_MIN_CANDIDATES = 30
 _RRF_NAMESPACE = UUID("6f6f6f6f-6f6f-6f6f-6f6f-6f6f6f6f6f6f")
 
+# Assignment-confidence floors (todo-18 notebook filter): --min-confidence X
+# admits X and every STRONGER level.
+CONFIDENCE_FLOORS: dict[str, tuple[str, ...]] = {
+    "high": ("high",),
+    "medium": ("high", "medium"),
+    "low": ("high", "medium", "low"),
+}
+
 
 @dataclass(frozen=True)
 class ResearchQuery:
@@ -52,6 +60,9 @@ class ResearchQuery:
     speaker_role: str | None = None
     doc_ids: tuple[UUID, ...] | None = None
     topic_id: int | None = None
+    code_id: str | None = None
+    min_confidence: str | None = None
+    review_status: str | None = None
     include_exchange_children: bool = True
     rerank: bool = True
 
@@ -143,6 +154,20 @@ async def research_search(
     return citations[: q.k]
 
 
+def _assignment_predicate(sql: _Sql, q: ResearchQuery) -> list[str]:
+    """WHERE fragments for the assignment-grain filters (code/confidence/status)."""
+    conditions: list[str] = []
+    if q.code_id:
+        conditions.append(f"ra.code_id = {sql.p(str(q.code_id))}")
+    if q.min_confidence:
+        levels = CONFIDENCE_FLOORS[q.min_confidence]
+        placeholders = ", ".join(sql.p(level) for level in levels)
+        conditions.append(f"ra.confidence IN ({placeholders})")
+    if q.review_status:
+        conditions.append(f"ra.status = {sql.p(str(q.review_status))}")
+    return conditions
+
+
 def _unit_filters(sql: _Sql, q: ResearchQuery) -> str:
     frag = ""
     if q.source_type:
@@ -155,6 +180,12 @@ def _unit_filters(sql: _Sql, q: ResearchQuery) -> str:
         frag += (
             " AND u.exchange_id IN (SELECT exchange_id FROM research_exchanges "
             f"WHERE tenant_id = u.tenant_id AND topic_id = {sql.p(int(q.topic_id))})"
+        )
+    assignment = _assignment_predicate(sql, q)
+    if assignment:
+        frag += (
+            " AND u.unit_id IN (SELECT ra.unit_id FROM research_assignments ra "
+            f"WHERE ra.tenant_id = u.tenant_id AND {' AND '.join(assignment)})"
         )
     return frag
 
@@ -173,6 +204,13 @@ def _exchange_filters(sql: _Sql, q: ResearchQuery) -> str:
         frag += f" AND e.doc_id = ANY({sql.p([str(d) for d in q.doc_ids])}::uuid[])"
     if q.topic_id is not None:
         frag += f" AND e.topic_id = {sql.p(int(q.topic_id))}"
+    assignment = _assignment_predicate(sql, q)
+    if assignment:
+        frag += (
+            " AND EXISTS (SELECT 1 FROM research_assignments ra "
+            "WHERE ra.tenant_id = e.tenant_id AND ra.unit_id = ANY(e.a_unit_ids) "
+            f"AND {' AND '.join(assignment)})"
+        )
     return frag
 
 

@@ -1,8 +1,10 @@
 """Cross-editor MCP config consistency checker.
 
-Reads the MCP configuration files for OpenCode, Claude Code, and Cursor and
-verifies that every tool defined in one config is also defined in the others
-with matching descriptions and command invocations.
+Reads the MCP configuration files for OpenCode, Claude Code, Cursor, and
+Codex and verifies that every tool defined in one config is also defined in
+the others with matching descriptions and command invocations. It ALSO runs
+the harness-pack drift gate (``scripts/gen_harness_pack.py --check``) so
+registry <-> wrapper <-> config parity fails loudly (todo 18, r7.2/r9).
 
 Usage:
     python scripts/check_agent_configs.py
@@ -12,6 +14,7 @@ Exit code 0 = consistent, 1 = inconsistency detected.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -25,7 +28,10 @@ CONFIG_PATHS: dict[str, Path] = {
     "opencode": Path("opencode.json"),
     "claude": Path("mcp-configs/claude-code.json"),
     "cursor": Path("mcp-configs/cursor.json"),
+    "codex": Path("mcp-configs/codex.json"),
 }
+
+GEN_HARNESS_PACK_REL = Path("scripts") / "gen_harness_pack.py"
 
 # ---------------------------------------------------------------------------
 # Config loading and extraction
@@ -149,6 +155,27 @@ def check_consistency(project_root: Path) -> list[str]:
     return errors
 
 
+def run_harness_parity_check(project_root: Path) -> list[str]:
+    """Run the generated-harness-pack drift gate (stdlib-only, no deps).
+
+    Loads scripts/gen_harness_pack.py by path — same constraint as the
+    agent-config-consistency CI job, which installs NO dependencies.
+    """
+    path = project_root / GEN_HARNESS_PACK_REL
+    if not path.exists():
+        return [f"{GEN_HARNESS_PACK_REL}: not found"]
+    spec = importlib.util.spec_from_file_location("gen_harness_pack", path)
+    if spec is None or spec.loader is None:
+        return [f"{GEN_HARNESS_PACK_REL}: cannot load"]
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+        return list(module.run_harness_check(project_root))
+    finally:
+        sys.modules.pop(spec.name, None)
+
+
 # ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
@@ -158,6 +185,7 @@ def main() -> int:
     """Run the consistency check and exit with an appropriate status code."""
     project_root = Path(__file__).resolve().parent.parent
     errors = check_consistency(project_root)
+    errors.extend(f"harness-pack: {e}" for e in run_harness_parity_check(project_root))
 
     if errors:
         print("Agent config consistency check failed:", file=sys.stderr)

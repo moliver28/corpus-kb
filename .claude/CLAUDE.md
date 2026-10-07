@@ -258,3 +258,24 @@ Three storage backends, each with a distinct role:
 - **SQLite Graph** tracks entities and relations for knowledge graph traversal (BFS). Upgradable to GraphQLite (Cypher) or LatticeDB.
 
 The chunking pipeline detects file type (code/markdown/text), splits accordingly (tree-sitter AST for code, heading-aware for markdown, semantic for text), resolves parent/child/sibling hierarchy, embeds via Ollama, and stores in LanceDB. Auto-sync populates DuckDB on startup and after each ingest.
+
+<!-- corpus-harness:research-commands:start -->
+## Research command pack (generated — do not edit)
+
+Every research/coding surface, generated from `src/corpus_kb/surface_registry.py`
+by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
+`.opencode/command/`; editing a wrapper without a registry change fails
+`scripts/gen_harness_pack.py --check`.
+
+| Harness command | CLI path | MCP tool | Purpose |
+|-----------------|----------|----------|---------|
+| `corpus-ingest` | `corpus-kb research ingest-transcript` | `research_ingest_transcript` | Ingest ONE transcript (txt/vtt/srt/csv/docx): turns, roles, exchanges. |
+| `corpus-ingest` | `corpus-kb research ingest` | `research_ingest` | Dynamic ingest of file/dir/glob with dedup; --watch tails a drop dir. |
+| `corpus-coding-run` | `corpus-kb coding run` | `coding_run` | Deductive run (v5 §8): three-view scoring, calibrated tau, conformal. |
+| `corpus-codebook-promote` | `corpus-kb codebook promote` | `codebook_promote` | Promote a proposed code into a NEW codebook version (human gate). |
+| `corpus-research-report` | `corpus-kb research report` | `research_report` | Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3. |
+| `corpus-review` | `corpus-kb review accept` | `review_execute` | Confirm the model's assignment for one CodingAssignment (human review). |
+| `corpus-review` | `corpus-kb review override` | `review_execute` | Overrule the model's assignment for one CodingAssignment. |
+
+Planned wrappers (not emitted yet): `corpus-demo`, `corpus-research-cycle`.
+<!-- corpus-harness:research-commands:end -->

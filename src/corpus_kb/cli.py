@@ -7,6 +7,7 @@ Wires the setup/doctor diagnostics and server start commands behind a single
 from __future__ import annotations
 
 from typing import cast
+from uuid import UUID
 
 import typer
 
@@ -77,6 +78,10 @@ app.add_typer(codebook_app, name="codebook")
 
 review_app = typer.Typer(help="Review queue: execute accept/override decisions")
 app.add_typer(review_app, name="review")
+
+# Module-level singleton (B008): mutable-annotated typer defaults must not
+# call typer.Option inline.
+_DOC_ID_OPTION = typer.Option(None, "--doc-id", help="Filter: source doc UUID (repeatable)")
 
 
 def _review_command(decision: str):
@@ -455,6 +460,353 @@ def _promote_coroutine(
             await pool.close()
 
     return _run()
+
+
+@research_app.command("ask")
+def research_ask(
+    question: str = typer.Argument(..., help="Notebook question"),
+    project_id: str = typer.Option(..., "--project-id", help="Research project UUID"),
+    retrieval_only: bool = typer.Option(
+        False, "--retrieval-only", help="Return evidence only (zero LLM calls)"
+    ),
+    k: int = typer.Option(6, "--k", min=1, help="Max evidence exchanges"),
+    source_type: str = typer.Option(None, "--source-type", help="Filter: documents.source_type"),
+    speaker_role: str = typer.Option(None, "--speaker-role", help="Filter: speaker role"),
+    topic_id: int = typer.Option(None, "--topic-id", help="Filter: exchange topic id"),
+    doc_id: list[str] = _DOC_ID_OPTION,
+    code: str = typer.Option(None, "--code", help="Filter: code name or UUID"),
+    min_confidence: str = typer.Option(None, "--min-confidence", help="Filter: high|medium|low"),
+    review_status: str = typer.Option(
+        None, "--review-status", help="Filter: auto|review|confirmed|overridden"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> int:
+    """Grounded notebook Q&A: every sentence carries exchange-level citations."""
+    import asyncio
+
+    return asyncio.run(
+        _ask_coroutine(
+            question,
+            project_id,
+            retrieval_only,
+            k,
+            source_type,
+            speaker_role,
+            topic_id,
+            tuple(doc_id or ()),
+            code,
+            min_confidence,
+            review_status,
+            json_output,
+        )
+    )
+
+
+def _ask_coroutine(
+    question: str,
+    project_id: str,
+    retrieval_only: bool,
+    k: int,
+    source_type: str | None,
+    speaker_role: str | None,
+    topic_id: int | None,
+    doc_ids: tuple[str, ...],
+    code: str | None,
+    min_confidence: str | None,
+    review_status: str | None,
+    json_output: bool,
+):
+    import json
+
+    import asyncpg
+
+    from corpus_kb.config import load_config
+
+    async def _run() -> int:
+        from corpus_kb.handlers.llm_handler import LlmHandler
+        from corpus_kb.projections.research._embed import ResearchEmbedder
+        from corpus_kb.rag import create_embedder
+        from corpus_kb.research.notebook import NotebookQuery, notebook_ask
+
+        cfg = load_config()
+        db = cast(dict[str, object], cfg.get("database") or {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        try:
+            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+            llm = None if retrieval_only else LlmHandler(cfg)
+            result = await notebook_ask(
+                pool,
+                embedder,
+                llm,
+                NotebookQuery(
+                    question=question,
+                    tenant_id=_tenant(),
+                    project_id=cast(UUID, _pid(project_id)),
+                    k=k,
+                    retrieval_only=retrieval_only,
+                    source_type=source_type,
+                    speaker_role=speaker_role,
+                    topic_id=topic_id,
+                    doc_ids=tuple(cast(UUID, _pid(d)) for d in doc_ids),
+                    code=code,
+                    min_confidence=min_confidence,
+                    review_status=review_status,
+                ),
+            )
+        finally:
+            await pool.close()
+        if json_output:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            _print_ask_result(result)
+        if result.get("status") == "error":
+            return 2
+        return 0
+
+    return _run()
+
+
+def _print_ask_result(result: dict[str, object]) -> None:
+    from corpus_kb.research import guide_copy
+
+    status = str(result.get("status", ""))
+    if status == "empty":
+        print(guide_copy.NOTEBOOK_EMPTY_HEADER)
+        print(str(result.get("message", NO_EVIDENCE_TEXT)))
+        return
+    evidence = cast("list[dict[str, object]]", result.get("evidence") or [])
+    sentences = cast("list[dict[str, object]]", result.get("sentences") or [])
+    if sentences:
+        for sentence in sentences:
+            print(str(sentence.get("text")))
+        print()
+    if status == "evidence" and result.get("note"):
+        print(str(result["note"]))
+    print(guide_copy.NOTEBOOK_EVIDENCE_HEADER)
+    for item in evidence:
+        print(f"[{item.get('n')}] {_ask_locator(item)}")
+        answer = str(item.get("highlighted_answer") or item.get("answer") or "")
+        print(f"    {answer}")
+
+
+NO_EVIDENCE_TEXT = "no evidence matches the requested filters"
+
+
+def _ask_locator(item: dict[str, object]) -> str:
+    parts = [str(item.get("title") or item.get("doc_id") or "untitled")]
+    if item.get("speaker"):
+        parts.append(str(item["speaker"]))
+    if item.get("timestamp_s") is not None:
+        ts = cast("float", item["timestamp_s"])
+        parts.append(f"@ {ts:.0f}s")
+    elif item.get("turn_range"):
+        lo, hi = cast("list[int]", item["turn_range"])
+        parts.append(f"turns {lo}-{hi}")
+    return " - ".join(parts)
+
+
+@research_app.command("evidence")
+def research_evidence(
+    code: str = typer.Argument(..., help="Code name or UUID"),
+    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
+    version_id: str = typer.Option(None, "--codebook-version", help="Codebook version UUID"),
+    limit: int = typer.Option(200, "--limit", min=1, help="Max units per tab"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> int:
+    """Evidence for code X: ranked units with disagreement/moderator/conformal flags."""
+    import asyncio
+
+    return asyncio.run(_evidence_coroutine(code, project_id, version_id, limit, json_output))
+
+
+def _evidence_coroutine(
+    code: str,
+    project_id: str | None,
+    version_id: str | None,
+    limit: int,
+    json_output: bool,
+):
+    import json
+
+    import asyncpg
+
+    from corpus_kb.config import load_config
+
+    async def _run() -> int:
+        from corpus_kb.research.notebook_views import evidence_for_code
+
+        cfg = load_config()
+        db = cast(dict[str, object], cfg.get("database") or {})
+        pool = await asyncpg.create_pool(str(db.get("connection_string", "")))
+        try:
+            result = await evidence_for_code(
+                pool,
+                _tenant(),
+                code,
+                project_id=_pid(project_id),
+                version_id=_pid(version_id),
+                limit=limit,
+            )
+        finally:
+            await pool.close()
+        if json_output:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            _print_evidence_result(result)
+        return 0 if result.get("status") == "ok" else 1
+
+    return _run()
+
+
+def _print_evidence_result(result: dict[str, object]) -> None:
+    from corpus_kb.research import guide_copy
+
+    if result.get("status") != "ok":
+        print(str(result.get("message", "")))
+        return
+    print(f"{guide_copy.NOTEBOOK_EVIDENCE_FOR} {result.get('code')}: {result.get('n_units')} units")
+    tabs = cast_dict(result.get("tabs"))
+    for tab in ("explicit", "question_dependent"):
+        print(f"\n{tab}:")
+        entries = cast("list[dict[str, object]]", tabs.get(tab) or [])
+        for entry in entries:
+            flags = []
+            if entry.get("disagreement"):
+                flags.append("disagreement")
+            if entry.get("moderator_introduced"):
+                flags.append("moderator_introduced")
+            flag_text = f" ({', '.join(flags)})" if flags else ""
+            print(
+                f"  unit {entry.get('unit_id')} [{entry.get('confidence')}] "
+                f"set_size={entry.get('conformal_set_size')}{flag_text}: "
+                f"{str(entry.get('text'))[:120]}"
+            )
+
+
+@research_app.command("uncoded")
+def research_uncoded(
+    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
+    version_id: str = typer.Option(None, "--codebook-version", help="Codebook version UUID"),
+    k: int = typer.Option(25, "--k", min=1, help="Max units to surface"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> int:
+    """Uncoded/residual units ranked by nearest-code margin (missing-code radar)."""
+    import asyncio
+
+    return asyncio.run(_uncoded_coroutine(project_id, version_id, k, json_output))
+
+
+def _uncoded_coroutine(project_id: str | None, version_id: str | None, k: int, json_output: bool):
+    import json
+
+    import asyncpg
+
+    from corpus_kb.config import load_config
+
+    async def _run() -> int:
+        from corpus_kb.projections.research._embed import ResearchEmbedder
+        from corpus_kb.rag import create_embedder
+        from corpus_kb.research.notebook_views import uncoded_units
+
+        cfg = load_config()
+        db = cast(dict[str, object], cfg.get("database") or {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        try:
+            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
+            result = await uncoded_units(
+                pool,
+                embedder,
+                _tenant(),
+                project_id=_pid(project_id),
+                version_id=_pid(version_id),
+                k=k,
+            )
+        finally:
+            await pool.close()
+        if json_output:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            _print_uncoded_result(result)
+        return 0 if result.get("status") == "ok" else 1
+
+    return _run()
+
+
+def _print_uncoded_result(result: dict[str, object]) -> None:
+    from corpus_kb.research import guide_copy
+
+    if result.get("status") != "ok":
+        print(str(result.get("message", "")))
+        return
+    print(guide_copy.NOTEBOOK_UNCODED_HEADER)
+    for unit in cast("list[dict[str, object]]", result.get("units") or []):
+        margin = cast("float", unit.get("margin", 0.0))
+        print(f"  unit {unit.get('unit_id')} margin={margin:.3f}: {str(unit.get('text'))[:120]}")
+
+
+@research_app.command("overlap")
+def research_overlap(
+    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
+    version_id: str = typer.Option(None, "--codebook-version", help="Codebook version UUID"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
+) -> int:
+    """Code overlap: flagged pairs + shared-unit confusion + borderline units."""
+    import asyncio
+
+    return asyncio.run(_overlap_coroutine(project_id, version_id, json_output))
+
+
+def _overlap_coroutine(project_id: str | None, version_id: str | None, json_output: bool):
+    import json
+
+    import asyncpg
+
+    from corpus_kb.config import load_config
+
+    async def _run() -> int:
+        from corpus_kb.research.notebook_views import overlap_view
+
+        cfg = load_config()
+        db = cast(dict[str, object], cfg.get("database") or {})
+        pool = await asyncpg.create_pool(str(db.get("connection_string", "")))
+        try:
+            result = await overlap_view(
+                pool,
+                _tenant(),
+                project_id=_pid(project_id),
+                version_id=_pid(version_id),
+            )
+        finally:
+            await pool.close()
+        if json_output:
+            print(json.dumps(result, indent=2, default=str))
+        else:
+            _print_overlap_result(result)
+        return 0 if result.get("status") == "ok" else 1
+
+    return _run()
+
+
+def _print_overlap_result(result: dict[str, object]) -> None:
+    from corpus_kb.research import guide_copy
+
+    if result.get("status") != "ok":
+        print(str(result.get("message", "")))
+        return
+    print(guide_copy.NOTEBOOK_OVERLAP_HEADER)
+    pairs = cast("list[dict[str, object]]", result.get("flagged_pairs") or [])
+    if pairs:
+        for pair in pairs:
+            cos = cast("float", pair.get("cos", 0.0))
+            print(f"  {pair.get('a')} <-> {pair.get('b')}: cos={cos:.3f}")
+    else:
+        print("  none above tau_overlap")
+    borderline = cast("list[dict[str, object]]", result.get("borderline_units") or [])
+    print(f"\nborderline top-2-margin units (< {result.get('delta_amb')}): {len(borderline)}")
+    for unit in borderline:
+        print(f"  unit {unit.get('unit_id')}: {str(unit.get('text'))[:100]}")
 
 
 @research_app.command("report")

@@ -219,13 +219,20 @@ async def run_deductive(
 def _conformal_block(
     sets_by_unit: dict[int, set[int]], cal_alpha: float, empirical_coverage: float
 ) -> dict[str, object]:
-    """Set-size distribution + coverage (the report reads this block)."""
+    """Set-size distribution + coverage (the report reads this block).
+
+    ``per_unit`` persists set sizes > 1 only (the routing-relevant minority;
+    size 1 is the default the notebook evidence view assumes).
+    """
     sizes = Counter(len(s) for s in sets_by_unit.values())
     return {
         "set_size_distribution": {str(size): count for size, count in sorted(sizes.items())},
         "nominal_coverage": 1.0 - cal_alpha,
         "empirical_coverage": empirical_coverage,
         "n_units": len(sets_by_unit),
+        "per_unit": {
+            str(unit_id): len(s) for unit_id, s in sorted(sets_by_unit.items()) if len(s) > 1
+        },
     }
 
 

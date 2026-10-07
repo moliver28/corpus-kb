@@ -57,6 +57,35 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `fixture_dir` | `tests/fixtures/langextract_recorded` | Recorded fixtures for tests |
 | `live_fallback` | `false` | Allow live LLM calls when no fixture exists |
 
+### research
+
+Research-domain blocks (transcript ingestion, inductive engine, embedder
+promotion guard). Determinism pins (UMAP seeds, scoring batch size) are CODE
+CONSTANTS on purpose — only governance knobs live here.
+
+#### research.embedder
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `model_revision` | `1024` | G1-promotable embedders emit exactly 1024 dims |
+| `strategy` | `naive-prefix` | G1 arm winner: `late-chunk` or `naive-prefix` |
+| `dimensions` | `1024` | Promotion guard: non-1024 winners HALT, never silent-pad |
+
+#### research.ingest
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `watch_interval_s` | `10` | `corpus-kb research ingest --watch` poll interval (seconds) |
+
+#### research.inductive
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `entropy_threshold` | `0.85` | Normalized soft-entropy gate for the LLM meta-decision |
+| `recluster_every_batches` | `8` | Full re-cluster cadence (v5 §9.5: every 5-10 batches) |
+| `centroid_drift_threshold` | `0.15` | Mean cosine drift between snapshots triggering early refresh |
+| `tau_dup` | `0.85` | Promote-time duplicate gate (calibrated from gold when available) |
+
 ### Environment variables
 
 | Variable | Overrides |

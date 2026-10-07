@@ -174,5 +174,11 @@ NEXT_ACTION_FOOTER = (
     "Next actions are derived from the flags above; each maps to an existing corpus-kb surface."
 )
 
+NOTEBOOK_EVIDENCE_HEADER = "EVIDENCE"
+NOTEBOOK_EMPTY_HEADER = "NO EVIDENCE"
+NOTEBOOK_EVIDENCE_FOR = "Evidence for"
+NOTEBOOK_UNCODED_HEADER = "UNCODED UNITS (farthest from every code first)"
+NOTEBOOK_OVERLAP_HEADER = "CODE OVERLAP"
+
 LEVEL_NOVICE = "novice"
 LEVEL_EXPERT = "expert"
