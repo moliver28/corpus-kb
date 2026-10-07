@@ -119,6 +119,29 @@ class CodeProjector:
                     str(keyword.get("polarity", "inclusion")),
                 )
 
+    async def on_prototypes_updated(self, notification: Any) -> None:
+        payload = event_payload(notification)
+        tenant_id = require_tenant(payload, notification)
+        # The event carries exemplar text_sha256 REFS only (vectors are derived
+        # data rebuilt through the embedding cache at run time — domain/codebook).
+        exemplars = payload.get("exemplar_text_sha256", [])
+        async with tenant_connection(self._pool, tenant_id) as conn:
+            await conn.execute(
+                """
+                UPDATE code_registry SET
+                    theory = jsonb_set(
+                        COALESCE(theory, '{}'::jsonb),
+                        '{exemplar_text_sha256}',
+                        $4
+                    )
+                WHERE tenant_id = $1 AND codebook_version_id = $2 AND code_id = $3
+                """,
+                str(tenant_id),
+                str(payload["aggregate_id"]),
+                str(payload.get("code_id", "")),
+                json.dumps([str(sha) for sha in exemplars]),
+            )
+
     async def _upsert_code(
         self,
         conn: asyncpg.Connection,

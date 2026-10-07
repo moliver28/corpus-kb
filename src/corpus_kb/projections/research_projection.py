@@ -125,6 +125,8 @@ class ResearchProjection:
             await self._code.on_codes_added(notification)
         elif event_type == "CodebookVersion.DefinitionRefined":
             await self._code.on_definition_refined(notification)
+        elif event_type == "CodebookVersion.PrototypeUpdated":
+            await self._code.on_prototypes_updated(notification)
         elif event_type == "CodebookVersion.ThresholdRecalibrated":
             await self._code.on_thresholds(notification)
         elif event_type == "CodebookVersion.KeywordSetUpdated":

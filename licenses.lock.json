@@ -57,9 +57,9 @@
   },
   {
     "name": "asyncpg",
-    "version": "0.31.0",
+    "version": "0.32.0",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/asyncpg/0.31.0/",
+    "homepage": "https://pypi.org/project/asyncpg/0.32.0/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
@@ -526,9 +526,9 @@
   },
   {
     "name": "opentelemetry-api",
-    "version": "1.45.0",
+    "version": "1.45.1",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/opentelemetry-api/1.45.0/",
+    "homepage": "https://pypi.org/project/opentelemetry-api/1.45.1/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
@@ -918,9 +918,9 @@
   },
   {
     "name": "typer",
-    "version": "0.27.2",
+    "version": "0.27.3",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/typer/0.27.2/",
+    "homepage": "https://pypi.org/project/typer/0.27.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
