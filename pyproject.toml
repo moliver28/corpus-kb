@@ -26,6 +26,7 @@ dependencies = [
     "unstructured>=0.13",
     "asyncpg>=0.29.0",
     "pgvector>=0.3.0",
+    "numpy>=1.26",
     "eventsourcing[postgres]>=9.0",
     "starlette>=0.35",
     "typer>=0.15",
