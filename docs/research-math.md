@@ -1,8 +1,8 @@
-# Research Math (v5 §8/§9/§12 — deductive scoring, inductive engine, calibration, conformal)
+# Research Math (v5 §8/§9/§11/§12/§13/§14 — deductive, inductive, calibration, exhaustiveness, keywords, governance)
 
 Every formula below states its v5 source and its calibration source so
 maintainers never re-derive policy from code. This file is extended as later
-todos land (todo 17 owns the exhaustiveness/overlap/IRR catalog).
+todos land (todo 17 owns the exhaustiveness/overlap/IRR/keyword catalog).
 
 ## Layering contract (r11 — who owns what)
 
@@ -152,6 +152,128 @@ byte-stable for identical seeds.
   [0.7, 0.95]; otherwise the config default (0.85). The gate and the
   comparison both run in the deductive space so the similarity is defined.
 
+## Exhaustiveness math (v5 §11, todo 17)
+
+- **Per-unit residual** (`research/exhaustiveness.py`): the best any existing
+  code can explain a unit,
+  `r_i = max over (code k, prototype p, view v ∈ {A, QA}) cos(u_i^v, proto_{k,p})`.
+  Low `r_i` = the unit is far from EVERY code = candidate missing structure.
+  The DB path (`analytics_sql`) is SQL-side per the MRL contract
+  (Kusupati et al. 2022; r10): ANALYTICS scans retrieve candidate id sets via
+  one ordered HNSW scan per prototype on the 016 `embedding_256` column with
+  the pinned probe `embedding_256 <=> $1::vector(256)` (prototypes sliced to
+  256 dims and re-normalized), then surfaced candidates are RE-RANKED at the
+  FULL 1024-d vectors by exact cosine (ids fetched by PK) — final values are
+  full-dim exact, consistent with the 1024-d tau_res calibration. The QA-view
+  leg probes `research_exchanges.embedding_256` the same way and maps back to
+  answer units; the RETRIEVAL access pattern uses the halfvec(1024) cast
+  index with the pinned probe `embedding::halfvec(1024) <=> $1::halfvec(1024)`
+  (one primary index per access pattern, r11). Recall@k delta of the 256-d
+  slice vs full-dim is 0.0 — owned by the todo-13 G1 artifact
+  (task13-g1-report.json). NEVER a Python-side O(n·m) full-vector scan
+  (Oracle B r7); EXPLAIN on the fixture proves HNSW index usage for both
+  probes.
+- **Residual share** `R(τ_res) = frac(r_i < τ_res)` — the share of codable
+  units NOT within the threshold of any code (v5 §11; Oracle A D1), reported
+  with P10/P50/P90 of `r` per source type. Naming: `r_i` is the residual
+  SIMILARITY; low means unexplained.
+- **τ_res calibration (never hardcoded)**: per source type,
+  `τ_res[type] = P10` of the within-code gold cosine distribution for that
+  type (gold exemplars of every code, answer view, pairwise cosines; G2
+  discipline), floored at 0.05 for degenerate types. Interviews and meetings
+  legitimately differ; the fixture asserts the two types differ.
+- **Coverage-curve slope**: OLS slope of a metric across consecutive
+  checkpoints. Plateau = |slope| <= 0.01 on `R(τ_res)` and/or on
+  new-codes-per-batch (the inductive runs' `meta_new` per batch). NEVER
+  defined on the §8 deductive coverage — that is threshold-driven, not a
+  completeness measure; it is reported separately (r8). Prior `R` values
+  come from deductive runs' final checkpoints (`exhaustiveness` block,
+  written by deductive_run); the live report appends the current `R`.
+- **Candidate missing codes**: units with `r_i < τ_res[type]` AND
+  `soft_cluster_entropy < 0.85` (or entropy-unknown — never fabricate
+  certainty) are clustered (spherical k-means, k ∈ {1, 2}) and surfaced in
+  the checkpoint report + the manual-review queue (`research_noise_queue`,
+  cluster labels are `residual_candidate:<k>`; queue rows keep
+  `status='pending'`).
+- **Run-based stopping** (v5 §11): `new_codes_in_run / unique_codes_in_base
+  < 5%` across the two most recent deductive runs.
+
+## Cluster stability (todo 17)
+
+- **Adjusted Rand Index** (`cluster_stability.ari`): contingency-table form,
+  `ARI = (Σnij2 − E) / (max − E)` with `E = Σai2·Σbj2 / C(n,2)`; the noise
+  label −1 is its own group. 1.0 = identical partitions.
+- **Bootstrap stability**: >= 10 resamples (subsample without replacement at
+  80% — the standard cluster-stability assessment), re-cluster each, mean
+  pairwise ARI over shared points; **>= 0.75 = stable**. The clusterer is
+  injectable: the inductive engine's HDBSCAN when the extra exists, else the
+  deterministic numpy **spherical k-means** (seeded k-means++-style init,
+  max-cos assignment, mean-then-renormalize updates).
+
+## Semantic overlap (v5 §11, Oracle A D2 + Momus M-3)
+
+- **Code-centroid matrix** `M = ĈĈᵀ` over L2-normalized per-code centroids
+  in the deductive unit space (centroids = SQL `avg(embedding_256)` over each
+  code's assigned units; the k×k product is trivially small — not a kNN
+  scan, so no index requirement applies).
+- **τ_overlap calibration**: `max inter-code gold prototype cosine + 0.05`,
+  clamped [0.70, 0.95] (same policy as promote_code's τ_dup — with gold
+  codes, run-time centroid pairs closer than the WORST gold between-code
+  separation are overlap). Pairs with `M[i,j] > τ_overlap` are flagged for
+  codebook review.
+- **Shared-unit confusion matrix**: per code pair, units holding BOTH codes,
+  plus units whose top-1/top-2 assignment margin < `δ_amb` (calibrated on
+  the review-routing boundary, todo 16) — `combined` is the union.
+- **Per-code silhouette**: mean silhouette (cosine distance) over each code's
+  assigned units; singletons score 0. Cross-checks the overlap flags from
+  the geometry side.
+- **Duplicate-gate surfacing**: the todo-15 promote-time tau_dup blocks
+  (`research_proposed_codes.block_reason`) are listed in the SAME `overlap`
+  section as the flagged centroid pairs — both route to codebook review.
+
+## Dual-coefficient IRR governance (v5 §11/§14, r8 + r10)
+
+- **Krippendorff α bands** (accepted-practice thresholds with defined
+  actions): `α >= 0.80` reliable; `0.667 <= α < 0.80` -> the code is flagged
+  `tentative-reliability` in the checkpoint and routed to review;
+  `α < 0.667` -> the promotion gate HALTS.
+- **Gwet's AC1** (`irr_governance.gwet_ac1`): reported ALONGSIDE α per code —
+  the α paradox: α collapses for rare codes even at 95% agreement.
+  `AC1 = (Pa − Pe(γ)) / (1 − Pe(γ))` with `Pe(γ) = 2π(1−π)`, π the average
+  marginal positive-rating probability, over the SAME `(n_u0, n_u1, m_u)`
+  pairable-weighted units the vendored α uses. With raw triples absent, AC1
+  is reconstructed from α under a documented symmetric-marginal
+  approximation (`_ac1_from_alpha`); production always prefers real triples.
+- **Prevalence-affected note** (O'Connor & Joffe 2020 §4): `α < 0.80` but
+  `AC1 > 0.90` — interpretive note, NOT a halt (the code is rare, not bad).
+- The report's model-vs-human sheets: every assignment row is the model's
+  "applied" rating; accepted reviews are the human's applied ratings;
+  overridden reviews rate the code 0; unreviewed assignments are MISSING
+  data, never fabricated 0s (same rule as the vendored α).
+
+## Keywords and exclusion keywords (v5 §13, todo 17)
+
+- **Positive keywords** per code vs the rest (`keyword_synthesis.py`):
+  Monroe informative-Dirichlet log-odds z (Monroe et al. 2008; the vendored
+  `coding/keyness.log_odds_dirichlet`:
+  `z = [log((a+α)/(n_a−a+α)) − log((b+α)/(n_b−b+α))] / sqrt(1/a' + 1/(n_a−a)' + 1/b' + 1/(n_b−b)')`,
+  α = 0.01) or **c-TF-IDF** (BERTopic form: join each code's member texts
+  into one class document; `score = tf(c,t) · log(1 + A / freq_avg(t))` with
+  A = number of classes).
+- **Exclusion keywords**: the same method contrasting REJECTED gray-zone /
+  overridden texts against the coded corpus, widened periodically by a
+  seeded random sample of uncoded units (v5 §13 contrast-widening).
+- **hit_location**: each keyword hit on a member unit records
+  `answer` | `question` | `both` (migration 018 `research_keyword_hits`).
+  ONLY `answer` hits count as explicit evidence; question hits are candidate
+  generators gated downstream by stance + information gain (v5 §13).
+- **Minimum support**: ~15-20 units; below 15 the code's list is marked
+  `provisional` (floor proof: a 5-unit code is provisional).
+- **Conflict flags** (the MECE intent as actual mechanics): positive terms
+  claimed by >1 code (`shared_positive`) and positive-vs-exclusion
+  collisions (`positive_vs_exclusion`) — flagged for codebook review, never
+  silently resolved.
+
 ## References
 
 - Guo, Pleiss, Sun, Weinberger (2017), *On Calibration of Modern Neural
@@ -161,5 +283,33 @@ byte-stable for identical seeds.
   multi-label conformal sets.
 - Moulavi et al. (2014), *Density-Based Clustering Validation* (SDM) —
   DBCV / HDBSCAN `relative_validity_`.
+- Kuhn, Gal, Farquhar (ICLR 2023), arXiv:2302.09664; Farquhar et al.
+  (Nature 2024) — semantic entropy, NLI clustering (todo 16).
+- Geifman & El-Yaniv (2017), *Selective Classification for Deep Neural
+  Networks* (NeurIPS); arXiv:2407.01032 — risk-coverage, accuracy@coverage
+  (G3).
+- Gwet (2008), *Computing Inter-Rater Reliability in the Presence of High
+  Agreement* — AC1; O'Connor & Joffe (2020), *Interrater Reliability in
+  Qualitative Research* (Frontiers in Psychology) — α/AC1 interpretation,
+  prevalence effects.
+- Krippendorff (2004), *Content Analysis: An Introduction to Its
+  Methodology* — Krippendorff's alpha (the vendored multi-rater coefficient;
+  the AC1 companion follows Gwet 2008).
+- Guest, Bunce, Johnson (2006), *How Many Interviews Are Enough?* (Field
+  Methods); Hennink, Kaiser, Marconi (2017), *Code Saturation versus Meaning
+  Saturation* (Qual Health Res); Malterud, Siersma, Guassora (2016),
+  *Information Power* (Qual Health Res) — saturation/information power
+  (v5 §11 semantics).
+- Nelson (2020), *Computational Grounded Theory* (Sociological Methods &
+  Research); Maaravi-Hesseg et al. (2021) — TEA / computational grounded
+  theory.
+- Kusupati et al. (2022), *Matryoshka Representation Learning* (NeurIPS) —
+  the embedding_256 analytics space + MRL truncation.
+- Monroe, Colaresi, Quinn (2008), *Fightin' Words* (Political Analysis) —
+  informative-Dirichlet log-odds.
+- Cormack, Clarke, Buettcher (2009), *Reciprocal Rank Fusion Outperforms
+  Condorcet* (SIGIR) — RRF k=60 (retrieval stack).
+- Hubert & Arabie (1985) — adjusted Rand Index (cluster stability).
 - v5 §8 (deductive rules), §9 (inductive pipeline), §7 (abductive
-  sequencing), §12 (G2 gate).
+  sequencing), §11 (exhaustiveness), §12 (G2 gate), §13 (keywords),
+  §14 (governance/manifest).

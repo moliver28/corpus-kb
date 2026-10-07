@@ -106,18 +106,40 @@ class CodeProjector:
         keywords = payload.get("keywords", [])
         async with tenant_connection(self._pool, tenant_id) as conn:
             for keyword in keywords:
+                # Bare ON CONFLICT DO NOTHING: the tenant-wide unique index on
+                # lower(keyword) for inclusion rows intentionally blocks a
+                # second code claiming the same term — the collision is a
+                # CONFLICT FLAG for codebook review (todo 17), not a DLQ
+                # condition; the full set still lands on theory.keywords.
+                polarity = str(keyword.get("polarity", "positive"))
+                kind = "inclusion" if polarity == "positive" else "exclusion"
                 await conn.execute(
                     """
                     INSERT INTO code_keywords
                     (keyword, code_id, tenant_id, kind, source)
                     VALUES ($1, $2, $3, $4, 'event-sourced')
-                    ON CONFLICT (keyword, code_id, kind, tenant_id) DO NOTHING
+                    ON CONFLICT DO NOTHING
                     """,
                     str(keyword.get("term", "")),
                     str(payload.get("code_id", "")),
                     str(tenant_id),
-                    str(keyword.get("polarity", "inclusion")),
+                    kind,
                 )
+            # The full synthesized set (scores, provisional flags, method)
+            # rides code_registry.theory.keywords — version-scoped, the
+            # report's read model for the governance keyword section.
+            await conn.execute(
+                """
+                UPDATE code_registry SET theory = jsonb_set(
+                    COALESCE(theory, '{}'::jsonb), '{keywords}', $4::jsonb
+                )
+                WHERE tenant_id = $1 AND codebook_version_id = $2 AND code_id = $3
+                """,
+                str(tenant_id),
+                str(payload["aggregate_id"]),
+                str(payload.get("code_id", "")),
+                json.dumps(keywords),
+            )
 
     async def on_prototypes_updated(self, notification: Any) -> None:
         payload = event_payload(notification)

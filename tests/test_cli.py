@@ -63,3 +63,19 @@ def test_setup_help_includes_skip_image_verify() -> None:
     result = runner.invoke(app, ["setup", "--help"])
     assert result.exit_code == 0
     assert "--skip-image-verify" in _strip_ansi(result.output)
+
+
+def test_research_report_command_registered() -> None:
+    """The todo-17 named surface `corpus-kb research report` exists."""
+    result = runner.invoke(app, ["research", "--help"])
+    assert result.exit_code == 0
+    assert "report" in _strip_ansi(result.output)
+
+
+def test_research_report_help_exposes_level_and_json() -> None:
+    """The report command exposes the presentation-level and JSON flags."""
+    result = runner.invoke(app, ["research", "report", "--help"])
+    assert result.exit_code == 0
+    output = _strip_ansi(result.output)
+    assert "--level" in output
+    assert "--json" in output

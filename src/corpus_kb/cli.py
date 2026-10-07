@@ -6,6 +6,8 @@ Wires the setup/doctor diagnostics and server start commands behind a single
 
 from __future__ import annotations
 
+from typing import cast
+
 import typer
 
 app = typer.Typer(help="Corpus-KB command-line interface")
@@ -453,3 +455,128 @@ def _promote_coroutine(
             await pool.close()
 
     return _run()
+
+
+@research_app.command("report")
+def research_report(
+    codebook_version_id: str = typer.Option(
+        None, "--codebook-version", help="Version (default: latest)"
+    ),
+    project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
+    level: str = typer.Option(
+        "novice", "--level", help="Presentation level: novice (traffic lights + guidance) or expert"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable full schema"),
+) -> int:
+    """Emit the governance report (v5 §11/§13/§14 in ONE artifact)."""
+    import asyncio
+
+    return asyncio.run(_report_coroutine(codebook_version_id, project_id, level, json_output))
+
+
+def _report_coroutine(
+    codebook_version_id: str | None,
+    project_id: str | None,
+    level: str,
+    json_output: bool,
+):
+    import json
+
+    import asyncpg
+
+    from corpus_kb.config import load_config
+    from corpus_kb.research.governance_report import to_dict, validate_required
+    from corpus_kb.research.report_runner import build_report
+
+    async def _run() -> int:
+        cfg = load_config()
+        db = cast(dict[str, object], cfg.get("database") or {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        try:
+            report = await build_report(
+                pool,
+                _tenant(),
+                _pid(codebook_version_id),
+                level=level,
+                run_manifest={"project_id": str(project_id) if project_id else None},
+            )
+            payload = to_dict(report)
+            missing = validate_required(payload)
+            if missing:
+                print(f"report missing required fields: {missing}")
+                return 2
+            if json_output:
+                print(json.dumps(payload, indent=2, default=str))
+            else:
+                _print_report(report, level)
+            return 0
+        finally:
+            await pool.close()
+
+    return _run()
+
+
+def _print_report(report: object, level: str) -> None:
+    from corpus_kb.research import guide_copy
+    from corpus_kb.research.governance_report import (
+        ResearchReport,
+        _mapping,
+        novice_view,
+        to_dict,
+    )
+
+    print(guide_copy.REPORT_TITLE)
+    print(guide_copy.REPORT_SUBTITLE)
+    is_report = isinstance(report, ResearchReport)
+    payload = to_dict(report) if is_report else cast_dict(report)
+    if level == guide_copy.LEVEL_NOVICE and is_report:
+        stored = payload.get("novice_view")
+        view = _mapping(stored) if stored else novice_view(report)
+        actions = _mapping(view).get("next_actions", [])
+        for _name, light in _mapping(_mapping(view).get("traffic_lights")).items():
+            level_text = str(_mapping(light).get("level", ""))
+            message = str(_mapping(light).get("message", ""))
+            print(f"[{level_text.upper()}] {message}")
+        print()
+        for _name, text in _mapping(_mapping(view).get("plain_language")).items():
+            print(f"- {text}")
+        print()
+        print(guide_copy.NEXT_ACTIONS_HEADER)
+        for action in cast_list(actions):
+            print(f"-> {action}")
+    else:
+        for key in (
+            "isr_pooled",
+            "coverage_explicit",
+            "coverage_qdep",
+            "gray_zone_share",
+            "tier3_disagreement_rate",
+        ):
+            print(f"{key}: {payload.get(key)}")
+        for key in (
+            "residual",
+            "coverage_curve",
+            "missing_codes",
+            "cluster_stability",
+            "overlap",
+            "keywords",
+            "kappa_alpha",
+            "g3_audit",
+            "conformal",
+            "codebook_diff",
+            "run_manifest",
+        ):
+            print(f"{key}: {_mapping(payload.get(key)) or payload.get(key)}")
+
+
+def cast_dict(payload: object) -> dict[str, object]:
+    if isinstance(payload, dict):
+        return payload
+    return {}
+
+
+def cast_list(payload: object) -> list[object]:
+    if isinstance(payload, list):
+        return payload
+    return []

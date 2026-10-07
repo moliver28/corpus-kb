@@ -19,6 +19,7 @@ __all__ = [
     "inductive_run",
     "research_ingest",
     "research_ingest_transcript",
+    "research_report",
 ]
 
 DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
@@ -191,3 +192,35 @@ async def codebook_promote(
     projection = ResearchProjection(pool, CheckpointManager(pool), DLQHandler(pool), embedder)
     await projection.catch_up(reader)
     return result
+
+
+async def research_report(
+    pool: asyncpg.Pool,
+    codebook_version_id: str | None = None,
+    project_id: str | None = None,
+    tenant_id: str = DEFAULT_TENANT,
+    level: str = "novice",
+) -> dict[str, object]:
+    """Governance report (v5 section 11/13/14) as ONE schema-pinned artifact.
+
+    Exhaustiveness residuals + calibrated tau_res per source type, coverage
+    curve, candidate missing codes (queued for review), bootstrap cluster
+    stability, semantic overlap, dual IRR (alpha + AC1), keyword sections
+    with hit_location populations, G3 audit block, conformal set sizes, and
+    the run manifest.
+    """
+    from corpus_kb.research.governance_report import to_dict, validate_required
+    from corpus_kb.research.report_runner import build_report
+
+    report = await build_report(
+        pool,
+        UUID(tenant_id),
+        UUID(codebook_version_id) if codebook_version_id else None,
+        level=level,
+        run_manifest={"project_id": project_id},
+    )
+    payload = to_dict(report)
+    missing = validate_required(payload)
+    if missing:
+        return {"status": "error", "missing_required_fields": missing}
+    return payload

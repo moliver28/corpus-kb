@@ -63,6 +63,13 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
         'title': 'POSITIONAL_OR_KEYWORD',
       }),
+      'research_report': dict({
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'level': 'POSITIONAL_OR_KEYWORD',
+        'pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
       'supported_suffixes': dict({
       }),
     }),
