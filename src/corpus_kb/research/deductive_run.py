@@ -16,6 +16,7 @@ against a medoid chosen from it.
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 from uuid import UUID
 
@@ -25,6 +26,7 @@ import numpy as np
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research.calibration import CONFORMAL_ALPHA, conformal_sets
 from corpus_kb.research.deductive import DeductiveDecision, decide_unit
+from corpus_kb.research.exhaustiveness import exhaustiveness_block
 from corpus_kb.research.prototypes import build_view_prototypes
 from corpus_kb.research.run_inputs import UnitViews, load_codes, load_gold_views, load_unit_views
 from corpus_kb.research.scoring import SCORING_BATCH_ROWS, stream_scores
@@ -58,7 +60,7 @@ def _score_view(units: list[UnitViews], view: str, prototypes: list[list[float]]
 
 
 def _loo_calibration_rows(
-    gold_by_code: dict[str, list[tuple[list[float], list[float], list[float]]]],
+    gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]],
     code_ids: list[str],
 ) -> tuple[np.ndarray, np.ndarray]:
     """Answer-view scores for gold units, leave-one-out per code.
@@ -132,7 +134,7 @@ async def run_deductive(
     async with tenant_connection(pool, tenant_id) as tconn:
         codes_all = await load_codes(tconn, tenant_id, codebook_version_id)
         units = await load_unit_views(tconn, tenant_id, project_id)
-        gold_by_code: dict[str, list[tuple[list[float], list[float], list[float]]]] = {}
+        gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]] = {}
         for code in codes_all:
             refs = list(code["theory"].get("exemplar_text_sha256") or [])
             gold_by_code[code["code_id"]] = await load_gold_views(tconn, tenant_id, refs)
@@ -158,7 +160,9 @@ async def run_deductive(
             for view in ("answer", "qa", "question")
         }
 
-    decisions_by_unit = _decide_units(codes, units, scored, gold_by_code, cal_alpha)
+    decisions_by_unit, conformal_sets_by_unit, conformal_coverage = _decide_units(
+        codes, units, scored, gold_by_code, cal_alpha
+    )
 
     explicit = qdep = review = 0
     row_of_unit = {u.unit_id: i for i, u in enumerate(units)}
@@ -177,7 +181,7 @@ async def run_deductive(
                 evidence_basis=d.evidence_basis,
                 stance=unit.stance,
                 term_origin=unit.term_origin,
-                rationale="deductive:v2:three-view",
+                rationale=f"deductive:v2:{d.reason}",
                 confidence=d.confidence,
                 tier_fired=d.tier_fired,
             )
@@ -202,30 +206,48 @@ async def run_deductive(
         "skipped_codes": skipped,
         "conformal_alpha": cal_alpha,
     }
-    payload = {k: v for k, v in summary.items() if k != "status"}
+    payload = {
+        **{k: v for k, v in summary.items() if k != "status"},
+        "conformal": _conformal_block(conformal_sets_by_unit, cal_alpha, conformal_coverage),
+        "exhaustiveness": exhaustiveness_block(units, scored, gold_by_code),
+    }
     handler.checkpoint_coding_run(tenant_id, run_id, payload)
     handler.stop_coding_run(tenant_id, run_id)
     return summary
+
+
+def _conformal_block(
+    sets_by_unit: dict[int, set[int]], cal_alpha: float, empirical_coverage: float
+) -> dict[str, object]:
+    """Set-size distribution + coverage (the report reads this block)."""
+    sizes = Counter(len(s) for s in sets_by_unit.values())
+    return {
+        "set_size_distribution": {str(size): count for size, count in sorted(sizes.items())},
+        "nominal_coverage": 1.0 - cal_alpha,
+        "empirical_coverage": empirical_coverage,
+        "n_units": len(sets_by_unit),
+    }
 
 
 def _decide_units(
     codes: list[dict[str, Any]],
     units: list[UnitViews],
     scored: dict[str, dict[str, list[float]]],
-    gold_by_code: dict[str, list[tuple[list[float], list[float], list[float]]]],
+    gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]],
     cal_alpha: float,
-) -> dict[int, list[DeductiveDecision]]:
+) -> tuple[dict[int, list[DeductiveDecision]], dict[int, set[int]], float]:
     code_ids = list(scored)
     decisions_by_unit: dict[int, list[DeductiveDecision]] = {u.unit_id: [] for u in units}
+    sets_by_unit: dict[int, set[int]] = {u.unit_id: set() for u in units}
     if not code_ids or not units:
-        return decisions_by_unit
+        return decisions_by_unit, sets_by_unit, 0.0
     unit_matrix = np.array(
         [[scored[c]["answer"][i] for c in code_ids] for i in range(len(units))],
         dtype=np.float32,
     )
     cal_scores, cal_labels = _loo_calibration_rows(gold_by_code, code_ids)
-    sets, _coverage = conformal_sets(cal_scores, cal_labels, unit_matrix, alpha=cal_alpha)
-    set_size_by_unit = {u.unit_id: len(sets[i]) for i, u in enumerate(units)}
+    sets, coverage = conformal_sets(cal_scores, cal_labels, unit_matrix, alpha=cal_alpha)
+    sets_by_unit = {u.unit_id: sets[i] for i, u in enumerate(units)}
     interpretive = {
         c["code_id"] for c in codes if bool((c["theory"] or {}).get("is_interpretive", False))
     }
@@ -244,6 +266,6 @@ def _decide_units(
             thresholds,
             stance=unit.stance,
             interpretive_codes=interpretive,
-            conformal_set_size=set_size_by_unit.get(unit.unit_id),
+            conformal_set_size=len(sets[i]),
         )
-    return decisions_by_unit
+    return decisions_by_unit, sets_by_unit, coverage

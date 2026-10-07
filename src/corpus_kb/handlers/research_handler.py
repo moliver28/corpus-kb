@@ -279,6 +279,22 @@ class ResearchHandler:
         self.app.save(assignment)
         return {"status": "success", "assignment_id": str(assignment.id), "decision": decision}
 
+    def set_keywords(
+        self, tenant_id: UUID, version_id: UUID, code_id: UUID, keywords: list[dict[str, object]]
+    ) -> dict[str, object]:
+        """Set one code's synthesized keyword list (KeywordSetUpdated event)."""
+        version = self.app.repository.get(version_id)
+        if not isinstance(version, CodebookVersion):
+            raise ValueError(f"aggregate {version_id} is not a CodebookVersion")
+        version.update_keywords(tenant_id=tenant_id, code_id=code_id, keywords=keywords)
+        self.app.save(version)
+        return {
+            "status": "success",
+            "version_id": str(version_id),
+            "code_id": str(code_id),
+            "n_keywords": len(keywords),
+        }
+
     def _load_run(self, run_id: UUID) -> CodingRun:
         run = self.app.repository.get(run_id)
         if not isinstance(run, CodingRun):

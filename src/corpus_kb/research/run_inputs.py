@@ -28,6 +28,7 @@ class UnitViews:
     question: list[float]
     stance: str | None
     term_origin: str | None
+    source_type: str | None = None
 
 
 def _vecs(value: Any) -> list[float]:
@@ -36,10 +37,12 @@ def _vecs(value: Any) -> list[float]:
 
 _UNIT_VIEW_SQL = """
 SELECT u.unit_id, u.embedding AS a_vec, x.embedding AS qa_vec,
-       q.embedding AS q_vec, x.stance, x.term_origin
+       q.embedding AS q_vec, x.stance, x.term_origin, d.source_type
 FROM research_units u
 JOIN research_exchanges x
   ON x.exchange_id = u.exchange_id AND x.tenant_id = u.tenant_id
+JOIN documents d
+  ON d.doc_id = u.doc_id
 LEFT JOIN LATERAL (
     SELECT embedding FROM research_units
     WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
@@ -52,10 +55,13 @@ WHERE u.tenant_id = $1 AND u.is_codable AND u.role_in_exchange = 'answer'
 """
 
 _GOLD_VIEW_SQL = """
-SELECT u.embedding AS a_vec, x.embedding AS qa_vec, q.embedding AS q_vec
+SELECT u.embedding AS a_vec, x.embedding AS qa_vec, q.embedding AS q_vec,
+       d.source_type
 FROM research_units u
 JOIN research_exchanges x
   ON x.exchange_id = u.exchange_id AND x.tenant_id = u.tenant_id
+JOIN documents d
+  ON d.doc_id = u.doc_id
 LEFT JOIN LATERAL (
     SELECT embedding FROM research_units
     WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
@@ -79,6 +85,7 @@ async def load_unit_views(
             question=_vecs(row["q_vec"]),
             stance=row["stance"],
             term_origin=row["term_origin"],
+            source_type=row["source_type"],
         )
         for row in rows
     ]
@@ -106,8 +113,17 @@ async def load_codes(
 
 async def load_gold_views(
     conn: asyncpg.Connection, tenant_id: UUID, refs: list[str]
-) -> list[tuple[list[float], list[float], list[float]]]:
+) -> list[tuple[list[float], list[float], list[float], str]]:
+    """Gold exemplar (answer, qa, question) views + their document source type."""
     if not refs:
         return []
     rows = await conn.fetch(_GOLD_VIEW_SQL, str(tenant_id), refs)
-    return [(_vecs(r["a_vec"]), _vecs(r["qa_vec"]), _vecs(r["q_vec"])) for r in rows]
+    return [
+        (
+            _vecs(r["a_vec"]),
+            _vecs(r["qa_vec"]),
+            _vecs(r["q_vec"]),
+            str(r["source_type"]),
+        )
+        for r in rows
+    ]
