@@ -7,6 +7,7 @@ shares these.
 
 from __future__ import annotations
 
+from typing import cast
 from uuid import UUID
 
 import asyncpg
@@ -20,6 +21,7 @@ __all__ = [
     "research_ingest",
     "research_ingest_transcript",
     "research_report",
+    "review_execute",
 ]
 
 DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
@@ -224,3 +226,33 @@ async def research_report(
     if missing:
         return {"status": "error", "missing_required_fields": missing}
     return payload
+
+
+async def review_execute(
+    pool: asyncpg.Pool,
+    assignment_id: str,
+    decision: str,
+    reviewer: str,
+    note: str = "",
+    tenant_id: str = DEFAULT_TENANT,
+) -> dict[str, object]:
+    """Record one review accept/override decision and advance projections.
+
+    The named review surface (todo 16 CLI, todo 18 MCP): every human decision
+    becomes a CodingAssignment.Reviewed event projected into research_reviews.
+    """
+    from corpus_kb.config import load_config
+    from corpus_kb.research.review_surface import execute_review
+
+    cfg = load_config()
+    db = cast(dict[str, object], cfg.get("database") or {})
+    conn_str = str(db.get("connection_string", ""))
+    return await execute_review(
+        pool,
+        UUID(tenant_id),
+        conn_str,
+        UUID(assignment_id),
+        reviewer,
+        decision,
+        note,
+    )

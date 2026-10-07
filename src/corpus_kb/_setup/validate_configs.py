@@ -1,9 +1,10 @@
 """Config validation script for OpenCode CI enforcement.
 
-Validates MCP configuration files across three editor formats:
+Validates MCP configuration files across four editor formats:
   - OpenCode native (mcp key, command as array)
   - Claude Code (mcpServers key, command as string + args)
   - Cursor (mcpServers key, command as string + args, no autoApprove)
+  - Codex (mcpServers key + autoApprove — copy-template for Codex CLI users)
 
 Usage:
     python scripts/validate_configs.py
@@ -22,10 +23,15 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
-# Valid tool names extracted from the corpus-kb MCP server.
-# These are the only values allowed in autoApprove lists.
+# Valid tool names for autoApprove lists. Two families:
+#   * the master corpus-kb MCP tool set (search / sql / graph / metadata),
+#   * the research/coding surfaces (tools/research_tools.py +
+#     tools/notebook_tools.py — todo-18 tool-name lockstep, r9: every PR
+#     registering an MCP tool extends this set AND regenerates the harness
+#     pack in the SAME PR).
 VALID_TOOL_NAMES: frozenset[str] = frozenset(
     {
+        # -- master corpus-kb MCP tools -------------------------------------
         "search",
         "search_context",
         "search_similar",
@@ -42,6 +48,18 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "get_metadata",
         "query_document_stats",
         "sync_database",
+        # -- research/coding surfaces (todos 11-18) --------------------------
+        "research_ingest_transcript",
+        "research_ingest",
+        "coding_run",
+        "inductive_run",
+        "codebook_promote",
+        "research_report",
+        "review_execute",
+        "notebook_ask",
+        "notebook_evidence",
+        "notebook_uncoded",
+        "notebook_overlap",
     }
 )
 
@@ -301,6 +319,7 @@ def check_cross_config_consistency(
     opencode_config: dict[str, Any] | None,
     claude_config: dict[str, Any] | None,
     cursor_config: dict[str, Any] | None,
+    codex_config: dict[str, Any] | None = None,
 ) -> list[str]:
     """Check that all configs define the same tools with matching descriptions.
 
@@ -329,6 +348,13 @@ def check_cross_config_consistency(
         tool_sets["cursor"] = {
             name: cfg.get("description", "")
             for name, cfg in cursor_config["mcpServers"].items()
+            if isinstance(cfg, dict)
+        }
+
+    if codex_config and "mcpServers" in codex_config:
+        tool_sets["codex"] = {
+            name: cfg.get("description", "")
+            for name, cfg in codex_config["mcpServers"].items()
             if isinstance(cfg, dict)
         }
 
@@ -399,6 +425,7 @@ def validate_all(project_root: Path | None = None) -> list[str]:
     mcp_configs_dir = project_root / "mcp-configs"
     claude_config: dict | None = None
     cursor_config: dict | None = None
+    codex_config: dict | None = None
 
     if mcp_configs_dir.exists():
         for json_file in sorted(mcp_configs_dir.glob("*.json")):
@@ -417,6 +444,11 @@ def validate_all(project_root: Path | None = None) -> list[str]:
                 cursor_config = config
                 errs = validate_cursor_config(config)
                 errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
+            elif filename == "codex.json":
+                # Intentional reuse: codex.json shares the mcpServers+autoApprove shape.
+                codex_config = config
+                errs = validate_claude_config(config)
+                errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
             else:
                 errors.append(f"mcp-configs/{filename}: unknown config format, skipping")
     else:
@@ -425,7 +457,9 @@ def validate_all(project_root: Path | None = None) -> list[str]:
     # 3. Cross-config consistency
     opencode_config = load_json(opencode_path) if opencode_path.exists() else None
 
-    cross_errors = check_cross_config_consistency(opencode_config, claude_config, cursor_config)
+    cross_errors = check_cross_config_consistency(
+        opencode_config, claude_config, cursor_config, codex_config
+    )
     errors.extend(f"Cross-config: {e}" for e in cross_errors)
 
     # 4. Check for old format backup (informational)

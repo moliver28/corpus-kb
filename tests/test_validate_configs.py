@@ -1,15 +1,17 @@
 """Tests for corpus_kb._setup.validate_configs — active validator API.
 
 Covers:
-  1. Valid configs pass (OpenCode, Claude Code, Cursor)
+  1. Valid configs pass (OpenCode, Claude Code, Cursor, Codex)
   2. Old format (mcpServers) fails for OpenCode
-  3. Missing autoApprove fails (OpenCode / Claude)
+  3. Missing autoApprove fails (OpenCode / Claude / Codex)
   4. Invalid tool name in autoApprove fails
   5. Mismatched descriptions between configs fail
   6. Missing command fails
   7. Wrong command type (string vs array) fails for OpenCode
   8. load_json helper
-  9. Real project configs pass via validate_all(project_root=ROOT)
+  9. Edge cases
+  10. Real project configs pass via validate_all(project_root=ROOT)
+  11. Research/notebook tool names are autoApprove-valid (todo-18 lockstep)
 """
 
 from __future__ import annotations
@@ -90,6 +92,23 @@ def valid_cursor_config():
                 "command": "corpus-kb",
                 "args": ["--transport", "stdio"],
                 "env": {},
+            }
+        },
+    }
+
+
+@pytest.fixture
+def valid_codex_config():
+    """Minimal valid Codex copy-template (mcpServers + autoApprove)."""
+    return {
+        "mcpServers": {
+            "corpus-kb": {
+                "name": "Corpus-KB",
+                "description": "Local RAG system",
+                "command": "corpus-kb",
+                "args": ["--transport", "stdio"],
+                "env": {},
+                "autoApprove": ["search", "retrieve_context"],
             }
         },
     }
@@ -396,3 +415,76 @@ def test_real_configs_pass():
     """Validate the actual opencode.json and mcp-configs/*.json files."""
     errors = validate_all(project_root=ROOT)
     assert errors == [], f"Real project config validation failed: {errors}"
+
+
+# ============================================================================
+# 11. Codex copy-template (todo 18) + research tool-name lockstep
+# ============================================================================
+
+
+class TestCodexConfig:
+    def test_valid_codex_config_passes(self, valid_codex_config):
+        errors = validate_claude_config(valid_codex_config)
+        assert errors == [], f"Expected no errors, got: {errors}"
+
+    def test_missing_auto_approve_fails_codex(self, valid_codex_config):
+        config = copy.deepcopy(valid_codex_config)
+        del config["mcpServers"]["corpus-kb"]["autoApprove"]
+        errors = validate_claude_config(config)
+        assert any("autoApprove" in e for e in errors)
+
+    def test_invalid_tool_name_fails_codex(self, valid_codex_config):
+        config = copy.deepcopy(valid_codex_config)
+        config["mcpServers"]["corpus-kb"]["autoApprove"].append("not_a_real_tool")
+        errors = validate_claude_config(config)
+        assert any("not_a_real_tool" in e for e in errors)
+
+    def test_real_codex_config_is_consistent_across_all_four(self):
+        """All FOUR configs agree on tool sets + descriptions + commands."""
+        opencode = load_json(ROOT / "opencode.json")
+        claude = load_json(ROOT / "mcp-configs" / "claude-code.json")
+        cursor = load_json(ROOT / "mcp-configs" / "cursor.json")
+        codex = load_json(ROOT / "mcp-configs" / "codex.json")
+        errors = check_cross_config_consistency(opencode, claude, cursor, codex)
+        assert errors == [], errors
+
+    def test_unknown_mcp_configs_file_still_flagged(self, tmp_path):
+        (tmp_path / "opencode.json").write_text(
+            json.dumps(
+                {
+                    "$schema": "https://opencode.ai/config.json",
+                    "mcp": {
+                        "corpus-kb": {
+                            "type": "local",
+                            "description": "Local RAG system",
+                            "command": ["corpus-kb", "--transport", "stdio"],
+                            "environment": {},
+                            "autoApprove": ["search"],
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        (tmp_path / "mcp-configs").mkdir()
+        (tmp_path / "mcp-configs" / "mystery.json").write_text("{}", encoding="utf-8")
+        errors = validate_all(project_root=tmp_path)
+        assert any("unknown config format" in e for e in errors)
+
+
+def test_research_and_notebook_tools_are_valid_names():
+    """r9 lockstep: research/coding surfaces (todos 11-18) autoApprove cleanly."""
+    expected = {
+        "research_ingest_transcript",
+        "research_ingest",
+        "coding_run",
+        "inductive_run",
+        "codebook_promote",
+        "research_report",
+        "review_execute",
+        "notebook_ask",
+        "notebook_evidence",
+        "notebook_uncoded",
+        "notebook_overlap",
+    }
+    assert expected <= VALID_TOOL_NAMES
