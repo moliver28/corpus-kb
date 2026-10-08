@@ -20,7 +20,9 @@ def logprob_entropy(token_logprobs: list[Any]) -> float | None:
             Typically 3-5 tokens per position when logprobs enabled.
 
     Returns:
-        Mean Shannon entropy across all tokens (0.0 = uniform, 1.0 = one token dominates).
+        Mean Shannon entropy across all tokens: 0.0 = one token dominates
+        (certainty), higher = more uniform (theoretical max ln(k) per
+        position, ~1.61 for top-5 logprobs - NOT normalized to 1.0).
         None if payload lacks logprobs (degrade marker).
     """
     if not token_logprobs:

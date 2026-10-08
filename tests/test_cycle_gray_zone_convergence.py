@@ -2,7 +2,12 @@
 UNRESOLVED review-queue items and the documented remedy converges - the
 cycle halts at gray_zone_escalation, the human accepts every pending item
 through the REAL review surface, and the resumed cycle COMPLETES (exit 0)
-with the report artifact.
+with the report artifact. The gate's non-refire SEMANTICS (resolved
+escalations no longer hold the cycle) are pinned by the unit tests in
+test_cycle_offline.py; resumption never re-enters the deductive stage, so
+this E2E proves the full halt -> work-the-queue -> resume path rather than
+the gate expression itself. A later cycle that routes NEW units to review
+halts again by design - each escalation batch gets one human pass.
 
 requires_postgres only (CI's DB-less matrix auto-skips via the conftest TCP
 probe). Two seams are test doubles, both faithful to reality:
