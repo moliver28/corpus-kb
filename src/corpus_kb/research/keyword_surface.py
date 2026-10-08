@@ -39,7 +39,7 @@ FROM research_units u
 LEFT JOIN LATERAL (
     SELECT text FROM research_units
     WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
-      AND role_in_exchange = 'question'
+      AND role_in_exchange IN ('question', 'main_question')
     ORDER BY seq LIMIT 1
 ) q ON TRUE
 WHERE u.unit_id = ANY($1::bigint[]) AND u.tenant_id = $2
@@ -52,7 +52,7 @@ JOIN research_units u ON u.unit_id = ra.unit_id AND u.tenant_id = ra.tenant_id
 LEFT JOIN LATERAL (
     SELECT text FROM research_units
     WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
-      AND role_in_exchange = 'question'
+      AND role_in_exchange IN ('question', 'main_question')
     ORDER BY seq LIMIT 1
 ) q ON TRUE
 WHERE ra.cb_version_id = $1

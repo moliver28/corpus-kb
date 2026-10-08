@@ -32,7 +32,7 @@ async def load_codable_pairs(
         LEFT JOIN LATERAL (
             SELECT text FROM research_units
             WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
-              AND role_in_exchange = 'question'
+              AND role_in_exchange IN ('question', 'main_question')
             ORDER BY seq LIMIT 1
         ) q ON TRUE
         WHERE u.tenant_id = $1 AND u.is_codable AND u.role_in_exchange = 'answer'
@@ -243,14 +243,15 @@ async def load_unit_views_by_ids(
         FROM research_units u
         JOIN research_exchanges x
           ON x.exchange_id = u.exchange_id AND x.tenant_id = u.tenant_id
-        LEFT JOIN LATERAL (
-            SELECT embedding FROM research_units
-            WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
-              AND role_in_exchange = 'question' AND embedding IS NOT NULL
-            ORDER BY seq LIMIT 1
-        ) q ON TRUE
-        WHERE u.tenant_id = $1 AND u.unit_id = ANY($2::bigint[])
-          AND u.embedding IS NOT NULL AND x.embedding IS NOT NULL
+            LEFT JOIN LATERAL (
+                SELECT embedding FROM research_units
+                WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
+                  AND role_in_exchange IN ('question', 'main_question')
+                  AND embedding IS NOT NULL
+                ORDER BY seq LIMIT 1
+            ) q ON TRUE
+            WHERE u.tenant_id = $1 AND u.unit_id = ANY($2::bigint[])
+              AND u.embedding IS NOT NULL AND x.embedding IS NOT NULL
         """,
         str(tenant_id),
         unit_ids,
