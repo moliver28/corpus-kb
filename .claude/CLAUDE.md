@@ -276,6 +276,7 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-research-report` | `corpus-kb research report` | `research_report` | Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3. |
 | `corpus-review` | `corpus-kb review accept` | `review_execute` | Confirm the model's assignment for one CodingAssignment (human review). |
 | `corpus-review` | `corpus-kb review override` | `review_execute` | Overrule the model's assignment for one CodingAssignment. |
+| `corpus-demo` | `corpus-kb research demo` | (none) | Narrated end-to-end pipeline on the bundled demo corpus (CLI only). |
 
-Planned wrappers (not emitted yet): `corpus-demo`, `corpus-research-cycle`.
+Planned wrappers (not emitted yet): `corpus-research-cycle`.
 <!-- corpus-harness:research-commands:end -->

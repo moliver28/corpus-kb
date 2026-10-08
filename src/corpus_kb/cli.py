@@ -462,6 +462,22 @@ def _promote_coroutine(
     return _run()
 
 
+@research_app.command("demo")
+def research_demo() -> int:
+    """Narrated end-to-end pipeline on the bundled demo corpus (CLI only)."""
+    import asyncio
+
+    from corpus_kb.config import load_config
+    from corpus_kb.research.demo import run_demo
+
+    # typer ignores a plain int return on failure paths - raise Exit so a
+    # failed demo (embedder preflight, missing review assignment) exits non-zero.
+    exit_code = asyncio.run(run_demo(load_config()))
+    if exit_code:
+        raise typer.Exit(code=exit_code)
+    return exit_code
+
+
 @research_app.command("ask")
 def research_ask(
     question: str = typer.Argument(..., help="Notebook question"),
@@ -897,6 +913,10 @@ def _print_report(report: object, level: str) -> None:
         print(guide_copy.NEXT_ACTIONS_HEADER)
         for action in cast_list(actions):
             print(f"-> {action}")
+        print()
+        anchors = _mapping(view).get("doc_links") or guide_copy.REPORT_DOC_ANCHORS
+        for section, link in anchors.items():
+            print(f"guide[{section}]: {link}")
     else:
         for key in (
             "isr_pooled",

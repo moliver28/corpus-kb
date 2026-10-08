@@ -23,6 +23,7 @@ FROM research_assignments ra
 JOIN research_units ru ON ru.unit_id = ra.unit_id AND ru.tenant_id = ra.tenant_id
 JOIN documents d ON d.doc_id = ru.doc_id
 WHERE ra.tenant_id = $1 AND ra.cb_version_id = $2
+ORDER BY ra.assignment_id
 """
 
 CODABLE_VECTORS_SQL = """

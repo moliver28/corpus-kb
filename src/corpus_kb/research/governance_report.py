@@ -163,6 +163,28 @@ def novice_view(report: ResearchReport) -> dict[str, object]:
         next_actions.append(guide_copy.STABILITY_ACTION)
 
     overlap_red = bool(overlap_flags)
+    plain_language = {
+        "isr": guide_copy.ISR_PLAIN,
+        "coverage": guide_copy.COVERAGE_PLAIN,
+        "residual": guide_copy.RESIDUAL_PLAIN,
+        "tau_res": guide_copy.TAU_RES_PLAIN,
+        "stability": guide_copy.STABILITY_PLAIN,
+        "overlap": guide_copy.OVERLAP_PLAIN,
+        "conflicts": guide_copy.CONFLICT_PLAIN,
+        "keywords": guide_copy.KEYWORDS_PLAIN,
+        "keywords_provisional": guide_copy.KEYWORDS_PROVISIONAL,
+        "irr": guide_copy.IRR_PLAIN,
+        "g3": guide_copy.G3_PLAIN,
+        "conformal": guide_copy.CONFORMAL_PLAIN,
+        "manifest": guide_copy.MANIFEST_PLAIN,
+        "missing_codes": guide_copy.MISSING_CODES_PLAIN,
+        "backlog": guide_copy.BACKLOG_PLAIN,
+    }
+    doc_links = {
+        section: f"{guide_copy.REPORT_DOC_PATH}#{guide_copy.REPORT_DOC_ANCHORS[section]}"
+        for section in plain_language
+        if section in guide_copy.REPORT_DOC_ANCHORS
+    }
     return {
         "traffic_lights": {
             "isr": {"level": isr_light, "message": isr_copy},
@@ -183,23 +205,8 @@ def novice_view(report: ResearchReport) -> dict[str, object]:
                 ),
             },
         },
-        "plain_language": {
-            "isr": guide_copy.ISR_PLAIN,
-            "coverage": guide_copy.COVERAGE_PLAIN,
-            "residual": guide_copy.RESIDUAL_PLAIN,
-            "tau_res": guide_copy.TAU_RES_PLAIN,
-            "stability": guide_copy.STABILITY_PLAIN,
-            "overlap": guide_copy.OVERLAP_PLAIN,
-            "conflicts": guide_copy.CONFLICT_PLAIN,
-            "keywords": guide_copy.KEYWORDS_PLAIN,
-            "keywords_provisional": guide_copy.KEYWORDS_PROVISIONAL,
-            "irr": guide_copy.IRR_PLAIN,
-            "g3": guide_copy.G3_PLAIN,
-            "conformal": guide_copy.CONFORMAL_PLAIN,
-            "manifest": guide_copy.MANIFEST_PLAIN,
-            "missing_codes": guide_copy.MISSING_CODES_PLAIN,
-            "backlog": guide_copy.BACKLOG_PLAIN,
-        },
+        "plain_language": plain_language,
+        "doc_links": doc_links,
         "next_actions": next_actions,
         "footer": guide_copy.NEXT_ACTION_FOOTER,
     }

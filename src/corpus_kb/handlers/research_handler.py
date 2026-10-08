@@ -45,6 +45,15 @@ MAX_TURNS_PER_EVENT = 50
 MAX_EXCHANGES_PER_EVENT = 100
 
 
+def codebook_sha256(codes: list[dict[str, object]]) -> str:
+    """Content sha of a code set — the codebook_versions UNIQUE(tenant, sha256) key.
+
+    Module-level so callers (e.g. the demo's re-run-safe seed) can look up an
+    existing version without duplicating this formula.
+    """
+    return hashlib.sha256(repr(sorted(str(c) for c in codes)).encode()).hexdigest()
+
+
 class ResearchHandler:
     """Event-only command surface for the research domain."""
 
@@ -188,7 +197,7 @@ class ResearchHandler:
     def create_codebook_version(
         self, tenant_id: UUID, label: str, codes: list[dict[str, object]], notes: str = ""
     ) -> dict[str, object]:
-        sha = hashlib.sha256(repr(sorted(str(c) for c in codes)).encode()).hexdigest()
+        sha = codebook_sha256(codes)
         version = CodebookVersion(tenant_id=tenant_id, label=label, sha256=sha, notes=notes)
         version.add_codes(tenant_id=tenant_id, codes=codes)
         self.app.save(version)
@@ -231,6 +240,20 @@ class ResearchHandler:
 
     def record_assignment(self, tenant_id: UUID, **kwargs: object) -> dict[str, object]:
         """Record one per-unit assignment (per-unit aggregate => no contention)."""
+        # Decision routing: explicit status wins (deductive v2 routing rides the
+        # event); when the caller omits it, derive from evidence_basis/stance so
+        # the question-dependent / deny / deflect -> review contract holds for
+        # legacy callers (assignment_projector mirrors this derivation for
+        # events recorded before the status field existed).
+        status = str(kwargs.get("status") or "")
+        if status not in ("auto", "review"):
+            if kwargs.get("evidence_basis") == "question_dependent" or kwargs.get("stance") in (
+                "deny",
+                "deflect",
+            ):
+                status = "review"
+            else:
+                status = "auto"
         assignment = CodingAssignment(
             tenant_id=tenant_id,
             unit_id=int(kwargs["unit_id"]),
@@ -248,6 +271,7 @@ class ResearchHandler:
             rationale=str(kwargs.get("rationale", "")),
             confidence=kwargs.get("confidence"),
             tier_fired=kwargs.get("tier_fired"),
+            status=status,
         )
         self.app.save(assignment)
         if kwargs.get("signals"):

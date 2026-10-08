@@ -1,0 +1,37 @@
+{
+  "label": "demo-food-access-v1",
+  "paradigm": "deductive",
+  "notes": "Bundled demo codebook. Every exemplar is a VERBATIM participant turn from the bundled transcripts, so the deductive run can resolve gold views by text_sha256. In a real project this codebook is built from gold exemplars and human promotion.",
+  "codes": [
+    {
+      "name": "Transportation barriers",
+      "definition": "Participant describes travel, vehicle access, or transit problems that shape how the household obtains food.",
+      "inclusion": "Bus or car dependency, service cuts, long travel distances, skipping trips when transport fails.",
+      "exclusion": "General store distance complaints with no travel or vehicle component.",
+      "exemplars": [
+        "I take the number 12 bus, or I ask my sister when the bus cuts service. There is no full grocery store left in the neighborhood, so it is a forty minute trip each way.",
+        "My wife and I share a car with her mother, so grocery runs happen on Saturdays only. If the car is unavailable we skip it, and that is when the freezer gets emptied."
+      ]
+    },
+    {
+      "name": "Cost and budget pressure",
+      "definition": "Participant describes food prices, income limits, or budget trade-offs that change what the household eats.",
+      "inclusion": "Share of income spent on food, paycheck timing, utilities-vs-food trade-offs, discount or bulk strategies driven by price.",
+      "exclusion": "Program eligibility complaints that are not about the household budget itself.",
+      "exemplars": [
+        "They eat almost a third of it. I work part time, so the week before payday we are stretching rice and beans and whatever is on sale.",
+        "On a fixed disability check every dollar is planned. When utilities spike in summer, the food line shrinks first. The food pantry on Grand Avenue covers the gap maybe twice a month."
+      ]
+    },
+    {
+      "name": "Fresh food demand",
+      "definition": "Participant expresses unmet demand for fresh produce, fish, or other perishable foods, or names growing/food-producing spaces they want to use.",
+      "inclusion": "Wishes for vegetables, fruit, fish, or greens; community gardens; markets that closed; perishables they cannot keep stocked.",
+      "exclusion": "Price-only complaints about produce with no demand or access component.",
+      "exemplars": [
+        "Fresh vegetables, honestly. There is a community garden on 5th that lets neighbors grow beds, and I would join in a heartbeat if the evening hours worked with my shift.",
+        "Fresh fish and greens. There used to be a market on 9th before it closed. Now the closest thing is a gas station."
+      ]
+    }
+  ]
+}

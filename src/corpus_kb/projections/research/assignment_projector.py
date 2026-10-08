@@ -109,7 +109,12 @@ class AssignmentProjector:
             )
 
     def _initial_status(self, payload: dict[str, Any]) -> str:
-        """Question-dependent / interpretive routing is REVIEW by default."""
+        """Decision routing: prefer the event's explicit status (deductive v2
+        routing rides the Recorded event); fall back to evidence_basis/stance
+        derivation for legacy events recorded before the status field."""
+        status = payload.get("status")
+        if status in ("auto", "review"):
+            return str(status)
         evidence_basis = payload.get("evidence_basis")
         if evidence_basis == "question_dependent":
             return "review"

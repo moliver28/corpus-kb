@@ -108,6 +108,7 @@ class CodingAssignment(Aggregate):
         rationale: str = "",
         confidence: str | None = None,
         tier_fired: int | None = None,
+        status: str = "auto",
     ) -> None:
         self.tenant_id = tenant_id
         self.unit_id = unit_id
@@ -123,7 +124,9 @@ class CodingAssignment(Aggregate):
         self.rationale = rationale
         self.confidence = confidence
         self.tier_fired = tier_fired
-        self.status = "auto"
+        # Decision routing ("auto" | "review") rides the event so the review
+        # queue (research_assignments.status='review') is event-derivable.
+        self.status = status
         self.reviewed = False
 
     @event("Reviewed")

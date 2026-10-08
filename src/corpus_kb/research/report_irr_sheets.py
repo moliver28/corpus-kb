@@ -51,7 +51,15 @@ async def load_irr_sheets(
     human_entries: list[dict[str, Any]] = []
     units_by_code: dict[str, list[tuple[int, int, int]]] = {}
     for unit_id, rows_for_unit in sorted(by_unit.items()):
-        model_codes = [r["code_id"] for r in rows_for_unit]
+        # Re-coding (a later coding run against the same version) supersedes
+        # earlier assignments: the model sheet rates each (unit, code) exactly
+        # once, with the LATEST assignment (rows arrive ordered by the
+        # monotonic assignment_id identity; created_at comparisons are banned
+        # by house rule).
+        latest: dict[str, dict[str, Any]] = {}
+        for row in rows_for_unit:
+            latest[row["code_id"]] = row
+        model_codes = list(latest)
         model_entries.append(
             {"segment_id": unit_id, "assignments": [{"code_id": c} for c in model_codes]}
         )

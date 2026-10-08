@@ -104,6 +104,10 @@ ollama pull nomic-embed-text
 # 6. Start the server
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
 corpus-kb start --transport http --port 8010
+
+# 7. New to qualitative coding? Run the narrated demo (~5 minutes):
+corpus-kb research demo
+# then read docs/getting-started.md to run it on your own transcripts
 ```
 
 In another terminal:
@@ -133,6 +137,10 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
 | [API](docs/API.md) | HTTP routes, request bodies, curl examples, MCP tool reference |
 | [Development](docs/DEVELOPMENT.md) | Architecture deep dive, testing, PR workflow, conventions |
+| [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
+| [Research](docs/research.md) | Research command reference, config keys, embedding requirements |
+| [Understanding your report](docs/understanding-your-report.md) | Plain-language guide to every governance-report section |
+| [Research math](docs/research-math.md) | Every formula, its v5 source, and its calibration provenance |
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |

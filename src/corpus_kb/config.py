@@ -213,6 +213,25 @@ def get_default_config() -> dict[str, object]:
             "coder": "qwen3:8b",
             "model": "qwen3:8b",
         },
+        # research: MUST stay in lockstep with the packaged config.yaml block —
+        # write_config's passthrough writes THIS dict into user configs, so a
+        # missing block here would silently drop research.* keys (todo-19 (c)).
+        "research": {
+            "embedder": {
+                "model_revision": "1024",
+                "strategy": "naive-prefix",
+                "dimensions": 1024,
+            },
+            "ingest": {
+                "watch_interval_s": 10,
+            },
+            "inductive": {
+                "entropy_threshold": 0.85,
+                "recluster_every_batches": 8,
+                "centroid_drift_threshold": 0.15,
+                "tau_dup": 0.85,
+            },
+        },
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
         },

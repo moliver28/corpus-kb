@@ -110,6 +110,15 @@ SURFACES: tuple[Surface, ...] = (
         mcp_tool="notebook_overlap",
         description="Code overlap: flagged pairs, confusion, borderline-margin units.",
     ),
+    # CLI-ONLY (r13): no MCP tool - agents do not need a narrated demo, and a
+    # tool here would red validate-configs/agent-config-consistency untouched
+    # by this surface. Empty mcp_tool renders as (none) in the CLAUDE.md table.
+    Surface(
+        name="research-demo",
+        cli_path="research demo",
+        mcp_tool="",
+        description="Narrated end-to-end pipeline on the bundled demo corpus (CLI only).",
+    ),
 )
 
 # --------------------------------------------------------------------------
@@ -212,6 +221,22 @@ projection so weights and audits see it.
 - All flags: `corpus-kb review accept --help`
 """
 
+_DEMO_BODY = """# corpus-demo — narrated demo pipeline
+
+Run the full qualitative-coding pipeline on the bundled two-interview demo
+corpus (docs/demo-corpus/): ingest, codebook seed, coding run, review gate,
+governance report, and a cited notebook answer.
+
+```
+corpus-kb research demo
+```
+
+- Requires `corpus-kb setup` only (Postgres + migrations + models).
+- Every stage narrates what it is doing and links the relevant docs.
+- Re-runs are safe: file and text hashes make ingested files no-ops.
+- CLI-only by design; all flags: `corpus-kb research demo --help`
+"""
+
 WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-ingest",
@@ -256,10 +281,10 @@ WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-demo",
         title="corpus-demo",
-        description="Run the full pipeline on the bundled demo corpus (todo 19)",
+        description="Run the full pipeline on the bundled demo corpus",
         argument_hint="",
-        body="(planned: lands with todo 19 — corpus-kb research demo)",
-        planned=True,
+        body=_DEMO_BODY,
+        covers=("research-demo",),
     ),
     Wrapper(
         name="corpus-research-cycle",
@@ -326,9 +351,10 @@ def claudemd_section() -> str:
     for wrapper in ACTIVE_WRAPPERS:
         for surface_name in wrapper.covers:
             surface = surface_by_name[surface_name]
+            tool = f"`{surface.mcp_tool}`" if surface.mcp_tool else "(none)"
             lines.append(
                 f"| `{wrapper.name}` | `corpus-kb {surface.cli_path}` "
-                f"| `{surface.mcp_tool}` | {surface.description} |"
+                f"| {tool} | {surface.description} |"
             )
     planned = ", ".join(f"`{w.name}`" for w in WRAPPERS if w.planned)
     lines += [

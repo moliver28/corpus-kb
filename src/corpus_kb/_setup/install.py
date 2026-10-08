@@ -231,7 +231,10 @@ async def check_extensions(
     return {name: (name in versions, versions.get(name, "")) for name, _ in EXTENSIONS}
 
 
-def print_doctor_report(info: dict[str, Any]) -> None:
+def print_doctor_report(
+    info: dict[str, Any],
+    research: list[Any] | None = None,
+) -> None:
     """Print read-only diagnostic report."""
     print("\n=== Corpus-KB Doctor ===")
     print(f"OS:           {info['os']}")
@@ -255,6 +258,12 @@ def print_doctor_report(info: dict[str, Any]) -> None:
                 print(f"  {label} ({name}): OK v{version}")
             else:
                 print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
+    if research is None:
+        print("\nResearch subsystem: SKIPPED (Postgres unreachable; run corpus-kb setup)")
+    else:
+        from corpus_kb._setup.doctor_research import print_research_checks
+
+        print_research_checks(research)
     print("\nRecommended commands (drop --dry-run to execute setup):")
     print("  1. pip install -e .[dev]")
     print("  2. corpus-kb setup")
@@ -282,7 +291,15 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     ollama_url = str(emb_cfg.get("base_url", DEFAULT_OLLAMA_URL))
     info["ollama_ok"], info["ollama_msg"] = await check_ollama(ollama_url)
 
-    print_doctor_report(info)
+    # Research subsystem checks (todo-19 (a)): read-only, all guarded on
+    # postgres_ok, never affecting the doctor exit code.
+    research = None
+    if info["postgres_ok"]:
+        from corpus_kb._setup.doctor_research import research_checks
+
+        research = await research_checks(conn_str, config, info.get("extensions"))
+
+    print_doctor_report(info, research)
     return 0
 
 
@@ -402,17 +419,15 @@ def write_config(profile: str, config: dict[str, Any], force: bool) -> int:
 
     profiles = load_installer_profiles(config)
     profile_data = profiles.get(profile, {})
+    # Full passthrough (todo-19 (c)): a fixed whitelist silently dropped any
+    # top-level block it did not name (coding:/research: included) from user
+    # configs. Only the profile's embedding model is overridden.
     output = {
-        "server": config.get("server", {}),
+        **config,
         "embedding": {
             **config.get("embedding", {}),
             "model": profile_data.get("model", "nomic-embed-text"),
         },
-        "chunking": config.get("chunking", {}),
-        "search": config.get("search", {}),
-        "graph": config.get("graph", {}),
-        "llamaindex": config.get("llamaindex", {}),
-        "database": config.get("database", {}),
     }
 
     DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -725,17 +740,9 @@ def setup_update_config(config: dict[str, Any], profile: str, apply: bool) -> in
     defaults without overwriting profile-specific choices unless --force is used.
     """
     print("\n[Step 6/6] Updating user config file...")
-    output: dict[str, Any] = {
-        "server": config.get("server", {}),
-        "embedding": config.get("embedding", {}),
-        "chunking": config.get("chunking", {}),
-        "search": config.get("search", {}),
-        "graph": config.get("graph", {}),
-        "llamaindex": config.get("llamaindex", {}),
-        "database": config.get("database", {}),
-        "installer": config.get("installer", {}),
-        "llm": config.get("llm", {}),
-    }
+    # Full passthrough (todo-19 (c)): same rationale as write_config — a fixed
+    # whitelist silently dropped coding:/research: and any later block.
+    output: dict[str, Any] = dict(config)
 
     if not apply:
         print(f"  (dry run) would write {DEFAULT_CONFIG_PATH}")

@@ -184,6 +184,7 @@ async def run_deductive(
                 rationale=f"deductive:v2:{d.reason}",
                 confidence=d.confidence,
                 tier_fired=d.tier_fired,
+                status=d.status,
             )
             if d.evidence_basis == "explicit_in_answer":
                 explicit += 1
