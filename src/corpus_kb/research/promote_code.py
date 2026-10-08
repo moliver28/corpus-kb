@@ -160,14 +160,23 @@ async def promote_proposal(
         label=label or proposal["suggested_label"],
     )
     async with tenant_connection(pool, tenant_id) as conn:
-        await _mark_proposal(
+        marked = await _mark_proposal(
             conn,
             tenant_id,
             proposed_id,
             status="promoted",
             promoted_version_id=version["version_id"],
             promoted_code_id=version["code_id"],
+            from_status="proposed",
         )
+    if marked == 0:
+        return {
+            "status": "error",
+            "reason": (
+                f"proposal {proposed_id} was concurrently promoted or blocked; "
+                "no second version was minted"
+            ),
+        }
     return {
         "status": "promoted",
         "proposal_id": proposed_id,
@@ -329,15 +338,23 @@ async def _mark_proposal(
     block_reason: str | None = None,
     promoted_version_id: str | None = None,
     promoted_code_id: str | None = None,
-) -> None:
-    await conn.execute(
-        """
+    from_status: str | None = None,
+) -> int:
+    """Transition one proposal; returns the number of rows updated.
+
+    ``from_status`` guards against the double-promotion race: two concurrent
+    promotes of one proposal both mint versions unless the UPDATE itself
+    requires the row to still be in the expected status.
+    """
+    predicate = "AND status = $7" if from_status else ""
+    result = await conn.execute(
+        f"""
         UPDATE research_proposed_codes SET
             status = $3,
             block_reason = COALESCE($4, block_reason),
             promoted_version_id = COALESCE($5::uuid, promoted_version_id),
             promoted_code_id = COALESCE($6, promoted_code_id)
-        WHERE tenant_id = $1 AND proposed_id = $2
+        WHERE tenant_id = $1 AND proposed_id = $2 {predicate}
         """,
         str(tenant_id),
         proposed_id,
@@ -345,4 +362,6 @@ async def _mark_proposal(
         block_reason,
         promoted_version_id,
         promoted_code_id,
+        *([from_status] if from_status else []),
     )
+    return int(str(result).split()[-1]) if str(result).startswith("UPDATE") else 0

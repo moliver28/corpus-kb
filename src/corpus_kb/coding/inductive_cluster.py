@@ -189,9 +189,13 @@ def _cosine(unit: np.ndarray, centroids: np.ndarray) -> np.ndarray:
 
 
 def clamp_k(k: int, n_centroids: int) -> int:
-    """k for nearest-centroid retrieval: clamped to [2, 4] and to inventory."""
+    """k for nearest-centroid retrieval: clamped to [2, 4], never above inventory.
+
+    With a single centroid the [2, 4] floor would exceed the inventory, so
+    the floor yields to reality and returns 1 (no meaningful choice exists).
+    """
     hi = min(ENTROPY_K_NEAREST_MAX, n_centroids)
-    return max(ENTROPY_K_NEAREST_MIN, min(k, hi))
+    return max(min(ENTROPY_K_NEAREST_MIN, hi), min(k, hi))
 
 
 def nearest_centroids(unit: list[float], centroids: dict[int, list[float]], k: int) -> list[int]:
