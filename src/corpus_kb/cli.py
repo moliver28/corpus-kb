@@ -80,10 +80,15 @@ def _cli_error_exit(exc: BaseException) -> int | None:
 
     Covers the error classes a user can cause from the keyboard (unknown
     gate/proposal id, bad UUID, permission denied, system libpq too old);
-    unexpected bugs keep their traceback (review F-8).
+    unexpected bugs keep their traceback (review F-8). eventsourcing
+    re-wraps the driver error (``raise ProgrammingError(str(e)) from e``),
+    so the caught exception often carries no sqlstate itself — the matcher
+    walks the __cause__/__context__ chain and classifies the first
+    recognized database error (F-3 residual).
     """
     import asyncpg
     import psycopg
+    from eventsourcing.persistence import PersistenceError
 
     from corpus_kb.research import guide_copy
 
@@ -91,24 +96,38 @@ def _cli_error_exit(exc: BaseException) -> int | None:
         # unknown gate name, unknown proposal id, malformed UUID, bad decision
         print(f"ERROR: {exc}")
         return 1
-    if isinstance(exc, asyncpg.PostgresError):
-        denied = getattr(exc, "sqlstate", "") == "42501" or "permission denied" in str(exc)
-        if denied:
-            print(f"ERROR: Postgres permission denied: {exc}")
+
+    def denied(err: BaseException) -> bool:
+        return getattr(err, "sqlstate", "") == "42501" or "permission denied" in str(err)
+
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, asyncpg.PostgresError):
+            if denied(current):
+                print(f"ERROR: Postgres permission denied: {current}")
+                print(guide_copy.DB_PERMISSION_DENIED_HINT)
+            else:
+                print(f"ERROR: Postgres error: {current}")
+            return 1
+        if isinstance(current, psycopg.Error):
+            if isinstance(current, psycopg.NotSupportedError):
+                print(f"ERROR: {current}")
+                print(guide_copy.LIBPQ_TOO_OLD_HINT)
+            elif denied(current):
+                print(f"ERROR: Postgres permission denied: {current}")
+                print(guide_copy.DB_PERMISSION_DENIED_HINT)
+            else:
+                print(f"ERROR: database error: {current}")
+            return 1
+        if isinstance(current, PersistenceError) and denied(current):
+            # eventsourcing wrap whose driver error is not on the chain:
+            # the wrap's own message still names the denial
+            print(f"ERROR: Postgres permission denied: {current}")
             print(guide_copy.DB_PERMISSION_DENIED_HINT)
-        else:
-            print(f"ERROR: Postgres error: {exc}")
-        return 1
-    if isinstance(exc, psycopg.Error):
-        if isinstance(exc, psycopg.NotSupportedError):
-            print(f"ERROR: {exc}")
-            print(guide_copy.LIBPQ_TOO_OLD_HINT)
-        elif getattr(exc, "sqlstate", "") == "42501":
-            print(f"ERROR: Postgres permission denied: {exc}")
-            print(guide_copy.DB_PERMISSION_DENIED_HINT)
-        else:
-            print(f"ERROR: database error: {exc}")
-        return 1
+            return 1
+        current = current.__cause__ or current.__context__
     return None
 
 
