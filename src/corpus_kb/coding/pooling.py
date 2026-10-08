@@ -93,7 +93,9 @@ async def materialize_chunk_keyword_hits(
                 chunk_id = chunk["chunk_id"]
                 # Get chunk text for matching
                 chunk_text = await conn.fetchval(
-                    "SELECT text FROM chunks WHERE chunk_id = $1", chunk_id
+                    "SELECT text FROM chunks WHERE chunk_id = $1 AND tenant_id = $2",
+                    chunk_id,
+                    tenant_id,
                 )
 
                 if chunk_text and re.search(pattern, chunk_text, re.IGNORECASE):

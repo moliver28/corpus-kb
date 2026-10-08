@@ -17,6 +17,7 @@ DeferredTierError at the guard (no disabled stubs, no dead interfaces).
 
 from __future__ import annotations
 
+import inspect
 import math
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -54,7 +55,18 @@ def mutual_entailment_pairs(rationales: Sequence[str], nli: NLIJudge) -> list[tu
     pairs: list[tuple[int, int]] = []
     for i in range(len(rationales)):
         for j in range(i + 1, len(rationales)):
-            if nli(rationales[i], rationales[j]):
+            verdict = nli(rationales[i], rationales[j])
+            if inspect.iscoroutine(verdict):
+                # The live judge (nli_client.nli_mutual_entailment) is async;
+                # passing it unwrapped would make every pair truthy and rate
+                # every escalated unit SE=0. Fail loud instead (integration
+                # seam guard) and close the leaked coroutine.
+                verdict.close()
+                raise TypeError(
+                    "nli judge returned a coroutine - wrap the async judge "
+                    "(nli_client.nli_mutual_entailment) before passing it here"
+                )
+            if verdict:
                 pairs.append((i, j))
     return pairs
 
