@@ -37,7 +37,7 @@ async def test_doctor_cpu_only() -> None:
         patch.object(sys, "stdout", stdout_capture),
         patch.object(install_module.psutil, "virtual_memory", return_value=_Mem(total=4 * 1024**3)),
         patch.object(install_module.psutil, "cpu_count", return_value=2),
-        patch.object(install_module, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install_module, "_detect_gpu_vram_gb", return_value=(0.0, False)),
         patch.object(install_module, "check_postgres", return_value=(False, "no server")),
         patch.object(install_module, "check_ollama", return_value=(False, "no server")),
     ):
@@ -59,7 +59,7 @@ async def test_doctor_gpu_detected() -> None:
             install_module.psutil, "virtual_memory", return_value=_Mem(total=32 * 1024**3)
         ),
         patch.object(install_module.psutil, "cpu_count", return_value=16),
-        patch.object(install_module, "_detect_gpu_vram_gb", return_value=8.0),
+        patch.object(install_module, "_detect_gpu_vram_gb", return_value=(8.0, True)),
         patch.object(install_module, "check_postgres", return_value=(True, "PostgreSQL 17")),
         patch.object(install_module, "check_ollama", return_value=(True, "status 200")),
     ):
@@ -100,7 +100,7 @@ def _doctor_patches(
         patch.object(sys, "stdout", stdout_capture),
         patch.object(install_module.psutil, "virtual_memory", return_value=_Mem(total=4 * 1024**3)),
         patch.object(install_module.psutil, "cpu_count", return_value=2),
-        patch.object(install_module, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install_module, "_detect_gpu_vram_gb", return_value=(0.0, False)),
         patch.object(install_module, "check_ollama", return_value=(False, "no server")),
         patch.object(install_module, "check_extensions", return_value=extensions),
     )

@@ -54,7 +54,7 @@ async def test_setup_dry_run_lists_all_steps() -> None:
         patch.object(sys, "stdout", stdout_capture),
         patch.object(install.psutil, "virtual_memory", return_value=_Mem(8 * 1024**3)),
         patch.object(install.psutil, "cpu_count", return_value=4),
-        patch.object(install, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install, "_detect_gpu_vram_gb", return_value=(0.0, False)),
         patch.object(install, "_find_compose_command", return_value="docker compose"),
     ):
         result = await install.setup_cmd(config, dry_run=True, fresh=False)
@@ -93,7 +93,7 @@ async def test_setup_dry_run_build_local_lists_local_dockerfile() -> None:
         patch.object(sys, "stdout", stdout_capture),
         patch.object(install.psutil, "virtual_memory", return_value=_Mem(8 * 1024**3)),
         patch.object(install.psutil, "cpu_count", return_value=4),
-        patch.object(install, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install, "_detect_gpu_vram_gb", return_value=(0.0, False)),
         patch.object(install, "_find_compose_command", return_value="docker compose"),
     ):
         result = await install.setup_cmd(config, dry_run=True, fresh=False, build_local=True)
@@ -112,7 +112,7 @@ async def test_setup_dry_run_uses_default_dsn_when_missing() -> None:
         patch.object(sys, "stdout", stdout_capture),
         patch.object(install.psutil, "virtual_memory", return_value=_Mem(8 * 1024**3)),
         patch.object(install.psutil, "cpu_count", return_value=4),
-        patch.object(install, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install, "_detect_gpu_vram_gb", return_value=(0.0, False)),
     ):
         result = await install.setup_cmd({"installer": {}}, dry_run=True, fresh=False)
 
@@ -130,7 +130,7 @@ async def test_setup_dry_run_reports_missing_docker() -> None:
         patch.object(install, "_find_compose_command", return_value=None),
         patch.object(install.psutil, "virtual_memory", return_value=_Mem(8 * 1024**3)),
         patch.object(install.psutil, "cpu_count", return_value=4),
-        patch.object(install, "_detect_gpu_vram_gb", return_value=0.0),
+        patch.object(install, "_detect_gpu_vram_gb", return_value=(0.0, False)),
     ):
         result = await install.setup_cmd({"installer": {}}, dry_run=True, fresh=False)
 
