@@ -171,11 +171,12 @@ async def halt(
         action=action,
     )
     if halt_finding.gate == GATE_GRAY_ZONE_ESCALATION:
-        pending_ids = (
+        raw_ids = (
             halt_finding.detail.get("pending_ids")
             if isinstance(halt_finding.detail, dict)
             else None
         )
+        pending_ids = [str(item) for item in raw_ids] if isinstance(raw_ids, list) else []
         if pending_ids:
             print(guide_copy.CYCLE_PENDING_HEADER)
             for assignment_id in pending_ids:
