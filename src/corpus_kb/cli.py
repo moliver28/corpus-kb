@@ -65,7 +65,13 @@ async def _cli_approve(stage: str) -> bool:
     from corpus_kb.research import guide_copy
 
     print(guide_copy.CYCLE_APPROVAL_STAGE_HEADER.format(stage=stage))
-    reply = input(guide_copy.CYCLE_APPROVAL_PROMPT)
+    try:
+        reply = input(guide_copy.CYCLE_APPROVAL_PROMPT)
+    except (EOFError, OSError):
+        # Closed stdin (scripts, CI, detached editors) must not crash the
+        # boundary with a traceback: no answer is a denial, same as "n".
+        print(guide_copy.CYCLE_APPROVAL_NO_STDIN)
+        return False
     return reply.strip().lower() in ("y", "yes")
 
 
@@ -107,18 +113,27 @@ def _cli_error_exit(exc: BaseException) -> int | None:
 
 
 def _run_async(coro: object) -> int:
-    """asyncio.run with expected-error presentation (no raw tracebacks)."""
+    """asyncio.run with expected-error presentation and honest exit codes.
+
+    typer ignores a plain int return on failure paths, so BOTH failure shapes
+    must raise: mapped expected errors (clean message + hint) and non-zero
+    status codes from the coroutine (e.g. 2 = stage unavailable) exit with
+    their real code instead of a silent 0.
+    """
     import asyncio
     from collections.abc import Coroutine
     from typing import Any, cast
 
     try:
-        return asyncio.run(cast("Coroutine[Any, Any, int]", coro))
+        code = asyncio.run(cast("Coroutine[Any, Any, int]", coro))
     except Exception as exc:
-        code = _cli_error_exit(exc)
-        if code is None:
+        mapped = _cli_error_exit(exc)
+        if mapped is None:
             raise
-        raise typer.Exit(code=code) from None
+        raise typer.Exit(code=mapped) from None
+    if code:
+        raise typer.Exit(code=code)
+    return code
 
 
 @app.command()
@@ -422,9 +437,6 @@ def _inductive_coroutine(project_id: str | None):
             await docs.catch_up(reader, _tenant())
             await embeds.catch_up(reader, _tenant())
             print(json.dumps(summary, indent=2, default=str))
-            note = summary.get("note")
-            if note:
-                print(f"NOTE: {note}")
             if summary.get("status") == "unavailable":
                 return 2
             return 0 if summary.get("status") == "success" else 1
@@ -527,12 +539,10 @@ def research_demo() -> int:
     from corpus_kb.config import load_config
     from corpus_kb.research.demo import run_demo
 
-    # typer ignores a plain int return on failure paths - raise Exit so a
-    # failed demo (embedder preflight, missing review assignment) exits non-zero.
-    exit_code = _run_async(run_demo(load_config()))
-    if exit_code:
-        raise typer.Exit(code=exit_code)
-    return exit_code
+    # _run_async raises typer.Exit on any non-zero outcome (typer ignores a
+    # plain int return), so a failed demo (embedder preflight, missing review
+    # assignment) exits non-zero.
+    return _run_async(run_demo(load_config()))
 
 
 @research_app.command("cycle")
@@ -563,7 +573,9 @@ def research_cycle(
     can never be removed from the halt set. Resume by re-running this
     command after acting on the gate.
     """
-    exit_code = _run_async(
+    # _run_async raises typer.Exit on gate halts and denials (their exit
+    # codes are the cycle's contract), so reaching here means exit 0.
+    return _run_async(
         _cycle_coroutine(
             mode,
             project_id,
@@ -576,9 +588,6 @@ def research_cycle(
             watch,
         )
     )
-    if exit_code:
-        raise typer.Exit(code=exit_code)
-    return 0
 
 
 def _cycle_coroutine(

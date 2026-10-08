@@ -7,6 +7,8 @@ tests excluded). Todo-19 demo narration and todo-20 guided halts reuse
 these constants instead of duplicating prose.
 """
 
+from __future__ import annotations
+
 REPORT_TITLE = "Research governance report"
 REPORT_SUBTITLE = "One artifact for checkpoints, exhaustiveness, and codebook health."
 
@@ -500,4 +502,16 @@ DB_PERMISSION_DENIED_HINT = (
 LIBPQ_TOO_OLD_HINT = (
     "fix: pip install psycopg-binary (it bundles libpq >= 14; the system "
     "libpq is too old for the event store's pipeline mode - see docs/INSTALL.md)"
+)
+
+# Gray-zone halt remedy: the queue items themselves, so the human can work
+# them without hand-written SQL (the review CLI takes the assignment UUID).
+CYCLE_PENDING_HEADER = "Review-queue items awaiting your decision - resolve with:"
+CYCLE_PENDING_ITEM = (
+    "  corpus-kb review accept {assignment_id}    (or: review override {assignment_id})"
+)
+
+CYCLE_APPROVAL_NO_STDIN = (
+    "No interactive stdin available - treating this approval as denied. "
+    "Re-run with --mode out to run unattended, or from a terminal to approve."
 )

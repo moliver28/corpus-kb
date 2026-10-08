@@ -13,10 +13,10 @@ construction because :func:`effective_halt_on` unions the floor back in.
 
 Documented gate mappings (r11, no new math):
   * gray_zone_escalation fires on UNRESOLVED escalations (review-queue
-    items still pending a decision at gate-check; accepted/overridden
-    items no longer hold the cycle, review F-7) and ALSO on
-    conformal-coverage violations (empirical < nominal coverage from the
-    deductive run checkpoint);
+    items still pending a decision at gate-check; items resolved through
+    review accept (status='confirmed') or override no longer hold the
+    cycle, review F-7) and ALSO on conformal-coverage violations
+    (empirical < nominal coverage from the deductive run checkpoint);
   * drift_alarm ALSO fires on DBCV relative-validity drops >20%
     (the inductive engine's own ``dbcv_drop_flag``).
 """
@@ -160,7 +160,10 @@ def gate_from_theories(codes: list[dict[str, Any]]) -> list[GateFinding]:
 
 
 def gate_from_deductive(
-    summary: dict[str, Any], run_checkpoint: dict[str, Any] | None, pending_reviews: int = 0
+    summary: dict[str, Any],
+    run_checkpoint: dict[str, Any] | None,
+    pending_reviews: int = 0,
+    pending_ids: list[str] | None = None,
 ) -> list[GateFinding]:
     """Checkpoint after the deductive run: gray-zone escalation.
 
@@ -192,6 +195,7 @@ def gate_from_deductive(
             "; ".join(reasons),
             {
                 "pending_reviews": pending_reviews,
+                "pending_ids": list(pending_ids or []),
                 "routed_to_review": int(summary.get("review") or 0),
                 "conformal_nominal": (conformal or {}).get("nominal_coverage")
                 if isinstance(conformal, dict)

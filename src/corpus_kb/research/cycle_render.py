@@ -170,6 +170,16 @@ async def halt(
         exit_code=exit_code,
         action=action,
     )
+    if halt_finding.gate == GATE_GRAY_ZONE_ESCALATION:
+        pending_ids = (
+            halt_finding.detail.get("pending_ids")
+            if isinstance(halt_finding.detail, dict)
+            else None
+        )
+        if pending_ids:
+            print(guide_copy.CYCLE_PENDING_HEADER)
+            for assignment_id in pending_ids:
+                print(guide_copy.CYCLE_PENDING_ITEM.format(assignment_id=assignment_id))
     handler.stop_coding_run(tenant_id, run_id)
     return exit_code
 

@@ -46,7 +46,10 @@ async def gate_findings_for(
         run_id = receipt.get("run_id")
         checkpoint = await run_checkpoint(pool, tenant_id, UUID(str(run_id))) if run_id else {}
         pending = await pending_reviews(pool, tenant_id)
-        return gate_from_theories(codes) + gate_from_deductive(receipt, checkpoint, pending)
+        pending_ids = await pending_review_ids(pool, tenant_id)
+        return gate_from_theories(codes) + gate_from_deductive(
+            receipt, checkpoint, pending, pending_ids
+        )
     if stage == "report":
         return gate_from_report(receipt)
     return []
@@ -92,6 +95,25 @@ async def pending_reviews(pool: asyncpg.Pool, tenant_id: UUID) -> int:
             tenant_id,
         )
     return int(value or 0)
+
+
+async def pending_review_ids(pool: asyncpg.Pool, tenant_id: UUID, limit: int = 10) -> list[str]:
+    """Capped assignment UUIDs still awaiting a decision (halt listing).
+
+    The gray-zone halt prints these with the exact accept/override command so
+    the documented remedy never requires hand-written SQL.
+    """
+    from corpus_kb.storage.tenant_conn import tenant_connection
+
+    async with tenant_connection(pool, tenant_id) as conn:
+        rows = await conn.fetch(
+            "SELECT assignment_aggregate_id::text AS id FROM research_assignments "
+            "WHERE tenant_id = $1 AND status = 'review' "
+            "ORDER BY assignment_aggregate_id LIMIT $2",
+            tenant_id,
+            limit,
+        )
+    return [str(row["id"]) for row in rows]
 
 
 async def version_codes(pool: asyncpg.Pool, tenant_id: UUID, version_id: UUID) -> list[dict]:
