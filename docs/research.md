@@ -110,6 +110,8 @@ from the current run), not on the raw volume that routed to review.
 Once every escalation is accepted or overridden
 (`corpus-kb review accept|override`), the gate no longer holds the
 cycle and the resumed run completes with exit 0 and the report artifact.
+A later cycle that routes NEW units to review halts again — each
+escalation batch gets exactly one human pass.
 
 `--guide` upgrades stages and halts into taught decisions (what is
 happening, what to look at, proposed codes with example units, and
