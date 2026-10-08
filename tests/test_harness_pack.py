@@ -46,7 +46,7 @@ def test_registry_is_stdlib_only() -> None:
             assert node.module.split(".")[0] in allowed
 
 
-def test_five_active_wrappers_plus_two_planned() -> None:
+def test_six_active_wrappers_plus_one_planned() -> None:
     names = [w.name for w in reg.ACTIVE_WRAPPERS]
     assert names == [
         "corpus-ingest",
@@ -54,9 +54,10 @@ def test_five_active_wrappers_plus_two_planned() -> None:
         "corpus-codebook-promote",
         "corpus-research-report",
         "corpus-review",
+        "corpus-demo",
     ]
     planned = [w.name for w in reg.WRAPPERS if w.planned]
-    assert planned == ["corpus-demo", "corpus-research-cycle"]
+    assert planned == ["corpus-research-cycle"]
     assert len(reg.WRAPPERS) == 7
 
 
@@ -74,7 +75,11 @@ def test_wrapper_bodies_are_invocation_guidance_only() -> None:
 def test_every_surface_has_cli_and_mcp_name_in_lockstep() -> None:
     for surface in reg.SURFACES:
         assert surface.cli_path
-        assert surface.mcp_tool
+        if not surface.mcp_tool:
+            # r13: research-demo is CLI-ONLY - the ONLY row allowed an empty
+            # MCP-tool field (a demo tool would red validate-configs).
+            assert surface.name == "research-demo", surface.name
+            continue
         # r9 tool-name lockstep: every registry MCP tool is autoApprove-valid.
         assert surface.mcp_tool in validate_configs.VALID_TOOL_NAMES, surface.mcp_tool
 
