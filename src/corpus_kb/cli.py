@@ -55,6 +55,72 @@ def doctor() -> int:
     return install_main(["doctor"])
 
 
+async def _cli_approve(stage: str) -> bool:
+    """The on-mode CLI approval boundary: one blocking y/N prompt.
+
+    ASYNC by contract: cycle_render.approval awaits its ``approve`` argument,
+    so a sync prompt here crashed with "object bool can't be used in 'await'
+    expression" on BOTH approve and deny (review F-2).
+    """
+    from corpus_kb.research import guide_copy
+
+    print(guide_copy.CYCLE_APPROVAL_STAGE_HEADER.format(stage=stage))
+    reply = input(guide_copy.CYCLE_APPROVAL_PROMPT)
+    return reply.strip().lower() in ("y", "yes")
+
+
+def _cli_error_exit(exc: BaseException) -> int | None:
+    """Map an EXPECTED CLI failure to an exit code; None means re-raise.
+
+    Covers the error classes a user can cause from the keyboard (unknown
+    gate/proposal id, bad UUID, permission denied, system libpq too old);
+    unexpected bugs keep their traceback (review F-8).
+    """
+    import asyncpg
+    import psycopg
+
+    from corpus_kb.research import guide_copy
+
+    if isinstance(exc, ValueError):
+        # unknown gate name, unknown proposal id, malformed UUID, bad decision
+        print(f"ERROR: {exc}")
+        return 1
+    if isinstance(exc, asyncpg.PostgresError):
+        denied = getattr(exc, "sqlstate", "") == "42501" or "permission denied" in str(exc)
+        if denied:
+            print(f"ERROR: Postgres permission denied: {exc}")
+            print(guide_copy.DB_PERMISSION_DENIED_HINT)
+        else:
+            print(f"ERROR: Postgres error: {exc}")
+        return 1
+    if isinstance(exc, psycopg.Error):
+        if isinstance(exc, psycopg.NotSupportedError):
+            print(f"ERROR: {exc}")
+            print(guide_copy.LIBPQ_TOO_OLD_HINT)
+        elif getattr(exc, "sqlstate", "") == "42501":
+            print(f"ERROR: Postgres permission denied: {exc}")
+            print(guide_copy.DB_PERMISSION_DENIED_HINT)
+        else:
+            print(f"ERROR: database error: {exc}")
+        return 1
+    return None
+
+
+def _run_async(coro: object) -> int:
+    """asyncio.run with expected-error presentation (no raw tracebacks)."""
+    import asyncio
+    from collections.abc import Coroutine
+    from typing import Any, cast
+
+    try:
+        return asyncio.run(cast("Coroutine[Any, Any, int]", coro))
+    except Exception as exc:
+        code = _cli_error_exit(exc)
+        if code is None:
+            raise
+        raise typer.Exit(code=code) from None
+
+
 @app.command()
 def start(
     transport: str = typer.Option("http", "--transport", help="Server transport"),
@@ -93,7 +159,6 @@ def _review_command(decision: str):
         ),
     ) -> int:
         """Record one reviewer decision and advance the projections."""
-        import asyncio
         import json
 
         from corpus_kb.config import load_config
@@ -124,7 +189,7 @@ def _review_command(decision: str):
             finally:
                 await pool.close()
 
-        return asyncio.run(_run())
+        return _run_async(_run())
 
     return _cmd
 
@@ -144,9 +209,7 @@ def coding_run(
     ),
 ) -> int:
     """Deductive coding run (v5 §8): three-view scoring + calibrated thresholds."""
-    import asyncio
-
-    return asyncio.run(_coding_run_coroutine(codebook_version_id, project_id, alpha))
+    return _run_async(_coding_run_coroutine(codebook_version_id, project_id, alpha))
 
 
 def _coding_run_coroutine(codebook_version_id: str, project_id: str | None, alpha: float):
@@ -291,9 +354,7 @@ def research_ingest_transcript(
 ) -> int:
     """Ingest one transcript: turns -> roles -> exchanges -> event stream."""
 
-    import asyncio
-
-    return asyncio.run(_ingest_coroutine(path, project_id, watch=False, force=force))
+    return _run_async(_ingest_coroutine(path, project_id, watch=False, force=force))
 
 
 @research_app.command("ingest")
@@ -304,9 +365,7 @@ def research_ingest(
     force: bool = typer.Option(False, "--force", help="Re-ingest even if file hash unchanged"),
 ) -> int:
     """Dynamic ingestion with separate file-hash and text-hash dedup."""
-    import asyncio
-
-    return asyncio.run(_ingest_coroutine(path, project_id, watch=watch, force=force))
+    return _run_async(_ingest_coroutine(path, project_id, watch=watch, force=force))
 
 
 @coding_app.command("inductive")
@@ -314,9 +373,7 @@ def coding_inductive(
     project_id: str = typer.Option(None, "--project-id", help="Restrict to one project"),
 ) -> int:
     """Inductive pass (v5 §9): summaries -> UMAP/HDBSCAN -> proposed codes."""
-    import asyncio
-
-    return asyncio.run(_inductive_coroutine(project_id))
+    return _run_async(_inductive_coroutine(project_id))
 
 
 def _inductive_coroutine(project_id: str | None):
@@ -365,6 +422,9 @@ def _inductive_coroutine(project_id: str | None):
             await docs.catch_up(reader, _tenant())
             await embeds.catch_up(reader, _tenant())
             print(json.dumps(summary, indent=2, default=str))
+            note = summary.get("note")
+            if note:
+                print(f"NOTE: {note}")
             if summary.get("status") == "unavailable":
                 return 2
             return 0 if summary.get("status") == "success" else 1
@@ -387,9 +447,7 @@ def codebook_promote(
     ),
 ) -> int:
     """Promote one proposed code into a NEW codebook version (human gate)."""
-    import asyncio
-
-    return asyncio.run(
+    return _run_async(
         _promote_coroutine(proposed_id, name, definition, inclusion, exclusion, label, tau_dup)
     )
 
@@ -465,14 +523,13 @@ def _promote_coroutine(
 @research_app.command("demo")
 def research_demo() -> int:
     """Narrated end-to-end pipeline on the bundled demo corpus (CLI only)."""
-    import asyncio
 
     from corpus_kb.config import load_config
     from corpus_kb.research.demo import run_demo
 
     # typer ignores a plain int return on failure paths - raise Exit so a
     # failed demo (embedder preflight, missing review assignment) exits non-zero.
-    exit_code = asyncio.run(run_demo(load_config()))
+    exit_code = _run_async(run_demo(load_config()))
     if exit_code:
         raise typer.Exit(code=exit_code)
     return exit_code
@@ -506,16 +563,7 @@ def research_cycle(
     can never be removed from the halt set. Resume by re-running this
     command after acting on the gate.
     """
-    import asyncio
-
-    from corpus_kb.research import guide_copy
-
-    def _approve(stage: str) -> bool:
-        print(guide_copy.CYCLE_APPROVAL_STAGE_HEADER.format(stage=stage))
-        reply = input(guide_copy.CYCLE_APPROVAL_PROMPT)
-        return reply.strip().lower() in ("y", "yes")
-
-    exit_code = asyncio.run(
+    exit_code = _run_async(
         _cycle_coroutine(
             mode,
             project_id,
@@ -524,7 +572,7 @@ def research_cycle(
             codebook_version_id,
             guide,
             json_output,
-            _approve,
+            _cli_approve,
             watch,
         )
     )
@@ -598,9 +646,7 @@ def research_ask(
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> int:
     """Grounded notebook Q&A: every sentence carries exchange-level citations."""
-    import asyncio
-
-    return asyncio.run(
+    return _run_async(
         _ask_coroutine(
             question,
             project_id,
@@ -731,9 +777,7 @@ def research_evidence(
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> int:
     """Evidence for code X: ranked units with disagreement/moderator/conformal flags."""
-    import asyncio
-
-    return asyncio.run(_evidence_coroutine(code, project_id, version_id, limit, json_output))
+    return _run_async(_evidence_coroutine(code, project_id, version_id, limit, json_output))
 
 
 def _evidence_coroutine(
@@ -808,9 +852,7 @@ def research_uncoded(
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> int:
     """Uncoded/residual units ranked by nearest-code margin (missing-code radar)."""
-    import asyncio
-
-    return asyncio.run(_uncoded_coroutine(project_id, version_id, k, json_output))
+    return _run_async(_uncoded_coroutine(project_id, version_id, k, json_output))
 
 
 def _uncoded_coroutine(project_id: str | None, version_id: str | None, k: int, json_output: bool):
@@ -869,9 +911,7 @@ def research_overlap(
     json_output: bool = typer.Option(False, "--json", help="Machine-readable output"),
 ) -> int:
     """Code overlap: flagged pairs + shared-unit confusion + borderline units."""
-    import asyncio
-
-    return asyncio.run(_overlap_coroutine(project_id, version_id, json_output))
+    return _run_async(_overlap_coroutine(project_id, version_id, json_output))
 
 
 def _overlap_coroutine(project_id: str | None, version_id: str | None, json_output: bool):
@@ -937,9 +977,7 @@ def research_report(
     json_output: bool = typer.Option(False, "--json", help="Machine-readable full schema"),
 ) -> int:
     """Emit the governance report (v5 §11/§13/§14 in ONE artifact)."""
-    import asyncio
-
-    return asyncio.run(_report_coroutine(codebook_version_id, project_id, level, json_output))
+    return _run_async(_report_coroutine(codebook_version_id, project_id, level, json_output))
 
 
 def _report_coroutine(
