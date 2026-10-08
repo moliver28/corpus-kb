@@ -16,6 +16,7 @@ from unittest.mock import patch
 from uuid import UUID
 
 import asyncpg
+import eventsourcing.persistence
 import psycopg
 import pytest
 
@@ -269,6 +270,69 @@ def test_error_maps_libpq_too_old_with_binary_hint(capsys: pytest.CaptureFixture
     exc = psycopg.NotSupportedError(
         "the feature 'Connection.pipeline()' is not supported by this installation"
     )
+    code = cli._cli_error_exit(exc)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "psycopg-binary" in out
+
+
+def test_error_maps_eventsourcing_wrapped_permission_denied(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The real under-granted-demo wrap: eventsourcing re-raises the driver
+    # error as ProgrammingError(str(e)) from e, so the CLI sees
+    # eventsourcing.persistence.ProgrammingError — not the psycopg
+    # exception itself (review F-3 residual).
+    try:
+        try:
+            raise psycopg.errors.InsufficientPrivilege("permission denied for schema public")
+        except psycopg.Error as e:
+            raise eventsourcing.persistence.ProgrammingError(str(e)) from e
+    except Exception as exc:
+        code = cli._cli_error_exit(exc)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "permission denied for schema public" in out
+    assert "GRANT CREATE ON SCHEMA public TO corpus_user" in out
+
+
+def test_error_maps_eventsourcing_message_only_permission_denied(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Wrap without a usable driver error on the chain: the wrap's own
+    # message still identifies the denial.
+    exc = eventsourcing.persistence.IntegrityError("permission denied for table events")
+    code = cli._cli_error_exit(exc)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "GRANT CREATE ON SCHEMA public TO corpus_user" in out
+
+
+def test_error_maps_eventsourcing_operational_error_as_database_error(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # Implicit __context__ chain: OperationalError wraps a plain
+    # connection failure — presented cleanly, WITHOUT the grant hint.
+    driver = psycopg.OperationalError("connection refused")
+    exc = eventsourcing.persistence.OperationalError(str(driver))
+    exc.__context__ = driver
+    code = cli._cli_error_exit(exc)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR: database error: connection refused" in out
+    assert "GRANT CREATE" not in out
+
+
+def test_error_maps_eventsourcing_libpq_too_old_via_cause_chain(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # The wrap message alone does not name libpq; the matcher must reach
+    # the psycopg.NotSupportedError on the cause chain for the binary hint.
+    driver = psycopg.NotSupportedError(
+        "the feature 'Connection.pipeline()' is not supported by this installation"
+    )
+    exc = eventsourcing.persistence.NotSupportedError(str(driver))
+    exc.__cause__ = driver
     code = cli._cli_error_exit(exc)
     out = capsys.readouterr().out
     assert code == 1
