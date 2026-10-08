@@ -104,6 +104,13 @@ resume, act on the gate, then re-run the same command - the new cycle
 run continues after the last checkpoint and never re-halts on the SAME
 gate it halted on.
 
+The `gray_zone_escalation` gate is CONVERGENT: it fires on review-queue
+items that still await a decision (plus conformal-coverage violations
+from the current run), not on the raw volume that routed to review.
+Once every escalation is accepted or overridden
+(`corpus-kb review accept|override`), the gate no longer holds the
+cycle and the resumed run completes with exit 0 and the report artifact.
+
 `--guide` upgrades stages and halts into taught decisions (what is
 happening, what to look at, proposed codes with example units, and
 promote-vs-skip consequences); `--json` emits one machine-readable

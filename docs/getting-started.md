@@ -48,6 +48,50 @@ automated step would silently corrupt the research record:
   (`corpus-kb review accept`) or overruled (`corpus-kb review override`);
   overrides feed threshold refits and the G3 audit.
 
+## Before you start: a database and an embedder
+
+The research pipeline needs two things on your machine before any command
+works, and `corpus-kb doctor` verifies both (read-only diagnostics).
+
+**1. A Postgres database.** Two first-class paths - pick whichever fits your
+machine:
+
+- **Docker path** (recommended if you have Docker):
+  `corpus-kb setup` starts a bundled Postgres stack, creates the database,
+  and runs migrations. Follow [INSTALL.md](INSTALL.md) if Docker is absent.
+- **Bring-your-own path** (no Docker needed): point Corpus-KB at any
+  Postgres 15+ server you already run by setting one environment variable:
+
+  ```bash
+  export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
+  ```
+
+  Every research command and `corpus-kb doctor` honor it - doctor probes
+  THAT deployment. The database user needs the grants from
+  [INSTALL.md step 2](INSTALL.md) (on PostgreSQL 15+ the `GRANT CREATE ON
+  SCHEMA public` line is required).
+
+**2. A research-grade embedder.** Research embeddings require at least
+1024 dimensions; the default `nomic-embed-text` (768) is not enough and the
+pipeline abstains (returns no vectors) rather than pad. Pull the embedder
+and point the config at it:
+
+```bash
+ollama pull qwen3-embedding:8b-q8_0
+```
+
+```yaml
+embedding:
+  provider: ollama
+  model: qwen3-embedding:8b-q8_0
+  base_url: http://localhost:11434
+  dimensions: 4096
+```
+
+`corpus-kb doctor` reports the embedder config status with the exact fix
+when something is off. The demo fail-fasts with the same guidance if the
+configured embedder would abstain.
+
 ## Run the demo
 
 The fastest way to see the whole pipeline is the narrated demo. It bundles a
@@ -59,8 +103,9 @@ notebook answer, explaining each stage as it goes (~5 minutes):
 corpus-kb research demo
 ```
 
-No arguments are needed beyond `corpus-kb setup`. Re-runs are safe: file and
-text hashes make already-ingested files no-ops.
+With the database and embedder from the previous section in place, no other
+arguments are needed. Re-runs are safe: file and text hashes make
+already-ingested files no-ops.
 
 ## Ingest your first transcript
 
@@ -88,6 +133,9 @@ Two ways to get a codebook version:
    `corpus-kb coding inductive` clusters the corpus and proposes codes; then
    promote with:
    `corpus-kb codebook promote --proposed-id <id> --name "Code name" --definition "..."`.
+   Small or homogeneous corpora may produce zero proposals (every unit
+   clusters to noise) - the command says so honestly and suggests adding
+   transcripts or seeding directly, which is option 2.
 2. **Direct seeding** from your own gold exemplars, as the demo does: codes
    need gold exemplar passages (quoted verbatim from your transcripts) so the
    deductive run can build prototypes.
