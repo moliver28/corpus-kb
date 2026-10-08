@@ -105,3 +105,14 @@ def test_gray_zone_halt_lists_pending_review_commands(
     out = captured.getvalue()
     assert guide_copy.CYCLE_PENDING_HEADER in out
     assert f"corpus-kb review accept {assignment_id}" in out
+
+
+def test_root_transport_stdio_fails_honestly() -> None:
+    """The mcp-configs invoke `corpus-kb --transport stdio`; until the MCP
+    server exists the CLI must exit cleanly (2) with guidance instead of
+    typer's "no such option" crash."""
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(cli.app, ["--transport", "stdio"])
+    assert result.exit_code == 2
+    assert "does not yet speak MCP over stdio" in result.output
