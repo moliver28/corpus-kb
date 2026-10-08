@@ -554,9 +554,9 @@
   },
   {
     "name": "platformdirs",
-    "version": "4.12.3",
+    "version": "4.12.4",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/platformdirs/4.12.3/",
+    "homepage": "https://pypi.org/project/platformdirs/4.12.4/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
