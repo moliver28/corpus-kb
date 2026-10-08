@@ -106,7 +106,10 @@ async def test_lib_schema_is_topic_state_notification_id(superuser):
 async def test_read_path_decodes_via_mapper(pool, reader_and_app):
     reader, _ = reader_and_app
     doc_id, _doc2 = await _save_two_documents()
-    notifications = await reader.read_since(0, limit=100)
+    # The head window is shared with every earlier file in the session (demo
+    # transcripts, cycle-fixture ingests), so read deep enough to always
+    # contain THIS test's documents instead of a fixed small tail.
+    notifications = await reader.read_since(0, limit=10000)
     topics = [n.topic for n in notifications]
     assert any(
         n.topic.endswith("Document.Ingested") and str(n.originator_id) == str(doc_id)
