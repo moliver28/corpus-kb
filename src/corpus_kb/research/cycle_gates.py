@@ -12,8 +12,11 @@ may only ADD gates — removing the floor from config is a no-op by
 construction because :func:`effective_halt_on` unions the floor back in.
 
 Documented gate mappings (r11, no new math):
-  * gray_zone_escalation ALSO fires on conformal-coverage violations
-    (empirical < nominal coverage from the deductive run checkpoint);
+  * gray_zone_escalation fires on UNRESOLVED escalations (review-queue
+    items still pending a decision at gate-check; accepted/overridden
+    items no longer hold the cycle, review F-7) and ALSO on
+    conformal-coverage violations (empirical < nominal coverage from the
+    deductive run checkpoint);
   * drift_alarm ALSO fires on DBCV relative-validity drops >20%
     (the inductive engine's own ``dbcv_drop_flag``).
 """
@@ -157,15 +160,18 @@ def gate_from_theories(codes: list[dict[str, Any]]) -> list[GateFinding]:
 
 
 def gate_from_deductive(
-    summary: dict[str, Any], run_checkpoint: dict[str, Any] | None
+    summary: dict[str, Any], run_checkpoint: dict[str, Any] | None, pending_reviews: int = 0
 ) -> list[GateFinding]:
     """Checkpoint after the deductive run: gray-zone escalation.
 
-    Fires when any assignment routed to review (the gray-zone minority) OR
-    the run's conformal block shows empirical coverage below nominal (the
-    documented conformal-coverage mapping, r11).
+    Fires on UNRESOLVED escalations only (review F-7): review-queue items
+    still PENDING a human decision (status='review') at gate-check, or this
+    run's conformal-coverage violation (the documented conformal mapping,
+    r11). Volume that merely routed to review but was since accepted or
+    overridden no longer holds the cycle - otherwise exit 0 is unreachable
+    on all-review corpora and the documented remedy ("work the queue, then
+    resume") could never converge.
     """
-    review = int(summary.get("review") or 0)
     violation = False
     conformal = (run_checkpoint or {}).get("conformal")
     if isinstance(conformal, dict):
@@ -173,11 +179,11 @@ def gate_from_deductive(
         empirical = conformal.get("empirical_coverage")
         if isinstance(nominal, (int, float)) and isinstance(empirical, (int, float)):
             violation = float(empirical) < float(nominal)
-    if review <= 0 and not violation:
+    if pending_reviews <= 0 and not violation:
         return []
     reasons = []
-    if review > 0:
-        reasons.append(f"{review} assignment(s) routed to review")
+    if pending_reviews > 0:
+        reasons.append(f"{pending_reviews} review-queue item(s) still await a decision")
     if violation:
         reasons.append("conformal empirical coverage below nominal")
     return [
@@ -185,7 +191,8 @@ def gate_from_deductive(
             GATE_GRAY_ZONE_ESCALATION,
             "; ".join(reasons),
             {
-                "review": review,
+                "pending_reviews": pending_reviews,
+                "routed_to_review": int(summary.get("review") or 0),
                 "conformal_nominal": (conformal or {}).get("nominal_coverage")
                 if isinstance(conformal, dict)
                 else None,
