@@ -68,13 +68,14 @@ async def load_irr_sheets(
         human_entries.append(
             {"segment_id": unit_id, "assignments": [{"code_id": c} for c in human_codes]}
         )
-        for code_id in sorted(set(reviewed_codes) | set(model_codes)):
-            if code_id not in reviewed_codes:
-                continue
+        for code_id in sorted(reviewed_codes):
+            # The model rated 1 (the assignment row exists - that is why the
+            # unit routed to review); the human decision is the second rating.
+            # Accept = both raters applied -> (0, 2, 2); override = model 1,
+            # human 0 -> (1, 1, 2). Any other encoding zeroes the agreeing
+            # pairs in gwet_ac1's (n_u0, n_u1, m_u) triples and forces Pa=0.
             human_applied = code_id in human_codes
-            units_by_code.setdefault(code_id, []).append(
-                (0 if human_applied else 1, 1 if human_applied else 0, 2)
-            )
+            units_by_code.setdefault(code_id, []).append((0, 2, 2) if human_applied else (1, 1, 2))
     sheets = [
         {"coder": "model", "entries": model_entries},
         {"coder": "human", "entries": human_entries},
