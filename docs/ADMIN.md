@@ -67,9 +67,10 @@ CONSTANTS on purpose — only governance knobs live here.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `model_revision` | `1024` | G1-promotable embedders emit exactly 1024 dims |
-| `strategy` | `naive-prefix` | G1 arm winner: `late-chunk` or `naive-prefix` |
 | `dimensions` | `1024` | Promotion guard: non-1024 winners HALT, never silent-pad |
+
+The embedding strategy (G1 winner: naive-prefix) and the `"1024"` row
+revision tag are fixed in code — deliberately not configuration.
 
 #### research.ingest
 
