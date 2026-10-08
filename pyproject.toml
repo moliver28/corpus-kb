@@ -30,10 +30,13 @@ dependencies = [
     "eventsourcing[postgres]>=9.0",
     # Deliberate "no new REQUIRED deps" deviation (review F-4): fresh installs
     # bind the system libpq via wheel-less psycopg and crash at the first
-    # event-store write (Connection.pipeline() needs libpq >= 14). The wheel
-    # distribution bundles libpq 17. License: LGPL-3.0 WITH the psycopg
-    # exception (distribution permitted); licenses.lock.json regenerated.
-    "psycopg-binary>=3.1",
+    # event-store write (Connection.pipeline() needs libpq >= 14). Declaring
+    # psycopg[binary] pulls BOTH the psycopg package (imported directly by the
+    # CLI error handler, previously only a transitive of eventsourcing[postgres])
+    # and the wheel distribution that bundles libpq 17. License: LGPL-3.0 WITH
+    # the psycopg exception (distribution permitted); licenses.lock.json
+    # regenerated.
+    "psycopg[binary]>=3.1",
     "starlette>=0.35",
     "typer>=0.15",
     "uvicorn>=0.24",

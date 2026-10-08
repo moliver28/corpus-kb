@@ -317,7 +317,9 @@ async def test_install_database_permission_failure_prints_grant_fix(
 
 def test_psycopg_binary_is_a_declared_dependency() -> None:
     text = (REPO / "pyproject.toml").read_text(encoding="utf-8")
-    assert "psycopg-binary>=3.1" in text
+    # psycopg[binary] declares BOTH the psycopg package (imported by the CLI
+    # error handler) and the wheel that bundles libpq >= 14.
+    assert "psycopg[binary]>=3.1" in text
 
 
 # ---------------------------------------------------------------------------
