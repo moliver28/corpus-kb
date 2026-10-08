@@ -414,6 +414,13 @@ async def _grow(
     early_reclusters = 0
     current_centroids = centroids
     max_drift: float | None = None
+    # Streaming cursor: assigned[i] is always the label of observations[i].
+    # A mid-loop re-cluster reseeds labels for EVERY observation, so after
+    # one, subsequent units must be written IN PLACE at their cursor instead
+    # of appended - appending grew assigned past len(observations), which
+    # crashed centroids_in_original_space with IndexError and double-counted
+    # post-refresh units into the centroids.
+    processed = len(pilot_labels)
     assigned: list[int] = list(pilot_labels)
     for start in range(0, len(remaining), INCREMENTAL_BATCH_SIZE):
         batch = remaining[start : start + INCREMENTAL_BATCH_SIZE]
@@ -427,10 +434,12 @@ async def _grow(
                 assignments, entropy = soft_assignment_entropy(obs["embedding"], current_centroids)
                 k = clamp_k(3, len(current_centroids))
                 labels_touched.update(nearest)
-                if nearest:
-                    assigned.append(nearest[0])
+                label = nearest[0] if nearest else NOISE_LABEL
+                if len(assigned) > processed:
+                    assigned[processed] = label
                 else:
-                    assigned.append(NOISE_LABEL)
+                    assigned.append(label)
+                processed += 1
                 if is_high_entropy(entropy, k, threshold) and llm is not None:
                     high_entropy += 1
                     question, answer = await _pair_texts(conn, tenant_id, obs["unit_id"])
@@ -481,7 +490,7 @@ async def _grow(
             if early:
                 early_reclusters += 1
             refreshed = cluster_embeddings([o["embedding"] for o in observations], **pins)
-            assigned = refreshed.labels
+            assigned = list(refreshed.labels)
             current_centroids = centroids_in_original_space(
                 [o["embedding"] for o in observations], assigned
             )
