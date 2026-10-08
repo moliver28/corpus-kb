@@ -60,6 +60,7 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "notebook_evidence",
         "notebook_uncoded",
         "notebook_overlap",
+        "research_cycle",
     }
 )
 

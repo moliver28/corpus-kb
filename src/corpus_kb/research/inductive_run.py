@@ -493,7 +493,7 @@ async def _pair_texts(conn: asyncpg.Connection, tenant_id: UUID, unit_id: int) -
         LEFT JOIN LATERAL (
             SELECT text FROM research_units
             WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
-              AND role_in_exchange = 'question'
+              AND role_in_exchange IN ('question', 'main_question')
             ORDER BY seq LIMIT 1
         ) q ON TRUE
         WHERE u.tenant_id = $1 AND u.unit_id = $2

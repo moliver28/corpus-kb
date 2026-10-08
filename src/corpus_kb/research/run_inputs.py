@@ -46,7 +46,7 @@ JOIN documents d
 LEFT JOIN LATERAL (
     SELECT embedding FROM research_units
     WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
-      AND role_in_exchange = 'question' AND embedding IS NOT NULL
+      AND role_in_exchange IN ('question', 'main_question') AND embedding IS NOT NULL
     ORDER BY seq LIMIT 1
 ) q ON TRUE
 WHERE u.tenant_id = $1 AND u.is_codable AND u.role_in_exchange = 'answer'
@@ -65,7 +65,7 @@ JOIN documents d
 LEFT JOIN LATERAL (
     SELECT embedding FROM research_units
     WHERE exchange_id = u.exchange_id AND tenant_id = u.tenant_id
-      AND role_in_exchange = 'question' AND embedding IS NOT NULL
+      AND role_in_exchange IN ('question', 'main_question') AND embedding IS NOT NULL
     ORDER BY seq LIMIT 1
 ) q ON TRUE
 WHERE u.tenant_id = $1 AND u.text_sha256::text = ANY($2::text[])

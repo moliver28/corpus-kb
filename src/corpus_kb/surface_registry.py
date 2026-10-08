@@ -110,6 +110,15 @@ SURFACES: tuple[Surface, ...] = (
         mcp_tool="notebook_overlap",
         description="Code overlap: flagged pairs, confusion, borderline-margin units.",
     ),
+    Surface(
+        name="research-cycle",
+        cli_path="research cycle",
+        mcp_tool="research_cycle",
+        description=(
+            "Research cycle (todo 20): the full pipeline with in/on/out-of-loop "
+            "postures and human-critical halt gates (promotion is hard-floored)."
+        ),
+    ),
     # CLI-ONLY (r13): no MCP tool - agents do not need a narrated demo, and a
     # tool here would red validate-configs/agent-config-consistency untouched
     # by this surface. Empty mcp_tool renders as (none) in the CLAUDE.md table.
@@ -237,6 +246,46 @@ corpus-kb research demo
 - CLI-only by design; all flags: `corpus-kb research demo --help`
 """
 
+_CYCLE_BODY = """# corpus-research-cycle — the full pipeline with human-critical gates
+
+Chain ingest -> inductive -> deductive -> keywords -> report without
+writing a step script. The cycle HALTS at human-critical gates -
+`codebook_promotion` is hard-floored (promotion is never automated) -
+prints `AWAITING HUMAN: <gate>` plus the exact next command, and resumes
+when you re-run it after acting on the gate.
+
+Postures:
+
+- Fully in the loop - exactly ONE stage per call:
+
+  ```
+  corpus-kb research cycle --mode in
+  ```
+
+- On the loop - one stage, then it asks before continuing:
+
+  ```
+  corpus-kb research cycle --mode on [--guide]
+  ```
+
+- Out of the loop - unattended except at the halt gates:
+
+  ```
+  corpus-kb research cycle --mode out --dir <drop-dir> --question "<q>" [--guide]
+  ```
+
+- Watch a drop directory in the foreground (re-arms on new files):
+
+  ```
+  corpus-kb research cycle --mode out --watch <dir>
+  ```
+
+- `--guide` turns every halt into a taught decision (proposed codes,
+  example units, promote-vs-skip consequences); `--json` emits one
+  stage/gate event per line for agents.
+- All flags: `corpus-kb research cycle --help`
+"""
+
 WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-ingest",
@@ -289,10 +338,10 @@ WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-research-cycle",
         title="corpus-research-cycle",
-        description="Run the research cycle with in/on/out-of-loop postures (lands with todo 20)",
-        argument_hint="--mode in|on|out",
-        body="(planned: lands with todo 20 — corpus-kb research cycle)",
-        planned=True,
+        description="Run the research cycle with in/on/out-of-loop postures and halt gates",
+        argument_hint="--mode in|on|out [--guide] [--watch <dir>]",
+        body=_CYCLE_BODY,
+        covers=("research-cycle",),
     ),
 )
 
@@ -356,11 +405,9 @@ def claudemd_section() -> str:
                 f"| `{wrapper.name}` | `corpus-kb {surface.cli_path}` "
                 f"| {tool} | {surface.description} |"
             )
-    planned = ", ".join(f"`{w.name}`" for w in WRAPPERS if w.planned)
-    lines += [
-        "",
-        f"Planned wrappers (not emitted yet): {planned}.",
-        CLAUDEMD_END,
-        "",
-    ]
+    planned = [w for w in WRAPPERS if w.planned]
+    if planned:
+        names = ", ".join(f"`{w.name}`" for w in planned)
+        lines += ["", f"Planned wrappers (not emitted yet): {names}."]
+    lines += [CLAUDEMD_END, ""]
     return "\n".join(lines)

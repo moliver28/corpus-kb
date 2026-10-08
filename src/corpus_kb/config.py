@@ -231,6 +231,18 @@ def get_default_config() -> dict[str, object]:
                 "centroid_drift_threshold": 0.15,
                 "tau_dup": 0.85,
             },
+            "cycle": {
+                # codebook_promotion is HARD-FLOORED (never removable);
+                # this list may only ADD halt gates.
+                "halt_on": [
+                    "interpretive_code_review",
+                    "gray_zone_escalation",
+                    "drift_alarm",
+                    "overlap_conflict",
+                    "threshold_unreliable",
+                    "human_parity_breach",
+                ],
+            },
         },
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",

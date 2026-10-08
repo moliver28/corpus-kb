@@ -46,7 +46,7 @@ def test_registry_is_stdlib_only() -> None:
             assert node.module.split(".")[0] in allowed
 
 
-def test_six_active_wrappers_plus_one_planned() -> None:
+def test_seven_active_wrappers_after_todo20() -> None:
     names = [w.name for w in reg.ACTIVE_WRAPPERS]
     assert names == [
         "corpus-ingest",
@@ -55,9 +55,9 @@ def test_six_active_wrappers_plus_one_planned() -> None:
         "corpus-research-report",
         "corpus-review",
         "corpus-demo",
+        "corpus-research-cycle",
     ]
-    planned = [w.name for w in reg.WRAPPERS if w.planned]
-    assert planned == ["corpus-research-cycle"]
+    assert [w.name for w in reg.WRAPPERS if w.planned] == []
     assert len(reg.WRAPPERS) == 7
 
 
@@ -195,4 +195,5 @@ def test_registry_covers_all_todo_surfaces() -> None:
         "notebook-evidence",
         "notebook-uncoded",
         "notebook-overlap",
+        "research-cycle",
     } <= names

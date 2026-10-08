@@ -75,6 +75,18 @@ research:
     recluster_every_batches: 8  # full re-cluster cadence (v5 9.5: every 5-10 batches)
     centroid_drift_threshold: 0.15  # mean cosine drift between snapshots -> early refresh
     tau_dup: 0.85               # promote-time duplicate gate (calibrated from gold when available)
+  cycle:
+    # Human-critical gates for `research cycle --mode out` (todo 20).
+    # halt_on may only ADD gates: codebook_promotion is HARD-FLOORED
+    # (v5 §9.6/§14 - promotion is NEVER automated), so removing it here
+    # changes nothing. Unknown gate names are rejected at run time.
+    halt_on:
+      - interpretive_code_review
+      - gray_zone_escalation   # incl. conformal-coverage violations
+      - drift_alarm            # incl. DBCV >20% cluster-validity drops
+      - overlap_conflict
+      - threshold_unreliable
+      - human_parity_breach    # LLM-vs-human alpha < 0.60 -> human-only routing
 
 routing:
   enabled: true
