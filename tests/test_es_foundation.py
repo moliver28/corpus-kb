@@ -113,9 +113,20 @@ async def test_read_path_decodes_via_mapper(pool, reader_and_app):
         for n in notifications
     )
     assert all(":" in t for t in topics)
-    ingested = next(n for n in notifications if n.event_type == "Document.Ingested")
+    # Scope the decode asserts to THIS test's documents: the shared session
+    # store may hold earlier files' Ingested events (e.g. the demo's default-
+    # tenant transcripts), so "first Ingested in the window" is not ours.
+    ingested = next(
+        n
+        for n in notifications
+        if n.event_type == "Document.Ingested" and str(n.originator_id) == str(doc_id)
+    )
     assert UUID(str(ingested.event.tenant_id)) == TENANT
-    added = next(n for n in notifications if n.event_type == "Document.ChunksAdded")
+    added = next(
+        n
+        for n in notifications
+        if n.event_type == "Document.ChunksAdded" and str(n.originator_id) == str(doc_id)
+    )
     assert added.event.chunk_texts[0].startswith("Moderator:")
 
 

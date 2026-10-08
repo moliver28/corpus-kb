@@ -285,7 +285,7 @@ async def test_watch_once_ingests_dropped_file(research_pool, tmp_path):
 
 async def test_concurrent_assignment_dispatch_no_contention(research_pool):
 
-    _, _, handler, _ = await _wire(research_pool)
+    reader, projection, handler, _ = await _wire(research_pool)
     run = handler.start_coding_run(TENANT)
     run_id = UUID(str(run["run_id"]))
     import asyncio
@@ -304,3 +304,10 @@ async def test_concurrent_assignment_dispatch_no_contention(research_pool):
         )
     )
     assert all(r["status"] == "success" for r in results)
+    # Drain THIS test's own events through the shared projection before
+    # returning: the unit_id 1000+ rows deliberately violate
+    # research_assignments_unit_id_fkey and DLQ on projection. If a later
+    # test's catch_up advanced the shared checkpoint past them, its
+    # before/after DLQ snapshot would wrongly attribute these rows
+    # (documented combo flake - DLQ them here, where they belong).
+    await projection.catch_up(reader)
