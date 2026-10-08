@@ -475,3 +475,29 @@ CYCLE_NO_EMBEDDINGS = (
     "degrade. Fix: set embedding.provider to ollama with a >=1024-dim model "
     "(e.g. qwen3-embedding:8b-q8_0), then re-run the cycle."
 )
+
+# ---------------------------------------------------------------------------
+# F3 fix round: honest inductive no-op + DB remediation hints shared by the
+# CLI error handler and the installer. Same purity pin: string constants only.
+# ---------------------------------------------------------------------------
+
+INDUCTIVE_ALL_NOISE = (
+    "No stable clusters: all {n} units were classed as noise - the corpus is "
+    "too small or too homogeneous for UMAP/HDBSCAN to separate themes. "
+    "Nothing was proposed. Add more (and more varied) transcripts, tune "
+    "research.inductive, or seed the codebook directly from gold exemplars "
+    "as the demo does."
+)
+
+DB_PERMISSION_DENIED_HINT = (
+    "fix: as the database superuser run GRANT CREATE ON SCHEMA public TO "
+    "corpus_user; GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "
+    "corpus_user; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "
+    "corpus_user; (PostgreSQL 15+ revokes CREATE on public by default - "
+    "see docs/INSTALL.md step 2)"
+)
+
+LIBPQ_TOO_OLD_HINT = (
+    "fix: pip install psycopg-binary (it bundles libpq >= 14; the system "
+    "libpq is too old for the event store's pipeline mode - see docs/INSTALL.md)"
+)

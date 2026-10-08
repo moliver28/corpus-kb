@@ -118,8 +118,13 @@ def reset_install_state(config: dict[str, Any]) -> None:
         path.unlink()
 
 
-def _detect_gpu_vram_gb() -> float:
-    """Return total GPU VRAM in GB, or 0.0 if pynvml is unavailable."""
+def _detect_gpu_vram_gb() -> tuple[float, bool]:
+    """Return (total GPU VRAM in GB, detected); (0.0, False) if pynvml is unavailable.
+
+    The bool distinguishes "genuinely zero VRAM" from "no NVIDIA detection",
+    so the doctor report can say VRAM: unknown instead of the false "0.0 GB"
+    on GPU hosts without pynvml (review F-5).
+    """
     try:
         import pynvml  # type: ignore[import-not-found]
 
@@ -131,15 +136,15 @@ def _detect_gpu_vram_gb() -> float:
             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
             total_bytes += mem_info.total
         pynvml.nvmlShutdown()
-        return total_bytes / (1024**3)
+        return total_bytes / (1024**3), True
     except Exception:
-        return 0.0
+        return 0.0, False
 
 
 def detect_profile() -> dict[str, Any]:
     """Detect hardware profile and return installer profile name + details."""
     ram_gb = psutil.virtual_memory().total / (1024**3)
-    vram_gb = _detect_gpu_vram_gb()
+    vram_gb, vram_detected = _detect_gpu_vram_gb()
     cpu_cores = psutil.cpu_count(logical=True) or 1
 
     if ram_gb > 16 or vram_gb >= 8:
@@ -153,6 +158,7 @@ def detect_profile() -> dict[str, Any]:
         "profile": profile,
         "ram_gb": round(ram_gb, 1),
         "vram_gb": round(vram_gb, 1),
+        "vram_detected": vram_detected,
         "cpu_cores": cpu_cores,
         "os": platform.system(),
         "python": sys.version.split()[0],
@@ -241,7 +247,10 @@ def print_doctor_report(
     print(f"Python:       {info['python']}")
     print(f"CPU cores:    {info['cpu_cores']}")
     print(f"RAM:          {info['ram_gb']} GB")
-    print(f"GPU VRAM:     {info['vram_gb']} GB")
+    if info.get("vram_detected"):
+        print(f"GPU VRAM:     {info['vram_gb']} GB")
+    else:
+        print("GPU VRAM:     unknown (no NVIDIA VRAM detection available)")
     print(f"Profile:      {info['profile']}")
     print(
         f"Postgres:     {'OK' if info['postgres_ok'] else 'UNREACHABLE'} ({info['postgres_msg']})"
@@ -279,8 +288,11 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     info["recommended_model"] = profile.get("model", "nomic-embed-text")
 
     db_cfg = config.get("database", {})
-    conn_str = str(db_cfg.get("connection_string", "")) or os.environ.get(
-        "CORPUS_KB_DATABASE_URL", ""
+    # Runtime precedence (review F-1): env wins over config so doctor probes
+    # the SAME deployment research commands do. install_cmd/setup_cmd below
+    # deliberately keep config-first (the installer targets the docker stack).
+    conn_str = os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(
+        db_cfg.get("connection_string", "")
     )
     info["postgres_ok"], info["postgres_msg"] = (
         await check_postgres(conn_str) if conn_str else (False, "no connection string")
@@ -394,6 +406,10 @@ async def install_database(conn_str: str, apply: bool) -> int:
         await run_migrations(conn_str)
     except Exception as exc:
         print(f"  ERROR: migrations failed: {exc}")
+        if getattr(exc, "sqlstate", "") == "42501" or "permission denied" in str(exc).lower():
+            from corpus_kb.research import guide_copy
+
+            print(f"  Fix: {guide_copy.DB_PERMISSION_DENIED_HINT}")
         print(f"  If AGE or pgml are missing on this server: {EXTENSION_REMEDIATION}")
         return 1
     return ext_rc
