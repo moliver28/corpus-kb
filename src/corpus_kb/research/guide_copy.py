@@ -19,7 +19,7 @@ ISR_LIGHT_YELLOW = (
     "YELLOW: new codes are still appearing - keep iterating before freezing the codebook."
 )
 ISR_PLAIN = (
-    "ISR (inductive saturation ratio) is the share of coding work that "
+    "ISR (Incremental Sampling Rate) is the share of coding work that "
     "introduces a code no earlier batch found. A low, flat ISR means the "
     "codebook has stopped growing."
 )
@@ -250,7 +250,7 @@ DEMO_NO_EMBEDDINGS = (
 # section, rendered as <REPORT_DOC_PATH>#<anchor>.
 REPORT_DOC_PATH = "docs/understanding-your-report.md"
 REPORT_DOC_ANCHORS = {
-    "isr": "isr-inductive-saturation-ratio",
+    "isr": "isr-incremental-sampling-rate",
     "coverage": "deductive-coverage",
     "residual": "residual-and-missing-codes",
     "tau_res": "tau_res-per-source-type",
@@ -277,7 +277,7 @@ REPORT_DOC_ANCHORS = {
 CYCLE_TITLE = "Research cycle"
 CYCLE_INTRO = (
     "One command walks the full pipeline - ingest, inductive pass, "
-    "deductive coding, keywords, report - and stops for you at the "
+    "deductive coding, keywords, report, notebook - and stops for you at the "
     "human-critical gates. Promotion is never automated; the cycle halts "
     "and waits."
 )

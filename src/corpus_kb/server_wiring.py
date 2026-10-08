@@ -19,6 +19,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import sys
 from typing import TYPE_CHECKING, cast
 
 import asyncpg
@@ -336,19 +337,14 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if args.transport == "stdio":
-        # MCP stdio mode: run FastMCP server only (no HTTP/socket)
-        logger.info("Starting in stdio mode (MCP only)")
-
-        # TODO: wire FastMCP server here
-        # For now, just run the HTTP server
-        async def _run() -> None:
-            services = await startup()
-            try:
-                await run_all(services)
-            finally:
-                await shutdown(services)
-
-        asyncio.run(_run())
+        # MCP stdio mode is NOT implemented: the FastMCP server is unwired.
+        # Fail fast with a clear message - silently running the HTTP server
+        # on a stdio transport would speak garbage to the editor client.
+        logger.error(
+            "MCP stdio server is not implemented yet; use --transport http "
+            "(editors should call the HTTP API until the MCP surface lands)"
+        )
+        sys.exit(2)
     else:
         # HTTP/SSE mode: start all protocols
         logger.info("Starting in %s mode on port %d", args.transport, args.port)

@@ -35,7 +35,12 @@ def test_load_config_resolves_from_cwd_in_dev_mode() -> None:
 
 
 def test_default_config_promotes_g1_winner() -> None:
-    """Promotion is an explicit COMMITTED config change (todo 13, r5)."""
+    """Promotion is an explicit COMMITTED config change (todo 13, r5).
+
+    The G1-winning strategy is fixed IN CODE (never a runtime knob), so the
+    config must NOT carry strategy/model_revision keys that would imply
+    configurability nothing reads.
+    """
     from corpus_kb.research.promotion import assert_promotable
 
     packaged = Path(__file__).parent.parent / "src" / "corpus_kb" / "config.yaml"
@@ -43,4 +48,5 @@ def test_default_config_promotes_g1_winner() -> None:
     embedder = cast(dict[str, object], config["research"])["embedder"]
     block = cast(dict[str, object], embedder)
     assert_promotable(int(block["dimensions"]))  # type: ignore[arg-type]
-    assert block["strategy"] in {"late-chunk", "naive-prefix"}, block["strategy"]
+    assert "strategy" not in block, "the G1 strategy is a code constant, not config"
+    assert "model_revision" not in block, "the revision tag is a code constant, not config"
