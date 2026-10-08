@@ -218,8 +218,11 @@ def get_default_config() -> dict[str, object]:
         # missing block here would silently drop research.* keys (todo-19 (c)).
         "research": {
             "embedder": {
-                "model_revision": "1024",
-                "strategy": "naive-prefix",
+                # model_revision ("1024") and the G1-winning strategy
+                # (naive-prefix) are FIXED IN CODE, deliberately not knobs:
+                # embedding rows always record revision "1024" and the
+                # strategy is a committed experiment result, not a runtime
+                # choice. Only the promotion guard is configurable.
                 "dimensions": 1024,
             },
             "ingest": {
