@@ -240,7 +240,11 @@ governance report, and a cited notebook answer.
 corpus-kb research demo
 ```
 
-- Requires `corpus-kb setup` only (Postgres + migrations + models).
+- Requires `corpus-kb setup` (Postgres + migrations + models) plus a
+  research-grade embedder: pull `qwen3-embedding:8b-q8_0` and set
+  `embedding.model`/`dimensions` accordingly (>=1024 dims - the default
+  nomic-embed-text makes the demo abstain by design; see
+  docs/getting-started.md "Before you start").
 - Every stage narrates what it is doing and links the relevant docs.
 - Re-runs are safe: file and text hashes make ingested files no-ops.
 - CLI-only by design; all flags: `corpus-kb research demo --help`
