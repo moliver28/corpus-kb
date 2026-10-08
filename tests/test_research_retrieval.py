@@ -224,3 +224,46 @@ async def test_meeting_windows_serve_as_parents(research_pool, tmp_path: Path) -
     assert "billing migration" in top.answer_text
     start, end = top.answer_highlight
     assert "billing migration" in top.answer_text[start:end].lower()
+
+
+SECOND_MEETING_TXT = "\n".join(
+    [
+        "Grace: The checkout flow needs a redesign before the holiday season.",
+        "Hank: The payments team will prototype the new checkout flow in Q4.",
+        "Ivy: Support tickets about checkout errors doubled this month.",
+        "Jude: Analytics will instrument the funnel after the redesign ships.",
+        "Kate: Let us sync again once the prototype demo is ready.",
+    ]
+)
+
+
+async def test_meeting_windows_across_multiple_documents(research_pool, tmp_path: Path) -> None:
+    """Two facilitator-less docs in one project must not kill the search.
+
+    Pre-fix, the window-parent query compared project_id to a SCALAR subquery
+    over the candidate doc set; with more than one meeting document the
+    subquery returned multiple rows (SQLSTATE 21000) and every research_search
+    call on the project died with a CardinalityViolation.
+    """
+    from corpus_kb.domain.application import get_app
+    from corpus_kb.handlers.research_handler import reset_research_handler
+
+    reset_research_handler()
+    app = get_app()
+    reader = EventReader(research_pool, app.mapper, app.recorder.events_table_name)
+    embedder = ResearchEmbedder(research_pool, FakeEmbedder({"embedding": {"dimensions": 1024}}))
+    projection = ResearchProjection(
+        research_pool, CheckpointManager(research_pool), DLQHandler(research_pool), embedder
+    )
+    handler = get_research_handler(research_pool, embed_fn=lambda text: [0.1] * 1024)
+    project = uuid4()
+    for name, text in (("team_sync.txt", MEETING_TXT), ("retro.txt", SECOND_MEETING_TXT)):
+        doc = tmp_path / name
+        doc.write_text(text, encoding="utf-8")
+        result = await handler.ingest_transcript(TENANT, str(doc), project_id=project)
+        assert result["status"] == "success"
+    await projection.catch_up(reader)
+
+    for phrase in ("billing migration timeline", "checkout flow redesign"):
+        hits = await _search(research_pool, project, phrase, k=5)
+        assert hits, f"window parents missing for {phrase!r} in the two-doc project"
