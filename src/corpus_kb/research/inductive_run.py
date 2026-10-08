@@ -53,6 +53,7 @@ from corpus_kb.coding.inductive_cluster import (
 from corpus_kb.coding.inductive_summaries import SummaryChatClient, meta_decide, summarize_unit
 from corpus_kb.coding.saturation import isr
 from corpus_kb.handlers.research_handler import ResearchHandler
+from corpus_kb.research import guide_copy
 from corpus_kb.research.inductive_store import (
     find_observation,
     latest_baseline_dbcv,
@@ -153,6 +154,13 @@ def suggested_label(summaries: list[str]) -> str:
     ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
     top = [w for w, _ in ranked[:3]]
     return "-".join(top) if top else "cluster"
+
+
+def all_noise_note(n_clusters: int, noise_units: int) -> str | None:
+    """Honest no-op message when every unit clustered to noise (review F-6)."""
+    if n_clusters == 0 and noise_units > 0:
+        return guide_copy.INDUCTIVE_ALL_NOISE.format(n=noise_units)
+    return None
 
 
 async def run_inductive(
@@ -279,6 +287,9 @@ async def _execute(
         "centroid_drift": drift,
         **batch_stats,
     }
+    note = all_noise_note(summary["n_clusters"], noise_units)
+    if note:
+        summary["note"] = note
     handler.checkpoint_coding_run(
         tenant_id,
         run_id,
