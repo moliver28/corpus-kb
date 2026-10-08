@@ -156,16 +156,25 @@ def test_gate_from_theories_flags_unreliable_and_interpretive() -> None:
     assert gates.gate_from_theories([_code("d", {})]) == []
 
 
-def test_gate_from_deductive_maps_review_and_conformal() -> None:
-    assert gates.gate_from_deductive({"review": 0}, None) == []
-    findings = gates.gate_from_deductive({"review": 4}, None)
+def test_gate_from_deductive_maps_unresolved_and_conformal() -> None:
+    assert gates.gate_from_deductive({"review": 0}, None, 0) == []
+    # F-7 convergence: routed volume whose escalations were all accepted or
+    # overridden no longer holds the cycle (the old gate fired on review>0,
+    # making exit 0 unreachable on all-review corpora).
+    assert gates.gate_from_deductive({"review": 63}, None, 0) == []
+    # UNRESOLVED queue items fire the gate, even with a stale summary count.
+    findings = gates.gate_from_deductive({"review": 0}, None, 2)
+    assert [f.gate for f in findings] == ["gray_zone_escalation"]
+    assert findings[0].detail["pending_reviews"] == 2
+    assert "await a decision" in findings[0].reason
+    findings = gates.gate_from_deductive({"review": 4}, None, 4)
     assert [f.gate for f in findings] == ["gray_zone_escalation"]
     checkpoint = {"conformal": {"nominal_coverage": 0.9, "empirical_coverage": 0.85}}
-    findings = gates.gate_from_deductive({"review": 0}, checkpoint)
+    findings = gates.gate_from_deductive({"review": 0}, checkpoint, 0)
     assert [f.gate for f in findings] == ["gray_zone_escalation"]
     assert "conformal" in findings[0].reason
     ok = gates.gate_from_deductive(
-        {"review": 0}, {"conformal": {"nominal_coverage": 0.9, "empirical_coverage": 0.95}}
+        {"review": 0}, {"conformal": {"nominal_coverage": 0.9, "empirical_coverage": 0.95}}, 0
     )
     assert ok == []
 

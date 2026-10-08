@@ -45,7 +45,8 @@ async def gate_findings_for(
         codes = await version_codes(pool, tenant_id, UUID(str(version))) if version else []
         run_id = receipt.get("run_id")
         checkpoint = await run_checkpoint(pool, tenant_id, UUID(str(run_id))) if run_id else {}
-        return gate_from_theories(codes) + gate_from_deductive(receipt, checkpoint)
+        pending = await pending_reviews(pool, tenant_id)
+        return gate_from_theories(codes) + gate_from_deductive(receipt, checkpoint, pending)
     if stage == "report":
         return gate_from_report(receipt)
     return []
@@ -72,6 +73,23 @@ async def pending_proposals(pool: asyncpg.Pool, tenant_id: UUID, run_id: UUID) -
             "WHERE tenant_id = $1 AND run_id = $2 AND status = 'proposed'",
             tenant_id,
             run_id,
+        )
+    return int(value or 0)
+
+
+async def pending_reviews(pool: asyncpg.Pool, tenant_id: UUID) -> int:
+    """UNRESOLVED review-queue items (status='review'), the F-7 gate input.
+
+    Tenant-scoped on purpose: escalations from earlier runs stay unresolved
+    until a human acts, so the gate reflects the QUEUE, not one run's
+    routing volume.
+    """
+    from corpus_kb.storage.tenant_conn import tenant_connection
+
+    async with tenant_connection(pool, tenant_id) as conn:
+        value = await conn.fetchval(
+            "SELECT count(*) FROM research_assignments WHERE tenant_id = $1 AND status = 'review'",
+            tenant_id,
         )
     return int(value or 0)
 
