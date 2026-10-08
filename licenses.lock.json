@@ -595,6 +595,13 @@
     "licenseTextUrl": "https://opensource.org/licenses/LGPL-3.0"
   },
   {
+    "name": "psycopg-binary",
+    "version": "3.3.6",
+    "license": "LGPL-3.0-only",
+    "homepage": "https://pypi.org/project/psycopg-binary/3.3.6/",
+    "licenseTextUrl": null
+  },
+  {
     "name": "psycopg-pool",
     "version": "3.3.3",
     "license": "LGPL-3.0-only",
@@ -603,23 +610,23 @@
   },
   {
     "name": "pycparser",
-    "version": "3.0",
+    "version": "3.1",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/pycparser/3.0/",
+    "homepage": "https://pypi.org/project/pycparser/3.1/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "pydantic",
-    "version": "2.13.5",
+    "version": "2.14.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/pydantic/2.13.5/",
+    "homepage": "https://pypi.org/project/pydantic/2.14.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "pydantic_core",
-    "version": "2.46.5",
+    "version": "2.50.0",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/pydantic_core/2.46.5/",
+    "homepage": "https://pypi.org/project/pydantic_core/2.50.0/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -946,9 +953,9 @@
   },
   {
     "name": "unstructured",
-    "version": "0.27.16",
+    "version": "0.27.22",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/unstructured/0.27.16/",
+    "homepage": "https://pypi.org/project/unstructured/0.27.22/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
