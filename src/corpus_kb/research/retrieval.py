@@ -420,9 +420,7 @@ async def _meeting_windows(
     rows = await conn.fetch(
         """
         SELECT u.doc_id, u.seq, u.text FROM research_units u
-        JOIN documents d ON d.doc_id = u.doc_id
-        WHERE d.project_id = (SELECT project_id FROM documents WHERE doc_id = ANY($1::uuid[]))
-          AND u.doc_id = ANY($1::uuid[])
+        WHERE u.doc_id = ANY($1::uuid[])
         ORDER BY u.doc_id, u.seq
         """,
         doc_ids,
