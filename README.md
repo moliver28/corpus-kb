@@ -105,7 +105,11 @@ ollama pull nomic-embed-text
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
 corpus-kb start --transport http --port 8010
 
-# 7. New to qualitative coding? Run the narrated demo (~5 minutes):
+# 7. New to qualitative coding? Run the narrated demo (~5 minutes).
+#    The demo needs a research-grade embedder (>=1024 dims), so pull that
+#    first - the base nomic-embed-text model (768 dims) makes the demo
+#    abstain by design:
+ollama pull qwen3-embedding:8b-q8_0
 corpus-kb research demo
 # then read docs/getting-started.md to run it on your own transcripts
 ```
@@ -144,20 +148,20 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
+| [Harness distribution](docs/harness-distribution.md) | Packaging and distributing the agent harness pack |
+| [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
 
 ---
 
 ## Editor integration
 
-Corpus-KB speaks MCP over stdio, so any MCP-compatible editor can connect:
+Editors and scripts drive Corpus-KB through the **HTTP API** (any MCP-compatible editor can call it via an HTTP bridge) and the JSON-RPC socket:
 
-- OpenCode
-- Claude Code
-- Cursor
-- VS Code with Cline
-- Any other MCP client
+- HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md))
+- JSON-RPC socket: same command, for local automation
+- The research and coding surfaces are also first-class CLI commands (`corpus-kb research ...`, `corpus-kb coding ...`)
 
-Config files live in `mcp-configs/`. The setup scripts rewrite them to point at your virtual environment.
+An MCP-over-stdio server is planned but **not implemented yet**: the config files in `mcp-configs/` are pre-staged for it, and `corpus-kb --transport stdio` exits with a clear message rather than pretending. Until the MCP server lands, point editors at the HTTP API.
 
 ---
 

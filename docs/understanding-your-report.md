@@ -5,7 +5,7 @@ level prints traffic lights, plain language, and next actions; the **expert**
 level is the full schema. This guide walks every section in plain language.
 Formulas and their sources live in [research-math.md](research-math.md).
 
-## ISR (inductive saturation ratio)
+## ISR (Incremental Sampling Rate)
 
 The share of coding work that introduces a code no earlier batch found. A
 low, flat ISR means new batches mostly reuse known codes - the corpus has

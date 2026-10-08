@@ -48,9 +48,13 @@ undocumented.
 
 | Key | Default | Effect |
 |-----|---------|--------|
-| `research.embedder.model_revision` | `"1024"` | Revision tag recorded on every research embedding row and cache entry. |
-| `research.embedder.strategy` | `naive-prefix` | Research embedding strategy: the G1-promoted winner (`naive-prefix` or `latechunk`). |
 | `research.embedder.dimensions` | `1024` | Promotion guard: research embedders must emit exactly 1024 dims; anything else halts promotion and abstains at run time. |
+
+The research embedding strategy is not a runtime knob: the G1 experiment
+(two-arm, 52-pair fixture) was decided in code — naive per-text pooling with
+a deterministic prefix won, and every research embedding row records the
+revision tag `"1024"`. Changing embedding behavior is a committed code
+change, never a config edit.
 | `research.ingest.watch_interval_s` | `10` | Poll interval (seconds) for `research ingest --watch` drop-directory tailing. |
 | `research.inductive.entropy_threshold` | `0.85` | Normalized soft-entropy gate above which a unit gets the LLM "existing code vs new code" meta-decision. |
 | `research.inductive.recluster_every_batches` | `8` | Full re-cluster cadence during incremental inductive growth (v5 §9.5: every 5-10 batches). |

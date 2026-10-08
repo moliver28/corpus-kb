@@ -14,6 +14,30 @@ import typer
 app = typer.Typer(help="Corpus-KB command-line interface")
 
 
+@app.callback(invoke_without_command=True)
+def _root(
+    ctx: typer.Context,
+    transport: str = typer.Option(
+        None,
+        "--transport",
+        help="Reserved for the MCP stdio editor surface (not yet implemented)",
+    ),
+) -> None:
+    """Corpus-KB: local RAG knowledge base for AI code editors."""
+    if transport is not None:
+        # The mcp-configs/ editor configs launch `corpus-kb --transport
+        # stdio`. The FastMCP stdio server is not wired yet; failing with a
+        # clear message beats typer's "no such option" crash, and running
+        # the HTTP server on stdio would speak garbage to the editor.
+        print(
+            "corpus-kb does not yet speak MCP over stdio; the editor-facing "
+            "API today is HTTP (corpus-kb start --transport http --port 8010)."
+        )
+        raise typer.Exit(code=2)
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+
+
 @app.command()
 def setup(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print steps without executing"),

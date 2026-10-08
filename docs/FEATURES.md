@@ -180,7 +180,14 @@ Every table has row-level security policies keyed to `app.current_tenant_id`. Th
 
 ## MCP tool reference
 
-When connected through MCP, editors can call these tools:
+The MCP stdio server is **not implemented yet** (see
+[README — Editor integration](../README.md#editor-integration)); the table
+below is the tool surface the `mcp-configs/` files pre-stage for it. Today
+these capabilities are reachable over HTTP ([API.md](API.md)) and, for the
+research/coding surfaces, as first-class CLI commands
+([research.md](research.md)).
+
+When the MCP server lands, editors will be able to call these tools:
 
 | Category | Tool | Description |
 |----------|------|-------------|
@@ -217,7 +224,12 @@ When connected through MCP, editors can call these tools:
 | Stats | `get_stats` | Database statistics |
 | Stats | `query_document_stats` | Aggregate document statistics |
 
-The full HTTP equivalents are listed in [API.md](API.md).
+The full HTTP equivalents are listed in [API.md](API.md). The
+research/coding/notebook surfaces (ingest-transcript, coding run/inductive,
+codebook promote, review accept/override, governance report, notebook
+ask/evidence/uncoded/overlap, research cycle/demo) follow the same naming
+scheme — see the surface registry in `src/corpus_kb/surface_registry.py`
+for the authoritative CLI↔MCP-name mapping.
 
 ---
 
