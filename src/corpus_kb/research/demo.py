@@ -208,16 +208,29 @@ async def _seed_codebook(
     return version_id
 
 
-async def _pending_review_assignment(pool: Any, tenant_id: UUID) -> UUID | None:
-    """One pending (status='review') assignment aggregate id, or None."""
+async def _pending_review_assignment(pool: Any, tenant_id: UUID, project_id: UUID) -> UUID | None:
+    """One pending (status='review') assignment id from THIS project, or None.
+
+    Scoped to the demo project on purpose: a leftover escalation from an
+    unrelated earlier run must not be accepted and narrated as this demo's
+    coding result.
+    """
     from corpus_kb.storage.tenant_conn import tenant_connection
 
     async with tenant_connection(pool, tenant_id) as conn:
         row = await conn.fetchrow(
             """
-            SELECT assignment_aggregate_id FROM research_assignments
-            WHERE status = 'review' ORDER BY assignment_aggregate_id LIMIT 1
-            """
+            SELECT ra.assignment_aggregate_id
+            FROM research_assignments ra
+            JOIN research_units u
+              ON u.unit_id = ra.unit_id AND u.tenant_id = ra.tenant_id
+            JOIN documents d
+              ON d.doc_id = u.doc_id AND d.tenant_id = ra.tenant_id
+            WHERE ra.tenant_id = $1 AND ra.status = 'review' AND d.project_id = $2
+            ORDER BY ra.assignment_aggregate_id LIMIT 1
+            """,
+            tenant_id,
+            project_id,
         )
     return UUID(str(row["assignment_aggregate_id"])) if row else None
 
@@ -354,7 +367,7 @@ async def run_demo(cfg: dict[str, Any] | None = None) -> int:
         _narrate(stage_review)
         from corpus_kb.research.review_surface import execute_review
 
-        assignment_id = await _pending_review_assignment(pool, tenant_id)
+        assignment_id = await _pending_review_assignment(pool, tenant_id, project_id)
         if assignment_id is None:
             print("ERROR: no pending review assignment found after the coding run")
             return 1
