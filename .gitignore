@@ -24,6 +24,15 @@ Thumbs.db
 .slim/
 .codegraph/
 
+# Local agent tooling state (session scanners, notes, optimization caches)
+.mimosa/
+.omc/
+.token-optimizer/
+.zcodeignore
+
+# Build output
+dist/
+
 # Runtime data
 data/corpus-kb/
 .ruff_cache/
