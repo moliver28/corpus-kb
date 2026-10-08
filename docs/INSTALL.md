@@ -70,6 +70,16 @@ CREATE EXTENSION IF NOT EXISTS age;
 
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO corpus_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO corpus_user;
+
+-- PostgreSQL 15+ revoked CREATE on the public schema from non-owners by
+-- default (PG 14 and older granted it to PUBLIC). Without this grant the
+-- first event-store write dies with "permission denied for schema public".
+GRANT CREATE ON SCHEMA public TO corpus_user;
+
+-- Future objects created by migrations and the event store get the same
+-- privileges automatically.
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO corpus_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO corpus_user;
 ```
 
 Your connection string will be:
@@ -194,6 +204,9 @@ You can also use environment variables. These override any value in `config.yaml
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
+`corpus-kb doctor` honors the same precedence as the runtime (env wins over
+config), so with `CORPUS_KB_DATABASE_URL` set it diagnoses THAT deployment.
+
 ---
 
 ## Step 7: Start the server
@@ -245,6 +258,20 @@ curl -X POST http://localhost:8010/api/query/sql \
 ### `No database connection string` on startup
 
 Set `CORPUS_KB_DATABASE_URL` or add `database.connection_string` to `config.yaml`.
+
+### `permission denied for schema public`
+
+PostgreSQL 15+ no longer grants CREATE on `public` to ordinary roles. As the
+superuser, on the `corpus_kb` database, run:
+
+```sql
+GRANT CREATE ON SCHEMA public TO corpus_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO corpus_user;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO corpus_user;
+```
+
+The setup and research commands print this exact remediation when they hit
+the permission wall.
 
 ### pgvector or AGE extension missing
 
