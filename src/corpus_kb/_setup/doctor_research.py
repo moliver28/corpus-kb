@@ -170,6 +170,19 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
                 fix="set embedding.model to a >=1024-dim model (e.g. qwen3-embedding:8b-q8_0)",
                 doc=DOC_RESEARCH,
             )
+        if emb_dims == 0:
+            # Unset dimensions: the model default may still be under 1024
+            # (nomic-embed-text is 768) and would abstain - say so instead
+            # of reporting OK for an unverifiable config.
+            return ResearchCheck(
+                name="research.embedder config",
+                status=STATUS_WARN,
+                detail="embedding.dimensions is not set; research needs to verify "
+                "the model emits >= 1024 dims (nomic-embed-text emits 768 and "
+                "would abstain)",
+                fix="set embedding.dimensions to the model's true dimensionality",
+                doc=DOC_RESEARCH,
+            )
     return ResearchCheck(
         name="research.embedder config",
         status=STATUS_OK,
