@@ -182,3 +182,85 @@ NOTEBOOK_OVERLAP_HEADER = "CODE OVERLAP"
 
 LEVEL_NOVICE = "novice"
 LEVEL_EXPERT = "expert"
+
+# ---------------------------------------------------------------------------
+# Todo-19: `corpus-kb research demo` narration. Every stage prints its
+# explain + doc pointer from HERE; tests assert the wiring offline.
+# ---------------------------------------------------------------------------
+
+DEMO_TITLE = "Corpus-KB research demo"
+DEMO_INTRO = (
+    "This narrated run takes the bundled two-interview corpus through the "
+    "full qualitative-coding pipeline: ingest, codebook, coding, review, "
+    "report, and a cited notebook answer. Re-runs are safe: file and text "
+    "hashes make already-ingested files no-ops."
+)
+DEMO_DOC = "docs/getting-started.md"
+
+DEMO_STAGE_INGEST = (
+    "INGEST: each transcript is parsed into speaker turns, roles are mapped "
+    "(the question-asker becomes the moderator), and turns are linked into "
+    "question-answer exchanges with stance labels."
+)
+DEMO_STAGE_INGEST_DOC = "docs/getting-started.md#ingest-your-first-transcript"
+DEMO_STAGE_CODEBOOK = (
+    "CODEBOOK: the demo seeds a deductive codebook whose gold exemplars are "
+    "quoted verbatim from the bundled transcripts. In a real project you "
+    "build this from gold data and promote proposed codes yourself "
+    "(corpus-kb codebook promote)."
+)
+DEMO_STAGE_CODEBOOK_DOC = "docs/getting-started.md#build-a-codebook"
+DEMO_STAGE_CODING = (
+    "CODING RUN: every codable unit is scored against the codebook in three "
+    "views (answer, question+answer, question). With fewer than 20 gold "
+    "exemplars per code the thresholds are flagged unreliable, so assignments "
+    "route to the review queue - that is the methodology working, not a bug."
+)
+DEMO_STAGE_CODING_DOC = "docs/getting-started.md#run-coding"
+DEMO_STAGE_REVIEW = (
+    "REVIEW: one assignment is confirmed through the human gate "
+    "(corpus-kb review accept). Overrides feed threshold refits and the G3 audit."
+)
+DEMO_STAGE_REVIEW_DOC = "docs/getting-started.md#review-assignments"
+DEMO_STAGE_REPORT = (
+    "REPORT: the governance report condenses saturation, exhaustiveness, "
+    "overlap, and reliability into ONE artifact; the novice level prints "
+    "traffic lights with links into the report guide."
+)
+DEMO_STAGE_REPORT_DOC = "docs/understanding-your-report.md"
+DEMO_STAGE_ASK = (
+    "NOTEBOOK: one question is answered against the coded corpus; every "
+    "answer sentence carries an exchange-level citation you can open."
+)
+DEMO_STAGE_ASK_DOC = "docs/getting-started.md#ask-the-notebook"
+DEMO_OUTRO = (
+    "Demo complete. Read docs/getting-started.md to run the same pipeline on "
+    "your first real transcript."
+)
+DEMO_NO_EMBEDDINGS = (
+    "Demo cannot run: the configured embedder would abstain (research needs "
+    "exactly 1024 dims), so no unit can be scored and no assignment would "
+    "reach review. Fix: set embedding.provider to ollama with a >=1024-dim "
+    "model (e.g. qwen3-embedding:8b-q8_0), then re-run the demo."
+)
+
+# Report doc anchors (todo-19 (g)): one per novice-view plain_language
+# section, rendered as <REPORT_DOC_PATH>#<anchor>.
+REPORT_DOC_PATH = "docs/understanding-your-report.md"
+REPORT_DOC_ANCHORS = {
+    "isr": "isr-inductive-saturation-ratio",
+    "coverage": "deductive-coverage",
+    "residual": "residual-and-missing-codes",
+    "tau_res": "tau_res-per-source-type",
+    "stability": "cluster-stability",
+    "overlap": "code-overlap",
+    "conflicts": "keyword-conflicts",
+    "keywords": "keyword-lists",
+    "keywords_provisional": "provisional-keyword-lists",
+    "irr": "interrater-reliability",
+    "g3": "g3-audit",
+    "conformal": "conformal-set-sizes",
+    "manifest": "run-manifest",
+    "missing_codes": "candidate-missing-codes",
+    "backlog": "review-backlog",
+}
