@@ -56,6 +56,7 @@ undocumented.
 | `research.inductive.recluster_every_batches` | `8` | Full re-cluster cadence during incremental inductive growth (v5 §9.5: every 5-10 batches). |
 | `research.inductive.centroid_drift_threshold` | `0.15` | Mean cosine drift between centroid snapshots that triggers an early cluster refresh. |
 | `research.inductive.tau_dup` | `0.85` | Promote-time duplicate gate: max prototype cosine vs existing codes above which a promotion blocks with a merge suggestion. |
+| `research.cycle.halt_on` | 6-gate list | Human-critical gates for `research cycle --mode out` (interpretive_code_review, gray_zone_escalation, drift_alarm, overlap_conflict, threshold_unreliable, human_parity_breach). May only ADD gates: `codebook_promotion` is hard-floored and never removable; unknown names are rejected. |
 
 ## Optional extras
 
@@ -66,3 +67,44 @@ undocumented.
 
 Both are optional: `corpus-kb doctor` reports their status and the core
 pipeline never requires them.
+
+## Research cycle
+
+`corpus-kb research cycle` (todo 20) is pure orchestration over the step
+commands: ingest -> inductive -> deductive -> keywords -> report ->
+notebook. It contains no new analytics and never auto-promotes a codebook.
+
+### Postures
+
+- `--mode in` executes exactly ONE next stage, then exits (fully in the
+  loop).
+- `--mode on` executes the next stage, then halts for explicit approval
+  before continuing (CLI y/N prompt; the MCP tool returns an
+  `awaiting_approval` receipt and continues when called again with
+  `approve=true`).
+- `--mode out` runs unattended through the chain and halts ONLY at the
+  human-critical gates in `research.cycle.halt_on`.
+- `--watch <dir>` is a foreground poll: when new transcripts land in the
+  drop directory, the full out-mode cycle re-arms (idle = sleep, no
+  daemon, no busy-loop; a file is picked up exactly once via the
+  file-hash ledger).
+
+### Gates and resuming
+
+Each halt prints `AWAITING HUMAN: <gate>` plus the exact next command,
+with a distinct per-gate exit code (10-16). `codebook_promotion` is
+HARD-FLOORED: config may add gates to `halt_on` but can never remove the
+floor, and promotion itself always runs through
+`corpus-kb codebook promote`. A denied on-mode approval exits 20; a
+cycle that cannot proceed (e.g. no codebook version yet) exits 2.
+
+Progress is event-sourced: the cycle IS a `CodingRun` with
+`params.kind='cycle'`, and each stage boundary lands a checkpoint. To
+resume, act on the gate, then re-run the same command - the new cycle
+run continues after the last checkpoint and never re-halts on the SAME
+gate it halted on.
+
+`--guide` upgrades stages and halts into taught decisions (what is
+happening, what to look at, proposed codes with example units, and
+promote-vs-skip consequences); `--json` emits one machine-readable
+stage/gate event per line for agents.

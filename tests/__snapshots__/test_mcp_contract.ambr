@@ -1,6 +1,20 @@
 # serializer version: 1
 # name: test_mcp_tool_contract
   dict({
+    'corpus_kb.tools.cycle_tools': dict({
+      'research_cycle': dict({
+        'approve': 'POSITIONAL_OR_KEYWORD',
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'guide': 'POSITIONAL_OR_KEYWORD',
+        'halt_on': 'POSITIONAL_OR_KEYWORD',
+        'ingest_dir': 'POSITIONAL_OR_KEYWORD',
+        'mode': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'question': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.ingest_tools': dict({
       'delete_document': dict({
         'config': 'POSITIONAL_OR_KEYWORD',

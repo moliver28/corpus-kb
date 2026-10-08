@@ -264,3 +264,214 @@ REPORT_DOC_ANCHORS = {
     "missing_codes": "candidate-missing-codes",
     "backlog": "review-backlog",
 }
+
+# ---------------------------------------------------------------------------
+# Todo-20: `corpus-kb research cycle` narration + TAUGHT gates (r12).
+# Same purity pin as above: module-level string constants ONLY. Every
+# cycle stage narration, halt message, and decision-context header the
+# cycle surface prints lives HERE.
+# ---------------------------------------------------------------------------
+
+CYCLE_TITLE = "Research cycle"
+CYCLE_INTRO = (
+    "One command walks the full pipeline - ingest, inductive pass, "
+    "deductive coding, keywords, report - and stops for you at the "
+    "human-critical gates. Promotion is never automated; the cycle halts "
+    "and waits."
+)
+CYCLE_DOC = "docs/research.md#research-cycle"
+
+CYCLE_STAGE_INGEST = (
+    "INGEST: transcripts in the drop directory are parsed into speaker "
+    "turns, roles, and question-answer exchanges; file and text hashes "
+    "make repeats no-ops, so only NEW material is processed."
+)
+CYCLE_LOOK_INGEST = "Look at: the ingest receipt - how many files were new vs skipped."
+CYCLE_STAGE_INGEST_DOC = "docs/getting-started.md#ingest-your-first-transcript"
+
+CYCLE_STAGE_INDUCTIVE = (
+    "INDUCTIVE PASS: every answer unit is summarized to an atomic "
+    "observation, embedded, and clustered; calm, coherent groups become "
+    "PROPOSED codes - drafts only, never part of the codebook yet."
+)
+CYCLE_LOOK_INDUCTIVE = (
+    "Look at: the proposed labels and their member counts; cluster "
+    "stability tells you whether each group would survive a re-cluster."
+)
+CYCLE_STAGE_INDUCTIVE_DOC = "docs/getting-started.md#build-a-codebook"
+
+CYCLE_STAGE_DEDUCTIVE = (
+    "DEDUCTIVE RUN: every codable unit is scored against the codebook in "
+    "three views; calibrated thresholds decide, and anything uncertain "
+    "routes to the review queue instead of being forced."
+)
+CYCLE_LOOK_DEDUCTIVE = (
+    "Look at: the explicit vs question-dependent split and how much went "
+    "to review - a large review share usually means thin gold, not a bad model."
+)
+CYCLE_STAGE_DEDUCTIVE_DOC = "docs/getting-started.md#run-coding"
+
+CYCLE_STAGE_KEYWORDS = (
+    "KEYWORDS: each code gets the terms its own captured units actually "
+    "use (log-odds ranked); only hits inside ANSWER turns count as "
+    "explicit evidence, and collisions are flagged as conflicts."
+)
+CYCLE_LOOK_KEYWORDS = (
+    "Look at: conflicts (two codes claiming one term) and provisional "
+    "lists with fewer than 15 supporting units."
+)
+CYCLE_STAGE_KEYWORDS_DOC = "docs/understanding-your-report.md#keyword-lists"
+
+CYCLE_STAGE_REPORT = (
+    "REPORT: saturation, exhaustiveness, overlap, reliability, and the "
+    "G3 audit condense into ONE artifact - the single thing to read "
+    "after each cycle."
+)
+CYCLE_LOOK_REPORT = (
+    "Look at: the traffic lights first, then every RED or YELLOW section "
+    "before deciding what the next cycle should change."
+)
+CYCLE_STAGE_REPORT_DOC = "docs/understanding-your-report.md"
+
+CYCLE_STAGE_NOTEBOOK = (
+    "NOTEBOOK: one question is answered against the coded corpus; every "
+    "answer sentence carries an exchange-level citation you can open."
+)
+CYCLE_LOOK_NOTEBOOK = (
+    "Look at: whether the citations actually support the answer - if "
+    "they do not, the codebook, not the model, needs work."
+)
+CYCLE_STAGE_NOTEBOOK_DOC = "docs/getting-started.md#ask-the-notebook"
+
+CYCLE_HALT_HEADER = "AWAITING HUMAN: {gate}"
+
+CYCLE_PROPOSALS_HEADER = "PROPOSED CODES awaiting your decision"
+CYCLE_PROPOSAL_LINE = "- [{status}] #{proposed_id} {label} (members: {n_members})"
+CYCLE_PROPOSAL_EXAMPLES_HEADER = "  example units:"
+CYCLE_PROPOSAL_EXAMPLE_LINE = "  - {text}"
+
+GATE_CODEBOOK_PROMOTION_TAUGHT = (
+    "This is the promotion gate: the model clustered units into candidate "
+    "codes, but v5 codebook governance says a cluster becomes a code only "
+    "when a human names it, defines it, and owns the consequences. Your "
+    "definition becomes the rubric every future unit is scored against."
+)
+GATE_CODEBOOK_PROMOTION_LOOK = (
+    "For each proposal: read the example units, check the cluster is ONE "
+    "coherent idea (not two themes stapled together), and compare it "
+    "against existing codes for overlap."
+)
+GATE_CODEBOOK_PROMOTION_PROMOTE_CONSEQUENCE = (
+    "If you promote: the code enters the next codebook version, its member "
+    "units become its gold exemplars, and the next deductive run scores "
+    "against it. A vague definition now quietly mislabels data later."
+)
+GATE_CODEBOOK_PROMOTION_SKIP_CONSEQUENCE = (
+    "If you skip: the cluster stays a proposal - nothing is lost. The "
+    "theme simply stays uncoded and keeps surfacing in the residual "
+    "(missing-code) radar until you promote it or discard it."
+)
+GATE_CODEBOOK_PROMOTION_ACTION = (
+    "run corpus-kb codebook promote --proposed-id <id> --name <name> "
+    "--definition <definition> for each code you accept (duplicates are "
+    "blocked with a merge suggestion), then re-run corpus-kb research "
+    "cycle --mode out to continue"
+)
+
+GATE_INTERPRETIVE_TAUGHT = (
+    "Interpretive codes depend on judgment calls a lexical rule cannot "
+    "reliably make, so the engine routes their assignments to review by "
+    "design. The gate makes that visible instead of hiding it in counts."
+)
+GATE_INTERPRETIVE_LOOK = "Look at: the interpretive code ids and their review-queue volume."
+GATE_INTERPRETIVE_ACTION = (
+    "work the queue with corpus-kb review accept|override; keep a code "
+    "interpretive only while human judgment is genuinely required"
+)
+
+GATE_GRAY_ZONE_TAUGHT = (
+    "Assignments land in the gray zone when the calibrated evidence does "
+    "not separate codes cleanly (or the conformal guarantee slipped). "
+    "These are exactly the units where automatic answers would be guesses."
+)
+GATE_GRAY_ZONE_LOOK = (
+    "Look at: the review count and the conformal set sizes - large sets "
+    "mean the thresholds or gold need work, not that reviewers do."
+)
+GATE_GRAY_ZONE_ACTION = (
+    "work the queue with corpus-kb review accept|override; overrides feed the next threshold refit"
+)
+
+GATE_DRIFT_TAUGHT = (
+    "Cluster validity (DBCV) dropped more than 20% versus the previous "
+    "run: the thematic structure moved underneath you. Codes promoted "
+    "from the earlier clustering may no longer match the corpus."
+)
+GATE_DRIFT_LOOK = "Look at: dbcv_relative_validity vs its baseline in the run summary."
+GATE_DRIFT_ACTION = (
+    "re-read the current proposals and the report's cluster-stability "
+    "section before trusting promoted codes; re-run the cycle once decided"
+)
+
+GATE_OVERLAP_TAUGHT = (
+    "Two codes drifted so close that your own gold never shows codes that "
+    "similar, or keyword lists collide. Overlapping codes produce "
+    "unstable assignments and reviewer disagreement."
+)
+GATE_OVERLAP_LOOK = (
+    "Look at: the report's flagged pairs with their shared units, and the keyword conflicts."
+)
+GATE_OVERLAP_ACTION = (
+    "merge or re-define one of each flagged pair in the next codebook "
+    "version, then re-run the cycle"
+)
+
+GATE_THRESHOLD_TAUGHT = (
+    "A code has fewer than 20 gold exemplars, so its thresholds are "
+    "provisional: nobody has measured where its decision boundary really "
+    "sits. The engine routes these codes' assignments to review."
+)
+GATE_THRESHOLD_LOOK = "Look at: which code ids are flagged and how much went to review."
+GATE_THRESHOLD_ACTION = (
+    "double-code more units for the flagged codes (corpus-kb review "
+    "accept|override) and recalibrate before trusting auto-accept"
+)
+
+GATE_PARITY_TAUGHT = (
+    "The G3 audit measured the model agreeing with humans below the 0.60 "
+    "alpha floor on at least one code: the model is not safe to route "
+    "that code automatically, so it flips to human-only routing."
+)
+GATE_PARITY_LOOK = (
+    "Look at: the report's g3_audit human_parity rows - the breached "
+    "codes and their llm vs human alphas."
+)
+GATE_PARITY_ACTION = (
+    "rework the breached code (definition, gold, or retire it); the flip "
+    "to human-only routing is already in effect"
+)
+
+CYCLE_APPROVAL_STAGE_HEADER = "STAGE COMPLETE: {stage}"
+CYCLE_APPROVAL_PROMPT = "Continue to the next stage? [y/N] "
+CYCLE_APPROVAL_DENIED = (
+    "Stopped at your request. Progress is recorded; re-run corpus-kb "
+    "research cycle --mode on to continue from here."
+)
+CYCLE_RESUME_HINT = "Resuming after stage: {stage} (cycle run {run_id})"
+CYCLE_WATCH_IDLE = "watch: no new transcripts; sleeping {interval}s (Ctrl-C to stop)"
+CYCLE_WATCH_ARMED = "watch: {n} new transcript(s) - re-arming the cycle"
+CYCLE_OUTRO = (
+    "Cycle complete. The report above is the artifact to read next; "
+    "re-run the cycle as new transcripts land."
+)
+CYCLE_NO_QUESTION = "notebook stage skipped (no --question given)"
+CYCLE_INDUCTIVE_UNAVAILABLE = (
+    'the inductive extra is not installed (pip install -e ".[inductive]"); '
+    "the cycle stops before the promotion gate because there is nothing to promote"
+)
+CYCLE_NO_EMBEDDINGS = (
+    "Cycle cannot run: the configured embedder would abstain (research needs "
+    "exactly 1024 dims), so units cannot be scored and every stage would "
+    "degrade. Fix: set embedding.provider to ollama with a >=1024-dim model "
+    "(e.g. qwen3-embedding:8b-q8_0), then re-run the cycle."
+)

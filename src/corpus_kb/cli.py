@@ -478,6 +478,106 @@ def research_demo() -> int:
     return exit_code
 
 
+@research_app.command("cycle")
+def research_cycle(
+    mode: str = typer.Option(
+        "out", "--mode", help="in: exactly one stage | on: approve each stage | out: to the gates"
+    ),
+    project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
+    drop_dir: str = typer.Option(None, "--dir", help="Transcript drop directory (ingest stage)"),
+    question: str = typer.Option(None, "--question", help="Notebook question (final stage)"),
+    codebook_version_id: str = typer.Option(
+        None, "--codebook-version-id", help="Pin the codebook version (default: latest)"
+    ),
+    guide: bool = typer.Option(
+        False, "--guide", help="Taught gates: narrate stages + halts with decision context"
+    ),
+    json_output: bool = typer.Option(
+        False, "--json", help="Machine-readable stage/gate events (one JSON per line)"
+    ),
+    watch: str = typer.Option(
+        None, "--watch", help="Foreground: re-run the cycle when transcripts land in this directory"
+    ),
+) -> int:
+    """Research cycle (todo 20): full pipeline with human-critical halt gates.
+
+    Halts print `AWAITING HUMAN: <gate>` plus the exact next command and a
+    distinct per-gate exit code; `codebook_promotion` is hard-floored and
+    can never be removed from the halt set. Resume by re-running this
+    command after acting on the gate.
+    """
+    import asyncio
+
+    from corpus_kb.research import guide_copy
+
+    def _approve(stage: str) -> bool:
+        print(guide_copy.CYCLE_APPROVAL_STAGE_HEADER.format(stage=stage))
+        reply = input(guide_copy.CYCLE_APPROVAL_PROMPT)
+        return reply.strip().lower() in ("y", "yes")
+
+    exit_code = asyncio.run(
+        _cycle_coroutine(
+            mode,
+            project_id,
+            drop_dir,
+            question,
+            codebook_version_id,
+            guide,
+            json_output,
+            _approve,
+            watch,
+        )
+    )
+    if exit_code:
+        raise typer.Exit(code=exit_code)
+    return 0
+
+
+def _cycle_coroutine(
+    mode: str,
+    project_id: str | None,
+    drop_dir: str | None,
+    question: str | None,
+    codebook_version_id: str | None,
+    guide: bool,
+    json_output: bool,
+    approve: object,
+    watch: str | None,
+):
+    from typing import cast
+
+    from corpus_kb.config import load_config
+    from corpus_kb.research.cycle import run_cycle
+    from corpus_kb.research.cycle_state import watch_cycle
+
+    async def _run() -> int:
+        import asyncpg
+
+        cfg = load_config()
+        db = cast(dict[str, object], cfg.get("database") or {})
+        conn_str = str(db.get("connection_string", ""))
+        pool = await asyncpg.create_pool(conn_str)
+        kwargs: dict[str, object] = {
+            "mode": mode,
+            "project_id": _pid(project_id),
+            "ingest_dir": drop_dir,
+            "question": question,
+            "codebook_version_id": _pid(codebook_version_id),
+            "guide": guide,
+            "json_output": json_output,
+            "approve": cast("object", approve),
+            "cfg": cfg,
+        }
+        try:
+            if watch:
+                return await watch_cycle(pool, _tenant(), watch, **kwargs)
+            return await run_cycle(pool, _tenant(), **kwargs)
+        finally:
+            await pool.close()
+
+    return _run()
+
+
 @research_app.command("ask")
 def research_ask(
     question: str = typer.Argument(..., help="Notebook question"),
