@@ -179,6 +179,8 @@ class CodebookVersion(Aggregate):
         manifest_sha256: str,
         requested_at: str,
         parent_release_id: UUID | None,
+        project_id: UUID | None,
+        codebook_version_sha256: str,
     ) -> dict[str, object]:
         """Build the draft_candidate record. NOT an @event: shared by
         ``request_release`` and ``propose_change`` so each persists exactly
@@ -188,11 +190,13 @@ class CodebookVersion(Aggregate):
             "tenant_id": str(tenant_id),
             "release_id": str(release_id),
             "codebook_id": str(codebook_id),
+            "project_id": (str(project_id) if project_id is not None else None),
             "state": RELEASE_DRAFT,
             "profile": profile,
             "parent_release_id": (
                 str(parent_release_id) if parent_release_id is not None else None
             ),
+            "codebook_version_sha256": codebook_version_sha256,
             "manifest_json": dict(manifest_json),
             "manifest_sha256": manifest_sha256,
             "created_at": requested_at,
@@ -215,6 +219,8 @@ class CodebookVersion(Aggregate):
         manifest_sha256: str,
         requested_at: str,
         parent_release_id: UUID | None = None,
+        project_id: UUID | None = None,
+        codebook_version_sha256: str = "",
     ) -> None:
         """Open a draft_candidate release for THIS version (idempotent id)."""
         if str(release_id) in self.releases:
@@ -229,6 +235,8 @@ class CodebookVersion(Aggregate):
             manifest_sha256=manifest_sha256,
             requested_at=requested_at,
             parent_release_id=parent_release_id,
+            project_id=project_id,
+            codebook_version_sha256=codebook_version_sha256,
         )
 
     @event("GateEvaluated")
@@ -344,6 +352,8 @@ class CodebookVersion(Aggregate):
         proposed_at: str,
         successor_manifest_json: dict[str, object],
         successor_manifest_sha256: str,
+        project_id: UUID | None = None,
+        codebook_version_sha256: str = "",
     ) -> None:
         """U25: propose a change against a released parent; the successor is a
         fresh draft_candidate linked to it. Never mutates the parent.
@@ -368,6 +378,8 @@ class CodebookVersion(Aggregate):
             manifest_sha256=successor_manifest_sha256,
             requested_at=proposed_at,
             parent_release_id=release_id,
+            project_id=project_id,
+            codebook_version_sha256=codebook_version_sha256,
         )
         prior = rec.get("change_proposals")
         existing = (

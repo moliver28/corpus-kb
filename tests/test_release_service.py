@@ -264,6 +264,37 @@ def test_propose_change_path_replays_from_persisted_events():
     assert len(sink.saved) == 3
 
 
+def test_release_request_event_carries_project_and_version_hash():
+    """Finding 8: project_id and codebook_version_sha256 ride on the persisted
+    event (the projector reads them for codebook_releases) and land on the
+    aggregate record."""
+    project_id = uuid4()
+    service = ReleaseService(MemorySink())
+    aggregate = _aggregate()
+    release_id = uuid4()
+    manifest = _manifest()
+    service.request_release(
+        aggregate,
+        release_id=release_id,
+        codebook_id=uuid4(),
+        profile_name=PROFILE_TEAM_CODEBOOK,
+        creator="alice",
+        manifest=manifest,
+        requested_at="t1",
+        project_id=project_id,
+    )
+    request_event = next(
+        event
+        for event in aggregate.pending_events
+        if type(event).__name__ == "CodebookReleaseRequested"
+    )
+    assert str(request_event.project_id) == str(project_id)
+    assert request_event.codebook_version_sha256 == manifest.codebook_sha256
+    record = _record(aggregate, release_id)
+    assert record["project_id"] == str(project_id)
+    assert record["codebook_version_sha256"] == manifest.codebook_sha256
+
+
 def test_events_replay_to_identical_state_and_manifest_hash():
     service, aggregate, release_id, _, sink = _open_draft(PROFILE_HIGH_ASSURANCE)
     service.record_gate_result(

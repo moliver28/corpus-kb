@@ -76,6 +76,7 @@ class ReleaseService:
         manifest: ReleaseManifest,
         requested_at: str,
         parent_release_id: UUID | None = None,
+        project_id: UUID | None = None,
     ) -> dict[str, object]:
         """Open a draft_candidate release (idempotent by release_id)."""
         aggregate.request_release(
@@ -88,6 +89,8 @@ class ReleaseService:
             manifest_sha256=manifest.sha256(),
             requested_at=requested_at,
             parent_release_id=parent_release_id,
+            project_id=project_id,
+            codebook_version_sha256=manifest.codebook_sha256,
         )
         self._sink.save(aggregate)
         return {
@@ -224,6 +227,7 @@ class ReleaseService:
         proposed_by: str,
         proposed_at: str,
         successor_manifest: ReleaseManifest,
+        project_id: UUID | None = None,
     ) -> dict[str, object]:
         """U25 data: successor DRAFT linked to the released parent."""
         aggregate.propose_change(
@@ -235,6 +239,8 @@ class ReleaseService:
             proposed_at=proposed_at,
             successor_manifest_json=successor_manifest.to_payload(),
             successor_manifest_sha256=successor_manifest.sha256(),
+            project_id=project_id,
+            codebook_version_sha256=successor_manifest.codebook_sha256,
         )
         self._sink.save(aggregate)
         return {

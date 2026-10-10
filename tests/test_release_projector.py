@@ -30,6 +30,7 @@ VERSION_ID = UUID("33333333-3333-3333-3333-333333333333")
 RELEASE_ID = UUID("11111111-1111-1111-1111-111111111111")
 PARENT_ID = UUID("44444444-4444-4444-4444-444444444444")
 SUCCESSOR_ID = UUID("55555555-5555-5555-5555-555555555555")
+PROJECT_ID = UUID("66666666-6666-6666-6666-666666666666")
 MANIFEST = {"schema_version": "corpus-kb.release-manifest/1", "release_id": str(RELEASE_ID)}
 
 
@@ -75,6 +76,8 @@ def _lifecycle_notifications() -> list[SimpleNamespace]:
             tenant_id=str(TENANT),
             release_id=str(RELEASE_ID),
             codebook_id=str(PARENT_ID),
+            project_id=str(PROJECT_ID),
+            codebook_version_sha256="c" * 64,
             profile="team-codebook",
             creator="alice",
             manifest_json=MANIFEST,
@@ -125,6 +128,8 @@ def _lifecycle_notifications() -> list[SimpleNamespace]:
             release_id=str(RELEASE_ID),
             successor_release_id=str(SUCCESSOR_ID),
             codebook_id=str(PARENT_ID),
+            project_id=str(PROJECT_ID),
+            codebook_version_sha256="c" * 64,
             profile="team-codebook",
             summary="split the cost code",
             proposed_by="frank",
@@ -169,6 +174,40 @@ async def test_replay_rebuilds_identical_rows_and_manifest_hash():
 
     stored = json.loads(str(manifest_args[0][8]))
     assert stored == MANIFEST
+    # Finding 8: project_id and codebook_version_sha256 reach the read table
+    # ($3 and $6 of SQL_INSERT_RELEASE) on both the parent and the successor.
+    for args in manifest_args:
+        assert args[2] == str(PROJECT_ID)
+        assert args[5] == "c" * 64
+
+
+@pytest.mark.asyncio
+async def test_missing_project_and_version_hash_keys_fall_back_to_defaults():
+    """Old payloads without the Finding 8 keys still project (NULL / '')."""
+    fake = FakeConn()
+    projector = ReleaseProjector(MagicMock())
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "corpus_kb.projections.research.release_projector.tenant_connection",
+            _conn_patch(fake),
+        )
+        await projector.handle(
+            _notification(
+                "CodebookReleaseRequested",
+                tenant_id=str(TENANT),
+                release_id=str(RELEASE_ID),
+                codebook_id=str(PARENT_ID),
+                profile="team-codebook",
+                creator="alice",
+                manifest_json=MANIFEST,
+                manifest_sha256="a" * 64,
+                requested_at="2026-10-09T00:00:00+00:00",
+                parent_release_id=None,
+            )
+        )
+    (args,) = [args for sql, args in fake.calls if sql == SQL_INSERT_RELEASE]
+    assert args[2] is None
+    assert args[5] == ""
 
 
 @pytest.mark.asyncio
