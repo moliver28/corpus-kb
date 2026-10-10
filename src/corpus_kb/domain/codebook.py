@@ -160,6 +160,14 @@ class CodebookVersion(Aggregate):
             raise ReleaseStateError(f"release {release_id} not found for tenant")
         return release
 
+    @staticmethod
+    def _release_map(release: dict[str, object], key: str) -> dict[str, dict[str, object]]:
+        """A release's nested gate/waiver map, validated on replay too."""
+        nested = release.get(key)
+        if not isinstance(nested, dict):
+            raise ReleaseStateError(f"release record is missing its {key!r} map")
+        return nested
+
     @event("CodebookReleaseRequested")
     def request_release(
         self,
@@ -215,7 +223,7 @@ class CodebookVersion(Aggregate):
             raise ReleaseStateError(
                 f"release {release_id} is {release['state']}; gates attach to drafts only"
             )
-        release["gates"][gate_id] = {
+        self._release_map(release, "gates")[gate_id] = {
             "gate_id": gate_id,
             "status": status,
             "value": value,
@@ -246,7 +254,7 @@ class CodebookVersion(Aggregate):
             raise ReleaseStateError(
                 f"release {release_id} is {release['state']}; waivers attach to drafts only"
             )
-        release["waivers"][gate_id] = {
+        self._release_map(release, "waivers")[gate_id] = {
             "gate_id": gate_id,
             "justification": justification,
             "approver": approver,
@@ -328,8 +336,12 @@ class CodebookVersion(Aggregate):
             requested_at=proposed_at,
             parent_release_id=release_id,
         )
+        prior = rec.get("change_proposals")
+        existing = (
+            [item for item in prior if isinstance(item, dict)] if isinstance(prior, list) else []
+        )
         rec["change_proposals"] = [
-            *(rec.get("change_proposals") or []),
+            *existing,
             {
                 "successor_release_id": str(successor_release_id),
                 "summary": summary,

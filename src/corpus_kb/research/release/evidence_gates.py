@@ -19,6 +19,12 @@ from corpus_kb.research.release.gate_types import (
 from corpus_kb.research.release.profiles import ResolvedProfile
 
 
+def _count(block: dict[str, object], key: str) -> int:
+    """Non-negative int out of a JSON evidence block (0 when absent/malformed)."""
+    value = block.get(key, 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
 def gate_structured_output(inputs: GateInputs, _profile: ResolvedProfile) -> GateResult:
     """U43: the coding model's structured-output canary verdict.
 
@@ -65,7 +71,8 @@ def gate_clustering_determinism(inputs: GateInputs, _profile: ResolvedProfile) -
             reason=f"determinism proof incomplete (missing: {missing})",
             value=det,
         )
-    sweep = det.get("sweep") or {}
+    sweep_block = det.get("sweep")
+    sweep: dict[str, object] = sweep_block if isinstance(sweep_block, dict) else {}
     converged = sweep.get("converged")
     if converged is None:
         return GateResult(
@@ -98,9 +105,9 @@ def gate_quote_consensus(inputs: GateInputs, _profile: ResolvedProfile) -> GateR
             status="not_evaluable",
             reason="no consensus report recorded",
         )
-    runs = int(consensus.get("n_runs", 0) or 0)
-    kept = int(consensus.get("themes_kept", 0) or 0)
-    rejected = int(consensus.get("quote_not_found_rejected", 0) or 0)
+    runs = _count(consensus, "n_runs")
+    kept = _count(consensus, "themes_kept")
+    rejected = _count(consensus, "quote_not_found_rejected")
     if runs < 2:
         return GateResult(
             gate_id=GATE_QUOTE_CONSENSUS,

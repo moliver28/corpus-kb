@@ -45,14 +45,17 @@ def _release_or_raise(aggregate: CodebookVersion, release_id: UUID) -> dict[str,
 def _unmet_required(record: dict[str, object]) -> list[str]:
     """Required gates that are neither pass nor waived."""
     profile = resolve_profile(str(record.get("profile")))
-    gates = record.get("gates") or {}
-    waivers = record.get("waivers") or {}
+    gates_block = record.get("gates")
+    waivers_block = record.get("waivers")
+    gates: dict[str, object] = gates_block if isinstance(gates_block, dict) else {}
+    waivers: dict[str, object] = waivers_block if isinstance(waivers_block, dict) else {}
     unmet: list[str] = []
     for gate_id in profile.required_gates:
         if gate_id in waivers:
             continue
-        result = gates.get(gate_id) or {}
-        if result.get("status") != "pass":
+        result = gates.get(gate_id)
+        status = result.get("status") if isinstance(result, dict) else None
+        if status != "pass":
             unmet.append(gate_id)
     return unmet
 
