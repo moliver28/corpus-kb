@@ -28,7 +28,6 @@ from dataclasses import dataclass, field, replace
 import numpy as np
 
 from corpus_kb.coding.quote_verification import classify_quote
-from corpus_kb.research.cluster_stability import ari
 
 QUOTE_NOT_FOUND = "quote_not_found"
 DEFAULT_N_RUNS = 3
@@ -179,31 +178,21 @@ def run_to_run_agreement(
     kept: Sequence[Theme],
     run_labels: Sequence[str],
 ) -> dict[str, float]:
-    """Pairwise ARI over the consensus-theme label space on shared candidates.
+    """Pairwise run-to-run agreement: Jaccard over kept-theme membership.
 
-    ``run_labels`` are the candidates' ACTUAL run_id values (verified against
-    the candidate keys, not assumed).
+    A run "has" a theme iff the theme carries at least one of its members;
+    agreement for a run pair is |shared themes| / |union themes|. Candidate
+    keys are run-scoped, so key-based pairing across runs is meaningless —
+    membership in the consensus themes is the shared space.
     """
-    theme_of: dict[str, int] = {}
-    for idx, theme in enumerate(kept):
-        for member in theme.members:
-            theme_of[member.key()] = idx
-    keys_by_run: dict[str, set[str]] = {label: set() for label in run_labels}
-    for key, _theme in theme_of.items():
-        for label in run_labels:
-            if key.startswith(f"{label}:"):
-                keys_by_run[label].add(key)
-                break
+    runs_by_theme: list[frozenset[str]] = [theme.supporting_runs for theme in kept]
     agreement: dict[str, float] = {}
     for i, run_a in enumerate(run_labels):
         for run_b in run_labels[i + 1 :]:
-            shared = sorted(keys_by_run[run_a] & keys_by_run[run_b])
-            if len(shared) < 2:
-                agreement[f"{run_a}|{run_b}"] = 0.0
-                continue
-            labels_a = [theme_of[k] for k in shared]
-            labels_b = [theme_of[k] for k in shared]
-            agreement[f"{run_a}|{run_b}"] = ari(labels_a, labels_b)
+            owned_a = {idx for idx, runs in enumerate(runs_by_theme) if run_a in runs}
+            owned_b = {idx for idx, runs in enumerate(runs_by_theme) if run_b in runs}
+            union = owned_a | owned_b
+            agreement[f"{run_a}|{run_b}"] = len(owned_a & owned_b) / len(union) if union else 0.0
     return agreement
 
 

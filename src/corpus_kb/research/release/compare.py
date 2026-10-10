@@ -49,15 +49,14 @@ def _codes_by_name(manifest: ReleaseManifest) -> dict[str, dict[str, object]]:
 
 def compare_releases(old: ReleaseManifest, new: ReleaseManifest) -> ReleaseDiff:
     """Diff two release manifests; ``identical`` iff hashes' inputs match."""
+    if old.sha256() == new.sha256():
+        return ReleaseDiff(identical=True)
     old_codes = _codes_by_name(old)
     new_codes = _codes_by_name(new)
-    diff = ReleaseDiff()
-    if old.sha256() == new.sha256():
-        return diff
-    diff.identical = False
 
     added_names = set(new_codes) - set(old_codes)
     removed_names = set(old_codes) - set(new_codes)
+    merged: list[dict[str, str]] = []
     # merged/renamed: a removed code's definition reappears under a new name
     for removed in sorted(removed_names):
         definition = str(old_codes[removed].get("definition", ""))
@@ -70,12 +69,11 @@ def compare_releases(old: ReleaseManifest, new: ReleaseManifest) -> ReleaseDiff:
             None,
         )
         if successor is not None:
-            diff.codes_merged.append({"from": removed, "to": successor})
+            merged.append({"from": removed, "to": successor})
             added_names.discard(successor)
             removed_names.discard(removed)
-    diff.codes_added = sorted(added_names)
-    diff.codes_removed = sorted(removed_names)
 
+    definitions_changed: list[dict[str, str]] = []
     for name in sorted(set(old_codes) & set(new_codes)):
         changes = {
             field_name: str(new_codes[name].get(field_name, ""))
@@ -83,17 +81,26 @@ def compare_releases(old: ReleaseManifest, new: ReleaseManifest) -> ReleaseDiff:
             if old_codes[name].get(field_name) != new_codes[name].get(field_name)
         }
         if changes:
-            diff.definitions_changed.append({"code": name, **changes})
+            definitions_changed.append({"code": name, **changes})
 
-    diff.method_changes = _key_changes(old.method_declaration, new.method_declaration)
-    diff.threshold_changes = _key_changes(old.profile, new.profile)
+    metric_deltas: dict[str, float] = {}
     old_metrics = _numeric_metrics(old.metric_snapshots)
     new_metrics = _numeric_metrics(new.metric_snapshots)
     for key in sorted(set(old_metrics) & set(new_metrics)):
         delta = round(new_metrics[key] - old_metrics[key], METRIC_PRECISION)
         if delta != 0:
-            diff.metric_deltas[key] = delta
-    return diff
+            metric_deltas[key] = delta
+
+    return ReleaseDiff(
+        identical=False,
+        codes_added=sorted(added_names),
+        codes_removed=sorted(removed_names),
+        codes_merged=merged,
+        definitions_changed=definitions_changed,
+        method_changes=_key_changes(old.method_declaration, new.method_declaration),
+        threshold_changes=_key_changes(old.profile, new.profile),
+        metric_deltas=metric_deltas,
+    )
 
 
 def _key_changes(old: dict[str, object], new: dict[str, object]) -> dict[str, dict[str, object]]:

@@ -9,7 +9,7 @@ registry is a Wave-2 stub. Same contract: pure functions over
 
 from __future__ import annotations
 
-from corpus_kb.research.release.gates import (
+from corpus_kb.research.release.gate_types import (
     GATE_CLUSTER_DETERMINISM,
     GATE_QUOTE_CONSENSUS,
     GATE_STRUCTURED_OUTPUT,
@@ -57,7 +57,7 @@ def gate_clustering_determinism(inputs: GateInputs, _profile: ResolvedProfile) -
     """U44: the determinism proof must be complete and the sweep converged."""
     det = inputs.determinism or {}
     required = ("embedding_matrix_sha256", "seed", "params", "library_versions")
-    missing = [k for k in required if not det.get(k)]
+    missing = [k for k in required if det.get(k) is None]
     if missing:
         return GateResult(
             gate_id=GATE_CLUSTER_DETERMINISM,

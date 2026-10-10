@@ -15,7 +15,7 @@ tests). The projector lands the read rows asynchronously.
 
 from __future__ import annotations
 
-from dataclasses import Protocol
+from typing import Protocol
 from uuid import UUID
 
 from corpus_kb.domain.codebook import CodebookVersion, ReleaseStateError

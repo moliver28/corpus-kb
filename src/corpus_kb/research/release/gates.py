@@ -15,84 +15,52 @@ upgrades missing evidence into a pass. Stubs for the Wave-2 gate ids
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass, field
-from typing import Literal
-
 from corpus_kb.research.release.evidence_gates import (
     gate_clustering_determinism,
     gate_quote_consensus,
     gate_structured_output,
 )
-from corpus_kb.research.release.profiles import ResolvedProfile
-
-GateStatus = Literal["pass", "fail", "not_evaluable", "waived"]
-
-# U7-U19 gate ids (v6 §7). Stubs until Wave 2 delivers their inputs.
-GATE_DEFINITION_COMPLETENESS = "definition_completeness"
-GATE_BOUNDARY_AGREEMENT = "boundary_agreement"
-GATE_PARTITION_INDEPENDENCE = "partition_independence"
-GATE_MACHINE_PROFILE = "machine_profile"
-GATE_HELDOUT_F1 = "heldout_per_code_f1"
-GATE_PROMPT_STABILITY = "prompt_stability"
-GATE_ALT_TEST = "alternative_annotator_test"
-GATE_PREDICTION_POWERED = "prediction_powered_estimates"
-GATE_STRATUM_DISPARITY = "stratum_disparity"
-GATE_CONTENT_STABILITY = "content_stability"
-GATE_AUDIT_SAMPLE = "audit_sample_design"
-GATE_AGREEMENT_CALIBRATION = "agreement_calibration"
-GATE_AGREEMENT_ROUTING = "agreement_routing"
-
-# Gates P1 can evaluate from P1-built evidence.
-GATE_RELIABILITY_ALPHA = "reliability_alpha"
-GATE_EXHAUSTIVENESS = "exhaustiveness"
-GATE_SATURATION = "saturation"
-GATE_STRUCTURED_OUTPUT = "structured_output_enforcement"
-GATE_CLUSTER_DETERMINISM = "clustering_determinism"
-GATE_QUOTE_CONSENSUS = "quote_consensus"
-
-WAVE2_GATES: tuple[str, ...] = (
-    GATE_DEFINITION_COMPLETENESS,
-    GATE_BOUNDARY_AGREEMENT,
-    GATE_PARTITION_INDEPENDENCE,
-    GATE_HELDOUT_F1,
-    GATE_PROMPT_STABILITY,
-    GATE_ALT_TEST,
-    GATE_PREDICTION_POWERED,
-    GATE_STRATUM_DISPARITY,
-    GATE_AUDIT_SAMPLE,
+from corpus_kb.research.release.gate_types import (
     GATE_AGREEMENT_CALIBRATION,
     GATE_AGREEMENT_ROUTING,
+    GATE_ALT_TEST,
+    GATE_AUDIT_SAMPLE,
+    GATE_BOUNDARY_AGREEMENT,
+    GATE_CLUSTER_DETERMINISM,
+    GATE_CONTENT_STABILITY,
+    GATE_DEFINITION_COMPLETENESS,
+    GATE_EXHAUSTIVENESS,
+    GATE_HELDOUT_F1,
+    GATE_MACHINE_PROFILE,
+    GATE_PARTITION_INDEPENDENCE,
+    GATE_PREDICTION_POWERED,
+    GATE_PROMPT_STABILITY,
+    GATE_QUOTE_CONSENSUS,
+    GATE_RELIABILITY_ALPHA,
+    GATE_SATURATION,
+    GATE_STRATUM_DISPARITY,
+    GATE_STRUCTURED_OUTPUT,
+    STUB_REASON,
+    WAVE2_GATES,
+    GateFn,
+    GateInputs,
+    GateResult,
+    GateStatus,
 )
+from corpus_kb.research.release.profiles import ResolvedProfile
 
-STUB_REASON = "inputs pending wave 2"
-
-
-@dataclass(frozen=True)
-class GateInputs:
-    """Pre-fetched evidence; gates stay pure over this snapshot."""
-
-    manifest: dict[str, object] | None = None
-    canary: dict[str, object] | None = None
-    determinism: dict[str, object] | None = None
-    consensus: dict[str, object] | None = None
-    metrics: dict[str, object] | None = None
-    extra: dict[str, object] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class GateResult:
-    """One gate's honest outcome (never a pass from missing data)."""
-
-    gate_id: str
-    status: GateStatus
-    reason: str
-    value: object = None
-    threshold: object = None
-    evidence_refs: tuple[str, ...] = ()
-
-
-GateFn = Callable[[GateInputs, ResolvedProfile], GateResult]
+__all__ = [
+    "ALL_RELEASE_GATES",
+    "GATES",
+    "STUB_REASON",
+    "WAVE2_GATES",
+    "GateFn",
+    "GateInputs",
+    "GateResult",
+    "GateStatus",
+    "UnknownGateError",
+    "assess",
+]
 
 
 def _stub(gate_id: str) -> GateFn:
