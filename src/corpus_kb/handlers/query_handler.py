@@ -32,7 +32,8 @@ from corpus_kb.domain.models import (
     VerifyAnswerResult,
 )
 from corpus_kb.rag.embedder import OllamaEmbedder
-from corpus_kb.rag.reranker import create_reranker
+from corpus_kb.rag.rerank_settings import load_rerank_settings
+from corpus_kb.rag.reranker import build_reranker, create_reranker
 from corpus_kb.research.search_settings import (
     HnswSettings,
     apply_hnsw_settings,
@@ -85,9 +86,18 @@ class QueryHandler:
         self._self_query_parser = self_query_parser
         self._judge = judge
         self._config = config or load_config()
-        self._reranker = reranker if reranker is not None else create_reranker(self._config, pool)
+        # U30 production wiring: ``search.rerank.enabled`` (top-N rerank of
+        # the fused results with the qwen3 logprob scorer) takes precedence;
+        # when the block is absent/disabled, fall back to the legacy
+        # ``search.reranker`` selection so existing configs keep behaving.
+        self._reranker = (
+            reranker
+            if reranker is not None
+            else (build_reranker(self._config) or create_reranker(self._config, pool))
+        )
         search_cfg = self._config.get("search", {}) or {}
         self._rerank_cfg = search_cfg.get("rerank", {}) or {}
+        self._rerank_settings = load_rerank_settings(self._config)
         self._self_query_enabled = bool(
             (search_cfg.get("self_query", {}) or {}).get("enabled", False)
         )
@@ -366,19 +376,27 @@ class QueryHandler:
             return fused_results
 
         if callable(getattr(self._reranker, "score", None)):
-            candidates = fused_results[:over_retrieve_n]
+            # U30: rerank at most search.rerank.candidates of the fused
+            # results — never more than were over-retrieved from the arms.
+            rerank_n = min(over_retrieve_n, self._rerank_settings.candidates)
+            candidates = fused_results[:rerank_n]
             cand_texts = [r.text for r in candidates]
             raw_scores = await asyncio.to_thread(self._reranker.score, semantic_query, cand_texts)
             if raw_scores is None:
                 return fused_results
-            floor = float(self._rerank_cfg.get("score_floor", 0.15))
-            lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
-            span = (hi - lo) or 1.0
-            reranked = [
-                r.model_copy(update={"score": (s - lo) / span})
-                for r, s in zip(candidates, raw_scores, strict=True)
-            ]
-            reranked = [r for r in reranked if r.score >= floor]
+            if self._rerank_settings.calibration == "minmax":
+                lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
+                span = (hi - lo) or 1.0
+                reranked = [
+                    r.model_copy(update={"score": (s - lo) / span})
+                    for r, s in zip(candidates, raw_scores, strict=True)
+                ]
+            else:
+                reranked = [
+                    r.model_copy(update={"score": float(s)})
+                    for r, s in zip(candidates, raw_scores, strict=True)
+                ]
+            reranked = [r for r in reranked if r.score >= self._rerank_settings.score_floor]
             reranked.sort(key=lambda r: r.score, reverse=True)
             return reranked[: query.k]
 

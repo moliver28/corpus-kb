@@ -4,24 +4,33 @@ IdentityReranker (``search.reranker: none``, the default): pass-through —
 results are already fused by ``corpus.rrf_fusion()``.
 PgmlReranker (``search.reranker: pgml``): cross-encoder reranking via
 ``pgml.rank()`` inside PostgreSQL.
-OllamaReranker (``search.reranker: ollama``): scores (query, chunk) pairs
-via a local Ollama generate call using the qwen3-reranker prompt format,
-confirmed as ``"Query: {query}\nDocument: {doc}\nRelevance:"`` against
-``ollama.generate()``.
+OllamaReranker (``search.reranker: ollama`` or ``search.rerank.enabled``):
+scores (query, chunk) pairs with the qwen3-reranker judgment contract —
+that model family has NO rerank endpoint and NO float score output; it
+answers a yes/no relevance judgment, so the score is
+``P("yes") / (P("yes") + P("no"))`` computed from the TOKEN LOGPROBS of the
+judgment position (verified live against Ollama 0.31.1: ``/api/generate``
+accepts ``logprobs=true`` plus ``top_logprobs=<k>`` and returns per-token
+logprob arrays with ranked alternatives; ``logprobs`` as a number is
+rejected — it is bool-typed server-side).
 FakeReranker: deterministic reranker for CI / degraded mode, mirroring
 FakeEmbedder in corpus_kb/rag/embedder.py.
 
 On any pgml failure PgmlReranker logs a warning and returns the input
 unchanged so callers can continue operating in degraded mode — reranking
-must never break search. On any failure OllamaReranker returns None (not
-raised, not zeros) so callers can fall open to the pre-rerank RRF order --
-reranking is a strict quality add-on, never a hard dependency of search.
+must never break search. On any failure (connection, timeout, model not
+pulled) OllamaReranker returns None (``not_evaluable``, not raised, not
+zeros) so callers fall open to the pre-rerank RRF order — reranking is a
+strict quality add-on, never a hard dependency of search. A judgment
+position where neither yes nor no mass appears scores a neutral 0.5 and is
+counted in ``last_not_evaluable`` for honesty reporting.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import random
 from collections import OrderedDict
 from typing import Protocol, cast, runtime_checkable
@@ -33,6 +42,7 @@ from ollama import Client, ResponseError
 from ..config import load_config
 from ..domain.models import SearchResult
 from .embedder import _str_or_default
+from .rerank_settings import load_rerank_settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +50,24 @@ DEFAULT_RERANKER = "none"
 DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 RANK_TIMEOUT_SECONDS = 30.0
 MAX_CACHE_SIZE = 10_000
+
+# U30 judgment-scoring constants. TOP_LOGPROBS_K wide enough to capture the
+# yes/no variants (" yes", " Yes", "yes." ...) at the judgment position;
+# MAX_JUDGMENT_TOKENS bounds the generate so a rambling model cannot turn
+# one rerank score into a full completion.
+TOP_LOGPROBS_K = 20
+MAX_JUDGMENT_TOKENS = 8
+
+# Verified against Ollama 0.31.1 (2026-10-10): this exact prompt shape makes
+# the judgment the first word-bearing generated token — a leading-space token
+# is common, so the scorer scans positions and takes the max yes/no mass.
+RERANK_PROMPT_TEMPLATE = (
+    "Judge whether the Document meets the requirements based on the Query. "
+    "Reply with exactly one word, yes or no.\n"
+    "Query: {query}\n"
+    "Document: {document}\n"
+    "Relevance:"
+)
 
 
 @runtime_checkable
@@ -126,21 +154,34 @@ class PgmlReranker:
 
 
 class OllamaReranker:
-    """Cross-encoder reranker using qwen3-reranker via Ollama's generate API."""
+    """qwen3-reranker scoring via Ollama token logprobs (U30 contract).
+
+    qwen3-reranker has NO rerank endpoint and does not emit floats: it
+    answers a yes/no relevance judgment. The score is therefore
+    ``P(yes) / (P(yes) + P(no))`` computed from the token logprobs at the
+    judgment position. Each pair costs one short generate call with
+    ``logprobs=true`` and ``top_logprobs`` alternatives.
+
+    ``score`` returns None (``not_evaluable``) when the backend is
+    unavailable — connection refused, timed out, or the configured rerank
+    model is not pulled (``qwen3-reranker`` was NOT present on the registry
+    at implementation time; the default degrades to un-reranked RRF order
+    with a logged warning). Pairs whose judgment position carries neither
+    yes nor no mass score a neutral 0.5 and are counted in
+    ``last_not_evaluable``.
+    """
 
     def __init__(self, config: dict[str, object] | None = None) -> None:
-        rerank_cfg = cast(
-            dict[str, object],
-            ((config or {}).get("search", {}) or {}).get("rerank", {}) or {},
-        )
-        self.model = str(rerank_cfg.get("model", "qwen3-reranker:8b"))
-        self.base_url = str(rerank_cfg.get("base_url", "http://localhost:11434"))
-        self.batch_size = int(rerank_cfg.get("batch_size", 16))
-        self._client = Client(host=self.base_url)
+        self._settings = load_rerank_settings(config or {})
+        self.model = self._settings.model
+        self.base_url = self._settings.base_url
+        self._client = Client(host=self.base_url, timeout=self._settings.timeout_seconds)
         self._cache: OrderedDict[str, float] = OrderedDict()
+        self.last_not_evaluable = 0
 
     def score(self, query: str, texts: list[str]) -> list[float] | None:
         """Return a relevance score per text, or None if the backend is unavailable."""
+        self.last_not_evaluable = 0
         if not texts:
             return []
         try:
@@ -152,34 +193,138 @@ class OllamaReranker:
                     self._cache.move_to_end(key)
                     scores.append(cached)
                     continue
-                prompt = f"Query: {query}\nDocument: {text}\nRelevance:"
-                response = self._client.generate(
-                    model=self.model,
-                    prompt=prompt,
-                    options={"temperature": 0},
-                )
-                raw = response.get("response", "") if isinstance(response, dict) else str(response)
-                try:
-                    value = float(raw.strip())
-                except ValueError:
-                    value = 0.0
+                value = self._score_pair(query, text)
+                if value is None:
+                    self.last_not_evaluable += 1
+                    value = 0.5
                 self._cache[key] = value
                 self._cache.move_to_end(key)
                 if len(self._cache) > MAX_CACHE_SIZE:
                     self._cache.popitem(last=False)
                 scores.append(value)
+            if self.last_not_evaluable:
+                logger.warning(
+                    "qwen3 rerank judgment not evaluable for %d/%d pairs; neutral 0.5 used.",
+                    self.last_not_evaluable,
+                    len(texts),
+                )
             return scores
-        except (ConnectionError, OSError, httpx.NetworkError, ResponseError) as exc:
-            # ResponseError covers "model not found" (e.g. qwen3-reranker not
-            # pulled) -- an application-level Ollama error, not a network
-            # failure, but just as fatal to reranking and just as safe to
-            # degrade from: fall back to RRF order rather than break search.
+        except (
+            ConnectionError,
+            OSError,
+            httpx.NetworkError,
+            httpx.TimeoutException,
+            ResponseError,
+        ) as exc:
+            # httpx.TimeoutException is a sibling of NetworkError under
+            # TransportError and needs its own entry: an expired client bound
+            # must degrade exactly like a refused connection. ResponseError
+            # covers "model not found" (qwen3-reranker not pulled).
             logger.warning(
-                "Reranker unavailable at %s: %s; falling back to RRF order.",
+                "Reranker unavailable at %s (model %s): %s; falling back to RRF order.",
                 self.base_url,
+                self.model,
                 exc,
             )
             return None
+
+    def _score_pair(self, query: str, text: str) -> float | None:
+        """One generate call; P(yes)/(P(yes)+P(no)) from judgment logprobs."""
+        # ~4 chars per token keeps the document side of the pair inside
+        # max_pair_tokens without a tokenizer dependency (documented
+        # approximation; truncation is a recall knob, not a correctness one).
+        max_chars = self._settings.max_pair_tokens * 4
+        prompt = RERANK_PROMPT_TEMPLATE.format(query=query, document=text[:max_chars])
+        response = self._client.generate(
+            model=self.model,
+            prompt=prompt,
+            stream=False,
+            options={"temperature": 0, "num_predict": MAX_JUDGMENT_TOKENS},
+            logprobs=True,
+            top_logprobs=TOP_LOGPROBS_K,
+        )
+        entries = _logprob_entries(response)
+        return _judgment_score(entries)
+
+
+class _LogprobAlt:
+    """One ranked alternative token at a generation position."""
+
+    __slots__ = ("logprob", "token")
+
+    def __init__(self, token: str, logprob: float) -> None:
+        self.token = token
+        self.logprob = logprob
+
+
+def _logprob_entries(response: object) -> list[list[_LogprobAlt]]:
+    """Extract per-position top-logprob alternatives from a generate response.
+
+    The ollama client returns pydantic models; dict fallbacks mirror the
+    coder_client contract. Each entry: ``.token/.logprob`` plus ranked
+    ``.top_logprobs`` alternatives (verified server behavior on 0.31.1).
+    The server includes the greedy token as the FIRST alternative, so tokens
+    are de-duplicated per position (first occurrence wins) — counting the
+    greedy token twice would inflate its side of the yes/no ratio.
+    """
+    raw_entries: object = getattr(response, "logprobs", None)
+    if raw_entries is None and isinstance(response, dict):
+        raw_entries = response.get("logprobs")
+    if not isinstance(raw_entries, (list, tuple)):
+        return []
+    positions: list[list[_LogprobAlt]] = []
+    for entry in raw_entries:
+        greedy_token = str(_field(entry, "token") or "")
+        greedy_lp = float(_field(entry, "logprob") or 0.0)
+        alts: list[_LogprobAlt] = [_LogprobAlt(greedy_token, greedy_lp)]
+        seen = {greedy_token}
+        for alt in _field(entry, "top_logprobs") or []:
+            token = str(_field(alt, "token") or "")
+            if token in seen:
+                continue
+            seen.add(token)
+            alts.append(_LogprobAlt(token, float(_field(alt, "logprob") or 0.0)))
+        positions.append(alts)
+    return positions
+
+
+def _field(entry: object, name: str) -> object:
+    """Read ``name`` off a pydantic logprob entry or its dict fallback."""
+    if isinstance(entry, dict):
+        return entry.get(name)
+    return getattr(entry, name, None)
+
+
+def _normalize_judgment(token: str) -> str:
+    """Normalize a token to its judgment word: strip space/punctuation, lower."""
+    return token.strip().lower().strip(".,!?:;\"'`")
+
+
+def _judgment_score(positions: list[list[_LogprobAlt]]) -> float | None:
+    """P(yes)/(P(yes)+P(no)) at the position with the most yes/no mass.
+
+    Models sometimes emit a leading-space or preamble token first, so every
+    generated position is scored and the one concentrating yes/no judgment
+    mass wins. None (not_evaluable) when no position carries any yes or no
+    probability at all.
+    """
+    best: tuple[float, float, float] | None = None
+    for alts in positions:
+        p_yes = 0.0
+        p_no = 0.0
+        for alt in alts:
+            judgment = _normalize_judgment(alt.token)
+            if judgment == "yes":
+                p_yes += math.exp(alt.logprob)
+            elif judgment == "no":
+                p_no += math.exp(alt.logprob)
+        total = p_yes + p_no
+        if total > 0.0 and (best is None or total > best[0]):
+            best = (total, p_yes, p_no)
+    if best is None:
+        return None
+    _, p_yes, p_no = best
+    return p_yes / (p_yes + p_no)
 
 
 class FakeReranker:
@@ -198,10 +343,10 @@ def _cache_key(query: str, text: str) -> str:
 
 
 def build_reranker(config: dict[str, object]) -> object | None:
-    """Build the configured reranker, or None if disabled."""
-    rerank_cfg = cast(dict[str, object], (config.get("search", {}) or {}).get("rerank", {}) or {})
-    if not rerank_cfg.get("enabled", False):
+    """Build the configured reranker, or None if disabled (U30 production gate)."""
+    if not load_rerank_settings(config).enabled:
         return None
+    rerank_cfg = cast(dict[str, object], (config.get("search", {}) or {}).get("rerank", {}) or {})
     if rerank_cfg.get("backend") == "fake":
         return FakeReranker()
     return OllamaReranker(config)

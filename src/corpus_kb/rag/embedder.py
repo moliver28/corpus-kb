@@ -28,6 +28,12 @@ logger = logging.getLogger(__name__)
 
 MAX_CACHE_SIZE = 10_000
 
+# Bound on every embed call (seconds). Same contract as nli_client.py
+# (commit 3e37bed): without a client timeout, a server that accepts TCP but
+# never answers blocks the caller forever. 120s covers a cold model load on
+# CPU; slower than that must DEGRADE (zero vectors) per the contract below.
+EMBED_TIMEOUT_SECONDS = 120.0
+
 # Boundary normalization tolerance (todo 13, r7): every research vector must
 # be L2-normalized where the embedder emits it; zero vectors (degraded mode)
 # are exempt so the house no-Ollama fallback keeps passing.
@@ -88,7 +94,7 @@ class OllamaEmbedder:
         self.batch_size = _int_or_default(embedding, "batch_size", 32)
         self.dimensions = _int_or_default(embedding, "dimensions", 768)
 
-        self._client = Client(host=self.base_url)
+        self._client = Client(host=self.base_url, timeout=EMBED_TIMEOUT_SECONDS)
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
 
     def embed(self, text: str) -> list[float]:
@@ -139,7 +145,10 @@ class OllamaEmbedder:
                 model=self.model,
                 input=texts,
             )
-        except (ConnectionError, OSError, httpx.NetworkError):
+        # httpx.TimeoutException is a SIBLING of NetworkError (both under
+        # TransportError): an expired EMBED_TIMEOUT_SECONDS bound must
+        # degrade to zero vectors exactly like a refused connection.
+        except (ConnectionError, OSError, httpx.NetworkError, httpx.TimeoutException):
             logger.warning(
                 "Ollama connection failed at %s; returning zero vectors.",
                 self.base_url,
