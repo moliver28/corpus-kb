@@ -15,6 +15,13 @@ The retrieval leg uses the halfvec(1024) cast index with the pinned probe
 ``embedding::halfvec(1024) <=> $1::halfvec(1024)`` — one primary index per
 access pattern (r11); HALFVEC_PROBE_SQL exists for the EXPLAIN proof.
 
+U40 (P3): every analytics KNN read follows the relaxed-ordering pattern —
+the ANN scan (filters + distance ORDER BY + LIMIT) stays INSIDE a
+``WITH candidate AS MATERIALIZED`` CTE and the exact ordering is applied
+OUTSIDE over the retrieved set (``dist + 0`` defeats planner sort-elision,
+per the pgvector docs). These reads pull fixed-shaped candidate sets (one
+ordered scan per prototype), so the materialization costs nothing extra.
+
 ``explain_plan`` captures the EXPLAIN text so the fixture can assert index
 usage. ``force_index=True`` emits ``SET LOCAL enable_seqscan = off`` inside
 an explicit transaction (autocommit would drop the SET LOCAL) — on
@@ -33,52 +40,82 @@ import numpy as np
 from corpus_kb.research.exhaustiveness import max_cos_by_id
 
 RETRIEVAL_UNITS_SQL = """
-SELECT ru.unit_id
-FROM research_units ru
-WHERE ru.is_codable AND ru.role_in_exchange = 'answer'
-  AND ru.embedding_256 IS NOT NULL
-ORDER BY ru.embedding_256 <=> $1::vector(256)
-LIMIT $2
+WITH candidate AS MATERIALIZED (
+    SELECT ru.unit_id,
+           ru.embedding_256 <=> $1::vector(256) AS dist
+    FROM research_units ru
+    WHERE ru.is_codable AND ru.role_in_exchange = 'answer'
+      AND ru.embedding_256 IS NOT NULL
+    ORDER BY ru.embedding_256 <=> $1::vector(256)
+    LIMIT $2
+)
+SELECT candidate.unit_id
+FROM candidate
+ORDER BY candidate.dist + 0 ASC
 """
 
 RETRIEVAL_UNITS_TYPED_SQL = """
-SELECT ru.unit_id
-FROM research_units ru
-JOIN documents d ON d.doc_id = ru.doc_id
-WHERE ru.is_codable AND ru.role_in_exchange = 'answer'
-  AND ru.embedding_256 IS NOT NULL
-  AND d.source_type = $2::text
-ORDER BY ru.embedding_256 <=> $1::vector(256)
-LIMIT $3
+WITH candidate AS MATERIALIZED (
+    SELECT ru.unit_id,
+           ru.embedding_256 <=> $1::vector(256) AS dist
+    FROM research_units ru
+    JOIN documents d ON d.doc_id = ru.doc_id
+    WHERE ru.is_codable AND ru.role_in_exchange = 'answer'
+      AND ru.embedding_256 IS NOT NULL
+      AND d.source_type = $2::text
+    ORDER BY ru.embedding_256 <=> $1::vector(256)
+    LIMIT $3
+)
+SELECT candidate.unit_id
+FROM candidate
+ORDER BY candidate.dist + 0 ASC
 """
 
 RETRIEVAL_EXCHANGES_SQL = """
-SELECT e.exchange_id
-FROM research_exchanges e
-WHERE e.embedding_256 IS NOT NULL
-ORDER BY e.embedding_256 <=> $1::vector(256)
-LIMIT $2
+WITH candidate AS MATERIALIZED (
+    SELECT e.exchange_id,
+           e.embedding_256 <=> $1::vector(256) AS dist
+    FROM research_exchanges e
+    WHERE e.embedding_256 IS NOT NULL
+    ORDER BY e.embedding_256 <=> $1::vector(256)
+    LIMIT $2
+)
+SELECT candidate.exchange_id
+FROM candidate
+ORDER BY candidate.dist + 0 ASC
 """
 
 RETRIEVAL_UNCODED_SQL = """
-SELECT ru.unit_id
-FROM research_units ru
-WHERE ru.is_codable AND ru.role_in_exchange = 'answer'
-  AND ru.embedding_256 IS NOT NULL
-  AND NOT EXISTS (
-      SELECT 1 FROM research_assignments ra
-      WHERE ra.tenant_id = ru.tenant_id AND ra.unit_id = ru.unit_id
-  )
-ORDER BY ru.embedding_256 <=> $1::vector(256)
-LIMIT $2
+WITH candidate AS MATERIALIZED (
+    SELECT ru.unit_id,
+           ru.embedding_256 <=> $1::vector(256) AS dist
+    FROM research_units ru
+    WHERE ru.is_codable AND ru.role_in_exchange = 'answer'
+      AND ru.embedding_256 IS NOT NULL
+      AND NOT EXISTS (
+          SELECT 1 FROM research_assignments ra
+          WHERE ra.tenant_id = ru.tenant_id AND ra.unit_id = ru.unit_id
+      )
+    ORDER BY ru.embedding_256 <=> $1::vector(256)
+    LIMIT $2
+)
+SELECT candidate.unit_id
+FROM candidate
+ORDER BY candidate.dist + 0 ASC
 """
 
 HALFVEC_PROBE_SQL = """
-SELECT ru.unit_id
-FROM research_units ru
-WHERE ru.is_codable AND ru.role_in_exchange = 'answer' AND ru.embedding IS NOT NULL
-ORDER BY ru.embedding::halfvec(1024) <=> $1::halfvec(1024)
-LIMIT $2
+WITH candidate AS MATERIALIZED (
+    SELECT ru.unit_id,
+           ru.embedding::halfvec(1024) <=> $1::halfvec(1024) AS dist
+    FROM research_units ru
+    WHERE ru.is_codable AND ru.role_in_exchange = 'answer' AND ru.embedding IS NOT NULL
+    ORDER BY ru.embedding::halfvec(1024) <=> $1::halfvec(1024)
+    LIMIT $2
+)
+SELECT candidate.unit_id
+FROM candidate
+ORDER BY candidate.dist + 0 ASC
 """
 
 UNIT_VECTORS_SQL = """
