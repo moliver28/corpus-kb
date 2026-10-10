@@ -123,8 +123,8 @@ class QueryHandler:
         self._candidate_multiplier = int(search_cfg.get("candidate_multiplier", 8))
         # U20: transaction-local HNSW scan settings (search.hnsw.*).
         self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
-        # U45/U21: shared retrieval knobs (rrf depth semantics live with the
-        # fusion callers; the threshold drives the exact-scan arm below).
+        # U45/U21: shared retrieval knobs (``rrf_k`` feeds the fusion call
+        # below; the threshold drives the exact-scan arm).
         self._retrieval_settings = load_retrieval_settings(self._config)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
@@ -447,7 +447,7 @@ class QueryHandler:
                     _fusion_payload(vector_results),
                     _fusion_payload(fts_results),
                     query.k,
-                    60,
+                    self._retrieval_settings.rrf_k,
                 )
             except asyncpg.UndefinedFunctionError as exc:
                 raise RuntimeError(

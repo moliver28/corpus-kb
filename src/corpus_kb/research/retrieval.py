@@ -2,10 +2,11 @@
 
 Hybrid dense + lexical over retrieval CHILDREN (v5 §5.2: units of kind
 answer/question, exchanges of kind qa), fused with the house RRF function
-(``corpus.rrf_fusion``, k=60 — migration 006 precedent), optionally
-cross-encoder reranked, then mapped to PARENTS (the exchange, or the
-sliding window for facilitator-less sources): search children, return the
-parent exchange with the question above and the answer highlighted.
+(``corpus.rrf_fusion``, k from ``search.rrf_k`` — default 60, migration 006
+precedent), optionally cross-encoder reranked, then mapped to PARENTS (the
+exchange, or the sliding window for facilitator-less sources): search
+children, return the parent exchange with the question above and the answer
+highlighted.
 
 Every query is scoped by tenant (RLS) AND ``project_id``; optional filters:
 ``source_type`` (documents.source_type), ``speaker_role``, ``doc_ids``,
@@ -48,7 +49,6 @@ from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
-RRF_K = 60
 CANDIDATE_MULTIPLIER = 8
 RERANK_MIN_CANDIDATES = 30
 _RRF_NAMESPACE = UUID("6f6f6f6f-6f6f-6f6f-6f6f-6f6f6f6f6f6f")
@@ -201,9 +201,9 @@ async def research_search(
                 conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold
             )
 
-        units_fused = await _rrf(conn, dense_units, fts_units, depth)
-        exch_fused = await _rrf(conn, dense_ex, fts_ex, depth)
-        fused = await _rrf(conn, units_fused, exch_fused, depth)
+        units_fused = await _rrf(conn, dense_units, fts_units, depth, r_settings.rrf_k)
+        exch_fused = await _rrf(conn, dense_ex, fts_ex, depth, r_settings.rrf_k)
+        fused = await _rrf(conn, units_fused, exch_fused, depth, r_settings.rrf_k)
 
         children = _children_from_fused(fused)
         windows = await _meeting_windows(conn, children)
@@ -498,6 +498,7 @@ async def _rrf(
     dense: list[dict[str, object]],
     lexical: list[dict[str, object]],
     depth: int,
+    rrf_k: int,
 ) -> list[dict[str, object]]:
     if not dense and not lexical:
         return []
@@ -508,7 +509,7 @@ async def _rrf(
             json.dumps(dense),
             json.dumps(lexical),
             depth,
-            RRF_K,
+            rrf_k,
         )
     except asyncpg.UndefinedFunctionError as exc:
         raise RuntimeError(
