@@ -1,9 +1,36 @@
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 T = TypeVar("T")
+
+# Agreement bands (U17 default strata design): agreement in [low, high) --
+# the band label joins the code id to form the audit stratum key.
+DEFAULT_AGREEMENT_BANDS: tuple[tuple[float, float, str], ...] = (
+    (0.0, 0.5, "low"),
+    (0.5, 1.01, "high"),
+)
+
+
+@dataclass(frozen=True)
+class AuditSampleRow:
+    """One audited unit in the ``audit_partitions`` table shape (U17).
+
+    Drawn by seeded stratified sampling BEFORE humans view model outcomes;
+    the release layer (U1-U5) inserts these rows verbatim (adding
+    ``sampled_at``). ``inclusion_probability`` is the design-based
+    n_sampled / n_stratum so U14's inverse-probability weighting is exact.
+    """
+
+    scope: str
+    unit_id: str
+    partition: str  # always "audit" here
+    stratum: str  # "<code_id>|<band>" by default
+    inclusion_probability: float
+    seed: int
+    sampled_at: str | None = None
 
 
 def _allocate_with_remainder(target_total: int, capacities: list[int]) -> list[int]:
@@ -115,3 +142,70 @@ def insufficient_codes(counts: dict[str, int], per_code_min: int) -> list[str]:
         List of code_ids with count < per_code_min, sorted.
     """
     return sorted([code_id for code_id, count in counts.items() if count < per_code_min])
+
+
+def _band_for(agreement: float, bands: tuple[tuple[float, float, str], ...]) -> str:
+    """Band label for an agreement value; values outside every band are invalid."""
+    for low, high, label in bands:
+        if low <= agreement < high:
+            return label
+    raise ValueError(f"agreement {agreement} falls outside every configured band")
+
+
+def audit_partitions(
+    units: list[dict[str, Any]],
+    sample_size: int,
+    seed: int,
+    *,
+    scope: str = "default",
+    bands: tuple[tuple[float, float, str], ...] = DEFAULT_AGREEMENT_BANDS,
+) -> list[AuditSampleRow]:
+    """Seeded stratified audit sample (U17; v6 §7 U17).
+
+    Strata are code x agreement band by default. Allocation across strata
+    is proportional to stratum size via largest-remainder rounding (reusing
+    ``_allocate_with_remainder``), and the draw within each stratum is a
+    seeded without-replacement sample. The same inputs and seed always
+    produce the same rows -- the audit design is recorded, not re-derived.
+
+    Args:
+        units: Rows with at minimum
+              {"unit_id": str, "code_id": str, "agreement": float}.
+        sample_size: Total units to sample (capped by the pool size).
+        seed: Seed recorded on every row and driving the draw.
+        scope: Audit scope label carried on every row.
+        bands: (low, high, label) agreement bands, default low/high at 0.5.
+
+    Returns:
+        AuditSampleRow rows -- the exact ``audit_partitions`` shape.
+    """
+    rng = random.Random(seed)
+    strata: dict[str, list[dict[str, Any]]] = {}
+    for row in units:
+        agreement = float(row["agreement"])
+        stratum = f"{row['code_id']}|{_band_for(agreement, bands)}"
+        strata.setdefault(stratum, []).append(row)
+
+    names = sorted(strata)
+    capacities = [len(strata[name]) for name in names]
+    allocation = _allocate_with_remainder(sample_size, capacities)
+
+    sampled: list[tuple[str, dict[str, Any]]] = []
+    for name, n_to_sample in zip(names, allocation, strict=True):
+        for row in rng.sample(strata[name], n_to_sample):
+            sampled.append((name, row))
+
+    rows: list[AuditSampleRow] = []
+    for stratum, row in sampled:
+        inclusion = allocation[names.index(stratum)] / len(strata[stratum])
+        rows.append(
+            AuditSampleRow(
+                scope=scope,
+                unit_id=str(row["unit_id"]),
+                partition="audit",
+                stratum=stratum,
+                inclusion_probability=inclusion,
+                seed=seed,
+            )
+        )
+    return rows

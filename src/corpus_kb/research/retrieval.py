@@ -28,8 +28,15 @@ from uuid import UUID, uuid5
 
 import asyncpg
 
+from corpus_kb.config import load_config
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.research.chunking import CHILD_QA, meeting_windows, unit_kind
+from corpus_kb.research.search_settings import (
+    HnswSettings,
+    apply_hnsw_settings,
+    load_hnsw_settings,
+    supports_iterative_scan,
+)
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
@@ -38,6 +45,10 @@ RRF_K = 60
 CANDIDATE_MULTIPLIER = 8
 RERANK_MIN_CANDIDATES = 30
 _RRF_NAMESPACE = UUID("6f6f6f6f-6f6f-6f6f-6f6f-6f6f6f6f6f6f")
+
+# U20: probe for the installed pgvector version (see search_settings for the
+# fail-closed gating contract).
+_PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
 
 # Assignment-confidence floors (todo-18 notebook filter): --min-confidence X
 # admits X and every STRONGER level.
@@ -126,14 +137,26 @@ async def research_search(
     embedder: ResearchEmbedder,
     q: ResearchQuery,
     reranker: object | None = None,
+    hnsw_settings: HnswSettings | None = None,
 ) -> list[Citation]:
-    """Search retrieval children, return parent citations (small-to-big)."""
+    """Search retrieval children, return parent citations (small-to-big).
+
+    ``hnsw_settings`` (U20) defaults to the ``search.hnsw.*`` config block;
+    when the installed pgvector supports iterative scans the matching
+    ``SET LOCAL`` statements are applied inside this search's transaction
+    (never session-wide, so pooled connections cannot leak them).
+    """
     from corpus_kb.rag.embedder import instruct
 
     depth = max(q.k * CANDIDATE_MULTIPLIER, RERANK_MIN_CANDIDATES)
     query_vector: list[float] | None = await embedder.embed_cached(q.tenant_id, instruct(q.query))
+    settings = hnsw_settings if hnsw_settings is not None else load_hnsw_settings(load_config())
 
     async with tenant_connection(pool, q.tenant_id) as conn:
+        version_row = await conn.fetchrow(_PGVECTOR_VERSION_SQL)
+        extversion = None if version_row is None else str(version_row["extversion"])
+        if supports_iterative_scan(extversion):
+            await apply_hnsw_settings(conn, settings)
         dense_units, fts_units = await _unit_arms(conn, query_vector, q, depth)
         dense_ex: list[dict[str, object]] = []
         fts_ex: list[dict[str, object]] = []
@@ -226,17 +249,28 @@ async def _unit_arms(
     if query_vector is not None:
         vec = dense_sql.p(str(query_vector))
         limit = dense_sql.p(depth)
+        # U40 relaxed-ordering pattern: the ANN scan (filters + distance
+        # ORDER BY + LIMIT) stays INSIDE a MATERIALIZED CTE; the exact
+        # ordering is applied OUTSIDE over the retrieved set (`score + 0`
+        # defeats planner sort-elision, per the pgvector docs).
         rows = await conn.fetch(
             f"""
-            SELECT u.unit_id, u.doc_id, u.exchange_id, u.seq, u.text, u.role_in_exchange,
-                   1 - (u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
-            FROM research_units u
-            JOIN documents d ON d.doc_id = u.doc_id
-            LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
-            WHERE u.tenant_id = $1 AND d.project_id = $2
-              AND u.embedding IS NOT NULL{filters}
-            ORDER BY u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
-            LIMIT {limit}
+            WITH candidate AS MATERIALIZED (
+                SELECT u.unit_id, u.doc_id, u.exchange_id, u.seq, u.text, u.role_in_exchange,
+                       1 - (u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                FROM research_units u
+                JOIN documents d ON d.doc_id = u.doc_id
+                LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
+                WHERE u.tenant_id = $1 AND d.project_id = $2
+                  AND u.embedding IS NOT NULL{filters}
+                ORDER BY u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
+                LIMIT {limit}
+            )
+            SELECT candidate.unit_id, candidate.doc_id, candidate.exchange_id,
+                   candidate.seq, candidate.text, candidate.role_in_exchange,
+                   candidate.score + 0 AS score
+            FROM candidate
+            ORDER BY candidate.score + 0 DESC
             """,
             *dense_sql.values,
         )
@@ -275,16 +309,23 @@ async def _exchange_arms(
     if query_vector is not None:
         vec = dense_sql.p(str(query_vector))
         limit = dense_sql.p(depth)
+        # U40 relaxed-ordering pattern (see _unit_arms).
         rows = await conn.fetch(
             f"""
-            SELECT e.exchange_id, e.doc_id, e.seq, coalesce(e.qa_text, '') AS text,
-                   1 - (e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
-            FROM research_exchanges e
-            JOIN documents d ON d.doc_id = e.doc_id
-            WHERE e.tenant_id = $1 AND d.project_id = $2
-              AND e.embedding IS NOT NULL{filters}
-            ORDER BY e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
-            LIMIT {limit}
+            WITH candidate AS MATERIALIZED (
+                SELECT e.exchange_id, e.doc_id, e.seq, coalesce(e.qa_text, '') AS text,
+                       1 - (e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                FROM research_exchanges e
+                JOIN documents d ON d.doc_id = e.doc_id
+                WHERE e.tenant_id = $1 AND d.project_id = $2
+                  AND e.embedding IS NOT NULL{filters}
+                ORDER BY e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
+                LIMIT {limit}
+            )
+            SELECT candidate.exchange_id, candidate.doc_id, candidate.seq,
+                   candidate.text, candidate.score + 0 AS score
+            FROM candidate
+            ORDER BY candidate.score + 0 DESC
             """,
             *dense_sql.values,
         )

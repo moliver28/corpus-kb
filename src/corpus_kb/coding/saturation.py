@@ -1,6 +1,15 @@
-"""Saturation calculation: ISR (Incremental Sampling Rate) and stopping rules."""
+"""Saturation calculation: ISR (Incremental Sampling Rate) and stopping rules.
+
+U36 (v6 §7) adds the saturation CURVE: the cumulative unique-to-total code
+ratio by unit index, beside (not replacing) the scalar ISR gate above. The
+verified reconciliation found no existing cumulative curve emission, so
+``saturation_curve`` below is new; ``isr``/``run_stop`` are untouched.
+"""
 
 from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass, field
 
 
 def isr(unique_codes: int, total_applications: int) -> float:
@@ -47,3 +56,44 @@ def run_stop(
     # Check if new code discovery rate is below threshold
     new_rate = new_codes / base_unique if base_unique > 0 else 0
     return new_rate <= threshold
+
+
+@dataclass(frozen=True)
+class SaturationCurve:
+    """Cumulative unique-to-total code ratio by unit index (U36).
+
+    ``unit_index`` is 1-based and aligned with the input order; ``ratio[i]``
+    is exactly the scalar ``isr`` evaluated at the prefix ending at that
+    unit, so the final entry equals the whole-run ISR.
+    """
+
+    unit_index: list[int] = field(default_factory=list)
+    cumulative_unique: list[int] = field(default_factory=list)
+    total_applications: list[int] = field(default_factory=list)
+    ratio: list[float] = field(default_factory=list)
+
+
+def saturation_curve(unit_code_sets: Sequence[Sequence[str]]) -> SaturationCurve:
+    """Cumulative unique codes / total applications by unit index (U36).
+
+    Args:
+        unit_code_sets: One sequence of applied code ids per unit, in
+            processing order. A unit applying the same code twice counts
+            both applications in the total (only the FIRST occurrence joins
+            the unique set), matching how the scalar ISR treats repeats.
+
+    Returns:
+        SaturationCurve. Empty input -> an empty curve (no fabricated
+        points); reports can plot ``unit_index`` vs ``ratio`` directly.
+    """
+    seen: set[str] = set()
+    curve = SaturationCurve()
+    total_applications = 0
+    for i, codes in enumerate(unit_code_sets, start=1):
+        total_applications += len(codes)
+        seen.update(codes)
+        curve.unit_index.append(i)
+        curve.cumulative_unique.append(len(seen))
+        curve.total_applications.append(total_applications)
+        curve.ratio.append(isr(len(seen), total_applications))
+    return curve

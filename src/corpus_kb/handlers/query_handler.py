@@ -33,8 +33,19 @@ from corpus_kb.domain.models import (
 )
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.reranker import create_reranker
+from corpus_kb.research.search_settings import (
+    HnswSettings,
+    apply_hnsw_settings,
+    load_hnsw_settings,
+    supports_iterative_scan,
+)
 
 logger = logging.getLogger(__name__)
+
+# U20: probe for the installed pgvector version. Iterative-scan SET LOCAL
+# statements error on pgvector < 0.8, so emission is gated on this read
+# (fails CLOSED: unknown version = no settings = pre-0.8 behavior).
+_PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
 
 
 def _fusion_payload(rows: list[asyncpg.Record]) -> str:
@@ -83,6 +94,8 @@ class QueryHandler:
         self._matryoshka_enabled = bool(search_cfg.get("matryoshka_enabled", False))
         self._matryoshka_dim = int(search_cfg.get("matryoshka_dim", 1024))
         self._candidate_multiplier = int(search_cfg.get("candidate_multiplier", 8))
+        # U20: transaction-local HNSW scan settings (search.hnsw.*).
+        self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: self-query filtering -> vector (matryoshka two-tier or
@@ -123,11 +136,20 @@ class QueryHandler:
             else 0
         )
 
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 str(query.tenant_id),
             )
+            # U20: transaction-local HNSW settings (SET LOCAL dies with this
+            # transaction — a pooled connection never leaks them). Gated on
+            # the installed pgvector version: emitting `SET LOCAL hnsw.*`
+            # below 0.8 aborts the query, so unknown/old versions keep the
+            # pre-iterative-scan behavior (fail closed).
+            version_row = await conn.fetchrow(_PGVECTOR_VERSION_SQL)
+            extversion = None if version_row is None else str(version_row["extversion"])
+            if supports_iterative_scan(extversion):
+                await apply_hnsw_settings(conn, self._hnsw_settings)
 
             # NOTE: aliases below are the literal table names ("chunks"/"documents"),
             # not short aliases -- build_filter_sql() emits dynamic predicates using
@@ -158,19 +180,32 @@ class QueryHandler:
                 model = str(embedding_cfg.get("model", "nomic-embed-text"))
                 frag, params = build_filter_sql(dynamic_predicates, start_index=5)
                 try:
+                    # U40 relaxed-ordering pattern (pgvector >= 0.8 iterative
+                    # scans): the ANN scan (filters + distance ORDER BY + LIMIT)
+                    # stays INSIDE a MATERIALIZED CTE; the exact ordering is
+                    # applied OUTSIDE over the retrieved set (`score + 0`
+                    # defeats planner sort-elision, per the pgvector docs).
                     vector_results = await conn.fetch(
                         f"""
-                        SELECT {select_list},
-                               1 - (cv.vector <=> (
-                                   SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                               )::vector) AS score
-                        FROM chunks_vectors cv
-                        JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                        WITH candidate AS MATERIALIZED (
+                            SELECT cv.chunk_id AS candidate_chunk_id,
+                                   1 - (cv.vector <=> (
+                                       SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
+                                   )::vector) AS score
+                            FROM chunks_vectors cv
+                            JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                            JOIN documents ON chunks.doc_id = documents.doc_id
+                            WHERE cv.tenant_id = $3 {dedup_predicate} {frag}
+                            ORDER BY cv.vector <=> (
+                                SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
+                            )::vector
+                            LIMIT $4
+                        )
+                        SELECT {select_list}, candidate.score AS score
+                        FROM candidate
+                        JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
                         JOIN documents ON chunks.doc_id = documents.doc_id
-                        WHERE cv.tenant_id = $3 {dedup_predicate} {frag}
-                        ORDER BY cv.vector <=> (
-                            SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                        )::vector ASC
+                        ORDER BY candidate.score + 0 DESC
                         LIMIT $4
                         """,
                         model,
@@ -193,9 +228,11 @@ class QueryHandler:
                         )
                         frag, params = build_filter_sql(dynamic_predicates, start_index=6)
                         candidate_n = query.k * int(self._candidate_multiplier)
+                        # U40: MATERIALIZED candidate CTE (1024-d probe scan) +
+                        # exact full-dimension re-ordering OUTSIDE the CTE.
                         vector_results = await conn.fetch(
                             f"""
-                            WITH cand AS (
+                            WITH cand AS MATERIALIZED (
                                 SELECT cv.chunk_id, cv.vector
                                 FROM chunks_vectors cv
                                 JOIN chunks ON cv.chunk_id = chunks.chunk_id
@@ -210,7 +247,7 @@ class QueryHandler:
                             FROM cand
                             JOIN chunks ON cand.chunk_id = chunks.chunk_id
                             JOIN documents ON chunks.doc_id = documents.doc_id
-                            ORDER BY cand.vector <=> $1::vector ASC
+                            ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC
                             LIMIT $3
                             """,
                             str(q4096),
@@ -223,15 +260,25 @@ class QueryHandler:
                     else:
                         query_vector = self._embedder.embed(semantic_query)
                         frag, params = build_filter_sql(dynamic_predicates, start_index=4)
+                        # U40 relaxed-ordering pattern: scan inside a
+                        # MATERIALIZED CTE, exact ordering outside (`score + 0`).
                         vector_results = await conn.fetch(
                             f"""
-                            SELECT {select_list},
-                                   1 - (cv.vector <=> $1::vector) AS score
-                            FROM chunks_vectors cv
-                            JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                            WITH candidate AS MATERIALIZED (
+                                SELECT cv.chunk_id AS candidate_chunk_id,
+                                       1 - (cv.vector <=> $1::vector) AS score
+                                FROM chunks_vectors cv
+                                JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                                JOIN documents ON chunks.doc_id = documents.doc_id
+                                WHERE cv.tenant_id = $2 {dedup_predicate} {frag}
+                                ORDER BY cv.vector <=> $1::vector
+                                LIMIT $3
+                            )
+                            SELECT {select_list}, candidate.score AS score
+                            FROM candidate
+                            JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
                             JOIN documents ON chunks.doc_id = documents.doc_id
-                            WHERE cv.tenant_id = $2 {dedup_predicate} {frag}
-                            ORDER BY cv.vector <=> $1::vector ASC
+                            ORDER BY candidate.score + 0 DESC
                             LIMIT $3
                             """,
                             str(query_vector),
@@ -424,26 +471,35 @@ class QueryHandler:
 
     async def handle_search_similar(self, query: SearchSimilarQuery) -> list[SearchResult]:
         """Find chunks similar to a given chunk via vector distance."""
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 str(query.tenant_id),
             )
+            # U40: ANN scan inside a MATERIALIZED CTE, exact ordering applied
+            # outside over the retrieved set (`score + 0`, per pgvector docs).
             rows = await conn.fetch(
                 """
+                WITH candidate AS MATERIALIZED (
+                    SELECT cv.chunk_id AS candidate_chunk_id,
+                           1 - (cv.vector <=> (
+                               SELECT vector FROM chunks_vectors WHERE chunk_id = $1
+                           )) AS score
+                    FROM chunks_vectors cv
+                    WHERE cv.tenant_id = $2 AND cv.chunk_id != $1
+                    ORDER BY cv.vector <=> (
+                        SELECT vector FROM chunks_vectors WHERE chunk_id = $1
+                    )
+                    LIMIT $3
+                )
                 SELECT c.chunk_id, c.text, c.doc_id, d.source,
                        c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path,
-                       1 - (cv.vector <=> (
-                           SELECT vector FROM chunks_vectors WHERE chunk_id = $1
-                       )) AS score
-                FROM chunks_vectors cv
-                JOIN chunks c ON cv.chunk_id = c.chunk_id
+                       candidate.score AS score
+                FROM candidate
+                JOIN chunks c ON candidate.candidate_chunk_id = c.chunk_id
                 JOIN documents d ON c.doc_id = d.doc_id
-                WHERE cv.tenant_id = $2 AND cv.chunk_id != $1
-                  AND c.tombstoned_at IS NULL AND c.superseded_at IS NULL
-                ORDER BY cv.vector <=> (
-                    SELECT vector FROM chunks_vectors WHERE chunk_id = $1
-                ) ASC
+                WHERE c.tombstoned_at IS NULL AND c.superseded_at IS NULL
+                ORDER BY candidate.score + 0 DESC
                 LIMIT $3
                 """,
                 str(query.chunk_id),

@@ -20,6 +20,7 @@ import pytest
 
 from corpus_kb.domain.models import SearchQuery
 from corpus_kb.handlers.query_handler import QueryHandler
+from tests.mock_pg import transaction_cm
 
 DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
 CONNECT_TIMEOUT = 3
@@ -296,6 +297,7 @@ async def test_handle_search_calls_sql_rrf_function() -> None:
     }
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
+    mock_conn.transaction = MagicMock(return_value=transaction_cm())
     mock_conn.fetch = AsyncMock(side_effect=[[fts_row], [fused_row]])
 
     mock_pool = MagicMock()
@@ -326,6 +328,7 @@ async def test_handle_search_missing_rrf_function_is_loud() -> None:
     """A missing corpus.rrf_fusion raises a clear error naming migration 006."""
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
+    mock_conn.transaction = MagicMock(return_value=transaction_cm())
     mock_conn.fetch = AsyncMock(
         side_effect=[
             [],

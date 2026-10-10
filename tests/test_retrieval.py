@@ -9,6 +9,7 @@ import pytest
 
 from corpus_kb.domain.models import SearchQuery, SearchResult
 from corpus_kb.handlers.query_handler import QueryHandler
+from tests.mock_pg import transaction_cm
 
 
 @pytest.mark.asyncio
@@ -40,6 +41,7 @@ async def test_hybrid_search_rrf_fusion() -> None:
     did = UUID("00000000-0000-0000-0000-000000000002")
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
+    mock_conn.transaction = MagicMock(return_value=transaction_cm())
     mock_conn.fetch = AsyncMock(
         side_effect=[
             [
