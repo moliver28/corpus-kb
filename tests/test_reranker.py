@@ -312,6 +312,88 @@ async def test_handle_search_default_reranker_issues_no_rank_sql() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Score-based pipeline in handle_search: degenerate calibration fail-open
+# ---------------------------------------------------------------------------
+
+
+class _ConstantReranker:
+    """Score-based reranker whose every judgment lands on the same score."""
+
+    def __init__(self, value: float = 0.5) -> None:
+        self.value = value
+
+    def score(self, query: str, texts: list[str]) -> list[float]:
+        return [self.value for _ in texts]
+
+
+class _NotEvaluableClient:
+    """Ollama stand-in whose judgments never carry yes/no mass: every pair
+    comes back not_evaluable and scores the neutral 0.5 (OllamaReranker
+    contract), i.e. the all-equal-scores shape."""
+
+    @staticmethod
+    def generate(**kwargs: object) -> object:
+        from types import SimpleNamespace
+
+        position = SimpleNamespace(
+            token=" The", logprob=-0.3, top_logprobs=[SimpleNamespace(token=" The", logprob=-0.3)]
+        )
+        return SimpleNamespace(response="", logprobs=[position])
+
+
+def _fused_fixture() -> tuple[dict[str, object], list[dict[str, object]], object, object]:
+    cid1, cid2, did = uuid4(), uuid4(), uuid4()
+    fts_row = {"chunk_id": cid1, "text": "alpha", "doc_id": did, "source": "s1", "score": 0.5}
+    fused_rows = [
+        {"chunk_id": cid1, "text": "alpha", "source": "s1", "doc_id": did, "score": 0.9},
+        {"chunk_id": cid2, "text": "beta", "source": "s1", "doc_id": did, "score": 0.8},
+    ]
+    return fts_row, fused_rows, cid1, cid2
+
+
+@pytest.mark.asyncio
+async def test_minmax_all_equal_scores_fail_open_to_fused_order() -> None:
+    """Degenerate minmax calibration (all-equal rerank scores) maps every
+    score to 0.0, so score_floor would drop ALL fused results and search
+    would return [] despite having results. Must fail open to the fused RRF
+    order instead — reranking never breaks search."""
+    fts_row, fused_rows, cid1, cid2 = _fused_fixture()
+    pool = _make_pool(fetch_side_effect=[[fts_row], fused_rows])
+    handler = QueryHandler(
+        pool=pool,
+        reranker=_ConstantReranker(0.5),
+        config={"embedding": {"provider": "ollama"}},
+    )
+    results = await handler.handle_search(SearchQuery(query="q", k=2))
+
+    assert [r.chunk_id for r in results] == [cid1, cid2]
+    # Un-reranked RRF scores survive untouched.
+    assert [r.score for r in results] == pytest.approx([0.9, 0.8])
+
+
+@pytest.mark.asyncio
+async def test_all_not_evaluable_rerank_fail_open_to_fused_order(monkeypatch) -> None:
+    """All-not_evaluable is the degenerate all-equal case (neutral 0.5 per
+    pair): the fused results must survive, in fused order."""
+    from corpus_kb.rag.reranker import OllamaReranker
+
+    monkeypatch.setattr("corpus_kb.rag.reranker.Client", lambda **kw: _NotEvaluableClient())
+    reranker = OllamaReranker({"search": {"rerank": {"enabled": True}}})
+
+    fts_row, fused_rows, cid1, cid2 = _fused_fixture()
+    pool = _make_pool(fetch_side_effect=[[fts_row], fused_rows])
+    handler = QueryHandler(
+        pool=pool,
+        reranker=reranker,
+        config={"embedding": {"provider": "ollama"}},
+    )
+    results = await handler.handle_search(SearchQuery(query="q", k=2))
+
+    assert [r.chunk_id for r in results] == [cid1, cid2]
+    assert reranker.last_not_evaluable == 2
+
+
+# ---------------------------------------------------------------------------
 # FakeReranker / build_reranker (score-based pipeline rerankers)
 # ---------------------------------------------------------------------------
 

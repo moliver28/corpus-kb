@@ -123,8 +123,8 @@ class QueryHandler:
         self._candidate_multiplier = int(search_cfg.get("candidate_multiplier", 8))
         # U20: transaction-local HNSW scan settings (search.hnsw.*).
         self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
-        # U45/U21: shared retrieval knobs (rrf depth semantics live with the
-        # fusion callers; the threshold drives the exact-scan arm below).
+        # U45/U21: shared retrieval knobs (``rrf_k`` feeds the fusion call
+        # below; the threshold drives the exact-scan arm).
         self._retrieval_settings = load_retrieval_settings(self._config)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
@@ -447,7 +447,7 @@ class QueryHandler:
                     _fusion_payload(vector_results),
                     _fusion_payload(fts_results),
                     query.k,
-                    60,
+                    self._retrieval_settings.rrf_k,
                 )
             except asyncpg.UndefinedFunctionError as exc:
                 raise RuntimeError(
@@ -498,7 +498,15 @@ class QueryHandler:
                 return fused_results
             if self._rerank_settings.calibration == "minmax":
                 lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
-                span = (hi - lo) or 1.0
+                if hi <= lo:
+                    # Degenerate span (all-equal scores — the all-
+                    # not_evaluable case scores every pair at the neutral
+                    # 0.5): minmax maps every score to 0.0 and score_floor
+                    # would then drop ALL fused results. Fail open to the
+                    # un-reranked RRF order — reranking must never break
+                    # search (rag/reranker.py degrade contract).
+                    return fused_results
+                span = hi - lo
                 reranked = [
                     r.model_copy(update={"score": (s - lo) / span})
                     for r, s in zip(candidates, raw_scores, strict=True)

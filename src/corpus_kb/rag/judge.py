@@ -17,6 +17,13 @@ from ollama import Client, ResponseError
 
 logger = logging.getLogger(__name__)
 
+# Bound on every chat call (seconds), matching nli_client.NLI_TIMEOUT_SECONDS:
+# the ollama client otherwise waits forever — a wedged server accepts TCP but
+# never answers the POST (the 2026-10-09 pytest-suite hang). 120s covers a
+# cold qwen3:4b load on CPU; slower than that must DEGRADE per the contract
+# below, never hang.
+JUDGE_TIMEOUT_SECONDS = 120.0
+
 
 class OllamaJudge:
     def __init__(self, config: dict[str, object] | None = None) -> None:
@@ -24,7 +31,7 @@ class OllamaJudge:
         self.model = str(cfg.get("model", "qwen3:4b"))
         self.base_url = str(cfg.get("base_url", "http://localhost:11434"))
         self.max_claims = int(cfg.get("max_claims", 20))
-        self._client = Client(host=self.base_url)
+        self._client = Client(host=self.base_url, timeout=JUDGE_TIMEOUT_SECONDS)
 
     def decompose(self, answer: str) -> list[str]:
         try:
@@ -40,7 +47,11 @@ class OllamaJudge:
         except (
             ConnectionError,
             OSError,
-            httpx.NetworkError,
+            # TransportError covers NetworkError AND TimeoutException AND
+            # RemoteProtocolError (the wedged/disconnecting-server lesson
+            # from nli_client: a sibling entry is not enough — use the
+            # common parent so every transport failure degrades).
+            httpx.TransportError,
             ResponseError,
             json.JSONDecodeError,
         ) as exc:
@@ -67,7 +78,7 @@ class OllamaJudge:
         except (
             ConnectionError,
             OSError,
-            httpx.NetworkError,
+            httpx.TransportError,
             ResponseError,
             json.JSONDecodeError,
             ValueError,

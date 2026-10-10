@@ -204,6 +204,26 @@ def test_rerank_settings_rejects_invalid_values() -> None:
         load_rerank_settings({"search": {"rerank": {"score_floor": "low"}}})
 
 
+def test_rerank_block_ships_no_batch_size_anywhere() -> None:
+    """OllamaReranker scores one pair per generate call, so
+    search.rerank.batch_size was an inert knob (removed per the no-inert-
+    knobs rule, 24d461c precedent). It must not ship in any of the three
+    config locations."""
+    from pathlib import Path
+
+    import yaml
+
+    from corpus_kb.config import get_default_config
+
+    assert "batch_size" not in get_default_config()["search"]["rerank"]
+    repo = Path(__file__).resolve().parent.parent
+    for rel in ("config.yaml", Path("src") / "corpus_kb" / "config.yaml"):
+        data = yaml.safe_load((repo / rel).read_text(encoding="utf-8"))
+        assert "batch_size" not in (data.get("search") or {}).get("rerank", {}), (
+            f"{rel} still ships search.rerank.batch_size"
+        )
+
+
 def test_build_reranker_gate_respects_enabled_flag() -> None:
     assert build_reranker({}) is None
     assert isinstance(build_reranker({"search": {"rerank": {"enabled": True}}}), OllamaReranker)

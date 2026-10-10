@@ -166,7 +166,6 @@ def get_default_config() -> dict[str, object]:
                 # (rag/rerank_settings.py contract).
                 "model": "qwen3-reranker:4b",
                 "base_url": "http://localhost:11434",
-                "batch_size": 16,
                 "over_retrieve_n": 60,
                 "candidates": 100,
                 "max_pair_tokens": 768,

@@ -326,6 +326,7 @@ def test_analytics_parameter_ordering_is_unchanged() -> None:
 
 from corpus_kb.research.retrieval_settings import (  # noqa: E402
     RetrievalSettings,
+    load_retrieval_settings,
     selectivity_ratio,
     should_use_exact_scan,
 )
@@ -434,3 +435,40 @@ def test_retrieval_settings_defaults_are_consumed_by_handler() -> None:
     conn = _RecordingConn()
     handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG))
     assert handler._retrieval_settings == RetrievalSettings()
+
+
+def test_retrieval_settings_ship_no_return_top_k() -> None:
+    """return_top_k was an inert knob: the post-fusion return count is owned
+    by the caller's mandatory ``k`` (ResearchQuery.k / SearchQuery.k). Once
+    deleted (U45 finding 2) it must not come back as an unread key."""
+    import dataclasses
+
+    from corpus_kb.research.retrieval_settings import RETRIEVAL_CONFIG_DEFAULTS
+
+    assert all(f.name != "return_top_k" for f in dataclasses.fields(RetrievalSettings))
+    assert "return_top_k" not in RETRIEVAL_CONFIG_DEFAULTS
+    # A config that still carries the key is ignored, not consumed.
+    settings = load_retrieval_settings({"search": {"return_top_k": 5}})
+    assert settings == RetrievalSettings()
+
+
+def test_research_rrf_call_carries_settings_rrf_k() -> None:
+    """U45 finding 2: the research fusion arms pass ``search.rrf_k`` through
+    to corpus.rrf_fusion — the module-level RRF_K = 60 constant is gone."""
+    import asyncio
+
+    from corpus_kb.research.retrieval import _rrf
+
+    class _FusionConn:
+        def __init__(self) -> None:
+            self.args: tuple[object, ...] | None = None
+
+        async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+            self.args = args
+            return []
+
+    dense = [{"chunk_id": "u1", "text": "t", "source": "", "doc_id": "d1", "score": 0.9}]
+    conn = _FusionConn()
+    fused = asyncio.run(_rrf(conn, dense, [], 100, 42))  # type: ignore[arg-type]
+    assert fused == []
+    assert conn.args is not None and conn.args[3] == 42

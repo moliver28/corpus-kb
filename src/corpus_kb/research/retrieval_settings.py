@@ -12,9 +12,6 @@ Keys (all under ``search``):
   sites; U45 wires the read). Σ 1/(k + rank) over both arms.
 * ``candidates_per_branch`` — depth each arm retrieves before fusion
   (spec v8 U45 default 50; call sites take max(depth, rerank floor)).
-* ``return_top_k`` — post-fusion return count when the caller passes
-  ``k=None``-style defaults (today callers pass explicit k; the read keeps
-  the knob honest and consumed).
 * ``exact_filter_selectivity_threshold`` — U21: when a filtered vector
   query's estimated selectivity (matched/total rows) falls BELOW this
   fraction, the caller runs a filtered EXACT distance scan (no ANN) instead
@@ -34,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_RRF_K = 60
 DEFAULT_CANDIDATES_PER_BRANCH = 50
-DEFAULT_RETURN_TOP_K = 10
 # U21: below 5% estimated selectivity, prefer the filtered exact scan.
 DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD = 0.05
 
@@ -42,18 +38,21 @@ DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD = 0.05
 RETRIEVAL_CONFIG_DEFAULTS: dict[str, object] = {
     "rrf_k": DEFAULT_RRF_K,
     "candidates_per_branch": DEFAULT_CANDIDATES_PER_BRANCH,
-    "return_top_k": DEFAULT_RETURN_TOP_K,
     "exact_filter_selectivity_threshold": DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
 }
 
 
 @dataclass(frozen=True)
 class RetrievalSettings:
-    """Typed reads for the shared retrieval knobs (U45/U21)."""
+    """Typed reads for the shared retrieval knobs (U45/U21).
+
+    No ``return_top_k``: the post-fusion return count is owned by the
+    caller's mandatory ``k`` field (``ResearchQuery.k`` / ``SearchQuery.k``),
+    so a second truncation knob here would be inert.
+    """
 
     rrf_k: int = DEFAULT_RRF_K
     candidates_per_branch: int = DEFAULT_CANDIDATES_PER_BRANCH
-    return_top_k: int = DEFAULT_RETURN_TOP_K
     exact_filter_selectivity_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD
 
 
@@ -94,7 +93,6 @@ def load_retrieval_settings(config: dict[str, object]) -> RetrievalSettings:
             DEFAULT_CANDIDATES_PER_BRANCH,
             "candidates_per_branch",
         ),
-        return_top_k=_positive_int(block.get("return_top_k"), DEFAULT_RETURN_TOP_K, "return_top_k"),
         exact_filter_selectivity_threshold=_fraction(
             block.get("exact_filter_selectivity_threshold"),
             DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
