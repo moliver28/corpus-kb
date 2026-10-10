@@ -540,9 +540,9 @@
   },
   {
     "name": "pgvector",
-    "version": "0.5.0",
+    "version": "0.5.1",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/pgvector/0.5.0/",
+    "homepage": "https://pypi.org/project/pgvector/0.5.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -610,9 +610,9 @@
   },
   {
     "name": "pycparser",
-    "version": "3.1",
+    "version": "3.11",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/pycparser/3.1/",
+    "homepage": "https://pypi.org/project/pycparser/3.11/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
@@ -645,9 +645,9 @@
   },
   {
     "name": "pypdf",
-    "version": "6.19.0",
+    "version": "6.20.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/pypdf/6.19.0/",
+    "homepage": "https://pypi.org/project/pypdf/6.20.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
@@ -953,9 +953,9 @@
   },
   {
     "name": "unstructured",
-    "version": "0.27.22",
+    "version": "0.27.25",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/unstructured/0.27.22/",
+    "homepage": "https://pypi.org/project/unstructured/0.27.25/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
