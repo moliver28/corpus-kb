@@ -34,9 +34,17 @@ async def gate_findings_for(
     if stage == "inductive":
         findings = list(gate_from_inductive(receipt))
         run_id = receipt.get("run_id")
-        if run_id:
-            pending = await pending_proposals(pool, tenant_id, UUID(str(run_id)))
-            found = gate_pending_proposals(pending, str(run_id))
+        # U48 N-run consensus receipts carry run_ids (list); a single-pass
+        # receipt keeps working through run_id alone.
+        run_ids = [str(r) for r in (receipt.get("run_ids") or [])] or (
+            [str(run_id)] if run_id else []
+        )
+        if run_ids:
+            pending = 0
+            for rid in run_ids:
+                pending += await pending_proposals(pool, tenant_id, UUID(rid))
+            anchor = str(receipt.get("run_id") or run_ids[-1])
+            found = gate_pending_proposals(pending, anchor)
             if found:
                 findings.append(found)
         return findings

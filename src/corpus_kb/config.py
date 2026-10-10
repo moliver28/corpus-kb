@@ -333,9 +333,13 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
     importable in some tool paths (validate_configs, installer).
     """
     from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
+    from corpus_kb.research.cycle_consensus import CONSENSUS_CONFIG_DEFAULTS
     from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
 
     research = cast(dict[str, object], config.setdefault("research", {}))
     research.update(RELEASE_CONFIG_DEFAULTS)
     research.update(MEASUREMENT_CONFIG_DEFAULTS)
-    research.setdefault("consensus", {"runs": 3})
+    # U48 N-run inductive consensus (research/cycle_consensus.py is the typed
+    # reader): runs = N independent inductive passes per cycle, aggregated by
+    # the release-layer consensus before themes surface.
+    research.setdefault("consensus", dict(CONSENSUS_CONFIG_DEFAULTS))

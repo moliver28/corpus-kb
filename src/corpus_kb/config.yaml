@@ -175,9 +175,12 @@ research:
         alt_test_passing_fraction: 0.8
         max_stratum_disparity: 0.1
         agreement_routing_threshold: 0.9
-  # U48 multi-run consensus (research/release/consensus.py)
+  # U48 multi-run consensus (research/cycle_consensus.py is the typed reader;
+  # research/release/consensus.py does the aggregation)
   consensus:
-    runs: 3
+    runs: 3                    # N independent inductive passes per cycle
+    min_run_fraction: 0.5      # theme kept when seen in >= this fraction of runs
+    similarity_threshold: 0.8  # cosine at which candidates join one theme
   # Measurement-math knobs (coding/measurement_settings.py is the source of
   # truth; U12–U17, U33–U39, U41, U47).
   alt_test:
