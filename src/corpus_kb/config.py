@@ -118,7 +118,7 @@ def load_config(path: str | None = None) -> dict[str, object]:
 
 def get_default_config() -> dict[str, object]:
     """Return the default configuration dict (no file needed)."""
-    return {
+    config: dict[str, object] = {
         "server": {
             "name": "corpus-kb",
             "transport": "stdio",
@@ -149,12 +149,28 @@ def get_default_config() -> dict[str, object]:
             "index_type": "hnsw",
             "reranker": "none",
             "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+            # U45/U21 shared retrieval knobs, read by
+            # corpus_kb.research.retrieval_settings.load_retrieval_settings.
+            # candidates_per_branch 150 / return_top_k 20 are the committed
+            # upgrade-program defaults (contextual-retrieval study values),
+            # not the module defaults.
+            "candidates_per_branch": 150,
+            "return_top_k": 20,
+            "exact_filter_selectivity_threshold": 0.05,
             "rerank": {
                 "enabled": True,
-                "model": "qwen3-reranker:8b",
+                # Committed upgrade-program default: qwen3-reranker 4B. That
+                # tag is not yet pullable from the Ollama registry — until a
+                # model with it exists locally, the rerank stage degrades to
+                # the un-reranked RRF order with a logged warning
+                # (rag/rerank_settings.py contract).
+                "model": "qwen3-reranker:4b",
                 "base_url": "http://localhost:11434",
                 "batch_size": 16,
                 "over_retrieve_n": 60,
+                "candidates": 100,
+                "max_pair_tokens": 768,
+                "timeout_seconds": 120,
                 "score_floor": 0.15,
                 "calibration": "minmax",
             },
@@ -186,6 +202,16 @@ def get_default_config() -> dict[str, object]:
             "temperature": 0.0,
             "fixture_dir": "tests/fixtures/contextual_recorded",
             "live_fallback": False,
+        },
+        # U42 provenance-keyed exact result cache, read by
+        # corpus_kb.research.exact_cache.load_cache_settings. `enabled` gates
+        # every access (the --no-cache flag drops it at the CLI layer);
+        # deductive runs default on, inductive discovery runs default off
+        # unless seeded.
+        "cache": {
+            "enabled": True,
+            "deductive_enabled": True,
+            "inductive_enabled": False,
         },
         "judge": {
             "enabled": True,
@@ -221,6 +247,10 @@ def get_default_config() -> dict[str, object]:
         "coding": {
             "coder": "qwen3:8b",
             "model": "qwen3:8b",
+            # U43 validate/repair: retries before a response is marked
+            # invalid_output; strict enforcement opt-in (default off).
+            "repair_retries": 1,
+            "require_structured_enforcement": False,
         },
         # research: MUST stay in lockstep with the packaged config.yaml block —
         # write_config's passthrough writes THIS dict into user configs, so a
@@ -290,3 +320,24 @@ def get_default_config() -> dict[str, object]:
             },
         },
     }
+    _apply_research_defaults(config)
+    return config
+
+
+def _apply_research_defaults(config: dict[str, object]) -> None:
+    """Merge the typed modules' research defaults into the default config.
+
+    research.release.* (release profiles/enforcement) and the measurement
+    blocks (alt_test, prompt_stability, routing, audit, review, labeling,
+    judgment_distribution) come from the owning modules so the defaults in
+    config.py, both config.yaml files and the typed readers cannot drift.
+    Imported lazily: config.py is loaded before the package is fully
+    importable in some tool paths (validate_configs, installer).
+    """
+    from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
+    from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
+
+    research = cast(dict[str, object], config.setdefault("research", {}))
+    research.update(RELEASE_CONFIG_DEFAULTS)
+    research.update(MEASUREMENT_CONFIG_DEFAULTS)
+    research.setdefault("consensus", {"runs": 3})
