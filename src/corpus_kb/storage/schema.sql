@@ -124,6 +124,15 @@ CREATE POLICY chunks_tenant_isolation ON chunks
 CREATE TABLE IF NOT EXISTS chunks_vectors (
     chunk_id UUID PRIMARY KEY REFERENCES chunks(chunk_id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL,
+    -- FIXED TYPODM (4096), deliberately NOT the embedding.dimensions config
+    -- default: pgvector requires an exact-match typmod, and this column is
+    -- the MAX-CAPACITY slot for every supported model (nomic 768d through
+    -- qwen3-embedding 4096d). Migration 007 backfills `dimensions INT` per
+    -- row and migration 012 copies this exact typmod for answer_ctx_vectors
+    -- ("vector(4096) columns match chunks_vectors.vector exactly"); the
+    -- 4096-dim fixtures in tests/test_es_foundation.py pin the contract.
+    -- Changing the model dimensionality is a column-migration decision, not
+    -- a config flip (tests/research_db.py executes this file verbatim).
     vector vector(4096),
     embedding_model VARCHAR(255) NOT NULL DEFAULT 'nomic-embed-text',
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
