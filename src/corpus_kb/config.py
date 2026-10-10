@@ -153,7 +153,6 @@ def get_default_config() -> dict[str, object]:
                 "enabled": True,
                 "model": "qwen3-reranker:8b",
                 "base_url": "http://localhost:11434",
-                "batch_size": 16,
                 "over_retrieve_n": 60,
                 "score_floor": 0.15,
                 "calibration": "minmax",
@@ -167,7 +166,16 @@ def get_default_config() -> dict[str, object]:
             "matryoshka_enabled": False,
             "matryoshka_dim": 1024,
             "candidate_multiplier": 8,
-            "hnsw_ef_search": 100,
+            # U20: transaction-local HNSW scan settings, read by
+            # corpus_kb.research.search_settings.load_hnsw_settings and applied
+            # as SET LOCAL inside the retrieval transaction. Defaults mirror
+            # HnswSettings(); keep the three files (config.py, config.yaml,
+            # src/corpus_kb/config.yaml) byte-consistent on values.
+            "hnsw": {
+                "iterative_scan": "strict_order",
+                "ef_search": 200,
+                "max_scan_tuples": 20000,
+            },
         },
         "contextual": {
             "enabled": False,

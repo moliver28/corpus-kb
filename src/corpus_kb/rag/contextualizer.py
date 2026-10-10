@@ -29,6 +29,13 @@ _PROMPT_TEMPLATE = (
 
 _MAX_DOC_CHARS = 8000  # bound cost of the prompt sent to the LLM
 
+# Bound on every generate call (seconds), matching
+# nli_client.NLI_TIMEOUT_SECONDS / rag.judge.JUDGE_TIMEOUT_SECONDS: the
+# ollama client otherwise waits forever on a wedged server (accepts TCP,
+# never answers). Slow-beyond-120s generations DEGRADE to an empty blurb
+# via the except below — never hang the ingest pipeline.
+CONTEXTUAL_TIMEOUT_SECONDS = 120.0
+
 
 class ContextGenerator:
     def __init__(self, config: dict[str, object] | None = None) -> None:
@@ -39,7 +46,7 @@ class ContextGenerator:
         fixture_dir = cfg.get("fixture_dir")
         self.fixture_dir = Path(str(fixture_dir)) if fixture_dir else None
         self.live_fallback = bool(cfg.get("live_fallback", False))
-        self._client = Client(host=self.base_url)
+        self._client = Client(host=self.base_url, timeout=CONTEXTUAL_TIMEOUT_SECONDS)
 
     def generate_blurb(self, document_text: str, chunk_text: str) -> str:
         key = _sha256(document_text[:_MAX_DOC_CHARS] + "\x00" + chunk_text)
@@ -51,7 +58,8 @@ class ContextGenerator:
                 return ""
         try:
             return self._client_generate(document_text[:_MAX_DOC_CHARS], chunk_text)
-        except Exception as exc:  # never raise into ingest
+        except Exception as exc:  # never raise into ingest; covers every
+            # httpx.TransportError (timeout, RemoteProtocolError, ...) too
             logger.warning("Contextualizer unavailable: %s; chunk stays blurb-free.", exc)
             return ""
 

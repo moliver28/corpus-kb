@@ -28,7 +28,6 @@ search:
     backend: null
     model: qwen3-reranker:8b
     base_url: http://localhost:11434
-    batch_size: 16
     over_retrieve_n: 60
     score_floor: 0.15
     calibration: minmax
@@ -40,7 +39,12 @@ search:
   matryoshka_enabled: false
   matryoshka_dim: 1024
   candidate_multiplier: 8
-  hnsw_ef_search: 100
+  # U20: transaction-local HNSW settings (SET LOCAL inside the retrieval
+  # transaction; requires pgvector >= 0.8 — older versions skip emission).
+  hnsw:
+    iterative_scan: strict_order
+    ef_search: 200
+    max_scan_tuples: 20000
 
 contextual:
   enabled: false          # feature-flagged; enabled per-source_type at ingest time (Task 12/16)

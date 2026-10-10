@@ -119,3 +119,47 @@ def test_empty_resamples_degrade_cleanly():
     assert result.semantic_entropy == 0.0
     assert result.n_clusters == 0
     assert result.n_nli_calls == 0
+
+
+async def test_nli_call_degrades_within_bound_on_wedged_server(monkeypatch):
+    """Negative degrade path: a server that accepts TCP but NEVER answers the
+    generate POST must yield ``None`` within ``NLI_TIMEOUT_SECONDS`` — not
+    hang the caller. This pins the 2026-10-09 suite-hang fix (Ollama died
+    between the reachability probe and the generate; the unbounded ollama
+    client blocked a worker thread forever)."""
+    import socket
+    import threading
+    import time
+
+    from corpus_kb.coding.uncertainty.nli_client import (
+        NLI_TIMEOUT_SECONDS,
+        nli_mutual_entailment,
+    )
+
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(("127.0.0.1", 0))
+    server.listen(1)
+    port = server.getsockname()[1]
+    accepted = threading.Event()
+
+    def _accept_and_hold() -> None:
+        _conn, _ = server.accept()
+        accepted.set()  # hold the socket open; deliberately never reply
+
+    threading.Thread(target=_accept_and_hold, daemon=True).start()
+
+    # Shrink the bound so the prove-out takes well under a second; the
+    # constant is read at call time precisely so tests can bound it.
+    monkeypatch.setattr("corpus_kb.coding.uncertainty.nli_client.NLI_TIMEOUT_SECONDS", 0.5)
+    assert NLI_TIMEOUT_SECONDS == 120.0  # the shipped bound stays 120s
+
+    start = time.monotonic()
+    result = await nli_mutual_entailment(
+        "a", "b", model="test-model", base_url=f"http://127.0.0.1:{port}"
+    )
+    elapsed = time.monotonic() - start
+
+    assert accepted.wait(timeout=5), "wedged server never accepted the connection"
+    assert result is None, "wedged server must degrade to None, never raise or hang"
+    assert elapsed < 10, f"degrade took {elapsed:.1f}s; the timeout bound did not fire"
+    server.close()

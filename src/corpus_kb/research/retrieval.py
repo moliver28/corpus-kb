@@ -2,10 +2,11 @@
 
 Hybrid dense + lexical over retrieval CHILDREN (v5 §5.2: units of kind
 answer/question, exchanges of kind qa), fused with the house RRF function
-(``corpus.rrf_fusion``, k=60 — migration 006 precedent), optionally
-cross-encoder reranked, then mapped to PARENTS (the exchange, or the
-sliding window for facilitator-less sources): search children, return the
-parent exchange with the question above and the answer highlighted.
+(``corpus.rrf_fusion``, k from ``search.rrf_k`` — default 60, migration 006
+precedent), optionally cross-encoder reranked, then mapped to PARENTS (the
+exchange, or the sliding window for facilitator-less sources): search
+children, return the parent exchange with the question above and the answer
+highlighted.
 
 Every query is scoped by tenant (RLS) AND ``project_id``; optional filters:
 ``source_type`` (documents.source_type), ``speaker_role``, ``doc_ids``,
@@ -28,16 +29,52 @@ from uuid import UUID, uuid5
 
 import asyncpg
 
+from corpus_kb.config import load_config
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.research.chunking import CHILD_QA, meeting_windows, unit_kind
+from corpus_kb.research.retrieval_settings import (
+    DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
+    RetrievalSettings,
+    estimate_selectivity,
+    load_retrieval_settings,
+    should_use_exact_scan,
+)
+from corpus_kb.research.search_settings import (
+    HnswSettings,
+    apply_hnsw_settings,
+    load_hnsw_settings,
+    supports_iterative_scan,
+)
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
-RRF_K = 60
 CANDIDATE_MULTIPLIER = 8
 RERANK_MIN_CANDIDATES = 30
 _RRF_NAMESPACE = UUID("6f6f6f6f-6f6f-6f6f-6f6f-6f6f6f6f6f6f")
+
+# U21: paired-count selectivity probes, same join shape + parameter
+# numbering as the dense arms ($1 tenant, $2 project, filters $3+).
+_UNIT_COUNT_SQL = """
+SELECT count(*)::float8 AS total,
+       count(*) FILTER (WHERE TRUE {filters})::float8 AS matched
+FROM research_units u
+JOIN documents d ON d.doc_id = u.doc_id
+LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
+WHERE u.tenant_id = $1 AND d.project_id = $2 AND u.embedding IS NOT NULL
+"""
+
+_EXCHANGE_COUNT_SQL = """
+SELECT count(*)::float8 AS total,
+       count(*) FILTER (WHERE TRUE {filters})::float8 AS matched
+FROM research_exchanges e
+JOIN documents d ON d.doc_id = e.doc_id
+WHERE e.tenant_id = $1 AND d.project_id = $2 AND e.embedding IS NOT NULL
+"""
+
+# U20: probe for the installed pgvector version (see search_settings for the
+# fail-closed gating contract).
+_PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
 
 # Assignment-confidence floors (todo-18 notebook filter): --min-confidence X
 # admits X and every STRONGER level.
@@ -126,23 +163,47 @@ async def research_search(
     embedder: ResearchEmbedder,
     q: ResearchQuery,
     reranker: object | None = None,
+    hnsw_settings: HnswSettings | None = None,
+    retrieval_settings: RetrievalSettings | None = None,
 ) -> list[Citation]:
-    """Search retrieval children, return parent citations (small-to-big)."""
+    """Search retrieval children, return parent citations (small-to-big).
+
+    ``hnsw_settings`` (U20) defaults to the ``search.hnsw.*`` config block;
+    when the installed pgvector supports iterative scans the matching
+    ``SET LOCAL`` statements are applied inside this search's transaction
+    (never session-wide, so pooled connections cannot leak them).
+    ``retrieval_settings`` (U45/U21) defaults to the ``search.*`` block and
+    drives the exact-scan fallback threshold below.
+    """
     from corpus_kb.rag.embedder import instruct
 
+    r_settings = (
+        retrieval_settings
+        if retrieval_settings is not None
+        else load_retrieval_settings(load_config())
+    )
     depth = max(q.k * CANDIDATE_MULTIPLIER, RERANK_MIN_CANDIDATES)
     query_vector: list[float] | None = await embedder.embed_cached(q.tenant_id, instruct(q.query))
+    settings = hnsw_settings if hnsw_settings is not None else load_hnsw_settings(load_config())
 
     async with tenant_connection(pool, q.tenant_id) as conn:
-        dense_units, fts_units = await _unit_arms(conn, query_vector, q, depth)
+        version_row = await conn.fetchrow(_PGVECTOR_VERSION_SQL)
+        extversion = None if version_row is None else str(version_row["extversion"])
+        if supports_iterative_scan(extversion):
+            await apply_hnsw_settings(conn, settings)
+        dense_units, fts_units = await _unit_arms(
+            conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold
+        )
         dense_ex: list[dict[str, object]] = []
         fts_ex: list[dict[str, object]] = []
         if q.include_exchange_children:
-            dense_ex, fts_ex = await _exchange_arms(conn, query_vector, q, depth)
+            dense_ex, fts_ex = await _exchange_arms(
+                conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold
+            )
 
-        units_fused = await _rrf(conn, dense_units, fts_units, depth)
-        exch_fused = await _rrf(conn, dense_ex, fts_ex, depth)
-        fused = await _rrf(conn, units_fused, exch_fused, depth)
+        units_fused = await _rrf(conn, dense_units, fts_units, depth, r_settings.rrf_k)
+        exch_fused = await _rrf(conn, dense_ex, fts_ex, depth, r_settings.rrf_k)
+        fused = await _rrf(conn, units_fused, exch_fused, depth, r_settings.rrf_k)
 
         children = _children_from_fused(fused)
         windows = await _meeting_windows(conn, children)
@@ -219,6 +280,7 @@ async def _unit_arms(
     query_vector: list[float] | None,
     q: ResearchQuery,
     depth: int,
+    exact_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     dense_sql = _Sql(str(q.tenant_id), str(q.project_id))
     filters = _unit_filters(dense_sql, q)
@@ -226,20 +288,66 @@ async def _unit_arms(
     if query_vector is not None:
         vec = dense_sql.p(str(query_vector))
         limit = dense_sql.p(depth)
-        rows = await conn.fetch(
-            f"""
-            SELECT u.unit_id, u.doc_id, u.exchange_id, u.seq, u.text, u.role_in_exchange,
-                   1 - (u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
-            FROM research_units u
-            JOIN documents d ON d.doc_id = u.doc_id
-            LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
-            WHERE u.tenant_id = $1 AND d.project_id = $2
-              AND u.embedding IS NOT NULL{filters}
-            ORDER BY u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
-            LIMIT {limit}
-            """,
-            *dense_sql.values,
+        # U21: with filters, probe matched/total once; a selective filter can
+        # starve the ordered HNSW scan of candidates, so below the threshold
+        # every matching row is scored exactly instead (same result schema).
+        selectivity = (
+            await estimate_selectivity(
+                conn, _UNIT_COUNT_SQL.format(filters=filters), list(dense_sql.values)
+            )
+            if filters
+            else None
         )
+        if should_use_exact_scan(bool(filters), selectivity, exact_threshold):
+            # No distance ORDER BY/LIMIT inside the CTE: the planner cannot
+            # use the ordered halfvec scan here, so the candidate set is the
+            # COMPLETE filter match and the outer ordering is exact.
+            rows = await conn.fetch(
+                f"""
+                WITH candidate AS MATERIALIZED (
+                    SELECT u.unit_id, u.doc_id, u.exchange_id, u.seq, u.text, u.role_in_exchange,
+                           1 - (u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                    FROM research_units u
+                    JOIN documents d ON d.doc_id = u.doc_id
+                    LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
+                    WHERE u.tenant_id = $1 AND d.project_id = $2
+                      AND u.embedding IS NOT NULL{filters}
+                )
+                SELECT candidate.unit_id, candidate.doc_id, candidate.exchange_id,
+                       candidate.seq, candidate.text, candidate.role_in_exchange,
+                       candidate.score + 0 AS score
+                FROM candidate
+                ORDER BY candidate.score + 0 DESC
+                LIMIT {limit}
+                """,
+                *dense_sql.values,
+            )
+        else:
+            # U40 relaxed-ordering pattern: the ANN scan (filters + distance
+            # ORDER BY + LIMIT) stays INSIDE a MATERIALIZED CTE; the exact
+            # ordering is applied OUTSIDE over the retrieved set (`score + 0`
+            # defeats planner sort-elision, per the pgvector docs).
+            rows = await conn.fetch(
+                f"""
+                WITH candidate AS MATERIALIZED (
+                    SELECT u.unit_id, u.doc_id, u.exchange_id, u.seq, u.text, u.role_in_exchange,
+                           1 - (u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                    FROM research_units u
+                    JOIN documents d ON d.doc_id = u.doc_id
+                    LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
+                    WHERE u.tenant_id = $1 AND d.project_id = $2
+                      AND u.embedding IS NOT NULL{filters}
+                    ORDER BY u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
+                    LIMIT {limit}
+                )
+                SELECT candidate.unit_id, candidate.doc_id, candidate.exchange_id,
+                       candidate.seq, candidate.text, candidate.role_in_exchange,
+                       candidate.score + 0 AS score
+                FROM candidate
+                ORDER BY candidate.score + 0 DESC
+                """,
+                *dense_sql.values,
+            )
         dense = [_unit_payload(r) for r in rows]
 
     fts_sql = _Sql(str(q.tenant_id), str(q.project_id))
@@ -268,6 +376,7 @@ async def _exchange_arms(
     query_vector: list[float] | None,
     q: ResearchQuery,
     depth: int,
+    exact_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     dense_sql = _Sql(str(q.tenant_id), str(q.project_id))
     filters = _exchange_filters(dense_sql, q)
@@ -275,19 +384,54 @@ async def _exchange_arms(
     if query_vector is not None:
         vec = dense_sql.p(str(query_vector))
         limit = dense_sql.p(depth)
-        rows = await conn.fetch(
-            f"""
-            SELECT e.exchange_id, e.doc_id, e.seq, coalesce(e.qa_text, '') AS text,
-                   1 - (e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
-            FROM research_exchanges e
-            JOIN documents d ON d.doc_id = e.doc_id
-            WHERE e.tenant_id = $1 AND d.project_id = $2
-              AND e.embedding IS NOT NULL{filters}
-            ORDER BY e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
-            LIMIT {limit}
-            """,
-            *dense_sql.values,
+        # U21: same probe + exact-scan fallback as _unit_arms.
+        selectivity = (
+            await estimate_selectivity(
+                conn, _EXCHANGE_COUNT_SQL.format(filters=filters), list(dense_sql.values)
+            )
+            if filters
+            else None
         )
+        if should_use_exact_scan(bool(filters), selectivity, exact_threshold):
+            rows = await conn.fetch(
+                f"""
+                WITH candidate AS MATERIALIZED (
+                    SELECT e.exchange_id, e.doc_id, e.seq, coalesce(e.qa_text, '') AS text,
+                           1 - (e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                    FROM research_exchanges e
+                    JOIN documents d ON d.doc_id = e.doc_id
+                    WHERE e.tenant_id = $1 AND d.project_id = $2
+                      AND e.embedding IS NOT NULL{filters}
+                )
+                SELECT candidate.exchange_id, candidate.doc_id, candidate.seq,
+                       candidate.text, candidate.score + 0 AS score
+                FROM candidate
+                ORDER BY candidate.score + 0 DESC
+                LIMIT {limit}
+                """,
+                *dense_sql.values,
+            )
+        else:
+            # U40 relaxed-ordering pattern (see _unit_arms).
+            rows = await conn.fetch(
+                f"""
+                WITH candidate AS MATERIALIZED (
+                    SELECT e.exchange_id, e.doc_id, e.seq, coalesce(e.qa_text, '') AS text,
+                           1 - (e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                    FROM research_exchanges e
+                    JOIN documents d ON d.doc_id = e.doc_id
+                    WHERE e.tenant_id = $1 AND d.project_id = $2
+                      AND e.embedding IS NOT NULL{filters}
+                    ORDER BY e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
+                    LIMIT {limit}
+                )
+                SELECT candidate.exchange_id, candidate.doc_id, candidate.seq,
+                       candidate.text, candidate.score + 0 AS score
+                FROM candidate
+                ORDER BY candidate.score + 0 DESC
+                """,
+                *dense_sql.values,
+            )
         dense = [_exchange_payload(r) for r in rows]
 
     fts_sql = _Sql(str(q.tenant_id), str(q.project_id))
@@ -354,6 +498,7 @@ async def _rrf(
     dense: list[dict[str, object]],
     lexical: list[dict[str, object]],
     depth: int,
+    rrf_k: int,
 ) -> list[dict[str, object]]:
     if not dense and not lexical:
         return []
@@ -364,7 +509,7 @@ async def _rrf(
             json.dumps(dense),
             json.dumps(lexical),
             depth,
-            RRF_K,
+            rrf_k,
         )
     except asyncpg.UndefinedFunctionError as exc:
         raise RuntimeError(
