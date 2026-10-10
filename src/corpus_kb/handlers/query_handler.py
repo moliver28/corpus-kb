@@ -498,7 +498,15 @@ class QueryHandler:
                 return fused_results
             if self._rerank_settings.calibration == "minmax":
                 lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
-                span = (hi - lo) or 1.0
+                if hi <= lo:
+                    # Degenerate span (all-equal scores — the all-
+                    # not_evaluable case scores every pair at the neutral
+                    # 0.5): minmax maps every score to 0.0 and score_floor
+                    # would then drop ALL fused results. Fail open to the
+                    # un-reranked RRF order — reranking must never break
+                    # search (rag/reranker.py degrade contract).
+                    return fused_results
+                span = hi - lo
                 reranked = [
                     r.model_copy(update={"score": (s - lo) / span})
                     for r, s in zip(candidates, raw_scores, strict=True)
