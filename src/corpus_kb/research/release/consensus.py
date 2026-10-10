@@ -30,7 +30,6 @@ import numpy as np
 from corpus_kb.coding.quote_verification import classify_quote
 
 QUOTE_NOT_FOUND = "quote_not_found"
-DEFAULT_N_RUNS = 3
 
 
 @dataclass(frozen=True)
