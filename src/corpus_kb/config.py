@@ -151,11 +151,10 @@ def get_default_config() -> dict[str, object]:
             "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
             # U45/U21 shared retrieval knobs, read by
             # corpus_kb.research.retrieval_settings.load_retrieval_settings.
-            # candidates_per_branch 150 / return_top_k 20 are the committed
-            # upgrade-program defaults (contextual-retrieval study values),
-            # not the module defaults.
+            # candidates_per_branch 150 is the committed upgrade-program
+            # default (contextual-retrieval study value), not the module
+            # default; return truncation is owned by each query's k field.
             "candidates_per_branch": 150,
-            "return_top_k": 20,
             "exact_filter_selectivity_threshold": 0.05,
             "rerank": {
                 "enabled": True,

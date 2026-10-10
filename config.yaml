@@ -24,10 +24,10 @@ search:
   reranker: none
   reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
   # U45/U21 shared retrieval knobs (research/retrieval_settings.py).
-  # candidates_per_branch 150 / return_top_k 20 are the committed
-  # upgrade-program defaults (contextual-retrieval study values).
+  # candidates_per_branch 150 is the committed upgrade-program default
+  # (contextual-retrieval study value); return truncation is owned by
+  # each query's k field.
   candidates_per_branch: 150
-  return_top_k: 20
   exact_filter_selectivity_threshold: 0.05
   rerank:
     enabled: true
