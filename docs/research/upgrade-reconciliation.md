@@ -94,5 +94,11 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
    inert knobs (commit 24d461c).
 5. **Licenses**: `licenses.lock.json` + CI gate already existed (U26 done);
    regenerated copies from a drifted local venv would corrupt the
-   committed baseline, so the lock was verified, not rewritten. No GPL/AGPL
-   packages; weak-copyleft (LGPL/MPL/AFL) entries are flagged above.
+   committed baseline (the committed lock tracks a fresh-install resolve
+   and is NEWER than the stale local venv for every drifted package), so
+   the lock was verified, not wholesale rewritten. No GPL/AGPL packages;
+   weak-copyleft (LGPL/MPL/AFL) entries are flagged above. One UNKNOWN
+   entry (tiktoken, whose only metadata is the full MIT license text) was
+   hand-verified as MIT and pinned via `LICENSE_OVERRIDES` in
+   `scripts/generate_license_lock.py` so every platform resolves it
+   deterministically.

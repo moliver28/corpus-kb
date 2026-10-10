@@ -849,9 +849,9 @@
   {
     "name": "tiktoken",
     "version": "0.14.0",
-    "license": "UNKNOWN",
+    "license": "MIT",
     "homepage": "https://pypi.org/project/tiktoken/0.14.0/",
-    "licenseTextUrl": null
+    "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "tinytag",
