@@ -257,3 +257,62 @@ async def test_ollama_probe_matches_raw_query_embedding() -> None:
     assert instructed not in all_params, (
         "main path must not silently switch to instructed queries without review"
     )
+
+
+# ============================================================================
+# U40 (P3): the analytics_sql KNN reads follow the same pattern. These are
+# module-level SQL constants read over fixed-shaped candidate sets, so the
+# assertions are offline string-shape checks on each exported statement.
+# ============================================================================
+
+from corpus_kb.research.analytics_sql import (  # noqa: E402
+    HALFVEC_PROBE_SQL,
+    RETRIEVAL_EXCHANGES_SQL,
+    RETRIEVAL_UNCODED_SQL,
+    RETRIEVAL_UNITS_SQL,
+    RETRIEVAL_UNITS_TYPED_SQL,
+)
+
+
+def _assert_relaxed_ordering_shape(sql: str, id_col: str) -> None:
+    norm = _norm(sql)
+    assert "WITH candidate AS MATERIALIZED" in norm, sql
+    cte_body, outer = norm.split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)
+    assert f"{id_col}," in cte_body, sql
+    assert "AS dist" in cte_body, sql
+    # The ANN ordering + LIMIT stay inside the CTE...
+    assert "<=>" in cte_body
+    assert "ORDER BY" in cte_body and "LIMIT" in cte_body
+    assert "ORDER BY" in outer, sql
+    # ...and the outer ordering is EXACT over the materialized set.
+    assert "ORDER BY candidate.dist + 0" in outer, sql
+
+
+def test_analytics_units_sql_uses_relaxed_ordering_pattern() -> None:
+    _assert_relaxed_ordering_shape(RETRIEVAL_UNITS_SQL, "ru.unit_id")
+
+
+def test_analytics_units_typed_sql_uses_relaxed_ordering_pattern() -> None:
+    _assert_relaxed_ordering_shape(RETRIEVAL_UNITS_TYPED_SQL, "ru.unit_id")
+
+
+def test_analytics_exchanges_sql_uses_relaxed_ordering_pattern() -> None:
+    _assert_relaxed_ordering_shape(RETRIEVAL_EXCHANGES_SQL, "e.exchange_id")
+
+
+def test_analytics_uncoded_sql_uses_relaxed_ordering_pattern() -> None:
+    _assert_relaxed_ordering_shape(RETRIEVAL_UNCODED_SQL, "ru.unit_id")
+
+
+def test_analytics_halfvec_probe_sql_uses_relaxed_ordering_pattern() -> None:
+    _assert_relaxed_ordering_shape(HALFVEC_PROBE_SQL, "ru.unit_id")
+    assert "halfvec(1024)" in _norm(HALFVEC_PROBE_SQL)
+
+
+def test_analytics_parameter_ordering_is_unchanged() -> None:
+    """The sweep must not renumber parameters: callers pass [vector, limit]."""
+    for sql in (RETRIEVAL_UNITS_SQL, RETRIEVAL_EXCHANGES_SQL, RETRIEVAL_UNCODED_SQL):
+        norm = _norm(sql)
+        assert norm.index("$1::vector(256)") < norm.index("LIMIT $2")
+    typed = _norm(RETRIEVAL_UNITS_TYPED_SQL)
+    assert typed.index("$1::vector(256)") < typed.index("LIMIT $3")
