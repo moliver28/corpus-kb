@@ -466,6 +466,15 @@ CYCLE_OUTRO = (
     "Cycle complete. The report above is the artifact to read next; "
     "re-run the cycle as new transcripts land."
 )
+CYCLE_PROPOSAL_RECORDED = (
+    "Monitoring recorded a change proposal (successor draft {successor}) "
+    "against released parent {parent}; the released codebook was not modified."
+)
+CYCLE_PROPOSAL_NO_PARENT = (
+    "Monitoring alarms fired but no released release exists for codebook "
+    "version {version}; a change proposal needs a released parent, so "
+    "nothing was proposed."
+)
 CYCLE_NO_QUESTION = "notebook stage skipped (no --question given)"
 CYCLE_INDUCTIVE_UNAVAILABLE = (
     'the inductive extra is not installed (pip install -e ".[inductive]"); '
