@@ -9,8 +9,8 @@
     candidates cluster by embedding-similarity (greedy leader clustering,
     cosine >= ``similarity_threshold``); a theme is KEPT when it appears in
     >= ``min_run_fraction`` of the runs. Per-theme consistency (mean pairwise
-    similarity), similarity stats, and run-to-run agreement (ARI over the
-    consensus-theme label space on each run pair's shared candidates) are
+    similarity), similarity stats, and run-to-run agreement (Jaccard over the
+    consensus-theme membership space on each run pair) are
     recorded — never papered numbers.
 (3) Reviewer rubric verdicts (agreement | reasonable_alternative |
     not_reasonable) are aggregate events (``ReviewerRubricRecorded`` on the
@@ -30,7 +30,6 @@ import numpy as np
 from corpus_kb.coding.quote_verification import classify_quote
 
 QUOTE_NOT_FOUND = "quote_not_found"
-DEFAULT_N_RUNS = 3
 
 
 @dataclass(frozen=True)
