@@ -102,3 +102,14 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
    hand-verified as MIT and pinned via `LICENSE_OVERRIDES` in
    `scripts/generate_license_lock.py` so every platform resolves it
    deterministically.
+
+## Known line-limit deviations (250-line soft limit)
+
+| File | Lines | Why it stays |
+|---|---|---|
+| `research/retrieval.py` | ~719 | Pre-existing; the U21 arm logic is inseparable from the existing arm SQL (spec v8 acknowledges). |
+| `domain/codebook.py` | ~376 | Eventsourcing 9.5 rejects `@event` methods on mixins, and the binding spec requires extending this exact aggregate. |
+| `coding/confidence_calibration.py` | ~308 | AUROC/ECE/Brier + calibrator fit + evaluation are one numerical contract; splitting would scatter the test-eval-once rule. |
+| `coding/alt_test.py` | ~288 | Paper-exact implementation (indicators, FDR, AP measure) kept inspectable in one module per the U13 isolation requirement. |
+| `coding/aggregation.py` | ~277 | Dawid-Skene EM and weak-supervision aggregation share the posterior machinery (U33/U38). |
+| `research/release/service.py` | ~253 | Release lifecycle transitions + compare; projector interaction tested as a unit. |
