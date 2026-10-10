@@ -108,15 +108,15 @@ async def nli_mutual_entailment(
     try:
         raw = await asyncio.to_thread(_generate, build_nli_prompt(a, b), model, base_url)
         return parse_nli_reply(raw)
-    # httpx.TimeoutException is a SIBLING of NetworkError (both under
-    # TransportError), so it needs its own entry: an expired bound above must
-    # degrade to None exactly like a refused connection (builtin TimeoutError
-    # is an OSError subclass and is already covered).
+    # TransportError is the common base of NetworkError, TimeoutException and
+    # ProtocolError (incl. RemoteProtocolError: a wedged server may accept the
+    # socket then disconnect without responding, which CI's linux runners hit).
+    # Any of these must degrade to None exactly like a refused connection
+    # (builtin TimeoutError is an OSError subclass and is already covered).
     except (
         ConnectionError,
         OSError,
-        httpx.NetworkError,
-        httpx.TimeoutException,
+        httpx.TransportError,
         ResponseError,
     ) as exc:
         logger.warning("NLI model call unavailable: %s", exc)
