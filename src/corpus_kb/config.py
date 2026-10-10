@@ -153,7 +153,6 @@ def get_default_config() -> dict[str, object]:
                 "enabled": True,
                 "model": "qwen3-reranker:8b",
                 "base_url": "http://localhost:11434",
-                "batch_size": 16,
                 "over_retrieve_n": 60,
                 "score_floor": 0.15,
                 "calibration": "minmax",
