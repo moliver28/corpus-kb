@@ -26,8 +26,11 @@ Keys (all under ``search``):
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
-from typing import cast
+from typing import Protocol, cast
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_RRF_K = 60
 DEFAULT_CANDIDATES_PER_BRANCH = 50
@@ -105,6 +108,41 @@ def selectivity_ratio(matched: int, total: int) -> float:
     if total <= 0:
         return 0.0
     return min(1.0, max(0.0, matched / total))
+
+
+class SelectivityReader(Protocol):
+    """Minimal asyncpg.Connection surface the selectivity probe needs."""
+
+    async def fetchrow(self, sql: str, *args: object) -> object | None:
+        """Run one paired-count query; returns the row or None."""
+        ...
+
+
+async def estimate_selectivity(
+    conn: SelectivityReader,
+    count_sql: str,
+    params: list[object],
+) -> float | None:
+    """Run one paired-count probe (total + FILTER-matched) and return the ratio.
+
+    ``count_sql`` must select ``total`` and ``matched`` (see the
+    ``*_COUNT_SQL`` constants at the call sites). Any probe failure returns
+    None and the caller fails OPEN to the ANN path — a broken probe must
+    never break search; it only costs the U21 optimization.
+    """
+    try:
+        row = await conn.fetchrow(count_sql, *params)
+    except Exception as exc:
+        logger.warning("Selectivity probe failed; staying on the ANN path: %s", exc)
+        return None
+    if row is None:
+        return None
+    record = cast("dict[str, object]", dict(row)) if not isinstance(row, dict) else row
+    try:
+        return selectivity_ratio(int(record["matched"]), int(record["total"]))
+    except (KeyError, TypeError, ValueError) as exc:
+        logger.warning("Selectivity probe returned unusable row: %s", exc)
+        return None
 
 
 def should_use_exact_scan(

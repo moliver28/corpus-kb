@@ -34,6 +34,11 @@ from corpus_kb.domain.models import (
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.rerank_settings import load_rerank_settings
 from corpus_kb.rag.reranker import build_reranker, create_reranker
+from corpus_kb.research.retrieval_settings import (
+    estimate_selectivity,
+    load_retrieval_settings,
+    should_use_exact_scan,
+)
 from corpus_kb.research.search_settings import (
     HnswSettings,
     apply_hnsw_settings,
@@ -47,6 +52,18 @@ logger = logging.getLogger(__name__)
 # statements error on pgvector < 0.8, so emission is gated on this read
 # (fails CLOSED: unknown version = no settings = pre-0.8 behavior).
 _PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+
+# U21: paired-count selectivity probe over the same join shape as the vector
+# arms. The filter fragment is formatted in with its own numbering starting
+# at $2 (tenant is $1) so the probe is self-contained.
+_COUNT_SQL_TEMPLATE = """
+SELECT count(*)::float8 AS total,
+       count(*) FILTER (WHERE TRUE {frag})::float8 AS matched
+FROM chunks_vectors cv
+JOIN chunks ON cv.chunk_id = chunks.chunk_id
+JOIN documents ON chunks.doc_id = documents.doc_id
+WHERE cv.tenant_id = $1 {dedup}
+"""
 
 
 def _fusion_payload(rows: list[asyncpg.Record]) -> str:
@@ -106,6 +123,9 @@ class QueryHandler:
         self._candidate_multiplier = int(search_cfg.get("candidate_multiplier", 8))
         # U20: transaction-local HNSW scan settings (search.hnsw.*).
         self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
+        # U45/U21: shared retrieval knobs (rrf depth semantics live with the
+        # fusion callers; the threshold drives the exact-scan arm below).
+        self._retrieval_settings = load_retrieval_settings(self._config)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: self-query filtering -> vector (matryoshka two-tier or
@@ -189,14 +209,61 @@ class QueryHandler:
 
                 model = str(embedding_cfg.get("model", "nomic-embed-text"))
                 frag, params = build_filter_sql(dynamic_predicates, start_index=5)
+                # U21: with selective filters, HNSW can lose candidates (the
+                # ordered scan stops before matching rows are reached). Probe
+                # matched/total once and drop to a filtered EXACT scan below
+                # the threshold — identical result schema, no ANN ordering.
+                # No filters = no probe (selectivity is 1.0 by definition).
+                selectivity = None
+                if dynamic_predicates:
+                    probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
+                    selectivity = await estimate_selectivity(
+                        conn,
+                        _COUNT_SQL_TEMPLATE.format(frag=probe_frag, dedup=dedup_predicate),
+                        [str(query.tenant_id), *probe_params],
+                    )
+                use_exact = should_use_exact_scan(
+                    bool(dynamic_predicates),
+                    selectivity,
+                    self._retrieval_settings.exact_filter_selectivity_threshold,
+                )
                 try:
-                    # U40 relaxed-ordering pattern (pgvector >= 0.8 iterative
-                    # scans): the ANN scan (filters + distance ORDER BY + LIMIT)
-                    # stays INSIDE a MATERIALIZED CTE; the exact ordering is
-                    # applied OUTSIDE over the retrieved set (`score + 0`
-                    # defeats planner sort-elision, per the pgvector docs).
-                    vector_results = await conn.fetch(
-                        f"""
+                    if use_exact:
+                        # U40 pattern still holds: candidate set MATERIALIZED,
+                        # exact ordering applied OUTSIDE (`score + 0`).
+                        vector_results = await conn.fetch(
+                            f"""
+                            WITH candidate AS MATERIALIZED (
+                                SELECT cv.chunk_id AS candidate_chunk_id,
+                                       1 - (cv.vector <=> (
+                                           SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
+                                       )::vector) AS score
+                                FROM chunks_vectors cv
+                                JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                                JOIN documents ON chunks.doc_id = documents.doc_id
+                                WHERE cv.tenant_id = $3 {dedup_predicate} {frag}
+                            )
+                            SELECT {select_list}, candidate.score AS score
+                            FROM candidate
+                            JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
+                            JOIN documents ON chunks.doc_id = documents.doc_id
+                            ORDER BY candidate.score + 0 DESC
+                            LIMIT $4
+                            """,
+                            model,
+                            semantic_query,
+                            str(query.tenant_id),
+                            max(query.k * 2, over_retrieve_n),
+                            *params,
+                        )
+                    else:
+                        # U40 relaxed-ordering pattern (pgvector >= 0.8 iterative
+                        # scans): the ANN scan (filters + distance ORDER BY + LIMIT)
+                        # stays INSIDE a MATERIALIZED CTE; the exact ordering is
+                        # applied OUTSIDE over the retrieved set (`score + 0`
+                        # defeats planner sort-elision, per the pgvector docs).
+                        vector_results = await conn.fetch(
+                            f"""
                         WITH candidate AS MATERIALIZED (
                             SELECT cv.chunk_id AS candidate_chunk_id,
                                    1 - (cv.vector <=> (
@@ -218,12 +285,12 @@ class QueryHandler:
                         ORDER BY candidate.score + 0 DESC
                         LIMIT $4
                         """,
-                        model,
-                        semantic_query,
-                        str(query.tenant_id),
-                        max(query.k * 2, over_retrieve_n),
-                        *params,
-                    )
+                            model,
+                            semantic_query,
+                            str(query.tenant_id),
+                            max(query.k * 2, over_retrieve_n),
+                            *params,
+                        )
                 except Exception as exc:
                     logger.warning("Vector search failed: %s", exc)
             elif provider == "ollama" and self._embedder:
@@ -270,10 +337,55 @@ class QueryHandler:
                     else:
                         query_vector = self._embedder.embed(semantic_query)
                         frag, params = build_filter_sql(dynamic_predicates, start_index=4)
-                        # U40 relaxed-ordering pattern: scan inside a
-                        # MATERIALIZED CTE, exact ordering outside (`score + 0`).
-                        vector_results = await conn.fetch(
-                            f"""
+                        # U21: same selectivity probe + exact-scan fallback as
+                        # the pgml arm (identical result schema and params).
+                        selectivity = None
+                        if dynamic_predicates:
+                            probe_frag, probe_params = build_filter_sql(
+                                dynamic_predicates, start_index=2
+                            )
+                            selectivity = await estimate_selectivity(
+                                conn,
+                                _COUNT_SQL_TEMPLATE.format(frag=probe_frag, dedup=dedup_predicate),
+                                [str(query.tenant_id), *probe_params],
+                            )
+                        use_exact = should_use_exact_scan(
+                            bool(dynamic_predicates),
+                            selectivity,
+                            self._retrieval_settings.exact_filter_selectivity_threshold,
+                        )
+                        if use_exact:
+                            # No distance ORDER BY/LIMIT inside the CTE: the
+                            # planner cannot use the ordered HNSW scan here,
+                            # so every matching row is scored exactly and the
+                            # outer ORDER BY picks the true top-k.
+                            vector_results = await conn.fetch(
+                                f"""
+                                WITH candidate AS MATERIALIZED (
+                                    SELECT cv.chunk_id AS candidate_chunk_id,
+                                           1 - (cv.vector <=> $1::vector) AS score
+                                    FROM chunks_vectors cv
+                                    JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                                    JOIN documents ON chunks.doc_id = documents.doc_id
+                                    WHERE cv.tenant_id = $2 {dedup_predicate} {frag}
+                                )
+                                SELECT {select_list}, candidate.score AS score
+                                FROM candidate
+                                JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
+                                JOIN documents ON chunks.doc_id = documents.doc_id
+                                ORDER BY candidate.score + 0 DESC
+                                LIMIT $3
+                                """,
+                                str(query_vector),
+                                str(query.tenant_id),
+                                vector_limit,
+                                *params,
+                            )
+                        else:
+                            # U40 relaxed-ordering pattern: scan inside a
+                            # MATERIALIZED CTE, exact ordering outside (`score + 0`).
+                            vector_results = await conn.fetch(
+                                f"""
                             WITH candidate AS MATERIALIZED (
                                 SELECT cv.chunk_id AS candidate_chunk_id,
                                        1 - (cv.vector <=> $1::vector) AS score
@@ -291,11 +403,11 @@ class QueryHandler:
                             ORDER BY candidate.score + 0 DESC
                             LIMIT $3
                             """,
-                            str(query_vector),
-                            str(query.tenant_id),
-                            vector_limit,
-                            *params,
-                        )
+                                str(query_vector),
+                                str(query.tenant_id),
+                                vector_limit,
+                                *params,
+                            )
                 except Exception as exc:
                     logger.warning("Vector search failed: %s", exc)
             elif provider != "ollama":

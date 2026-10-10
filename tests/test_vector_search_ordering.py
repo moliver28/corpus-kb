@@ -316,3 +316,121 @@ def test_analytics_parameter_ordering_is_unchanged() -> None:
         assert norm.index("$1::vector(256)") < norm.index("LIMIT $2")
     typed = _norm(RETRIEVAL_UNITS_TYPED_SQL)
     assert typed.index("$1::vector(256)") < typed.index("LIMIT $3")
+
+
+# ============================================================================
+# U21: exact-scan fallback for highly selective filters. Offline checks: the
+# recording connection answers the selectivity probe with a fixture row, and
+# the emitted vector SQL is asserted to be the exact-scan or ANN shape.
+# ============================================================================
+
+from corpus_kb.research.retrieval_settings import (  # noqa: E402
+    RetrievalSettings,
+    selectivity_ratio,
+    should_use_exact_scan,
+)
+
+_OLLAMA_FILTERED_CONFIG: dict[str, object] = {
+    "embedding": {"provider": "ollama", "model": "qwen3-embedding:8b-q8_0", "dimensions": 1024},
+    "search": {
+        "reranker": "none",
+        "exact_filter_selectivity_threshold": 0.05,
+    },
+}
+
+
+def test_selectivity_policy_selects_exact_only_below_threshold() -> None:
+    assert selectivity_ratio(3, 1000) == pytest.approx(0.003)
+    assert selectivity_ratio(5, 0) == 0.0  # empty scope is maximally selective
+    assert selectivity_ratio(500, 200) == 1.0  # clamped
+    # Filters + selectivity below threshold -> exact scan.
+    assert should_use_exact_scan(True, 0.003, 0.05) is True
+    # Above the threshold, unfiltered, or probed-failed -> ANN stays.
+    assert should_use_exact_scan(True, 0.5, 0.05) is False
+    assert should_use_exact_scan(False, 0.001, 0.05) is False
+    assert should_use_exact_scan(True, None, 0.05) is False
+
+
+def _selectivity_row(matched: int, total: int) -> dict[str, object]:
+    return {"extversion": "0.8.2", "matched": matched, "total": total}
+
+
+@pytest.mark.asyncio
+async def test_selective_filter_routes_to_exact_scan_arm(monkeypatch) -> None:
+    conn = _RecordingConn()
+    original_fetchrow = conn.fetchrow
+
+    async def _probe_fetchrow(sql: str, *args: object) -> dict[str, object] | None:
+        if "pg_extension" in sql:
+            return await original_fetchrow(sql, *args)
+        if "FILTER" in sql:
+            return _selectivity_row(2, 10_000)  # 0.0002 << 0.05
+        return None
+
+    monkeypatch.setattr(conn, "fetchrow", _probe_fetchrow)
+    embedder = FakeEmbedder(dimensions=1024)
+    handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG), embedder=embedder)
+    await handler.handle_search(SearchQuery(query="housing policy", k=5, source_type="interview"))
+
+    sqls = _vector_sql(conn, "$1::vector")
+    assert sqls, "vector arm did not run"
+    exact = [s for s in sqls if "WITH candidate AS MATERIALIZED" in s and "LIMIT $3" in s]
+    assert exact, "exact-scan arm did not run"
+    sql = exact[0]
+    # The exact arm has NO distance ORDER BY inside the CTE (that ordering is
+    # what lets the planner use HNSW and lose filtered candidates).
+    cte_body = sql.split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
+    assert "ORDER BY" not in cte_body, "exact arm must not order inside the CTE"
+    outer = sql.split(") SELECT", 1)[1]
+    assert "ORDER BY candidate.score + 0 DESC" in outer
+    assert "documents.source_type = $4" in sql
+
+
+@pytest.mark.asyncio
+async def test_broad_filter_stays_on_ann_arm(monkeypatch) -> None:
+    conn = _RecordingConn()
+    original_fetchrow = conn.fetchrow
+
+    async def _probe_fetchrow(sql: str, *args: object) -> dict[str, object] | None:
+        if "pg_extension" in sql:
+            return await original_fetchrow(sql, *args)
+        if "FILTER" in sql:
+            return _selectivity_row(9_000, 10_000)  # 0.9 >> 0.05
+        return None
+
+    monkeypatch.setattr(conn, "fetchrow", _probe_fetchrow)
+    embedder = FakeEmbedder(dimensions=1024)
+    handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG), embedder=embedder)
+    await handler.handle_search(SearchQuery(query="housing policy", k=5, source_type="interview"))
+
+    sqls = _vector_sql(conn, "$1::vector")
+    assert sqls, "vector arm did not run"
+    cte_body = sqls[0].split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
+    assert "ORDER BY cv.vector <=> $1::vector" in cte_body
+    assert "LIMIT $3" in cte_body
+
+
+@pytest.mark.asyncio
+async def test_probe_failure_fails_open_to_ann(monkeypatch) -> None:
+    conn = _RecordingConn()
+    original_fetchrow = conn.fetchrow
+
+    async def _broken_probe(sql: str, *args: object) -> dict[str, object] | None:
+        if "pg_extension" in sql:
+            return await original_fetchrow(sql, *args)
+        raise RuntimeError("probe down")
+
+    monkeypatch.setattr(conn, "fetchrow", _broken_probe)
+    embedder = FakeEmbedder(dimensions=1024)
+    handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG), embedder=embedder)
+    await handler.handle_search(SearchQuery(query="housing policy", k=5, source_type="interview"))
+    sqls = _vector_sql(conn, "$1::vector")
+    assert sqls, "search must continue when the probe fails"
+    cte_body = sqls[0].split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
+    assert "ORDER BY cv.vector <=> $1::vector" in cte_body
+
+
+def test_retrieval_settings_defaults_are_consumed_by_handler() -> None:
+    conn = _RecordingConn()
+    handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG))
+    assert handler._retrieval_settings == RetrievalSettings()

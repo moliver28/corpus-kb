@@ -121,9 +121,7 @@ def _ndcg(ranked: list[int], relevant: frozenset[int], k: int = 10) -> float:
     if not relevant:
         return 0.0
     dcg = sum(
-        1.0 / np.log2(pos + 2)
-        for pos, unit_id in enumerate(ranked[:k])
-        if unit_id in relevant
+        1.0 / np.log2(pos + 2) for pos, unit_id in enumerate(ranked[:k]) if unit_id in relevant
     )
     ideal = sum(1.0 / np.log2(pos + 2) for pos in range(min(len(relevant), k)))
     return float(dcg / ideal) if ideal > 0 else 0.0
@@ -141,8 +139,9 @@ async def _run_arm(
     depth: int,
     reranker: _Reranker | None,
     query_text: str,
+    exact_threshold: float,
 ) -> list[int]:
-    dense, fts = await _unit_arms(conn, query_vector, q, depth)
+    dense, fts = await _unit_arms(conn, query_vector, q, depth, exact_threshold)
     if arm == "vector":
         return _ranked_unit_ids(dense)
     if arm == "fts":
@@ -199,7 +198,16 @@ async def evaluate_arms(
                 vector = await embedder.embed_cached(UUID(tenant_id), instruct(eq.text))
             for arm in arms:
                 start = time.perf_counter()
-                ranked = await _run_arm(arm, conn, vector, q, depth, reranker, eq.text)
+                ranked = await _run_arm(
+                    arm,
+                    conn,
+                    vector,
+                    q,
+                    depth,
+                    reranker,
+                    eq.text,
+                    settings.exact_filter_selectivity_threshold,
+                )
                 latencies[arm].append((time.perf_counter() - start) * 1000.0)
                 recalls[arm].append(_recall_k(ranked, eq.relevant, k))
                 mrrs[arm].append(_mrr(ranked, eq.relevant))
@@ -210,9 +218,7 @@ async def evaluate_arms(
             recall_at_k=float(np.mean(recalls[arm])) if recalls[arm] else 0.0,
             mrr=float(np.mean(mrrs[arm])) if mrrs[arm] else 0.0,
             ndcg_at_10=float(np.mean(ndcgs[arm])) if ndcgs[arm] else 0.0,
-            p95_latency_ms=float(np.percentile(latencies[arm], 95))
-            if latencies[arm]
-            else 0.0,
+            p95_latency_ms=float(np.percentile(latencies[arm], 95)) if latencies[arm] else 0.0,
             n_queries=len(queries),
         )
         for arm in arms
@@ -236,8 +242,5 @@ def recommend_default(report: EvalReport, latency_budget_ms: float) -> str:
     rrf = report.arms.get("rrf")
     if vector is None or rrf is None or vector.n_queries == 0:
         return INSUFFICIENT_DATA
-    rrf_ok = (
-        rrf.recall_at_k >= vector.recall_at_k
-        and rrf.p95_latency_ms <= latency_budget_ms
-    )
+    rrf_ok = rrf.recall_at_k >= vector.recall_at_k and rrf.p95_latency_ms <= latency_budget_ms
     return "rrf" if rrf_ok else "vector"
