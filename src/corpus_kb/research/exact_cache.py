@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol, cast
 
@@ -180,7 +181,9 @@ async def get(conn: CacheConn, tenant_id: str, cache_key: str) -> dict[str, obje
     row = await conn.fetchrow(GET_SQL, cache_key, tenant_id)
     if row is None:
         return None
-    record = cast("dict[str, object]", dict(row)) if not isinstance(row, dict) else row
+    # asyncpg.Record satisfies the Mapping protocol; cast (not isinstance)
+    # so dict and Record both flow through the same read.
+    record = cast("Mapping[str, object]", row)
     response = record.get("response")
     return dict(response) if isinstance(response, dict) else {"response": response}
 

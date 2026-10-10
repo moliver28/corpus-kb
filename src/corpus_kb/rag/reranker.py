@@ -278,7 +278,11 @@ def _logprob_entries(response: object) -> list[list[_LogprobAlt]]:
         greedy_lp = float(_field(entry, "logprob") or 0.0)
         alts: list[_LogprobAlt] = [_LogprobAlt(greedy_token, greedy_lp)]
         seen = {greedy_token}
-        for alt in _field(entry, "top_logprobs") or []:
+        raw_alts = _field(entry, "top_logprobs")
+        if not isinstance(raw_alts, (list, tuple)):
+            positions.append(alts)
+            continue
+        for alt in raw_alts:
             token = str(_field(alt, "token") or "")
             if token in seen:
                 continue

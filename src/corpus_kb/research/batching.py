@@ -21,9 +21,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, cast
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,9 @@ async def load_completed_items(conn: RunConn, marker: RunMarker) -> set[str]:
     row = await conn.fetchrow(COMPLETED_ITEMS_SQL, marker.run_id, marker.tenant_id)
     if row is None:
         return set()
-    record = row if isinstance(row, dict) else dict(row)  # type-agnostic read
+    # asyncpg.Record satisfies the Mapping protocol; cast (not isinstance)
+    # so dict and Record both flow through the same read.
+    record = cast("Mapping[str, object]", row)
     completed = record.get("completed")
     if not isinstance(completed, (list, tuple)):
         return set()
