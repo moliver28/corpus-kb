@@ -304,12 +304,15 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     info["ollama_ok"], info["ollama_msg"] = await check_ollama(ollama_url)
 
     # Research subsystem checks (todo-19 (a)): read-only, all guarded on
-    # postgres_ok, never affecting the doctor exit code.
+    # postgres_ok, never affecting the doctor exit code. ollama_ok gates the
+    # zero-vector canary (it only embeds when Ollama is confirmed reachable).
     research = None
     if info["postgres_ok"]:
         from corpus_kb._setup.doctor_research import research_checks
 
-        research = await research_checks(conn_str, config, info.get("extensions"))
+        research = await research_checks(
+            conn_str, config, info.get("extensions"), ollama_ok=info["ollama_ok"]
+        )
 
     print_doctor_report(info, research)
     return 0
