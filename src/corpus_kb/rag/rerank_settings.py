@@ -82,9 +82,7 @@ def load_rerank_settings(config: dict[str, object]) -> RerankSettings:
         raise ValueError(f"search.rerank.enabled must be a bool; got {enabled!r}")
     model = str(block.get("model", DEFAULT_RERANK_MODEL))
     base_url = str(block.get("base_url", DEFAULT_RERANK_BASE_URL))
-    candidates = _positive_int(
-        block.get("candidates"), DEFAULT_RERANK_CANDIDATES, "candidates"
-    )
+    candidates = _positive_int(block.get("candidates"), DEFAULT_RERANK_CANDIDATES, "candidates")
     max_pair_tokens = _positive_int(
         block.get("max_pair_tokens"), DEFAULT_MAX_PAIR_TOKENS, "max_pair_tokens"
     )
@@ -94,18 +92,12 @@ def load_rerank_settings(config: dict[str, object]) -> RerankSettings:
     calibration = str(block.get("calibration", DEFAULT_CALIBRATION))
     if calibration not in CALIBRATION_MODES:
         modes = ", ".join(sorted(CALIBRATION_MODES))
-        raise ValueError(
-            f"search.rerank.calibration must be one of ({modes}); got {calibration!r}"
-        )
+        raise ValueError(f"search.rerank.calibration must be one of ({modes}); got {calibration!r}")
     timeout = block.get("timeout_seconds", DEFAULT_RERANK_TIMEOUT_SECONDS)
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
-        raise ValueError(
-            f"search.rerank.timeout_seconds must be a number; got {timeout!r}"
-        )
+        raise ValueError(f"search.rerank.timeout_seconds must be a number; got {timeout!r}")
     if float(timeout) <= 0:
-        raise ValueError(
-            f"search.rerank.timeout_seconds must be positive; got {timeout!r}"
-        )
+        raise ValueError(f"search.rerank.timeout_seconds must be positive; got {timeout!r}")
     return RerankSettings(
         enabled=enabled,
         model=model,

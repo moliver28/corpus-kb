@@ -7,17 +7,15 @@ isolation proof runs in the requires_postgres suites against migration 020.
 
 from __future__ import annotations
 
-import asyncio
 import json
 
 import pytest
 
 from corpus_kb.research.exact_cache import (
     CACHE_CONFIG_DEFAULTS,
-    CacheKeyComponents,
-    CacheSettings,
     GET_SQL,
     PUT_SQL,
+    CacheKeyComponents,
     canonical_decoding_params,
     compute_cache_key,
     get,
