@@ -34,7 +34,8 @@ DEFAULT_ITERATIVE_SCAN = "strict_order"
 DEFAULT_EF_SEARCH = 200
 DEFAULT_MAX_SCAN_TUPLES = 20000
 
-# pgvector 0.8.0 introduced hnsw.iterative_scan (release notes: 2024-04-30).
+# pgvector 0.8.0 introduced hnsw.iterative_scan (iterative scans over
+# filtered indexes); 0.8 is also the doctor's minimum for the feature gate.
 MIN_ITERATIVE_SCAN_VERSION = (0, 8, 0)
 
 
