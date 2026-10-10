@@ -25,7 +25,9 @@ import numpy as np
 
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research.calibration import CONFORMAL_ALPHA, conformal_sets
+from corpus_kb.research.deduction_guard import guard_deductive_run
 from corpus_kb.research.deductive import DeductiveDecision, decide_unit
+from corpus_kb.research.exact_cache import CacheSettings, load_cache_settings
 from corpus_kb.research.exhaustiveness import exhaustiveness_block
 from corpus_kb.research.prototypes import build_view_prototypes
 from corpus_kb.research.run_inputs import UnitViews, load_codes, load_gold_views, load_unit_views
@@ -117,18 +119,47 @@ async def run_deductive(
     codebook_version_id: UUID,
     project_id: UUID | None = None,
     cal_alpha: float = CONFORMAL_ALPHA,
+    cfg: dict[str, object] | None = None,
+    allow_draft: bool = False,
 ) -> dict[str, object]:
     """Launch one deductive run: score codable units, record assignments.
 
     Returns a summary with per-basis counts, coverage split, and any skipped
     codes (missing gold or non-UUID code_id). Assignment rows land after the
     caller advances the research projection.
+
+    U24 guard: ``research.release.enforcement`` (from ``cfg``, or the loaded
+    config when None) resolves the version's active release first — ``warn``
+    records the hash or an ``unreleased_draft`` warning and continues;
+    ``enforce`` blocks unreleased versions unless ``allow_draft`` (bypass
+    runs are labeled ``sandbox``). The U42 cache gate is evaluated per run
+    from the same config and recorded on the checkpoint.
     """
-    handler = ResearchHandler(pool)
-    run_info = handler.start_coding_run(
-        tenant_id,
-        params={"cal_alpha": cal_alpha, "scoring_batch_rows": SCORING_BATCH_ROWS},
+    from corpus_kb.config import load_config
+
+    config = cfg if cfg is not None else load_config()
+    guard = await guard_deductive_run(
+        pool, tenant_id, codebook_version_id, config, allow_draft=allow_draft
     )
+    if guard.action == "block":
+        return {
+            "status": "blocked_unreleased_draft",
+            "enforcement": guard.enforcement,
+            "codebook_version_id": str(codebook_version_id),
+            "reason": guard.reason,
+            "fix": "release the codebook version, or re-run with --allow-draft "
+            "(the run is then labeled sandbox)",
+        }
+
+    cache = load_cache_settings(config)
+    handler = ResearchHandler(pool)
+    run_params: dict[str, object] = {
+        "cal_alpha": cal_alpha,
+        "scoring_batch_rows": SCORING_BATCH_ROWS,
+    }
+    if guard.label:
+        run_params["release_guard"] = guard.summary_block()
+    run_info = handler.start_coding_run(tenant_id, params=run_params)
     run_id = UUID(str(run_info["run_id"]))
 
     async with tenant_connection(pool, tenant_id) as tconn:
@@ -207,14 +238,34 @@ async def run_deductive(
         "skipped_codes": skipped,
         "conformal_alpha": cal_alpha,
     }
+    if guard.label:
+        summary["release"] = guard.summary_block()
     payload = {
         **{k: v for k, v in summary.items() if k != "status"},
+        "cache": _cache_block(cache),
         "conformal": _conformal_block(conformal_sets_by_unit, cal_alpha, conformal_coverage),
         "exhaustiveness": exhaustiveness_block(units, scored, gold_by_code),
     }
     handler.checkpoint_coding_run(tenant_id, run_id, payload)
     handler.stop_coding_run(tenant_id, run_id)
     return summary
+
+
+def _cache_block(cache: CacheSettings) -> dict[str, object]:
+    """The U42 cache gate, evaluated and recorded per deductive run.
+
+    The deductive v2 engine scores deterministically against prototypes and
+    makes NO LLM calls, so nothing is consulted or written today; the gate
+    decision (``cache.enabled`` x ``cache.deductive_enabled``, ``--no-cache``
+    drops the key at the CLI layer) is still recorded honestly per run.
+    """
+    return {
+        "enabled": cache.enabled,
+        "deductive_allowed": cache.allows("deductive"),
+        "consulted": False,
+        "note": "deductive v2 scoring is deterministic (no LLM calls); "
+        "the cache gate is evaluated per run for the assignment path",
+    }
 
 
 def _conformal_block(
