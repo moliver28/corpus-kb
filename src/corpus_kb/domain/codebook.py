@@ -168,8 +168,7 @@ class CodebookVersion(Aggregate):
             raise ReleaseStateError(f"release record is missing its {key!r} map")
         return nested
 
-    @event("CodebookReleaseRequested")
-    def request_release(
+    def _draft_release_record(
         self,
         tenant_id: UUID,
         release_id: UUID,
@@ -179,12 +178,13 @@ class CodebookVersion(Aggregate):
         manifest_json: dict[str, object],
         manifest_sha256: str,
         requested_at: str,
-        parent_release_id: UUID | None = None,
-    ) -> None:
-        """Open a draft_candidate release for THIS version (idempotent id)."""
-        if str(release_id) in self.releases:
-            raise ReleaseStateError(f"release {release_id} already exists on this version")
-        self.releases[str(release_id)] = {
+        parent_release_id: UUID | None,
+    ) -> dict[str, object]:
+        """Build the draft_candidate record. NOT an @event: shared by
+        ``request_release`` and ``propose_change`` so each persists exactly
+        one event (a nested @event call would double-append and desync
+        replay versions)."""
+        return {
             "tenant_id": str(tenant_id),
             "release_id": str(release_id),
             "codebook_id": str(codebook_id),
@@ -202,6 +202,34 @@ class CodebookVersion(Aggregate):
             "gates": {},
             "waivers": {},
         }
+
+    @event("CodebookReleaseRequested")
+    def request_release(
+        self,
+        tenant_id: UUID,
+        release_id: UUID,
+        codebook_id: UUID,
+        profile: str,
+        creator: str,
+        manifest_json: dict[str, object],
+        manifest_sha256: str,
+        requested_at: str,
+        parent_release_id: UUID | None = None,
+    ) -> None:
+        """Open a draft_candidate release for THIS version (idempotent id)."""
+        if str(release_id) in self.releases:
+            raise ReleaseStateError(f"release {release_id} already exists on this version")
+        self.releases[str(release_id)] = self._draft_release_record(
+            tenant_id=tenant_id,
+            release_id=release_id,
+            codebook_id=codebook_id,
+            profile=profile,
+            creator=creator,
+            manifest_json=manifest_json,
+            manifest_sha256=manifest_sha256,
+            requested_at=requested_at,
+            parent_release_id=parent_release_id,
+        )
 
     @event("GateEvaluated")
     def record_gate_result(
@@ -318,14 +346,19 @@ class CodebookVersion(Aggregate):
         successor_manifest_sha256: str,
     ) -> None:
         """U25: propose a change against a released parent; the successor is a
-        fresh draft_candidate linked to it. Never mutates the parent."""
+        fresh draft_candidate linked to it. Never mutates the parent.
+
+        The successor record is built inline via ``_draft_release_record`` —
+        calling ``request_release`` here would persist a SECOND event and
+        break replay (OriginatorVersionError).
+        """
         rec = self._release(tenant_id, release_id)
         if rec["state"] != RELEASE_RELEASED:
             raise ReleaseStateError(
                 f"changes are proposed against released releases; {release_id} is {rec['state']}"
             )
         codebook_id = UUID(str(rec["codebook_id"]))
-        self.request_release(
+        self.releases[str(successor_release_id)] = self._draft_release_record(
             tenant_id=tenant_id,
             release_id=successor_release_id,
             codebook_id=codebook_id,

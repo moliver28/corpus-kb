@@ -227,6 +227,43 @@ def test_propose_change_creates_successor_draft_linked_to_parent():
     assert successor_record["codebook_id"] == str(codebook_id)
 
 
+def test_propose_change_path_replays_from_persisted_events():
+    """Finding 1 regression: the change-proposal path persists exactly ONE
+    CodebookChangeProposed event. The nested ``request_release`` @event call
+    used to double-append a CodebookReleaseRequested at the SAME
+    originator_version, so real saves hit IntegrityError and replay raised
+    OriginatorVersionError."""
+    service, aggregate, release_id, _, sink = _open_draft(PROFILE_EXPLORATORY)
+    service.release(aggregate, release_id, approver="dana", released_at="t")
+    successor = uuid4()
+    service.propose_change(
+        aggregate,
+        release_id,
+        successor_release_id=successor,
+        summary="split the cost code",
+        proposed_by="frank",
+        proposed_at="t3",
+        successor_manifest=_manifest("2"),
+    )
+    events = list(aggregate.pending_events)
+    names = [type(event).__name__ for event in events]
+    assert names.count("CodebookReleaseRequested") == 1  # no nested duplicate
+    assert names.count("CodebookChangeProposed") == 1
+    versions = [event.originator_version for event in events]
+    assert versions == list(range(1, len(events) + 1))  # no duplicate version
+
+    replayed = events[0].mutate(None)
+    for event in events[1:]:
+        event.mutate(replayed)  # raised OriginatorVersionError before the fix
+    assert replayed.releases == aggregate.releases
+    successor_record = replayed.releases[str(successor)]
+    assert successor_record["state"] == "draft_candidate"
+    assert successor_record["parent_release_id"] == str(release_id)
+    assert replayed.releases[str(release_id)]["state"] == "released"
+    assert replayed.pending_events == []  # replay must not spawn new events
+    assert len(sink.saved) == 3
+
+
 def test_events_replay_to_identical_state_and_manifest_hash():
     service, aggregate, release_id, _, sink = _open_draft(PROFILE_HIGH_ASSURANCE)
     service.record_gate_result(
