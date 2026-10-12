@@ -12,7 +12,6 @@ never fails on not_evaluable; a blocked release exits 1).
 from __future__ import annotations
 
 import json
-from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -29,7 +28,6 @@ from corpus_kb.research.release.manifest import ReleaseManifest
 from corpus_kb.research.release.profiles import (
     PROFILE_EXPLORATORY,
     PROFILE_TEAM_CODEBOOK,
-    PROFILES,
 )
 from corpus_kb.research.release.service import ReleaseService
 
