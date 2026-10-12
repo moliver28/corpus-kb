@@ -18,6 +18,7 @@ from ..chunking.unstructured_chunker import chunk_elements
 from ..config import load_config
 from ..extraction import create_extractor
 from ..extraction.pgml_backend import PgmlExtractor
+from ..ingest.hierarchy_settings import load_hierarchy_settings
 from ..ontology import Ontology, load_ontology
 from ..partitioning import ElementProxy
 from ..partitioning import partition as unstructured_partition
@@ -630,6 +631,30 @@ async def run_pipeline(
         pg_chunk_count = 0
         pg_vector_count = 0
 
+    # U48/P6: side-by-side SHADOW hierarchy — additive only. The v1
+    # chunks/vectors above stay the live search corpus; any shadow failure
+    # is logged and isolated so it can never break the live ingest.
+    hierarchy_settings = load_hierarchy_settings(config)
+    shadow_chunk_count = 0
+    shadow_vector_count = 0
+    shadow_note: str | None = None
+    if hierarchy_settings.enabled:
+        try:
+            from ..tools.shadow_ingest import write_shadow_hierarchy
+
+            shadow_chunk_count, shadow_vector_count, shadow_note = await write_shadow_hierarchy(
+                pool=pg_pool,
+                tenant_id=tenant_id,
+                document_id=document.document_id,
+                text=text,
+                chunks=chunks,
+                config=config,
+                settings=hierarchy_settings,
+            )
+        except Exception as exc:
+            logging.warning("Shadow hierarchy write failed: %s", exc)
+            errors.append(f"ShadowWriteError: {exc}")
+
     # Extract entities and relations
     entities: list[Entity] = []
     relations: list[Relation] = []
@@ -670,7 +695,7 @@ async def run_pipeline(
     except Exception as exc:
         logging.warning("Document update failed: %s", exc)
 
-    return {
+    result: dict[str, object] = {
         "status": "success",
         "document_id": document.document_id,
         "path": path,
@@ -686,6 +711,14 @@ async def run_pipeline(
         "entities": {entity.name: entity.entity_id for entity in entities},
         "errors": errors,
     }
+    # Shadow keys are present ONLY when the hierarchy flag is on, so the
+    # flag-off result dict stays byte-identical to the pre-U48 shape.
+    if hierarchy_settings.enabled:
+        result["shadow_chunk_count"] = shadow_chunk_count
+        result["shadow_vector_count"] = shadow_vector_count
+        if shadow_note is not None:
+            result["shadow_note"] = shadow_note
+    return result
 
 
 async def ingest_text(

@@ -258,55 +258,6 @@ def _embed_probe(config: dict[str, Any]) -> list[float]:
     return embedder.embed(PROBE_TEXT)
 
 
-def judgment_distribution_check(config: dict[str, Any]) -> ResearchCheck:
-    """U35 doctor check: ``research.judgment_distribution.use_mean``.
-
-    Verifies the key exists and is a bool, then reports whether the runtime
-    exposes the token probabilities the mean-over-judgments mode needs.
-    That exposure cannot be verified statically (it depends on the live
-    coder backend), so an ENABLED key reports ``not_evaluable`` — never a
-    guessed OK; disabled (the default) needs no probabilities at all.
-    """
-    name = "research.judgment_distribution.use_mean"
-    research_cfg = config.get("research", {}) or {}
-    jd_cfg = research_cfg.get("judgment_distribution", {}) or {}
-    if not isinstance(jd_cfg, dict):
-        return ResearchCheck(
-            name=name,
-            status=STATUS_WARN,
-            detail="block unreadable (not a mapping); default off applies",
-            fix="set research.judgment_distribution: {use_mean: false} in config.yaml",
-            doc=DOC_RESEARCH,
-        )
-    use_mean = jd_cfg.get("use_mean", False)
-    if not isinstance(use_mean, bool):
-        return ResearchCheck(
-            name=name,
-            status=STATUS_WARN,
-            detail=f"use_mean must be a bool, got {use_mean!r}; default off applies",
-            fix="set research.judgment_distribution.use_mean: true|false in config.yaml",
-            doc=DOC_RESEARCH,
-        )
-    if not use_mean:
-        return ResearchCheck(
-            name=name,
-            status=STATUS_OK,
-            detail="off (default); judgment aggregation uses the mode and needs "
-            "no token probabilities",
-            doc=DOC_RESEARCH,
-        )
-    return ResearchCheck(
-        name=name,
-        status=STATUS_WARN,
-        detail="not_evaluable: use_mean is ON, but whether the coder runtime "
-        "exposes token probabilities cannot be verified here - if it does "
-        "not, aggregation silently falls back to the mode",
-        fix="verify the coder backend returns token logprobs "
-        "(coding/uncertainty/tier1_logprob) or set use_mean: false",
-        doc=DOC_RESEARCH,
-    )
-
-
 def zero_vector_canary(config: dict[str, Any], ollama_ok: bool | None) -> ResearchCheck:
     """All-zero-vector canary (the qwen3 zero-vector incident contract).
 
@@ -524,7 +475,6 @@ async def research_checks(
     checks = extras_checks()
     pgml_installed = None if extensions is None else extensions.get("pgml", (False, ""))[0]
     checks.append(embedder_check(config, pgml_installed))
-    checks.append(judgment_distribution_check(config))
     checks.append(zero_vector_canary(config, ollama_ok))
     try:
         conn = await asyncpg.connect(conn_str, timeout=3)

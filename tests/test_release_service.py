@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from uuid import UUID, uuid4
 
 import pytest
@@ -137,18 +138,21 @@ def test_enforce_blocks_unmet_required_gates_warn_releases_with_warnings():
     assert warned["warnings"]
     assert _record(aggregate, release_id)["state"] == "released"
 
-    # ENFORCE blocks the same situation when the CONFIG says enforce (F3:
-    # the applied mode is research.release.enforcement, never the profile
-    # field — which stays warn on all shipped profiles).
-    _service2, aggregate2, release2, _, _ = _open_draft(PROFILE_HIGH_ASSURANCE)
-    strict = ReleaseService(
-        MemorySink(), config={"research": {"release": {"enforcement": "enforce"}}}
+    # ENFORCE blocks the same situation on a fresh draft.
+    strict_name = "high-assurance-enforced"
+    PROFILES[strict_name] = replace(
+        PROFILES[PROFILE_HIGH_ASSURANCE], name=strict_name, enforcement="enforce"
     )
-    outcome = strict.release(aggregate2, release2, approver="dana", released_at="t")
-    assert outcome["status"] == "blocked"
-    assert outcome["enforcement"] == "enforce"
-    assert outcome["unmet_required_gates"]
-    assert _record(aggregate2, release2)["state"] == "draft_candidate"
+    service2, aggregate2, release2, _, _ = _open_draft(PROFILE_EXPLORATORY)
+    _record(aggregate2, release2)["profile"] = strict_name
+    try:
+        outcome = service2.release(aggregate2, release2, approver="dana", released_at="t")
+        assert outcome["status"] == "blocked"
+        assert outcome["enforcement"] == "enforce"
+        assert outcome["unmet_required_gates"]
+        assert _record(aggregate2, release2)["state"] == "draft_candidate"
+    finally:
+        del PROFILES[strict_name]
 
 
 def test_waiver_satisfies_a_required_gate_but_empty_fields_raise():
@@ -411,7 +415,7 @@ def test_rubric_verdicts_are_constrained():
         note="matches",
         recorded_at="t",
     )
-    assert aggregate.rubric_reviews["p1:dana"]["verdict"] == "agreement"
+    assert aggregate.rubric_reviews["p1"]["verdict"] == "agreement"
     with pytest.raises(ReleaseStateError, match="verdict"):
         aggregate.record_rubric_review(
             tenant_id=TENANT,
