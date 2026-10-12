@@ -290,18 +290,18 @@ def test_execute_release_records_gates_and_releases(
 def test_execute_release_blocked_under_enforce_keeps_the_draft(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    strict = "high-assurance-enforced-p7"
-    PROFILES[strict] = replace(PROFILES["high-assurance"], name=strict, enforcement="enforce")
-    try:
-        aggregate, release_id, _app = _open_draft(PROFILE_EXPLORATORY)
-        _record(aggregate, release_id)["profile"] = strict
-        _wire(monkeypatch, aggregate)
-        outcome = _run(rh.execute_release(None, TENANT, aggregate.id, release_id, "dana"))
-        assert outcome.status == "blocked"
-        assert outcome.unmet_required_gates
-        assert _record(aggregate, release_id)["state"] == "draft_candidate"
-    finally:
-        del PROFILES[strict]
+    enforce_cfg: dict[str, object] = {
+        "research": {"release": {"enforcement": "enforce", "default_profile": "team-codebook"}}
+    }
+    aggregate, release_id, _app = _open_draft(PROFILE_EXPLORATORY)
+    _record(aggregate, release_id)["profile"] = "team-codebook"
+    _wire(monkeypatch, aggregate)
+    outcome = _run(
+        rh.execute_release(None, TENANT, aggregate.id, release_id, "dana", config=enforce_cfg)
+    )
+    assert outcome.status == "blocked"
+    assert outcome.unmet_required_gates
+    assert _record(aggregate, release_id)["state"] == "draft_candidate"
 
 
 def test_execute_release_waiver_param_lands_on_the_draft(

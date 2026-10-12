@@ -77,6 +77,50 @@
         'version_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.release_tools': dict({
+      'release_assess': dict({
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'profile': 'POSITIONAL_OR_KEYWORD',
+        'run_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'release_compare': dict({
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'new_release_id': 'POSITIONAL_OR_KEYWORD',
+        'old_release_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'release_execute': dict({
+        'approver': 'POSITIONAL_OR_KEYWORD',
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'release_id': 'POSITIONAL_OR_KEYWORD',
+        'run_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'waivers': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'release_request': dict({
+        'codebook_id': 'POSITIONAL_OR_KEYWORD',
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'creator': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'profile': 'POSITIONAL_OR_KEYWORD',
+        'release_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'release_review': dict({
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'release_id': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'release_status': dict({
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.research_tools': dict({
       'codebook_promote': dict({
         'definition': 'POSITIONAL_OR_KEYWORD',
