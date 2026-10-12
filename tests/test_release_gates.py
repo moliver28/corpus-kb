@@ -9,10 +9,9 @@ from corpus_kb.research.release.evidence_gates import (
     gate_quote_consensus,
     gate_structured_output,
 )
-from corpus_kb.research.release.gate_types import WAVE2_GATES
 from corpus_kb.research.release.gates import (
     ALL_RELEASE_GATES,
-    STUB_REASON,
+    GATES,
     GateInputs,
     GateResult,
     UnknownGateError,
@@ -33,14 +32,17 @@ from corpus_kb.research.release.profiles import (
 TEAM = resolve_profile("team-codebook")
 
 
-def test_registry_covers_the_full_set_and_stubs_are_not_evaluable():
-    from corpus_kb.research.release.gates import GATES, WAVE2_GATES
+def test_registry_covers_the_full_set_and_no_gate_is_a_stub():
+    """Every registered gate is a real evaluation: empty inputs are honest
+    not_evaluable (never a fabricated pass), no stub reason remains."""
+    from corpus_kb.research.release.gate_types import STUB_REASON, WAVE2_GATES
 
     assert len(GATES) == len(ALL_RELEASE_GATES)
-    for gate_id in WAVE2_GATES:
-        result = GATES[gate_id](GateInputs(), TEAM)
-        assert result.status == "not_evaluable"
-        assert result.reason == STUB_REASON
+    for gate_id, gate_fn in GATES.items():
+        result = gate_fn(GateInputs(), TEAM)
+        assert result.status == "not_evaluable", f"{gate_id} passed without evidence"
+        assert result.reason != STUB_REASON
+    assert WAVE2_GATES  # the group id tuple is retained for bookkeeping
 
 
 def test_all_profiles_require_only_registered_gates():
@@ -152,7 +154,9 @@ def test_assess_composes_every_gate_and_counts_blockers():
     results = bundle["gate_results"]
     assert isinstance(results, list) and len(results) == len(ALL_RELEASE_GATES)
     assert bundle["required_failing"] == []
-    # The team-codebook profile requires wave-2 stubs: honestly not_evaluable.
+    # The team-codebook profile requires wave-2 evidence: honestly not_evaluable.
+    from corpus_kb.research.release.gate_types import WAVE2_GATES
+
     assert set(bundle["required_not_evaluable"]) <= set(WAVE2_GATES)
     assert bundle["all_required_pass_without_waivers"] is False
     assert bundle["profile"] == "team-codebook"
