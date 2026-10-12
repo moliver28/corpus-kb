@@ -61,6 +61,63 @@ change, never a config edit.
 | `research.inductive.centroid_drift_threshold` | `0.15` | Mean cosine drift between centroid snapshots that triggers an early cluster refresh. |
 | `research.inductive.tau_dup` | `0.85` | Promote-time duplicate gate: max prototype cosine vs existing codes above which a promotion blocks with a merge suggestion. |
 | `research.cycle.halt_on` | 6-gate list | Human-critical gates for `research cycle --mode out` (interpretive_code_review, gray_zone_escalation, drift_alarm, overlap_conflict, threshold_unreliable, human_parity_breach). May only ADD gates: `codebook_promotion` is hard-floored and never removable; unknown names are rejected. |
+| `research.alt_test.margin` | see `config.yaml` | One-sided Alternative Annotator Test margin (epsilon): how much model agreement may trail human agreement and still pass (U13). |
+| `research.alt_test.fdr_q` | see `config.yaml` | Benjamini-Yekutieli FDR level for the alt-test hypothesis family (U13). |
+| `research.alt_test.passing_fraction` | see `config.yaml` | Fraction of held-out annotators the model must beat for the alt-test to pass (U13). |
+| `research.alt_test.method` | see `config.yaml` | Alt-test p-value method: exact_binomial (default) or shifted bootstrap; numpy-only (U13). |
+| `research.alt_test.n_bootstrap` | see `config.yaml` | Bootstrap resample count when alt_test.method is bootstrap (U13). |
+| `research.audit.sample_rate` | see `config.yaml` | Fraction of auto-accepted units drawn for human audit after risk-coverage routing (U41). |
+| `research.audit.seed` | see `config.yaml` | Seed for the stratified audit draw; recorded with the sample for reproducibility (U17). |
+| `research.consensus.runs` | `3` | LIVE (U48): the cycle's inductive stage runs this many INDEPENDENT inductive passes; their proposed codes are aggregated by the release-layer multi-run consensus (`research/release/consensus.py`, wired via `research/cycle_consensus.py`) before themes surface. `1` keeps the single-pass path. |
+| `research.consensus.min_run_fraction` | `0.5` | LIVE (U48): a consensus theme is kept only when candidates from at least this fraction of the runs support it. |
+| `research.consensus.similarity_threshold` | `0.8` | LIVE (U48): cosine at which a candidate joins an existing consensus theme during greedy leader clustering. |
+| `research.judgment_distribution.use_mean` | see `config.yaml` | Use the mean over sampled/probabilistic judgments instead of the mode (U35); off by default. |
+| `research.labeling.aggregation` | see `config.yaml` | Weak-supervision aggregation strategy: em (Dawid-Skene) or vote (U38). |
+| `research.labeling.min_signals` | see `config.yaml` | Minimum independent coding signals before EM aggregation is permitted; below it, majority vote with tie-to-review (U38). |
+| `research.labeling.cv_folds` | see `config.yaml` | Cross-validation folds for out-of-sample label-error triage (U39). |
+| `research.labeling.flag_threshold` | see `config.yaml` | Out-of-sample probability below which an assigned label is flagged to the review queue (U39). |
+| `research.prompt_stability.alpha_threshold` | see `config.yaml` | Minimum agreement (krippendorff alpha) across hashed prompt variants over calibration units (U12). |
+| `research.prompt_stability.min_variants` | see `config.yaml` | Prompt variants required before stability is evaluable; fewer reports not_evaluable (U12). |
+| `research.release.default_profile` | see `config.yaml` | Release profile applied when none is named: exploratory | team-codebook | high-assurance (U3). |
+| `research.release.enforcement` | `warn` | LIVE (U24): off \| warn \| enforce, read from config by the deduction guard (`research/deduction_guard.py`). `warn` records the active release hash or an `unreleased_draft` warning on every deductive run; `enforce` blocks unreleased codebook versions unless `--allow-draft` (bypass runs are labeled `sandbox`); `off` leaves run behavior unchanged. |
+| `research.review.batch_size` | see `config.yaml` | Units per active human-review batch (U37). |
+| `research.review.random_fraction` | see `config.yaml` | Stratified-random fraction always present in review batches so error can be estimated without selection bias (U37). |
+| `research.review.diversity` | see `config.yaml` | Apply greedy max-min embedding diversity when selecting the active part of a review batch (U37). |
+| `research.routing.target_risk` | see `config.yaml` | Target selective risk for the auto-accept threshold derived from the risk-coverage curve (U41). |
+| `research.routing.confidence_level` | see `config.yaml` | Confidence level for the Clopper-Pearson upper bound guarding the routing threshold (U41). |
+| `research.routing.min_calibration_n` | see `config.yaml` | Minimum calibration labels before thresholding is evaluable; below it everything routes to review (U41). |
+| `research.release.profiles.exploratory.required_gates` | profile value | exploratory profile (no gates required; uncorrected results labeled honestly); Gate ids that must be pass-or-waived before release. |
+| `research.release.profiles.exploratory.alpha_tentative` | profile value | exploratory profile (no gates required; uncorrected results labeled honestly); Agreement alpha at which results are tentative. |
+| `research.release.profiles.exploratory.alpha_reliable` | profile value | exploratory profile (no gates required; uncorrected results labeled honestly); Agreement alpha at which results are reliable. |
+| `research.release.profiles.exploratory.min_audit_sample` | profile value | exploratory profile (no gates required; uncorrected results labeled honestly); Minimum audited units required. |
+| `research.release.profiles.exploratory.min_stratum_size` | profile value | exploratory profile (no gates required; uncorrected results labeled honestly); Minimum units per stratum for per-stratum metrics. |
+| `research.release.profiles.exploratory.partition_rule` | profile value | exploratory profile (no gates required; uncorrected results labeled honestly); Partition disjointness rule (none | disjoint). |
+| `research.release.profiles.team-codebook.required_gates` | profile value | team-codebook profile (default): shared-team evidence bar; Gate ids that must be pass-or-waived before release. |
+| `research.release.profiles.team-codebook.alpha_tentative` | profile value | team-codebook profile (default): shared-team evidence bar; Agreement alpha at which results are tentative. |
+| `research.release.profiles.team-codebook.alpha_reliable` | profile value | team-codebook profile (default): shared-team evidence bar; Agreement alpha at which results are reliable. |
+| `research.release.profiles.team-codebook.min_audit_sample` | profile value | team-codebook profile (default): shared-team evidence bar; Minimum audited units required. |
+| `research.release.profiles.team-codebook.min_stratum_size` | profile value | team-codebook profile (default): shared-team evidence bar; Minimum units per stratum for per-stratum metrics. |
+| `research.release.profiles.team-codebook.partition_rule` | profile value | team-codebook profile (default): shared-team evidence bar; Partition disjointness rule (none | disjoint). |
+| `research.release.profiles.team-codebook.per_code_f1_floor` | profile value | team-codebook profile (default): shared-team evidence bar; Held-out per-code F1 floor. |
+| `research.release.profiles.team-codebook.content_stability_floor` | profile value | team-codebook profile (default): shared-team evidence bar; Cluster content-stability floor (top-term Jaccard). |
+| `research.release.profiles.team-codebook.prompt_stability_alpha` | profile value | team-codebook profile (default): shared-team evidence bar; Required prompt-stability alpha. |
+| `research.release.profiles.team-codebook.alt_test_margin` | profile value | team-codebook profile (default): shared-team evidence bar; Alt-test margin. |
+| `research.release.profiles.team-codebook.alt_test_passing_fraction` | profile value | team-codebook profile (default): shared-team evidence bar; Alt-test passing fraction. |
+| `research.release.profiles.team-codebook.max_stratum_disparity` | profile value | team-codebook profile (default): shared-team evidence bar; Maximum allowed per-stratum metric disparity. |
+| `research.release.profiles.team-codebook.agreement_routing_threshold` | profile value | team-codebook profile (default): shared-team evidence bar; Cross-run agreement score at/above which units may auto-accept. |
+| `research.release.profiles.high-assurance.required_gates` | profile value | high-assurance profile: full evidence incl. audit sample; Gate ids that must be pass-or-waived before release. |
+| `research.release.profiles.high-assurance.alpha_tentative` | profile value | high-assurance profile: full evidence incl. audit sample; Agreement alpha at which results are tentative. |
+| `research.release.profiles.high-assurance.alpha_reliable` | profile value | high-assurance profile: full evidence incl. audit sample; Agreement alpha at which results are reliable. |
+| `research.release.profiles.high-assurance.min_audit_sample` | profile value | high-assurance profile: full evidence incl. audit sample; Minimum audited units required. |
+| `research.release.profiles.high-assurance.min_stratum_size` | profile value | high-assurance profile: full evidence incl. audit sample; Minimum units per stratum for per-stratum metrics. |
+| `research.release.profiles.high-assurance.partition_rule` | profile value | high-assurance profile: full evidence incl. audit sample; Partition disjointness rule (none | disjoint). |
+| `research.release.profiles.high-assurance.per_code_f1_floor` | profile value | high-assurance profile: full evidence incl. audit sample; Held-out per-code F1 floor. |
+| `research.release.profiles.high-assurance.content_stability_floor` | profile value | high-assurance profile: full evidence incl. audit sample; Cluster content-stability floor (top-term Jaccard). |
+| `research.release.profiles.high-assurance.prompt_stability_alpha` | profile value | high-assurance profile: full evidence incl. audit sample; Required prompt-stability alpha. |
+| `research.release.profiles.high-assurance.alt_test_margin` | profile value | high-assurance profile: full evidence incl. audit sample; Alt-test margin. |
+| `research.release.profiles.high-assurance.alt_test_passing_fraction` | profile value | high-assurance profile: full evidence incl. audit sample; Alt-test passing fraction. |
+| `research.release.profiles.high-assurance.max_stratum_disparity` | profile value | high-assurance profile: full evidence incl. audit sample; Maximum allowed per-stratum metric disparity. |
+| `research.release.profiles.high-assurance.agreement_routing_threshold` | profile value | high-assurance profile: full evidence incl. audit sample; Cross-run agreement score at/above which units may auto-accept. |
 
 ## Optional extras
 
