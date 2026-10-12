@@ -17,133 +17,44 @@ pre-staged key live:
 
 Enforcement never invents evidence: a missing release row is reported as
 such, never reinterpreted as a released one, and ``warn`` never blocks.
+
+SPLIT (adversarial review F5b): the SQL/read-model side lives in
+:mod:`corpus_kb.research.release_read` and the shared config reader in
+:mod:`corpus_kb.research.release.enforcement_settings` (the release service
+reads the same key — one reader, two consumers). This module keeps the PURE
+decision logic and re-exports the split names, so every existing import
+site is unchanged.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.research.release.profiles import (
-    DEFAULT_PROFILE,
+from corpus_kb.research.release.enforcement_settings import (  # noqa: F401  (re-export)
     ENFORCEMENT_ENFORCE,
     ENFORCEMENT_MODES,
     ENFORCEMENT_OFF,
     ENFORCEMENT_WARN,
+    ReleaseGuardSettings,
+    release_guard_settings,
 )
-
-RELEASED_STATE = "released"
+from corpus_kb.research.release_read import (  # noqa: F401  (re-export)
+    ACTIVE_RELEASE_SQL,
+    RELEASED_STATE,
+    ActiveRelease,
+    ReleaseReadConn,
+    active_release_for_conn,
+    active_release_from_row,
+    resolve_active_release,
+)
 
 UNRELEASED_DRAFT_LABEL = "unreleased_draft"
 RELEASED_LABEL = "released"
 SANDBOX_LABEL = "sandbox"
-
-ACTIVE_RELEASE_SQL = """
-SELECT release_id, state, profile, manifest_sha256, codebook_version_sha256,
-       released_at
-FROM codebook_releases
-WHERE tenant_id = $1 AND codebook_version = $2
-ORDER BY (state = 'released') DESC, released_at DESC NULLS LAST, release_id DESC
-LIMIT 1
-"""
-
-
-@dataclass(frozen=True)
-class ReleaseGuardSettings:
-    """Typed ``research.release`` reads the guard applies (config is source)."""
-
-    enforcement: str = ENFORCEMENT_WARN
-    default_profile: str = DEFAULT_PROFILE
-
-
-def release_guard_settings(config: dict[str, Any]) -> ReleaseGuardSettings:
-    """Read ``research.release.{enforcement, default_profile}`` fail-loud.
-
-    Unknown enforcement values and non-mapping blocks raise ValueError so a
-    misconfigured YAML cannot silently downgrade the guard to ``warn``.
-    """
-    research = config.get("research")
-    if research is not None and not isinstance(research, dict):
-        raise ValueError("config.research must be a mapping")
-    release = (research or {}).get("release") or {}
-    if not isinstance(release, dict):
-        raise ValueError("config.research.release must be a mapping")
-    enforcement = str(release.get("enforcement") or ENFORCEMENT_WARN)
-    if enforcement not in ENFORCEMENT_MODES:
-        raise ValueError(
-            f"research.release.enforcement must be one of {list(ENFORCEMENT_MODES)}, "
-            f"got {enforcement!r}"
-        )
-    profile = str(release.get("default_profile") or DEFAULT_PROFILE)
-    return ReleaseGuardSettings(enforcement=enforcement, default_profile=profile)
-
-
-@dataclass(frozen=True)
-class ActiveRelease:
-    """The release row resolved for one codebook version (may be a draft)."""
-
-    release_id: str
-    state: str
-    manifest_sha256: str
-    codebook_version_sha256: str
-    released_at: str | None
-    profile: str
-
-    @property
-    def is_released(self) -> bool:
-        return self.state == RELEASED_STATE
-
-
-class ReleaseReadConn(Protocol):
-    """Minimal asyncpg.Connection surface the release read needs (test-fake
-    friendly, mirroring exact_cache.CacheConn)."""
-
-    async def fetchrow(self, sql: str, *args: Any) -> Any:
-        """Run one statement, return the first row or None."""
-        ...
-
-
-def active_release_from_row(row: Any) -> ActiveRelease | None:
-    """Map one ``codebook_releases`` row (or None) to an ActiveRelease."""
-    if row is None:
-        return None
-    released_at = row["released_at"]
-    return ActiveRelease(
-        release_id=str(row["release_id"]),
-        state=str(row["state"]),
-        manifest_sha256=str(row["manifest_sha256"] or ""),
-        codebook_version_sha256=str(row["codebook_version_sha256"] or ""),
-        released_at=str(released_at) if released_at is not None else None,
-        profile=str(row["profile"] or ""),
-    )
-
-
-async def active_release_for_conn(
-    conn: ReleaseReadConn, tenant_id: UUID, codebook_version_id: UUID
-) -> ActiveRelease | None:
-    """The release row resolved for one version under an open tenant scope."""
-    row = await conn.fetchrow(
-        ACTIVE_RELEASE_SQL, UUID(str(tenant_id)), UUID(str(codebook_version_id))
-    )
-    return active_release_from_row(row)
-
-
-async def resolve_active_release(
-    pool: asyncpg.Pool, tenant_id: UUID, codebook_version_id: UUID
-) -> ActiveRelease | None:
-    """Resolve the release row for one version via the release read tables."""
-    from typing import cast
-
-    from corpus_kb.storage.tenant_conn import tenant_connection
-
-    async with tenant_connection(pool, tenant_id) as conn:
-        # asyncpg.Connection satisfies the read protocol structurally (its
-        # stub is untyped, so the cast documents the member, not a lie).
-        reader = cast("ReleaseReadConn", conn)
-        return await active_release_for_conn(reader, tenant_id, codebook_version_id)
 
 
 @dataclass(frozen=True)

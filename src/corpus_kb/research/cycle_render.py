@@ -34,6 +34,7 @@ from corpus_kb.research.cycle_gates import (
     GATE_INTERPRETIVE_CODE_REVIEW,
     GATE_OVERLAP_CONFLICT,
     GATE_THRESHOLD_UNRELIABLE,
+    GATE_UNRELEASED_DRAFT,
     GateFinding,
 )
 from corpus_kb.research.cycle_stages import _catch_up_all as _catch_up_stacks
@@ -73,6 +74,11 @@ GATE_GUIDE: dict[str, tuple[str, str, str]] = {
         guide_copy.GATE_PARITY_TAUGHT,
         guide_copy.GATE_PARITY_LOOK,
         guide_copy.GATE_PARITY_ACTION,
+    ),
+    GATE_UNRELEASED_DRAFT: (
+        guide_copy.GATE_UNRELEASED_DRAFT_TAUGHT,
+        guide_copy.GATE_UNRELEASED_DRAFT_LOOK,
+        guide_copy.GATE_UNRELEASED_DRAFT_ACTION,
     ),
 }
 

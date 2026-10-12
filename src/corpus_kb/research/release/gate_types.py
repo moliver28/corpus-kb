@@ -59,8 +59,6 @@ WAVE2_GATES: tuple[str, ...] = (
     GATE_SATURATION,
 )
 
-STUB_REASON = "inputs pending wave 2"
-
 
 @dataclass(frozen=True)
 class GateInputs:

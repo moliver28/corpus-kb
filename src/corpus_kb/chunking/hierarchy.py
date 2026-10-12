@@ -102,6 +102,19 @@ def split_oversized(
     Word-chunks (token + trailing whitespace) are packed greedily up to the
     target; each next piece rewinds trailing words worth at least
     ``overlap_tokens``. Piece char offsets stay aligned to the source.
+
+    Unbreakable runs (single whitespace-free words longer than
+    ``target_tokens`` — e.g. a 600-char string or a long URL) cannot be split
+    at whitespace: they are emitted whole as their own piece, exceeding the
+    target exactly like the oversized source segment they came from. The
+    next piece starts immediately after such a piece with no token overlap
+    (rewinding into the run would only reproduce the oversized piece).
+
+    Progress is guaranteed: the rewind never walks past the current piece's
+    first word — when it would (the whole piece fits inside the overlap
+    budget, or the piece is one unbreakable run), the next piece starts one
+    word past it instead, so the walk always terminates and the pieces
+    jointly cover the full segment text.
     """
     word_spans = [(m.group(), m.start(), m.end()) for m in _WORD_RE.finditer(segment.text)]
     if not word_spans:
@@ -134,7 +147,11 @@ def split_oversized(
         while cut > lo and rewind < overlap_tokens:
             cut -= 1
             rewind += estimate_tokens(word_spans[cut][0])
-        lo = cut
+        # Progress guarantee: the rewind above can walk all the way back to
+        # `lo` (single unbreakable run, or a piece whose every word fits in
+        # the overlap budget). Restarting at `lo` would re-emit the same
+        # piece forever, so fall back to advancing exactly one word.
+        lo = cut if cut > lo else lo + 1
     return pieces
 
 

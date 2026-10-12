@@ -9,13 +9,25 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, cast
+from uuid import UUID, uuid4
 
 import pytest
 import yaml
 
 from corpus_kb.config import get_default_config, load_config
+from corpus_kb.domain.codebook import CodebookVersion
+from corpus_kb.research.release.manifest import ReleaseManifest
+from corpus_kb.research.release.service import ReleaseService
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+class _Sink:
+    """Minimal EventSink (the service only calls save)."""
+
+    def save(self, aggregate: CodebookVersion) -> None:
+        self.saved = getattr(self, "saved", [])
+        self.saved.append(aggregate)
 
 
 def _yaml_config(path: Path) -> dict[str, Any]:
@@ -69,6 +81,118 @@ def test_guard_reads_enforcement_from_loaded_config(tmp_path: Path) -> None:
     # Default install (packaged defaults, no file): warn, never stricter.
     settings = release_guard_settings({"research": {}})
     assert settings.enforcement == "warn"
+
+
+# ---------------------------------------------------------------------------
+# F3: the RELEASE path applies the same config key (not the profile default)
+# ---------------------------------------------------------------------------
+
+
+def _enforce_cfg(mode: str) -> dict[str, Any]:
+    return {"research": {"release": {"enforcement": mode, "default_profile": "team-codebook"}}}
+
+
+def _team_draft_release() -> tuple[CodebookVersion, _Sink, UUID]:
+    aggregate = CodebookVersion(
+        tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+        label="v1-enforce",
+        sha256="c" * 64,
+        paradigm="deductive",
+    )
+    sink = _Sink()
+    service = ReleaseService(sink, config=_enforce_cfg("warn"))
+    release_id = uuid4()
+    service.request_release(
+        aggregate,
+        release_id=release_id,
+        codebook_id=uuid4(),
+        profile_name="team-codebook",
+        creator="alice",
+        manifest=ReleaseManifest(
+            release_id=str(release_id),
+            codebook_id=str(uuid4()),
+            codebook_version=str(uuid4()),
+            codebook_sha256="d" * 64,
+            profile={"name": "team-codebook"},
+            method_declaration={},
+            machine_profile={},
+            created_at="t",
+            codes=[{"name": "cost", "definition": "price concern"}],
+        ),
+        requested_at="t",
+    )
+    return aggregate, sink, release_id
+
+
+def test_release_refuses_when_config_enforce_and_required_gates_fail() -> None:
+    aggregate, _sink, release_id = _team_draft_release()
+    service = ReleaseService(_Sink(), config=_enforce_cfg("enforce"))
+    outcome = service.release(aggregate, release_id, approver="dana", released_at="t2")
+    assert outcome["status"] == "blocked"
+    assert outcome["enforcement"] == "enforce"
+    assert "structured_output_enforcement" in outcome["unmet_required_gates"]
+    # Nothing was released: no event, state unchanged.
+    assert aggregate.releases[str(release_id)]["state"] == "draft_candidate"
+
+
+def test_release_with_config_enforce_passes_when_required_gates_pass() -> None:
+    from corpus_kb.research.release.profiles import resolve_profile
+
+    aggregate, _sink, release_id = _team_draft_release()
+    for gate_id in resolve_profile("team-codebook").required_gates:
+        aggregate.record_gate_result(
+            tenant_id=aggregate.tenant_id,
+            release_id=release_id,
+            gate_id=gate_id,
+            status="pass",
+            value=None,
+            threshold=None,
+            reason="ok",
+            evidence_refs=[],
+            evaluator={},
+            evaluated_at="t",
+        )
+    service = ReleaseService(_Sink(), config=_enforce_cfg("enforce"))
+    outcome = service.release(aggregate, release_id, approver="dana", released_at="t2")
+    assert outcome["status"] == "released"
+    assert outcome["enforcement"] == "enforce"
+    assert aggregate.releases[str(release_id)]["state"] == "released"
+
+
+def test_release_warn_config_releases_with_warnings() -> None:
+    aggregate, _sink, release_id = _team_draft_release()
+    service = ReleaseService(_Sink(), config=_enforce_cfg("warn"))
+    outcome = service.release(aggregate, release_id, approver="dana", released_at="t2")
+    assert outcome["status"] == "released"
+    assert outcome["enforcement"] == "warn"
+    assert outcome["warnings"], "unmet gates under warn release WITH warnings"
+    assert aggregate.releases[str(release_id)]["state"] == "released"
+
+
+def test_release_off_config_releases_without_warnings() -> None:
+    aggregate, _sink, release_id = _team_draft_release()
+    service = ReleaseService(_Sink(), config=_enforce_cfg("off"))
+    outcome = service.release(aggregate, release_id, approver="dana", released_at="t2")
+    assert outcome["status"] == "released"
+    assert outcome["enforcement"] == "off"
+    assert outcome["warnings"] == []
+
+
+def test_release_service_uses_the_shared_reader_not_the_profile_field() -> None:
+    """F3 root cause: the applied mode comes from release_guard_settings,
+    never from the hardcoded per-profile ``warn``."""
+    from corpus_kb.research.release.enforcement_settings import release_guard_settings
+    from corpus_kb.research.release.profiles import resolve_profile
+
+    # The premise: every shipped profile still defaults to warn.
+    for name in ("team-codebook", "high-assurance", "exploratory"):
+        assert resolve_profile(name).enforcement == "warn"
+    cfg = _enforce_cfg("enforce")
+    service = ReleaseService(_Sink(), config=cfg)
+    assert service._release_enforcement() == "enforce"
+    assert service._release_enforcement() == release_guard_settings(cfg).enforcement
+    with pytest.raises(ValueError, match="enforcement"):
+        ReleaseService(_Sink(), config=_enforce_cfg("strict"))._release_enforcement()
 
 
 def test_warn_default_never_blocks_unreleased_versions() -> None:
