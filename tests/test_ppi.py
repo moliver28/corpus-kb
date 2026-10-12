@@ -107,3 +107,27 @@ def test_estimator_is_deterministic() -> None:
     a = ppi_estimate(model, audit, model_audited, pi)
     b = ppi_estimate(model, audit, model_audited, pi)
     assert a == b
+
+
+def test_ci_width_shrinks_with_audit_size() -> None:
+    """v8 §5 P2: the correction-term variance is O(1/n) — growing the audit
+    sample at a fixed population must shrink the interval monotonically."""
+    rng = np.random.default_rng(3)
+    n_pop = 6000
+    truth = np.full(n_pop, 0.4)
+    model = np.clip(truth + rng.normal(0, 0.05, n_pop), 0.0, 1.0)
+    widths: list[float] = []
+    for n_audit in (50, 200, 800):
+        audit_idx = rng.choice(n_pop, size=n_audit, replace=False)
+        human = truth[audit_idx] + rng.normal(0, 0.02, n_audit)
+        result = ppi_estimate(
+            model,
+            human,
+            model[audit_idx],
+            np.full(n_audit, n_audit / n_pop),
+        )
+        assert result.status == CORRECTED
+        assert result.lower is not None and result.upper is not None
+        widths.append(result.upper - result.lower)
+    assert widths[1] < widths[0]
+    assert widths[2] < widths[1]

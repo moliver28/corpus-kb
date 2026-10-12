@@ -26,6 +26,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from corpus_kb.api.research_http import research_routes
 from corpus_kb.domain.models import (
     AddEntityCommand,
     AddRelationCommand,
@@ -53,14 +54,10 @@ def _get_tenant_id(request: Request) -> UUID:
 
 
 async def _parse_body(request: Request) -> dict[str, Any]:
-    """Parse JSON body, returning empty dict on failure."""
-    try:
-        data = await request.json()
-        if isinstance(data, dict):
-            return data
-        return {}
-    except Exception:
-        return {}
+    """Parse JSON body, returning empty dict on failure (shared api._body)."""
+    from corpus_kb.api._body import parse_body
+
+    return await parse_body(request)
 
 
 async def ingest_file(request: Request) -> JSONResponse:
@@ -783,6 +780,9 @@ def create_http_app() -> Starlette:
         Route("/api/stats", get_stats, methods=["GET"]),
         Route("/api/tables", sql_tables, methods=["GET"]),
         Route("/api/document-stats", document_stats, methods=["GET"]),
+        # Research + release surfaces (U5/P7) — routes defined in
+        # api/research_http.py over the shared tool layer.
+        *research_routes(),
     ]
 
     app = Starlette(routes=routes)

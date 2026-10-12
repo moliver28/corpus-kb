@@ -15,7 +15,9 @@ from corpus_kb.research.release.profiles import ResolvedProfile
 
 GateStatus = Literal["pass", "fail", "not_evaluable", "waived"]
 
-# U7-U19 gate ids (v6 §7). Stubs until Wave 2 delivers their inputs.
+# U7-U19 + the reliability/exhaustiveness/saturation gates (v6 §7). Every id
+# here is now a real evaluation over its evidence block (wave 2); the group
+# name is kept for the profiles' required-gates bookkeeping.
 GATE_DEFINITION_COMPLETENESS = "definition_completeness"
 GATE_BOUNDARY_AGREEMENT = "boundary_agreement"
 GATE_PARTITION_INDEPENDENCE = "partition_independence"
@@ -57,12 +59,17 @@ WAVE2_GATES: tuple[str, ...] = (
     GATE_SATURATION,
 )
 
-STUB_REASON = "inputs pending wave 2"
-
 
 @dataclass(frozen=True)
 class GateInputs:
-    """Pre-fetched evidence; gates stay pure over this snapshot."""
+    """Pre-fetched evidence; gates stay pure over this snapshot.
+
+    Wave-2 additions: one OPTIONAL evidence block per gate group, assembled
+    by ``gate_reads.py`` (or in-memory fakes in tests). Every block is a
+    JSON-safe dict so a manifest can carry it verbatim; ``None`` means the
+    block was never recorded and the gate MUST answer ``not_evaluable``
+    rather than pass. Shapes are documented on each gate function.
+    """
 
     manifest: dict[str, object] | None = None
     canary: dict[str, object] | None = None
@@ -70,6 +77,30 @@ class GateInputs:
     consensus: dict[str, object] | None = None
     metrics: dict[str, object] | None = None
     extra: dict[str, object] = field(default_factory=dict)
+    # U7 codebook document: {"categories": [code dicts]}.
+    codebook: dict[str, object] | None = None
+    # U8 per-coder segmentations: {"documents": [{document_id, segments_by_coder}]}.
+    boundary: dict[str, object] | None = None
+    # U9 partition ledger: {"assignments": [{unit_id, partition, ...}], "rule": str}.
+    partitions: dict[str, object] | None = None
+    # U11/U15 held-out confusion counts: {"codes": [{code_id, tp, fp, fn, strata}]}.
+    heldout: dict[str, object] | None = None
+    # U12 stored prompt variants: {"variant_label_sets": [{variant, labels}]}.
+    prompt_variants: dict[str, object] | None = None
+    # U13 multiply-annotated units: {"annotations": {...}, "model_preds": {...}}.
+    alt_test_data: dict[str, object] | None = None
+    # U14 PPI inputs: population predictions + audited sample + design weights.
+    ppi: dict[str, object] | None = None
+    # U16 stability runs: {"runs": [[terms]], "membership_ari", "k"}.
+    stability: dict[str, object] | None = None
+    # U17 audit design: {"rows": [audit_partitions rows]}.
+    audit_sample: dict[str, object] | None = None
+    # U18 agreement score vs human outcomes: {"scores": [...], "outcomes": [...]}.
+    agreement_calibration: dict[str, object] | None = None
+    # U19 routing ledger: {"units": [{unit_id, agreement, routed}]}.
+    agreement_routing: dict[str, object] | None = None
+    # reliability_alpha: a computeReliability report (per_code + overall).
+    reliability: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)

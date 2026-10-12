@@ -1,3 +1,51 @@
+## Unreleased — U1–U48 upgrade program (P0–P7)
+
+Implementation of the corpus-kb upgrade spec (U1–U48), phased and verified
+against `docs/research/upgrade-reconciliation.md` (per-row evidence; the
+repo won where the spec hypotheses disagreed). Honest phase statuses:
+
+- **P0 — reconciliation:** every U-item verified against the repo
+  (`file:symbol` evidence); surface-registry scaffolding
+  (`surface_registry.py`, `surface_registry_parity.py`) + internal
+  consistency tests. Spec-vs-repo discrepancies recorded (no
+  `HybridSearcher` class — hybrid search is SQL-side `corpus.rrf_fusion`;
+  the `vector(4096)` schema column is load-bearing; inert config knobs
+  removed).
+- **P1 — release foundation (wave 1):** release lifecycle events +
+  `CodebookVersion` aggregate transitions, canonical-JSON `ReleaseManifest`
+  (SHA-256), release profiles (exploratory / team-codebook /
+  high-assurance with off|warn|enforcement), `ReleaseService`, release
+  projector into migration 019's four read tables, P1 evidence gates,
+  structured-output canary + clustering-determinism work, install
+  checkpoint/licensing hygiene.
+- **P2–P3 — gates + retrieval (wave 1–2):** U7–U19 gate suite
+  (definition completeness, partition independence, machine profile,
+  held-out per-code F1, prompt stability, alternative annotator test,
+  prediction-powered estimates, stratum disparity, content stability,
+  audit sample design, agreement calibration/routing, reliability alpha,
+  exhaustiveness, saturation), pgvector relaxed-ordering fix (U40),
+  hnsw transaction-local settings (U20), hybrid RRF retrieval evaluation
+  harness (U45/U46), risk–coverage routing (U41), active review batching
+  (U37), Dawid-Skene aggregation, confidence-signal calibration/benchmark
+  (U47).
+- **P4–P6 — shadow + hardening (wave 2):** shadow ingest index
+  (`tools/shadow_ingest.py`), token hierarchy + post-fusion parent
+  expansion (default-off), enforcement wiring for the deduction guard
+  (U24: warn/enforce/--allow-draft sandbox), monitoring change proposals
+  (U25), reviewer rubric + multi-run consensus (U48), quote verification.
+- **P7 — surface parity + harness UX (this wave):** U5 five-command
+  release surface (`assess`/`review-release`/`release`/`status`/`compare`,
+  plus the mechanically required `release-request`) on ALL THREE
+  transports from ONE shared handler layer (`handlers/release_handlers.py`
+  → `cli_release.py` CLI group, `tools/release_tools.py` MCP tools,
+  `api/research_http.py` HTTP routes); MECE parity enforcement flipped ON
+  (`surface_registry_parity.TRANSPORT_ALLOWLIST` documents the two
+  by-design exceptions: research-cycle, research-demo); honest exit codes
+  (assess reports, blocked release exits 1/HTTP 409) and `--json` stable
+  payloads; U6 harness UX (generated `corpus-release` slash-command pack,
+  review-packet renderer, guide_copy literal next actions); doctor
+  surface-parity check; docs + this changelog.
+
 ## v0.1.0 (2026-09-30)
 
 

@@ -278,4 +278,10 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-review` | `corpus-kb review override` | `review_execute` | Overrule the model's assignment for one CodingAssignment. |
 | `corpus-demo` | `corpus-kb research demo` | (none) | Narrated end-to-end pipeline on the bundled demo corpus (CLI only). |
 | `corpus-research-cycle` | `corpus-kb research cycle` | `research_cycle` | Research cycle (todo 20): the full pipeline with in/on/out-of-loop postures and human-critical halt gates (promotion is hard-floored). |
+| `corpus-release` | `corpus-kb release assess` | `release_assess` | Compose every release gate over current evidence; WRITES NO RELEASE. |
+| `corpus-release` | `corpus-kb release request` | `release_request` | Open a draft release pinned to the current codebook content hash. |
+| `corpus-release` | `corpus-kb release review` | `release_review` | Review packet: evidence, failing/not_evaluable gates, waivers, next actions. |
+| `corpus-release` | `corpus-kb release release` | `release_execute` | Evaluate + record gates, apply waivers, execute the release (approver). |
+| `corpus-release` | `corpus-kb release status` | `release_status` | Stage, release state, blockers, sufficiency flags, the next command. |
+| `corpus-release` | `corpus-kb release compare` | `release_compare` | Diff two releases' manifests (codes, definitions, methods, metrics). |
 <!-- corpus-harness:research-commands:end -->

@@ -83,6 +83,8 @@ STATUS_FAIL = "fail"
 STATUS_INFO = "info"
 STATUS_SKIPPED = "skipped"
 
+DOC_RECONCILIATION = "docs/research/upgrade-reconciliation.md"
+
 
 @dataclass(frozen=True)
 class ResearchCheck:
@@ -93,6 +95,41 @@ class ResearchCheck:
     detail: str
     fix: str = ""
     doc: str = ""
+
+
+def surface_parity_check() -> ResearchCheck:
+    """The U5/P7 MECE contract: every research/release surface reachable on
+    CLI + MCP + HTTP (the documented parity allowlist aside).
+
+    Pure and offline: reads the surface registry + the parity contract; a
+    gap means a registered operation lost a transport (or a new one was
+    added incompletely). Never flips the doctor exit code (doctor contract).
+    """
+    from corpus_kb import surface_registry as registry
+    from corpus_kb import surface_registry_parity as parity
+
+    gaps = parity.surface_coverage_gaps(registry.SURFACES, parity.TRANSPORT_ALLOWLIST)
+    release_ops = sorted(
+        surface.name for surface in registry.SURFACES if surface.name.startswith("release-")
+    )
+    if gaps:
+        return ResearchCheck(
+            name="surface parity (cli+mcp+http)",
+            status=STATUS_FAIL,
+            detail=f"{len(gaps)} operation(s) missing transports: {'; '.join(gaps)}",
+            fix="wire the missing transports or extend TRANSPORT_ALLOWLIST explicitly",
+            doc=DOC_RECONCILIATION,
+        )
+    return ResearchCheck(
+        name="surface parity (cli+mcp+http)",
+        status=STATUS_OK,
+        detail=(
+            f"all {len(registry.SURFACES)} operations covered "
+            f"(allowlist: {len(parity.TRANSPORT_ALLOWLIST)}); release ops: "
+            f"{', '.join(release_ops)}"
+        ),
+        doc=DOC_RECONCILIATION,
+    )
 
 
 def _module_present(name: str) -> bool:
@@ -256,6 +293,55 @@ def _embed_probe(config: dict[str, Any]) -> list[float]:
 
     embedder = OllamaEmbedder(config)
     return embedder.embed(PROBE_TEXT)
+
+
+def judgment_distribution_check(config: dict[str, Any]) -> ResearchCheck:
+    """U35 doctor check: ``research.judgment_distribution.use_mean``.
+
+    Verifies the key exists and is a bool, then reports whether the runtime
+    exposes the token probabilities the mean-over-judgments mode needs.
+    That exposure cannot be verified statically (it depends on the live
+    coder backend), so an ENABLED key reports ``not_evaluable`` — never a
+    guessed OK; disabled (the default) needs no probabilities at all.
+    """
+    name = "research.judgment_distribution.use_mean"
+    research_cfg = config.get("research", {}) or {}
+    jd_cfg = research_cfg.get("judgment_distribution", {}) or {}
+    if not isinstance(jd_cfg, dict):
+        return ResearchCheck(
+            name=name,
+            status=STATUS_WARN,
+            detail="block unreadable (not a mapping); default off applies",
+            fix="set research.judgment_distribution: {use_mean: false} in config.yaml",
+            doc=DOC_RESEARCH,
+        )
+    use_mean = jd_cfg.get("use_mean", False)
+    if not isinstance(use_mean, bool):
+        return ResearchCheck(
+            name=name,
+            status=STATUS_WARN,
+            detail=f"use_mean must be a bool, got {use_mean!r}; default off applies",
+            fix="set research.judgment_distribution.use_mean: true|false in config.yaml",
+            doc=DOC_RESEARCH,
+        )
+    if not use_mean:
+        return ResearchCheck(
+            name=name,
+            status=STATUS_OK,
+            detail="off (default); judgment aggregation uses the mode and needs "
+            "no token probabilities",
+            doc=DOC_RESEARCH,
+        )
+    return ResearchCheck(
+        name=name,
+        status=STATUS_WARN,
+        detail="not_evaluable: use_mean is ON, but whether the coder runtime "
+        "exposes token probabilities cannot be verified here - if it does "
+        "not, aggregation silently falls back to the mode",
+        fix="verify the coder backend returns token logprobs "
+        "(coding/uncertainty/tier1_logprob) or set use_mean: false",
+        doc=DOC_RESEARCH,
+    )
 
 
 def zero_vector_canary(config: dict[str, Any], ollama_ok: bool | None) -> ResearchCheck:
@@ -475,6 +561,8 @@ async def research_checks(
     checks = extras_checks()
     pgml_installed = None if extensions is None else extensions.get("pgml", (False, ""))[0]
     checks.append(embedder_check(config, pgml_installed))
+    checks.append(judgment_distribution_check(config))
+    checks.append(surface_parity_check())
     checks.append(zero_vector_canary(config, ollama_ok))
     try:
         conn = await asyncpg.connect(conn_str, timeout=3)

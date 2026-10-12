@@ -111,6 +111,7 @@ research:
       - overlap_conflict
       - threshold_unreliable
       - human_parity_breach    # LLM-vs-human alpha < 0.60 -> human-only routing
+      - unreleased_draft       # enforce-mode: a blocked deductive stage halts the cycle
   # U1–U6 release layer (research/release/profiles.py is the source of truth
   # for these values — keep in lockstep with get_default_config).
   release:
@@ -175,9 +176,12 @@ research:
         alt_test_passing_fraction: 0.8
         max_stratum_disparity: 0.1
         agreement_routing_threshold: 0.9
-  # U48 multi-run consensus (research/release/consensus.py)
+  # U48 multi-run consensus (research/cycle_consensus.py is the typed reader;
+  # research/release/consensus.py does the aggregation)
   consensus:
-    runs: 3
+    runs: 3                    # N independent inductive passes per cycle
+    min_run_fraction: 0.5      # theme kept when seen in >= this fraction of runs
+    similarity_threshold: 0.8  # cosine at which candidates join one theme
   # Measurement-math knobs (coding/measurement_settings.py is the source of
   # truth; U12–U17, U33–U39, U41, U47).
   alt_test:
@@ -271,3 +275,17 @@ coding:
   # invalid_output; strict enforcement opt-in (default off).
   repair_retries: 1
   require_structured_enforcement: false
+
+# Multi-granularity chunk hierarchy + shadow index (ingest/hierarchy_settings.py
+# is the source of truth). enabled writes the shadow hierarchy at ingest; the
+# live v1 corpus is untouched; expand_to_parent stays off until the shadow
+# benchmark passes.
+ingest:
+  hierarchy:
+    enabled: true
+    child_tokens: 128
+    chunk_tokens: 512
+    parent_tokens: 2048
+    overlap_tokens: 64
+    respect_boundaries: ["speaker_turn", "qa_pair", "slide", "heading"]
+    expand_to_parent: false

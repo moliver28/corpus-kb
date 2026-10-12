@@ -543,3 +543,66 @@ CYCLE_APPROVAL_NO_STDIN = (
     "No interactive stdin available - treating this approval as denied. "
     "Re-run with --mode out to run unattended, or from a terminal to approve."
 )
+
+# ---------------------------------------------------------------------------
+# U5/P7: `corpus-kb release ...` surface copy (v6 §6). Same purity pin as
+# above: module-level string constants ONLY. The release handlers and the
+# CLI renderers pick among these constants; the selection logic lives in
+# handlers/release_handlers.py, never here. Every NEXT_* string is a LITERAL
+# runnable command (angle-bracket placeholders the caller fills in).
+# ---------------------------------------------------------------------------
+
+RELEASE_TITLE = "Release lifecycle"
+RELEASE_SUBTITLE = "assess -> request -> review -> release; status and compare read the trail."
+RELEASE_ASSESS_HEADER = "ASSESSMENT (writes nothing)"
+RELEASE_REVIEW_PACKET_HEADER = "RELEASE REVIEW PACKET"
+RELEASE_EVIDENCE_HEADER = "GATE EVIDENCE"
+RELEASE_WAIVERS_HEADER = "WAIVERS"
+RELEASE_BLOCKED_HEADER = "RELEASE BLOCKED"
+RELEASE_UNMET_HEADER = "UNMET REQUIRED GATES"
+RELEASE_DATA_SUFFICIENCY_HEADER = "DATA SUFFICIENCY"
+RELEASE_ACTIVE_RELEASE_HEADER = "ACTIVE RELEASE"
+RELEASE_DRAFT_HEADER = "DRAFT"
+RELEASE_PROPOSALS_HEADER = "PENDING CHANGE PROPOSALS"
+RELEASE_NO_RELEASE_NOTE = (
+    "no release exists for this codebook version yet - nothing is hidden, "
+    "there is nothing to release against"
+)
+RELEASE_SUFFICIENT_MARK = "present"
+RELEASE_INSUFFICIENT_MARK = "absent"
+RELEASE_INSUFFICIENT_NOTE = (
+    "absent evidence blocks are reported as such by their gates "
+    "(not_evaluable) - a gate never upgrades missing data into a pass"
+)
+RELEASE_LINE = "- {gate_id}: {status} ({reason})"
+RELEASE_STAGE_LABELS = {
+    "pre_draft": "pre-draft: no release has been requested",
+    "gate_evidence": "draft gathering gate evidence (unmet required gates remain)",
+    "ready_for_release": "draft ready: every required gate is pass or waived",
+    "released": "released",
+    "closed": "closed (superseded or retired)",
+}
+
+RELEASE_NEXT_REQUEST = "corpus-kb release request --codebook-version-id <uuid> --creator <you>"
+RELEASE_NEXT_ASSESS = "corpus-kb release assess --codebook-version-id <uuid>"
+RELEASE_NEXT_REVIEW = (
+    "corpus-kb release review --codebook-version-id <uuid> --release-id <release-id>"
+)
+RELEASE_NEXT_RELEASE = (
+    "corpus-kb release release --codebook-version-id <uuid> --release-id "
+    "<release-id> --approver <you>"
+)
+RELEASE_NEXT_STATUS = "corpus-kb release status --codebook-version-id <uuid>"
+RELEASE_NEXT_COMPARE = (
+    "corpus-kb release compare --codebook-version-id <uuid> --old-release-id "
+    "<old-release-id> --new-release-id <new-release-id>"
+)
+RELEASE_BLOCKED_REMEDY = (
+    "record passing evidence or an explicit waiver for every required gate, "
+    "then re-run; enforcement=enforce blocks unmet gates (profiles live in "
+    "research.release.* config)"
+)
+RELEASE_REQUEST_NOTE = (
+    "request opens a draft_candidate release pinned to the current codebook "
+    "content hash; it never edits the codebook"
+)

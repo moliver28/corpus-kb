@@ -1,12 +1,12 @@
 """MECE consistency checks for surface_registry.SURFACES.
 
-Internal-consistency contract only TODAY: every surface declares at least
-one transport, CLI paths resolve to real registered commands, MCP tool names
+Internal-consistency contract: every surface declares at least one
+transport, CLI paths resolve to real registered commands, MCP tool names
 are known to validate-configs, wrapper covers reference real surfaces, and
-names are unique. FULL transport parity (cli+mcp+http for every operation)
-is NOT enforced yet — research surfaces have ``http_route=None`` by design
-and the enforcement flip lands in P5 (see
-``corpus_kb.surface_registry_parity.assert_full_surface_parity``).
+names are unique. SINCE P7 (U5) full transport parity (cli+mcp+http) is
+ENFORCED against the live registry outside the documented
+``surface_registry_parity.TRANSPORT_ALLOWLIST`` (research-cycle: no HTTP
+by design; research-demo: CLI-only by design).
 """
 
 from __future__ import annotations
@@ -17,8 +17,10 @@ import pytest
 
 from corpus_kb import surface_registry as reg
 from corpus_kb.surface_registry_parity import (
+    TRANSPORT_ALLOWLIST,
     SurfaceParityError,
     assert_full_surface_parity,
+    assert_parity_outside_allowlist,
     surface_coverage_gaps,
 )
 
@@ -59,6 +61,7 @@ def test_cli_paths_resolve_to_registered_commands() -> None:
         "coding": cli.coding_app,
         "codebook": cli.codebook_app,
         "review": cli.review_app,
+        "release": cli.release_app,
     }
 
     def _commands_of(typer_app: object) -> set[str]:
@@ -137,8 +140,8 @@ def test_payload_schemas_contract_placeholder() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Parity helper behavior (synthetic registries — enforcement against the
-# live registry is deliberately deferred to P5)
+# Parity helper behavior (synthetic registries; the LIVE registry is enforced
+# above via assert_parity_outside_allowlist)
 # ---------------------------------------------------------------------------
 
 
@@ -170,14 +173,17 @@ def test_parity_helper_lists_every_gap_not_just_the_first() -> None:
     assert "2 of 2" in message
 
 
-def test_live_registry_currently_lacks_http_parity_by_design() -> None:
-    """Documents today's honest state: no research surface has an HTTP route.
-
-    This pins the PRE-enforcement state so the P5 flip is a deliberate,
-    reviewed change (this test is expected to be REPLACED by enforcement).
-    """
-    gaps = surface_coverage_gaps(reg.SURFACES)
-    assert gaps, "P5 landed: all surfaces have transports — flip enforcement on"
-    assert all("http" in gap for gap in gaps)
+def test_live_registry_parity_outside_documented_allowlist() -> None:
+    """P7 enforcement: every operation is cli+mcp+http complete EXCEPT the
+    documented allowlist (research-cycle: no HTTP by design; research-demo:
+    CLI-only by design). A new surface with a missing transport fails HERE,
+    and an allowlist entry whose surface gained its transports must be
+    removed (stale documentation is an error, not a shrug)."""
+    raw_gaps = surface_coverage_gaps(reg.SURFACES)
+    assert raw_gaps, "allowlist surfaces gained full parity: empty TRANSPORT_ALLOWLIST"
+    for gap in raw_gaps:
+        name = gap.split(":")[0]
+        assert name in TRANSPORT_ALLOWLIST, f"undocumented parity gap: {gap}"
+    assert_parity_outside_allowlist(reg.SURFACES)  # must not raise
     with pytest.raises(SurfaceParityError):
-        assert_full_surface_parity(reg.SURFACES)
+        assert_full_surface_parity(reg.SURFACES)  # the raw contract still holds
