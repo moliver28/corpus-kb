@@ -60,7 +60,7 @@ change, never a config edit.
 | `research.inductive.recluster_every_batches` | `8` | Full re-cluster cadence during incremental inductive growth (v5 §9.5: every 5-10 batches). |
 | `research.inductive.centroid_drift_threshold` | `0.15` | Mean cosine drift between centroid snapshots that triggers an early cluster refresh. |
 | `research.inductive.tau_dup` | `0.85` | Promote-time duplicate gate: max prototype cosine vs existing codes above which a promotion blocks with a merge suggestion. |
-| `research.cycle.halt_on` | 6-gate list | Human-critical gates for `research cycle --mode out` (interpretive_code_review, gray_zone_escalation, drift_alarm, overlap_conflict, threshold_unreliable, human_parity_breach). May only ADD gates: `codebook_promotion` is hard-floored and never removable; unknown names are rejected. |
+| `research.cycle.halt_on` | 7-gate list | Human-critical gates for `research cycle --mode out` (interpretive_code_review, gray_zone_escalation, drift_alarm, overlap_conflict, threshold_unreliable, human_parity_breach, unreleased_draft). May only ADD gates: `codebook_promotion` is hard-floored and never removable; unknown names are rejected. |
 | `research.alt_test.margin` | see `config.yaml` | One-sided Alternative Annotator Test margin (epsilon): how much model agreement may trail human agreement and still pass (U13). |
 | `research.alt_test.fdr_q` | see `config.yaml` | Benjamini-Yekutieli FDR level for the alt-test hypothesis family (U13). |
 | `research.alt_test.passing_fraction` | see `config.yaml` | Fraction of held-out annotators the model must beat for the alt-test to pass (U13). |

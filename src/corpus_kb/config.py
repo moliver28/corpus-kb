@@ -346,4 +346,6 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
     # the release-layer consensus before themes surface.
     research.setdefault("consensus", dict(CONSENSUS_CONFIG_DEFAULTS))
     # Multi-granularity chunk hierarchy + shadow index (ingest/hierarchy_settings.py)
-    config.setdefault("ingest", {}).setdefault("hierarchy", {}).update(HIERARCHY_CONFIG_DEFAULTS)
+    hierarchy_defaults = dict(HIERARCHY_CONFIG_DEFAULTS)
+    hierarchy_defaults["respect_boundaries"] = list(hierarchy_defaults["respect_boundaries"])
+    config.setdefault("ingest", {}).setdefault("hierarchy", {}).update(hierarchy_defaults)
