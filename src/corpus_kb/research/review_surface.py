@@ -6,18 +6,64 @@ decision goes through ResearchHandler.review_assignment (a CodingAssignment
 event) and lands as a research_reviews row via the assignment projector,
 which also flips the assignment status. The CLI command in cli.py delegates
 here; tests drive this module directly.
+
+U48 EXTENSION: the binary DECISIONS are joined by the three-way reviewer
+RUBRIC (``agreement | reasonable_alternative | not_reasonable`` — the
+``good|partial|no match`` reading against a reference codebook) recorded as
+``ReviewerRubricRecorded`` events on the CodebookVersion aggregate (the
+wave-1 aggregate defines the event; the event store is its record — there
+is deliberately no read table yet). ``aggregate_rubric`` folds recorded
+verdicts into the run-report block. U37/U41/U47 routing + batching
+composition lives in ``review_routing`` and is re-exported here so the
+review surface is the single named entry point.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 
 from corpus_kb.handlers.research_handler import ResearchHandler
+from corpus_kb.research.review_routing import (
+    ROUTE_AUTO_ACCEPT,
+    ROUTE_REVIEW,
+    RoutingPlan,
+    measurement_settings_from_config,
+    next_review_batch,
+    route_for_review,
+)
+
+__all__ = [
+    "DECISIONS",
+    "ROUTE_AUTO_ACCEPT",
+    "ROUTE_REVIEW",
+    "RUBRIC_AGREEMENT",
+    "RUBRIC_NOT_REASONABLE",
+    "RUBRIC_REASONABLE_ALTERNATIVE",
+    "RUBRIC_VERDICTS",
+    "RoutingPlan",
+    "aggregate_rubric",
+    "execute_review",
+    "execute_rubric_review",
+    "measurement_settings_from_config",
+    "next_review_batch",
+    "route_for_review",
+    "validate_rubric_verdict",
+]
 
 DECISIONS = ("accept", "override")
+
+RUBRIC_AGREEMENT = "agreement"
+RUBRIC_REASONABLE_ALTERNATIVE = "reasonable_alternative"
+RUBRIC_NOT_REASONABLE = "not_reasonable"
+RUBRIC_VERDICTS = (
+    RUBRIC_AGREEMENT,
+    RUBRIC_REASONABLE_ALTERNATIVE,
+    RUBRIC_NOT_REASONABLE,
+)
 
 
 async def execute_review(
@@ -60,6 +106,94 @@ async def execute_review(
         "decision": decision,
         "projection": projected,
     }
+
+
+def validate_rubric_verdict(verdict: str) -> str:
+    """Fail loud on a verdict outside the three-way rubric (U48)."""
+    if verdict not in RUBRIC_VERDICTS:
+        raise ValueError(f"rubric verdict must be one of {RUBRIC_VERDICTS}, got {verdict!r}")
+    return verdict
+
+
+def aggregate_rubric(reviews: Iterable[Mapping[str, Any]]) -> dict[str, object]:
+    """Fold recorded rubric verdicts into the run-report block (U48).
+
+    Honest aggregation: ``n == 0`` reports ``agreement_rate: None`` (unknown,
+    never 0.0) and the per-verdict counts stay zero-filled so the report
+    shape is stable.
+    """
+    counts = dict.fromkeys(RUBRIC_VERDICTS, 0)
+    reviewers: set[str] = set()
+    n = 0
+    for review in reviews:
+        verdict = str(review.get("verdict", ""))
+        if verdict not in counts:
+            continue
+        counts[verdict] += 1
+        n += 1
+        reviewer = review.get("reviewer")
+        if reviewer:
+            reviewers.add(str(reviewer))
+    return {
+        "n": n,
+        "counts": counts,
+        "agreement_rate": (counts[RUBRIC_AGREEMENT] / n) if n else None,
+        "n_reviewers": len(reviewers),
+    }
+
+
+async def execute_rubric_review(
+    pool: asyncpg.Pool | None,
+    tenant_id: UUID,
+    conn_str: str,
+    codebook_version_id: UUID,
+    proposal_id: str,
+    reviewer: str,
+    verdict: str,
+    note: str = "",
+) -> dict[str, Any]:
+    """Record one U48 rubric verdict on the codebook version aggregate.
+
+    The verdict is an event on the aggregate (ReviewerRubricRecorded) — the
+    event store is its record; no read table exists by design, so unlike
+    :func:`execute_review` no projection advance (and no pool) is needed.
+    The full aggregation over the version's rubric reviews comes back so the
+    caller can surface it immediately.
+
+    Returns:
+        {"status": "success", "proposal_id", "verdict", "aggregation": {...}}.
+    """
+    validate_rubric_verdict(verdict)
+    app = _app(conn_str)
+    version = app.repository.get(codebook_version_id)
+    version.record_rubric_review(
+        tenant_id=tenant_id,
+        proposal_id=proposal_id,
+        reviewer=reviewer,
+        verdict=verdict,
+        note=note,
+        recorded_at=_now_iso(),
+    )
+    app.save(version)
+    return {
+        "status": "success",
+        "proposal_id": proposal_id,
+        "verdict": verdict,
+        "aggregation": aggregate_rubric(version.rubric_reviews.values()),
+    }
+
+
+def _app(conn_str: str) -> Any:
+    """The eventsourcing Application (the aggregate save path)."""
+    from corpus_kb.domain.application import get_app
+
+    return get_app(conn_str)
+
+
+def _now_iso() -> str:
+    from datetime import UTC, datetime
+
+    return datetime.now(UTC).isoformat()
 
 
 async def _advance_assignments(
