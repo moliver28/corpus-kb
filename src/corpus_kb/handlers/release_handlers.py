@@ -571,20 +571,23 @@ async def execute_release(
     approver: str,
     waivers: tuple[tuple[str, str], ...] = (),
     run_id: UUID | None = None,
+    config: dict[str, object] | None = None,
 ) -> ReleaseOutcome:
     """Evaluate, record, waive (explicitly), then execute the transition.
 
     The gate results recorded here come from the SAME pure gate functions
     ``assess`` reports — recording is bookkeeping, never new evidence. A
     ``blocked`` outcome is DATA (enforcement=enforce refused); the caller
-    decides the transport presentation (CLI exit 1, HTTP 409).
+    decides the transport presentation (CLI exit 1, HTTP 409). Enforcement
+    comes from ``research.release.enforcement`` in ``config`` (falls back
+    to the loaded config when None).
     """
     app = _app_sink()
     aggregate = _load_aggregate(_conn_str(), codebook_version_id)
     if str(aggregate.tenant_id) != str(tenant_id):
         raise ValueError(f"codebook version {codebook_version_id} is not in tenant {tenant_id}")
     record = _record_or_raise(aggregate, release_id)
-    service = ReleaseService(app)
+    service = ReleaseService(app, config=config)
     inputs, _sufficiency = await gate_inputs_for_version(
         pool, tenant_id, codebook_version_id, run_id
     )

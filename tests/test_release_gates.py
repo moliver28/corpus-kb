@@ -35,13 +35,13 @@ TEAM = resolve_profile("team-codebook")
 def test_registry_covers_the_full_set_and_no_gate_is_a_stub():
     """Every registered gate is a real evaluation: empty inputs are honest
     not_evaluable (never a fabricated pass), no stub reason remains."""
-    from corpus_kb.research.release.gate_types import STUB_REASON, WAVE2_GATES
+    from corpus_kb.research.release.gate_types import WAVE2_GATES
 
     assert len(GATES) == len(ALL_RELEASE_GATES)
     for gate_id, gate_fn in GATES.items():
         result = gate_fn(GateInputs(), TEAM)
         assert result.status == "not_evaluable", f"{gate_id} passed without evidence"
-        assert result.reason != STUB_REASON
+        assert result.reason != "inputs pending wave 2"
     assert WAVE2_GATES  # the group id tuple is retained for bookkeeping
 
 
