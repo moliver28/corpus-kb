@@ -34,7 +34,7 @@ class Surface(NamedTuple):
     cli_path: str
     mcp_tool: str
     description: str
-    http_route: str | None = None  # none today: research surfaces are CLI/MCP only
+    http_route: str | None = None  # set for every surface outside the parity allowlist
 
 
 SURFACES: tuple[Surface, ...] = (
@@ -43,72 +43,84 @@ SURFACES: tuple[Surface, ...] = (
         cli_path="research ingest-transcript",
         mcp_tool="research_ingest_transcript",
         description="Ingest ONE transcript (txt/vtt/srt/csv/docx): turns, roles, exchanges.",
+        http_route="/api/research/ingest-transcript",
     ),
     Surface(
         name="research-ingest",
         cli_path="research ingest",
         mcp_tool="research_ingest",
         description="Dynamic ingest of file/dir/glob with dedup; --watch tails a drop dir.",
+        http_route="/api/research/ingest",
     ),
     Surface(
         name="coding-run",
         cli_path="coding run",
         mcp_tool="coding_run",
         description="Deductive run (v5 §8): three-view scoring, calibrated tau, conformal.",
+        http_route="/api/coding/run",
     ),
     Surface(
         name="coding-inductive",
         cli_path="coding inductive",
         mcp_tool="inductive_run",
         description="Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
+        http_route="/api/coding/inductive",
     ),
     Surface(
         name="codebook-promote",
         cli_path="codebook promote",
         mcp_tool="codebook_promote",
         description="Promote a proposed code into a NEW codebook version (human gate).",
+        http_route="/api/codebook/promote",
     ),
     Surface(
         name="research-report",
         cli_path="research report",
         mcp_tool="research_report",
         description="Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3.",
+        http_route="/api/research/report",
     ),
     Surface(
         name="review-accept",
         cli_path="review accept",
         mcp_tool="review_execute",
         description="Confirm the model's assignment for one CodingAssignment (human review).",
+        http_route="/api/review/execute",
     ),
     Surface(
         name="review-override",
         cli_path="review override",
         mcp_tool="review_execute",
         description="Overrule the model's assignment for one CodingAssignment.",
+        http_route="/api/review/execute",
     ),
     Surface(
         name="notebook-ask",
         cli_path="research ask",
         mcp_tool="notebook_ask",
         description="Grounded Q&A: cited sentences; retrieval-only mode = zero LLM calls.",
+        http_route="/api/notebook/ask",
     ),
     Surface(
         name="notebook-evidence",
         cli_path="research evidence",
         mcp_tool="notebook_evidence",
         description="Evidence for one code: ranked units with flags + conformal sizes.",
+        http_route="/api/notebook/evidence",
     ),
     Surface(
         name="notebook-uncoded",
         cli_path="research uncoded",
         mcp_tool="notebook_uncoded",
         description="Uncoded units ranked by nearest-code margin (the no-missing-clusters radar).",
+        http_route="/api/notebook/uncoded",
     ),
     Surface(
         name="notebook-overlap",
         cli_path="research overlap",
         mcp_tool="notebook_overlap",
         description="Code overlap: flagged pairs, confusion, borderline-margin units.",
+        http_route="/api/notebook/overlap",
     ),
     Surface(
         name="research-cycle",
@@ -118,6 +130,9 @@ SURFACES: tuple[Surface, ...] = (
             "Research cycle (todo 20): the full pipeline with in/on/out-of-loop "
             "postures and human-critical halt gates (promotion is hard-floored)."
         ),
+        # No HTTP route by DESIGN: interactive postures (approval boundary,
+        # foreground watch) are not a mechanical request/response. Documented
+        # exception: surface_registry_parity.TRANSPORT_ALLOWLIST.
     ),
     # CLI-ONLY (r13): no MCP tool - agents do not need a narrated demo, and a
     # tool here would red validate-configs/agent-config-consistency untouched
@@ -127,6 +142,49 @@ SURFACES: tuple[Surface, ...] = (
         cli_path="research demo",
         mcp_tool="",
         description="Narrated end-to-end pipeline on the bundled demo corpus (CLI only).",
+    ),
+    # -- release lifecycle (U5, P7, v6 §6): full cli+mcp+http parity --------
+    Surface(
+        name="release-assess",
+        cli_path="release assess",
+        mcp_tool="release_assess",
+        description="Compose every release gate over current evidence; WRITES NO RELEASE.",
+        http_route="/api/release/assess",
+    ),
+    Surface(
+        name="release-request",
+        cli_path="release request",
+        mcp_tool="release_request",
+        description="Open a draft release pinned to the current codebook content hash.",
+        http_route="/api/release/request",
+    ),
+    Surface(
+        name="release-review",
+        cli_path="release review",
+        mcp_tool="release_review",
+        description="Review packet: evidence, failing/not_evaluable gates, waivers, next actions.",
+        http_route="/api/release/review",
+    ),
+    Surface(
+        name="release-execute",
+        cli_path="release release",
+        mcp_tool="release_execute",
+        description="Evaluate + record gates, apply waivers, execute the release (approver).",
+        http_route="/api/release/release",
+    ),
+    Surface(
+        name="release-status",
+        cli_path="release status",
+        mcp_tool="release_status",
+        description="Stage, release state, blockers, sufficiency flags, the next command.",
+        http_route="/api/release/status",
+    ),
+    Surface(
+        name="release-compare",
+        cli_path="release compare",
+        mcp_tool="release_compare",
+        description="Diff two releases' manifests (codes, definitions, methods, metrics).",
+        http_route="/api/release/compare",
     ),
 )
 
@@ -250,6 +308,50 @@ corpus-kb research demo
 - CLI-only by design; all flags: `corpus-kb research demo --help`
 """
 
+_RELEASE_BODY = """# corpus-release — the release lifecycle (v6 §6)
+
+Walk a codebook version from draft to released codebook: assess the gates,
+open the draft, review the packet, execute with a named approver, and diff
+successors.
+
+- Compose EVERY gate over current evidence (writes NOTHING; not_evaluable
+  gates are reported, never silently passed):
+
+  ```
+  corpus-kb release assess --codebook-version-id <uuid> [--profile <name>]
+  ```
+
+- Open a draft_candidate release pinned to the current content hash:
+
+  ```
+  corpus-kb release request --codebook-version-id <uuid> --creator <you>
+  ```
+
+- The review packet: gate evidence, failing/not_evaluable gates, waivers,
+  and the exact next commands:
+
+  ```
+  corpus-kb release review --codebook-version-id <uuid> --release-id <release-id>
+  ```
+
+- Execute the release (HUMAN APPROVER required; enforcement=enforce blocks
+  unmet required gates, `--waive GATE=justification` records explicit
+  waivers; a refusal exits 1 with a structured error):
+
+  ```
+  corpus-kb release release --codebook-version-id <uuid> --release-id <release-id> --approver <you>
+  ```
+
+- Read the trail; every command takes --json:
+
+  ```
+  corpus-kb release status --codebook-version-id <uuid>
+  corpus-kb release compare --codebook-version-id <uuid> --old-release-id <a> --new-release-id <b>
+  ```
+
+- All flags: `corpus-kb release status --help` (and each subcommand)
+"""
+
 _CYCLE_BODY = """# corpus-research-cycle — the full pipeline with human-critical gates
 
 Chain ingest -> inductive -> deductive -> keywords -> report without
@@ -346,6 +448,21 @@ WRAPPERS: tuple[Wrapper, ...] = (
         argument_hint="--mode in|on|out [--guide] [--watch <dir>]",
         body=_CYCLE_BODY,
         covers=("research-cycle",),
+    ),
+    Wrapper(
+        name="corpus-release",
+        title="corpus-release",
+        description="Release lifecycle: assess, request, review, release, status, compare",
+        argument_hint="--codebook-version-id <uuid> [--release-id <uuid>] [--approver <you>]",
+        body=_RELEASE_BODY,
+        covers=(
+            "release-assess",
+            "release-request",
+            "release-review",
+            "release-execute",
+            "release-status",
+            "release-compare",
+        ),
     ),
 )
 
