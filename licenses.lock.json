@@ -771,9 +771,9 @@
   },
   {
     "name": "smart_open",
-    "version": "8.0.2",
+    "version": "8.0.3",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/smart_open/8.0.2/",
+    "homepage": "https://pypi.org/project/smart_open/8.0.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
