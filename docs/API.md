@@ -290,6 +290,70 @@ curl http://localhost:8010/api/document-stats
 
 ---
 
+## Research subsystem
+
+The research/coding surfaces (ingest, coding runs, promotion, review,
+notebook views) are reachable over HTTP. Each route delegates to the SAME
+shared tool layer as the CLI and MCP (one handler per operation). Body
+fields mirror the CLI flags; `tenant_id` defaults to the shared
+placeholder.
+
+| Route | Method | Delegates to | Body (required in bold) |
+|-------|--------|--------------|--------------------------|
+| `/api/research/ingest-transcript` | POST | `research_ingest_transcript` | **file_path**, project_id, title, force, tenant_id |
+| `/api/research/ingest` | POST | `research_ingest` | **path**, project_id, force, tenant_id |
+| `/api/coding/run` | POST | `coding_run` | **codebook_version_id**, project_id, cal_alpha, tenant_id |
+| `/api/coding/inductive` | POST | `inductive_run` | project_id, tenant_id |
+| `/api/codebook/promote` | POST | `codebook_promote` | **proposed_id, name, definition**, inclusion, exclusion, label, tau_dup, tenant_id |
+| `/api/research/report` | POST | `research_report` | codebook_version_id, level, project_id, tenant_id |
+| `/api/review/execute` | POST | `review_execute` | **assignment_id, decision, reviewer**, note, tenant_id |
+| `/api/notebook/ask` | POST | `notebook_ask` | **question, project_id**, k, retrieval_only, filters..., tenant_id |
+| `/api/notebook/evidence` | POST | `notebook_evidence` | **code**, project_id, version_id, limit, tenant_id |
+| `/api/notebook/uncoded` | POST | `notebook_uncoded` | project_id, version_id, k, tenant_id |
+| `/api/notebook/overlap` | POST | `notebook_overlap` | project_id, version_id, tenant_id |
+
+`research-cycle` (interactive postures, approval boundary, watch mode) and
+`research-demo` (CLI-only by design) intentionally have NO HTTP route —
+the documented parity allowlist in
+`src/corpus_kb/surface_registry_parity.py`.
+
+```bash
+curl -X POST http://localhost:8010/api/research/report   -H "Content-Type: application/json" -d "{}"
+```
+
+---
+
+## Release lifecycle (U5, v6 §6)
+
+The release lifecycle ships on all three transports with identical
+payloads: CLI `corpus-kb release ...`, MCP `release_*` tools, and these
+routes. One handler per operation (`handlers/release_handlers.py`).
+
+| Route | Method | Body (required in bold) |
+|-------|--------|--------------------------|
+| `/api/release/assess` | POST | **codebook_version_id**, profile, run_id, tenant_id |
+| `/api/release/request` | POST | **codebook_version_id, creator**, codebook_id, profile, release_id, tenant_id |
+| `/api/release/review` | POST | **codebook_version_id, release_id**, tenant_id |
+| `/api/release/release` | POST | **codebook_version_id, release_id, approver**, waivers ([[gate_id, justification]...]), run_id, tenant_id |
+| `/api/release/status` | GET | query: **codebook_version_id**, tenant_id |
+| `/api/release/compare` | POST | **codebook_version_id, old_release_id, new_release_id**, tenant_id |
+
+Honest status codes: `assess` reports `not_evaluable` gates as 200 data
+(it writes nothing); a refused release (enforcement=enforce, unmet
+required gates) is HTTP 409 with the structured `blocked` payload;
+unknown ids and malformed input are 400 with
+`{"status": "error", ...}`.
+
+```bash
+# compose every gate over current evidence (writes nothing)
+curl -X POST http://localhost:8010/api/release/assess   -H "Content-Type: application/json"   -d '{"codebook_version_id": "<uuid>"}'
+
+# the D1 status view (stage, blockers, sufficiency, next command)
+curl "http://localhost:8010/api/release/status?codebook_version_id=<uuid>"
+```
+
+---
+
 ## MCP tool reference
 
 The same operations are available through MCP. See [FEATURES.md](FEATURES.md#mcp-tool-reference) for the full table.

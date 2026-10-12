@@ -46,7 +46,7 @@ def test_registry_is_stdlib_only() -> None:
             assert node.module.split(".")[0] in allowed
 
 
-def test_seven_active_wrappers_after_todo20() -> None:
+def test_active_wrappers_after_p7() -> None:
     names = [w.name for w in reg.ACTIVE_WRAPPERS]
     assert names == [
         "corpus-ingest",
@@ -56,9 +56,10 @@ def test_seven_active_wrappers_after_todo20() -> None:
         "corpus-review",
         "corpus-demo",
         "corpus-research-cycle",
+        "corpus-release",
     ]
     assert [w.name for w in reg.WRAPPERS if w.planned] == []
-    assert len(reg.WRAPPERS) == 7
+    assert len(reg.WRAPPERS) == 8
 
 
 def test_wrapper_bodies_are_invocation_guidance_only() -> None:
