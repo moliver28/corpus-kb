@@ -333,6 +333,7 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
     importable in some tool paths (validate_configs, installer).
     """
     from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
+    from corpus_kb.ingest.hierarchy_settings import HIERARCHY_CONFIG_DEFAULTS
     from corpus_kb.research.cycle_consensus import CONSENSUS_CONFIG_DEFAULTS
     from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
 
@@ -343,3 +344,5 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
     # reader): runs = N independent inductive passes per cycle, aggregated by
     # the release-layer consensus before themes surface.
     research.setdefault("consensus", dict(CONSENSUS_CONFIG_DEFAULTS))
+    # Multi-granularity chunk hierarchy + shadow index (ingest/hierarchy_settings.py)
+    config.setdefault("ingest", {}).setdefault("hierarchy", {}).update(HIERARCHY_CONFIG_DEFAULTS)

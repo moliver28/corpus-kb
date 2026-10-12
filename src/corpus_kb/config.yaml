@@ -274,3 +274,17 @@ coding:
   # invalid_output; strict enforcement opt-in (default off).
   repair_retries: 1
   require_structured_enforcement: false
+
+# Multi-granularity chunk hierarchy + shadow index (ingest/hierarchy_settings.py
+# is the source of truth). enabled writes the shadow hierarchy at ingest; the
+# live v1 corpus is untouched; expand_to_parent stays off until the shadow
+# benchmark passes.
+ingest:
+  hierarchy:
+    enabled: true
+    child_tokens: 128
+    chunk_tokens: 512
+    parent_tokens: 2048
+    overlap_tokens: 64
+    respect_boundaries: ["speaker_turn", "qa_pair", "slide", "heading"]
+    expand_to_parent: false
