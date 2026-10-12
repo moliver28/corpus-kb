@@ -31,6 +31,7 @@ from corpus_kb.domain.models import (
     VerifyAnswerQuery,
     VerifyAnswerResult,
 )
+from corpus_kb.ingest.hierarchy_settings import load_hierarchy_settings
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.rerank_settings import load_rerank_settings
 from corpus_kb.rag.reranker import build_reranker, create_reranker
@@ -126,6 +127,10 @@ class QueryHandler:
         # U45/U21: shared retrieval knobs (``rrf_k`` feeds the fusion call
         # below; the threshold drives the exact-scan arm).
         self._retrieval_settings = load_retrieval_settings(self._config)
+        # U48/P6: shadow hierarchy settings — ONLY the query-time
+        # expand_to_parent arm is read here (default False until the shadow
+        # benchmark passes); ingest-side keys are owned by the pipeline.
+        self._hierarchy_settings = load_hierarchy_settings(self._config)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: self-query filtering -> vector (matryoshka two-tier or
@@ -484,8 +489,10 @@ class QueryHandler:
 
         # 4. Reranking (post-RRF). Runs outside the handler's connection so a
         #    max_size=1 pool cannot deadlock on the reranker's own acquire.
+        #    U48/P6: every return passes through the additive parent-expansion
+        #    hook (default OFF = identity).
         if self._reranker is None:
-            return fused_results
+            return await self._maybe_expand_to_parent(fused_results, str(query.tenant_id))
 
         if callable(getattr(self._reranker, "score", None)):
             # U30: rerank at most search.rerank.candidates of the fused
@@ -495,7 +502,7 @@ class QueryHandler:
             cand_texts = [r.text for r in candidates]
             raw_scores = await asyncio.to_thread(self._reranker.score, semantic_query, cand_texts)
             if raw_scores is None:
-                return fused_results
+                return await self._maybe_expand_to_parent(fused_results, str(query.tenant_id))
             if self._rerank_settings.calibration == "minmax":
                 lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
                 if hi <= lo:
@@ -505,7 +512,7 @@ class QueryHandler:
                     # would then drop ALL fused results. Fail open to the
                     # un-reranked RRF order — reranking must never break
                     # search (rag/reranker.py degrade contract).
-                    return fused_results
+                    return await self._maybe_expand_to_parent(fused_results, str(query.tenant_id))
                 span = hi - lo
                 reranked = [
                     r.model_copy(update={"score": (s - lo) / span})
@@ -518,12 +525,35 @@ class QueryHandler:
                 ]
             reranked = [r for r in reranked if r.score >= self._rerank_settings.score_floor]
             reranked.sort(key=lambda r: r.score, reverse=True)
-            return reranked[: query.k]
+            return await self._maybe_expand_to_parent(reranked[: query.k], str(query.tenant_id))
 
         if callable(getattr(self._reranker, "rerank", None)):
-            return await self._reranker.rerank(semantic_query, fused_results)
+            rerank_results = await self._reranker.rerank(semantic_query, fused_results)
+            return await self._maybe_expand_to_parent(rerank_results, str(query.tenant_id))
 
-        return fused_results
+        return await self._maybe_expand_to_parent(fused_results, str(query.tenant_id))
+
+    async def _maybe_expand_to_parent(
+        self,
+        results: list[SearchResult],
+        tenant_id: str,
+    ) -> list[SearchResult]:
+        """U48/P6 additive arm: small-to-big parent expansion post-fusion.
+
+        Default OFF — the flag-off passthrough returns the SAME list object
+        without touching the pool, so live-path behavior is byte-identical.
+        Fail-open: any expansion error returns the results unchanged (same
+        contract as the U21 selectivity probe).
+        """
+        if not self._hierarchy_settings.expand_to_parent or not results:
+            return results
+        from corpus_kb.rag.parent_expand import expand_to_parent
+
+        try:
+            return await expand_to_parent(self._pool, tenant_id, results)
+        except Exception as exc:
+            logger.warning("Parent expansion failed; returning fused results: %s", exc)
+            return results
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, object]]:
         """Execute a read-only SQL query."""
