@@ -32,7 +32,13 @@ from corpus_kb.domain.models import (
     VerifyAnswerResult,
 )
 from corpus_kb.rag.embedder import OllamaEmbedder
-from corpus_kb.rag.reranker import create_reranker
+from corpus_kb.rag.rerank_settings import load_rerank_settings
+from corpus_kb.rag.reranker import build_reranker, create_reranker
+from corpus_kb.research.retrieval_settings import (
+    estimate_selectivity,
+    load_retrieval_settings,
+    should_use_exact_scan,
+)
 from corpus_kb.research.search_settings import (
     HnswSettings,
     apply_hnsw_settings,
@@ -46,6 +52,18 @@ logger = logging.getLogger(__name__)
 # statements error on pgvector < 0.8, so emission is gated on this read
 # (fails CLOSED: unknown version = no settings = pre-0.8 behavior).
 _PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+
+# U21: paired-count selectivity probe over the same join shape as the vector
+# arms. The filter fragment is formatted in with its own numbering starting
+# at $2 (tenant is $1) so the probe is self-contained.
+_COUNT_SQL_TEMPLATE = """
+SELECT count(*)::float8 AS total,
+       count(*) FILTER (WHERE TRUE {frag})::float8 AS matched
+FROM chunks_vectors cv
+JOIN chunks ON cv.chunk_id = chunks.chunk_id
+JOIN documents ON chunks.doc_id = documents.doc_id
+WHERE cv.tenant_id = $1 {dedup}
+"""
 
 
 def _fusion_payload(rows: list[asyncpg.Record]) -> str:
@@ -85,9 +103,18 @@ class QueryHandler:
         self._self_query_parser = self_query_parser
         self._judge = judge
         self._config = config or load_config()
-        self._reranker = reranker if reranker is not None else create_reranker(self._config, pool)
+        # U30 production wiring: ``search.rerank.enabled`` (top-N rerank of
+        # the fused results with the qwen3 logprob scorer) takes precedence;
+        # when the block is absent/disabled, fall back to the legacy
+        # ``search.reranker`` selection so existing configs keep behaving.
+        self._reranker = (
+            reranker
+            if reranker is not None
+            else (build_reranker(self._config) or create_reranker(self._config, pool))
+        )
         search_cfg = self._config.get("search", {}) or {}
         self._rerank_cfg = search_cfg.get("rerank", {}) or {}
+        self._rerank_settings = load_rerank_settings(self._config)
         self._self_query_enabled = bool(
             (search_cfg.get("self_query", {}) or {}).get("enabled", False)
         )
@@ -96,6 +123,9 @@ class QueryHandler:
         self._candidate_multiplier = int(search_cfg.get("candidate_multiplier", 8))
         # U20: transaction-local HNSW scan settings (search.hnsw.*).
         self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
+        # U45/U21: shared retrieval knobs (``rrf_k`` feeds the fusion call
+        # below; the threshold drives the exact-scan arm).
+        self._retrieval_settings = load_retrieval_settings(self._config)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: self-query filtering -> vector (matryoshka two-tier or
@@ -179,14 +209,61 @@ class QueryHandler:
 
                 model = str(embedding_cfg.get("model", "nomic-embed-text"))
                 frag, params = build_filter_sql(dynamic_predicates, start_index=5)
+                # U21: with selective filters, HNSW can lose candidates (the
+                # ordered scan stops before matching rows are reached). Probe
+                # matched/total once and drop to a filtered EXACT scan below
+                # the threshold — identical result schema, no ANN ordering.
+                # No filters = no probe (selectivity is 1.0 by definition).
+                selectivity = None
+                if dynamic_predicates:
+                    probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
+                    selectivity = await estimate_selectivity(
+                        conn,
+                        _COUNT_SQL_TEMPLATE.format(frag=probe_frag, dedup=dedup_predicate),
+                        [str(query.tenant_id), *probe_params],
+                    )
+                use_exact = should_use_exact_scan(
+                    bool(dynamic_predicates),
+                    selectivity,
+                    self._retrieval_settings.exact_filter_selectivity_threshold,
+                )
                 try:
-                    # U40 relaxed-ordering pattern (pgvector >= 0.8 iterative
-                    # scans): the ANN scan (filters + distance ORDER BY + LIMIT)
-                    # stays INSIDE a MATERIALIZED CTE; the exact ordering is
-                    # applied OUTSIDE over the retrieved set (`score + 0`
-                    # defeats planner sort-elision, per the pgvector docs).
-                    vector_results = await conn.fetch(
-                        f"""
+                    if use_exact:
+                        # U40 pattern still holds: candidate set MATERIALIZED,
+                        # exact ordering applied OUTSIDE (`score + 0`).
+                        vector_results = await conn.fetch(
+                            f"""
+                            WITH candidate AS MATERIALIZED (
+                                SELECT cv.chunk_id AS candidate_chunk_id,
+                                       1 - (cv.vector <=> (
+                                           SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
+                                       )::vector) AS score
+                                FROM chunks_vectors cv
+                                JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                                JOIN documents ON chunks.doc_id = documents.doc_id
+                                WHERE cv.tenant_id = $3 {dedup_predicate} {frag}
+                            )
+                            SELECT {select_list}, candidate.score AS score
+                            FROM candidate
+                            JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
+                            JOIN documents ON chunks.doc_id = documents.doc_id
+                            ORDER BY candidate.score + 0 DESC
+                            LIMIT $4
+                            """,
+                            model,
+                            semantic_query,
+                            str(query.tenant_id),
+                            max(query.k * 2, over_retrieve_n),
+                            *params,
+                        )
+                    else:
+                        # U40 relaxed-ordering pattern (pgvector >= 0.8 iterative
+                        # scans): the ANN scan (filters + distance ORDER BY + LIMIT)
+                        # stays INSIDE a MATERIALIZED CTE; the exact ordering is
+                        # applied OUTSIDE over the retrieved set (`score + 0`
+                        # defeats planner sort-elision, per the pgvector docs).
+                        vector_results = await conn.fetch(
+                            f"""
                         WITH candidate AS MATERIALIZED (
                             SELECT cv.chunk_id AS candidate_chunk_id,
                                    1 - (cv.vector <=> (
@@ -208,12 +285,12 @@ class QueryHandler:
                         ORDER BY candidate.score + 0 DESC
                         LIMIT $4
                         """,
-                        model,
-                        semantic_query,
-                        str(query.tenant_id),
-                        max(query.k * 2, over_retrieve_n),
-                        *params,
-                    )
+                            model,
+                            semantic_query,
+                            str(query.tenant_id),
+                            max(query.k * 2, over_retrieve_n),
+                            *params,
+                        )
                 except Exception as exc:
                     logger.warning("Vector search failed: %s", exc)
             elif provider == "ollama" and self._embedder:
@@ -260,10 +337,55 @@ class QueryHandler:
                     else:
                         query_vector = self._embedder.embed(semantic_query)
                         frag, params = build_filter_sql(dynamic_predicates, start_index=4)
-                        # U40 relaxed-ordering pattern: scan inside a
-                        # MATERIALIZED CTE, exact ordering outside (`score + 0`).
-                        vector_results = await conn.fetch(
-                            f"""
+                        # U21: same selectivity probe + exact-scan fallback as
+                        # the pgml arm (identical result schema and params).
+                        selectivity = None
+                        if dynamic_predicates:
+                            probe_frag, probe_params = build_filter_sql(
+                                dynamic_predicates, start_index=2
+                            )
+                            selectivity = await estimate_selectivity(
+                                conn,
+                                _COUNT_SQL_TEMPLATE.format(frag=probe_frag, dedup=dedup_predicate),
+                                [str(query.tenant_id), *probe_params],
+                            )
+                        use_exact = should_use_exact_scan(
+                            bool(dynamic_predicates),
+                            selectivity,
+                            self._retrieval_settings.exact_filter_selectivity_threshold,
+                        )
+                        if use_exact:
+                            # No distance ORDER BY/LIMIT inside the CTE: the
+                            # planner cannot use the ordered HNSW scan here,
+                            # so every matching row is scored exactly and the
+                            # outer ORDER BY picks the true top-k.
+                            vector_results = await conn.fetch(
+                                f"""
+                                WITH candidate AS MATERIALIZED (
+                                    SELECT cv.chunk_id AS candidate_chunk_id,
+                                           1 - (cv.vector <=> $1::vector) AS score
+                                    FROM chunks_vectors cv
+                                    JOIN chunks ON cv.chunk_id = chunks.chunk_id
+                                    JOIN documents ON chunks.doc_id = documents.doc_id
+                                    WHERE cv.tenant_id = $2 {dedup_predicate} {frag}
+                                )
+                                SELECT {select_list}, candidate.score AS score
+                                FROM candidate
+                                JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
+                                JOIN documents ON chunks.doc_id = documents.doc_id
+                                ORDER BY candidate.score + 0 DESC
+                                LIMIT $3
+                                """,
+                                str(query_vector),
+                                str(query.tenant_id),
+                                vector_limit,
+                                *params,
+                            )
+                        else:
+                            # U40 relaxed-ordering pattern: scan inside a
+                            # MATERIALIZED CTE, exact ordering outside (`score + 0`).
+                            vector_results = await conn.fetch(
+                                f"""
                             WITH candidate AS MATERIALIZED (
                                 SELECT cv.chunk_id AS candidate_chunk_id,
                                        1 - (cv.vector <=> $1::vector) AS score
@@ -281,11 +403,11 @@ class QueryHandler:
                             ORDER BY candidate.score + 0 DESC
                             LIMIT $3
                             """,
-                            str(query_vector),
-                            str(query.tenant_id),
-                            vector_limit,
-                            *params,
-                        )
+                                str(query_vector),
+                                str(query.tenant_id),
+                                vector_limit,
+                                *params,
+                            )
                 except Exception as exc:
                     logger.warning("Vector search failed: %s", exc)
             elif provider != "ollama":
@@ -325,7 +447,7 @@ class QueryHandler:
                     _fusion_payload(vector_results),
                     _fusion_payload(fts_results),
                     query.k,
-                    60,
+                    self._retrieval_settings.rrf_k,
                 )
             except asyncpg.UndefinedFunctionError as exc:
                 raise RuntimeError(
@@ -366,19 +488,35 @@ class QueryHandler:
             return fused_results
 
         if callable(getattr(self._reranker, "score", None)):
-            candidates = fused_results[:over_retrieve_n]
+            # U30: rerank at most search.rerank.candidates of the fused
+            # results — never more than were over-retrieved from the arms.
+            rerank_n = min(over_retrieve_n, self._rerank_settings.candidates)
+            candidates = fused_results[:rerank_n]
             cand_texts = [r.text for r in candidates]
             raw_scores = await asyncio.to_thread(self._reranker.score, semantic_query, cand_texts)
             if raw_scores is None:
                 return fused_results
-            floor = float(self._rerank_cfg.get("score_floor", 0.15))
-            lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
-            span = (hi - lo) or 1.0
-            reranked = [
-                r.model_copy(update={"score": (s - lo) / span})
-                for r, s in zip(candidates, raw_scores, strict=True)
-            ]
-            reranked = [r for r in reranked if r.score >= floor]
+            if self._rerank_settings.calibration == "minmax":
+                lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
+                if hi <= lo:
+                    # Degenerate span (all-equal scores — the all-
+                    # not_evaluable case scores every pair at the neutral
+                    # 0.5): minmax maps every score to 0.0 and score_floor
+                    # would then drop ALL fused results. Fail open to the
+                    # un-reranked RRF order — reranking must never break
+                    # search (rag/reranker.py degrade contract).
+                    return fused_results
+                span = hi - lo
+                reranked = [
+                    r.model_copy(update={"score": (s - lo) / span})
+                    for r, s in zip(candidates, raw_scores, strict=True)
+                ]
+            else:
+                reranked = [
+                    r.model_copy(update={"score": float(s)})
+                    for r, s in zip(candidates, raw_scores, strict=True)
+                ]
+            reranked = [r for r in reranked if r.score >= self._rerank_settings.score_floor]
             reranked.sort(key=lambda r: r.score, reverse=True)
             return reranked[: query.k]
 
