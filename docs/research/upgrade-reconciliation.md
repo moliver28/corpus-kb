@@ -61,20 +61,22 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
 | U47 | Confidence-signal benchmark | done | signals exist (`coding/uncertainty/` tiers 0–3, `review_priority.py` router) + `coding/confidence_calibration.py` (AUROC/ECE/Brier, Platt/isotonic calibrator, evaluate-once test split); consumed as the routing score by `research/review_routing.py:route_for_review` | — |
 | U48 | Evidence-quote verification + multi-run consensus | done | quote verification DONE (`coding/quote_verification.py`); multi-run consensus `research/release/consensus.py:aggregate_runs` wired to the live `research.consensus.runs` via `research/cycle_consensus.py` (cycle inductive stage = N independent passes); reviewer rubric recorded via `research/review_surface.py:execute_rubric_review` + `aggregate_rubric` (ReviewerRubricRecorded events) | — (P7: rubric CLI/HTTP rows) |
 
-## Tallies (verified 2026-10-12, P7 surface-parity wave)
+## Tallies (final re-tally, 2026-10-12, end-of-program audit)
 
-- **done = 12** — U3, U5, U6, U20, U24, U25, U26, U37, U40, U41, U47, U48
-- **partial = 15** — U4, U7, U8, U11, U16, U17, U18, U19, U30, U32,
-  U35, U36, U44, U45, U46
-- **absent = 21** — U1, U2, U9, U10, U12, U13, U14, U15, U21, U22,
-  U23, U27, U28, U29, U31, U33, U34, U38, U39, U42, U43
+- **done = 42** — U1–U26, U30, U31, U33, U34, U37–U48 (U23 done as
+  benchmark-only; U30 implementation done with adoption data-gated; U45/U46
+  done per their evaluate/benchmark-first specs — no retrieval default was
+  flipped without evidence)
+- **partial = 3** — U32 (MRL-model gating for two-stage matryoshka not yet
+  code-enforced), U35 (judgment-distribution mean has no production call
+  site until a probability-exposing backend is configured), U36 (full
+  saturation-curve report rendering; the scalar ISR surfaces today)
+- **deferred = 3** — U27, U28, U29 (optional interop/baselines, program-plan
+  decision; topic layer/BERTopic separately deferred)
 
-12 + 15 + 21 = 48 rows. (U1/U2/U9/U10/U43 "absent" rows are stale relative
-to the wave-1/wave-2 branches — the release layer, gates, and enforcement
-exist on `feature/kb-u48-p7-surface-parity`; this table's Step-0 statuses
-were verified against `feature/kb-u48-p0-reconciliation` and only the U5/U6
-rows were re-verified in P7. A full re-tally is the next reconciliation
-pass's job; the U5/U6 flips above carry their own evidence.)
+42 + 3 + 3 = 48 rows. (This supersedes the earlier 12/15/21 tally, which was
+verified against earlier wave branches; the final audit re-verified every
+'done' citation by import and sample-checked the partial rows.)
 
 ## Addendum (P7 surface-parity wave, 2026-10-12)
 
