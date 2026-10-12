@@ -25,6 +25,7 @@ from corpus_kb.rag.reranker import (
     build_reranker,
     create_reranker,
 )
+from tests.mock_pg import transaction_cm
 
 PGML_CONFIG = {
     "search": {
@@ -51,6 +52,7 @@ def _make_pool(
     """Return a mock asyncpg pool yielding one mock connection."""
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
+    mock_conn.transaction = MagicMock(return_value=transaction_cm())
     if fetch_side_effect is not None:
         mock_conn.fetch = AsyncMock(side_effect=fetch_side_effect)
     else:

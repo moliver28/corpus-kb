@@ -16,6 +16,7 @@ import pytest
 
 from corpus_kb.domain.models import SearchQuery
 from corpus_kb.handlers.query_handler import QueryHandler
+from tests.mock_pg import transaction_cm
 
 
 def _make_pool(side_effect: list[object]) -> MagicMock:
@@ -23,6 +24,7 @@ def _make_pool(side_effect: list[object]) -> MagicMock:
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
     mock_conn.fetch = AsyncMock(side_effect=side_effect)
+    mock_conn.transaction = MagicMock(return_value=transaction_cm())
 
     mock_pool = MagicMock()
     mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)

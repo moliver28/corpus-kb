@@ -30,8 +30,17 @@ def test_extras_checks_never_fail() -> None:
     for check in checks:
         assert check.status in (dr.STATUS_OK, dr.STATUS_INFO)
         if check.status == dr.STATUS_INFO:
-            assert "pip install -e" in check.fix
+            assert check.fix, f"INFO check {check.name!r} must carry a remediation"
             assert check.doc
+    # scipy is a transitive dependency of the optional extras, so its
+    # remediation points at the extras below rather than a standalone
+    # "pip install -e" of scipy itself.
+    scipy_fix = checks[0].fix
+    if checks[0].status == dr.STATUS_INFO:
+        assert "extras" in scipy_fix
+    for check in checks[1:]:
+        if check.status == dr.STATUS_INFO:
+            assert "pip install -e" in check.fix
 
 
 def test_embedder_check_warns_pgml_absent() -> None:

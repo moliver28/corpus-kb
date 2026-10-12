@@ -18,11 +18,18 @@ from typing import Any
 import asyncpg
 
 from corpus_kb.projections.research._common import DEFAULT_TENANT, RESEARCH_PROJECTION_NAME
+from corpus_kb.research.search_settings import (
+    MIN_ITERATIVE_SCAN_VERSION,
+    parse_pgvector_version,
+)
 
 DOC_GETTING_STARTED = "docs/getting-started.md"
 DOC_RESEARCH = "docs/research.md"
 
 SETUP_FIX = "corpus-kb setup"
+
+# U40/U20: the installed pgvector extension gates iterative-scan support.
+PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
 
 # Migration file -> tables it must have created. The doctor probes to_regclass
 # for each so a HALF-APPLIED install names the specific missing migration
@@ -191,6 +198,122 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
     )
 
 
+def check_pgvector_version(extversion: str | None) -> ResearchCheck:
+    """U40/U20 doctor check: pgvector >= 0.8.0 enables iterative scans.
+
+    Below 0.8.0 the ``hnsw.*`` SET LOCAL settings are disabled (emitting them
+    aborts the query), so relaxed-ordering guarantees are ``not_enforced`` —
+    reported as a WARN, never a silent pass.
+    """
+    name = "pgvector version (iterative scans)"
+    if extversion is None:
+        return ResearchCheck(
+            name=name,
+            status=STATUS_FAIL,
+            detail="vector extension not installed - vector search cannot run",
+            fix=SETUP_FIX,
+            doc=DOC_GETTING_STARTED,
+        )
+    parsed = parse_pgvector_version(extversion)
+    if parsed is None:
+        return ResearchCheck(
+            name=name,
+            status=STATUS_WARN,
+            detail=f"not_enforced - unreadable pgvector version {extversion!r}; "
+            "hnsw.iterative_scan settings stay disabled (fail closed)",
+            doc=DOC_RESEARCH,
+        )
+    if parsed >= MIN_ITERATIVE_SCAN_VERSION:
+        return ResearchCheck(
+            name=name,
+            status=STATUS_OK,
+            detail=f"v{extversion} supports hnsw.iterative_scan",
+            doc=DOC_RESEARCH,
+        )
+    floor = ".".join(str(part) for part in MIN_ITERATIVE_SCAN_VERSION)
+    return ResearchCheck(
+        name=name,
+        status=STATUS_WARN,
+        detail=f"not_enforced - v{extversion} < {floor}; hnsw.iterative_scan disabled "
+        "(searches run plain ANN scans without relaxed-ordering guarantees)",
+        fix=f"use the Corpus-KB docker image (ships pgvector >= {floor}) or upgrade the "
+        "extension, then re-run corpus-kb doctor",
+        doc=DOC_RESEARCH,
+    )
+
+
+def _embed_probe(config: dict[str, Any]) -> list[float]:
+    """Embed the fixed canary probe with the configured Ollama embedder.
+
+    Deliberately SYNCHRONOUS (the Ollama client is sync): the canary is
+    called from both async (doctor_cmd) and sync (tests) contexts, and a
+    CLI diagnostic blocking the loop for one probe call is acceptable.
+    Raises on unreachable/broken backends; a REACHABLE-but-degraded backend
+    returns zeros, which the caller reports as ``invalid_output``.
+    """
+    from corpus_kb.rag.embedder import OllamaEmbedder
+    from corpus_kb.rag.fake_embedder import PROBE_TEXT
+
+    embedder = OllamaEmbedder(config)
+    return embedder.embed(PROBE_TEXT)
+
+
+def zero_vector_canary(config: dict[str, Any], ollama_ok: bool | None) -> ResearchCheck:
+    """All-zero-vector canary (the qwen3 zero-vector incident contract).
+
+    Embeds a fixed probe string via the configured embedding model and FAILS
+    with ``invalid_output`` when the reply is all zeros (the embedder's
+    degraded-mode fallback — HTTP-level success with a useless vector).
+    Never runs unless the caller confirmed Ollama is reachable; every other
+    path reports ``not_evaluable`` instead of guessing.
+    """
+    name = "embedding zero-vector canary"
+    if ollama_ok is not True:
+        if ollama_ok is False:
+            return ResearchCheck(
+                name=name,
+                status=STATUS_SKIPPED,
+                detail="not_evaluable - Ollama unreachable",
+                fix="start Ollama, then re-run corpus-kb doctor",
+                doc=DOC_GETTING_STARTED,
+            )
+        return ResearchCheck(
+            name=name,
+            status=STATUS_SKIPPED,
+            detail="not_evaluable - Ollama reachability was not probed",
+            fix="re-run corpus-kb doctor",
+            doc=DOC_GETTING_STARTED,
+        )
+    emb_cfg = config.get("embedding", {}) or {}
+    model = str(emb_cfg.get("model", "nomic-embed-text"))
+    try:
+        vector = _embed_probe(config)
+    except Exception as exc:  # canary must never break doctor
+        return ResearchCheck(
+            name=name,
+            status=STATUS_SKIPPED,
+            detail=f"not_evaluable - probe failed ({exc})",
+            fix="check embedding.model is pulled (ollama pull) and reachable",
+            doc=DOC_GETTING_STARTED,
+        )
+    if not any(vector):
+        return ResearchCheck(
+            name=name,
+            status=STATUS_FAIL,
+            detail=f"invalid_output - probe returned an all-zero vector (model={model}); "
+            "the backend answered but produced the degraded-mode fallback",
+            fix="verify the model actually emits embeddings (ollama run / server logs), "
+            "then re-run corpus-kb doctor",
+            doc=DOC_RESEARCH,
+        )
+    return ResearchCheck(
+        name=name,
+        status=STATUS_OK,
+        detail=f"probe returned a non-zero vector (model={model}, dims={len(vector)})",
+        doc=DOC_RESEARCH,
+    )
+
+
 def _migration_check(present_tables: set[str]) -> ResearchCheck:
     missing_by_migration = {
         migration: [t for t in tables if t not in present_tables]
@@ -341,11 +464,18 @@ async def research_checks(
     conn_str: str,
     config: dict[str, Any],
     extensions: dict[str, tuple[bool, str]] | None,
+    ollama_ok: bool | None = None,
 ) -> list[ResearchCheck]:
-    """Collect every research check for the doctor report (never raises)."""
+    """Collect every research check for the doctor report (never raises).
+
+    ``ollama_ok`` (from the doctor's reachability probe) gates the
+    zero-vector canary: it only embeds when the caller CONFIRMED Ollama is
+    up; anything else reports ``not_evaluable`` rather than guessing.
+    """
     checks = extras_checks()
     pgml_installed = None if extensions is None else extensions.get("pgml", (False, ""))[0]
     checks.append(embedder_check(config, pgml_installed))
+    checks.append(zero_vector_canary(config, ollama_ok))
     try:
         conn = await asyncpg.connect(conn_str, timeout=3)
     except Exception as exc:
@@ -360,6 +490,8 @@ async def research_checks(
         )
         return checks
     try:
+        extversion = await conn.fetchval(PGVECTOR_VERSION_SQL)
+        checks.append(check_pgvector_version(None if extversion is None else str(extversion)))
         checks.extend(await db_checks(conn, config))
     except Exception as exc:
         checks.append(
