@@ -149,13 +149,19 @@ async def load_proposal_seeds(
 
 
 def consensus_from_seeds(
-    seeds: list[ProposalSeed], settings: ConsensusSettings, n_runs: int
+    seeds: list[ProposalSeed], settings: ConsensusSettings, run_ids: list[str]
 ) -> ConsensusResult:
-    """Group the proposals by run and aggregate (U48 multi-run consensus)."""
+    """Group the proposals by run and aggregate (U48 multi-run consensus).
+
+    ADVERSARIAL REVIEW F6: the run fraction is over ALL executed runs —
+    proposal-less runs feed EMPTY candidate lists, so a theme seen in one
+    of two proposal-bearing runs out of three executed can never clear
+    ``min_run_fraction: 0.5`` (1/3, not 1/1).
+    """
     by_run: dict[str, list[Candidate]] = {}
     for seed in seeds:
         by_run.setdefault(seed.run_id, []).append(seed.to_candidate())
-    ordered = [by_run[run_id] for run_id in sorted(by_run)]
+    ordered = [by_run.get(run_id, []) for run_id in run_ids]
     return (
         aggregate_runs(
             ordered,
@@ -163,7 +169,7 @@ def consensus_from_seeds(
             similarity_threshold=settings.similarity_threshold,
         )
         if ordered
-        else _empty_consensus(settings, max(1, n_runs))
+        else _empty_consensus(settings, max(1, len(run_ids)))
     )
 
 
@@ -213,7 +219,7 @@ async def run_inductive_consensus(
         # normal unavailable path (and its reason) is what the cycle reports.
         return receipts[-1] if receipts else None
     seeds = await load_proposal_seeds(pool, tenant_id, run_ids)
-    result = consensus_from_seeds(seeds, settings, len(run_ids))
+    result = consensus_from_seeds(seeds, settings, run_ids)
     last = receipts[-1]
     return {
         "status": "success",

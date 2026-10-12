@@ -111,6 +111,7 @@ research:
       - overlap_conflict
       - threshold_unreliable
       - human_parity_breach    # LLM-vs-human alpha < 0.60 -> human-only routing
+      - unreleased_draft       # enforce-mode: a blocked deductive stage halts the cycle
   # U1–U6 release layer (research/release/profiles.py is the source of truth
   # for these values — keep in lockstep with get_default_config).
   release:

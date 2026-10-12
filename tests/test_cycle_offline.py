@@ -340,3 +340,147 @@ def test_run_cycle_rejects_unknown_mode() -> None:
                 mode="sideways",
             )
         )
+
+
+# ---------------------------------------------------------------------------
+# F4: the proposal step can never crash a finished cycle (honest receipt)
+# ---------------------------------------------------------------------------
+
+
+class _PoisonedRepository:
+    def get(self, _aggregate_id: Any) -> Any:
+        raise RuntimeError("poisoned aggregate: projection drift")
+
+
+class _PoisonedApp:
+    repository = _PoisonedRepository()
+
+
+class _PoisonedHandler:
+    app = _PoisonedApp()
+
+
+def _monitor_alarms() -> list[Any]:
+    from corpus_kb.research.monitoring import Alarm
+
+    return [Alarm("drift_alarm", "drift", "dbcv dropped", {"a": 1})]
+
+
+async def test_propose_alarms_poisoned_aggregate_lands_as_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import UUID as _UUID
+
+    from corpus_kb.research.release_read import ActiveRelease as ReadRelease
+
+    async def released(_pool: Any, _tenant: Any, _version: Any) -> ReadRelease:
+        return ReadRelease(
+            release_id="r-1",
+            state="released",
+            manifest_sha256="a" * 64,
+            codebook_version_sha256="b" * 64,
+            released_at=None,
+            profile="team-codebook",
+        )
+
+    monkeypatch.setattr("corpus_kb.research.deduction_guard.resolve_active_release", released)
+    receipt = await cycle_mod._propose_alarms(
+        cast(Any, object()),
+        _PoisonedHandler(),
+        _UUID("00000000-0000-0000-0000-000000000001"),
+        _UUID("00000000-0000-0000-0000-000000000002"),
+        _monitor_alarms(),
+        json_output=True,
+    )
+    assert receipt is not None
+    assert receipt["status"] == "proposal_failed"
+    assert "RuntimeError" in str(receipt["reason"])
+    assert receipt["alarms"]  # the alarms are kept, not dropped
+
+
+async def test_propose_alarms_release_read_failure_lands_as_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from uuid import UUID as _UUID
+
+    async def boom(_pool: Any, _tenant: Any, _version: Any) -> Any:
+        raise KeyError("codebook_releases row vanished mid-cycle")
+
+    monkeypatch.setattr("corpus_kb.research.deduction_guard.resolve_active_release", boom)
+    receipt = await cycle_mod._propose_alarms(
+        cast(Any, object()),
+        _PoisonedHandler(),
+        _UUID("00000000-0000-0000-0000-000000000001"),
+        _UUID("00000000-0000-0000-0000-000000000002"),
+        _monitor_alarms(),
+        json_output=True,
+    )
+    assert receipt is not None
+    assert receipt["status"] == "proposal_failed"
+    assert "KeyError" in str(receipt["reason"])
+
+
+async def test_propose_alarms_still_honest_without_alarms_or_version() -> None:
+    from uuid import UUID as _UUID
+
+    quiet = await cycle_mod._propose_alarms(
+        cast(Any, object()),
+        _PoisonedHandler(),
+        _UUID("00000000-0000-0000-0000-000000000001"),
+        None,
+        [],
+        json_output=True,
+    )
+    assert quiet is None
+
+
+# ---------------------------------------------------------------------------
+# F8: the deductive stage receives the injected config (no disk reload)
+# ---------------------------------------------------------------------------
+
+
+async def test_stage_deductive_threads_cfg_and_allow_draft(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from corpus_kb.research import cycle_reads, cycle_stages, deductive_run
+
+    seen: dict[str, object] = {}
+
+    async def fake_run_deductive(_pool: Any, _tenant: Any, _version: Any, **kwargs: Any) -> dict:
+        seen.update(kwargs)
+        return {"status": "success"}
+
+    monkeypatch.setattr(deductive_run, "run_deductive", fake_run_deductive)
+
+    async def no_latest(_pool: Any, _tenant: Any) -> Any:
+        return "version-1"
+
+    monkeypatch.setattr(cycle_reads, "latest_version_id", no_latest)
+
+    async def no_catch_up(*_args: Any) -> None:
+        return None
+
+    monkeypatch.setattr(cycle_stages, "_catch_up_all", no_catch_up)
+
+    cfg = {"research": {"release": {"enforcement": "enforce"}}}
+    summary = await cycle_stages.stage_deductive(
+        cast(Any, object()),
+        cast(Any, (object(), object(), object(), object(), object(), object())),
+        cast(Any, "00000000-0000-0000-0000-000000000001"),
+        None,
+        None,
+        cfg=cfg,
+        allow_draft=True,
+    )
+    assert summary == {"status": "success"}
+    assert seen["cfg"] == cfg
+    assert seen["allow_draft"] is True
+
+
+def test_unreleased_draft_halt_is_wired_into_the_default_posture() -> None:
+    from corpus_kb.config import get_default_config
+
+    configured = cast(Any, get_default_config()["research"]["cycle"]["halt_on"])
+    halt_on = gates.effective_halt_on(configured)
+    assert gates.GATE_UNRELEASED_DRAFT in halt_on
+    assert gates.GATE_EXIT_CODES[gates.GATE_UNRELEASED_DRAFT] == 17

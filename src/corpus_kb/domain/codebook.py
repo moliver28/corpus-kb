@@ -406,12 +406,19 @@ class CodebookVersion(Aggregate):
         recorded_at: str,
     ) -> None:
         """U48 reviewer rubric over one proposed code (agreement |
-        reasonable_alternative | not_reasonable); Wave 2 wires review_surface."""
+        reasonable_alternative | not_reasonable); Wave 2 wires review_surface.
+
+        Keyed by ``{proposal_id}:{reviewer}`` (adversarial review F7):
+        reviewers judge INDEPENDENTLY, so a second reviewer's verdict must
+        not replace the first — each (proposal, reviewer) pair holds its
+        own verdict; a reviewer RE-judging the same proposal overwrites
+        their own earlier verdict.
+        """
         if verdict not in ("agreement", "reasonable_alternative", "not_reasonable"):
             raise ReleaseStateError(f"invalid rubric verdict: {verdict!r}")
         if not reviewer.strip():
             raise ReleaseStateError("rubric reviewer must be non-empty")
-        self.rubric_reviews[str(proposal_id)] = {
+        self.rubric_reviews[f"{proposal_id}:{reviewer}"] = {
             "tenant_id": str(tenant_id),
             "proposal_id": str(proposal_id),
             "reviewer": reviewer,
