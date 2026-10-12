@@ -6,6 +6,15 @@ ENFORCEMENT SEMANTICS on ``release`` (v8 ground rule 6, default ``warn``):
   * off      — gate evidence never blocks; the approver is still required;
   * warn     — unmet required gates release WITH explicit warnings returned;
   * enforce  — unmet required gates block (no event emitted).
+
+The applied mode is the SHIPPED ``research.release.enforcement`` config key
+(adversarial review F3), read through the same shared reader the U24
+deduction guard uses (``release_guard_settings``) — the per-profile
+``enforcement`` field is a documented default (warn), never the applied
+mode. Pass ``config`` to the service when the caller already holds it;
+without one the loaded runtime config decides. Keep ``warn`` default and
+``off`` semantics identical.
+
 ``assess`` composes gate results into an evidence bundle and writes NOTHING.
 
 The aggregate is the source of truth; ``sink.save(aggregate)`` persists the
@@ -19,14 +28,16 @@ from typing import Protocol
 from uuid import UUID
 
 from corpus_kb.domain.codebook import CodebookVersion, ReleaseStateError
+from corpus_kb.research.release.enforcement_settings import (
+    ENFORCEMENT_ENFORCE,
+    ENFORCEMENT_OFF,
+    release_guard_settings,
+)
 from corpus_kb.research.release.events import GATE_STATUSES
 from corpus_kb.research.release.gates import GateInputs, GateResult
 from corpus_kb.research.release.gates import assess as compose_assess
 from corpus_kb.research.release.manifest import ReleaseManifest
 from corpus_kb.research.release.profiles import resolve_profile
-
-_ENFORCEMENT_OFF = "off"
-_ENFORCEMENT_ENFORCE = "enforce"
 
 
 class EventSink(Protocol):
@@ -63,8 +74,23 @@ def _unmet_required(record: dict[str, object]) -> list[str]:
 class ReleaseService:
     """Lifecycle operations over one CodebookVersion aggregate."""
 
-    def __init__(self, sink: EventSink) -> None:
+    def __init__(self, sink: EventSink, config: dict[str, object] | None = None) -> None:
         self._sink = sink
+        self._config = config
+
+    def _release_enforcement(self) -> str:
+        """The shipped ``research.release.enforcement`` mode (config is source).
+
+        Without an injected config the loaded runtime config decides, so the
+        same key that blocks deductive runs blocks releases (F3: the old
+        per-profile hardcoded ``warn`` could not).
+        """
+        config = self._config
+        if config is None:
+            from corpus_kb.config import load_config
+
+            config = load_config()
+        return release_guard_settings(config).enforcement
 
     def request_release(
         self,
@@ -154,13 +180,13 @@ class ReleaseService:
         self, aggregate: CodebookVersion, release_id: UUID, approver: str, released_at: str
     ) -> dict[str, object]:
         record = _release_or_raise(aggregate, release_id)
-        profile = resolve_profile(str(record.get("profile")))
         unmet = _unmet_required(record)
-        if profile.enforcement == _ENFORCEMENT_ENFORCE and unmet:
+        enforcement = self._release_enforcement()
+        if enforcement == ENFORCEMENT_ENFORCE and unmet:
             return {
                 "status": "blocked",
                 "release_id": str(release_id),
-                "enforcement": profile.enforcement,
+                "enforcement": enforcement,
                 "unmet_required_gates": unmet,
                 "reason": "required gates must be pass or waived before release",
             }
@@ -175,11 +201,11 @@ class ReleaseService:
             "status": "released",
             "release_id": str(release_id),
             "approver": approver,
-            "enforcement": profile.enforcement,
+            "enforcement": enforcement,
             "unmet_required_gates": unmet,
             "warnings": (
                 [f"gate {gate_id} unmet at release (enforcement=warn)" for gate_id in unmet]
-                if unmet and profile.enforcement != _ENFORCEMENT_OFF
+                if unmet and enforcement != ENFORCEMENT_OFF
                 else []
             ),
         }

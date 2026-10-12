@@ -40,7 +40,6 @@ from corpus_kb.research.release.gate_types import (
     GATE_SATURATION,
     GATE_STRATUM_DISPARITY,
     GATE_STRUCTURED_OUTPUT,
-    STUB_REASON,
     WAVE2_GATES,
     GateFn,
     GateInputs,
@@ -52,7 +51,6 @@ from corpus_kb.research.release.profiles import ResolvedProfile
 __all__ = [
     "ALL_RELEASE_GATES",
     "GATES",
-    "STUB_REASON",
     "WAVE2_GATES",
     "GateFn",
     "GateInputs",
@@ -68,7 +66,7 @@ def _stub(gate_id: str) -> GateFn:
         return GateResult(
             gate_id=gate_id,
             status="not_evaluable",
-            reason=STUB_REASON,
+            reason="inputs pending wave 2",
         )
 
     return evaluate

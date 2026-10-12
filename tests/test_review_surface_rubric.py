@@ -124,7 +124,8 @@ async def test_execute_rubric_review_records_event_and_aggregates(
     assert result["verdict"] == "agreement"
     assert result["aggregation"]["n"] == 1
     assert len(app.saved) == 1
-    assert aggregate.rubric_reviews["proposal-1"]["verdict"] == "agreement"
+    # F7: verdicts key by {proposal_id}:{reviewer}.
+    assert aggregate.rubric_reviews["proposal-1:dana"]["verdict"] == "agreement"
 
     with pytest.raises(ValueError, match="rubric verdict"):
         await review_surface.execute_rubric_review(
@@ -137,6 +138,42 @@ async def test_execute_rubric_review_records_event_and_aggregates(
             "maybe",
         )
     assert len(app.saved) == 1  # the invalid verdict mutated nothing
+
+
+def test_rubric_reviews_survive_a_second_reviewer() -> None:
+    """F7: a second reviewer's verdict must not replace the first."""
+    aggregate = CodebookVersion(
+        tenant_id=TENANT, label="v1-two-reviewers", sha256="1" * 64, paradigm="inductive"
+    )
+    for reviewer, verdict in (("dana", "agreement"), ("eve", "not_reasonable")):
+        aggregate.record_rubric_review(
+            tenant_id=TENANT,
+            proposal_id="p1",
+            reviewer=reviewer,
+            verdict=verdict,
+            note="",
+            recorded_at="t",
+        )
+    assert len(aggregate.rubric_reviews) == 2
+    assert aggregate.rubric_reviews["p1:dana"]["verdict"] == "agreement"
+    assert aggregate.rubric_reviews["p1:eve"]["verdict"] == "not_reasonable"
+    # The aggregation folds BOTH verdicts (the old single-key map dropped one).
+    from corpus_kb.research.review_surface import aggregate_rubric
+
+    block = aggregate_rubric(aggregate.rubric_reviews.values())
+    assert block["n"] == 2
+    assert block["n_reviewers"] == 2
+    # A reviewer re-judging the same proposal overwrites their OWN verdict.
+    aggregate.record_rubric_review(
+        tenant_id=TENANT,
+        proposal_id="p1",
+        reviewer="dana",
+        verdict="reasonable_alternative",
+        note="changed my mind",
+        recorded_at="t2",
+    )
+    assert len(aggregate.rubric_reviews) == 2
+    assert aggregate.rubric_reviews["p1:dana"]["verdict"] == "reasonable_alternative"
 
 
 # ---------------------------------------------------------------------------
@@ -488,15 +525,36 @@ def test_consensus_from_seeds_aggregates_and_reports() -> None:
         _seed("r2", "price", base),  # same direction as r1:cost -> one theme
         _seed("r2", "latency", other),
     ]
-    result = consensus_from_seeds(seeds, settings, 2)
+    result = consensus_from_seeds(seeds, settings, ["r1", "r2"])
     assert result.n_runs == 2
     assert result.themes_kept == 2
     assert result.quote_not_found_rejected == 0
     assert result.run_to_run_agreement
 
-    empty = consensus_from_seeds([], settings, 2)
+    empty = consensus_from_seeds([], settings, [])
     assert empty.themes_kept == 0
     assert "nothing to aggregate" in empty.note
+
+
+def test_consensus_denominator_covers_proposal_less_runs() -> None:
+    """F6: the run fraction is over ALL executed runs, not just the runs
+    that happened to produce proposals — 1 of 3 never clears 0.5."""
+    from corpus_kb.research.cycle_consensus import ConsensusSettings, consensus_from_seeds
+
+    settings = ConsensusSettings(runs=3, min_run_fraction=0.5, similarity_threshold=0.8)
+    seeds = [_seed("r1", "cost", [1.0, 0.0, 0.0])]  # r2/r3 executed but proposed nothing
+    result = consensus_from_seeds(seeds, settings, ["r1", "r2", "r3"])
+    assert result.n_runs == 3
+    assert result.themes_kept == 0  # 1/3 < 0.5 — not kept, not papered
+
+    # Two agreeing runs out of three DO clear 0.5.
+    agreeing = [
+        _seed("r1", "cost", [1.0, 0.0, 0.0]),
+        _seed("r2", "cost", [0.99, 0.01, 0.0]),
+    ]
+    kept = consensus_from_seeds(agreeing, settings, ["r1", "r2", "r3"])
+    assert kept.n_runs == 3
+    assert kept.themes_kept == 1  # 2/3 >= 0.5
 
 
 async def test_run_inductive_consensus_merges_receipts_or_fails_verbatim(

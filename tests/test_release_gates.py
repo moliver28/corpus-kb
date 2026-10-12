@@ -12,7 +12,6 @@ from corpus_kb.research.release.evidence_gates import (
 from corpus_kb.research.release.gate_types import WAVE2_GATES
 from corpus_kb.research.release.gates import (
     ALL_RELEASE_GATES,
-    STUB_REASON,
     GateInputs,
     GateResult,
     UnknownGateError,
@@ -40,7 +39,17 @@ def test_registry_covers_the_full_set_and_stubs_are_not_evaluable():
     for gate_id in WAVE2_GATES:
         result = GATES[gate_id](GateInputs(), TEAM)
         assert result.status == "not_evaluable"
-        assert result.reason == STUB_REASON
+        # The stub reason is inline at its single use site (the constant
+        # is gone — adversarial review F9).
+        assert result.reason == "inputs pending wave 2"
+
+
+def test_stub_reason_constant_is_gone():
+    import corpus_kb.research.release.gate_types as gate_types
+    import corpus_kb.research.release.gates as gates_module
+
+    assert not hasattr(gate_types, "STUB_REASON")
+    assert not hasattr(gates_module, "STUB_REASON")
 
 
 def test_all_profiles_require_only_registered_gates():
