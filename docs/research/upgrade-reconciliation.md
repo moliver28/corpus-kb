@@ -162,3 +162,58 @@ verified against earlier wave branches; the final audit re-verified every
 | `handlers/release_handlers.py` | ~720 (P7) | ONE shared handler per v6 §6 operation plus the typed payload dataclasses that keep the three transports byte-identical; splitting payloads from handlers would put the D4 schema pin in two files. |
 | `cli_release.py` | ~470 (P7) | The six-command release group: flag parsing, packet/status renderers (guide_copy-driven), and exit-code mapping in one surface file; `cli.py` stays the shared `_run_async` owner. |
 | `api/research_http.py` | ~290 (P7) | The declarative route table for 17 research/release routes; the table IS the parity surface (`tests/test_surface_parity.py` pins it against the registry). |
+
+## End-of-program audit (2026-10-12, final per-U verdicts)
+
+The Step-0 table above is the historical snapshot this program started from (kept for the audit trail). The table below is the verified END state: every 'done' citation was import-checked against the merged tree (`feature/kb-u48-wave2-integration` @ 9ec1d2a, now master b0997bd) by the final adversarial audit. Tallies: **done 42 / partial 3 / deferred 3**.
+
+| U# | Final | Evidence |
+|---|---|---|
+| U1 | done | `migrations/019_codebook_releases.sql` (4 tables, RLS FORCE, immutability trigger) + `research/release/events.py` + `projections/research/release_projector.py`; replay-determinism test |
+| U2 | done | `research/release/manifest.py` (`canonical_json_bytes`/`canonical_sha256`, byte-identical determinism test) |
+| U3 | done | `research/release/profiles.py` (3 profiles, `enforcement=warn` default); 3-way config lockstep test |
+| U4 | done | `research/release/gates.py:assess` composes the 19-gate registry; writes nothing; honest blocking counters |
+| U5 | done | `handlers/release_handlers.py` (6 ops) on cli+mcp+http via `surface_registry.py`; `corpus-kb release ...` / `release_*` tools / `/api/release/*` |
+| U6 | done | `ReviewPacket` + `_print_review_packet`; generated `corpus-release.md` harness card (drift-gated) |
+| U7 | done | `research/release/gate_codebook.py:gate_definition_completeness` |
+| U8 | done | `research/release/gate_partitions.py:gate_boundary_agreement` (segment F1, label agreement excluded) |
+| U9 | done | `research/release/gate_partitions.py:gate_partition_independence` (unit/doc/participant disjointness) |
+| U10 | done | `research/release/gate_machine_profile.py:gate_machine_profile` (`REQUIRED_MACHINE_PROFILE_FIELDS`) |
+| U11 | done | `research/release/gate_performance.py:gate_heldout_per_code_f1` (per code and per stratum) |
+| U12 | done | `coding/uncertainty/prompt_stability.py` + `gate_annotators.gate_prompt_stability` |
+| U13 | done | `coding/alt_test.py` (exact binomial + Benjamini-Yekutieli FDR; arXiv:2501.10970) + gate |
+| U14 | done | `coding/ppi.py:ppi_estimate` (raw labeled `uncorrected`) + `gate_prediction_powered` |
+| U15 | done | `research/release/gate_performance.py:gate_stratum_disparity` (min-stratum-size not_evaluable) |
+| U16 | done | `research/cluster_stability.py:top_term_jaccard` + `gate_stability.gate_content_stability` (ARI reported separately) |
+| U17 | done | `gate_stability.py:gate_audit_sample_design` + `audit_partitions` (stratum/inclusion-probability/seed) |
+| U18 | done | `coding/uncertainty/cross_run_agreement.py` + `gate_routing.gate_agreement_calibration` (AUROC/ECE before gating) |
+| U19 | done | `gate_routing.gate_agreement_routing` + `cycle_gates.gate_gray_zone_from_agreement` + `review_routing.route_for_review` |
+| U20 | done | `research/search_settings.py` (SET LOCAL, `supports_iterative_scan` fails closed) + `search.hnsw.*` |
+| U21 | done | `research/retrieval_settings.py:selectivity_ratio`; exact arms in `query_handler` + `research/retrieval.py`, fail-open |
+| U22 | done | `scripts/bench_vector_types.py` (full/halfvec/256-d probe/scan modes; binary quantization documented-rejected) |
+| U23 | done (benchmark-only) | `scripts/bench_pg_textsearch.py` (gated, honest `not_enforced`); native FTS unchanged; pg_search AGPL never touched |
+| U24 | done | `research/deduction_guard.py:decide_guard` (off/warn/enforce + sandbox labeling) + `unreleased_draft` halt gate |
+| U25 | done | `research/monitoring.py:propose_from_alarms` -> `ReleaseService.propose_change`; released codebooks never mutated |
+| U26 | done | `licenses.lock.json` + `scripts/generate_license_lock.py` + CI License baseline check |
+| U27 | deferred | optional interop dropped for scope -> issue #77 |
+| U28 | deferred | optional interop dropped for scope -> issue #78 |
+| U29 | deferred | optional interop dropped for scope -> issue #79 |
+| U30 | done (adoption data-gated) | `rag/reranker.py` qwen3 yes/no logprob scoring; `create_reranker` wired in `query_handler`; Ollama logprobs verified live |
+| U31 | done | `scripts/bench_embedders.py` + versioned `EmbeddingProfile` contract (never in-place embedder changes) |
+| U32 | partial | two-stage matryoshka exists config-off; MRL-model gating not yet code-enforced -> issue #81 |
+| U33 | done | `coding/aggregation.py:dawid_skene` (numpy EM, posterior uncertainty) |
+| U34 | done | `gate_machine_profile` coder-panel family diversity (fail in high-assurance, warn elsewhere) |
+| U35 | partial | `coding/uncertainty/judgment_distribution.py` + config + doctor exist; no production call site until a probability-exposing backend -> issue #81 |
+| U36 | partial | `coding/saturation.py:saturation_curve` consumed by `gate_measures.gate_saturation`; full-curve report rendering outstanding -> issue #81 |
+| U37 | done | `research/review_batch.py:select_review_batch` wired via `review_routing.next_review_batch` |
+| U38 | done (conditional) | `coding/aggregation.py:aggregate_signals` (DS-EM at >=3 signals; `insufficient_signals` -> vote, tie->review) |
+| U39 | done | `coding/label_triage.py:label_triage` (stratified k-fold OOF, ranked queue, `precision_of_flags`) |
+| U40 | done | MATERIALIZED CTE + outer `ORDER BY score + 0` in `research/retrieval.py` + `handlers/query_handler.py` + `research/analytics_sql.py`; `tests/test_vector_search_ordering.py` |
+| U41 | done | `coding/risk_coverage.py:threshold_for_target_risk` (exact Clopper-Pearson bound) consumed by `review_routing` |
+| U42 | done | `research/exact_cache.py:compute_cache_key` (6-component SHA-256) + migration 020 + rollback; live-PG test |
+| U43 | done | `coding/structured_output.py` (adversarial `run_canary`, validate/repair, `enforcement_blocks`) + gate + doctor |
+| U44 | done | `research/release/seed_sweep.py` (>=10-seed sweep, `content_hash_matrix`, `clustering_provenance`) + `GATE_CLUSTER_DETERMINISM` |
+| U45 | done (as specified) | `research/retrieval_eval.py` (recall@k/MRR/nDCG@10/p95; honest `insufficient_data`; no default flipped) |
+| U46 | done (benchmark) | halfvec benchmark + tested `adoption_decision` gate; cutover deferred -> issue #76 |
+| U47 | done | `coding/confidence_calibration.py` (AUROC/ECE/Brier, Platt/isotonic fallback, evaluate-once-on-test) |
+| U48 | done | `coding/quote_verification.py:classify_quote` + `research/release/consensus.py` + rubric via `review_surface.execute_rubric_review` |
