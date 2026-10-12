@@ -16,8 +16,8 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
 | U2 | Hashed release manifest | absent | `grep ReleaseManifest` = 0 hits | P1: `ReleaseManifest` + canonical JSON + SHA-256 |
 | U3 | Profiles exploratory/team-codebook/high-assurance; enforcement off\|warn\|enforce | done | `research/release/profiles.py:resolve_profile` + `RELEASE_CONFIG_DEFAULTS` (config block in `config.py` + both YAMLs); enforcement now read from CONFIG by `research/deduction_guard.py:release_guard_settings` (U24 wiring) | — |
 | U4 | `assess` evidence bundle composing existing gates | partial | `research/cycle_gates.py:DEFAULT_HALT_ON` + `effective_halt_on` compose halt gates only (halt-only, no assess bundle); `research/cycle_reads.py` read helpers exist | P1: compose cycle+IRR+exhaustiveness+calibration+quote/stability evidence into one `assess` result |
-| U5 | Commands assess/review-release/release/status/compare on CLI/MCP/HTTP | absent | `surface_registry.py:SURFACES` has none of them; `cli.py` registers research/coding/codebook/review groups only | P1: handlers + surface rows + parity test (`surface_registry_parity.assert_full_surface_parity` is ready for the P5 enforcement flip) |
-| U6 | Harness UX: review packet, slash-command/skill templates, next-action hints | partial | `surface_registry.py:WRAPPERS` + `scripts/gen_harness_pack.py` generate the command pack; `research/guide_copy.py` carries guided copy; no review-release packet renderer | P1/P5: review packet (JSON + markdown via `cycle_render.py`) |
+| U5 | Commands assess/review-release/release/status/compare on CLI/MCP/HTTP | done | ONE shared handler per op (`handlers/release_handlers.py`: `assess_release`/`request_release`/`review_release`/`execute_release`/`status_report`/`compare_version_releases`); all three transports wired — CLI group `corpus-kb release ...` (`cli_release.py`, mounted in `cli.py`), MCP `release_*` tools (`tools/release_tools.py`, names in `validate_configs.VALID_TOOL_NAMES`), HTTP `/api/release/*` (`api/research_http.py`); surface rows in `surface_registry.py` with full cli+mcp+http parity; D1 status payload (stage/state/blockers/literal next command/sufficiency) + D3 honest exit codes + D4 stable payload schemas pinned by `tests/test_surface_parity.py`. DEVIATION (documented): a sixth surface `release-request` was added — no production path opened release drafts before P7, so the five v6 §6 commands were unreachable without it; and `release-execute` records the freshly evaluated gate results on the DRAFT before the transition (same pure gate functions `assess` reports — recording is bookkeeping, not new evidence) | — (P7 landed; see Addendum below) |
+| U6 | Harness UX: review packet, slash-command/skill templates, next-action hints | done | review packet: `handlers/release_handlers.py:ReviewPacket` (evidence, failing + not_evaluable gates, waivers, SPECIFIC next actions) rendered by `cli_release.py:_print_review_packet`; slash-command/skill template `corpus-release` GENERATED from `surface_registry.py:WRAPPERS` via `scripts/gen_harness_pack.py` (`.claude/commands/` + `.opencode/command/`, drift-gated); next-action hints are guide_copy literals (`research/guide_copy.py:RELEASE_NEXT_*` — every `release status`/packet `recommended_next_action` is a runnable `corpus-kb release ...` command) | — (P7 landed) |
 | U7 | Code-definition completeness gate | partial | `domain/codebook.py:CodebookVersion.add_codes` requires name+definition; `refine_definition` holds inclusion/exclusion; exemplars via `add_exemplar_texts` (text_sha256 refs) — data model complete, no GATE | P2: completeness gate over the aggregate fields |
 | U8 | Unitization agreement gate | partial | `coding/coder_window.py` (window boundary units) + `coding/quote_verification.py` (span verification, exact/normalized_match/not_found) — logic exists, no agreement GATE | P2: boundary-agreement gate reusing span logic |
 | U9 | Partition independence/leakage gate | absent | `partitioning.py` is the unstructured partition wrapper (doc chunking), no discovery/calibration/test/audit disjointness anywhere | P2: partition disjointness gate |
@@ -36,7 +36,7 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
 | U22 | Benchmark: halfvec, 256-d probe, scan modes, binary+rerank | absent | `scripts/bench_setup.py:main` is a declared placeholder | P3: benchmark harness under `docs/research/benchmarks/` |
 | U23 | pg_textsearch BM25 + RRF benchmark | absent | `grep pg_textsearch` = 0 hits (also AGPL-check: NOT adopted, per license rule native FTS stays) | P3: benchmark-only, adopt only if it wins |
 | U24 | Deduction guard: warn/enforce/--allow-draft sandbox | done | `research/deduction_guard.py:decide_guard` + `guard_deductive_run` (reads `research.release.enforcement`/`default_profile` from config via `release_guard_settings`); wired into `research/deductive_run.py:run_deductive` (block = honest `blocked_unreleased_draft` status, no run started; `allow_draft` labels the run `sandbox`) | — (P5/P7: CLI `--allow-draft`/`--no-cache` flags on the five-command surface) |
-| U25 | Monitoring creates change proposals, never mutates releases | done | `research/monitoring.py:alarms_from_findings` + `propose_from_alarms` (successor draft via `ReleaseService.propose_change`, alarms in `metric_snapshots.monitoring_alarms`); wired at the cycle stage boundaries (`research/cycle.py:_propose_alarms`); parent state/hash never mutated | — (P7: proposals rendered by the release/status surface) |
+| U25 | Monitoring creates change proposals, never mutates releases | done | `research/monitoring.py:alarms_from_findings` + `propose_from_alarms` (successor draft via `ReleaseService.propose_change`, alarms in `metric_snapshots.monitoring_alarms`); wired at the cycle stage boundaries (`research/cycle.py:_propose_alarms`); parent state/hash never mutated | — (P7 done: proposals render on the status surface, `handlers/release_handlers.py:status_report:pending_change_proposals`) |
 | U26 | License hygiene | done | `scripts/generate_license_lock.py` (regenerates from importlib.metadata) + `.github/workflows/license-check.yml:license-check` (`--check` gate) + committed `licenses.lock.json` (145 packages). No GPL/AGPL packages found. Flagged weak-copyleft (pre-existing, accepted): psycopg/psycopg2-binary/psycopg-pool LGPL, certifi+tqdm MPL-2.0, dirtyjson AFL-3.0 | — (keep lock in lockstep when deps change) |
 | U27 | REFI-QDA export/import vs official XSD | absent | `grep REFI` = 0 hits | P6 |
 | U28 | MAPIE conformal cross-check in tests only | absent | `grep MAPIE` = 0 hits (repo has own conformal code) | P6 |
@@ -61,15 +61,59 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
 | U47 | Confidence-signal benchmark | done | signals exist (`coding/uncertainty/` tiers 0–3, `review_priority.py` router) + `coding/confidence_calibration.py` (AUROC/ECE/Brier, Platt/isotonic calibrator, evaluate-once test split); consumed as the routing score by `research/review_routing.py:route_for_review` | — |
 | U48 | Evidence-quote verification + multi-run consensus | done | quote verification DONE (`coding/quote_verification.py`); multi-run consensus `research/release/consensus.py:aggregate_runs` wired to the live `research.consensus.runs` via `research/cycle_consensus.py` (cycle inductive stage = N independent passes); reviewer rubric recorded via `research/review_surface.py:execute_rubric_review` + `aggregate_rubric` (ReviewerRubricRecorded events) | — (P7: rubric CLI/HTTP rows) |
 
-## Tallies (verified 2026-10-09, wave-2 enforcement branch)
+## Tallies (verified 2026-10-12, P7 surface-parity wave)
 
-- **done = 10** — U3, U20, U24, U25, U26, U37, U40, U41, U47, U48
-- **partial = 16** — U4, U6, U7, U8, U11, U16, U17, U18, U19, U30, U32,
+- **done = 12** — U3, U5, U6, U20, U24, U25, U26, U37, U40, U41, U47, U48
+- **partial = 15** — U4, U7, U8, U11, U16, U17, U18, U19, U30, U32,
   U35, U36, U44, U45, U46
-- **absent = 22** — U1, U2, U5, U9, U10, U12, U13, U14, U15, U21, U22,
+- **absent = 21** — U1, U2, U9, U10, U12, U13, U14, U15, U21, U22,
   U23, U27, U28, U29, U31, U33, U34, U38, U39, U42, U43
 
-10 + 16 + 22 = 48 rows.
+12 + 15 + 21 = 48 rows. (U1/U2/U9/U10/U43 "absent" rows are stale relative
+to the wave-1/wave-2 branches — the release layer, gates, and enforcement
+exist on `feature/kb-u48-p7-surface-parity`; this table's Step-0 statuses
+were verified against `feature/kb-u48-p0-reconciliation` and only the U5/U6
+rows were re-verified in P7. A full re-tally is the next reconciliation
+pass's job; the U5/U6 flips above carry their own evidence.)
+
+## Addendum (P7 surface-parity wave, 2026-10-12)
+
+1. **MECE enforcement is ON.** `surface_registry_parity.assert_parity_outside_allowlist`
+   runs against the live registry in `tests/test_surface_registry_consistency.py`
+   and `tests/test_surface_parity.py`: every research/release operation must
+   be reachable on cli+mcp+http, with ONE documented exception set,
+   `surface_registry_parity.TRANSPORT_ALLOWLIST`:
+   - `research-cycle` — no HTTP route by design: interactive in/on/out-of-loop
+     postures, the blocking approval boundary, and foreground `--watch` are
+     not a mechanical request/response.
+   - `research-demo` — CLI-only by design (registry rule r13): no MCP tool,
+     no HTTP route.
+   Both render in the doctor (`corpus-kb doctor` → "surface parity
+   (cli+mcp+http)" check, `_setup/doctor_research.py:surface_parity_check`),
+   which fails the CHECK (never the doctor exit code) if any other surface
+   loses a transport. A stale allowlist entry (its surface gained the
+   missing transports) is an error, not dead documentation.
+2. **The mechanical sweep.** Eleven pre-existing surfaces got HTTP routes in
+   `api/research_http.py` by following the existing adapter pattern (parse
+   body → call the shared tool function → serialize): ingest-transcript,
+   ingest, coding run, inductive, codebook promote, governance report,
+   review execute (accept + override share the route, as they share the MCP
+   tool), and the four notebook views. Two were allowlisted instead (above).
+3. **`release-request` is a sixth surface, on purpose.** v6 §6 names five
+   commands, but nothing in the repo ever opened a `draft_candidate` release
+   (the service existed; no surface called `request_release`), so four of
+   the five commands had nothing to operate on and `status` could not name
+   a runnable next action. `release-request` is registered with full
+   parity like the others and documented in the harness pack.
+4. **`release-execute` records evaluated gate results.** Gates are pure
+   functions over evidence; executing a release composes the SAME bundle
+   `assess` reports, records each result on the DRAFT
+   (`ReleaseService.record_gate_result`), applies explicit `--waive
+   GATE=justification` entries, then transitions under the profile's
+   enforcement. Recording is bookkeeping of deterministic evaluations — no
+   new evidence is invented, and a refusal is structured data (CLI exit 1,
+   HTTP 409), never a crash.
+
 
 ## Spec-vs-repo discrepancies found in Step 0 (repo won)
 
@@ -113,3 +157,6 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
 | `coding/alt_test.py` | ~288 | Paper-exact implementation (indicators, FDR, AP measure) kept inspectable in one module per the U13 isolation requirement. |
 | `coding/aggregation.py` | ~277 | Dawid-Skene EM and weak-supervision aggregation share the posterior machinery (U33/U38). |
 | `research/release/service.py` | ~253 | Release lifecycle transitions + compare; projector interaction tested as a unit. |
+| `handlers/release_handlers.py` | ~720 (P7) | ONE shared handler per v6 §6 operation plus the typed payload dataclasses that keep the three transports byte-identical; splitting payloads from handlers would put the D4 schema pin in two files. |
+| `cli_release.py` | ~470 (P7) | The six-command release group: flag parsing, packet/status renderers (guide_copy-driven), and exit-code mapping in one surface file; `cli.py` stays the shared `_run_async` owner. |
+| `api/research_http.py` | ~290 (P7) | The declarative route table for 17 research/release routes; the table IS the parity surface (`tests/test_surface_parity.py` pins it against the registry). |

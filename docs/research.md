@@ -178,3 +178,42 @@ escalation batch gets exactly one human pass.
 happening, what to look at, proposed codes with example units, and
 promote-vs-skip consequences); `--json` emits one machine-readable
 stage/gate event per line for agents.
+
+## Release lifecycle (U5, v6 §6)
+
+`corpus-kb release ...` walks one codebook version from draft to released
+codebook. ONE handler per operation (`handlers/release_handlers.py`)
+backs all three transports — the CLI commands, the `release_*` MCP tools,
+and the `/api/release/*` HTTP routes — so the payloads are identical
+across surfaces and every command takes `--json`.
+
+The lifecycle: `request` opens a `draft_candidate` release pinned to the
+current codebook content hash; `assess` composes EVERY registered gate
+over the evidence the read models can supply and WRITES NOTHING;
+`review` renders the packet (per-gate evidence, failing +
+not_evaluable gates, waivers, the exact next commands); `release`
+re-evaluates, records the gate results on the draft, applies any
+explicit `--waive GATE=justification`, and executes the transition with a
+REQUIRED `--approver`; `status` and `compare` read the trail.
+
+Honesty contract (v6 §6):
+
+- `assess` never fails on `not_evaluable` gates — it REPORTS them (exit 0)
+  beside `data_sufficiency` flags that say which evidence blocks were
+  present; a gate never upgrades missing data into a pass.
+- `release` refusal is structured, not a crash: under
+  `enforcement=enforce` an unmet required gate set exits 1 with the
+  `blocked` payload (`unmet_required_gates` + reason); default
+  `enforcement=warn` releases WITH explicit warnings. Profiles
+  (exploratory / team-codebook / high-assurance) and enforcement live in
+  the `research.release.*` config block.
+- `status` never invents state: no release row is `pre_draft`, and
+  `recommended_next_action` is always a LITERAL runnable
+  `corpus-kb release ...` command for the current stage
+  (`current_stage`, `release_state`, `blocking_criteria`,
+  `pending_change_proposals`, `data_sufficiency`).
+
+Monitoring change proposals (U25) render on `release status` as
+`pending_change_proposals`: successors of a RELEASED parent, created by
+the cycle's alarms — the parent's released state, manifest hash, and
+codebook hash are never mutated.

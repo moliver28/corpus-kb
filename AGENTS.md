@@ -99,7 +99,7 @@ All active code is under `src/corpus_kb/`:
 - `src/corpus_kb/partitioning.py` — Unstructured partition wrapper.
 - `src/corpus_kb/chunking/` — File type detection → chunker dispatch. Strategy pattern: CodeChunker (tree-sitter AST), MarkdownChunker (heading boundaries), TextChunker (semantic gap detection).
 - `src/corpus_kb/storage/` — `PostgresGraphStore` (asyncpg + RLS), `AgeGraphStore`, `LlamaIndexPostgresBackend`, and `RagBackend` Protocol.
-- `src/corpus_kb/rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `HybridSearcher`, `Reranker`.
+- `src/corpus_kb/rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `Reranker`. Hybrid lexical+vector search is SQL-side — `corpus.rrf_fusion` (migration 006) orchestrated by `handlers/query_handler.py` (`QueryHandler`) and `research/retrieval.py` — there is no `HybridSearcher` class.
 - `src/corpus_kb/tools/` — MCP tools. `ingest_common.py` is the pipeline orchestrator (partition → chunk → embed → extract → store). `ingest_tools.py` is the thin MCP tool wrapper.
 - `src/corpus_kb/extraction/` — Pluggable ontology extractor: `protocol.py`, `regex_backend.py`, `langextract_backend.py`, `pgml_backend.py`, `bert_backend.py`.
 - `src/corpus_kb/_setup/` — `install.py` (full-stack installer), `migrate.py`, `validate_configs.py`, `check_ci.py`.
