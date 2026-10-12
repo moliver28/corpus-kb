@@ -96,8 +96,12 @@ LICENSE_TEXT_URLS = {
 # ("BSD-2-Clause AND Apache-2.0 WITH LLVM-exception") while its Windows wheel
 # only ships License-File entries, so the generic extractor reports UNKNOWN.
 # Pin those to a canonical value so the lock is identical on every platform.
+# tiktoken's only License metadata is the FULL MIT license TEXT (no
+# expression, no classifier), which defeats string normalization; the text
+# itself was hand-verified as MIT ("Copyright (c) 2022 OpenAI, Shantanu Jain").
 LICENSE_OVERRIDES = {
     "llvmlite": "BSD-2-Clause AND Apache-2.0 WITH LLVM-exception",
+    "tiktoken": "MIT",
 }
 
 

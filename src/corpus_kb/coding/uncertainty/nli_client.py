@@ -27,6 +27,13 @@ logger = logging.getLogger(__name__)
 NLI_MODEL = "qwen3"
 NLI_TEMPERATURE = 0
 
+# Bound on every generate call (seconds). The ollama client otherwise waits
+# forever: a wedged server accepts TCP but never answers the POST, which hung
+# the whole pytest suite when Ollama died between the reachability probe and
+# the generate (2026-10-09). 120s covers a cold qwen3:4b load on CPU; slower
+# than that must DEGRADE (None) per the contract below, never hang.
+NLI_TIMEOUT_SECONDS = 120.0
+
 # FIXED prompt (nli_prompt_id pins its sha256 in the run manifest — r11
 # reproducibility). Single-word answer keeps parsing deterministic; the
 # qwen3 /no_think soft switch keeps the temperature-0 judgment short.
@@ -67,10 +74,14 @@ def parse_nli_reply(raw: str) -> bool | None:
 
 
 def _generate(prompt: str, model: str, base_url: str) -> str:
-    """Blocking Ollama generate at temperature 0 (worker thread)."""
+    """Blocking Ollama generate at temperature 0 (worker thread).
+
+    The explicit timeout is load-bearing: without it a server that accepts
+    the connection but never responds blocks the worker thread forever.
+    """
     from ollama import Client
 
-    response = Client(host=base_url).generate(
+    response = Client(host=base_url, timeout=NLI_TIMEOUT_SECONDS).generate(
         model=model,
         prompt=prompt,
         stream=False,
@@ -97,7 +108,17 @@ async def nli_mutual_entailment(
     try:
         raw = await asyncio.to_thread(_generate, build_nli_prompt(a, b), model, base_url)
         return parse_nli_reply(raw)
-    except (ConnectionError, OSError, httpx.NetworkError, ResponseError) as exc:
+    # TransportError is the common base of NetworkError, TimeoutException and
+    # ProtocolError (incl. RemoteProtocolError: a wedged server may accept the
+    # socket then disconnect without responding, which CI's linux runners hit).
+    # Any of these must degrade to None exactly like a refused connection
+    # (builtin TimeoutError is an OSError subclass and is already covered).
+    except (
+        ConnectionError,
+        OSError,
+        httpx.TransportError,
+        ResponseError,
+    ) as exc:
         logger.warning("NLI model call unavailable: %s", exc)
         return None
 

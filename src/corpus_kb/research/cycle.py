@@ -23,6 +23,7 @@ configured halt gates. ``codebook_promotion`` is HARD-FLOORED
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -56,6 +57,7 @@ from corpus_kb.research.cycle_stages import (
     stage_report,
 )
 from corpus_kb.research.cycle_state import _last_cycle_run, resume_point
+from corpus_kb.research.monitoring import Alarm, alarms_from_findings
 
 STAGES: tuple[str, ...] = ("ingest", "inductive", "deductive", "keywords", "report", "notebook")
 MODES: frozenset[str] = frozenset({"in", "on", "out"})
@@ -83,6 +85,68 @@ def _configured_halt_on(cfg: dict[str, Any]) -> list[str]:
     research_cfg = cast(dict[str, Any], cfg.get("research") or {})
     cycle_cfg = cast(dict[str, Any], research_cfg.get("cycle") or {})
     return [str(g) for g in (cycle_cfg.get("halt_on") or [])]
+
+
+async def _propose_alarms(
+    pool: asyncpg.Pool,
+    handler: Any,
+    tenant_id: UUID,
+    version_id: UUID | None,
+    alarms: list[Alarm],
+    json_output: bool,
+) -> dict[str, object] | None:
+    """U25: turn this cycle's monitored alarms into a change proposal.
+
+    Resolves the version's ACTIVE release through the release read tables;
+    without a released parent there is NOTHING to propose against and the
+    receipt says so. The proposal is a successor DRAFT via
+    ``ReleaseService.propose_change`` — the released codebook/manifest/hash
+    are never mutated. Returns the run-report receipt (None when the cycle
+    has no codebook version or no alarms).
+    """
+    from corpus_kb.research.cycle_reads import latest_version_id
+    from corpus_kb.research.deduction_guard import resolve_active_release
+    from corpus_kb.research.monitoring import propose_from_alarms
+
+    if not alarms:
+        return None
+    resolved = version_id or await latest_version_id(pool, tenant_id)
+    if resolved is None:
+        return None
+    active = await resolve_active_release(pool, tenant_id, resolved)
+    if active is None or not active.is_released:
+        receipt: dict[str, object] = {
+            "status": "no_active_release",
+            "codebook_version_id": str(resolved),
+            "alarms": [alarm.block() for alarm in alarms],
+            "reason": "monitoring alarms need a released parent; no released "
+            "release exists for this codebook version",
+        }
+    else:
+        aggregate = handler.app.repository.get(resolved)
+        record = aggregate.releases[str(active.release_id)]
+        parent_project = record.get("project_id")
+        receipt = propose_from_alarms(
+            aggregate,
+            parent_release_id=UUID(str(active.release_id)),
+            parent_manifest=dict(record["manifest_json"]),
+            alarms=alarms,
+            version_id=resolved,
+            sink=handler.app,
+            proposed_at=datetime.now(UTC).isoformat(),
+            project_id=UUID(str(parent_project)) if parent_project else None,
+        )
+    if not json_output:
+        if receipt.get("status") == "change_proposed":
+            print(
+                guide_copy.CYCLE_PROPOSAL_RECORDED.format(
+                    successor=receipt.get("successor_release_id"),
+                    parent=receipt.get("parent_release_id"),
+                )
+            )
+        elif receipt.get("status") == "no_active_release":
+            print(guide_copy.CYCLE_PROPOSAL_NO_PARENT.format(version=resolved))
+    return receipt
 
 
 async def _embedder_abstains(pool: asyncpg.Pool, config: dict[str, Any]) -> bool:
@@ -151,6 +215,7 @@ async def run_cycle(
     )
     run_id = str(started["run_id"])
     recorder.emit(EVENT_CYCLE_STARTED, run_id=run_id, mode=mode, stages=list(STAGES))
+    alarms: list[Alarm] = []  # U25: monitored alarms across this cycle's stages
     if guide and not json_output:
         print(guide_copy.CYCLE_TITLE)
         print(guide_copy.CYCLE_INTRO)
@@ -167,7 +232,7 @@ async def run_cycle(
 
     for stage in stages_after(resume_after):
         recorder.emit(EVENT_STAGE_STARTED, run_id=run_id, stage=stage)
-        receipt = await _run_stage(
+        receipt = await _run_stage_or_consensus(
             stage,
             pool,
             stack,
@@ -205,6 +270,7 @@ async def run_cycle(
             handler, stack, tenant_id, UUID(run_id), {"kind": "stage_complete", "stage": stage}
         )
         findings = await gate_findings_for(stage, receipt, pool, tenant_id)
+        alarms.extend(alarms_from_findings(findings))
         halted = _halted_gate(findings, halt_set, suppressed)
         if halted is not None:
             return await halt_and_record(
@@ -220,6 +286,11 @@ async def run_cycle(
                 halted,
             )
         if mode == "in":
+            # The proposal itself is event-sourced (ReleaseService persists
+            # through the app), so the receipt needs no checkpoint here.
+            await _propose_alarms(
+                pool, handler, tenant_id, codebook_version_id, alarms, json_output
+            )
             handler.stop_coding_run(tenant_id, UUID(run_id))
             return 0
         if mode == "on":
@@ -227,9 +298,14 @@ async def run_cycle(
             if stop is not None:
                 return stop
 
-    await seal(
-        handler, stack, tenant_id, UUID(run_id), {"kind": "cycle_complete", "stages": STAGES}
+    proposal_receipt = await _propose_alarms(
+        pool, handler, tenant_id, codebook_version_id, alarms, json_output
     )
+    seal_payload: dict[str, object] = {"kind": "cycle_complete", "stages": STAGES}
+    if proposal_receipt is not None:
+        # U25: the run-report payload surfaces the change proposals.
+        seal_payload["change_proposals"] = proposal_receipt
+    await seal(handler, stack, tenant_id, UUID(run_id), seal_payload)
     recorder.emit(EVENT_CYCLE_COMPLETED, run_id=run_id, stages=list(STAGES))
     handler.stop_coding_run(tenant_id, UUID(run_id))
     return 0
@@ -257,3 +333,45 @@ async def _run_stage(
     if stage == "report":
         return await stage_report(pool, stack, tenant_id, project_id, version_id)
     return await stage_notebook(pool, stack, tenant_id, cfg, project_id, question)
+
+
+async def _run_stage_or_consensus(
+    stage: str,
+    pool: asyncpg.Pool,
+    stack: tuple[Any, ...],
+    tenant_id: UUID,
+    cfg: dict[str, Any],
+    project_id: UUID | None,
+    ingest_dir: str | None,
+    question: str | None,
+    version_id: UUID | None,
+) -> dict[str, object]:
+    """The inductive stage becomes the U48 N-run consensus when configured.
+
+    ``research.consensus.runs`` (live through cycle_consensus) decides: 1
+    keeps the single-pass stage verbatim; N >= 2 runs N INDEPENDENT inductive
+    passes and aggregates their proposals through the release-layer consensus
+    before themes surface. Every other stage is unchanged.
+    """
+    if stage != "inductive":
+        return await _run_stage(
+            stage, pool, stack, tenant_id, cfg, project_id, ingest_dir, question, version_id
+        )
+    from corpus_kb.research.cycle_consensus import consensus_settings, run_inductive_consensus
+
+    if consensus_settings(cfg).runs <= 1:
+        return await _run_stage(
+            stage, pool, stack, tenant_id, cfg, project_id, ingest_dir, question, version_id
+        )
+
+    async def run_once() -> dict[str, object]:
+        return await _run_stage(
+            stage, pool, stack, tenant_id, cfg, project_id, ingest_dir, question, version_id
+        )
+
+    # runs > 1 here, so the consensus runner always returns a receipt; the
+    # fallback keeps the stage contract (an honest unavailable, never None).
+    receipt = await run_inductive_consensus(pool, tenant_id, cfg, project_id, run_once)
+    if receipt is None:
+        return {"status": "unavailable", "reason": "consensus runner returned no receipt"}
+    return receipt

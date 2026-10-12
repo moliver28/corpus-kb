@@ -8,12 +8,17 @@ residual/tau_res math lives there; THIS module owns re-clustering —
   stability and candidate-missing-code grouping; callers with the inductive
   extra pass the engine's HDBSCAN pipeline instead);
 * bootstrap stability: >=10 resamples, mean pairwise ARI (>=0.75 stable);
-* per-group mean silhouette (cosine space) for the overlap section.
+* per-group mean silhouette (cosine space) for the overlap section;
+* top-term Jaccard content stability (U16): mean pairwise Jaccard of the
+  top-K term sets across seed/bootstrap runs, reported SEPARATELY from the
+  membership ARI (v6 §7 U16: gate on content stability, report membership
+  stability beside it).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import TypeVar
 
 import numpy as np
@@ -178,3 +183,54 @@ def silhouette_by_group(
             scores.append((b - a) / denom if denom > 0 else 0.0)
         result[label] = float(np.mean(scores))
     return result
+
+
+@dataclass(frozen=True)
+class TopTermStability:
+    """Content stability of clustering runs by top-term overlap (U16)."""
+
+    mean_jaccard: float | None  # None when fewer than 2 runs
+    n_runs: int
+    k: int
+    threshold: float
+
+
+def _jaccard(a: frozenset[str], b: frozenset[str]) -> float:
+    if not a and not b:
+        return 1.0
+    union = a | b
+    return len(a & b) / len(union) if union else 1.0
+
+
+def top_term_jaccard(
+    runs: Sequence[Sequence[str]],
+    k: int = 10,
+    threshold: float = 0.7,
+) -> TopTermStability:
+    """Mean pairwise Jaccard of top-K term sets across runs (U16).
+
+    Args:
+        runs: One ranked top-terms list per clustering run (e.g. the
+            keyness top terms of each seed/bootstrap re-run), best first.
+        k: Top-K truncation per run before the set comparison.
+        threshold: Content-stability floor the gate compares against
+            (membership ARI is reported separately by
+            ``bootstrap_stability``; this metric gates CONTENT stability).
+
+    Returns:
+        TopTermStability. Fewer than 2 runs -> mean_jaccard None (honest
+        not-evaluable upstream), never a fabricated 1.0.
+    """
+    if len(runs) < 2:
+        return TopTermStability(mean_jaccard=None, n_runs=len(runs), k=k, threshold=threshold)
+    top_sets = [frozenset(run[:k]) for run in runs]
+    pair_jaccards: list[float] = []
+    for i in range(len(top_sets)):
+        for j in range(i + 1, len(top_sets)):
+            pair_jaccards.append(_jaccard(top_sets[i], top_sets[j]))
+    return TopTermStability(
+        mean_jaccard=float(np.mean(pair_jaccards)),
+        n_runs=len(runs),
+        k=k,
+        threshold=threshold,
+    )

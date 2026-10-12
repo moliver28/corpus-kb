@@ -17,17 +17,25 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
+# Bound on every generate call (seconds). Same contract as nli_client.py
+# (commit 3e37bed): the ollama client otherwise waits forever — a wedged
+# server accepts TCP but never answers the POST, which hangs the worker
+# thread. 120s covers a cold qwen3:4b load on CPU; slower than that must
+# DEGRADE ({"error": ...}) per the contract in call_ollama, never hang.
+CODER_GENERATE_TIMEOUT_SECONDS = 120.0
+
 
 def _generate(window: str, model: str, base_url: str) -> tuple[Any, Any]:
     """Blocking Ollama generate, returning (raw_text, logprobs).
 
     Runs on a worker thread (see call_ollama): the ollama client is fully
     synchronous, so calling it inline would stall the ASGI event loop for the
-    whole generation and block every other in-flight request.
+    whole generation and block every other in-flight request. The explicit
+    client timeout is load-bearing (see CODER_GENERATE_TIMEOUT_SECONDS).
     """
     from ollama import Client
 
-    response = Client(host=base_url).generate(
+    response = Client(host=base_url, timeout=CODER_GENERATE_TIMEOUT_SECONDS).generate(
         model=model,
         prompt=window,
         stream=False,
@@ -72,6 +80,7 @@ async def call_ollama(
         ConnectionError,
         OSError,
         httpx.NetworkError,
+        httpx.TimeoutException,
         ResponseError,
         json.JSONDecodeError,
     ) as exc:

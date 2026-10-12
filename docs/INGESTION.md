@@ -410,7 +410,9 @@ The pipeline supports three extractors via a strategy pattern:
 | `search.matryoshka_enabled` | `false` | Enable two-tier 1024d ANN retrieval |
 | `search.matryoshka_dim` | `1024` | Dimension of the front-sliced projection |
 | `search.candidate_multiplier` | `8` | Candidate multiplier for matryoshka retrieval |
-| `search.hnsw_ef_search` | `100` | HNSW ef_search parameter |
+| `search.hnsw.iterative_scan` | `strict_order` | Transaction-local pgvector iterative scan mode (off/relaxed_order/strict_order; needs pgvector >= 0.8) |
+| `search.hnsw.ef_search` | `200` | Transaction-local HNSW ef_search (SET LOCAL per retrieval transaction) |
+| `search.hnsw.max_scan_tuples` | `20000` | Transaction-local HNSW max_scan_tuples cap |
 | `contextual.enabled` | `false` | Enable contextual retrieval for all source types |
 | `contextual.enabled_source_types` | `["interview", "research"]` | Source types that always get contextual blurbs |
 | `contextual.model` | `qwen3:4b` | Model for blurb generation |

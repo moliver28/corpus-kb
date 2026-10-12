@@ -9,6 +9,7 @@ import pytest
 
 from corpus_kb.domain.models import SearchQuery, SearchResult
 from corpus_kb.handlers.query_handler import QueryHandler
+from tests.mock_pg import transaction_cm
 
 
 @pytest.mark.asyncio
@@ -40,6 +41,7 @@ async def test_hybrid_search_rrf_fusion() -> None:
     did = UUID("00000000-0000-0000-0000-000000000002")
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
+    mock_conn.transaction = MagicMock(return_value=transaction_cm())
     mock_conn.fetch = AsyncMock(
         side_effect=[
             [
@@ -85,6 +87,51 @@ async def test_hybrid_search_rrf_fusion() -> None:
     assert len(results) == 1
     assert results[0].chunk_id == cid
     assert results[0].score == pytest.approx(2.0 / 61)
+
+
+@pytest.mark.asyncio
+async def test_rrf_k_config_flows_into_fusion_call() -> None:
+    """search.rrf_k must reach corpus.rrf_fusion — the literal 60 was inert
+    (U45 finding: a typed reader existed but the call site never read it)."""
+    cid = UUID("00000000-0000-0000-0000-000000000001")
+    did = UUID("00000000-0000-0000-0000-000000000002")
+    mock_conn = AsyncMock()
+    mock_conn.execute = AsyncMock()
+    mock_conn.transaction = MagicMock(return_value=transaction_cm())
+    mock_conn.fetch = AsyncMock(
+        side_effect=[
+            [{"chunk_id": cid, "text": "vector hit", "doc_id": did, "source": "s1", "score": 0.9}],
+            [{"chunk_id": cid, "text": "fts hit", "doc_id": did, "source": "s1", "score": 0.5}],
+            [
+                {
+                    "chunk_id": cid,
+                    "text": "fts hit",
+                    "source": "s1",
+                    "doc_id": did,
+                    "score": 2.0 / 43,
+                }
+            ],
+        ]
+    )
+    mock_pool = MagicMock()
+    mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
+    mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    embedder = MagicMock()
+    embedder.embed.return_value = [0.0] * 768
+
+    handler = QueryHandler(
+        pool=mock_pool,
+        embedder=embedder,
+        config={"embedding": {"provider": "pgml"}, "search": {"rrf_k": 42}},
+    )
+    await handler.handle_search(SearchQuery(query="test", k=1))
+
+    fusion_call = mock_conn.fetch.call_args_list[2]
+    assert "corpus.rrf_fusion" in fusion_call.args[0]
+    # args = (sql, payload_vector, payload_fts, query.k, rrf_k)
+    assert fusion_call.args[3] == 1  # query.k unchanged
+    assert fusion_call.args[4] == 42  # was hardcoded 60
 
 
 def test_search_query_and_result_have_new_fields() -> None:
