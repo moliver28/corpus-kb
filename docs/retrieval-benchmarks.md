@@ -23,14 +23,14 @@ config via `research/retrieval_settings.py`), and the default-flip gate
 (`recommend_default`) demands a measured report where RRF ≥ vector-only on
 recall@k inside the latency budget before anything changes.
 
-New config keys (orchestrator wires into both YAMLs at the checkpoint; the
-module defaults are live until then):
+Config keys (live in `config.py` + both YAMLs; `RetrievalSettings` is the
+typed reader). Return truncation is owned by each query's `k` field — there
+is deliberately no `return_top_k` knob.
 
-| key | default | reader |
+| key | shipped default | reader |
 |---|---|---|
 | `search.rrf_k` | 60 | `RetrievalSettings.rrf_k` |
-| `search.candidates_per_branch` | 50 | `RetrievalSettings.candidates_per_branch` |
-| `search.return_top_k` | 10 | `RetrievalSettings.return_top_k` |
+| `search.candidates_per_branch` | 150 (committed upgrade-program value; module default 50) | `RetrievalSettings.candidates_per_branch` |
 | `search.exact_filter_selectivity_threshold` | 0.05 | `RetrievalSettings.exact_filter_selectivity_threshold` |
 
 ## U21 — exact-scan fallback (wired)
