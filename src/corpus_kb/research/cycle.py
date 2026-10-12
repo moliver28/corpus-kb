@@ -103,6 +103,11 @@ async def _propose_alarms(
     ``ReleaseService.propose_change`` — the released codebook/manifest/hash
     are never mutated. Returns the run-report receipt (None when the cycle
     has no codebook version or no alarms).
+
+    ADVERSARIAL REVIEW F4: proposal/aggregate drift or a malformed manifest
+    must not raise out of a COMPLETED cycle (the stages are done; an
+    exception here used to leak the open run with no checkpoint). A failure
+    lands as an honest ``proposal_failed`` receipt (reason string) instead.
     """
     from corpus_kb.research.cycle_reads import latest_version_id
     from corpus_kb.research.deduction_guard import resolve_active_release
@@ -113,29 +118,37 @@ async def _propose_alarms(
     resolved = version_id or await latest_version_id(pool, tenant_id)
     if resolved is None:
         return None
-    active = await resolve_active_release(pool, tenant_id, resolved)
-    if active is None or not active.is_released:
-        receipt: dict[str, object] = {
-            "status": "no_active_release",
+    try:
+        active = await resolve_active_release(pool, tenant_id, resolved)
+        if active is None or not active.is_released:
+            receipt: dict[str, object] = {
+                "status": "no_active_release",
+                "codebook_version_id": str(resolved),
+                "alarms": [alarm.block() for alarm in alarms],
+                "reason": "monitoring alarms need a released parent; no released "
+                "release exists for this codebook version",
+            }
+        else:
+            aggregate = handler.app.repository.get(resolved)
+            record = aggregate.releases[str(active.release_id)]
+            parent_project = record.get("project_id")
+            receipt = propose_from_alarms(
+                aggregate,
+                parent_release_id=UUID(str(active.release_id)),
+                parent_manifest=dict(record["manifest_json"]),
+                alarms=alarms,
+                version_id=resolved,
+                sink=handler.app,
+                proposed_at=datetime.now(UTC).isoformat(),
+                project_id=UUID(str(parent_project)) if parent_project else None,
+            )
+    except Exception as exc:
+        receipt = {
+            "status": "proposal_failed",
             "codebook_version_id": str(resolved),
             "alarms": [alarm.block() for alarm in alarms],
-            "reason": "monitoring alarms need a released parent; no released "
-            "release exists for this codebook version",
+            "reason": f"{type(exc).__name__}: {exc}",
         }
-    else:
-        aggregate = handler.app.repository.get(resolved)
-        record = aggregate.releases[str(active.release_id)]
-        parent_project = record.get("project_id")
-        receipt = propose_from_alarms(
-            aggregate,
-            parent_release_id=UUID(str(active.release_id)),
-            parent_manifest=dict(record["manifest_json"]),
-            alarms=alarms,
-            version_id=resolved,
-            sink=handler.app,
-            proposed_at=datetime.now(UTC).isoformat(),
-            project_id=UUID(str(parent_project)) if parent_project else None,
-        )
     if not json_output:
         if receipt.get("status") == "change_proposed":
             print(
@@ -146,6 +159,8 @@ async def _propose_alarms(
             )
         elif receipt.get("status") == "no_active_release":
             print(guide_copy.CYCLE_PROPOSAL_NO_PARENT.format(version=resolved))
+        elif receipt.get("status") == "proposal_failed":
+            print(guide_copy.CYCLE_PROPOSAL_FAILED.format(reason=receipt.get("reason")))
     return receipt
 
 
@@ -180,6 +195,7 @@ async def run_cycle(
     json_output: bool = False,
     approve: Callable[[str], Awaitable[bool]] | None = None,
     cfg: dict[str, Any] | None = None,
+    allow_draft: bool = False,
 ) -> int:
     """Run the research cycle in one posture; returns the process exit code."""
     if mode not in MODES:
@@ -242,6 +258,7 @@ async def run_cycle(
             ingest_dir,
             question,
             codebook_version_id,
+            allow_draft,
         )
         if str(receipt.get("status")) == "unavailable":
             recorder.emit(
@@ -269,7 +286,7 @@ async def run_cycle(
         await seal(
             handler, stack, tenant_id, UUID(run_id), {"kind": "stage_complete", "stage": stage}
         )
-        findings = await gate_findings_for(stage, receipt, pool, tenant_id)
+        findings = await gate_findings_for(stage, receipt, pool, tenant_id, cfg)
         alarms.extend(alarms_from_findings(findings))
         halted = _halted_gate(findings, halt_set, suppressed)
         if halted is not None:
@@ -287,10 +304,21 @@ async def run_cycle(
             )
         if mode == "in":
             # The proposal itself is event-sourced (ReleaseService persists
-            # through the app), so the receipt needs no checkpoint here.
-            await _propose_alarms(
+            # through the app), so a success needs no checkpoint here; a
+            # failed proposal lands its receipt on the stage checkpoint
+            # (same kind/stage — resume semantics unchanged) instead of
+            # vanishing with the process (F4).
+            proposal = await _propose_alarms(
                 pool, handler, tenant_id, codebook_version_id, alarms, json_output
             )
+            if proposal is not None:
+                await seal(
+                    handler,
+                    stack,
+                    tenant_id,
+                    UUID(run_id),
+                    {"kind": "stage_complete", "stage": stage, "change_proposals": proposal},
+                )
             handler.stop_coding_run(tenant_id, UUID(run_id))
             return 0
         if mode == "on":
@@ -321,13 +349,18 @@ async def _run_stage(
     ingest_dir: str | None,
     question: str | None,
     version_id: UUID | None,
+    allow_draft: bool = False,
 ) -> dict[str, object]:
     if stage == "ingest":
         return await stage_ingest(pool, stack, tenant_id, project_id, ingest_dir)
     if stage == "inductive":
         return await stage_inductive(pool, stack, tenant_id, cfg, project_id)
     if stage == "deductive":
-        return await stage_deductive(pool, stack, tenant_id, project_id, version_id)
+        # cfg/allow_draft reach the U24 guard inside run_deductive — the
+        # injected config decides enforcement, never a disk reload (F8).
+        return await stage_deductive(
+            pool, stack, tenant_id, project_id, version_id, cfg=cfg, allow_draft=allow_draft
+        )
     if stage == "keywords":
         return await stage_keywords(pool, tenant_id, version_id)
     if stage == "report":
@@ -345,6 +378,7 @@ async def _run_stage_or_consensus(
     ingest_dir: str | None,
     question: str | None,
     version_id: UUID | None,
+    allow_draft: bool = False,
 ) -> dict[str, object]:
     """The inductive stage becomes the U48 N-run consensus when configured.
 
@@ -355,18 +389,45 @@ async def _run_stage_or_consensus(
     """
     if stage != "inductive":
         return await _run_stage(
-            stage, pool, stack, tenant_id, cfg, project_id, ingest_dir, question, version_id
+            stage,
+            pool,
+            stack,
+            tenant_id,
+            cfg,
+            project_id,
+            ingest_dir,
+            question,
+            version_id,
+            allow_draft,
         )
     from corpus_kb.research.cycle_consensus import consensus_settings, run_inductive_consensus
 
     if consensus_settings(cfg).runs <= 1:
         return await _run_stage(
-            stage, pool, stack, tenant_id, cfg, project_id, ingest_dir, question, version_id
+            stage,
+            pool,
+            stack,
+            tenant_id,
+            cfg,
+            project_id,
+            ingest_dir,
+            question,
+            version_id,
+            allow_draft,
         )
 
     async def run_once() -> dict[str, object]:
         return await _run_stage(
-            stage, pool, stack, tenant_id, cfg, project_id, ingest_dir, question, version_id
+            stage,
+            pool,
+            stack,
+            tenant_id,
+            cfg,
+            project_id,
+            ingest_dir,
+            question,
+            version_id,
+            allow_draft,
         )
 
     # runs > 1 here, so the consensus runner always returns a receipt; the

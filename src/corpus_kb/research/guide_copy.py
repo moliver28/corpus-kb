@@ -453,6 +453,21 @@ GATE_PARITY_ACTION = (
     "to human-only routing is already in effect"
 )
 
+GATE_UNRELEASED_DRAFT_TAUGHT = (
+    "The configured release enforcement is 'enforce', and this cycle's "
+    "codebook version has no released release. The deductive stage refused "
+    "to run: results would not be backed by a reviewed codebook, so the "
+    "cycle stops instead of silently coding against a draft."
+)
+GATE_UNRELEASED_DRAFT_LOOK = (
+    "Look at: the version id and the release state in the halt record - "
+    "no release at all, or a draft_candidate/superseded one."
+)
+GATE_UNRELEASED_DRAFT_ACTION = (
+    "release the codebook version (or consciously bypass with --allow-draft, "
+    "which labels the run sandbox), then re-run the cycle"
+)
+
 CYCLE_APPROVAL_STAGE_HEADER = "STAGE COMPLETE: {stage}"
 CYCLE_APPROVAL_PROMPT = "Continue to the next stage? [y/N] "
 CYCLE_APPROVAL_DENIED = (
@@ -474,6 +489,10 @@ CYCLE_PROPOSAL_NO_PARENT = (
     "Monitoring alarms fired but no released release exists for codebook "
     "version {version}; a change proposal needs a released parent, so "
     "nothing was proposed."
+)
+CYCLE_PROPOSAL_FAILED = (
+    "Monitoring could not record a change proposal ({reason}); the alarms "
+    "were kept in the run checkpoint - inspect before re-running."
 )
 CYCLE_NO_QUESTION = "notebook stage skipped (no --question given)"
 CYCLE_INDUCTIVE_UNAVAILABLE = (
