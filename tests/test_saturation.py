@@ -82,3 +82,36 @@ def test_run_stop_realistic_trajectory() -> None:
 
     # Very late stage: minimal new discovery
     assert run_stop(new_codes=0, base_unique=200, threshold=0.05, min_samples=50) is True
+
+
+def test_saturation_curve_shape_and_consistency() -> None:
+    """U36: cumulative unique-to-total ratio by unit index."""
+    from corpus_kb.coding.saturation import isr, saturation_curve
+
+    curve = saturation_curve(
+        [
+            ["theme_a", "theme_b"],
+            ["theme_a"],  # repeat: total grows, unique does not
+            ["theme_c", "theme_b"],
+            [],  # unit with no applications still advances the index
+        ]
+    )
+    assert curve.unit_index == [1, 2, 3, 4]
+    assert curve.cumulative_unique == [2, 2, 3, 3]
+    assert curve.total_applications == [2, 3, 5, 5]
+    # Every point equals the scalar ISR at that prefix...
+    for i in range(4):
+        assert curve.ratio[i] == isr(curve.cumulative_unique[i], curve.total_applications[i])
+    # ...and the final entry is the whole-run ISR.
+    assert curve.ratio[-1] == isr(3, 5)
+    # The curve declines as repeats dominate (saturation signature).
+    assert curve.ratio[0] > curve.ratio[-1]
+
+
+def test_saturation_curve_empty_input() -> None:
+    """No units -> an empty curve, never fabricated points."""
+    from corpus_kb.coding.saturation import saturation_curve
+
+    curve = saturation_curve([])
+    assert curve.unit_index == []
+    assert curve.ratio == []
