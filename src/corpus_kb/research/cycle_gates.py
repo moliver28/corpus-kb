@@ -265,11 +265,13 @@ def gate_gray_zone_from_agreement(
     halt queue.
 
     ``low_agreement_units`` are the release layer's precomputed entries
-    ({unit_id, agreement} — gate_reads.agreement_routing_evidence); units
-    already routed (the gray-zone queue's current membership) are credited.
-    Without a threshold nothing fires — agreement that has not been
-    calibrated is not a routing signal (U18's rule), and single-run cycles
-    have no cross-run agreement at all.
+    ({unit_id, agreement} — gate_reads.agreement_routing_evidence /
+    release gate agreement_routing output); the routing BEHAVIOR itself is
+    B2's queue wiring, this only raises the existing
+    gray_zone_escalation finding with the reason recorded so the cycle
+    halts until the units are worked. Units already routed are credited;
+    without a threshold nothing fires (agreement not calibrated -> not a
+    routing signal, U18's rule).
     """
     routed = set(routed_ids or ())
     unrouted = [

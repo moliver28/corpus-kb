@@ -68,9 +68,7 @@ change, never a config edit.
 | `research.alt_test.n_bootstrap` | see `config.yaml` | Bootstrap resample count when alt_test.method is bootstrap (U13). |
 | `research.audit.sample_rate` | see `config.yaml` | Fraction of auto-accepted units drawn for human audit after risk-coverage routing (U41). |
 | `research.audit.seed` | see `config.yaml` | Seed for the stratified audit draw; recorded with the sample for reproducibility (U17). |
-| `research.consensus.runs` | `3` | LIVE (U48): the cycle's inductive stage runs this many INDEPENDENT inductive passes; their proposed codes are aggregated by the release-layer multi-run consensus (`research/release/consensus.py`, wired via `research/cycle_consensus.py`) before themes surface. `1` keeps the single-pass path. |
-| `research.consensus.min_run_fraction` | `0.5` | LIVE (U48): a consensus theme is kept only when candidates from at least this fraction of the runs support it. |
-| `research.consensus.similarity_threshold` | `0.8` | LIVE (U48): cosine at which a candidate joins an existing consensus theme during greedy leader clustering. |
+| `research.consensus.runs` | see `config.yaml` | PRE-STAGED for the P4 enforcement wiring PR: independent inductive runs aggregated by the U48 multi-run consensus before themes are kept. The reader lands with the cycle/release wiring — until then the key documents intent and the module takes explicit args. |
 | `research.judgment_distribution.use_mean` | see `config.yaml` | Use the mean over sampled/probabilistic judgments instead of the mode (U35); off by default. |
 | `research.labeling.aggregation` | see `config.yaml` | Weak-supervision aggregation strategy: em (Dawid-Skene) or vote (U38). |
 | `research.labeling.min_signals` | see `config.yaml` | Minimum independent coding signals before EM aggregation is permitted; below it, majority vote with tie-to-review (U38). |
@@ -79,7 +77,7 @@ change, never a config edit.
 | `research.prompt_stability.alpha_threshold` | see `config.yaml` | Minimum agreement (krippendorff alpha) across hashed prompt variants over calibration units (U12). |
 | `research.prompt_stability.min_variants` | see `config.yaml` | Prompt variants required before stability is evaluable; fewer reports not_evaluable (U12). |
 | `research.release.default_profile` | see `config.yaml` | Release profile applied when none is named: exploratory | team-codebook | high-assurance (U3). |
-| `research.release.enforcement` | `warn` | LIVE (U24): off \| warn \| enforce, read from config by the deduction guard (`research/deduction_guard.py`). `warn` records the active release hash or an `unreleased_draft` warning on every deductive run; `enforce` blocks unreleased codebook versions unless `--allow-draft` (bypass runs are labeled `sandbox`); `off` leaves run behavior unchanged. |
+| `research.release.enforcement` | see `config.yaml` | PRE-STAGED for the P4 enforcement wiring PR: off | warn (default) | enforce. `ReleaseService` implements the semantics; reading this key from config (instead of the module default) lands with the P4 cycle wiring. |
 | `research.review.batch_size` | see `config.yaml` | Units per active human-review batch (U37). |
 | `research.review.random_fraction` | see `config.yaml` | Stratified-random fraction always present in review batches so error can be estimated without selection bias (U37). |
 | `research.review.diversity` | see `config.yaml` | Apply greedy max-min embedding diversity when selecting the active part of a review batch (U37). |
