@@ -477,6 +477,50 @@ def test_oversized_segment_becomes_one_window_per_piece() -> None:
         assert estimate_tokens(window[0].text) <= DEFAULTS.child_tokens
 
 
+def test_split_oversized_single_unbroken_run_terminates_and_covers() -> None:
+    # Regression: a single whitespace-free run longer than the target used to
+    # rewind the cut back to the piece's first word forever — this call never
+    # returned. Completeness assertions bound the check instead of a timeout.
+    giant = "A" * 600  # ~150 estimated tokens in ONE unbreakable word
+    long_text = f"{giant} followed by perfectly normal prose words"
+    segment = Segment(text=long_text, start_char=0, end_char=len(long_text), kind="slide")
+    pieces = split_oversized(segment, DEFAULTS.child_tokens, DEFAULTS.overlap_tokens)
+    assert pieces, "hard split must yield at least one piece"
+    # Pieces jointly cover the full segment text.
+    assert pieces[0].start_char == 0
+    assert pieces[-1].end_char == len(long_text)
+    for prev, nxt in pairwise(pieces):
+        assert nxt.start_char <= prev.end_char, "no gap between consecutive pieces"
+    # The unbreakable run is emitted whole (documented hard-split semantics).
+    assert any(giant in piece.text for piece in pieces)
+
+
+def test_split_oversized_long_url_with_prose_terminates_and_covers() -> None:
+    url = "https://example.com/" + "a" * 300  # one unbreakable ~80-token run
+    long_text = f"See {url} for details, plus some additional prose that follows the link."
+    segment = Segment(text=long_text, start_char=0, end_char=len(long_text), kind="slide")
+    pieces = split_oversized(segment, DEFAULTS.child_tokens, DEFAULTS.overlap_tokens)
+    assert pieces
+    assert pieces[0].start_char == 0
+    assert pieces[-1].end_char == len(long_text)
+    for prev, nxt in pairwise(pieces):
+        assert nxt.start_char <= prev.end_char
+    assert any(url in piece.text for piece in pieces)
+
+
+def test_pack_windows_with_unbroken_run_terminates_and_covers() -> None:
+    # Production entry point (hierarchy_tree.pack_windows) on the same input.
+    text = "A" * 600 + " " + " ".join(f"w{i}" for i in range(50))
+    segments = [Segment(text=text, start_char=0, end_char=len(text), kind="slide")]
+    windows = pack_windows(segments, DEFAULTS.child_tokens, DEFAULTS.overlap_tokens)
+    assert windows
+    pieces = [window[0] for window in windows]  # hard-split windows: one piece each
+    assert pieces[0].start_char == 0
+    assert pieces[-1].end_char == len(text)
+    for prev, nxt in pairwise(pieces):
+        assert nxt.start_char <= prev.end_char
+
+
 # ---------------------------------------------------------------------------
 # Group merge helper
 # ---------------------------------------------------------------------------
