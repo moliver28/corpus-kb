@@ -77,6 +77,8 @@ async def stage_deductive(
     tenant_id: UUID,
     project_id: UUID | None,
     version_id: UUID | None,
+    cfg: dict[str, Any] | None = None,
+    allow_draft: bool = False,
 ) -> dict[str, object]:
     from corpus_kb.research.cycle_reads import latest_version_id
     from corpus_kb.research.deductive_run import run_deductive
@@ -85,7 +87,17 @@ async def stage_deductive(
     if resolved is None:
         return {"status": "unavailable", "reason": "no codebook version exists yet"}
     reader, _handler, _embedder, projection, docs, embeds = stack
-    summary = await run_deductive(pool, tenant_id, resolved, project_id=project_id)
+    # cfg/allow_draft reach the U24 release guard: the INJECTED config decides
+    # enforcement (a disk reload would ignore the caller's overrides), and
+    # allow_draft bypasses an enforce-mode block as a labeled sandbox run (F8).
+    summary = await run_deductive(
+        pool,
+        tenant_id,
+        resolved,
+        project_id=project_id,
+        cfg=cfg,
+        allow_draft=allow_draft,
+    )
     await _catch_up_all(reader, projection, docs, embeds, tenant_id)
     return summary
 

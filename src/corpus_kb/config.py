@@ -281,6 +281,7 @@ def get_default_config() -> dict[str, object]:
                     "overlap_conflict",
                     "threshold_unreliable",
                     "human_parity_breach",
+                    "unreleased_draft",
                 ],
             },
         },

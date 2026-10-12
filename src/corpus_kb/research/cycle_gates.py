@@ -33,6 +33,7 @@ GATE_DRIFT_ALARM = "drift_alarm"
 GATE_OVERLAP_CONFLICT = "overlap_conflict"
 GATE_THRESHOLD_UNRELIABLE = "threshold_unreliable"
 GATE_HUMAN_PARITY_BREACH = "human_parity_breach"
+GATE_UNRELEASED_DRAFT = "unreleased_draft"
 
 HARD_FLOOR_GATES = frozenset({GATE_CODEBOOK_PROMOTION})
 
@@ -45,6 +46,7 @@ DEFAULT_HALT_ON: tuple[str, ...] = (
     GATE_OVERLAP_CONFLICT,
     GATE_THRESHOLD_UNRELIABLE,
     GATE_HUMAN_PARITY_BREACH,
+    GATE_UNRELEASED_DRAFT,
 )
 
 ALL_GATES = frozenset(DEFAULT_HALT_ON) | HARD_FLOOR_GATES
@@ -57,6 +59,7 @@ GATE_EXIT_CODES: dict[str, int] = {
     GATE_OVERLAP_CONFLICT: 14,
     GATE_THRESHOLD_UNRELIABLE: 15,
     GATE_HUMAN_PARITY_BREACH: 16,
+    GATE_UNRELEASED_DRAFT: 17,
 }
 EXIT_APPROVAL_DENIED = 20
 EXIT_AWAITING_APPROVAL = 21
@@ -250,3 +253,41 @@ def gate_from_report(report: dict[str, Any]) -> list[GateFinding]:
             )
         )
     return findings
+
+
+def gate_gray_zone_from_agreement(
+    low_agreement_units: list[dict[str, Any]],
+    routed_ids: list[str] | set[str] | None = None,
+    *,
+    threshold: float | None = None,
+) -> GateFinding | None:
+    """U19 wire-in (additive): low cross-run agreement -> the SAME gray-zone
+    halt queue.
+
+    ``low_agreement_units`` are the release layer's precomputed entries
+    ({unit_id, agreement} — gate_reads.agreement_routing_evidence /
+    release gate agreement_routing output); the routing BEHAVIOR itself is
+    B2's queue wiring, this only raises the existing
+    gray_zone_escalation finding with the reason recorded so the cycle
+    halts until the units are worked. Units already routed are credited;
+    without a threshold nothing fires (agreement not calibrated -> not a
+    routing signal, U18's rule).
+    """
+    routed = set(routed_ids or ())
+    unrouted = [
+        u
+        for u in low_agreement_units
+        if isinstance(u, dict) and str(u.get("unit_id")) not in routed
+    ]
+    if not unrouted or threshold is None:
+        return None
+    return GateFinding(
+        GATE_GRAY_ZONE_ESCALATION,
+        f"{len(unrouted)} low-agreement unit(s) below the routing threshold "
+        f"{threshold} await gray-zone review (U19)",
+        {
+            "threshold": threshold,
+            "unit_ids": [str(u.get("unit_id")) for u in unrouted],
+            "agreements": [u.get("agreement") for u in unrouted],
+        },
+    )
