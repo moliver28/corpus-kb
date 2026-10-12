@@ -11,6 +11,13 @@ from uuid import UUID
 
 import typer
 
+# Release lifecycle group (U5, P7): the commands live in cli_release.py (the
+# 250-line soft limit; cli.py is already the largest surface file) and share
+# the handlers/release_handlers.py layer with the MCP + HTTP surfaces.
+# cli_release imports corpus_kb.cli only lazily (inside functions), so this
+# top-level import is acyclic.
+from corpus_kb.cli_release import release_app
+
 app = typer.Typer(help="Corpus-KB command-line interface")
 
 
@@ -202,6 +209,8 @@ app.add_typer(codebook_app, name="codebook")
 
 review_app = typer.Typer(help="Review queue: execute accept/override decisions")
 app.add_typer(review_app, name="review")
+
+app.add_typer(release_app, name="release")
 
 # Module-level singleton (B008): mutable-annotated typer defaults must not
 # call typer.Option inline.
