@@ -39,6 +39,8 @@ dependencies = [
     "pydantic>=2.0",
     "rich>=13.0",
     "unstructured>=0.13",
+    # python-pptx: pure-Python MIT, first-class PPTX structure.
+    "python-pptx>=1.0",
     "asyncpg>=0.29.0",
     "pgvector>=0.3.0",
     "numpy>=1.26",
