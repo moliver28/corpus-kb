@@ -48,7 +48,9 @@ async def ingest_url(
     source_type "web"; the web_structure strategy wins detection for that
     hint and extracts the page metadata from the HTML itself, so this stays
     a thin fetch+pipeline loop. Per-page failures are caught into the
-    aggregate — one bad page never aborts the batch.
+    aggregate — one bad page never aborts the batch, and crawl-skipped pages
+    (raw httpx errors are converted to the structured WebFetchError contract
+    inside the fetch layer) come back as per-page error dicts.
 
     The fetch config comes from the ``web:`` config section (code defaults
     only when keys are absent). ``transport`` injects an httpx transport
@@ -64,9 +66,10 @@ async def ingest_url(
         if error is not None:
             return {"status": "error", "message": error}
     fetch_config = web_config_from_mapping(config.get("web"))
+    fetch_errors: list[dict[str, str]] = []
     try:
         if crawl:
-            pages = await crawl_pages(url, fetch_config, transport=transport)
+            pages = await crawl_pages(url, fetch_config, transport=transport, errors=fetch_errors)
         else:
             pages = [await fetch_page(url, fetch_config, transport=transport)]
     except WebFetchError as exc:
@@ -97,5 +100,8 @@ async def ingest_url(
                     "message": f"{type(exc).__name__}: {exc}",
                 }
             )
+    # Pages the crawl log-and-skipped (transport errors, robots, size cap, ...)
+    # surface as per-page error dicts — the skip is never silent in the result.
+    results.extend({"status": "error", **entry} for entry in fetch_errors)
     total_documents = sum(1 for result in results if result.get("status") == "success")
     return {"status": "success", "pages": results, "total_documents": total_documents}

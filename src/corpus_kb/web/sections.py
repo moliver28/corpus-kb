@@ -54,22 +54,32 @@ def _normalized(text: str) -> str:
     return " ".join(text.split())
 
 
-def _chrome_texts(raw: str) -> dict[str, str]:
-    """Normalized text inside every <header>/<footer>/<nav> container."""
+def _chrome_text_sets(raw: str) -> dict[str, frozenset[str]]:
+    """Normalized per-element texts inside every <header>/<footer>/<nav>.
+
+    Classification matches a candidate text EXACTLY against this set — the
+    old substring match against the joined chrome text re-categorized short
+    real headings ("Contact") that merely appeared inside a footer.
+    """
     try:
         doc = lxml_html.fromstring(raw)
     except Exception:
         return {}
-    out: dict[str, str] = {}
+    out: dict[str, frozenset[str]] = {}
     for tag in ("footer", "header", "nav"):
-        nodes = doc.xpath(f"//{tag}")
-        out[tag] = _normalized(" ".join("".join(node.itertext()) for node in nodes))
+        texts: set[str] = set()
+        for node in doc.xpath(f"//{tag}"):
+            for element in node.iter():
+                text = _normalized(" ".join(element.itertext()))
+                if text:
+                    texts.add(text)
+        out[tag] = frozenset(texts)
     return out
 
 
 def _classify_chrome(raw: str, proxies: list[ElementProxy]) -> list[ElementProxy]:
-    """Re-categorize elements whose text lives inside a chrome container."""
-    chrome = _chrome_texts(raw)
+    """Re-categorize elements whose text is exactly a chrome element text."""
+    chrome = _chrome_text_sets(raw)
     if not any(chrome.values()):
         return proxies
     out: list[ElementProxy] = []

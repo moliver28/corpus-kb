@@ -580,6 +580,7 @@ class TestRuntimeWebKeys:
         assert RUNTIME_CONFIG_KEYS["web.max_pages"] is int
         assert RUNTIME_CONFIG_KEYS["web.max_depth"] is int
         assert RUNTIME_CONFIG_KEYS["web.delay_seconds"] is float
+        assert RUNTIME_CONFIG_KEYS["web.allow_private_addresses"] is bool
 
     def test_shipped_yamls_carry_web_section(self):
         expected = {
@@ -590,6 +591,7 @@ class TestRuntimeWebKeys:
             "max_pages",
             "max_depth",
             "delay_seconds",
+            "allow_private_addresses",
         }
         for name in ("config.yaml", "src/corpus_kb/config.yaml"):
             cfg = validate_configs.load_yaml(ROOT / name)
@@ -601,8 +603,37 @@ class TestRuntimeWebKeys:
         errors = validate_runtime_config({})
         assert any("missing required key 'web.user_agent'" in e for e in errors)
         mistyped = {
-            "web": {"user_agent": 42, "timeout_seconds": "30", "delay_seconds": 1},
+            "web": {"user_agent": 42, "timeout_seconds": "30", "delay_seconds": True},
         }
         errors = validate_runtime_config(mistyped)
         assert any("key 'web.user_agent' must be str" in e for e in errors)
         assert any("key 'web.timeout_seconds' must be int" in e for e in errors)
+        assert any("key 'web.delay_seconds' must be float" in e for e in errors)
+
+    def test_float_keys_accept_int_but_not_bool(self):
+        # web/settings.py accepts int where a float is declared (e.g.
+        # `delay_seconds: 1`), so the validator must not reject it; a bool
+        # stays rejected for every non-bool key.
+        config = {
+            "search": {
+                "exclude_degraded": True,
+                "qa_context_in_fts": False,
+                "matryoshka_enabled": False,
+            },
+            "embedding": {"mrl_trained": False, "late_chunking": True},
+            "ingestion": {"default": "default", "strategies": {}},
+            "web": {
+                "user_agent": "bot/1.0",
+                "timeout_seconds": 30,
+                "max_bytes": 1024,
+                "respect_robots": True,
+                "max_pages": 2,
+                "max_depth": 1,
+                "delay_seconds": 1,
+                "allow_private_addresses": False,
+            },
+        }
+        assert validate_runtime_config(config) == []
+        config["web"]["delay_seconds"] = True
+        errors = validate_runtime_config(config)
+        assert any("key 'web.delay_seconds' must be float" in e for e in errors)

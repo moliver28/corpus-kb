@@ -40,6 +40,7 @@ web:
   max_pages: 5
   max_depth: 2
   delay_seconds: 1.0
+  allow_private_addresses: false  # SSRF-guard escape hatch; true only for genuinely local targets (a local wiki)
 
 # Pluggable ingestion strategies (src/corpus_kb/ingestion/). Resolution
 # precedence: explicit --source-type override > this mapping (document

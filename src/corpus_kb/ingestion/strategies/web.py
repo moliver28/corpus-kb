@@ -65,28 +65,53 @@ class WebStructureStrategy:
         return meta
 
     def build_chunks(self, raw: str, filename: str, profile: SourceProfile) -> ChunkPlan:
-        """Partition the HTML, group sections, pack to the token budget."""
+        """Partition the HTML, group sections, pack to the token budget.
+
+        ``document_text`` is the '\\n\\n'-join of every kept element text and
+        each chunk is the '\\n\\n'-join of one consecutive element group — the
+        same join discipline on both sides, so chunk texts are exact
+        substrings of ``document_text`` and real source char spans can be
+        located with the find-with-cursor pattern (mirroring
+        ``chunking.unstructured_chunker.chunk_elements``). A chunk that cannot
+        be located honestly keeps ``source_start_char=None`` (late chunking
+        then falls back to pooled embedding for it, never silently).
+        """
         del filename
         sections = group_sections(partition_html_proxies(raw))
         meta = self._base_metadata(raw, profile)
-        kept: list[ElementProxy] = []
+        document_text = _JOIN.join(
+            element.text for section in sections for element in section.elements
+        )
         planned: list[PlannedChunk] = []
+        cursor = 0
         for section in sections:
-            kept.extend(section.elements)
             for group in pack_elements(section.elements, TOKEN_BUDGET_CHARS):
+                text = _JOIN.join(element.text for element in group)
+                start = document_text.find(text, cursor)
+                if start == -1:
+                    stripped = text.strip()
+                    if stripped and stripped != text:
+                        start = document_text.find(stripped, cursor)
+                        if start != -1:
+                            text = stripped
+                end = start + len(text) if start != -1 else None
+                if end is not None:
+                    cursor = end
                 planned.append(
                     PlannedChunk(
-                        text=_JOIN.join(element.text for element in group),
+                        text=text,
                         index=len(planned),
                         source_type="text",
                         heading_path=list(section.heading_path),
                         metadata={**meta, "element_types": _element_types(group)},
+                        source_start_char=start,
+                        source_end_char=end,
                     )
                 )
         return ChunkPlan(
             strategy=self.name,
             chunks=planned,
-            document_text=_JOIN.join(element.text for element in kept),
+            document_text=document_text,
             empty_reason=None if planned else "no elements recovered from HTML",
         )
 
