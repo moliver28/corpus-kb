@@ -17,6 +17,17 @@ chunking:
   max_size: 4096
   overlap: 200
 
+# Pluggable ingestion strategies (src/corpus_kb/ingestion/). Resolution
+# precedence: explicit --source-type override > this mapping (document
+# source_type -> strategy name) > content detection > `default`.
+# Third-party strategies register via the corpus_kb.ingestion_strategies
+# entry-point group; every registered strategy must pass the conformance
+# suite (corpus_kb.ingestion.validate_plan).
+ingestion:
+  strategies:
+    transcript: transcript
+  default: default
+
 search:
   rrf_k: 60
   expand_context: true

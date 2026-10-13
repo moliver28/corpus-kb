@@ -126,6 +126,14 @@ asyncio_mode = "auto"
 [project.scripts]
 corpus-kb = "corpus_kb.cli:app"
 
+# Third-party ingestion-strategy plugin group (plan Section 0, ladder #3).
+# Intentionally EMPTY here: the built-in strategies (default, transcript)
+# register directly in code (corpus_kb.ingestion.registry._ensure_ready).
+# A downstream package declares its strategies under this group and
+# corpus-kb discovers them at ingest time; a broken plugin is logged and
+# skipped, never fatal.
+[project.entry-points."corpus_kb.ingestion_strategies"]
+
 [tool.commitizen]
 # Customized Conventional Commits driver. The `cz_customize` plugin reads
 # the schema pattern and change type map from the `[tool.commitizen.customize]`
