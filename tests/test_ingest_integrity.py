@@ -4,11 +4,13 @@ Offline tests pin the migration contracts and run_pipeline's decision logic
 against a stub store. The Postgres-marked tests use the m021-style throwaway
 database (schema.sql + the numeric migration chain). Following the documented
 harness pattern in tests/test_shadow_migration.py, the global FORCE-RLS
-migrations (011/013) are skipped here: the v1 store methods' bare set_config
-only works via the pre-FORCE owner bypass (a pre-existing limitation this
-stage documents, not fixes), and migration 022's transient backfill window
-re-FORCEs chunks/chunks_vectors, so the harness lifts FORCE again after the
-chain to restore the pre-011 conditions the v1 path was built against.
+migrations (011/013) are skipped here, and migration 022's transient backfill
+window re-FORCEs chunks/chunks_vectors, so the harness lifts FORCE again after
+the chain: it keeps testing the pre-011 conditions it was built against.
+(The v1 store methods' bare-autocommit GUC defect that originally forced this
+avoidance was fixed in #87 — the tenant GUC is now set inside
+``conn.transaction()``; re-enabling FORCE against this harness is a separate
+live-PG verification.)
 """
 
 from __future__ import annotations

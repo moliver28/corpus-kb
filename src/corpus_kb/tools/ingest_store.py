@@ -15,14 +15,13 @@ Ledger semantics (migration 022):
   only content whose last run COMPLETED with an empty error list, so a
   crashed or partial ingest can never be enshrined as unchanged.
 
-All ledger/document methods run inside an explicit ``conn.transaction()``
-because the tenant GUC (``set_config`` is_local) evaporates across asyncpg
-autocommit statements. The inherited v1 ``store_chunks``/``store_vectors``/
-``store_entities``/``store_relations`` methods predate this module and keep
-their historical bare-``set_config`` shape (a documented pre-existing
-limitation under FORCE RLS — see the harness comment in
-tests/test_shadow_migration.py); they are moved verbatim so upstream hunks
-re-apply cleanly.
+Every method — ledger and the inherited v1 ``store_chunks``/
+``store_vectors``/``store_entities``/``store_relations`` alike — runs inside
+an explicit ``conn.transaction()`` with the tenant GUC (``set_config``
+is_local) issued FIRST inside it, before any other statement: a LOCAL GUC
+issued on an asyncpg autocommit connection evaporates with its statement,
+which would leave every later write GUC-less and rejected on FORCE-RLS
+tables (migration 011+).
 """
 
 from __future__ import annotations
@@ -212,7 +211,7 @@ class PostgresIngestStore:
         if not chunks:
             return set()
         needs_embedding: set[str] = set()
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 self._tenant_id,
@@ -299,7 +298,7 @@ class PostgresIngestStore:
         if not chunks:
             return 0
         count = 0
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 self._tenant_id,
@@ -350,7 +349,7 @@ class PostgresIngestStore:
         if not entities:
             return 0
         count = 0
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 self._tenant_id,
@@ -392,7 +391,7 @@ class PostgresIngestStore:
         if not relations:
             return 0
         count = 0
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 self._tenant_id,
