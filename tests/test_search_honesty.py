@@ -855,13 +855,14 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "search.qa_context_in_fts": bool,
         "search.matryoshka_enabled": bool,
         "embedding.mrl_trained": bool,
+        "embedding.late_chunking": bool,
         "ingestion.default": str,
         "ingestion.strategies": dict,
     } == RUNTIME_CONFIG_KEYS
 
 
 _INGESTION_KEYS: dict[str, object] = {"ingestion": {"default": "default", "strategies": {}}}
-_EMBEDDING_KEYS: dict[str, object] = {"embedding": {"mrl_trained": False}}
+_EMBEDDING_KEYS: dict[str, object] = {"embedding": {"mrl_trained": False, "late_chunking": True}}
 
 
 def test_validate_runtime_config_accepts_bool() -> None:

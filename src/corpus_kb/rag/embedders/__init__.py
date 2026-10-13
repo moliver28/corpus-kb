@@ -9,10 +9,15 @@ package is safe without the extra.
 from __future__ import annotations
 
 from corpus_kb.rag.embedders._latechunk_types import LateChunkDependencyError
-from corpus_kb.rag.embedders.late_chunk import LateChunkEmbedder, is_latechunk_installed
+from corpus_kb.rag.embedders.late_chunk import (
+    LateChunkEmbedder,
+    LateChunkSpan,
+    is_latechunk_installed,
+)
 
 __all__ = [
     "LateChunkDependencyError",
     "LateChunkEmbedder",
+    "LateChunkSpan",
     "is_latechunk_installed",
 ]

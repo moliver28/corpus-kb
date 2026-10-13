@@ -19,7 +19,7 @@ retrieval views: the answer span, the QA span, and the question span.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from typing import cast
 
 from corpus_kb.rag.embedder import assert_unit_or_zero, instruct, l2_normalize
 from corpus_kb.rag.embedders._latechunk_types import (
@@ -32,64 +32,35 @@ from corpus_kb.rag.embedders._latechunk_types import (
     import_torch,
     import_transformers,
 )
+from corpus_kb.rag.embedders.late_chunk_core import (
+    CHARS_PER_TOKEN,
+    DEFAULT_STRIDE_TOKENS,
+    DEFAULT_WINDOW_TOKENS,
+    MAX_MACRO_TOKENS,
+    LateChunkSpan,
+    SpanVectors,
+    build_document_chunk_vectors,
+    macro_windows,
+    pool_span,
+)
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 DEFAULT_DIMENSIONS = 1024
-# v5 5.3: Qwen3-Embedding accepts 32k tokens; keep a safety margin under it.
-MAX_MACRO_TOKENS = 30_000
-MACRO_OVERLAP_RATIO = 0.1
 
-
-@dataclass(frozen=True)
-class SpanVectors:
-    """The three retrieval views of one exchange, from one forward pass."""
-
-    question: list[float]
-    qa: list[float]
-    answer: list[float]
-
-
-def macro_windows(turn_tokens: list[int]) -> list[tuple[int, int]]:
-    """Turn-boundary macro-split (v5 5.3).
-
-    Greedy windows of at most MAX_MACRO_TOKENS tokens (a single oversized
-    turn forms its own window and is truncated at encode time); consecutive
-    windows overlap by ~10% of turns. Returns half-open (lo, hi) turn-index
-    ranges.
-    """
-    n = len(turn_tokens)
-    if n == 0:
-        return []
-    windows: list[tuple[int, int]] = []
-    lo = 0
-    while lo < n:
-        total = 0
-        hi = lo
-        while hi < n and (hi == lo or total + turn_tokens[hi] <= MAX_MACRO_TOKENS):
-            total += turn_tokens[hi]
-            hi += 1
-        windows.append((lo, hi))
-        if hi >= n:
-            break
-        overlap = min(max(1, round((hi - lo) * MACRO_OVERLAP_RATIO)), hi - lo - 1)
-        lo = hi - overlap
-    return windows
-
-
-def pool_span(hidden: TokenStates, start: int, end: int, seq_len: int) -> list[float]:
-    """Mean-pool token states over [start, end) clamped into [1, seq_len).
-
-    A span past the truncation point pools the final token instead of an
-    empty slice; normalization keeps the zero-vector no-op contract.
-    """
-    lo = max(1, min(start, seq_len - 1))
-    hi = min(end, seq_len - 1)
-    if hi <= lo:
-        hi = min(lo + 1, seq_len)
-    span = hidden[0, lo:hi, :]
-    return l2_normalize(span.mean(dim=0).tolist())
+# Re-exports (stable public import path): the pure math lives in
+# late_chunk_core so it stays testable without the heavy stack.
+__all__ = [
+    "DEFAULT_MODEL",
+    "MAX_MACRO_TOKENS",
+    "LateChunkEmbedder",
+    "LateChunkSpan",
+    "SpanVectors",
+    "is_latechunk_installed",
+    "macro_windows",
+    "pool_span",
+]
 
 
 class LateChunkEmbedder:
@@ -97,7 +68,13 @@ class LateChunkEmbedder:
 
     dimensions: int = DEFAULT_DIMENSIONS
 
-    def __init__(self, model_name: str = DEFAULT_MODEL, device: str = "cpu") -> None:
+    def __init__(
+        self,
+        model_name: str = DEFAULT_MODEL,
+        device: str = "cpu",
+        window_tokens: int = DEFAULT_WINDOW_TOKENS,
+        stride_tokens: int = DEFAULT_STRIDE_TOKENS,
+    ) -> None:
         transformers = import_transformers()
         st_module = import_sentence_transformers()
         self._torch: TorchModule = import_torch()
@@ -107,6 +84,10 @@ class LateChunkEmbedder:
         self.model = model_name
         reported = self._pooled.get_sentence_embedding_dimension()
         self.dimensions = int(reported) if reported else DEFAULT_DIMENSIONS
+        # Document-path sliding windows (late_chunk_core): qwen3-embedding's
+        # 32k context takes 16384-token windows with 2048-token stride overlap.
+        self.window_tokens = window_tokens
+        self.stride_tokens = stride_tokens
         self.forward_calls = 0
 
     def embed_spans(self, turns: list[str], spans: list[tuple[int, int]]) -> list[list[float]]:
@@ -145,6 +126,29 @@ class LateChunkEmbedder:
         vectors = self.embed_spans([question, answer], [(0, 1), (0, 2), (1, 2)])
         return SpanVectors(question=vectors[0], qa=vectors[1], answer=vectors[2])
 
+    def embed_document_chunks(
+        self, document_text: str, chunk_char_spans: list[tuple[int, int]]
+    ) -> list[LateChunkSpan]:
+        """Late-chunk a document: one tokenization, per-window forwards, span pooling.
+
+        The document is tokenized ONCE for char->token span mapping (offset
+        mapping; chars/4 heuristic when the tokenizer lacks offsets), then
+        every chunk vector is pooled from token states that saw the whole
+        document text (or the sliding window(s) covering its span — a chunk
+        covered by >1 window gets the mean of its per-window poolings; see
+        ``late_chunk_core.build_document_chunk_vectors``).
+        """
+        token_offsets, n_tokens = self._tokenize_document(document_text)
+        return build_document_chunk_vectors(
+            document_text=document_text,
+            chunk_char_spans=chunk_char_spans,
+            n_tokens=n_tokens,
+            token_offsets=token_offsets,
+            window_forward=self._forward_rows,
+            window_tokens=self.window_tokens,
+            stride_tokens=self.stride_tokens,
+        )
+
     def encode_pooled(self, texts: list[str]) -> list[list[float]]:
         """Naive pooled embeddings via sentence-transformers (G1 arm b / queries)."""
         raw = self._pooled.encode(
@@ -174,6 +178,39 @@ class LateChunkEmbedder:
             add_special_tokens=False,
         )
         return len(encoded["input_ids"].tolist()[0])
+
+    def _tokenize_document(self, document_text: str) -> tuple[list[tuple[int, int]] | None, int]:
+        """The ONE full-document tokenization: (char offsets | None, token count).
+
+        add_special_tokens=False keeps offset mappings clean (no (0,0)
+        special markers); the per-window forwards re-add specials. Offsets
+        come back None when the tokenizer cannot serve them (slow tokenizers
+        raise ValueError; non-HF doubles raise TypeError) and callers apply
+        the chars/4 heuristic consistently for both mapping and windows.
+        """
+        if not document_text:
+            return None, 0
+        try:
+            encoded = self._tokenizer(
+                [document_text],
+                return_tensors="pt",
+                padding=False,
+                truncation=False,
+                add_special_tokens=False,
+                return_offsets_mapping=True,
+            )
+        except (TypeError, ValueError):
+            return None, max(1, len(document_text) // CHARS_PER_TOKEN)
+        mappings = cast("list[list[tuple[int, int]]] | None", encoded.get("offset_mapping"))
+        n_tokens = len(encoded["input_ids"].tolist()[0])
+        if not mappings:
+            return None, n_tokens
+        return mappings[0], n_tokens
+
+    def _forward_rows(self, text: str) -> list[list[float]]:
+        """Forward one window and hand the pure core plain token rows."""
+        hidden, seq_len = self._forward_hidden(text)
+        return [list(row) for row in hidden[0, 0:seq_len, :].tolist()]
 
     def _forward_hidden(self, text: str) -> tuple[TokenStates, int]:
         self.forward_calls += 1

@@ -117,9 +117,9 @@ def test_macro_windows_empty_and_single():
 
 
 def test_macro_windows_fit_within_max_tokens(monkeypatch: pytest.MonkeyPatch):
-    from corpus_kb.rag.embedders import late_chunk
+    from corpus_kb.rag.embedders import late_chunk_core
 
-    monkeypatch.setattr(late_chunk, "MAX_MACRO_TOKENS", 25)
+    monkeypatch.setattr(late_chunk_core, "MAX_MACRO_TOKENS", 25)
     windows = macro_windows([10, 10, 10, 10, 10])
     assert windows[0] == (0, 2)
     for lo, hi in windows:
@@ -133,11 +133,11 @@ def test_macro_windows_small_corpus_single_window():
 
 
 def test_macro_windows_overlap_is_about_ten_percent():
-    from corpus_kb.rag.embedders import late_chunk
+    from corpus_kb.rag.embedders import late_chunk_core
 
     monkey = pytest.MonkeyPatch()
     try:
-        monkey.setattr(late_chunk, "MAX_MACRO_TOKENS", 50)
+        monkey.setattr(late_chunk_core, "MAX_MACRO_TOKENS", 50)
         windows = macro_windows([1] * 100)
     finally:
         monkey.undo()
@@ -147,9 +147,9 @@ def test_macro_windows_overlap_is_about_ten_percent():
 
 
 def test_macro_windows_progress_with_giant_single_turn(monkeypatch: pytest.MonkeyPatch):
-    from corpus_kb.rag.embedders import late_chunk
+    from corpus_kb.rag.embedders import late_chunk_core
 
-    monkeypatch.setattr(late_chunk, "MAX_MACRO_TOKENS", 25)
+    monkeypatch.setattr(late_chunk_core, "MAX_MACRO_TOKENS", 25)
     windows = macro_windows([1000, 1000])
     assert windows == [(0, 1), (1, 2)]
 
