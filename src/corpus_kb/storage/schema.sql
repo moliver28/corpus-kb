@@ -102,6 +102,12 @@ CREATE TABLE IF NOT EXISTS chunks (
 -- original idx_chunks_fts (text-only) is left in place; the query layer
 -- switches to the contextual expression in this same release.
 
+-- The following column was added by migration 022 (ingest integrity):
+--   degraded BOOLEAN NOT NULL DEFAULT FALSE
+--       -- embedder-failure marker for this chunk's stored embedding; mirrored
+--       -- from chunks_vectors.degraded by the ingest write path and the 022
+--       -- zero-vector backfill
+
 CREATE INDEX idx_chunks_tenant ON chunks(tenant_id);
 CREATE INDEX idx_chunks_doc ON chunks(doc_id);
 CREATE INDEX idx_chunks_tenant_doc ON chunks(tenant_id, doc_id);
@@ -161,6 +167,13 @@ CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
 --       WITH (m = 16, ef_construction = 200);
 --   (guarded in a DO block; warns and skips instead of failing if HNSW on
 --   vector_1024 is unsupported)
+
+-- The following column and index were added by migration 022 (ingest
+-- integrity):
+--   degraded BOOLEAN NOT NULL DEFAULT FALSE
+--       -- TRUE when this vector row is an all-zero embedder-failure marker
+--   CREATE INDEX IF NOT EXISTS idx_chunks_vectors_degraded
+--       ON chunks_vectors(tenant_id) WHERE degraded;
 
 ALTER TABLE chunks_vectors ENABLE ROW LEVEL SECURITY;
 

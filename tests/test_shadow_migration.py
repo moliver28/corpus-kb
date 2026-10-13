@@ -43,6 +43,10 @@ TENANT_B = "00000000-0000-0000-0000-00000000000b"
 # the v1 ingest under test for a pre-existing reason outside P6's additive
 # scope. The shadow tables carry their own ENABLE+FORCE (migration 021) and
 # are asserted under it below.
+#
+# 022 is NOT skipped (the v1 pipeline now requires the ingest_runs ledger):
+# its transient NO FORCE backfill window re-FORCEs chunks/chunks_vectors, so
+# _create_db lifts FORCE again after the chain — same rationale as 011/013.
 _EXTENSION_GATED = {
     "004_enable_age.sql",
     "005_enable_pgml.sql",
@@ -94,6 +98,11 @@ async def _create_db() -> str:
                 " ON CONFLICT DO NOTHING",
                 path.name,
             )
+        # Migration 022's backfill window re-FORCEs chunks/chunks_vectors;
+        # lift FORCE again so the v1 ingest under test keeps the pre-011
+        # conditions documented above (the ledger tables stay FORCEd).
+        await conn.execute("ALTER TABLE chunks NO FORCE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE chunks_vectors NO FORCE ROW LEVEL SECURITY")
     finally:
         await conn.close()
     return DSN
@@ -462,7 +471,10 @@ async def test_shadow_ingest_leaves_v1_untouched_and_writes_shadow(m021_dsn: str
             config=_ingest_config(hierarchy_enabled=True),
             source="m021-shadow-on",
         )
-        assert off["status"] == "success" and on["status"] == "success"
+        # Ingest integrity (migration 022): the deterministic zero-vector
+        # path is a PARTIAL ingest — chunks and shadow rows land, but the
+        # EmbeddingError closes the ingest_runs row 'failed'. Never success.
+        assert off["status"] == "partial" and on["status"] == "partial"
         # Flag off: the result dict has NO shadow keys (pre-U48 shape).
         assert "shadow_chunk_count" not in off
         # Flag on: shadow keys are present and the text hierarchy landed.
@@ -520,8 +532,11 @@ async def test_shadow_ingest_leaves_v1_untouched_and_writes_shadow(m021_dsn: str
         )
         assert orphans[0]["n"] == 0
 
-        # Re-ingesting the SAME content skips the pipeline entirely and
-        # leaves the shadow rows stable (no duplicates).
+        # Re-ingesting the SAME content: the first run's ledger row failed
+        # (zero vectors), so the completed-only dedupe probe does NOT skip —
+        # the run re-executes. No chunk hash changed, so nothing is
+        # re-embedded and no new EmbeddingError fires: the run completes and
+        # the shadow rows stay a stable, duplicate-free rebuild.
         again = await ingest_text(
             _INGEST_TEXT,
             pool,
@@ -529,7 +544,7 @@ async def test_shadow_ingest_leaves_v1_untouched_and_writes_shadow(m021_dsn: str
             config=_ingest_config(hierarchy_enabled=True),
             source="m021-shadow-on",
         )
-        assert again["status"] == "skipped"
+        assert again["status"] == "success"
         total = await _tenant_read(
             pool,
             "SELECT count(*) AS n FROM shadow_chunks WHERE doc_id = $1::uuid",

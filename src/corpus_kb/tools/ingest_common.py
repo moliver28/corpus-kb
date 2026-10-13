@@ -1,13 +1,13 @@
-"""Shared helpers for the thin ingest orchestrator.
+"""Ingest pipeline orchestration: partition, chunk, embed, extract, store.
 
-All writes go directly to Postgres via asyncpg. No LanceDB, no SQLite.
+All writes go directly to Postgres via asyncpg (see ``ingest_store`` for the
+write layer and the ``ingest_runs`` integrity ledger). No LanceDB, no SQLite.
 The ingest pipeline is async — callers must await run_pipeline().
 """
 
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,10 +25,9 @@ from ..partitioning import partition as unstructured_partition
 from ..rag import aembed_batch, create_embedder
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
+from .ingest_store import DEFAULT_TENANT_ID, PostgresIngestStore
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def _sha256(text: str) -> str:
@@ -94,6 +93,21 @@ def build_document(path: str, source_type: str, text: str) -> Document:
 def _all_zero(vectors: list[list[float]]) -> bool:
     """Return True when every vector is entirely zeros (embedder failure marker)."""
     return all(all(v == 0.0 for v in vector) for vector in vectors)
+
+
+def _embedding_failure_is_fatal(chunks: list[Chunk]) -> bool:
+    """True when the embed output must fail the run rather than degrade it.
+
+    Missing or all-zero embeddings are the embedder-failure marker: they would
+    poison the search corpus, so the run records the EmbeddingError (and the
+    ledger marks the run failed). A degraded run whose fallback provider
+    produced real vectors stays error-free — the degraded flag carries the
+    honesty, and the note is reported as ``embed_note`` instead.
+    """
+    embeddings = [c.embedding for c in chunks if c.embedding is not None]
+    if not embeddings:
+        return True
+    return any(all(v == 0.0 for v in vector) for vector in embeddings)
 
 
 def _assign_embeddings(chunks: list[Chunk], vectors: list[list[float]]) -> None:
@@ -264,253 +278,6 @@ def _extract_entities_flag(config: dict[str, object]) -> bool:
     return flag if isinstance(flag, bool) else True
 
 
-class PostgresIngestStore:
-    """Wraps all Postgres write operations for the ingest pipeline.
-
-    All methods use the same asyncpg.Pool and set tenant context via SET LOCAL.
-    """
-
-    def __init__(
-        self,
-        pool: asyncpg.Pool,
-        tenant_id: str = DEFAULT_TENANT_ID,
-    ) -> None:
-        self._pool = pool
-        self._tenant_id = tenant_id
-
-    async def store_document(
-        self, document: Document, file_hash: str | None = None
-    ) -> tuple[str, bool]:
-        """Insert/update a document. Returns (doc_id, unchanged) -- unchanged=True
-        short-circuits run_pipeline's chunk/vector/extraction work."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            if file_hash is not None:
-                existing = await conn.fetchrow(
-                    "SELECT doc_id::text, file_hash FROM documents "
-                    "WHERE tenant_id = $1 AND source = $2",
-                    self._tenant_id,
-                    document.path,
-                )
-                if existing is not None and existing["file_hash"] == file_hash:
-                    return existing["doc_id"], True
-            row = await conn.fetchrow(
-                """
-                INSERT INTO documents (doc_id, tenant_id, source, source_type,
-                    chunk_count, file_size, file_hash, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                ON CONFLICT (tenant_id, source) DO UPDATE
-                SET chunk_count = $5, file_size = $6, file_hash = $7, updated_at = NOW()
-                RETURNING doc_id::text
-                """,
-                document.document_id,
-                self._tenant_id,
-                document.path,
-                document.source_type,
-                document.chunk_count,
-                document.size_bytes,
-                file_hash,
-                json.dumps(document.metadata),
-            )
-            return row["doc_id"], False
-
-    async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
-        """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding."""
-        if not chunks:
-            return set()
-        needs_embedding: set[str] = set()
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            for count, chunk in enumerate(chunks):
-                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
-                existing = await conn.fetchrow(
-                    "SELECT chunk_id, chunk_hash FROM chunks "
-                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
-                    self._tenant_id,
-                    chunk.document_id,
-                    chunk_index,
-                )
-                if existing is None:
-                    row = await conn.fetchrow(
-                        """
-                        INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
-                            text, source_type, entity_name, heading_path, file_path,
-                            start_line, end_line, metadata, chunk_hash, source_timestamp,
-                            context_blurb)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-                        ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
-                        RETURNING chunk_id
-                        """,
-                        chunk.chunk_id,
-                        self._tenant_id,
-                        chunk.document_id,
-                        chunk_index,
-                        chunk.text,
-                        chunk.source_type,
-                        chunk.entity_name,
-                        json.dumps(chunk.heading_path) if chunk.heading_path else None,
-                        chunk.metadata.get("file_path") if chunk.metadata else None,
-                        chunk.start_line,
-                        chunk.end_line,
-                        json.dumps(chunk.metadata),
-                        chunk.chunk_hash,
-                        chunk.source_timestamp,
-                        chunk.context_blurb,
-                    )
-                    if row is not None:
-                        needs_embedding.add(str(row["chunk_id"]))
-                elif existing["chunk_hash"] != chunk.chunk_hash:
-                    await conn.execute(
-                        """
-                        UPDATE chunks SET text = $1, chunk_hash = $2, source_timestamp = $3,
-                            context_blurb = $4, metadata = $5, superseded_at = NULL,
-                            tombstoned_at = NULL
-                        WHERE chunk_id = $6
-                        """,
-                        chunk.text,
-                        chunk.chunk_hash,
-                        chunk.source_timestamp,
-                        chunk.context_blurb,
-                        json.dumps(chunk.metadata),
-                        existing["chunk_id"],
-                    )
-                    needs_embedding.add(str(existing["chunk_id"]))
-                # else: hash unchanged, no-op -- neither inserted nor re-embedded
-            await conn.execute(
-                "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "
-                "AND chunk_index >= $3 AND tombstoned_at IS NULL",
-                self._tenant_id,
-                chunks[0].document_id if chunks else None,
-                len(chunks),
-            )
-        return needs_embedding
-
-    async def store_vectors(
-        self,
-        chunks: list[Chunk],
-        embedding_model: str,
-        dimensions: int = 768,
-        vectors_1024: dict[str, list[float]] | None = None,
-    ) -> int:
-        """Insert chunk vectors. vectors_1024, if provided, is keyed by chunk_id (str)."""
-        if not chunks:
-            return 0
-        count = 0
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            for chunk in chunks:
-                if chunk.embedding is None:
-                    continue
-                vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
-                v1024 = (vectors_1024 or {}).get(str(chunk.chunk_id))
-                v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
-                await conn.execute(
-                    """
-                    INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, vector_1024,
-                        embedding_model, dimensions)
-                    VALUES ($1, $2, $3::vector, $4::vector, $5, $6)
-                    ON CONFLICT (chunk_id) DO UPDATE
-                    SET vector = $3::vector,
-                        vector_1024 = COALESCE($4::vector, chunks_vectors.vector_1024),
-                        embedding_model = $5, dimensions = $6, embedded_at = NOW()
-                    """,
-                    chunk.chunk_id,
-                    self._tenant_id,
-                    vector_str,
-                    v1024_str,
-                    embedding_model,
-                    dimensions,
-                )
-                count += 1
-        return count
-
-    async def store_entities(self, entities: list[Entity]) -> int:
-        """Insert entities into the entities table. Returns count."""
-        if not entities:
-            return 0
-        count = 0
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            for entity in entities:
-                await conn.execute(
-                    """
-                    INSERT INTO entities (entity_id, tenant_id, name, entity_type,
-                        source_document_id, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
-                    """,
-                    entity.entity_id,
-                    self._tenant_id,
-                    entity.name,
-                    entity.entity_type,
-                    entity.source_document_id,
-                    json.dumps(entity.metadata),
-                )
-                count += 1
-        return count
-
-    async def store_relations(
-        self,
-        relations: list[Relation],
-        model_version: str | None = None,
-        prompt_version: str | None = None,
-    ) -> int:
-        """Insert relations into the relations table. Returns count.
-
-        model_version/prompt_version label which extractor configuration
-        produced these relations (read from corpus_kb.graph.model_version/
-        graph.prompt_version in config by the run_pipeline caller); None
-        for relations added through a path with no extractor provenance
-        (e.g. the direct add_relation graph-tool API).
-        """
-        if not relations:
-            return 0
-        count = 0
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            for relation in relations:
-                await conn.execute(
-                    """
-                    INSERT INTO relations (relation_id, tenant_id, source_entity_id,
-                        target_entity_id, relation_type, weight, metadata,
-                        chunk_id, confidence, extractor_id, model_version, prompt_version)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                    ON CONFLICT (tenant_id, source_entity_id, target_entity_id,
-                        relation_type, chunk_id)
-                    DO NOTHING
-                    """,
-                    relation.relation_id,
-                    self._tenant_id,
-                    relation.source_entity_id,
-                    relation.target_entity_id,
-                    relation.relation_type,
-                    relation.weight if relation.weight else 1.0,
-                    json.dumps(relation.metadata),
-                    relation.chunk_id,
-                    relation.confidence,
-                    relation.extractor_id,
-                    model_version,
-                    prompt_version,
-                )
-                count += 1
-        return count
-
-
 async def run_pipeline(
     text: str,
     source_type: str,
@@ -525,6 +292,17 @@ async def run_pipeline(
 
     All writes go directly to Postgres via asyncpg. No LanceDB, no SQLite.
 
+    Integrity semantics (migration 022):
+
+    - A per-(tenant, content-hash) Postgres advisory lock serializes
+      concurrent ingests of the same content; contention returns an honest
+      ``{"status": "skipped", "reason": "concurrent-run"}`` — never success.
+    - Every run opens an ``ingest_runs`` ledger row (status 'running') before
+      any stage writes and closes it after the last one. The unchanged
+      short-circuit only fires for content whose last run COMPLETED with an
+      empty stage error list, so a crashed partial ingest is never enshrined
+      as success.
+
     Args:
         text: The full text content to ingest.
         source_type: One of "code", "markdown", "text".
@@ -535,9 +313,13 @@ async def run_pipeline(
         is_file: True if path points to a file; False if path is raw text source ID.
 
     Returns:
-        Result dict with keys: status, document_id, path, source_type,
+        Result dict with keys: status ("success" when every stage was clean,
+        "partial" when any stage recorded an error, "skipped" for the
+        dedupe/concurrency short-circuits), document_id, path, source_type,
         size_bytes, chunk_count, entity_count, relation_count,
-        pg_chunk_count, pg_vector_count, degraded, extractor_id, entities, errors.
+        pg_chunk_count, pg_vector_count, degraded, extractor_id, entities,
+        errors, run_id (and embed_note when a fallback embedder rescued the
+        embeddings).
     """
     if is_file:
         # Let Unstructured parse the file (PDF, DOCX, HTML, etc.) and derive the
@@ -551,174 +333,266 @@ async def run_pipeline(
 
     document = build_document(path, source_type, text)
     chunks = chunk_elements(elements, text, document.document_id)
-
-    ingest_store = PostgresIngestStore(pg_pool, tenant_id)
     file_hash = _sha256(text)
 
-    document_id, unchanged = await ingest_store.store_document(document, file_hash=file_hash)
-    if unchanged:
+    # Serialize concurrent ingests of the same content per tenant. The lock is
+    # session-scoped on its own pooled connection, so a crashed process
+    # releases it server-side automatically.
+    async with pg_pool.acquire() as lock_conn:
+        acquired = await lock_conn.fetchval(
+            "SELECT pg_try_advisory_lock(hashtextextended($1 || ':' || $2, 0))",
+            tenant_id,
+            file_hash,
+        )
+        if not acquired:
+            return {
+                "status": "skipped",
+                "reason": "concurrent-run",
+                "path": path,
+                "source_type": source_type,
+                "errors": [],
+            }
+        try:
+            return await _run_locked_stages(
+                document=document,
+                chunks=chunks,
+                file_hash=file_hash,
+                text=text,
+                source_type=source_type,
+                path=path,
+                config=config,
+                pg_pool=pg_pool,
+                tenant_id=tenant_id,
+                rag_backend=rag_backend,
+                is_file=is_file,
+            )
+        finally:
+            await lock_conn.execute(
+                "SELECT pg_advisory_unlock(hashtextextended($1 || ':' || $2, 0))",
+                tenant_id,
+                file_hash,
+            )
+
+
+async def _run_locked_stages(
+    document: Document,
+    chunks: list[Chunk],
+    file_hash: str,
+    text: str,
+    source_type: str,
+    path: str,
+    config: dict[str, object],
+    pg_pool: asyncpg.Pool,
+    tenant_id: str,
+    rag_backend: RagBackend | None,
+    is_file: bool,
+) -> dict[str, object]:
+    """Pipeline stages under the advisory lock: open the ledger, store, close."""
+    ingest_store = PostgresIngestStore(pg_pool, tenant_id)
+
+    unchanged_doc = await ingest_store.unchanged_doc_id(document.path, file_hash)
+    if unchanged_doc is not None:
         return {
             "status": "skipped",
-            "document_id": document_id,
+            "document_id": unchanged_doc,
             "path": path,
             "source_type": source_type,
             "reason": "unchanged",
             "errors": [],
         }
-    document.document_id = document_id
-    for chunk in chunks:
-        chunk.document_id = document_id
-        chunk.chunk_hash = _sha256(chunk.text)
-        chunk.source_timestamp = (
-            datetime.fromtimestamp(Path(path).stat().st_mtime, tz=UTC)
-            if is_file
-            else datetime.now(UTC)
-        )
 
-    if _contextual_enabled(config, source_type):
-        from ..rag.contextualizer import ContextGenerator
-
-        blurbs = ContextGenerator(config).generate_blurbs(text, [c.text for c in chunks])
-        for chunk, blurb in zip(chunks, blurbs, strict=True):
-            chunk.context_blurb = blurb or None
-
-    errors: list[str] = []
-    pg_chunk_count = 0
-    pg_vector_count = 0
-    inserted_chunk_ids: set[str] = set()
+    document_id, run_id = await ingest_store.begin_run(document, file_hash)
     try:
-        inserted_chunk_ids = await ingest_store.store_chunks(chunks)
-        pg_chunk_count = len(inserted_chunk_ids)
-    except Exception as exc:
-        logging.warning("Postgres chunk write failed: %s", exc)
-        errors.append(f"PostgresWriteError: {exc}")
+        document.document_id = document_id
+        for chunk in chunks:
+            chunk.document_id = document_id
+            chunk.chunk_hash = _sha256(chunk.text)
+            chunk.source_timestamp = (
+                datetime.fromtimestamp(Path(path).stat().st_mtime, tz=UTC)
+                if is_file
+                else datetime.now(UTC)
+            )
 
-    new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
+        if _contextual_enabled(config, source_type):
+            from ..rag.contextualizer import ContextGenerator
 
-    embed_texts_override = {
-        str(c.chunk_id): (f"{c.context_blurb}\n\n{c.text}" if c.context_blurb else c.text)
-        for c in new_chunks
-    }
-    degraded, embed_err = await embed_chunks(
-        new_chunks, config, pool=pg_pool, text_override=embed_texts_override
-    )
-    if embed_err is not None:
-        logging.warning("embed_chunks: %s", embed_err)
-        errors.append(f"EmbeddingError: {embed_err}")
+            blurbs = ContextGenerator(config).generate_blurbs(text, [c.text for c in chunks])
+            for chunk, blurb in zip(chunks, blurbs, strict=True):
+                chunk.context_blurb = blurb or None
 
-    matryoshka_cfg = _nested_dict(config, "search")
-    vectors_1024: dict[str, list[float]] = {}
-    if bool(matryoshka_cfg.get("matryoshka_enabled", False)) and not degraded:
-        from ..rag.embedder import _slice_normalize
-
-        dim = int(matryoshka_cfg.get("matryoshka_dim", 1024))
-        for c in new_chunks:
-            if c.embedding is not None:
-                vectors_1024[str(c.chunk_id)] = _slice_normalize(c.embedding, dim)
-
-    try:
-        embedding_model = str(_nested_dict(config, "embedding").get("model", "nomic-embed-text"))
-        dimensions = int(_nested_dict(config, "embedding").get("dimensions", 768))
-        pg_vector_count = await ingest_store.store_vectors(
-            new_chunks,
-            embedding_model,
-            dimensions=dimensions,
-            vectors_1024=vectors_1024 or None,
-        )
-    except Exception as exc:
-        logging.warning("Postgres vector write failed: %s", exc)
-        errors.append(f"PostgresWriteError: {exc}")
+        errors: list[str] = []
+        embed_note: str | None = None
         pg_chunk_count = 0
         pg_vector_count = 0
-
-    # U48/P6: side-by-side SHADOW hierarchy — additive only. The v1
-    # chunks/vectors above stay the live search corpus; any shadow failure
-    # is logged and isolated so it can never break the live ingest.
-    hierarchy_settings = load_hierarchy_settings(config)
-    shadow_chunk_count = 0
-    shadow_vector_count = 0
-    shadow_note: str | None = None
-    if hierarchy_settings.enabled:
+        inserted_chunk_ids: set[str] = set()
         try:
-            from ..tools.shadow_ingest import write_shadow_hierarchy
+            inserted_chunk_ids = await ingest_store.store_chunks(chunks)
+            pg_chunk_count = len(inserted_chunk_ids)
+        except Exception as exc:
+            logging.warning("Postgres chunk write failed: %s", exc)
+            errors.append(f"PostgresWriteError: {exc}")
 
-            shadow_chunk_count, shadow_vector_count, shadow_note = await write_shadow_hierarchy(
-                pool=pg_pool,
-                tenant_id=tenant_id,
-                document_id=document.document_id,
-                text=text,
-                chunks=chunks,
-                config=config,
-                settings=hierarchy_settings,
+        new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
+
+        embed_texts_override = {
+            str(c.chunk_id): (f"{c.context_blurb}\n\n{c.text}" if c.context_blurb else c.text)
+            for c in new_chunks
+        }
+        degraded, embed_err = await embed_chunks(
+            new_chunks, config, pool=pg_pool, text_override=embed_texts_override
+        )
+        if embed_err is not None:
+            if _embedding_failure_is_fatal(new_chunks):
+                logging.warning("embed_chunks: %s", embed_err)
+                errors.append(f"EmbeddingError: {embed_err}")
+            else:
+                # The fallback provider produced real vectors: degraded, but
+                # everything stored. A note, NOT an error — otherwise no run
+                # on a fallback-dependent host would ever count as completed
+                # and the dedupe probe would never fire.
+                embed_note = embed_err
+
+        matryoshka_cfg = _nested_dict(config, "search")
+        vectors_1024: dict[str, list[float]] = {}
+        if bool(matryoshka_cfg.get("matryoshka_enabled", False)) and not degraded:
+            from ..rag.embedder import _slice_normalize
+
+            dim = int(matryoshka_cfg.get("matryoshka_dim", 1024))
+            for c in new_chunks:
+                if c.embedding is not None:
+                    vectors_1024[str(c.chunk_id)] = _slice_normalize(c.embedding, dim)
+
+        try:
+            embedding_model = str(
+                _nested_dict(config, "embedding").get("model", "nomic-embed-text")
+            )
+            dimensions = int(_nested_dict(config, "embedding").get("dimensions", 768))
+            pg_vector_count = await ingest_store.store_vectors(
+                new_chunks,
+                embedding_model,
+                dimensions=dimensions,
+                vectors_1024=vectors_1024 or None,
             )
         except Exception as exc:
-            logging.warning("Shadow hierarchy write failed: %s", exc)
-            errors.append(f"ShadowWriteError: {exc}")
+            logging.warning("Postgres vector write failed: %s", exc)
+            errors.append(f"PostgresWriteError: {exc}")
+            pg_chunk_count = 0
+            pg_vector_count = 0
 
-    # Extract entities and relations
-    entities: list[Entity] = []
-    relations: list[Relation] = []
-    extractor_id = "none"
-    if _extract_entities_flag(config):
-        try:
-            entities, relations, extractor_id = await extract_with_fallback(
-                chunks, ontology(config), document.document_id, config, pool=pg_pool
-            )
-            if entities:
-                await ingest_store.store_entities(entities)
-            if relations:
-                graph_cfg = _nested_dict(config, "graph")
-                await ingest_store.store_relations(
-                    relations,
-                    model_version=graph_cfg.get("model_version"),
-                    prompt_version=graph_cfg.get("prompt_version"),
+        # U48/P6: side-by-side SHADOW hierarchy — additive only. The v1
+        # chunks/vectors above stay the live search corpus; any shadow failure
+        # is logged and isolated so it can never break the live ingest.
+        hierarchy_settings = load_hierarchy_settings(config)
+        shadow_chunk_count = 0
+        shadow_vector_count = 0
+        shadow_note: str | None = None
+        if hierarchy_settings.enabled:
+            try:
+                from ..tools.shadow_ingest import write_shadow_hierarchy
+
+                shadow_chunk_count, shadow_vector_count, shadow_note = await write_shadow_hierarchy(
+                    pool=pg_pool,
+                    tenant_id=tenant_id,
+                    document_id=document.document_id,
+                    text=text,
+                    chunks=chunks,
+                    config=config,
+                    settings=hierarchy_settings,
                 )
-        except Exception as exc:
-            logging.warning("Entity extraction failed: %s", exc)
-            errors.append(f"ExtractionError: {exc}")
+            except Exception as exc:
+                logging.warning("Shadow hierarchy write failed: %s", exc)
+                errors.append(f"ShadowWriteError: {exc}")
 
-    # Mirror chunks into LlamaIndex RAG backend (additive path)
-    if rag_backend is not None:
+        # Extract entities and relations
+        entities: list[Entity] = []
+        relations: list[Relation] = []
+        extractor_id = "none"
+        if _extract_entities_flag(config):
+            try:
+                entities, relations, extractor_id = await extract_with_fallback(
+                    chunks, ontology(config), document.document_id, config, pool=pg_pool
+                )
+                if entities:
+                    await ingest_store.store_entities(entities)
+                if relations:
+                    graph_cfg = _nested_dict(config, "graph")
+                    await ingest_store.store_relations(
+                        relations,
+                        model_version=graph_cfg.get("model_version"),
+                        prompt_version=graph_cfg.get("prompt_version"),
+                    )
+            except Exception as exc:
+                logging.warning("Entity extraction failed: %s", exc)
+                errors.append(f"ExtractionError: {exc}")
+
+        # Mirror chunks into LlamaIndex RAG backend (additive path)
+        if rag_backend is not None:
+            try:
+                await rag_backend.ingest(
+                    document.document_id,
+                    [c.model_dump() for c in chunks],
+                )
+            except Exception as exc:
+                logging.warning("LlamaIndex ingest failed: %s", exc)
+                errors.append(f"LlamaIndexError: {exc}")
+
+        # Update document chunk_count
+        document.chunk_count = len(chunks)
         try:
-            await rag_backend.ingest(
-                document.document_id,
-                [c.model_dump() for c in chunks],
-            )
+            await ingest_store.update_document(document, file_hash)
         except Exception as exc:
-            logging.warning("LlamaIndex ingest failed: %s", exc)
-            errors.append(f"LlamaIndexError: {exc}")
+            logging.warning("Document update failed: %s", exc)
+            errors.append(f"PostgresWriteError: {exc}")
 
-    # Update document chunk_count
-    document.chunk_count = len(chunks)
-    try:
-        await ingest_store.store_document(document, file_hash=file_hash)
+        stages: dict[str, object] = {
+            "chunks": pg_chunk_count,
+            "vectors": pg_vector_count,
+            "entities": len(entities),
+            "relations": len(relations),
+            "degraded": degraded,
+            "extractor_id": extractor_id,
+            "errors": errors,
+        }
+        if hierarchy_settings.enabled:
+            stages["shadow_chunk_count"] = shadow_chunk_count
+            stages["shadow_vector_count"] = shadow_vector_count
+
+        # Close the ledger LAST — completed only when no stage recorded an
+        # error; failed with the error text otherwise.
+        await ingest_store.finish_run(run_id, file_hash, stages, errors)
+
+        result: dict[str, object] = {
+            # Nothing reports success on a partial ingest: any stage error
+            # flips the status (the ledger row is 'failed' either way).
+            "status": "success" if not errors else "partial",
+            "document_id": document.document_id,
+            "path": path,
+            "source_type": source_type,
+            "size_bytes": document.size_bytes,
+            "chunk_count": len(chunks),
+            "entity_count": len(entities),
+            "relation_count": len(relations),
+            "pg_chunk_count": pg_chunk_count,
+            "pg_vector_count": pg_vector_count,
+            "degraded": degraded,
+            "extractor_id": extractor_id,
+            "entities": {entity.name: entity.entity_id for entity in entities},
+            "errors": errors,
+            "run_id": run_id,
+        }
+        if embed_note is not None:
+            result["embed_note"] = embed_note
+        # Shadow keys are present ONLY when the hierarchy flag is on, so the
+        # flag-off result dict stays byte-identical to the pre-U48 shape.
+        if hierarchy_settings.enabled:
+            result["shadow_chunk_count"] = shadow_chunk_count
+            result["shadow_vector_count"] = shadow_vector_count
+            if shadow_note is not None:
+                result["shadow_note"] = shadow_note
+        return result
     except Exception as exc:
-        logging.warning("Document update failed: %s", exc)
-
-    result: dict[str, object] = {
-        "status": "success",
-        "document_id": document.document_id,
-        "path": path,
-        "source_type": source_type,
-        "size_bytes": document.size_bytes,
-        "chunk_count": len(chunks),
-        "entity_count": len(entities),
-        "relation_count": len(relations),
-        "pg_chunk_count": pg_chunk_count,
-        "pg_vector_count": pg_vector_count,
-        "degraded": degraded,
-        "extractor_id": extractor_id,
-        "entities": {entity.name: entity.entity_id for entity in entities},
-        "errors": errors,
-    }
-    # Shadow keys are present ONLY when the hierarchy flag is on, so the
-    # flag-off result dict stays byte-identical to the pre-U48 shape.
-    if hierarchy_settings.enabled:
-        result["shadow_chunk_count"] = shadow_chunk_count
-        result["shadow_vector_count"] = shadow_vector_count
-        if shadow_note is not None:
-            result["shadow_note"] = shadow_note
-    return result
+        await ingest_store.fail_run(run_id, f"{type(exc).__name__}: {exc}")
+        raise
 
 
 async def ingest_text(
