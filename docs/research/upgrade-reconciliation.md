@@ -68,12 +68,13 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
   done per their evaluate/benchmark-first specs — no retrieval default was
   flipped without evidence; U32/U35/U36 closed by the issue-#81 branch —
   MRL gating, the judgment-mean production call site, review-packet
-  saturation-curve rendering)
+  saturation-curve rendering; U27/U28/U29 closed by the 2026-10-13 backlog
+  wave (#77/#78/#79) — see the end-state table below)
 - **partial = 0**
-- **deferred = 3** — U27, U28, U29 (optional interop/baselines, program-plan
-  decision; topic layer/BERTopic separately deferred)
+- **deferred = 0** (topic layer/BERTopic remains a separately-tracked idea,
+  never a numbered U-row)
 
-45 + 0 + 3 = 48 rows. (This supersedes the earlier 12/15/21 tally, which was
+48 + 0 + 0 = 48 rows. (This supersedes the earlier 12/15/21 tally, which was
 verified against earlier wave branches; the final audit re-verified every
 'done' citation by import and sample-checked the partial rows.)
 
@@ -164,7 +165,7 @@ verified against earlier wave branches; the final audit re-verified every
 
 ## End-of-program audit (2026-10-12, final per-U verdicts)
 
-The Step-0 table above is the historical snapshot this program started from (kept for the audit trail). The table below is the verified END state: every 'done' citation was import-checked against the merged tree (`feature/kb-u48-wave2-integration` @ 9ec1d2a, now master b0997bd) by the final adversarial audit. Tallies: **done 42 / partial 3 / deferred 3**.
+The Step-0 table above is the historical snapshot this program started from (kept for the audit trail). The table below is the verified END state: every 'done' citation was import-checked against the merged tree (`feature/kb-u48-wave2-integration` @ 9ec1d2a, now master b0997bd) by the final adversarial audit. Tallies as of the 2026-10-13 backlog wave: **done 48 / partial 0 / deferred 0** (the 2026-10-12 audit closed at 42/3/3; the #81 branch flipped U32/U35/U36 and the #77/#78/#79 wave flipped U27/U28/U29).
 
 | U# | Final | Evidence |
 |---|---|---|
@@ -194,9 +195,9 @@ The Step-0 table above is the historical snapshot this program started from (kep
 | U24 | done | `research/deduction_guard.py:decide_guard` (off/warn/enforce + sandbox labeling) + `unreleased_draft` halt gate |
 | U25 | done | `research/monitoring.py:propose_from_alarms` -> `ReleaseService.propose_change`; released codebooks never mutated |
 | U26 | done | `licenses.lock.json` + `scripts/generate_license_lock.py` + CI License baseline check |
-| U27 | deferred | optional interop dropped for scope -> issue #77 |
-| U28 | deferred | optional interop dropped for scope -> issue #78 |
-| U29 | deferred | optional interop dropped for scope -> issue #79 |
+| U27 | done | `coding/refi_qda/` (stdlib-XML export/import, canonical-hash manifest sidecar surviving round-trip); XSD validation against the pinned `Project-mrt2019.xsd` fixture (3-mirror SHA-256) behind `pytest.importorskip("lxml")`; `tests/test_refi_qda.py` (#77, 2026-10-13 wave) |
+| U28 | done | `tests/test_mapie_crosscheck.py` — MAPIE (dev-extras only, `importorskip`, never runtime) cross-checks `research/calibration.py:conformal_sets` on shared seeded splits; per-seed coverage agreement within documented tolerance + divergence notes (#78, 2026-10-13 wave) |
+| U29 | done | `scripts/bench_gatos_baseline.py` / `bench_tntllm_baseline.py` / `bench_lloom_baseline.py` (deterministic, offline, honest `insufficient_data`) + `docs/research/benchmarks/inductive-baselines.md` with observed recovery-baseline results; recovery-baseline caveat pinned in `--help` (#79, 2026-10-13 wave) |
 | U30 | done (adoption data-gated) | `rag/reranker.py` qwen3 yes/no logprob scoring; `create_reranker` wired in `query_handler`; Ollama logprobs verified live |
 | U31 | done | `scripts/bench_embedders.py` + versioned `EmbeddingProfile` contract (never in-place embedder changes) |
 | U32 | done | two-stage matryoshka config-off + MRL gating enforced: `config.py:matryoshka_mrl_error` (load_config raises), `embedding.mrl_trained` default false in all three config locations, `validate_configs.validate_runtime_config` cross-field rule; `tests/test_u32_mrl_gating.py` (#81) |

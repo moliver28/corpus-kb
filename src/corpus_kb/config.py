@@ -138,7 +138,10 @@ def matryoshka_mrl_error(config: dict[str, object]) -> str | None:
     embedding = config.get("embedding")
     if not isinstance(search, dict) or not isinstance(embedding, dict):
         return None
-    if search.get("matryoshka_enabled") is not True:
+    # Truthiness, matching the runtime consumers (QueryHandler /
+    # ingest_common read the key through bool()): a quoted "true" or 1 in a
+    # hand-edited YAML must trip the gate, not slip past `is not True`.
+    if not search.get("matryoshka_enabled"):
         return None
     if embedding.get("mrl_trained") is True:
         return None
@@ -401,13 +404,17 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:
-    """Copy a flat defaults mapping one level deep (nested dicts/lists)."""
-    detached: dict[str, object] = {}
-    for key, value in defaults.items():
-        if isinstance(value, dict):
-            detached[key] = dict(value)
-        elif isinstance(value, list):
-            detached[key] = list(value)
-        else:
-            detached[key] = value
-    return detached
+    """Copy defaults deeply enough that no dict/list inside a loaded config
+    aliases the owning modules' constants: load_config deep-merges user YAML
+    into this result (``_deep_update``), so any shared nested object would
+    absorb user overrides process-wide (release.profiles nests three levels).
+    """
+    return {key: _detached_value(value) for key, value in defaults.items()}
+
+
+def _detached_value(value: object) -> object:
+    if isinstance(value, dict):
+        return {key: _detached_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_detached_value(item) for item in value]
+    return value

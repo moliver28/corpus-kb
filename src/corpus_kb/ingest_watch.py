@@ -212,13 +212,15 @@ async def watch_directory(
     while options.max_passes is None or passes < options.max_passes:
         passes += 1
         for path in scan_watch_dir(directory):
-            result, crash = await _ingest_isolated(ingest_file, path, report)
+            result, _crash = await _ingest_isolated(ingest_file, path, report)
             _record(book, str(path), result)
             if str(result.get("status", "")) == "success":
                 ingested += 1
             else:
-                if crash is not None:
-                    failed += 1
+                # Every non-success counts as failed — pipeline-reported
+                # errors and crashes alike — so `failed` never reads 0
+                # beside a non-empty broken set.
+                failed += 1
                 if options.heal and is_healable_result(result):
                     report(f"watch: {path} failed with embedding unavailable; auto-heal armed")
         if options.heal:

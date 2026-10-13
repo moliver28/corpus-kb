@@ -108,7 +108,7 @@ fields in markdown) and exits 0:
   "corpus_status": "insufficient_data",
   "document_count": 4,
   "label": "local-machine baseline on a synthetic fixture corpus; absolute numbers are not deployment expectations",
-  "recovery_baseline_caveat": "GATOS-style validation uses synthetic planted themes, so results are recovery baselines, NOT proof of validity on real interviews."
+  "recovery_baseline_caveat": "GATOS's validation uses synthetic planted themes, so results are recovery baselines, not proof of validity on real interviews."
 }
 ```
 

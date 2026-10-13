@@ -1,6 +1,6 @@
 {
   "description": "Planted-theme labels for the inductive-baselines fixture corpus (issue #79 / U29). Synthetic interviews with three planted themes plus mixed and neutral documents. Themes are planted so that inductive-coding baselines can be scored as RECOVERY baselines only.",
-  "recovery_baseline_caveat": "GATOS-style validation uses synthetic planted themes, so results are recovery baselines, NOT proof of validity on real interviews.",
+  "recovery_baseline_caveat": "GATOS's validation uses synthetic planted themes, so results are recovery baselines, not proof of validity on real interviews.",
   "themes": {
     "deployment": {
       "keywords": [

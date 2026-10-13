@@ -283,6 +283,14 @@ def test_malformed_xml_rejected_honestly() -> None:
         import_project("<html><body/></html>")
 
 
+def test_xml_invalid_control_characters_rejected() -> None:
+    """\\x0b in a definition would serialize raw and fail XSD validation."""
+    bad = _codebook()
+    bad["categories"][0]["brief_definition"] = "vertical tab \x0b here"
+    with pytest.raises(RefiQdaError, match=r"XML-1\.0-invalid control"):
+        export_project(bad, _manifest())
+
+
 def test_unrepresentable_sections_rejected() -> None:
     guid = mint_guid("x", "a")
     body = (

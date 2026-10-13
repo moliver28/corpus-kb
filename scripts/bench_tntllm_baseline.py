@@ -8,8 +8,8 @@ the CLI always runs the deterministic keyword/clustering heuristic default —
 no live LLM calls are made anywhere. Supply an LLM-backed inducer
 programmatically if you want the real thing, and say so in any write-up.
 
-CAVEAT (carried verbatim from the issue): GATOS-style validation uses
-synthetic planted themes, so results are recovery baselines, NOT proof of
+CAVEAT (carried verbatim from the issue): GATOS's validation uses
+synthetic planted themes, so results are recovery baselines, not proof of
 validity on real interviews. Local-machine baseline on a synthetic fixture
 corpus; exits 0 for meaningful runs and honest ``insufficient_data`` reports.
 """

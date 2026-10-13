@@ -34,8 +34,8 @@ ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures" / "inductive_baselines"
 
 CAVEAT = (
-    "GATOS-style validation uses synthetic planted themes, so results are "
-    "recovery baselines, NOT proof of validity on real interviews."
+    "GATOS's validation uses synthetic planted themes, so results are "
+    "recovery baselines, not proof of validity on real interviews."
 )
 
 

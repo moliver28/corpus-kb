@@ -124,6 +124,11 @@ def _emit_code(
             f"code {code_id!r} brief_definition contains the reserved meta marker; "
             "it would corrupt the Description payload"
         )
+    if any(ord(ch) < 0x20 and ch not in "\t\n\r" for ch in echo_text):
+        raise RefiQdaError(
+            f"code {code_id!r} brief_definition contains XML-1.0-invalid control "
+            "characters; they would serialize raw and fail XSD validation on import"
+        )
     el = ET.SubElement(parent_el, _qualified("Code"))
     el.set("guid", mint_guid(scope, code_id))
     el.set("name", str(code.get("name", "")))

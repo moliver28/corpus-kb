@@ -26,7 +26,12 @@ GUC_SQL = "SELECT set_config('app.current_tenant_id', $1, true)"
 
 
 class _RecordingTx:
-    """Transaction stand-in: marks entry/exit in the connection's SQL log."""
+    """Transaction stand-in: marks entry/exit in the connection's SQL log.
+
+    Exit records ROLLBACK when unwinding through an exception (asyncpg
+    semantics), so tests can pin that a failing statement leaves no
+    committed partial write.
+    """
 
     def __init__(self, conn: _RecordingConn) -> None:
         self._conn = conn
@@ -35,8 +40,8 @@ class _RecordingTx:
         self._conn.sql.append("BEGIN")
         return self._conn
 
-    async def __aexit__(self, *exc: object) -> bool:
-        self._conn.sql.append("COMMIT")
+    async def __aexit__(self, exc_type: object, *exc: object) -> bool:
+        self._conn.sql.append("ROLLBACK" if exc_type is not None else "COMMIT")
         return False
 
 

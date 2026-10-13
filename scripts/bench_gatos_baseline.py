@@ -6,8 +6,8 @@ keywords (the induced "codes"). Recovery is scored against the planted themes
 in the fixture labels: adjusted Rand index, per-theme precision/recall with
 keyword Jaccard, plus a post-hoc threshold sweep.
 
-CAVEAT (carried verbatim from the issue): GATOS-style validation uses
-synthetic planted themes, so results are recovery baselines, NOT proof of
+CAVEAT (carried verbatim from the issue): GATOS's validation uses
+synthetic planted themes, so results are recovery baselines, not proof of
 validity on real interviews. Everything here is a local-machine baseline on a
 synthetic fixture corpus; no LLM calls, no network, no database. Greedy
 agglomerative merging is fully deterministic, so ``--seed`` is accepted for

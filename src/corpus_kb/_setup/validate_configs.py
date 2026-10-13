@@ -524,6 +524,7 @@ def validate_ingestion_block(config: dict[str, Any]) -> list[str]:
 RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "search.exclude_degraded": bool,
     "search.qa_context_in_fts": bool,
+    "search.matryoshka_enabled": bool,
     "embedding.mrl_trained": bool,
     "ingestion.default": str,
     "ingestion.strategies": dict,

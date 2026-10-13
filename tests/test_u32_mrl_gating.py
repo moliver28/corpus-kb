@@ -96,6 +96,19 @@ class TestLoadConfigGate:
         # do NOT count as declaring MRL: only the literal boolean True.
         assert matryoshka_mrl_error(_config_with(True, "yes")) is not None
 
+    def test_truthy_non_bool_arm_engages_gate(self):
+        """The gate must fail CLOSED on truthy non-bool arm values.
+
+        The runtime consumers read search.matryoshka_enabled through bool(),
+        so a quoted "true" would activate the two-stage arm; the loader gate
+        has to refuse the same values it would activate on.
+        """
+        assert matryoshka_mrl_error(_config_with("true", False)) is not None
+        assert matryoshka_mrl_error(_config_with(1, False)) is not None
+        # ...and the arm is genuinely off for falsy non-bool values.
+        assert matryoshka_mrl_error(_config_with(0, False)) is None
+        assert matryoshka_mrl_error(_config_with("", False)) is None
+
 
 class TestValidateConfigs:
     """validate_runtime_config: presence+type of the key, and the cross-rule."""

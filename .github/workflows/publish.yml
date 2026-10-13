@@ -1,37 +1,40 @@
-# Manual / tag-push publish pipeline for Corpus-KB (PyPI Trusted Publishing, OIDC).
+# Manual TestPyPI publish pipeline for Corpus-KB (PyPI Trusted Publishing, OIDC).
 # No long-lived PyPI API token is stored in GitHub.
 #
-# Triggers:
-#   - workflow_dispatch -> TestPyPI (manual smoke publish of the selected ref)
-#   - push of tags v*   -> PyPI (real publish; complements release.yml, which
-#                          publishes on GitHub release events instead)
+# Trigger:
+#   - workflow_dispatch -> TestPyPI (manual dry-run publish of the selected ref)
+#
+# Real publishes are owned by release.yml (GitHub release events: prerelease
+# -> TestPyPI, final -> PyPI). This workflow deliberately has NO tag/release
+# trigger: overlapping triggers would race release.yml on the same upload
+# and one run would always fail on PyPI's "file already exists".
 #
 # ONE-TIME manual setup, before the first run of this workflow:
 #
-#   1. Repo environments (Settings -> Environments): `testpypi` and `pypi`
-#      must exist. release.yml documents them as created 2026-10-08 via API;
-#      create them if missing. No protection rules are required, but adding
-#      restricted deployment to the main branch is recommended for `pypi`.
+#   1. Repo environments (Settings -> Environments): `testpypi` must exist
+#      (release.yml documents it as created 2026-10-08 via API; create it if
+#      missing). No protection rules are required for TestPyPI.
 #
-#   2. Register a pending trusted publisher for THIS workflow on each index:
+#   2. Register a pending trusted publisher for THIS workflow on TestPyPI:
 #      - https://test.pypi.org/manage/account/publishing/  (project: corpus-kb)
-#      - https://pypi.org/manage/account/publishing/       (project: corpus-kb)
-#      Pending publisher settings (identical on both):
+#      Pending publisher settings:
 #      - Owner (PyPI project): existing or new project name "corpus-kb"
 #      - Owner (GitHub): moliver28
 #      - Repository: corpus-kb
 #      - Workflow name: publish.yml
-#      - Environment: testpypi (TestPyPI entry) / pypi (PyPI entry)
-#      release.yml has its own pending-publisher entry for workflow name
-#      release.yml; the two workflows are registered separately.
+#      - Environment: testpypi
+#      release.yml has its own pending-publisher entries (workflow name
+#      release.yml, environments testpypi/pypi); the workflows are
+#      registered separately.
 
 name: Publish
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
+
+concurrency:
+  group: publish-testpypi
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -66,36 +69,5 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
-          packages-dir: dist/
-          attestations: false
-
-  publish-pypi:
-    name: Publish to PyPI (tag push)
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: pypi
-    permissions:
-      id-token: write
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-          cache-dependency-path: pyproject.toml
-
-      - name: Install build tools
-        run: python -m pip install --upgrade pip build
-
-      - name: Build wheel and sdist
-        run: python -m build
-
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
           packages-dir: dist/
           attestations: false

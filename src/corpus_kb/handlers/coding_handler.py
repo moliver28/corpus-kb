@@ -26,6 +26,7 @@ from corpus_kb.coding.codebook_loader import CodebookEmbeddingError, load_codebo
 from corpus_kb.coding.coder_dispatch import dispatch_chunk
 from corpus_kb.coding.confidence_routing import Bands
 from corpus_kb.coding.floors_calibration import calibrate_code_floors
+from corpus_kb.coding.judgment_sampling import judgment_mean_enabled
 from corpus_kb.coding.keyword_governance_report import compute_keyword_governance
 from corpus_kb.coding.pooling import (
     materialize_chunk_keyword_hits,
@@ -239,6 +240,11 @@ class CodingHandler:
         cells_coded = 0
         cells_rejected = 0
         rows_written = 0
+        # Resolve the U35 flag once per batch: judgment_mean_enabled() reads
+        # the config from disk, which must not happen per coded cell (hot
+        # path latency, and a mid-batch config edit would flip behavior
+        # halfway through the run).
+        batch_use_judgment_mean = judgment_mean_enabled()
         for cell in cells:
             raw_chunk_id = cell.get("chunk_id")
             try:
@@ -256,6 +262,7 @@ class CodingHandler:
                     batch_id=batch_id,
                     coding_pass=coding_pass,
                     bands=bands,
+                    use_judgment_mean=batch_use_judgment_mean,
                 )
             except Exception as exc:  # one bad cell must not abort the batch
                 logger.warning("Coding cell %s failed: %s", raw_chunk_id, exc)

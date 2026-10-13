@@ -203,7 +203,9 @@ def test_watch_heal_reingest_crash_is_isolated(tmp_path: Path) -> None:
     rec = _Recorder()
     summary = _run(_watch(tmp_path, ingest, rec, probe_results=[True], max_passes=1))
     assert summary["healed"] == 0
-    assert summary["failed"] == 1
+    # failed counts every non-success attempt: the initial partial result
+    # (pipeline-reported error) plus the heal re-ingest crash.
+    assert summary["failed"] == 2
     assert summary["status"] == "partial"
     assert summary["still_broken"] == [str(target)]
     assert any("connection terminated mid-heal" in m for m in rec.messages)

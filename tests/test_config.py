@@ -148,3 +148,30 @@ def test_research_defaults_are_not_aliased_across_loads() -> None:
     second_research = cast(dict[str, object], second["research"])
     fresh = cast(dict[str, object], second_research["judgment_distribution"])
     assert fresh == {"use_mean": False}
+
+
+def test_nested_research_defaults_are_not_aliased_across_loads() -> None:
+    """Deep nesting (release.profiles, three levels) must not alias either.
+
+    load_config deep-merges user YAML into the defaults result, so a shared
+    nested dict would absorb user overrides into the module constant for
+    every later load in the process.
+    """
+    first: dict[str, object] = {}
+    _apply_research_defaults(first)
+    first_research = cast(dict[str, object], first["research"])
+    first_release = cast(dict[str, object], first_research["release"])
+    first_profiles = cast(dict[str, object], first_release["profiles"])
+    team = cast(dict[str, object], first_profiles["team-codebook"])
+    gates = cast(list[object], team["required_gates"])
+    gates.append("injected-gate")
+    team["injected"] = True
+
+    second: dict[str, object] = {}
+    _apply_research_defaults(second)
+    second_research = cast(dict[str, object], second["research"])
+    second_release = cast(dict[str, object], second_research["release"])
+    second_profiles = cast(dict[str, object], second_release["profiles"])
+    fresh = cast(dict[str, object], second_profiles["team-codebook"])
+    assert "injected" not in fresh
+    assert "injected-gate" not in cast(list[object], fresh["required_gates"])

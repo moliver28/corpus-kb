@@ -202,7 +202,12 @@ class AgeGraphStore(GraphStore):
     async def _release_conn(self, conn: asyncpg.Connection) -> None:
         """Release a pooled connection when not inside a transaction."""
         if self._conn is None:
-            await self._pool.release(conn)
+            try:
+                # Reset the session-scoped tenant GUC (set by _setup_conn)
+                # so no other tenant inherits it from the pooled connection.
+                await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", "")
+            finally:
+                await self._pool.release(conn)
 
     async def _setup_conn(self, conn: asyncpg.Connection) -> None:
         """Probe AGE availability once, then LOAD age + search_path + tenant."""
@@ -216,8 +221,13 @@ class AgeGraphStore(GraphStore):
             if _is_age_absence_error(exc):
                 raise _age_unavailable(f"session setup failed: {exc}") from exc
             raise
+        # Session-scoped (is_local=false): the openCypher statements that
+        # follow run via autocommit, where a LOCAL set_config evaporates with
+        # its statement and every write then violates FORCE RLS (the #75/#87
+        # defect class). _release_conn resets the session GUC before the
+        # connection returns to the pool.
         await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)",
+            "SELECT set_config('app.current_tenant_id', $1, false)",
             self._tenant_id,
         )
 
