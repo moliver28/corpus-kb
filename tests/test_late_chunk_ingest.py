@@ -376,6 +376,46 @@ def test_select_factory_failure_is_honest_pooled(monkeypatch: pytest.MonkeyPatch
     assert "offline model fetch" in plan.note
 
 
+def test_select_dimension_mismatch_is_honest_pooled_with_remedy(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The activated model's width must match embedding.dimensions or refuse."""
+    monkeypatch.setattr(embedder_selection, "is_latechunk_installed", lambda: True)
+
+    class _WideLateChunker(FakeTokenEmbedder):
+        dimensions = 1024
+
+    plan = select_ingest_embedder(
+        _ingest_config(model="qwen3-embedding:0.6b"), late_chunk_factory=_WideLateChunker
+    )
+    assert plan.mode == POOLED_MODE
+    assert plan.spans_provider is None
+    assert plan.note is not None
+    assert "1024-dim" in plan.note and "8" in plan.note
+    assert "set embedding.dimensions to 1024" in plan.note
+
+
+def test_builtin_factory_memoizes_one_embedder(monkeypatch: pytest.MonkeyPatch):
+    """Directory ingest calls selection per document: construct the HF stack once."""
+    monkeypatch.setattr(embedder_selection, "is_latechunk_installed", lambda: True)
+    saved = embedder_selection._late_embedder_singleton
+    embedder_selection._late_embedder_singleton = None
+    constructions: list[int] = []
+
+    class _CountingFake(FakeTokenEmbedder):
+        def __init__(self) -> None:
+            constructions.append(1)
+
+    monkeypatch.setattr(embedder_selection, "LateChunkEmbedder", _CountingFake)
+    try:
+        first = embedder_selection._construct_late_chunk_embedder()
+        second = embedder_selection._construct_late_chunk_embedder()
+        assert first is second
+        assert sum(constructions) == 1
+    finally:
+        embedder_selection._late_embedder_singleton = saved
+
+
 # ============================================================================
 # embed_chunks integration (fake-pool pattern from test_ingest_common)
 # ============================================================================
@@ -531,8 +571,69 @@ async def test_embed_chunks_late_mode_spanless_chunk_falls_back_with_note(
     assert chunks[1].embedding == fake.embed(CHUNK), "spanless chunk embeds pooled"
     note = meta.get("embedding_note")
     assert isinstance(note, str)
-    assert "1/2" in note and "source" in note and "char spans" in note
+    assert "1/2" in note and "source" in note and "char span" in note
     assert meta["embedding_mode"] == LATE_CHUNKING_MODE
+
+
+async def test_embed_chunks_all_spanless_reports_pooled_mode_with_note(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """0/N trusted spans must report pooled mode, not a false late-chunking."""
+    fake = FakeTokenEmbedder()
+    doc, _spans = _doc_with_two_chunks()
+    plan = IngestEmbeddingPlan(
+        mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=_spans_provider(fake)
+    )
+    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    chunks = [
+        Chunk(chunk_id="c1", document_id="d1", text=CHUNK, source_type="text"),
+        Chunk(chunk_id="c2", document_id="d1", text=CHUNK, source_type="text"),
+    ]
+    meta: dict[str, object] = {}
+
+    degraded, error = await embed_chunks(
+        chunks, _ingest_config(model="qwen3-embedding:0.6b"), document_text=doc, meta=meta
+    )
+
+    assert degraded is False
+    assert error is None
+    assert meta["embedding_mode"] == POOLED_MODE
+    note = meta.get("embedding_note")
+    assert isinstance(note, str)
+    assert "2/2" in note
+
+
+async def test_embed_chunks_fabricated_span_falls_back_to_pooled(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A span whose document slice does not reproduce the chunk text is not trusted."""
+    fake = FakeTokenEmbedder()
+    doc, spans = _doc_with_two_chunks()
+    plan = IngestEmbeddingPlan(
+        mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=_spans_provider(fake)
+    )
+    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    shifted = (spans[0][0] + 2, spans[0][1] + 2)  # drifts off the real text
+    chunks = [
+        Chunk(
+            chunk_id="c1",
+            document_id="d1",
+            text=CHUNK,
+            source_type="text",
+            source_start_char=shifted[0],
+            source_end_char=shifted[1],
+        )
+    ]
+    meta: dict[str, object] = {}
+
+    degraded, error = await embed_chunks(
+        chunks, _ingest_config(model="qwen3-embedding:0.6b"), document_text=doc, meta=meta
+    )
+
+    assert degraded is False
+    assert error is None
+    assert chunks[0].embedding == fake.embed(CHUNK), "untrusted span embeds pooled"
+    assert meta["embedding_mode"] == POOLED_MODE
 
 
 async def test_embed_chunks_late_mode_zero_vectors_degrade(monkeypatch: pytest.MonkeyPatch):

@@ -439,3 +439,65 @@ async def test_whole_research_corpus_coexists_in_one_base(
     from corpus_kb.ingestion.base import TOKEN_BUDGET_CHARS
 
     assert all(len(chunk.text) <= TOKEN_BUDGET_CHARS for chunk in deck_chunks + web_chunks)
+
+
+# ---------------------------------------------------------------------------
+# 5. The flagship conjunction: late chunking ENGAGES for strategy chunks
+# ---------------------------------------------------------------------------
+
+
+async def test_late_chunking_engages_on_real_strategy_spans(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Strategy-produced spans must flow into the late path, not fall back.
+
+    This is the integration the whole wave exists for: with the activation
+    contract satisfied (stubbed at select_ingest_embedder — the extras-less
+    CI never installs the latechunk stack), BOTH new strategies' chunks are
+    embedded from spans into their own document text. Runs the deck path;
+    the web path is covered by the same span contract in test_web_ingestion.
+    """
+    from test_late_chunk_ingest import FakeTokenEmbedder, _spans_provider
+
+    from corpus_kb.rag import embedder_selection
+    from corpus_kb.rag.embedder_selection import LATE_CHUNKING_MODE, IngestEmbeddingPlan
+    from corpus_kb.tools import ingest_common
+
+    fake = FakeTokenEmbedder()
+    store = _harness(monkeypatch)
+    received_spans: list[list[tuple[int, int]]] = []
+
+    def recording_spans_provider(
+        document_text: str, chunk_char_spans: list[tuple[int, int]]
+    ) -> list[Any]:
+        received_spans.append(list(chunk_char_spans))
+        return _spans_provider(fake)(document_text, chunk_char_spans)
+
+    plan = IngestEmbeddingPlan(
+        mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=recording_spans_provider
+    )
+    monkeypatch.setattr(embedder_selection, "_late_embedder_singleton", None)
+    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+
+    from pptx_factory import make_research_deck
+
+    deck_path = make_research_deck(tmp_path / "survey_late.pptx")
+    result = await ingest_file(str(deck_path), _fake_pool(), _config())
+
+    assert result["status"] == "success"
+    assert result["embedding_mode"] == LATE_CHUNKING_MODE, "the marquee path must engage"
+    chunks = next(iter(store.chunks_by_doc.values()))
+    assert received_spans, "spans provider must have been called"
+    assert len(received_spans[0]) == len(chunks), (
+        "every strategy chunk must carry a trusted span (no silent pooled fallback)"
+    )
+    assert all(chunk.embedding for chunk in chunks), "late vectors must be populated"
+    # Late-chunking property across the real deck: identical chunk TEXTS at
+    # different slide positions got different vectors.
+    texts: dict[str, list[float]] = {}
+    for chunk in chunks:
+        if chunk.text in texts:
+            assert chunk.embedding != texts[chunk.text], (
+                "identical text at a different position must embed differently"
+            )
+        texts[chunk.text] = chunk.embedding

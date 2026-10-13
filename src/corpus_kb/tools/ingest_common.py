@@ -7,6 +7,7 @@ The ingest pipeline is async — callers must await run_pipeline().
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 from dataclasses import replace
@@ -186,11 +187,19 @@ async def embed_chunks(
 
         if plan is not None and plan.spans_provider is not None:
             assert document_text is not None  # plan only exists with document text
-            vectors, span_note = _late_chunk_vectors(plan, chunks, document_text, text_override)
+            # The late path runs synchronous HF/torch forwards; offload to a
+            # worker thread so the server event loop (uvicorn + socket share
+            # it) never blocks behind a multi-second window forward.
+            vectors, span_note, spans_used = await asyncio.to_thread(
+                _late_chunk_vectors, plan, chunks, document_text, text_override
+            )
             if span_note is not None:
                 note = f"{note}; {span_note}" if note else span_note
             if meta is not None:
-                meta["embedding_mode"] = mode
+                # Mode honesty: "late-chunking" only when at least one chunk
+                # was actually late-chunked; an all-pooled run with the flag
+                # on is reported as pooled (the note carries the reason).
+                meta["embedding_mode"] = mode if spans_used > 0 else POOLED_MODE
                 if note is not None:
                     meta["embedding_note"] = note
             if vectors and _all_zero(vectors):
@@ -252,15 +261,20 @@ def _late_chunk_vectors(
     chunks: list[Chunk],
     document_text: str,
     text_override: dict[str, str] | None,
-) -> tuple[list[list[float]], str | None]:
+) -> tuple[list[list[float]], str | None, int]:
     """Late-chunked vectors for span-carrying chunks, pooled for the rest.
 
     Chunks whose (source_start_char, source_end_char) span is a valid range
     into ``document_text`` embed via the plan's ``embed_document_chunks``
     (true late chunking — the contextualized blurb form is NOT used there,
-    since spans point into the raw document). Chunks lacking spans embed
-    via the plan embedder's ``embed_batch`` (single-span forward per text)
-    with a per-chunk note so the fallback is never silent.
+    since spans point into the raw document). A span is only trusted when
+    ``document_text[start:end]`` reproduces the chunk text verbatim — a
+    fabricated or drifted span would pool an unrelated region while still
+    labeling the vector late-chunked, so it falls back to pooled instead.
+    Chunks without a trusted span embed via the plan embedder's
+    ``embed_batch`` (single-span forward per text) with a per-chunk note so
+    the fallback is never silent. Returns ``(vectors, note, spans_used)``;
+    the caller reports the late-chunking mode only when ``spans_used > 0``.
     """
     spans_provider = plan.spans_provider
     assert spans_provider is not None
@@ -273,6 +287,7 @@ def _late_chunk_vectors(
             isinstance(start, int)
             and isinstance(end, int)
             and 0 <= start < end <= len(document_text)
+            and document_text[start:end] == chunk.text
         ):
             late_idx.append(idx)
             spans.append((start, end))
@@ -293,10 +308,10 @@ def _late_chunk_vectors(
         for idx, vector in zip(pooled_idx, pooled, strict=True):
             vectors[idx] = vector
         note = (
-            f"late chunking: {len(pooled_idx)}/{len(chunks)} chunks lacked source "
-            "char spans; pooled fallback for those"
+            f"late chunking: {len(pooled_idx)}/{len(chunks)} chunks lacked a trusted "
+            "source char span; pooled fallback for those"
         )
-    return vectors, note
+    return vectors, note, len(late_idx)
 
 
 def _extractor_name(config: dict[str, object]) -> str:
@@ -925,8 +940,13 @@ async def reembed_degraded(
         for row in rows
     ]
     text_override = {c.chunk_id: build_embedding_input(c.text, c.context_blurb) for c in chunks}
+    # meta passthrough: a repair re-embeds WITHOUT the document, so when late
+    # chunking is the configured technique the repaired chunk lands in the
+    # pooled vector space while its siblings stay late-chunked — surface the
+    # mode/note in the summary instead of silently mixing spaces.
+    embed_meta: dict[str, object] = {}
     degraded, embed_err = await embed_chunks(
-        chunks, config, pool=pg_pool, text_override=text_override
+        chunks, config, pool=pg_pool, text_override=text_override, meta=embed_meta
     )
     if embed_err is not None:
         logger.warning("reembed_degraded: %s", embed_err)
@@ -991,6 +1011,10 @@ async def reembed_degraded(
         "fixed": fixed,
         "failed": failed,
     }
+    if embed_meta.get("embedding_mode") is not None:
+        summary["embedding_mode"] = embed_meta["embedding_mode"]
+    if embed_meta.get("embedding_note") is not None:
+        summary["embedding_note"] = embed_meta["embedding_note"]
     if degraded and embed_err is not None:
         # The write path above already judged each vector per-chunk; this
         # flag reports the PRIMARY provider's health honestly (a fallback

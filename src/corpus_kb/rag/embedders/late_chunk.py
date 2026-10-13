@@ -204,7 +204,12 @@ class LateChunkEmbedder:
         mappings = cast("list[list[tuple[int, int]]] | None", encoded.get("offset_mapping"))
         n_tokens = len(encoded["input_ids"].tolist()[0])
         if not mappings:
-            return None, n_tokens
+            # No offsets: mapping falls back to chars/4 below — so window
+            # PLANNING must use the same chars/4 estimate. Returning the real
+            # token count here would slice windows past the end of the
+            # document for token-dense text (CJK) while still labeling the
+            # vectors late-chunked.
+            return None, max(1, len(document_text) // CHARS_PER_TOKEN)
         return mappings[0], n_tokens
 
     def _forward_rows(self, text: str) -> list[list[float]]:

@@ -72,8 +72,23 @@ def late_chunking_requested(config: dict[str, object]) -> bool:
 
 
 def _construct_late_chunk_embedder() -> LateChunkEmbedder:
-    """Constructor seam — tests stub this instead of loading the HF stack."""
-    return LateChunkEmbedder()
+    """Constructor seam — tests stub this instead of loading the HF stack.
+
+    The HF stack load (AutoTokenizer + AutoModel + SentenceTransformer) is
+    seconds-to-minutes of work, so the built-in constructor memoizes ONE
+    instance for the process: directory ingest calls select_ingest_embedder
+    per document, and reloading per document would make the flagship batch
+    workload the slowest path in the repo. Keyed on the constructor
+    defaults; a different model/window/stride needs a distinct embedder and
+    should extend the key with those values.
+    """
+    global _late_embedder_singleton
+    if _late_embedder_singleton is None:
+        _late_embedder_singleton = LateChunkEmbedder()
+    return _late_embedder_singleton
+
+
+_late_embedder_singleton: LateChunkEmbedder | None = None
 
 
 def select_ingest_embedder(
@@ -123,6 +138,27 @@ def select_ingest_embedder(
             note=(
                 "late_chunking requested but LateChunkEmbedder failed to load "
                 f"({type(exc).__name__}: {exc}); pooled fallback"
+            ),
+        )
+    # Dimension coherence: the activated embedder's real output width must
+    # match embedding.dimensions — the configured value is what lands in the
+    # vector store and the search corpus. A mismatch means ingest would write
+    # wrong-width (or mislabeled) vectors; refuse with the remedy instead.
+    configured_dims_raw = embedding.get("dimensions", 768)
+    configured_dims = (
+        configured_dims_raw
+        if isinstance(configured_dims_raw, int) and not isinstance(configured_dims_raw, bool)
+        else -1
+    )
+    if configured_dims > 0 and embedder.dimensions != configured_dims:
+        return IngestEmbeddingPlan(
+            mode=POOLED_MODE,
+            embedder=create_embedder(config, pool),
+            note=(
+                "late_chunking requested but the activated model outputs "
+                f"{embedder.dimensions}-dim vectors while embedding.dimensions is "
+                f"{configured_dims}; pooled fallback (set embedding.dimensions to "
+                f"{embedder.dimensions} to activate late chunking)"
             ),
         )
     return IngestEmbeddingPlan(

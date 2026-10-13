@@ -17,6 +17,8 @@ Send files, directories, or raw text into the pipeline. Corpus-KB detects the ty
 
 Detection and chunking run through a pluggable **ingestion strategy**. The built-in `default` strategy preserves the classic behavior; built-in `transcript`, `pptx_structure`, and `web_structure` strategies give interviews, slide decks, and web pages first-class structure-aware chunking. Map source types to strategies in `config.yaml`, register one in-process, or ship one as an entry-point plugin — see [Ingestion strategies](INGESTION-STRATEGIES.md).
 
+**Website ingestion scope:** fetching is static-HTML (no JavaScript rendering), robots-respecting, private-address-blocked by default (`web.allow_private_addresses` opts out for genuinely local targets), size-capped on the stream, and crawls same-site only (hostname modulo `www`). JS-heavy single-page apps yield their shell content only.
+
 ### Code chunking
 
 Code files are split using tree-sitter. Chunks respect AST boundaries: functions, classes, and methods stay intact. Supported languages include Python, JavaScript, TypeScript, Rust, Go, Java, C, C++, and many more.
@@ -151,6 +153,18 @@ embedding:
 ```
 
 Make sure the `dimensions` value matches the model and that the `chunks_vectors` table was created with a compatible vector size. The default schema uses `vector(4096)` so either 768 or 4096 works as long as you keep the setting consistent.
+
+### Late chunking (document pipeline)
+
+`embedding.late_chunking: true` (the default) requests **late chunking**: instead of embedding each chunk in isolation, the document is tokenized and run through the model ONCE, and each chunk's vector is mean-pooled from the token states of its exact span — so every chunk vector has seen the whole document (better pronoun/coreference handling, no context bleeding at chunk boundaries). Documents longer than the model context are processed in sliding windows.
+
+Activation is capability-checked and honest — late chunking runs only when ALL of:
+
+- the `latechunk` extra is installed: `pip install -e ".[latechunk]"` (sentence-transformers + transformers + torch),
+- `embedding.model` is a token-level family (`qwen3-embedding*` — Ollama's endpoint serves pooled vectors only, so token states come from the local HF stack),
+- `embedding.dimensions` matches the activated model's real output width (Qwen3-Embedding-0.6B = 1024).
+
+Otherwise the run uses pooled embeddings and the ingest result says so: `embedding_mode` records `"late-chunking"` or `"pooled"` (shown on the CLI as `embedding:`), and `embedding_note` names the exact condition that fell back. Chunk vectors whose text can't be located in the document (or that lack source spans) pool individually rather than silently pool an unrelated region.
 
 ---
 
