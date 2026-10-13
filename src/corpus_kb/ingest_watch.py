@@ -1,11 +1,21 @@
 """Watch mode for the ``corpus-kb ingest`` front door (Stage 5, v1 local loop).
 
-Polls a directory, ingests every supported file through the caller's
-``ingest_file`` callback (the same pipeline a one-shot ingest uses), and
-AUTO-HEALS exactly one failure class: runs whose error text marks the
-embedding provider as unavailable (``EmbeddingError: Connection failed``).
-Anything else — parse errors, Postgres write failures — is NEVER retried
-silently; it stays failed in the summary.
+Polls a directory (recursively — the same ``rglob`` + suffix walk the one-shot
+directory ingest uses, so watched subtrees are never silently unmonitored),
+ingests every supported file through the caller's ``ingest_file`` callback
+(the same pipeline a one-shot ingest uses), and AUTO-HEALS exactly one failure
+class: runs whose error text marks the embedding provider as unavailable
+(``EmbeddingError: Connection failed``). Anything else — parse errors,
+Postgres write failures — is NEVER retried silently; it stays failed in the
+summary.
+
+Per-file crash isolation: an unexpected exception out of ``ingest_file``
+(e.g. a transient database blip) is logged, counted in the summary's
+``failed`` count, and the loop continues — one bad file never kills the
+watcher. ``asyncio.CancelledError`` still propagates (cancellation is not a
+file failure). Failures at watcher STARTUP (pool open, ledger probe — before
+the loop) are NOT isolated: they propagate to the CLI wrapper, which maps
+``asyncpg.PostgresError`` to exit 3, same as one-shot mode.
 
 Ledger: every run lands in the ``ingest_runs`` table (migration 022) via
 ``run_pipeline`` itself — the watcher does not duplicate it. When the table
@@ -130,13 +140,19 @@ class WatchLedger:
 
 
 def scan_watch_dir(directory: Path) -> list[Path]:
-    """One directory pass: supported files only, sorted for stable logs."""
+    """One directory pass: supported files only, sorted for stable logs.
+
+    Recursive parity with the one-shot ingest (``cli_ingest._resolve_files``):
+    the same ``rglob`` walk, the same ``WATCH_SUFFIXES`` filter, no extra
+    ignore patterns — watch and one-shot agree on what counts as an
+    ingestable file, including nested subtrees.
+    """
     if directory.is_file():
         return [directory]
     if not directory.is_dir():
         return []
     return sorted(
-        p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in WATCH_SUFFIXES
+        p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in WATCH_SUFFIXES
     )
 
 
@@ -190,19 +206,29 @@ async def watch_directory(
     book = ledger if ledger is not None else WatchLedger()
     passes = 0
     ingested = 0
+    failed = 0
     healed = 0
     started = clock()
     while options.max_passes is None or passes < options.max_passes:
         passes += 1
         for path in scan_watch_dir(directory):
-            result = await ingest_file(path)
+            result, _crash = await _ingest_isolated(ingest_file, path, report)
             _record(book, str(path), result)
             if str(result.get("status", "")) == "success":
                 ingested += 1
-            elif options.heal and is_healable_result(result):
-                report(f"watch: {path} failed with embedding unavailable; auto-heal armed")
+            else:
+                # Every non-success counts as failed — pipeline-reported
+                # errors and crashes alike — so `failed` never reads 0
+                # beside a non-empty broken set.
+                failed += 1
+                if options.heal and is_healable_result(result):
+                    report(f"watch: {path} failed with embedding unavailable; auto-heal armed")
         if options.heal:
-            healed += await _heal_pass(book, options, ingest_file, probe_fn, sleep_fn, report)
+            heal_healed, heal_crashed = await _heal_pass(
+                book, options, ingest_file, probe_fn, sleep_fn, report
+            )
+            healed += heal_healed
+            failed += heal_crashed
         if options.max_passes is not None and passes >= options.max_passes:
             break
         await sleep_fn(options.interval_s)
@@ -213,11 +239,38 @@ async def watch_directory(
         "status": "success" if not still_broken else "partial",
         "passes": passes,
         "ingested": ingested,
+        "failed": failed,
         "healed": healed,
         "still_broken": still_broken,
         "ledger_persistent": book.persistent,
         "elapsed_s": round(clock() - started, 3),
     }
+
+
+async def _ingest_isolated(
+    ingest_file: Callable[[Path], Awaitable[dict[str, object]]],
+    path: Path,
+    report: Reporter,
+) -> tuple[dict[str, object], str | None]:
+    """One per-file ingest with crash isolation.
+
+    Returns ``(result, crash_text)``. An unexpected exception out of the
+    pipeline is logged (path + exception), converted into an honest ``error``
+    result so the bookkeeping still sees the path, and surfaced as a non-None
+    crash text for the summary's ``failed`` count — the watcher continues with
+    the next file/pass. ``asyncio.CancelledError`` is NOT caught: shutting the
+    watcher down is not a file failure. Startup failures (pool open, ledger
+    probe) never reach here, so a PostgresError there still exits 3 like
+    one-shot mode.
+    """
+    try:
+        return await ingest_file(path), None
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        text = f"{type(exc).__name__}: {exc}"
+        report(f"watch: {path} failed unexpectedly ({text}); continuing")
+        return {"status": "error", "path": str(path), "error": text}, text
 
 
 async def _heal_pass(
@@ -227,12 +280,14 @@ async def _heal_pass(
     probe: Callable[[], Awaitable[bool]],
     sleeper: Callable[[float], Awaitable[None]],
     report: Reporter,
-) -> int:
+) -> tuple[int, int]:
     """One auto-heal attempt over every armed path (exponential probe backoff).
 
     A path leaves the heal set only on a successful re-ingest. When the
     attempt cap is hit the remaining paths are abandoned LOUDLY — never
-    retried silently, never dropped quietly.
+    retried silently, never dropped quietly. Returns ``(healed, crashed)``:
+    a re-ingest that raises is isolated exactly like the scan pass (logged,
+    counted, path stays failed) — no separate heal logic for raised errors.
     """
     armed = {
         key: state
@@ -242,13 +297,13 @@ async def _heal_pass(
         and is_embedding_unavailable_error(state.error)
     }
     if not armed:
-        return 0
+        return 0, 0
     attempt = max(state.attempts for state in armed.values())
     if attempt >= options.heal_max_attempts:
         for key in armed:
             book.paths[key].attempts = -1
             report(f"watch: auto-heal gave up on {key} after {attempt} attempts (still broken)")
-        return 0
+        return 0, 0
     backoff = min(
         options.heal_backoff_s * (2**attempt),
         options.heal_backoff_s * MAX_BACKOFF_MULTIPLIER,
@@ -258,17 +313,20 @@ async def _heal_pass(
         for state in armed.values():
             state.attempts += 1
         report(f"watch: embedding provider still down (heal probe failed, attempt {attempt + 1})")
-        return 0
+        return 0, 0
     healed = 0
+    crashed = 0
     for key in sorted(armed):
-        result = await ingest_file(Path(key))
+        result, crash = await _ingest_isolated(ingest_file, Path(key), report)
         _record(book, key, result)
         if str(result.get("status", "")) == "success":
             healed += 1
             report(f"watch: healed {key}")
         else:
+            if crash is not None:
+                crashed += 1
             book.paths[key].attempts = attempt + 1
-    return healed
+    return healed, crashed
 
 
 def _record(book: WatchLedger, key: str, result: dict[str, object]) -> None:

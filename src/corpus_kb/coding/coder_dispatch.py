@@ -24,6 +24,11 @@ from corpus_kb.coding.coder_window import (
     validate_coder_output,
 )
 from corpus_kb.coding.confidence_routing import Bands, route_cell
+from corpus_kb.coding.judgment_sampling import (
+    JudgmentMeanResult,
+    judgment_mean_enabled,
+    sample_judgments,
+)
 from corpus_kb.coding.qa_chaining import chain_context
 from corpus_kb.coding.quote_verification import classify_quote
 from corpus_kb.coding.uncertainty.tier1_logprob import logprob_entropy
@@ -126,6 +131,7 @@ async def dispatch_chunk(
     bands: Bands | None = None,
     batch_id: str | None = None,
     coding_pass: int = 1,
+    use_judgment_mean: bool | None = None,
 ) -> dict[str, Any]:
     """Dispatch a single chunk for coding against candidate codes.
 
@@ -142,6 +148,14 @@ async def dispatch_chunk(
     each code's own rationale; Tier 0 (pooling similarity) is read from
     chunk_signals per (chunk, code), defaulting to 0.0 with a `tier0_missing`
     marker when the pair was pooled by keyword only.
+
+    U35 judgment distribution: ``use_judgment_mean`` (None -> read
+    ``research.judgment_distribution.use_mean`` from the config) turns on
+    JUDGMENT_MEAN_SAMPLES extra temperature draws of the same window and
+    routes on the mean per-code confidence (``judgment_mean``), recording a
+    per-row ``judgment`` summary. With the key off (the default) no extra
+    call is made and the emitted rows are byte-identical to the
+    single-greedy-call path.
 
     Three phases: a read transaction (window inputs), the model call outside any
     transaction, then one write transaction (quote gate, signals, routing,
@@ -164,10 +178,14 @@ async def dispatch_chunk(
         code_ids: Candidate code IDs (<=5; more raises ValueError)
         coder: Coder identifier (e.g., model name or user)
         model: Model name
-        call_fn: Async callable(window_text) -> response dict. Injected by tests.
+        call_fn: Async callable(window_text) -> response dict. Injected by tests;
+            under the U35 mean path each invocation is read as one independent
+            draw (a live call_ollama uses JUDGMENT_SAMPLE_TEMPERATURE for the
+            extra draws).
         bands: Confidence bands for routing (defaults to Bands())
         batch_id: Optional batch identifier recorded on chunk_codes
         coding_pass: chunk_codes.pass value (default 1)
+        use_judgment_mean: U35 override; None resolves the config key.
 
     Returns:
         Result dict with status and one routing row per candidate code.
@@ -235,6 +253,17 @@ async def dispatch_chunk(
     # One generation produced every decision, so Tier 1 entropy is shared.
     entropy = logprob_entropy(raw.get("logprobs") or [])
 
+    # U35: the mean-over-samples production call site. Explicit argument
+    # wins; None resolves research.judgment_distribution.use_mean from the
+    # config (default off -> no sampling at all). The sampling mechanics
+    # (extra temperature draws, parse-skip honesty) live in
+    # coding/judgment_sampling.py; this is the wiring only.
+    if use_judgment_mean is None:
+        use_judgment_mean = judgment_mean_enabled()
+    judgment_by_code: dict[str, JudgmentMeanResult] | None = None
+    if use_judgment_mean:
+        judgment_by_code = await sample_judgments(window, code_ids, raw, call_fn, model)
+
     # Phase 3 (write): gate, route and persist atomically. Nothing partial can be
     # written: parse_decisions already failed the whole call above if any single
     # per-code decision was missing or invalid, and this transaction is all-or-nothing.
@@ -243,6 +272,19 @@ async def dispatch_chunk(
         for row in code_rows:
             code_id = row["code_id"]
             output = decisions[code_id]
+
+            # U35: the routed confidence is the judgment-distribution mean
+            # when the mean path ran and produced one; otherwise the greedy
+            # confidence, unchanged. The decision/quote/rationale always
+            # come from the greedy generation.
+            effective_confidence = output.confidence
+            judgment_block: dict[str, object] | None = None
+            if judgment_by_code is not None:
+                judgment = judgment_by_code.get(code_id)
+                if judgment is not None:
+                    if judgment.used_mean and judgment.mean_value is not None:
+                        effective_confidence = judgment.mean_value
+                    judgment_block = asdict(judgment)
 
             # Verbatim-quote gate (assign only; a reject carries no quote to verify).
             quote_status, quote_ok, stored_quote = "n/a", True, output.evidence_quote
@@ -270,13 +312,15 @@ async def dispatch_chunk(
 
             routed = route_cell(
                 decision=_as_decision(output.decision),
-                confidence=output.confidence,
+                confidence=effective_confidence,
                 is_provisional=bool(row["is_provisional"]),
                 quote_ok=quote_ok,
                 bands=bands,
             )
-            # chunk_codes keeps the coder's raw confidence; final_codes keeps the
-            # routed one (route_cell caps provisional assigns at the mid band).
+            # chunk_codes keeps the routed-effective confidence (the U35 mean
+            # when the mean path ran, else the coder's raw confidence);
+            # final_codes keeps the routed one (route_cell caps provisional
+            # assigns at the mid band).
             inserted = await conn.fetchval(
                 """INSERT INTO chunk_codes
                      (chunk_id, code_id, tenant_id, pass, batch_id, coder, model, decision,
@@ -292,7 +336,7 @@ async def dispatch_chunk(
                 coder,
                 model,
                 output.decision,
-                output.confidence,
+                effective_confidence,
                 signals.to_json(),
                 output.rationale,
                 stored_quote,
@@ -319,23 +363,26 @@ async def dispatch_chunk(
                     routed.route,
                     routed.confidence,
                 )
-            results.append(
-                {
-                    "code_id": code_id,
-                    "decision": output.decision,
-                    "route": routed.route,
-                    "status": status,
-                    "confidence": output.confidence,
-                    "routed_confidence": routed.confidence,
-                    "evidence_quote": stored_quote,
-                    "quote_status": quote_status,
-                    "rationale": output.rationale,
-                    "tier_signals": asdict(signals),
-                    "written": inserted is not None,
-                    "duplicate": inserted is None,
-                    "qa_context_used": qa_context is not None,
-                }
-            )
+            result_row: dict[str, Any] = {
+                "code_id": code_id,
+                "decision": output.decision,
+                "route": routed.route,
+                "status": status,
+                "confidence": effective_confidence,
+                "routed_confidence": routed.confidence,
+                "evidence_quote": stored_quote,
+                "quote_status": quote_status,
+                "rationale": output.rationale,
+                "tier_signals": asdict(signals),
+                "written": inserted is not None,
+                "duplicate": inserted is None,
+                "qa_context_used": qa_context is not None,
+            }
+            # U35: the judgment summary rides only when the mean path ran —
+            # with use_mean off the rows are byte-identical to before.
+            if judgment_block is not None:
+                result_row["judgment"] = judgment_block
+            results.append(result_row)
 
     return {
         "status": "success",

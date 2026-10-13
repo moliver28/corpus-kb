@@ -827,9 +827,9 @@
   },
   {
     "name": "starlette",
-    "version": "1.7.0",
+    "version": "1.8.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/starlette/1.7.0/",
+    "homepage": "https://pypi.org/project/starlette/1.8.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {

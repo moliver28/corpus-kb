@@ -161,8 +161,14 @@ class PostgresGraphStore(GraphStore):
         if self._conn is not None:
             return self._conn
         conn = await self._pool.acquire()
+        # Session-scoped (is_local=false): the autocommit statements that
+        # follow run outside any transaction, where a LOCAL set_config
+        # evaporates with its statement and every write then violates FORCE
+        # RLS (the #75/#87 defect class). _release_conn resets the session
+        # GUC before the connection returns to the pool, so no other tenant
+        # can inherit it.
         await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)",
+            "SELECT set_config('app.current_tenant_id', $1, false)",
             self._tenant_id,
         )
         return conn
@@ -170,7 +176,10 @@ class PostgresGraphStore(GraphStore):
     async def _release_conn(self, conn: asyncpg.Connection) -> None:
         """Release a connection back to the pool if it was acquired (not in a transaction)."""
         if self._conn is None and conn is not None:
-            await self._pool.release(conn)
+            try:
+                await conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", "")
+            finally:
+                await self._pool.release(conn)
 
     async def add_entity(self, entity: Entity) -> str:
         """Insert an entity into the entities table."""
@@ -467,11 +476,14 @@ class PostgresGraphStore(GraphStore):
         conn = await self._pool.acquire()
         self._conn = conn
         try:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
             async with conn.transaction():
+                # The LOCAL GUC must be set INSIDE the transaction: issued on
+                # the autocommit connection it evaporates before the wrapped
+                # statements run (the #75/#87 defect class).
+                await conn.execute(
+                    "SELECT set_config('app.current_tenant_id', $1, true)",
+                    self._tenant_id,
+                )
                 yield
         finally:
             self._conn = None

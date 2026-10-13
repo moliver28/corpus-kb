@@ -132,6 +132,16 @@ async def test_extract_with_fallback_gliner_config_error_propagates() -> None:
 # ---------------------------------------------------------------------------
 
 
+class _StoreTx:
+    """No-op transaction context: the fake has no real transaction to open."""
+
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
 class _StoreConn:
     """Fake asyncpg connection: fetchrow returns scripted results."""
 
@@ -146,6 +156,9 @@ class _StoreConn:
         self.calls.append(args)
         index = len(self.calls) - 1
         return self._results[index] if index < len(self._results) else None
+
+    def transaction(self) -> _StoreTx:
+        return _StoreTx()
 
 
 class _StorePool:

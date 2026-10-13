@@ -4,11 +4,13 @@ Offline tests pin the migration contracts and run_pipeline's decision logic
 against a stub store. The Postgres-marked tests use the m021-style throwaway
 database (schema.sql + the numeric migration chain). Following the documented
 harness pattern in tests/test_shadow_migration.py, the global FORCE-RLS
-migrations (011/013) are skipped here: the v1 store methods' bare set_config
-only works via the pre-FORCE owner bypass (a pre-existing limitation this
-stage documents, not fixes), and migration 022's transient backfill window
-re-FORCEs chunks/chunks_vectors, so the harness lifts FORCE again after the
-chain to restore the pre-011 conditions the v1 path was built against.
+migrations (011/013) are skipped here, and migration 022's transient backfill
+window re-FORCEs chunks/chunks_vectors, so the harness lifts FORCE again after
+the chain: it keeps testing the pre-011 conditions it was built against.
+(The v1 store methods' bare-autocommit GUC defect that originally forced this
+avoidance was fixed in #87 — the tenant GUC is now set inside
+``conn.transaction()``; re-enabling FORCE against this harness is a separate
+live-PG verification.)
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Any, ClassVar
 
+import asyncpg
 import pytest
 
 REPO = Path(__file__).resolve().parent.parent
@@ -960,3 +963,171 @@ def _document(source: str) -> Any:
         content="probe content",
         size_bytes=len(b"probe content"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Live-PG FORCE-RLS verification of the #87 v1-store migration (closes #75)
+# ---------------------------------------------------------------------------
+
+# Fully static DSN literal (no interpolation) for the FORCE-RLS scratch DB.
+IR075_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_ir075_force_rls_test"
+
+# Same extension-gated skips as the shadow harness (004/005 need AGE/pgml
+# server packages) — but 011/013 are the POINT here: FORCE RLS is exactly the
+# condition the migrated store methods must survive as a non-owner role.
+_IR075_EXTENSION_GATED = {"004_enable_age.sql", "005_enable_pgml.sql"}
+
+
+class _SingleConnPool:
+    """Pool shim so PostgresIngestStore can drive one live connection."""
+
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+
+    def acquire(self) -> _SingleConnPool:
+        return self
+
+    async def __aenter__(self) -> Any:
+        return self._conn
+
+    async def __aexit__(self, *args: object) -> bool:
+        return False
+
+
+async def _create_force_rls_db() -> str:
+    import asyncpg
+
+    admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+    try:
+        await admin.execute('DROP DATABASE IF EXISTS "corpus_kb_ir075_force_rls_test" WITH (FORCE)')
+        await admin.execute('CREATE DATABASE "corpus_kb_ir075_force_rls_test" OWNER corpus_user')
+        # Cluster-wide non-owner role for the RLS probe (idempotent).
+        await admin.execute(
+            """
+            DO $$
+            BEGIN
+                CREATE ROLE corpus_ir075_probe LOGIN PASSWORD 'probe_ir075';
+            EXCEPTION WHEN duplicate_object THEN NULL;
+            END $$;
+            """
+        )
+        # Extensions need superuser; run them against the scratch DB.
+        scratch = await asyncpg.connect(IR075_DSN, user="postgres", password="postgres")
+        try:
+            await scratch.execute("CREATE EXTENSION IF NOT EXISTS vector")
+            await scratch.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+        finally:
+            await scratch.close()
+    finally:
+        await admin.close()
+
+    owner = await asyncpg.connect(IR075_DSN)
+    try:
+        await owner.execute(
+            "GRANT CONNECT ON DATABASE corpus_kb_ir075_force_rls_test TO corpus_ir075_probe"
+        )
+        base_sql = re.sub(
+            r"CREATE INDEX[^;]*ON chunks_vectors USING (ivfflat|hnsw)\s*\([^;]*vector[^;]*;",
+            "-- index on vector(4096) omitted: exceeds pgvector 2000-dim limit",
+            SCHEMA_SQL.read_text(encoding="utf-8"),
+        )
+        await owner.execute(base_sql)
+        from corpus_kb._setup.migrate import ensure_migrations_table
+
+        await ensure_migrations_table(owner)
+        for path in sorted(MIGRATIONS.iterdir()):
+            if path.suffix != ".sql" or not path.name[0].isdigit():
+                continue
+            if path.name in _IR075_EXTENSION_GATED:
+                continue
+            await owner.execute(path.read_text(encoding="utf-8"))
+            await owner.execute(
+                "INSERT INTO corpus.schema_migrations (filename) VALUES ($1)"
+                " ON CONFLICT DO NOTHING",
+                path.name,
+            )
+        # Unlike the shadow harness, FORCE stays ON for chunks/chunks_vectors:
+        # that is the condition under test. Grant the probe role its writes.
+        await owner.execute("GRANT USAGE ON SCHEMA corpus TO corpus_ir075_probe")
+        await owner.execute(
+            "GRANT SELECT, INSERT, UPDATE ON documents, chunks, chunks_vectors"
+            " TO corpus_ir075_probe"
+        )
+    finally:
+        await owner.close()
+    return IR075_DSN
+
+
+@pytest.fixture(scope="module")
+def ir075_dsn() -> str:
+    try:
+        return asyncio.run(_create_force_rls_db())
+    except (OSError, asyncpg.PostgresError, ImportError) as exc:
+        pytest.skip(f"Postgres unavailable for the FORCE-RLS scratch DB: {exc}")
+
+
+@pytest.mark.requires_postgres
+@pytest.mark.asyncio
+async def test_v1_store_chunks_succeed_under_force_rls_as_non_owner(ir075_dsn: str) -> None:
+    """The #75 named acceptance: against FORCE-RLS chunks, the migrated
+    store_chunks succeeds as a NON-OWNER role — proof the tenant GUC is set
+    inside the transaction instead of evaporating on autocommit. A bare
+    INSERT without the GUC violates RLS (negative control), so any
+    regression to the old pattern fails this test loudly."""
+    import asyncpg
+
+    from corpus_kb.tools.ingest_store import PostgresIngestStore
+    from corpus_kb.utils.models import Chunk
+
+    doc_id = uuid.UUID("00000000-0000-0000-0000-0000000000d0")
+    owner = await asyncpg.connect(ir075_dsn)
+    probe = await asyncpg.connect(ir075_dsn, user="corpus_ir075_probe", password="probe_ir075")
+    try:
+        forced = await owner.fetchval(
+            "SELECT relforcerowsecurity FROM pg_class WHERE relname = 'chunks'"
+        )
+        assert forced is True, "chunks must be FORCE RLS for this test to mean anything"
+
+        # Seed the parent document as owner (owner is an RLS subject too).
+        async with owner.transaction():
+            await owner.execute("SELECT set_config('app.current_tenant_id', $1, true)", TENANT)
+            await owner.execute(
+                "INSERT INTO documents (doc_id, tenant_id, source, source_type)"
+                " VALUES ($1, $2, $3, $4)",
+                doc_id,
+                uuid.UUID(TENANT),
+                "rls-probe.py",
+                "code",
+            )
+
+        # Negative control: the probe role's bare write (no tenant GUC) must
+        # be rejected — otherwise this harness proves nothing.
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await probe.execute(
+                "INSERT INTO documents (doc_id, tenant_id, source, source_type)"
+                " VALUES ($1, $2, $3, $4)",
+                uuid.UUID("00000000-0000-0000-0000-0000000000e0"),
+                uuid.UUID(TENANT),
+                "rls-probe-bare.py",
+                "code",
+            )
+
+        # The migrated path: the store sets the GUC inside its transaction.
+        store = PostgresIngestStore(_SingleConnPool(probe), TENANT)
+        chunk_id = "00000000-0000-0000-0000-0000000000c1"
+        chunk = Chunk(chunk_id=chunk_id, document_id=str(doc_id), text="x", source_type="text")
+        chunk.embedding = None
+        needs = await store.store_chunks([chunk])
+        assert needs == {chunk_id}
+
+        # Under FORCE RLS even the owner is an RLS subject: the verifying
+        # count must run with the tenant GUC set, exactly like the seed.
+        async with owner.transaction():
+            await owner.execute("SELECT set_config('app.current_tenant_id', $1, true)", TENANT)
+            count = await owner.fetchval(
+                "SELECT count(*) FROM chunks WHERE tenant_id = $1", uuid.UUID(TENANT)
+            )
+        assert count == 1, "the probe role's chunk must be persisted under FORCE RLS"
+    finally:
+        await probe.close()
+        await owner.close()

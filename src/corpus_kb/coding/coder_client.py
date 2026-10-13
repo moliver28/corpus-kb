@@ -25,13 +25,15 @@ logger = logging.getLogger(__name__)
 CODER_GENERATE_TIMEOUT_SECONDS = 120.0
 
 
-def _generate(window: str, model: str, base_url: str) -> tuple[Any, Any]:
+def _generate(window: str, model: str, base_url: str, temperature: float = 0) -> tuple[Any, Any]:
     """Blocking Ollama generate, returning (raw_text, logprobs).
 
     Runs on a worker thread (see call_ollama): the ollama client is fully
     synchronous, so calling it inline would stall the ASGI event loop for the
     whole generation and block every other in-flight request. The explicit
     client timeout is load-bearing (see CODER_GENERATE_TIMEOUT_SECONDS).
+    ``temperature`` defaults to the greedy 0 — the U35 judgment-distribution
+    sampling path is the only caller that raises it.
     """
     from ollama import Client
 
@@ -42,7 +44,7 @@ def _generate(window: str, model: str, base_url: str) -> tuple[Any, Any]:
         think=False,
         logprobs=True,
         top_logprobs=5,
-        options={"temperature": 0},
+        options={"temperature": temperature},
     )
     raw = getattr(response, "response", None)
     logprobs = getattr(response, "logprobs", None)
@@ -53,7 +55,10 @@ def _generate(window: str, model: str, base_url: str) -> tuple[Any, Any]:
 
 
 async def call_ollama(
-    window: str, model: str, base_url: str = "http://localhost:11434"
+    window: str,
+    model: str,
+    base_url: str = "http://localhost:11434",
+    temperature: float = 0,
 ) -> dict[str, Any]:
     """Live local-model call with native logprobs, off the event loop.
 
@@ -61,7 +66,9 @@ async def call_ollama(
     and the degrade paths below are covered with a monkeypatched ollama client.
     Request shape follows docs/coding/spike-logprobs.md; the response object is
     typed by the ollama client, so `.response` / `.logprobs` are read via getattr
-    with a dict fallback.
+    with a dict fallback. ``temperature`` defaults to greedy 0 (the historical
+    request shape); dispatch_chunk's U35 judgment-distribution mean passes a
+    sampling temperature for its extra draws.
 
     Degrade contract (mirrors OllamaJudge in src/rag/judge.py): never raises into
     the caller. A transport failure or a non-JSON reply returns
@@ -71,7 +78,7 @@ async def call_ollama(
     from ollama import ResponseError
 
     try:
-        raw, logprobs = await asyncio.to_thread(_generate, window, model, base_url)
+        raw, logprobs = await asyncio.to_thread(_generate, window, model, base_url, temperature)
 
         parsed = json.loads(str(raw))
         if not isinstance(parsed, dict):

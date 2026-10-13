@@ -4,10 +4,25 @@ version = "0.1.0"
 description = "Local end-to-end RAG system with MCP interface for agentic code editors"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+# SPDX license expression (PEP 639). Replaces the legacy { text = "MIT" }
+# table form; the matching "License :: OSI Approved :: MIT License" classifier
+# is intentionally absent because PyPI/PEP 639 treat license classifiers as
+# superseded (and conflicting) once a license expression is declared.
+license = "MIT"
+license-files = ["LICENSE"]
+
+keywords = [
+    "rag",
+    "retrieval-augmented-generation",
+    "mcp",
+    "knowledge-base",
+    "knowledge-graph",
+    "embeddings",
+    "vector-search",
+]
 
 authors = [
-    { name = "Michael Oliver" },
+    { name = "Michael Oliver", email = "63178353+moliver28@users.noreply.github.com" },
 ]
 
 dependencies = [
@@ -50,8 +65,12 @@ dependencies = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Text Processing :: Indexing",
 ]
@@ -60,6 +79,8 @@ classifiers = [
 Homepage = "https://github.com/moliver28/corpus-kb"
 Repository = "https://github.com/moliver28/corpus-kb.git"
 Documentation = "https://github.com/moliver28/corpus-kb"
+Issues = "https://github.com/moliver28/corpus-kb/issues"
+Changelog = "https://github.com/moliver28/corpus-kb/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 graphqlite = ["graphqlite>=0.4"]
@@ -89,10 +110,27 @@ inductive = [
 # gliner2 import is lazy (extraction/_gliner2_types.py) so the extras-less
 # jobs stay green (same contract as latechunk/inductive).
 ner = ["gliner2>=2.1.0"]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=5.0", "syrupy>=4.0"]
+# lxml is TEST-ONLY: real XSD validation of REFI-QDA exports in
+# tests/test_refi_qda.py (U27) via lxml.etree.XMLSchema. The runtime module
+# (coding/refi_qda) is stdlib-only; every lxml use is behind
+# pytest.importorskip so the suite passes without it.
+# MAPIE cross-check of the in-repo conformal layer (issue #78, U28). Tests
+# only (tests/test_mapie_crosscheck.py), NEVER a runtime dependency; MAPIE is
+# BSD-3-Clause. Floor is 1.0: the test drives the SplitConformalClassifier
+# "top_k"/"aps" API introduced by the 1.x overhaul (0.8.x has none).
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "syrupy>=4.0",
+    "lxml>=5.0",
+    "mapie>=1.0",
+]
 
 [build-system]
-requires = ["setuptools>=68.0"]
+# 77.0.3 is the PEP 639 floor: the string `license` + `license-files` fields
+# above are rejected by older setuptools even under build isolation.
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

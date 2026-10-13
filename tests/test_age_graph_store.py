@@ -413,8 +413,10 @@ async def test_tenant_context_scoped_per_store(conn: FakeConnection, pool: FakeP
     await store_a.add_entity(make_entity())
     await store_b.search_entities("Widget")
     tenant_sets = [args for (m, sql, args) in conn.calls if "set_config" in sql]
-    assert tenant_sets[0] == (TENANT_A,)
-    assert tenant_sets[-1] == (TENANT_B,)
+    # Session GUC lifecycle: A set on acquire, RESET to '' on release, then B
+    # set for the second store, reset again — a pooled connection never
+    # carries one store's tenant into another's statements.
+    assert tenant_sets == [(TENANT_A,), ("",), (TENANT_B,), ("",)]
     write_sql, write_args = [
         (sql, args) for sql, args in cypher_calls(conn) if "MERGE (e:Entity" in sql
     ][-1]

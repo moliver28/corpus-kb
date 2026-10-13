@@ -524,6 +524,8 @@ def validate_ingestion_block(config: dict[str, Any]) -> list[str]:
 RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "search.exclude_degraded": bool,
     "search.qa_context_in_fts": bool,
+    "search.matryoshka_enabled": bool,
+    "embedding.mrl_trained": bool,
     "ingestion.default": str,
     "ingestion.strategies": dict,
 }
@@ -534,7 +536,11 @@ def validate_runtime_config(config: dict[str, Any]) -> list[str]:
 
     Every key must be PRESENT (explicit in both config.yaml files — the
     default lives in code, but the shipped YAML is the visible contract)
-    and hold the expected type.
+    and hold the expected type. Also enforces the U32 cross-field rule:
+    ``search.matryoshka_enabled: true`` requires ``embedding.mrl_trained:
+    true`` (the two-stage arm front-slices embeddings, which is only sound
+    for Matryoshka-trained models; the runtime refuses the same combination
+    in ``config.load_config``).
     """
     errors: list[str] = []
     for dotted, expected in RUNTIME_CONFIG_KEYS.items():
@@ -556,6 +562,17 @@ def validate_runtime_config(config: dict[str, Any]) -> list[str]:
                 errors.append(
                     f"key '{dotted}' must be {expected.__name__}, got {type(node).__name__}"
                 )
+    search = config.get("search")
+    embedding = config.get("embedding")
+    if isinstance(search, dict) and search.get("matryoshka_enabled") is True:
+        mrl = embedding.get("mrl_trained") if isinstance(embedding, dict) else None
+        if mrl is not True:
+            errors.append(
+                "search.matryoshka_enabled: true requires embedding.mrl_trained: true "
+                "(two-stage matryoshka retrieval front-slices embeddings, which is only "
+                "sound for Matryoshka-trained models; qwen3-embedding is MRL-trained, "
+                "nomic-embed-text is not)"
+            )
     return errors
 
 
