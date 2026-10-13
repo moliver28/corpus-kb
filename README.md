@@ -162,7 +162,6 @@ Editors and scripts drive Corpus-KB through the **HTTP API** (any MCP-compatible
 - HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md))
 - JSON-RPC socket: same command, for local automation
 - The research and coding surfaces are first-class CLI commands (`corpus-kb research ...`, `corpus-kb coding ...`), and ingestion has a top-level front door (`corpus-kb ingest`, with `--watch` auto-heal plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`)
-<!-- VERIFY-INTEGRATION: exact CLI spelling of the ingest-status / ingest-reembed commands and their registration in mcp-configs/ + opencode.json -->
 
 An MCP-over-stdio server is planned but **not implemented yet**: the config files in `mcp-configs/` are pre-staged for it, and `corpus-kb --transport stdio` exits with a clear message rather than pretending. Until the MCP server lands, point editors at the HTTP API.
 

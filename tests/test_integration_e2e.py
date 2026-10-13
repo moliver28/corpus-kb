@@ -197,7 +197,12 @@ class TestE2EIntegration:
 
         app = create_http_app()
         assert app is not None
-        assert len(app.router.routes) == 11  # 11 API routes
+        # The route count grows with every surface (research/release/ingest);
+        # pin the routes this file depends on instead of a magic total.
+        paths = {getattr(route, "path", None) for route in app.router.routes}
+        assert "/api/ingest/file" in paths
+        assert "/api/ingest/status" in paths
+        assert "/api/search" in paths
 
     @pytest.mark.asyncio
     async def test_socket_server_creates(self, clean_db):

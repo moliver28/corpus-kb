@@ -79,7 +79,11 @@ each ingest.
 curl http://localhost:8010/api/ingest/status
 ```
 
-<!-- VERIFY-INTEGRATION: response field names for the status surface (plan pins the ledger columns; confirm the exact JSON shape) -->
+The response is `{status, ledger_present, runs, incomplete_runs, degraded}`
+— recent `ingest_runs` rows (JSON-safe), the count of runs never closed,
+and degraded-vector counts. When migration 022 has not run yet the
+response is `{"status": "ok", "ledger_present": false, ...}` rather than
+an error.
 
 ### POST /api/ingest/reembed
 

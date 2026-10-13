@@ -192,7 +192,9 @@ these capabilities are reachable over HTTP ([API.md](API.md)) and, for the
 research/coding surfaces and the ingest front door, as first-class CLI
 commands ([research.md](research.md), [INGESTION.md](INGESTION.md)).
 
-When the MCP server lands, editors will be able to call these tools <!-- VERIFY-INTEGRATION: exact MCP tool names for the status/reembed rows below (plan pins `ingest_status`; `ingest_reembed` follows the naming convention), plus their presence in the editor configs' autoApprove lists -->:
+When the MCP server lands, editors will be able to call these tools (`ingest_status`
+and `ingest_reembed` are registered in `surface_registry.py` and pre-staged in the
+editor configs' autoApprove lists):
 
 | Category | Tool | Description |
 |----------|------|-------------|
