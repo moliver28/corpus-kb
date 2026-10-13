@@ -229,6 +229,18 @@ routing:
       - "how is X connected to Y"
       - "what entities are linked to X"
 
+# Opt-in GLiNER2 NER (extraction/gliner_backend.py). Six mention-level
+# types with one-line definitions passed at inference; spans map onto
+# ontology entity types (person->Person, organization->Org, product->
+# Product, the rest fall back to Concept). No relation extraction.
+# graph.extractor: gliner refuses to construct while enabled is false.
+extraction:
+  gliner:
+    enabled: false
+    model: fastino/gliner2-large-v1
+    revision: main
+    types: [person, organization, location, date, money, product]
+
 graph:
   backend: age
   extractor: pgml

@@ -13,7 +13,7 @@ import asyncpg
 
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
-from .protocol import Extractor
+from .protocol import Extractor, ExtractStats, Timer
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class PgmlExtractor:
         chunks: list[Chunk],
         ontology: Ontology,
         source_document_id: str,
-    ) -> tuple[list[Entity], list[Relation]]:
+    ) -> tuple[list[Entity], list[Relation], ExtractStats]:
         """Extract entities via PostgresML NER.
 
         If pgml is not available or any error occurs, falls back to RegexExtractor.
@@ -66,7 +66,7 @@ class PgmlExtractor:
         chunks: list[Chunk],
         ontology: Ontology,
         source_document_id: str,
-    ) -> tuple[list[Entity], list[Relation]]:
+    ) -> tuple[list[Entity], list[Relation], ExtractStats]:
         """Async extraction via PostgresML NER.
 
         If pgml is not available or any error occurs, falls back to RegexExtractor.
@@ -86,8 +86,9 @@ class PgmlExtractor:
         chunks: list[Chunk],
         ontology: Ontology,
         source_document_id: str,
-    ) -> tuple[list[Entity], list[Relation]]:
+    ) -> tuple[list[Entity], list[Relation], ExtractStats]:
         """Async extraction via pgml.transform()."""
+        timer = Timer(self.extractor_id)
         entities: list[Entity] = []
         seen_names: set[str] = set()
 
@@ -120,13 +121,24 @@ class PgmlExtractor:
                                     source_document_id=source_document_id,
                                     chunk_id=chunk.chunk_id,
                                     extractor_id=self.extractor_id,
-                                    metadata={"pgml_label": label},
+                                    metadata={
+                                        "extractor": self.extractor_id,
+                                        "pgml_label": label,
+                                    },
                                 )
                             )
                             seen_names.add(name)
 
-        logger.info("PostgresML NER: %d entities from %d chunks", len(entities), len(chunks))
-        return entities, []
+        kept = len(entities)
+        stats = ExtractStats(
+            backend=self.extractor_id,
+            requested_entities=kept,
+            kept_entities=kept,
+            duration_ms=timer.elapsed_ms(),
+            notes=("relations are not derived by the pgml backend",),
+        )
+        logger.info("PostgresML NER: %d entities from %d chunks", kept, len(chunks))
+        return entities, [], stats
 
 
 def _map_label(label: str, ontology: Ontology) -> str:

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,7 +17,7 @@ import asyncpg
 
 from ..chunking.unstructured_chunker import chunk_elements
 from ..config import load_config
-from ..extraction import create_extractor
+from ..extraction import ExtractStats, create_extractor
 from ..extraction.pgml_backend import PgmlExtractor
 from ..ingest.hierarchy_settings import load_hierarchy_settings
 from ..ontology import Ontology, load_ontology
@@ -192,42 +193,80 @@ async def extract_with_fallback(
     source_document_id: str,
     config: dict[str, object],
     pool: asyncpg.Pool | None = None,
-) -> tuple[list[Entity], list[Relation], str]:
+) -> tuple[list[Entity], list[Relation], str, ExtractStats]:
     """Extract entities and relations, falling back through the extractor chain.
 
     Order depends on ``graph.extractor``:
 
     - ``pgml``: PostgresML NER -> LangExtract -> RegexExtractor
     - ``langextract``: LangExtract -> RegexExtractor
+    - ``gliner``: GLiNER2 NER -> RegexExtractor
     - ``regex``: RegexExtractor only
 
     The returned ``extractor_id`` always names the extractor that actually
-    produced the output.
+    produced the output. Every failure and every empty result along the
+    chain is recorded in ``stats.notes`` — a fallback is never silent.
+
+    Returns:
+        (entities, relations, extractor_id, stats).
     """
     extractor_name = _extractor_name(config)
+    failures: list[str] = []
 
     # Reject unknown extractor names explicitly so we never silently fall back
     # to regex when the user configured something unsupported.
-    if extractor_name not in {"pgml", "langextract", "regex"}:
+    if extractor_name not in {"pgml", "langextract", "regex", "gliner"}:
         create_extractor(config, pool=pool)
+
+    if extractor_name == "gliner":
+        try:
+            gliner_extractor = create_extractor(config, pool=pool)
+            entities, relations, stats = gliner_extractor.extract(
+                chunks, ontology, source_document_id
+            )
+            if entities:
+                return (
+                    entities,
+                    relations,
+                    _actual_extractor_id(entities, gliner_extractor.extractor_id),
+                    stats,
+                )
+            failures.append("gliner returned no entities")
+            logger.warning("Gliner extraction returned no entities; falling back to regex.")
+        except ValueError:
+            # Configuration error (e.g. gliner not enabled, unknown mention
+            # type): propagate loudly instead of silently downgrading the
+            # user's explicit extractor choice to regex.
+            raise
+        except Exception as exc:
+            failures.append(f"gliner: {type(exc).__name__}: {exc}")
+            logger.warning("Gliner extraction failed: %s; falling back to regex.", exc)
 
     if extractor_name == "pgml":
         try:
             pgml_extractor = create_extractor(config, pool=pool)
             if isinstance(pgml_extractor, PgmlExtractor):
-                entities, relations = await pgml_extractor.aextract(
+                entities, relations, stats = await pgml_extractor.aextract(
                     chunks, ontology, source_document_id
                 )
             else:
-                entities, relations = pgml_extractor.extract(chunks, ontology, source_document_id)
+                entities, relations, stats = pgml_extractor.extract(
+                    chunks, ontology, source_document_id
+                )
             if entities:
                 return (
                     entities,
                     relations,
                     _actual_extractor_id(entities, pgml_extractor.extractor_id),
+                    stats,
                 )
-        except Exception:
-            pass
+            failures.append("pgml returned no entities")
+            logger.warning(
+                "PostgresML extraction returned no entities; falling back to langextract."
+            )
+        except Exception as exc:
+            failures.append(f"pgml: {type(exc).__name__}: {exc}")
+            logger.warning("PostgresML extraction failed: %s; falling back to langextract.", exc)
 
     if extractor_name in ("pgml", "langextract"):
         try:
@@ -240,21 +279,29 @@ async def extract_with_fallback(
                     },
                 }
             )
-            entities, relations = lang_extractor.extract(chunks, ontology, source_document_id)
+            entities, relations, stats = lang_extractor.extract(
+                chunks, ontology, source_document_id
+            )
             if entities:
                 return (
                     entities,
                     relations,
                     _actual_extractor_id(entities, lang_extractor.extractor_id),
+                    stats,
                 )
-        except (FileNotFoundError, ImportError, ModuleNotFoundError):
-            pass
+            failures.append("langextract returned no entities")
+            logger.warning("LangExtract extraction returned no entities; falling back to regex.")
+        except Exception as exc:
+            failures.append(f"langextract: {type(exc).__name__}: {exc}")
+            logger.warning("LangExtract extraction failed: %s; falling back to regex.", exc)
 
     from ..extraction import RegexExtractor
 
     fallback = RegexExtractor()
-    entities, relations = fallback.extract(chunks, ontology, source_document_id)
-    return entities, relations, _actual_extractor_id(entities, fallback.extractor_id)
+    entities, relations, stats = fallback.extract(chunks, ontology, source_document_id)
+    if failures:
+        stats = replace(stats, notes=stats.notes + tuple(failures))
+    return entities, relations, _actual_extractor_id(entities, fallback.extractor_id), stats
 
 
 def _actual_extractor_id(entities: list[Entity], fallback_id: str) -> str:
@@ -507,9 +554,10 @@ async def _run_locked_stages(
         entities: list[Entity] = []
         relations: list[Relation] = []
         extractor_id = "none"
+        stats = ExtractStats(backend="none", notes=("extraction disabled",))
         if _extract_entities_flag(config):
             try:
-                entities, relations, extractor_id = await extract_with_fallback(
+                entities, relations, extractor_id, stats = await extract_with_fallback(
                     chunks, ontology(config), document.document_id, config, pool=pg_pool
                 )
                 if entities:
@@ -524,6 +572,10 @@ async def _run_locked_stages(
             except Exception as exc:
                 logging.warning("Entity extraction failed: %s", exc)
                 errors.append(f"ExtractionError: {exc}")
+                stats = ExtractStats(
+                    backend=extractor_id,
+                    notes=(f"extraction failed: {type(exc).__name__}: {exc}",),
+                )
 
         # Mirror chunks into LlamaIndex RAG backend (additive path)
         if rag_backend is not None:
@@ -576,6 +628,20 @@ async def _run_locked_stages(
             "pg_vector_count": pg_vector_count,
             "degraded": degraded,
             "extractor_id": extractor_id,
+            # Honest extraction accounting: requested vs kept vs where the
+            # difference went, plus failure notes from the fallback chain.
+            "extraction": {
+                "extractor_id": extractor_id,
+                "requested_entities": stats.requested_entities,
+                "kept_entities": stats.kept_entities,
+                "requested_relations": stats.requested_relations,
+                "kept_relations": stats.kept_relations,
+                "dropped_by_cap": stats.dropped_by_cap,
+                "dropped_by_confidence": stats.dropped_by_confidence,
+                "dropped_by_other": stats.dropped_by_other,
+                "duration_ms": round(stats.duration_ms, 3),
+                "notes": list(stats.notes),
+            },
             "entities": {entity.name: entity.entity_id for entity in entities},
             "errors": errors,
             "run_id": run_id,

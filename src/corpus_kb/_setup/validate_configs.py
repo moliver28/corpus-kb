@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -400,6 +402,73 @@ def check_cross_config_consistency(
 
 
 # ---------------------------------------------------------------------------
+# Runtime config.yaml — extraction.gliner block
+# ---------------------------------------------------------------------------
+
+# The six mention-level types gliner_backend.py can emit (must stay in
+# lockstep with extraction.gliner_backend.TYPE_DEFINITIONS).
+GLINER_MENTION_TYPES: frozenset[str] = frozenset(
+    {"person", "organization", "location", "date", "money", "product"}
+)
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    """Load a YAML file, returning {} for empty or non-mapping documents."""
+    with path.open(encoding="utf-8") as f:
+        loaded: object = yaml.safe_load(f)
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def validate_extraction_gliner(config: dict[str, Any]) -> list[str]:
+    """Validate the ``extraction.gliner`` block of a runtime config.
+
+    The block (and the whole ``extraction`` key) is optional; when
+    present, every key is checked so a typo can never silently disable
+    the opt-in GLiNER2 backend.
+
+    Returns a list of error strings (empty = valid).
+    """
+    errors: list[str] = []
+
+    extraction = config.get("extraction")
+    if extraction is None:
+        return errors
+    if not isinstance(extraction, dict):
+        return [f"extraction: must be a mapping, got {type(extraction).__name__}"]
+
+    gliner = extraction.get("gliner")
+    if gliner is None:
+        return errors
+    if not isinstance(gliner, dict):
+        return [f"extraction.gliner: must be a mapping, got {type(gliner).__name__}"]
+
+    enabled = gliner.get("enabled")
+    if not isinstance(enabled, bool):
+        errors.append(f"extraction.gliner.enabled: must be a boolean, got {type(enabled).__name__}")
+
+    model = gliner.get("model")
+    if not isinstance(model, str) or not model:
+        errors.append("extraction.gliner.model: must be a non-empty string")
+
+    revision = gliner.get("revision")
+    if not isinstance(revision, str) or not revision:
+        errors.append("extraction.gliner.revision: must be a non-empty string")
+
+    types = gliner.get("types")
+    if not isinstance(types, list) or not types:
+        errors.append("extraction.gliner.types: must be a non-empty list")
+    else:
+        for mention_type in types:
+            if not isinstance(mention_type, str) or mention_type not in GLINER_MENTION_TYPES:
+                errors.append(
+                    f"extraction.gliner.types: unknown mention type {mention_type!r} — "
+                    f"must be one of: {', '.join(sorted(GLINER_MENTION_TYPES))}"
+                )
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # File-level validation (loads from disk)
 # ---------------------------------------------------------------------------
 
@@ -479,6 +548,17 @@ def validate_all(project_root: Path | None = None) -> list[str]:
             errors.append(
                 "opencode.json.bak: unexpectedly passes OpenCode validation (should be old format)"
             )
+
+    # 5. Runtime config extraction.gliner block — root and packaged copies
+    # must exist and agree (lockstep rule for new config keys).
+    for relative_path in (Path("config.yaml"), Path("src") / "corpus_kb" / "config.yaml"):
+        config_path = project_root / relative_path
+        display = relative_path.as_posix()
+        if not config_path.exists():
+            errors.append(f"{display}: not found")
+            continue
+        errs = validate_extraction_gliner(load_yaml(config_path))
+        errors.extend(f"{display}: {e}" for e in errs)
 
     return errors
 

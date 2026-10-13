@@ -340,7 +340,13 @@ class PostgresIngestStore:
         return count
 
     async def store_entities(self, entities: list[Entity]) -> int:
-        """Insert entities into the entities table. Returns count."""
+        """Insert entities into the entities table. Returns inserted count.
+
+        The entities table has no confidence/extractor_id columns
+        (migration 008 added them to relations only), so that provenance
+        is merged into the persisted metadata JSONB here instead of being
+        dropped at the write boundary.
+        """
         if not entities:
             return 0
         count = 0
@@ -350,21 +356,23 @@ class PostgresIngestStore:
                 self._tenant_id,
             )
             for entity in entities:
-                await conn.execute(
+                row = await conn.fetchrow(
                     """
                     INSERT INTO entities (entity_id, tenant_id, name, entity_type,
                         source_document_id, metadata)
                     VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
+                    RETURNING entity_id
                     """,
                     entity.entity_id,
                     self._tenant_id,
                     entity.name,
                     entity.entity_type,
                     entity.source_document_id,
-                    json.dumps(entity.metadata),
+                    _entity_persisted_metadata(entity),
                 )
-                count += 1
+                if row is not None:
+                    count += 1
         return count
 
     async def store_relations(
@@ -390,7 +398,7 @@ class PostgresIngestStore:
                 self._tenant_id,
             )
             for relation in relations:
-                await conn.execute(
+                row = await conn.fetchrow(
                     """
                     INSERT INTO relations (relation_id, tenant_id, source_entity_id,
                         target_entity_id, relation_type, weight, metadata,
@@ -399,6 +407,7 @@ class PostgresIngestStore:
                     ON CONFLICT (tenant_id, source_entity_id, target_entity_id,
                         relation_type, chunk_id)
                     DO NOTHING
+                    RETURNING relation_id
                     """,
                     relation.relation_id,
                     self._tenant_id,
@@ -413,5 +422,22 @@ class PostgresIngestStore:
                     model_version,
                     prompt_version,
                 )
-                count += 1
+                if row is not None:
+                    count += 1
         return count
+
+
+def _entity_persisted_metadata(entity: Entity) -> str:
+    """Serialize entity metadata with provenance merged in.
+
+    ``extractor`` and ``confidence`` live on the Entity model but have no
+    dedicated columns in the entities table; without this merge they would
+    be silently dropped at the write boundary even when the extractor
+    measured them.
+    """
+    persisted: dict[str, object] = dict(entity.metadata)
+    if entity.extractor_id and "extractor" not in persisted:
+        persisted["extractor"] = entity.extractor_id
+    if entity.confidence is not None and "confidence" not in persisted:
+        persisted["confidence"] = entity.confidence
+    return json.dumps(persisted)
