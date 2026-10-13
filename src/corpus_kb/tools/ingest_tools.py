@@ -154,6 +154,8 @@ def _detect_source_type(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix in {".md", ".markdown", ".rst"}:
         return "markdown"
+    if suffix == ".pptx":
+        return "pptx"
     if suffix in {
         ".py",
         ".js",
