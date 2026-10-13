@@ -10,6 +10,7 @@ uses) — no Postgres, no Ollama.
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import asyncpg
@@ -24,6 +25,7 @@ from corpus_kb.web.fetch import (
     FetchedPage,
     WebFetchConfig,
     WebFetchError,
+    _same_site,
     crawl,
     fetch_page,
     normalize_url,
@@ -154,6 +156,26 @@ class FakeSite:
                 "text/html; charset=iso-8859-1",
                 "<html><body><p>caf\xe9 latt\xe9</p></body></html>",
             ),
+            "https://research.test/scope": (
+                200,
+                "text/html",
+                "<html><body>"
+                '<a href="https://www.research.test/welcome">W</a> '
+                '<a href="https://deep.research.test/sibling">S</a> '
+                '<a href="https://bbc.test/a">B</a> '
+                '<a href="https://thetimes.test/a">T</a>'
+                "</body></html>",
+            ),
+            "https://www.research.test/welcome": (
+                200,
+                "text/html",
+                "<html><body><p>Welcome page on the www host.</p></body></html>",
+            ),
+            "https://deep.research.test/sibling": (
+                200,
+                "text/html",
+                "<html><body><p>Sibling on a non-www subdomain.</p></body></html>",
+            ),
         }
         self.robots_hits = 0
 
@@ -221,6 +243,22 @@ async def test_fetch_page_enforces_byte_size_cap() -> None:
         await fetch_page("https://research.test/papers/deep-rl", config, site.transport())
 
 
+async def test_streaming_download_aborts_mid_body_on_size_cap() -> None:
+    """The cap fires while STREAMING — the body never fully buffers (no OOM)."""
+
+    async def body() -> AsyncIterator[bytes]:
+        # 1 MiB delivered as 4 KiB stream chunks; max_bytes is far below.
+        for _ in range(256):
+            yield b"x" * 4096
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/html"}, content=body())
+
+    config = WebFetchConfig(max_bytes=8192, respect_robots=False)
+    with pytest.raises(WebFetchError, match="size-cap"):
+        await fetch_page("https://research.test/big", config, httpx.MockTransport(handler))
+
+
 async def test_fetch_page_honors_robots_disallow() -> None:
     site = FakeSite()
     with pytest.raises(WebFetchError, match="robots-disallowed"):
@@ -233,6 +271,101 @@ async def test_fetch_page_respects_respect_robots_false() -> None:
     page = await fetch_page("https://research.test/private/area", config, site.transport())
     assert page.status_code == 200
     assert site.robots_hits == 0
+
+
+async def test_fetch_page_converts_invalid_url_to_structured_error() -> None:
+    site = FakeSite()
+    with pytest.raises(WebFetchError, match="network-error: ValueError"):
+        await fetch_page("not-a-url", WebFetchConfig(), site.transport())
+
+
+async def test_fetch_page_blocks_private_address_initial_url() -> None:
+    site = FakeSite()
+    with pytest.raises(WebFetchError, match=r"private-address-blocked: 127\.0\.0\.1"):
+        await fetch_page("http://127.0.0.1/x", WebFetchConfig(), site.transport())
+
+
+async def test_fetch_page_blocks_private_redirect_target() -> None:
+    """A public page redirecting to the cloud-metadata endpoint is blocked."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "http://public.test/robots.txt":
+            return httpx.Response(404, text="none")
+        if url == "http://public.test/redirect":
+            return httpx.Response(
+                302, headers={"Location": "http://169.254.169.254/latest/meta-data/"}
+            )
+        return httpx.Response(200, headers={"content-type": "text/html"}, content=b"<p>secret</p>")
+
+    with pytest.raises(WebFetchError, match=r"private-address-blocked: 169\.254\.169\.254"):
+        await fetch_page(
+            "http://public.test/redirect", WebFetchConfig(), httpx.MockTransport(handler)
+        )
+
+
+async def test_fetch_page_allows_private_addresses_with_escape_hatch() -> None:
+    """allow_private_addresses: true fetches genuinely local targets."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "http://127.0.0.1:8080/robots.txt":
+            return httpx.Response(404, text="none")
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            content=b"<html><body><p>local wiki</p></body></html>",
+        )
+
+    config = WebFetchConfig(allow_private_addresses=True)
+    page = await fetch_page("http://127.0.0.1:8080/wiki", config, httpx.MockTransport(handler))
+    assert page.status_code == 200
+    assert "local wiki" in page.html
+
+
+async def test_robots_rechecked_on_cross_host_redirect() -> None:
+    """A redirect to another host re-runs that host's robots gate."""
+
+    robots_hosts: set[str] = set()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url.endswith("/robots.txt"):
+            host = httpx.URL(url).host
+            robots_hosts.add(str(host))
+            if host == "forbidden.test":
+                return httpx.Response(200, text="User-agent: *\nDisallow: /")
+            return httpx.Response(200, text="User-agent: *\nAllow: /\n")
+        if url == "https://allowed.test/redirect":
+            return httpx.Response(302, headers={"Location": "https://forbidden.test/blocked"})
+        return httpx.Response(200, headers={"content-type": "text/html"}, content=b"<p>ok</p>")
+
+    with pytest.raises(WebFetchError, match=r"robots-disallowed: https://forbidden\.test/blocked"):
+        await fetch_page(
+            "https://allowed.test/redirect", WebFetchConfig(), httpx.MockTransport(handler)
+        )
+    assert robots_hosts == {"allowed.test", "forbidden.test"}
+
+
+async def test_content_type_exact_match_accepts_xhtml_rejects_lookalikes() -> None:
+    content_types = {
+        "https://ctype.test/xhtml": "application/xhtml+xml; charset=utf-8",
+        "https://ctype.test/fake": "text/htmlfoo",
+        "https://ctype.test/plain": "text/plain",
+    }
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        ctype = content_types.get(str(request.url), "text/html")
+        return httpx.Response(200, headers={"content-type": ctype}, content=b"<p>hi</p>")
+
+    config = WebFetchConfig(respect_robots=False)
+    transport = httpx.MockTransport(handler)
+    page = await fetch_page("https://ctype.test/xhtml", config, transport)
+    assert page.status_code == 200  # exact HTML media types accepted
+    with pytest.raises(WebFetchError, match="content-type"):
+        await fetch_page("https://ctype.test/fake", config, transport)
+    with pytest.raises(WebFetchError, match="content-type"):
+        await fetch_page("https://ctype.test/plain", config, transport)
 
 
 async def test_robots_is_fetched_once_per_crawl_and_allows_other_paths() -> None:
@@ -274,11 +407,68 @@ async def test_crawl_respects_max_depth() -> None:
     assert "https://research.test/a" in urls
 
 
-async def test_crawl_stays_on_registrable_domain() -> None:
+async def test_crawl_stays_same_site() -> None:
     site = FakeSite()
     config = WebFetchConfig(max_pages=10, max_depth=2, delay_seconds=0.0)
     pages = await crawl("https://research.test/index", config, transport=site.transport())
     assert all("other.test" not in page.url for page in pages)
+
+
+async def test_crawl_survives_readtimeout_and_reports_per_page_error() -> None:
+    """A transport error on one page never aborts the crawl (fix: log-and-skip)."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://flake.test/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /\n")
+        if url == "https://flake.test/ok":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                content=b'<html><body><a href="/bad">bad</a></body></html>',
+            )
+        raise httpx.ReadTimeout("peer timed out", request=request)
+
+    config = WebFetchConfig(max_pages=5, max_depth=1, delay_seconds=0.0)
+    errors: list[dict[str, str]] = []
+    pages = await crawl(
+        "https://flake.test/ok",
+        config,
+        transport=httpx.MockTransport(handler),
+        errors=errors,
+    )
+    assert [page.url for page in pages] == ["https://flake.test/ok"]
+    assert errors == [
+        {
+            "url": "https://flake.test/bad",
+            "message": "network-error: ReadTimeout: peer timed out (https://flake.test/bad)",
+        }
+    ]
+
+
+def test_same_site_scope_rules() -> None:
+    # Hostname equality modulo a leading "www." — nothing else matches.
+    assert _same_site("www.example.com", "example.com")
+    assert _same_site("example.com", "www.example.com")
+    assert _same_site("Example.COM.", "example.com")
+    assert not _same_site("bbc.co.uk", "thetimes.co.uk")  # multi-part public suffix
+    assert not _same_site("a.example.com", "example.com")
+    assert not _same_site("example.com", None)
+    assert not _same_site(None, None)
+
+
+async def test_crawl_same_site_scope_www_equivalence_not_public_suffix() -> None:
+    site = FakeSite()
+    config = WebFetchConfig(max_pages=10, max_depth=1, delay_seconds=0.0)
+    pages = await crawl("https://research.test/scope", config, transport=site.transport())
+    urls = {page.url for page in pages}
+    assert urls == {
+        "https://research.test/scope",
+        "https://www.research.test/welcome",  # www == bare host: same site
+    }
+    # A non-www subdomain and unrelated multi-part-suffix hosts are out of scope.
+    assert "https://deep.research.test/sibling" not in urls
+    assert not any("bbc.test" in url or "thetimes.test" in url for url in urls)
 
 
 def test_normalize_url_strips_fragments_and_keeps_query() -> None:
@@ -395,6 +585,49 @@ def test_strategy_renders_tables_as_github_markdown() -> None:
     assert any("Table" in chunk.metadata["element_types"] for chunk in results)
 
 
+def test_strategy_chunks_carry_exact_source_spans() -> None:
+    """Late chunking can engage: every chunk locates exactly in document_text."""
+    plan = WebStructureStrategy().build_chunks(RESEARCH_PAGE, "deep-rl", _profile())
+    assert plan.chunks
+    for chunk in plan.chunks:
+        assert chunk.source_start_char is not None
+        assert chunk.source_end_char is not None
+        assert plan.document_text[chunk.source_start_char : chunk.source_end_char] == chunk.text
+
+
+def test_strategy_spans_stay_exact_or_honestly_absent_on_arbitrary_html() -> None:
+    strategy = WebStructureStrategy()
+    inputs = [
+        RESEARCH_PAGE,
+        "",
+        PLAIN_TEXT,
+        "<html><body><p>unclosed",
+        "x" * (TOKEN_BUDGET_CHARS * 2),
+        "<table><tr><td>wide</td></tr></table>",
+    ]
+    for raw in inputs:
+        plan = strategy.build_chunks(raw, "page", _profile())
+        for chunk in plan.chunks:
+            if chunk.source_start_char is None or chunk.source_end_char is None:
+                continue  # honest miss: no span claimed
+            assert plan.document_text[chunk.source_start_char : chunk.source_end_char] == (
+                chunk.text
+            )
+
+
+def test_chrome_classification_matches_exact_texts_not_substrings() -> None:
+    """A real heading whose text appears in a footer must NOT become chrome."""
+    page = """<html><body>
+      <footer><p>Contact us any time.</p></footer>
+      <main><h2>Contact</h2><p>The contact roster is maintained elsewhere.</p></main>
+    </body></html>"""
+    plan = WebStructureStrategy().build_chunks(page, "x", _profile("https://x.test/c"))
+    paths = [chunk.heading_path for chunk in plan.chunks]
+    assert any(path and path[-1] == "Contact" for path in paths), "heading kept, not chrome"
+    texts = "\n".join(chunk.text for chunk in plan.chunks)
+    assert "The contact roster is maintained elsewhere." in texts
+
+
 def test_strategy_drops_short_chrome_keeps_substantive_footer() -> None:
     assert CHROME_MIN_TEXT_CHARS == 40
     plan = WebStructureStrategy().build_chunks(RESEARCH_PAGE, "deep-rl", _profile())
@@ -474,7 +707,8 @@ def test_config_from_mapping_reads_web_section() -> None:
             "respect_robots": False,
             "max_pages": 2,
             "max_depth": 1,
-            "delay_seconds": 0.5,
+            "delay_seconds": 1,  # int accepted where a float is declared
+            "allow_private_addresses": True,
         }
     )
     assert config == WebFetchConfig(
@@ -484,7 +718,8 @@ def test_config_from_mapping_reads_web_section() -> None:
         respect_robots=False,
         max_pages=2,
         max_depth=1,
-        delay_seconds=0.5,
+        delay_seconds=1,
+        allow_private_addresses=True,
     )
 
 
@@ -511,6 +746,7 @@ _INGEST_CONFIG: dict[str, object] = {
         "max_pages": 5,
         "max_depth": 1,
         "delay_seconds": 0.0,
+        "allow_private_addresses": False,
     },
 }
 
@@ -645,6 +881,58 @@ async def test_ingest_url_fetch_error_is_structured(
     )
     assert non_html["status"] == "error"
     assert "content-type" in str(non_html["message"])
+
+
+async def test_ingest_url_private_address_is_structured_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    site = FakeSite()
+    monkeypatch.setattr(ingest_common, "PostgresIngestStore", _StubStore)
+    from corpus_kb.tools.ingest_tools import ingest_url
+
+    result = await ingest_url(
+        "http://127.0.0.1/x", _fake_pool(), dict(_INGEST_CONFIG), transport=site.transport()
+    )
+    assert result["status"] == "error"
+    assert "private-address-blocked: 127.0.0.1" in str(result["message"])
+
+
+async def test_ingest_url_crawl_reports_skipped_pages_as_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A crawl-level transport failure surfaces as a per-page error dict."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://flake.test/robots.txt":
+            return httpx.Response(200, text="User-agent: *\nAllow: /\n")
+        if url == "https://flake.test/ok":
+            return httpx.Response(
+                200,
+                headers={"content-type": "text/html"},
+                content=b'<html><body><a href="/bad">bad</a></body></html>',
+            )
+        raise httpx.ReadTimeout("peer timed out", request=request)
+
+    monkeypatch.setattr(ingest_common, "PostgresIngestStore", _StubStore)
+    from corpus_kb.tools.ingest_tools import ingest_url
+
+    result = await ingest_url(
+        "https://flake.test/ok",
+        _fake_pool(),
+        dict(_INGEST_CONFIG),
+        crawl=True,
+        transport=httpx.MockTransport(handler),
+    )
+    assert result["status"] == "success"
+    pages = cast("list[dict[str, Any]]", result["pages"])
+    successes = [page for page in pages if page["status"] == "success"]
+    failures = [page for page in pages if page["status"] == "error"]
+    assert len(successes) == 1 and successes[0]["path"] == "https://flake.test/ok"
+    assert len(failures) == 1
+    assert failures[0]["url"] == "https://flake.test/bad"
+    assert "network-error: ReadTimeout" in str(failures[0]["message"])
+    assert result["total_documents"] == 1
 
 
 async def test_ingest_url_per_page_failure_never_aborts_batch(

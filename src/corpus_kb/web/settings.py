@@ -45,4 +45,7 @@ def config_from_mapping(mapping: object) -> WebFetchConfig:
         max_pages=_as_int(values.get("max_pages"), _DEFAULTS.max_pages),
         max_depth=_as_int(values.get("max_depth"), _DEFAULTS.max_depth),
         delay_seconds=_as_float(values.get("delay_seconds"), _DEFAULTS.delay_seconds),
+        allow_private_addresses=_as_bool(
+            values.get("allow_private_addresses"), _DEFAULTS.allow_private_addresses
+        ),
     )

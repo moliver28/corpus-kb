@@ -866,6 +866,7 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "web.max_pages": int,
         "web.max_depth": int,
         "web.delay_seconds": float,
+        "web.allow_private_addresses": bool,
     } == RUNTIME_CONFIG_KEYS
 
 
@@ -880,6 +881,7 @@ _WEB_KEYS: dict[str, object] = {
         "max_pages": 5,
         "max_depth": 2,
         "delay_seconds": 1.0,
+        "allow_private_addresses": False,
     }
 }
 
