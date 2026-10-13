@@ -23,6 +23,19 @@ chunking:
   max_size: 4096
   overlap: 200
 
+# Website (URL) ingestion (src/corpus_kb/web/). ingest_url builds its
+# WebFetchConfig from this section — the shipped YAML is the live contract
+# (validate_configs pins presence + types; code defaults apply only when a
+# key is absent).
+web:
+  user_agent: "corpus-kb/0.1 (+https://github.com/moliver28/corpus-kb)"
+  timeout_seconds: 30
+  max_bytes: 5242880
+  respect_robots: true
+  max_pages: 5
+  max_depth: 2
+  delay_seconds: 1.0
+
 # Pluggable ingestion strategies (src/corpus_kb/ingestion/). Resolution
 # precedence: explicit --source-type override > this mapping (document
 # source_type -> strategy name) > content detection > `default`.

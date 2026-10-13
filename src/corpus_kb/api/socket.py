@@ -142,6 +142,18 @@ class JSONRPCServer:
             )
             return await get_command_handler().handle_ingest_text(cmd)
 
+        elif method == "ingest_url":
+            from corpus_kb.api.research_http import research_pool
+            from corpus_kb.tools.ingest_tools import ingest_url
+
+            return await ingest_url(
+                str(params["url"]),
+                await research_pool(),
+                tenant_id=tenant_id,
+                crawl=bool(params.get("crawl", False)),
+                source_type=params.get("source_type"),
+            )
+
         elif method == "search":
             from corpus_kb.domain.models import SearchQuery
             from corpus_kb.handlers.query_handler import get_query_handler

@@ -567,3 +567,42 @@ class TestRuntimeIngestionKeys:
         }
         errors = validate_runtime_config(config)
         assert any("key 'ingestion.strategies' must be dict" in e for e in errors)
+
+
+class TestRuntimeWebKeys:
+    """RUNTIME_CONFIG_KEYS learned the web.* keys (presence + type)."""
+
+    def test_web_keys_declared(self):
+        assert RUNTIME_CONFIG_KEYS["web.user_agent"] is str
+        assert RUNTIME_CONFIG_KEYS["web.timeout_seconds"] is int
+        assert RUNTIME_CONFIG_KEYS["web.max_bytes"] is int
+        assert RUNTIME_CONFIG_KEYS["web.respect_robots"] is bool
+        assert RUNTIME_CONFIG_KEYS["web.max_pages"] is int
+        assert RUNTIME_CONFIG_KEYS["web.max_depth"] is int
+        assert RUNTIME_CONFIG_KEYS["web.delay_seconds"] is float
+
+    def test_shipped_yamls_carry_web_section(self):
+        expected = {
+            "user_agent",
+            "timeout_seconds",
+            "max_bytes",
+            "respect_robots",
+            "max_pages",
+            "max_depth",
+            "delay_seconds",
+        }
+        for name in ("config.yaml", "src/corpus_kb/config.yaml"):
+            cfg = validate_configs.load_yaml(ROOT / name)
+            assert validate_runtime_config(cfg) == [], name
+            web = cfg["web"]
+            assert isinstance(web, dict) and expected <= set(web), name
+
+    def test_missing_and_mistyped_web_keys_fail(self):
+        errors = validate_runtime_config({})
+        assert any("missing required key 'web.user_agent'" in e for e in errors)
+        mistyped = {
+            "web": {"user_agent": 42, "timeout_seconds": "30", "delay_seconds": 1},
+        }
+        errors = validate_runtime_config(mistyped)
+        assert any("key 'web.user_agent' must be str" in e for e in errors)
+        assert any("key 'web.timeout_seconds' must be int" in e for e in errors)
