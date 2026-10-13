@@ -43,6 +43,11 @@ class _RecordingTx:
 class _RecordingConn:
     """Asyncpg-connection double: logs SQL order and transaction edges.
 
+    Nothing here reaches a database: SQL arrives from the store under test
+    (already parameterized with ``$1`` placeholders) and is recorded
+    verbatim for order assertions — no statement is executed and no SQL
+    string is ever built from ``args``.
+
     Existence probes (no RETURNING) answer None so every store method takes
     its insert path; INSERT..RETURNING echoes the first bound argument back
     as the generated id.
