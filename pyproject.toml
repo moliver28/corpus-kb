@@ -4,10 +4,25 @@ version = "0.1.0"
 description = "Local end-to-end RAG system with MCP interface for agentic code editors"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+# SPDX license expression (PEP 639). Replaces the legacy { text = "MIT" }
+# table form; the matching "License :: OSI Approved :: MIT License" classifier
+# is intentionally absent because PyPI/PEP 639 treat license classifiers as
+# superseded (and conflicting) once a license expression is declared.
+license = "MIT"
+license-files = ["LICENSE"]
+
+keywords = [
+    "rag",
+    "retrieval-augmented-generation",
+    "mcp",
+    "knowledge-base",
+    "knowledge-graph",
+    "embeddings",
+    "vector-search",
+]
 
 authors = [
-    { name = "Michael Oliver" },
+    { name = "Michael Oliver", email = "63178353+moliver28@users.noreply.github.com" },
 ]
 
 dependencies = [
@@ -50,8 +65,12 @@ dependencies = [
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Software Development :: Libraries :: Application Frameworks",
     "Topic :: Text Processing :: Indexing",
 ]
@@ -60,6 +79,8 @@ classifiers = [
 Homepage = "https://github.com/moliver28/corpus-kb"
 Repository = "https://github.com/moliver28/corpus-kb.git"
 Documentation = "https://github.com/moliver28/corpus-kb"
+Issues = "https://github.com/moliver28/corpus-kb/issues"
+Changelog = "https://github.com/moliver28/corpus-kb/blob/master/CHANGELOG.md"
 
 [project.optional-dependencies]
 graphqlite = ["graphqlite>=0.4"]
