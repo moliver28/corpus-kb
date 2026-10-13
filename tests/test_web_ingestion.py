@@ -1017,7 +1017,6 @@ def test_cli_ingest_url_help_lists_flags() -> None:
     import re
 
     from test_cli import _strip_ansi
-
     from typer.testing import CliRunner
 
     from corpus_kb.cli import app
