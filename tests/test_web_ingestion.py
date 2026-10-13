@@ -1014,14 +1014,23 @@ def test_ingest_url_json_safety_of_metadata() -> None:
 
 
 def test_cli_ingest_url_help_lists_flags() -> None:
+    import re
+
+    from test_cli import _strip_ansi
+
     from typer.testing import CliRunner
 
     from corpus_kb.cli import app
 
     result = CliRunner().invoke(app, ["ingest-url", "--help"])
     assert result.exit_code == 0
+    # CI renders the rich help panel colorized AND wraps flag names mid-token
+    # at narrow widths (same pitfall as the strategies panel test): strip
+    # ANSI, drop the box-drawing characters, and collapse whitespace before
+    # matching.
+    text = re.sub(r"[│╭─╮╰╯├┤]", " ", _strip_ansi(result.output))
     for flag in ("--crawl", "--max-pages", "--source-type", "--json"):
-        assert flag in result.output
+        assert flag in " ".join(text.split())
 
 
 def test_cli_ingest_url_unknown_strategy_exits_config_error() -> None:
