@@ -9,18 +9,24 @@ embedding technique, all on by default:
   modified, company, subject) on every chunk. `python-pptx` is now a
   required dependency; `.pptx` joins the watched/directory-ingest suffixes.
 - **Website (`web_structure` strategy + `corpus-kb ingest-url`):** httpx
-  fetching with robots.txt respect, size/content-type caps, and optional
-  same-domain crawl (depth/page caps, delay). Pages chunk per heading
+  fetching with robots.txt respect (re-checked on every redirect hop),
+  streaming size/content-type caps, private-address blocking by default
+  (`web.allow_private_addresses` opts out for genuinely local targets), and
+  optional same-site crawl (depth/page caps, delay, per-page error
+  isolation — one bad page never aborts a batch). Pages chunk per heading
   section with OG/Twitter/JSON-LD/canonical metadata extraction; chrome
   (nav/header/footer) is excluded. Exposed on MCP, HTTP
   (`POST /api/ingest/url`), socket, and CLI surfaces.
 - **Late chunking (document pipeline):** `embedding.late_chunking: true`
   by default — when the `latechunk` extra is installed and the model is a
-  `qwen3-embedding*` token-level family, chunk vectors are pooled from one
-  full-document forward pass (windowed past the model context) so every
-  chunk sees the whole document. Otherwise the run degrades to pooled
-  embeddings with an explicit `embedding_note` in the result; the ingest
-  envelope always records `embedding_mode`.
+  `qwen3-embedding*` token-level family whose output width matches
+  `embedding.dimensions`, chunk vectors are pooled from one full-document
+  forward pass (windowed past the model context, run off the event loop)
+  so every chunk sees the whole document — and the strategy-produced char
+  spans of decks and web pages feed it directly. Otherwise the run
+  degrades to pooled embeddings with an explicit `embedding_note` in the
+  result; the envelope records `embedding_mode` (`late-chunking` only when
+  at least one chunk was genuinely late-chunked) and the CLI prints it.
 - **E2E:** a research-corpus suite ingests a 10-slide methodology deck and
   a multi-section article + crawled appendix through the real pipeline
   offline, pinning structure, metadata, and envelope honesty.
