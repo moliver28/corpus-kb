@@ -32,6 +32,12 @@ chunking:
 ingestion:
   strategies:
     transcript: transcript
+    # Structure-aware first-class paths (default ON): decks chunk per slide
+    # with title breadcrumbs + core-properties metadata; web pages chunk per
+    # heading section with OG/JSON-LD metadata (source_type "web", set by
+    # ingest_url).
+    pptx: pptx_structure
+    web: web_structure
   default: default
 
 search:
