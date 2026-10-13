@@ -147,6 +147,8 @@ These override `config.yaml` values at runtime. Use `corpus_kb.config.load_confi
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
+No new environment variables were introduced by the ingestion-rigor program. Ingestion-strategy and extraction config lives in `config.yaml` only — `ingestion.strategies`, `ingestion.default`, `extraction.gliner.*`, `search.exclude_degraded`, `search.qa_context_in_fts` — with no env override; authoring guide at `docs/INGESTION-STRATEGIES.md`.
+
 ## GraphStore Pattern (for new backends)
 
 The abstract `GraphStore` class in `src/corpus_kb/storage/graph_store.py` is the contract for all graph backends. To add a new backend:
