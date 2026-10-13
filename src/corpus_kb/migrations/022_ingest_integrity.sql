@@ -102,20 +102,26 @@ END $$;
 -- covered, not just the GUC tenant. FORCE is restored immediately after.
 -- The zero-vector test is l2_distance(vector, zero) = 0 with the zero vector
 -- built per-row from vector_dims() — exact float zeros give exactly 0.
+--
+-- The window blocks RE-RAISE on failure (no RAISE WARNING swallow): the
+-- migration runner wraps this file in one transaction, so a failed NO
+-- FORCE/FORCE aborts the run and is retried cleanly instead of recording a
+-- partial backfill as applied while RLS stayed forced (which would leave
+-- every non-GUC tenant's poison rows unflagged and invisible to repair).
 -- ----------------------------------------------------------------------------
 
 DO $$
 BEGIN
     ALTER TABLE chunks_vectors NO FORCE ROW LEVEL SECURITY;
 EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'Could not unforce RLS on chunks_vectors: %', SQLERRM;
+    RAISE;
 END $$;
 
 DO $$
 BEGIN
     ALTER TABLE chunks NO FORCE ROW LEVEL SECURITY;
 EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'Could not unforce RLS on chunks: %', SQLERRM;
+    RAISE;
 END $$;
 
 UPDATE chunks_vectors SET degraded = TRUE
@@ -137,12 +143,12 @@ DO $$
 BEGIN
     ALTER TABLE chunks_vectors FORCE ROW LEVEL SECURITY;
 EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'Could not re-force RLS on chunks_vectors: %', SQLERRM;
+    RAISE;
 END $$;
 
 DO $$
 BEGIN
     ALTER TABLE chunks FORCE ROW LEVEL SECURITY;
 EXCEPTION WHEN OTHERS THEN
-    RAISE WARNING 'Could not re-force RLS on chunks: %', SQLERRM;
+    RAISE;
 END $$;

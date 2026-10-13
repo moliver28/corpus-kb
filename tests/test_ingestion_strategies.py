@@ -633,8 +633,35 @@ def test_detection_summary_line_format(tmp_path: Path, capsys: pytest.CaptureFix
 
     target = tmp_path / "interview.txt"
     target.write_text(TRANSCRIPT_TEXT, encoding="utf-8")
-    _print_detection_summary(target, CFG_EMPTY, None)
+    _print_detection_summary(target, CFG_EMPTY)
     out = capsys.readouterr().out.strip()
     assert out.startswith("detected: transcript (")
     assert "moderator-pattern" in out
     assert "-> strategy transcript (via detection)" in out
+
+
+def test_detection_summary_hint_is_extension_derived_not_hardcoded(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The hint comes from the file's extension (the pipeline's derivation),
+    never a hardcoded 'transcript' — a code file earns no source-type boost."""
+    from corpus_kb.cli import _print_detection_summary
+
+    target = tmp_path / "script.py"
+    target.write_text("def main():\n    pass\n", encoding="utf-8")
+    _print_detection_summary(target, CFG_EMPTY)
+    out = capsys.readouterr().out.strip()
+    # No transcript signal in a .py file: confidence reports an honest 0.00
+    # (the hardcoded 'transcript' hint would have inflated it by +0.2).
+    assert out.startswith("detected: ")
+    assert "(0.00, " in out
+
+
+def test_source_type_override_notice_is_honest(capsys: pytest.CaptureFixture[str]) -> None:
+    """M6: --source-type on the research path is accepted but not consulted."""
+    from corpus_kb.cli import _print_override_notice
+
+    _print_override_notice("code")
+    out = capsys.readouterr().out
+    assert "strategy override code: accepted" in out
+    assert "registry not consulted" in out

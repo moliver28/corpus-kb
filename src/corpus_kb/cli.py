@@ -357,23 +357,44 @@ def _validate_strategy_override(source_type: str | None) -> None:
         )
 
 
-def _print_detection_summary(path: Path, cfg: dict[str, object], source_type: str | None) -> None:
-    """Print the detection summary line, e.g.
-    detected: transcript (0.92, moderator-pattern) -> strategy transcript (via config)."""
+def _print_detection_summary(path: Path, cfg: dict[str, object]) -> None:
+    """Print the genuine content-detection summary line, e.g.
+    detected: transcript (0.80, moderator-pattern) -> strategy transcript (via detection).
+
+    The source-type hint is the file's extension-derived document type (the
+    same derivation the ingest pipeline uses) — never a hardcoded value.
+    The line is informational: the research transcript pipeline ingests
+    turns directly and does not consult the strategy registry.
+    """
     from corpus_kb.ingestion.base import DETECT_HEAD_CHARS
     from corpus_kb.ingestion.registry import resolve_strategy
+    from corpus_kb.tools.ingest_tools import _detect_source_type
 
     try:
         head = path.read_text(encoding="utf-8", errors="replace")[:DETECT_HEAD_CHARS]
     except OSError:
         head = ""
-    resolution = resolve_strategy("transcript", path.name, head, cfg, source_type)
+    resolution = resolve_strategy(_detect_source_type(path), path.name, head, cfg, None)
     detection = resolution.detection
     confidence = detection.confidence if detection is not None else 0.0
     reason = detection.reason if detection is not None else "not attempted"
     print(
         f"detected: {resolution.detected or 'none'} ({confidence:.2f}, {reason}) "
         f"-> strategy {resolution.strategy.name} (via {resolution.basis})"
+    )
+
+
+def _print_override_notice(source_type: str) -> None:
+    """Honest labeling for --source-type on the research ingest path.
+
+    The override passed registry validation, but the research transcript
+    pipeline ingests turns directly — the strategy registry is never
+    consulted — so the notice says exactly that instead of implying the
+    strategy drove the ingest.
+    """
+    print(
+        f"strategy override {source_type}: accepted; the research transcript "
+        "pipeline ingests turns directly (registry not consulted)"
     )
 
 
@@ -402,8 +423,12 @@ def _ingest_coroutine(
         import asyncpg
 
         cfg = load_config()
-        if source_type is not None and Path(path).is_file():
-            _print_detection_summary(Path(path), cfg, source_type)
+        if source_type is not None:
+            # The override was validated against the registry, but this path
+            # never consults it — say so instead of a fake detection line.
+            _print_override_notice(source_type)
+        elif Path(path).is_file():
+            _print_detection_summary(Path(path), cfg)
         db = cfg.get("database", {})
         conn_str = str(db.get("connection_string", ""))
         pool = await asyncpg.create_pool(conn_str)
@@ -427,8 +452,8 @@ def _ingest_coroutine(
                 interval = int(ingest_cfg.get("watch_interval_s", 10))
 
                 async def ingest_one(file_path: Path) -> None:
-                    if source_type is not None:
-                        _print_detection_summary(file_path, cfg, source_type)
+                    if source_type is None:
+                        _print_detection_summary(file_path, cfg)
                     await handler.ingest_transcript(_tenant(), str(file_path), _pid(project_id))
                     await projection.catch_up(reader)
                     await docs.catch_up(reader, _tenant())

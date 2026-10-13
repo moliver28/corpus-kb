@@ -19,7 +19,13 @@ from ..config import load_config
 from ..extraction import ExtractStats, create_extractor
 from ..extraction.pgml_backend import PgmlExtractor
 from ..ingest.hierarchy_settings import load_hierarchy_settings
-from ..ingestion.base import DETECT_HEAD_CHARS, SourceProfile, chunks_from_plan, validate_plan
+from ..ingestion.base import (
+    DETECT_HEAD_CHARS,
+    PlanConformanceError,
+    SourceProfile,
+    chunks_from_plan,
+    validate_plan,
+)
 from ..ingestion.registry import resolve_strategy
 from ..ontology import Ontology, load_ontology
 from ..rag import aembed_batch, create_embedder
@@ -389,10 +395,17 @@ async def run_pipeline(
     )
     profile = SourceProfile(source_type=source_type, is_file=is_file, path=path)
     plan = resolution.strategy.build_chunks(text, Path(path).name, profile)
+    # Conformance escalation (Section 0): a non-conformant plan would
+    # silently tombstone or corrupt rows downstream (ingest_store tombstones
+    # chunk_index >= len(chunks)), so it FAILS here — before the advisory
+    # lock and the ledger, while nothing has been written. plan.warnings
+    # stays the soft channel for strategy self-reported notes.
     conformance_problems = validate_plan(plan)
-    for problem in conformance_problems:
-        logger.warning("ChunkPlan conformance (%s): %s", resolution.strategy.name, problem)
-    plan.warnings.extend(f"conformance: {problem}" for problem in conformance_problems)
+    if conformance_problems:
+        raise PlanConformanceError(
+            f"ingestion strategy {resolution.strategy.name!r} produced a "
+            "non-conformant plan: " + "; ".join(conformance_problems)
+        )
     if resolution.detection is not None:
         plan.detection_confidence = resolution.detection.confidence
         plan.detection_reason = resolution.detection.reason
@@ -435,6 +448,7 @@ async def run_pipeline(
                 tenant_id=tenant_id,
                 rag_backend=rag_backend,
                 is_file=is_file,
+                empty_reason=plan.empty_reason,
             )
             # Strategy provenance (plan Section 0): which seam produced the
             # chunks. Attached here because resolution/plan live in this scope.
@@ -468,6 +482,7 @@ async def _run_locked_stages(
     tenant_id: str,
     rag_backend: RagBackend | None,
     is_file: bool,
+    empty_reason: str | None = None,
 ) -> dict[str, object]:
     """Pipeline stages under the advisory lock: open the ledger, store, close."""
     ingest_store = PostgresIngestStore(pg_pool, tenant_id)
@@ -485,6 +500,14 @@ async def _run_locked_stages(
 
     document_id, run_id = await ingest_store.begin_run(document, file_hash)
     try:
+        # A zero-chunk plan must never complete clean: the EmptyPlanError
+        # seeds the stage error list BEFORE finish_run, so the ledger closes
+        # failed and the unchanged-probe can never enshrine an empty run as
+        # success. The strategy's empty_reason (when it gave one) is
+        # surfaced verbatim in the result dict.
+        errors: list[str] = []
+        if not chunks:
+            errors.append(f"EmptyPlanError: {empty_reason or 'strategy produced no chunks'}")
         document.document_id = document_id
         for chunk in chunks:
             chunk.document_id = document_id
@@ -502,7 +525,6 @@ async def _run_locked_stages(
             for chunk, blurb in zip(chunks, blurbs, strict=True):
                 chunk.context_blurb = blurb or None
 
-        errors: list[str] = []
         embed_note: str | None = None
         pg_chunk_count = 0
         pg_vector_count = 0
@@ -682,6 +704,8 @@ async def _run_locked_stages(
         }
         if embed_note is not None:
             result["embed_note"] = embed_note
+        if empty_reason is not None:
+            result["empty_reason"] = empty_reason
         # Shadow keys are present ONLY when the hierarchy flag is on, so the
         # flag-off result dict stays byte-identical to the pre-U48 shape.
         if hierarchy_settings.enabled:
@@ -690,7 +714,12 @@ async def _run_locked_stages(
             if shadow_note is not None:
                 result["shadow_note"] = shadow_note
         return result
-    except Exception as exc:
+    except BaseException as exc:
+        # BaseException, not Exception: asyncio.CancelledError (watch-mode
+        # Ctrl-C) is a BaseException in 3.11+ and must still close the
+        # ledger row — a run cancelled mid-flight must never strand at
+        # 'running'. fail_run is best-effort and never raises; the
+        # cancellation (or any other BaseException) propagates unchanged.
         await ingest_store.fail_run(run_id, f"{type(exc).__name__}: {exc}")
         raise
 
@@ -717,7 +746,11 @@ async def reembed_degraded(
 
     Returns an honest ``{scanned, fixed, failed}`` summary.
     """
-    async with pg_pool.acquire() as conn:
+    async with pg_pool.acquire() as conn, conn.transaction():
+        # set_config FIRST inside the transaction: a LOCAL GUC issued on an
+        # autocommit connection evaporates with its statement, so the reads
+        # below would run GUC-less and match zero rows on FORCE-RLS
+        # deployments (the ingest_store ledger-method pattern).
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
         present = await conn.fetchval(
             """
@@ -787,7 +820,11 @@ async def reembed_degraded(
 
     fixed = 0
     failed = 0
-    async with pg_pool.acquire() as conn:
+    async with pg_pool.acquire() as conn, conn.transaction():
+        # Same GUC-in-transaction contract as the scan block above; the
+        # UPDATEs additionally pin tenant_id explicitly so a missing/lost
+        # tenant context can never match (or, worse, clear flags on) another
+        # tenant's rows.
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
         for chunk in chunks:
             if chunk.embedding is None or _all_zero([chunk.embedding]):
@@ -810,17 +847,19 @@ async def reembed_degraded(
                     vector_1024 = COALESCE($3::vector, chunks_vectors.vector_1024),
                     embedding_model = $4, dimensions = $5,
                     embedded_at = NOW(), degraded = FALSE
-                WHERE chunk_id = $1::uuid
+                WHERE chunk_id = $1::uuid AND tenant_id = $6
                 """,
                 chunk.chunk_id,
                 vector_str,
                 v1024,
                 embedding_model,
                 dimensions,
+                tenant_id,
             )
             await conn.execute(
-                "UPDATE chunks SET degraded = FALSE WHERE chunk_id = $1::uuid",
+                "UPDATE chunks SET degraded = FALSE WHERE chunk_id = $1::uuid AND tenant_id = $2",
                 chunk.chunk_id,
+                tenant_id,
             )
             fixed += 1
     summary: dict[str, object] = {

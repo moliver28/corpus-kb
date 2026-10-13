@@ -471,6 +471,50 @@ def validate_extraction_gliner(config: dict[str, Any]) -> list[str]:
     return errors
 
 
+def validate_ingestion_block(config: dict[str, Any]) -> list[str]:
+    """Validate the ``ingestion`` block of a runtime config.
+
+    The block is optional; when present, ``strategies`` must map source
+    types to non-empty strategy-name strings and ``default`` must be a
+    non-empty string — the registry resolves these names at ingest time, so
+    a mistyped value must fail validation instead of silently falling back.
+
+    Returns a list of error strings (empty = valid).
+    """
+    errors: list[str] = []
+
+    ingestion = config.get("ingestion")
+    if ingestion is None:
+        return errors
+    if not isinstance(ingestion, dict):
+        return [f"ingestion: must be a mapping, got {type(ingestion).__name__}"]
+
+    strategies = ingestion.get("strategies")
+    if not isinstance(strategies, dict):
+        errors.append(
+            f"ingestion.strategies: must be a mapping of source type -> strategy name, "
+            f"got {type(strategies).__name__}"
+        )
+    else:
+        for source_type, name in strategies.items():
+            if not isinstance(source_type, str) or not source_type:
+                errors.append(
+                    f"ingestion.strategies: keys must be non-empty source-type strings, "
+                    f"got {source_type!r}"
+                )
+            if not isinstance(name, str) or not name:
+                errors.append(
+                    f"ingestion.strategies[{source_type!r}]: must be a non-empty "
+                    f"strategy-name string, got {name!r}"
+                )
+
+    default = ingestion.get("default")
+    if not isinstance(default, str) or not default:
+        errors.append("ingestion.default: must be a non-empty string")
+
+    return errors
+
+
 # ---------------------------------------------------------------------------
 # Runtime config.yaml key validation (plan §1: "validate_configs.py learns
 # every new key"). Each stage extends RUNTIME_CONFIG_KEYS for the keys it adds.
@@ -480,6 +524,8 @@ def validate_extraction_gliner(config: dict[str, Any]) -> list[str]:
 RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "search.exclude_degraded": bool,
     "search.qa_context_in_fts": bool,
+    "ingestion.default": str,
+    "ingestion.strategies": dict,
 }
 
 
@@ -604,6 +650,7 @@ def validate_all(project_root: Path | None = None) -> list[str]:
             continue
         runtime_cfg = load_yaml(config_path)
         errs = validate_extraction_gliner(runtime_cfg)
+        errs += validate_ingestion_block(runtime_cfg)
         errs += validate_runtime_config(runtime_cfg)
         errors.extend(f"{display}: {e}" for e in errs)
 

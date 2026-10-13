@@ -72,8 +72,6 @@ DB_NAME = "corpus_kb_m023_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
 SUPER_DSN = f"{BASE_DSN}/postgres"
 
-pytestmark = pytest.mark.requires_postgres
-
 
 async def _create_db() -> str:
     admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
@@ -82,6 +80,14 @@ async def _create_db() -> str:
         await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
     finally:
         await admin.close()
+    # Pre-create the extensions schema.sql needs, as the superuser (same
+    # harness step as tests/test_ingest_integrity.py).
+    superconn = await asyncpg.connect(DSN, user="postgres", password="postgres")
+    try:
+        await superconn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        await superconn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+    finally:
+        await superconn.close()
     conn = await asyncpg.connect(DSN)
     try:
         # Same >2000-dim index strip as tests/research_db.py (pgvector limit).
@@ -112,6 +118,7 @@ def m023_dsn() -> str:
         pytest.skip(f"Postgres unavailable for the migration 023 scratch DB: {exc}")
 
 
+@pytest.mark.requires_postgres
 async def test_023_apply_twice_idempotent_then_opt_in_fts_then_rollback(m023_dsn: str) -> None:
     conn = await asyncpg.connect(DSN)
     try:

@@ -20,6 +20,17 @@ DEFAULT_STRATEGY_NAME = "default"
 TRANSCRIPT_STRATEGY_NAME = "transcript"
 QA_CONTEXT_KEY = "qa_context"
 
+
+class PlanConformanceError(RuntimeError):
+    """A strategy's ChunkPlan violated the validate_plan invariants.
+
+    Raised BEFORE the advisory lock and ledger: nothing has been written, so
+    failing loudly is honest — a non-conformant plan (bad chunk indices,
+    oversize chunks, foreign qa_context keys) would otherwise silently
+    tombstone or corrupt rows downstream.
+    """
+
+
 # Token budget: 0.8 x 2048 tokens via the chars/4 heuristic (the plan's
 # sanctioned approximation). The transcript strategy enforces it by split;
 # other strategies get flagged by validate_plan.
@@ -112,9 +123,11 @@ class IngestionStrategy(Protocol):
 def validate_plan(plan: ChunkPlan) -> list[str]:
     """Conformance invariants for ANY registered strategy's plan (Section 0).
 
-    Enforced by the test suite for every registered strategy and logged at
-    ingest time, so a broken plugin cannot silently corrupt retrieval.
-    Returns a list of problems (empty = conformant).
+    Enforced by the test suite for every registered strategy, and at ingest
+    time a non-empty problem list raises PlanConformanceError (before the
+    advisory lock and ledger — nothing has been written), so a broken plugin
+    cannot silently corrupt retrieval. Returns a list of problems (empty =
+    conformant).
     """
     problems: list[str] = []
     if not plan.chunks and not plan.empty_reason:

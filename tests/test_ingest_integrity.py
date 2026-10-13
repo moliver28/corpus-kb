@@ -95,6 +95,19 @@ def test_rollback_022_drops_everything_migration_022_created() -> None:
     assert "DROP TABLE IF EXISTS ingest_runs" in text
 
 
+def test_migration_022_backfill_window_re_raises_rls_failures() -> None:
+    """The transient NO FORCE/FORCE blocks re-raise, never warn-and-proceed.
+
+    The runner wraps the file in one transaction: a swallowed NO FORCE
+    failure would record a partial backfill as applied while RLS stayed
+    forced — every non-GUC tenant's zero-vector poison rows would stay
+    unflagged and invisible to repair/search honesty.
+    """
+    text = MIGRATION_022.read_text(encoding="utf-8")
+    assert text.count("RAISE;") == 4  # NO FORCE x2 + FORCE x2
+    assert "RAISE WARNING 'Could not" not in text
+
+
 def test_schema_sql_documents_migration_022_columns() -> None:
     text = SCHEMA_SQL.read_text(encoding="utf-8")
     assert text.count("migration 022") >= 2, (
@@ -292,6 +305,7 @@ async def _run(
     pool: _FakePool,
     config: dict[str, object],
     store_cls: type[_StubStore] = _StubStore,
+    strategy_name: str | None = None,
 ) -> dict[str, object]:
     import corpus_kb.tools.ingest_common as ingest_module
 
@@ -302,6 +316,7 @@ async def _run(
         path="test-src",
         config=config,
         pg_pool=pool,  # type: ignore[arg-type]
+        strategy_name=strategy_name,
     )
 
 
@@ -459,6 +474,104 @@ async def test_run_pipeline_crash_marks_run_failed_and_raises(
     assert run_id == "run-1"
     assert "RuntimeError" in error and "contextual service down" in error
     assert "finish" not in stub_last.calls  # never closed as completed
+
+
+async def test_run_pipeline_cancellation_marks_run_failed_and_propagates(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M3: CancelledError (watch-mode Ctrl-C) is a BaseException in 3.11+ and
+    must still close the ledger — the run never strands at 'running'."""
+    pool = _FakePool(_LockConn(acquired=True))
+
+    class _CancelStore(_StubStore):
+        async def store_chunks(self, chunks: list[Any]) -> set[str]:
+            self.calls.append("chunks")
+            raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await _run(monkeypatch, pool, _ingest_config(), store_cls=_CancelStore)
+
+    stub_last = _StubStore.last
+    assert stub_last is not None and stub_last.fail_args is not None
+    run_id, error = stub_last.fail_args
+    assert run_id == "run-1"
+    assert "CancelledError" in error
+    assert "finish" not in stub_last.calls  # never closed as completed
+
+
+async def test_run_pipeline_empty_plan_closes_ledger_failed_and_reports_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M4: a zero-chunk plan never completes clean — the ledger closes failed
+    (so the unchanged-probe can never enshrine it) and empty_reason surfaces."""
+    import corpus_kb.ingestion.registry as reg
+    from corpus_kb.ingestion.base import ChunkPlan, DetectResult, SourceProfile
+
+    class _EmptyStrategy:
+        name = "empty-plan-strategy"
+
+        def detect(self, source_type_hint: str | None, filename: str, head: str) -> DetectResult:
+            return DetectResult(confidence=0.0, reason="none")
+
+        def build_chunks(self, raw: str, filename: str, profile: SourceProfile) -> ChunkPlan:
+            return ChunkPlan(strategy=self.name, chunks=[], empty_reason="no turns parsed")
+
+    reg.register_strategy(_EmptyStrategy())
+    try:
+        pool = _FakePool(_LockConn(acquired=True))
+        result = await _run(
+            monkeypatch, pool, _ingest_config(), strategy_name="empty-plan-strategy"
+        )
+    finally:
+        reg._REGISTRY.pop("empty-plan-strategy", None)
+
+    assert result["status"] == "partial"
+    assert result["errors"] == ["EmptyPlanError: no turns parsed"]
+    assert result["empty_reason"] == "no turns parsed"
+    stub_last = _StubStore.last
+    assert stub_last is not None and stub_last.finish_args is not None
+    # Ledger closed failed -> the dedupe short-circuit can never fire for it.
+    assert stub_last.finish_args[3] != []
+    assert any("EmptyPlanError" in e for e in stub_last.finish_args[3])
+
+
+async def test_run_pipeline_nonconformant_plan_raises_before_any_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M7: bad chunk indices raise PlanConformanceError before lock/ledger."""
+    import corpus_kb.ingestion.registry as reg
+    from corpus_kb.ingestion.base import (
+        ChunkPlan,
+        DetectResult,
+        PlanConformanceError,
+        PlannedChunk,
+        SourceProfile,
+    )
+
+    class _BadIndicesStrategy:
+        name = "bad-indices-strategy"
+
+        def detect(self, source_type_hint: str | None, filename: str, head: str) -> DetectResult:
+            return DetectResult(confidence=0.0, reason="none")
+
+        def build_chunks(self, raw: str, filename: str, profile: SourceProfile) -> ChunkPlan:
+            return ChunkPlan(
+                strategy=self.name,
+                chunks=[PlannedChunk(text="a", index=0), PlannedChunk(text="b", index=5)],
+            )
+
+    reg.register_strategy(_BadIndicesStrategy())
+    try:
+        lock_conn = _LockConn(acquired=True)
+        pool = _FakePool(lock_conn)
+        _StubStore.last = None
+        with pytest.raises(PlanConformanceError, match="bad-indices-strategy"):
+            await _run(monkeypatch, pool, _ingest_config(), strategy_name="bad-indices-strategy")
+        # Raised before the advisory lock AND the ledger: nothing written.
+        assert lock_conn.executes == []
+        assert _StubStore.last is None
+    finally:
+        reg._REGISTRY.pop("bad-indices-strategy", None)
 
 
 # ---------------------------------------------------------------------------

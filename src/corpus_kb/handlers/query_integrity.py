@@ -44,7 +44,14 @@ STATUS_DEGRADED_EMPTY = "degraded_empty"
 
 @dataclass(frozen=True)
 class DegradedExcluded:
-    """Honest record of what the search could NOT see, and why."""
+    """Honest record of what the search could NOT see, and why.
+
+    ``count`` is the number of candidate rows the degraded filter excluded
+    (from the handler's count probe; 0 when no probe ran — i.e. no rows
+    were excluded by the filter). ``reasons`` are the recorded arm
+    impairments (zero-query embedding, vector-arm error, no embedder,
+    filter-active) — an impairment can be present with count 0.
+    """
 
     count: int = 0
     reasons: list[str] = field(default_factory=list)
@@ -89,20 +96,27 @@ def degraded_candidate_predicate(enabled: bool, alias: str = "cv") -> str:
 def finalize_envelope(
     results: list[SearchResult],
     reasons: list[str],
+    excluded_count: int = 0,
 ) -> SearchEnvelope:
-    """Build the final envelope: degraded_empty iff empty results + reasons."""
+    """Build the final envelope: degraded_empty iff empty results + reasons.
+
+    ``excluded_count`` is the candidate-row count the degraded filter
+    removed (from the handler's probe; 0 when the probe never ran). It
+    becomes ``DegradedExcluded.count`` — reasons and count are independent:
+    an arm impairment (zero-query, arm error) can be recorded with count 0.
+    """
     reasons_out = list(reasons)
     if not results and reasons_out:
         return SearchEnvelope(
             status=STATUS_DEGRADED_EMPTY,
             results=[],
-            degraded_excluded=DegradedExcluded(count=len(reasons_out), reasons=reasons_out),
+            degraded_excluded=DegradedExcluded(count=excluded_count, reasons=reasons_out),
             remedy=REEMBED_REMEDY,
         )
     return SearchEnvelope(
         status=STATUS_SUCCESS,
         results=results,
-        degraded_excluded=DegradedExcluded(count=len(reasons_out), reasons=reasons_out),
+        degraded_excluded=DegradedExcluded(count=excluded_count, reasons=reasons_out),
     )
 
 

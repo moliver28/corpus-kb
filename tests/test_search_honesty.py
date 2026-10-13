@@ -56,11 +56,13 @@ class _RecordingConn:
         extversion: str | None = "0.8.2",
         fail_vector_fetch: bool = False,
         vector_rows: list[dict[str, object]] | None = None,
+        degraded_probe_count: int | None = None,
     ) -> None:
         self.sql: list[str] = []
         self.extversion = extversion
         self.fail_vector_fetch = fail_vector_fetch
         self.vector_rows = vector_rows or []
+        self.degraded_probe_count = degraded_probe_count
 
     async def execute(self, sql: str, *args: object) -> str:
         self.sql.append(sql)
@@ -78,6 +80,14 @@ class _RecordingConn:
         self.sql.append(sql)
         if "pg_extension" in sql:
             return None if self.extversion is None else {"extversion": self.extversion}
+        if "AS candidates" in sql:
+            # The M2 degraded-filter count probe. None (default) = probe not
+            # scripted: the handler treats it as "no rows excluded".
+            if self.degraded_probe_count is None:
+                return None
+            return {
+                "candidates": float(self.degraded_probe_count),
+            }
         return None
 
     def transaction(self):
@@ -85,9 +95,11 @@ class _RecordingConn:
 
         class _Tx:
             async def __aenter__(self) -> _RecordingConn:
+                outer.sql.append("BEGIN")
                 return outer
 
             async def __aexit__(self, *exc: object) -> bool:
+                outer.sql.append("COMMIT")
                 return False
 
         return _Tx()
@@ -168,7 +180,10 @@ def _vector_sqls(conn: _RecordingConn) -> list[str]:
     return [
         s
         for s in (_norm(x) for x in conn.sql)
-        if "chunks_vectors" in s and "to_tsvector" not in s and "pg_extension" not in s
+        if "chunks_vectors" in s
+        and "to_tsvector" not in s
+        and "pg_extension" not in s
+        and "AS candidates" not in s  # the M2 count probe is not a vector arm
     ]
 
 
@@ -195,7 +210,19 @@ def test_finalize_envelope_success_with_results() -> None:
     envelope = finalize_envelope([result], ["zero-query-embedding"])
     assert envelope.status == STATUS_SUCCESS
     assert envelope.remedy is None
-    assert envelope.degraded_excluded.count == 1
+    # count = rows the degraded filter excluded (probe-backed); an arm
+    # impairment with results is recorded in reasons with count 0.
+    assert envelope.degraded_excluded.count == 0
+    assert envelope.degraded_excluded.reasons == ["zero-query-embedding"]
+
+
+def test_finalize_envelope_count_carries_probe_excluded_rows() -> None:
+    """count semantics: the M2 probe's excluded-row count, not len(reasons)."""
+    envelope = finalize_envelope([], [REASON_ZERO_QUERY], excluded_count=7)
+    assert envelope.status == STATUS_DEGRADED_EMPTY
+    assert envelope.degraded_excluded.count == 7
+    assert envelope.degraded_excluded.reasons == [REASON_ZERO_QUERY]
+    assert envelope.remedy == REEMBED_REMEDY
 
 
 def test_finalize_envelope_empty_with_reasons_is_degraded_empty() -> None:
@@ -205,6 +232,8 @@ def test_finalize_envelope_empty_with_reasons_is_degraded_empty() -> None:
     assert remedy == REEMBED_REMEDY
     assert remedy is not None and "corpus-kb ingest --reembed" in remedy
     assert envelope.degraded_excluded.reasons == [REASON_ZERO_QUERY]
+    # No probe ran for this reason shape -> the filter excluded nothing.
+    assert envelope.degraded_excluded.count == 0
 
 
 def test_finalize_envelope_empty_without_reasons_is_success() -> None:
@@ -216,13 +245,14 @@ def test_finalize_envelope_empty_without_reasons_is_success() -> None:
 
 
 def test_envelope_to_payload_shape() -> None:
-    envelope = finalize_envelope([], [REASON_ZERO_QUERY])
+    envelope = finalize_envelope([], [REASON_ZERO_QUERY], excluded_count=4)
     payload = envelope_to_payload(envelope)
     assert set(payload) == {"status", "result", "degraded_excluded", "remedy"}
     assert payload["status"] == STATUS_DEGRADED_EMPTY
-    assert payload["degraded_excluded"] == {"count": 1, "reasons": [REASON_ZERO_QUERY]}
+    assert payload["degraded_excluded"] == {"count": 4, "reasons": [REASON_ZERO_QUERY]}
     healthy = envelope_to_payload(finalize_envelope([], []))
     assert set(healthy) == {"status", "result", "degraded_excluded"}
+    assert healthy["degraded_excluded"] == {"count": 0, "reasons": []}
 
 
 # ============================================================================
@@ -361,7 +391,9 @@ async def test_vector_arm_error_surfaces_in_envelope() -> None:
     # The error came from the degraded predicate on a vector fetch (the
     # recorded SQL names the candidate CTE), not from the lexical arm.
     assert any("candidate" in s for s in _vector_sqls(conn))
-    assert envelope.degraded_excluded.count == 1
+    # An arm error is an impairment, not an exclusion: count stays 0 (the
+    # probe never ran) and the reason carries the honesty.
+    assert envelope.degraded_excluded.count == 0
 
 
 @pytest.mark.asyncio
@@ -387,12 +419,35 @@ async def test_all_candidates_excluded_is_degraded_empty_with_remedy() -> None:
 
 @pytest.mark.asyncio
 async def test_filter_active_reason_when_arm_runs_clean_and_empty() -> None:
-    conn = _RecordingConn()  # clean run, zero rows anywhere
+    """Empty arm + probe says the filter removed rows -> degraded_empty, count N."""
+    conn = _RecordingConn(degraded_probe_count=3)  # clean run, filter removed 3 candidates
     envelope = await _handler(_RecordingPool(conn), dict(_PGML_CONFIG)).handle_search_with_meta(
         SearchQuery(query="housing", k=5)
     )
     assert envelope.degraded_excluded.reasons == [REASON_FILTER_EMPTY]
     assert envelope.status == STATUS_DEGRADED_EMPTY
+    assert envelope.degraded_excluded.count == 3
+    assert envelope.remedy is not None
+    # The disambiguation probe itself runs WITHOUT the degraded predicate
+    # (it counts what the filter took out).
+    probes = _sqls(conn, "AS candidates")
+    assert len(probes) == 1
+    assert "cv.degraded = FALSE" not in probes[0]
+
+
+@pytest.mark.asyncio
+async def test_legitimately_empty_search_is_plain_success_no_remedy() -> None:
+    """Empty arm + probe says 0 excluded (nothing existed) -> success, no reasons."""
+    conn = _RecordingConn(degraded_probe_count=0)  # empty tenant / filters match nothing
+    envelope = await _handler(_RecordingPool(conn), dict(_PGML_CONFIG)).handle_search_with_meta(
+        SearchQuery(query="housing", k=5)
+    )
+    assert envelope.status == STATUS_SUCCESS
+    assert envelope.degraded_excluded.reasons == []
+    assert envelope.degraded_excluded.count == 0
+    assert envelope.remedy is None
+    # The probe still ran (one cheap COUNT) to earn that honesty.
+    assert len(_sqls(conn, "AS candidates")) == 1
 
 
 @pytest.mark.asyncio
@@ -431,7 +486,12 @@ def test_pipeline_uses_build_embedding_input() -> None:
 
 
 class _FakeConn:
-    """Minimal asyncpg conn for reembed_degraded: scripted fetchval/fetch."""
+    """Minimal asyncpg conn for reembed_degraded: scripted fetchval/fetch.
+
+    ``transaction()`` records BEGIN/COMMIT markers in the SQL log so tests
+    can pin that the tenant set_config is issued INSIDE the transaction (a
+    LOCAL GUC on an autocommit connection evaporates with its statement).
+    """
 
     def __init__(
         self,
@@ -455,6 +515,20 @@ class _FakeConn:
     async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
         self.sql.append(sql)
         return self.candidate_rows
+
+    def transaction(self):
+        outer = self
+
+        class _Tx:
+            async def __aenter__(self) -> _FakeConn:
+                outer.sql.append("BEGIN")
+                return outer
+
+            async def __aexit__(self, *exc: object) -> bool:
+                outer.sql.append("COMMIT")
+                return False
+
+        return _Tx()
 
 
 class _FakePool:
@@ -563,6 +637,71 @@ async def test_reembed_no_candidates_is_empty_success(monkeypatch: pytest.Monkey
         {"embedding": {"provider": "pgml"}},
     )
     assert summary == {"status": "success", "scanned": 0, "fixed": 0, "failed": 0}
+
+
+@pytest.mark.asyncio
+async def test_reembed_sets_tenant_guc_inside_transaction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """M1: set_config is_local only survives INSIDE a transaction.
+
+    On an autocommit connection the GUC dies with its statement, so the
+    scan/UPDATEs would run GUC-less and match zero rows under FORCE RLS —
+    while the summary still claimed success.
+    """
+    from corpus_kb.tools import ingest_common
+
+    monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
+    conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
+
+    async def fake_embed_chunks(
+        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+    ):
+        for chunk in chunks:
+            chunk.embedding = [0.5] * 4
+        return False, None
+
+    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed_chunks)
+    await ingest_common.reembed_degraded(
+        cast("object", _FakePool(conn)),
+        {"embedding": {"provider": "pgml", "dimensions": 4}},
+    )
+    normed = [_norm(s) for s in conn.sql]
+    # Two transactions (scan + write window); the tenant set_config must be
+    # the FIRST statement inside each, never before BEGIN.
+    begins = [i for i, s in enumerate(normed) if s == "BEGIN"]
+    assert len(begins) == 2, normed
+    set_configs = [i for i, s in enumerate(normed) if "set_config" in s]
+    assert len(set_configs) == 2
+    for begin_idx, guc_idx in zip(begins, set_configs, strict=True):
+        assert begin_idx < guc_idx, normed
+        # The GUC immediately opens the transaction's work, before any read.
+        assert guc_idx == begin_idx + 1
+
+
+@pytest.mark.asyncio
+async def test_reembed_updates_pin_tenant_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The two UPDATEs carry an explicit tenant_id predicate (defense in depth)."""
+    from corpus_kb.tools import ingest_common
+
+    monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
+    conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
+
+    async def fake_embed_chunks(
+        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+    ):
+        for chunk in chunks:
+            chunk.embedding = [0.5] * 4
+        return False, None
+
+    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed_chunks)
+    await ingest_common.reembed_degraded(
+        cast("object", _FakePool(conn)),
+        {"embedding": {"provider": "pgml", "dimensions": 4}},
+    )
+    updates = [s for s in (_norm(x) for x in conn.sql) if s.startswith("UPDATE chunks")]
+    assert len(updates) == 2
+    assert all("AND tenant_id = $" in s for s in updates), updates
 
 
 # ============================================================================
@@ -712,13 +851,24 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
     assert {
         "search.exclude_degraded": bool,
         "search.qa_context_in_fts": bool,
+        "ingestion.default": str,
+        "ingestion.strategies": dict,
     } == RUNTIME_CONFIG_KEYS
 
 
+_INGESTION_KEYS: dict[str, object] = {"ingestion": {"default": "default", "strategies": {}}}
+
+
 def test_validate_runtime_config_accepts_bool() -> None:
-    config = {"search": {"exclude_degraded": True, "qa_context_in_fts": False}}
+    config = {
+        "search": {"exclude_degraded": True, "qa_context_in_fts": False},
+        **_INGESTION_KEYS,
+    }
     assert validate_runtime_config(config) == []
-    config_off = {"search": {"exclude_degraded": False, "qa_context_in_fts": False}}
+    config_off = {
+        "search": {"exclude_degraded": False, "qa_context_in_fts": False},
+        **_INGESTION_KEYS,
+    }
     assert validate_runtime_config(config_off) == []
 
 

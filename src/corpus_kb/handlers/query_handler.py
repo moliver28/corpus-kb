@@ -76,6 +76,20 @@ JOIN documents ON chunks.doc_id = documents.doc_id
 WHERE cv.tenant_id = $1 {dedup}
 """
 
+# Stage 3: degraded-filter disambiguation probe. When the vector arm returns
+# zero rows under an active degraded filter, this count over the SAME
+# candidate universe WITHOUT the `degraded = FALSE` predicate tells a
+# "filter removed everything" empty apart from a legitimately empty search
+# (empty tenant, filters matching nothing). Distinct from _COUNT_SQL_TEMPLATE
+# (no FILTER pair) so tests can tell the two probes apart.
+_DEGRADED_CANDIDATE_COUNT_SQL = """
+SELECT count(*)::float8 AS candidates
+FROM chunks_vectors cv
+JOIN chunks ON cv.chunk_id = chunks.chunk_id
+JOIN documents ON chunks.doc_id = documents.doc_id
+WHERE cv.tenant_id = $1 {dedup} {frag}
+"""
+
 
 def _fusion_payload(rows: list[asyncpg.Record]) -> str:
     """Serialize one hybrid-search side to the JSONB shape corpus.rrf_fusion expects."""
@@ -164,6 +178,9 @@ class QueryHandler:
         # surfaced in the envelope's ``degraded_excluded`` — the silent
         # FTS-only fallbacks become visible.
         reasons: list[str] = []
+        # Candidate rows the degraded filter excluded (0 unless the M2 probe
+        # below ran and found rows the filter removed).
+        excluded_count = 0
         dynamic_predicates: list = []
         use_self_query = (
             query.self_query if query.self_query is not None else self._self_query_enabled
@@ -476,12 +493,37 @@ class QueryHandler:
                     f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'"
                 )
 
-            # Stage 3: a clean vector-arm run that returned zero rows while the
-            # degraded filter was active means the filter may have removed the
-            # whole candidate set — record it (only when no other reason
-            # already explains the empty arm).
+            # Stage 3 (revised): a clean vector-arm run that returned zero rows
+            # while the degraded filter was active is ambiguous — either the
+            # filter removed the whole candidate set or none ever existed. ONE
+            # cheap COUNT probe over the same candidate universe WITHOUT the
+            # degraded predicate disambiguates: the filter-empty reason (and
+            # the excluded count) is recorded only when the probe says rows
+            # were actually excluded, so legitimately empty searches return
+            # plain success with no remedy.
             if self._exclude_degraded and not vector_results and not reasons:
-                reasons.append(REASON_FILTER_EMPTY)
+                from corpus_kb.rag.self_query import build_filter_sql
+
+                probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
+                try:
+                    probe_row = await conn.fetchrow(
+                        _DEGRADED_CANDIDATE_COUNT_SQL.format(
+                            dedup=dedup_predicate, frag=probe_frag
+                        ),
+                        str(query.tenant_id),
+                        *probe_params,
+                    )
+                except Exception as exc:
+                    # Same fail-open contract as the U21 selectivity probe: a
+                    # broken probe must never break search — it only costs the
+                    # filter-empty annotation.
+                    logger.warning("Degraded-filter count probe failed: %s", exc)
+                    probe_row = None
+                if probe_row is not None:
+                    raw = probe_row["candidates"]
+                    excluded_count = int(raw) if isinstance(raw, (int, float)) else 0
+                if excluded_count > 0:
+                    reasons.append(REASON_FILTER_EMPTY)
 
             # 2. Full-text search (contextual expression if any chunk has a blurb;
             #    coalesce is a no-op otherwise).
@@ -556,7 +598,7 @@ class QueryHandler:
         final_results = await self._post_fuse(
             fused_results, semantic_query, query.k, over_retrieve_n, str(query.tenant_id)
         )
-        return finalize_envelope(final_results, reasons)
+        return finalize_envelope(final_results, reasons, excluded_count=excluded_count)
 
     async def _post_fuse(
         self,

@@ -124,9 +124,11 @@ silently mixed into vector search:
 - `search.exclude_degraded` (default `true`) keeps degraded rows out of the
   vector-search candidate sets. The lexical (full-text) arm still runs.
 - The search envelope reports what it left out in `degraded_excluded`
-  ({count, reasons}); when every candidate was excluded the search returns
-  status `degraded_empty` with the remedy: start Ollama, then run
-  `corpus-kb ingest-reembed`.
+  ({count, reasons}: `count` = candidate rows the filter excluded, `reasons`
+  = recorded arm impairments); a legitimately empty search (no candidates
+  existed) returns plain `success` with no remedy. When results are empty
+  AND an impairment was recorded the search returns status `degraded_empty`
+  with the remedy: start Ollama, then run `corpus-kb ingest-reembed`.
 - `corpus-kb ingest-reembed` re-embeds flagged chunks once the provider is
   back; repaired rows flip `degraded` back to `false`, and its summary
   reports honest scanned/fixed/failed counts.

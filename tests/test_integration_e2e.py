@@ -58,7 +58,7 @@ class TestE2EIntegration:
         reset_command_handler()
         handler = get_command_handler()
 
-        result = handler.handle_ingest_text(
+        result = await handler.handle_ingest_text(
             IngestTextCommand(
                 text="def hello_world(): print('Hello, World!')",
                 source="test_e2e.py",
@@ -86,7 +86,7 @@ class TestE2EIntegration:
         handler = get_command_handler()
 
         # Ingest
-        handler.handle_ingest_text(
+        await handler.handle_ingest_text(
             IngestTextCommand(
                 text="def authenticate(user, password): return verify(password)",
                 source="auth.py",

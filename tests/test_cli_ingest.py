@@ -256,6 +256,43 @@ def test_scan_watch_dir_is_sorted_and_filtered(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# V1: --no-heal reaches the loop (CLI runner over the REAL _watch_flow seams)
+# ---------------------------------------------------------------------------
+
+
+def _patch_watch_seams(monkeypatch: pytest.MonkeyPatch, captured: dict[str, object]) -> None:
+    async def fake_ledger_available(pool: object, tenant: str) -> bool:
+        return False
+
+    async def fake_watch(directory: object, ingest_cb: object, options: WatchOptions, **kw: object):
+        captured["heal"] = options.heal
+        return {"status": "success", "ingested": 0, "still_broken": []}
+
+    monkeypatch.setattr("corpus_kb.ingest_watch.ledger_available", fake_ledger_available)
+    monkeypatch.setattr("corpus_kb.ingest_watch.watch_directory", fake_watch)
+
+
+def test_cli_watch_no_heal_disables_heal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    target = tmp_path / "call.txt"
+    target.write_text("transcript", encoding="utf-8")
+    _patch_pool(monkeypatch)
+    captured: dict[str, object] = {}
+    _patch_watch_seams(monkeypatch, captured)
+
+    result = runner.invoke(app, ["ingest", str(target), "--watch", "--no-heal"])
+    assert result.exit_code == 0, result.output
+    assert captured["heal"] is False
+    assert "healed" not in result.output
+    assert "auto-heal off" in result.output
+
+    # Mirror scenario WITHOUT --no-heal: the heal loop stays enabled.
+    captured.clear()
+    result = runner.invoke(app, ["ingest", str(target), "--watch"])
+    assert result.exit_code == 0, result.output
+    assert captured["heal"] is True
+
+
+# ---------------------------------------------------------------------------
 # CLI exit codes (CliRunner over the REAL registered commands)
 # ---------------------------------------------------------------------------
 
@@ -323,6 +360,28 @@ def test_cli_ingest_exit_3_missing_path(tmp_path: Path) -> None:
     result = runner.invoke(app, ["ingest", str(tmp_path / "missing.md")])
     assert result.exit_code == 3, result.output
     assert "path not found" in result.output
+
+
+def test_cli_ingest_exit_3_on_postgres_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """L11: bad DSN/credentials raise asyncpg.PostgresError (not OSError) —
+    same honest config/connection bucket, exit 3."""
+    import asyncpg
+
+    file = tmp_path / "note.md"
+    file.write_text("hello", encoding="utf-8")
+
+    class _FakePostgresError(asyncpg.PostgresError):
+        pass
+
+    async def _open(_cfg: dict[str, object]) -> object:
+        raise _FakePostgresError("password authentication failed for user")
+
+    monkeypatch.setattr("corpus_kb.cli_ingest._open_pool", _open)
+    result = runner.invoke(app, ["ingest", str(file)])
+    assert result.exit_code == 3, result.output
+    assert "cannot reach the database" in result.output
 
 
 def test_cli_ingest_help_documents_exit_codes() -> None:

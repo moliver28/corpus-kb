@@ -65,6 +65,8 @@ def _run_sync(coro: Callable[[], Coroutine[Any, Any, int]]) -> int:
     """asyncio.run + KeyboardInterrupt -> clean exit 0 (watch Ctrl-C)."""
     import asyncio
 
+    import asyncpg
+
     try:
         return _finish(asyncio.run(coro()))
     except KeyboardInterrupt:
@@ -72,6 +74,12 @@ def _run_sync(coro: Callable[[], Coroutine[Any, Any, int]]) -> int:
         raise typer.Exit(code=EXIT_OK) from None
     except OSError as exc:
         print(f"ERROR: cannot reach the database/provider: {exc}")
+        raise typer.Exit(code=EXIT_CONFIG) from None
+    except asyncpg.PostgresError as exc:
+        # Bad DSN / wrong password / unknown database surface as
+        # asyncpg.PostgresError subclasses, not OSError — same honest
+        # config/connection bucket, exit 3.
+        print(f"ERROR: cannot reach the database (check DSN/credentials): {exc}")
         raise typer.Exit(code=EXIT_CONFIG) from None
 
 
