@@ -128,6 +128,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
 async def search(request: Request) -> JSONResponse:
     """POST /api/search — hybrid vector + FTS search."""
     from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_integrity import envelope_to_payload
 
     body = await _parse_body(request)
     try:
@@ -139,8 +140,10 @@ async def search(request: Request) -> JSONResponse:
             self_query=body.get("self_query"),
         )
         handler = get_query_handler()
-        results = await handler.handle_search(query)
-        return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
+        envelope = await handler.handle_search_with_meta(query)
+        # Additive honest envelope: legacy {status, result} consumers keep
+        # working; degraded_excluded (+remedy on degraded_empty) is new.
+        return JSONResponse(envelope_to_payload(envelope))
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},

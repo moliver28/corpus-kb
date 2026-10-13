@@ -469,6 +469,47 @@ def validate_extraction_gliner(config: dict[str, Any]) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# Runtime config.yaml key validation (plan §1: "validate_configs.py learns
+# every new key"). Each stage extends RUNTIME_CONFIG_KEYS for the keys it adds.
+# ---------------------------------------------------------------------------
+
+# dotted key -> expected YAML type (bool/str/int/float/list/dict)
+RUNTIME_CONFIG_KEYS: dict[str, type] = {
+    "search.exclude_degraded": bool,
+}
+
+
+def validate_runtime_config(config: dict[str, Any]) -> list[str]:
+    """Validate the runtime config.yaml keys in RUNTIME_CONFIG_KEYS.
+
+    Every key must be PRESENT (explicit in both config.yaml files — the
+    default lives in code, but the shipped YAML is the visible contract)
+    and hold the expected type.
+    """
+    errors: list[str] = []
+    for dotted, expected in RUNTIME_CONFIG_KEYS.items():
+        node: Any = config
+        parts = dotted.split(".")
+        for part in parts:
+            if not isinstance(node, dict) or part not in node:
+                errors.append(f"missing required key '{dotted}' (expected {expected.__name__})")
+                node = None
+                break
+            node = node[part]
+        else:
+            # bool is a subclass of int: reject a bool where a real int/float
+            # is expected, and require bool-exactness for bool keys.
+            type_ok = isinstance(node, expected) and (
+                expected is bool or not isinstance(node, bool)
+            )
+            if not type_ok:
+                errors.append(
+                    f"key '{dotted}' must be {expected.__name__}, got {type(node).__name__}"
+                )
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # File-level validation (loads from disk)
 # ---------------------------------------------------------------------------
 
@@ -549,15 +590,17 @@ def validate_all(project_root: Path | None = None) -> list[str]:
                 "opencode.json.bak: unexpectedly passes OpenCode validation (should be old format)"
             )
 
-    # 5. Runtime config extraction.gliner block — root and packaged copies
-    # must exist and agree (lockstep rule for new config keys).
+    # 5. Runtime config.yaml — root and packaged copies must exist and agree
+    # (lockstep rule for new config keys). Both validators run per copy.
     for relative_path in (Path("config.yaml"), Path("src") / "corpus_kb" / "config.yaml"):
         config_path = project_root / relative_path
         display = relative_path.as_posix()
         if not config_path.exists():
             errors.append(f"{display}: not found")
             continue
-        errs = validate_extraction_gliner(load_yaml(config_path))
+        runtime_cfg = load_yaml(config_path)
+        errs = validate_extraction_gliner(runtime_cfg)
+        errs += validate_runtime_config(runtime_cfg)
         errors.extend(f"{display}: {e}" for e in errs)
 
     return errors
