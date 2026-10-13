@@ -13,6 +13,7 @@ which is critical for MCP integration where the working directory is unpredictab
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
@@ -383,8 +384,12 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
     from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
 
     research = cast(dict[str, object], config.setdefault("research", {}))
-    research.update(RELEASE_CONFIG_DEFAULTS)
-    research.update(MEASUREMENT_CONFIG_DEFAULTS)
+    # update() alone would alias the modules' nested default dicts into every
+    # loaded config, so mutating one loaded config's research.* block would
+    # leak into every later load. Copy one level deep (matches the
+    # consensus/hierarchy handling below).
+    research.update(_detached_defaults(RELEASE_CONFIG_DEFAULTS))
+    research.update(_detached_defaults(MEASUREMENT_CONFIG_DEFAULTS))
     # U48 N-run inductive consensus (research/cycle_consensus.py is the typed
     # reader): runs = N independent inductive passes per cycle, aggregated by
     # the release-layer consensus before themes surface.
@@ -393,3 +398,16 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
     hierarchy_defaults = dict(HIERARCHY_CONFIG_DEFAULTS)
     hierarchy_defaults["respect_boundaries"] = list(hierarchy_defaults["respect_boundaries"])
     config.setdefault("ingest", {}).setdefault("hierarchy", {}).update(hierarchy_defaults)
+
+
+def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:
+    """Copy a flat defaults mapping one level deep (nested dicts/lists)."""
+    detached: dict[str, object] = {}
+    for key, value in defaults.items():
+        if isinstance(value, dict):
+            detached[key] = dict(value)
+        elif isinstance(value, list):
+            detached[key] = list(value)
+        else:
+            detached[key] = value
+    return detached

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from corpus_kb.config import load_config
+from corpus_kb.config import _apply_research_defaults, load_config
 
 
 @pytest.fixture
@@ -132,3 +132,19 @@ def test_installer_block_does_not_break_existing_overrides(no_env_overrides: Non
     installer = cast(dict[str, object], cfg["installer"])
     assert installer["postgres_port"] == 5433
     assert installer["telemetry"] is False
+
+
+def test_research_defaults_are_not_aliased_across_loads() -> None:
+    """Mutating a loaded config's research block must not poison the defaults."""
+    first: dict[str, object] = {}
+    _apply_research_defaults(first)
+    first_research = cast(dict[str, object], first["research"])
+    measurement = cast(dict[str, object], first_research["judgment_distribution"])
+    measurement["use_mean"] = True
+    measurement["injected"] = True
+
+    second: dict[str, object] = {}
+    _apply_research_defaults(second)
+    second_research = cast(dict[str, object], second["research"])
+    fresh = cast(dict[str, object], second_research["judgment_distribution"])
+    assert fresh == {"use_mean": False}
