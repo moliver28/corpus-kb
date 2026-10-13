@@ -14,6 +14,11 @@ import typer
 if TYPE_CHECKING:
     from pathlib import Path
 
+# Stage-5 ingest front door (top-level corpus-kb ingest / ingest-status /
+# ingest-reembed): the commands live in cli_ingest.py, which imports
+# corpus_kb.cli only lazily (inside functions), so this import is acyclic.
+from corpus_kb.cli_ingest import register as register_ingest_commands
+
 # Release lifecycle group (U5, P7): the commands live in cli_release.py (the
 # 250-line soft limit; cli.py is already the largest surface file) and share
 # the handlers/release_handlers.py layer with the MCP + HTTP surfaces.
@@ -22,6 +27,8 @@ if TYPE_CHECKING:
 from corpus_kb.cli_release import release_app
 
 app = typer.Typer(help="Corpus-KB command-line interface")
+
+register_ingest_commands(app)
 
 
 @app.callback(invoke_without_command=True)

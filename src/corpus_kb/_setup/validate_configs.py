@@ -70,6 +70,9 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "release_execute",
         "release_status",
         "release_compare",
+        # -- ingest front door (Stage 5, tools/ingest_surface_tools.py) ------
+        "ingest_status",
+        "ingest_reembed",
     }
 )
 
