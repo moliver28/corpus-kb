@@ -110,7 +110,17 @@ inductive = [
 # gliner2 import is lazy (extraction/_gliner2_types.py) so the extras-less
 # jobs stay green (same contract as latechunk/inductive).
 ner = ["gliner2>=2.1.0"]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=5.0", "syrupy>=4.0"]
+# lxml is TEST-ONLY: real XSD validation of REFI-QDA exports in
+# tests/test_refi_qda.py (U27) via lxml.etree.XMLSchema. The runtime module
+# (coding/refi_qda) is stdlib-only; every lxml use is behind
+# pytest.importorskip so the suite passes without it.
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=5.0",
+    "syrupy>=4.0",
+    "lxml>=5.0",
+]
 
 [build-system]
 # 77.0.3 is the PEP 639 floor: the string `license` + `license-files` fields
