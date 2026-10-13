@@ -29,21 +29,6 @@ _WEB_HINT_SOURCES = frozenset({"web", "url"})
 _JOIN = "\n\n"
 
 
-def ensure_registered() -> None:
-    """Register WebStructureStrategy in the ingestion registry (idempotent).
-
-    Registration lives here (not registry._ensure_ready) while the web
-    ingestion integration is in flight; the registry's idempotent overwrite
-    makes this a no-op once integration (or a plugin) registers the name
-    first. Callers: tools.ingest_url_tools before pipeline resolution, and
-    the CLI's fast-fail strategy validation.
-    """
-    from ..registry import register_strategy, strategy_names
-
-    if WEB_STRATEGY_NAME not in strategy_names():
-        register_strategy(WebStructureStrategy())
-
-
 class WebStructureStrategy:
     """Section-level chunking for fetched web pages (source_type "web")."""
 

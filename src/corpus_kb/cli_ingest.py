@@ -228,12 +228,8 @@ async def _ingest_url_flow(
     source_type: str | None,
     json_output: bool,
 ) -> int:
-    from corpus_kb.ingestion.strategies.web import ensure_registered
     from corpus_kb.tools.ingest_tools import ingest_url
 
-    # Register web_structure BEFORE validating so --source-type web_structure
-    # fast-fails on genuinely unknown names without touching the database.
-    ensure_registered()
     if source_type is not None and source_type not in _strategy_names():
         _unknown_strategy_exit(source_type)
     cfg = _load_config()

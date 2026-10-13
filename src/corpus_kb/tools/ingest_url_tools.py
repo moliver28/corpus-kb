@@ -15,7 +15,6 @@ import asyncpg
 import httpx
 
 from ..ingestion.registry import strategy_names
-from ..ingestion.strategies.web import ensure_registered
 from ..web.fetch import WebFetchError, fetch_page
 from ..web.fetch import crawl as crawl_pages
 from ..web.settings import config_from_mapping as web_config_from_mapping
@@ -60,7 +59,6 @@ async def ingest_url(
     error dict) per fetched page.
     """
     config = load_config_or_pass(config)
-    ensure_registered()
     if source_type is not None:
         error = _validate_strategy_override(source_type)
         if error is not None:

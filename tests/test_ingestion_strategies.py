@@ -625,7 +625,9 @@ def test_cli_rejects_unknown_source_type() -> None:
     # (test_cli's helper), drop the panel's box-drawing characters, and
     # collapse whitespace before matching.
     text = re.sub(r"[│╭─╮╰╯├┤]", " ", _strip_ansi(result.output))
-    assert "Valid strategies: default, pptx_structure, transcript" in " ".join(text.split())
+    assert "Valid strategies: default, pptx_structure, transcript, web_structure" in " ".join(
+        text.split()
+    )
 
 
 def test_cli_help_lists_source_type() -> None:
