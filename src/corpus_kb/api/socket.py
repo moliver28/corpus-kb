@@ -128,7 +128,7 @@ class JSONRPCServer:
                 content=params.get("content"),
                 source_type=params.get("source_type"),
             )
-            return get_command_handler().handle_ingest_file(cmd)
+            return await get_command_handler().handle_ingest_file(cmd)
 
         elif method == "ingest_text":
             from corpus_kb.domain.models import IngestTextCommand
@@ -140,7 +140,7 @@ class JSONRPCServer:
                 source=params.get("source", "raw_text"),
                 source_type=params.get("source_type", "text"),
             )
-            return get_command_handler().handle_ingest_text(cmd)
+            return await get_command_handler().handle_ingest_text(cmd)
 
         elif method == "search":
             from corpus_kb.domain.models import SearchQuery

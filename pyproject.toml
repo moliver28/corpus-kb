@@ -84,6 +84,11 @@ inductive = [
     "umap-learn>=0.5",
     "hdbscan>=0.8.36",
 ]
+# Opt-in GLiNER2 schema-conditioned NER (extraction/gliner_backend.py,
+# gated by extraction.gliner.enabled). CI NEVER installs this extra; every
+# gliner2 import is lazy (extraction/_gliner2_types.py) so the extras-less
+# jobs stay green (same contract as latechunk/inductive).
+ner = ["gliner2>=2.1.0"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=5.0", "syrupy>=4.0"]
 
 [build-system]

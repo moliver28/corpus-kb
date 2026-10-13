@@ -9,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,7 +17,7 @@ import asyncpg
 
 from ..chunking.unstructured_chunker import chunk_elements
 from ..config import load_config
-from ..extraction import create_extractor
+from ..extraction import ExtractStats, create_extractor
 from ..extraction.pgml_backend import PgmlExtractor
 from ..ingest.hierarchy_settings import load_hierarchy_settings
 from ..ontology import Ontology, load_ontology
@@ -178,42 +179,80 @@ async def extract_with_fallback(
     source_document_id: str,
     config: dict[str, object],
     pool: asyncpg.Pool | None = None,
-) -> tuple[list[Entity], list[Relation], str]:
+) -> tuple[list[Entity], list[Relation], str, ExtractStats]:
     """Extract entities and relations, falling back through the extractor chain.
 
     Order depends on ``graph.extractor``:
 
     - ``pgml``: PostgresML NER -> LangExtract -> RegexExtractor
     - ``langextract``: LangExtract -> RegexExtractor
+    - ``gliner``: GLiNER2 NER -> RegexExtractor
     - ``regex``: RegexExtractor only
 
     The returned ``extractor_id`` always names the extractor that actually
-    produced the output.
+    produced the output. Every failure and every empty result along the
+    chain is recorded in ``stats.notes`` — a fallback is never silent.
+
+    Returns:
+        (entities, relations, extractor_id, stats).
     """
     extractor_name = _extractor_name(config)
+    failures: list[str] = []
 
     # Reject unknown extractor names explicitly so we never silently fall back
     # to regex when the user configured something unsupported.
-    if extractor_name not in {"pgml", "langextract", "regex"}:
+    if extractor_name not in {"pgml", "langextract", "regex", "gliner"}:
         create_extractor(config, pool=pool)
+
+    if extractor_name == "gliner":
+        try:
+            gliner_extractor = create_extractor(config, pool=pool)
+            entities, relations, stats = gliner_extractor.extract(
+                chunks, ontology, source_document_id
+            )
+            if entities:
+                return (
+                    entities,
+                    relations,
+                    _actual_extractor_id(entities, gliner_extractor.extractor_id),
+                    stats,
+                )
+            failures.append("gliner returned no entities")
+            logger.warning("Gliner extraction returned no entities; falling back to regex.")
+        except ValueError:
+            # Configuration error (e.g. gliner not enabled, unknown mention
+            # type): propagate loudly instead of silently downgrading the
+            # user's explicit extractor choice to regex.
+            raise
+        except Exception as exc:
+            failures.append(f"gliner: {type(exc).__name__}: {exc}")
+            logger.warning("Gliner extraction failed: %s; falling back to regex.", exc)
 
     if extractor_name == "pgml":
         try:
             pgml_extractor = create_extractor(config, pool=pool)
             if isinstance(pgml_extractor, PgmlExtractor):
-                entities, relations = await pgml_extractor.aextract(
+                entities, relations, stats = await pgml_extractor.aextract(
                     chunks, ontology, source_document_id
                 )
             else:
-                entities, relations = pgml_extractor.extract(chunks, ontology, source_document_id)
+                entities, relations, stats = pgml_extractor.extract(
+                    chunks, ontology, source_document_id
+                )
             if entities:
                 return (
                     entities,
                     relations,
                     _actual_extractor_id(entities, pgml_extractor.extractor_id),
+                    stats,
                 )
-        except Exception:
-            pass
+            failures.append("pgml returned no entities")
+            logger.warning(
+                "PostgresML extraction returned no entities; falling back to langextract."
+            )
+        except Exception as exc:
+            failures.append(f"pgml: {type(exc).__name__}: {exc}")
+            logger.warning("PostgresML extraction failed: %s; falling back to langextract.", exc)
 
     if extractor_name in ("pgml", "langextract"):
         try:
@@ -226,21 +265,29 @@ async def extract_with_fallback(
                     },
                 }
             )
-            entities, relations = lang_extractor.extract(chunks, ontology, source_document_id)
+            entities, relations, stats = lang_extractor.extract(
+                chunks, ontology, source_document_id
+            )
             if entities:
                 return (
                     entities,
                     relations,
                     _actual_extractor_id(entities, lang_extractor.extractor_id),
+                    stats,
                 )
-        except (FileNotFoundError, ImportError, ModuleNotFoundError):
-            pass
+            failures.append("langextract returned no entities")
+            logger.warning("LangExtract extraction returned no entities; falling back to regex.")
+        except Exception as exc:
+            failures.append(f"langextract: {type(exc).__name__}: {exc}")
+            logger.warning("LangExtract extraction failed: %s; falling back to regex.", exc)
 
     from ..extraction import RegexExtractor
 
     fallback = RegexExtractor()
-    entities, relations = fallback.extract(chunks, ontology, source_document_id)
-    return entities, relations, _actual_extractor_id(entities, fallback.extractor_id)
+    entities, relations, stats = fallback.extract(chunks, ontology, source_document_id)
+    if failures:
+        stats = replace(stats, notes=stats.notes + tuple(failures))
+    return entities, relations, _actual_extractor_id(entities, fallback.extractor_id), stats
 
 
 def _actual_extractor_id(entities: list[Entity], fallback_id: str) -> str:
@@ -434,7 +481,13 @@ class PostgresIngestStore:
         return count
 
     async def store_entities(self, entities: list[Entity]) -> int:
-        """Insert entities into the entities table. Returns count."""
+        """Insert entities into the entities table. Returns inserted count.
+
+        The entities table has no confidence/extractor_id columns
+        (migration 008 added them to relations only), so that provenance
+        is merged into the persisted metadata JSONB here instead of being
+        dropped at the write boundary.
+        """
         if not entities:
             return 0
         count = 0
@@ -444,21 +497,23 @@ class PostgresIngestStore:
                 self._tenant_id,
             )
             for entity in entities:
-                await conn.execute(
+                row = await conn.fetchrow(
                     """
                     INSERT INTO entities (entity_id, tenant_id, name, entity_type,
                         source_document_id, metadata)
                     VALUES ($1, $2, $3, $4, $5, $6)
                     ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
+                    RETURNING entity_id
                     """,
                     entity.entity_id,
                     self._tenant_id,
                     entity.name,
                     entity.entity_type,
                     entity.source_document_id,
-                    json.dumps(entity.metadata),
+                    _entity_persisted_metadata(entity),
                 )
-                count += 1
+                if row is not None:
+                    count += 1
         return count
 
     async def store_relations(
@@ -484,7 +539,7 @@ class PostgresIngestStore:
                 self._tenant_id,
             )
             for relation in relations:
-                await conn.execute(
+                row = await conn.fetchrow(
                     """
                     INSERT INTO relations (relation_id, tenant_id, source_entity_id,
                         target_entity_id, relation_type, weight, metadata,
@@ -493,6 +548,7 @@ class PostgresIngestStore:
                     ON CONFLICT (tenant_id, source_entity_id, target_entity_id,
                         relation_type, chunk_id)
                     DO NOTHING
+                    RETURNING relation_id
                     """,
                     relation.relation_id,
                     self._tenant_id,
@@ -507,8 +563,25 @@ class PostgresIngestStore:
                     model_version,
                     prompt_version,
                 )
-                count += 1
+                if row is not None:
+                    count += 1
         return count
+
+
+def _entity_persisted_metadata(entity: Entity) -> str:
+    """Serialize entity metadata with provenance merged in.
+
+    ``extractor`` and ``confidence`` live on the Entity model but have no
+    dedicated columns in the entities table; without this merge they would
+    be silently dropped at the write boundary even when the extractor
+    measured them.
+    """
+    persisted: dict[str, object] = dict(entity.metadata)
+    if entity.extractor_id and "extractor" not in persisted:
+        persisted["extractor"] = entity.extractor_id
+    if entity.confidence is not None and "confidence" not in persisted:
+        persisted["confidence"] = entity.confidence
+    return json.dumps(persisted)
 
 
 async def run_pipeline(
@@ -659,9 +732,10 @@ async def run_pipeline(
     entities: list[Entity] = []
     relations: list[Relation] = []
     extractor_id = "none"
+    stats = ExtractStats(backend="none", notes=("extraction disabled",))
     if _extract_entities_flag(config):
         try:
-            entities, relations, extractor_id = await extract_with_fallback(
+            entities, relations, extractor_id, stats = await extract_with_fallback(
                 chunks, ontology(config), document.document_id, config, pool=pg_pool
             )
             if entities:
@@ -676,6 +750,10 @@ async def run_pipeline(
         except Exception as exc:
             logging.warning("Entity extraction failed: %s", exc)
             errors.append(f"ExtractionError: {exc}")
+            stats = ExtractStats(
+                backend=extractor_id,
+                notes=(f"extraction failed: {type(exc).__name__}: {exc}",),
+            )
 
     # Mirror chunks into LlamaIndex RAG backend (additive path)
     if rag_backend is not None:
@@ -709,6 +787,20 @@ async def run_pipeline(
         "degraded": degraded,
         "extractor_id": extractor_id,
         "entities": {entity.name: entity.entity_id for entity in entities},
+        # Honest extraction accounting: requested vs kept vs where the
+        # difference went, plus failure notes from the fallback chain.
+        "extraction": {
+            "extractor_id": extractor_id,
+            "requested_entities": stats.requested_entities,
+            "kept_entities": stats.kept_entities,
+            "requested_relations": stats.requested_relations,
+            "kept_relations": stats.kept_relations,
+            "dropped_by_cap": stats.dropped_by_cap,
+            "dropped_by_confidence": stats.dropped_by_confidence,
+            "dropped_by_other": stats.dropped_by_other,
+            "duration_ms": round(stats.duration_ms, 3),
+            "notes": list(stats.notes),
+        },
         "errors": errors,
     }
     # Shadow keys are present ONLY when the hierarchy flag is on, so the

@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from corpus_kb.extraction.pgml_backend import PgmlExtractor
+from corpus_kb.extraction.protocol import ExtractStats
 from corpus_kb.extraction.regex_backend import RegexExtractor
 from corpus_kb.ontology import load_ontology
 from corpus_kb.rag.embedder import OllamaEmbedder
@@ -334,19 +335,23 @@ async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
 
         async def aextract(
             self, chunks: list[Chunk], ont: Any, source_document_id: str
-        ) -> tuple[list[Entity], list[Any]]:
-            return [
-                Entity(
-                    name="Acme",
-                    entity_type="Org",
-                    source_type="text",
-                    source_document_id=source_document_id,
-                    chunk_id=chunks[0].chunk_id,
-                    confidence=None,
-                    extractor_id="pgml",
-                    metadata={},
-                )
-            ], []
+        ) -> tuple[list[Entity], list[Any], ExtractStats]:
+            return (
+                [
+                    Entity(
+                        name="Acme",
+                        entity_type="Org",
+                        source_type="text",
+                        source_document_id=source_document_id,
+                        chunk_id=chunks[0].chunk_id,
+                        confidence=None,
+                        extractor_id="pgml",
+                        metadata={},
+                    )
+                ],
+                [],
+                ExtractStats(backend="pgml", requested_entities=1, kept_entities=1),
+            )
 
     import corpus_kb.extraction as extraction_module
     import corpus_kb.tools.ingest_common as ingest_module
@@ -355,7 +360,7 @@ async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
     extraction_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
     ingest_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
     try:
-        entities, _relations, extractor_id = await extract_with_fallback(
+        entities, _relations, extractor_id, stats = await extract_with_fallback(
             [chunk],
             ontology,
             "doc-pgml",
@@ -364,6 +369,8 @@ async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
         )
         assert extractor_id == "pgml"
         assert len(entities) == 1
+        assert stats.backend == "pgml"
+        assert stats.kept_entities == 1
     finally:
         extraction_module.create_extractor = original_create_extractor  # type: ignore[assignment]
         ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
@@ -383,7 +390,7 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
 
         async def aextract(
             self, chunks: list[Chunk], ont: Any, source_document_id: str
-        ) -> tuple[list[Entity], list[Any]]:
+        ) -> tuple[list[Entity], list[Any], ExtractStats]:
             calls.append("pgml")
             raise RuntimeError("pgml unavailable")
 
@@ -392,7 +399,7 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
 
         def extract(
             self, chunks: list[Chunk], ont: Any, source_document_id: str
-        ) -> tuple[list[Entity], list[Any]]:
+        ) -> tuple[list[Entity], list[Any], ExtractStats]:
             calls.append("langextract")
             raise ImportError("langextract missing")
 
@@ -414,7 +421,7 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
     extraction_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     ingest_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     try:
-        entities, _relations, extractor_id = await extract_with_fallback(
+        entities, _relations, extractor_id, stats = await extract_with_fallback(
             [chunk],
             ontology,
             "doc-cascade",
@@ -424,6 +431,10 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
         assert calls == ["pgml", "langextract"]
         assert extractor_id == "regex"
         assert len(entities) >= 0
+        # Failure honesty: both chain failures are recorded in stats notes.
+        assert any("pgml" in note for note in stats.notes)
+        assert any("langextract" in note for note in stats.notes)
+        assert stats.backend == "regex"
     finally:
         extraction_module.create_extractor = original_create_extractor  # type: ignore[assignment]
         ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
@@ -443,7 +454,7 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
 
         async def aextract(
             self, chunks: list[Chunk], ont: Any, source_document_id: str
-        ) -> tuple[list[Entity], list[Any]]:
+        ) -> tuple[list[Entity], list[Any], ExtractStats]:
             calls.append("pgml")
             raise RuntimeError("pgml unavailable")
 
@@ -452,20 +463,24 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
 
         def extract(
             self, chunks: list[Chunk], ont: Any, source_document_id: str
-        ) -> tuple[list[Entity], list[Any]]:
+        ) -> tuple[list[Entity], list[Any], ExtractStats]:
             calls.append("langextract")
-            return [
-                Entity(
-                    name="Acme",
-                    entity_type="Org",
-                    source_type="text",
-                    source_document_id=source_document_id,
-                    chunk_id=chunks[0].chunk_id,
-                    confidence=None,
-                    extractor_id="langextract",
-                    metadata={},
-                )
-            ], []
+            return (
+                [
+                    Entity(
+                        name="Acme",
+                        entity_type="Org",
+                        source_type="text",
+                        source_document_id=source_document_id,
+                        chunk_id=chunks[0].chunk_id,
+                        confidence=None,
+                        extractor_id="langextract",
+                        metadata={},
+                    )
+                ],
+                [],
+                ExtractStats(backend="langextract", requested_entities=1, kept_entities=1),
+            )
 
     import corpus_kb.extraction as extraction_module
     import corpus_kb.tools.ingest_common as ingest_module
@@ -485,7 +500,7 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
     extraction_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     ingest_module.create_extractor = _fake_create_extractor  # type: ignore[assignment]
     try:
-        entities, _relations, extractor_id = await extract_with_fallback(
+        entities, _relations, extractor_id, stats = await extract_with_fallback(
             [chunk],
             ontology,
             "doc-lang",
@@ -495,6 +510,7 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
         assert calls == ["pgml", "langextract"]
         assert extractor_id == "langextract"
         assert len(entities) == 1
+        assert stats.backend == "langextract"
     finally:
         extraction_module.create_extractor = original_create_extractor  # type: ignore[assignment]
         ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
