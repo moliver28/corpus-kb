@@ -126,16 +126,19 @@ About forty lines, usable from Ladder 2 or 3. It chunks meeting notes at
 `## Decision` / `## Action` / `## Discussion` headings and records the
 section kind as metadata.
 
-<!-- VERIFY-INTEGRATION: DetectResult/ChunkPlan field names in this example follow the plan-pinned contract (confidence, reason; strategy name + drafts + metadata + empty-reason) — re-check against src/corpus_kb/ingestion/base.py at integration and adjust the example, not the contract -->
-
 ```python
 # my_pkg/ingestion.py
 from __future__ import annotations
 
 import re
 
+from corpus_kb.ingestion.base import (
+    TOKEN_BUDGET_CHARS,
+    ChunkPlan,
+    DetectResult,
+    PlannedChunk,
+)
 
-HEAD_BUDGET = 1638  # 0.8 * 2048 tokens at the chars/4 heuristic
 
 
 class MeetingNotesStrategy:
@@ -146,34 +149,35 @@ class MeetingNotesStrategy:
 
     def detect(self, source_type_hint, filename, head):
         if source_type_hint == "meeting-notes":
-            return {"confidence": 1.0, "reason": "explicit override"}
+            return DetectResult(confidence=1.0, reason="explicit override")
         hits = len(self._HEADING.findall(head))
-        return {
-            "confidence": min(0.9, 0.3 * hits),
-            "reason": f"{hits} meeting headings in head",
-        }
+        return DetectResult(
+            confidence=min(0.9, 0.3 * hits),
+            reason=f"{hits} meeting headings in head",
+        )
 
     def build_chunks(self, raw, filename, profile):
         marks = list(self._HEADING.finditer(raw))
         if not marks:
-            return {
-                "strategy": self.name,
-                "chunks": [],
-                "empty_reason": "no Decision/Action/Discussion headings",
-            }
+            return ChunkPlan(
+                strategy=self.name,
+                document_text=raw,
+                empty_reason="no Decision/Action/Discussion headings",
+            )
         bounds = marks + [None]  # None = end of document
         chunks = []
-        for i, (start, end) in enumerate(zip(bounds, bounds[1:])):
+        for start, end in zip(bounds, bounds[1:]):
             text = raw[start.start(): end.start() if end else len(raw)].strip()
             # Split oversized sections so every chunk fits the token budget.
-            for j in range(0, len(text), HEAD_BUDGET):
-                pieces = text[j: j + HEAD_BUDGET]
-                chunks.append({
-                    "index": len(chunks),
-                    "text": pieces,
-                    "metadata": {"section": start.group(1).lower()},
-                })
-        return {"strategy": self.name, "chunks": chunks, "empty_reason": None}
+            for j in range(0, len(text), TOKEN_BUDGET_CHARS):
+                chunks.append(
+                    PlannedChunk(
+                        text=text[j: j + TOKEN_BUDGET_CHARS],
+                        index=len(chunks),
+                        metadata={"section": start.group(1).lower()},
+                    )
+                )
+        return ChunkPlan(strategy=self.name, chunks=chunks, document_text=raw)
 
 
 # Ladder 2:

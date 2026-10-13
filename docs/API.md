@@ -45,7 +45,6 @@ Request body:
 }
 ```
 
-<!-- VERIFY-INTEGRATION: source_type values are validated against the ingestion-strategy registry (built-ins: default, transcript); confirm the accepted set and the invalid-value error shape -->
 `source_type` is validated against the ingestion-strategy registry. An
 explicit value overrides content detection; an unknown value is rejected
 with the standard error envelope.
@@ -94,7 +93,10 @@ curl -X POST http://localhost:8010/api/ingest/reembed \
   -d '{"limit": 100}'
 ```
 
-<!-- VERIFY-INTEGRATION: response field names for the reembed summary (plan pins honest scanned/fixed/failed counts; confirm exact keys) -->
+The response reports honest counts: `{"status": "...", "scanned": N,
+"fixed": N, "failed": N}` — plus `degraded`/`warning` when the primary
+embedding provider needed attention, and `{"status": "unavailable"}` when
+migration 022's degraded flags are not present yet.
 
 ### GET /api/documents
 
@@ -126,7 +128,6 @@ curl -X POST http://localhost:8010/api/search \
   -d '{"query": "how does startup work", "k": 10, "source_type": "code"}'
 ```
 
-<!-- VERIFY-INTEGRATION: degraded_excluded envelope field names and the degraded_empty status string (plan-pinned contract; confirm exact keys in the merged envelope) -->
 The response envelope is degraded-aware: `degraded_excluded` reports
 `{count, reasons}` for the degraded (zero-vector) chunks left out of the
 vector candidates (when `search.exclude_degraded` is `true`, the default),
@@ -349,8 +350,6 @@ placeholder.
 | `/api/notebook/evidence` | POST | `notebook_evidence` | **code**, project_id, version_id, limit, tenant_id |
 | `/api/notebook/uncoded` | POST | `notebook_uncoded` | project_id, version_id, k, tenant_id |
 | `/api/notebook/overlap` | POST | `notebook_overlap` | project_id, version_id, tenant_id |
-
-<!-- VERIFY-INTEGRATION: source_type on the two ingest routes arrives with the strategy registry (Stage 4) — confirm the body key name matches the implemented parameter -->
 
 `research-cycle` (interactive postures, approval boundary, watch mode) and
 `research-demo` (CLI-only by design) intentionally have NO HTTP route —

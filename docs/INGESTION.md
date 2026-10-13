@@ -520,9 +520,9 @@ cleanly.
 | `graph.prompt_version` | `v1` | Prompt version recorded in relation provenance |
 | `extraction.gliner.enabled` | `false` | Opt-in GLiNER2 mention-level NER backend (requires the `ner` extra) |
 | `extraction.gliner.model` | `fastino/gliner2-large-v1` | GLiNER2 model id |
-| `extraction.gliner.revision` | (unset) <!-- VERIFY-INTEGRATION: gliner revision default (plan pins the key, not the default) --> | Model revision pin for reproducible GLiNER2 loads |
+| `extraction.gliner.revision` | `main` | Model revision pin for reproducible GLiNER2 loads (pin a specific HF revision hash in production) |
 | `extraction.gliner.types` | 6 mention types | Mention types GLiNER2 extracts (person, organization, location, date, money, product) |
-| `ingestion.strategies` | `{}` | source_type → strategy-name map (extension ladder 1; see INGESTION-STRATEGIES.md) |
+| `ingestion.strategies` | `{transcript: transcript}` | source_type → strategy-name map (extension ladder 1; see INGESTION-STRATEGIES.md) |
 | `ingestion.default` | `default` | Strategy used when no override, mapping, or detection matches |
 | `embedding.provider` | `pgml` | Embedding provider (`pgml` or `ollama`) |
 | `embedding.fallback_provider` | `ollama` | Fallback embedding provider |
