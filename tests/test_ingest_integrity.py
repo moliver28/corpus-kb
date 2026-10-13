@@ -402,7 +402,12 @@ async def test_run_pipeline_zero_vectors_fail_the_run(
     pool = _FakePool(_LockConn(acquired=True))
 
     async def _zero_embed(
-        chunks: list[Any], config: Any, pool: Any = None, text_override: Any = None
+        chunks: list[Any],
+        config: Any,
+        pool: Any = None,
+        text_override: Any = None,
+        document_text: Any = None,
+        meta: Any = None,
     ):
         for c in chunks:
             c.embedding = [0.0, 0.0]
@@ -427,7 +432,12 @@ async def test_run_pipeline_fallback_rescue_is_a_note_not_an_error(
     pool = _FakePool(_LockConn(acquired=True))
 
     async def _fallback_embed(
-        chunks: list[Any], config: Any, pool: Any = None, text_override: Any = None
+        chunks: list[Any],
+        config: Any,
+        pool: Any = None,
+        text_override: Any = None,
+        document_text: Any = None,
+        meta: Any = None,
     ):
         for c in chunks:
             c.embedding = [0.7, 0.7]

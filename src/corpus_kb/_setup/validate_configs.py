@@ -526,6 +526,7 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "search.qa_context_in_fts": bool,
     "search.matryoshka_enabled": bool,
     "embedding.mrl_trained": bool,
+    "embedding.late_chunking": bool,
     "ingestion.default": str,
     "ingestion.strategies": dict,
 }

@@ -456,7 +456,9 @@ def _patch_stores(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
         async def fail_run(self, run_id: str, error: str) -> None:
             return None
 
-    async def fake_embed_chunks(chunks, config, pool=None, text_override=None):
+    async def fake_embed_chunks(
+        chunks, config, pool=None, text_override=None, document_text=None, meta=None
+    ):
         for chunk in chunks:
             chunk.embedding = [0.1] * 768
         return False, None

@@ -29,6 +29,12 @@ from ..ingestion.base import (
 from ..ingestion.registry import resolve_strategy
 from ..ontology import Ontology, load_ontology
 from ..rag import aembed_batch, create_embedder
+from ..rag.embedder_selection import (
+    POOLED_MODE,
+    IngestEmbeddingPlan,
+    late_chunking_requested,
+    select_ingest_embedder,
+)
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
 from .ingest_store import DEFAULT_TENANT_ID, PostgresIngestStore
@@ -128,6 +134,8 @@ async def embed_chunks(
     config: dict[str, object],
     pool: asyncpg.Pool | None = None,
     text_override: dict[str, str] | None = None,
+    document_text: str | None = None,
+    meta: dict[str, object] | None = None,
 ) -> tuple[bool, str | None]:
     """Embed chunk texts via the configured provider, returning (degraded, error).
 
@@ -143,13 +151,64 @@ async def embed_chunks(
     structured error info. ``text_override``, if provided, is keyed by
     chunk_id (str) and takes precedence over ``chunk.text`` -- used to embed
     the contextualized (blurb + text) form instead of raw chunk text.
+
+    Late chunking (DOCUMENT ingest only): when the activation contract holds
+    (``embedding.late_chunking`` + latechunk extra + qwen3-embedding model —
+    see ``rag.embedder_selection.select_ingest_embedder``) and
+    ``document_text`` is provided, chunks carrying source char spans embed
+    via ``embed_document_chunks`` against the document (every chunk vector
+    pools token states that saw the whole document); chunks lacking spans
+    embed pooled with a per-chunk note. ``meta``, when given, receives
+    ``"embedding_mode"`` always and ``"embedding_note"`` whenever a fallback
+    note exists, so callers can surface the decision on the run result.
     """
     try:
+        if not chunks:
+            if meta is not None:
+                meta["embedding_mode"] = POOLED_MODE
+            return False, None
+
+        if document_text is None:
+            plan: IngestEmbeddingPlan | None = None
+            mode = POOLED_MODE
+            # Honest fallback when late chunking was requested but the caller
+            # could not supply the document (e.g. the reembed repair path).
+            note = (
+                "late_chunking requested but no document text was provided to "
+                "embed_chunks; pooled fallback"
+                if late_chunking_requested(config)
+                else None
+            )
+        else:
+            plan = select_ingest_embedder(config, pool=pool)
+            mode = plan.mode
+            note = plan.note
+
+        if plan is not None and plan.spans_provider is not None:
+            assert document_text is not None  # plan only exists with document text
+            vectors, span_note = _late_chunk_vectors(plan, chunks, document_text, text_override)
+            if span_note is not None:
+                note = f"{note}; {span_note}" if note else span_note
+            if meta is not None:
+                meta["embedding_mode"] = mode
+                if note is not None:
+                    meta["embedding_note"] = note
+            if vectors and _all_zero(vectors):
+                _assign_embeddings(chunks, vectors)
+                return True, "Connection failed: LateChunkEmbedder returned zero vectors"
+            _assign_embeddings(chunks, vectors)
+            return False, None
+
+        if meta is not None:
+            meta["embedding_mode"] = mode
+            if note is not None:
+                meta["embedding_note"] = note
+
         embedding_cfg = _nested_dict(config, "embedding")
         provider_value = embedding_cfg.get("provider")
         provider = provider_value if isinstance(provider_value, str) else "pgml"
 
-        embedder = create_embedder(config, pool)
+        embedder = plan.embedder if plan is not None else create_embedder(config, pool)
         texts = [(text_override or {}).get(str(chunk.chunk_id), chunk.text) for chunk in chunks]
         vectors = await aembed_batch(embedder, texts)
 
@@ -186,6 +245,58 @@ async def embed_chunks(
         return False, None
     except Exception as exc:
         return True, f"{type(exc).__name__}: {exc}"
+
+
+def _late_chunk_vectors(
+    plan: IngestEmbeddingPlan,
+    chunks: list[Chunk],
+    document_text: str,
+    text_override: dict[str, str] | None,
+) -> tuple[list[list[float]], str | None]:
+    """Late-chunked vectors for span-carrying chunks, pooled for the rest.
+
+    Chunks whose (source_start_char, source_end_char) span is a valid range
+    into ``document_text`` embed via the plan's ``embed_document_chunks``
+    (true late chunking — the contextualized blurb form is NOT used there,
+    since spans point into the raw document). Chunks lacking spans embed
+    via the plan embedder's ``embed_batch`` (single-span forward per text)
+    with a per-chunk note so the fallback is never silent.
+    """
+    spans_provider = plan.spans_provider
+    assert spans_provider is not None
+    late_idx: list[int] = []
+    spans: list[tuple[int, int]] = []
+    pooled_idx: list[int] = []
+    for idx, chunk in enumerate(chunks):
+        start, end = chunk.source_start_char, chunk.source_end_char
+        if (
+            isinstance(start, int)
+            and isinstance(end, int)
+            and 0 <= start < end <= len(document_text)
+        ):
+            late_idx.append(idx)
+            spans.append((start, end))
+        else:
+            pooled_idx.append(idx)
+    vectors: list[list[float]] = [[] for _ in chunks]
+    note: str | None = None
+    if late_idx:
+        chunk_spans = spans_provider(document_text, spans)
+        for idx, span in zip(late_idx, chunk_spans, strict=True):
+            vectors[idx] = span.vector
+    if pooled_idx:
+        texts = [
+            (text_override or {}).get(str(chunks[idx].chunk_id), chunks[idx].text)
+            for idx in pooled_idx
+        ]
+        pooled = plan.embedder.embed_batch(texts)
+        for idx, vector in zip(pooled_idx, pooled, strict=True):
+            vectors[idx] = vector
+        note = (
+            f"late chunking: {len(pooled_idx)}/{len(chunks)} chunks lacked source "
+            "char spans; pooled fallback for those"
+        )
+    return vectors, note
 
 
 def _extractor_name(config: dict[str, object]) -> str:
@@ -541,8 +652,14 @@ async def _run_locked_stages(
         embed_texts_override = {
             str(c.chunk_id): build_embedding_input(c.text, c.context_blurb) for c in new_chunks
         }
+        embed_meta: dict[str, object] = {}
         degraded, embed_err = await embed_chunks(
-            new_chunks, config, pool=pg_pool, text_override=embed_texts_override
+            new_chunks,
+            config,
+            pool=pg_pool,
+            text_override=embed_texts_override,
+            document_text=text,
+            meta=embed_meta,
         )
         if embed_err is not None:
             if _embedding_failure_is_fatal(new_chunks):
@@ -704,6 +821,12 @@ async def _run_locked_stages(
         }
         if embed_note is not None:
             result["embed_note"] = embed_note
+        # Honest embedding accounting (late-chunking wiring): WHICH technique
+        # produced the vectors, and — only when late chunking was requested
+        # but unavailable — the concrete reason it fell back.
+        result["embedding_mode"] = str(embed_meta.get("embedding_mode", POOLED_MODE))
+        if embed_meta.get("embedding_note") is not None:
+            result["embedding_note"] = embed_meta["embedding_note"]
         if empty_reason is not None:
             result["empty_reason"] = empty_reason
         # Shadow keys are present ONLY when the hierarchy flag is on, so the

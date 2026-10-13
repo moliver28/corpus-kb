@@ -18,6 +18,11 @@ embedding:
   # arm (search.matryoshka_enabled) refuses to activate while this is false
   # (config load raises; validate_configs reports the same combination).
   mrl_trained: false
+  # Late chunking (DOCUMENT ingest only — the G1 research choice is pooled
+  # and stays pooled). Applied when the latechunk extra is installed and
+  # embedding.model is a qwen3-embedding* token-level family; otherwise an
+  # honest pooled fallback (embedding_note in the ingest result).
+  late_chunking: true
 
 chunking:
   max_size: 4096
