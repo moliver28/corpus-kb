@@ -2,28 +2,41 @@
 
 The complex deck is built in-test via tests/pptx_factory.py (python-pptx) —
 no binary fixture is committed. Offline suite: detection verdicts, chunk
-boundaries, slide/deck metadata, table markdown, oversized-slide splitting,
-validate_plan conformance, empty-reason paths, and registry resolution.
+boundaries, slide/deck metadata, document-text spans, table markdown (with
+pipe escaping), chart/picture/group degradation, hidden-slide flags,
+oversized-slide and oversized-notes splitting, validate_plan conformance,
+empty-reason paths, and registry resolution.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from pptx_factory import (
+    CHART_CATEGORIES,
+    CHART_SERIES,
     DECK_AUTHOR,
     DECK_COMPANY,
     DECK_CREATED,
     DECK_MODIFIED,
     DECK_SUBJECT,
     DECK_TITLE,
+    GROUP_TEXTS,
+    HIDDEN_SLIDES,
     NOTED_SLIDES,
+    OVERSIZED_NOTES,
     SLIDE_COUNT,
     TABLE_HEADER,
+    TABLE_PIPE_CELL,
     TABLE_ROWS,
     TABLE_TITLE,
     make_blank_deck,
+    make_chart_deck,
+    make_group_deck,
     make_oversized_deck,
+    make_oversized_notes_deck,
+    make_picture_deck,
     make_research_deck,
 )
 
@@ -41,6 +54,7 @@ _STRATEGY_KEYS = {
     "deck_title",
     "slide_title",
     "layout",
+    "hidden",
     "author",
     "created",
     "modified",
@@ -58,11 +72,19 @@ def _plan_for(deck_path: Path, include_notes: bool = True):
 
 
 def _body_chunks(plan):
-    return [chunk for chunk in plan.chunks if "slide_notes" not in chunk.metadata]
+    return [
+        chunk
+        for chunk in plan.chunks
+        if "slide_notes" not in chunk.metadata and "slide_notes_part" not in chunk.metadata
+    ]
 
 
 def _notes_chunks(plan):
-    return [chunk for chunk in plan.chunks if "slide_notes" in chunk.metadata]
+    return [
+        chunk
+        for chunk in plan.chunks
+        if "slide_notes" in chunk.metadata or "slide_notes_part" in chunk.metadata
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -111,6 +133,7 @@ def test_slide_metadata_carries_core_and_extended_properties(tmp_path: Path) -> 
     assert meta["subject"] == DECK_SUBJECT
     assert meta["slide_title"] == DECK_TITLE  # title slide repeats the deck title
     assert meta["layout"] == "Title Slide"
+    assert meta["hidden"] is False
     assert meta["has_notes"] is True
     # TITLE breadcrumb carried on every slide chunk (skip-None join)
     assert first.heading_path == [DECK_TITLE, DECK_TITLE]
@@ -118,6 +141,21 @@ def test_slide_metadata_carries_core_and_extended_properties(tmp_path: Path) -> 
     later = next(c for c in _body_chunks(plan) if c.metadata["slide_number"] == 4)
     assert later.metadata["slide_title"] == TABLE_TITLE
     assert later.heading_path == [DECK_TITLE, TABLE_TITLE]
+
+
+def test_hidden_slide_flagged_on_every_its_chunk(tmp_path: Path) -> None:
+    plan = _plan_for(make_research_deck(tmp_path / "survey.pptx"))
+    for chunk in plan.chunks:
+        expected = chunk.metadata["slide_number"] in HIDDEN_SLIDES
+        assert chunk.metadata["hidden"] is expected
+    hidden = next(
+        c
+        for c in plan.chunks
+        if c.metadata["slide_number"] in HIDDEN_SLIDES and "slide_notes" in c.metadata
+    )
+    assert hidden.metadata["hidden"] is True  # the flag reaches notes chunks too
+    visible = next(c for c in _body_chunks(plan) if c.metadata["slide_number"] == 2)
+    assert visible.metadata["hidden"] is False  # schema-stable default
 
 
 def test_table_slide_renders_github_markdown(tmp_path: Path) -> None:
@@ -129,7 +167,9 @@ def test_table_slide_renders_github_markdown(tmp_path: Path) -> None:
     assert header in table_chunk.text
     assert "| --- | --- | --- |" in table_chunk.text
     for row in TABLE_ROWS:
-        assert "| " + " | ".join(row) + " |" in table_chunk.text
+        # a pipe-bearing cell renders escaped, keeping the row intact
+        expected = "| " + " | ".join(cell.replace("|", "\\|") for cell in row) + " |"
+        assert expected in table_chunk.text
 
 
 def test_notes_chunks_carry_notes_text_and_flag(tmp_path: Path) -> None:
@@ -149,13 +189,99 @@ def test_notes_chunks_carry_notes_text_and_flag(tmp_path: Path) -> None:
 def test_include_notes_false_excludes_notes_chunks(tmp_path: Path) -> None:
     plan = _plan_for(make_research_deck(tmp_path / "survey.pptx"), include_notes=False)
     assert len(plan.chunks) == SLIDE_COUNT
-    assert all("slide_notes" not in chunk.metadata for chunk in plan.chunks)
+    assert all(
+        "slide_notes" not in chunk.metadata and "slide_notes_part" not in chunk.metadata
+        for chunk in plan.chunks
+    )
     noted = {chunk.metadata["slide_number"] for chunk in plan.chunks if chunk.metadata["has_notes"]}
     assert noted == NOTED_SLIDES  # presence is still recorded on the body chunk
 
 
 # ---------------------------------------------------------------------------
-# Budget conformance: whole deck + oversized-slide splitting
+# Document-text spans (late-chunking contract)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("factory", [make_research_deck, make_oversized_deck])
+def test_chunk_spans_slice_document_text_exactly(tmp_path: Path, factory) -> None:
+    plan = _plan_for(factory(tmp_path / "deck.pptx"))
+    assert plan.document_text
+    starts: list[int] = []
+    for chunk in plan.chunks:
+        assert chunk.source_start_char is not None
+        assert chunk.source_end_char is not None
+        start, end = chunk.source_start_char, chunk.source_end_char
+        assert 0 <= start < end <= len(plan.document_text)
+        assert plan.document_text[start:end] == chunk.text
+        starts.append(start)
+    assert starts == sorted(starts)  # spans advance with chunk order
+    assert len(set(starts)) == len(starts)
+
+
+def test_include_notes_false_keeps_notes_out_of_document_text(tmp_path: Path) -> None:
+    plan = _plan_for(make_research_deck(tmp_path / "survey.pptx"), include_notes=False)
+    assert "Welcome everyone" not in plan.document_text
+    for chunk in plan.chunks:
+        start, end = chunk.source_start_char, chunk.source_end_char
+        assert start is not None and end is not None
+        assert plan.document_text[start:end] == chunk.text
+
+
+# ---------------------------------------------------------------------------
+# Unsupported shapes degrade loudly (never vanish silently)
+# ---------------------------------------------------------------------------
+
+
+def test_chart_slide_renders_category_value_table_with_warning(tmp_path: Path) -> None:
+    plan = _plan_for(make_chart_deck(tmp_path / "chart.pptx"))
+    joined = "\n".join(chunk.text for chunk in plan.chunks)
+    header = "| Category | " + " | ".join(name for name, _ in CHART_SERIES) + " |"
+    assert header in joined
+    assert "| --- | --- | --- |" in joined
+    for row, category in enumerate(CHART_CATEGORIES):
+        values = " | ".join(str(values[row]) for _, values in CHART_SERIES)
+        assert f"| {category} | {values} |" in joined
+    assert any("unsupported shape 'Chart' (graphic frame)" in warning for warning in plan.warnings)
+
+
+def test_picture_shape_warns_without_failing(tmp_path: Path) -> None:
+    plan = _plan_for(make_picture_deck(tmp_path / "picture.pptx"))
+    assert plan.chunks and plan.empty_reason is None  # the slide still ingests
+    assert plan.document_text
+    assert any(
+        "unsupported shape 'Picture' skipped" in warning and "no OCR" in warning
+        for warning in plan.warnings
+    )
+
+
+def test_group_shape_text_recursed_with_warning(tmp_path: Path) -> None:
+    plan = _plan_for(make_group_deck(tmp_path / "group.pptx"))
+    joined = "\n".join(chunk.text for chunk in plan.chunks)
+    for text in GROUP_TEXTS:
+        assert text in joined  # sub-shape text is captured, not dropped
+    assert any("unsupported shape 'Group'" in warning for warning in plan.warnings)
+
+
+# ---------------------------------------------------------------------------
+# Table cell escaping
+# ---------------------------------------------------------------------------
+
+
+def test_pipe_cell_renders_escaped_and_keeps_column_count(tmp_path: Path) -> None:
+    plan = _plan_for(make_research_deck(tmp_path / "survey.pptx"))
+    table_chunk = next(
+        chunk for chunk in _body_chunks(plan) if chunk.metadata["slide_title"] == TABLE_TITLE
+    )
+    lines = [line for line in table_chunk.text.splitlines() if line.startswith("|")]
+    assert len(lines) == len(TABLE_ROWS) + 2  # header + separator + rows
+    for line in lines:
+        assert line.count(" | ") == len(TABLE_HEADER) - 1  # one separator per cell boundary
+    assert "\\|" in table_chunk.text
+    assert TABLE_PIPE_CELL.replace("|", "\\|") in table_chunk.text
+
+
+# ---------------------------------------------------------------------------
+# Budget conformance: whole deck + oversized-slide/notes splitting
 # ---------------------------------------------------------------------------
 
 
@@ -177,6 +303,24 @@ def test_oversized_slide_splits_with_part_indices(tmp_path: Path) -> None:
     joined = "\n".join(chunk.text for chunk in bodies)
     assert "gap analysis 0" in joined and "gap analysis 4" in joined
     assert "overflow paragraph" in joined  # hard-split tail survived
+    assert validate_plan(plan) == []
+
+
+def test_oversized_notes_carry_full_text_on_first_part_only(tmp_path: Path) -> None:
+    plan = _plan_for(make_oversized_notes_deck(tmp_path / "notes.pptx"))
+    notes_chunks = sorted(_notes_chunks(plan), key=lambda chunk: chunk.index)
+    assert len(notes_chunks) >= 2  # the notes split across parts
+    first = notes_chunks[0]
+    assert first.metadata["slide_notes"] == OVERSIZED_NOTES.strip()  # full text, once
+    assert "slide_notes_part" not in first.metadata
+    for later in notes_chunks[1:]:
+        assert "slide_notes" not in later.metadata  # no kilobyte duplication
+        assert later.metadata["slide_notes_part"] == later.metadata["part"]
+        assert later.metadata["has_notes"] is True
+    assert all(len(chunk.text) <= TOKEN_BUDGET_CHARS for chunk in notes_chunks)
+    joined = "\n".join(chunk.text for chunk in notes_chunks)
+    assert "retrieval notes segment 0" in joined
+    assert "retrieval notes segment 2" in joined
     assert validate_plan(plan) == []
 
 

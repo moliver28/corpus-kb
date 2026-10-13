@@ -1,21 +1,30 @@
 """Reusable .pptx deck factory for ingestion tests (built in-test, no binaries).
 
-:func:`make_research_deck` writes a deterministic ~10-slide research deck
+:func:`make_research_deck` writes a deterministic 10-slide research deck
 ("Grounded RAG Survey: Corpus Evaluation Methodology") with a comparison
-table, multi-paragraph bodies, speaker notes on six slides, and populated
-core + extended (company) properties. Content is inline so assertions can be
-exact; no binary fixture is committed. The e2e suite reuses the same factory.
+table (one pipe-bearing cell, for the markdown-escape contract), multi-
+paragraph bodies, speaker notes on six slides, one hidden slide, and
+populated core + extended (company) properties. Content is inline so
+assertions can be exact; no binary fixture is committed. The e2e suite
+reuses the same factory. Focused single-slide factories exercise the
+degraded-shape paths: ``make_chart_deck`` (graphic-frame chart, 2 series),
+``make_picture_deck`` (picture), ``make_group_deck`` (group with text
+sub-shapes), and ``make_oversized_notes_deck`` (notes split across parts).
 """
 
 from __future__ import annotations
 
 import datetime
+import io
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
 from pptx import Presentation
+from pptx.chart.data import CategoryChartData
+from pptx.enum.chart import XL_CHART_TYPE
 from pptx.slide import Slide
+from pptx.util import Emu
 
 DECK_TITLE = "Grounded RAG Survey: Corpus Evaluation Methodology"
 DECK_AUTHOR = "Dr. Ada Lovelace"
@@ -26,21 +35,43 @@ DECK_MODIFIED = datetime.datetime(2026, 2, 20, 14, 0, 0)
 
 TABLE_TITLE = "Hybrid Retrieval Comparison"
 TABLE_HEADER = ("Approach", "Recall@10", "P95 latency (ms)")
+TABLE_PIPE_CELL = "0.91 (best | run 3)"  # raw pipe; must render escaped (\|)
 TABLE_ROWS = (
     ("Dense only (nomic)", "0.71", "84"),
     ("Lexical BM25 only", "0.58", "12"),
-    ("Hybrid RRF fusion", "0.91", "96"),
+    ("Hybrid RRF fusion", TABLE_PIPE_CELL, "96"),
 )
 
 # Slides carrying speaker notes (1-based) — the notes-chunk count assertion.
 NOTED_SLIDES = {1, 2, 3, 5, 7, 10}
 SLIDE_COUNT = 10
+# Slide 10 is written with show="0" (PowerPoint "hidden slide").
+HIDDEN_SLIDES = {10}
+
+# Chart fixture data: two series over three categories (exact in assertions).
+CHART_TITLE = "Retrieval Quality by Quarter"
+CHART_CATEGORIES = ("Q1", "Q2", "Q3")
+CHART_SERIES = (("Recall", (0.71, 0.58, 0.91)), ("Latency", (84.0, 12.0, 96.0)))
+
+GROUP_TEXTS = ("inside group one", "inside group two")
+
+# 1x1 white PNG: pictures exercise the warn-only path (no OCR in scope).
+_PNG_1PX = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010802000000907753de"
+    "0000000c49444154789c63f8ffff3f0005fe02fe0def46b80000000049454e44ae426082"
+)
 
 _EXTENDED_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/extended-properties}"
 
+# Three long lines (~2.5k chars each): packs into >1 budget-sized notes part.
+_OVERSIZED_NOTES_LINES = tuple(
+    f"retrieval notes segment {i}: " + "latency detail. " * 164 for i in range(3)
+)
+OVERSIZED_NOTES = "\n".join(_OVERSIZED_NOTES_LINES)
+
 
 def make_research_deck(path: Path) -> Path:
-    """Write the research survey deck (10 slides, 6 noted) to ``path``."""
+    """Write the research survey deck (10 slides, 6 noted, 1 hidden) to ``path``."""
     deck = Presentation()
     props = deck.core_properties
     props.author = DECK_AUTHOR
@@ -122,10 +153,59 @@ def make_research_deck(path: Path) -> Path:
         "Questions and Next Steps",
         ["Which corpora should we add next?", "Volunteers for the faithfulness rubric review."],
         notes="Close by assigning the rubric review to two annotators.",
+        hidden=True,
     )
 
     deck.save(path)
     _set_company(path, DECK_COMPANY)
+    return path
+
+
+def make_chart_deck(path: Path) -> Path:
+    """One slide carrying a clustered-column chart with two series."""
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[5])
+    slide.shapes.title.text = CHART_TITLE
+    data = CategoryChartData()
+    data.categories = CHART_CATEGORIES
+    for name, values in CHART_SERIES:
+        data.add_series(name, values)
+    slide.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, 0, 0, Emu(100), Emu(100), data)
+    deck.save(path)
+    return path
+
+
+def make_picture_deck(path: Path) -> Path:
+    """One slide with a picture (the warn-only, no-OCR path)."""
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[5])
+    slide.shapes.title.text = "Picture Slide"
+    slide.shapes.add_picture(io.BytesIO(_PNG_1PX), 0, 0, Emu(10), Emu(10))
+    deck.save(path)
+    return path
+
+
+def make_group_deck(path: Path) -> Path:
+    """One slide with a group shape holding two text sub-shapes."""
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[5])
+    slide.shapes.title.text = "Group Slide"
+    group = slide.shapes.add_group_shape()
+    for offset, text in enumerate(GROUP_TEXTS):
+        box = group.shapes.add_textbox(Emu(offset * 10), 0, Emu(10), Emu(10))
+        box.text_frame.text = text
+    deck.save(path)
+    return path
+
+
+def make_oversized_notes_deck(path: Path) -> Path:
+    """One slide whose speaker notes exceed the budget (notes split path)."""
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[1])
+    slide.shapes.title.text = "Oversized notes"
+    slide.placeholders[1].text_frame.text = "Short body; the notes carry the weight."
+    _set_notes(slide, OVERSIZED_NOTES)
+    deck.save(path)
     return path
 
 
@@ -162,7 +242,13 @@ def _title_slide(deck: Presentation) -> None:
     _set_notes(slide, "Welcome everyone; today we compare retrieval strategies on the benchmark.")
 
 
-def _bullets_slide(deck: Presentation, title: str, lines: list[str], notes: str = "") -> None:
+def _bullets_slide(
+    deck: Presentation,
+    title: str,
+    lines: list[str],
+    notes: str = "",
+    hidden: bool = False,
+) -> None:
     slide = deck.slides.add_slide(deck.slide_layouts[1])
     slide.shapes.title.text = title
     body = slide.placeholders[1].text_frame
@@ -171,6 +257,8 @@ def _bullets_slide(deck: Presentation, title: str, lines: list[str], notes: str 
         body.add_paragraph().text = line
     if notes:
         _set_notes(slide, notes)
+    if hidden:
+        slide.element.set("show", "0")  # the sld/@show attribute
 
 
 def _paragraph_slide(
