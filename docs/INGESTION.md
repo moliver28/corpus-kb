@@ -4,9 +4,14 @@
 
 Corpus-KB ingests files, raw text, and directories through a five-stage
 pipeline: **partition**, **chunk**, **embed**, **extract**, and **store**.
-Each stage is designed to degrade gracefully. If the embedding service
-(Ollama) is unavailable, the pipeline continues with zero-vector fallbacks
-and reports the failure in structured error output.
+The first two stages are owned by a pluggable **ingestion strategy**
+([INGESTION-STRATEGIES.md](INGESTION-STRATEGIES.md)); the built-in `default`
+strategy preserves the classic unstructured-partition + chunker-dispatch
+behavior, and the built-in `transcript` strategy chunks turn-aligned Q+A
+instead. Each downstream stage is designed to degrade gracefully: if the
+embedding service (Ollama) is unavailable, the pipeline stores zero-vector
+fallbacks, flags the affected chunks as **degraded**, and reports the
+failure in structured error output.
 
 The default backend is the **unified PostgreSQL 17 ecosystem** (pgvector +
 Apache AGE + PostgresML) with Ollama for optional local LLM inference.
@@ -23,9 +28,16 @@ docker compose up -d
 corpus-kb setup --dry-run
 corpus-kb setup
 
-# 3. Start the MCP server
-corpus-kb
+# 3. Start the HTTP server (the editor-facing API today)
+corpus-kb start --transport http --port 8010
+
+# 4. Ingest from the command line
+corpus-kb ingest path/to/notes.md
 ```
+
+The MCP-over-stdio server is **not implemented yet**:
+`corpus-kb --transport stdio` exits with a clear message pointing at the
+HTTP server instead of pretending to speak MCP.
 
 ## Pipeline Stages
 
@@ -36,36 +48,58 @@ corpus-kb
                            |
                            v
                     +------+------+
-  Stage 1: Partition     |  Elements   |
+  Strategy resolve       |  Strategy   |  (explicit --source-type > config map
+                    +------+------+   > content detection > ingestion.default)
+                           |
+                           v
+                    +------+------+
+  Stage 1: Partition     |  Elements   |  (default strategy: unstructured)
                     +------+------+
                            |
                            v
                     +------+------+
-  Stage 2: Chunk          |   Chunks    |
+  Stage 2: Chunk          |   Chunks    |  (default: AST/heading/semantic gaps)
                     +------+------+
                            |
                     +------+------+
-  Stage 3: Embed          |  Vectors    |  (pgml / Ollama / zero-vector fallback)
+  Stage 3: Embed          |  Vectors    |  (pgml / Ollama / degraded zero-vector fallback)
                     +------+------+
                            |
                     +------+------+
-  Stage 4: Extract        | Entities +  |  (PostgresML / LangExtract / Regex)
+  Stage 4: Extract        | Entities +  |  (PostgresML / LangExtract / GLiNER2 / Regex)
                     | Relations   |
                     +------+------+
                            |
                     +------+------+
-  Stage 5: Store          | Postgres tx |  (atomic graph writes)
-                    | pgvector    |  (vectors)
+  Stage 5: Store          | Postgres tx |  (atomic graph writes + ingest_runs ledger)
+                    | pgvector    |  (vectors, degraded flags)
                     +-------------+
 ```
+
+### Strategy resolution
+
+`run_pipeline` resolves the ingestion strategy once at entry, in this order:
+
+1. An explicit `--source-type` override on the CLI/MCP/HTTP ingest calls.
+2. The `ingestion.strategies[source_type]` map in `config.yaml`.
+3. Content detection: every registered strategy's `detect()` scores the
+   input (filename + text head); the highest-confidence match wins.
+4. `ingestion.default` (built-in: `default`).
+
+The resolution is printed at ingest, e.g.
+`detected: transcript (0.92, moderator-pattern) → strategy transcript`, and
+recorded in the pipeline result. See
+[INGESTION-STRATEGIES.md](INGESTION-STRATEGIES.md) for the extension guide.
 
 ### Stage 1: Partition
 
 The input file is partitioned into semantic elements (paragraphs, headings,
 code blocks) using the `unstructured` library. Raw text input bypasses this
-stage and wraps the text in a single element.
+stage and wraps the text in a single element. Strategies that don't fit the
+element model (e.g. `transcript`) skip this stage entirely and build chunks
+directly.
 
-- **File**: `src/partitioning.py`
+- **File**: `src/corpus_kb/partitioning.py`
 - **Config**: `chunking.code.parser: tree-sitter`
 
 ### Stage 2: Chunk
@@ -74,7 +108,7 @@ Elements are grouped into chunks respecting AST boundaries for code
 (functions, classes) and heading boundaries for markdown. Each chunk carries
 its `source_start_char` and `source_end_char` offsets for provenance.
 
-- **File**: `src/chunking/unstructured_chunker.py`
+- **File**: `src/corpus_kb/chunking/unstructured_chunker.py`
 - **Config**: `chunking.max_size`, `chunking.overlap`
 
 ### Stage 3: Embed
@@ -83,20 +117,34 @@ By default embeddings are generated inside Postgres via **PostgresML**
 (`pgml.embed()`), sending a batch of chunk texts as a single SQL call. When
 pgml is unavailable, the pipeline falls back to the configured
 `fallback_provider` (Ollama by default), and ultimately to zero vectors.
-The pipeline result includes `degraded: true` and an error message in the
-`errors` list.
+Zero-vector rows are flagged `degraded = true` on `chunks` and
+`chunk_vectors` (migration `022_ingest_integrity.sql`) — they are never
+silently mixed into vector search:
+
+- `search.exclude_degraded` (default `true`) keeps degraded rows out of the
+  vector-search candidate sets. The lexical (full-text) arm still runs.
+- The search envelope reports what it left out in `degraded_excluded`
+  ({count, reasons}); when every candidate was excluded the search returns
+  status `degraded_empty` with the remedy: start Ollama, then run
+  `corpus-kb ingest-reembed`.
+- `corpus-kb ingest-reembed` re-embeds flagged chunks once the provider is
+  back; repaired rows flip `degraded` back to `false`, and its summary
+  reports honest scanned/fixed/failed counts.
 
 When **matryoshka two-tier retrieval** is enabled, the full embedding is
 stored in `chunks_vectors.vector` and a front-sliced, L2-renormalized 1024d
 projection is stored in `vector_1024`. The 1024d column gets an HNSW index
 for fast candidate generation, and the query layer rescores candidates on
-the exact full-dimension column.
+the exact full-dimension column. Re-embedding overwrites stale projections
+instead of keeping them.
 
-- **Files**: `src/rag/embedder.py`, `src/rag/pgml_embedder.py`
+- **Files**: `src/corpus_kb/rag/embedder.py`
 - **Config**: `embedding.provider`, `embedding.fallback_provider`,
   `embedding.model`, `embedding.base_url`, `embedding.dimensions`,
-  `search.matryoshka_enabled`, `search.matryoshka_dim`
-- **Fallback**: Ollama zero vectors (768d or configured dimensions)
+  `search.matryoshka_enabled`, `search.matryoshka_dim`,
+  `search.exclude_degraded`
+- **Fallback**: Ollama zero vectors flagged degraded (768d or configured
+  dimensions)
 
 ### Stage 4: Extract
 
@@ -109,13 +157,33 @@ fallback). Extraction is capped at 10 relations per chunk to prevent
 quadratic explosion. LangExtract offsets are validated; invalid
 offsets (negative, start >= end, out of bounds) are skipped with a warning.
 
+Extraction accounting is honest: every backend reports how many candidates
+it requested, kept, dropped by the cap, and dropped by confidence, and the
+pipeline result carries those counts instead of inflated totals. Every
+entity stores provenance metadata (`extractor`, `model`, `revision`,
+`confidence`), matching the relation provenance below.
+
+An **opt-in GLiNER2 backend** (`graph.extractor: gliner`) adds
+schema-conditioned NER via `fastino/gliner2-large-v1`: six mention-level
+types (person, organization, location, date, money, product), model
+revision pinned from config, entity spans only — **no relation
+extraction**. It is disabled by default
+(`extraction.gliner.enabled: false`) and requires the optional `ner`
+dependency extra (`pip install "corpus-kb[ner]"`). Promote it over the
+default only with eval numbers: the span-eval harness
+(`src/corpus_kb/extraction/eval.py`) scores per-type P/R/F1 with bootstrap
+confidence intervals and a promotion gate (micro F1 >= 0.80 and >= baseline
++ 0.02). The former BERT backend was dead code — the extractor factory
+never routed to it — and has been removed (issue #31 is the GLiNER2
+follow-up).
+
 Every relation stores provenance metadata: the source chunk, confidence,
 extractor id, model version, and prompt version. The unique key includes
 `chunk_id` so the same triple asserted in two different chunks keeps both
 provenance rows.
 
-- **Files**: `src/extraction/pgml_backend.py`, `src/extraction/langextract_backend.py`, `src/extraction/regex_backend.py`
-- **Config**: `graph.extractor: pgml | langextract | regex`, `graph.extract_entities: true`
+- **Files**: `src/corpus_kb/extraction/pgml_backend.py`, `src/corpus_kb/extraction/langextract_backend.py`, `src/corpus_kb/extraction/regex_backend.py`, `src/corpus_kb/extraction/gliner_backend.py`
+- **Config**: `graph.extractor: pgml | langextract | gliner | regex`, `graph.extract_entities: true`, `extraction.gliner.*`
 - **Provenance**: migration `008_typed_relations.sql`
 
 ### Stage 5: Store
@@ -128,8 +196,18 @@ age`), which stores entities/relations as an openCypher property graph.
 When AGE is unavailable, the implementation falls back to the recursive-CTE
 PostgresGraphStore.
 
-- **Files**: `src/tools/ingest_common.py`, `src/storage/graph_store.py`, `src/storage/age_graph_store.py`
+Every ingest run also gets a row in the `ingest_runs` ledger (migration
+`022_ingest_integrity.sql`): the run is written as `running` with the
+`start_hash` BEFORE any chunks are stored, and only flipped to `completed`
+with the `finish_hash` and per-stage results AFTER everything is stored.
+Any failure marks the run `failed` with the error — nothing reports success
+on a partial ingest. Concurrent ingests of the same document contend on a
+Postgres advisory lock, and the loser returns an honest
+`skipped: concurrent-run` instead of racing the winner.
+
+- **Files**: `src/corpus_kb/tools/ingest_common.py`, `src/corpus_kb/tools/ingest_store.py`, `src/corpus_kb/storage/graph_store.py`, `src/corpus_kb/storage/age_graph_store.py`
 - **Transaction**: `GraphStore.transaction()` context manager
+- **Ledger**: `ingest_runs` (migration `022_ingest_integrity.sql`)
 
 ## Deduplication and Provenance
 
@@ -137,9 +215,12 @@ PostgresGraphStore.
 
 Before chunking begins, the pipeline hashes the full document text with
 SHA256 and stores it in `documents.file_hash`. If the same `source` path is
-ingested again with an identical hash, the run returns immediately with
-`status: "skipped"` and `reason: "unchanged"`. No chunks are reprocessed,
-re-embedded, or re-extracted.
+ingested again with an identical hash AND the recorded run completed
+cleanly, the run returns immediately with `status: "skipped"` and
+`reason: "unchanged"`. No chunks are reprocessed, re-embedded, or
+re-extracted. The probe checks the `ingest_runs` ledger — a previous run
+that failed partway no longer masquerades as a success: the re-ingest
+actually runs.
 
 ### Chunk-level content-hash dedup
 
@@ -185,7 +266,7 @@ chunks without a blurb still match. Migration `009_contextual_blurb.sql`
 adds the `context_blurb` column and a GIN index on the contextual
 expression.
 
-- **File**: `src/rag/contextualizer.py`
+- **File**: `src/corpus_kb/rag/contextualizer.py`
 - **Config block**: `contextual`
 
 ## Matryoshka Two-Tier Retrieval
@@ -201,7 +282,7 @@ Matryoshka is **off by default** (`search.matryoshka_enabled: false`). It
 requires migration `010_matryoshka_1024.sql`, which adds the `vector_1024`
 column and the `idx_chunks_vectors_hnsw_1024` HNSW index.
 
-- **File**: `src/handlers/query_handler.py`
+- **File**: `src/corpus_kb/handlers/query_handler.py`
 - **Config**: `search.matryoshka_enabled`, `search.matryoshka_dim`,
   `search.candidate_multiplier`
 
@@ -224,9 +305,17 @@ Postgres:
    `corpus.rrf_fusion()` for deterministic, rank-based score combination.
 5. **Optional reranking** via the configured reranker backend.
 
-- **File**: `src/handlers/query_handler.py`
+Degraded (zero-vector) chunks are excluded from the vector candidate sets
+when `search.exclude_degraded` is `true` (the default) — the exclusion is
+applied to candidates only, never to the seed documents, and the envelope
+reports the count and reasons in `degraded_excluded`. An all-zero query
+embedding (embedder degraded mode) abstains the vector arm instead of
+returning arbitrary cosine orderings.
+
+- **File**: `src/corpus_kb/handlers/query_handler.py`
 - **Config**: `search.rrf_k`, `search.expand_context`, `search.index_type`,
-  `search.reranker`, `search.reranker_model`, `search.rerank`
+  `search.reranker`, `search.reranker_model`, `search.rerank`,
+  `search.exclude_degraded`
 
 ## Reranker Configuration
 
@@ -247,7 +336,7 @@ score each `(query, text)` pair, apply `calibration` (currently min-max),
 filter below `score_floor`, and return the top `k`. On any backend failure
 reranking falls back to the pre-rerank RRF order so search never breaks.
 
-- **File**: `src/rag/reranker.py`
+- **File**: `src/corpus_kb/rag/reranker.py`
 - **Config**: `search.reranker`, `search.reranker_model`, and the
   `search.rerank` block
 
@@ -272,7 +361,7 @@ Supported filter targets:
 On parse or LLM failure the parser degrades to the original query with no
 predicates.
 
-- **File**: `src/rag/self_query.py`
+- **File**: `src/corpus_kb/rag/self_query.py`
 - **Config block**: `search.self_query`
 
 ## Judge and Answer Verification
@@ -288,7 +377,7 @@ Clients call it via `POST /api/verify` with an `answer` and a list of
 endpoint abstains (`abstained: true`). Any LLM failure returns
 `unsupported` at `0.0` confidence so verification never raises.
 
-- **File**: `src/rag/judge.py`
+- **File**: `src/corpus_kb/rag/judge.py`
 - **HTTP route**: `POST /api/verify`
 - **Config block**: `judge`
 
@@ -311,7 +400,7 @@ prototypes. If the best cosine score is below
 all zeros (embedder degraded mode), the router falls back to semantic
 search. Clients use `POST /api/query`.
 
-- **File**: `src/handlers/router_handler.py`
+- **File**: `src/corpus_kb/handlers/router_handler.py`
 - **HTTP route**: `POST /api/query`
 - **Config block**: `routing`
 
@@ -362,7 +451,8 @@ If not set, defaults to `config/ontology.yaml`.
 
 ## Extractor Seam
 
-The pipeline supports three extractors via a strategy pattern:
+The pipeline supports four extractors via a strategy pattern (three ship by
+default; GLiNER2 is opt-in):
 
 1. **PostgresML NER** (`graph.extractor: pgml`, default): ONNX NER inside
    Postgres via `pgml.transform()`. Falls back to LangExtract, then to
@@ -377,16 +467,63 @@ The pipeline supports three extractors via a strategy pattern:
    using heading patterns and camelCase splitting. Ontology-agnostic;
    produces `CONCEPT` and `CLASS` types regardless of ontology config.
 
+4. **GLiNER2** (`graph.extractor: gliner`, opt-in): schema-conditioned
+   mention-level NER (`fastino/gliner2-large-v1`) for six types (person,
+   organization, location, date, money, product). No relations. Requires
+   the `ner` extra and `extraction.gliner.enabled: true`; gate promotion on
+   the span-eval harness (see Stage 4 above).
+
+## Ingest from the CLI
+
+`corpus-kb ingest` is the top-level front door for files and directories:
+
+```bash
+# one file or a whole directory
+corpus-kb ingest path/to/file.md
+corpus-kb ingest docs/
+
+# override strategy detection
+corpus-kb ingest call.txt --source-type transcript
+
+# watch a drop folder; auto-heal failed ingests when Ollama returns
+corpus-kb ingest interviews/ --watch
+
+# status and re-embed surfaces
+corpus-kb ingest-status
+corpus-kb ingest-reembed [--limit N] [--doc-id ID]
+```
+
+Flags: `--source-type` (explicit strategy override), `--watch` (directory
+poll), `--reembed`, `--limit`, `--doc-id`, `--json` (machine-readable
+output), `--no-heal` (disable watch auto-heal).
+
+**Exit codes**: `0` everything ingested, `1` partial success (some files
+failed), `2` total failure, `3` configuration error. They are printed in
+`--help` and stable for scripting.
+
+**Watch auto-heal**: `--watch` polls the directory and records every run in
+the `ingest_runs` ledger. When a run fails because embeddings were
+unavailable, the watcher re-attempts ONLY that failure class once Ollama
+health returns (health probe + backoff + capped attempts). Other failures
+are never retried silently; `--no-heal` turns auto-heal off. Ctrl-C exits
+cleanly.
+
 ## Config Keys
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `graph.extractor` | `pgml` | Extractor: `pgml`, `langextract`, or `regex` |
+| `graph.extractor` | `pgml` | Extractor: `pgml`, `langextract`, `gliner`, or `regex` |
 | `graph.extract_entities` | `true` | Enable entity extraction |
 | `graph.ontology_path` | `config/ontology.yaml` | Path to ontology YAML |
 | `graph.backend` | `age` | Graph store backend (`age` or `postgres`) |
 | `graph.model_version` | `langextract-default` | Model version recorded in relation provenance |
 | `graph.prompt_version` | `v1` | Prompt version recorded in relation provenance |
+| `extraction.gliner.enabled` | `false` | Opt-in GLiNER2 mention-level NER backend (requires the `ner` extra) |
+| `extraction.gliner.model` | `fastino/gliner2-large-v1` | GLiNER2 model id |
+| `extraction.gliner.revision` | (unset) <!-- VERIFY-INTEGRATION: gliner revision default (plan pins the key, not the default) --> | Model revision pin for reproducible GLiNER2 loads |
+| `extraction.gliner.types` | 6 mention types | Mention types GLiNER2 extracts (person, organization, location, date, money, product) |
+| `ingestion.strategies` | `{}` | source_type → strategy-name map (extension ladder 1; see INGESTION-STRATEGIES.md) |
+| `ingestion.default` | `default` | Strategy used when no override, mapping, or detection matches |
 | `embedding.provider` | `pgml` | Embedding provider (`pgml` or `ollama`) |
 | `embedding.fallback_provider` | `ollama` | Fallback embedding provider |
 | `embedding.model` | `nomic-embed-text` | Embedding model (Ollama) |
@@ -410,6 +547,8 @@ The pipeline supports three extractors via a strategy pattern:
 | `search.matryoshka_enabled` | `false` | Enable two-tier 1024d ANN retrieval |
 | `search.matryoshka_dim` | `1024` | Dimension of the front-sliced projection |
 | `search.candidate_multiplier` | `8` | Candidate multiplier for matryoshka retrieval |
+| `search.exclude_degraded` | `true` | Exclude degraded (zero-vector) chunks from vector-search candidates |
+| `search.qa_context_in_fts` | `false` | Include transcript `qa_context` in the FTS index (opt-in — see INGESTION-STRATEGIES.md for why this is off by default) |
 | `search.hnsw.iterative_scan` | `strict_order` | Transaction-local pgvector iterative scan mode (off/relaxed_order/strict_order; needs pgvector >= 0.8) |
 | `search.hnsw.ef_search` | `200` | Transaction-local HNSW ef_search (SET LOCAL per retrieval transaction) |
 | `search.hnsw.max_scan_tuples` | `20000` | Transaction-local HNSW max_scan_tuples cap |
@@ -462,8 +601,16 @@ The pipeline captures errors structurally. The `run_pipeline` result dict
 includes an `errors` key, a list of strings like
 `"EmbeddingError: ConnectionRefusedError: ..."`.
 
-- **Degraded mode**: `degraded: true` with non-empty `errors` list
+- **Degraded mode**: `degraded: true` with non-empty `errors` list; the
+  affected chunks and vectors are flagged `degraded = true` in Postgres, so
+  the degradation outlives the response
 - **Normal mode**: `degraded: false` with empty `errors` list
+
+The result dict also names the resolved ingestion strategy (`strategy` key)
+with its detection provenance. Failures mark the `ingest_runs` row `failed`
+— a partially ingested document never reports `status: "success"` (see
+Stage 5 above), and the CLI front door maps run outcomes to exit codes
+(0 ok / 1 partial / 2 failed / 3 config).
 
 ## Fixture System
 

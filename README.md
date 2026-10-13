@@ -2,15 +2,16 @@
 
 **Local RAG system for AI code editors. Ingest your codebase. Ask questions. Get answers. No cloud.**
 
-Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine: Postgres stores the data, Ollama generates embeddings, and a local server exposes the whole thing through MCP tools, HTTP endpoints, and a JSON-RPC socket.
+Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine: Postgres stores the data, Ollama generates embeddings, and a local server exposes the whole thing through HTTP endpoints and a JSON-RPC socket (an MCP stdio server is planned — see [Editor integration](#editor-integration)).
 
 ---
 
 ## What you get
 
-- **Hybrid search** that blends vector similarity, full-text search, and rank fusion
+- **Hybrid search** that blends vector similarity, full-text search, and rank fusion, with honest handling of degraded (zero-vector) chunks
 - **Knowledge graph** with entities, relations, and BFS traversal
-- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, BERT)
+- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER2)
+- **Pluggable ingestion strategies** — map source types in config, register in-process, or ship an entry-point plugin ([docs/INGESTION-STRATEGIES.md](docs/INGESTION-STRATEGIES.md))
 - **LlamaIndex RAG backend** with PGVectorStore and Ollama for local vector search
 - **Event sourcing** for audit trails and time-travel queries
 - **Multi-tenant Postgres** with row-level security on every table
@@ -23,7 +24,7 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 
 ```mermaid
 graph TB
-    Editor[AI Code Editor] -->|MCP stdio| MCP[FastMCP Server]
+    Editor[AI Code Editor] -->|"MCP stdio - planned"| MCP[FastMCP Server]
     Editor -->|HTTP :8010| HTTP[Starlette API]
     Editor -->|JSON-RPC socket| Socket[Unix socket / named pipe]
     MCP --> Handlers[Command / Query Handlers]
@@ -148,6 +149,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
+| [Ingestion strategies](docs/INGESTION-STRATEGIES.md) | Extending ingestion: config mapping, in-process registration, entry-point plugins |
 | [Harness distribution](docs/harness-distribution.md) | Packaging and distributing the agent harness pack |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
 
@@ -159,7 +161,8 @@ Editors and scripts drive Corpus-KB through the **HTTP API** (any MCP-compatible
 
 - HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md))
 - JSON-RPC socket: same command, for local automation
-- The research and coding surfaces are also first-class CLI commands (`corpus-kb research ...`, `corpus-kb coding ...`)
+- The research and coding surfaces are first-class CLI commands (`corpus-kb research ...`, `corpus-kb coding ...`), and ingestion has a top-level front door (`corpus-kb ingest`, with `--watch` auto-heal plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`)
+<!-- VERIFY-INTEGRATION: exact CLI spelling of the ingest-status / ingest-reembed commands and their registration in mcp-configs/ + opencode.json -->
 
 An MCP-over-stdio server is planned but **not implemented yet**: the config files in `mcp-configs/` are pre-staged for it, and `corpus-kb --transport stdio` exits with a clear message rather than pretending. Until the MCP server lands, point editors at the HTTP API.
 
