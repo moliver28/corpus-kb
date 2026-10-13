@@ -18,7 +18,7 @@ from ._langextract_types import (
     build_prompt_description,
     import_langextract,
 )
-from .protocol import OntologyViolationError
+from .protocol import ExtractStats, OntologyViolationError, Timer
 
 
 class LangExtractExtractor:
@@ -55,41 +55,77 @@ class LangExtractExtractor:
         chunks: list[Chunk],
         ontology: Ontology,
         source_document_id: str,
-    ) -> tuple[list[Entity], list[Relation]]:
-        """Extract entities and derive relations from chunks."""
+    ) -> tuple[list[Entity], list[Relation], ExtractStats]:
+        """Extract entities and derive relations from chunks.
+
+        Counts are honest: every entity candidate that fails offset
+        validation and every relation candidate dropped for unresolved
+        endpoints or the per-chunk cap is tallied in the returned stats.
+        """
+        timer = Timer(self.extractor_id)
         entities: list[Entity] = []
         relations: list[Relation] = []
+        requested_entities = 0
+        dropped_entities_other = 0
+        requested_relations = 0
+        dropped_relations_by_cap = 0
+        dropped_relations_other = 0
 
         for chunk in chunks:
-            chunk_entities, chunk_relation_extractions = self._extract_chunk_entities(
-                chunk, ontology, source_document_id
+            chunk_entities, chunk_relation_extractions, ent_requested, ent_dropped = (
+                self._extract_chunk_entities(chunk, ontology, source_document_id)
             )
+            requested_entities += ent_requested
+            dropped_entities_other += ent_dropped
             entities.extend(chunk_entities)
-            relations.extend(
-                _parse_typed_relations(
-                    chunk_relation_extractions,
-                    chunk_entities,
-                    chunk,
-                    ontology,
-                    self.extractor_id,
-                )
+            requested_relations += len(chunk_relation_extractions)
+            chunk_relations, by_cap, by_other = _parse_typed_relations(
+                chunk_relation_extractions,
+                chunk_entities,
+                chunk,
+                ontology,
+                self.extractor_id,
             )
+            relations.extend(chunk_relations)
+            dropped_relations_by_cap += by_cap
+            dropped_relations_other += by_other
 
-        return entities, relations
+        kept_entities = len(entities)
+        kept_relations = len(relations)
+        stats = ExtractStats(
+            backend=self.extractor_id,
+            requested_entities=requested_entities,
+            kept_entities=kept_entities,
+            requested_relations=requested_relations,
+            kept_relations=kept_relations,
+            dropped_by_cap=dropped_relations_by_cap,
+            dropped_by_other=dropped_entities_other + dropped_relations_other,
+            duration_ms=timer.elapsed_ms(),
+        )
+        return entities, relations, stats
 
     def _extract_chunk_entities(
         self,
         chunk: Chunk,
         ontology: Ontology,
         source_document_id: str,
-    ) -> tuple[list[Entity], list[NormalizedExtraction]]:
+    ) -> tuple[list[Entity], list[NormalizedExtraction], int, int]:
+        """Extract one chunk.
+
+        Returns ``(entities, relation_extractions, requested, dropped)``
+        where ``requested`` counts entity-typed candidates before offset
+        validation and ``dropped`` counts the ones rejected for invalid
+        offsets.
+        """
         text = chunk.text
         if not text:
-            return [], []
+            return [], [], 0, 0
 
         extractions = self._load_extractions(text, ontology)
         entities: list[Entity] = []
         relation_extractions: list[NormalizedExtraction] = []
+        requested = 0
+        dropped = 0
         for extraction in extractions:
             if extraction.extraction_class in ontology.relation_types:
                 relation_extractions.append(extraction)
@@ -102,13 +138,16 @@ class LangExtractExtractor:
                     allowed=ontology.entity_types,
                 )
 
+            requested += 1
             start = extraction.start_pos
             end = extraction.end_pos
             if start is None or end is None:
+                dropped += 1
                 continue
 
             text_length = len(text)
             if start < 0 or end > text_length or start >= end:
+                dropped += 1
                 logging.warning(
                     "Skipping invalid extraction offsets for '%s': "
                     "start=%d, end=%d, text_length=%d",
@@ -119,6 +158,9 @@ class LangExtractExtractor:
                 )
                 continue
 
+            metadata: dict[str, object] = {"extractor": self.extractor_id, "text": text}
+            if extraction.confidence is not None:
+                metadata["confidence"] = extraction.confidence
             entities.append(
                 Entity(
                     name=extraction.extraction_text,
@@ -130,10 +172,10 @@ class LangExtractExtractor:
                     source_end_char=end,
                     confidence=extraction.confidence,
                     extractor_id=self.extractor_id,
-                    metadata={"text": text},
+                    metadata=metadata,
                 )
             )
-        return entities, relation_extractions
+        return entities, relation_extractions, requested, dropped
 
     def _load_extractions(self, text: str, ontology: Ontology) -> list[NormalizedExtraction]:
         if self.fixture_dir:
@@ -230,9 +272,18 @@ def _parse_typed_relations(
     chunk: Chunk,
     ontology: Ontology,
     extractor_id: str,
-) -> list[Relation]:
+) -> tuple[list[Relation], int, int]:
+    """Parse relation triples, reporting where candidates were dropped.
+
+    Returns ``(relations, dropped_by_cap, dropped_by_other)``.
+    ``dropped_by_cap`` counts candidates past the per-chunk cap;
+    ``dropped_by_other`` counts candidates whose subject/object never
+    resolved to an extracted entity.
+    """
     by_name = {e.name: e for e in entities}
     relations: list[Relation] = []
+    dropped_by_cap = 0
+    dropped_by_other = 0
     for extraction in relation_extractions:
         if extraction.extraction_class not in ontology.relation_types:
             raise OntologyViolationError(
@@ -244,12 +295,16 @@ def _parse_typed_relations(
         subject = by_name.get(str(attrs.get("subject", "")))
         obj = by_name.get(str(attrs.get("object", "")))
         if subject is None or obj is None:
+            dropped_by_other += 1
             logging.warning(
                 "Dropping unresolved relation triple '%s' in chunk %s: "
                 "subject/object not found among extracted entities.",
                 extraction.extraction_class,
                 chunk.chunk_id,
             )
+            continue
+        if len(relations) >= MAX_RELATIONS_PER_CHUNK:
+            dropped_by_cap += 1
             continue
         relations.append(
             Relation(
@@ -262,6 +317,4 @@ def _parse_typed_relations(
                 metadata={},
             )
         )
-        if len(relations) >= MAX_RELATIONS_PER_CHUNK:
-            break
-    return relations
+    return relations, dropped_by_cap, dropped_by_other

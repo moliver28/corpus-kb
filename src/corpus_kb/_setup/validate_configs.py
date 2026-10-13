@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -68,6 +70,9 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "release_execute",
         "release_status",
         "release_compare",
+        # -- ingest front door (Stage 5, tools/ingest_surface_tools.py) ------
+        "ingest_status",
+        "ingest_reembed",
     }
 )
 
@@ -400,6 +405,161 @@ def check_cross_config_consistency(
 
 
 # ---------------------------------------------------------------------------
+# Runtime config.yaml — extraction.gliner block
+# ---------------------------------------------------------------------------
+
+# The six mention-level types gliner_backend.py can emit (must stay in
+# lockstep with extraction.gliner_backend.TYPE_DEFINITIONS).
+GLINER_MENTION_TYPES: frozenset[str] = frozenset(
+    {"person", "organization", "location", "date", "money", "product"}
+)
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    """Load a YAML file, returning {} for empty or non-mapping documents."""
+    with path.open(encoding="utf-8") as f:
+        loaded: object = yaml.safe_load(f)
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def validate_extraction_gliner(config: dict[str, Any]) -> list[str]:
+    """Validate the ``extraction.gliner`` block of a runtime config.
+
+    The block (and the whole ``extraction`` key) is optional; when
+    present, every key is checked so a typo can never silently disable
+    the opt-in GLiNER2 backend.
+
+    Returns a list of error strings (empty = valid).
+    """
+    errors: list[str] = []
+
+    extraction = config.get("extraction")
+    if extraction is None:
+        return errors
+    if not isinstance(extraction, dict):
+        return [f"extraction: must be a mapping, got {type(extraction).__name__}"]
+
+    gliner = extraction.get("gliner")
+    if gliner is None:
+        return errors
+    if not isinstance(gliner, dict):
+        return [f"extraction.gliner: must be a mapping, got {type(gliner).__name__}"]
+
+    enabled = gliner.get("enabled")
+    if not isinstance(enabled, bool):
+        errors.append(f"extraction.gliner.enabled: must be a boolean, got {type(enabled).__name__}")
+
+    model = gliner.get("model")
+    if not isinstance(model, str) or not model:
+        errors.append("extraction.gliner.model: must be a non-empty string")
+
+    revision = gliner.get("revision")
+    if not isinstance(revision, str) or not revision:
+        errors.append("extraction.gliner.revision: must be a non-empty string")
+
+    types = gliner.get("types")
+    if not isinstance(types, list) or not types:
+        errors.append("extraction.gliner.types: must be a non-empty list")
+    else:
+        for mention_type in types:
+            if not isinstance(mention_type, str) or mention_type not in GLINER_MENTION_TYPES:
+                errors.append(
+                    f"extraction.gliner.types: unknown mention type {mention_type!r} — "
+                    f"must be one of: {', '.join(sorted(GLINER_MENTION_TYPES))}"
+                )
+
+    return errors
+
+
+def validate_ingestion_block(config: dict[str, Any]) -> list[str]:
+    """Validate the ``ingestion`` block of a runtime config.
+
+    The block is optional; when present, ``strategies`` must map source
+    types to non-empty strategy-name strings and ``default`` must be a
+    non-empty string — the registry resolves these names at ingest time, so
+    a mistyped value must fail validation instead of silently falling back.
+
+    Returns a list of error strings (empty = valid).
+    """
+    errors: list[str] = []
+
+    ingestion = config.get("ingestion")
+    if ingestion is None:
+        return errors
+    if not isinstance(ingestion, dict):
+        return [f"ingestion: must be a mapping, got {type(ingestion).__name__}"]
+
+    strategies = ingestion.get("strategies")
+    if not isinstance(strategies, dict):
+        errors.append(
+            f"ingestion.strategies: must be a mapping of source type -> strategy name, "
+            f"got {type(strategies).__name__}"
+        )
+    else:
+        for source_type, name in strategies.items():
+            if not isinstance(source_type, str) or not source_type:
+                errors.append(
+                    f"ingestion.strategies: keys must be non-empty source-type strings, "
+                    f"got {source_type!r}"
+                )
+            if not isinstance(name, str) or not name:
+                errors.append(
+                    f"ingestion.strategies[{source_type!r}]: must be a non-empty "
+                    f"strategy-name string, got {name!r}"
+                )
+
+    default = ingestion.get("default")
+    if not isinstance(default, str) or not default:
+        errors.append("ingestion.default: must be a non-empty string")
+
+    return errors
+
+
+# ---------------------------------------------------------------------------
+# Runtime config.yaml key validation (plan §1: "validate_configs.py learns
+# every new key"). Each stage extends RUNTIME_CONFIG_KEYS for the keys it adds.
+# ---------------------------------------------------------------------------
+
+# dotted key -> expected YAML type (bool/str/int/float/list/dict)
+RUNTIME_CONFIG_KEYS: dict[str, type] = {
+    "search.exclude_degraded": bool,
+    "search.qa_context_in_fts": bool,
+    "ingestion.default": str,
+    "ingestion.strategies": dict,
+}
+
+
+def validate_runtime_config(config: dict[str, Any]) -> list[str]:
+    """Validate the runtime config.yaml keys in RUNTIME_CONFIG_KEYS.
+
+    Every key must be PRESENT (explicit in both config.yaml files — the
+    default lives in code, but the shipped YAML is the visible contract)
+    and hold the expected type.
+    """
+    errors: list[str] = []
+    for dotted, expected in RUNTIME_CONFIG_KEYS.items():
+        node: Any = config
+        parts = dotted.split(".")
+        for part in parts:
+            if not isinstance(node, dict) or part not in node:
+                errors.append(f"missing required key '{dotted}' (expected {expected.__name__})")
+                node = None
+                break
+            node = node[part]
+        else:
+            # bool is a subclass of int: reject a bool where a real int/float
+            # is expected, and require bool-exactness for bool keys.
+            type_ok = isinstance(node, expected) and (
+                expected is bool or not isinstance(node, bool)
+            )
+            if not type_ok:
+                errors.append(
+                    f"key '{dotted}' must be {expected.__name__}, got {type(node).__name__}"
+                )
+    return errors
+
+
+# ---------------------------------------------------------------------------
 # File-level validation (loads from disk)
 # ---------------------------------------------------------------------------
 
@@ -479,6 +639,20 @@ def validate_all(project_root: Path | None = None) -> list[str]:
             errors.append(
                 "opencode.json.bak: unexpectedly passes OpenCode validation (should be old format)"
             )
+
+    # 5. Runtime config.yaml — root and packaged copies must exist and agree
+    # (lockstep rule for new config keys). Both validators run per copy.
+    for relative_path in (Path("config.yaml"), Path("src") / "corpus_kb" / "config.yaml"):
+        config_path = project_root / relative_path
+        display = relative_path.as_posix()
+        if not config_path.exists():
+            errors.append(f"{display}: not found")
+            continue
+        runtime_cfg = load_yaml(config_path)
+        errs = validate_extraction_gliner(runtime_cfg)
+        errs += validate_ingestion_block(runtime_cfg)
+        errs += validate_runtime_config(runtime_cfg)
+        errors.extend(f"{display}: {e}" for e in errs)
 
     return errors
 

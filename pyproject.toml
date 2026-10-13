@@ -84,6 +84,11 @@ inductive = [
     "umap-learn>=0.5",
     "hdbscan>=0.8.36",
 ]
+# Opt-in GLiNER2 schema-conditioned NER (extraction/gliner_backend.py,
+# gated by extraction.gliner.enabled). CI NEVER installs this extra; every
+# gliner2 import is lazy (extraction/_gliner2_types.py) so the extras-less
+# jobs stay green (same contract as latechunk/inductive).
+ner = ["gliner2>=2.1.0"]
 dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "pytest-cov>=5.0", "syrupy>=4.0"]
 
 [build-system]
@@ -125,6 +130,14 @@ asyncio_mode = "auto"
 
 [project.scripts]
 corpus-kb = "corpus_kb.cli:app"
+
+# Third-party ingestion-strategy plugin group (plan Section 0, ladder #3).
+# Intentionally EMPTY here: the built-in strategies (default, transcript)
+# register directly in code (corpus_kb.ingestion.registry._ensure_ready).
+# A downstream package declares its strategies under this group and
+# corpus-kb discovers them at ingest time; a broken plugin is logged and
+# skipped, never fatal.
+[project.entry-points."corpus_kb.ingestion_strategies"]
 
 [tool.commitizen]
 # Customized Conventional Commits driver. The `cz_customize` plugin reads

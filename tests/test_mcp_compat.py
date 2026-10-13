@@ -13,7 +13,8 @@ from corpus_kb.tools import ingest_tools
 async def test_tool_signatures_unchanged() -> None:
     """Ingest tool names and parameter names match a frozen fixture."""
     expected = {
-        "ingest_file": {"file_path", "pg_pool", "config", "tenant_id"},
+        # S4: source_type = optional ingestion-strategy override (registry-validated).
+        "ingest_file": {"file_path", "pg_pool", "config", "tenant_id", "source_type"},
         "ingest_text": {
             "text",
             "pg_pool",
@@ -22,9 +23,18 @@ async def test_tool_signatures_unchanged() -> None:
             "tenant_id",
             "source",
         },
-        "ingest_directory": {"directory_path", "pg_pool", "config", "tenant_id"},
+        "ingest_directory": {
+            "directory_path",
+            "pg_pool",
+            "config",
+            "tenant_id",
+            "source_type",
+        },
         "list_documents": {"pg_pool", "config"},
         "delete_document": {"document_id", "pg_pool", "config"},
+        # S5: ingest front door surfaces (tools/ingest_surface_tools.py).
+        "ingest_status": {"pg_pool", "config", "tenant_id", "limit"},
+        "ingest_reembed": {"pg_pool", "config", "tenant_id", "limit", "doc_id"},
     }
 
     for name, params in expected.items():

@@ -67,7 +67,16 @@ def parse_transcript(path: Path) -> ParsedTranscript:
         lines = _docx_lines(path)
         turns = _parse_labelled(lines)
         return ParsedTranscript("docx", turns, DOCX_PARSE_QUALITY, fmt)
-    raw = path.read_text(encoding="utf-8", errors="replace")
+    return parse_transcript_text(path.read_text(encoding="utf-8", errors="replace"), fmt)
+
+
+def parse_transcript_text(raw: str, fmt: str = "txt") -> ParsedTranscript:
+    """Recover speaker turns from in-memory content.
+
+    Reuse seam for corpus_kb.ingestion.strategies.transcript: identical
+    handling to :func:`parse_transcript` minus docx (which needs a file
+    path for the partitioner).
+    """
     if fmt == "vtt":
         return ParsedTranscript("vtt", _parse_vtt(raw), "verified", fmt)
     if fmt == "srt":

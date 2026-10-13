@@ -89,7 +89,8 @@ embedding:
 ```
 
 `corpus-kb doctor` reports the embedder config status with the exact fix
-when something is off. The demo fail-fasts with the same guidance if the
+when something is off; it also counts degraded (zero-vector) chunks and
+incomplete ingest runs. The demo fail-fasts with the same guidance if the
 configured embedder would abstain.
 
 ## Run the demo
@@ -119,6 +120,15 @@ corpus-kb research ingest-transcript interviews/dana.txt
 # a whole folder, watched for new drops
 corpus-kb research ingest interviews/ --watch
 ```
+
+The general-purpose front door for any file or directory is
+`corpus-kb ingest <path>` — add `--source-type transcript` to force the
+transcript strategy, `--watch` to tail a folder with auto-heal of
+embedding-outage failures, and `--json` for machine-readable output. Its
+exit codes are stable for scripting: `0` everything ingested, `1` partial
+success, `2` total failure, `3` configuration error. Repair any chunks
+degraded by an embedding outage afterwards with
+`corpus-kb ingest-reembed`.
 
 Ingest parses speaker turns, maps roles heuristically (the question-asker
 becomes the moderator), links question-answer exchanges, and records

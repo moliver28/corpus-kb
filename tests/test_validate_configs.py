@@ -40,6 +40,9 @@ validate_cursor_config = validate_configs.validate_cursor_config
 load_json = validate_configs.load_json
 check_cross_config_consistency = validate_configs.check_cross_config_consistency
 validate_all = validate_configs.validate_all
+validate_ingestion_block = validate_configs.validate_ingestion_block
+RUNTIME_CONFIG_KEYS = validate_configs.RUNTIME_CONFIG_KEYS
+validate_runtime_config = validate_configs.validate_runtime_config
 
 
 # ============================================================================
@@ -488,3 +491,79 @@ def test_research_and_notebook_tools_are_valid_names():
         "notebook_overlap",
     }
     assert expected <= VALID_TOOL_NAMES
+
+
+# ============================================================================
+# 12. Runtime ingestion block + key validation (C-Major-2)
+# ============================================================================
+
+
+class TestIngestionBlock:
+    def test_good_block_passes(self):
+        config = {"ingestion": {"strategies": {"transcript": "transcript"}, "default": "default"}}
+        assert validate_ingestion_block(config) == []
+
+    def test_missing_block_is_optional(self):
+        assert validate_ingestion_block({}) == []
+
+    def test_non_mapping_block_fails(self):
+        errors = validate_ingestion_block({"ingestion": ["default"]})
+        assert any("ingestion: must be a mapping" in e for e in errors)
+
+    def test_non_mapping_strategies_fails(self):
+        errors = validate_ingestion_block({"ingestion": {"strategies": ["transcript"]}})
+        assert any("ingestion.strategies: must be a mapping" in e for e in errors)
+
+    def test_empty_strategy_name_fails(self):
+        errors = validate_ingestion_block(
+            {"ingestion": {"strategies": {"transcript": ""}, "default": "default"}}
+        )
+        assert any("transcript" in e and "non-empty" in e for e in errors)
+
+    def test_non_string_strategy_name_fails(self):
+        errors = validate_ingestion_block(
+            {"ingestion": {"strategies": {"transcript": 3}, "default": "default"}}
+        )
+        assert any("non-empty" in e and "strategy-name" in e for e in errors)
+
+    def test_missing_default_fails(self):
+        errors = validate_ingestion_block({"ingestion": {"strategies": {}}})
+        assert any("ingestion.default: must be a non-empty string" in e for e in errors)
+
+    def test_empty_default_fails(self):
+        errors = validate_ingestion_block({"ingestion": {"strategies": {}, "default": ""}})
+        assert any("ingestion.default: must be a non-empty string" in e for e in errors)
+
+    def test_real_project_ingestion_block_passes(self):
+        for name in ("config.yaml", "src/corpus_kb/config.yaml"):
+            cfg = validate_configs.load_yaml(ROOT / name)
+            assert validate_ingestion_block(cfg) == [], name
+
+
+class TestRuntimeIngestionKeys:
+    """RUNTIME_CONFIG_KEYS learned the ingestion.* keys (presence + type)."""
+
+    def test_ingestion_keys_declared(self):
+        assert RUNTIME_CONFIG_KEYS["ingestion.default"] is str
+        assert RUNTIME_CONFIG_KEYS["ingestion.strategies"] is dict
+
+    def test_shipped_yamls_pass_runtime_validation(self):
+        for name in ("config.yaml", "src/corpus_kb/config.yaml"):
+            cfg = validate_configs.load_yaml(ROOT / name)
+            assert validate_runtime_config(cfg) == [], name
+
+    def test_missing_ingestion_default_fails(self):
+        config = {
+            "search": {"exclude_degraded": True, "qa_context_in_fts": False},
+            "ingestion": {"strategies": {}},
+        }
+        errors = validate_runtime_config(config)
+        assert any("missing required key 'ingestion.default'" in e for e in errors)
+
+    def test_mistyped_ingestion_strategies_fails(self):
+        config = {
+            "search": {"exclude_degraded": True, "qa_context_in_fts": False},
+            "ingestion": {"strategies": ["transcript"], "default": "default"},
+        }
+        errors = validate_runtime_config(config)
+        assert any("key 'ingestion.strategies' must be dict" in e for e in errors)

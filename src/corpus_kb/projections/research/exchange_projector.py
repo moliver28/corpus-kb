@@ -57,7 +57,7 @@ class ExchangeProjector:
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $13, $14, $11, $12, 1)
                 ON CONFLICT (tenant_id, source) DO UPDATE SET
                     source_type = EXCLUDED.source_type,
-                    file_hash = EXCLUDED.file_hash,
+                    file_hash = COALESCE(EXCLUDED.file_hash, documents.file_hash),
                     metadata = EXCLUDED.metadata,
                     project_id = COALESCE(EXCLUDED.project_id, documents.project_id),
                     title = COALESCE(EXCLUDED.title, documents.title),

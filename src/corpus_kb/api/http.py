@@ -73,7 +73,7 @@ async def ingest_file(request: Request) -> JSONResponse:
             source_type=body.get("source_type"),
         )
         handler = get_command_handler()
-        result = handler.handle_ingest_file(cmd)
+        result = await handler.handle_ingest_file(cmd)
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse(
@@ -95,7 +95,7 @@ async def ingest_text(request: Request) -> JSONResponse:
             source_type=body.get("source_type", "text"),
         )
         handler = get_command_handler()
-        result = handler.handle_ingest_text(cmd)
+        result = await handler.handle_ingest_text(cmd)
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse(
@@ -116,7 +116,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
             recursive=body.get("recursive", True),
         )
         handler = get_command_handler()
-        result = handler.handle_ingest_directory(cmd)
+        result = await handler.handle_ingest_directory(cmd)
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse(
@@ -128,6 +128,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
 async def search(request: Request) -> JSONResponse:
     """POST /api/search — hybrid vector + FTS search."""
     from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_integrity import envelope_to_payload
 
     body = await _parse_body(request)
     try:
@@ -139,8 +140,10 @@ async def search(request: Request) -> JSONResponse:
             self_query=body.get("self_query"),
         )
         handler = get_query_handler()
-        results = await handler.handle_search(query)
-        return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
+        envelope = await handler.handle_search_with_meta(query)
+        # Additive honest envelope: legacy {status, result} consumers keep
+        # working; degraded_excluded (+remedy on degraded_empty) is new.
+        return JSONResponse(envelope_to_payload(envelope))
     except Exception as exc:
         return JSONResponse(
             {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
@@ -744,12 +747,58 @@ async def coding_saturation(request: Request) -> JSONResponse:
         )
 
 
+async def ingest_status_route(request: Request) -> JSONResponse:
+    """GET /api/ingest/status — recent ingest_runs ledger entries + degraded counts."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools import ingest_surface_tools
+
+    try:
+        limit = int(request.query_params.get("limit", ingest_surface_tools.DEFAULT_RUN_LIMIT))
+        result = await ingest_surface_tools.ingest_status(
+            await research_pool(),
+            tenant_id=request.query_params.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
+            limit=limit,
+        )
+        status_code = 503 if result.get("status") == "unavailable" else 200
+        return JSONResponse(result, status_code=status_code)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
+            status_code=400,
+        )
+
+
+async def ingest_reembed_route(request: Request) -> JSONResponse:
+    """POST /api/ingest/reembed — re-embed degraded chunks (honest summary)."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools import ingest_surface_tools
+
+    body = await _parse_body(request)
+    try:
+        raw_limit = body.get("limit")
+        result = await ingest_surface_tools.ingest_reembed(
+            await research_pool(),
+            tenant_id=body.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
+            limit=int(raw_limit) if raw_limit is not None else None,
+            doc_id=body.get("doc_id"),
+        )
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
+            status_code=400,
+        )
+
+
 def create_http_app() -> Starlette:
     """Create the Starlette HTTP application."""
     routes = [
         Route("/api/ingest/file", ingest_file, methods=["POST"]),
         Route("/api/ingest/text", ingest_text, methods=["POST"]),
         Route("/api/ingest/directory", ingest_directory, methods=["POST"]),
+        # Stage-5 ingest front door: status + reembed surfaces.
+        Route("/api/ingest/status", ingest_status_route, methods=["GET"]),
+        Route("/api/ingest/reembed", ingest_reembed_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),

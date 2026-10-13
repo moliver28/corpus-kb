@@ -57,9 +57,10 @@ def test_active_wrappers_after_p7() -> None:
         "corpus-demo",
         "corpus-research-cycle",
         "corpus-release",
+        "corpus-ingest-front-door",
     ]
     assert [w.name for w in reg.WRAPPERS if w.planned] == []
-    assert len(reg.WRAPPERS) == 8
+    assert len(reg.WRAPPERS) == 9
 
 
 def test_wrapper_bodies_are_invocation_guidance_only() -> None:

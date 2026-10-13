@@ -47,15 +47,20 @@ async def _delete_document(pg_pool, source: str) -> None:
 
 @pytest.mark.asyncio
 async def test_degraded_mode_ollama_unavailable(pg_pool) -> None:
-    """Ingest with a dead Ollama port — pipeline succeeds in degraded mode."""
+    """Ingest with a dead Ollama port — degraded flags stay honest, but the
+    zero-vector ingest is a PARTIAL ingest, never reported as success
+    (ingest integrity: nothing reports success on a partial ingest; the
+    ingest_runs ledger row closes as 'failed' and later re-ingests heal it
+    instead of dedupe-skipping)."""
     await _delete_document(pg_pool, str(_SAMPLE_MD))
     config = _build_degraded_config()
     result = await ingest_file(str(_SAMPLE_MD), pg_pool, config=config)
 
-    assert result["status"] == "success"
+    assert result["status"] == "partial"
     assert result["degraded"] is True
     assert isinstance(result["errors"], list)
     assert len(result["errors"]) >= 1
+    assert any("EmbeddingError" in error for error in result["errors"])
     entity_count = result["entity_count"]
     assert isinstance(entity_count, int)
     pg_chunk_count = result.get("pg_chunk_count", 0)

@@ -18,7 +18,11 @@ Not out of the box. Corpus-KB currently calls Ollama's local embedding API. You 
 
 ## Can I run without Ollama?
 
-Yes, but search falls back to full-text only. The ingest pipeline continues with zero-vector embeddings when Ollama is unreachable, and it records the failure in the response.
+Yes. Ingest continues when Ollama is unreachable, but the affected chunks are stored with zero vectors and flagged `degraded`. Search leaves degraded chunks out of vector results by default (`search.exclude_degraded: true`), reports what it excluded in the `degraded_excluded` field of the response, and still runs the full-text arm. Once Ollama is back, `corpus-kb ingest-reembed` re-embeds the flagged chunks and clears the flag.
+
+## Can I teach it a new file format?
+
+Yes — ingestion is pluggable at three levels: map a source type to an existing strategy in `config.yaml` (no code), register a strategy in-process with `register_strategy()`, or ship one as an entry-point plugin from your own package. See [Ingestion strategies](INGESTION-STRATEGIES.md).
 
 ## How is this different from a cloud vector database like Pinecone?
 
@@ -54,11 +58,7 @@ Any MCP-compatible editor: OpenCode, Claude Code, Cursor, VS Code with Cline, an
 
 ## How do I switch from HTTP mode to MCP stdio mode?
 
-Start the server with `--transport stdio`:
-
-```bash
-corpus-kb start --transport stdio
-```
+You can't yet — the MCP-over-stdio server is **not implemented**. `corpus-kb start --transport stdio` exits with a message pointing at HTTP rather than speaking garbage to an editor. Point editors at the HTTP API today; the config files in `mcp-configs/` are pre-staged for the day the MCP server lands.
 
 ## Where is the configuration file?
 
@@ -74,6 +74,7 @@ Use `pg_dump` to back up the Postgres database. The event store is inside Postgr
 
 - [Install guide](INSTALL.md)
 - [Features overview](FEATURES.md)
+- [Ingestion strategies](INGESTION-STRATEGIES.md)
 - [Admin guide](ADMIN.md)
 - [API reference](API.md)
 - [Development guide](DEVELOPMENT.md)

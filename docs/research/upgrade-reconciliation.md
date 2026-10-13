@@ -217,3 +217,32 @@ The Step-0 table above is the historical snapshot this program started from (kep
 | U46 | done (benchmark) | halfvec benchmark + tested `adoption_decision` gate; cutover deferred -> issue #76 |
 | U47 | done | `coding/confidence_calibration.py` (AUROC/ECE/Brier, Platt/isotonic fallback, evaluate-once-on-test) |
 | U48 | done | `coding/quote_verification.py:classify_quote` + `research/release/consensus.py` + rubric via `review_surface.execute_rubric_review` |
+
+---
+
+## Ingestion rigor & strategy registry program (2026-10-12, feature/ingestion-rigor)
+
+A six-stage parallel program on top of the U1–U48 close-out, executed in
+isolated worktrees and integrated S2 → S1 → S3 → S4 → S5 → S6.
+
+| Stage | Outcome | Contract evidence (plan-pinned) |
+|---|---|---|
+| S1 Extraction truth | Honest extraction accounting (requested/kept/dropped-by-cap/dropped-by-confidence), entity provenance `{extractor, model, revision, confidence}`, opt-in GLiNER2 backend (`fastino/gliner2-large-v1`, six mention types, no relations), `extraction/eval.py` span harness with promotion gate (micro F1 >= 0.80 AND >= baseline + 0.02), dead `bert_backend.py` removed (factory never routed to it), ontology optional `version` + per-type `description` | `extraction/gliner_backend.py`, `extraction/eval.py`, `extraction/protocol.py:ExtractStats`, `extraction.gliner.*` config, `pyproject.toml` `ner` extra |
+| S2 Ingest integrity | `ingest_runs` ledger (running → completed/failed with start/finish hashes + per-stage jsonb), `chunks.degraded` + `chunks_vectors.degraded` flags, ledger-aware short-circuit (only clean completed runs skip), advisory-lock concurrency with honest `skipped: concurrent-run`, vector COALESCE overwrite fix, projection file_hash clobber fixes, store split into `tools/ingest_store.py` | `migrations/022_ingest_integrity.sql`, `tools/ingest_store.py:PostgresIngestStore` |
+| S3 Search honesty | `search.exclude_degraded` (default true) filters degraded rows in candidate CTEs only (seeds never filtered), all-zero query guard abstains the vector arm, `degraded_excluded {count, reasons}` envelope + `degraded_empty` status with the pinned remedy, `build_embedding_input` single-sourcing + reembed helper (repaired rows flip degraded=false; honest scanned/fixed/failed), doctor gains degraded/ledger/gliner checks | `handlers/query_handler.py` (envelope + candidate filters), `search.exclude_degraded`, reembed handler |
+| S4 Strategy registry | `IngestionStrategy` protocol (`detect` → `DetectResult(confidence, reason)`, `build_chunks` → `ChunkPlan`), `register_strategy()`/`resolve_strategy()` with precedence explicit `--source-type` > `ingestion.strategies[source_type]` > content detection > `ingestion.default`, entry-point group `corpus_kb.ingestion_strategies`, built-ins `default` (verbatim behavior) + `transcript` (turn-aligned Q+A, `qa_context {question, participants, exchange_id}`), migration `023_qa_context.sql` (+GIN; FTS inclusion gated by `search.qa_context_in_fts`, default FALSE — `ts_rank` has no IDF), conformance suite parametrized over the registry, result dict gains `strategy` + detection provenance | `ingestion/base.py`, `ingestion/registry.py`, `ingestion/strategies/{default,transcript}.py`, `ingestion.strategies`/`ingestion.default`/`search.qa_context_in_fts` config |
+| S5 Front door + surfaces | Top-level `corpus-kb ingest` (file/dir, `--source-type`, `--watch` with embedding-unavailable-only auto-heal + backoff + `--no-heal`, `--reembed`, `--limit`, `--doc-id`, `--json`), exit codes 0 ok / 1 partial / 2 failed / 3 config, MECE surface registration for `ingest_status` (CLI+MCP+HTTP GET `/api/ingest/status`) and reembed (CLI+MCP+HTTP POST `/api/ingest/reembed`) across registry, parity checks, editor configs, harness pack, snapshots | `cli_ingest.py`, `surface_registry.py` + `surface_registry_parity.py`, `/api/ingest/status` + `/api/ingest/reembed` routes |
+| S6 Docs sweep | MCP-ingestion claims corrected across FAQ/getting-started/INGESTION/FEATURES/API/README (MCP-over-stdio honestly still not implemented; ingest/status/reembed now real CLI+HTTP surfaces with registered MCP names), new `docs/INGESTION-STRATEGIES.md` authoring guide, config keys documented in INGESTION.md, AGENTS.md env-table note (no new env vars) | `docs/INGESTION-STRATEGIES.md`, the six doc files, `AGENTS.md` |
+
+Known lies corrected by S6 (pre-existing claims that contradicted reality):
+INGESTION.md quick start told users to "start the MCP server" with bare
+`corpus-kb` (stdio exits with a message); FAQ claimed search "falls back to
+full-text only" on Ollama outage (degraded chunks are now flagged and
+excluded, not silently searched); README claimed BERT as a live extraction
+backend (dead code, factory never routed to it) and "MCP tools" as a live
+surface; API.md listed `corpus-kb --transport stdio` as a working protocol.
+
+Follow-ups filed at close: ASR / web-crawl / slides / PII / Splink as future
+strategy modules; `qa_context_in_fts` retrieval eval; GLiNER2 promotion
+decision (needs eval numbers on the real corpus); qwen3-embedding switch;
+#17 full transactional store.

@@ -5,7 +5,7 @@ from __future__ import annotations
 from ..graph.extractor import extract_entities
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
-from .protocol import OntologyViolationError
+from .protocol import ExtractStats, OntologyViolationError, Timer
 
 _REGEX_TYPE_MAP = {
     "CONCEPT": "Concept",
@@ -24,12 +24,15 @@ class RegexExtractor:
         chunks: list[Chunk],
         ontology: Ontology,
         source_document_id: str,
-    ) -> tuple[list[Entity], list[Relation]]:
+    ) -> tuple[list[Entity], list[Relation], ExtractStats]:
         """Extract entities from chunks using regex patterns.
 
         Entities are mapped to ontology types where possible. Relations are
-        not derived by this backend.
+        not derived by this backend. Regex extraction has no cap or
+        confidence filter, so requested and kept counts are identical by
+        construction.
         """
+        timer = Timer(self.extractor_id)
         entities: list[Entity] = []
         for chunk in chunks:
             extracted = extract_entities(
@@ -39,6 +42,8 @@ class RegexExtractor:
             )
             for entity in extracted:
                 entity_type = _map_entity_type(entity.entity_type, ontology)
+                metadata = dict(entity.metadata)
+                metadata["extractor"] = self.extractor_id
                 entities.append(
                     Entity(
                         name=entity.name,
@@ -48,10 +53,18 @@ class RegexExtractor:
                         chunk_id=chunk.chunk_id,
                         confidence=None,
                         extractor_id=self.extractor_id,
-                        metadata=entity.metadata,
+                        metadata=metadata,
                     )
                 )
-        return entities, []
+        kept = len(entities)
+        stats = ExtractStats(
+            backend=self.extractor_id,
+            requested_entities=kept,
+            kept_entities=kept,
+            duration_ms=timer.elapsed_ms(),
+            notes=("relations are not derived by the regex backend",),
+        )
+        return entities, [], stats
 
 
 def _map_entity_type(raw_type: str, ontology: Ontology) -> str:

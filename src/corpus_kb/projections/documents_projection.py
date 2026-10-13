@@ -125,7 +125,7 @@ class DocumentsProjection:
                 ON CONFLICT (tenant_id, source) DO UPDATE SET
                     source_type = $4,
                     file_size = $5,
-                    file_hash = $6,
+                    file_hash = COALESCE($6, documents.file_hash),
                     language = $7,
                     metadata = $8,
                     updated_at = NOW()

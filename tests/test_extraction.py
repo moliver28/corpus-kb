@@ -42,10 +42,17 @@ class TestRegexExtractor:
         )
 
         extractor = RegexExtractor()
-        entities, relations = extractor.extract([chunk], ontology, source_document_id="doc-regex")
+        entities, relations, stats = extractor.extract(
+            [chunk], ontology, source_document_id="doc-regex"
+        )
 
         assert len(entities) >= 1
         assert len(relations) == 0
+        assert stats.backend == "regex"
+        assert stats.kept_entities == len(entities)
+        assert stats.requested_entities == len(entities)
+        assert stats.dropped_by_cap == 0
+        assert stats.dropped_by_confidence == 0
         names = {entity.name for entity in entities}
         assert "UserService" in names
         for entity in entities:
@@ -53,6 +60,7 @@ class TestRegexExtractor:
             assert entity.confidence is None
             assert entity.source_document_id == "doc-regex"
             assert entity.entity_type in ontology.entity_types
+            assert entity.metadata.get("extractor") == "regex"
 
 
 class TestLangExtractExtractor:
@@ -68,10 +76,16 @@ class TestLangExtractExtractor:
         )
 
         extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
-        entities, relations = extractor.extract([chunk], ontology, source_document_id="doc-alice")
+        entities, relations, stats = extractor.extract(
+            [chunk], ontology, source_document_id="doc-alice"
+        )
 
         assert len(entities) >= 1
         assert len(relations) >= 1
+        assert stats.backend == "langextract"
+        assert stats.kept_entities == len(entities)
+        assert stats.kept_relations == len(relations)
+        assert stats.requested_entities >= stats.kept_entities
         for entity in entities:
             assert entity.entity_type in ontology.entity_types
             assert entity.extractor_id == "langextract"
@@ -109,10 +123,9 @@ class TestLangExtractExtractor:
         )
 
         extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
-        entities, _relations = extractor.extract(
+        entities, _relations, _stats = extractor.extract(
             [chunk], ontology, source_document_id="doc-offsets"
         )
-
         assert len(entities) >= 1
         found = False
         for entity in entities:
@@ -146,8 +159,8 @@ class TestLangExtractExtractor:
         )
 
         extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
-        entities_a, _ = extractor.extract([chunk_a], ontology, source_document_id="doc-a")
-        entities_b, _ = extractor.extract([chunk_b], ontology, source_document_id="doc-b")
+        entities_a, _, _ = extractor.extract([chunk_a], ontology, source_document_id="doc-a")
+        entities_b, _, _ = extractor.extract([chunk_b], ontology, source_document_id="doc-b")
 
         names_a = {entity.name for entity in entities_a}
         names_b = {entity.name for entity in entities_b}
@@ -185,7 +198,9 @@ class TestLangExtractExtractor:
         )
 
         extractor = LangExtractExtractor(fixture_dir=_FIXTURE_DIR, live_fallback=False)
-        entities, relations = extractor.extract([chunk], ontology, source_document_id="doc-network")
+        entities, relations, _stats = extractor.extract(
+            [chunk], ontology, source_document_id="doc-network"
+        )
 
         assert len(entities) >= 1
         assert len(relations) >= 1
@@ -206,7 +221,7 @@ def test_typed_relation_has_directed_predicate_and_confidence() -> None:
         text="ServiceA depends on ServiceB for auth.",
         source_type="text",
     )
-    _entities, relations = extractor.extract([chunk], ontology, "d1")
+    _entities, relations, _stats = extractor.extract([chunk], ontology, "d1")
     assert any(r.relation_type not in {"MENTIONS", "RELATED_TO"} for r in relations)
     assert all(r.confidence is not None for r in relations)
     assert all(r.chunk_id == chunk.chunk_id for r in relations)
@@ -245,7 +260,7 @@ def test_unresolved_relation_endpoint_is_dropped(tmp_path) -> None:
     ontology = load_ontology("config/ontology.yaml")
     extractor = LangExtractExtractor(fixture_dir=str(fixture_dir), live_fallback=False)
     chunk = Chunk(document_id="d1", text=text, source_type="text")
-    entities, relations = extractor.extract([chunk], ontology, "d1")
+    entities, relations, _stats = extractor.extract([chunk], ontology, "d1")
     assert entities == []
     assert relations == []
 
@@ -298,3 +313,35 @@ class TestExtractorFactory:
         """Given an unsupported extractor name, factory raises ValueError."""
         with pytest.raises(ValueError, match="Unsupported graph extractor: bogus"):
             create_extractor({"graph": {"extractor": "bogus"}})
+
+    def test_factory_gliner_refuses_when_not_enabled(self) -> None:
+        """graph.extractor=gliner without extraction.gliner.enabled is a config error."""
+        with pytest.raises(ValueError, match="gliner extractor is opt-in"):
+            create_extractor({"graph": {"extractor": "gliner"}})
+
+    def test_factory_gliner_builds_when_enabled(self) -> None:
+        """Given enabled gliner config, factory returns GlinerExtractor."""
+        from corpus_kb.extraction import GlinerExtractor
+
+        config: dict[str, object] = {
+            "graph": {"extractor": "gliner"},
+            "extraction": {
+                "gliner": {
+                    "enabled": True,
+                    "model": "fastino/gliner2-large-v1",
+                    "revision": "main",
+                    "types": ["person", "organization", "location", "date", "money", "product"],
+                }
+            },
+        }
+        extractor = create_extractor(config)
+        assert isinstance(extractor, GlinerExtractor)
+
+    def test_factory_gliner_rejects_unknown_mention_type(self) -> None:
+        """Unknown mention types are a ValueError, never a silent subset run."""
+        config: dict[str, object] = {
+            "graph": {"extractor": "gliner"},
+            "extraction": {"gliner": {"enabled": True, "types": ["person", "bogus_type"]}},
+        }
+        with pytest.raises(ValueError, match="Unknown gliner mention types"):
+            create_extractor(config)

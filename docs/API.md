@@ -1,6 +1,6 @@
 # API Reference
 
-Corpus-KB exposes three protocols: MCP over stdio, HTTP REST, and JSON-RPC over a Unix socket or Windows named pipe. This page lists the HTTP routes and gives curl examples for each.
+Corpus-KB exposes HTTP REST and JSON-RPC over a Unix socket or Windows named pipe today. An MCP-over-stdio server is planned but **not implemented yet** — `corpus-kb --transport stdio` exits with a clear message pointing at the HTTP server. This page lists the HTTP routes and gives curl examples for each.
 
 ---
 
@@ -8,9 +8,9 @@ Corpus-KB exposes three protocols: MCP over stdio, HTTP REST, and JSON-RPC over 
 
 | Protocol | Use case | Address |
 |----------|----------|---------|
-| MCP stdio | Editor agents | `corpus-kb --transport stdio` |
-| HTTP | Scripts, browsers, integrations | `http://localhost:8010` |
+| HTTP | Scripts, browsers, integrations, editors (via an HTTP bridge) | `http://localhost:8010` |
 | JSON-RPC socket | Local inter-process calls | `/tmp/corpus-kb.sock` or `127.0.0.1:8011` on Windows |
+| MCP stdio | Editor agents — planned, not implemented yet | `corpus-kb --transport stdio` (exits with a pointer to HTTP) |
 
 There is no authentication today. Corpus-KB is intended to run locally.
 
@@ -40,10 +40,14 @@ Request body:
 {
   "file_path": "src/corpus_kb/server_wiring.py",
   "content": "optional override",
-  "source_type": "optional code/markdown/text",
+  "source_type": "optional strategy override or hint, e.g. code/text/transcript",
   "tenant_id": "00000000-0000-0000-0000-000000000001"
 }
 ```
+
+`source_type` is validated against the ingestion-strategy registry. An
+explicit value overrides content detection; an unknown value is rejected
+with the standard error envelope.
 
 ### POST /api/ingest/text
 
@@ -64,6 +68,39 @@ curl -X POST http://localhost:8010/api/ingest/directory \
   -H "Content-Type: application/json" \
   -d '{"directory_path": "src", "recursive": true}'
 ```
+
+### GET /api/ingest/status
+
+Recent runs from the `ingest_runs` ledger: status (`running` /
+`completed` / `failed`), start/finish hashes, and per-stage results for
+each ingest.
+
+```bash
+curl http://localhost:8010/api/ingest/status
+```
+
+The response is `{status, ledger_present, runs, incomplete_runs, degraded}`
+— recent `ingest_runs` rows (JSON-safe), the count of runs never closed,
+and degraded-vector counts. When migration 022 has not run yet the
+response is `{"status": "unavailable", "ledger_present": false, ...}`
+with HTTP 503 rather than a hard error payload.
+
+### POST /api/ingest/reembed
+
+Re-embed chunks flagged degraded (zero-vector fallback) once the embedding
+provider is back. Accepts optional `limit` and `doc_id` selectors;
+repaired rows flip `degraded` back to `false`.
+
+```bash
+curl -X POST http://localhost:8010/api/ingest/reembed \
+  -H "Content-Type: application/json" \
+  -d '{"limit": 100}'
+```
+
+The response reports honest counts: `{"status": "...", "scanned": N,
+"fixed": N, "failed": N}` — plus `degraded`/`warning` when the primary
+embedding provider needed attention, and `{"status": "unavailable"}` when
+migration 022's degraded flags are not present yet.
 
 ### GET /api/documents
 
@@ -94,6 +131,16 @@ curl -X POST http://localhost:8010/api/search \
   -H "Content-Type: application/json" \
   -d '{"query": "how does startup work", "k": 10, "source_type": "code"}'
 ```
+
+The response envelope is degraded-aware: `degraded_excluded` reports
+`{count, reasons}` where `count` is the number of candidate rows the
+degraded filter excluded (0 when the filter removed nothing) and `reasons`
+lists the recorded arm impairments (zero-query embedding, vector-arm
+error, no embedder, filter-active). A legitimately empty search (no
+candidates existed at all) returns plain `success` with `count: 0` and no
+remedy. The status is `degraded_empty` when results came back empty AND at
+least one impairment was recorded — with the remedy: start Ollama, then
+run `corpus-kb ingest-reembed`.
 
 ### POST /api/search/similar
 
@@ -300,8 +347,8 @@ placeholder.
 
 | Route | Method | Delegates to | Body (required in bold) |
 |-------|--------|--------------|--------------------------|
-| `/api/research/ingest-transcript` | POST | `research_ingest_transcript` | **file_path**, project_id, title, force, tenant_id |
-| `/api/research/ingest` | POST | `research_ingest` | **path**, project_id, force, tenant_id |
+| `/api/research/ingest-transcript` | POST | `research_ingest_transcript` | **file_path**, project_id, title, force, source_type, tenant_id |
+| `/api/research/ingest` | POST | `research_ingest` | **path**, project_id, force, source_type, tenant_id |
 | `/api/coding/run` | POST | `coding_run` | **codebook_version_id**, project_id, cal_alpha, tenant_id |
 | `/api/coding/inductive` | POST | `inductive_run` | project_id, tenant_id |
 | `/api/codebook/promote` | POST | `codebook_promote` | **proposed_id, name, definition**, inclusion, exclusion, label, tau_dup, tenant_id |

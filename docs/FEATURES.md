@@ -14,6 +14,8 @@ Send files, directories, or raw text into the pipeline. Corpus-KB detects the ty
 | Directory | Recursively ingests every supported file |
 | Raw text | Optional type hint: code, markdown, or text |
 
+Detection and chunking run through a pluggable **ingestion strategy**. The built-in `default` strategy preserves the classic behavior; the built-in `transcript` strategy chunks turn-aligned question+answer exchanges. Map source types to strategies in `config.yaml`, register one in-process, or ship one as an entry-point plugin — see [Ingestion strategies](INGESTION-STRATEGIES.md).
+
 ### Code chunking
 
 Code files are split using tree-sitter. Chunks respect AST boundaries: functions, classes, and methods stay intact. Supported languages include Python, JavaScript, TypeScript, Rust, Go, Java, C, C++, and many more.
@@ -36,7 +38,7 @@ The ingest pipeline runs five stages:
 4. **Extract** - Run the ontology-aware extractor to find entities and relations.
 5. **Store** - Persist chunks, vectors, entities, and relations directly to Postgres. The event store records what happened for audit and replay.
 
-If the embedding provider is unavailable, embedding falls back to zero vectors and the pipeline continues. Errors are collected in the response so you know what happened.
+If the embedding provider is unavailable, embedding falls back to zero vectors, the affected chunks are flagged degraded in Postgres, and search leaves them out of vector results by default (`search.exclude_degraded: true`) while reporting the exclusion in the response. `corpus-kb ingest-reembed` repairs them once the provider is back.
 
 ---
 
@@ -59,6 +61,8 @@ flowchart LR
 - **Full-text search** finds exact and near-exact keyword matches using Postgres `to_tsvector`.
 - **RRF fusion** merges the two ranked lists into a single result list without needing calibrated scores.
 
+Degraded (zero-vector) chunks are excluded from the vector arm while `search.exclude_degraded` is `true` (the default), and the response's `degraded_excluded` field says exactly what was left out.
+
 You can filter by source type (`code`, `markdown`, `text`) and request surrounding context chunks.
 
 ---
@@ -71,13 +75,14 @@ Entities and relations are first-class citizens. The extractor recognizes things
 
 Entity and relation types are defined in `config/ontology.yaml`. The extractor validates every extracted entity and relation against this vocabulary, rejecting types that don't match. This prevents noise from inconsistent typing.
 
-Three extraction backends are available:
+Three extraction backends ship by default, plus an opt-in fourth:
 
 | Backend | Config value | Description |
 |---------|-------------|-------------|
 | Regex | `regex` | Zero-dependency fallback. Fast, deterministic, no LLM calls. |
 | LangExtract | `langextract` | LLM-based extraction with recorded fixtures for deterministic CI. |
 | PostgresML | `pgml` | In-database ONNX NER with regex fallback. Requires `pgml` extension. |
+| GLiNER2 | `gliner` | Opt-in mention-level NER (`fastino/gliner2-large-v1`); entities only, no relations. Needs the `ner` extra and `extraction.gliner.enabled: true`. |
 
 You can:
 
@@ -184,16 +189,20 @@ The MCP stdio server is **not implemented yet** (see
 [README — Editor integration](../README.md#editor-integration)); the table
 below is the tool surface the `mcp-configs/` files pre-stage for it. Today
 these capabilities are reachable over HTTP ([API.md](API.md)) and, for the
-research/coding surfaces, as first-class CLI commands
-([research.md](research.md)).
+research/coding surfaces and the ingest front door, as first-class CLI
+commands ([research.md](research.md), [INGESTION.md](INGESTION.md)).
 
-When the MCP server lands, editors will be able to call these tools:
+When the MCP server lands, editors will be able to call these tools (`ingest_status`
+and `ingest_reembed` are registered in `surface_registry.py` and pre-staged in the
+editor configs' autoApprove lists):
 
 | Category | Tool | Description |
 |----------|------|-------------|
 | Ingest | `ingest_file` | Ingest a single file |
 | Ingest | `ingest_text` | Ingest raw text with a type hint and optional source identifier |
 | Ingest | `ingest_directory` | Recursively ingest a directory |
+| Ingest | `ingest_status` | Recent runs from the `ingest_runs` ledger |
+| Ingest | `ingest_reembed` | Re-embed degraded (zero-vector) chunks |
 | Ingest | `list_documents` | List ingested documents |
 | Ingest | `delete_document` | Delete a document |
 | Search | `search` | Hybrid search |
@@ -236,6 +245,8 @@ for the authoritative CLI↔MCP-name mapping.
 ## Next steps
 
 - [Install Corpus-KB](INSTALL.md)
+- [Ingestion pipeline details](INGESTION.md)
+- [Ingestion strategies](INGESTION-STRATEGIES.md)
 - [Admin guide: configuration and maintenance](ADMIN.md)
 - [API reference with curl examples](API.md)
 - [Development guide](DEVELOPMENT.md)
