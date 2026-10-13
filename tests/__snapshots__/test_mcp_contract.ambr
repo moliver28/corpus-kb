@@ -15,6 +15,21 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.ingest_surface_tools': dict({
+      'ingest_reembed': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'ingest_status': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.ingest_tools': dict({
       'delete_document': dict({
         'config': 'POSITIONAL_OR_KEYWORD',

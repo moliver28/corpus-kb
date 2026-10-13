@@ -23,7 +23,9 @@
         "get_document_tags",
         "get_metadata",
         "query_document_stats",
-        "sync_database"
+        "sync_database",
+        "ingest_status",
+        "ingest_reembed"
       ]
     }
   }

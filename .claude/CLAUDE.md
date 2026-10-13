@@ -284,4 +284,6 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-release` | `corpus-kb release release` | `release_execute` | Evaluate + record gates, apply waivers, execute the release (approver). |
 | `corpus-release` | `corpus-kb release status` | `release_status` | Stage, release state, blockers, sufficiency flags, the next command. |
 | `corpus-release` | `corpus-kb release compare` | `release_compare` | Diff two releases' manifests (codes, definitions, methods, metrics). |
+| `corpus-ingest-front-door` | `corpus-kb ingest-status` | `ingest_status` | Recent ingest_runs ledger entries + degraded-chunk counts (honest history). |
+| `corpus-ingest-front-door` | `corpus-kb ingest-reembed` | `ingest_reembed` | Re-embed degraded (zero-vector) chunks once the provider is back. |
 <!-- corpus-harness:research-commands:end -->

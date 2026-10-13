@@ -32,6 +32,9 @@ async def test_tool_signatures_unchanged() -> None:
         },
         "list_documents": {"pg_pool", "config"},
         "delete_document": {"document_id", "pg_pool", "config"},
+        # S5: ingest front door surfaces (tools/ingest_surface_tools.py).
+        "ingest_status": {"pg_pool", "config", "tenant_id", "limit"},
+        "ingest_reembed": {"pg_pool", "config", "tenant_id", "limit", "doc_id"},
     }
 
     for name, params in expected.items():

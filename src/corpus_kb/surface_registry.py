@@ -186,6 +186,21 @@ SURFACES: tuple[Surface, ...] = (
         description="Diff two releases' manifests (codes, definitions, methods, metrics).",
         http_route="/api/release/compare",
     ),
+    # -- ingest front door (Stage 5): full cli+mcp+http parity ---------------
+    Surface(
+        name="ingest-status",
+        cli_path="ingest-status",
+        mcp_tool="ingest_status",
+        description="Recent ingest_runs ledger entries + degraded-chunk counts (honest history).",
+        http_route="/api/ingest/status",
+    ),
+    Surface(
+        name="ingest-reembed",
+        cli_path="ingest-reembed",
+        mcp_tool="ingest_reembed",
+        description="Re-embed degraded (zero-vector) chunks once the provider is back.",
+        http_route="/api/ingest/reembed",
+    ),
 )
 
 # --------------------------------------------------------------------------
@@ -392,6 +407,37 @@ Postures:
 - All flags: `corpus-kb research cycle --help`
 """
 
+_FRONT_DOOR_BODY = """# corpus-ingest-front-door — ingest files, watch, status, reembed
+
+The top-level ingest front door: file/directory ingest with honest exit
+codes, a watched drop folder that auto-heals embedding outages, and the
+run-ledger surfaces.
+
+- Ingest one file or a whole directory:
+
+  ```
+  corpus-kb ingest <path> [--source-type transcript]
+  ```
+
+- Watch a directory; runs that failed ONLY because embeddings were
+  unavailable are re-attempted automatically once the provider is back
+  (health probe + backoff + capped attempts):
+
+  ```
+  corpus-kb ingest <dir> --watch [--no-heal]
+  ```
+
+- Exit codes (stable for scripting, printed in --help): 0 ok, 1 partial,
+  2 failed, 3 config.
+
+- Status and re-embed surfaces (all flags via --help):
+
+  ```
+  corpus-kb ingest-status
+  corpus-kb ingest-reembed [--limit N] [--doc-id <uuid>]
+  ```
+"""
+
 WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-ingest",
@@ -464,6 +510,14 @@ WRAPPERS: tuple[Wrapper, ...] = (
             "release-compare",
         ),
     ),
+    Wrapper(
+        name="corpus-ingest-front-door",
+        title="corpus-ingest-front-door",
+        description="Top-level ingest front door: files/dirs, watch auto-heal, status, reembed",
+        argument_hint="<path> [--watch] [--source-type <strategy>] [--reembed]",
+        body=_FRONT_DOOR_BODY,
+        covers=("ingest-status", "ingest-reembed"),
+    ),
 )
 
 ACTIVE_WRAPPERS: tuple[Wrapper, ...] = tuple(w for w in WRAPPERS if not w.planned)
@@ -496,6 +550,9 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "get_metadata",
     "query_document_stats",
     "sync_database",
+    # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py)
+    "ingest_status",
+    "ingest_reembed",
 )
 
 # Marker fences for the generated .claude/CLAUDE.md research-commands section.

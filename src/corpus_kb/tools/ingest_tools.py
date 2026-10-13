@@ -12,13 +12,17 @@ from pathlib import Path
 
 import asyncpg
 
+from ..ingest_watch import WATCH_SUFFIXES
 from ..ingestion.registry import strategy_names
 from .ingest_common import ingest_text, load_config_or_pass, run_pipeline
+from .ingest_surface_tools import ingest_reembed, ingest_status
 
 __all__ = [
     "delete_document",
     "ingest_directory",
     "ingest_file",
+    "ingest_reembed",
+    "ingest_status",
     "ingest_text",
     "list_documents",
 ]
@@ -95,37 +99,12 @@ async def ingest_directory(
         if error is not None:
             return {"status": "error", "message": error}
 
-    supported_extensions = {
-        ".py",
-        ".js",
-        ".ts",
-        ".tsx",
-        ".jsx",
-        ".rs",
-        ".go",
-        ".java",
-        ".cpp",
-        ".c",
-        ".h",
-        ".hpp",
-        ".rb",
-        ".php",
-        ".swift",
-        ".kt",
-        ".scala",
-        ".lua",
-        ".md",
-        ".markdown",
-        ".rst",
-        ".txt",
-    }
-
     results: list[dict[str, object]] = []
     total_documents = 0
     total_entities = 0
 
     for file_path in directory.rglob("*"):
-        if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+        if file_path.is_file() and file_path.suffix.lower() in WATCH_SUFFIXES:
             result = await ingest_file(str(file_path), pg_pool, config, tenant_id, source_type)
             results.append(result)
             if result.get("status") == "success":
