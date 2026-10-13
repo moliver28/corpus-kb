@@ -10,9 +10,11 @@ MCP-tool / CLI seams.
 from __future__ import annotations
 
 import importlib.metadata
+import re
 from pathlib import Path
 
 import pytest
+from test_cli import _strip_ansi
 from test_ingest_integrity import _FakePool, _LockConn
 from typer.testing import CliRunner
 
@@ -617,7 +619,11 @@ def test_cli_rejects_unknown_source_type() -> None:
         app, ["research", "ingest-transcript", "x.txt", "--source-type", "bogus"]
     )
     assert result.exit_code != 0
-    assert "Valid strategies" in result.output
+    # CI renders the rich error panel colorized AND line-wrapped: strip ANSI
+    # (test_cli's helper), drop the panel's box-drawing characters, and
+    # collapse whitespace before matching.
+    text = re.sub(r"[│╭─╮╰╯├┤]", " ", _strip_ansi(result.output))
+    assert "Valid strategies: default, transcript" in " ".join(text.split())
 
 
 def test_cli_help_lists_source_type() -> None:
@@ -625,7 +631,7 @@ def test_cli_help_lists_source_type() -> None:
 
     result = CliRunner().invoke(app, ["research", "ingest", "--help"])
     assert result.exit_code == 0
-    assert "--source-type" in result.output
+    assert "--source-type" in _strip_ansi(result.output)
 
 
 def test_detection_summary_line_format(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
