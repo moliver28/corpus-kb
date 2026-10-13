@@ -23,7 +23,11 @@ def test_ingestion_strategy_config_block_loads() -> None:
 
     cfg = load_config()
     ingestion = cfg["ingestion"]
-    assert ingestion["strategies"] == {"transcript": "transcript"}
+    assert ingestion["strategies"] == {
+        "transcript": "transcript",
+        "pptx": "pptx_structure",
+        "web": "web_structure",
+    }
     assert ingestion["default"] == "default"
 
     root = Path(__file__).resolve().parent.parent

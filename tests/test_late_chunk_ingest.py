@@ -20,6 +20,10 @@ from pathlib import Path
 
 import pytest
 
+# Single-sourced with the exact-dict pin in test_search_honesty so a future
+# RUNTIME_CONFIG_KEYS addition updates both fixtures together.
+from test_search_honesty import _WEB_KEYS
+
 from corpus_kb._setup.validate_configs import (
     RUNTIME_CONFIG_KEYS,
     load_yaml,
@@ -647,6 +651,7 @@ def _runtime_config(late_chunking: object = True) -> dict[str, object]:
         },
         "embedding": {"mrl_trained": False, "late_chunking": late_chunking},
         "ingestion": {"default": "default", "strategies": {}},
+        **_WEB_KEYS,
     }
 
 
