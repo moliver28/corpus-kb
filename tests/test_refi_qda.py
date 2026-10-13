@@ -179,7 +179,10 @@ def test_xsd_fixture_matches_provenance() -> None:
     provenance = (XSD_PATH.parent / "PROVENANCE.md").read_text(encoding="utf-8")
     recorded = re.search(r"[0-9a-f]{64}", provenance)
     assert recorded is not None, "PROVENANCE.md lost its SHA-256 line"
-    assert recorded.group(0) == hashlib.sha256(XSD_PATH.read_bytes()).hexdigest()
+    # Provenance pins the committed LF bytes; autocrlf checkouts translate
+    # them to CRLF on Windows, so hash the normalized form.
+    data = XSD_PATH.read_bytes().replace(b"\r\n", b"\n")
+    assert recorded.group(0) == hashlib.sha256(data).hexdigest()
 
 
 # --- round-trip ---
