@@ -96,6 +96,18 @@ def _all_zero(vectors: list[list[float]]) -> bool:
     return all(all(v == 0.0 for v in vector) for vector in vectors)
 
 
+def build_embedding_input(text: str, context_blurb: str | None) -> str:
+    """Single-source the embedding-input assembly (Stage 3).
+
+    Chunks with a contextual blurb embed the ``blurb\\n\\ntext`` form; plain
+    chunks embed raw text. The reembed helper (reembed_degraded) and the
+    ingest pipeline MUST produce byte-identical inputs for the same chunk or
+    a repair would store a vector for a different text than a fresh ingest
+    would.
+    """
+    return f"{context_blurb}\n\n{text}" if context_blurb else text
+
+
 def _assign_embeddings(chunks: list[Chunk], vectors: list[list[float]]) -> None:
     for chunk, vector in zip(chunks, vectors, strict=True):
         chunk.embedding = vector
@@ -596,8 +608,7 @@ async def run_pipeline(
     new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
 
     embed_texts_override = {
-        str(c.chunk_id): (f"{c.context_blurb}\n\n{c.text}" if c.context_blurb else c.text)
-        for c in new_chunks
+        str(c.chunk_id): build_embedding_input(c.text, c.context_blurb) for c in new_chunks
     }
     degraded, embed_err = await embed_chunks(
         new_chunks, config, pool=pg_pool, text_override=embed_texts_override
@@ -719,6 +730,149 @@ async def run_pipeline(
         if shadow_note is not None:
             result["shadow_note"] = shadow_note
     return result
+
+
+async def reembed_degraded(
+    pg_pool: asyncpg.Pool,
+    config: dict[str, object],
+    tenant_id: str = DEFAULT_TENANT_ID,
+    limit: int | None = None,
+    doc_id: str | None = None,
+) -> dict[str, object]:
+    """Re-embed chunks whose stored vector is flagged degraded (Stage 3).
+
+    Targets rows where ``chunks_vectors.degraded`` or ``chunks.degraded`` is
+    TRUE (the migration-022 flags), rebuilds each embedding input with
+    ``build_embedding_input`` (the exact bytes a fresh ingest would embed),
+    and on a non-zero result writes the repaired vector and CLEARS the
+    degraded flags. All-zero output leaves the row flagged — a repair that
+    produced the degraded-mode marker is a failure, never a silent "fix".
+
+    Requires migration 022; on a pre-migration database the degraded columns
+    do not exist, so this returns ``{"status": "unavailable", ...}`` instead
+    of crashing. CLI/surface registration is Stage 5; this is the handler.
+
+    Returns an honest ``{scanned, fixed, failed}`` summary.
+    """
+    async with pg_pool.acquire() as conn:
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
+        present = await conn.fetchval(
+            """
+            SELECT count(*) FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = ANY($1::text[])
+              AND column_name = 'degraded'
+            """,
+            ["chunks", "chunks_vectors"],
+        )
+        if present != 2:
+            return {
+                "status": "unavailable",
+                "reason": (
+                    "migration 022 not applied: chunks.degraded / "
+                    "chunks_vectors.degraded missing; run corpus-kb setup"
+                ),
+                "scanned": 0,
+                "fixed": 0,
+                "failed": 0,
+            }
+        rows = await conn.fetch(
+            """
+            SELECT cv.chunk_id::text AS chunk_id, c.doc_id::text AS doc_id,
+                   c.text, c.context_blurb
+            FROM chunks_vectors cv
+            JOIN chunks c ON c.chunk_id = cv.chunk_id
+            WHERE cv.tenant_id = $1 AND (cv.degraded = TRUE OR c.degraded = TRUE)
+              AND ($2::uuid IS NULL OR c.doc_id = $2::uuid)
+            ORDER BY cv.embedded_at NULLS LAST
+            LIMIT $3
+            """,
+            tenant_id,
+            doc_id,
+            limit if limit is not None else 2**31 - 1,
+        )
+    if not rows:
+        return {"status": "success", "scanned": 0, "fixed": 0, "failed": 0}
+
+    # Reuse the pipeline's embed path (provider + zero-vector fallback chain)
+    # by rebuilding minimal Chunk objects; text_override keys by chunk_id.
+    chunks = [
+        Chunk(
+            chunk_id=row["chunk_id"],
+            document_id=row["doc_id"],
+            text=row["text"],
+            source_type="text",
+            context_blurb=row["context_blurb"],
+        )
+        for row in rows
+    ]
+    text_override = {c.chunk_id: build_embedding_input(c.text, c.context_blurb) for c in chunks}
+    degraded, embed_err = await embed_chunks(
+        chunks, config, pool=pg_pool, text_override=text_override
+    )
+    if embed_err is not None:
+        logger.warning("reembed_degraded: %s", embed_err)
+
+    embedding_cfg = _nested_dict(config, "embedding")
+    embedding_model = str(embedding_cfg.get("model", "nomic-embed-text"))
+    raw_dimensions = embedding_cfg.get("dimensions", 768)
+    dimensions = raw_dimensions if isinstance(raw_dimensions, int) else 768
+    matryoshka_cfg = _nested_dict(config, "search")
+    v1024_dim: int | None = None
+    if bool(matryoshka_cfg.get("matryoshka_enabled", False)):
+        raw_dim = matryoshka_cfg.get("matryoshka_dim", 1024)
+        v1024_dim = raw_dim if isinstance(raw_dim, int) else 1024
+
+    fixed = 0
+    failed = 0
+    async with pg_pool.acquire() as conn:
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
+        for chunk in chunks:
+            if chunk.embedding is None or _all_zero([chunk.embedding]):
+                failed += 1
+                continue
+            vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
+            v1024: str | None = None
+            if v1024_dim is not None:
+                from ..rag.embedder import _slice_normalize
+
+                v1024 = (
+                    "["
+                    + ",".join(str(v) for v in _slice_normalize(chunk.embedding, v1024_dim))
+                    + "]"
+                )
+            await conn.execute(
+                """
+                UPDATE chunks_vectors
+                SET vector = $2::vector,
+                    vector_1024 = COALESCE($3::vector, chunks_vectors.vector_1024),
+                    embedding_model = $4, dimensions = $5,
+                    embedded_at = NOW(), degraded = FALSE
+                WHERE chunk_id = $1::uuid
+                """,
+                chunk.chunk_id,
+                vector_str,
+                v1024,
+                embedding_model,
+                dimensions,
+            )
+            await conn.execute(
+                "UPDATE chunks SET degraded = FALSE WHERE chunk_id = $1::uuid",
+                chunk.chunk_id,
+            )
+            fixed += 1
+    summary: dict[str, object] = {
+        "status": "success",
+        "scanned": len(chunks),
+        "fixed": fixed,
+        "failed": failed,
+    }
+    if degraded and embed_err is not None:
+        # The write path above already judged each vector per-chunk; this
+        # flag reports the PRIMARY provider's health honestly (a fallback
+        # repair still succeeds but the primary needs attention).
+        summary["degraded"] = True
+        summary["warning"] = embed_err
+    return summary
 
 
 async def ingest_text(

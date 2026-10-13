@@ -26,6 +26,7 @@ def test_extras_checks_never_fail() -> None:
         "numeric stack (scipy)",
         "optional extra latechunk",
         "optional extra inductive",
+        "optional extra ner",
     ]
     for check in checks:
         assert check.status in (dr.STATUS_OK, dr.STATUS_INFO)

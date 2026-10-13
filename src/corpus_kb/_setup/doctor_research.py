@@ -70,11 +70,16 @@ EXPECTED_TABLES: dict[str, tuple[str, ...]] = {
     "018_keyword_synthesis.sql": ("research_keyword_hits",),
 }
 
-# Optional extras (todo-13/15): report status + install command; NEVER fail
-# doctor when absent - the core pipeline and the demo run without them.
+# Optional extras (todo-13/15, Stage 1 ner): report status + install command;
+# NEVER fail doctor when absent - the core pipeline and the demo run without
+# them.
 OPTIONAL_EXTRAS: tuple[tuple[str, tuple[str, ...], str], ...] = (
     ("latechunk", ("sentence_transformers",), 'pip install -e ".[latechunk]"'),
     ("inductive", ("umap", "hdbscan"), 'pip install -e ".[inductive]"'),
+    # Stage 1 gliner2 NER backend (extraction/gliner_backend.py): the import
+    # probe is the punter — the backend exists but degrades cleanly when the
+    # optional extra is not installed.
+    ("ner", ("gliner2",), 'pip install -e ".[ner]"'),
 )
 
 STATUS_OK = "ok"
@@ -528,7 +533,118 @@ async def db_checks(conn: asyncpg.Connection, config: dict[str, Any]) -> list[Re
                 doc=DOC_RESEARCH,
             )
         )
+
+    # Stage 3 corpus-health checks (each self-guarded; never raise). They
+    # re-read chunks/chunks_vectors, so they run in their OWN transaction
+    # with the tenant GUC: FORCE RLS (migration 011) silently returns ZERO
+    # rows for a GUC-less read, and the block above already closed.
+    async with conn.transaction():
+        await conn.execute(
+            "SELECT set_config('app.current_tenant_id', $1, true)", str(DEFAULT_TENANT)
+        )
+        checks.append(await _zero_vector_check(conn))
+        checks.append(await _degraded_flag_check(conn))
+        checks.append(await _ingest_runs_check(conn))
     return checks
+
+
+# Stage 3 doctor additions: degraded/zero-vector corpus health. All three
+# checks are self-guarded (to_regclass / information_schema) so a database
+# without migration 022 reports "not applied" instead of crashing.
+_ZERO_VECTOR_SQL = "SELECT count(*) FROM chunks_vectors WHERE vector::text ~ '^\\[0(,0)*\\]$'"
+DEGRADED_COLUMN_SQL = (
+    "SELECT count(*) FROM information_schema.columns "
+    "WHERE table_schema = 'public' AND table_name = ANY($1::text[]) "
+    "AND column_name = 'degraded'"
+)
+INGEST_RUNS_INCOMPLETE_SQL = "SELECT count(*) FROM ingest_runs WHERE status = 'running'"
+
+REEMBED_FIX = "start Ollama, then run: corpus-kb ingest --reembed"
+
+
+async def _zero_vector_check(conn: asyncpg.Connection) -> ResearchCheck:
+    """Count stored all-zero vectors (the degraded-mode failure marker)."""
+    zero_vectors = int(await conn.fetchval(_ZERO_VECTOR_SQL))
+    if zero_vectors:
+        return ResearchCheck(
+            name="zero-vector chunks",
+            status=STATUS_WARN,
+            detail=f"{zero_vectors} chunk vector(s) are all zeros — invisible to "
+            "vector search (degraded ingest marker)",
+            fix=REEMBED_FIX,
+            doc=DOC_GETTING_STARTED,
+        )
+    return ResearchCheck(
+        name="zero-vector chunks",
+        status=STATUS_OK,
+        detail="0 all-zero vectors stored",
+        doc=DOC_GETTING_STARTED,
+    )
+
+
+async def _degraded_flag_check(conn: asyncpg.Connection) -> ResearchCheck:
+    """Count rows flagged degraded by the ingest pipeline (migration 022)."""
+    present = int(await conn.fetchval(DEGRADED_COLUMN_SQL, ["chunks", "chunks_vectors"]))
+    if present != 2:
+        return ResearchCheck(
+            name="degraded flags",
+            status=STATUS_WARN,
+            detail="migration 022 not applied - degraded flags unavailable",
+            fix=SETUP_FIX,
+            doc=DOC_GETTING_STARTED,
+        )
+    vector_degraded = int(
+        await conn.fetchval("SELECT count(*) FROM chunks_vectors WHERE degraded = TRUE")
+    )
+    chunk_degraded = int(await conn.fetchval("SELECT count(*) FROM chunks WHERE degraded = TRUE"))
+    if vector_degraded or chunk_degraded:
+        return ResearchCheck(
+            name="degraded flags",
+            status=STATUS_WARN,
+            detail=f"{vector_degraded} vector row(s) + {chunk_degraded} chunk row(s) "
+            "flagged degraded (embeddings from a failed embedder run)",
+            fix=REEMBED_FIX,
+            doc=DOC_GETTING_STARTED,
+        )
+    return ResearchCheck(
+        name="degraded flags",
+        status=STATUS_OK,
+        detail="0 rows flagged degraded",
+        doc=DOC_GETTING_STARTED,
+    )
+
+
+async def _ingest_runs_check(conn: asyncpg.Connection) -> ResearchCheck:
+    """Count ingest runs left incomplete (status='running') — partial ingests.
+
+    to_regclass-guarded: pre-migration databases have no ingest_runs table
+    and must report "not applied" rather than a relation-does-not-exist error.
+    """
+    rel = await conn.fetchval("SELECT to_regclass('public.ingest_runs')")
+    if rel is None:
+        return ResearchCheck(
+            name="ingest runs ledger",
+            status=STATUS_WARN,
+            detail="ingest_runs table absent (migration 022 not applied)",
+            fix=SETUP_FIX,
+            doc=DOC_GETTING_STARTED,
+        )
+    incomplete = int(await conn.fetchval(INGEST_RUNS_INCOMPLETE_SQL))
+    if incomplete:
+        return ResearchCheck(
+            name="ingest runs ledger",
+            status=STATUS_WARN,
+            detail=f"{incomplete} ingest run(s) never finished (status=running) — "
+            "their documents may be missing vectors or entities",
+            fix=f"{REEMBED_FIX} (or re-ingest the affected files)",
+            doc=DOC_GETTING_STARTED,
+        )
+    return ResearchCheck(
+        name="ingest runs ledger",
+        status=STATUS_OK,
+        detail="0 incomplete ingest runs",
+        doc=DOC_GETTING_STARTED,
+    )
 
 
 async def _events_head(conn: asyncpg.Connection) -> int | None:

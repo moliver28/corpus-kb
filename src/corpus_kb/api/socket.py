@@ -145,6 +145,7 @@ class JSONRPCServer:
         elif method == "search":
             from corpus_kb.domain.models import SearchQuery
             from corpus_kb.handlers.query_handler import get_query_handler
+            from corpus_kb.handlers.query_integrity import envelope_to_payload
 
             query = SearchQuery(
                 tenant_id=UUID(tenant_id),
@@ -152,8 +153,9 @@ class JSONRPCServer:
                 k=params.get("k", 10),
                 self_query=params.get("self_query"),
             )
-            results = await get_query_handler().handle_search(query)
-            return {"status": "success", "result": [r.model_dump() for r in results]}
+            envelope = await get_query_handler().handle_search_with_meta(query)
+            # Same additive envelope as POST /api/search (parity contract).
+            return envelope_to_payload(envelope)
 
         elif method == "query":
             from corpus_kb.domain.models import RoutedQuery

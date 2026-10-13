@@ -19,6 +19,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -400,6 +402,54 @@ def check_cross_config_consistency(
 
 
 # ---------------------------------------------------------------------------
+# Runtime config.yaml key validation (plan §1: "validate_configs.py learns
+# every new key"). Only Stage-3's search.exclude_degraded is checked here;
+# each stage extends RUNTIME_CONFIG_KEYS for the keys it adds.
+# ---------------------------------------------------------------------------
+
+# dotted key -> expected YAML type (bool/str/int/float/list/dict)
+RUNTIME_CONFIG_KEYS: dict[str, type] = {
+    "search.exclude_degraded": bool,
+}
+
+
+def validate_runtime_config(config: dict[str, Any]) -> list[str]:
+    """Validate the runtime config.yaml keys in RUNTIME_CONFIG_KEYS.
+
+    Every key must be PRESENT (explicit in both config.yaml files — the
+    default lives in code, but the shipped YAML is the visible contract)
+    and hold the expected type.
+    """
+    errors: list[str] = []
+    for dotted, expected in RUNTIME_CONFIG_KEYS.items():
+        node: Any = config
+        parts = dotted.split(".")
+        for part in parts:
+            if not isinstance(node, dict) or part not in node:
+                errors.append(f"missing required key '{dotted}' (expected {expected.__name__})")
+                node = None
+                break
+            node = node[part]
+        else:
+            # bool is a subclass of int: reject a bool where a real int/float
+            # is expected, and require bool-exactness for bool keys.
+            type_ok = isinstance(node, expected) and (
+                expected is bool or not isinstance(node, bool)
+            )
+            if not type_ok:
+                errors.append(
+                    f"key '{dotted}' must be {expected.__name__}, got {type(node).__name__}"
+                )
+    return errors
+
+
+def load_yaml(path: Path) -> dict[str, Any]:
+    """Load and parse a YAML file (empty file -> empty mapping)."""
+    with path.open(encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
+
+
+# ---------------------------------------------------------------------------
 # File-level validation (loads from disk)
 # ---------------------------------------------------------------------------
 
@@ -479,6 +529,19 @@ def validate_all(project_root: Path | None = None) -> list[str]:
             errors.append(
                 "opencode.json.bak: unexpectedly passes OpenCode validation (should be old format)"
             )
+
+    # 5. Runtime config.yaml keys (both copies, in lockstep per plan §1)
+    runtime_paths = ["config.yaml", str(Path("src") / "corpus_kb" / "config.yaml")]
+    for rel in runtime_paths:
+        cfg_path = project_root / rel
+        if not cfg_path.exists():
+            errors.append(f"{rel}: not found")
+            continue
+        runtime_cfg = load_yaml(cfg_path)
+        if not isinstance(runtime_cfg, dict):
+            errors.append(f"{rel}: top level must be a mapping")
+            continue
+        errors.extend(f"{rel}: {e}" for e in validate_runtime_config(runtime_cfg))
 
     return errors
 

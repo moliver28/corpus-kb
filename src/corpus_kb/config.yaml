@@ -23,6 +23,10 @@ search:
   index_type: hnsw
   reranker: none
   reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  # Stage 3 degraded policy: when true, vector-search candidate CTEs exclude
+  # rows whose stored vector is flagged degraded (all-zero backfill,
+  # migration 022). Seed documents stay discoverable either way.
+  exclude_degraded: true
   # U45/U21 shared retrieval knobs (research/retrieval_settings.py).
   # candidates_per_branch 150 is the committed upgrade-program default
   # (contextual-retrieval study value); return truncation is owned by
