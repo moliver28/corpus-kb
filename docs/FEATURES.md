@@ -10,11 +10,12 @@ Send files, directories, or raw text into the pipeline. Corpus-KB detects the ty
 
 | Input | How it is handled |
 |-------|-------------------|
-| File | Detected by extension: code, markdown, or plain text |
+| File | Detected by extension: code, markdown, plain text, or PPTX decks (slide-level structure + metadata) |
 | Directory | Recursively ingests every supported file |
 | Raw text | Optional type hint: code, markdown, or text |
+| Website | `corpus-kb ingest-url URL` — robots-respecting fetch (optional same-domain crawl), heading-section chunks with OG/JSON-LD metadata |
 
-Detection and chunking run through a pluggable **ingestion strategy**. The built-in `default` strategy preserves the classic behavior; the built-in `transcript` strategy chunks turn-aligned question+answer exchanges. Map source types to strategies in `config.yaml`, register one in-process, or ship one as an entry-point plugin — see [Ingestion strategies](INGESTION-STRATEGIES.md).
+Detection and chunking run through a pluggable **ingestion strategy**. The built-in `default` strategy preserves the classic behavior; built-in `transcript`, `pptx_structure`, and `web_structure` strategies give interviews, slide decks, and web pages first-class structure-aware chunking. Map source types to strategies in `config.yaml`, register one in-process, or ship one as an entry-point plugin — see [Ingestion strategies](INGESTION-STRATEGIES.md).
 
 ### Code chunking
 

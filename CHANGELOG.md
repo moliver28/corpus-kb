@@ -1,3 +1,30 @@
+## Unreleased — structure-aware ingestion wave (PPTX, web, late chunking)
+
+First-class ingestion for two more modalities plus the late-chunking
+embedding technique, all on by default:
+
+- **PPTX (`pptx_structure` strategy):** decks chunk per slide with title
+  breadcrumbs, tables rendered as GitHub markdown, speaker notes as their
+  own chunks, and core/extended-properties metadata (author, created/
+  modified, company, subject) on every chunk. `python-pptx` is now a
+  required dependency; `.pptx` joins the watched/directory-ingest suffixes.
+- **Website (`web_structure` strategy + `corpus-kb ingest-url`):** httpx
+  fetching with robots.txt respect, size/content-type caps, and optional
+  same-domain crawl (depth/page caps, delay). Pages chunk per heading
+  section with OG/Twitter/JSON-LD/canonical metadata extraction; chrome
+  (nav/header/footer) is excluded. Exposed on MCP, HTTP
+  (`POST /api/ingest/url`), socket, and CLI surfaces.
+- **Late chunking (document pipeline):** `embedding.late_chunking: true`
+  by default — when the `latechunk` extra is installed and the model is a
+  `qwen3-embedding*` token-level family, chunk vectors are pooled from one
+  full-document forward pass (windowed past the model context) so every
+  chunk sees the whole document. Otherwise the run degrades to pooled
+  embeddings with an explicit `embedding_note` in the result; the ingest
+  envelope always records `embedding_mode`.
+- **E2E:** a research-corpus suite ingests a 10-slide methodology deck and
+  a multi-section article + crawled appendix through the real pipeline
+  offline, pinning structure, metadata, and envelope honesty.
+
 ## Unreleased — U1–U48 upgrade program (P0–P7)
 
 Implementation of the corpus-kb upgrade spec (U1–U48), phased and verified

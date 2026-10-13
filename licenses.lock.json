@@ -693,6 +693,13 @@
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
+    "name": "python-pptx",
+    "version": "1.0.2",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/python-pptx/1.0.2/",
+    "licenseTextUrl": "https://opensource.org/licenses/MIT"
+  },
+  {
     "name": "PyYAML",
     "version": "6.0.3",
     "license": "MIT",
@@ -1006,6 +1013,13 @@
     "license": "BSD-2-Clause",
     "homepage": "https://pypi.org/project/wrapt/2.5.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-2-Clause"
+  },
+  {
+    "name": "xlsxwriter",
+    "version": "3.2.9",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/xlsxwriter/3.2.9/",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "yarl",
