@@ -581,7 +581,12 @@ async def test_reembed_repairs_and_clears_degraded(monkeypatch: pytest.MonkeyPat
     captured: dict[str, object] = {}
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         captured["override"] = text_override
         for chunk in chunks:
@@ -609,7 +614,12 @@ async def test_reembed_counts_zero_output_as_failed(monkeypatch: pytest.MonkeyPa
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         for chunk in chunks:
             chunk.embedding = [0.0] * 4
@@ -655,7 +665,12 @@ async def test_reembed_sets_tenant_guc_inside_transaction(
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         for chunk in chunks:
             chunk.embedding = [0.5] * 4
@@ -688,7 +703,12 @@ async def test_reembed_updates_pin_tenant_id(monkeypatch: pytest.MonkeyPatch) ->
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         for chunk in chunks:
             chunk.embedding = [0.5] * 4
