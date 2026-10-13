@@ -27,6 +27,12 @@ def print_ingest_result(result: dict[str, object]) -> None:
             path=str(result.get("path", "?")),
         )
     )
+    # Honesty envelope: which embedding technique actually ran, and why a
+    # requested one (late chunking) fell back.
+    if result.get("embedding_mode") is not None:
+        print(f"    embedding: {result['embedding_mode']}")
+    if result.get("embedding_note") is not None:
+        print(f"    embedding note: {result['embedding_note']}")
     for warning in string_list(result.get("warnings")):
         print(f"    warning: {warning}")
     if str(result.get("status", "")) != "success":
@@ -41,6 +47,10 @@ def print_reembed_summary(summary: dict[str, object]) -> None:
         f"reembed: {status} scanned={summary.get('scanned', 0)} "
         f"fixed={summary.get('fixed', 0)} failed={summary.get('failed', 0)}"
     )
+    if summary.get("embedding_mode") is not None:
+        print(f"    embedding: {summary['embedding_mode']}")
+    if summary.get("embedding_note") is not None:
+        print(f"    embedding note: {summary['embedding_note']}")
     if summary.get("warning"):
         print(f"    warning: {summary['warning']}")
     if summary.get("reason"):

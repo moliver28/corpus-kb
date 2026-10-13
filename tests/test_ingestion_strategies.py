@@ -456,7 +456,9 @@ def _patch_stores(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
         async def fail_run(self, run_id: str, error: str) -> None:
             return None
 
-    async def fake_embed_chunks(chunks, config, pool=None, text_override=None):
+    async def fake_embed_chunks(
+        chunks, config, pool=None, text_override=None, document_text=None, meta=None
+    ):
         for chunk in chunks:
             chunk.embedding = [0.1] * 768
         return False, None
@@ -623,7 +625,9 @@ def test_cli_rejects_unknown_source_type() -> None:
     # (test_cli's helper), drop the panel's box-drawing characters, and
     # collapse whitespace before matching.
     text = re.sub(r"[│╭─╮╰╯├┤]", " ", _strip_ansi(result.output))
-    assert "Valid strategies: default, transcript" in " ".join(text.split())
+    assert "Valid strategies: default, pptx_structure, transcript, web_structure" in " ".join(
+        text.split()
+    )
 
 
 def test_cli_help_lists_source_type() -> None:

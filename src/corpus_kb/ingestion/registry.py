@@ -77,10 +77,14 @@ def _ensure_ready() -> None:
         return
     _ready = True
     from .strategies.default import DefaultStrategy
+    from .strategies.pptx import PptxStructureStrategy
     from .strategies.transcript import TranscriptStrategy
+    from .strategies.web import WebStructureStrategy
 
     register_strategy(DefaultStrategy())
+    register_strategy(PptxStructureStrategy())
     register_strategy(TranscriptStrategy())
+    register_strategy(WebStructureStrategy())
     _discover_entry_points()
 
 

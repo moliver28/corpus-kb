@@ -526,8 +526,18 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "search.qa_context_in_fts": bool,
     "search.matryoshka_enabled": bool,
     "embedding.mrl_trained": bool,
+    "embedding.late_chunking": bool,
     "ingestion.default": str,
     "ingestion.strategies": dict,
+    # -- website (URL) ingestion (src/corpus_kb/web/, WebFetchConfig) -------
+    "web.user_agent": str,
+    "web.timeout_seconds": int,
+    "web.max_bytes": int,
+    "web.respect_robots": bool,
+    "web.max_pages": int,
+    "web.max_depth": int,
+    "web.delay_seconds": float,
+    "web.allow_private_addresses": bool,
 }
 
 
@@ -553,11 +563,18 @@ def validate_runtime_config(config: dict[str, Any]) -> list[str]:
                 break
             node = node[part]
         else:
-            # bool is a subclass of int: reject a bool where a real int/float
-            # is expected, and require bool-exactness for bool keys.
-            type_ok = isinstance(node, expected) and (
-                expected is bool or not isinstance(node, bool)
-            )
+            # bool is a subclass of int: never accept a bool where a real
+            # int/float is expected, and require bool-exactness for bool keys.
+            # A float-expected key ALSO accepts int (web/settings.py accepts
+            # int at runtime, e.g. `delay_seconds: 1`).
+            if expected is bool:
+                type_ok = isinstance(node, bool)
+            elif isinstance(node, bool):
+                type_ok = False
+            else:
+                type_ok = isinstance(node, expected) or (
+                    expected is float and isinstance(node, int)
+                )
             if not type_ok:
                 errors.append(
                     f"key '{dotted}' must be {expected.__name__}, got {type(node).__name__}"

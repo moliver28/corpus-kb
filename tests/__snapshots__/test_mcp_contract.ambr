@@ -55,6 +55,17 @@
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.ingest_url_tools': dict({
+      'ingest_url': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'crawl': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'source_type': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'transport': 'POSITIONAL_OR_KEYWORD',
+        'url': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.notebook_tools': dict({
       'notebook_ask_tool': dict({
         'code': 'POSITIONAL_OR_KEYWORD',

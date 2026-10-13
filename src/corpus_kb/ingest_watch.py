@@ -45,9 +45,10 @@ import asyncpg
 # heal set tight: only embedder outages qualify, never parse or write errors.
 HEALABLE_MARKERS = ("EmbeddingError", "Connection failed")
 
-# The front-door modality table (v1: text/code/markdown; transcript formats
-# arrive via --source-type strategies). ONE source of truth: the one-shot
-# directory ingest (tools/ingest_tools.ingest_directory) walks this set too.
+# The front-door modality table (v1: text/code/markdown, pptx via suffix
+# detection; transcript formats arrive via --source-type strategies). ONE
+# source of truth: the one-shot directory ingest
+# (tools/ingest_tools.ingest_directory) walks this set too.
 WATCH_SUFFIXES = {
     ".py",
     ".js",
@@ -70,6 +71,7 @@ WATCH_SUFFIXES = {
     ".md",
     ".markdown",
     ".rst",
+    ".pptx",
     ".txt",
 }
 

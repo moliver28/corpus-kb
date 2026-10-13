@@ -8,6 +8,8 @@ Top-level commands registered on the main app (see ``register``):
     ledger + degraded counts (the same handler the MCP + HTTP surfaces call).
   * ``corpus-kb ingest-reembed`` — re-embed degraded chunks (docs-pinned
     spelling; identical handler to ``corpus-kb ingest --reembed``).
+  * ``corpus-kb ingest-url``     — fetch (or crawl) a website and ingest its
+    HTML pages through the web_structure strategy.
 
 HONEST EXIT CODES (stable for scripting, documented in each command's
 help): ``0`` everything ok, ``1`` partial success (some files/chunks
@@ -43,10 +45,11 @@ TENANT_DEFAULT = "00000000-0000-0000-0000-000000000001"
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the three top-level ingest commands to the main Typer app."""
+    """Attach the four top-level ingest commands to the main Typer app."""
     app.command("ingest")(ingest)
     app.command("ingest-status")(ingest_status)
     app.command("ingest-reembed")(ingest_reembed)
+    app.command("ingest-url")(ingest_url_command)
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +96,12 @@ def _conn_str(cfg: dict[str, object]) -> str:
     db = cfg.get("database")
     db_map = db if isinstance(db, dict) else {}
     return str(db_map.get("connection_string", ""))
+
+
+def _strategy_names() -> list[str]:
+    from corpus_kb.ingestion.registry import strategy_names
+
+    return strategy_names()
 
 
 def _unknown_strategy_exit(source_type: str) -> None:
@@ -210,6 +219,75 @@ async def _status_flow(limit: int, json_output: bool) -> int:
     else:
         print_status_report(report)
     return EXIT_CONFIG if str(report.get("status")) == "unavailable" else EXIT_OK
+
+
+async def _ingest_url_flow(
+    url: str,
+    crawl: bool,
+    max_pages: int | None,
+    source_type: str | None,
+    json_output: bool,
+) -> int:
+    from corpus_kb.tools.ingest_tools import ingest_url
+
+    if source_type is not None and source_type not in _strategy_names():
+        _unknown_strategy_exit(source_type)
+    cfg = _load_config()
+    if max_pages is not None:
+        raw_web = cfg.get("web")
+        web_cfg = dict(raw_web) if isinstance(raw_web, dict) else {}
+        web_cfg["max_pages"] = max_pages
+        cfg = {**cfg, "web": web_cfg}
+    pool = await _open_pool(cfg)
+    try:
+        aggregate = await ingest_url(
+            url, pool, cfg, TENANT_DEFAULT, crawl=crawl, source_type=source_type
+        )
+    finally:
+        await pool.close()
+    if str(aggregate.get("status")) != "success":
+        print(f"ERROR: {aggregate.get('message', 'fetch failed')}")
+        return EXIT_FAILED
+    raw_pages = aggregate.get("pages", [])
+    pages = (
+        [page for page in raw_pages if isinstance(page, dict)]
+        if isinstance(raw_pages, list)
+        else []
+    )
+    if json_output:
+        print(json.dumps(aggregate, indent=2, default=str))
+    else:
+        for page in pages:
+            print_ingest_result(page)
+        print(f"ingest-url: {aggregate.get('total_documents', 0)}/{len(pages)} pages ingested")
+    statuses = [str(page.get("status", "error")) for page in pages]
+    if aggregate.get("total_documents", 0) == len(pages):
+        return EXIT_OK
+    return EXIT_FAILED if all(status == "error" for status in statuses) else EXIT_PARTIAL
+
+
+def ingest_url_command(
+    url: str = typer.Argument(..., help="Website URL to fetch and ingest"),
+    crawl: bool = typer.Option(
+        False, "--crawl", help="BFS the same domain (caps: web.max_pages / web.max_depth)"
+    ),
+    max_pages: int | None = typer.Option(
+        None, "--max-pages", min=1, help="Cap pages fetched (overrides web.max_pages)"
+    ),
+    source_type: str = typer.Option(
+        None,
+        "--source-type",
+        help="Ingestion strategy override (default: web_structure via detection)",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Fetch a website and ingest its HTML pages (web_structure strategy).
+
+    Exit codes: 0 every page ok, 1 partial success (some pages failed),
+    2 total failure (fetch blocked or every page failed), 3 configuration
+    error (unknown --source-type).
+    """
+    return _run_sync(lambda: _ingest_url_flow(url, crawl, max_pages, source_type, json_output))
 
 
 async def _watch_flow(path: Path, source_type: str | None, no_heal: bool) -> int:
