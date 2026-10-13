@@ -775,3 +775,44 @@ def test_shipped_config_yamls_declare_late_chunking_true():
         cfg = load_yaml(ROOT / rel)
         embedding = cfg["embedding"]
         assert embedding["late_chunking"] is True, rel
+
+
+async def test_late_path_and_selection_run_off_the_event_loop(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The sync HF forwards (and the model load) must not block the loop."""
+    import threading
+
+    fake = FakeTokenEmbedder()
+    doc, spans = _doc_with_two_chunks()
+    provider_thread: list[int] = []
+
+    def thread_recording_provider(
+        document_text: str, chunk_char_spans: list[tuple[int, int]]
+    ) -> list[LateChunkSpan]:
+        provider_thread.append(threading.get_ident())
+        return _spans_provider(fake)(document_text, chunk_char_spans)
+
+    plan = IngestEmbeddingPlan(
+        mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=thread_recording_provider
+    )
+    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    chunks = [
+        Chunk(
+            chunk_id="c1",
+            document_id="d1",
+            text=CHUNK,
+            source_type="text",
+            source_start_char=spans[0][0],
+            source_end_char=spans[0][1],
+        )
+    ]
+
+    await embed_chunks(
+        chunks, _ingest_config(model="qwen3-embedding:0.6b"), document_text=doc, meta={}
+    )
+
+    main_thread = threading.get_ident()
+    assert provider_thread and provider_thread[0] != main_thread, (
+        "the late path must run in a worker thread, not the event loop"
+    )

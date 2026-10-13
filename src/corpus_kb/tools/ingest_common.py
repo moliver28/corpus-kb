@@ -181,7 +181,9 @@ async def embed_chunks(
                 else None
             )
         else:
-            plan = select_ingest_embedder(config, pool=pool)
+            # Off the loop: the default factory may construct the HF stack on
+            # its first call (seconds-to-minutes; memoized per process after).
+            plan = await asyncio.to_thread(select_ingest_embedder, config, pool)
             mode = plan.mode
             note = plan.note
 

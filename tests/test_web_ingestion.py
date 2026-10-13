@@ -1041,3 +1041,54 @@ def test_http_app_registers_ingest_url_route() -> None:
 
     paths = {route.path for route in create_http_app().routes}
     assert "/api/ingest/url" in paths
+
+
+# ---------------------------------------------------------------------------
+# Denylist normalization + body deadline (delta-review hardening)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "::ffff:127.0.0.1",  # IPv4-mapped IPv6 loopback
+        "::ffff:169.254.169.254",  # mapped cloud-metadata endpoint
+        "2130706433",  # decimal integer form of 127.0.0.1
+        "0x7f000001",  # hex integer form of 127.0.0.1
+    ],
+)
+def test_private_host_normalizations_are_blocked(host: str) -> None:
+    from corpus_kb.web.fetch import _is_private_host
+
+    assert _is_private_host(host) is True, host
+
+
+def test_unmapped_public_hosts_stay_allowed() -> None:
+    from corpus_kb.web.fetch import _is_private_host
+
+    assert _is_private_host("::ffff:8.8.8.8") is False  # mapped but public
+    assert _is_private_host("2001:4860:4860::8888") is False  # public IPv6
+    assert _is_private_host("8.8.8.8") is False
+    assert _is_private_host("research.test") is False
+
+
+async def test_body_deadline_aborts_a_trickling_response() -> None:
+    """A server trickling bytes must not hold the fetch (or crawl) forever."""
+    import asyncio
+
+    async def trickling_bytes():
+        for _ in range(40):
+            await asyncio.sleep(0.05)
+            yield b"x" * 8
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404, text="none")
+        return httpx.Response(200, content=trickling_bytes(), headers={"content-type": "text/html"})
+
+    with pytest.raises(WebFetchError, match="body-deadline"):
+        await fetch_page(
+            "https://slow.test/page",
+            WebFetchConfig(timeout_seconds=1),
+            httpx.MockTransport(handler),
+        )

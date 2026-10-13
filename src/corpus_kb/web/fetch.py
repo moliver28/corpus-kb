@@ -107,16 +107,35 @@ def _is_private_host(host: str | None) -> bool:
     Hostname DNS resolution is deliberately out of scope (it would add a
     resolver round-trip per hop and cannot be honored by injected test
     transports); the denylist covers literal IPs and the "localhost" name.
+    Also normalized: IPv4-mapped IPv6 literals (``::ffff:127.0.0.1``) are
+    unwrapped to their IPv4 side (they would otherwise match none of the
+    IPv4 networks while still connecting to loopback/link-local), and
+    integer-form literals (decimal ``2130706433``, hex ``0x7f000001``) are
+    resolved to the addresses they denote — getaddrinfo accepts both on
+    the platforms corpus-kb deploys to.
     """
     if not host:
         return False
     candidate = host.strip().strip("[]").lower().rstrip(".")
     if candidate == "localhost":
         return True
+    address: ipaddress.IPv4Address | ipaddress.IPv6Address
     try:
         address = ipaddress.ip_address(candidate)
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped is not None:
+            address = address.ipv4_mapped
     except ValueError:
-        return False
+        # Integer forms: getaddrinfo("2130706433") == 127.0.0.1 on Linux;
+        # hex "0x7f000001" likewise. Classify what they denote, not the string.
+        if not candidate.isdigit() and not (
+            candidate.startswith("0x") and all(c in "0123456789abcdef" for c in candidate[2:])
+        ):
+            return False
+        try:
+            value = int(candidate, 16 if candidate.startswith("0x") else 10)
+            address = ipaddress.ip_address(value)
+        except (ValueError, OverflowError):
+            return False
     return any(address in network for network in _PRIVATE_NETWORKS)
 
 
@@ -180,15 +199,26 @@ def _charset_of(content_type: str) -> str:
     return "utf-8"
 
 
-async def _read_capped(response: httpx.Response, url: str, max_bytes: int) -> str:
-    """Stream-decode the body, aborting the moment the byte cap is exceeded."""
+async def _read_capped(
+    response: httpx.Response, url: str, max_bytes: int, total_seconds: float
+) -> str:
+    """Stream-decode the body, aborting the moment the byte cap is exceeded.
+
+    ``total_seconds`` is a WHOLE-BODY deadline, not the per-read-operation
+    timeout httpx enforces: without it a server trickling one byte per
+    interval holds the connection (and a sequential crawl) forever.
+    """
     parts: list[bytes] = []
     total = 0
-    async for chunk in response.aiter_bytes():
-        total += len(chunk)
-        if total > max_bytes:
-            raise WebFetchError(f"size-cap: {url} exceeds {max_bytes} bytes")
-        parts.append(chunk)
+    try:
+        async with asyncio.timeout(total_seconds):
+            async for chunk in response.aiter_bytes():
+                total += len(chunk)
+                if total > max_bytes:
+                    raise WebFetchError(f"size-cap: {url} exceeds {max_bytes} bytes")
+                parts.append(chunk)
+    except TimeoutError as exc:
+        raise WebFetchError(f"body-deadline: {url} exceeded {total_seconds}s") from exc
     charset = _charset_of(response.headers.get("content-type", ""))
     return b"".join(parts).decode(charset, errors="replace")
 
@@ -231,7 +261,9 @@ async def _request_with_redirects(
                 f"content-type: expected text/html or application/xhtml+xml, "
                 f"got '{content_type or 'none'}' ({current})"
             )
-        html = await _read_capped(response, current, config.max_bytes)
+        html = await _read_capped(
+            response, current, config.max_bytes, float(config.timeout_seconds)
+        )
         return FetchedPage(
             url=url,
             final_url=str(response.url),
