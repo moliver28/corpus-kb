@@ -848,25 +848,30 @@ async def test_doctor_db_checks_append_stage3_checks(
 
 
 def test_runtime_config_keys_declare_stage3_key() -> None:
+    # U32 (issue #81) added embedding.mrl_trained to the runtime contract.
     assert {
         "search.exclude_degraded": bool,
         "search.qa_context_in_fts": bool,
+        "embedding.mrl_trained": bool,
         "ingestion.default": str,
         "ingestion.strategies": dict,
     } == RUNTIME_CONFIG_KEYS
 
 
 _INGESTION_KEYS: dict[str, object] = {"ingestion": {"default": "default", "strategies": {}}}
+_EMBEDDING_KEYS: dict[str, object] = {"embedding": {"mrl_trained": False}}
 
 
 def test_validate_runtime_config_accepts_bool() -> None:
     config = {
         "search": {"exclude_degraded": True, "qa_context_in_fts": False},
+        **_EMBEDDING_KEYS,
         **_INGESTION_KEYS,
     }
     assert validate_runtime_config(config) == []
     config_off = {
         "search": {"exclude_degraded": False, "qa_context_in_fts": False},
+        **_EMBEDDING_KEYS,
         **_INGESTION_KEYS,
     }
     assert validate_runtime_config(config_off) == []

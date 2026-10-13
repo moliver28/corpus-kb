@@ -113,7 +113,41 @@ def load_config(path: str | None = None) -> dict[str, object]:
             else:
                 section_dict[key] = value
 
+    mrl_error = matryoshka_mrl_error(config)
+    if mrl_error is not None:
+        raise ValueError(mrl_error)
+
     return config
+
+
+def matryoshka_mrl_error(config: dict[str, object]) -> str | None:
+    """U32 cross-field gate on the two-stage matryoshka search arm.
+
+    ``search.matryoshka_enabled: true`` front-slices stored embeddings to
+    ``matryoshka_dim`` and re-ranks at full dimension. That is only sound
+    when the embedder is Matryoshka-trained (``embedding.mrl_trained:
+    true``); truncating a non-MRL model (nomic-embed-text) silently
+    degrades retrieval. Returns the refusal message for the invalid
+    combination, or None when the arm is off (the default) or the model
+    declared MRL-trained. ``load_config`` raises the message as a config
+    error, so the arm cannot activate silently; type checking of the two
+    keys is owned by ``validate_configs.validate_runtime_config``.
+    """
+    search = config.get("search")
+    embedding = config.get("embedding")
+    if not isinstance(search, dict) or not isinstance(embedding, dict):
+        return None
+    if search.get("matryoshka_enabled") is not True:
+        return None
+    if embedding.get("mrl_trained") is True:
+        return None
+    return (
+        "search.matryoshka_enabled: true requires embedding.mrl_trained: true — "
+        "two-stage matryoshka retrieval front-slices embeddings, which is only "
+        "sound for Matryoshka-trained models (qwen3-embedding is MRL-trained; "
+        "nomic-embed-text is NOT). Switch the embedding model first, or set "
+        "search.matryoshka_enabled: false."
+    )
 
 
 def get_default_config() -> dict[str, object]:
@@ -138,6 +172,16 @@ def get_default_config() -> dict[str, object]:
             "base_url": "http://localhost:11434",
             "batch_size": 32,
             "dimensions": 768,
+            # U32 MRL gating: declares whether the configured model is
+            # Matryoshka-trained, i.e. front-slice truncation + L2
+            # renormalization is a sound reduced-dimension representation.
+            # qwen3-embedding models ARE MRL-trained; nomic-embed-text is
+            # NOT (truncating it degrades retrieval instead of preserving
+            # it). The two-stage matryoshka arm (search.matryoshka_enabled)
+            # refuses to activate while this is false: load_config raises a
+            # config error on the combination, and validate_runtime_config
+            # reports it for the shipped YAMLs. Default stays off.
+            "mrl_trained": False,
         },
         "chunking": {
             "max_size": 4096,

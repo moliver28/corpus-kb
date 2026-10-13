@@ -97,3 +97,51 @@ def saturation_curve(unit_code_sets: Sequence[Sequence[str]]) -> SaturationCurve
         curve.total_applications.append(total_applications)
         curve.ratio.append(isr(len(seen), total_applications))
     return curve
+
+
+_COLUMN_WIDTH = 7
+_RENDER_MAX_POINTS = 32
+
+
+def render_saturation_curve(curve: SaturationCurve, *, max_points: int = _RENDER_MAX_POINTS) -> str:
+    """Render the cumulative unique-to-total curve as a fixed-width ASCII table.
+
+    Five lines: a header, then one ``unit`` / ``unique`` / ``total`` /
+    ``ratio`` row per rendered point — one column per point, values
+    right-justified, ratios at two decimals. The final column is the
+    whole-run ISR (exactly the scalar ``isr`` reports already surface), so
+    the curve renders BESIDE the scalar, never instead of it.
+
+    Beyond ``max_points`` points the middle is elided with a ``...``
+    column; the first and last points always render. Empty curve -> ""
+    (nothing to render, nothing invented). Deterministic: same curve in,
+    byte-identical string out.
+    """
+    if not curve.unit_index:
+        return ""
+    n = len(curve.unit_index)
+    elided = n > max(max_points, 2)
+    shown = [*list(range(max_points - 1)), n - 1] if elided else list(range(n))
+
+    unit_cells = [str(curve.unit_index[i]) for i in shown]
+    unique_cells = [str(curve.cumulative_unique[i]) for i in shown]
+    total_cells = [str(curve.total_applications[i]) for i in shown]
+    ratio_cells = [f"{curve.ratio[i]:.2f}" for i in shown]
+    if elided:
+        for cells in (unit_cells, unique_cells, total_cells, ratio_cells):
+            cells.insert(len(cells) - 1, "...")
+
+    def _row(label: str, cells: list[str]) -> str:
+        return f"{label.rjust(_COLUMN_WIDTH)}: " + " ".join(
+            cell.rjust(_COLUMN_WIDTH) for cell in cells
+        )
+
+    return "\n".join(
+        [
+            "saturation curve (cumulative unique/total by unit index)",
+            _row("unit", unit_cells),
+            _row("unique", unique_cells),
+            _row("total", total_cells),
+            _row("ratio", ratio_cells),
+        ]
+    )

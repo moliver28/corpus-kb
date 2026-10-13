@@ -12,6 +12,12 @@ embedding:
   base_url: http://localhost:11434
   batch_size: 32
   dimensions: 768
+  # U32 MRL gating: is the model Matryoshka-trained (front-slice truncation
+  # + renormalization is a sound reduced-dim representation)? qwen3-embedding
+  # models ARE MRL-trained; nomic-embed-text is NOT. The two-stage matryoshka
+  # arm (search.matryoshka_enabled) refuses to activate while this is false
+  # (config load raises; validate_configs reports the same combination).
+  mrl_trained: false
 
 chunking:
   max_size: 4096

@@ -12,14 +12,22 @@ completeness. The pooled R(tau_res) share rides in the value.
 
 Saturation (U36) — the run_stop rule from ``coding.saturation`` (ISR-based:
 new-code rate at or below 0.05 once >= 50 unique codes exist) plus the
-cumulative saturation CURVE when ``unit_code_sets`` are on file. No profile
+cumulative saturation CURVE — ``render_saturation_curve`` over the
+``saturation_curve`` points — when ``unit_code_sets`` are on file, so the
+review packet carries the whole unique-to-total trajectory beside the final
+scalar ISR (the packet used to surface only that scalar). No profile
 field exists for these; the module's own documented conventions are the
 thresholds and are reported in ``threshold``.
 """
 
 from __future__ import annotations
 
-from corpus_kb.coding.saturation import isr, run_stop, saturation_curve
+from corpus_kb.coding.saturation import (
+    isr,
+    render_saturation_curve,
+    run_stop,
+    saturation_curve,
+)
 from corpus_kb.research.exhaustiveness import PLATEAU_EPSILON, plateau_detected
 from corpus_kb.research.release.gate_support import as_dict, as_float, as_int, as_list, as_str
 from corpus_kb.research.release.gate_types import (
@@ -105,6 +113,10 @@ def gate_saturation(inputs: GateInputs, _profile: ResolvedProfile) -> GateResult
         value["isr"] = isr(
             len({c for unit in unit_sets for c in unit}), sum(len(unit) for unit in unit_sets)
         )
+        # U36: the cumulative unique-to-total curve, RENDERED (not just the
+        # final scalar above) — the review packet's gate evidence carries the
+        # whole trajectory so an approver can see WHERE saturation bent.
+        value["curve"] = render_saturation_curve(curve)
     stopped = run_stop(
         new_codes,
         base_unique,

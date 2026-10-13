@@ -43,11 +43,11 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
 | U29 | Inductive baselines (GATOS, TnT-LLM, LLooM) | absent | `grep "GATOS|TnT|LLooM"` = 0 hits | P6 |
 | U30 | Optional cross-encoder rerank stage over hybrid candidates | partial | `rag/reranker.py:PgmlReranker` (pgml.rank, wired) and `OllamaReranker` (parses `float(raw.strip())` at reranker.py:163 — wrong contract for qwen3-reranker's yes/no token format); `build_reranker` (reranker.py:200) has NO production call site (only `create_reranker` is wired: `handlers/query_handler.py:QueryHandler.__init__`, `server_wiring.py`) | P3: fix the qwen3 parsing contract + provider-config gate + NDCG gate on benchmark |
 | U31 | Embedder upgrade benchmark (EmbeddingGemma 2, Qwen3, current) | absent | `scripts/bench_setup.py` placeholder; embedder profiles only in installer defaults | P3: U22 harness extension |
-| U32 | Matryoshka two-stage search (256-d probe, full-dim rerank) | partial | SPEC HYPOTHESIS ADJUSTED: two-stage search EXISTS on the main path — `handlers/query_handler.py:handle_search` matryoshka arm (1024-d candidate CTE + full-dim re-rank), `rag/embedder.py:OllamaEmbedder.embed_matryoshka` (front-slice + renormalize), `migrations/010_matryoshka_1024.sql` index — config-OFF default (`search.matryoshka_enabled: false`); 256-d probe + MRL-model gating + benchmark absent | P3: 256-d probe column (migration 016 `embedding_256` exists on the research grain), benchmark before enabling |
+| U32 | Matryoshka two-stage search (256-d probe, full-dim rerank) | done | SPEC HYPOTHESIS ADJUSTED: two-stage search EXISTS on the main path — `handlers/query_handler.py:handle_search` matryoshka arm (1024-d candidate CTE + full-dim re-rank), `rag/embedder.py:OllamaEmbedder.embed_matryoshka` (front-slice + renormalize), `migrations/010_matryoshka_1024.sql` index — config-OFF default (`search.matryoshka_enabled: false`). MRL gating now code-enforced (issue #81): declared flag `embedding.mrl_trained: false` default (`config.py:get_default_config` + both config.yaml files; qwen3-embedding is MRL-trained, nomic-embed-text is NOT); `config.py:matryoshka_mrl_error` raises from `load_config` on the invalid combination (honest refusal, never a silent activation); `_setup/validate_configs.py:validate_runtime_config` declares the key in RUNTIME_CONFIG_KEYS and reports the same cross-field rule for the shipped YAMLs; tests `tests/test_u32_mrl_gating.py` | P3: 256-d probe column (migration 016 `embedding_256` exists on the research grain), benchmark before enabling |
 | U33 | Dawid-Skene aggregation to adjudicated reference labels | absent | `grep Dawid` = 0 hits | P3: ~50-line numpy EM |
 | U34 | Coder-panel diversity / judge-bias guard | absent | no model-family recording (`grep family` = only g3_audit text) | P3 |
-| U35 | Judgment distribution (mean over sampled outputs) | partial | `coding/uncertainty/tier1_logprob.py` reads token logprobs where exposed; `coder_client.py` greedy-only decoding; config key `research.judgment_distribution.use_mean` live in all three config locations and doctor-verified (`_setup/doctor_research.py:judgment_distribution_check` — `not_evaluable` warn when enabled without verifiable probability exposure) | P7: runtime mean over sampled judgments (needs a probability-exposing coder backend) |
-| U36 | Saturation curve reporting | partial | `coding/saturation.py:isr` (ISR = Incremental Sampling Rate) + `run_stop` rule; `coding/saturation_query.py:compute_saturation` computes the DB-side values; no cumulative curve rendering | P3: curve (cumulative unique/total by unit index) in reports |
+| U35 | Judgment distribution (mean over sampled outputs) | done | Production call site wired (issue #81): `coding/coder_dispatch.py:dispatch_chunk` routes on the judgment-distribution mean when `research.judgment_distribution.use_mean` is on (explicit arg > config key; the greedy reply stays the decision source and with the key OFF the rows are byte-identical and exactly one model call is made); `coding/judgment_sampling.py:sample_judgments` makes JUDGMENT_MEAN_SAMPLES=4 extra draws at JUDGMENT_SAMPLE_TEMPERATURE=0.7 and folds them through `coding/uncertainty/judgment_distribution.py:judgment_mean`; `coding/judgment_sampling.py:judgment_mean_enabled` is the typed config read (measurement_settings); `coding/coder_client.py:call_ollama(temperature=)` threads the sampling temperature through the Ollama logprobs request (greedy stays 0); tests `tests/test_u35_judgment_mean.py` (fake probability source, offline) | — (doctor's probability-exposure check stays honest: Ollama logprobs is the only verified backend) |
+| U36 | Saturation curve reporting | done | Curve rendered (issue #81): `coding/saturation.py:render_saturation_curve` (fixed-width cumulative unique/total table by unit index, ratios at two decimals, middle elided beyond `_RENDER_MAX_POINTS`=32, empty curve -> ""), wired into the release review packet via `research/release/gate_measures.py:gate_saturation` (`value["curve"]` beside the scalar `isr`/`curve_final_isr`), surfacing through `research/release/gates.py:assess` bundles and recorded gate evidence; tests `tests/test_u36_saturation_render.py` (exact render shape + packet wire-in) | — |
 | U37 | Active review batching (uncertainty + diversity) | done | `research/review_batch.py:select_review_batch` (active + greedy max-min diversity + always-present random stratum); wired with config-read sizes via `research/review_routing.py:next_review_batch`, re-exported on `research/review_surface.py` | — (P7: CLI/MCP surface rows) |
 | U38 | Weak-supervision aggregation (conditional) | absent | no aggregation module (see U33) | P4 (conditional, ≥3 signals) |
 | U39 | Label-error triage without Cleanlab | absent | no out-of-sample label queue | P4 |
@@ -63,18 +63,17 @@ point exists, remaining work named), `absent` (nothing in the repo yet).
 
 ## Tallies (final re-tally, 2026-10-12, end-of-program audit)
 
-- **done = 42** — U1–U26, U30, U31, U33, U34, U37–U48 (U23 done as
+- **done = 45** — U1–U26, U30–U48 (U23 done as
   benchmark-only; U30 implementation done with adoption data-gated; U45/U46
   done per their evaluate/benchmark-first specs — no retrieval default was
-  flipped without evidence)
-- **partial = 3** — U32 (MRL-model gating for two-stage matryoshka not yet
-  code-enforced), U35 (judgment-distribution mean has no production call
-  site until a probability-exposing backend is configured), U36 (full
-  saturation-curve report rendering; the scalar ISR surfaces today)
+  flipped without evidence; U32/U35/U36 closed by the issue-#81 branch —
+  MRL gating, the judgment-mean production call site, review-packet
+  saturation-curve rendering)
+- **partial = 0**
 - **deferred = 3** — U27, U28, U29 (optional interop/baselines, program-plan
   decision; topic layer/BERTopic separately deferred)
 
-42 + 3 + 3 = 48 rows. (This supersedes the earlier 12/15/21 tally, which was
+45 + 0 + 3 = 48 rows. (This supersedes the earlier 12/15/21 tally, which was
 verified against earlier wave branches; the final audit re-verified every
 'done' citation by import and sample-checked the partial rows.)
 
@@ -200,11 +199,11 @@ The Step-0 table above is the historical snapshot this program started from (kep
 | U29 | deferred | optional interop dropped for scope -> issue #79 |
 | U30 | done (adoption data-gated) | `rag/reranker.py` qwen3 yes/no logprob scoring; `create_reranker` wired in `query_handler`; Ollama logprobs verified live |
 | U31 | done | `scripts/bench_embedders.py` + versioned `EmbeddingProfile` contract (never in-place embedder changes) |
-| U32 | partial | two-stage matryoshka exists config-off; MRL-model gating not yet code-enforced -> issue #81 |
+| U32 | done | two-stage matryoshka config-off + MRL gating enforced: `config.py:matryoshka_mrl_error` (load_config raises), `embedding.mrl_trained` default false in all three config locations, `validate_configs.validate_runtime_config` cross-field rule; `tests/test_u32_mrl_gating.py` (#81) |
 | U33 | done | `coding/aggregation.py:dawid_skene` (numpy EM, posterior uncertainty) |
 | U34 | done | `gate_machine_profile` coder-panel family diversity (fail in high-assurance, warn elsewhere) |
-| U35 | partial | `coding/uncertainty/judgment_distribution.py` + config + doctor exist; no production call site until a probability-exposing backend -> issue #81 |
-| U36 | partial | `coding/saturation.py:saturation_curve` consumed by `gate_measures.gate_saturation`; full-curve report rendering outstanding -> issue #81 |
+| U35 | done | `coding/judgment_sampling.py:sample_judgments` (4 extra 0.7-temperature draws via the Ollama logprobs backend) called from `coding/coder_dispatch.py:dispatch_chunk` behind `research.judgment_distribution.use_mean`; off = byte-identical single greedy call; `tests/test_u35_judgment_mean.py` (#81) |
+| U36 | done | `coding/saturation.py:render_saturation_curve` wired into the review packet via `research/release/gate_measures.py:gate_saturation` (`value["curve"]`); `tests/test_u36_saturation_render.py` (#81) |
 | U37 | done | `research/review_batch.py:select_review_batch` wired via `review_routing.next_review_batch` |
 | U38 | done (conditional) | `coding/aggregation.py:aggregate_signals` (DS-EM at >=3 signals; `insufficient_signals` -> vote, tie->review) |
 | U39 | done | `coding/label_triage.py:label_triage` (stratified k-fold OOF, ranked queue, `precision_of_flags`) |
