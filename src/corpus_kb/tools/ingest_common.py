@@ -15,14 +15,13 @@ from pathlib import Path
 
 import asyncpg
 
-from ..chunking.unstructured_chunker import chunk_elements
 from ..config import load_config
 from ..extraction import ExtractStats, create_extractor
 from ..extraction.pgml_backend import PgmlExtractor
 from ..ingest.hierarchy_settings import load_hierarchy_settings
+from ..ingestion.base import DETECT_HEAD_CHARS, SourceProfile, chunks_from_plan, validate_plan
+from ..ingestion.registry import resolve_strategy
 from ..ontology import Ontology, load_ontology
-from ..partitioning import ElementProxy
-from ..partitioning import partition as unstructured_partition
 from ..rag import aembed_batch, create_embedder
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
@@ -69,16 +68,6 @@ def ontology(config: dict[str, object]) -> Ontology:
     if not isinstance(ontology_path, str):
         ontology_path = "config/ontology.yaml"
     return load_ontology(ontology_path)
-
-
-def elements_for_text(text: str) -> list[ElementProxy]:
-    """Wrap raw text into a single-element list for the chunking pipeline."""
-    return [ElementProxy(text=text, element_type="NarrativeText", element_id="raw-text")]
-
-
-def elements_for_file(path: Path) -> list[ElementProxy]:
-    """Partition a file into unstructured elements for chunking."""
-    return unstructured_partition(path)
 
 
 def build_document(path: str, source_type: str, text: str) -> Document:
@@ -346,10 +335,16 @@ async def run_pipeline(
     tenant_id: str = DEFAULT_TENANT_ID,
     rag_backend: RagBackend | None = None,
     is_file: bool = False,
+    strategy_name: str | None = None,
 ) -> dict[str, object]:
-    """Run the full ingest pipeline: partition, chunk, embed, extract, store.
+    """Run the full ingest pipeline: resolve strategy, build chunks, embed,
+    extract, store.
 
-    All writes go directly to Postgres via asyncpg. No LanceDB, no SQLite.
+    The strategy is resolved ONCE per document (precedence: explicit
+    ``strategy_name`` override > ``ingestion.strategies[source_type]`` config
+    mapping > content detection > ``ingestion.default``); its ChunkPlan
+    replaces the partition+chunk step. Everything downstream (embed ->
+    extract -> store) is strategy-agnostic.
 
     Integrity semantics (migration 022):
 
@@ -364,12 +359,15 @@ async def run_pipeline(
 
     Args:
         text: The full text content to ingest.
-        source_type: One of "code", "markdown", "text".
+        source_type: Document source type ("code", "markdown", "text",
+            "transcript", ...) — also the config-mapping and detection hint.
         path: Source path or a custom source identifier.
         config: Pipeline config dict.
         pg_pool: asyncpg connection pool for Postgres writes.
         tenant_id: Tenant ID for RLS.
         is_file: True if path points to a file; False if path is raw text source ID.
+        strategy_name: Optional explicit ingestion-strategy override (a
+            registered strategy name). Unknown names raise UnknownStrategyError.
 
     Returns:
         Result dict with keys: status ("success" when every stage was clean,
@@ -378,20 +376,33 @@ async def run_pipeline(
         size_bytes, chunk_count, entity_count, relation_count,
         pg_chunk_count, pg_vector_count, degraded, extractor_id, entities,
         errors, run_id (and embed_note when a fallback embedder rescued the
-        embeddings).
+        embeddings) — plus the strategy provenance fields ``strategy``,
+        ``strategy_basis``, ``detection_confidence``, ``detection_reason``
+        (and ``warnings`` when non-empty).
     """
-    if is_file:
-        # Let Unstructured parse the file (PDF, DOCX, HTML, etc.) and derive the
-        # document text from the extracted elements. Do NOT read the file as
-        # UTF-8 first: binary formats would raise UnicodeDecodeError before ever
-        # reaching the partitioner.
-        elements = elements_for_file(Path(path))
-        text = "\n\n".join(e.text for e in elements if e.text)
-    else:
-        elements = elements_for_text(text)
-
+    resolution = resolve_strategy(
+        source_type,
+        Path(path).name,
+        text[:DETECT_HEAD_CHARS],
+        config,
+        strategy_override=strategy_name,
+    )
+    profile = SourceProfile(source_type=source_type, is_file=is_file, path=path)
+    plan = resolution.strategy.build_chunks(text, Path(path).name, profile)
+    conformance_problems = validate_plan(plan)
+    for problem in conformance_problems:
+        logger.warning("ChunkPlan conformance (%s): %s", resolution.strategy.name, problem)
+    plan.warnings.extend(f"conformance: {problem}" for problem in conformance_problems)
+    if resolution.detection is not None:
+        plan.detection_confidence = resolution.detection.confidence
+        plan.detection_reason = resolution.detection.reason
+    # For files the strategy derives the document text from the parsed
+    # content (previously the unstructured partition step did); binary
+    # formats work because the strategy partitions the FILE, never decoding
+    # bytes as UTF-8 first.
+    text = plan.document_text
     document = build_document(path, source_type, text)
-    chunks = chunk_elements(elements, text, document.document_id)
+    chunks = chunks_from_plan(plan, document.document_id)
     file_hash = _sha256(text)
 
     # Serialize concurrent ingests of the same content per tenant. The lock is
@@ -412,7 +423,7 @@ async def run_pipeline(
                 "errors": [],
             }
         try:
-            return await _run_locked_stages(
+            result = await _run_locked_stages(
                 document=document,
                 chunks=chunks,
                 file_hash=file_hash,
@@ -425,6 +436,18 @@ async def run_pipeline(
                 rag_backend=rag_backend,
                 is_file=is_file,
             )
+            # Strategy provenance (plan Section 0): which seam produced the
+            # chunks. Attached here because resolution/plan live in this scope.
+            result["strategy"] = resolution.strategy.name
+            result["strategy_basis"] = resolution.basis
+            if resolution.detection is not None:
+                result["detection_confidence"] = round(resolution.detection.confidence, 4)
+                result["detection_reason"] = resolution.detection.reason
+            if resolution.detected is not None:
+                result["detected_strategy"] = resolution.detected
+            if plan.warnings:
+                result["warnings"] = list(plan.warnings)
+            return result
         finally:
             await lock_conn.execute(
                 "SELECT pg_advisory_unlock(hashtextextended($1 || ':' || $2, 0))",
@@ -828,8 +851,12 @@ async def ingest_text(
     Lives here (rather than only in ``ingest_tools``) so tests and other
     ingest-side code can import it alongside ``run_pipeline`` without a
     circular import; ``ingest_tools.ingest_text`` re-exports this function.
+
+    ``source_type`` is the DOCUMENT source type (it feeds the
+    ``ingestion.strategies`` config mapping and content detection); use the
+    explicit ``run_pipeline(strategy_name=...)`` override to pin a strategy.
     """
-    if source_type not in {"code", "markdown", "text"}:
+    if source_type not in {"code", "markdown", "text", "transcript"}:
         return {"status": "error", "message": f"Invalid source_type: {source_type}"}
     config = load_config_or_pass(config)
     return await run_pipeline(text, source_type, source, config, pg_pool, tenant_id, is_file=False)

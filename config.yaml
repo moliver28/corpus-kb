@@ -17,6 +17,17 @@ chunking:
   max_size: 4096
   overlap: 200
 
+# Pluggable ingestion strategies (src/corpus_kb/ingestion/). Resolution
+# precedence: explicit --source-type override > this mapping (document
+# source_type -> strategy name) > content detection > `default`.
+# Third-party strategies register via the corpus_kb.ingestion_strategies
+# entry-point group; every registered strategy must pass the conformance
+# suite (corpus_kb.ingestion.validate_plan).
+ingestion:
+  strategies:
+    transcript: transcript
+  default: default
+
 search:
   rrf_k: 60
   expand_context: true
@@ -27,6 +38,11 @@ search:
   # rows whose stored vector is flagged degraded (all-zero backfill,
   # migration 022). Seed documents stay discoverable either way.
   exclude_degraded: true
+  # Opt-in only (default false): when true, migration 023 maintains the
+  # qa_context FTS expression index so transcript Q/A text is full-text
+  # searchable. Off by default because Postgres ts_rank has no IDF —
+  # question text in the shared index skews ranking unsoundly.
+  qa_context_in_fts: false
   # U45/U21 shared retrieval knobs (research/retrieval_settings.py).
   # candidates_per_branch 150 is the committed upgrade-program default
   # (contextual-retrieval study value); return truncation is owned by

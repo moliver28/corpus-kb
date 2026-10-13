@@ -1,0 +1,12 @@
+Moderator: Thank you both for joining the migration postmortem. Can you start by describing when the outage began?
+Participant: The first alerts fired at 02:14 UTC, when the shard pool stopped accepting connections from the gateway.
+Moderator: What do you think triggered the connection drop?
+Participant: The config rollout replaced the pool size setting with a zero, so the pool drained and refused new work.
+Observer: I reviewed the audit log and confirmed the config write happened at 02:11 UTC from the deploy pipeline.
+Moderator: How long did it take to restore service?
+Participant: We rolled the config back by 02:31 UTC and the pool recovered within four minutes.
+Moderator: What would prevent this from happening again?
+Participant: Validation on the deploy pipeline that rejects a pool size of zero, plus an alert on pool saturation.
+Observer: I can own the pipeline validation ticket this week.
+Moderator: Anything else the incident report should capture?
+Participant: The customer status page lagged the alert by twenty minutes; we should automate that update.

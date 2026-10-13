@@ -6,10 +6,13 @@ Wires the setup/doctor diagnostics and server start commands behind a single
 
 from __future__ import annotations
 
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from uuid import UUID
 
 import typer
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 # Release lifecycle group (U5, P7): the commands live in cli_release.py (the
 # 250-line soft limit; cli.py is already the largest surface file) and share
@@ -332,7 +335,49 @@ def _coding_run_coroutine(codebook_version_id: str, project_id: str | None, alph
     return _run()
 
 
-def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: bool):
+def _validate_strategy_override(source_type: str | None) -> None:
+    """Fail fast when --source-type names an unregistered ingestion strategy."""
+    if source_type is None:
+        return
+    from corpus_kb.ingestion.registry import strategy_names
+
+    known = strategy_names()
+    if source_type not in known:
+        raise typer.BadParameter(
+            f"Unknown source-type strategy '{source_type}'. "
+            f"Valid strategies: {', '.join(sorted(known))}",
+            param_hint="--source-type",
+        )
+
+
+def _print_detection_summary(path: Path, cfg: dict[str, object], source_type: str | None) -> None:
+    """Print the detection summary line, e.g.
+    detected: transcript (0.92, moderator-pattern) -> strategy transcript (via config)."""
+    from corpus_kb.ingestion.base import DETECT_HEAD_CHARS
+    from corpus_kb.ingestion.registry import resolve_strategy
+
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace")[:DETECT_HEAD_CHARS]
+    except OSError:
+        head = ""
+    resolution = resolve_strategy("transcript", path.name, head, cfg, source_type)
+    detection = resolution.detection
+    confidence = detection.confidence if detection is not None else 0.0
+    reason = detection.reason if detection is not None else "not attempted"
+    print(
+        f"detected: {resolution.detected or 'none'} ({confidence:.2f}, {reason}) "
+        f"-> strategy {resolution.strategy.name} (via {resolution.basis})"
+    )
+
+
+def _ingest_coroutine(
+    path: str,
+    project_id: str | None,
+    watch: bool,
+    force: bool,
+    source_type: str | None = None,
+):
+    _validate_strategy_override(source_type)
     from corpus_kb.config import load_config
     from corpus_kb.handlers.research_handler import get_research_handler
     from corpus_kb.projections.checkpoint import CheckpointManager
@@ -345,9 +390,13 @@ def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: boo
     from corpus_kb.rag import create_embedder
 
     async def _run() -> int:
+        from pathlib import Path
+
         import asyncpg
 
         cfg = load_config()
+        if source_type is not None and Path(path).is_file():
+            _print_detection_summary(Path(path), cfg, source_type)
         db = cfg.get("database", {})
         conn_str = str(db.get("connection_string", ""))
         pool = await asyncpg.create_pool(conn_str)
@@ -371,6 +420,8 @@ def _ingest_coroutine(path: str, project_id: str | None, watch: bool, force: boo
                 interval = int(ingest_cfg.get("watch_interval_s", 10))
 
                 async def ingest_one(file_path: Path) -> None:
+                    if source_type is not None:
+                        _print_detection_summary(file_path, cfg, source_type)
                     await handler.ingest_transcript(_tenant(), str(file_path), _pid(project_id))
                     await projection.catch_up(reader)
                     await docs.catch_up(reader, _tenant())
@@ -418,10 +469,17 @@ def research_ingest_transcript(
     path: str = typer.Argument(..., help="Transcript file (txt|vtt|srt|csv|docx)"),
     project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
     force: bool = typer.Option(False, "--force", help="Re-ingest even if file hash unchanged"),
+    source_type: str = typer.Option(
+        None,
+        "--source-type",
+        help="Ingestion strategy override (validated against the registry)",
+    ),
 ) -> int:
     """Ingest one transcript: turns -> roles -> exchanges -> event stream."""
 
-    return _run_async(_ingest_coroutine(path, project_id, watch=False, force=force))
+    return _run_async(
+        _ingest_coroutine(path, project_id, watch=False, force=force, source_type=source_type)
+    )
 
 
 @research_app.command("ingest")
@@ -430,9 +488,16 @@ def research_ingest(
     project_id: str = typer.Option(None, "--project-id", help="Research project UUID"),
     watch: bool = typer.Option(False, "--watch", help="Tail a drop directory forever"),
     force: bool = typer.Option(False, "--force", help="Re-ingest even if file hash unchanged"),
+    source_type: str = typer.Option(
+        None,
+        "--source-type",
+        help="Ingestion strategy override (validated against the registry)",
+    ),
 ) -> int:
     """Dynamic ingestion with separate file-hash and text-hash dedup."""
-    return _run_async(_ingest_coroutine(path, project_id, watch=watch, force=force))
+    return _run_async(
+        _ingest_coroutine(path, project_id, watch=watch, force=force, source_type=source_type)
+    )
 
 
 @coding_app.command("inductive")

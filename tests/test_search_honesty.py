@@ -709,12 +709,17 @@ async def test_doctor_db_checks_append_stage3_checks(
 
 
 def test_runtime_config_keys_declare_stage3_key() -> None:
-    assert {"search.exclude_degraded": bool} == RUNTIME_CONFIG_KEYS
+    assert {
+        "search.exclude_degraded": bool,
+        "search.qa_context_in_fts": bool,
+    } == RUNTIME_CONFIG_KEYS
 
 
 def test_validate_runtime_config_accepts_bool() -> None:
-    assert validate_runtime_config({"search": {"exclude_degraded": True}}) == []
-    assert validate_runtime_config({"search": {"exclude_degraded": False}}) == []
+    config = {"search": {"exclude_degraded": True, "qa_context_in_fts": False}}
+    assert validate_runtime_config(config) == []
+    config_off = {"search": {"exclude_degraded": False, "qa_context_in_fts": False}}
+    assert validate_runtime_config(config_off) == []
 
 
 def test_validate_runtime_config_rejects_missing_and_mistyped() -> None:

@@ -476,6 +476,7 @@ def validate_extraction_gliner(config: dict[str, Any]) -> list[str]:
 # dotted key -> expected YAML type (bool/str/int/float/list/dict)
 RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "search.exclude_degraded": bool,
+    "search.qa_context_in_fts": bool,
 }
 
 
