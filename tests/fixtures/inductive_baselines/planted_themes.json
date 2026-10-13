@@ -1,0 +1,66 @@
+{
+  "description": "Planted-theme labels for the inductive-baselines fixture corpus (issue #79 / U29). Synthetic interviews with three planted themes plus mixed and neutral documents. Themes are planted so that inductive-coding baselines can be scored as RECOVERY baselines only.",
+  "recovery_baseline_caveat": "GATOS-style validation uses synthetic planted themes, so results are recovery baselines, NOT proof of validity on real interviews.",
+  "themes": {
+    "deployment": {
+      "keywords": [
+        "deploy",
+        "deployment",
+        "install",
+        "setup",
+        "upgrade",
+        "rollback",
+        "pipeline",
+        "environment",
+        "configure",
+        "release"
+      ]
+    },
+    "pricing": {
+      "keywords": [
+        "pricing",
+        "price",
+        "cost",
+        "budget",
+        "invoice",
+        "billing",
+        "subscription",
+        "tier",
+        "expensive",
+        "discount"
+      ]
+    },
+    "performance": {
+      "keywords": [
+        "latency",
+        "slow",
+        "fast",
+        "performance",
+        "speed",
+        "throughput",
+        "cache",
+        "bottleneck",
+        "lag",
+        "response"
+      ]
+    }
+  },
+  "documents": {
+    "interview_01_deployment.md": "deployment",
+    "interview_02_deployment.md": "deployment",
+    "interview_03_deployment.md": "deployment",
+    "interview_04_deployment.md": "deployment",
+    "interview_05_pricing.md": "pricing",
+    "interview_06_pricing.md": "pricing",
+    "interview_07_pricing.md": "pricing",
+    "interview_08_pricing.md": "pricing",
+    "interview_09_performance.md": "performance",
+    "interview_10_performance.md": "performance",
+    "interview_11_performance.md": "performance",
+    "interview_12_performance.md": "performance",
+    "interview_13_mixed_deployment_pricing.md": "mixed",
+    "interview_14_mixed_pricing_performance.md": "mixed",
+    "interview_15_mixed_deployment_performance.md": "mixed",
+    "interview_16_neutral.md": "neutral"
+  }
+}
