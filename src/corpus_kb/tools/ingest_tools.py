@@ -1,9 +1,13 @@
 """MCP ingest tools for Corpus-KB.
 
 All ingest functions are async and require an asyncpg.Pool for Postgres writes.
-``source_type`` overrides on ingest_file/ingest_directory name a REGISTERED
-INGESTION STRATEGY (explicit resolution precedence); unknown names return a
-clear error listing the valid strategies.
+``source_type`` overrides on ingest_file/ingest_directory/ingest_url name a
+REGISTERED INGESTION STRATEGY (explicit resolution precedence); unknown names
+return a clear error listing the valid strategies.
+
+``ingest_url`` lives in ``ingest_url_tools.py`` (250-line soft limit; the
+registration helper there is private plumbing) and is re-exported here so the
+``corpus_kb.tools.ingest_tools`` import path stays the one-stop tool layer.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from ..ingest_watch import WATCH_SUFFIXES
 from ..ingestion.registry import strategy_names
 from .ingest_common import ingest_text, load_config_or_pass, run_pipeline
 from .ingest_surface_tools import ingest_reembed, ingest_status
+from .ingest_url_tools import ingest_url
 
 __all__ = [
     "delete_document",
@@ -24,6 +29,7 @@ __all__ = [
     "ingest_reembed",
     "ingest_status",
     "ingest_text",
+    "ingest_url",
     "list_documents",
 ]
 
@@ -154,6 +160,8 @@ def _detect_source_type(path: Path) -> str:
     suffix = path.suffix.lower()
     if suffix in {".md", ".markdown", ".rst"}:
         return "markdown"
+    if suffix == ".pptx":
+        return "pptx"
     if suffix in {
         ".py",
         ".js",

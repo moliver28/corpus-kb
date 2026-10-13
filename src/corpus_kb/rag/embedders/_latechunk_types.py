@@ -76,9 +76,16 @@ class IntTensor2D(Protocol):
 
 @runtime_checkable
 class BatchEncoding(Protocol):
-    """HF tokenizer output: dict-like of int tensors."""
+    """HF tokenizer output: dict-like of int tensors (plus raw-list entries).
+
+    ``get`` reaches non-tensor entries such as ``offset_mapping`` (a plain
+    list of (start, end) char pairs) that the tensor-typed ``__getitem__``
+    cannot declare.
+    """
 
     def __getitem__(self, key: str) -> IntTensor2D: ...
+
+    def get(self, key: str, default: object = ...) -> object: ...
 
 
 @runtime_checkable
@@ -94,6 +101,7 @@ class TokenizerLike(Protocol):
         truncation: bool,
         max_length: int | None = ...,
         add_special_tokens: bool = ...,
+        return_offsets_mapping: bool = ...,
     ) -> BatchEncoding: ...
 
     def convert_ids_to_tokens(

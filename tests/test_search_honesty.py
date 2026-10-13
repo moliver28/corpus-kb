@@ -581,7 +581,12 @@ async def test_reembed_repairs_and_clears_degraded(monkeypatch: pytest.MonkeyPat
     captured: dict[str, object] = {}
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         captured["override"] = text_override
         for chunk in chunks:
@@ -609,7 +614,12 @@ async def test_reembed_counts_zero_output_as_failed(monkeypatch: pytest.MonkeyPa
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         for chunk in chunks:
             chunk.embedding = [0.0] * 4
@@ -655,7 +665,12 @@ async def test_reembed_sets_tenant_guc_inside_transaction(
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         for chunk in chunks:
             chunk.embedding = [0.5] * 4
@@ -688,7 +703,12 @@ async def test_reembed_updates_pin_tenant_id(monkeypatch: pytest.MonkeyPatch) ->
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
 
     async def fake_embed_chunks(
-        chunks: list, config: dict, pool: object = None, text_override: dict | None = None
+        chunks: list,
+        config: dict,
+        pool: object = None,
+        text_override: dict | None = None,
+        document_text: str | None = None,
+        meta: dict | None = None,
     ):
         for chunk in chunks:
             chunk.embedding = [0.5] * 4
@@ -850,18 +870,40 @@ async def test_doctor_db_checks_append_stage3_checks(
 def test_runtime_config_keys_declare_stage3_key() -> None:
     # U32 (issue #81) added embedding.mrl_trained to the runtime contract;
     # its matryoshka fix registered search.matryoshka_enabled alongside it.
+    # The website-ingestion feature added the web.* fetch/crawl keys.
     assert {
         "search.exclude_degraded": bool,
         "search.qa_context_in_fts": bool,
         "search.matryoshka_enabled": bool,
         "embedding.mrl_trained": bool,
+        "embedding.late_chunking": bool,
         "ingestion.default": str,
         "ingestion.strategies": dict,
+        "web.user_agent": str,
+        "web.timeout_seconds": int,
+        "web.max_bytes": int,
+        "web.respect_robots": bool,
+        "web.max_pages": int,
+        "web.max_depth": int,
+        "web.delay_seconds": float,
+        "web.allow_private_addresses": bool,
     } == RUNTIME_CONFIG_KEYS
 
 
 _INGESTION_KEYS: dict[str, object] = {"ingestion": {"default": "default", "strategies": {}}}
-_EMBEDDING_KEYS: dict[str, object] = {"embedding": {"mrl_trained": False}}
+_EMBEDDING_KEYS: dict[str, object] = {"embedding": {"mrl_trained": False, "late_chunking": True}}
+_WEB_KEYS: dict[str, object] = {
+    "web": {
+        "user_agent": "corpus-kb/0.1 (+https://github.com/moliver28/corpus-kb)",
+        "timeout_seconds": 30,
+        "max_bytes": 5242880,
+        "respect_robots": True,
+        "max_pages": 5,
+        "max_depth": 2,
+        "delay_seconds": 1.0,
+        "allow_private_addresses": False,
+    }
+}
 
 
 def test_validate_runtime_config_accepts_bool() -> None:
@@ -873,6 +915,7 @@ def test_validate_runtime_config_accepts_bool() -> None:
         },
         **_EMBEDDING_KEYS,
         **_INGESTION_KEYS,
+        **_WEB_KEYS,
     }
     assert validate_runtime_config(config) == []
     config_off = {
@@ -883,6 +926,7 @@ def test_validate_runtime_config_accepts_bool() -> None:
         },
         **_EMBEDDING_KEYS,
         **_INGESTION_KEYS,
+        **_WEB_KEYS,
     }
     assert validate_runtime_config(config_off) == []
 

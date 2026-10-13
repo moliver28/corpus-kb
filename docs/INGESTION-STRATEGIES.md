@@ -45,6 +45,8 @@ entry-point discovery for packaged plugins.
 |----------|--------------|
 | `default` | `unstructured` partition + the existing chunker dispatch (tree-sitter AST for code, headings for markdown, semantic gaps for text). Behavior is verbatim identical to the pre-strategy pipeline. |
 | `transcript` | Turn-aligned question+answer chunks from speaker-turn transcripts. Each chunk carries `qa_context` ({question, participants, exchange_id}) and the same token guard as everything else. |
+| `pptx_structure` | One chunk per slide: title breadcrumbs, tables as GitHub markdown, speaker notes as their own chunks, and core/extended-properties metadata (author, created/modified, company, subject, slide numbers) on every chunk. Oversized slides split at paragraph boundaries. |
+| `web_structure` | Heading-section chunks from fetched HTML (`corpus-kb ingest-url` does the fetching: robots.txt, size/content-type caps, optional same-domain crawl). Every chunk carries page metadata (OG/Twitter/JSON-LD/canonical, language) plus its heading breadcrumb; nav/header/footer chrome is excluded. |
 
 ## Three extension ladders
 

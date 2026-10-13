@@ -18,10 +18,29 @@ embedding:
   # arm (search.matryoshka_enabled) refuses to activate while this is false
   # (config load raises; validate_configs reports the same combination).
   mrl_trained: false
+  # Late chunking (DOCUMENT ingest only — the G1 research choice is pooled
+  # and stays pooled). Applied when the latechunk extra is installed and
+  # embedding.model is a qwen3-embedding* token-level family; otherwise an
+  # honest pooled fallback (embedding_note in the ingest result).
+  late_chunking: true
 
 chunking:
   max_size: 4096
   overlap: 200
+
+# Website (URL) ingestion (src/corpus_kb/web/). ingest_url builds its
+# WebFetchConfig from this section — the shipped YAML is the live contract
+# (validate_configs pins presence + types; code defaults apply only when a
+# key is absent).
+web:
+  user_agent: "corpus-kb/0.1 (+https://github.com/moliver28/corpus-kb)"
+  timeout_seconds: 30
+  max_bytes: 5242880
+  respect_robots: true
+  max_pages: 5
+  max_depth: 2
+  delay_seconds: 1.0
+  allow_private_addresses: false  # SSRF-guard escape hatch; true only for genuinely local targets (a local wiki)
 
 # Pluggable ingestion strategies (src/corpus_kb/ingestion/). Resolution
 # precedence: explicit --source-type override > this mapping (document
@@ -32,6 +51,12 @@ chunking:
 ingestion:
   strategies:
     transcript: transcript
+    # Structure-aware first-class paths (default ON): decks chunk per slide
+    # with title breadcrumbs + core-properties metadata; web pages chunk per
+    # heading section with OG/JSON-LD metadata (source_type "web", set by
+    # ingest_url).
+    pptx: pptx_structure
+    web: web_structure
   default: default
 
 search:
