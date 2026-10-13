@@ -4,7 +4,7 @@ Thin adapter: parses JSON → constructs Pydantic command/query →
 calls handler → returns JSONResponse. No business logic here.
 
 Routes:
-  POST /api/ingest/file, /api/ingest/text, /api/ingest/directory
+  POST /api/ingest/file, /api/ingest/text, /api/ingest/directory, /api/ingest/url
   POST /api/search, /api/search/similar, /api/search/context
   POST /api/query/sql
   POST /api/embed
@@ -117,6 +117,28 @@ async def ingest_directory(request: Request) -> JSONResponse:
         )
         handler = get_command_handler()
         result = await handler.handle_ingest_directory(cmd)
+        return JSONResponse(result)
+    except Exception as exc:
+        return JSONResponse(
+            {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
+            status_code=400,
+        )
+
+
+async def ingest_url_route(request: Request) -> JSONResponse:
+    """POST /api/ingest/url — fetch (or crawl) a website and ingest its pages."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.ingest_tools import ingest_url
+
+    body = await _parse_body(request)
+    try:
+        result = await ingest_url(
+            str(body["url"]),
+            await research_pool(),
+            tenant_id=body.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
+            crawl=bool(body.get("crawl", False)),
+            source_type=body.get("source_type"),
+        )
         return JSONResponse(result)
     except Exception as exc:
         return JSONResponse(
@@ -796,6 +818,7 @@ def create_http_app() -> Starlette:
         Route("/api/ingest/file", ingest_file, methods=["POST"]),
         Route("/api/ingest/text", ingest_text, methods=["POST"]),
         Route("/api/ingest/directory", ingest_directory, methods=["POST"]),
+        Route("/api/ingest/url", ingest_url_route, methods=["POST"]),
         # Stage-5 ingest front door: status + reembed surfaces.
         Route("/api/ingest/status", ingest_status_route, methods=["GET"]),
         Route("/api/ingest/reembed", ingest_reembed_route, methods=["POST"]),

@@ -529,6 +529,14 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "embedding.late_chunking": bool,
     "ingestion.default": str,
     "ingestion.strategies": dict,
+    # -- website (URL) ingestion (src/corpus_kb/web/, WebFetchConfig) -------
+    "web.user_agent": str,
+    "web.timeout_seconds": int,
+    "web.max_bytes": int,
+    "web.respect_robots": bool,
+    "web.max_pages": int,
+    "web.max_depth": int,
+    "web.delay_seconds": float,
 }
 
 
