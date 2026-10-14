@@ -461,7 +461,7 @@ async def test_late_chunking_engages_on_real_strategy_spans(
 
     from corpus_kb.rag import embedder_selection
     from corpus_kb.rag.embedder_selection import LATE_CHUNKING_MODE, IngestEmbeddingPlan
-    from corpus_kb.tools import ingest_common
+    from corpus_kb.tools import ingest_embed
 
     fake = FakeTokenEmbedder()
     store = _harness(monkeypatch)
@@ -477,7 +477,7 @@ async def test_late_chunking_engages_on_real_strategy_spans(
         mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=recording_spans_provider
     )
     monkeypatch.setattr(embedder_selection, "_late_embedder_singleton", None)
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
 
     from pptx_factory import make_research_deck
 

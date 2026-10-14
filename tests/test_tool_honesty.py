@@ -65,11 +65,24 @@ async def test_list_documents_delegates_to_query_handler(monkeypatch: Any) -> No
 
 
 class _RecordingConn:
-    """asyncpg connection stand-in that records execute() SQL + args."""
+    """asyncpg connection stand-in that records execute() SQL + args.
+
+    ``transaction()`` mirrors the real pool: the unified delete wraps the
+    tenant GUC + DELETE in one transaction, and the fake re-enters itself.
+    """
 
     def __init__(self, fail_on: str | None = None) -> None:
         self.calls: list[tuple[str, tuple[object, ...]]] = []
         self._fail_on = fail_on
+
+    def transaction(self) -> _RecordingConn:
+        return self
+
+    async def __aenter__(self) -> _RecordingConn:
+        return self
+
+    async def __aexit__(self, *args: object) -> bool:
+        return False
 
     async def execute(self, sql: str, *args: object) -> str:
         self.calls.append((sql, args))

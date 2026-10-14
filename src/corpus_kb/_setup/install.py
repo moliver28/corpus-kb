@@ -6,235 +6,88 @@ Sub-commands:
   corpus-kb install     - legacy mutating installation (requires --apply + confirmation)
 
 All mutating actions require explicit user confirmation via input().
+
+Zero-drift split (Wave 3): this module keeps the doctor, the setup/install
+orchestrators, the dry-run plan printer, and the argparse entry point. The
+moved pieces live in sibling modules and are RE-EXPORTED below so the
+historical ``install.<name>`` surface (CLI wiring, tests that patch
+``install_module.<name>``) keeps working byte-for-byte:
+
+  install_state.py  checkpoint state (load/save/reset + constants)
+  profiles.py       hardware/GPU detection + installer profiles
+  setup_steps.py    confirm, service probes, deps/db/model steps, config write
+  setup_stack.py    docker stack, image verification, extension/model steps
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import datetime
-import json
 import logging
 import os
 import platform
 import shutil
 import subprocess
 import sys
-from pathlib import Path
 from typing import Any
 
-import asyncpg
-import httpx
 import psutil
-import yaml
 
-logger = logging.getLogger(__name__)
+# NOTE: platform/shutil/subprocess/psutil are imported (not used directly) because the
+# installer tests patch them as attributes of THIS module
+# (patch.object(install_module.shutil, "which", ...) etc.). Do not remove.
+from corpus_kb._setup.install_state import (
+    DEFAULT_CONFIG_DIR,
+    DEFAULT_CONFIG_PATH,
+    INSTALL_PHASES,
+    INSTALL_STATE_FILE_NAME,
+    INSTALL_STATE_VERSION,
+    _install_state_dir,
+    _install_state_path,
+    load_install_state,
+    reset_install_state,
+    save_install_state,
+)
+from corpus_kb._setup.profiles import (
+    _detect_gpu_vram_gb,
+    load_installer_profiles,
+)
+from corpus_kb._setup.setup_plan import setup_print_dry_run_steps
+from corpus_kb._setup.setup_stack import (
+    DEFAULT_POSTGRES_IMAGE,
+    REPO_ROOT,
+    _find_compose_command,
+    _run_cmd,
+    _verify_postgres_image,
+    setup_pull_models,
+    setup_start_compose,
+    setup_verify_extensions,
+)
+from corpus_kb._setup.setup_steps import (
+    EXTENSION_REMEDIATION,
+    EXTENSIONS,
+    SETUP_REQUIRED_MODELS,
+    check_extensions,
+    check_ollama,
+    check_postgres,
+    confirm,
+    install_database,
+    install_extension_packages,
+    install_ollama_model,
+    install_python_deps,
+    print_next_steps,
+    setup_update_config,
+    write_config,
+)
 
 DEFAULT_OLLAMA_URL = "http://localhost:11434"
-DEFAULT_CONFIG_DIR = Path.home() / ".corpus-kb"
-DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.yaml"
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-
-# PostgreSQL server extensions required by migrations 004/005.
-EXTENSIONS: tuple[tuple[str, str], ...] = (
-    ("age", "Apache AGE"),
-    ("pgml", "PostgresML"),
-)
-EXTENSION_REMEDIATION = (
-    "use the Corpus-KB docker-compose stack (corpus-kb setup) which bundles "
-    "both extensions, or install manually: https://age.apache.org/ and "
-    "https://github.com/postgresml/postgresml"
-)
-
-# Best-effort native package candidates per platform: {os: (manager, [packages])}.
-_EXTENSION_PACKAGES: dict[str, tuple[str, list[str]]] = {
-    "Linux": ("apt", ["postgresql-17-age", "postgresql-17-pgml"]),
-    "Darwin": ("brew", ["apache-age", "postgresml"]),
-}
-
-SETUP_REQUIRED_MODELS = ("nomic-embed-text", "qwen3:4b")
-
-# Resumable installer phases. Order matters: each phase is idempotent and
-# checkpoints to a state file on success so interrupted runs can resume.
-INSTALL_PHASES: tuple[str, ...] = (
-    "compose",
-    "python",
-    "database",
-    "extensions",
-    "models",
-    "config",
-)
-INSTALL_STATE_VERSION = 1
-INSTALL_STATE_FILE_NAME = "install_state.json"
-
-
-def _install_state_dir(config: dict[str, Any]) -> Path:
-    """Return the directory for installer checkpoint state files.
-
-    Honors config.installer.data_dir when present, otherwise defaults to
-    ~/.corpus-kb so the state is user-local and writable.
-    """
-    data_dir = config.get("installer", {}).get("data_dir")
-    if data_dir:
-        return Path(str(data_dir)).expanduser()
-    return DEFAULT_CONFIG_DIR
-
-
-def _install_state_path(config: dict[str, Any]) -> Path:
-    """Return the path to the installer checkpoint state file."""
-    return _install_state_dir(config) / INSTALL_STATE_FILE_NAME
-
-
-def load_install_state(config: dict[str, Any]) -> dict[str, Any]:
-    """Load persisted installer state, returning a fresh state if missing/invalid."""
-    path = _install_state_path(config)
-    if path.exists():
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            data = {}
-        if isinstance(data, dict) and data.get("version") == INSTALL_STATE_VERSION:
-            return data
-    return {
-        "version": INSTALL_STATE_VERSION,
-        "completed": [],
-        "last_run": None,
-    }
-
-
-def save_install_state(state: dict[str, Any], config: dict[str, Any]) -> None:
-    """Persist installer checkpoint state, creating parent directories if needed."""
-    path = _install_state_path(config)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    state["last_run"] = datetime.datetime.now(datetime.UTC).isoformat()
-    path.write_text(json.dumps(state, indent=2), encoding="utf-8")
-
-
-def reset_install_state(config: dict[str, Any]) -> None:
-    """Remove persisted installer state so the next run starts from phase 1."""
-    path = _install_state_path(config)
-    if path.exists():
-        path.unlink()
-
-
-def _detect_gpu_vram_gb() -> tuple[float, bool]:
-    """Return (total GPU VRAM in GB, detected); (0.0, False) if pynvml is unavailable.
-
-    The bool distinguishes "genuinely zero VRAM" from "no NVIDIA detection",
-    so the doctor report can say VRAM: unknown instead of the false "0.0 GB"
-    on GPU hosts without pynvml (review F-5).
-    """
-    try:
-        import pynvml  # type: ignore[import-not-found]
-
-        pynvml.nvmlInit()
-        device_count = pynvml.nvmlDeviceGetCount()
-        total_bytes = 0
-        for i in range(device_count):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            total_bytes += mem_info.total
-        pynvml.nvmlShutdown()
-        return total_bytes / (1024**3), True
-    except Exception:
-        return 0.0, False
 
 
 def detect_profile() -> dict[str, Any]:
-    """Detect hardware profile and return installer profile name + details."""
-    ram_gb = psutil.virtual_memory().total / (1024**3)
-    vram_gb, vram_detected = _detect_gpu_vram_gb()
-    cpu_cores = psutil.cpu_count(logical=True) or 1
+    """Detect hardware profile (patch seam: passes this module's GPU probe)."""
+    from corpus_kb._setup.profiles import detect_profile as _detect_profile
 
-    if ram_gb > 16 or vram_gb >= 8:
-        profile = "performance"
-    elif ram_gb >= 8 or vram_gb >= 4:
-        profile = "balanced"
-    else:
-        profile = "minimal"
-
-    return {
-        "profile": profile,
-        "ram_gb": round(ram_gb, 1),
-        "vram_gb": round(vram_gb, 1),
-        "vram_detected": vram_detected,
-        "cpu_cores": cpu_cores,
-        "os": platform.system(),
-        "python": sys.version.split()[0],
-    }
-
-
-def load_installer_profiles(config: dict[str, Any]) -> dict[str, Any]:
-    """Load installer profiles from config, with safe defaults."""
-    installer = config.get("installer", {})
-    profiles = installer.get("profiles", {})
-    if not isinstance(profiles, dict) or not profiles:
-        profiles = {
-            "minimal": {
-                "ram_gb_max": 8,
-                "vram_gb_max": 0,
-                "model": "nomic-embed-text",
-                "llm": "qwen3:0.6b",
-            },
-            "balanced": {
-                "ram_gb_max": 16,
-                "vram_gb_max": 4,
-                "model": "nomic-embed-text",
-                "llm": "qwen3:4b",
-            },
-            "performance": {
-                "ram_gb_max": 999,
-                "vram_gb_max": 8,
-                "model": "qwen3-embedding:8b-q8_0",
-                "llm": "qwen3:14b",
-            },
-        }
-    return profiles
-
-
-async def check_postgres(connection_string: str) -> tuple[bool, str]:
-    """Try to connect to Postgres with a 3-second timeout."""
-    try:
-        conn = await asyncpg.connect(connection_string, timeout=3)
-        version = await conn.fetchval("SELECT version()")
-        await conn.close()
-        return True, str(version)
-    except Exception as exc:
-        return False, str(exc)
-
-
-async def check_ollama(base_url: str) -> tuple[bool, str]:
-    """Check whether Ollama is reachable with a 3-second timeout."""
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            response = await client.get(f"{base_url}/api/tags")
-            return response.status_code == 200, f"status {response.status_code}"
-    except Exception as exc:
-        return False, str(exc)
-
-
-async def check_extensions(
-    connection_string: str,
-) -> dict[str, tuple[bool, str]] | None:
-    """Return {name: (installed, version)} for AGE/pgml, or None if unreachable.
-
-    None distinguishes "could not check" from "checked and missing" so the
-    doctor report never claims an extension is absent when it was never read.
-    """
-    try:
-        conn = await asyncpg.connect(connection_string, timeout=3)
-    except Exception:
-        return None
-    try:
-        rows = await conn.fetch(
-            "SELECT extname, extversion FROM pg_extension WHERE extname = ANY($1::text[])",
-            [name for name, _ in EXTENSIONS],
-        )
-    finally:
-        await conn.close()
-    versions = {row["extname"]: row["extversion"] for row in rows}
-    return {name: (name in versions, versions.get(name, "")) for name, _ in EXTENSIONS}
+    return _detect_profile(_detect_gpu_vram_gb)
 
 
 def print_doctor_report(
@@ -318,152 +171,6 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     return 0
 
 
-def confirm(step: str) -> bool:
-    """Ask user for explicit confirmation before a mutating step."""
-    answer = input(f"{step}\nProceed? [y/N] ").strip().lower()
-    return answer in {"y", "yes"}
-
-
-def install_python_deps() -> int:
-    """Run pip install -e .[dev] and return exit code."""
-    print("\n[Step 1/5] Installing Python dependencies...")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-e", ".[dev]"],
-        cwd=".",
-    )
-    return result.returncode
-
-
-def _package_install_cmd(manager: str, package: str) -> list[str]:
-    """Build the platform package-install command (non-interactive, fail-fast)."""
-    if manager == "apt":
-        return ["sudo", "-n", "apt-get", "install", "-y", package]
-    return ["brew", "install", package]
-
-
-def install_extension_packages(apply: bool) -> int:
-    """Best-effort native install of the AGE + pgml Postgres server packages.
-
-    Returns 0 on a dry run or when every package install succeeds; returns 1
-    with a clear remediation message when the platform is unsupported or a
-    package manager fails. Never raises and never skips silently.
-    """
-    print("\n  PostgreSQL server extensions (AGE + pgml):")
-    system = platform.system()
-    candidate = _EXTENSION_PACKAGES.get(system)
-    if candidate is None:
-        print(f"  ERROR: AGE and pgml have no supported native installer on {system}.")
-        print(f"  Remediation: {EXTENSION_REMEDIATION}")
-        return 1
-    manager, packages = candidate
-    if not apply:
-        print(f"  (dry run) would install via {manager}: {', '.join(packages)}")
-        return 0
-    rc = 0
-    for package in packages:
-        print(f"  Installing {package} via {manager} (best-effort)...")
-        try:
-            result = subprocess.run(_package_install_cmd(manager, package))
-        except OSError as exc:
-            print(f"  ERROR: could not run {manager}: {exc}")
-            print(f"  Remediation: {EXTENSION_REMEDIATION}")
-            rc = 1
-            continue
-        if result.returncode != 0:
-            print(f"  WARNING: {package} install failed (exit {result.returncode}).")
-            print(f"  Remediation: {EXTENSION_REMEDIATION}")
-            rc = 1
-    return rc
-
-
-async def install_database(conn_str: str, apply: bool) -> int:
-    """Create database, install extensions, and run migrations if confirmed."""
-    print("\n[Step 2/5] PostgreSQL database setup...")
-    if not apply or not confirm("Create database (if needed) and run migrations."):
-        print("  Skipped.")
-        return 0
-
-    # Create database if it does not exist (connect to postgres maintenance db).
-    try:
-        parsed = asyncpg.connection._parse_connstring(conn_str)
-        dbname = parsed.get("database", "corpus_kb")
-        maintenance_dsn = conn_str.replace(f"/{dbname}", "/postgres")
-        conn = await asyncpg.connect(maintenance_dsn, timeout=5)
-        exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", dbname)
-        if not exists:
-            await conn.execute(f'CREATE DATABASE "{dbname}"')
-            print(f"  Created database {dbname}")
-        else:
-            print(f"  Database {dbname} already exists")
-        await conn.close()
-    except Exception as exc:
-        print(f"  Database creation step failed (continuing): {exc}")
-
-    # Install AGE + pgml server packages before migrations 004/005 need them.
-    ext_rc = install_extension_packages(apply)
-
-    # Run migrations.
-    from corpus_kb._setup.migrate import run_migrations
-
-    try:
-        await run_migrations(conn_str)
-    except Exception as exc:
-        print(f"  ERROR: migrations failed: {exc}")
-        if getattr(exc, "sqlstate", "") == "42501" or "permission denied" in str(exc).lower():
-            from corpus_kb.research import guide_copy
-
-            print(f"  Fix: {guide_copy.DB_PERMISSION_DENIED_HINT}")
-        print(f"  If AGE or pgml are missing on this server: {EXTENSION_REMEDIATION}")
-        return 1
-    return ext_rc
-
-
-def install_ollama_model(model: str, apply: bool) -> int:
-    """Pull recommended Ollama model if confirmed."""
-    print(f"\n[Step 3/5] Ollama model: {model}")
-    if not apply or not confirm(f"Pull Ollama model '{model}'."):
-        print("  Skipped.")
-        return 0
-
-    result = subprocess.run(["ollama", "pull", model])
-    return result.returncode
-
-
-def write_config(profile: str, config: dict[str, Any], force: bool) -> int:
-    """Write ~/.corpus-kb/config.yaml from detected profile if confirmed."""
-    print("\n[Step 4/5] Writing user config file...")
-    if DEFAULT_CONFIG_PATH.exists() and not force:
-        print(f"  {DEFAULT_CONFIG_PATH} already exists (use --force to overwrite).")
-        return 0
-
-    profiles = load_installer_profiles(config)
-    profile_data = profiles.get(profile, {})
-    # Full passthrough (todo-19 (c)): a fixed whitelist silently dropped any
-    # top-level block it did not name (coding:/research: included) from user
-    # configs. Only the profile's embedding model is overridden.
-    output = {
-        **config,
-        "embedding": {
-            **config.get("embedding", {}),
-            "model": profile_data.get("model", "nomic-embed-text"),
-        },
-    }
-
-    DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DEFAULT_CONFIG_PATH.write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
-    print(f"  Wrote {DEFAULT_CONFIG_PATH}")
-    return 0
-
-
-def print_next_steps() -> None:
-    """Print post-install instructions."""
-    print("\n[Step 5/5] Next steps:")
-    print("  - Start Ollama: ollama serve")
-    print("  - Start Postgres (if not running)")
-    print("  - Run Corpus-KB: corpus-kb")
-    print("========================\n")
-
-
 async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
     """Mutating installation command."""
     info = detect_profile()
@@ -496,292 +203,6 @@ async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
     exit_code |= write_config(info["profile"], config, force)
     print_next_steps()
     return exit_code
-
-
-def _find_compose_command() -> str | None:
-    """Return 'docker compose' or 'docker-compose' if available, else None."""
-    if shutil.which("docker"):
-        # Prefer the plugin form. shutil.which("docker") being truthy is enough
-        # to try the plugin syntax; the legacy docker-compose binary is separate.
-        return "docker compose"
-    if shutil.which("docker-compose"):
-        return "docker-compose"
-    return None
-
-
-DEFAULT_POSTGRES_IMAGE = "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17"
-
-
-def _verify_postgres_image(image: str, skip_verify: bool) -> None:
-    """Verify the Postgres container image signature using cosign.
-
-    Args:
-        image: Container image reference to verify.
-        skip_verify: When True, verification is skipped and the function returns
-            without invoking cosign.
-
-    Raises:
-        RuntimeError: If cosign is not installed or if verification fails.
-    """
-    if skip_verify:
-        print("  Skipping Postgres image signature verification.")
-        return
-
-    if not shutil.which("cosign"):
-        raise RuntimeError(
-            "cosign is required for Postgres image signature verification. "
-            "Install cosign (https://docs.sigstore.dev/cosign/installation/) "
-            "or disable verification with --skip-image-verify or "
-            "installer.verify_image_signature: false in config.yaml."
-        )
-
-    print(f"  Verifying signature for {image}...")
-    try:
-        subprocess.run(
-            [
-                "cosign",
-                "verify",
-                "--certificate-identity-regexp",
-                r"^https://github\.com/moliver28/corpus-kb/",
-                image,
-            ],
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(
-            f"Postgres image signature verification failed for {image}. "
-            "The image may have been tampered with or was not signed by the "
-            "expected identity. Disable verification only if you trust the image source."
-        ) from exc
-
-
-def _step(
-    number: int,
-    total: int,
-    description: str,
-    apply: bool,
-    action: str | None = None,
-) -> None:
-    """Print a setup step header and its dry-run action line."""
-    print(f"\n[Step {number}/{total}] {description}")
-    if not apply and action:
-        print(f"  (dry run) {action}")
-
-
-def _phase_status(state: dict[str, Any], phase: str) -> str:
-    """Return a short marker showing whether a phase is already completed."""
-    completed = state.get("completed", [])
-    return "(completed)" if phase in completed else ""
-
-
-def setup_print_dry_run_steps(
-    compose_cmd: str | None,
-    conn_str: str,
-    profile: str,
-    build_local: bool = False,
-    state: dict[str, Any] | None = None,
-) -> None:
-    """Print the exact steps the setup command would execute."""
-    if state is None:
-        state = {"completed": []}
-    total = len(INSTALL_PHASES)
-    completed = state.get("completed", [])
-
-    compose_files = ["compose.yaml"]
-    if build_local:
-        compose_files.append("compose.build-local.yaml")
-    file_flags = " ".join(f"-f {name}" for name in compose_files)
-    build_flag = " --build" if build_local else ""
-    compose_up_cmd = f"{compose_cmd} {file_flags} up -d{build_flag}" if compose_cmd else None
-
-    _step(
-        1,
-        total,
-        "Start the Docker compose stack",
-        False,
-        f"run: {compose_up_cmd}" if compose_up_cmd else None,
-    )
-    if "compose" in completed:
-        print("  status: already completed; will be skipped")
-    elif compose_up_cmd:
-        print(f"  command: {compose_up_cmd}")
-        if build_local:
-            print("  build: local docker/postgres/Dockerfile")
-        else:
-            print("  image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17")
-    else:
-        print("  command: not found; install Docker to proceed")
-    print(f"  services: postgres ({conn_str})")
-
-    _step(2, total, "Install Python dependencies", False, "run: pip install -e .[dev]")
-    if "python" in completed:
-        print("  status: already completed; will be skipped")
-
-    _step(
-        3,
-        total,
-        "Create database/user and apply migrations",
-        False,
-        f"run migrations on {conn_str}",
-    )
-    if "database" in completed:
-        print("  status: already completed; will be skipped")
-
-    _step(
-        4,
-        total,
-        "Verify AGE + pgml extensions are installed",
-        False,
-        "query pg_extension for age, pgml, vector",
-    )
-    if "extensions" in completed:
-        print("  status: already completed; will be skipped")
-
-    _step(
-        5,
-        total,
-        "Pull required Ollama models",
-        False,
-        f"run: ollama pull {', '.join(SETUP_REQUIRED_MODELS)}",
-    )
-    if "models" in completed:
-        print("  status: already completed; will be skipped")
-
-    _step(
-        6,
-        total,
-        "Write/update user config file",
-        False,
-        f"write {DEFAULT_CONFIG_PATH} (profile: {profile})",
-    )
-    if "config" in completed:
-        print("  status: already completed; will be skipped")
-
-    print("\nThis was a dry run. Re-run without --dry-run to make changes.")
-    print("========================\n")
-
-
-def _run_cmd(cmd: list[str], *, cwd: Path | None = None, timeout: int = 300) -> int:
-    """Run a command and return its exit code, with a bounded timeout."""
-    print(f"  Running: {' '.join(cmd)}")
-    try:
-        return subprocess.run(cmd, cwd=cwd, timeout=timeout).returncode
-    except subprocess.TimeoutExpired:
-        print(f"  ERROR: command timed out after {timeout}s: {' '.join(cmd)}")
-        return 1
-    except FileNotFoundError as exc:
-        print(f"  ERROR: command not found: {exc}")
-        return 1
-
-
-def setup_start_compose(compose_cmd: str, apply: bool, build_local: bool = False) -> int:
-    """Bring the docker-compose stack up if available and confirmed."""
-    repo_root = REPO_ROOT
-    compose_file = repo_root.parent / "compose.yaml"
-    if not compose_file.exists():
-        print("  ERROR: compose.yaml not found at repo root.")
-        print(f"  Looked for: {compose_file}")
-        return 1
-
-    compose_files = [repo_root.parent / "compose.yaml"]
-    if build_local:
-        build_local_file = repo_root.parent / "compose.build-local.yaml"
-        if not build_local_file.exists():
-            print("  ERROR: compose.build-local.yaml not found at repo root.")
-            print(f"  Looked for: {build_local_file}")
-            return 1
-        compose_files.append(build_local_file)
-
-    if not apply:
-        return 0
-
-    if build_local:
-        action = "Build the Postgres image locally and start the docker-compose stack (postgres)."
-    else:
-        action = "Start the docker-compose stack (postgres)."
-    if not confirm(action):
-        print("  Skipped.")
-        return 0
-
-    parts = compose_cmd.split()
-    file_args: list[str] = []
-    for file in compose_files:
-        file_args.extend(["-f", str(file)])
-    cmd = [*parts, *file_args, "up", "-d"]
-    if build_local:
-        cmd.append("--build")
-    return _run_cmd(cmd, cwd=repo_root.parent, timeout=600)
-
-
-async def setup_verify_extensions(conn_str: str, apply: bool) -> int:
-    """Verify AGE + pgml extensions are present in Postgres.
-
-    This step is purely diagnostic: migrations are the real gate for whether
-    the extensions are usable. Re-running is a no-op.
-    """
-    print("\n[Step 4/6] Verifying PostgreSQL extensions...")
-    if not conn_str:
-        print("  No database connection string; skipping extension check.")
-        return 0
-
-    extensions = await check_extensions(conn_str)
-    if extensions is None:
-        print("  Could not connect to Postgres; skipping extension check.")
-        return 0
-
-    for name, label in EXTENSIONS:
-        installed, version = extensions[name]
-        if installed:
-            print(f"  {label} ({name}): OK v{version}")
-        else:
-            print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
-    return 0
-
-
-def setup_pull_models(apply: bool) -> int:
-    """Pull the models required by the default configuration."""
-    exit_code = 0
-    for model in SETUP_REQUIRED_MODELS:
-        if not apply:
-            print(f"  (dry run) ollama pull {model}")
-            continue
-        if not confirm(f"Pull Ollama model '{model}'."):
-            print(f"  Skipped {model}.")
-            continue
-        exit_code |= _run_cmd(["ollama", "pull", model], timeout=600)
-    return exit_code
-
-
-def setup_update_config(config: dict[str, Any], profile: str, apply: bool) -> int:
-    """Update or write ~/.corpus-kb/config.yaml idempotently.
-
-    If a config already exists, merge in the docker-compose connection string and
-    defaults without overwriting profile-specific choices unless --force is used.
-    """
-    print("\n[Step 6/6] Updating user config file...")
-    # Full passthrough (todo-19 (c)): same rationale as write_config — a fixed
-    # whitelist silently dropped coding:/research: and any later block.
-    output: dict[str, Any] = dict(config)
-
-    if not apply:
-        print(f"  (dry run) would write {DEFAULT_CONFIG_PATH}")
-        print(f"  contents profile: {profile}")
-        return 0
-
-    if DEFAULT_CONFIG_PATH.exists():
-        print(f"  Merging into existing {DEFAULT_CONFIG_PATH}")
-        existing = yaml.safe_load(DEFAULT_CONFIG_PATH.read_text(encoding="utf-8")) or {}
-        if isinstance(existing, dict):
-            # Preserve user values; only backfill missing top-level sections.
-            for key, value in output.items():
-                if key not in existing:
-                    existing[key] = value
-            output = existing
-
-    DEFAULT_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    DEFAULT_CONFIG_PATH.write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
-    print(f"  Wrote {DEFAULT_CONFIG_PATH}")
-    return 0
 
 
 async def setup_cmd(
@@ -920,7 +341,24 @@ async def setup_cmd(
 
 
 def load_config() -> dict[str, Any]:
-    """Load config.yaml from repo root or user home."""
+    """Load config.yaml from repo root or user home.
+
+    DIVERGENCE (do not swap silently): this loader is CONFIG-FIRST — it
+    reads the YAML file as-is and applies NO environment overrides. The
+    runtime loader (``corpus_kb.config.load_config``) is ENV-FIRST: it
+    merges the CORPUS_KB_* environment variables over the YAML values.
+    Keeping the installer config-first is deliberate (review F-1): setup
+    must read and write the docker-compose stack targets recorded in
+    config.yaml even when the shell exports another CORPUS_KB_DATABASE_URL,
+    while doctor's CONNECTION PROBE separately honors the env var (see
+    doctor_cmd). TODO(follow-up): add a precedence test pinning BOTH
+    orderings (installer config-first, runtime env-first) so a future
+    unification cannot drift silently.
+    """
+    from pathlib import Path
+
+    import yaml
+
     candidates = [
         Path("config.yaml"),
         DEFAULT_CONFIG_PATH,
@@ -1009,3 +447,49 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+__all__ = [
+    "DEFAULT_CONFIG_DIR",
+    "DEFAULT_CONFIG_PATH",
+    "DEFAULT_OLLAMA_URL",
+    "DEFAULT_POSTGRES_IMAGE",
+    "EXTENSIONS",
+    "EXTENSION_REMEDIATION",
+    "INSTALL_PHASES",
+    "INSTALL_STATE_FILE_NAME",
+    "INSTALL_STATE_VERSION",
+    "REPO_ROOT",
+    "SETUP_REQUIRED_MODELS",
+    "_detect_gpu_vram_gb",
+    "_find_compose_command",
+    "_install_state_dir",
+    "_install_state_path",
+    "_run_cmd",
+    "_verify_postgres_image",
+    "check_extensions",
+    "check_ollama",
+    "check_postgres",
+    "confirm",
+    "detect_profile",
+    "install_database",
+    "install_extension_packages",
+    "install_ollama_model",
+    "install_python_deps",
+    "load_install_state",
+    "load_installer_profiles",
+    "platform",
+    "print_doctor_report",
+    "print_next_steps",
+    "psutil",
+    "reset_install_state",
+    "save_install_state",
+    "setup_print_dry_run_steps",
+    "setup_pull_models",
+    "setup_start_compose",
+    "setup_update_config",
+    "setup_verify_extensions",
+    "shutil",
+    "subprocess",
+    "write_config",
+]

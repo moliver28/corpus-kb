@@ -354,7 +354,7 @@ async def test_extract_with_fallback_pgml_success_records_pgml_id() -> None:
             )
 
     import corpus_kb.extraction as extraction_module
-    import corpus_kb.tools.ingest_common as ingest_module
+    import corpus_kb.tools.ingest_extract as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
     extraction_module.create_extractor = lambda config, pool=None: _HappyPgml()  # type: ignore[assignment]
@@ -404,7 +404,7 @@ async def test_extract_with_fallback_pgml_fails_then_langextract_then_regex() ->
             raise ImportError("langextract missing")
 
     import corpus_kb.extraction as extraction_module
-    import corpus_kb.tools.ingest_common as ingest_module
+    import corpus_kb.tools.ingest_extract as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
 
@@ -483,7 +483,7 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
             )
 
     import corpus_kb.extraction as extraction_module
-    import corpus_kb.tools.ingest_common as ingest_module
+    import corpus_kb.tools.ingest_extract as ingest_module
 
     original_create_extractor = ingest_module.create_extractor
 

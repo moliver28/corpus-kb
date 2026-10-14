@@ -1,42 +1,47 @@
 # Pre-commit hooks for the corpus-kb repository.
 # Install: `pip install pre-commit && pre-commit install`
-# Run on demand: `pre-commit run --all-files`
+# Run on demand: `pre-commit run --all-files` (or `poe hooks`)
 #
-# Only offline / no-network hooks are configured to keep CI and contributor
-# machines fast and hermetic. Network-dependent linters (mypy, pyright) live
-# exclusively in the CI workflow.
+# Wave 3 zero-drift gate: ruff check + ruff format + config validation,
+# all offline/no-network. Type-checking, tests, and the vulture/deptry/
+# xenon/diff-cover gates stay in poe/CI (they need the full environment).
+#
+# Deliberately EXCLUDED: the file-rewriting hygiene hooks
+# (trailing-whitespace, end-of-file-fixer, mixed-line-ending). A
+# `run --all-files` of those rewrote hundreds of files in one sweep (they
+# do not match the committed tree's line-ending state), which is exactly
+# the mass churn a zero-drift wave must not produce.
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0
     hooks:
-      - id: trailing-whitespace
-        name: Trim trailing whitespace
-      - id: end-of-file-fixer
-        name: Ensure files end with a newline
       - id: check-yaml
         name: Validate YAML files
-        exclude: |
-          (?x)^(
-            corpus-kb/migrations/.*\.sql
-          )$
       - id: check-json
         name: Validate JSON files
       - id: check-added-large-files
         name: Block large files (>500 KB)
         args: ["--maxkb=500"]
-      - id: mixed-line-ending
-        name: Force LF line endings
-        args: ["--fix=lf"]
       - id: check-merge-conflict
         name: Block merge conflict markers
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    # Keep in lockstep with the ruff the poe lint gate runs (repo dev env).
+    rev: v0.17.0
     hooks:
-      - id: ruff
-        name: Ruff lint
-        args: ["--fix"]
-        files: ^(corpus-kb/src|corpus-kb/tests)/
+      - id: ruff-check
+        name: Ruff lint (Python files only)
+        args: [--fix]
+        files: \.pyi?$
       - id: ruff-format
-        name: Ruff format
-        files: ^(corpus-kb/src|corpus-kb/tests)/
+        name: Ruff format (Python files only)
+        files: \.pyi?$
+
+  - repo: local
+    hooks:
+      - id: validate-configs
+        name: validate MCP/runtime configs
+        entry: python src/corpus_kb/_setup/validate_configs.py
+        language: system
+        pass_filenames: false
+        files: ^(config\.yaml|src/corpus_kb/config\.yaml|mcp-configs/.*\.json|opencode\.json)$

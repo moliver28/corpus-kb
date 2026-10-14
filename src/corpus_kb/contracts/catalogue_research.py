@@ -82,34 +82,6 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
 
 SKIPPED_OPERATIONS: tuple[SkippedOperation, ...] = (
     SkippedOperation(
-        name="ingest_directory",
-        family="ingest",
-        reason=(
-            "Two directory pipelines exist (tools.ingest_tools.ingest_directory "
-            "vs handlers.command_handler.handle_ingest_directory) and their "
-            "envelopes differ. Known drift; the fix belongs to the ingest "
-            "parity package, not a silent catalogue row."
-        ),
-        surfaces=(
-            SurfaceSpec(MCP, "ingest_directory"),
-            SurfaceSpec(CLI, "ingest <dir>"),
-            SurfaceSpec(HTTP, "/api/ingest/directory", "POST"),
-        ),
-    ),
-    SkippedOperation(
-        name="delete_document",
-        family="documents",
-        reason=(
-            "The tool deletes through direct SQL; HTTP deletes through the "
-            "event-store aggregate. Two pipelines, one operation. A hermetic "
-            "HTTP leg also needs an event-store repository stub."
-        ),
-        surfaces=(
-            SurfaceSpec(MCP, "delete_document"),
-            SurfaceSpec(HTTP, "/api/documents/{doc_id}", "DELETE"),
-        ),
-    ),
-    SkippedOperation(
         name="research_ingest",
         family="research",
         reason=(
