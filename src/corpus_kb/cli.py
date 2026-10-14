@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 # corpus_kb.cli only lazily (inside functions), so this import is acyclic.
 from corpus_kb.cli_ingest import register as register_ingest_commands
 
+# Operation inventory (Wave 2 zero-drift): `corpus-kb operations` emits the
+# machine-readable catalogue (contracts/) — surfaces, params, envelope keys,
+# error map — plus, with --openapi, the generated HTTP spec. cli_operations
+# never imports corpus_kb.cli (it registers via the function below), so this
+# import is acyclic.
+from corpus_kb.cli_operations import register as register_operations
+
 # Release lifecycle group (U5, P7): the commands live in cli_release.py (the
 # 250-line soft limit; cli.py is already the largest surface file) and share
 # the handlers/release_handlers.py layer with the MCP + HTTP surfaces.
@@ -29,6 +36,7 @@ from corpus_kb.cli_release import release_app
 app = typer.Typer(help="Corpus-KB command-line interface")
 
 register_ingest_commands(app)
+register_operations(app)
 
 
 @app.callback(invoke_without_command=True)
