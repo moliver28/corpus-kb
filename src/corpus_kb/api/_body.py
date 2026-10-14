@@ -41,12 +41,6 @@ async def parse_body(request: Request) -> dict[str, Any]:
         return {}
 
 
-def tenant_id_of(body: dict[str, Any]) -> str:
-    """The body's tenant_id or the shared placeholder default."""
-    value = body.get("tenant_id", DEFAULT_TENANT_ID)
-    return str(value) if value else DEFAULT_TENANT_ID
-
-
 def error_response(
     exc_or_type: BaseException | str,
     message: str | None = None,

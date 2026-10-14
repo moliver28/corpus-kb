@@ -3,6 +3,11 @@
 All queries use parameterized SQL with SET LOCAL app.current_tenant_id
 for RLS enforcement. No SQLAlchemy — asyncpg only.
 
+Zero-drift split (Wave 3): the provider vector arms live in
+``handlers/query_vector_arms.py`` and the small CRUD-ish handlers in
+``handlers/query_crud.py``. This module keeps the QueryHandler
+orchestrator, the post-fuse rerank/expand stages, and the singleton.
+
 Usage:
     from corpus_kb.handlers.query_handler import get_query_handler
     handler = get_query_handler()
@@ -31,58 +36,42 @@ from corpus_kb.domain.models import (
     VerifyAnswerQuery,
     VerifyAnswerResult,
 )
+from corpus_kb.handlers import query_crud
 from corpus_kb.handlers.query_integrity import (
     REASON_FILTER_EMPTY,
     REASON_NO_EMBEDDER,
-    REASON_VECTOR_ARM_ERROR,
-    REASON_ZERO_QUERY,
     SearchEnvelope,
     degraded_candidate_predicate,
     finalize_envelope,
-    is_all_zero,
+)
+from corpus_kb.handlers.query_vector_arms import (
+    DEDUP_PREDICATE,
+    SELECT_LIST,
+    ollama_vector_arm,
+    pgml_vector_arm,
 )
 from corpus_kb.ingest.hierarchy_settings import load_hierarchy_settings
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.rerank_settings import load_rerank_settings
 from corpus_kb.rag.reranker import build_reranker, create_reranker
-from corpus_kb.research.retrieval_settings import (
-    estimate_selectivity,
-    load_retrieval_settings,
-    should_use_exact_scan,
-)
+from corpus_kb.research.retrieval_settings import load_retrieval_settings
 from corpus_kb.research.search_settings import (
     HnswSettings,
     apply_hnsw_settings,
     load_hnsw_settings,
     missing_rrf_fusion_error,
+    pgvector_version,
     supports_iterative_scan,
 )
 
 logger = logging.getLogger(__name__)
 
-# U20: probe for the installed pgvector version. Iterative-scan SET LOCAL
-# statements error on pgvector < 0.8, so emission is gated on this read
-# (fails CLOSED: unknown version = no settings = pre-0.8 behavior).
-_PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
-
-# U21: paired-count selectivity probe over the same join shape as the vector
-# arms. The filter fragment is formatted in with its own numbering starting
-# at $2 (tenant is $1) so the probe is self-contained.
-_COUNT_SQL_TEMPLATE = """
-SELECT count(*)::float8 AS total,
-       count(*) FILTER (WHERE TRUE {frag})::float8 AS matched
-FROM chunks_vectors cv
-JOIN chunks ON cv.chunk_id = chunks.chunk_id
-JOIN documents ON chunks.doc_id = documents.doc_id
-WHERE cv.tenant_id = $1 {dedup}
-"""
-
 # Stage 3: degraded-filter disambiguation probe. When the vector arm returns
 # zero rows under an active degraded filter, this count over the SAME
 # candidate universe WITHOUT the `degraded = FALSE` predicate tells a
 # "filter removed everything" empty apart from a legitimately empty search
-# (empty tenant, filters matching nothing). Distinct from _COUNT_SQL_TEMPLATE
-# (no FILTER pair) so tests can tell the two probes apart.
+# (empty tenant, filters matching nothing). Distinct from the U21 paired
+# count probe (no FILTER pair) so tests can tell the two probes apart.
 _DEGRADED_CANDIDATE_COUNT_SQL = """
 SELECT count(*)::float8 AS candidates
 FROM chunks_vectors cv
@@ -226,266 +215,64 @@ class QueryHandler:
             # the installed pgvector version: emitting `SET LOCAL hnsw.*`
             # below 0.8 aborts the query, so unknown/old versions keep the
             # pre-iterative-scan behavior (fail closed).
-            version_row = await conn.fetchrow(_PGVECTOR_VERSION_SQL)
-            extversion = None if version_row is None else str(version_row["extversion"])
+            extversion = await pgvector_version(conn)
             if supports_iterative_scan(extversion):
                 await apply_hnsw_settings(conn, self._hnsw_settings)
 
-            # NOTE: aliases below are the literal table names ("chunks"/"documents"),
-            # not short aliases -- build_filter_sql() emits dynamic predicates using
-            # fully-qualified column refs like "documents.source_type" (see
-            # corpus_kb/rag/self_query.py ALLOWED_COLUMNS), so every arm must join these
-            # tables under their real names for those predicates to resolve.
-            provenance_cols = (
-                "chunks.file_path, chunks.start_line, chunks.end_line, "
-                "chunks.chunk_index, chunks.heading_path"
-            )
-            select_list = (
-                f"chunks.chunk_id, chunks.text, chunks.doc_id, documents.source, {provenance_cols}"
-            )
-            fts_vector = (
-                "to_tsvector('english', coalesce(chunks.context_blurb,'') || ' ' || chunks.text)"
-            )
-            dedup_predicate = "AND chunks.tombstoned_at IS NULL AND chunks.superseded_at IS NULL"
+            # NOTE: SELECT_LIST/DEDUP_PREDICATE (handlers/query_vector_arms.py)
+            # name the literal tables "chunks"/"documents" — build_filter_sql()
+            # emits dynamic predicates using fully-qualified column refs like
+            # "documents.source_type", so every arm must join these tables
+            # under their real names for those predicates to resolve.
             # Stage 3: candidate CTEs drop rows whose stored vector is flagged
             # degraded (all-zero backfill from migration 022). Seed subqueries
             # (handle_search_similar) are NEVER filtered — seed documents must
             # stay discoverable even when degraded.
             degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
+            fts_vector = (
+                "to_tsvector('english', coalesce(chunks.context_blurb,'') || ' ' || chunks.text)"
+            )
 
             # 1. Vector search (pgml in-database, or local Ollama with optional
-            #    matryoshka two-tier retrieval).
+            #    matryoshka two-tier retrieval). Each arm returns
+            #    (rows, reason|None); a reason is an arm impairment for the
+            #    honesty envelope, never a raised error.
             vector_results: list[asyncpg.Record] = []
             embedding_cfg = self._config.get("embedding", {}) or {}
             provider = str(embedding_cfg.get("provider", "pgml"))
 
             if provider == "pgml":
-                from corpus_kb.rag.self_query import build_filter_sql
-
                 model = str(embedding_cfg.get("model", "nomic-embed-text"))
-                frag, params = build_filter_sql(dynamic_predicates, start_index=5)
-                # U21: with selective filters, HNSW can lose candidates (the
-                # ordered scan stops before matching rows are reached). Probe
-                # matched/total once and drop to a filtered EXACT scan below
-                # the threshold — identical result schema, no ANN ordering.
-                # No filters = no probe (selectivity is 1.0 by definition).
-                selectivity = None
-                if dynamic_predicates:
-                    probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
-                    selectivity = await estimate_selectivity(
-                        conn,
-                        _COUNT_SQL_TEMPLATE.format(
-                            frag=probe_frag, dedup=dedup_predicate + " " + degraded_pred
-                        ),
-                        [str(query.tenant_id), *probe_params],
-                    )
-                use_exact = should_use_exact_scan(
-                    bool(dynamic_predicates),
-                    selectivity,
-                    self._retrieval_settings.exact_filter_selectivity_threshold,
+                vector_results, arm_reason = await pgml_vector_arm(
+                    conn,
+                    model=model,
+                    semantic_query=semantic_query,
+                    tenant_id=str(query.tenant_id),
+                    k=query.k,
+                    over_retrieve_n=over_retrieve_n,
+                    dynamic_predicates=dynamic_predicates,
+                    degraded_pred=degraded_pred,
+                    exact_threshold=self._retrieval_settings.exact_filter_selectivity_threshold,
                 )
-                try:
-                    if use_exact:
-                        # U40 pattern still holds: candidate set MATERIALIZED,
-                        # exact ordering applied OUTSIDE (`score + 0`).
-                        vector_results = await conn.fetch(
-                            f"""
-                            WITH candidate AS MATERIALIZED (
-                                SELECT cv.chunk_id AS candidate_chunk_id,
-                                       1 - (cv.vector <=> (
-                                           SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                                       )::vector) AS score
-                                FROM chunks_vectors cv
-                                JOIN chunks ON cv.chunk_id = chunks.chunk_id
-                                JOIN documents ON chunks.doc_id = documents.doc_id
-                                WHERE cv.tenant_id = $3 {dedup_predicate} {frag} {degraded_pred}
-                            )
-                            SELECT {select_list}, candidate.score AS score
-                            FROM candidate
-                            JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
-                            JOIN documents ON chunks.doc_id = documents.doc_id
-                            ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
-                            LIMIT $4
-                            """,
-                            model,
-                            semantic_query,
-                            str(query.tenant_id),
-                            max(query.k * 2, over_retrieve_n),
-                            *params,
-                        )
-                    else:
-                        # U40 relaxed-ordering pattern (pgvector >= 0.8 iterative
-                        # scans): the ANN scan (filters + distance ORDER BY + LIMIT)
-                        # stays INSIDE a MATERIALIZED CTE; the exact ordering is
-                        # applied OUTSIDE over the retrieved set (`score + 0`
-                        # defeats planner sort-elision, per the pgvector docs).
-                        vector_results = await conn.fetch(
-                            f"""
-                        WITH candidate AS MATERIALIZED (
-                            SELECT cv.chunk_id AS candidate_chunk_id,
-                                   1 - (cv.vector <=> (
-                                       SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                                   )::vector) AS score
-                            FROM chunks_vectors cv
-                            JOIN chunks ON cv.chunk_id = chunks.chunk_id
-                            JOIN documents ON chunks.doc_id = documents.doc_id
-                            WHERE cv.tenant_id = $3 {dedup_predicate} {frag} {degraded_pred}
-                            ORDER BY cv.vector <=> (
-                                SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                            )::vector
-                            LIMIT $4
-                        )
-                        SELECT {select_list}, candidate.score AS score
-                        FROM candidate
-                        JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
-                        JOIN documents ON chunks.doc_id = documents.doc_id
-                        ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
-                        LIMIT $4
-                        """,
-                            model,
-                            semantic_query,
-                            str(query.tenant_id),
-                            max(query.k * 2, over_retrieve_n),
-                            *params,
-                        )
-                except Exception as exc:
-                    logger.warning("Vector search failed: %s", exc)
-                    reasons.append(f"{REASON_VECTOR_ARM_ERROR} ({type(exc).__name__})")
+                if arm_reason:
+                    reasons.append(arm_reason)
             elif provider == "ollama" and self._embedder:
-                try:
-                    vector_limit = max(query.k * 2, over_retrieve_n)
-                    from corpus_kb.rag.self_query import build_filter_sql
-
-                    if self._matryoshka_enabled:
-                        q4096 = self._embedder.embed(semantic_query)
-                        frag, params = build_filter_sql(dynamic_predicates, start_index=6)
-                        candidate_n = query.k * int(self._candidate_multiplier)
-                        # Stage 3 zero-query guard: an all-zero query embedding
-                        # makes every cosine distance NaN (0/0), which sorts
-                        # FIRST under DESC — abstain instead of returning
-                        # garbage confident-looking hits. The lexical arm below
-                        # still runs.
-                        if is_all_zero(q4096):
-                            reasons.append(REASON_ZERO_QUERY)
-                        else:
-                            q1024 = self._embedder.embed_matryoshka(
-                                semantic_query, self._matryoshka_dim
-                            )
-                            # U40: MATERIALIZED candidate CTE (1024-d probe scan) +
-                            # exact full-dimension re-ordering OUTSIDE the CTE.
-                            vector_results = await conn.fetch(
-                                f"""
-                                WITH cand AS MATERIALIZED (
-                                    SELECT cv.chunk_id, cv.vector
-                                    FROM chunks_vectors cv
-                                    JOIN chunks ON cv.chunk_id = chunks.chunk_id
-                                    JOIN documents ON chunks.doc_id = documents.doc_id
-                                    WHERE cv.tenant_id = $2 AND cv.vector_1024 IS NOT NULL
-                                      {dedup_predicate} {frag} {degraded_pred}
-                                    ORDER BY cv.vector_1024 <=> $4::vector
-                                    LIMIT $5
-                                )
-                                SELECT {select_list},
-                                       1 - (cand.vector <=> $1::vector) AS score
-                                FROM cand
-                                JOIN chunks ON cand.chunk_id = chunks.chunk_id
-                                JOIN documents ON chunks.doc_id = documents.doc_id
-                                ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC,
-                                         chunks.chunk_id ASC
-                                LIMIT $3
-                                """,
-                                str(q4096),
-                                str(query.tenant_id),
-                                vector_limit,
-                                str(q1024),
-                                candidate_n,
-                                *params,
-                            )
-                    else:
-                        query_vector = self._embedder.embed(semantic_query)
-                        frag, params = build_filter_sql(dynamic_predicates, start_index=4)
-                        # Stage 3 zero-query guard (see the matryoshka arm).
-                        if is_all_zero(query_vector):
-                            reasons.append(REASON_ZERO_QUERY)
-                        else:
-                            # U21: same selectivity probe + exact-scan fallback as
-                            # the pgml arm (identical result schema and params).
-                            selectivity = None
-                            if dynamic_predicates:
-                                probe_frag, probe_params = build_filter_sql(
-                                    dynamic_predicates, start_index=2
-                                )
-                                selectivity = await estimate_selectivity(
-                                    conn,
-                                    _COUNT_SQL_TEMPLATE.format(
-                                        frag=probe_frag, dedup=dedup_predicate + " " + degraded_pred
-                                    ),
-                                    [str(query.tenant_id), *probe_params],
-                                )
-                            use_exact = should_use_exact_scan(
-                                bool(dynamic_predicates),
-                                selectivity,
-                                self._retrieval_settings.exact_filter_selectivity_threshold,
-                            )
-                            if use_exact:
-                                # No distance ORDER BY/LIMIT inside the CTE: the
-                                # planner cannot use the ordered HNSW scan here,
-                                # so every matching row is scored exactly and the
-                                # outer ORDER BY picks the true top-k.
-                                vector_results = await conn.fetch(
-                                    f"""
-                                    WITH candidate AS MATERIALIZED (
-                                        SELECT cv.chunk_id AS candidate_chunk_id,
-                                               1 - (cv.vector <=> $1::vector) AS score
-                                        FROM chunks_vectors cv
-                                        JOIN chunks ON cv.chunk_id = chunks.chunk_id
-                                        JOIN documents ON chunks.doc_id = documents.doc_id
-                                        WHERE cv.tenant_id = $2 {dedup_predicate} {frag}
-                                          {degraded_pred}
-                                    )
-                                    SELECT {select_list}, candidate.score AS score
-                                    FROM candidate
-                                    JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
-                                    JOIN documents ON chunks.doc_id = documents.doc_id
-                                    ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
-                                    LIMIT $3
-                                    """,
-                                    str(query_vector),
-                                    str(query.tenant_id),
-                                    vector_limit,
-                                    *params,
-                                )
-                            else:
-                                # U40 relaxed-ordering pattern: scan inside a
-                                # MATERIALIZED CTE, exact ordering outside (`score + 0`).
-                                vector_results = await conn.fetch(
-                                    f"""
-                                WITH candidate AS MATERIALIZED (
-                                    SELECT cv.chunk_id AS candidate_chunk_id,
-                                           1 - (cv.vector <=> $1::vector) AS score
-                                    FROM chunks_vectors cv
-                                    JOIN chunks ON cv.chunk_id = chunks.chunk_id
-                                    JOIN documents ON chunks.doc_id = documents.doc_id
-                                    WHERE cv.tenant_id = $2 {dedup_predicate} {frag}
-                                      {degraded_pred}
-                                    ORDER BY cv.vector <=> $1::vector
-                                    LIMIT $3
-                                )
-                                SELECT {select_list}, candidate.score AS score
-                                FROM candidate
-                                JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
-                                JOIN documents ON chunks.doc_id = documents.doc_id
-                                ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
-                                LIMIT $3
-                                """,
-                                    str(query_vector),
-                                    str(query.tenant_id),
-                                    vector_limit,
-                                    *params,
-                                )
-                except Exception as exc:
-                    logger.warning("Vector search failed: %s", exc)
-                    reasons.append(f"{REASON_VECTOR_ARM_ERROR} ({type(exc).__name__})")
+                vector_results, arm_reason = await ollama_vector_arm(
+                    conn,
+                    embedder=self._embedder,
+                    semantic_query=semantic_query,
+                    tenant_id=str(query.tenant_id),
+                    k=query.k,
+                    over_retrieve_n=over_retrieve_n,
+                    dynamic_predicates=dynamic_predicates,
+                    degraded_pred=degraded_pred,
+                    matryoshka_enabled=self._matryoshka_enabled,
+                    matryoshka_dim=self._matryoshka_dim,
+                    candidate_multiplier=self._candidate_multiplier,
+                    exact_threshold=self._retrieval_settings.exact_filter_selectivity_threshold,
+                )
+                if arm_reason:
+                    reasons.append(arm_reason)
             elif provider == "ollama":
                 # Provider is ollama but no embedder was wired: the vector arm
                 # cannot run at all — say so instead of a silent FTS-only answer.
@@ -510,7 +297,7 @@ class QueryHandler:
                 try:
                     probe_row = await conn.fetchrow(
                         _DEGRADED_CANDIDATE_COUNT_SQL.format(
-                            dedup=dedup_predicate, frag=probe_frag
+                            dedup=DEDUP_PREDICATE, frag=probe_frag
                         ),
                         str(query.tenant_id),
                         *probe_params,
@@ -534,11 +321,11 @@ class QueryHandler:
             frag, params = build_filter_sql(dynamic_predicates, start_index=4)
             fts_results = await conn.fetch(
                 f"""
-                SELECT {select_list},
+                SELECT {SELECT_LIST},
                        ts_rank({fts_vector}, plainto_tsquery('english', $1)) AS score
                 FROM chunks
                 JOIN documents ON chunks.doc_id = documents.doc_id
-                WHERE chunks.tenant_id = $2 {dedup_predicate} {frag}
+                WHERE chunks.tenant_id = $2 {DEDUP_PREDICATE} {frag}
                   AND {fts_vector} @@ plainto_tsquery('english', $1)
                 ORDER BY score DESC, chunks.chunk_id ASC
                 LIMIT $3
@@ -680,239 +467,34 @@ class QueryHandler:
             logger.warning("Parent expansion failed; returning fused results: %s", exc)
             return results
 
+    # -- Small CRUD-ish handlers (moved to handlers/query_crud.py; the
+    #    delegating methods keep the public surface byte-identical). --
+
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, object]]:
         """Execute a read-only SQL query."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-            rows = await conn.fetch(query.sql, *query.params.values())
-            return [dict(row) for row in rows]
+        return await query_crud.sql_query(self._pool, query)
 
     async def handle_list_documents(self, query: ListDocumentsQuery) -> list[DocumentResult]:
         """List documents with pagination."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-            rows = await conn.fetch(
-                """
-                SELECT doc_id, source, source_type, chunk_count, created_at
-                FROM documents
-                WHERE tenant_id = $1
-                ORDER BY created_at DESC
-                LIMIT $2 OFFSET $3
-                """,
-                str(query.tenant_id),
-                query.limit,
-                query.offset,
-            )
-            return [
-                DocumentResult(
-                    doc_id=row["doc_id"],
-                    source=row["source"],
-                    source_type=row["source_type"],
-                    chunk_count=row["chunk_count"],
-                    created_at=str(row["created_at"]),
-                )
-                for row in rows
-            ]
+        return await query_crud.list_documents(self._pool, query)
 
     async def handle_list_entities(self, query: ListEntitiesQuery) -> list[EntityResult]:
         """List entities, optionally filtered by type."""
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-            if query.entity_type:
-                rows = await conn.fetch(
-                    """
-                    SELECT entity_id, name, entity_type, metadata
-                    FROM entities
-                    WHERE tenant_id = $1 AND entity_type = $2
-                    ORDER BY name ASC
-                    LIMIT $3
-                    """,
-                    str(query.tenant_id),
-                    query.entity_type,
-                    query.limit,
-                )
-            else:
-                rows = await conn.fetch(
-                    """
-                    SELECT entity_id, name, entity_type, metadata
-                    FROM entities
-                    WHERE tenant_id = $1
-                    ORDER BY name ASC
-                    LIMIT $2
-                    """,
-                    str(query.tenant_id),
-                    query.limit,
-                )
-            return [
-                EntityResult(
-                    entity_id=row["entity_id"],
-                    name=row["name"],
-                    entity_type=row["entity_type"],
-                    metadata=dict(row["metadata"]) if row["metadata"] else {},
-                )
-                for row in rows
-            ]
+        return await query_crud.list_entities(self._pool, query)
 
     async def handle_search_similar(self, query: SearchSimilarQuery) -> list[SearchResult]:
         """Find chunks similar to a given chunk via vector distance."""
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-            # U40: ANN scan inside a MATERIALIZED CTE, exact ordering applied
-            # outside over the retrieved set (`score + 0`, per pgvector docs).
-            # Stage 3: degraded rows are excluded from CANDIDATES only — the
-            # seed subqueries (SELECT vector ... WHERE chunk_id = $1) stay
-            # unfiltered so a degraded seed document remains discoverable.
-            degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
-            rows = await conn.fetch(
-                f"""
-                WITH candidate AS MATERIALIZED (
-                    SELECT cv.chunk_id AS candidate_chunk_id,
-                           1 - (cv.vector <=> (
-                               SELECT vector FROM chunks_vectors WHERE chunk_id = $1
-                           )) AS score
-                    FROM chunks_vectors cv
-                    WHERE cv.tenant_id = $2 AND cv.chunk_id != $1 {degraded_pred}
-                    ORDER BY cv.vector <=> (
-                        SELECT vector FROM chunks_vectors WHERE chunk_id = $1
-                    )
-                    LIMIT $3
-                )
-                SELECT c.chunk_id, c.text, c.doc_id, d.source,
-                       c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path,
-                       candidate.score AS score
-                FROM candidate
-                JOIN chunks c ON candidate.candidate_chunk_id = c.chunk_id
-                JOIN documents d ON c.doc_id = d.doc_id
-                WHERE c.tombstoned_at IS NULL AND c.superseded_at IS NULL
-                ORDER BY candidate.score + 0 DESC, c.chunk_id ASC
-                LIMIT $3
-                """,
-                str(query.chunk_id),
-                str(query.tenant_id),
-                query.k,
-            )
-            return [
-                SearchResult(
-                    chunk_id=row["chunk_id"],
-                    text=row["text"],
-                    score=row["score"],
-                    source=row["source"],
-                    doc_id=row["doc_id"],
-                    file_path=row["file_path"],
-                    start_line=row["start_line"],
-                    end_line=row["end_line"],
-                    chunk_index=row["chunk_index"],
-                    heading_path=json.loads(row["heading_path"]) if row["heading_path"] else None,
-                )
-                for row in rows
-            ]
+        return await query_crud.search_similar(
+            self._pool, exclude_degraded=self._exclude_degraded, query=query
+        )
 
     async def handle_search_context(self, query: SearchContextQuery) -> list[SearchResult]:
         """Search with surrounding context chunks."""
-        base_results = await self.handle_search(
-            SearchQuery(
-                tenant_id=query.tenant_id,
-                query=query.query,
-                k=query.k,
-            )
-        )
-        # Expand each result with surrounding chunks
-        expanded: list[SearchResult] = []
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-            for result in base_results:
-                expanded.append(result)
-                context = await conn.fetch(
-                    """
-                    SELECT c.chunk_id, c.text, c.doc_id, d.source, 0.0 AS score,
-                           c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path
-                    FROM chunks c
-                    JOIN documents d ON c.doc_id = d.doc_id
-                    WHERE c.doc_id = (SELECT doc_id FROM chunks WHERE chunk_id = $1)
-                      AND c.tenant_id = $2
-                      AND c.chunk_id != $1
-                      AND c.tombstoned_at IS NULL AND c.superseded_at IS NULL
-                      AND ABS(c.chunk_index - (
-                          SELECT chunk_index FROM chunks WHERE chunk_id = $1
-                      )) <= $3
-                    ORDER BY ABS(c.chunk_index - (
-                        SELECT chunk_index FROM chunks WHERE chunk_id = $1
-                    )) ASC, c.chunk_id ASC
-                    LIMIT $3
-                    """,
-                    str(result.chunk_id),
-                    str(query.tenant_id),
-                    query.context_chunks,
-                )
-                for row in context:
-                    expanded.append(
-                        SearchResult(
-                            chunk_id=row["chunk_id"],
-                            text=row["text"],
-                            score=0.0,
-                            source=row["source"],
-                            doc_id=row["doc_id"],
-                            file_path=row["file_path"],
-                            start_line=row["start_line"],
-                            end_line=row["end_line"],
-                            chunk_index=row["chunk_index"],
-                            heading_path=json.loads(row["heading_path"])
-                            if row["heading_path"]
-                            else None,
-                        )
-                    )
-        return expanded
+        return await query_crud.search_context(self._pool, self.handle_search, query)
 
     async def handle_verify_answer(self, query: VerifyAnswerQuery) -> VerifyAnswerResult:
         """Verify an LLM-generated answer's claims against cited chunks."""
-        from corpus_kb.domain.models import ClaimVerdict
-
-        if not query.chunk_ids or self._judge is None:
-            return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
-        async with self._pool.acquire() as conn:
-            rows = await conn.fetch(
-                "SELECT chunk_id, text FROM chunks WHERE tenant_id = $1 AND chunk_id = ANY($2)",
-                str(query.tenant_id),
-                [str(cid) for cid in query.chunk_ids],
-            )
-        cited_texts = [row["text"] for row in rows]
-        if not cited_texts:
-            return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
-        claims = self._judge.decompose(query.answer)
-        if not claims:
-            return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
-        verdicts: list[ClaimVerdict] = []
-        for claim in claims:
-            label, confidence = self._judge.entail(claim, cited_texts)
-            verdicts.append(
-                ClaimVerdict(
-                    claim=claim,
-                    label=label,
-                    confidence=confidence,
-                    cited_chunk_ids=query.chunk_ids,
-                )
-            )
-        entailed = sum(1 for v in verdicts if v.label == "entailed")
-        return VerifyAnswerResult(
-            verdicts=verdicts,
-            groundedness=entailed / len(verdicts),
-            abstained=False,
-        )
+        return await query_crud.verify_answer(self._pool, judge=self._judge, query=query)
 
 
 # ============================================================================
@@ -936,9 +518,3 @@ def set_query_handler(handler: QueryHandler) -> None:
     """Set the singleton (for server wiring)."""
     global _query_handler
     _query_handler = handler
-
-
-def reset_query_handler() -> None:
-    """Reset the singleton (for testing)."""
-    global _query_handler
-    _query_handler = None

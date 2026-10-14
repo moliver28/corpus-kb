@@ -5,9 +5,11 @@ Two layers are pinned here:
 * Unit: a stub connection returns fused rows with TIED scores in shuffled
   input order. The handler (and research _rrf) must return them ordered by
   score DESC then chunk id ASC — the same output for every input order.
-* SQL shape: every score-ordered ORDER BY in handlers/query_handler.py and
-  research/retrieval.py carries the chunk-id tiebreaker, and migration 024
-  pins the same order inside corpus.rrf_fusion.
+* SQL shape: every score-ordered ORDER BY across the query-handler modules
+  (query_vector_arms.py + query_handler.py + query_crud.py — the Wave-3
+  split of the pre-2026-10 single query_handler.py) and research/retrieval.py
+  carries the chunk-id tiebreaker, and migration 024 pins the same order
+  inside corpus.rrf_fusion.
 
 All offline: no Postgres, no Ollama.
 """
@@ -215,7 +217,16 @@ def _desc_order_by_clauses(path: Path) -> list[str]:
 
 
 def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
-    clauses = _desc_order_by_clauses(ROOT / "src/corpus_kb/handlers/query_handler.py")
+    # Wave-3 split: the single pre-split query_handler.py is now three
+    # modules; the audit covers ALL of them so the invariant set is
+    # unchanged (same 7 clauses, same tiebreaker regex).
+    clauses: list[str] = []
+    for rel in (
+        "src/corpus_kb/handlers/query_vector_arms.py",
+        "src/corpus_kb/handlers/query_handler.py",
+        "src/corpus_kb/handlers/query_crud.py",
+    ):
+        clauses.extend(_desc_order_by_clauses(ROOT / rel))
     assert len(clauses) == 7, clauses  # 5 vector arms + FTS + search_similar
     for clause in clauses:
         assert re.fullmatch(r"ORDER BY .+ DESC, (chunks\.chunk_id|c\.chunk_id) ASC", clause), clause
@@ -231,8 +242,9 @@ def test_every_score_order_by_in_retrieval_carries_tiebreaker() -> None:
 
 def test_context_proximity_order_carries_tiebreaker() -> None:
     """The /api/search/context distance ordering also ties (chunk n-1 vs n+1)
-    and must carry the chunk-id tiebreaker."""
-    source = (ROOT / "src/corpus_kb/handlers/query_handler.py").read_text(encoding="utf-8")
+    and must carry the chunk-id tiebreaker. (handle_search_context lives in
+    handlers/query_crud.py since the Wave-3 split.)"""
+    source = (ROOT / "src/corpus_kb/handlers/query_crud.py").read_text(encoding="utf-8")
     assert re.search(
         r"ORDER BY ABS\(c\.chunk_index - \(\s*"
         r"SELECT chunk_index FROM chunks WHERE chunk_id = \$1\s*\)\) ASC, c\.chunk_id ASC",

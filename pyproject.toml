@@ -122,6 +122,10 @@ ner = ["gliner2>=2.1.0"]
 # "top_k"/"aps" API introduced by the 1.x overhaul (0.8.x has none).
 # poethepoet + import-linter (Wave 2 zero-drift): the gate commands and the
 # layering contracts. CI calls the SAME poe targets developers run.
+# Wave 3 quality gates: vulture (dead code), deptry (unused deps), xenon
+# (complexity), diff-cover (diff coverage), pre-commit (hook runner). The
+# gates run through poe (``poe dead-code`` etc.) so local, CI, and agents
+# execute one command each (program standards 7/8/10).
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
@@ -131,6 +135,11 @@ dev = [
     "mapie>=1.0",
     "poethepoet>=0.24",
     "import-linter>=2.0",
+    "vulture>=2.10",
+    "deptry>=0.20",
+    "xenon>=0.9",
+    "diff-cover>=9.0",
+    "pre-commit>=4.0",
 ]
 
 [build-system]
@@ -165,6 +174,68 @@ select = [
     "RUF",
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# tests/whitelist.py: the vulture whitelist. Bare names are intentional
+# references (vulture parses the file; nothing imports or runs it).
+#   F821: names are intentionally undefined here.
+#   B018: bare-name expressions are the whole point of a whitelist.
+"tests/whitelist.py" = ["F821", "B018"]
+
+[tool.deptry]
+known_first_party = ["corpus_kb"]
+
+[tool.deptry.per_rule_ignores]
+# Opt-in extras (latechunk/inductive/ner/graphqlite/langextract): their
+# modules are imported lazily behind runtime gates and CI never installs
+# them, so deptry cannot see the import edge. Same contract as the extras'
+# comments above.
+DEP002 = [
+    "graphqlite",
+    "langextract",
+    "sentence-transformers",
+    "transformers",
+    "torch",
+    "umap-learn",
+    "hdbscan",
+    "gliner2",
+    # Dev/tooling deps: consumed by tests/ and the gate commands, never
+    # imported by src/.
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "syrupy",
+    "mapie",
+    "poethepoet",
+    "import-linter",
+    "vulture",
+    "deptry",
+    "xenon",
+    "diff-cover",
+    "pre-commit",
+    # Declared but unreferenced in src/ today. Ratchet follow-up: verify and
+    # drop, or document the dynamic use (pgvector may register types without
+    # an import edge; rich may be a typer extra).
+    "rich",
+    "pgvector",
+    # Declared for surfaces with no import edge yet: the MCP stdio server is
+    # pre-staged but unimplemented, and the tree-sitter grammars belong to a
+    # code chunker that no longer exists in the tree. Ratchet follow-up:
+    # either wire the surface or drop the dependency (with
+    # licenses.lock.json regenerated) in a dependency-scoped PR.
+    "mcp",
+    "tree-sitter",
+    "tree-sitter-python",
+    "tree-sitter-javascript",
+    "tree-sitter-typescript",
+    "tree-sitter-rust",
+    "tree-sitter-go",
+    "tree-sitter-java",
+]
+# httpx is imported directly in ten modules but arrives transitively (via
+# mcp[cli]/ollama). Ratchet follow-up: declare httpx explicitly and
+# regenerate licenses.lock.json in a dependency-scoped PR.
+DEP003 = ["httpx"]
+
 [tool.pytest.ini_options]
 markers = [
     "requires_ollama: mark test as needing a running Ollama service",
@@ -175,9 +246,9 @@ asyncio_mode = "auto"
 # ---------------------------------------------------------------------------
 # Zero-drift gate commands (Wave 2). CI calls the SAME targets — one source
 # of gate commands for humans, agents, and CI (program standards 8/10).
-# ---------------------------------------------------------------------------
+# NOTE: the old `style = "simple"` option was removed — poethepoet >= 0.48
+# rejects it, which broke every poe invocation.
 [tool.poe]
-style = "simple"
 
 [tool.poe.tasks.lint]
 cmd = "ruff check src/ tests/"
@@ -191,13 +262,53 @@ help = "Ruff format check (no rewrites)"
 cmd = "pyright src/"
 help = "Pyright type check (basic mode, repo config)"
 
+# ---------------------------------------------------------------------------
+# Wave 3 quality gates (program standards 7/8/10). Each gate: a poe target
+# here, a CI job (wired by integration), and an enforcement-map row.
+# ---------------------------------------------------------------------------
+
+[tool.poe.tasks.dead-code]
+cmd = "vulture src/ tests/whitelist.py"
+help = "Vulture dead-code scan; tests/whitelist.py carries verified false positives"
+
+[tool.poe.tasks.deps]
+cmd = "deptry src/"
+help = "deptry unused/missing dependency scan (config in [tool.deptry])"
+
+# Ratchet plan (current codebase has 1 F + 15 D blocks outside the Wave-3
+# file scope, so absolute B cannot pass yet):
+#   W4+: split tools/ingest_common._run_locked_stages (F) -> max-absolute D
+#   W5+: fix the 15 D blocks -> max-absolute C; then C -> B.
+# max-average B is the current-passing mean; any broad complexity
+# regression trips it. NOTE for future editors: no percent sign in this
+# file — radon (xenon's engine) parses pyproject via configparser and
+# rejects percent characters.
+[tool.poe.tasks.complexity]
+cmd = "xenon src/ --max-absolute F --max-average B"
+help = "Xenon complexity gate (ratchet to --max-absolute B; see comment above)"
+
+# Needs coverage data first: run ``poe test-cov`` to generate coverage.xml,
+# then ``poe cover-diff``. Kept out of ``verify`` because the plain test
+# run does not produce coverage.xml.
+[tool.poe.tasks.cover-diff]
+cmd = "diff-cover coverage.xml --fail-under 90"
+help = "Diff coverage of at least 90 percent (requires coverage.xml from poe test-cov)"
+
+[tool.poe.tasks.test-cov]
+cmd = "python -m pytest tests/ -q --cov=corpus_kb --cov-report=xml --cov-report=term-missing"
+help = "Full suite with coverage.xml for the cover-diff gate"
+
+[tool.poe.tasks.hooks]
+cmd = "pre-commit run --all-files"
+help = "Run the pre-commit hooks over the whole tree (config: .pre-commit-config.yaml)"
+
 [tool.poe.tasks.test]
 cmd = "python -m pytest tests/ -x -q --tb=short"
 help = "Full test suite (Ollama/Postgres degrade gracefully)"
 
 [tool.poe.tasks.verify]
-sequence = ["lint", "format-check", "types", "test"]
-help = "All quality gates: lint + format-check + types + test"
+sequence = ["lint", "format-check", "types", "dead-code", "deps", "complexity", "test"]
+help = "All quality gates: lint + format-check + types + dead-code + deps + complexity + test"
 
 [tool.poe.tasks.gen]
 cmd = "python scripts/gen_harness_pack.py --check"
