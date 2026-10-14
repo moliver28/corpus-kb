@@ -26,7 +26,7 @@ deterministic FakeEmbedder stub (house pattern, no Ollama dependency).
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import asyncpg
@@ -107,12 +107,8 @@ async def clean_db(db_conn):
     """Pin the RLS tenant, then clean all projection tables."""
     # Session scope (is_local=false): the setting must survive across
     # separate autocommit statements on this connection.
-    await db_conn.execute(
-        "SELECT set_config('app.current_tenant_id', $1, false)", DEFAULT_TENANT
-    )
-    await db_conn.execute(
-        "TRUNCATE chunks_vectors, chunks, documents, entities, relations CASCADE"
-    )
+    await db_conn.execute("SELECT set_config('app.current_tenant_id', $1, false)", DEFAULT_TENANT)
+    await db_conn.execute("TRUNCATE chunks_vectors, chunks, documents, entities, relations CASCADE")
     yield
 
 
@@ -182,9 +178,7 @@ class TestE2EIntegration:
             "dimensions": SCHEMA_WIDTH,
             "batch_size": 8,
         }
-        query_handler = QueryHandler(
-            db_pool, embedder=FakeEmbedder(cfg), config=cfg
-        )
+        query_handler = QueryHandler(db_pool, embedder=FakeEmbedder(cfg), config=cfg)
         results = await query_handler.handle_search(SearchQuery(query="authenticate", k=5))
 
         # Results may be empty if projection hasn't run yet
@@ -313,7 +307,7 @@ class TestE2EIntegration:
             "TestProjection",
             UUID(DEFAULT_TENANT),
             UUID(int=1),
-            datetime(2026, 1, 1, tzinfo=timezone.utc),
+            datetime(2026, 1, 1, tzinfo=UTC),
         )
 
         # Get checkpoint (should exist now)
@@ -364,9 +358,7 @@ class TestE2EIntegration:
         assert result["error_type"] == "FileNotFoundError"
 
     @pytest.mark.asyncio
-    async def test_width_guard_rejects_shipped_default_against_vector_4096(
-        self, clean_db, db_conn
-    ):
+    async def test_width_guard_rejects_shipped_default_against_vector_4096(self, clean_db, db_conn):
         """The 768-dim default cannot enter vector(4096): typed ConfigError.
 
         Pin for the W4c width guard against the LIVE schema: the shipped
