@@ -139,6 +139,18 @@ CREATE TABLE IF NOT EXISTS chunks_vectors (
     -- 4096-dim fixtures in tests/test_es_foundation.py pin the contract.
     -- Changing the model dimensionality is a column-migration decision, not
     -- a config flip (tests/research_db.py executes this file verbatim).
+    --
+    -- EMPIRICAL CONTRACT (pgvector 0.8.3, Postgres 16.14, verified on the
+    -- live server): pgvector ENFORCES the typmod width exactly. A 768-dim
+    -- INSERT into vector(4096) FAILS with SQLSTATE 22000 ("expected 4096
+    -- dimensions, not 768"); a 4097-dim INSERT fails the same way. Vectors
+    -- are never padded and never truncated. Model-vs-schema matrix
+    -- (docs/ADMIN.md): ONLY a model emitting exactly 4096 dims can write
+    -- here (qwen3-embedding:8b-q8_0); the shipped default model
+    -- (nomic-embed-text, 768d) CANNOT ingest. The ingest write path raises
+    -- a typed ConfigError naming the fix (tools/ingest_store.
+    -- assert_vector_column_width), and `corpus-kb doctor` reports the
+    -- "embedding dimensions vs schema" check as FAIL on the mismatch.
     vector vector(4096),
     embedding_model VARCHAR(255) NOT NULL DEFAULT 'nomic-embed-text',
     embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

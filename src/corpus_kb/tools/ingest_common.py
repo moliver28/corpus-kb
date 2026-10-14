@@ -24,6 +24,7 @@ from pathlib import Path
 import asyncpg
 
 from ..config import load_config
+from ..errors import ConfigError
 from ..extraction import ExtractStats
 from ..ingest.hierarchy_settings import load_hierarchy_settings
 from ..ingestion.base import (
@@ -380,6 +381,12 @@ async def _run_locked_stages(
                 dimensions=dimensions,
                 vectors_1024=vectors_1024 or None,
             )
+        except ConfigError:
+            # The dimension-switch guard: a model/schema width mismatch is a
+            # CONFIG problem with a named fix — raise it typed so the surfaces
+            # map it through the error taxonomy (fail_run already closed the
+            # ledger on the way through the BaseException handler below).
+            raise
         except Exception as exc:
             logger.warning("Postgres vector write failed: %s", exc)
             errors.append(f"PostgresWriteError: {exc}")
