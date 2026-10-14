@@ -145,6 +145,32 @@ Done-when: full suite green, ruff clean, route smoke + parity seed in CI.
 - `research cycle --approve` for headless runs; exit codes in `--help`.
 - Regenerate harness pack; `gen_harness_pack.py --check` green.
 
+## OSS tooling adoption
+
+Chosen to enforce the standards above without duplicating existing gates
+(ruff, pyright, syrupy, commitizen, CodeQL, mimosa are already in place).
+
+| Tool | Enforces | Wave |
+|------|----------|------|
+| FastMCP in-memory `Client` | MCP surface joins the parity harness, tested in-process (no stdio subprocess) | 2→4 |
+| OpenAPI 3.1 export from the catalogue (`corpus-kb operations --openapi`) | machine-readable API truth; input for schemathesis/oasdiff | 2 |
+| schemathesis | property-based conformance fuzzing of HTTP routes against the spec | 2 |
+| oasdiff | PR-time breaking-change diff of the spec | 2 |
+| import-linter | layering contracts (api→tools→handlers→storage); kills shadow pipelines | 2 |
+| poethepoet | `poe gen` / `poe verify` — the update workflow as commands, in pyproject | 2 |
+| vulture | dead-code detection with a whitelist file | 3 |
+| deptry | unused/missing dependencies (would have flagged the unused `mcp` dep) | 3 |
+| xenon (or ruff C901) | per-function complexity gate | 3 |
+| diff-cover | coverage gate on changed lines only | 3 |
+| pre-commit | run the CI gates locally before push | 3 |
+| Vale (+ official GitHub Action) | prose linting; custom "Corpus STE" style: ≤20-word sentences, STE100 banned words | 5 |
+| textstat | Flesch-Kincaid grade ≤ 9 gate on docs; repo-native pytest enforces the same on docstrings/error strings (Vale cannot reach Python strings) | 5 |
+| asd-ste100-skill (MIT, agent-side) | optional rewriter aid during the Wave 5 STE pass; not a CI gate | 5 |
+
+Note: no mature standalone OSS ASD-STE100 checker exists (BSEC, HyperSTE,
+Congree are commercial). Issue 9 of the spec is free to download from
+asd-ste100.org and is the rule source for our Vale style + native checker.
+
 ## Issue mapping
 
 - #84–#86, #80, #76 stay open (feature work, credential-gated; not this program).
