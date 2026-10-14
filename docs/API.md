@@ -74,13 +74,34 @@ methods `ingest_file` and `ingest_text` return the same shape.
 
 ### POST /api/ingest/directory
 
-Recursively ingest a directory.
+Ingest one directory in one shared walk.
 
 ```bash
 curl -X POST http://localhost:8010/api/ingest/directory \
   -H "Content-Type: application/json" \
   -d '{"directory_path": "src", "recursive": true}'
 ```
+
+The walk is the tool layer's `ingest_directory`; CLI, MCP, and HTTP all
+share it. One filter applies on every surface: a file is ingested only
+when its suffix is in `ingest_watch.WATCH_SUFFIXES` (`.txt`, `.md`,
+`.rst`, `.pptx`, and common code suffixes). `recursive` defaults to
+`true`; `false` walks the top level only.
+
+The response is the union envelope `{status, directory, files_processed,
+total_documents, total_entities, results}`:
+
+- `status` is `success` when the walk completed. Per-file failures stay
+  inside `results`. It is `error` for a bad path or an unknown
+  `source_type`; then nothing was ingested and the body is
+  `{status, message}` with HTTP 200.
+- `directory` echoes the requested path.
+- `files_processed` counts the files attempted (`len(results)`).
+- `total_documents` counts the files whose own ingest returned
+  `success`.
+- `total_entities` sums `entity_count` over those successes.
+- `results` holds the per-file envelopes in walk order. Each success
+  carries the additive `aggregate_id`/`aggregate_version` audit keys.
 
 ### GET /api/ingest/status
 
@@ -125,11 +146,24 @@ curl "http://localhost:8010/api/documents?limit=10&offset=0"
 
 ### DELETE /api/documents/{doc_id}
 
-Delete a document.
+Delete one document. MCP (`delete_document`) and this route share ONE
+implementation: the tool's row delete.
 
 ```bash
 curl -X DELETE http://localhost:8010/api/documents/{doc_id}
 ```
+
+The delete runs in one transaction with the caller's tenant (RLS applies;
+the route deletes inside the default tenant unless `tenant_id` is sent).
+Chunks, vectors, tags, metadata, and research rows cascade. Entity and
+relation rows stay; their document links become NULL. Event-store rows
+persist.
+
+The delete is idempotent: an unknown ID still answers
+`{"status": "success", "document_id": "..."}` with HTTP 200. On the HTTP
+surface the command handler then adds the audit keys
+`aggregate_id`/`aggregate_version` (or `event_sourcing_error` when the
+audit write failed after the successful delete).
 
 ---
 
