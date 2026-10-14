@@ -80,3 +80,7 @@ typer
 shim
 shims
 idempotent
+Buettcher
+Arabie
+abductive
+Fightin
