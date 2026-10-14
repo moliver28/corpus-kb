@@ -328,53 +328,18 @@ def _validate_cursor_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
 # ---------------------------------------------------------------------------
 
 
-def check_cross_config_consistency(
-    opencode_config: dict[str, Any] | None,
-    claude_config: dict[str, Any] | None,
-    cursor_config: dict[str, Any] | None,
-    codex_config: dict[str, Any] | None = None,
-) -> list[str]:
-    """Check that all configs define the same tools with matching descriptions.
+def _extract_tool_set(config: dict[str, Any], key: str) -> dict[str, str]:
+    """{tool_name: description} from one editor config under ``key``."""
+    return {
+        name: cfg.get("description", "")
+        for name, cfg in config[key].items()
+        if isinstance(cfg, dict)
+    }
 
-    Returns a list of error strings (empty = consistent).
-    """
+
+def _tool_set_mismatches(tool_sets: dict[str, dict[str, str]]) -> list[str]:
+    """Errors for configs that define a different tool-name set than the first."""
     errors: list[str] = []
-
-    # Extract tool sets from each config
-    tool_sets: dict[str, dict[str, str]] = {}  # format -> {tool_name: description}
-
-    if opencode_config and "mcp" in opencode_config:
-        tool_sets["opencode"] = {
-            name: cfg.get("description", "")
-            for name, cfg in opencode_config["mcp"].items()
-            if isinstance(cfg, dict)
-        }
-
-    if claude_config and "mcpServers" in claude_config:
-        tool_sets["claude"] = {
-            name: cfg.get("description", "")
-            for name, cfg in claude_config["mcpServers"].items()
-            if isinstance(cfg, dict)
-        }
-
-    if cursor_config and "mcpServers" in cursor_config:
-        tool_sets["cursor"] = {
-            name: cfg.get("description", "")
-            for name, cfg in cursor_config["mcpServers"].items()
-            if isinstance(cfg, dict)
-        }
-
-    if codex_config and "mcpServers" in codex_config:
-        tool_sets["codex"] = {
-            name: cfg.get("description", "")
-            for name, cfg in codex_config["mcpServers"].items()
-            if isinstance(cfg, dict)
-        }
-
-    if len(tool_sets) < 2:
-        return errors  # Nothing to cross-check
-
-    # Check all configs define the same set of tool names
     all_tool_names = [set(ts.keys()) for ts in tool_sets.values()]
     reference = all_tool_names[0]
     for fmt, names in zip(tool_sets.keys(), all_tool_names[1:], strict=False):
@@ -390,8 +355,13 @@ def check_cross_config_consistency(
                 f"Cross-config tool mismatch: all configs must define the same set of tools. "
                 f"Compared to first config, '{fmt}' has {'; '.join(parts)}"
             )
+    return errors
 
-    # Check descriptions match across configs
+
+def _description_mismatches(tool_sets: dict[str, dict[str, str]]) -> list[str]:
+    """Errors for tools whose description differs across configs."""
+    errors: list[str] = []
+    all_tool_names = [set(ts.keys()) for ts in tool_sets.values()]
     common_tools = set.intersection(*all_tool_names) if all_tool_names else set()
     formats = list(tool_sets.keys())
     for tool in sorted(common_tools):
@@ -400,8 +370,36 @@ def check_cross_config_consistency(
         if len(unique_descs) > 1:
             desc_details = "; ".join(f"{fmt}: '{desc}'" for fmt, desc in descriptions.items())
             errors.append(f"Description mismatch for tool '{tool}': {desc_details}")
-
     return errors
+
+
+def check_cross_config_consistency(
+    opencode_config: dict[str, Any] | None,
+    claude_config: dict[str, Any] | None,
+    cursor_config: dict[str, Any] | None,
+    codex_config: dict[str, Any] | None = None,
+) -> list[str]:
+    """Check that all configs define the same tools with matching descriptions.
+
+    Returns a list of error strings (empty = consistent).
+    """
+    errors: list[str] = []
+
+    # Extract tool sets from each config: format -> {tool_name: description}
+    sources = (
+        ("opencode", opencode_config, "mcp"),
+        ("claude", claude_config, "mcpServers"),
+        ("cursor", cursor_config, "mcpServers"),
+        ("codex", codex_config, "mcpServers"),
+    )
+    tool_sets = {
+        name: _extract_tool_set(cfg, key) for name, cfg, key in sources if cfg and key in cfg
+    }
+
+    if len(tool_sets) < 2:
+        return errors  # Nothing to cross-check
+
+    return _tool_set_mismatches(tool_sets) + _description_mismatches(tool_sets)
 
 
 # ---------------------------------------------------------------------------
@@ -608,6 +606,68 @@ def load_json(path: Path) -> dict:
         return json.load(f)
 
 
+def _validate_mcp_config_dir(
+    project_root: Path,
+) -> tuple[list[str], dict[str, Any] | None, dict[str, Any] | None, dict[str, Any] | None]:
+    """Validate mcp-configs/*.json; return (errors, claude, cursor, codex configs).
+
+    The three mcpServers configs are returned for the cross-config check.
+    """
+    errors: list[str] = []
+    claude_config: dict | None = None
+    cursor_config: dict | None = None
+    codex_config: dict | None = None
+
+    mcp_configs_dir = project_root / "mcp-configs"
+    if not mcp_configs_dir.exists():
+        return ["mcp-configs/ directory not found"], None, None, None
+
+    for json_file in sorted(mcp_configs_dir.glob("*.json")):
+        config = load_json(json_file)
+        filename = json_file.name
+
+        if filename == "opencode.json":
+            # Should match root format
+            errs = validate_opencode_config(config)
+            errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
+        elif filename == "claude-code.json":
+            claude_config = config
+            errs = validate_claude_config(config)
+            errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
+        elif filename == "cursor.json":
+            cursor_config = config
+            errs = validate_cursor_config(config)
+            errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
+        elif filename == "codex.json":
+            # Intentional reuse: codex.json shares the mcpServers+autoApprove shape.
+            codex_config = config
+            errs = validate_claude_config(config)
+            errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
+        else:
+            errors.append(f"mcp-configs/{filename}: unknown config format, skipping")
+    return errors, claude_config, cursor_config, codex_config
+
+
+def _validate_runtime_yaml(project_root: Path) -> list[str]:
+    """Runtime config.yaml checks: root and packaged copies must agree.
+
+    Lockstep rule for new config keys; all three validators run per copy.
+    """
+    errors: list[str] = []
+    for relative_path in (Path("config.yaml"), Path("src") / "corpus_kb" / "config.yaml"):
+        config_path = project_root / relative_path
+        display = relative_path.as_posix()
+        if not config_path.exists():
+            errors.append(f"{display}: not found")
+            continue
+        runtime_cfg = load_yaml(config_path)
+        errs = validate_extraction_gliner(runtime_cfg)
+        errs += validate_ingestion_block(runtime_cfg)
+        errs += validate_runtime_config(runtime_cfg)
+        errors.extend(f"{display}: {e}" for e in errs)
+    return errors
+
+
 def validate_all(project_root: Path | None = None) -> list[str]:
     """Run all validations against the project's config files.
 
@@ -628,37 +688,8 @@ def validate_all(project_root: Path | None = None) -> list[str]:
         errors.append("opencode.json not found")
 
     # 2. Validate mcp-configs/*.json
-    mcp_configs_dir = project_root / "mcp-configs"
-    claude_config: dict | None = None
-    cursor_config: dict | None = None
-    codex_config: dict | None = None
-
-    if mcp_configs_dir.exists():
-        for json_file in sorted(mcp_configs_dir.glob("*.json")):
-            config = load_json(json_file)
-            filename = json_file.name
-
-            if filename == "opencode.json":
-                # Should match root format
-                errs = validate_opencode_config(config)
-                errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
-            elif filename == "claude-code.json":
-                claude_config = config
-                errs = validate_claude_config(config)
-                errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
-            elif filename == "cursor.json":
-                cursor_config = config
-                errs = validate_cursor_config(config)
-                errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
-            elif filename == "codex.json":
-                # Intentional reuse: codex.json shares the mcpServers+autoApprove shape.
-                codex_config = config
-                errs = validate_claude_config(config)
-                errors.extend(f"mcp-configs/{filename}: {e}" for e in errs)
-            else:
-                errors.append(f"mcp-configs/{filename}: unknown config format, skipping")
-    else:
-        errors.append("mcp-configs/ directory not found")
+    mcp_errors, claude_config, cursor_config, codex_config = _validate_mcp_config_dir(project_root)
+    errors.extend(mcp_errors)
 
     # 3. Cross-config consistency
     opencode_config = load_json(opencode_path) if opencode_path.exists() else None
@@ -678,19 +709,8 @@ def validate_all(project_root: Path | None = None) -> list[str]:
                 "opencode.json.bak: unexpectedly passes OpenCode validation (should be old format)"
             )
 
-    # 5. Runtime config.yaml — root and packaged copies must exist and agree
-    # (lockstep rule for new config keys). Both validators run per copy.
-    for relative_path in (Path("config.yaml"), Path("src") / "corpus_kb" / "config.yaml"):
-        config_path = project_root / relative_path
-        display = relative_path.as_posix()
-        if not config_path.exists():
-            errors.append(f"{display}: not found")
-            continue
-        runtime_cfg = load_yaml(config_path)
-        errs = validate_extraction_gliner(runtime_cfg)
-        errs += validate_ingestion_block(runtime_cfg)
-        errs += validate_runtime_config(runtime_cfg)
-        errors.extend(f"{display}: {e}" for e in errs)
+    # 5. Runtime config.yaml — root and packaged copies (see helper).
+    errors.extend(_validate_runtime_yaml(project_root))
 
     return errors
 

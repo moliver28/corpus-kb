@@ -113,6 +113,93 @@ def _coverage_of(
     return covered / len(decisions_by_unit)
 
 
+async def _load_gold_by_code(
+    tconn: asyncpg.Connection,
+    tenant_id: UUID,
+    codes_all: list[dict[str, object]],
+) -> dict[str, list[tuple[list[float], list[float], list[float], str]]]:
+    """Gold view vectors (answer, qa, question, basis) per code id."""
+    gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]] = {}
+    for code in codes_all:
+        refs = list(code["theory"].get("exemplar_text_sha256") or [])
+        gold_by_code[str(code["code_id"])] = await load_gold_views(tconn, tenant_id, refs)
+    return gold_by_code
+
+
+def _score_codes(
+    codes: list[dict[str, object]],
+    units: list[Any],
+    gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]],
+    skipped: dict[str, str],
+) -> dict[str, dict[str, list[float]]]:
+    """Per-code prototype scoring over every unit view.
+
+    Codes with no gold exemplars are skipped (recorded in ``skipped``) — they
+    cannot produce prototypes.
+    """
+    scored: dict[str, dict[str, list[float]]] = {}
+    for code in codes:
+        code_id = str(code["code_id"])
+        gold = gold_by_code.get(code_id, [])
+        if not gold:
+            skipped[code_id] = "no_gold_prototypes"
+            continue
+        prototypes = {
+            "answer": build_view_prototypes([g[0] for g in gold]),
+            "qa": build_view_prototypes([g[1] for g in gold]),
+            "question": build_view_prototypes([g[2] for g in gold]),
+        }
+        scored[code_id] = {
+            view: _score_view(units, view, prototypes[view])
+            for view in ("answer", "qa", "question")
+        }
+    return scored
+
+
+def _record_assignments(
+    handler: ResearchHandler,
+    tenant_id: UUID,
+    run_id: UUID,
+    codebook_version_id: UUID,
+    units: list[Any],
+    decisions_by_unit: dict[int, list[DeductiveDecision]],
+    scored: dict[str, dict[str, list[float]]],
+) -> tuple[int, int, int]:
+    """Persist one assignment row per (unit, decision); return basis counts.
+
+    Returns (explicit, question_dependent, review) tallies for the summary.
+    """
+    explicit = qdep = review = 0
+    row_of_unit = {u.unit_id: i for i, u in enumerate(units)}
+    for unit in units:
+        for d in decisions_by_unit[unit.unit_id]:
+            views = scored.get(d.code_id, {})
+            handler.record_assignment(
+                tenant_id,
+                unit_id=unit.unit_id,
+                code_id=UUID(d.code_id),
+                run_id=run_id,
+                cb_version_id=codebook_version_id,
+                sim_answer=views["answer"][row_of_unit[unit.unit_id]] if views else None,
+                sim_qa=views["qa"][row_of_unit[unit.unit_id]] if views else None,
+                sim_q=views["question"][row_of_unit[unit.unit_id]] if views else None,
+                evidence_basis=d.evidence_basis,
+                stance=unit.stance,
+                term_origin=unit.term_origin,
+                rationale=f"deductive:v2:{d.reason}",
+                confidence=d.confidence,
+                tier_fired=d.tier_fired,
+                status=d.status,
+            )
+            if d.evidence_basis == "explicit_in_answer":
+                explicit += 1
+            elif d.evidence_basis == "question_dependent":
+                qdep += 1
+            if d.status == "review":
+                review += 1
+    return explicit, qdep, review
+
+
 async def run_deductive(
     pool: asyncpg.Pool,
     tenant_id: UUID,
@@ -165,64 +252,20 @@ async def run_deductive(
     async with tenant_connection(pool, tenant_id) as tconn:
         codes_all = await load_codes(tconn, tenant_id, codebook_version_id)
         units = await load_unit_views(tconn, tenant_id, project_id)
-        gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]] = {}
-        for code in codes_all:
-            refs = list(code["theory"].get("exemplar_text_sha256") or [])
-            gold_by_code[code["code_id"]] = await load_gold_views(tconn, tenant_id, refs)
+        gold_by_code = await _load_gold_by_code(tconn, tenant_id, codes_all)
 
     codes = [c for c in codes_all if _is_uuid(c["code_id"])]
     skipped: dict[str, str] = {
         c["code_id"]: "non_uuid_code_id" for c in codes_all if not _is_uuid(c["code_id"])
     }
-    scored: dict[str, dict[str, list[float]]] = {}
-    for code in codes:
-        code_id = code["code_id"]
-        gold = gold_by_code.get(code_id, [])
-        if not gold:
-            skipped[code_id] = "no_gold_prototypes"
-            continue
-        prototypes = {
-            "answer": build_view_prototypes([g[0] for g in gold]),
-            "qa": build_view_prototypes([g[1] for g in gold]),
-            "question": build_view_prototypes([g[2] for g in gold]),
-        }
-        scored[code_id] = {
-            view: _score_view(units, view, prototypes[view])
-            for view in ("answer", "qa", "question")
-        }
+    scored = _score_codes(codes, units, gold_by_code, skipped)
 
     decisions_by_unit, conformal_sets_by_unit, conformal_coverage = _decide_units(
         codes, units, scored, gold_by_code, cal_alpha
     )
-
-    explicit = qdep = review = 0
-    row_of_unit = {u.unit_id: i for i, u in enumerate(units)}
-    for unit in units:
-        for d in decisions_by_unit[unit.unit_id]:
-            views = scored.get(d.code_id, {})
-            handler.record_assignment(
-                tenant_id,
-                unit_id=unit.unit_id,
-                code_id=UUID(d.code_id),
-                run_id=run_id,
-                cb_version_id=codebook_version_id,
-                sim_answer=views["answer"][row_of_unit[unit.unit_id]] if views else None,
-                sim_qa=views["qa"][row_of_unit[unit.unit_id]] if views else None,
-                sim_q=views["question"][row_of_unit[unit.unit_id]] if views else None,
-                evidence_basis=d.evidence_basis,
-                stance=unit.stance,
-                term_origin=unit.term_origin,
-                rationale=f"deductive:v2:{d.reason}",
-                confidence=d.confidence,
-                tier_fired=d.tier_fired,
-                status=d.status,
-            )
-            if d.evidence_basis == "explicit_in_answer":
-                explicit += 1
-            elif d.evidence_basis == "question_dependent":
-                qdep += 1
-            if d.status == "review":
-                review += 1
+    explicit, qdep, review = _record_assignments(
+        handler, tenant_id, run_id, codebook_version_id, units, decisions_by_unit, scored
+    )
 
     summary = {
         "status": "success",

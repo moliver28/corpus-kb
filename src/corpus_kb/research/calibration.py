@@ -118,6 +118,49 @@ def _range_dict(values: dict[str, Sequence[float]]) -> dict[str, object]:
     }
 
 
+def _fold_threshold_values(
+    relevant: list[dict[str, object]],
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    rng: np.random.Generator | None,
+) -> tuple[float, float, float] | None:
+    """Tau_a / tau_qa / delta fitted on ONE CV fold (None: no positives).
+
+    Prototypes are rebuilt inside each training fold.
+    """
+    train_units = [relevant[i] for i in train_idx]
+    test_units = [relevant[i] for i in test_idx]
+
+    pos_train = [u for u in train_units if int(cast(int, u["label"])) == 1]
+    if not pos_train:
+        return None
+    answer_protos = build_view_prototypes(
+        [cast(Sequence[float], u["answer"]) for u in pos_train], rng=rng
+    )
+    qa_protos = build_view_prototypes([cast(Sequence[float], u["qa"]) for u in pos_train], rng=rng)
+    question_protos = build_view_prototypes(
+        [cast(Sequence[float], u["question"]) for u in pos_train], rng=rng
+    )
+    prototypes = {"answer": answer_protos, "qa": qa_protos, "question": question_protos}
+    scores = score_code_batch(
+        [cast(Sequence[float], u["answer"]) for u in test_units],
+        [cast(Sequence[float], u["qa"]) for u in test_units],
+        [cast(Sequence[float], u["question"]) for u in test_units],
+        prototypes,
+    )
+    test_labels = np.array([int(cast(int, u["label"])) for u in test_units], dtype=int)
+    qdep = np.array(
+        [1 if str(u.get("evidence_basis")) == "question_dependent" else 0 for u in test_units],
+        dtype=int,
+    )
+    gain = scores.qa - scores.question
+    return (
+        _fit_binary_threshold(scores.answer, test_labels),
+        _fit_binary_threshold(scores.qa, test_labels),
+        _fit_delta_threshold(gain, qdep),
+    )
+
+
 def fit_code_thresholds(
     gold_units: list[dict[str, object]],
     code_id: str,
@@ -150,39 +193,14 @@ def fit_code_thresholds(
     fold_delta: list[float] = []
 
     for fold_idx in range(len(folds)):
-        test = folds[fold_idx]
         train = np.concatenate([folds[i] for i in range(len(folds)) if i != fold_idx])
-        train_units = [relevant[i] for i in train]
-        test_units = [relevant[i] for i in test]
-
-        pos_train = [u for u in train_units if int(cast(int, u["label"])) == 1]
-        if not pos_train:
+        fitted = _fold_threshold_values(relevant, train, folds[fold_idx], rng)
+        if fitted is None:
             continue
-        answer_protos = build_view_prototypes(
-            [cast(Sequence[float], u["answer"]) for u in pos_train], rng=rng
-        )
-        qa_protos = build_view_prototypes(
-            [cast(Sequence[float], u["qa"]) for u in pos_train], rng=rng
-        )
-        question_protos = build_view_prototypes(
-            [cast(Sequence[float], u["question"]) for u in pos_train], rng=rng
-        )
-        prototypes = {"answer": answer_protos, "qa": qa_protos, "question": question_protos}
-        scores = score_code_batch(
-            [cast(Sequence[float], u["answer"]) for u in test_units],
-            [cast(Sequence[float], u["qa"]) for u in test_units],
-            [cast(Sequence[float], u["question"]) for u in test_units],
-            prototypes,
-        )
-        test_labels = np.array([int(cast(int, u["label"])) for u in test_units], dtype=int)
-        qdep = np.array(
-            [1 if str(u.get("evidence_basis")) == "question_dependent" else 0 for u in test_units],
-            dtype=int,
-        )
-        gain = scores.qa - scores.question
-        fold_tau_a.append(_fit_binary_threshold(scores.answer, test_labels))
-        fold_tau_qa.append(_fit_binary_threshold(scores.qa, test_labels))
-        fold_delta.append(_fit_delta_threshold(gain, qdep))
+        tau_a, tau_qa, delta = fitted
+        fold_tau_a.append(tau_a)
+        fold_tau_qa.append(tau_qa)
+        fold_delta.append(delta)
 
     tau_a = _median_or_zero(fold_tau_a)
     tau_qa = _median_or_zero(fold_tau_qa)
