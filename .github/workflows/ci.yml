@@ -220,6 +220,15 @@ jobs:
           if [ "$RUNNER_OS" = "Windows" ]; then pip install python-magic-bin; fi
         shell: bash
 
+      - name: Install libmagic (macOS)
+        # Binary-safe ingest detects unknown file formats through libmagic.
+        # Ubuntu has the system package and Windows gets python-magic-bin
+        # above, but macOS runners ship without it. Without it, unstructured
+        # cannot partition binary blobs and the ingest surfaces return an
+        # error envelope instead of success.
+        if: runner.os == 'macOS'
+        run: brew install libmagic
+
       - name: Cache Ollama models (Ubuntu/macOS)
         if: runner.os != 'Windows'
         uses: actions/cache@v4
