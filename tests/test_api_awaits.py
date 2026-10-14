@@ -1,9 +1,15 @@
-"""The five missing-await fixes: ingest handlers must actually be awaited
-in api/http.py (ingest file/text/directory) and api/socket.py (file/text).
+"""Socket/HTTP dispatch honesty pins, started by the five missing-await fixes.
 
-A missing await surfaces as a coroutine object reaching JSONResponse /
-json.dumps — the route then 400s (http) or errors -32603 (socket). These
-tests pin the fixed behavior with fake handlers, no database."""
+The original five: ingest handlers must actually be awaited in api/http.py
+(ingest file/text/directory) and api/socket.py (file/text). A missing await
+surfaces as a coroutine object reaching JSONResponse / json.dumps — the route
+then 400s (http) or errors -32603 (socket).
+
+The suite now also pins the wave-1B parity contract: all nine socket methods
+reach their handler (awaited), ``search`` forwards ``source_type``,
+``add_relation`` forwards ``weight``/``metadata``, unknown methods map to
+-32601 (never -32603). Fake handlers only; no database.
+"""
 
 from __future__ import annotations
 
@@ -290,3 +296,124 @@ async def test_socket_internal_error_still_32603(monkeypatch: Any) -> None:
     )
 
     assert response["error"]["code"] == -32603
+
+
+# ---------------------------------------------------------------------------
+# Dispatch-await coverage: every socket method must actually await its
+# handler/tool (a missing await surfaces as -32603, never a result).
+# ---------------------------------------------------------------------------
+
+
+class _FakeRouterHandler:
+    async def handle_routed_query(self, query: Any) -> _Dump:
+        return _Dump({"answer": "routed"})
+
+
+async def test_socket_ingest_url_awaits_tool(monkeypatch: Any) -> None:
+    import corpus_kb.api.research_http as research_http_module
+    import corpus_kb.tools.ingest_tools as ingest_tools_module
+
+    seen: list[tuple[str, bool]] = []
+
+    async def fake_ingest_url(
+        url: str,
+        pool: Any,
+        tenant_id: str = "t",
+        crawl: bool = False,
+        source_type: str | None = None,
+    ) -> dict[str, object]:
+        seen.append((url, crawl))
+        return {"status": "success", "handler": "ingest_url"}
+
+    async def fake_pool() -> object:
+        return object()
+
+    monkeypatch.setattr(ingest_tools_module, "ingest_url", fake_ingest_url)
+    monkeypatch.setattr(research_http_module, "research_pool", fake_pool)
+    server = JSONRPCServer()
+
+    response = await server._process_request(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 10,
+                "method": "ingest_url",
+                "params": {"url": "https://example.com", "crawl": True},
+            }
+        )
+    )
+
+    assert response["result"] == {"status": "success", "handler": "ingest_url"}
+    assert seen == [("https://example.com", True)]
+
+
+async def test_socket_query_awaits_router_handler(monkeypatch: Any) -> None:
+    import corpus_kb.handlers.router_handler as router_handler_module
+
+    monkeypatch.setattr(router_handler_module, "get_router_handler", _FakeRouterHandler)
+    server = JSONRPCServer()
+
+    response = await server._process_request(
+        json.dumps({"jsonrpc": "2.0", "id": 11, "method": "query", "params": {"query": "q"}})
+    )
+
+    assert response["result"] == {"status": "success", "result": {"answer": "routed"}}
+
+
+async def test_socket_list_documents_awaits_query_handler(monkeypatch: Any) -> None:
+    handler = _install_query_handler(monkeypatch)
+    server = JSONRPCServer()
+
+    response = await server._process_request(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 12,
+                "method": "list_documents",
+                "params": {"limit": 5, "offset": 3},
+            }
+        )
+    )
+
+    assert response["result"] == {"status": "success", "result": [{"doc_id": "d1"}]}
+    query = handler.listings[0]
+    assert query.limit == 5
+    assert query.offset == 3
+
+
+async def test_socket_add_entity_dispatches_to_handler(monkeypatch: Any) -> None:
+    handler = _install(monkeypatch)
+    server = JSONRPCServer()
+
+    response = await server._process_request(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 13,
+                "method": "add_entity",
+                "params": {"name": "concept-a", "entity_type": "concept"},
+            }
+        )
+    )
+
+    assert response["result"] == {"status": "success", "handler": "add_entity"}
+    assert str(handler.entities[0].name) == "concept-a"
+
+
+async def test_socket_verify_answer_awaits_query_handler(monkeypatch: Any) -> None:
+    handler = _install_query_handler(monkeypatch)
+    server = JSONRPCServer()
+
+    response = await server._process_request(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 14,
+                "method": "verify_answer",
+                "params": {"answer": "a", "chunk_ids": []},
+            }
+        )
+    )
+
+    assert response["result"] == {"status": "success", "result": {"groundedness": 1.0}}
+    assert len(handler.verifies) == 1
