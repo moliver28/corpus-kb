@@ -32,8 +32,15 @@ class IdempotencyChecker:
         self._pool = pool
 
     async def check(self, tenant_id: UUID, command_id: UUID) -> dict[str, Any] | None:
-        """Check if command already executed. Returns cached result or None."""
-        async with self._pool.acquire() as conn:
+        """Check if command already executed. Returns cached result or None.
+
+        The tenant set_config and the read share ONE transaction: with
+        is_local=true the setting lives only inside it, and the RLS policy
+        casts current_setting('app.current_tenant_id') to UUID — an
+        autocommit read after a bare set_config sees an empty value and
+        fails the cast (live e2e round, W5C).
+        """
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 str(tenant_id),
@@ -59,14 +66,19 @@ class IdempotencyChecker:
         command_payload: dict[str, Any],
         result: dict[str, Any] | None = None,
     ) -> None:
-        """Record command execution for future deduplication."""
-        async with self._pool.acquire() as conn:
+        """Record command execution for future deduplication.
+
+        One transaction holds the tenant set_config and the INSERT: the
+        RLS WITH CHECK policy needs the tenant value live in the same
+        transaction (see :meth:`check`).
+        """
+        import json
+
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 str(tenant_id),
             )
-            import json
-
             await conn.execute(
                 """
                 INSERT INTO idempotency_keys
