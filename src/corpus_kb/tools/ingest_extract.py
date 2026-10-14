@@ -12,7 +12,7 @@ import logging
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
-from ..extraction import ExtractStats, create_extractor
+from ..extraction import ExtractStats, create_extractor, extraction_backend_name
 from ..extraction.pgml_backend import PgmlExtractor
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
@@ -25,9 +25,8 @@ logger = logging.getLogger(__name__)
 
 
 def _extractor_name(config: dict[str, object]) -> str:
-    graph = _nested_dict(config, "graph")
-    raw = graph.get("extractor")
-    return raw if isinstance(raw, str) else "pgml"
+    """The effective extraction backend (extraction.backend > graph.extractor)."""
+    return extraction_backend_name(config)
 
 
 async def extract_with_fallback(
@@ -39,7 +38,8 @@ async def extract_with_fallback(
 ) -> tuple[list[Entity], list[Relation], str, ExtractStats]:
     """Extract entities and relations, falling back through the extractor chain.
 
-    Order depends on ``graph.extractor``:
+    Order depends on the extraction backend (``extraction.backend``
+    preferred, ``graph.extractor`` the accepted alias):
 
     - ``pgml``: PostgresML NER -> LangExtract -> RegexExtractor
     - ``langextract``: LangExtract -> RegexExtractor
