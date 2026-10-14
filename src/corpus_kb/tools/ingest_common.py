@@ -3,22 +3,28 @@
 All writes go directly to Postgres via asyncpg (see ``ingest_store`` for the
 write layer and the ``ingest_runs`` integrity ledger). No LanceDB, no SQLite.
 The ingest pipeline is async — callers must await run_pipeline().
+
+Zero-drift Wave 3B split: the embed stage (``ingest_embed``), the
+extraction chain (``ingest_extract``), the degraded repair path
+(``ingest_reembed``), and the shared config reads (``ingest_cfg``) live
+in their own modules. This module re-exports every moved public name, so
+existing imports (and the ``monkeypatch`` targets
+``ingest_common.embed_chunks`` / ``ingest_common.PostgresIngestStore``,
+resolved through this module's namespace by ``_run_locked_stages``)
+keep working unchanged.
 """
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import logging
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
 import asyncpg
 
 from ..config import load_config
-from ..extraction import ExtractStats, create_extractor
-from ..extraction.pgml_backend import PgmlExtractor
+from ..extraction import ExtractStats
 from ..ingest.hierarchy_settings import load_hierarchy_settings
 from ..ingestion.base import (
     DETECT_HEAD_CHARS,
@@ -29,18 +35,60 @@ from ..ingestion.base import (
 )
 from ..ingestion.registry import resolve_strategy
 from ..ontology import Ontology, load_ontology
-from ..rag import aembed_batch, create_embedder
-from ..rag.embedder_selection import (
-    POOLED_MODE,
-    IngestEmbeddingPlan,
-    late_chunking_requested,
-    select_ingest_embedder,
-)
+from ..rag.embedder_selection import POOLED_MODE
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
+from .ingest_cfg import _nested_dict, matryoshka_slice, vector_write_config
+from .ingest_embed import (
+    _all_zero,
+    _assign_embeddings,
+    _embedding_failure_is_fatal,
+    _late_chunk_vectors,
+    build_embedding_input,
+    embed_chunks,
+)
+from .ingest_extract import (
+    _actual_extractor_id,
+    _extract_entities_flag,
+    _extractor_name,
+    extract_with_fallback,
+)
+from .ingest_reembed import reembed_degraded
 from .ingest_store import DEFAULT_TENANT_ID, PostgresIngestStore
 
 logger = logging.getLogger(__name__)
+
+# Public surface: the orchestrators defined here PLUS the stage functions
+# moved to ingest_embed/ingest_extract/ingest_reembed (re-exported so
+# historical import paths and the tests' monkeypatch targets —
+# ``ingest_common.embed_chunks``, ``ingest_common.PostgresIngestStore`` —
+# keep working unchanged).
+__all__ = [
+    "DEFAULT_TENANT_ID",
+    "PostgresIngestStore",
+    "_actual_extractor_id",
+    "_all_zero",
+    "_assign_embeddings",
+    "_contextual_enabled",
+    "_embedding_failure_is_fatal",
+    "_extract_entities_flag",
+    "_extractor_name",
+    "_late_chunk_vectors",
+    "_nested_dict",
+    "_run_locked_stages",
+    "_sha256",
+    "build_document",
+    "build_embedding_input",
+    "embed_chunks",
+    "extract_with_fallback",
+    "ingest_text",
+    "load_config_or_pass",
+    "matryoshka_slice",
+    "ontology",
+    "reembed_degraded",
+    "run_pipeline",
+    "vector_write_config",
+]
 
 
 def _sha256(text: str) -> str:
@@ -50,13 +98,6 @@ def _sha256(text: str) -> str:
 def load_config_or_pass(config: dict[str, object] | None) -> dict[str, object]:
     """Return the provided config dict, or load the default config if None."""
     return config if config is not None else load_config()
-
-
-def _nested_dict(config: dict[str, object], key: str) -> dict[str, object]:
-    value = config.get(key)
-    if isinstance(value, dict):
-        return value
-    return {}
 
 
 def _contextual_enabled(config: dict[str, object], source_type: str) -> bool:
@@ -91,373 +132,6 @@ def build_document(path: str, source_type: str, text: str) -> Document:
         content=text,
         size_bytes=len(text.encode("utf-8")),
     )
-
-
-def _all_zero(vectors: list[list[float]]) -> bool:
-    """Return True when every vector is entirely zeros (embedder failure marker)."""
-    return all(all(v == 0.0 for v in vector) for vector in vectors)
-
-
-def _embedding_failure_is_fatal(chunks: list[Chunk]) -> bool:
-    """True when the embed output must fail the run rather than degrade it.
-
-    Missing or all-zero embeddings are the embedder-failure marker: they would
-    poison the search corpus, so the run records the EmbeddingError (and the
-    ledger marks the run failed). A degraded run whose fallback provider
-    produced real vectors stays error-free — the degraded flag carries the
-    honesty, and the note is reported as ``embed_note`` instead.
-    """
-    embeddings = [c.embedding for c in chunks if c.embedding is not None]
-    if not embeddings:
-        return True
-    return any(all(v == 0.0 for v in vector) for vector in embeddings)
-
-
-def build_embedding_input(text: str, context_blurb: str | None) -> str:
-    """Single-source the embedding-input assembly (Stage 3).
-
-    Chunks with a contextual blurb embed the ``blurb\n\ntext`` form; plain
-    chunks embed raw text. The reembed helper (reembed_degraded) and the
-    ingest pipeline MUST produce byte-identical inputs for the same chunk or
-    a repair would store a vector for a different text than a fresh ingest
-    would.
-    """
-    return f"{context_blurb}\n\n{text}" if context_blurb else text
-
-
-def _assign_embeddings(chunks: list[Chunk], vectors: list[list[float]]) -> None:
-    for chunk, vector in zip(chunks, vectors, strict=True):
-        chunk.embedding = vector
-
-
-async def embed_chunks(
-    chunks: list[Chunk],
-    config: dict[str, object],
-    pool: asyncpg.Pool | None = None,
-    text_override: dict[str, str] | None = None,
-    document_text: str | None = None,
-    meta: dict[str, object] | None = None,
-) -> tuple[bool, str | None]:
-    """Embed chunk texts via the configured provider, returning (degraded, error).
-
-    The primary embedder is selected by ``embedding.provider`` (default
-    ``"pgml"``). When the primary returns zero-vectors, the
-    ``embedding.fallback_provider`` embedder (default ``"ollama"``) is tried
-    and its vectors repopulate the chunks. ``degraded`` is True whenever the
-    primary failed — even when the fallback produced real vectors — so the
-    flag always reflects which embedder actually produced the embeddings.
-
-    On success, each chunk's ``embedding`` field is populated. On failure,
-    returns ``(True, "ExceptionType: message")`` so the caller can report
-    structured error info. ``text_override``, if provided, is keyed by
-    chunk_id (str) and takes precedence over ``chunk.text`` -- used to embed
-    the contextualized (blurb + text) form instead of raw chunk text.
-
-    Late chunking (DOCUMENT ingest only): when the activation contract holds
-    (``embedding.late_chunking`` + latechunk extra + qwen3-embedding model —
-    see ``rag.embedder_selection.select_ingest_embedder``) and
-    ``document_text`` is provided, chunks carrying source char spans embed
-    via ``embed_document_chunks`` against the document (every chunk vector
-    pools token states that saw the whole document); chunks lacking spans
-    embed pooled with a per-chunk note. ``meta``, when given, receives
-    ``"embedding_mode"`` always and ``"embedding_note"`` whenever a fallback
-    note exists, so callers can surface the decision on the run result.
-    """
-    try:
-        if not chunks:
-            if meta is not None:
-                meta["embedding_mode"] = POOLED_MODE
-            return False, None
-
-        if document_text is None:
-            plan: IngestEmbeddingPlan | None = None
-            mode = POOLED_MODE
-            # Honest fallback when late chunking was requested but the caller
-            # could not supply the document (e.g. the reembed repair path).
-            note = (
-                "late_chunking requested but no document text was provided to "
-                "embed_chunks; pooled fallback"
-                if late_chunking_requested(config)
-                else None
-            )
-        else:
-            # Off the loop: the default factory may construct the HF stack on
-            # its first call (seconds-to-minutes; memoized per process after).
-            plan = await asyncio.to_thread(select_ingest_embedder, config, pool)
-            mode = plan.mode
-            note = plan.note
-
-        if plan is not None and plan.spans_provider is not None:
-            assert document_text is not None  # plan only exists with document text
-            # The late path runs synchronous HF/torch forwards; offload to a
-            # worker thread so the server event loop (uvicorn + socket share
-            # it) never blocks behind a multi-second window forward.
-            vectors, span_note, spans_used = await asyncio.to_thread(
-                _late_chunk_vectors, plan, chunks, document_text, text_override
-            )
-            if span_note is not None:
-                note = f"{note}; {span_note}" if note else span_note
-            if meta is not None:
-                # Mode honesty: "late-chunking" only when at least one chunk
-                # was actually late-chunked; an all-pooled run with the flag
-                # on is reported as pooled (the note carries the reason).
-                meta["embedding_mode"] = mode if spans_used > 0 else POOLED_MODE
-                if note is not None:
-                    meta["embedding_note"] = note
-            if vectors and _all_zero(vectors):
-                _assign_embeddings(chunks, vectors)
-                return True, "Connection failed: LateChunkEmbedder returned zero vectors"
-            _assign_embeddings(chunks, vectors)
-            return False, None
-
-        if meta is not None:
-            meta["embedding_mode"] = mode
-            if note is not None:
-                meta["embedding_note"] = note
-
-        embedding_cfg = _nested_dict(config, "embedding")
-        provider_value = embedding_cfg.get("provider")
-        provider = provider_value if isinstance(provider_value, str) else "pgml"
-
-        embedder = plan.embedder if plan is not None else create_embedder(config, pool)
-        texts = [(text_override or {}).get(str(chunk.chunk_id), chunk.text) for chunk in chunks]
-        vectors = await aembed_batch(embedder, texts)
-
-        if vectors and _all_zero(vectors):
-            fallback_value = embedding_cfg.get("fallback_provider")
-            fallback_provider = fallback_value if isinstance(fallback_value, str) else "ollama"
-            if fallback_provider == provider:
-                _assign_embeddings(chunks, vectors)
-                return (
-                    True,
-                    f"Connection failed: {type(embedder).__name__} returned zero vectors",
-                )
-            fallback_config = dict(config)
-            fallback_embedding = dict(embedding_cfg)
-            fallback_embedding["provider"] = fallback_provider
-            fallback_config["embedding"] = fallback_embedding
-            fallback_embedder = create_embedder(fallback_config, pool)
-            fallback_vectors = await aembed_batch(fallback_embedder, texts)
-            if fallback_vectors and not _all_zero(fallback_vectors):
-                _assign_embeddings(chunks, fallback_vectors)
-                return (
-                    True,
-                    f"Connection failed: {provider} returned zero vectors; "
-                    f"embeddings produced by fallback {fallback_provider}",
-                )
-            _assign_embeddings(chunks, vectors)
-            return (
-                True,
-                f"Connection failed: {provider} and fallback "
-                f"{fallback_provider} both returned zero vectors",
-            )
-
-        _assign_embeddings(chunks, vectors)
-        return False, None
-    except Exception as exc:
-        return True, f"{type(exc).__name__}: {exc}"
-
-
-def _late_chunk_vectors(
-    plan: IngestEmbeddingPlan,
-    chunks: list[Chunk],
-    document_text: str,
-    text_override: dict[str, str] | None,
-) -> tuple[list[list[float]], str | None, int]:
-    """Late-chunked vectors for span-carrying chunks, pooled for the rest.
-
-    Chunks whose (source_start_char, source_end_char) span is a valid range
-    into ``document_text`` embed via the plan's ``embed_document_chunks``
-    (true late chunking — the contextualized blurb form is NOT used there,
-    since spans point into the raw document). A span is only trusted when
-    ``document_text[start:end]`` reproduces the chunk text verbatim — a
-    fabricated or drifted span would pool an unrelated region while still
-    labeling the vector late-chunked, so it falls back to pooled instead.
-    Chunks without a trusted span embed via the plan embedder's
-    ``embed_batch`` (single-span forward per text) with a per-chunk note so
-    the fallback is never silent. Returns ``(vectors, note, spans_used)``;
-    the caller reports the late-chunking mode only when ``spans_used > 0``.
-    """
-    spans_provider = plan.spans_provider
-    assert spans_provider is not None
-    late_idx: list[int] = []
-    spans: list[tuple[int, int]] = []
-    pooled_idx: list[int] = []
-    for idx, chunk in enumerate(chunks):
-        start, end = chunk.source_start_char, chunk.source_end_char
-        if (
-            isinstance(start, int)
-            and isinstance(end, int)
-            and 0 <= start < end <= len(document_text)
-            and document_text[start:end] == chunk.text
-        ):
-            late_idx.append(idx)
-            spans.append((start, end))
-        else:
-            pooled_idx.append(idx)
-    vectors: list[list[float]] = [[] for _ in chunks]
-    note: str | None = None
-    if late_idx:
-        chunk_spans = spans_provider(document_text, spans)
-        for idx, span in zip(late_idx, chunk_spans, strict=True):
-            vectors[idx] = span.vector
-    if pooled_idx:
-        texts = [
-            (text_override or {}).get(str(chunks[idx].chunk_id), chunks[idx].text)
-            for idx in pooled_idx
-        ]
-        pooled = plan.embedder.embed_batch(texts)
-        for idx, vector in zip(pooled_idx, pooled, strict=True):
-            vectors[idx] = vector
-        note = (
-            f"late chunking: {len(pooled_idx)}/{len(chunks)} chunks lacked a trusted "
-            "source char span; pooled fallback for those"
-        )
-    return vectors, note, len(late_idx)
-
-
-def _extractor_name(config: dict[str, object]) -> str:
-    graph = _nested_dict(config, "graph")
-    raw = graph.get("extractor")
-    return raw if isinstance(raw, str) else "pgml"
-
-
-async def extract_with_fallback(
-    chunks: list[Chunk],
-    ontology: Ontology,
-    source_document_id: str,
-    config: dict[str, object],
-    pool: asyncpg.Pool | None = None,
-) -> tuple[list[Entity], list[Relation], str, ExtractStats]:
-    """Extract entities and relations, falling back through the extractor chain.
-
-    Order depends on ``graph.extractor``:
-
-    - ``pgml``: PostgresML NER -> LangExtract -> RegexExtractor
-    - ``langextract``: LangExtract -> RegexExtractor
-    - ``gliner``: GLiNER2 NER -> RegexExtractor
-    - ``regex``: RegexExtractor only
-
-    The returned ``extractor_id`` always names the extractor that actually
-    produced the output. Every failure and every empty result along the
-    chain is recorded in ``stats.notes`` — a fallback is never silent.
-
-    Returns:
-        (entities, relations, extractor_id, stats).
-    """
-    extractor_name = _extractor_name(config)
-    failures: list[str] = []
-
-    # Reject unknown extractor names explicitly so we never silently fall back
-    # to regex when the user configured something unsupported.
-    if extractor_name not in {"pgml", "langextract", "regex", "gliner"}:
-        create_extractor(config, pool=pool)
-
-    if extractor_name == "gliner":
-        try:
-            gliner_extractor = create_extractor(config, pool=pool)
-            entities, relations, stats = gliner_extractor.extract(
-                chunks, ontology, source_document_id
-            )
-            if entities:
-                return (
-                    entities,
-                    relations,
-                    _actual_extractor_id(entities, gliner_extractor.extractor_id),
-                    stats,
-                )
-            failures.append("gliner returned no entities")
-            logger.warning("Gliner extraction returned no entities; falling back to regex.")
-        except ValueError:
-            # Configuration error (e.g. gliner not enabled, unknown mention
-            # type): propagate loudly instead of silently downgrading the
-            # user's explicit extractor choice to regex.
-            raise
-        except Exception as exc:
-            failures.append(f"gliner: {type(exc).__name__}: {exc}")
-            logger.warning("Gliner extraction failed: %s; falling back to regex.", exc)
-
-    if extractor_name == "pgml":
-        try:
-            pgml_extractor = create_extractor(config, pool=pool)
-            if isinstance(pgml_extractor, PgmlExtractor):
-                entities, relations, stats = await pgml_extractor.aextract(
-                    chunks, ontology, source_document_id
-                )
-            else:
-                entities, relations, stats = pgml_extractor.extract(
-                    chunks, ontology, source_document_id
-                )
-            if entities:
-                return (
-                    entities,
-                    relations,
-                    _actual_extractor_id(entities, pgml_extractor.extractor_id),
-                    stats,
-                )
-            failures.append("pgml returned no entities")
-            logger.warning(
-                "PostgresML extraction returned no entities; falling back to langextract."
-            )
-        except Exception as exc:
-            failures.append(f"pgml: {type(exc).__name__}: {exc}")
-            logger.warning("PostgresML extraction failed: %s; falling back to langextract.", exc)
-
-    if extractor_name in ("pgml", "langextract"):
-        try:
-            lang_extractor = create_extractor(
-                {
-                    **config,
-                    "graph": {
-                        **_nested_dict(config, "graph"),
-                        "extractor": "langextract",
-                    },
-                }
-            )
-            entities, relations, stats = lang_extractor.extract(
-                chunks, ontology, source_document_id
-            )
-            if entities:
-                return (
-                    entities,
-                    relations,
-                    _actual_extractor_id(entities, lang_extractor.extractor_id),
-                    stats,
-                )
-            failures.append("langextract returned no entities")
-            logger.warning("LangExtract extraction returned no entities; falling back to regex.")
-        except Exception as exc:
-            failures.append(f"langextract: {type(exc).__name__}: {exc}")
-            logger.warning("LangExtract extraction failed: %s; falling back to regex.", exc)
-
-    from ..extraction import RegexExtractor
-
-    fallback = RegexExtractor()
-    entities, relations, stats = fallback.extract(chunks, ontology, source_document_id)
-    if failures:
-        stats = replace(stats, notes=stats.notes + tuple(failures))
-    return entities, relations, _actual_extractor_id(entities, fallback.extractor_id), stats
-
-
-def _actual_extractor_id(entities: list[Entity], fallback_id: str) -> str:
-    """Return the extractor_id that actually produced the entities.
-
-    Extractors that internally fall back to RegexExtractor may leave
-    entities with a different ``extractor_id`` than the wrapper's own id.
-    When every entity agrees on a different id, report that id honestly.
-    """
-    if not entities:
-        return fallback_id
-    ids = {entity.extractor_id for entity in entities if entity.extractor_id}
-    if len(ids) == 1:
-        return ids.pop()
-    return fallback_id
-
-
-def _extract_entities_flag(config: dict[str, object]) -> bool:
-    graph = _nested_dict(config, "graph")
-    flag = graph.get("extract_entities")
-    return flag if isinstance(flag, bool) else True
 
 
 async def run_pipeline(
@@ -661,7 +335,7 @@ async def _run_locked_stages(
             inserted_chunk_ids = await ingest_store.store_chunks(chunks)
             pg_chunk_count = len(inserted_chunk_ids)
         except Exception as exc:
-            logging.warning("Postgres chunk write failed: %s", exc)
+            logger.warning("Postgres chunk write failed: %s", exc)
             errors.append(f"PostgresWriteError: {exc}")
 
         new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
@@ -680,7 +354,7 @@ async def _run_locked_stages(
         )
         if embed_err is not None:
             if _embedding_failure_is_fatal(new_chunks):
-                logging.warning("embed_chunks: %s", embed_err)
+                logger.warning("embed_chunks: %s", embed_err)
                 errors.append(f"EmbeddingError: {embed_err}")
             else:
                 # The fallback provider produced real vectors: degraded, but
@@ -689,21 +363,17 @@ async def _run_locked_stages(
                 # and the dedupe probe would never fire.
                 embed_note = embed_err
 
-        matryoshka_cfg = _nested_dict(config, "search")
+        # One shared config read for the vector write (model, dimensions,
+        # matryoshka dim) — the exact keys+defaults the reembed repair path
+        # reads (ingest_cfg.vector_write_config).
+        embedding_model, dimensions, v1024_dim = vector_write_config(config)
         vectors_1024: dict[str, list[float]] = {}
-        if bool(matryoshka_cfg.get("matryoshka_enabled", False)) and not degraded:
-            from ..rag.embedder import _slice_normalize
-
-            dim = int(matryoshka_cfg.get("matryoshka_dim", 1024))
+        if v1024_dim is not None and not degraded:
             for c in new_chunks:
                 if c.embedding is not None:
-                    vectors_1024[str(c.chunk_id)] = _slice_normalize(c.embedding, dim)
+                    vectors_1024[str(c.chunk_id)] = matryoshka_slice(c.embedding, v1024_dim)
 
         try:
-            embedding_model = str(
-                _nested_dict(config, "embedding").get("model", "nomic-embed-text")
-            )
-            dimensions = int(_nested_dict(config, "embedding").get("dimensions", 768))
             pg_vector_count = await ingest_store.store_vectors(
                 new_chunks,
                 embedding_model,
@@ -711,7 +381,7 @@ async def _run_locked_stages(
                 vectors_1024=vectors_1024 or None,
             )
         except Exception as exc:
-            logging.warning("Postgres vector write failed: %s", exc)
+            logger.warning("Postgres vector write failed: %s", exc)
             errors.append(f"PostgresWriteError: {exc}")
             pg_chunk_count = 0
             pg_vector_count = 0
@@ -737,7 +407,7 @@ async def _run_locked_stages(
                     settings=hierarchy_settings,
                 )
             except Exception as exc:
-                logging.warning("Shadow hierarchy write failed: %s", exc)
+                logger.warning("Shadow hierarchy write failed: %s", exc)
                 errors.append(f"ShadowWriteError: {exc}")
 
         # Extract entities and relations
@@ -760,7 +430,7 @@ async def _run_locked_stages(
                         prompt_version=graph_cfg.get("prompt_version"),
                     )
             except Exception as exc:
-                logging.warning("Entity extraction failed: %s", exc)
+                logger.warning("Entity extraction failed: %s", exc)
                 errors.append(f"ExtractionError: {exc}")
                 stats = ExtractStats(
                     backend=extractor_id,
@@ -775,7 +445,7 @@ async def _run_locked_stages(
                     [c.model_dump() for c in chunks],
                 )
             except Exception as exc:
-                logging.warning("LlamaIndex ingest failed: %s", exc)
+                logger.warning("LlamaIndex ingest failed: %s", exc)
                 errors.append(f"LlamaIndexError: {exc}")
 
         # Update document chunk_count
@@ -783,7 +453,7 @@ async def _run_locked_stages(
         try:
             await ingest_store.update_document(document, file_hash)
         except Exception as exc:
-            logging.warning("Document update failed: %s", exc)
+            logger.warning("Document update failed: %s", exc)
             errors.append(f"PostgresWriteError: {exc}")
 
         stages: dict[str, object] = {
@@ -862,168 +532,6 @@ async def _run_locked_stages(
         # cancellation (or any other BaseException) propagates unchanged.
         await ingest_store.fail_run(run_id, f"{type(exc).__name__}: {exc}")
         raise
-
-
-async def reembed_degraded(
-    pg_pool: asyncpg.Pool,
-    config: dict[str, object],
-    tenant_id: str = DEFAULT_TENANT_ID,
-    limit: int | None = None,
-    doc_id: str | None = None,
-) -> dict[str, object]:
-    """Re-embed chunks whose stored vector is flagged degraded (Stage 3).
-
-    Targets rows where ``chunks_vectors.degraded`` or ``chunks.degraded`` is
-    TRUE (the migration-022 flags), rebuilds each embedding input with
-    ``build_embedding_input`` (the exact bytes a fresh ingest would embed),
-    and on a non-zero result writes the repaired vector and CLEARS the
-    degraded flags. All-zero output leaves the row flagged — a repair that
-    produced the degraded-mode marker is a failure, never a silent "fix".
-
-    Requires migration 022; on a pre-migration database the degraded columns
-    do not exist, so this returns ``{"status": "unavailable", ...}`` instead
-    of crashing. CLI/surface registration is Stage 5; this is the handler.
-
-    Returns an honest ``{scanned, fixed, failed}`` summary.
-    """
-    async with pg_pool.acquire() as conn, conn.transaction():
-        # set_config FIRST inside the transaction: a LOCAL GUC issued on an
-        # autocommit connection evaporates with its statement, so the reads
-        # below would run GUC-less and match zero rows on FORCE-RLS
-        # deployments (the ingest_store ledger-method pattern).
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
-        present = await conn.fetchval(
-            """
-            SELECT count(*) FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = ANY($1::text[])
-              AND column_name = 'degraded'
-            """,
-            ["chunks", "chunks_vectors"],
-        )
-        if present != 2:
-            return {
-                "status": "unavailable",
-                "reason": (
-                    "migration 022 not applied: chunks.degraded / "
-                    "chunks_vectors.degraded missing; run corpus-kb setup"
-                ),
-                "scanned": 0,
-                "fixed": 0,
-                "failed": 0,
-            }
-        rows = await conn.fetch(
-            """
-            SELECT cv.chunk_id::text AS chunk_id, c.doc_id::text AS doc_id,
-                   c.text, c.context_blurb
-            FROM chunks_vectors cv
-            JOIN chunks c ON c.chunk_id = cv.chunk_id
-            WHERE cv.tenant_id = $1 AND (cv.degraded = TRUE OR c.degraded = TRUE)
-              AND ($2::uuid IS NULL OR c.doc_id = $2::uuid)
-            ORDER BY cv.embedded_at NULLS LAST
-            LIMIT $3
-            """,
-            tenant_id,
-            doc_id,
-            limit if limit is not None else 2**31 - 1,
-        )
-    if not rows:
-        return {"status": "success", "scanned": 0, "fixed": 0, "failed": 0}
-
-    # Reuse the pipeline's embed path (provider + zero-vector fallback chain)
-    # by rebuilding minimal Chunk objects; text_override keys by chunk_id.
-    chunks = [
-        Chunk(
-            chunk_id=row["chunk_id"],
-            document_id=row["doc_id"],
-            text=row["text"],
-            source_type="text",
-            context_blurb=row["context_blurb"],
-        )
-        for row in rows
-    ]
-    text_override = {c.chunk_id: build_embedding_input(c.text, c.context_blurb) for c in chunks}
-    # meta passthrough: a repair re-embeds WITHOUT the document, so when late
-    # chunking is the configured technique the repaired chunk lands in the
-    # pooled vector space while its siblings stay late-chunked — surface the
-    # mode/note in the summary instead of silently mixing spaces.
-    embed_meta: dict[str, object] = {}
-    degraded, embed_err = await embed_chunks(
-        chunks, config, pool=pg_pool, text_override=text_override, meta=embed_meta
-    )
-    if embed_err is not None:
-        logger.warning("reembed_degraded: %s", embed_err)
-
-    embedding_cfg = _nested_dict(config, "embedding")
-    embedding_model = str(embedding_cfg.get("model", "nomic-embed-text"))
-    raw_dimensions = embedding_cfg.get("dimensions", 768)
-    dimensions = raw_dimensions if isinstance(raw_dimensions, int) else 768
-    matryoshka_cfg = _nested_dict(config, "search")
-    v1024_dim: int | None = None
-    if bool(matryoshka_cfg.get("matryoshka_enabled", False)):
-        raw_dim = matryoshka_cfg.get("matryoshka_dim", 1024)
-        v1024_dim = raw_dim if isinstance(raw_dim, int) else 1024
-
-    fixed = 0
-    failed = 0
-    async with pg_pool.acquire() as conn, conn.transaction():
-        # Same GUC-in-transaction contract as the scan block above; the
-        # UPDATEs additionally pin tenant_id explicitly so a missing/lost
-        # tenant context can never match (or, worse, clear flags on) another
-        # tenant's rows.
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
-        for chunk in chunks:
-            if chunk.embedding is None or _all_zero([chunk.embedding]):
-                failed += 1
-                continue
-            vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
-            v1024: str | None = None
-            if v1024_dim is not None:
-                from ..rag.embedder import _slice_normalize
-
-                v1024 = (
-                    "["
-                    + ",".join(str(v) for v in _slice_normalize(chunk.embedding, v1024_dim))
-                    + "]"
-                )
-            await conn.execute(
-                """
-                UPDATE chunks_vectors
-                SET vector = $2::vector,
-                    vector_1024 = COALESCE($3::vector, chunks_vectors.vector_1024),
-                    embedding_model = $4, dimensions = $5,
-                    embedded_at = NOW(), degraded = FALSE
-                WHERE chunk_id = $1::uuid AND tenant_id = $6
-                """,
-                chunk.chunk_id,
-                vector_str,
-                v1024,
-                embedding_model,
-                dimensions,
-                tenant_id,
-            )
-            await conn.execute(
-                "UPDATE chunks SET degraded = FALSE WHERE chunk_id = $1::uuid AND tenant_id = $2",
-                chunk.chunk_id,
-                tenant_id,
-            )
-            fixed += 1
-    summary: dict[str, object] = {
-        "status": "success",
-        "scanned": len(chunks),
-        "fixed": fixed,
-        "failed": failed,
-    }
-    if embed_meta.get("embedding_mode") is not None:
-        summary["embedding_mode"] = embed_meta["embedding_mode"]
-    if embed_meta.get("embedding_note") is not None:
-        summary["embedding_note"] = embed_meta["embedding_note"]
-    if degraded and embed_err is not None:
-        # The write path above already judged each vector per-chunk; this
-        # flag reports the PRIMARY provider's health honestly (a fallback
-        # repair still succeeds but the primary needs attention).
-        summary["degraded"] = True
-        summary["warning"] = embed_err
-    return summary
 
 
 async def ingest_text(
