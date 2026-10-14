@@ -23,12 +23,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import inspect
 import logging
 import os
 import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 import psutil
@@ -219,6 +221,76 @@ async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
     return exit_code
 
 
+async def _phase_compose(
+    state: dict[str, Any],
+    config: dict[str, Any],
+    completed: list[str],
+    *,
+    compose_cmd: list[str] | str | None,
+    postgres_image: str,
+    skip_image_verify: bool,
+    build_local: bool,
+) -> tuple[int, bool]:
+    """Phase 1: docker compose stack (checkpointed).
+
+    Returns (exit_code, fatal); fatal means the image-verify step failed and
+    setup must stop (a compose START failure is not fatal — the later phases
+    still run, matching the historical behavior).
+    """
+    if "compose" in completed:
+        print("\n[Step 1/6] Docker compose stack already started; skipping.")
+        return 0, False
+    if compose_cmd:
+        if not build_local:
+            try:
+                _verify_postgres_image(postgres_image, skip_image_verify)
+            except RuntimeError as exc:
+                print(f"\n[Step 1/6] ERROR: {exc}")
+                return 1, True
+        exit_code = setup_start_compose(compose_cmd, apply=True, build_local=build_local)
+        if not exit_code:
+            completed.append("compose")
+            save_install_state(state, config)
+        return exit_code, False
+    print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
+    print("  Install Docker, then re-run setup.")
+    return 0, False
+
+
+async def _run_database_phase(conn_str: str) -> int:
+    """Phase 3 body: database, user and migrations (skipped without a DSN)."""
+    if not conn_str:
+        print("\n[Step 3/6] No database connection string; skipping database setup.")
+        return 0
+    return await install_database(conn_str, apply=True)
+
+
+async def _run_phase(
+    state: dict[str, Any],
+    config: dict[str, Any],
+    completed: list[str],
+    name: str,
+    skip_banner: str,
+    run: Callable[[], Awaitable[int] | int],
+) -> int:
+    """Run one checkpointed setup phase: skip when completed, else checkpoint.
+
+    A phase that reports a nonzero code is retried on the next run (it is
+    not recorded as completed).
+    """
+    if name in completed:
+        print(skip_banner)
+        return 0
+    result = run()
+    if inspect.isawaitable(result):
+        result = await result
+    exit_code = int(result)
+    if not exit_code:
+        completed.append(name)
+        save_install_state(state, config)
+    return exit_code
+
+
 async def setup_cmd(
     config: dict[str, Any],
     dry_run: bool,
@@ -258,6 +330,10 @@ async def setup_cmd(
         reset_install_state(config)
 
     state = load_install_state(config)
+    # Shared list object with state["completed"]: _run_phase appends into it
+    # before each save_install_state, so checkpoints persist (same mechanism
+    # as the pre-split inline phases).
+    completed = state.get("completed", [])
 
     installer_cfg = config.get("installer", {})
     postgres_image = str(installer_cfg.get("postgres_image", DEFAULT_POSTGRES_IMAGE))
@@ -268,7 +344,6 @@ async def setup_cmd(
     print(f"Detected profile: {profile}")
     print(f"Recommended embedding model: {recommended_model}")
     print(f"Database connection string: {conn_str}")
-    completed = state.get("completed", [])
     if completed:
         print(f"Checkpoint: {len(completed)}/{len(INSTALL_PHASES)} phases completed")
         print(f"  Completed: {', '.join(completed)}")
@@ -283,72 +358,59 @@ async def setup_cmd(
     print("create database objects, and pull Ollama models. Each step requires")
     print("confirmation.\n")
 
-    exit_code = 0
+    phase_exit, fatal = await _phase_compose(
+        state,
+        config,
+        completed,
+        compose_cmd=compose_cmd,
+        postgres_image=postgres_image,
+        skip_image_verify=skip_image_verify,
+        build_local=build_local,
+    )
+    exit_code = phase_exit
+    if fatal:
+        return exit_code
 
-    # Phase 1: docker compose stack.
-    if "compose" in completed:
-        print("\n[Step 1/6] Docker compose stack already started; skipping.")
-    elif compose_cmd:
-        if not build_local:
-            try:
-                _verify_postgres_image(postgres_image, skip_image_verify)
-            except RuntimeError as exc:
-                print(f"\n[Step 1/6] ERROR: {exc}")
-                return 1
-        exit_code |= setup_start_compose(compose_cmd, apply=True, build_local=build_local)
-        if not exit_code:
-            completed.append("compose")
-            save_install_state(state, config)
-    else:
-        print("\n[Step 1/6] docker / docker-compose not found; skipping stack start.")
-        print("  Install Docker, then re-run setup.")
-
-    # Phase 2: Python dependencies.
-    if "python" in completed:
-        print("\n[Step 2/6] Python dependencies already installed; skipping.")
-    else:
-        exit_code |= install_python_deps()
-        if not exit_code:
-            completed.append("python")
-            save_install_state(state, config)
-
-    # Phase 3: database and migrations.
-    if "database" in completed:
-        print("\n[Step 3/6] Database already set up; skipping.")
-    elif conn_str:
-        exit_code |= await install_database(conn_str, apply=True)
-        if not exit_code:
-            completed.append("database")
-            save_install_state(state, config)
-    else:
-        print("\n[Step 3/6] No database connection string; skipping database setup.")
-
-    # Phase 4: extension verification.
-    if "extensions" in completed:
-        print("\n[Step 4/6] Extensions already verified; skipping.")
-    else:
-        exit_code |= await setup_verify_extensions(conn_str, apply=True)
-        if not exit_code:
-            completed.append("extensions")
-            save_install_state(state, config)
-
-    # Phase 5: Ollama models.
-    if "models" in completed:
-        print("\n[Step 5/6] Ollama models already pulled; skipping.")
-    else:
-        exit_code |= setup_pull_models(apply=True)
-        if not exit_code:
-            completed.append("models")
-            save_install_state(state, config)
-
-    # Phase 6: user config.
-    if "config" in completed:
-        print("\n[Step 6/6] User config already written; skipping.")
-    else:
-        exit_code |= setup_update_config(config, profile, apply=True)
-        if not exit_code:
-            completed.append("config")
-            save_install_state(state, config)
+    exit_code |= await _run_phase(
+        state,
+        config,
+        completed,
+        "python",
+        "\n[Step 2/6] Python dependencies already installed; skipping.",
+        install_python_deps,
+    )
+    exit_code |= await _run_phase(
+        state,
+        config,
+        completed,
+        "database",
+        "\n[Step 3/6] Database already set up; skipping.",
+        lambda: _run_database_phase(conn_str),
+    )
+    exit_code |= await _run_phase(
+        state,
+        config,
+        completed,
+        "extensions",
+        "\n[Step 4/6] Extensions already verified; skipping.",
+        lambda: setup_verify_extensions(conn_str, apply=True),
+    )
+    exit_code |= await _run_phase(
+        state,
+        config,
+        completed,
+        "models",
+        "\n[Step 5/6] Ollama models already pulled; skipping.",
+        lambda: setup_pull_models(apply=True),
+    )
+    exit_code |= await _run_phase(
+        state,
+        config,
+        completed,
+        "config",
+        "\n[Step 6/6] User config already written; skipping.",
+        lambda: setup_update_config(config, profile, apply=True),
+    )
 
     print_next_steps()
     return exit_code
