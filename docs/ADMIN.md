@@ -168,11 +168,12 @@ erDiagram
 Schema changes are managed through idempotent SQL migrations in `src/corpus_kb/migrations/`. The migration runner (`src/corpus_kb/_setup/migrate.py`) tracks applied migrations in `corpus.schema_migrations` and runs each unapplied file inside a transaction.
 
 ```bash
-# Run migrations
+# Run migrations. Native-Postgres path (port 5432). The bundled compose
+# stack publishes 5433 instead — see OPERATIONS.md, "Ports".
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
 python src/corpus_kb/_setup/migrate.py
 
-# Or use the installer
+# Or use the installer (compose path; no export needed)
 corpus-kb setup
 ```
 
@@ -199,7 +200,7 @@ The eventsourcing library owns `event_store` and `snapshot_store` automatically.
 
 ### Row-level security
 
-Every table enables RLS and has a policy that checks `current_setting('app.current_tenant_id', true)::UUID`. Handlers set this with `SET LOCAL` on each connection. The default tenant UUID is `00000000-0000-0000-0000-000000000001`.
+Every table enables RLS and has a policy that checks `current_setting('app.current_tenant_id', true)::UUID`. Handlers set this with `set_config(..., is_local=true)` inside the same transaction (see `src/corpus_kb/storage/tenant_conn.py`). The default tenant UUID is `00000000-0000-0000-0000-000000000001`; direct SQL must set it the same way — see [OPERATIONS.md](OPERATIONS.md), "Tenancy".
 
 ---
 
@@ -220,7 +221,8 @@ To add real multi-tenancy, create tenants in the `tenants` table and route each 
 Use standard Postgres tools.
 
 ```bash
-# Backup everything (schema + data)
+# Backup everything (schema + data). Port 5432 = native Postgres;
+# the compose stack publishes 5433 (see OPERATIONS.md, "Ports").
 pg_dump -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
   -F c -f corpus_kb_backup.dump
 

@@ -25,7 +25,26 @@ This page is for contributors and anyone who wants to understand how Corpus-KB i
 │   │   ├── 003_enable_extensions.sql
 │   │   ├── 004_enable_age.sql
 │   │   ├── 005_enable_pgml.sql
-│   │   └── 006_rrf_fusion.sql
+│   │   ├── 006_rrf_fusion.sql
+│   │   ├── 007_chunk_dedup_provenance.sql
+│   │   ├── 008_typed_relations.sql
+│   │   ├── 009_contextual_blurb.sql
+│   │   ├── 010_matryoshka_1024.sql
+│   │   ├── 011_force_rls.sql
+│   │   ├── 012_coding_schema.sql
+│   │   ├── 013_force_rls_coding.sql
+│   │   ├── 014_codebook_versions_unique.sql
+│   │   ├── 015_chunk_signals_upsert.sql
+│   │   ├── 016_research_domain.sql
+│   │   ├── 017_inductive_engine.sql
+│   │   ├── 018_keyword_synthesis.sql
+│   │   ├── 019_codebook_releases.sql
+│   │   ├── 020_exact_result_cache.sql
+│   │   ├── 021_shadow_vectors.sql
+│   │   ├── 022_ingest_integrity.sql
+│   │   ├── 023_qa_context.sql
+│   │   ├── 024_rrf_fusion_tiebreak.sql
+│   │   └── rollback_*.sql           # per-migration rollback scripts (012+)
 │   ├── api/
 │   │   ├── http.py                  # Starlette REST routes
 │   │   └── socket.py                # JSON-RPC socket server
@@ -85,7 +104,12 @@ Key concepts:
 
 ### RLS isolation
 
-Every database connection runs `SET LOCAL app.current_tenant_id = '<uuid>'` before querying. Postgres RLS policies filter rows by that setting. This keeps tenant data isolated without changing SQL queries.
+Every query runs inside a transaction that first calls
+`SELECT set_config('app.current_tenant_id', '<uuid>', true)`. Postgres RLS
+policies filter rows by that setting. This keeps tenant data isolated
+without changing SQL queries. The helper is
+`src/corpus_kb/storage/tenant_conn.py`; the operator view (default tenant,
+direct-SQL recipe) is in [OPERATIONS.md](OPERATIONS.md).
 
 ---
 
@@ -159,5 +183,6 @@ See `.github/workflows/` for details.
 - [Install guide](INSTALL.md)
 - [Features overview](FEATURES.md)
 - [Admin guide](ADMIN.md)
+- [Operations reference](OPERATIONS.md)
 - [API reference](API.md)
 - [FAQ](FAQ.md)

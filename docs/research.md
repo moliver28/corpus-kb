@@ -131,7 +131,7 @@ pipeline never requires them.
 
 ## Research cycle
 
-`corpus-kb research cycle` (todo 20) is pure orchestration over the step
+`corpus-kb research cycle` is pure orchestration over the step
 commands: ingest -> inductive -> deductive -> keywords -> report ->
 notebook. It contains no new analytics and never auto-promotes a codebook.
 
@@ -153,11 +153,13 @@ notebook. It contains no new analytics and never auto-promotes a codebook.
 ### Gates and resuming
 
 Each halt prints `AWAITING HUMAN: <gate>` plus the exact next command,
-with a distinct per-gate exit code (10-16). `codebook_promotion` is
+with a distinct per-gate exit code (10-17). `codebook_promotion` is
 HARD-FLOORED: config may add gates to `halt_on` but can never remove the
 floor, and promotion itself always runs through
-`corpus-kb codebook promote`. A denied on-mode approval exits 20; a
-cycle that cannot proceed (e.g. no codebook version yet) exits 2.
+`corpus-kb codebook promote`. A denied on-mode approval exits 20 (a
+closed stdin counts as a denial); a cycle that cannot proceed (e.g. no
+codebook version yet) exits 2. The full exit-code table lives in
+[OPERATIONS.md](OPERATIONS.md).
 
 Progress is event-sourced: the cycle IS a `CodingRun` with
 `params.kind='cycle'`, and each stage boundary lands a checkpoint. To

@@ -234,6 +234,7 @@ Honest caveats:
 | Research | `notebook_evidence` | Evidence for one code: ranked units |
 | Research | `notebook_uncoded` | Uncoded units ranked by margin |
 | Research | `notebook_overlap` | Code overlap: flagged pairs and confusion |
+| Research | `research_report` | Governance report: exhaustiveness, overlap, IRR, G3 audit |
 | Coding | `coding_run` | Deductive coding run against a codebook version |
 | Coding | `inductive_run` | Inductive pass: summaries, clusters, proposed codes |
 | Coding | `codebook_promote` | Promote a proposed code (human gate) |
