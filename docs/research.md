@@ -26,14 +26,14 @@ reference.
 7. **Orchestrate**: `corpus-kb research cycle` chains the steps with
    in/on/out-of-loop postures and human-critical gates.
 
-`corpus-kb research demo` runs steps 1-6 end-to-end on a bundled mini corpus
-with narration - the fastest way to see the shapes of every artifact.
+`corpus-kb research demo` runs steps 1-6 end-to-end on a bundled mini corpus,
+with narration. It is the fastest way to see the shapes of every artifact.
 
 ## Deployment note: embeddings
 
 The research embedding boundary requires EXACTLY 1024 dims (native or
 MRL-sliced from >=1024). The default `pgml` provider abstains when the pgml
-extension is absent, and 768-dim models (nomic-embed-text) always abstain:
+extension is absent. 768-dim models (nomic-embed-text) always abstain:
 vectors stay NULL and retrieval degrades to lexical-only. Real research
 deployments should set `embedding.provider: ollama` with a >=1024-dim model
 (for example `qwen3-embedding:8b-q8_0`). `corpus-kb doctor` warns about this
@@ -50,9 +50,9 @@ undocumented.
 |-----|---------|--------|
 | `research.embedder.dimensions` | `1024` | Promotion guard: research embedders must emit exactly 1024 dims; anything else halts promotion and abstains at run time. |
 
-The research embedding strategy is not a runtime knob: the G1 experiment
-(two-arm, 52-pair fixture) was decided in code — naive per-text pooling with
-a deterministic prefix won, and every research embedding row records the
+The research embedding strategy is not a runtime knob. The G1 experiment
+(two-arm, 52-pair fixture) was decided in code: naive per-text pooling with
+a deterministic prefix won. Every research embedding row records the
 revision tag `"1024"`. Changing embedding behavior is a committed code
 change, never a config edit.
 | `research.ingest.watch_interval_s` | `10` | Poll interval (seconds) for `research ingest --watch` drop-directory tailing. |
@@ -68,7 +68,7 @@ change, never a config edit.
 | `research.alt_test.n_bootstrap` | see `config.yaml` | Bootstrap resample count when alt_test.method is bootstrap (U13). |
 | `research.audit.sample_rate` | see `config.yaml` | Fraction of auto-accepted units drawn for human audit after risk-coverage routing (U41). |
 | `research.audit.seed` | see `config.yaml` | Seed for the stratified audit draw; recorded with the sample for reproducibility (U17). |
-| `research.consensus.runs` | `3` | LIVE (U48): the cycle's inductive stage runs this many INDEPENDENT inductive passes; their proposed codes are aggregated by the release-layer multi-run consensus (`research/release/consensus.py`, wired via `research/cycle_consensus.py`) before themes surface. `1` keeps the single-pass path. |
+| `research.consensus.runs` | `3` | LIVE (U48): the cycle's inductive stage runs this many INDEPENDENT inductive passes. Their proposed codes are aggregated by the release-layer multi-run consensus (`research/release/consensus.py`, wired via `research/cycle_consensus.py`) before themes surface. `1` keeps the single-pass path. |
 | `research.consensus.min_run_fraction` | `0.5` | LIVE (U48): a consensus theme is kept only when candidates from at least this fraction of the runs support it. |
 | `research.consensus.similarity_threshold` | `0.8` | LIVE (U48): cosine at which a candidate joins an existing consensus theme during greedy leader clustering. |
 | `research.judgment_distribution.use_mean` | see `config.yaml` | Use the mean over sampled/probabilistic judgments instead of the mode (U35); off by default. |
@@ -79,7 +79,7 @@ change, never a config edit.
 | `research.prompt_stability.alpha_threshold` | see `config.yaml` | Minimum agreement (krippendorff alpha) across hashed prompt variants over calibration units (U12). |
 | `research.prompt_stability.min_variants` | see `config.yaml` | Prompt variants required before stability is evaluable; fewer reports not_evaluable (U12). |
 | `research.release.default_profile` | see `config.yaml` | Release profile applied when none is named: exploratory | team-codebook | high-assurance (U3). |
-| `research.release.enforcement` | `warn` | LIVE (U24): off \| warn \| enforce, read from config by the deduction guard (`research/deduction_guard.py`). `warn` records the active release hash or an `unreleased_draft` warning on every deductive run; `enforce` blocks unreleased codebook versions unless `--allow-draft` (bypass runs are labeled `sandbox`); `off` leaves run behavior unchanged. |
+| `research.release.enforcement` | `warn` | LIVE (U24): off \| warn \| enforce, read from config by the deduction guard (`research/deduction_guard.py`). `warn` records the active release hash or an `unreleased_draft` warning on every deductive run. `enforce` blocks unreleased codebook versions unless `--allow-draft` (bypass runs are labeled `sandbox`). `off` leaves run behavior unchanged. |
 | `research.review.batch_size` | see `config.yaml` | Units per active human-review batch (U37). |
 | `research.review.random_fraction` | see `config.yaml` | Stratified-random fraction always present in review batches so error can be estimated without selection bias (U37). |
 | `research.review.diversity` | see `config.yaml` | Apply greedy max-min embedding diversity when selecting the active part of a review batch (U37). |
@@ -140,15 +140,15 @@ notebook. It contains no new analytics and never auto-promotes a codebook.
 - `--mode in` executes exactly ONE next stage, then exits (fully in the
   loop).
 - `--mode on` executes the next stage, then halts for explicit approval
-  before continuing (CLI y/N prompt; the MCP tool returns an
+  before continuing. The CLI shows a y/N prompt. The MCP tool returns an
   `awaiting_approval` receipt and continues when called again with
-  `approve=true`).
+  `approve=true`.
 - `--mode out` runs unattended through the chain and halts ONLY at the
   human-critical gates in `research.cycle.halt_on`.
 - `--watch <dir>` is a foreground poll: when new transcripts land in the
-  drop directory, the full out-mode cycle re-arms (idle = sleep, no
-  daemon, no busy-loop; a file is picked up exactly once via the
-  file-hash ledger).
+  drop directory, the full out-mode cycle re-arms. Idle is sleep (no
+  daemon, no busy-loop). A file is picked up exactly once via the
+  file-hash ledger.
 
 ### Gates and resuming
 
@@ -157,55 +157,56 @@ with a distinct per-gate exit code (10-17). `codebook_promotion` is
 HARD-FLOORED: config may add gates to `halt_on` but can never remove the
 floor, and promotion itself always runs through
 `corpus-kb codebook promote`. A denied on-mode approval exits 20 (a
-closed stdin counts as a denial); a cycle that cannot proceed (e.g. no
+closed stdin counts as a denial). A cycle that cannot proceed (e.g. no
 codebook version yet) exits 2. The full exit-code table lives in
 [OPERATIONS.md](OPERATIONS.md).
 
 Progress is event-sourced: the cycle IS a `CodingRun` with
 `params.kind='cycle'`, and each stage boundary lands a checkpoint. To
-resume, act on the gate, then re-run the same command - the new cycle
-run continues after the last checkpoint and never re-halts on the SAME
+resume, act on the gate, then re-run the same command. The new cycle
+run continues after the last checkpoint. It never re-halts on the SAME
 gate it halted on.
 
-The `gray_zone_escalation` gate is CONVERGENT: it fires on review-queue
-items that still await a decision (plus conformal-coverage violations
-from the current run), not on the raw volume that routed to review.
+The `gray_zone_escalation` gate is CONVERGENT. It fires on review-queue
+items that still await a decision, plus conformal-coverage violations
+from the current run. It does not fire on the raw volume that routed to
+review.
 Once every escalation is accepted or overridden
 (`corpus-kb review accept|override`), the gate no longer holds the
-cycle and the resumed run completes with exit 0 and the report artifact.
+cycle. The resumed run completes with exit 0 and the report artifact.
 A later cycle that routes NEW units to review halts again — each
 escalation batch gets exactly one human pass.
 
-`--guide` upgrades stages and halts into taught decisions (what is
-happening, what to look at, proposed codes with example units, and
-promote-vs-skip consequences); `--json` emits one machine-readable
-stage/gate event per line for agents.
+`--guide` upgrades stages and halts into taught decisions. The teaching
+covers what is happening, what to look at, proposed codes with example
+units, and promote-vs-skip consequences. `--json` emits one
+machine-readable stage/gate event per line for agents.
 
 ## Release lifecycle (U5, v6 §6)
 
 `corpus-kb release ...` walks one codebook version from draft to released
 codebook. ONE handler per operation (`handlers/release_handlers.py`)
-backs all three transports — the CLI commands, the `release_*` MCP tools,
-and the `/api/release/*` HTTP routes — so the payloads are identical
-across surfaces and every command takes `--json`.
+backs all three transports: the CLI commands, the `release_*` MCP tools,
+and the `/api/release/*` HTTP routes. The payloads are identical across
+surfaces, and every command takes `--json`.
 
 The lifecycle: `request` opens a `draft_candidate` release pinned to the
-current codebook content hash; `assess` composes EVERY registered gate
-over the evidence the read models can supply and WRITES NOTHING;
+current codebook content hash. `assess` composes EVERY registered gate
+over the evidence the read models can supply, and WRITES NOTHING.
 `review` renders the packet (per-gate evidence, failing +
-not_evaluable gates, waivers, the exact next commands); `release`
-re-evaluates, records the gate results on the draft, applies any
-explicit `--waive GATE=justification`, and executes the transition with a
-REQUIRED `--approver`; `status` and `compare` read the trail.
+not_evaluable gates, waivers, the exact next commands). `release`
+re-evaluates and records the gate results on the draft. It applies any
+explicit `--waive GATE=justification` and executes the transition with a
+REQUIRED `--approver`. `status` and `compare` read the trail.
 
 Honesty contract (v6 §6):
 
-- `assess` never fails on `not_evaluable` gates — it REPORTS them (exit 0)
-  beside `data_sufficiency` flags that say which evidence blocks were
-  present; a gate never upgrades missing data into a pass.
-- `release` refusal is structured, not a crash: under
-  `enforcement=enforce` an unmet required gate set exits 1 with the
-  `blocked` payload (`unmet_required_gates` + reason); default
+- `assess` never fails on `not_evaluable` gates — it REPORTS them (exit 0).
+  The `data_sufficiency` flags say which evidence blocks were present.
+  A gate never upgrades missing data into a pass.
+- `release` refusal is structured, not a crash. Under
+  `enforcement=enforce`, an unmet required gate set exits 1 with the
+  `blocked` payload (`unmet_required_gates` + reason). Default
   `enforcement=warn` releases WITH explicit warnings. Profiles
   (exploratory / team-codebook / high-assurance) and enforcement live in
   the `research.release.*` config block.
@@ -216,6 +217,6 @@ Honesty contract (v6 §6):
   `pending_change_proposals`, `data_sufficiency`).
 
 Monitoring change proposals (U25) render on `release status` as
-`pending_change_proposals`: successors of a RELEASED parent, created by
-the cycle's alarms — the parent's released state, manifest hash, and
-codebook hash are never mutated.
+`pending_change_proposals`. They are successors of a RELEASED parent,
+created by the cycle's alarms. The parent's released state, manifest hash,
+and codebook hash are never mutated.

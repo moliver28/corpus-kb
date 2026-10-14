@@ -2,7 +2,7 @@
 
 Corpus-KB ingests through ONE seam. Everything above storage consumes a
 `ChunkPlan` (ordered chunk drafts + per-chunk metadata + strategy name +
-detection provenance); everything below it — embed, extract, store — is
+detection provenance). Everything below it — embed, extract, store — is
 strategy-agnostic and never changes when a new modality is added. Adding
 ASR output, web crawls, slides, notebooks, or tables is one module each;
 `run_pipeline` is never touched again.
@@ -45,7 +45,7 @@ entry-point discovery for packaged plugins.
 |----------|--------------|
 | `default` | `unstructured` partition + the existing chunker dispatch (tree-sitter AST for code, headings for markdown, semantic gaps for text). Behavior is verbatim identical to the pre-strategy pipeline. |
 | `transcript` | Turn-aligned question+answer chunks from speaker-turn transcripts. Each chunk carries `qa_context` ({question, participants, exchange_id}) and the same token guard as everything else. |
-| `pptx_structure` | One chunk per slide: title breadcrumbs, tables as GitHub markdown, speaker notes as their own chunks, and core/extended-properties metadata (author, created/modified, company, subject, slide numbers) on every chunk. Oversized slides split at paragraph boundaries. |
+| `pptx_structure` | One chunk per slide: title breadcrumbs, tables as GitHub markdown, and speaker notes as their own chunks. Core/extended-properties metadata (author, created/modified, company, subject, slide numbers) rides on every chunk. Oversized slides split at paragraph boundaries. |
 | `web_structure` | Heading-section chunks from fetched HTML (`corpus-kb ingest-url` does the fetching: robots.txt, size/content-type caps, optional same-domain crawl). Every chunk carries page metadata (OG/Twitter/JSON-LD/canonical, language) plus its heading breadcrumb; nav/header/footer chrome is excluded. |
 
 ## Three extension ladders
@@ -102,7 +102,7 @@ The strategy for an ingest is resolved once, in this order:
 | 4 | `ingestion.default` | `default` |
 
 The resolved choice (strategy, confidence, reason) is printed at ingest and
-recorded in the pipeline result, so every document carries its detection
+recorded in the pipeline result. Every document therefore carries its detection
 provenance.
 
 ## Conformance invariants
@@ -118,8 +118,8 @@ Every registered strategy — built-in or third-party — must produce a
 | Serializable metadata | Per-chunk metadata must be JSON-serializable (it is stored on the chunk). |
 | `qa_context` provenance | Only the `transcript` strategy may set `qa_context` on a chunk. |
 
-The suite runs over the registry, so a broken third-party strategy fails
-loudly at registration/ingest time instead of silently corrupting
+The suite runs over the registry. A broken third-party strategy therefore
+fails loudly at registration/ingest time instead of silently corrupting
 retrieval.
 
 ## Worked example: a `meeting-notes` strategy
@@ -193,12 +193,12 @@ class MeetingNotesStrategy:
 
 Notes on the example:
 
-- `detect()` returns high confidence only on evidence — an explicit
-  override short-circuits, otherwise it counts headings in the head and
+- `detect()` returns high confidence only on evidence. An explicit
+  override short-circuits; otherwise it counts headings in the head and
   never claims certainty it doesn't have.
 - `build_chunks()` returns an explicit `empty_reason` when the document
-  isn't a meeting note, keeps indices continuous across the oversized-
-  section split, and stores only plain JSON metadata.
+  isn't a meeting note. It keeps indices continuous across the oversized-
+  section split and stores only plain JSON metadata.
 - After registering, `ingestion.strategies: {meeting: meeting-notes}` in
   `config.yaml` maps files tagged `meeting` to it (Ladder 1 on top of
   Ladder 2/3).
@@ -207,8 +207,8 @@ Notes on the example:
 
 - **Loading is error-tolerant.** A plugin that fails to import, doesn't
   expose the declared attribute, or violates a conformance invariant is
-  skipped with a warning — it never takes the server down or breaks the
-  built-ins. Fix the warning; don't rely on silent tolerance.
+  skipped. The skip carries a warning; it never takes the server down or
+  breaks the built-ins. Fix the warning; don't rely on silent tolerance.
 - **Be honest in `detect()`.** Return low confidence on weak evidence. A
   greedy `detect()` steals documents from the strategy that actually fits;
   the printed detection line makes this auditable after the fact.
@@ -225,11 +225,11 @@ Notes on the example:
 
 Transcript chunks carry `qa_context` (the question, participants, exchange
 id). Including that text in the shared full-text index is **opt-in**
-(`search.qa_context_in_fts: true`) because Postgres `ts_rank` has no IDF:
-question phrasing repeats across nearly every exchange, so question text in
-the shared FTS index systematically skews ranking toward transcript
+(`search.qa_context_in_fts: true`). The reason: Postgres `ts_rank` has no
+IDF. Question phrasing repeats across nearly every exchange. So question
+text in the shared FTS index systematically skews ranking toward transcript
 boilerplate. Keep it off until you have evaluated retrieval quality on your
-own corpus with it on; the `qa_context` columns and GIN index are available
+own corpus with it on. The `qa_context` columns and GIN index are available
 either way for structured access.
 
 ---

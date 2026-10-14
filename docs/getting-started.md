@@ -7,13 +7,14 @@ own transcripts.
 ## What is qualitative coding?
 
 Qualitative coding is the practice of reading interview or focus-group
-transcripts and labeling passages with **codes** - short, defined categories
-such as "transportation barriers" or "cost concerns". Traditionally a human
+transcripts and labeling passages with **codes**. Codes are short, defined
+categories such as "transportation barriers" or "cost concerns".
+Traditionally a human
 reads every line and applies codes by hand. Corpus-KB automates the reading
-and the first-pass labeling, and keeps humans in charge of every decision
+and the first-pass labeling. Humans stay in charge of every decision
 that defines or changes the codebook.
 
-A **codebook** is the authoritative set of codes: each code has a name, a
+A **codebook** is the authoritative set of codes. Each code has a name, a
 definition, inclusion/exclusion criteria, and (for automated coding) gold
 exemplar passages. Codebooks are versioned; every promotion creates a new
 immutable version.
@@ -23,15 +24,15 @@ immutable version.
 - **Deductive coding** starts from a codebook you already believe in and asks
   "which passages match which code?" Corpus-KB scores every codable unit
   against the codebook in three views (the answer alone, question+answer, and
-  the question alone) with per-code calibrated thresholds, then routes
+  the question alone). It applies per-code calibrated thresholds and routes
   uncertain calls to review. Run it with `corpus-kb coding run`.
 - **Inductive coding** starts without a codebook and asks "what themes are
   in this corpus?" Corpus-KB summarizes and clusters units (UMAP/HDBSCAN,
   optional extra) and proposes candidate codes. Proposed codes are NEVER
   auto-promoted; you promote them with `corpus-kb codebook promote`.
 
-A typical project alternates: an inductive pass proposes codes, you promote
-the good ones, then deductive runs apply the grown codebook across the corpus.
+A typical project alternates. An inductive pass proposes codes; you promote
+the good ones. Then deductive runs apply the grown codebook across the corpus.
 
 ## Why human gates exist
 
@@ -42,7 +43,7 @@ automated step would silently corrupt the research record:
 - **Codebook promotion** is always a human command. A proposed code becomes a
   code only when you name it, define it, and pass the duplicate gate.
 - **Thresholds fitted on fewer than 20 gold exemplars per code are flagged
-  unreliable**, and unreliable codes route everything to review instead of
+  unreliable**. Unreliable codes route everything to review instead of
   auto-assigning.
 - **Review decisions are explicit.** Every model assignment can be accepted
   (`corpus-kb review accept`) or overruled (`corpus-kb review override`);
@@ -74,7 +75,7 @@ machine:
   SCHEMA public` line is required).
 
 **2. A research-grade embedder.** Research embeddings require at least
-1024 dimensions; the default `nomic-embed-text` (768) is not enough and the
+1024 dimensions. The default `nomic-embed-text` (768) is not enough, and the
 pipeline abstains (returns no vectors) rather than pad. Pull the embedder
 and point the config at it:
 
@@ -91,16 +92,16 @@ embedding:
 ```
 
 `corpus-kb doctor` reports the embedder config status with the exact fix
-when something is off; it also counts degraded (zero-vector) chunks and
+when something is off. It also counts degraded (zero-vector) chunks and
 incomplete ingest runs. The demo fail-fasts with the same guidance if the
 configured embedder would abstain.
 
 ## Run the demo
 
 The fastest way to see the whole pipeline is the narrated demo. It bundles a
-two-interview mini corpus and a small codebook under `docs/demo-corpus/` and
-walks through ingest, coding, review, the governance report, and a cited
-notebook answer, explaining each stage as it goes (~5 minutes):
+two-interview mini corpus and a small codebook under `docs/demo-corpus/`.
+It walks through ingest, coding, review, the governance report, and a cited
+notebook answer. The demo explains each stage as it goes (~5 minutes):
 
 ```bash
 corpus-kb research demo
@@ -124,17 +125,17 @@ corpus-kb research ingest interviews/ --watch
 ```
 
 The general-purpose front door for any file or directory is
-`corpus-kb ingest <path>` — add `--source-type transcript` to force the
-transcript strategy, `--watch` to tail a folder with auto-heal of
-embedding-outage failures, and `--json` for machine-readable output. Its
+`corpus-kb ingest <path>`. Add `--source-type transcript` to force the
+transcript strategy. Add `--watch` to tail a folder with auto-heal of
+embedding-outage failures. Add `--json` for machine-readable output. Its
 exit codes are stable for scripting: `0` everything ingested, `1` partial
 success, `2` total failure, `3` configuration error. Repair any chunks
 degraded by an embedding outage afterwards with
 `corpus-kb ingest-reembed`.
 
-Ingest parses speaker turns, maps roles heuristically (the question-asker
-becomes the moderator), links question-answer exchanges, and records
-everything as events; projections build the read models. Re-runs process
+Ingest parses speaker turns and maps roles heuristically (the question-asker
+becomes the moderator). It links question-answer exchanges and records
+everything as events. Projections build the read models. Re-runs process
 only new or changed files.
 
 ## Build a codebook
@@ -146,14 +147,14 @@ Two ways to get a codebook version:
    promote with:
    `corpus-kb codebook promote --proposed-id <id> --name "Code name" --definition "..."`.
    Small or homogeneous corpora may produce zero proposals (every unit
-   clusters to noise) - the command says so honestly and suggests adding
-   transcripts or seeding directly, which is option 2.
-2. **Direct seeding** from your own gold exemplars, as the demo does: codes
-   need gold exemplar passages (quoted verbatim from your transcripts) so the
-   deductive run can build prototypes.
+   clusters to noise). The command says so honestly and suggests adding
+   transcripts or seeding directly. Seeding directly is option 2.
+2. **Direct seeding** from your own gold exemplars, as the demo does. Codes
+   need gold exemplar passages (quoted verbatim from your transcripts). The
+   deductive run builds prototypes from them.
 
 For reliable automated thresholds you want at least 20 gold exemplars per
-code; below that, coding still runs but routes to review (see the demo).
+code. Below that, coding still runs but routes to review (see the demo).
 
 ## Run coding
 

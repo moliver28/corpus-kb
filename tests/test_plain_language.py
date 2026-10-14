@@ -94,9 +94,9 @@ def _strip_markdown(md: str) -> str:
 # Wave 5B owns the README + docs rewrite (program target: grade <= 9 there).
 # A file listed here is skipped with its measured grade until that rewrite
 # lands. A file NOT listed here that exceeds the grade bound FAILS this gate.
-PENDING_W5B_REWRITE: dict[str, str] = {
-    "harness-distribution.md": "Wave 5B rewrites the distribution doc.",
-}
+# The list is empty since the w6a sentence ratchet: harness-distribution.md
+# was rewritten and now grades FK <= 12 unskipped.
+PENDING_W5B_REWRITE: dict[str, str] = {}
 
 MAX_DOC_GRADE = 12
 MAX_QUICKSTART_SENTENCE_WORDS = 30

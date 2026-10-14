@@ -5,18 +5,18 @@
 Corpus-KB ingests files, raw text, and directories through a five-stage
 pipeline: **partition**, **chunk**, **embed**, **extract**, and **store**.
 The first two stages are owned by a pluggable **ingestion strategy**
-([INGESTION-STRATEGIES.md](INGESTION-STRATEGIES.md)); the built-in `default`
+([INGESTION-STRATEGIES.md](INGESTION-STRATEGIES.md)). The built-in `default`
 strategy preserves the classic unstructured-partition + chunker-dispatch
-behavior, and the built-in `transcript` strategy chunks turn-aligned Q+A
-instead. Each downstream stage is designed to degrade gracefully: if the
+behavior. The built-in `transcript` strategy chunks turn-aligned Q+A
+instead. Each downstream stage is designed to degrade gracefully. If the
 embedding service (Ollama) is unavailable, the pipeline stores zero-vector
-fallbacks, flags the affected chunks as **degraded**, and reports the
+fallbacks and flags the affected chunks as **degraded**. It reports the
 failure in structured error output.
 
 The default backend is the **unified PostgreSQL 17 ecosystem** (pgvector +
 Apache AGE + PostgresML) with Ollama for optional local LLM inference.
 All heavy operations (embeddings, reranking, RRF fusion, and NER extraction)
-can run inside Postgres, while Ollama provides a CPU-only fallback path.
+can run inside Postgres. Ollama provides a CPU-only fallback path.
 
 ## Quick Start
 
@@ -124,19 +124,20 @@ silently mixed into vector search:
 - `search.exclude_degraded` (default `true`) keeps degraded rows out of the
   vector-search candidate sets. The lexical (full-text) arm still runs.
 - The search envelope reports what it left out in `degraded_excluded`
-  ({count, reasons}: `count` = candidate rows the filter excluded, `reasons`
-  = recorded arm impairments); a legitimately empty search (no candidates
-  existed) returns plain `success` with no remedy. When results are empty
-  AND an impairment was recorded the search returns status `degraded_empty`
-  with the remedy: start Ollama, then run `corpus-kb ingest-reembed`.
+  ({count, reasons}). `count` = candidate rows the filter excluded;
+  `reasons` = recorded arm impairments. A legitimately empty search (no
+  candidates existed) returns plain `success` with no remedy. When results
+  are empty AND an impairment was recorded, the search returns status
+  `degraded_empty`. The remedy: start Ollama, then run
+  `corpus-kb ingest-reembed`.
 - `corpus-kb ingest-reembed` re-embeds flagged chunks once the provider is
   back; repaired rows flip `degraded` back to `false`, and its summary
   reports honest scanned/fixed/failed counts.
 
 When **matryoshka two-tier retrieval** is enabled, the full embedding is
-stored in `chunks_vectors.vector` and a front-sliced, L2-renormalized 1024d
+stored in `chunks_vectors.vector`. A front-sliced, L2-renormalized 1024d
 projection is stored in `vector_1024`. The 1024d column gets an HNSW index
-for fast candidate generation, and the query layer rescores candidates on
+for fast candidate generation. The query layer rescores candidates on
 the exact full-dimension column. Re-embedding overwrites stale projections
 instead of keeping them.
 
@@ -159,25 +160,25 @@ fallback). Extraction is capped at 10 relations per chunk to prevent
 quadratic explosion. LangExtract offsets are validated; invalid
 offsets (negative, start >= end, out of bounds) are skipped with a warning.
 
-Extraction accounting is honest: every backend reports how many candidates
-it requested, kept, dropped by the cap, and dropped by confidence, and the
+Extraction accounting is honest. Every backend reports how many candidates
+it requested, kept, dropped by the cap, and dropped by confidence. The
 pipeline result carries those counts instead of inflated totals. Every
 entity stores provenance metadata (`extractor`, `model`, `revision`,
 `confidence`), matching the relation provenance below.
 
 An **opt-in GLiNER2 backend** (`graph.extractor: gliner`) adds
-schema-conditioned NER via `fastino/gliner2-large-v1`: six mention-level
-types (person, organization, location, date, money, product), model
-revision pinned from config, entity spans only — **no relation
-extraction**. It is disabled by default
+schema-conditioned NER via `fastino/gliner2-large-v1`. It covers six
+mention-level types (person, organization, location, date, money, product).
+The model revision is pinned from config. It produces entity spans only —
+**no relation extraction**. It is disabled by default
 (`extraction.gliner.enabled: false`) and requires the optional `ner`
 dependency extra (`pip install "corpus-kb[ner]"`). Promote it over the
-default only with eval numbers: the span-eval harness
+default only with eval numbers. The span-eval harness
 (`src/corpus_kb/extraction/eval.py`) scores per-type P/R/F1 with bootstrap
-confidence intervals and a promotion gate (micro F1 >= 0.80 and >= baseline
-+ 0.02). The former BERT backend was dead code — the extractor factory
-never routed to it — and has been removed (issue #31 is the GLiNER2
-follow-up).
+confidence intervals. The promotion gate is micro F1 >= 0.80 and >=
+baseline + 0.02. The former BERT backend was dead code: the extractor
+factory never routed to it, so it has been removed. Issue #31 is the
+GLiNER2 follow-up.
 
 Every relation stores provenance metadata: the source chunk, confidence,
 extractor id, model version, and prompt version. The unique key includes
@@ -199,12 +200,12 @@ When AGE is unavailable, the implementation falls back to the recursive-CTE
 PostgresGraphStore.
 
 Every ingest run also gets a row in the `ingest_runs` ledger (migration
-`022_ingest_integrity.sql`): the run is written as `running` with the
-`start_hash` BEFORE any chunks are stored, and only flipped to `completed`
-with the `finish_hash` and per-stage results AFTER everything is stored.
+`022_ingest_integrity.sql`). The run is written as `running` with the
+`start_hash` BEFORE any chunks are stored. It flips to `completed` with the
+`finish_hash` and per-stage results only AFTER everything is stored.
 Any failure marks the run `failed` with the error — nothing reports success
 on a partial ingest. Concurrent ingests of the same document contend on a
-Postgres advisory lock, and the loser returns an honest
+Postgres advisory lock. The loser returns an honest
 `skipped: concurrent-run` instead of racing the winner.
 
 - **Files**: `src/corpus_kb/tools/ingest_common.py`, `src/corpus_kb/tools/ingest_store.py`, `src/corpus_kb/storage/graph_store.py`, `src/corpus_kb/storage/age_graph_store.py`
@@ -216,11 +217,11 @@ Postgres advisory lock, and the loser returns an honest
 ### Document-level short-circuit
 
 Before chunking begins, the pipeline hashes the full document text with
-SHA256 and stores it in `documents.file_hash`. If the same `source` path is
-ingested again with an identical hash AND the recorded run completed
-cleanly, the run returns immediately with `status: "skipped"` and
-`reason: "unchanged"`. No chunks are reprocessed, re-embedded, or
-re-extracted. The probe checks the `ingest_runs` ledger — a previous run
+SHA256 and stores it in `documents.file_hash`. An identical hash AND a
+cleanly completed previous run short-circuit the re-ingest. The run returns
+`status: "skipped"` and `reason: "unchanged"` immediately. No chunks are
+reprocessed, re-embedded, or
+re-extracted. The probe checks the `ingest_runs` ledger. A previous run
 that failed partway no longer masquerades as a success: the re-ingest
 actually runs.
 
@@ -249,8 +250,8 @@ Contextual retrieval generates a short LLM blurb for each chunk that situates
 it within the parent document. The blurb is concatenated with the raw chunk
 text at embedding time and indexed for full-text search.
 
-Generation follows the same deterministic fixture pattern as LangExtract:
-fixtures are keyed by SHA256 of the document prefix plus chunk text and
+Generation follows the same deterministic fixture pattern as LangExtract.
+Fixtures are keyed by SHA256 of the document prefix plus chunk text and
 stored in `contextual.fixture_dir`. When `contextual.live_fallback` is
 `false`, missing fixtures produce an empty blurb rather than calling the
 LLM, which keeps CI deterministic. Any LLM error degrades to an empty blurb
@@ -276,7 +277,7 @@ expression.
 When `search.matryoshka_enabled` is `true` and the embedding provider is
 `ollama`, the pipeline stores both the full embedding and a 1024d
 front-sliced, L2-renormalized projection. Query execution uses the 1024d
-HNSW index to retrieve `k * candidate_multiplier` candidates, then rescores
+HNSW index to retrieve `k * candidate_multiplier` candidates. It rescores
 the candidates with the exact full-dimension vector and returns the top
 results.
 
@@ -299,9 +300,9 @@ Postgres:
    `documents.created_at`, `chunks.chunk_type`, `chunks.source_type`, `tag`,
    and `metadata`). The predicates are bound as parameters and appended to
    both the vector and FTS SQL arms.
-2. **Vector search** with pgvector (both the IVFFlat and HNSW indexes exist;
-   both are built on the same column — no config key picks between them),
-   using matryoshka candidate generation when enabled.
+2. **Vector search** with pgvector, using matryoshka candidate generation
+   when enabled. Both the IVFFlat and HNSW indexes exist. Both are built on
+   the same column; no config key picks between them.
 3. **Full-text search** over `coalesce(context_blurb,'') || ' ' || text`
    via Postgres `plainto_tsquery`.
 4. **Reciprocal Rank Fusion (RRF)** in pure SQL using
@@ -309,8 +310,8 @@ Postgres:
 5. **Optional reranking** via the configured reranker backend.
 
 Degraded (zero-vector) chunks are excluded from the vector candidate sets
-when `search.exclude_degraded` is `true` (the default) — the exclusion is
-applied to candidates only, never to the seed documents, and the envelope
+when `search.exclude_degraded` is `true` (the default). The exclusion is
+applied to candidates only, never to the seed documents. The envelope
 reports the count and reasons in `degraded_excluded`. An all-zero query
 embedding (embedder degraded mode) abstains the vector arm instead of
 returning arbitrary cosine orderings.
@@ -346,7 +347,7 @@ reranking falls back to the pre-rerank RRF order so search never breaks.
 
 The self-query parser turns a natural-language question into a clean
 semantic query plus structured filters. It uses Ollama's JSON-schema-
-constrained chat output, then validates every predicate against a fixed
+constrained chat output. It then validates every predicate against a fixed
 whitelist before building a parameterized SQL fragment. No LLM-provided
 value is ever interpolated into SQL text.
 
@@ -386,8 +387,8 @@ endpoint abstains (`abstained: true`). Any LLM failure returns
 ## Adaptive Routing
 
 The adaptive router classifies each incoming query by cosine similarity to
-per-intent prototype centroids, then dispatches it to the backend best
-suited to the question:
+per-intent prototype centroids. It then dispatches the query to the backend
+best suited to the question:
 
 - **semantic**: hybrid vector + FTS search.
 - **relational**: templated aggregate statistics (document counts, chunk
@@ -398,9 +399,9 @@ suited to the question:
 Prototypes are configured under `routing.prototypes` as lists of example
 phrases per intent. The centroid of each intent is the mean embedding of its
 prototypes. If the best cosine score is below
-`routing.confidence_threshold` (default `0.35`), or if the query vector is
-all zeros (embedder degraded mode), the router falls back to semantic
-search. Clients use `POST /api/query`.
+`routing.confidence_threshold` (default `0.35`), the router falls back to
+semantic search. The same fallback applies when the query vector is all
+zeros (embedder degraded mode). Clients use `POST /api/query`.
 
 - **File**: `src/corpus_kb/handlers/router_handler.py`
 - **HTTP route**: `POST /api/query`
@@ -506,7 +507,7 @@ failed), `2` total failure, `3` configuration error. They are printed in
 **Watch auto-heal**: `--watch` polls the directory and records every run in
 the `ingest_runs` ledger. When a run fails because embeddings were
 unavailable, the watcher re-attempts ONLY that failure class once Ollama
-health returns (health probe + backoff + capped attempts). Other failures
+health returns. The mechanism: health probe + backoff + capped attempts. Other failures
 are never retried silently; `--no-heal` turns auto-heal off. Ctrl-C exits
 cleanly.
 
@@ -611,15 +612,15 @@ includes an `errors` key, a list of strings like
 The result dict also names the resolved ingestion strategy (`strategy` key)
 with its detection provenance. Failures mark the `ingest_runs` row `failed`
 — a partially ingested document never reports `status: "success"` (see
-Stage 5 above), and the CLI front door maps run outcomes to exit codes
-(0 ok / 1 partial / 2 failed / 3 config).
+Stage 5 above). The CLI front door maps run outcomes to exit codes. They
+are 0 ok / 1 partial / 2 failed / 3 config.
 
 ## Fixture System
 
 LangExtract fixtures are SHA256-keyed JSONL files in
 `tests/fixtures/langextract_recorded/`. Each file records the LLM's
-extraction output for a specific chunk text, enabling deterministic test
-runs without calling the LLM API.
+extraction output for a specific chunk text. This enables deterministic
+test runs without calling the LLM API.
 
 - **Fixture dir**: `tests/fixtures/langextract_recorded/`
 - **Config**: `graph.fixture_dir` (path to fixtures)

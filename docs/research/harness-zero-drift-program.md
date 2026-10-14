@@ -3,8 +3,9 @@
 Status: COMPLETE. All five waves shipped to master with green CI:
 W1 `af00703` (#93), W2 `1348c2c` (#95), W3 `3f34819` (#96),
 W4 `4c91db7` (#98), W5 `c690121` (#99). The standards below stay binding;
-the CI enforcement map is live. Known ratchets: sentence-length warnings
-(163, flip to error after the reference-doc rewrite), xenon D → C,
+the CI enforcement map is live. The sentence-length ratchet is closed
+(163 violations rewritten to 0; the Vale rule is now level: error).
+Known ratchets: xenon D → C,
 `uv.lock` regeneration (standalone dependency PR).
 
 ## Purpose
@@ -197,7 +198,7 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Function complexity | `xenon --max-absolute B` | ci.yml / lint | 3 |
 | Coverage on changes | `diff-cover --fail-under 90` on the PR diff | ci.yml / test | 3 |
 | Generated artifacts | `gen_harness_pack.py --check`, `cog --check docs/*.md` | ci.yml / contract | 2 (pack) → 5 (cog) |
-| ASD-STE100 prose | Vale GitHub Action with `.vale.ini` + `styles/CorpusSTE` | docs-quality.yml | 5 |
+| ASD-STE100 prose | Vale GitHub Action with `.vale.ini` + `styles/CorpusSTE`; `SentenceLength` is `level: error` (ratchet closed 2026-10-13: 163 warnings rewritten to 0) and blocks the PR | docs-quality.yml | 5 (error: w6a ratchet) |
 | Grade level + string rules | `pytest -m ste` walks docs, tool docstrings, and error-message tables (Flesch-Kincaid ≤ 9, sentence ≤ 20 words) | ci.yml / test | 5 |
 | Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
 

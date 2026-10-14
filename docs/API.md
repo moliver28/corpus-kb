@@ -48,7 +48,7 @@ Request body:
 `source_type` is validated against the ingestion-strategy registry. An
 explicit value overrides content detection; an unknown value is rejected
 with the standard error envelope. The file is never decoded as text on
-the surface: the ingestion strategy partitions the file, so binary
+the surface. The ingestion strategy partitions the file, so binary
 formats (PDF, DOCX, PPTX) work.
 
 ### POST /api/ingest/text
@@ -67,9 +67,10 @@ curl -X POST http://localhost:8010/api/ingest/text \
 same envelope the tool layer returns.
 
 Ingest envelopes (`file`, `text`, `directory`) match the shared tool
-envelope exactly, plus the declared additive event-store wrapper keys
-`aggregate_id` and `aggregate_version` (plus `event_sourcing_error` only
-when event sourcing failed after a successful pipeline). The socket
+envelope exactly. They add the declared additive event-store wrapper
+keys `aggregate_id` and `aggregate_version`. The key
+`event_sourcing_error` appears only when event sourcing failed after a
+successful pipeline. The socket
 methods `ingest_file` and `ingest_text` return the same shape.
 
 ### POST /api/ingest/directory
@@ -132,9 +133,10 @@ curl -X POST http://localhost:8010/api/ingest/reembed \
 ```
 
 The response reports honest counts: `{"status": "...", "scanned": N,
-"fixed": N, "failed": N}` — plus `degraded`/`warning` when the primary
-embedding provider needed attention, and `{"status": "unavailable"}` when
-migration 022's degraded flags are not present yet.
+"fixed": N, "failed": N}`. The fields `degraded`/`warning` appear when
+the primary embedding provider needed attention. The response is
+`{"status": "unavailable"}` when migration 022's degraded flags are not
+present yet.
 
 ### GET /api/documents
 
@@ -153,17 +155,17 @@ implementation: the tool's row delete.
 curl -X DELETE http://localhost:8010/api/documents/{doc_id}
 ```
 
-The delete runs in one transaction with the caller's tenant (RLS applies;
-the route deletes inside the default tenant unless `tenant_id` is sent).
-Chunks, vectors, tags, metadata, and research rows cascade. Entity and
+The delete runs in one transaction with the caller's tenant, so RLS
+applies. The route deletes inside the default tenant unless `tenant_id`
+is sent. Chunks, vectors, tags, metadata, and research rows cascade. Entity and
 relation rows stay; their document links become NULL. Event-store rows
 persist.
 
 The delete is idempotent: an unknown ID still answers
 `{"status": "success", "document_id": "..."}` with HTTP 200. On the HTTP
 surface the command handler then adds the audit keys
-`aggregate_id`/`aggregate_version` (or `event_sourcing_error` when the
-audit write failed after the successful delete).
+`aggregate_id`/`aggregate_version`. The key `event_sourcing_error`
+appears when the audit write failed after the successful delete.
 
 Neither `ingest_directory` nor `delete_document` has a socket method; the
 parity catalogue records that by listing no socket surface.
@@ -182,14 +184,14 @@ curl -X POST http://localhost:8010/api/search \
   -d '{"query": "how does startup work", "k": 10, "source_type": "code"}'
 ```
 
-The response envelope is degraded-aware: `degraded_excluded` reports
-`{count, reasons}` where `count` is the number of candidate rows the
-degraded filter excluded (0 when the filter removed nothing) and `reasons`
+The response envelope is degraded-aware. The field `degraded_excluded`
+reports `{count, reasons}`. `count` is the number of candidate rows the
+degraded filter excluded (0 when the filter removed nothing). `reasons`
 lists the recorded arm impairments (zero-query embedding, vector-arm
 error, no embedder, filter-active). A legitimately empty search (no
 candidates existed at all) returns plain `success` with `count: 0` and no
 remedy. The status is `degraded_empty` when results came back empty AND at
-least one impairment was recorded — with the remedy: start Ollama, then
+least one impairment was recorded. The remedy: start Ollama, then
 run `corpus-kb ingest-reembed`.
 
 ### Result ordering
@@ -445,9 +447,9 @@ routes. One handler per operation (`handlers/release_handlers.py`).
 | `/api/release/compare` | POST | **codebook_version_id, old_release_id, new_release_id**, tenant_id |
 
 Honest status codes: `assess` reports `not_evaluable` gates as 200 data
-(it writes nothing); a refused release (enforcement=enforce, unmet
-required gates) is HTTP 409 with the structured `blocked` payload;
-unknown ids and malformed input are 400 with
+(it writes nothing). A refused release (enforcement=enforce, unmet
+required gates) is HTTP 409 with the structured `blocked` payload.
+Unknown ids and malformed input are 400 with
 `{"status": "error", ...}`.
 
 ```bash
