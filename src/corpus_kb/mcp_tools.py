@@ -149,15 +149,21 @@ def build_wrapper(fn: Any, pool: Any, config: Any, exposed: tuple[str, ...], nam
     # get_type_hints resolves the tools' string annotations (future
     # annotations) against the shared function's own module globals.
     hints = get_type_hints(fn)
-    parameters = [
-        inspect.Parameter(
-            param_name,
-            inspect.Parameter.POSITIONAL_OR_KEYWORD,
-            default=signature.parameters[param_name].default,
-            annotation=hints.get(param_name, str),
+    parameters = []
+    for param_name in exposed:
+        if param_name not in signature.parameters:
+            raise ValueError(
+                f"Tool {name!r}: exposed parameter {param_name!r} is not a parameter "
+                f"of the shared function"
+            )
+        parameters.append(
+            inspect.Parameter(
+                param_name,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                default=signature.parameters[param_name].default,
+                annotation=hints.get(param_name, str),
+            )
         )
-        for param_name in exposed
-    ]
     pool_name = _pool_param(fn)
     takes_config = "config" in signature.parameters
 
