@@ -21,6 +21,9 @@ This module owns the whole contract:
 * :func:`supports_iterative_scan` — version gate: the SET LOCAL statements
   error on pgvector < 0.8, so callers MUST gate emission on the installed
   extension version (unknown/unreadable versions disable, never enable).
+* :func:`pgvector_version` — the ONE probe SQL + fetch for the installed
+  pgvector version (zero-drift dedupe: every version gate reads it from
+  here, so the probe string cannot drift between call sites).
 """
 
 from __future__ import annotations
@@ -39,6 +42,30 @@ DEFAULT_MAX_SCAN_TUPLES = 20000
 # pgvector 0.8.0 introduced hnsw.iterative_scan (iterative scans over
 # filtered indexes); 0.8 is also the doctor's minimum for the feature gate.
 MIN_ITERATIVE_SCAN_VERSION = (0, 8, 0)
+
+# U20: probe for the installed pgvector version. Iterative-scan SET LOCAL
+# statements error on pgvector < 0.8, so emission is gated on this read
+# (fails CLOSED: unknown version = no settings = pre-0.8 behavior).
+PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+
+
+class VersionReader(Protocol):
+    """Minimal asyncpg.Connection surface the version probe needs."""
+
+    async def fetchrow(self, sql: str, *args: object) -> object:
+        """Fetch one row, or None."""
+        ...
+
+
+async def pgvector_version(conn: VersionReader) -> str | None:
+    """Read the installed pgvector version string, or None when unreadable.
+
+    Shared by every version gate (handlers/query_handler.py today; other
+    call sites adopt it as they are touched). ``None`` means "could not
+    read" and every caller must fail closed on it.
+    """
+    version_row = await conn.fetchrow(PGVECTOR_VERSION_SQL)
+    return None if version_row is None else str(version_row["extversion"])
 
 
 def missing_rrf_fusion_error(exc: Exception) -> MigrationMissingError:
