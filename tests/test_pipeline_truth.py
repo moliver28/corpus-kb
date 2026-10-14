@@ -158,7 +158,7 @@ class _FakeDoc:
 
 
 @pytest.fixture
-def offline_env(monkeypatch: pytest.MonkeyPatch) -> _FakeApp:
+def offline_env(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Stub the ingest store and the eventsourcing app; hand back the app."""
     monkeypatch.setattr(ingest_common_module, "PostgresIngestStore", _StubStore)
     app = _FakeApp(history=[])
@@ -166,7 +166,9 @@ def offline_env(monkeypatch: pytest.MonkeyPatch) -> _FakeApp:
     monkeypatch.setattr(command_handler_module, "get_app", lambda: app)
     command_handler_module.reset_command_handler()
     command_handler_module.get_command_handler(config=dict(_OFFLINE_CONFIG), pool=_NoopPool())
-    return app
+    yield app
+    # Do not leak the stubbed singleton into later test files.
+    command_handler_module.reset_command_handler()
 
 
 # ---------------------------------------------------------------------------
@@ -248,7 +250,7 @@ def test_http_ingest_directory_returns_tool_envelope(tmp_path: Any, offline_env:
     assert body["total_documents"] == 1
 
 
-def test_http_ingest_directory_missing_dir_is_200_error_envelope(tmp_path: Any) -> None:
+def test_http_ingest_directory_missing_dir_is_200_error_envelope(offline_env: Any) -> None:
     client = TestClient(create_http_app())
 
     response = client.post("/api/ingest/directory", json={"directory_path": "no/such/dir"})
