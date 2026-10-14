@@ -52,7 +52,7 @@ sudo systemctl start postgresql
 
 1. Download the installer from [postgresql.org/download/windows](https://www.postgresql.org/download/windows/).
 2. Run the installer and note the superuser password.
-3. pgvector and AGE Windows builds are available from their respective GitHub releases; install them into the Postgres extension directory or use the Windows package maintained by the community.
+3. pgvector and AGE Windows builds are available from their respective GitHub releases. Install them into the Postgres extension directory, or use the community Windows package.
 
 ### Docker (any platform)
 
@@ -160,7 +160,7 @@ corpus-kb doctor      # read-only diagnostics
 corpus-kb setup       # guided setup with per-step confirmation
 ```
 
-The installer detects your hardware profile, creates the database if needed, runs migrations, pulls the recommended Ollama model, and writes its config file under `~/.corpus-kb`.
+The installer detects your hardware profile and creates the database if needed. It runs migrations, pulls the recommended Ollama model, and writes its config file under `~/.corpus-kb`.
 
 The root `scripts/install.py` file still exists as a deprecation shim: it warns and delegates to `corpus_kb._setup.install`.
 

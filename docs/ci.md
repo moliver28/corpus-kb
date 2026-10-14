@@ -140,7 +140,7 @@ The root `opencode.json` uses the OpenCode native format with an `mcp` key. If y
 
 ### "Missing `autoApprove`"
 
-OpenCode and Claude Code configs require an `autoApprove` list. Cursor does not. If your OpenCode or Claude Code config is missing this field, add it with the list of tool names that should be auto-approved.
+OpenCode and Claude Code configs require an `autoApprove` list. Cursor does not. If your OpenCode or Claude Code config is missing this field, add it. List the tool names that should be auto-approved.
 
 ### "Invalid tool name in `autoApprove`"
 

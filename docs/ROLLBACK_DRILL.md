@@ -1,7 +1,7 @@
 # Rollback Drill
 
-This document describes how to roll back a bad `corpus-kb` release and how to
-run a low-risk drill to verify the rollback path before it is needed.
+This document describes how to roll back a bad `corpus-kb` release. It also
+describes a low-risk drill to verify the rollback path before it is needed.
 
 The release pipeline (`.github/workflows/release.yml`) uses **Trusted
 Publishing** (OIDC) to upload to PyPI. No API token is stored in GitHub.
@@ -22,7 +22,7 @@ trusted publisher:
    - **Environment**: `pypi`
 4. Save the pending publisher.
 
-The GitHub Actions environment (`pypi`) is enforced by the workflow, so only
+The workflow enforces the GitHub Actions environment (`pypi`). Only
 jobs running in that environment can request the OIDC token PyPI accepts.
 
 ---
@@ -46,7 +46,7 @@ If a published release is broken:
    - Yanking prevents new installs of that version while leaving the file in
      place for users who already pinned it.
 2. **Stop the broken GitHub release from being the latest**.
-   - Edit the GitHub release and mark it as a **pre-release**, or delete the
+   - Edit the GitHub release and mark it as a **pre-release**. Or delete the
      release and its tag if it should never be used again.
 3. **Ship a fixed version**.
    - Apply the fix on a branch, bump the version in `pyproject.toml`, and open

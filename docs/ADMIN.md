@@ -115,7 +115,7 @@ revision tag are fixed in code — deliberately not configuration.
 
 ### Environment variables
 
-Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set variable is NOT in this table (the variable is dead for this version — remove it or set the config key instead).
+Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set variable is NOT in this table. That variable is dead for this version: remove it, or set the config key instead.
 
 | Variable | Overrides / feeds | Consumed by |
 |----------|-------------------|-------------|
@@ -142,7 +142,7 @@ The vector column `chunks_vectors.vector` is a FIXED `vector(4096)` typmod. pgve
 
 Vectors are never padded and never truncated. Two guards make this honest:
 
-1. **At ingest**: the write path probes the column width and raises a `config_error` naming the schema reality and the fix (set `embedding.model` to a 4096-dimension model, set `embedding.dimensions` to 4096, re-ingest).
+1. **At ingest**: the write path probes the column width and raises a `config_error` naming the schema reality and the fix. Set `embedding.model` to a 4096-dimension model, set `embedding.dimensions` to 4096, then re-ingest.
 2. **In doctor**: the `embedding dimensions vs schema` check compares `embedding.dimensions` with the column typmod and reports the stored per-row dimension histogram. FAIL on mismatch.
 
 ---
