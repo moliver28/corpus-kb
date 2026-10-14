@@ -12,9 +12,12 @@ route table from ``create_http_app()``. The two operations WITHOUT routes
 (``research-cycle`` interactive postures, ``research-demo`` CLI-only) are
 the documented parity allowlist in ``surface_registry_parity.py``.
 
-Status mapping (honest codes): a ``blocked`` release refusal -> 409;
-unknown ids / malformed input -> 400 with a structured error body;
-everything the handler REPORTS (``not_evaluable`` gates included) -> 200.
+Status mapping (honest codes, zero-drift rule 4): a ``blocked`` release
+refusal -> 409; an ``unavailable`` payload (pre-migration database, missing
+extra) -> 503; a reported ``error`` payload -> the status its ``error_type``
+maps to (400 when it names none); raised exceptions -> the one taxonomy
+path (``api._body.error_response``); everything the handler REPORTS as a
+result (``not_evaluable`` gates included) -> 200.
 """
 
 from __future__ import annotations
@@ -28,7 +31,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from corpus_kb.api._body import DEFAULT_TENANT_ID, parse_body
+from corpus_kb.api._body import DEFAULT_TENANT_ID, error_response, parse_body
+from corpus_kb.errors import error_status
 
 # ---------------------------------------------------------------------------
 # Pool access (lazy singleton; server wiring / tests inject via set_research_pool)
@@ -229,14 +233,19 @@ async def _respond(fn: Callable[..., object], kwargs: dict[str, Any]) -> JSONRes
         result = fn(**kwargs)
         payload = await result if inspect.isawaitable(result) else result
     except Exception as exc:
-        return JSONResponse(
-            {"status": "error", "error": str(exc), "error_type": type(exc).__name__},
-            status_code=400,
-        )
+        return error_response(exc)
     body = payload if isinstance(payload, dict) else {}
-    if body.get("status") == "blocked":
+    status = body.get("status")
+    if status == "blocked":
         # D3 parity on HTTP: a refused release is a structured refusal.
         return JSONResponse(body, status_code=409)
+    if status == "unavailable":
+        # Pre-migration database / missing extra: retryable, not a bug.
+        return JSONResponse(body, status_code=503)
+    if status == "error":
+        error_type = str(body.get("error_type") or "")
+        code = error_status(error_type) if error_type else 400
+        return JSONResponse(body, status_code=code)
     return JSONResponse(body)
 
 
@@ -245,9 +254,9 @@ def _post_handler(route: ToolRoute) -> Callable[[Request], Awaitable[JSONRespons
         body = await parse_body(request)
         missing = [key for key in route.required if key not in body]
         if missing:
-            return JSONResponse(
-                {"status": "error", "error": f"missing required fields: {missing}"},
-                status_code=400,
+            return error_response(
+                "validation_error",
+                f"missing required fields: {missing}",
             )
         kwargs: dict[str, Any] = {key: body[key] for key in route.required}
         for key in route.optional:
@@ -266,9 +275,9 @@ async def release_status_get(request: Request) -> JSONResponse:
 
     codebook_version_id = request.query_params.get("codebook_version_id")
     if not codebook_version_id:
-        return JSONResponse(
-            {"status": "error", "error": "missing required field: codebook_version_id"},
-            status_code=400,
+        return error_response(
+            "validation_error",
+            "missing required field: codebook_version_id",
         )
     return await _respond(
         release_tools.release_status,

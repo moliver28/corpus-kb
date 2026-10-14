@@ -28,6 +28,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, cast
 
+from corpus_kb.errors import MigrationMissingError
+
 ITERATIVE_SCAN_MODES = frozenset({"off", "relaxed_order", "strict_order"})
 
 DEFAULT_ITERATIVE_SCAN = "strict_order"
@@ -39,16 +41,20 @@ DEFAULT_MAX_SCAN_TUPLES = 20000
 MIN_ITERATIVE_SCAN_VERSION = (0, 8, 0)
 
 
-def missing_rrf_fusion_error(exc: Exception) -> RuntimeError:
+def missing_rrf_fusion_error(exc: Exception) -> MigrationMissingError:
     """Build the error for a missing ``corpus.rrf_fusion`` function.
 
     Shared by every fusion call site (handlers/query_handler.py,
     research/retrieval.py) so the message cannot drift between them. The
     exception is chained as the cause.
     """
-    error = RuntimeError(
+    error = MigrationMissingError(
         "corpus.rrf_fusion() is not installed — apply migration 006 "
-        "(corpus_kb/migrations/006_rrf_fusion.sql) via scripts/migrate.py"
+        "(corpus_kb/migrations/006_rrf_fusion.sql)",
+        remediation=(
+            "Apply migration 006: run corpus-kb setup, or apply "
+            "corpus_kb/migrations/006_rrf_fusion.sql with psql."
+        ),
     )
     error.__cause__ = exc
     return error

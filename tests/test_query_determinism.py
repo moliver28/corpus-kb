@@ -23,6 +23,7 @@ from uuid import UUID, uuid5
 import pytest
 
 from corpus_kb.domain.models import DEFAULT_TENANT_ID, SearchQuery
+from corpus_kb.errors import MigrationMissingError
 from corpus_kb.handlers.query_handler import QueryHandler
 from corpus_kb.research.retrieval import _rrf
 from corpus_kb.research.search_settings import missing_rrf_fusion_error
@@ -258,9 +259,11 @@ def test_migration_024_pins_fusion_tie_order() -> None:
 def test_missing_rrf_fusion_error_is_shared_and_chained() -> None:
     cause = ValueError("undefined function")
     err = missing_rrf_fusion_error(cause)
-    assert isinstance(err, RuntimeError)
+    assert isinstance(err, MigrationMissingError)
     assert err.__cause__ is cause
     assert "corpus.rrf_fusion() is not installed" in str(err)
+    assert "scripts/migrate.py" not in str(err)
+    assert "corpus-kb setup" in err.remediation
     # Single source: both call sites delegate, neither restates the message.
     for module in (
         ROOT / "src/corpus_kb/handlers/query_handler.py",

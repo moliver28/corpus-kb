@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from corpus_kb.errors import DatabaseUnavailableError
 from corpus_kb.server_wiring import startup
 from corpus_kb.tools.ingest_common import embed_chunks
 from corpus_kb.utils.models import Chunk
@@ -11,8 +12,8 @@ from corpus_kb.utils.models import Chunk
 
 @pytest.mark.asyncio
 async def test_postgres_unavailable_raises() -> None:
-    """startup() raises RuntimeError when the connection string is invalid."""
-    with pytest.raises(RuntimeError):
+    """startup() raises DatabaseUnavailableError when the DSN is unreachable."""
+    with pytest.raises(DatabaseUnavailableError):
         await startup({"database": {"connection_string": "postgresql://bad:bad@localhost:1/none"}})
 
 
