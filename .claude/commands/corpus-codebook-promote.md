@@ -1,6 +1,6 @@
 ---
-description: Promote one proposed code into a new codebook version (human gate)
-argument-hint: --proposed-id <int> --name <name> --definition <text>
+description: "Promote one proposed code into a new codebook version (human gate)"
+argument-hint: "--proposed-id <int> --name <name> --definition <text>"
 ---
 # corpus-codebook-promote — promote a proposed code (HUMAN GATE)
 

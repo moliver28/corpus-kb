@@ -1,5 +1,5 @@
 ---
-description: Top-level ingest front door: files/dirs, watch auto-heal, status, reembed
+description: "Top-level ingest front door: files/dirs, watch auto-heal, status, reembed"
 ---
 # corpus-ingest-front-door — ingest files, watch, status, reembed
 

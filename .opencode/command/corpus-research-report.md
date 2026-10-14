@@ -1,5 +1,5 @@
 ---
-description: Emit the governance report (exhaustiveness, overlap, IRR, G3 audit)
+description: "Emit the governance report (exhaustiveness, overlap, IRR, G3 audit)"
 ---
 # corpus-research-report — governance report
 

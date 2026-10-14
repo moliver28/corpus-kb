@@ -1,6 +1,6 @@
 ---
-description: Run the research cycle with in/on/out-of-loop postures and halt gates
-argument-hint: --mode in|on|out [--guide] [--watch <dir>]
+description: "Run the research cycle with in/on/out-of-loop postures and halt gates"
+argument-hint: "--mode in|on|out [--guide] [--watch <dir>]"
 ---
 # corpus-research-cycle — the full pipeline with human-critical gates
 

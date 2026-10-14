@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import re
 from io import StringIO
 from typing import Any
 from unittest.mock import patch
@@ -241,7 +242,11 @@ def test_cycle_approve_and_deny_conflict_is_exit_2(
         cli.app, ["research", "cycle", "--mode", "on", "--approve", "--deny"]
     )
     assert result.exit_code == 2
-    assert "--approve and --deny" in result.output
+    # Rich styles the error box with ANSI escapes on CI terminals; strip
+    # them before asserting on the plain text.
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--approve" in plain and "--deny" in plain
+    assert "cannot be used together" in plain
     assert calls == [], "a conflicting invocation must not start the cycle"
 
 

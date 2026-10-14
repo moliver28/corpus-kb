@@ -1,5 +1,5 @@
 ---
-description: Run the research cycle with in/on/out-of-loop postures and halt gates
+description: "Run the research cycle with in/on/out-of-loop postures and halt gates"
 ---
 # corpus-research-cycle — the full pipeline with human-critical gates
 

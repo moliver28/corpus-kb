@@ -37,5 +37,7 @@ jobs:
             README.md
             docs/*.md
           reporter: github-pr-check
-          filter_level: error
+          # `level` is the valid input name (v2 has no `filter_level`).
+          # Error-level alerts block; warnings show on the PR check.
+          level: error
           fail_on_error: true

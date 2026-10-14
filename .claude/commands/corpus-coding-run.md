@@ -1,6 +1,6 @@
 ---
-description: Run the deductive coding pass against a codebook version
-argument-hint: --codebook-version-id <uuid>
+description: "Run the deductive coding pass against a codebook version"
+argument-hint: "--codebook-version-id <uuid>"
 ---
 # corpus-coding-run — deductive coding run
 

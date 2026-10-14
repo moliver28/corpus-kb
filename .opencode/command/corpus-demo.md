@@ -1,5 +1,5 @@
 ---
-description: Run the full pipeline on the bundled demo corpus
+description: "Run the full pipeline on the bundled demo corpus"
 ---
 # corpus-demo — narrated demo pipeline
 

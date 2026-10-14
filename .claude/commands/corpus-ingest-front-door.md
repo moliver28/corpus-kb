@@ -1,6 +1,6 @@
 ---
-description: Top-level ingest front door: files/dirs, watch auto-heal, status, reembed
-argument-hint: <path> [--watch] [--source-type <strategy>] [--reembed]
+description: "Top-level ingest front door: files/dirs, watch auto-heal, status, reembed"
+argument-hint: "<path> [--watch] [--source-type <strategy>] [--reembed]"
 ---
 # corpus-ingest-front-door — ingest files, watch, status, reembed
 

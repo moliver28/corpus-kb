@@ -65,17 +65,27 @@ class _WrapperLike(Protocol):
     planned: bool
 
 
+def _yaml_scalar(value: str) -> str:
+    """Quote a front-matter scalar so embedded colons stay valid YAML.
+
+    Vale (docs-quality) parses every changed .md; an unquoted description
+    like "Front door: files" is a YAML mapping-value error at parse time.
+    """
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def _claude_wrapper_text(wrapper: _WrapperLike) -> str:
     """Claude Code slash command: YAML front-matter + registry body."""
     front = (
-        f"---\ndescription: {wrapper.description}\nargument-hint: {wrapper.argument_hint}\n---\n"
+        f"---\ndescription: {_yaml_scalar(wrapper.description)}\n"
+        f"argument-hint: {_yaml_scalar(wrapper.argument_hint)}\n---\n"
     )
     return front + wrapper.body
 
 
 def _opencode_wrapper_text(wrapper: _WrapperLike) -> str:
     """OpenCode command: description-only front-matter, identical body."""
-    return f"---\ndescription: {wrapper.description}\n---\n" + wrapper.body
+    return f"---\ndescription: {_yaml_scalar(wrapper.description)}\n---\n" + wrapper.body
 
 
 def codex_config(reg: ModuleType) -> dict[str, object]:
