@@ -55,10 +55,13 @@ jobs:
         run: ruff format --check src/ tests/
 
       # Zero-drift enforcement-map rows (Wave 3+6): dead code, dependency
-      # hygiene, and the complexity ratchet run in the same fast job —
-      # they need only AST/import scanning, not the project installed.
-      - name: Install quality gates
-        run: pip install vulture deptry xenon
+      # hygiene, and the complexity ratchet. deptry needs the project env
+      # to map import names to packages (pptx -> python-pptx), so the
+      # project installs here too.
+      - name: Install project and quality gates
+        run: |
+          pip install -e ".[dev]"
+          pip install vulture deptry xenon
 
       - name: Dead code (vulture)
         run: vulture src/ tests/whitelist.py
