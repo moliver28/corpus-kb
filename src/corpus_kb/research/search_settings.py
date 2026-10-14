@@ -39,6 +39,21 @@ DEFAULT_MAX_SCAN_TUPLES = 20000
 MIN_ITERATIVE_SCAN_VERSION = (0, 8, 0)
 
 
+def missing_rrf_fusion_error(exc: Exception) -> RuntimeError:
+    """Build the error for a missing ``corpus.rrf_fusion`` function.
+
+    Shared by every fusion call site (handlers/query_handler.py,
+    research/retrieval.py) so the message cannot drift between them. The
+    exception is chained as the cause.
+    """
+    error = RuntimeError(
+        "corpus.rrf_fusion() is not installed — apply migration 006 "
+        "(corpus_kb/migrations/006_rrf_fusion.sql) via scripts/migrate.py"
+    )
+    error.__cause__ = exc
+    return error
+
+
 class SqlExecutor(Protocol):
     """Minimal asyncpg.Connection surface the settings emitter needs."""
 
