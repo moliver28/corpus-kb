@@ -223,7 +223,7 @@ Editors connect over **MCP stdio** (native, no bridge), the **HTTP API**, or the
 - JSON-RPC socket: same command, for local automation.
 - The research and coding surfaces are first-class CLI commands (`corpus-kb research ...` and `corpus-kb coding ...`). Ingestion has a top-level front door: `corpus-kb ingest` with `--watch` auto-heal, plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`.
 
-Both stdio and HTTP serve the same shared tool functions, so envelopes match across surfaces (enforced by the parity gate in `tests/test_surface_parity_deep.py`).
+Both stdio and HTTP serve the same shared tool functions, so envelopes match across surfaces. The parity gate in `tests/test_surface_parity_deep.py` enforces this.
 
 ---
 
