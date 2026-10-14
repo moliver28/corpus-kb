@@ -220,6 +220,7 @@ DEP002 = [
     "xenon",
     "diff-cover",
     "pre-commit",
+    "textstat",
     # Declared but unreferenced in src/ today. Ratchet follow-up: verify and
     # drop, or document the dynamic use (pgvector may register types without
     # an import edge; rich may be a typer extra).
