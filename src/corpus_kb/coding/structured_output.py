@@ -70,46 +70,67 @@ def validate_against_schema(payload: object, schema: dict[str, Any]) -> list[str
     return _validate_node(payload, schema, "$")
 
 
+def _validate_object(node: object, schema: dict[str, Any], path: str) -> list[str]:
+    """Object-shape errors: required fields, closed-property rule, recursion.
+
+    Only called on object-shaped schemas; a non-dict node is one error.
+    """
+    if not isinstance(node, dict):
+        return [f"{path}: expected object, got {type(node).__name__}"]
+    errors: list[str] = []
+    properties = schema.get("properties") or {}
+    for name in schema.get("required") or []:
+        if name not in node:
+            errors.append(f"{path}.{name}: required field missing")
+    if schema.get("additionalProperties") is False:
+        errors.extend(
+            f"{path}.{key}: additional property not allowed"
+            for key in node
+            if key not in properties
+        )
+    for key, value in node.items():
+        sub = properties.get(key)
+        if isinstance(sub, dict):
+            errors.extend(_validate_node(value, sub, f"{path}.{key}"))
+    return errors
+
+
+def _validate_array(node: object, schema: dict[str, Any], path: str) -> list[str]:
+    """Array-shape errors: type check plus per-item validation."""
+    if not isinstance(node, list):
+        return [f"{path}: expected array, got {type(node).__name__}"]
+    items = schema.get("items")
+    if not isinstance(items, dict):
+        return []
+    errors: list[str] = []
+    for i, item in enumerate(node):
+        errors.extend(_validate_node(item, items, f"{path}[{i}]"))
+    return errors
+
+
+def _check_scalar_type(node: object, expected: object, path: str) -> list[str]:
+    """Scalar type check (string/number/integer/boolean); empty when ok."""
+    ok = {
+        "string": isinstance(node, str),
+        "number": isinstance(node, (int, float)) and not isinstance(node, bool),
+        "integer": isinstance(node, int) and not isinstance(node, bool),
+        "boolean": isinstance(node, bool),
+    }.get(expected, True)
+    if not ok:
+        return [f"{path}: expected {expected}, got {type(node).__name__}"]
+    return []
+
+
 def _validate_node(node: object, schema: dict[str, Any], path: str) -> list[str]:
     expected = schema.get("type")
     if expected == "object" or "properties" in schema:
-        if not isinstance(node, dict):
-            return [f"{path}: expected object, got {type(node).__name__}"]
-        errors: list[str] = []
-        properties = schema.get("properties") or {}
-        for name in schema.get("required") or []:
-            if name not in node:
-                errors.append(f"{path}.{name}: required field missing")
-        if schema.get("additionalProperties") is False:
-            errors.extend(
-                f"{path}.{key}: additional property not allowed"
-                for key in node
-                if key not in properties
-            )
-        for key, value in node.items():
-            sub = properties.get(key)
-            if isinstance(sub, dict):
-                errors.extend(_validate_node(value, sub, f"{path}.{key}"))
-        return errors
+        return _validate_object(node, schema, path)
     if expected == "array":
-        if not isinstance(node, list):
-            return [f"{path}: expected array, got {type(node).__name__}"]
-        items = schema.get("items")
-        if not isinstance(items, dict):
-            return []
-        errors = []
-        for i, item in enumerate(node):
-            errors.extend(_validate_node(item, items, f"{path}[{i}]"))
-        return errors
+        return _validate_array(node, schema, path)
     if expected in _ALLOWED_TYPES and expected != "object":
-        ok = {
-            "string": isinstance(node, str),
-            "number": isinstance(node, (int, float)) and not isinstance(node, bool),
-            "integer": isinstance(node, int) and not isinstance(node, bool),
-            "boolean": isinstance(node, bool),
-        }.get(expected, True)
-        if not ok:
-            return [f"{path}: expected {expected}, got {type(node).__name__}"]
+        errors = _check_scalar_type(node, expected, path)
+        if errors:
+            return errors
     enum = schema.get("enum")
     if isinstance(enum, list) and node not in enum:
         return [f"{path}: value {node!r} not in enum {enum}"]
