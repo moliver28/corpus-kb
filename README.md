@@ -78,59 +78,116 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 
 ## Quick start
 
-From zero to a working system in about ten minutes:
+From zero to a working system in about ten minutes. Each step is one
+command. Each command says what it does and what success looks like.
+
+1. Clone the repo.
+
+   ```bash
+   git clone https://github.com/moliver28/corpus-kb.git
+   cd corpus-kb
+   ```
+
+   You now have the source. All later commands run from this folder.
+
+2. Install the package.
+
+   ```bash
+   pip install -e ".[dev]"
+   ```
+
+   Success: `corpus-kb --version` prints a version number.
+
+3. Start the database and load the schema.
+
+   ```bash
+   corpus-kb setup
+   ```
+
+   This starts the bundled Postgres container and runs the migrations.
+   Success: the last line says the setup finished. The database then
+   answers on host port **5433** (the container's 5432 is published as
+   5433; the packaged config already points there). No Docker? See
+   [docs/INSTALL.md](docs/INSTALL.md) for the native-Postgres path
+   (port 5432).
+
+4. Check the system.
+
+   ```bash
+   corpus-kb doctor
+   ```
+
+   Read-only checks. Success: every line says `OK` or `SKIP`. A `FAIL`
+   line names its fix. Doctor always exits 0; read the report, not the
+   exit code.
+
+5. Pull an embedding model that fits the schema.
+
+   ```bash
+   ollama pull qwen3-embedding:8b-q8_0
+   ```
+
+   The bundled schema stores 4096-dimension vectors. `qwen3-embedding`
+   produces exactly 4096. The older default `nomic-embed-text` (768d)
+   does not fit: real (non-degraded) ingest into the bundled schema
+   needs a 4096-dimension model, or you must change the column. The
+   ingest guard and `corpus-kb doctor` catch a mismatch and print the
+   fix. See [docs/OPERATIONS.md](docs/OPERATIONS.md).
+
+6. Point the runtime at that model.
+
+   ```bash
+   export CORPUS_KB_EMBEDDING_MODEL=qwen3-embedding:8b-q8_0
+   export CORPUS_KB_EMBEDDING_DIMENSIONS=4096
+   ```
+
+   These variables override the config file (the installer may have
+   written the 768d default model there). Success: `corpus-kb doctor`
+   reports the model and the dimension check as `OK`.
+
+7. Start the server.
+
+   ```bash
+   corpus-kb start --transport http --port 8010
+   ```
+
+   Success: the log says the HTTP API listens on port 8010 and the
+   socket server is up. Leave this terminal open.
+
+8. Ingest one file from another terminal.
+
+   ```bash
+   curl -X POST http://localhost:8010/api/ingest/file \
+     -H "Content-Type: application/json" \
+     -d '{"file_path": "src/corpus_kb/server_wiring.py"}'
+   ```
+
+   Success: the JSON answer says `"status": "success"` and reports a
+   chunk count.
+
+9. Search it.
+
+   ```bash
+   curl -X POST http://localhost:8010/api/search \
+     -H "Content-Type: application/json" \
+     -d '{"query": "how does startup work"}'
+   ```
+
+   Success: the JSON answer lists scored results.
+
+New to qualitative coding? Run the narrated demo (~5 minutes). The demo
+needs a research-grade embedder (1024 dimensions or more), so pull the
+qwen3 model from step 5 first. The base `nomic-embed-text` model (768
+dimensions) makes the demo abstain by design:
 
 ```bash
-# 1. Install Postgres 17 with pgvector, then create a database
-#    See docs/INSTALL.md for platform-specific steps.
-
-# 2. Clone the repo
-git clone https://github.com/moliver28/corpus-kb.git
-cd corpus-kb
-
-# 3. Install the package
-pip install -e ".[dev]"
-
-# 4. Run diagnostics and guided setup
-corpus-kb doctor                    # read-only diagnostics
-corpus-kb setup                     # guided setup with confirmations
-
-# Or load the schema manually:
-#   psql -d postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb \
-#     -f src/corpus_kb/migrations/001_corpus_schema.sql
-
-# 5. Pull an embedding model that fits the bundled schema (4096 dims)
-ollama pull qwen3-embedding:8b-q8_0
-export CORPUS_KB_EMBEDDING_MODEL=qwen3-embedding:8b-q8_0
-export CORPUS_KB_EMBEDDING_DIMENSIONS=4096
-
-# 6. Start the server
-export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
-corpus-kb start --transport http --port 8010
-
-# 7. New to qualitative coding? Run the narrated demo (~5 minutes).
-#    The demo needs a research-grade embedder (>=1024 dims) - the qwen3
-#    model from step 5 qualifies; base nomic-embed-text (768 dims) makes
-#    the demo abstain by design:
 corpus-kb research demo
-# then read docs/getting-started.md to run it on your own transcripts
 ```
 
-In another terminal:
-
-```bash
-# Ingest a file
-curl -X POST http://localhost:8010/api/ingest/file \
-  -H "Content-Type: application/json" \
-  -d '{"file_path": "src/corpus_kb/server_wiring.py"}'
-
-# Search
-curl -X POST http://localhost:8010/api/search \
-  -H "Content-Type: application/json" \
-  -d '{"query": "how does startup work"}'
-```
-
-See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
+Then read [docs/getting-started.md](docs/getting-started.md) to run it on
+your own transcripts. Ports, exit codes, and vocabularies: see
+[docs/OPERATIONS.md](docs/OPERATIONS.md). The full setup guide is
+[docs/INSTALL.md](docs/INSTALL.md).
 
 ---
 
