@@ -10,14 +10,16 @@ rows, so they can never disagree:
   * ``corpus-kb operations`` (``cli_operations.py``) — emits the
     machine-readable inventory; ``--openapi`` adds the HTTP spec.
 
-Keep this module import-light: standard library only, plus the defensive
-``corpus_kb.errors`` probe below (the w2a merge point).
+Keep this module import-light: standard library only, plus ``corpus_kb.errors``
+(the single error table, merged at Wave 2 integration).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+
+from corpus_kb.errors import ERROR_MAP as _ERRORS_ERROR_MAP
 
 # The canonical placeholder tenant (RLS default; one definition per the
 # program's hidden-knowledge rule — surfaces pass it as their default).
@@ -29,31 +31,9 @@ MCP = "mcp"
 HTTP = "http"
 SOCKET = "socket"
 
-# Error taxonomy (Wave 2 interface agreed with w2a). ``corpus_kb.errors``
-# owns the real table; until that merge lands, the local fallback below
-# keeps this worktree standalone. When both exist, the w2a table wins.
-# The probe is dynamic (importlib, not a static import) because the module
-# legitimately may not exist in this worktree yet.
-try:  # pragma: no cover - merge point with w2a
-    import importlib
-
-    _w2a_errors: Any = importlib.import_module("corpus_kb.errors")
-    _W2A_ERROR_MAP: dict[str, tuple[int, int, int]] = dict(_w2a_errors.ERROR_MAP)
-except ImportError:
-    _W2A_ERROR_MAP = {}
-
-# TODO-merge-with-w2a: local copy of the error table (error_type ->
-# (http_status, socket_code, cli_exit)). Delete this fallback once
-# corpus_kb/errors.py merges; keep only the import above.
-FALLBACK_ERROR_MAP: dict[str, tuple[int, int, int]] = {
-    "validation": (400, -32602, 2),
-    "not_found": (404, -32601, 4),
-    "conflict": (409, -32602, 3),
-    "unavailable": (503, -32603, 3),
-    "internal": (500, -32603, 1),
-}
-
-ERROR_MAP: dict[str, tuple[int, int, int]] = {**FALLBACK_ERROR_MAP, **_W2A_ERROR_MAP}
+# The error taxonomy has one owner: ``corpus_kb.errors`` (Wave 2a). This
+# module re-exports the table under its contract name for the inventory.
+ERROR_MAP: dict[str, tuple[int, int, int]] = dict(_ERRORS_ERROR_MAP)
 
 
 def error_triplet(error_type: str) -> tuple[int, int, int]:
