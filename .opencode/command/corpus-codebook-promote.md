@@ -1,5 +1,5 @@
 ---
-description: Promote one proposed code into a new codebook version (human gate)
+description: "Promote one proposed code into a new codebook version (human gate)"
 ---
 # corpus-codebook-promote — promote a proposed code (HUMAN GATE)
 

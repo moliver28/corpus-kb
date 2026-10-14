@@ -90,18 +90,16 @@ def test_generated_claude_wrappers_match_registry() -> None:
     for wrapper in reg.ACTIVE_WRAPPERS:
         path = ROOT / ".claude" / "commands" / f"{wrapper.name}.md"
         text = path.read_text(encoding="utf-8")
-        front = (
-            f"---\ndescription: {wrapper.description}\n"
-            f"argument-hint: {wrapper.argument_hint}\n---\n"
-        )
-        assert text == front + wrapper.body, path
+        # The generator builds its own front-matter (quoted YAML scalars);
+        # the pin asserts file == generator output, not a format copy.
+        assert text == gen._claude_wrapper_text(wrapper), path
 
 
 def test_generated_opencode_wrappers_match_registry() -> None:
     for wrapper in reg.ACTIVE_WRAPPERS:
         path = ROOT / ".opencode" / "command" / f"{wrapper.name}.md"
         text = path.read_text(encoding="utf-8")
-        assert text == f"---\ndescription: {wrapper.description}\n---\n" + wrapper.body, path
+        assert text == gen._opencode_wrapper_text(wrapper), path
         claude = (ROOT / ".claude" / "commands" / f"{wrapper.name}.md").read_text(encoding="utf-8")
         # identical bodies modulo harness front-matter
         assert text.split("---\n", 2)[-1] == claude.split("---\n", 2)[-1]

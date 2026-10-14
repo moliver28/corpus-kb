@@ -7,10 +7,34 @@ import importlib
 import os
 import socket
 import sys
+import types
+from pathlib import Path
 from urllib.parse import urlparse
 
 import asyncpg
 import pytest
+
+# Pin ``tests`` to this directory BEFORE any test module imports.
+#
+# The repo's tests/ has no __init__.py on purpose (pytest collects modules
+# root-free so siblings import each other by bare module name). A stray
+# top-level ``tests`` package inside a PyPI wheel (textstat ships one) then
+# shadows this directory and breaks ``from tests.mock_pg import ...`` in the
+# DB test modules. Registering the package explicitly wins that race.
+_TESTS_DIR = Path(__file__).resolve().parent
+
+
+def _pin_local_tests_package() -> None:
+    existing = sys.modules.get("tests")
+    existing_paths = [Path(p).resolve() for p in getattr(existing, "__path__", ())]
+    if _TESTS_DIR in existing_paths:
+        return
+    package = types.ModuleType("tests")
+    package.__path__ = [str(_TESTS_DIR)]
+    sys.modules["tests"] = package
+
+
+_pin_local_tests_package()
 
 
 def pytest_configure(config: object) -> None:

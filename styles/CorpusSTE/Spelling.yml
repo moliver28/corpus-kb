@@ -1,0 +1,12 @@
+# Spell check against the project accept list. One word per line in
+# CorpusSTE/accept.txt. Add a term there only when it is a real project name.
+#
+# Level: warning, not error. Diff-mode CI lints every changed markdown file —
+# changelogs and research archives carry hundreds of legitimate names and
+# identifiers, and an error here blocks on curation, not on prose quality.
+# Sentence discipline (SentenceLength) stays the blocking STE rule.
+extends: spelling
+level: warning
+message: "Did you really mean '%s'?"
+ignore:
+  - CorpusSTE/accept.txt

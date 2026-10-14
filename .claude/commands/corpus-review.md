@@ -1,6 +1,6 @@
 ---
-description: Execute accept/override decisions on the review queue
-argument-hint: <assignment-id> --reviewer <you>
+description: "Execute accept/override decisions on the review queue"
+argument-hint: "<assignment-id> --reviewer <you>"
 ---
 # corpus-review — execute review decisions
 

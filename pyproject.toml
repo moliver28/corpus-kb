@@ -144,6 +144,10 @@ dev = [
     "xenon>=0.9",
     "diff-cover>=9.0",
     "pre-commit>=4.0",
+    # Plain-language gate (zero-drift Wave 5A): Flesch-Kincaid grading for
+    # tests/test_plain_language.py (`pytest -m ste`). Dev-only on purpose —
+    # no runtime dependency.
+    "textstat>=0.7",
 ]
 
 [build-system]
@@ -243,6 +247,7 @@ DEP003 = ["httpx"]
 markers = [
     "requires_ollama: mark test as needing a running Ollama service",
     "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
+    "ste: ASD-STE100 plain-language gate (docs, error strings, tool docstrings)",
 ]
 asyncio_mode = "auto"
 
@@ -309,6 +314,12 @@ help = "Run the pre-commit hooks over the whole tree (config: .pre-commit-config
 [tool.poe.tasks.test]
 cmd = "python -m pytest tests/ -x -q --tb=short"
 help = "Full test suite (Ollama/Postgres degrade gracefully)"
+
+# Plain-language gate (zero-drift Wave 5A, program standard 6). The full
+# suite already includes it; this target runs the gate alone.
+[tool.poe.tasks.ste]
+cmd = "python -m pytest tests/test_plain_language.py -m ste -q --tb=short"
+help = "ASD-STE100 plain-language gate: docs grade, error strings, tool docstrings"
 
 [tool.poe.tasks.verify]
 sequence = ["lint", "format-check", "types", "dead-code", "deps", "complexity", "test"]

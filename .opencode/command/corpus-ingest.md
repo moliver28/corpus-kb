@@ -1,5 +1,5 @@
 ---
-description: Ingest research transcripts (single file or watched drop directory)
+description: "Ingest research transcripts (single file or watched drop directory)"
 ---
 # corpus-ingest — ingest research transcripts
 

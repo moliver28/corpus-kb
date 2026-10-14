@@ -1,0 +1,43 @@
+# Prose quality gate (zero-drift Wave 5A).
+# ASD-STE100-derived style: .vale.ini + styles/CorpusSTE.
+# Fail on error-level alerts; warnings are visible on the PR check but do not
+# block. Contributor loop: `vale README.md docs/*.md`.
+name: docs-quality
+
+on:
+  pull_request:
+    paths:
+      - "README.md"
+      - "docs/**"
+      - ".vale.ini"
+      - "styles/**"
+      - ".github/workflows/docs-quality.yml"
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  vale:
+    name: Vale prose lint (ASD-STE100)
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Vale
+        uses: errata-ai/vale-action@v2
+        with:
+          files: |
+            README.md
+            docs/*.md
+          reporter: github-pr-check
+          # `level` is the valid input name (v2 has no `filter_level`).
+          # Error-level alerts block; warnings show on the PR check.
+          level: error
+          fail_on_error: true

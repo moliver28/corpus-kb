@@ -1,5 +1,5 @@
 ---
-description: Run the deductive coding pass against a codebook version
+description: "Run the deductive coding pass against a codebook version"
 ---
 # corpus-coding-run — deductive coding run
 

@@ -190,7 +190,7 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
         return ResearchCheck(
             name="research.embedder config",
             status=STATUS_FAIL,
-            detail=f"research.embedder.dimensions={dimensions!r}; promotable research "
+            detail=f"research.embedder.dimensions={dimensions!r}. Promotable research "
             "embedders must emit exactly 1024 dims",
             fix="set research.embedder.dimensions: 1024 in config.yaml",
             doc=DOC_RESEARCH,
@@ -199,7 +199,7 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
         return ResearchCheck(
             name="research.embedder config",
             status=STATUS_WARN,
-            detail="provider=pgml but the pgml extension is absent; ALL research "
+            detail="provider=pgml but the pgml extension is absent. All research "
             "embeddings abstain (lexical-only retrieval)",
             fix="set embedding.provider: ollama and embedding.model to a >=1024-dim "
             "model (e.g. qwen3-embedding:8b-q8_0)",
@@ -214,8 +214,8 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
             return ResearchCheck(
                 name="research.embedder config",
                 status=STATUS_WARN,
-                detail=f"model {model!r} emits {emb_dims} dims < 1024; research "
-                "embeddings abstain (never padded)",
+                detail=f"model {model!r} emits {emb_dims} dims, below 1024. "
+                "Research embeddings abstain (never padded)",
                 fix="set embedding.model to a >=1024-dim model (e.g. qwen3-embedding:8b-q8_0)",
                 doc=DOC_RESEARCH,
             )
@@ -226,9 +226,8 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
             return ResearchCheck(
                 name="research.embedder config",
                 status=STATUS_WARN,
-                detail="embedding.dimensions is not set; research needs to verify "
-                "the model emits >= 1024 dims (nomic-embed-text emits 768 and "
-                "would abstain)",
+                detail="embedding.dimensions is not set. Research needs a model with "
+                ">= 1024 dims. nomic-embed-text emits 768 and would abstain",
                 fix="set embedding.dimensions to the model's true dimensionality",
                 doc=DOC_RESEARCH,
             )
@@ -261,8 +260,8 @@ def check_pgvector_version(extversion: str | None) -> ResearchCheck:
         return ResearchCheck(
             name=name,
             status=STATUS_WARN,
-            detail=f"not_enforced - unreadable pgvector version {extversion!r}; "
-            "hnsw.iterative_scan settings stay disabled (fail closed)",
+            detail=f"not_enforced - unreadable pgvector version {extversion!r}. "
+            "hnsw.iterative_scan stays disabled. The system fails closed.",
             doc=DOC_RESEARCH,
         )
     if parsed >= MIN_ITERATIVE_SCAN_VERSION:
@@ -276,10 +275,11 @@ def check_pgvector_version(extversion: str | None) -> ResearchCheck:
     return ResearchCheck(
         name=name,
         status=STATUS_WARN,
-        detail=f"not_enforced - v{extversion} < {floor}; hnsw.iterative_scan disabled "
-        "(searches run plain ANN scans without relaxed-ordering guarantees)",
-        fix=f"use the Corpus-KB docker image (ships pgvector >= {floor}) or upgrade the "
-        "extension, then re-run corpus-kb doctor",
+        detail=f"not_enforced - pgvector v{extversion} is older than {floor}. "
+        "hnsw.iterative_scan stays disabled. Searches run plain ANN scans. "
+        "Their result order is approximate.",
+        fix=f"Use the Corpus-KB docker image. It ships pgvector >= {floor}. "
+        "Or upgrade the extension. Then re-run corpus-kb doctor.",
         doc=DOC_RESEARCH,
     )
 
@@ -340,11 +340,11 @@ def judgment_distribution_check(config: dict[str, Any]) -> ResearchCheck:
     return ResearchCheck(
         name=name,
         status=STATUS_WARN,
-        detail="not_evaluable: use_mean is ON, but whether the coder runtime "
-        "exposes token probabilities cannot be verified here - if it does "
-        "not, aggregation silently falls back to the mode",
-        fix="verify the coder backend returns token logprobs "
-        "(coding/uncertainty/tier1_logprob) or set use_mean: false",
+        detail="not_evaluable: use_mean is ON. The doctor cannot verify that the "
+        "coder runtime exposes token probabilities. Without them, aggregation "
+        "falls back to the mode.",
+        fix="Check that the coder backend returns token logprobs "
+        "(coding/uncertainty/tier1_logprob). Or set use_mean: false.",
         doc=DOC_RESEARCH,
     )
 
@@ -391,10 +391,11 @@ def zero_vector_canary(config: dict[str, Any], ollama_ok: bool | None) -> Resear
         return ResearchCheck(
             name=name,
             status=STATUS_FAIL,
-            detail=f"invalid_output - probe returned an all-zero vector (model={model}); "
-            "the backend answered but produced the degraded-mode fallback",
-            fix="verify the model actually emits embeddings (ollama run / server logs), "
-            "then re-run corpus-kb doctor",
+            detail=f"invalid_output - the probe returned an all-zero vector "
+            f"(model={model}). The backend answered. It returned the "
+            "degraded-mode placeholder, not a real embedding.",
+            fix="Check that the model emits real embeddings (ollama run / server "
+            "logs). Then re-run corpus-kb doctor.",
             doc=DOC_RESEARCH,
         )
     return ResearchCheck(

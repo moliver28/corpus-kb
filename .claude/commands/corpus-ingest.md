@@ -1,6 +1,6 @@
 ---
-description: Ingest research transcripts (single file or watched drop directory)
-argument-hint: <path> [--project-id <uuid>] [--watch]
+description: "Ingest research transcripts (single file or watched drop directory)"
+argument-hint: "<path> [--project-id <uuid>] [--watch]"
 ---
 # corpus-ingest — ingest research transcripts
 

@@ -95,13 +95,17 @@ class SkippedOperation:
     """An operation with two or more surfaces that the parity gate skips.
 
     Every skip carries an honest reason (live LLM/DB need, single-surface
-    design, or a known pipeline split tracked elsewhere).
+    design, or a known pipeline split tracked elsewhere). ``exit_codes``
+    optionally carries the documented CLI exit contract so the inventory
+    stays complete for harness authors; ``None`` means the operation has
+    no published exit-code table.
     """
 
     name: str
     family: str
     reason: str
     surfaces: tuple[SurfaceSpec, ...] = field(default_factory=tuple)
+    exit_codes: tuple[int, ...] | None = None
 
 
 def surfaces_of(op: Operation, kind: str) -> tuple[SurfaceSpec, ...]:

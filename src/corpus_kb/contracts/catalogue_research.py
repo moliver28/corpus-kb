@@ -53,7 +53,12 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
     Operation(
         name="notebook_ask",
         family="research",
-        description="Grounded question answering with cited sentences.",
+        description=(
+            "Grounded question answering with cited sentences. Filters: "
+            "code, min_confidence (high, medium, low), review_status "
+            "(auto, review, confirmed, overridden), source, speaker, "
+            "topic, or documents."
+        ),
         handler="corpus_kb.research.notebook:notebook_ask",
         params=(
             ParamSpec("question", required=True),
@@ -178,7 +183,13 @@ SKIPPED_OPERATIONS: tuple[SkippedOperation, ...] = (
     SkippedOperation(
         name="research_cycle",
         family="research",
-        reason="Single surface (CLI) by design; interactive halt gates.",
+        reason=(
+            "The pipeline needs a live database, so the parity gate does "
+            "not run it. The CLI owns the interactive approval boundary; "
+            "the MCP tool carries the same run_cycle with approve=True. "
+            "cycle_gates pins the exit codes; --help lists them."
+        ),
+        exit_codes=(0, 2, 10, 11, 12, 13, 14, 15, 16, 17, 20, 21),
         surfaces=(SurfaceSpec(CLI, "research cycle"),),
     ),
     SkippedOperation(

@@ -60,7 +60,9 @@ machine:
   `corpus-kb setup` starts a bundled Postgres stack, creates the database,
   and runs migrations. Follow [INSTALL.md](INSTALL.md) if Docker is absent.
 - **Bring-your-own path** (no Docker needed): point Corpus-KB at any
-  Postgres 15+ server you already run by setting one environment variable:
+  Postgres 15+ server you already run by setting one environment variable.
+  A native Postgres usually listens on 5432 (the bundled compose stack
+  publishes 5433 instead — see [OPERATIONS.md](OPERATIONS.md)):
 
   ```bash
   export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb

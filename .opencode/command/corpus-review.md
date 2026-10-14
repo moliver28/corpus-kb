@@ -1,5 +1,5 @@
 ---
-description: Execute accept/override decisions on the review queue
+description: "Execute accept/override decisions on the review queue"
 ---
 # corpus-review — execute review decisions
 

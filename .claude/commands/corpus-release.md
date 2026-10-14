@@ -1,6 +1,6 @@
 ---
-description: Release lifecycle: assess, request, review, release, status, compare
-argument-hint: --codebook-version-id <uuid> [--release-id <uuid>] [--approver <you>]
+description: "Release lifecycle: assess, request, review, release, status, compare"
+argument-hint: "--codebook-version-id <uuid> [--release-id <uuid>] [--approver <you>]"
 ---
 # corpus-release — the release lifecycle (v6 §6)
 

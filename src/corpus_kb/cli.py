@@ -40,6 +40,8 @@ from corpus_kb.cli_research_report import _print_report
 from corpus_kb.cli_support import (
     DEFAULT_TENANT,
     _cli_approve,
+    _cli_approve_no,
+    _cli_approve_yes,
     _cli_error_exit,
     _pid,
     _run_async,
@@ -215,6 +217,8 @@ __all__ = [
     "DEFAULT_TENANT",
     "_DEFAULT_TENANT",
     "_cli_approve",
+    "_cli_approve_no",
+    "_cli_approve_yes",
     "_cli_error_exit",
     "_pid",
     "_print_detection_summary",

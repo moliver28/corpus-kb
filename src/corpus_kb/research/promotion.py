@@ -21,7 +21,8 @@ def assert_promotable(dimensions: int) -> None:
     """HALT unless the embedder emits exactly 1024 dims (016 contract)."""
     if dimensions != PROMOTABLE_DIMENSIONS:
         raise NonPromotableDimensionsError(
-            f"G1 winner emits {dimensions} dims; only {PROMOTABLE_DIMENSIONS}-emitting "
-            "models are promotable — halt for an explicit config + migration change "
-            "(never silent padding, migration-016 vector strategy)"
+            f"G1 winner emits {dimensions} dims. Only models that emit "
+            f"{PROMOTABLE_DIMENSIONS} dims are promotable. Promotion halts "
+            "until you change the config and the migration explicitly. "
+            "Never pad silently (migration-016 vector strategy)."
         )

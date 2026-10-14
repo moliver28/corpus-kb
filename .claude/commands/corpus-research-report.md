@@ -1,6 +1,6 @@
 ---
-description: Emit the governance report (exhaustiveness, overlap, IRR, G3 audit)
-argument-hint: [--level novice|expert] [--json]
+description: "Emit the governance report (exhaustiveness, overlap, IRR, G3 audit)"
+argument-hint: "[--level novice|expert] [--json]"
 ---
 # corpus-research-report — governance report
 

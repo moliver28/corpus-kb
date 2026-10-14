@@ -1,5 +1,5 @@
 ---
-description: Release lifecycle: assess, request, review, release, status, compare
+description: "Release lifecycle: assess, request, review, release, status, compare"
 ---
 # corpus-release — the release lifecycle (v6 §6)
 

@@ -1,6 +1,6 @@
 ---
-description: Run the research cycle with in/on/out-of-loop postures and halt gates
-argument-hint: --mode in|on|out [--guide] [--watch <dir>]
+description: "Run the research cycle with in/on/out-of-loop postures and halt gates"
+argument-hint: "--mode in|on|out [--guide] [--watch <dir>]"
 ---
 # corpus-research-cycle — the full pipeline with human-critical gates
 
@@ -39,4 +39,8 @@ Postures:
 - `--guide` turns every halt into a taught decision (proposed codes,
   example units, promote-vs-skip consequences); `--json` emits one
   stage/gate event per line for agents.
+- Unattended runs: `--approve` confirms every gate without asking;
+  `--deny` refuses every gate. Closed stdin cannot hang the cycle.
+  Exit codes: 0 complete; 2 embeddings unavailable; 10-17 one gate
+  halted; 20 approval denied; 21 awaiting approval.
 - All flags: `corpus-kb research cycle --help`
