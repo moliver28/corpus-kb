@@ -54,6 +54,7 @@ from corpus_kb.research.search_settings import (
     HnswSettings,
     apply_hnsw_settings,
     load_hnsw_settings,
+    missing_rrf_fusion_error,
     supports_iterative_scan,
 )
 
@@ -303,7 +304,7 @@ class QueryHandler:
                             FROM candidate
                             JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
                             JOIN documents ON chunks.doc_id = documents.doc_id
-                            ORDER BY candidate.score + 0 DESC
+                            ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
                             LIMIT $4
                             """,
                             model,
@@ -338,7 +339,7 @@ class QueryHandler:
                         FROM candidate
                         JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
                         JOIN documents ON chunks.doc_id = documents.doc_id
-                        ORDER BY candidate.score + 0 DESC
+                        ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
                         LIMIT $4
                         """,
                             model,
@@ -389,7 +390,8 @@ class QueryHandler:
                                 FROM cand
                                 JOIN chunks ON cand.chunk_id = chunks.chunk_id
                                 JOIN documents ON chunks.doc_id = documents.doc_id
-                                ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC
+                                ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC,
+                                         chunks.chunk_id ASC
                                 LIMIT $3
                                 """,
                                 str(q4096),
@@ -445,7 +447,7 @@ class QueryHandler:
                                     FROM candidate
                                     JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
                                     JOIN documents ON chunks.doc_id = documents.doc_id
-                                    ORDER BY candidate.score + 0 DESC
+                                    ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
                                     LIMIT $3
                                     """,
                                     str(query_vector),
@@ -473,7 +475,7 @@ class QueryHandler:
                                 FROM candidate
                                 JOIN chunks ON candidate.candidate_chunk_id = chunks.chunk_id
                                 JOIN documents ON chunks.doc_id = documents.doc_id
-                                ORDER BY candidate.score + 0 DESC
+                                ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC
                                 LIMIT $3
                                 """,
                                     str(query_vector),
@@ -538,7 +540,7 @@ class QueryHandler:
                 JOIN documents ON chunks.doc_id = documents.doc_id
                 WHERE chunks.tenant_id = $2 {dedup_predicate} {frag}
                   AND {fts_vector} @@ plainto_tsquery('english', $1)
-                ORDER BY score DESC
+                ORDER BY score DESC, chunks.chunk_id ASC
                 LIMIT $3
                 """,
                 semantic_query,
@@ -560,10 +562,7 @@ class QueryHandler:
                     self._retrieval_settings.rrf_k,
                 )
             except asyncpg.UndefinedFunctionError as exc:
-                raise RuntimeError(
-                    "corpus.rrf_fusion() is not installed — apply migration 006 "
-                    "(corpus_kb/migrations/006_rrf_fusion.sql) via scripts/migrate.py"
-                ) from exc
+                raise missing_rrf_fusion_error(exc) from exc
 
             # Re-attach provenance (file_path/start_line/...) from the raw
             # vector/FTS rows — corpus.rrf_fusion returns only the five fused
@@ -591,6 +590,10 @@ class QueryHandler:
                 )
 
             fused_results = [_to_result(dict(row)) for row in fused_rows]
+            # Zero-drift determinism (rule 9): fused score DESC, then chunk id
+            # ASC. The SQL fusion returns this order (migration 024); the sort
+            # re-asserts it so tied rows cannot permute between runs.
+            fused_results.sort(key=lambda r: (-r.score, r.chunk_id))
 
         # 4. Reranking (post-RRF) + envelope finalization. The rerank stage
         #    runs outside the handler's connection so a max_size=1 pool
@@ -793,7 +796,7 @@ class QueryHandler:
                 JOIN chunks c ON candidate.candidate_chunk_id = c.chunk_id
                 JOIN documents d ON c.doc_id = d.doc_id
                 WHERE c.tombstoned_at IS NULL AND c.superseded_at IS NULL
-                ORDER BY candidate.score + 0 DESC
+                ORDER BY candidate.score + 0 DESC, c.chunk_id ASC
                 LIMIT $3
                 """,
                 str(query.chunk_id),
@@ -849,7 +852,7 @@ class QueryHandler:
                       )) <= $3
                     ORDER BY ABS(c.chunk_index - (
                         SELECT chunk_index FROM chunks WHERE chunk_id = $1
-                    )) ASC
+                    )) ASC, c.chunk_id ASC
                     LIMIT $3
                     """,
                     str(result.chunk_id),

@@ -43,6 +43,7 @@ from corpus_kb.research.search_settings import (
     HnswSettings,
     apply_hnsw_settings,
     load_hnsw_settings,
+    missing_rrf_fusion_error,
     supports_iterative_scan,
 )
 from corpus_kb.storage.tenant_conn import tenant_connection
@@ -177,14 +178,13 @@ async def research_search(
     """
     from corpus_kb.rag.embedder import instruct
 
+    config = load_config()
     r_settings = (
-        retrieval_settings
-        if retrieval_settings is not None
-        else load_retrieval_settings(load_config())
+        retrieval_settings if retrieval_settings is not None else load_retrieval_settings(config)
     )
     depth = max(q.k * CANDIDATE_MULTIPLIER, RERANK_MIN_CANDIDATES)
     query_vector: list[float] | None = await embedder.embed_cached(q.tenant_id, instruct(q.query))
-    settings = hnsw_settings if hnsw_settings is not None else load_hnsw_settings(load_config())
+    settings = hnsw_settings if hnsw_settings is not None else load_hnsw_settings(config)
 
     async with tenant_connection(pool, q.tenant_id) as conn:
         version_row = await conn.fetchrow(_PGVECTOR_VERSION_SQL)
@@ -317,7 +317,7 @@ async def _unit_arms(
                        candidate.seq, candidate.text, candidate.role_in_exchange,
                        candidate.score + 0 AS score
                 FROM candidate
-                ORDER BY candidate.score + 0 DESC
+                ORDER BY candidate.score + 0 DESC, candidate.unit_id ASC
                 LIMIT {limit}
                 """,
                 *dense_sql.values,
@@ -344,7 +344,7 @@ async def _unit_arms(
                        candidate.seq, candidate.text, candidate.role_in_exchange,
                        candidate.score + 0 AS score
                 FROM candidate
-                ORDER BY candidate.score + 0 DESC
+                ORDER BY candidate.score + 0 DESC, candidate.unit_id ASC
                 """,
                 *dense_sql.values,
             )
@@ -363,7 +363,7 @@ async def _unit_arms(
         LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
         WHERE u.tenant_id = $1 AND d.project_id = $2{fts_filters}
           AND to_tsvector('english', u.text) @@ plainto_tsquery('english', {tsq})
-        ORDER BY score DESC
+        ORDER BY score DESC, u.unit_id ASC
         LIMIT {limit}
         """,
         *fts_sql.values,
@@ -406,7 +406,7 @@ async def _exchange_arms(
                 SELECT candidate.exchange_id, candidate.doc_id, candidate.seq,
                        candidate.text, candidate.score + 0 AS score
                 FROM candidate
-                ORDER BY candidate.score + 0 DESC
+                ORDER BY candidate.score + 0 DESC, candidate.exchange_id ASC
                 LIMIT {limit}
                 """,
                 *dense_sql.values,
@@ -428,7 +428,7 @@ async def _exchange_arms(
                 SELECT candidate.exchange_id, candidate.doc_id, candidate.seq,
                        candidate.text, candidate.score + 0 AS score
                 FROM candidate
-                ORDER BY candidate.score + 0 DESC
+                ORDER BY candidate.score + 0 DESC, candidate.exchange_id ASC
                 """,
                 *dense_sql.values,
             )
@@ -448,7 +448,7 @@ async def _exchange_arms(
         WHERE e.tenant_id = $1 AND d.project_id = $2 AND coalesce(e.qa_text, '') <> ''{fts_filters}
           AND to_tsvector('english', coalesce(e.qa_text, ''))
               @@ plainto_tsquery('english', {tsq})
-        ORDER BY score DESC
+        ORDER BY score DESC, e.exchange_id ASC
         LIMIT {limit}
         """,
         *fts_sql.values,
@@ -512,10 +512,7 @@ async def _rrf(
             rrf_k,
         )
     except asyncpg.UndefinedFunctionError as exc:
-        raise RuntimeError(
-            "corpus.rrf_fusion() is not installed — apply migration 006 "
-            "(corpus_kb/migrations/006_rrf_fusion.sql)"
-        ) from exc
+        raise missing_rrf_fusion_error(exc) from exc
     by_uuid = {str(row["chunk_id"]): row for row in dense + lexical}
     fused: list[dict[str, object]] = []
     for row in rows:
@@ -532,6 +529,10 @@ async def _rrf(
                 if name in meta:
                     item[name] = meta[name]
         fused.append(item)
+    # Zero-drift determinism (rule 9): fused score DESC, then chunk id ASC.
+    # The SQL fusion returns this order (migration 024); the sort re-asserts
+    # it so tied rows cannot permute between runs.
+    fused.sort(key=lambda item: (-cast("float", item["score"]), str(item["chunk_id"])))
     return fused
 
 
