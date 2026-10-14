@@ -13,12 +13,13 @@ registration helper there is private plumbing) and is re-exported here so the
 from __future__ import annotations
 
 from pathlib import Path
+from uuid import UUID
 
 import asyncpg
 
 from ..ingest_watch import WATCH_SUFFIXES
 from ..ingestion.registry import strategy_names
-from .ingest_common import ingest_text, load_config_or_pass, run_pipeline
+from .ingest_common import DEFAULT_TENANT_ID, ingest_text, load_config_or_pass, run_pipeline
 from .ingest_surface_tools import ingest_reembed, ingest_status
 from .ingest_url_tools import ingest_url
 
@@ -130,9 +131,27 @@ async def ingest_directory(
 async def list_documents(
     pg_pool: asyncpg.Pool,
     config: dict[str, object] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    limit: int = 100,
+    offset: int = 0,
 ) -> dict[str, object]:
-    """List all ingested documents."""
-    return {"status": "success", "documents": []}
+    """List ingested documents with pagination.
+
+    Delegates to ``QueryHandler.handle_list_documents`` — the same call
+    GET /api/documents and the socket ``list_documents`` method make — so
+    all three surfaces return the same envelope:
+    ``{"status": "success", "result": [...]}``.
+    """
+    from ..domain.models import ListDocumentsQuery
+    from ..handlers.query_handler import QueryHandler
+
+    query = ListDocumentsQuery(tenant_id=UUID(tenant_id), limit=limit, offset=offset)
+    # Built over the caller's pool (not the get_query_handler singleton):
+    # the singleton pins the first pool it sees, and this tool is handed a
+    # pool explicitly.
+    handler = QueryHandler(pg_pool, config=load_config_or_pass(config))
+    results = await handler.handle_list_documents(query)
+    return {"status": "success", "result": [r.model_dump() for r in results]}
 
 
 async def delete_document(

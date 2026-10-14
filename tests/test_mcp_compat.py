@@ -30,7 +30,10 @@ async def test_tool_signatures_unchanged() -> None:
             "tenant_id",
             "source_type",
         },
-        "list_documents": {"pg_pool", "config"},
+        # W1B honesty wave: list_documents delegates to QueryHandler, so it
+        # takes the same pagination + tenant arguments as the HTTP/socket
+        # surfaces (defaults preserved).
+        "list_documents": {"pg_pool", "config", "tenant_id", "limit", "offset"},
         "delete_document": {"document_id", "pg_pool", "config"},
         # S5: ingest front door surfaces (tools/ingest_surface_tools.py).
         "ingest_status": {"pg_pool", "config", "tenant_id", "limit"},
