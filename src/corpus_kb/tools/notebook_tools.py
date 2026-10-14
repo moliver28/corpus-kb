@@ -54,7 +54,42 @@ async def notebook_ask_tool(
     min_confidence: str | None = None,
     review_status: str | None = None,
 ) -> dict[str, object]:
-    """Grounded notebook Q&A: cited sentences, or evidence-only retrieval."""
+    """Grounded notebook Q&A with per-sentence citations.
+
+    The tool answers one question for one project. It ranks evidence
+    with the parent-child retrieval stack, then asks the LLM to answer
+    from that evidence only. Every answer sentence carries [n] citations
+    into the evidence list; the tool drops sentences without a valid
+    index. With retrieval_only=True the tool skips the LLM leg and
+    returns the ranked evidence (zero LLM calls).
+
+    Filters narrow the evidence pool. They combine with AND:
+        question: The question text. Required.
+        pg_pool: The asyncpg pool. Injected by the MCP wrapper.
+        project_id: Project UUID. Required.
+        tenant_id: Tenant UUID. Defaults to the placeholder tenant.
+        k: Number of evidence excerpts. Default 6.
+        retrieval_only: True returns evidence only, with no LLM call.
+        source_type: Keep this document source type only.
+        speaker_role: Keep this speaker role only.
+        topic_id: Keep this topic id only.
+        doc_ids: Keep these document UUIDs only.
+        code: Keep units coded with this code name or UUID only.
+        min_confidence: Confidence floor. One of high, medium, low.
+            high keeps high-confidence units. medium adds medium units.
+            low keeps all units.
+        review_status: Review state. One of auto, review, confirmed,
+            overridden.
+
+    Returns:
+        A dict with "status" and "llm_calls". status is one of:
+        "answer": "sentences" (text + citations per sentence) and
+            "evidence".
+        "evidence": "evidence" only, plus "note" when the LLM leg could
+            not run or produced no citable sentence.
+        "empty": "message"; no evidence matched the filters.
+        "error": "message"; a filter value was not valid.
+    """
     from corpus_kb.handlers.llm_handler import LlmHandler
     from corpus_kb.projections.research._embed import ResearchEmbedder
     from corpus_kb.rag import create_embedder

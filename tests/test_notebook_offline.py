@@ -243,3 +243,41 @@ def test_exchange_filters_use_exists_over_answer_units() -> None:
     ex_frag = _exchange_filters(sql, q)
     assert "EXISTS (SELECT 1 FROM research_assignments ra" in ex_frag
     assert "ra.unit_id = ANY(e.a_unit_ids)" in ex_frag
+
+
+# ---------------------------------------------------------------------------
+# The notebook_ask tool docstring documents every filter (W5C)
+# ---------------------------------------------------------------------------
+
+
+def test_notebook_ask_tool_docstring_documents_filters() -> None:
+    """The tool docstring carries the real filter vocabulary.
+
+    The MCP client reads only the tool description, so the docstring is
+    the one place a harness author can learn the accepted values. It must
+    name every filter value notebook_ask validates.
+    """
+    from corpus_kb.research.notebook import REVIEW_STATUSES
+    from corpus_kb.tools.notebook_tools import notebook_ask_tool
+
+    doc = notebook_ask_tool.__doc__ or ""
+    for confidence in sorted(CONFIDENCE_FLOORS):
+        assert confidence in doc, f"min_confidence value {confidence!r} missing"
+    for status in sorted(REVIEW_STATUSES):
+        assert status in doc, f"review_status value {status!r} missing"
+    for param in (
+        "question",
+        "project_id",
+        "k",
+        "retrieval_only",
+        "source_type",
+        "speaker_role",
+        "topic_id",
+        "doc_ids",
+        "code",
+        "min_confidence",
+        "review_status",
+    ):
+        assert f"{param}:" in doc, f"filter {param!r} missing from the docstring"
+    for status_key in ("answer", "evidence", "empty", "error", "llm_calls"):
+        assert status_key in doc, f"return status {status_key!r} missing"

@@ -53,7 +53,12 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
     Operation(
         name="notebook_ask",
         family="research",
-        description="Grounded question answering with cited sentences.",
+        description=(
+            "Grounded question answering with cited sentences. Filters: "
+            "code, min_confidence (high, medium, low), review_status "
+            "(auto, review, confirmed, overridden), source, speaker, "
+            "topic, or documents."
+        ),
         handler="corpus_kb.research.notebook:notebook_ask",
         params=(
             ParamSpec("question", required=True),
