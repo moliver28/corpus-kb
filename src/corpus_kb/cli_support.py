@@ -66,6 +66,25 @@ async def _cli_approve(stage: str) -> bool:
     return reply.strip().lower() in ("y", "yes")
 
 
+async def _cli_approve_yes(stage: str) -> bool:
+    """Unattended on-mode approval: approve every gate, never prompt.
+
+    The harness drives the cycle with closed stdin (the ``--approve``
+    flag selects this callback), so a headless run cannot hang on input.
+    The stage argument matches the shared approval-callback shape.
+    """
+    return True
+
+
+async def _cli_approve_no(stage: str) -> bool:
+    """Unattended on-mode denial: deny every gate, never prompt.
+
+    The ``--deny`` flag selects this callback. A denial stops the cycle
+    with the documented approval-denied exit code (20).
+    """
+    return False
+
+
 def _cli_error_exit(exc: BaseException) -> int | None:
     """Map an EXPECTED CLI failure to an exit code; None means re-raise.
 
