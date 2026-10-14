@@ -2,7 +2,9 @@
 
 House pattern (tools/ingest_tools.py): async functions over an asyncpg pool
 that MCP wrappers call. The CLI (corpus-kb research ... / coding run)
-shares these.
+shares these — and through them the ONE projection catch-up
+(projections.catchup.advance_all_projections), so every surface lands
+identical read models after every event-writing command.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.handlers.research_handler import get_research_handler
+from corpus_kb.projections.catchup import advance_all_projections
 
 __all__ = [
     "codebook_promote",
@@ -37,13 +40,15 @@ async def research_ingest_transcript(
 ) -> dict[str, object]:
     """Ingest ONE transcript file (turns -> roles -> exchanges -> events)."""
     handler = get_research_handler(pg_pool)
-    return await handler.ingest_transcript(
+    result = await handler.ingest_transcript(
         UUID(tenant_id),
         file_path,
         project_id=UUID(project_id) if project_id else None,
         title=title,
         force=force,
     )
+    await advance_all_projections(pg_pool, UUID(tenant_id))
+    return result
 
 
 async def research_ingest(
@@ -55,12 +60,14 @@ async def research_ingest(
 ) -> dict[str, object]:
     """Dynamic ingestion: file, directory, or glob with ledger dedup."""
     handler = get_research_handler(pg_pool)
-    return await handler.ingest_path(
+    result = await handler.ingest_path(
         UUID(tenant_id),
         path,
         project_id=UUID(project_id) if project_id else None,
         force=force,
     )
+    await advance_all_projections(pg_pool, UUID(tenant_id))
+    return result
 
 
 def supported_suffixes() -> set[str]:
@@ -80,16 +87,10 @@ async def coding_run(
 
     Scores codable units against rebuilt multi-prototype code vectors over
     the three views, applies calibrated tau/margin decisions with conformal
-    routing, and records CodingRun/CodingAssignment events; the research
-    projection catch-up lands the assignment rows.
+    routing, records CodingRun/CodingAssignment events, then lands ALL
+    projections (research + documents + embeds) — the assignment rows the
+    CLI, MCP and HTTP surfaces all read.
     """
-    from corpus_kb.config import load_config
-    from corpus_kb.projections.checkpoint import CheckpointManager
-    from corpus_kb.projections.dlq import DLQHandler
-    from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.projections.research._embed import ResearchEmbedder
-    from corpus_kb.projections.research_projection import ResearchProjection
-    from corpus_kb.rag import create_embedder
     from corpus_kb.research.deductive_run import run_deductive
 
     summary = await run_deductive(
@@ -99,12 +100,7 @@ async def coding_run(
         project_id=UUID(project_id) if project_id else None,
         cal_alpha=cal_alpha,
     )
-    app = get_research_handler(pool).app
-    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
-    cfg = load_config()
-    embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-    projection = ResearchProjection(pool, CheckpointManager(pool), DLQHandler(pool), embedder)
-    await projection.catch_up(reader)
+    await advance_all_projections(pool, UUID(tenant_id))
     return summary
 
 
@@ -122,11 +118,7 @@ async def inductive_run(
     """
     from corpus_kb.config import load_config
     from corpus_kb.handlers.llm_handler import LlmHandler
-    from corpus_kb.projections.checkpoint import CheckpointManager
-    from corpus_kb.projections.dlq import DLQHandler
-    from corpus_kb.projections.event_reader import EventReader
     from corpus_kb.projections.research._embed import ResearchEmbedder
-    from corpus_kb.projections.research_projection import ResearchProjection
     from corpus_kb.rag import create_embedder
     from corpus_kb.research.inductive_run import run_inductive
 
@@ -140,10 +132,7 @@ async def inductive_run(
         embedder=embedder,
         cfg=cfg,
     )
-    app = get_research_handler(pool).app
-    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
-    projection = ResearchProjection(pool, CheckpointManager(pool), DLQHandler(pool), embedder)
-    await projection.catch_up(reader)
+    await advance_all_projections(pool, UUID(tenant_id))
     return summary
 
 
@@ -166,12 +155,6 @@ async def codebook_promote(
     with a merge suggestion when the gate fires.
     """
     from corpus_kb.config import load_config
-    from corpus_kb.projections.checkpoint import CheckpointManager
-    from corpus_kb.projections.dlq import DLQHandler
-    from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.projections.research._embed import ResearchEmbedder
-    from corpus_kb.projections.research_projection import ResearchProjection
-    from corpus_kb.rag import create_embedder
     from corpus_kb.research.inductive_run import inductive_config
     from corpus_kb.research.promote_code import promote_proposal
 
@@ -188,11 +171,7 @@ async def codebook_promote(
         tau_dup=effective_tau,
         label=label,
     )
-    app = get_research_handler(pool).app
-    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
-    embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-    projection = ResearchProjection(pool, CheckpointManager(pool), DLQHandler(pool), embedder)
-    await projection.catch_up(reader)
+    await advance_all_projections(pool, UUID(tenant_id))
     return result
 
 
