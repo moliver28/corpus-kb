@@ -22,6 +22,11 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
+
+class MethodNotFoundError(Exception):
+    """Raised by _dispatch when no handler exists for the requested method."""
+
+
 # Platform-specific socket path
 if sys.platform == "win32":
     DEFAULT_SOCKET_PATH = r"\\.\pipe\corpus-kb"
@@ -110,6 +115,10 @@ class JSONRPCServer:
         try:
             result = await self._dispatch(method, params)
             return {"jsonrpc": "2.0", "id": req_id, "result": result}
+        except MethodNotFoundError:
+            # Same error an absent method gets: unknown methods must map to
+            # -32601 (Method not found), never to -32603 (internal error).
+            return _error(-32601, "Method not found", req_id)
         except Exception as exc:
             logger.error("RPC method %s failed: %s", method, exc)
             return _error(-32603, str(exc), req_id)
@@ -163,6 +172,7 @@ class JSONRPCServer:
                 tenant_id=UUID(tenant_id),
                 query=params["query"],
                 k=params.get("k", 10),
+                source_type=params.get("source_type"),
                 self_query=params.get("self_query"),
             )
             envelope = await get_query_handler().handle_search_with_meta(query)
@@ -224,11 +234,13 @@ class JSONRPCServer:
                 source_entity_id=UUID(params["source_entity_id"]),
                 target_entity_id=UUID(params["target_entity_id"]),
                 relation_type=params.get("relation_type", "related_to"),
+                weight=params.get("weight", 1.0),
+                metadata=params.get("metadata", {}),
             )
             return get_command_handler().handle_add_relation(cmd)
 
         else:
-            raise ValueError(f"Method not found: {method}")
+            raise MethodNotFoundError(method)
 
 
 def _error(code: int, message: str, req_id: Any = None) -> dict[str, Any]:
