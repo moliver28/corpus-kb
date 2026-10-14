@@ -25,12 +25,6 @@ def _step(
         print(f"  (dry run) {action}")
 
 
-def _phase_status(state: dict[str, Any], phase: str) -> str:
-    """Return a short marker showing whether a phase is already completed."""
-    completed = state.get("completed", [])
-    return "(completed)" if phase in completed else ""
-
-
 def setup_print_dry_run_steps(
     compose_cmd: str | None,
     conn_str: str,
