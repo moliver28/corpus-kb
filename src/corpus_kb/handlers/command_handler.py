@@ -1,10 +1,12 @@
-"""Command handler — the event-sourcing envelope over the shared ingest tools.
+"""Command handler — the event-sourcing envelope over the shared tools.
 
-The ingest pipeline lives in the tool layer (``tools.ingest_tools.ingest_file``
-— binary-safe, strategy-aware; ``tools.ingest_common.ingest_text`` — document
-type whitelist). CLI, MCP, HTTP and socket surfaces all go through those ONE
-implementations; this handler only runs the shared tool function, then
-creates a Document aggregate + fires events for the audit trail.
+The pipelines live in the tool layer: ``ingest_file``/``ingest_directory``
+(binary-safe, strategy-aware; the directory walk is THE one walk, filtered
+by ``ingest_watch.WATCH_SUFFIXES``), ``ingest_text`` (document type
+whitelist), and ``delete_document`` (real tenant-honored row delete plus
+the aggregate audit). This handler runs the shared tool function, then
+attaches the audit events — see ``_attach_events`` and
+``handlers.delete_audit.attach_delete_event``.
 
 Envelope contract: the HTTP/socket response is the tool envelope EXACTLY,
 plus the DECLARED additive wrapper keys ``aggregate_id``/``aggregate_version``
@@ -34,8 +36,11 @@ from corpus_kb.domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
+from corpus_kb.handlers.delete_audit import attach_delete_event
 from corpus_kb.tools.ingest_common import ingest_text as ingest_text_tool
 from corpus_kb.tools.ingest_common import load_config_or_pass
+from corpus_kb.tools.ingest_tools import delete_document as delete_document_tool
+from corpus_kb.tools.ingest_tools import ingest_directory as ingest_directory_tool
 from corpus_kb.tools.ingest_tools import ingest_file as ingest_file_tool
 
 logger = logging.getLogger(__name__)
@@ -93,35 +98,32 @@ class CommandHandler:
         return self._attach_events(result, source=cmd.source, tenant_id=cmd.tenant_id)
 
     async def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, object]:
-        """Ingest all files in a directory (each file via the shared tool path)."""
-        from pathlib import Path
+        """Ingest a directory through the ONE shared walk, then audit files.
 
-        dir_path = Path(cmd.directory_path)
-        if not dir_path.is_dir():
-            raise FileNotFoundError(f"Directory not found: {cmd.directory_path}")
-
-        results: list[dict[str, object]] = []
-        pattern = "**/*" if cmd.recursive else "*"
-        for file_path in sorted(dir_path.glob(pattern)):
-            if file_path.is_file():
-                try:
-                    result = await self.handle_ingest_file(
-                        IngestFileCommand(
-                            tenant_id=cmd.tenant_id,
-                            file_path=str(file_path),
-                        )
-                    )
-                    results.append(result)
-                except Exception as exc:
-                    logger.warning("Failed to ingest %s: %s", file_path, exc)
-                    results.append({"status": "error", "path": str(file_path), "error": str(exc)})
-
-        return {
-            "status": "success",
-            "directory": cmd.directory_path,
-            "files_processed": len(results),
-            "results": results,
-        }
+        The tool owns the walk, the ``WATCH_SUFFIXES`` filter, and the
+        aggregate envelope. This wrapper only attaches the per-file audit
+        events, exactly like :meth:`handle_ingest_file` does per call.
+        """
+        result = await ingest_directory_tool(
+            cmd.directory_path,
+            self._require_pool(),
+            self._config,
+            tenant_id=str(cmd.tenant_id),
+            recursive=cmd.recursive,
+        )
+        if result.get("status") != "success":
+            return result
+        files = result.get("results")
+        if not isinstance(files, list):
+            return result
+        for file_result in files:
+            if isinstance(file_result, dict) and file_result.get("status") == "success":
+                self._attach_events(
+                    file_result,
+                    source=str(file_result.get("path", cmd.directory_path)),
+                    tenant_id=cmd.tenant_id,
+                )
+        return result
 
     def handle_add_entity(self, cmd: AddEntityCommand) -> dict[str, object]:
         """Add an entity to the knowledge graph via aggregate."""
@@ -163,17 +165,22 @@ class CommandHandler:
             "relation_type": cmd.relation_type,
         }
 
-    def handle_delete_document(self, cmd: DeleteDocumentCommand) -> dict[str, object]:
-        """Delete a document by marking the aggregate as deleted."""
-        doc_events = list(self.app.repository.get(cmd.doc_id))
-        if not doc_events:
-            raise ValueError(f"Document not found: {cmd.doc_id}")
+    async def handle_delete_document(self, cmd: DeleteDocumentCommand) -> dict[str, object]:
+        """Delete one document through the ONE shared tool implementation.
 
-        doc = Document.reconstruct(cmd.doc_id, doc_events)
-        doc.delete()
-        self.app.save(doc)
-        logger.info("Deleted document %s", cmd.doc_id)
-        return {"status": "success", "doc_id": str(cmd.doc_id)}
+        ``tools.ingest_tools.delete_document`` owns the real row delete
+        (tenant-honored, idempotent). This wrapper then attaches the
+        Deleted audit event — the same additive wrapper pattern as the
+        ingest audit in ``_attach_events``. It is async because the shared
+        implementation is async (asyncpg).
+        """
+        result = await delete_document_tool(
+            str(cmd.doc_id),
+            self._require_pool(),
+            self._config,
+            tenant_id=str(cmd.tenant_id),
+        )
+        return attach_delete_event(result, str(cmd.doc_id))
 
     def _attach_events(
         self,

@@ -310,11 +310,11 @@ def test_verify_errors_use_the_standard_envelope(monkeypatch: pytest.MonkeyPatch
 
 
 def test_delete_document_errors_carry_error_type(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Regression: delete_document omitted the error_type key.
+    # Regression: delete_document omitted the error_type key. The handler is
+    # async since Wave 3A (it awaits the shared tool), so the default async
+    # raiser matches: the exception fires at await time.
     exc = NotFoundError("No document with that id.")
-    monkeypatch.setattr(
-        command_handler_module, "get_command_handler", lambda *a: _Raiser(exc, sync=True)
-    )
+    monkeypatch.setattr(command_handler_module, "get_command_handler", lambda *a: _Raiser(exc))
     response = _client().delete(f"/api/documents/{uuid4()}")
     assert response.status_code == 404
     _assert_standard_envelope(response)

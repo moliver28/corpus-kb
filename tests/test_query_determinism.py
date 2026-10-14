@@ -240,6 +240,30 @@ def test_every_score_order_by_in_retrieval_carries_tiebreaker() -> None:
         assert re.fullmatch(rf"ORDER BY .+ DESC, {keys} ASC", clause), clause
 
 
+def _asc_order_by_clauses(path: Path) -> list[str]:
+    """Whitespace-normalized ascending score-ordered ORDER BY clauses.
+
+    The analytics_sql twin of :func:`_desc_order_by_clauses`: a clause starts
+    at a line beginning with ``ORDER BY candidate.dist + 0`` (the exact ANN
+    re-order outside the materialized CTE) and runs to its trailing ``ASC``
+    key, absorbing continuation lines. The inner ANN scans (plain
+    ``ORDER BY <vector> <=>``) never start a clause and are not collected.
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    clauses: list[str] = []
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if stripped.startswith("ORDER BY candidate.dist + 0"):
+            clause = stripped
+            while not clause.endswith("ASC") and i + 1 < len(lines):
+                i += 1
+                clause = f"{clause} {lines[i].strip()}"
+            clauses.append(re.sub(r"\s+", " ", clause))
+        i += 1
+    return clauses
+
+
 def test_context_proximity_order_carries_tiebreaker() -> None:
     """The /api/search/context distance ordering also ties (chunk n-1 vs n+1)
     and must carry the chunk-id tiebreaker. (handle_search_context lives in
@@ -250,6 +274,18 @@ def test_context_proximity_order_carries_tiebreaker() -> None:
         r"SELECT chunk_index FROM chunks WHERE chunk_id = \$1\s*\)\) ASC, c\.chunk_id ASC",
         source,
     )
+
+
+def test_every_score_order_by_in_analytics_sql_carries_tiebreaker() -> None:
+    """The analytics KNN reads (research/analytics_sql.py) pin the same
+    contract: exact distance ordering first, stable id ASC as the tiebreaker.
+    Four unit-id reads and one exchange-id read exist; a new score ORDER BY
+    without the id key fails here."""
+    clauses = _asc_order_by_clauses(ROOT / "src/corpus_kb/research/analytics_sql.py")
+    assert len(clauses) == 5, clauses  # 4 unit-id reads + 1 exchange-id read
+    ids = r"(candidate\.unit_id|candidate\.exchange_id)"
+    for clause in clauses:
+        assert re.fullmatch(rf"ORDER BY candidate\.dist \+ 0, {ids} ASC", clause), clause
 
 
 def test_migration_024_pins_fusion_tie_order() -> None:

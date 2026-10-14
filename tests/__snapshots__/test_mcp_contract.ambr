@@ -41,6 +41,7 @@
         'config': 'POSITIONAL_OR_KEYWORD',
         'directory_path': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'recursive': 'POSITIONAL_OR_KEYWORD',
         'source_type': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),

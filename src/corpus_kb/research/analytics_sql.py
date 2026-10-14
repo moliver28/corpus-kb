@@ -22,6 +22,11 @@ OUTSIDE over the retrieved set (``dist + 0`` defeats planner sort-elision,
 per the pgvector docs). These reads pull fixed-shaped candidate sets (one
 ordered scan per prototype), so the materialization costs nothing extra.
 
+Zero-drift rule 9: each outer ordering also carries the stable-id
+tiebreaker (``ORDER BY <dist>, <id> ASC``), the same contract the search
+arms pin in tests/test_query_determinism.py. Tied distances then keep one
+output order on every run and every prototype sweep.
+
 ``explain_plan`` captures the EXPLAIN text so the fixture can assert index
 usage. ``force_index=True`` emits ``SET LOCAL enable_seqscan = off`` inside
 an explicit transaction (autocommit would drop the SET LOCAL) — on
@@ -51,7 +56,7 @@ WITH candidate AS MATERIALIZED (
 )
 SELECT candidate.unit_id
 FROM candidate
-ORDER BY candidate.dist + 0 ASC
+ORDER BY candidate.dist + 0, candidate.unit_id ASC
 """
 
 RETRIEVAL_UNITS_TYPED_SQL = """
@@ -68,7 +73,7 @@ WITH candidate AS MATERIALIZED (
 )
 SELECT candidate.unit_id
 FROM candidate
-ORDER BY candidate.dist + 0 ASC
+ORDER BY candidate.dist + 0, candidate.unit_id ASC
 """
 
 RETRIEVAL_EXCHANGES_SQL = """
@@ -82,7 +87,7 @@ WITH candidate AS MATERIALIZED (
 )
 SELECT candidate.exchange_id
 FROM candidate
-ORDER BY candidate.dist + 0 ASC
+ORDER BY candidate.dist + 0, candidate.exchange_id ASC
 """
 
 RETRIEVAL_UNCODED_SQL = """
@@ -101,7 +106,7 @@ WITH candidate AS MATERIALIZED (
 )
 SELECT candidate.unit_id
 FROM candidate
-ORDER BY candidate.dist + 0 ASC
+ORDER BY candidate.dist + 0, candidate.unit_id ASC
 """
 
 HALFVEC_PROBE_SQL = """
@@ -115,7 +120,7 @@ WITH candidate AS MATERIALIZED (
 )
 SELECT candidate.unit_id
 FROM candidate
-ORDER BY candidate.dist + 0 ASC
+ORDER BY candidate.dist + 0, candidate.unit_id ASC
 """
 
 UNIT_VECTORS_SQL = """

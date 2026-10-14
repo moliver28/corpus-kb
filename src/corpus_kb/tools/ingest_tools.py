@@ -91,8 +91,25 @@ async def ingest_directory(
     config: dict[str, object] | None = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
     source_type: str | None = None,
+    recursive: bool = True,
 ) -> dict[str, object]:
-    """Ingest all supported files in a directory.
+    """Ingest the supported files in a directory. This is the ONE walk.
+
+    MCP and HTTP route through this function. The CLI front door applies
+    the same ``WATCH_SUFFIXES`` filter and calls :func:`ingest_file` per
+    file for its per-file output. A file is ingested only when its suffix
+    is in ``ingest_watch.WATCH_SUFFIXES`` — the one modality table.
+
+    Envelope (one meaning per key on every surface):
+
+    * ``status``: ``success`` when the walk completed. Per-file failures
+      live inside ``results``. ``error`` means a bad path or an unknown
+      strategy; nothing was ingested.
+    * ``directory``: the requested directory path.
+    * ``files_processed``: files attempted (``len(results)``).
+    * ``total_documents``: files whose own ingest returned ``success``.
+    * ``total_entities``: sum of ``entity_count`` over those successes.
+    * ``results``: the per-file envelopes, in walk order.
 
     ``source_type`` optionally pins the ingestion strategy for every file
     (validated once up front against the registry).
@@ -110,18 +127,22 @@ async def ingest_directory(
     total_documents = 0
     total_entities = 0
 
-    for file_path in directory.rglob("*"):
-        if file_path.is_file() and file_path.suffix.lower() in WATCH_SUFFIXES:
-            result = await ingest_file(str(file_path), pg_pool, config, tenant_id, source_type)
-            results.append(result)
-            if result.get("status") == "success":
-                total_documents += 1
-                raw_count = result.get("entity_count", 0)
-                if isinstance(raw_count, int):
-                    total_entities += raw_count
+    pattern = "**/*" if recursive else "*"
+    for file_path in sorted(directory.glob(pattern)):
+        if not (file_path.is_file() and file_path.suffix.lower() in WATCH_SUFFIXES):
+            continue
+        result = await ingest_file(str(file_path), pg_pool, config, tenant_id, source_type)
+        results.append(result)
+        if result.get("status") == "success":
+            total_documents += 1
+            raw_count = result.get("entity_count", 0)
+            if isinstance(raw_count, int):
+                total_entities += raw_count
 
     return {
         "status": "success",
+        "directory": str(directory),
+        "files_processed": len(results),
         "total_documents": total_documents,
         "total_entities": total_entities,
         "results": results,
@@ -160,14 +181,21 @@ async def delete_document(
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
 ) -> dict[str, object]:
-    """Delete a document row by ID.
+    """Delete a document row by ID. This is the ONE delete implementation.
 
+    MCP and HTTP both route through this function. The delete runs in one
+    transaction with the tenant GUC set, so row-level security sees it.
     Chunks, vectors, tags, metadata, and research rows cascade. Entity and
     relation rows stay. Their document and chunk links become NULL.
     Event-store rows persist.
+
+    The delete is idempotent: an unknown ID still answers ``success``. The
+    event-store audit (``handlers.delete_audit.attach_delete_event``) is
+    the command-handler wrapper's additive layer, the same pattern as the
+    ingest audit, so audited and unaudited callers share one delete truth.
     """
     try:
-        async with pg_pool.acquire() as conn:
+        async with pg_pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 tenant_id,

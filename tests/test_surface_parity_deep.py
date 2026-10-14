@@ -45,6 +45,7 @@ from starlette.testclient import TestClient
 
 import corpus_kb.api.research_http as research_http_module
 import corpus_kb.handlers.command_handler as command_handler_module
+import corpus_kb.handlers.delete_audit as delete_audit_module
 import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
@@ -172,6 +173,18 @@ async def _shared_ingest_file(ctx: dict[str, Any]) -> dict[str, Any]:
     return await ingest_file(str(ctx["file_path"]), ctx["pool"], config=ctx["config"])
 
 
+async def _shared_ingest_directory(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.ingest_tools import ingest_directory
+
+    return await ingest_directory(str(ctx[_DIR_PATH]), ctx["pool"], config=ctx["config"])
+
+
+async def _shared_delete_document(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.ingest_tools import delete_document
+
+    return await delete_document(DOC_ID, ctx["pool"], config=ctx["config"])
+
+
 async def _shared_ingest_url(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.ingest_url_tools import ingest_url
 
@@ -293,6 +306,8 @@ def _sock(method: str, params: dict[str, Any]) -> Any:
 
 
 _FILE_PATH = "file_path"
+_DIR_PATH = "dir_path"
+DOC_ID = "00000000-0000-0000-0000-00000000000d"
 
 LEGS: dict[str, _Leg] = {
     "ingest_text": _Leg(
@@ -311,6 +326,15 @@ LEGS: dict[str, _Leg] = {
             "json": {"file_path": str(ctx[_FILE_PATH])},
         },
         lambda ctx: ("ingest_file", {"file_path": str(ctx[_FILE_PATH])}),
+    ),
+    "ingest_directory": _Leg(
+        lambda ctx: _shared_ingest_directory(ctx),
+        lambda ctx: {
+            "method": "post",
+            "path": "/api/ingest/directory",
+            "json": {"directory_path": str(ctx[_DIR_PATH])},
+        },
+        # No socket method exists; the catalogue row records that.
     ),
     "ingest_url": _Leg(
         _shared_ingest_url,
@@ -344,6 +368,11 @@ LEGS: dict[str, _Leg] = {
         _shared_list_documents,
         _get("/api/documents", {"limit": 5, "offset": 0}),
         _sock("list_documents", {"limit": 5, "offset": 0}),
+    ),
+    "delete_document": _Leg(
+        lambda ctx: _shared_delete_document(ctx),
+        lambda ctx: {"method": "delete", "path": f"/api/documents/{DOC_ID}"},
+        # No socket method exists; the catalogue row records that.
     ),
     "add_entity": _Leg(
         _shared_add_entity,
@@ -539,11 +568,24 @@ class _StubStore:
 
 
 class _SavedAggregate:
+    """Stand-in eventsourcing app: records saves, reports no history.
+
+    ``repository.get`` answers empty, so the delete audit finds no
+    event-store history and attaches no keys — the same envelope the bare
+    tool leg returns.
+    """
+
     def __init__(self) -> None:
         self.saved: list[Any] = []
+        self.repository = _EmptyRepository()
 
     def save(self, aggregate: Any) -> None:
         self.saved.append(aggregate)
+
+
+class _EmptyRepository:
+    def get(self, aggregate_id: Any) -> list[Any]:
+        return []
 
 
 class _StubRouter:
@@ -595,6 +637,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     pool = _FakePool()
     saved = _SavedAggregate()
     monkeypatch.setattr(command_handler_module, "get_app", lambda: saved)
+    monkeypatch.setattr(delete_audit_module, "get_app", lambda: saved)
     command_handler_module.reset_command_handler()
     command_handler_module.get_command_handler(config=_offline_config(), pool=pool)
 
@@ -686,6 +729,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         "client": TestClient(create_http_app()),
         "server": JSONRPCServer(),
         _FILE_PATH: file_path,
+        _DIR_PATH: tmp_path,
     }
     command_handler_module.reset_command_handler()
     research_http_module.set_research_pool(None)
@@ -769,6 +813,8 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
     client: TestClient = ctx["client"]
     if spec["method"] == "post":
         response = client.post(spec["path"], json=spec.get("json"))
+    elif spec["method"] == "delete":
+        response = client.delete(spec["path"])
     else:
         response = client.get(spec["path"], params=spec.get("params"))
     assert response.status_code == 200, response.text

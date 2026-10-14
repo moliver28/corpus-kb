@@ -11,6 +11,7 @@ request body for POST), and response envelopes referenced from
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from corpus_kb.contracts.model import HTTP, Operation, ParamSpec
@@ -66,7 +67,24 @@ def _json_schema_type(param: ParamSpec) -> dict[str, Any]:
     return {}  # no default (None) and optional: any JSON value is accepted
 
 
-def _operation_object(op: Operation, method: str) -> dict[str, Any]:
+def _path_parameters(route: str) -> list[dict[str, Any]]:
+    """One uuid path parameter per ``{placeholder}`` in the route template.
+
+    A path template is only valid when every placeholder is declared. All
+    current placeholders are document ids, so the schema is a uuid string.
+    """
+    return [
+        {
+            "name": name,
+            "in": "path",
+            "required": True,
+            "schema": {"type": "string", "format": "uuid"},
+        }
+        for name in re.findall(r"\{([^{}]+)\}", route)
+    ]
+
+
+def _operation_object(op: Operation, method: str, route: str) -> dict[str, Any]:
     """One OpenAPI operation object for one catalogue row."""
     obj: dict[str, Any] = {
         "operationId": op.name,
@@ -82,6 +100,9 @@ def _operation_object(op: Operation, method: str) -> dict[str, Any]:
             },
         },
     }
+    path_params = _path_parameters(route)
+    if path_params:
+        obj["parameters"] = path_params
     params = [p for p in op.params if p.name != "tenant_id"]
     tenant = [p for p in op.params if p.name == "tenant_id"]
     if method == "GET":
@@ -126,7 +147,7 @@ def build_openapi(operations: tuple[Operation, ...]) -> dict[str, Any]:
             if surface.kind != HTTP or surface.method is None:
                 continue
             item = paths.setdefault(surface.route, {})
-            item[surface.method.lower()] = _operation_object(op, surface.method)
+            item[surface.method.lower()] = _operation_object(op, surface.method, surface.route)
     return {
         "openapi": _OPENAPI_VERSION,
         "info": {
