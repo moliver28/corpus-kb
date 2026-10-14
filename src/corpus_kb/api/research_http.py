@@ -273,6 +273,7 @@ async def release_status_get(request: Request) -> JSONResponse:
     return await _respond(
         release_tools.release_status,
         {
+            "pg_pool": await research_pool(),
             "codebook_version_id": codebook_version_id,
             "tenant_id": request.query_params.get("tenant_id") or DEFAULT_TENANT_ID,
         },
