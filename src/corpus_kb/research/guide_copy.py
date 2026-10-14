@@ -370,7 +370,7 @@ GATE_CODEBOOK_PROMOTION_PROMOTE_CONSEQUENCE = (
 )
 GATE_CODEBOOK_PROMOTION_SKIP_CONSEQUENCE = (
     "If you skip: the cluster stays a proposal - nothing is lost. The "
-    "theme simply stays uncoded and keeps surfacing in the residual "
+    "theme stays uncoded and keeps surfacing in the residual "
     "(missing-code) radar until you promote it or discard it."
 )
 GATE_CODEBOOK_PROMOTION_ACTION = (
@@ -520,16 +520,19 @@ INDUCTIVE_ALL_NOISE = (
 )
 
 DB_PERMISSION_DENIED_HINT = (
-    "fix: as the database superuser run GRANT CREATE ON SCHEMA public TO "
-    "corpus_user; GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO "
-    "corpus_user; GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO "
-    "corpus_user; (PostgreSQL 15+ revokes CREATE on public by default - "
-    "see docs/INSTALL.md step 2)"
+    "fix: PostgreSQL 15+ revokes CREATE on the public schema by default.\n"
+    "As the database superuser, run these grants:\n"
+    "  GRANT CREATE ON SCHEMA public TO corpus_user;\n"
+    "  GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO corpus_user;\n"
+    "  GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO corpus_user;\n"
+    "See docs/INSTALL.md step 2."
 )
 
 LIBPQ_TOO_OLD_HINT = (
-    "fix: pip install psycopg-binary (it bundles libpq >= 14; the system "
-    "libpq is too old for the event store's pipeline mode - see docs/INSTALL.md)"
+    "fix: the system libpq is too old for the event store's pipeline mode.\n"
+    "psycopg-binary bundles libpq >= 14. Run:\n"
+    "  pip install psycopg-binary\n"
+    "See docs/INSTALL.md."
 )
 
 # Gray-zone halt remedy: the queue items themselves, so the human can work

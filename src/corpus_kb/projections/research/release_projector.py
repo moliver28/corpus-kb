@@ -223,8 +223,8 @@ class ReleaseProjector:
         if count == 0:
             raise RuntimeError(
                 f"release transition {event_name} for {payload.get('release_id')} "
-                "applied to zero rows: the release row is in a conflicting state "
-                "(concurrent transition or missing draft)"
+                "applied to zero rows. The release row is in a conflicting "
+                "state (concurrent transition or missing draft)."
             )
 
 

@@ -112,8 +112,8 @@ def select_ingest_embedder(
             mode=POOLED_MODE,
             embedder=create_embedder(config, pool),
             note=(
-                "late_chunking requested but the latechunk extra is not installed; "
-                'pooled fallback (run pip install -e ".[latechunk]")'
+                "late_chunking requested but the latechunk extra is not installed. "
+                'Pooled fallback. Run: pip install -e ".[latechunk]"'
             ),
         )
     if not model.startswith(TOKEN_LEVEL_MODEL_PREFIX):
@@ -122,8 +122,8 @@ def select_ingest_embedder(
             embedder=create_embedder(config, pool),
             note=(
                 f"late_chunking requested but embedding model {model!r} is not a "
-                f"token-level-capable family ({TOKEN_LEVEL_MODEL_PREFIX}* required); "
-                "pooled fallback"
+                f"token-level-capable family. Only {TOKEN_LEVEL_MODEL_PREFIX}* "
+                "models qualify. Pooled fallback."
             ),
         )
     factory = (
@@ -137,7 +137,7 @@ def select_ingest_embedder(
             embedder=create_embedder(config, pool),
             note=(
                 "late_chunking requested but LateChunkEmbedder failed to load "
-                f"({type(exc).__name__}: {exc}); pooled fallback"
+                f"({type(exc).__name__}: {exc}). Pooled fallback."
             ),
         )
     # Dimension coherence: the activated embedder's real output width must
