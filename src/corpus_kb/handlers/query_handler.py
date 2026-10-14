@@ -295,13 +295,18 @@ class QueryHandler:
 
                 probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
                 try:
-                    probe_row = await conn.fetchrow(
-                        _DEGRADED_CANDIDATE_COUNT_SQL.format(
-                            dedup=DEDUP_PREDICATE, frag=probe_frag
-                        ),
-                        str(query.tenant_id),
-                        *probe_params,
-                    )
+                    # Savepoint (nested transaction): a failed probe must
+                    # not abort the shared transaction — the lexical arm
+                    # below still has to run (same arm-isolation contract
+                    # as the vector arms).
+                    async with conn.transaction():
+                        probe_row = await conn.fetchrow(
+                            _DEGRADED_CANDIDATE_COUNT_SQL.format(
+                                dedup=DEDUP_PREDICATE, frag=probe_frag
+                            ),
+                            str(query.tenant_id),
+                            *probe_params,
+                        )
                 except Exception as exc:
                     # Same fail-open contract as the U21 selectivity probe: a
                     # broken probe must never break search — it only costs the
