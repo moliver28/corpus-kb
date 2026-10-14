@@ -48,7 +48,7 @@ from corpus_kb.rag.embedders.late_chunk_core import (
     pool_token_rows,
     window_text,
 )
-from corpus_kb.tools import ingest_common
+from corpus_kb.tools import ingest_embed
 from corpus_kb.tools.ingest_common import embed_chunks
 from corpus_kb.utils.models import Chunk
 
@@ -500,7 +500,7 @@ async def test_embed_chunks_late_mode_embeds_via_document_spans(
     plan = IngestEmbeddingPlan(
         mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=_spans_provider(fake)
     )
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
     chunks = [
         Chunk(
             chunk_id="c1",
@@ -547,7 +547,7 @@ async def test_embed_chunks_late_mode_spanless_chunk_falls_back_with_note(
     plan = IngestEmbeddingPlan(
         mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=_spans_provider(fake)
     )
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
     chunks = [
         Chunk(
             chunk_id="c1",
@@ -584,7 +584,7 @@ async def test_embed_chunks_all_spanless_reports_pooled_mode_with_note(
     plan = IngestEmbeddingPlan(
         mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=_spans_provider(fake)
     )
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
     chunks = [
         Chunk(chunk_id="c1", document_id="d1", text=CHUNK, source_type="text"),
         Chunk(chunk_id="c2", document_id="d1", text=CHUNK, source_type="text"),
@@ -612,7 +612,7 @@ async def test_embed_chunks_fabricated_span_falls_back_to_pooled(
     plan = IngestEmbeddingPlan(
         mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=_spans_provider(fake)
     )
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
     shifted = (spans[0][0] + 2, spans[0][1] + 2)  # drifts off the real text
     chunks = [
         Chunk(
@@ -650,7 +650,7 @@ async def test_embed_chunks_late_mode_zero_vectors_degrade(monkeypatch: pytest.M
     plan = IngestEmbeddingPlan(
         mode=LATE_CHUNKING_MODE, embedder=FakeTokenEmbedder(), spans_provider=_zero_spans
     )
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
     chunks = [
         Chunk(
             chunk_id="c1",
@@ -684,7 +684,7 @@ async def test_embed_chunks_late_mode_backend_failure_reports_error(
     plan = IngestEmbeddingPlan(
         mode=LATE_CHUNKING_MODE, embedder=FakeTokenEmbedder(), spans_provider=_boom
     )
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
     chunks = [
         Chunk(
             chunk_id="c1",
@@ -796,7 +796,7 @@ async def test_late_path_and_selection_run_off_the_event_loop(
     plan = IngestEmbeddingPlan(
         mode=LATE_CHUNKING_MODE, embedder=fake, spans_provider=thread_recording_provider
     )
-    monkeypatch.setattr(ingest_common, "select_ingest_embedder", lambda config, pool=None: plan)
+    monkeypatch.setattr(ingest_embed, "select_ingest_embedder", lambda config, pool=None: plan)
     chunks = [
         Chunk(
             chunk_id="c1",

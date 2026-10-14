@@ -475,12 +475,13 @@ def test_build_embedding_input_blurb_and_plain() -> None:
 def test_pipeline_uses_build_embedding_input() -> None:
     """Single-sourcing guard: the pipeline embeds the SAME bytes a reembed would.
 
-    The embed call lives in _run_locked_stages since the integrity split;
-    check the whole module so the guard survives further restructures.
+    The embed call lives in _run_locked_stages (ingest_common) and the
+    repair site in reembed_degraded (ingest_reembed) since the Wave 3B
+    split; check BOTH modules so the guard survives further restructures.
     """
-    from corpus_kb.tools import ingest_common
+    from corpus_kb.tools import ingest_common, ingest_reembed
 
-    source = inspect.getsource(ingest_common)
+    source = inspect.getsource(ingest_common) + inspect.getsource(ingest_reembed)
     assert "build_embedding_input(" in source
     assert source.count("build_embedding_input(") >= 2  # pipeline site + reembed site
 
@@ -573,7 +574,7 @@ async def test_reembed_unavailable_pre_migration(monkeypatch: pytest.MonkeyPatch
 
 @pytest.mark.asyncio
 async def test_reembed_repairs_and_clears_degraded(monkeypatch: pytest.MonkeyPatch) -> None:
-    from corpus_kb.tools import ingest_common
+    from corpus_kb.tools import ingest_common, ingest_reembed
 
     monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
     row = _candidate_row()
@@ -593,7 +594,7 @@ async def test_reembed_repairs_and_clears_degraded(monkeypatch: pytest.MonkeyPat
             chunk.embedding = [0.5] * 4
         return False, None
 
-    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed_chunks)
+    monkeypatch.setattr(ingest_reembed, "embed_chunks", fake_embed_chunks)
     summary = await ingest_common.reembed_degraded(
         cast("object", _FakePool(conn)),
         {"embedding": {"provider": "pgml", "dimensions": 4}},
@@ -608,7 +609,7 @@ async def test_reembed_repairs_and_clears_degraded(monkeypatch: pytest.MonkeyPat
 
 @pytest.mark.asyncio
 async def test_reembed_counts_zero_output_as_failed(monkeypatch: pytest.MonkeyPatch) -> None:
-    from corpus_kb.tools import ingest_common
+    from corpus_kb.tools import ingest_common, ingest_reembed
 
     monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
@@ -625,7 +626,7 @@ async def test_reembed_counts_zero_output_as_failed(monkeypatch: pytest.MonkeyPa
             chunk.embedding = [0.0] * 4
         return True, "Connection failed: pgml returned zero vectors"
 
-    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed_chunks)
+    monkeypatch.setattr(ingest_reembed, "embed_chunks", fake_embed_chunks)
     summary = await ingest_common.reembed_degraded(
         cast("object", _FakePool(conn)),
         {"embedding": {"provider": "pgml", "dimensions": 4}},
@@ -659,7 +660,7 @@ async def test_reembed_sets_tenant_guc_inside_transaction(
     scan/UPDATEs would run GUC-less and match zero rows under FORCE RLS —
     while the summary still claimed success.
     """
-    from corpus_kb.tools import ingest_common
+    from corpus_kb.tools import ingest_common, ingest_reembed
 
     monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
@@ -676,7 +677,7 @@ async def test_reembed_sets_tenant_guc_inside_transaction(
             chunk.embedding = [0.5] * 4
         return False, None
 
-    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed_chunks)
+    monkeypatch.setattr(ingest_reembed, "embed_chunks", fake_embed_chunks)
     await ingest_common.reembed_degraded(
         cast("object", _FakePool(conn)),
         {"embedding": {"provider": "pgml", "dimensions": 4}},
@@ -697,7 +698,7 @@ async def test_reembed_sets_tenant_guc_inside_transaction(
 @pytest.mark.asyncio
 async def test_reembed_updates_pin_tenant_id(monkeypatch: pytest.MonkeyPatch) -> None:
     """The two UPDATEs carry an explicit tenant_id predicate (defense in depth)."""
-    from corpus_kb.tools import ingest_common
+    from corpus_kb.tools import ingest_common, ingest_reembed
 
     monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
     conn = _FakeConn(degraded_columns_present=2, candidate_rows=[_candidate_row()])
@@ -714,7 +715,7 @@ async def test_reembed_updates_pin_tenant_id(monkeypatch: pytest.MonkeyPatch) ->
             chunk.embedding = [0.5] * 4
         return False, None
 
-    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed_chunks)
+    monkeypatch.setattr(ingest_reembed, "embed_chunks", fake_embed_chunks)
     await ingest_common.reembed_degraded(
         cast("object", _FakePool(conn)),
         {"embedding": {"provider": "pgml", "dimensions": 4}},
