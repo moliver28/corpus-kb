@@ -8,8 +8,8 @@ Formulas and their sources live in [research-math.md](research-math.md).
 ## ISR (Incremental Sampling Rate)
 
 The share of coding work that introduces a code no earlier batch found. A
-low, flat ISR means new batches mostly reuse known codes - the corpus has
-stopped teaching you anything new and the codebook is ready to freeze.
+low, flat ISR means new batches mostly reuse known codes. The corpus has
+stopped teaching you anything new, and the codebook is ready to freeze.
 Read it together with the coverage-curve slope below.
 
 ## Deductive coverage
@@ -28,7 +28,7 @@ that sit calmly together - a theme with no code.
 
 ## tau_res per source type
 
-tau_res is calibrated from your gold data PER source type: it is the low
+tau_res is calibrated from your gold data PER source type. It is the low
 edge of how similar two units of the same code look. Interviews and meetings
 differ, so the threshold differs too. If one source type's R is much worse,
 add gold exemplars for that type and recalibrate.
@@ -42,7 +42,7 @@ should not be promoted as codes yet; collect more units first.
 ## Code overlap
 
 Flags pairs of codes whose run-time centroids drifted closer than your gold
-data ever shows them, plus the units holding both codes. Overlapping codes
+data ever shows them. It also lists the units holding both codes. Overlapping codes
 confuse coders and reviewers; merge or sharpen definitions in the next
 codebook version.
 
@@ -69,14 +69,14 @@ They are drafts: do not gate routing on them yet.
 Compares model and human coding decisions. Krippendorff's alpha below 0.667
 halts codebook promotion; 0.667-0.80 marks codes tentative; 0.80+ is
 reliable. Gwet's AC1 is reported beside alpha because alpha collapses on
-rare codes even at high agreement - a prevalence-affected flag means the
+rare codes even at high agreement. A prevalence-affected flag means the
 code is rare, not bad.
 
 ## G3 audit
 
 Checks whether the uncertainty signals actually predict reviewer overrides
-(AUROC, AURC, accuracy-at-coverage) and whether model decisions match human
-ones (LLM-vs-human alpha, plus calibration ECE). Weak signals are dropped
+(AUROC, AURC, accuracy-at-coverage). Also checks whether model decisions
+match human ones (LLM-vs-human alpha, plus calibration ECE). Weak signals are dropped
 from the review priority automatically.
 
 ## Conformal set sizes
@@ -95,7 +95,8 @@ audit trail starts.
 ## Candidate missing codes
 
 Groups of units that sit far from every existing code AND sit calmly
-together - the report's best guess at themes your codebook does not cover.
+together. This is the report's best guess at themes your codebook does not
+cover.
 Promote real ones with `corpus-kb codebook promote`; discard noise from the
 review queue.
 

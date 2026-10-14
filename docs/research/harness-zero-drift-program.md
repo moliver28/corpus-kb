@@ -3,15 +3,16 @@
 Status: COMPLETE. All five waves shipped to master with green CI:
 W1 `af00703` (#93), W2 `1348c2c` (#95), W3 `3f34819` (#96),
 W4 `4c91db7` (#98), W5 `c690121` (#99). The standards below stay binding;
-the CI enforcement map is live. Known ratchets: sentence-length warnings
-(163, flip to error after the reference-doc rewrite), xenon D → C,
+the CI enforcement map is live. The sentence-length ratchet is closed
+(163 violations rewritten to 0; the Vale rule is now level: error).
+Known ratchets: xenon D → C,
 `uv.lock` regeneration (standalone dependency PR).
 
 ## Purpose
 
-A harness — a human, or an AI agent driving the system — must get the same answer
+A harness — human or AI agent — must get the same answer
 for the same operation on every surface. Today it does not. This program closes
-every gap, then makes future gaps impossible to miss.
+every gap. Then it makes future gaps impossible to miss.
 
 "Zero drift" means, for every operation:
 
@@ -49,8 +50,9 @@ Confirmed defects, worst first. Evidence is `file:line` on master `2632368`.
 - **ASD-STE100** for all user-facing strings: error messages, help, doctor
   output, docstrings, docs. Short active sentences (20 words or fewer).
   Simple everyday words. No idioms. One instruction per sentence.
-- **Ninth-grade rule**: a 9th-grade student can read the README quickstart and
-  the output of every command, and know what happened and what to do next.
+- **Ninth-grade rule**: a 9th-grade student can read the README quickstart
+  and the output of every command. They can know what happened and what to
+  do next.
 - **Registry-first**: the surface registry stays the source of truth for
   research/coding/release surfaces. The deep-parity catalogue (Wave 2) becomes
   the source of truth for cross-surface envelopes. Generators, not copies:
@@ -63,8 +65,9 @@ Confirmed defects, worst first. Evidence is `file:line` on master `2632368`.
 `tests/test_surface_parity_deep.py` (Wave 1 seed, Wave 2 full):
 
 - A catalogue lists every cross-surface operation with its arguments.
-- The test calls the tool function, the HTTP route, and the socket method with
-  identical arguments (stubbed database; no live Postgres in CI).
+- The test calls the tool function, the HTTP route, and the socket method.
+  The arguments are identical, with a stubbed database (no live Postgres in
+  CI).
 - It asserts equal envelope key-sets, minus an explicit `ALLOWED_EXTRA` map.
   An undeclared extra key on any single surface fails the test, with a diff.
 - Wave 2 adds CLI `--json` to the comparison and grows the catalogue to all
@@ -88,13 +91,13 @@ Packages run in parallel worktrees; integrated onto `feature/zero-drift-w1`.
 - **A route-truth**: fix `release/status` + its whole defect class; add
   `tests/test_http_route_smoke.py` so every declared route is called in CI.
 - **B honesty**: real `list_documents`; honest `delete_document` (tenant
-  honored, true cascade docstring, actionable error); socket passes
-  `source_type`/`weight`/`metadata`; unknown method → -32601; all 9 socket
-  methods covered by awaits tests.
+  honored, true cascade docstring, actionable error). The socket passes
+  `source_type`/`weight`/`metadata`; unknown method → -32601. All 9 socket
+  methods are covered by awaits tests.
 - **C one-ingest**: HTTP/socket ingest-file goes through
   `tools.ingest_tools.ingest_file`; `aggregate_id`/`aggregate_version` become
-  declared additive keys; one `source_type` meaning; unified
-  `ingest_text` whitelist; catch-up symmetry in shared tool functions;
+  declared additive keys. One `source_type` meaning; a unified
+  `ingest_text` whitelist; catch-up symmetry in shared tool functions.
   parity seed test.
 
 Done-when: full suite green, ruff clean, route smoke + parity seed in CI.
@@ -138,8 +141,8 @@ Done-when: full suite green, ruff clean, route smoke + parity seed in CI.
   fixed; one env-var table; `graph.extractor` gains an `extraction.backend`
   alias; graph fallback logged, never silent.
 - Dimension safety: verify the 768-vs-`vector(4096)` insert behavior on a
-  live database; add validation with an honest error naming the fix;
-  document the model↔schema matrix.
+  live database. Add validation with an honest error naming the fix.
+  Document the model↔schema matrix.
 
 ### Wave 5 — Plain language and harness ergonomics
 
@@ -174,7 +177,7 @@ Chosen to enforce the standards above without duplicating existing gates
 
 Note: no mature standalone OSS ASD-STE100 checker exists (BSEC, HyperSTE,
 Congree are commercial). Issue 9 of the spec is free to download from
-asd-ste100.org and is the rule source for our Vale style + native checker.
+asd-ste100.org. It is the rule source for our Vale style and native checker.
 
 ## CI enforcement map
 
@@ -197,13 +200,13 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Function complexity | `xenon --max-absolute B` | ci.yml / lint | 3 |
 | Coverage on changes | `diff-cover --fail-under 90` on the PR diff | ci.yml / test | 3 |
 | Generated artifacts | `gen_harness_pack.py --check`, `cog --check docs/*.md` | ci.yml / contract | 2 (pack) → 5 (cog) |
-| ASD-STE100 prose | Vale GitHub Action with `.vale.ini` + `styles/CorpusSTE` | docs-quality.yml | 5 |
+| ASD-STE100 prose | Vale GitHub Action with `.vale.ini` + `styles/CorpusSTE`; `SentenceLength` is `level: error` (ratchet closed 2026-10-13: 163 warnings rewritten to 0) and blocks the PR | docs-quality.yml | 5 (error: w6a ratchet) |
 | Grade level + string rules | `pytest -m ste` walks docs, tool docstrings, and error-message tables (Flesch-Kincaid ≤ 9, sentence ≤ 20 words) | ci.yml / test | 5 |
 | Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
 
-Rule for future waves: every new gate is (a) a `poe` target, (b) called by a
-CI job, (c) documented in this table and in `AGENTS.md`. A gate that exists
-only locally is not a gate.
+Rule for future waves: every new gate is (a) a `poe` target and (b) called by
+a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate
+that exists only locally is not a gate.
 
 ## Issue mapping
 

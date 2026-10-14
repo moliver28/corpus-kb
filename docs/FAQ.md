@@ -18,11 +18,11 @@ Not out of the box. Corpus-KB currently calls Ollama's local embedding API. You 
 
 ## Can I run without Ollama?
 
-Yes. Ingest continues when Ollama is unreachable, but the affected chunks are stored with zero vectors and flagged `degraded`. Search leaves degraded chunks out of vector results by default (`search.exclude_degraded: true`), reports what it excluded in the `degraded_excluded` field of the response, and still runs the full-text arm. Once Ollama is back, `corpus-kb ingest-reembed` re-embeds the flagged chunks and clears the flag.
+Yes. Ingest continues when Ollama is unreachable, but the affected chunks are stored with zero vectors and flagged `degraded`. Search leaves degraded chunks out of vector results by default (`search.exclude_degraded: true`). It reports what it excluded in the `degraded_excluded` field of the response, and still runs the full-text arm. Once Ollama is back, `corpus-kb ingest-reembed` re-embeds the flagged chunks and clears the flag.
 
 ## Can I teach it a new file format?
 
-Yes — ingestion is pluggable at three levels: map a source type to an existing strategy in `config.yaml` (no code), register a strategy in-process with `register_strategy()`, or ship one as an entry-point plugin from your own package. See [Ingestion strategies](INGESTION-STRATEGIES.md).
+Yes — ingestion is pluggable at three levels. Map a source type to an existing strategy in `config.yaml` (no code). Register a strategy in-process with `register_strategy()`. Ship one as an entry-point plugin from your own package. See [Ingestion strategies](INGESTION-STRATEGIES.md).
 
 ## How is this different from a cloud vector database like Pinecone?
 
@@ -42,7 +42,7 @@ Because every change is an event, you can list versions, tag important points, a
 
 ## What languages does tree-sitter support?
 
-Python, JavaScript, TypeScript, JSX, TSX, Rust, Go, Java, C, C++, Ruby, PHP, Swift, Kotlin, Scala, Lua, Haskell, Elixir, Clojure, and more. Unsupported languages fall back to line-based chunking.
+Python, JavaScript, TypeScript, JSX, TSX, Rust, Go, Java, and C are supported. So are C++, Ruby, PHP, Swift, Kotlin, Scala, Lua, Haskell, Elixir, Clojure, and more. Unsupported languages fall back to line-based chunking.
 
 ## Can I use a different embedding model?
 

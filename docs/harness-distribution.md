@@ -45,28 +45,28 @@ Every PR that registers an MCP tool must, in the SAME PR:
    commit the diff.
 
 The surface registry is the single place where CLI subcommand paths, MCP
-tool names, and wrapper bodies meet; `tests/test_harness_pack.py` asserts
-the generated files match the registry AS DATA and that every registry MCP
-tool name is autoApprove-valid.
+tool names, and wrapper bodies meet. The test `tests/test_harness_pack.py`
+asserts two things. The generated files match the registry AS DATA. Every
+registry MCP tool name is autoApprove-valid.
 
 ## Recommended consumer-side distributor: quiver-cli
 
 For teams installing corpus packs across several harnesses (OpenCode,
-Claude Code, Codex) we recommend
-[quiver-cli](https://github.com/nbialk/quiver-cli): it composes skills,
+Claude Code, Codex), we recommend
+[quiver-cli](https://github.com/nbialk/quiver-cli). It composes skills,
 slash commands, and MCP servers from a central catalog into any repo as
-NATIVE configs, with a `quiver.lock` drift baseline (`quiver-cli sync` /
-`quiver-cli check --offline`) that also detects MCP tool-description
-tampering (description-poisoning defense). Runtime output stays native per
+NATIVE configs. A `quiver.lock` drift baseline (`quiver-cli sync` /
+`quiver-cli check --offline`) also detects MCP tool-description tampering
+(description-poisoning defense). Runtime output stays native per
 harness — there is no extra agent runtime.
 
 **This is documentation only — quiver-cli is NOT a dependency of
 Corpus-KB.** The wiring is trivial precisely because everything above is
-generated from `surface_registry.py`: a consumer catalog entry points at
+generated from `surface_registry.py`. A consumer catalog entry points at
 the same artifacts this repo already commits (r9 wiring note: no dependency
-added). `mcify` was evaluated and rejected as an alternative: it is a
-greenfield MCP framework that would REPLACE the existing FastMCP/Starlette
-stack rather than sync it.
+added). `mcify` was evaluated and rejected as an alternative. It is a greenfield
+MCP framework that would REPLACE the existing FastMCP/Starlette stack
+rather than sync it.
 
 ### Catalog entries a consumer adds
 
@@ -86,6 +86,6 @@ sourced from `surface_registry.py` (`WRAPPERS` / `SURFACES`):
 | `corpus-ingest-front-door` | command | `ingest`, `ingest-status`, `ingest-reembed` | shipped |
 | `corpus-kb` | MCP server | all `SURFACES` `.mcp_tool` names (stdio transport) | shipped |
 
-New wrappers come from the registry: add the `Wrapper` row, run
-`gen_harness_pack.py`, and the catalog entries above resolve to real files
-with no doc change.
+New wrappers come from the registry: add the `Wrapper` row and run
+`gen_harness_pack.py`. The catalog entries above then resolve to real
+files with no doc change.

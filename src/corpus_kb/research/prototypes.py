@@ -42,6 +42,62 @@ def _total_cost(distances: np.ndarray, medoids: set[int]) -> float:
     return float(np.sum(np.min(distances[:, medoid_idx], axis=1)))
 
 
+def _build_medoids(distances: np.ndarray, n: int, k: int) -> set[int]:
+    """BUILD phase: greedily add the medoid that most reduces total cost.
+
+    The first medoid minimizes the sum of distances to all points. Ties pick
+    the lowest index, so the result is deterministic.
+    """
+    first = int(np.argmin(np.sum(distances, axis=1)))
+    medoids: set[int] = {first}
+    while len(medoids) < k:
+        best_candidate: int | None = None
+        best_gain = -1.0
+        current_cost = _total_cost(distances, medoids)
+        for cand in range(n):
+            if cand in medoids:
+                continue
+            trial = medoids | {cand}
+            gain = current_cost - _total_cost(distances, trial)
+            if gain > best_gain or (
+                gain == best_gain and (best_candidate is None or cand < best_candidate)
+            ):
+                best_gain = gain
+                best_candidate = cand
+        if best_candidate is None:
+            break
+        medoids.add(best_candidate)
+    return medoids
+
+
+def _swap_medoids(
+    distances: np.ndarray, medoids: set[int], non_medoids: list[int], max_swarms: int
+) -> set[int]:
+    """SWAP phase: best-improvement exchanges, at most ``max_swarms`` passes.
+
+    A pass applies the single (medoid, non-medoid) exchange with the most
+    negative cost delta; it stops when no exchange improves.
+    """
+    for _ in range(max_swarms):
+        best_swap: tuple[int, int] | None = None
+        best_delta = 0.0
+        current_cost = _total_cost(distances, medoids)
+        for m in sorted(medoids):
+            trial_without = medoids - {m}
+            for o in non_medoids:
+                trial = trial_without | {o}
+                delta = _total_cost(distances, trial) - current_cost
+                if delta < best_delta:
+                    best_delta = delta
+                    best_swap = (m, o)
+        if best_swap is None:
+            break
+        old, new = best_swap
+        medoids = (medoids - {old}) | {new}
+        non_medoids = [i for i in range(len(distances)) if i not in medoids]
+    return medoids
+
+
 def k_medoids(
     vectors: Sequence[Sequence[float]],
     k: int,
@@ -79,49 +135,9 @@ def k_medoids(
         return [v.tolist() for v in normed]
 
     distances = _cosine_distance_matrix(normed)
-
-    # BUILD: first medoid minimizes sum of distances to all points.
-    first = int(np.argmin(np.sum(distances, axis=1)))
-    medoids: set[int] = {first}
-
-    while len(medoids) < k:
-        best_candidate: int | None = None
-        best_gain = -1.0
-        current_cost = _total_cost(distances, medoids)
-        for cand in range(n):
-            if cand in medoids:
-                continue
-            trial = medoids | {cand}
-            gain = current_cost - _total_cost(distances, trial)
-            if gain > best_gain or (
-                gain == best_gain and (best_candidate is None or cand < best_candidate)
-            ):
-                best_gain = gain
-                best_candidate = cand
-        if best_candidate is None:
-            break
-        medoids.add(best_candidate)
-
-    # SWAP: best-improvement exchanges.
+    medoids = _build_medoids(distances, n, k)
     non_medoids = [i for i in range(n) if i not in medoids]
-    for _ in range(max_swarms):
-        best_swap: tuple[int, int] | None = None
-        best_delta = 0.0
-        current_cost = _total_cost(distances, medoids)
-        for m in sorted(medoids):
-            trial_without = medoids - {m}
-            for o in non_medoids:
-                trial = trial_without | {o}
-                delta = _total_cost(distances, trial) - current_cost
-                if delta < best_delta:
-                    best_delta = delta
-                    best_swap = (m, o)
-        if best_swap is None:
-            break
-        old, new = best_swap
-        medoids = (medoids - {old}) | {new}
-        non_medoids = [i for i in range(n) if i not in medoids]
-
+    medoids = _swap_medoids(distances, medoids, non_medoids, max_swarms)
     return [normed[i].tolist() for i in sorted(medoids)]
 
 

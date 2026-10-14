@@ -81,7 +81,7 @@ The old root `scripts/install.py` is a deprecation shim. It warns and delegates 
 **Ollama install strategy per OS** (see ci.yml comments for full rationale):
 - **Ubuntu**: `curl -fsSL https://ollama.com/install.sh | sh` (works reliably)
 - **macOS**: `brew install ollama` (curl\|sh fails on macOS runners — exit code 1)
-- **Windows**: `OllamaSetup.exe /S` with 120s timeout + `continue-on-error: true` (silent installer often hangs on GitHub Actions Windows runners; tests fall back to degraded mode with zero-vector embeddings)
+- **Windows**: `OllamaSetup.exe /S` with 120s timeout + `continue-on-error: true`. The silent installer often hangs on GitHub Actions Windows runners. Tests then fall back to degraded mode with zero-vector embeddings.
 
 **Windows-specific fixes** (documented in ci.yml comments):
 - `python-magic-bin` installed to fix "Windows fatal exception: access violation" from the `magic` library (unstructured dependency needs libmagic DLL)
@@ -99,8 +99,8 @@ All active code is under `src/corpus_kb/`:
 - `src/corpus_kb/partitioning.py` — Unstructured partition wrapper.
 - `src/corpus_kb/chunking/` — File type detection → chunker dispatch. Strategy pattern: CodeChunker (tree-sitter AST), MarkdownChunker (heading boundaries), TextChunker (semantic gap detection).
 - `src/corpus_kb/storage/` — `PostgresGraphStore` (asyncpg + RLS), `AgeGraphStore`, `LlamaIndexPostgresBackend`, and `RagBackend` Protocol.
-- `src/corpus_kb/rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `Reranker`. Hybrid lexical+vector search is SQL-side — `corpus.rrf_fusion` (migration 006) orchestrated by `handlers/query_handler.py` (`QueryHandler`) and `research/retrieval.py` — there is no `HybridSearcher` class. `embedders/late_chunk.py` + `late_chunk_core.py` implement late chunking (one full-document forward pass, chunk-span pooling); `embedder_selection.py` gates it (`embedding.late_chunking` + `latechunk` extra + `qwen3-embedding*` model) with an honest pooled fallback recorded as `embedding_mode`/`embedding_note` in the ingest result.
-- `src/corpus_kb/ingestion/` — Pluggable ingestion strategy registry (the ONE pipeline seam): `base.py` (`ChunkPlan`, `validate_plan` conformance), `registry.py` (explicit > config map > detection > default), `strategies/` (`default`, `transcript`, `pptx_structure` for slide-level deck chunks, `web_structure` for heading-section page chunks).
+- `src/corpus_kb/rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `Reranker`. Hybrid lexical+vector search is SQL-side: `corpus.rrf_fusion` (migration 006), orchestrated by `handlers/query_handler.py` (`QueryHandler`) and `research/retrieval.py`. There is no `HybridSearcher` class. `embedders/late_chunk.py` + `late_chunk_core.py` implement late chunking (one full-document forward pass, chunk-span pooling). `embedder_selection.py` gates it (`embedding.late_chunking` + `latechunk` extra + `qwen3-embedding*` model) with an honest pooled fallback. The fallback is recorded as `embedding_mode`/`embedding_note` in the ingest result.
+- `src/corpus_kb/ingestion/` — Pluggable ingestion strategy registry: the ONE pipeline seam. `base.py` holds `ChunkPlan` and `validate_plan` conformance. `registry.py` resolves explicit > config map > detection > default. `strategies/`: `default`, `transcript`, `pptx_structure` (slide-level deck chunks), `web_structure` (heading-section page chunks).
 - `src/corpus_kb/web/` — Website ingestion front end: `fetch.py` (httpx + robots.txt + size/content-type caps + same-domain BFS crawl), `metadata.py` (OG/Twitter/JSON-LD/canonical extraction), `sections.py` (element→section chunking), `settings.py` (`web:` config → `WebFetchConfig`). Entry: `tools/ingest_url_tools.py` (`ingest_url`, surfaces: MCP/HTTP/socket/CLI `ingest-url`).
 - `src/corpus_kb/tools/` — MCP tools. `ingest_common.py` is the pipeline orchestrator (partition → chunk → embed → extract → store). `ingest_tools.py` is the thin MCP tool wrapper.
 - `src/corpus_kb/extraction/` — Pluggable ontology extractor: `protocol.py`, `regex_backend.py`, `langextract_backend.py`, `pgml_backend.py`, `bert_backend.py`.
@@ -172,7 +172,7 @@ The `PostgresGraphStore` implementation includes:
 
 - Branches: `feature/*`, `bugfix/*`, `hotfix/*` (gitflow). Protected branches: `main`, `master`, `develop`.
 - Commit messages: conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, etc.), must start with a capital letter, 10–500 chars.
-- **Commit message validator** (`.github/workflows/commit-validate.yml`) checks each line individually — use single-line commit messages or ensure every body line starts with a conventional commit prefix.
+- **Commit message validator** (`.github/workflows/commit-validate.yml`) checks each line individually. Use single-line commit messages. Or make every body line start with a conventional commit prefix.
 - Safe prefixes: `feat|fix|docs|chore|test|refactor|perf`. Avoid `build:`, `ci:`, and `style:`.
 
 ## Zero-Drift Program Standards (BINDING for all future work)
@@ -185,17 +185,17 @@ The zero-drift program ([docs/research/harness-zero-drift-program.md](docs/resea
 4. **Errors go through the taxonomy.** Raise typed errors from `corpus_kb/errors.py` (Wave 2). One failure class maps to one HTTP status + socket code + CLI exit code. Never add a catch-all `except Exception → 400` route handler.
 5. **Layering is law.** Import direction: `api → tools → handlers → storage`. Enforced by import-linter (Wave 2). No surface module may contain pipeline logic.
 6. **Plain English (ASD-STE100) everywhere user-facing.** Short active sentences, 20 words or fewer. Simple words. No idioms. Applies to error messages, help text, doctor output, docstrings, and docs. Enforced from Wave 5 by Vale (docs) and `pytest -m ste` (Python strings, Flesch-Kincaid grade ≤ 9).
-7. **Size and hygiene gates.** 250-line soft limit per source file (already repo rule), function complexity gate (xenon, Wave 3), no dead code (vulture, Wave 3), no unused dependencies (deptry, Wave 3).
-8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen` (Wave 2+). CI runs the same targets — if you bypass them locally, CI will catch it.
-9. **Deterministic output.** Query/search results must be stably ordered (tiebreakers, Wave 2). A harness must be able to snapshot results.
-10. **Every new gate needs three things:** a `poe` target, a CI job that calls it, and a row in the enforcement map + a line here. A gate that exists only locally is not a gate.
+7. **Size and hygiene gates.** Keep source files at or under the 250-line soft limit (already a repo rule). Gate function complexity with xenon (Wave 3). Keep dead code out with vulture (Wave 3). Keep unused dependencies out with deptry (Wave 3).
+8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen` (Wave 2+). CI runs the same targets. If you bypass them locally, CI will catch it.
+9. **Deterministic output.** Query and search results must be stably ordered. Use tiebreakers (Wave 2). A harness must be able to snapshot results.
+10. **Every new gate needs three things:** a `poe` target, a CI job that calls it, and a map row. Add a line here too. A gate that exists only locally is not a gate.
 
-Plans that violate these rules must be amended before implementation. If a rule blocks legitimate work, change the rule in the program document first — never silently around it.
+Plans that violate these rules must be amended before implementation. If a rule blocks legitimate work, change the rule in the program document first. Never route around it silently.
 
 ## Known Issues (check open GitHub issues before fixing)
 
 - **#13 (HIGH BUG)**: ✅ Resolved — ontology pipeline adapted to Postgres. Entity/relation extraction works via `src/corpus_kb/extraction/` with regex, langextract, pgml, and bert backends.
-- **#15/#16 (HIGH/MEDIUM BUG)**: ✅ Resolved — Native bash installer retired in favor of the full-stack Python installer at `src/corpus_kb/_setup/install.py` and the `corpus-kb setup` CLI command (container-first default).
+- **#15/#16 (HIGH/MEDIUM BUG)**: ✅ Resolved — Native bash installer retired. Use the full-stack Python installer at `src/corpus_kb/_setup/install.py`, or the `corpus-kb setup` CLI command (container-first default).
 - **#17 (HIGH FEATURE)**: Zero-data-loss shutdown/restart with transactional ingest. Not yet implemented.
 - **#29 (MEDIUM TASK)**: ✅ Resolved — single-tree layout completed. Package now lives at `src/corpus_kb/` with `corpus_kb.*` absolute imports.
 - **#31 (MEDIUM FEATURE)**: Upgrade NER extraction to BERT/transformer models. Partially implemented via `src/corpus_kb/extraction/bert_backend.py`.

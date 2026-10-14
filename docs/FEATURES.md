@@ -17,7 +17,7 @@ Send files, directories, or raw text into the pipeline. Corpus-KB detects the ty
 
 Detection and chunking run through a pluggable **ingestion strategy**. The built-in `default` strategy preserves the classic behavior; built-in `transcript`, `pptx_structure`, and `web_structure` strategies give interviews, slide decks, and web pages first-class structure-aware chunking. Map source types to strategies in `config.yaml`, register one in-process, or ship one as an entry-point plugin — see [Ingestion strategies](INGESTION-STRATEGIES.md).
 
-**Website ingestion scope:** fetching is static-HTML (no JavaScript rendering), robots-respecting, private-address-blocked by default (`web.allow_private_addresses` opts out for genuinely local targets), size-capped on the stream, and crawls same-site only (hostname modulo `www`). JS-heavy single-page apps yield their shell content only.
+**Website ingestion scope:** fetching is static-HTML (no JavaScript rendering) and robots-respecting. Private addresses are blocked by default; `web.allow_private_addresses` opts out for genuinely local targets. The fetcher size-caps the stream and crawls same-site only (hostname modulo `www`). JS-heavy single-page apps yield their shell content only.
 
 ### Code chunking
 
@@ -41,7 +41,7 @@ The ingest pipeline runs five stages:
 4. **Extract** - Run the ontology-aware extractor to find entities and relations.
 5. **Store** - Persist chunks, vectors, entities, and relations directly to Postgres. The event store records what happened for audit and replay.
 
-If the embedding provider is unavailable, embedding falls back to zero vectors, the affected chunks are flagged degraded in Postgres, and search leaves them out of vector results by default (`search.exclude_degraded: true`) while reporting the exclusion in the response. `corpus-kb ingest-reembed` repairs them once the provider is back.
+If the embedding provider is unavailable, embedding falls back to zero vectors. The affected chunks are flagged degraded in Postgres. Search leaves them out of vector results by default (`search.exclude_degraded: true`) while reporting the exclusion in the response. `corpus-kb ingest-reembed` repairs them once the provider is back.
 
 ---
 
@@ -64,7 +64,7 @@ flowchart LR
 - **Full-text search** finds exact and near-exact keyword matches using Postgres `to_tsvector`.
 - **RRF fusion** merges the two ranked lists into a single result list without needing calibrated scores.
 
-Degraded (zero-vector) chunks are excluded from the vector arm while `search.exclude_degraded` is `true` (the default), and the response's `degraded_excluded` field says exactly what was left out.
+Degraded (zero-vector) chunks are excluded from the vector arm while `search.exclude_degraded` is `true` (the default). The response's `degraded_excluded` field says exactly what was left out.
 
 You can filter by source type (`code`, `markdown`, `text`) and request surrounding context chunks.
 
@@ -72,7 +72,7 @@ You can filter by source type (`code`, `markdown`, `text`) and request surroundi
 
 ## Knowledge graph
 
-Entities and relations are first-class citizens. The extractor recognizes things like classes, functions, concepts, people, organizations, and products, then links them with typed relations such as `PART_OF`, `MENTIONS`, `DEFINED_AS`, and `RELATED_TO`.
+Entities and relations are first-class citizens. The extractor recognizes things like classes, functions, concepts, people, organizations, and products. It links them with typed relations such as `PART_OF`, `MENTIONS`, `DEFINED_AS`, and `RELATED_TO`.
 
 ### Ontology-aware extraction
 
@@ -156,7 +156,7 @@ Make sure the `dimensions` value matches the model and that the `chunks_vectors`
 
 ### Late chunking (document pipeline)
 
-`embedding.late_chunking: true` (the default) requests **late chunking**: instead of embedding each chunk in isolation, the document is tokenized and run through the model ONCE, and each chunk's vector is mean-pooled from the token states of its exact span — so every chunk vector has seen the whole document (better pronoun/coreference handling, no context bleeding at chunk boundaries). Documents longer than the model context are processed in sliding windows.
+`embedding.late_chunking: true` (the default) requests **late chunking**. The document is tokenized and run through the model ONCE. Each chunk's vector is mean-pooled from the token states of its exact span. So every chunk vector has seen the whole document (better pronoun/coreference handling, no context bleeding at chunk boundaries). Documents longer than the model context are processed in sliding windows.
 
 Activation is capability-checked and honest — late chunking runs only when ALL of:
 
@@ -164,13 +164,13 @@ Activation is capability-checked and honest — late chunking runs only when ALL
 - `embedding.model` is a token-level family (`qwen3-embedding*` — Ollama's endpoint serves pooled vectors only, so token states come from the local HF stack),
 - `embedding.dimensions` matches the activated model's real output width (Qwen3-Embedding-0.6B = 1024).
 
-Otherwise the run uses pooled embeddings and the ingest result says so: `embedding_mode` records `"late-chunking"` or `"pooled"` (shown on the CLI as `embedding:`), and `embedding_note` names the exact condition that fell back. Chunk vectors whose text can't be located in the document (or that lack source spans) pool individually rather than silently pool an unrelated region.
+Otherwise the run uses pooled embeddings and the ingest result says so. `embedding_mode` records `"late-chunking"` or `"pooled"` (shown on the CLI as `embedding:`). `embedding_note` names the exact condition that fell back. Some chunk vectors cannot be located in the document text, or lack source spans. Those vectors pool individually rather than silently pool an unrelated region.
 
 ---
 
 ## LlamaIndex RAG backend
 
-In addition to the built-in PostgresGraphStore search path, Corpus-KB includes an optional LlamaIndex RAG backend that uses PGVectorStore for vector storage and Ollama for local embeddings.
+In addition to the built-in PostgresGraphStore search path, Corpus-KB includes an optional LlamaIndex RAG backend. The backend uses PGVectorStore for vector storage and Ollama for local embeddings.
 
 ```mermaid
 flowchart LR
@@ -202,10 +202,10 @@ Every table has row-level security policies keyed to `app.current_tenant_id`. Th
 
 The MCP stdio server is real: `corpus-kb --transport stdio` serves the
 tools below over stdin/stdout (`src/corpus_kb/mcp_server.py`). The tool
-list is GENERATED from the same registry the CLI and HTTP surfaces use —
-the parity catalogue (`src/corpus_kb/contracts/`) plus the research/coding
-rows in `src/corpus_kb/surface_registry.py` — so a new catalogue row gains
-an MCP tool automatically, and the parity gate
+list is GENERATED from the same registry the CLI and HTTP surfaces use.
+That registry is the parity catalogue (`src/corpus_kb/contracts/`) plus
+the research/coding rows in `src/corpus_kb/surface_registry.py`. A new
+catalogue row gains an MCP tool automatically. The parity gate
 (`tests/test_surface_parity_deep.py`) holds every surface to the same
 envelope.
 
@@ -219,6 +219,8 @@ Honest caveats:
   have no MCP tool today. Unknown names are harmless: they never match.
 - Interactive demos (`research demo`) stay CLI-only by design.
 
+| Surface | Tool | Description |
+|---|---|---|
 | Ingest | `ingest_text` | Ingest raw text with a source label and a document type |
 | Ingest | `ingest_file` | Ingest one file; the document type is auto-detected |
 | Ingest | `ingest_directory` | Ingest the supported files under one directory in one walk |

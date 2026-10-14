@@ -163,14 +163,54 @@ class QueryHandler:
         ``degraded_empty`` (+ pinned remedy) when nothing was returned under
         degraded conditions.
         """
-        semantic_query = query.query
-        # Stage 3 honesty: every vector-arm impairment is recorded here and
-        # surfaced in the envelope's ``degraded_excluded`` — the silent
-        # FTS-only fallbacks become visible.
+        # Stage 3 honesty: every vector-arm impairment is recorded in
+        # ``reasons`` and surfaced in the envelope's ``degraded_excluded`` —
+        # the silent FTS-only fallbacks become visible.
         reasons: list[str] = []
-        # Candidate rows the degraded filter excluded (0 unless the M2 probe
-        # below ran and found rows the filter removed).
-        excluded_count = 0
+        semantic_query, dynamic_predicates = self._resolve_predicates(query)
+        over_retrieve_n = self._over_retrieve_n()
+
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)",
+                str(query.tenant_id),
+            )
+            # U20: transaction-local HNSW settings (SET LOCAL dies with this
+            # transaction — a pooled connection never leaks them). Gated on
+            # the installed pgvector version: emitting `SET LOCAL hnsw.*`
+            # below 0.8 aborts the query, so unknown/old versions keep the
+            # pre-iterative-scan behavior (fail closed).
+            extversion = await pgvector_version(conn)
+            if supports_iterative_scan(extversion):
+                await apply_hnsw_settings(conn, self._hnsw_settings)
+
+            degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
+            fused_results, excluded_count = await self._search_in_connection(
+                conn,
+                query,
+                semantic_query,
+                dynamic_predicates,
+                degraded_pred,
+                over_retrieve_n,
+                reasons,
+            )
+
+        # 4. Reranking (post-RRF) + envelope finalization. The rerank stage
+        #    runs outside the handler's connection so a max_size=1 pool
+        #    cannot deadlock on the reranker's own acquire.
+        final_results = await self._post_fuse(
+            fused_results, semantic_query, query.k, over_retrieve_n, str(query.tenant_id)
+        )
+        return finalize_envelope(final_results, reasons, excluded_count=excluded_count)
+
+    def _resolve_predicates(self, query: SearchQuery) -> tuple[str, list]:
+        """Resolve the semantic query and its dynamic filter predicates.
+
+        Self-query parsing (when enabled) rewrites the semantic query and
+        adds parsed predicates; an explicit ``source_type`` filter always
+        adds one more.
+        """
+        semantic_query = query.query
         dynamic_predicates: list = []
         use_self_query = (
             query.self_query if query.self_query is not None else self._self_query_enabled
@@ -189,206 +229,245 @@ class QueryHandler:
                     value=query.source_type,
                 )
             )
+        return semantic_query, dynamic_predicates
 
-        # Computed here (not inside the connection block below) so both the
-        # FTS arm and the post-connection reranker can always reference it,
-        # including when self._embedder is None -- it was previously scoped
-        # inside `if self._embedder:`, which raised UnboundLocalError in the
-        # FTS arm for any embedder-less QueryHandler with a reranker configured.
-        # Only score-based pipeline rerankers (OllamaReranker/FakeReranker,
-        # the `search.rerank` system) over-retrieve candidates; the async
-        # `.rerank` rerankers (IdentityReranker/PgmlReranker) fuse to top-k
-        # directly and must not inflate the vector/FTS LIMIT.
-        over_retrieve_n = (
+    def _over_retrieve_n(self) -> int:
+        """Candidate LIMIT inflation for score-based pipeline rerankers.
+
+        Computed up front (not inside the connection block) so both the FTS
+        arm and the post-connection reranker can always reference it,
+        including when self._embedder is None -- it was previously scoped
+        inside `if self._embedder:`, which raised UnboundLocalError in the
+        FTS arm for any embedder-less QueryHandler with a reranker configured.
+        Only score-based pipeline rerankers (OllamaReranker/FakeReranker,
+        the `search.rerank` system) over-retrieve candidates; the async
+        `.rerank` rerankers (IdentityReranker/PgmlReranker) fuse to top-k
+        directly and must not inflate the vector/FTS LIMIT.
+        """
+        return (
             int(self._rerank_cfg.get("over_retrieve_n", 60))
             if callable(getattr(self._reranker, "score", None))
             else 0
         )
 
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-            # U20: transaction-local HNSW settings (SET LOCAL dies with this
-            # transaction — a pooled connection never leaks them). Gated on
-            # the installed pgvector version: emitting `SET LOCAL hnsw.*`
-            # below 0.8 aborts the query, so unknown/old versions keep the
-            # pre-iterative-scan behavior (fail closed).
-            extversion = await pgvector_version(conn)
-            if supports_iterative_scan(extversion):
-                await apply_hnsw_settings(conn, self._hnsw_settings)
+    async def _search_in_connection(
+        self,
+        conn: asyncpg.Connection,
+        query: SearchQuery,
+        semantic_query: str,
+        dynamic_predicates: list,
+        degraded_pred: str,
+        over_retrieve_n: int,
+        reasons: list[str],
+    ) -> tuple[list[SearchResult], int]:
+        """Arms, degraded probe, lexical arm and RRF fusion on ONE connection.
 
-            # NOTE: SELECT_LIST/DEDUP_PREDICATE (handlers/query_vector_arms.py)
-            # name the literal tables "chunks"/"documents" — build_filter_sql()
-            # emits dynamic predicates using fully-qualified column refs like
-            # "documents.source_type", so every arm must join these tables
-            # under their real names for those predicates to resolve.
-            # Stage 3: candidate CTEs drop rows whose stored vector is flagged
-            # degraded (all-zero backfill from migration 022). Seed subqueries
-            # (handle_search_similar) are NEVER filtered — seed documents must
-            # stay discoverable even when degraded.
-            degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
-            fts_vector = (
-                "to_tsvector('english', coalesce(chunks.context_blurb,'') || ' ' || chunks.text)"
-            )
-
-            # 1. Vector search (pgml in-database, or local Ollama with optional
-            #    matryoshka two-tier retrieval). Each arm returns
-            #    (rows, reason|None); a reason is an arm impairment for the
-            #    honesty envelope, never a raised error.
-            vector_results: list[asyncpg.Record] = []
-            embedding_cfg = self._config.get("embedding", {}) or {}
-            provider = str(embedding_cfg.get("provider", "pgml"))
-
-            if provider == "pgml":
-                model = str(embedding_cfg.get("model", "nomic-embed-text"))
-                vector_results, arm_reason = await pgml_vector_arm(
-                    conn,
-                    model=model,
-                    semantic_query=semantic_query,
-                    tenant_id=str(query.tenant_id),
-                    k=query.k,
-                    over_retrieve_n=over_retrieve_n,
-                    dynamic_predicates=dynamic_predicates,
-                    degraded_pred=degraded_pred,
-                    exact_threshold=self._retrieval_settings.exact_filter_selectivity_threshold,
-                )
-                if arm_reason:
-                    reasons.append(arm_reason)
-            elif provider == "ollama" and self._embedder:
-                vector_results, arm_reason = await ollama_vector_arm(
-                    conn,
-                    embedder=self._embedder,
-                    semantic_query=semantic_query,
-                    tenant_id=str(query.tenant_id),
-                    k=query.k,
-                    over_retrieve_n=over_retrieve_n,
-                    dynamic_predicates=dynamic_predicates,
-                    degraded_pred=degraded_pred,
-                    matryoshka_enabled=self._matryoshka_enabled,
-                    matryoshka_dim=self._matryoshka_dim,
-                    candidate_multiplier=self._candidate_multiplier,
-                    exact_threshold=self._retrieval_settings.exact_filter_selectivity_threshold,
-                )
-                if arm_reason:
-                    reasons.append(arm_reason)
-            elif provider == "ollama":
-                # Provider is ollama but no embedder was wired: the vector arm
-                # cannot run at all — say so instead of a silent FTS-only answer.
-                reasons.append(REASON_NO_EMBEDDER)
-            elif provider != "ollama":
-                raise ValueError(
-                    f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'"
-                )
-
-            # Stage 3 (revised): a clean vector-arm run that returned zero rows
-            # while the degraded filter was active is ambiguous — either the
-            # filter removed the whole candidate set or none ever existed. ONE
-            # cheap COUNT probe over the same candidate universe WITHOUT the
-            # degraded predicate disambiguates: the filter-empty reason (and
-            # the excluded count) is recorded only when the probe says rows
-            # were actually excluded, so legitimately empty searches return
-            # plain success with no remedy.
-            if self._exclude_degraded and not vector_results and not reasons:
-                from corpus_kb.rag.self_query import build_filter_sql
-
-                probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
-                try:
-                    probe_row = await conn.fetchrow(
-                        _DEGRADED_CANDIDATE_COUNT_SQL.format(
-                            dedup=DEDUP_PREDICATE, frag=probe_frag
-                        ),
-                        str(query.tenant_id),
-                        *probe_params,
-                    )
-                except Exception as exc:
-                    # Same fail-open contract as the U21 selectivity probe: a
-                    # broken probe must never break search — it only costs the
-                    # filter-empty annotation.
-                    logger.warning("Degraded-filter count probe failed: %s", exc)
-                    probe_row = None
-                if probe_row is not None:
-                    raw = probe_row["candidates"]
-                    excluded_count = int(raw) if isinstance(raw, (int, float)) else 0
-                if excluded_count > 0:
-                    reasons.append(REASON_FILTER_EMPTY)
-
-            # 2. Full-text search (contextual expression if any chunk has a blurb;
-            #    coalesce is a no-op otherwise).
-            from corpus_kb.rag.self_query import build_filter_sql
-
-            frag, params = build_filter_sql(dynamic_predicates, start_index=4)
-            fts_results = await conn.fetch(
-                f"""
-                SELECT {SELECT_LIST},
-                       ts_rank({fts_vector}, plainto_tsquery('english', $1)) AS score
-                FROM chunks
-                JOIN documents ON chunks.doc_id = documents.doc_id
-                WHERE chunks.tenant_id = $2 {DEDUP_PREDICATE} {frag}
-                  AND {fts_vector} @@ plainto_tsquery('english', $1)
-                ORDER BY score DESC, chunks.chunk_id ASC
-                LIMIT $3
-                """,
-                semantic_query,
-                str(query.tenant_id),
-                max(query.k * 2, over_retrieve_n),
-                *params,
-            )
-
-            # 3. RRF fusion in PostgreSQL (migrations/006_rrf_fusion.sql).
-            try:
-                fused_rows = await conn.fetch(
-                    """
-                    SELECT chunk_id, text, source, doc_id, score
-                    FROM corpus.rrf_fusion($1::jsonb, $2::jsonb, $3, $4)
-                    """,
-                    _fusion_payload(vector_results),
-                    _fusion_payload(fts_results),
-                    query.k,
-                    self._retrieval_settings.rrf_k,
-                )
-            except asyncpg.UndefinedFunctionError as exc:
-                raise missing_rrf_fusion_error(exc) from exc
-
-            # Re-attach provenance (file_path/start_line/...) from the raw
-            # vector/FTS rows — corpus.rrf_fusion returns only the five fused
-            # columns, so provenance must be joined back by chunk_id.
-            provenance: dict[str, dict[str, object]] = {}
-            for row in vector_results:
-                provenance.setdefault(str(row["chunk_id"]), dict(row))
-            for row in fts_results:
-                provenance.setdefault(str(row["chunk_id"]), dict(row))
-
-            def _to_result(row: dict[str, object]) -> SearchResult:
-                meta = provenance.get(str(row["chunk_id"]), {})
-                heading = meta.get("heading_path")
-                return SearchResult(
-                    chunk_id=row["chunk_id"],
-                    text=row["text"],
-                    score=float(row["score"]),
-                    source=row["source"],
-                    doc_id=row["doc_id"],
-                    file_path=meta.get("file_path"),
-                    start_line=meta.get("start_line"),
-                    end_line=meta.get("end_line"),
-                    chunk_index=meta.get("chunk_index"),
-                    heading_path=json.loads(heading) if heading else None,
-                )
-
-            fused_results = [_to_result(dict(row)) for row in fused_rows]
-            # Zero-drift determinism (rule 9): fused score DESC, then chunk id
-            # ASC. The SQL fusion returns this order (migration 024); the sort
-            # re-asserts it so tied rows cannot permute between runs.
-            fused_results.sort(key=lambda r: (-r.score, r.chunk_id))
-
-        # 4. Reranking (post-RRF) + envelope finalization. The rerank stage
-        #    runs outside the handler's connection so a max_size=1 pool
-        #    cannot deadlock on the reranker's own acquire.
-        final_results = await self._post_fuse(
-            fused_results, semantic_query, query.k, over_retrieve_n, str(query.tenant_id)
+        Returns the fused results (deterministically ordered) and the count
+        of candidate rows the degraded filter excluded; arm impairments are
+        appended to ``reasons``. The SQL below is byte-identical to the
+        pre-split inline pipeline and PINNED by file scan
+        (tests/test_query_determinism.py counts this module's ORDER BY
+        clauses) — do not move it to another module.
+        """
+        # NOTE: SELECT_LIST/DEDUP_PREDICATE (handlers/query_vector_arms.py)
+        # name the literal tables "chunks"/"documents" — build_filter_sql()
+        # emits dynamic predicates using fully-qualified column refs like
+        # "documents.source_type", so every arm must join these tables
+        # under their real names for those predicates to resolve.
+        # Stage 3: candidate CTEs drop rows whose stored vector is flagged
+        # degraded (all-zero backfill from migration 022). Seed subqueries
+        # (handle_search_similar) are NEVER filtered — seed documents must
+        # stay discoverable even when degraded.
+        fts_vector = (
+            "to_tsvector('english', coalesce(chunks.context_blurb,'') || ' ' || chunks.text)"
         )
-        return finalize_envelope(final_results, reasons, excluded_count=excluded_count)
+
+        # 1. Vector search (pgml in-database, or local Ollama with optional
+        #    matryoshka two-tier retrieval). Each arm returns
+        #    (rows, reason|None); a reason is an arm impairment for the
+        #    honesty envelope, never a raised error.
+        vector_results = await self._vector_arm_rows(
+            conn, query, semantic_query, dynamic_predicates, degraded_pred, over_retrieve_n, reasons
+        )
+        excluded_count = await self._degraded_probe(
+            conn, query, vector_results, reasons, dynamic_predicates
+        )
+
+        # 2. Full-text search (contextual expression if any chunk has a blurb;
+        #    coalesce is a no-op otherwise).
+        from corpus_kb.rag.self_query import build_filter_sql
+
+        frag, params = build_filter_sql(dynamic_predicates, start_index=4)
+        fts_results = await conn.fetch(
+            f"""
+            SELECT {SELECT_LIST},
+                   ts_rank({fts_vector}, plainto_tsquery('english', $1)) AS score
+            FROM chunks
+            JOIN documents ON chunks.doc_id = documents.doc_id
+            WHERE chunks.tenant_id = $2 {DEDUP_PREDICATE} {frag}
+              AND {fts_vector} @@ plainto_tsquery('english', $1)
+            ORDER BY score DESC, chunks.chunk_id ASC
+            LIMIT $3
+            """,
+            semantic_query,
+            str(query.tenant_id),
+            max(query.k * 2, over_retrieve_n),
+            *params,
+        )
+
+        # 3. RRF fusion in PostgreSQL (migrations/006_rrf_fusion.sql).
+        try:
+            fused_rows = await conn.fetch(
+                """
+                SELECT chunk_id, text, source, doc_id, score
+                FROM corpus.rrf_fusion($1::jsonb, $2::jsonb, $3, $4)
+                """,
+                _fusion_payload(vector_results),
+                _fusion_payload(fts_results),
+                query.k,
+                self._retrieval_settings.rrf_k,
+            )
+        except asyncpg.UndefinedFunctionError as exc:
+            raise missing_rrf_fusion_error(exc) from exc
+
+        # Re-attach provenance (file_path/start_line/...) from the raw
+        # vector/FTS rows — corpus.rrf_fusion returns only the five fused
+        # columns, so provenance must be joined back by chunk_id.
+        provenance: dict[str, dict[str, object]] = {}
+        for row in vector_results:
+            provenance.setdefault(str(row["chunk_id"]), dict(row))
+        for row in fts_results:
+            provenance.setdefault(str(row["chunk_id"]), dict(row))
+
+        def _to_result(row: dict[str, object]) -> SearchResult:
+            meta = provenance.get(str(row["chunk_id"]), {})
+            heading = meta.get("heading_path")
+            return SearchResult(
+                chunk_id=row["chunk_id"],
+                text=row["text"],
+                score=float(row["score"]),
+                source=row["source"],
+                doc_id=row["doc_id"],
+                file_path=meta.get("file_path"),
+                start_line=meta.get("start_line"),
+                end_line=meta.get("end_line"),
+                chunk_index=meta.get("chunk_index"),
+                heading_path=json.loads(heading) if heading else None,
+            )
+
+        fused_results = [_to_result(dict(row)) for row in fused_rows]
+        # Zero-drift determinism (rule 9): fused score DESC, then chunk id
+        # ASC. The SQL fusion returns this order (migration 024); the sort
+        # re-asserts it so tied rows cannot permute between runs.
+        fused_results.sort(key=lambda r: (-r.score, r.chunk_id))
+        return fused_results, excluded_count
+
+    async def _vector_arm_rows(
+        self,
+        conn: asyncpg.Connection,
+        query: SearchQuery,
+        semantic_query: str,
+        dynamic_predicates: list,
+        degraded_pred: str,
+        over_retrieve_n: int,
+        reasons: list[str],
+    ) -> list[asyncpg.Record]:
+        """Run the configured provider's vector arm and record impairments.
+
+        Each arm returns (rows, reason|None); a reason is appended to
+        ``reasons`` for the honesty envelope and the (empty) rows let the
+        pipeline continue with the lexical arm alone.
+        """
+        embedding_cfg = self._config.get("embedding", {}) or {}
+        provider = str(embedding_cfg.get("provider", "pgml"))
+        if provider == "pgml":
+            model = str(embedding_cfg.get("model", "nomic-embed-text"))
+            vector_results, arm_reason = await pgml_vector_arm(
+                conn,
+                model=model,
+                semantic_query=semantic_query,
+                tenant_id=str(query.tenant_id),
+                k=query.k,
+                over_retrieve_n=over_retrieve_n,
+                dynamic_predicates=dynamic_predicates,
+                degraded_pred=degraded_pred,
+                exact_threshold=self._retrieval_settings.exact_filter_selectivity_threshold,
+            )
+        elif provider == "ollama" and self._embedder:
+            vector_results, arm_reason = await ollama_vector_arm(
+                conn,
+                embedder=self._embedder,
+                semantic_query=semantic_query,
+                tenant_id=str(query.tenant_id),
+                k=query.k,
+                over_retrieve_n=over_retrieve_n,
+                dynamic_predicates=dynamic_predicates,
+                degraded_pred=degraded_pred,
+                matryoshka_enabled=self._matryoshka_enabled,
+                matryoshka_dim=self._matryoshka_dim,
+                candidate_multiplier=self._candidate_multiplier,
+                exact_threshold=self._retrieval_settings.exact_filter_selectivity_threshold,
+            )
+        elif provider == "ollama":
+            # Provider is ollama but no embedder was wired: the vector arm
+            # cannot run at all — say so instead of a silent FTS-only answer.
+            vector_results, arm_reason = [], REASON_NO_EMBEDDER
+        else:
+            raise ValueError(
+                f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'"
+            )
+        if arm_reason:
+            reasons.append(arm_reason)
+        return vector_results
+
+    async def _degraded_probe(
+        self,
+        conn: asyncpg.Connection,
+        query: SearchQuery,
+        vector_results: list[asyncpg.Record],
+        reasons: list[str],
+        dynamic_predicates: list,
+    ) -> int:
+        """Count rows the degraded filter excluded (0 when no probe ran).
+
+        Stage 3 (revised): a clean vector-arm run that returned zero rows
+        while the degraded filter was active is ambiguous — either the
+        filter removed the whole candidate set or none ever existed. ONE
+        cheap COUNT probe over the same candidate universe WITHOUT the
+        degraded predicate disambiguates: the filter-empty reason (and
+        the excluded count) is recorded only when the probe says rows
+        were actually excluded, so legitimately empty searches return
+        plain success with no remedy.
+        """
+        if not (self._exclude_degraded and not vector_results and not reasons):
+            return 0
+        from corpus_kb.rag.self_query import build_filter_sql
+
+        probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
+        try:
+            # Savepoint (nested transaction): a failed probe must
+            # not abort the shared transaction — the lexical arm
+            # below still has to run (same arm-isolation contract
+            # as the vector arms).
+            async with conn.transaction():
+                probe_row = await conn.fetchrow(
+                    _DEGRADED_CANDIDATE_COUNT_SQL.format(dedup=DEDUP_PREDICATE, frag=probe_frag),
+                    str(query.tenant_id),
+                    *probe_params,
+                )
+        except Exception as exc:
+            # Same fail-open contract as the U21 selectivity probe: a
+            # broken probe must never break search — it only costs the
+            # filter-empty annotation.
+            logger.warning("Degraded-filter count probe failed: %s", exc)
+            probe_row = None
+        excluded_count = 0
+        if probe_row is not None:
+            raw = probe_row["candidates"]
+            excluded_count = int(raw) if isinstance(raw, (int, float)) else 0
+        if excluded_count > 0:
+            reasons.append(REASON_FILTER_EMPTY)
+        return excluded_count
 
     async def _post_fuse(
         self,

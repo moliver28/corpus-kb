@@ -81,6 +81,41 @@ def gate_content_stability(inputs: GateInputs, profile: ResolvedProfile) -> Gate
     )
 
 
+def _row_problems(row: dict[str, object]) -> list[str]:
+    """Design-field defects of one audit_partitions row (empty list = clean)."""
+    problems: list[str] = []
+    if as_str(row.get("stratum")) is None:
+        problems.append("missing stratum")
+    probability = as_float(row.get("inclusion_probability"))
+    if probability is None or not 0.0 < probability <= 1.0:
+        problems.append(f"inclusion_probability out of (0, 1]: {row.get('inclusion_probability')}")
+    if as_int(row.get("seed")) is None:
+        problems.append("missing seed")
+    if as_str(row.get("unit_id")) is None:
+        problems.append("missing unit_id")
+    return problems
+
+
+def _sample_value(
+    rows: list[dict[str, object]], defective: list[dict[str, object]], profile: ResolvedProfile
+) -> dict[str, object]:
+    """The gate's recorded value block: populations, seeds, defect list."""
+    seeds = sorted({seed for seed in (as_int(r.get("seed")) for r in rows) if seed is not None})
+    probabilities = [
+        p for p in (as_float(r.get("inclusion_probability")) for r in rows) if p is not None
+    ]
+    return {
+        "n_rows": len(rows),
+        "n_strata": len({as_str(r.get("stratum")) for r in rows if as_str(r.get("stratum"))}),
+        "seeds": seeds,
+        "inclusion_probability_range": (
+            [min(probabilities), max(probabilities)] if probabilities else None
+        ),
+        "defective_rows": defective,
+        "min_audit_sample": profile.min_audit_sample,
+    }
+
+
 def gate_audit_sample_design(inputs: GateInputs, profile: ResolvedProfile) -> GateResult:
     """U17: audit_partitions rows exist with stratum/probability/seed recorded."""
     block = as_dict(inputs.audit_sample)
@@ -91,36 +126,12 @@ def gate_audit_sample_design(inputs: GateInputs, profile: ResolvedProfile) -> Ga
             status="not_evaluable",
             reason="no audit_partitions sample recorded (inputs.audit_sample empty)",
         )
-    defective: list[dict[str, object]] = []
-    for row in rows:
-        problems: list[str] = []
-        if as_str(row.get("stratum")) is None:
-            problems.append("missing stratum")
-        probability = as_float(row.get("inclusion_probability"))
-        if probability is None or not 0.0 < probability <= 1.0:
-            problems.append(
-                f"inclusion_probability out of (0, 1]: {row.get('inclusion_probability')}"
-            )
-        if as_int(row.get("seed")) is None:
-            problems.append("missing seed")
-        if as_str(row.get("unit_id")) is None:
-            problems.append("missing unit_id")
-        if problems:
-            defective.append({"unit_id": row.get("unit_id"), "problems": problems})
-    seeds = sorted({seed for seed in (as_int(r.get("seed")) for r in rows) if seed is not None})
-    probabilities = [
-        p for p in (as_float(r.get("inclusion_probability")) for r in rows) if p is not None
+    defective = [
+        {"unit_id": row.get("unit_id"), "problems": problems}
+        for row in rows
+        if (problems := _row_problems(row))
     ]
-    value: dict[str, object] = {
-        "n_rows": len(rows),
-        "n_strata": len({as_str(r.get("stratum")) for r in rows if as_str(r.get("stratum"))}),
-        "seeds": seeds,
-        "inclusion_probability_range": (
-            [min(probabilities), max(probabilities)] if probabilities else None
-        ),
-        "defective_rows": defective,
-        "min_audit_sample": profile.min_audit_sample,
-    }
+    value = _sample_value(rows, defective, profile)
     if defective:
         return GateResult(
             gate_id=GATE_AUDIT_SAMPLE,
@@ -149,7 +160,8 @@ def gate_audit_sample_design(inputs: GateInputs, profile: ResolvedProfile) -> Ga
         status="pass",
         reason=(
             f"{len(rows)} audited unit(s) over {value['n_strata']} stratum(a), seeds "
-            f"{seeds}, inclusion probabilities recorded (design-based reweighting exact)"
+            f"{value['seeds']}, inclusion probabilities recorded "
+            "(design-based reweighting exact)"
         ),
         value=value,
         threshold={"min_audit_sample": profile.min_audit_sample},

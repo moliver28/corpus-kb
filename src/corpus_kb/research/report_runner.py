@@ -49,6 +49,90 @@ from corpus_kb.research.report_sections import (
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
+async def _load_models(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    version_id: UUID,
+    codes: list[dict[str, Any]],
+    gold_by_code: dict[str, list[dict[str, Any]]],
+    *,
+    force_index_proof: bool,
+) -> dict[str, Any]:
+    """Read the kNN-shaped and bounded-aggregate read models for one report.
+
+    Every kNN read goes through analytics_sql (256-d HNSW retrieval + full
+    1024-d re-rank).
+    """
+    codable = await load_codable_vectors(conn)
+    prototypes = _prototypes(codes, gold_by_code)
+    answer_protos = [p for c in prototypes.values() for p in c["answer"]]
+    qa_protos = [p for c in prototypes.values() for p in c["qa"]]
+    k = max(len(codable), 1)
+    residual_answer = await residual_scan(conn, answer_protos, k, force_index=force_index_proof)
+    residual_qa = await residual_scan_exchanges(conn, qa_protos, k, force_index=force_index_proof)
+    return {
+        "codable": codable,
+        "prototypes": prototypes,
+        "residual_by_unit": _max_residuals(residual_answer, residual_qa),
+        "uncoded_ranking": await uncoded_units_ranking(conn, answer_protos, k),
+        "centroids": await code_centroids_256(conn, version_id),
+        "coded_vectors": await coded_unit_vectors_256(conn, version_id),
+        "assignments": await load_assignment_rows(conn, tenant_id, version_id),
+        "irr": await load_irr_sheets(conn, tenant_id, version_id, [c["code_id"] for c in codes]),
+        "link": await load_link_stats(conn),
+        "signals": await load_signal_rows(conn),
+        "hits": await load_keyword_hit_populations(conn, version_id),
+        "definitions": await load_code_definitions(conn, tenant_id, version_id),
+        "runs": await load_runs_history(conn, tenant_id),
+        "duplicate_gate_blocks": await load_duplicate_gate_blocks(conn, tenant_id),
+    }
+
+
+async def _analyze_candidates(
+    conn: asyncpg.Connection,
+    tenant_id: UUID,
+    models: dict[str, Any],
+    gold_by_code: dict[str, list[dict[str, Any]]],
+) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], float]:
+    """Derive the tau section, missing-code candidates and their queueing."""
+    codable = models["codable"]
+    prototypes = models["prototypes"]
+    unit_types = {int(r["unit_id"]): str(r["source_type"]) for r in codable}
+    tau_block = residual_full_section(
+        gold_by_code,
+        models["residual_by_unit"],
+        unit_types,
+    )
+    tau_by_type = {
+        source_type: float(block["tau_res"])
+        for source_type, block in dict(tau_block["by_source_type"]).items()
+    }
+    entropy_by_unit = {
+        int(s["unit_id"]): (
+            float(s["soft_cluster_entropy"]) if s["soft_cluster_entropy"] is not None else None
+        )
+        for s in models["signals"]
+        if s["tier"] == 0
+    }
+    candidates = candidate_missing_codes(
+        models["residual_by_unit"],
+        unit_types,
+        tau_by_type,
+        entropy_by_unit,
+        {int(r["unit_id"]): str(r["text"]) for r in codable},
+        {int(r["unit_id"]): r["vec"] for r in codable},
+    )
+    queued = await queue_candidates(conn, tenant_id, candidates, models["runs"])
+    gold_inter_code_max = gold_inter_code_max_cosine(
+        {
+            c: [mrl_256(p) for p in protos["answer"]]
+            for c, protos in prototypes.items()
+            if protos["answer"]
+        }
+    )
+    return tau_block, candidates, queued, gold_inter_code_max
+
+
 async def build_report(
     pool: asyncpg.Pool,
     tenant_id: UUID,
@@ -77,63 +161,16 @@ async def build_report(
             )
             for code in codes
         }
-        codable = await load_codable_vectors(conn)
-        prototypes = _prototypes(codes, gold_by_code)
-        answer_protos = [p for c in prototypes.values() for p in c["answer"]]
-        qa_protos = [p for c in prototypes.values() for p in c["qa"]]
-        k = max(len(codable), 1)
-        residual_answer = await residual_scan(conn, answer_protos, k, force_index=force_index_proof)
-        residual_qa = await residual_scan_exchanges(
-            conn, qa_protos, k, force_index=force_index_proof
+        models = await _load_models(
+            conn, tenant_id, version_id, codes, gold_by_code, force_index_proof=force_index_proof
         )
-        residual_by_unit = _max_residuals(residual_answer, residual_qa)
-        uncoded_ranking = await uncoded_units_ranking(conn, answer_protos, k)
-        centroids = await code_centroids_256(conn, version_id)
-        coded_vectors = await coded_unit_vectors_256(conn, version_id)
-        assignments = await load_assignment_rows(conn, tenant_id, version_id)
-        irr_sheets, units_by_code = await load_irr_sheets(
-            conn, tenant_id, version_id, [c["code_id"] for c in codes]
-        )
-        link = await load_link_stats(conn)
-        signals = await load_signal_rows(conn)
-        hits = await load_keyword_hit_populations(conn, version_id)
-        definitions = await load_code_definitions(conn, tenant_id, version_id)
         prev_definitions = (
             await load_code_definitions(conn, tenant_id, UUID(versions[-2]["version_id"]))
             if len(versions) >= 2
             else {}
         )
-        runs = await load_runs_history(conn, tenant_id)
-        duplicate_gate_blocks = await load_duplicate_gate_blocks(conn, tenant_id)
-
-        unit_types = {int(r["unit_id"]): str(r["source_type"]) for r in codable}
-        tau_block = residual_full_section(gold_by_code, residual_by_unit, unit_types)
-        tau_by_type = {
-            source_type: float(block["tau_res"])
-            for source_type, block in dict(tau_block["by_source_type"]).items()
-        }
-        entropy_by_unit = {
-            int(s["unit_id"]): (
-                float(s["soft_cluster_entropy"]) if s["soft_cluster_entropy"] is not None else None
-            )
-            for s in signals
-            if s["tier"] == 0
-        }
-        candidates = candidate_missing_codes(
-            residual_by_unit,
-            unit_types,
-            tau_by_type,
-            entropy_by_unit,
-            {int(r["unit_id"]): str(r["text"]) for r in codable},
-            {int(r["unit_id"]): r["vec"] for r in codable},
-        )
-        queued = await queue_candidates(conn, tenant_id, candidates, runs)
-        gold_inter_code_max = gold_inter_code_max_cosine(
-            {
-                c: [mrl_256(p) for p in protos["answer"]]
-                for c, protos in prototypes.items()
-                if protos["answer"]
-            }
+        tau_block, candidates, queued, gold_inter_code_max = await _analyze_candidates(
+            conn, tenant_id, models, gold_by_code
         )
 
     report = finalize_report(
@@ -142,23 +179,23 @@ async def build_report(
         version_id=version_id,
         label=label,
         gold_inter_code_max=gold_inter_code_max,
-        codable=codable,
+        codable=models["codable"],
         residual_block=tau_block,
-        uncoded_ranking=uncoded_ranking,
-        centroids=centroids,
-        coded_vectors=coded_vectors,
-        assignments=assignments,
-        irr_sheets=irr_sheets,
-        units_by_code=units_by_code,
-        link=link,
-        signals=signals,
-        hits=hits,
-        definitions=definitions,
+        uncoded_ranking=models["uncoded_ranking"],
+        centroids=models["centroids"],
+        coded_vectors=models["coded_vectors"],
+        assignments=models["assignments"],
+        irr_sheets=models["irr"][0],
+        units_by_code=models["irr"][1],
+        link=models["link"],
+        signals=models["signals"],
+        hits=models["hits"],
+        definitions=models["definitions"],
         prev_definitions=prev_definitions,
-        runs=runs,
+        runs=models["runs"],
         candidates=candidates,
         queued=queued,
-        duplicate_gate_blocks=duplicate_gate_blocks,
+        duplicate_gate_blocks=models["duplicate_gate_blocks"],
         g3_report=g3_report,
         manifest_extra=run_manifest,
     )

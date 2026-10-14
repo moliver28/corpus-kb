@@ -35,37 +35,51 @@ NEW_CODES_SLOPE_SOURCE = "meta_new per batch checkpoint (inductive run)"
 GRAY_ZONE_REASONS = ("gray_zone", "conformal")
 
 
-def checkpoint_section(assignments: Sequence[Mapping[str, Any]], n_codable: int) -> dict[str, Any]:
-    """§14 checkpoint numbers: ISR, coverage split, gray-zone share, backlog."""
-    coded_units = {int(a["unit_id"]) for a in assignments}
-    isr_pooled = len({a["code_id"] for a in assignments}) / len(assignments) if assignments else 0.0
+def _isr_by_source_type(assignments: Sequence[Mapping[str, Any]]) -> dict[str, float]:
+    """Pooled ISR (distinct codes over assignments) inside each source type."""
     by_type: dict[str, float] = {}
     for source_type in {str(a["source_type"]) for a in assignments}:
         rows = [a for a in assignments if str(a["source_type"]) == source_type]
         by_type[source_type] = len({a["code_id"] for a in rows}) / len(rows) if rows else 0.0
+    return by_type
+
+
+def _gray_zone_units(review: Sequence[Mapping[str, Any]]) -> set[int]:
+    """Review units whose rationale names a gray-zone or conformal reason."""
+    return {
+        int(a["unit_id"])
+        for a in review
+        if any(reason in str(a["rationale"]) for reason in GRAY_ZONE_REASONS)
+    }
+
+
+def _multi_category_units(assignments: Sequence[Mapping[str, Any]]) -> int:
+    """Units that carry two or more code assignments."""
+    return sum(
+        1 for count in Counter(int(a["unit_id"]) for a in assignments).values() if count >= 2
+    )
+
+
+def checkpoint_section(assignments: Sequence[Mapping[str, Any]], n_codable: int) -> dict[str, Any]:
+    """§14 checkpoint numbers: ISR, coverage split, gray-zone share, backlog."""
+    coded_units = {int(a["unit_id"]) for a in assignments}
+    isr_pooled = len({a["code_id"] for a in assignments}) / len(assignments) if assignments else 0.0
     explicit = {
         int(a["unit_id"]) for a in assignments if a["evidence_basis"] == "explicit_in_answer"
     }
     qdep = {int(a["unit_id"]) for a in assignments if a["evidence_basis"] == "question_dependent"}
     review = [a for a in assignments if str(a["status"]) == "review"]
-    gray_zone_units = {
-        int(a["unit_id"])
-        for a in review
-        if any(reason in str(a["rationale"]) for reason in GRAY_ZONE_REASONS)
-    }
-    multi_category = sum(
-        1 for count in Counter(int(a["unit_id"]) for a in assignments).values() if count >= 2
-    )
+    gray_zone_units = _gray_zone_units(review)
     return {
         "isr_pooled": isr_pooled,
-        "isr_by_source_type": by_type,
+        "isr_by_source_type": _isr_by_source_type(assignments),
         "coverage_explicit": len(explicit) / n_codable if n_codable else 0.0,
         "coverage_qdep": len(qdep) / n_codable if n_codable else 0.0,
         "gray_zone_share": len(gray_zone_units) / n_codable if n_codable else 0.0,
         "review_backlog": {
             "assignments": len(review),
             "coded_units": len(coded_units),
-            "multi_category_units": multi_category,
+            "multi_category_units": _multi_category_units(assignments),
         },
         "deductive_coverage_note": DEDUCTIVE_COVERAGE_NOTE,
     }
