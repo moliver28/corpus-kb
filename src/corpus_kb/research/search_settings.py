@@ -28,6 +28,7 @@ This module owns the whole contract:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol, cast
 
@@ -64,8 +65,8 @@ async def pgvector_version(conn: VersionReader) -> str | None:
     call sites adopt it as they are touched). ``None`` means "could not
     read" and every caller must fail closed on it.
     """
-    version_row = await conn.fetchrow(PGVECTOR_VERSION_SQL)
-    return None if version_row is None else str(version_row["extversion"])
+    row = cast("Mapping[str, object] | None", await conn.fetchrow(PGVECTOR_VERSION_SQL))
+    return None if row is None else str(row["extversion"])
 
 
 def missing_rrf_fusion_error(exc: Exception) -> MigrationMissingError:
