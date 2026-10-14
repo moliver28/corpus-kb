@@ -2,7 +2,7 @@
 
 **Local RAG system for AI code editors. Ingest your codebase. Ask questions. Get answers. No cloud.**
 
-Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine: Postgres stores the data, Ollama generates embeddings, and a local server exposes the whole thing over MCP stdio, HTTP endpoints, and a JSON-RPC socket (see [Editor integration](#editor-integration)).
+Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine. Postgres stores the data, and Ollama generates embeddings. A local server exposes the whole thing over MCP stdio, HTTP endpoints, and a JSON-RPC socket. See [Editor integration](#editor-integration).
 
 ---
 
@@ -42,7 +42,7 @@ graph TB
 ```
 
 1. **Ingest** a file, directory, or raw text.
-2. The pipeline partitions it into chunks, embeds each chunk through Ollama or PostgresML, extracts entities and relations, and stores the result.
+2. The pipeline partitions it into chunks and embeds each chunk through Ollama or PostgresML. It extracts entities and relations, then stores the result.
 3. Commands append events to the event store; async projections write the read models into Postgres.
 4. Your editor queries the read models through search, SQL, or graph traversal.
 
@@ -218,10 +218,10 @@ your own transcripts. Ports, exit codes, and vocabularies: see
 
 Editors connect over **MCP stdio** (native, no bridge), the **HTTP API**, or the JSON-RPC socket:
 
-- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files for Claude Code, Cursor, Codex, and OpenCode launch exactly this command. The server registers the catalogue operations plus the research/coding/release surfaces as MCP tools; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference
-- HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md))
-- JSON-RPC socket: same command, for local automation
-- The research and coding surfaces are first-class CLI commands (`corpus-kb research ...`, `corpus-kb coding ...`), and ingestion has a top-level front door (`corpus-kb ingest`, with `--watch` auto-heal plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`)
+- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files for Claude Code, Cursor, Codex, and OpenCode launch exactly this command. The server registers the catalogue operations plus the research/coding/release surfaces as MCP tools; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference.
+- HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md)).
+- JSON-RPC socket: same command, for local automation.
+- The research and coding surfaces are first-class CLI commands (`corpus-kb research ...` and `corpus-kb coding ...`). Ingestion has a top-level front door: `corpus-kb ingest` with `--watch` auto-heal, plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`.
 
 Both stdio and HTTP serve the same shared tool functions, so envelopes match across surfaces (enforced by the parity gate in `tests/test_surface_parity_deep.py`).
 
