@@ -120,6 +120,8 @@ ner = ["gliner2>=2.1.0"]
 # only (tests/test_mapie_crosscheck.py), NEVER a runtime dependency; MAPIE is
 # BSD-3-Clause. Floor is 1.0: the test drives the SplitConformalClassifier
 # "top_k"/"aps" API introduced by the 1.x overhaul (0.8.x has none).
+# poethepoet + import-linter (Wave 2 zero-drift): the gate commands and the
+# layering contracts. CI calls the SAME poe targets developers run.
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
@@ -127,6 +129,8 @@ dev = [
     "syrupy>=4.0",
     "lxml>=5.0",
     "mapie>=1.0",
+    "poethepoet>=0.24",
+    "import-linter>=2.0",
 ]
 
 [build-system]
@@ -167,6 +171,81 @@ markers = [
     "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
 ]
 asyncio_mode = "auto"
+
+# ---------------------------------------------------------------------------
+# Zero-drift gate commands (Wave 2). CI calls the SAME targets — one source
+# of gate commands for humans, agents, and CI (program standards 8/10).
+# ---------------------------------------------------------------------------
+[tool.poe]
+style = "simple"
+
+[tool.poe.tasks.lint]
+cmd = "ruff check src/ tests/"
+help = "Ruff lint over the package and tests"
+
+[tool.poe.tasks.format-check]
+cmd = "ruff format --check src/ tests/"
+help = "Ruff format check (no rewrites)"
+
+[tool.poe.tasks.types]
+cmd = "pyright src/"
+help = "Pyright type check (basic mode, repo config)"
+
+[tool.poe.tasks.test]
+cmd = "python -m pytest tests/ -x -q --tb=short"
+help = "Full test suite (Ollama/Postgres degrade gracefully)"
+
+[tool.poe.tasks.verify]
+sequence = ["lint", "format-check", "types", "test"]
+help = "All quality gates: lint + format-check + types + test"
+
+[tool.poe.tasks.gen]
+cmd = "python scripts/gen_harness_pack.py --check"
+help = "Regenerate/diff-check the harness command pack"
+
+[tool.poe.tasks.check]
+sequence = ["verify", "gen"]
+help = "verify + gen: everything a PR must pass locally"
+
+# ---------------------------------------------------------------------------
+# Import layering (Wave 2, program standard 5). The ASPIRATIONAL ladder is
+# api -> tools -> handlers -> storage, but the live graph also runs
+# handlers -> tools (command_handler delegates ingest to the tool layer by
+# design) and cli -> tools, so the enforced contracts below pin the edges
+# that are true today and would catch a shadow pipeline:
+#   * nothing under tools/ or handlers/ may import the api adapters;
+#   * the contracts catalogue stays stdlib-light (no surface imports).
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "corpus_kb"
+
+[[tool.importlinter.contracts]]
+name = "tools must not import api"
+type = "forbidden"
+source_modules = ["corpus_kb.tools"]
+forbidden_modules = ["corpus_kb.api"]
+
+[[tool.importlinter.contracts]]
+name = "handlers must not import api"
+type = "forbidden"
+source_modules = ["corpus_kb.handlers"]
+forbidden_modules = ["corpus_kb.api"]
+
+[[tool.importlinter.contracts]]
+name = "contracts must not import surfaces or pipeline packages"
+type = "forbidden"
+source_modules = ["corpus_kb.contracts"]
+forbidden_modules = [
+    "corpus_kb.api",
+    "corpus_kb.tools",
+    "corpus_kb.handlers",
+    "corpus_kb.storage",
+    "corpus_kb.cli",
+    "corpus_kb.cli_ingest",
+    "corpus_kb.cli_ingest_views",
+    "corpus_kb.cli_release",
+    "corpus_kb.cli_operations",
+]
 
 [project.scripts]
 corpus-kb = "corpus_kb.cli:app"

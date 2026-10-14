@@ -24,6 +24,8 @@ from typing import TYPE_CHECKING, cast
 
 import asyncpg
 
+from corpus_kb.errors import ConfigError, DatabaseUnavailableError
+
 if TYPE_CHECKING:
     from corpus_kb.storage.graph_store import GraphStore
 
@@ -73,7 +75,10 @@ async def initialize_postgres_pool(
             command_timeout=60.0,
         )
     except Exception as exc:
-        raise RuntimeError(f"Failed to connect to Postgres at {connection_string}: {exc}") from exc
+        raise DatabaseUnavailableError(
+            f"Failed to connect to Postgres at {connection_string}: {exc}",
+            remediation="Run corpus-kb setup. Check the DSN and credentials.",
+        ) from exc
     logger.info("asyncpg pool created")
     return pool
 
@@ -101,7 +106,7 @@ async def startup(
     db_cfg = cfg.get("database", {})
     conn_str = db_cfg.get("connection_string", "") or os.environ.get("CORPUS_KB_DATABASE_URL", "")
     if not conn_str:
-        raise RuntimeError(
+        raise ConfigError(
             "No database connection string. Set CORPUS_KB_DATABASE_URL or "
             "configure database.connection_string in config.yaml."
         )
