@@ -35,6 +35,7 @@
         'config': 'POSITIONAL_OR_KEYWORD',
         'document_id': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
       'ingest_directory': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -52,7 +53,10 @@
       }),
       'list_documents': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'offset': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
     'corpus_kb.tools.ingest_url_tools': dict({
