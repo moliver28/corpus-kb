@@ -1,12 +1,12 @@
-"""The operation catalogue: core families (ingest, search, documents, graph).
+"""The operation catalogue: ingest and search families.
 
 THE single source of truth for cross-surface operations. The parity gate
 (``tests/test_surface_parity_deep.py``) and the inventory command
 (``corpus-kb operations``) both iterate these rows, so the test and the
-inventory can never diverge. Release rows live in ``catalogue_release.py``,
-research rows + the SKIP set in ``catalogue_research.py`` /
-``catalogue_skips.py``; ``catalogue_research.OPERATIONS`` is the final
-assembled catalogue.
+inventory can never diverge. Documents/graph rows live in
+``catalogue_documents.py``, release rows in ``catalogue_release.py``,
+research rows + the SKIP set in ``catalogue_research.py``;
+``contracts/__init__`` assembles the final catalogue.
 
 Registry-first rule (program standard 2): to add or change an operation,
 change the row FIRST, then the surfaces, then run the gates. All strings
@@ -15,7 +15,7 @@ are plain English (ASD-STE100).
 
 from __future__ import annotations
 
-from corpus_kb.contracts.envelopes import INGEST_ENVELOPE
+from corpus_kb.contracts.envelopes import AGGREGATE_EXTRA, INGEST_ENVELOPE
 from corpus_kb.contracts.model import (
     CLI,
     DEFAULT_TENANT_ID,
@@ -26,10 +26,6 @@ from corpus_kb.contracts.model import (
     ParamSpec,
     SurfaceSpec,
 )
-
-# Declared additive HTTP/socket wrapper over the shared ingest envelope:
-# the command handler attaches the audit aggregate to successful ingests.
-AGGREGATE_EXTRA = frozenset({"aggregate_id", "aggregate_version"})
 
 _TENANT = ParamSpec("tenant_id", default=DEFAULT_TENANT_ID)
 
@@ -70,6 +66,35 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         ),
         http_extra=AGGREGATE_EXTRA,
         socket_extra=AGGREGATE_EXTRA,
+        exit_codes=(0, 1, 2, 3),
+    ),
+    Operation(
+        name="ingest_directory",
+        family="ingest",
+        description=(
+            "Ingest the supported files under one directory in one walk. "
+            "One filter: the WATCH_SUFFIXES modality table."
+        ),
+        handler="corpus_kb.tools.ingest_tools:ingest_directory",
+        params=(
+            ParamSpec("directory_path", required=True),
+            ParamSpec("recursive", default=True),
+            ParamSpec("source_type"),
+            _TENANT,
+        ),
+        envelope_keys=(
+            "status",
+            "directory",
+            "files_processed",
+            "total_documents",
+            "total_entities",
+            "results",
+        ),
+        surfaces=(
+            SurfaceSpec(MCP, "ingest_directory"),
+            SurfaceSpec(CLI, "ingest <dir>"),
+            SurfaceSpec(HTTP, "/api/ingest/directory", "POST"),
+        ),
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(
@@ -158,55 +183,6 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         surfaces=(
             SurfaceSpec(HTTP, "/api/verify", "POST"),
             SurfaceSpec(SOCKET, "verify_answer"),
-        ),
-    ),
-    Operation(
-        name="list_documents",
-        family="documents",
-        description="List ingested documents with pagination.",
-        handler="corpus_kb.tools.ingest_tools:list_documents",
-        params=(ParamSpec("limit", default=100), ParamSpec("offset", default=0), _TENANT),
-        envelope_keys=("status", "result"),
-        surfaces=(
-            SurfaceSpec(MCP, "list_documents"),
-            SurfaceSpec(HTTP, "/api/documents", "GET"),
-            SurfaceSpec(SOCKET, "list_documents"),
-        ),
-    ),
-    Operation(
-        name="add_entity",
-        family="graph",
-        description="Add one entity to the knowledge graph.",
-        handler="corpus_kb.handlers.command_handler:CommandHandler.handle_add_entity",
-        params=(
-            ParamSpec("name", required=True),
-            ParamSpec("entity_type", default="concept"),
-            ParamSpec("metadata"),
-            _TENANT,
-        ),
-        envelope_keys=("status", "entity_id", "name", "entity_type"),
-        surfaces=(
-            SurfaceSpec(HTTP, "/api/entities", "POST"),
-            SurfaceSpec(SOCKET, "add_entity"),
-        ),
-    ),
-    Operation(
-        name="add_relation",
-        family="graph",
-        description="Add one relation between two entities.",
-        handler="corpus_kb.handlers.command_handler:CommandHandler.handle_add_relation",
-        params=(
-            ParamSpec("source_entity_id", required=True),
-            ParamSpec("target_entity_id", required=True),
-            ParamSpec("relation_type", default="related_to"),
-            ParamSpec("weight", default=1.0),
-            ParamSpec("metadata"),
-            _TENANT,
-        ),
-        envelope_keys=("status", "relation_id", "relation_type"),
-        surfaces=(
-            SurfaceSpec(HTTP, "/api/relations", "POST"),
-            SurfaceSpec(SOCKET, "add_relation"),
         ),
     ),
 )

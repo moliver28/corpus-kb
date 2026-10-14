@@ -1,6 +1,6 @@
-"""Shared success-envelope key tuples for the operation catalogue.
+"""Shared success-envelope key tuples and additive-key sets for the catalogue.
 
-Guaranteed-on-success keys only: conditional keys (embed_note,
+Guaranteed-on-success keys only in the tuples: conditional keys (embed_note,
 embedding_note, empty_reason, shadow_*) are deliberately absent, so the
 parity gate's subset check holds for every outcome the surfaces return.
 """
@@ -27,3 +27,9 @@ INGEST_ENVELOPE = (
     "run_id",
     "embedding_mode",
 )
+
+# Declared additive HTTP/socket wrapper over the shared envelope: the
+# command handler attaches the audit aggregate to successful ingests and
+# deletes. ``event_sourcing_error`` appears only when the audit write
+# failed after a successful pipeline.
+AGGREGATE_EXTRA = frozenset({"aggregate_id", "aggregate_version", "event_sourcing_error"})
