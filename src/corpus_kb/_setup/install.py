@@ -93,6 +93,7 @@ def detect_profile() -> dict[str, Any]:
 def print_doctor_report(
     info: dict[str, Any],
     research: list[Any] | None = None,
+    env_check: Any | None = None,
 ) -> None:
     """Print read-only diagnostic report."""
     print("\n=== Corpus-KB Doctor ===")
@@ -120,6 +121,13 @@ def print_doctor_report(
                 print(f"  {label} ({name}): OK v{version}")
             else:
                 print(f"  {label} ({name}): MISSING - {EXTENSION_REMEDIATION}")
+    if env_check is not None:
+        print("\nConfiguration:")
+        print(f"  {env_check.name}: {env_check.status.upper()} - {env_check.detail}")
+        if env_check.fix:
+            print(f"    fix: {env_check.fix}")
+        if env_check.doc:
+            print(f"    docs: {env_check.doc}")
     if research is None:
         print("\nResearch subsystem: SKIPPED (Postgres unreachable; run corpus-kb setup)")
     else:
@@ -139,6 +147,12 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
     profiles = load_installer_profiles(config)
     profile = profiles.get(info["profile"], {})
     info["recommended_model"] = profile.get("model", "nomic-embed-text")
+
+    # Offline configuration-truth check (runs even without Postgres): warns
+    # about CORPUS_KB_* variables this version does not read.
+    from corpus_kb._setup.doctor_env import env_var_check
+
+    env_check = env_var_check()
 
     db_cfg = config.get("database", {})
     # Runtime precedence (review F-1): env wins over config so doctor probes
@@ -167,7 +181,7 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
             conn_str, config, info.get("extensions"), ollama_ok=info["ollama_ok"]
         )
 
-    print_doctor_report(info, research)
+    print_doctor_report(info, research, env_check=env_check)
     return 0
 
 

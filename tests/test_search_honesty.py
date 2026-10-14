@@ -872,7 +872,9 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
     # U32 (issue #81) added embedding.mrl_trained to the runtime contract;
     # its matryoshka fix registered search.matryoshka_enabled alongside it.
     # The website-ingestion feature added the web.* fetch/crawl keys.
+    # W4C config-truth added extraction.backend (the preferred backend key).
     assert {
+        "extraction.backend": str,
         "search.exclude_degraded": bool,
         "search.qa_context_in_fts": bool,
         "search.matryoshka_enabled": bool,
@@ -893,6 +895,7 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
 
 _INGESTION_KEYS: dict[str, object] = {"ingestion": {"default": "default", "strategies": {}}}
 _EMBEDDING_KEYS: dict[str, object] = {"embedding": {"mrl_trained": False, "late_chunking": True}}
+_EXTRACTION_KEYS: dict[str, object] = {"extraction": {"backend": "pgml"}}
 _WEB_KEYS: dict[str, object] = {
     "web": {
         "user_agent": "corpus-kb/0.1 (+https://github.com/moliver28/corpus-kb)",
@@ -914,6 +917,7 @@ def test_validate_runtime_config_accepts_bool() -> None:
             "qa_context_in_fts": False,
             "matryoshka_enabled": False,
         },
+        **_EXTRACTION_KEYS,
         **_EMBEDDING_KEYS,
         **_INGESTION_KEYS,
         **_WEB_KEYS,
@@ -925,6 +929,7 @@ def test_validate_runtime_config_accepts_bool() -> None:
             "qa_context_in_fts": False,
             "matryoshka_enabled": False,
         },
+        **_EXTRACTION_KEYS,
         **_EMBEDDING_KEYS,
         **_INGESTION_KEYS,
         **_WEB_KEYS,

@@ -415,8 +415,14 @@ async def test_rollback_021_drops_cleanly_and_migration_reapplies(m021_dsn: str)
 
 def _ingest_config(hierarchy_enabled: bool) -> dict[str, object]:
     """pgml primary with no usable pgml extension -> deterministic zero-vector
-    degraded path (no Ollama needed); 768-dim config keeps shadow VECTORS
-    honestly skipped while the shadow TEXT hierarchy still lands."""
+    degraded path (no Ollama needed). dimensions matches the fixture
+    database's fixed vector(4096) column: pgvector enforces the exact typmod
+    width, so a mismatched width now raises the typed ConfigError (the
+    dimension-switch guard) instead of degrading to a vector-write failure.
+    The zero-vector fallback emits configured-dimensions-length vectors, so
+    4096 keeps the v1 inserts width-clean; shadow VECTORS stay honestly
+    skipped (research embedder abstains) while the shadow TEXT hierarchy
+    still lands."""
     return {
         "graph": {"extract_entities": False},
         "embedding": {
@@ -424,7 +430,7 @@ def _ingest_config(hierarchy_enabled: bool) -> dict[str, object]:
             "fallback_provider": "ollama",
             "model": "nomic-embed-text",
             "base_url": "http://localhost:65432",
-            "dimensions": 768,
+            "dimensions": 4096,
             "batch_size": 32,
         },
         "ingest": {"hierarchy": {"enabled": hierarchy_enabled}},

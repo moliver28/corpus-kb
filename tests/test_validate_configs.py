@@ -615,6 +615,7 @@ class TestRuntimeWebKeys:
         # `delay_seconds: 1`), so the validator must not reject it; a bool
         # stays rejected for every non-bool key.
         config = {
+            "extraction": {"backend": "pgml"},
             "search": {
                 "exclude_degraded": True,
                 "qa_context_in_fts": False,

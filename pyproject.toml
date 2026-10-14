@@ -278,16 +278,17 @@ help = "Vulture dead-code scan; tests/whitelist.py carries verified false positi
 cmd = "deptry src/"
 help = "deptry unused/missing dependency scan (config in [tool.deptry])"
 
-# Ratchet plan (current codebase has 1 F + 15 D blocks outside the Wave-3
-# file scope, so absolute B cannot pass yet):
-#   W4+: split tools/ingest_common._run_locked_stages (F) -> max-absolute D
+# Ratchet plan (W4C: the last F block is gone — tools/ingest_common.
+# _run_locked_stages was split into private stage helpers in the same file,
+# so absolute D now passes; 15 D blocks remain outside Wave-3/4 file scope):
 #   W5+: fix the 15 D blocks -> max-absolute C; then C -> B.
+#   (C is the next ratchet step; absolute B is the end state.)
 # max-average B is the current-passing mean; any broad complexity
 # regression trips it. NOTE for future editors: no percent sign in this
 # file — radon (xenon's engine) parses pyproject via configparser and
 # rejects percent characters.
 [tool.poe.tasks.complexity]
-cmd = "xenon src/ --max-absolute F --max-average B"
+cmd = "xenon src/ --max-absolute D --max-average B"
 help = "Xenon complexity gate (ratchet to --max-absolute B; see comment above)"
 
 # Needs coverage data first: run ``poe test-cov`` to generate coverage.xml,

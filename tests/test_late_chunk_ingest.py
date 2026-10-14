@@ -745,6 +745,7 @@ def test_runtime_config_keys_declare_late_chunking():
 
 def _runtime_config(late_chunking: object = True) -> dict[str, object]:
     return {
+        "extraction": {"backend": "pgml"},
         "search": {
             "exclude_degraded": True,
             "qa_context_in_fts": False,

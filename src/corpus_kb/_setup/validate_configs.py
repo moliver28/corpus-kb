@@ -522,6 +522,10 @@ def validate_ingestion_block(config: dict[str, Any]) -> list[str]:
 
 # dotted key -> expected YAML type (bool/str/int/float/list/dict)
 RUNTIME_CONFIG_KEYS: dict[str, type] = {
+    # extraction.backend is the PREFERRED extraction-backend key
+    # (graph.extractor is the accepted legacy alias — see
+    # corpus_kb.extraction.extraction_backend_name).
+    "extraction.backend": str,
     "search.exclude_degraded": bool,
     "search.qa_context_in_fts": bool,
     "search.matryoshka_enabled": bool,
