@@ -144,6 +144,10 @@ dev = [
     "xenon>=0.9",
     "diff-cover>=9.0",
     "pre-commit>=4.0",
+    # Plain-language gate (zero-drift Wave 5A): Flesch-Kincaid grading for
+    # tests/test_plain_language.py (`pytest -m ste`). Dev-only on purpose —
+    # no runtime dependency.
+    "textstat>=0.7",
 ]
 
 [build-system]
@@ -243,6 +247,7 @@ DEP003 = ["httpx"]
 markers = [
     "requires_ollama: mark test as needing a running Ollama service",
     "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
+    "ste: ASD-STE100 plain-language gate (docs, error strings, tool docstrings)",
 ]
 asyncio_mode = "auto"
 
