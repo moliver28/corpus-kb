@@ -108,7 +108,7 @@ def _validate_array(node: object, schema: dict[str, Any], path: str) -> list[str
     return errors
 
 
-def _check_scalar_type(node: object, expected: object, path: str) -> list[str]:
+def _check_scalar_type(node: object, expected: Any, path: str) -> list[str]:
     """Scalar type check (string/number/integer/boolean); empty when ok."""
     ok = {
         "string": isinstance(node, str),

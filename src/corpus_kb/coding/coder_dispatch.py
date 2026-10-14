@@ -213,7 +213,7 @@ def _routed_confidence(
     return effective_confidence, judgment_block
 
 
-def _quote_gate(output: CoderWindowOutput, chunk_text: str) -> tuple[str, bool, str]:
+def _quote_gate(output: CoderWindowOutput, chunk_text: str) -> tuple[str, bool, str | None]:
     """Verbatim-quote gate (assign only; a reject carries no quote to verify).
 
     Returns (quote_status, quote_ok, stored_quote); a normalized match stores
@@ -239,7 +239,7 @@ async def _write_cell(
     model: str,
     row: dict[str, Any],
     output: CoderWindowOutput,
-    entropy: float,
+    entropy: float | None,
     chunk_text: str,
     qa_used: bool,
     judgment: JudgmentMeanResult | None,
