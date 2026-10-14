@@ -126,8 +126,10 @@ async def test_pgml_vector_arm_uses_materialized_candidate_cte() -> None:
     assert "cv.tenant_id = $3" in cte_body
     # ...and the exact ordering is applied OUTSIDE over the materialized set.
     outer = sql.split(") SELECT", 1)[1]
-    assert "ORDER BY candidate.score + 0 DESC" in outer
-    assert outer.index("ORDER BY candidate.score + 0 DESC") < outer.index("LIMIT")
+    assert "ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC" in outer
+    assert outer.index("ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC") < outer.index(
+        "LIMIT"
+    )
 
 
 @pytest.mark.asyncio
@@ -145,7 +147,7 @@ async def test_ollama_plain_arm_uses_materialized_candidate_cte() -> None:
     assert "ORDER BY cv.vector <=> $1::vector" in cte_body
     assert "cv.tenant_id = $2" in cte_body
     outer = sql.split(") SELECT", 1)[1]
-    assert "ORDER BY candidate.score + 0 DESC" in outer
+    assert "ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC" in outer
 
 
 @pytest.mark.asyncio
@@ -163,7 +165,7 @@ async def test_matryoshka_arm_materializes_candidates_and_reorders_outside() -> 
     assert "WITH cand AS MATERIALIZED" in sql
     outer = sql.split(") SELECT", 1)[1]
     # Exact full-dimension distance ordering OUTSIDE the materialized CTE.
-    assert "ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC" in outer
+    assert "ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC, chunks.chunk_id ASC" in outer
 
 
 @pytest.mark.asyncio
@@ -182,7 +184,7 @@ async def test_search_similar_uses_materialized_candidate_cte() -> None:
     sql = sqls[0]
     assert "WITH candidate AS MATERIALIZED" in sql
     outer = sql.split(") SELECT", 1)[1]
-    assert "ORDER BY candidate.score + 0 DESC" in outer
+    assert "ORDER BY candidate.score + 0 DESC, c.chunk_id ASC" in outer
 
 
 @pytest.mark.asyncio
@@ -383,7 +385,7 @@ async def test_selective_filter_routes_to_exact_scan_arm(monkeypatch) -> None:
     cte_body = sql.split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
     assert "ORDER BY" not in cte_body, "exact arm must not order inside the CTE"
     outer = sql.split(") SELECT", 1)[1]
-    assert "ORDER BY candidate.score + 0 DESC" in outer
+    assert "ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC" in outer
     assert "documents.source_type = $4" in sql
 
 
