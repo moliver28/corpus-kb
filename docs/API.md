@@ -155,6 +155,15 @@ remedy. The status is `degraded_empty` when results came back empty AND at
 least one impairment was recorded — with the remedy: start Ollama, then
 run `corpus-kb ingest-reembed`.
 
+### Result ordering
+
+Search results have a deterministic order: score descending, then chunk id
+ascending. Tied scores never permute between runs. A harness can snapshot
+results and compare them across runs. This holds for `/api/search`,
+`/api/search/similar`, and `/api/search/context`. The research search
+endpoints order fused ties by unit or exchange id the same way. Migration
+024 sets this tie order inside `corpus.rrf_fusion`.
+
 ### POST /api/search/similar
 
 Find chunks similar to a given chunk.
