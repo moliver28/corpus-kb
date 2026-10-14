@@ -158,20 +158,32 @@ async def delete_document(
     document_id: str,
     pg_pool: asyncpg.Pool,
     config: dict[str, object] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
 ) -> dict[str, object]:
-    """Delete a document by ID and all related rows."""
+    """Delete a document row by ID.
+
+    Chunks, vectors, tags, metadata, and research rows cascade. Entity and
+    relation rows stay. Their document and chunk links become NULL.
+    Event-store rows persist.
+    """
     try:
         async with pg_pool.acquire() as conn:
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
-                "00000000-0000-0000-0000-000000000001",
+                tenant_id,
             )
             await conn.execute(
                 "DELETE FROM documents WHERE doc_id = $1",
                 document_id,
             )
-    except Exception as exc:
-        return {"status": "error", "message": f"Delete failed: {exc}"}
+    except Exception:
+        return {
+            "status": "error",
+            "message": (
+                f"Could not delete document {document_id}. "
+                "Check the document ID and tenant, then retry."
+            ),
+        }
     return {"status": "success", "document_id": document_id}
 
 

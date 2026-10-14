@@ -34,7 +34,9 @@ async def test_tool_signatures_unchanged() -> None:
         # takes the same pagination + tenant arguments as the HTTP/socket
         # surfaces (defaults preserved).
         "list_documents": {"pg_pool", "config", "tenant_id", "limit", "offset"},
-        "delete_document": {"document_id", "pg_pool", "config"},
+        # W1B honesty wave: delete_document honors its tenant (same
+        # placeholder default as before).
+        "delete_document": {"document_id", "pg_pool", "config", "tenant_id"},
         # S5: ingest front door surfaces (tools/ingest_surface_tools.py).
         "ingest_status": {"pg_pool", "config", "tenant_id", "limit"},
         "ingest_reembed": {"pg_pool", "config", "tenant_id", "limit", "doc_id"},
