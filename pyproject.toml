@@ -27,6 +27,10 @@ authors = [
 
 dependencies = [
     "mcp[cli]>=1.0",
+    # httpx is imported directly (web fetch, HTTP surfaces, MCP client glue).
+    # Floor matches ollama's own httpx requirement so one shared resolver
+    # range covers both (previously transitive-only; zero-drift Wave 4B).
+    "httpx>=0.27",
     "ollama>=0.4",
     "pyyaml>=6.0",
     "tree-sitter>=0.23",
