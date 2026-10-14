@@ -314,7 +314,7 @@ async def delete_document(request: Request) -> JSONResponse:
 
     doc_id = request.path_params.get("doc_id")
     cmd = DeleteDocumentCommand(doc_id=UUID(doc_id))
-    result = get_command_handler().handle_delete_document(cmd)
+    result = await get_command_handler().handle_delete_document(cmd)
     return JSONResponse(result)
 
 
