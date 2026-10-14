@@ -1,10 +1,25 @@
-"""Command handler — dispatches commands to domain aggregates.
+"""Command handler — the event-sourcing envelope over the shared ingest tools.
 
-Wraps the ingest pipeline (partition → chunk → embed → extract → store)
-and creates eventsourcing aggregates + events for audit trail.
+The INGEST pipeline lives in the tool layer (``tools.ingest_tools.ingest_file``
+— binary-safe, strategy-aware; ``tools.ingest_common.ingest_text`` — document
+type whitelist). CLI, MCP, HTTP and socket surfaces all go through those ONE
+implementations; this handler keeps only the eventsourcing responsibility:
+run the shared tool function, then create a Document aggregate and fire
+Ingested + ChunksAdded events for the audit trail.
+
+Envelope contract (zero drift across surfaces): the HTTP/socket response is
+the tool envelope EXACTLY, plus the DECLARED additive wrapper keys
+``aggregate_id`` / ``aggregate_version`` (and ``event_sourcing_error`` only
+when event sourcing failed after a successful pipeline).
+
+``source_type`` means ONE thing on every surface: on file ingest it names an
+optional INGESTION STRATEGY (validated against the registry); on text ingest
+it is the DOCUMENT type under the shared whitelist. The detected document
+type comes back in the envelope and is copied into the event row, so the
+ledger stays coherent.
 
 Usage:
-    from handlers.command_handler import get_command_handler
+    from corpus_kb.handlers.command_handler import get_command_handler
     handler = get_command_handler(pool)
     result = await handler.handle_ingest_file(IngestFileCommand(file_path='test.py'))
 """
@@ -12,7 +27,6 @@ Usage:
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from uuid import UUID
 
 import asyncpg
@@ -27,19 +41,19 @@ from corpus_kb.domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
-from corpus_kb.tools.ingest_common import load_config_or_pass, run_pipeline
+from corpus_kb.tools.ingest_common import ingest_text as ingest_text_tool
+from corpus_kb.tools.ingest_common import load_config_or_pass
+from corpus_kb.tools.ingest_tools import ingest_file as ingest_file_tool
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 class CommandHandler:
     """Dispatches commands to domain aggregates via the eventsourcing app.
 
-    For ingest commands: calls the ingest pipeline (async), then
-    creates a Document aggregate + fires events for audit trail.
-    For entity/relation commands: creates aggregates directly.
+    For ingest commands: run the shared tool pipeline (partition → chunk →
+    embed → extract → store), then create a Document aggregate + fire events
+    for audit trail. For entity/relation commands: create aggregates directly.
     """
 
     def __init__(
@@ -59,22 +73,36 @@ class CommandHandler:
         return self._app
 
     async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, object]:
-        """Ingest a file: run pipeline → create Document aggregate → fire events."""
-        path = Path(cmd.file_path)
-        if not path.exists():
-            raise FileNotFoundError(f"File not found: {cmd.file_path}")
-
-        text = path.read_text(encoding="utf-8")
-        source_type = cmd.source_type or _detect_source_type(cmd.file_path)
-
-        return await self._run_ingest(text, source_type, cmd.file_path, cmd.tenant_id)
+        """Ingest a file: shared tool pipeline → Document aggregate → events."""
+        if self._pool is None:
+            raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
+        result = await ingest_file_tool(
+            cmd.file_path,
+            self._pool,
+            self._config,
+            tenant_id=str(cmd.tenant_id),
+            source_type=cmd.source_type,
+        )
+        return self._attach_events(result, source=cmd.file_path, tenant_id=cmd.tenant_id)
 
     async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
-        """Ingest raw text: run pipeline → create Document aggregate → fire events."""
-        return await self._run_ingest(cmd.text, cmd.source_type, cmd.source, cmd.tenant_id)
+        """Ingest raw text: shared tool pipeline (whitelist included) → events."""
+        if self._pool is None:
+            raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
+        result = await ingest_text_tool(
+            cmd.text,
+            self._pool,
+            source_type=cmd.source_type,
+            config=self._config,
+            tenant_id=str(cmd.tenant_id),
+            source=cmd.source,
+        )
+        return self._attach_events(result, source=cmd.source, tenant_id=cmd.tenant_id)
 
     async def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, object]:
-        """Ingest all files in a directory."""
+        """Ingest all files in a directory (each file via the shared tool path)."""
+        from pathlib import Path
+
         dir_path = Path(cmd.directory_path)
         if not dir_path.is_dir():
             raise FileNotFoundError(f"Directory not found: {cmd.directory_path}")
@@ -154,34 +182,21 @@ class CommandHandler:
         logger.info("Deleted document %s", cmd.doc_id)
         return {"status": "success", "doc_id": str(cmd.doc_id)}
 
-    async def _run_ingest(
+    def _attach_events(
         self,
-        text: str,
-        source_type: str,
-        source_path: str,
+        result: dict[str, object],
+        source: str,
         tenant_id: UUID,
     ) -> dict[str, object]:
-        """Run the ingest pipeline and create eventsourcing aggregates.
+        """Attach the eventsourcing audit trail to a SUCCESSFUL tool envelope.
 
-        The pipeline (ingest_common.run_pipeline) handles:
-        partition → chunk → embed → extract → store (Postgres directly)
-
-        After the pipeline succeeds, we create a Document aggregate and
-        fire Ingested + ChunksAdded events for the event sourcing audit trail.
+        The Document aggregate records the DOCUMENT source type from the
+        envelope (the pipeline's detection result) — never the caller's
+        strategy override — so the event ledger stays coherent. Any
+        non-success envelope (error / partial / skipped) passes through
+        unchanged: the tool layer already reported honestly, and there is
+        no completed ingest to audit.
         """
-        if self._pool is None:
-            raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
-
-        # 1. Run the pipeline (async, writes directly to Postgres)
-        result = await run_pipeline(
-            text,
-            source_type,
-            source_path,
-            self._config,
-            self._pool,
-            str(tenant_id),
-        )
-
         if result.get("status") != "success":
             return result
 
@@ -189,8 +204,8 @@ class CommandHandler:
         try:
             doc = Document(
                 tenant_id=tenant_id,
-                source=source_path,
-                source_type=source_type,
+                source=source,
+                source_type=str(result.get("source_type", "text")),
                 file_size=result.get("size_bytes"),
             )
             doc.add_chunks(
@@ -208,16 +223,6 @@ class CommandHandler:
         return result
 
 
-def _detect_source_type(file_path: str) -> str:
-    """Detect source type from file extension."""
-    ext = Path(file_path).suffix.lower()
-    if ext in (".py", ".js", ".ts", ".tsx", ".rs", ".go", ".java", ".c", ".cpp", ".h"):
-        return "code"
-    if ext in (".md", ".rst", ".txt"):
-        return "markdown" if ext != ".txt" else "text"
-    return "text"
-
-
 # ============================================================================
 # Singleton
 # ============================================================================
@@ -229,10 +234,17 @@ def get_command_handler(
     config: dict[str, object] | None = None,
     pool: asyncpg.Pool | None = None,
 ) -> CommandHandler:
-    """Get or create the singleton CommandHandler."""
+    """Get or create the singleton CommandHandler.
+
+    Passing ``pool`` on an existing singleton updates its pool, so a lazily
+    wired surface (HTTP route / socket dispatch after server startup) always
+    sees the live pool server_wiring created.
+    """
     global _command_handler
     if _command_handler is None:
         _command_handler = CommandHandler(config, pool)
+    elif pool is not None:
+        _command_handler._pool = pool
     return _command_handler
 
 
