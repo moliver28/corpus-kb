@@ -230,7 +230,7 @@ The `set_config` third argument must be `true`. Without a transaction, the
 setting does not stick. The code path for this is
 `src/corpus_kb/storage/tenant_conn.py` (`tenant_connection`).
 
-Pointers: `corpus-kb doctor` prints your environment-variable status and
+Pointers: `corpus-kb doctor` prints your environment-variable status. It
 warns about set-but-unread `CORPUS_KB_*` variables. The full env-var table
 lives in [ADMIN.md](ADMIN.md).
 

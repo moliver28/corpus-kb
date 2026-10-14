@@ -106,8 +106,8 @@ command. Each command says what it does and what success looks like.
 
    This starts the bundled Postgres container and runs the migrations.
    Success: the last line says the setup finished. The database then
-   answers on host port **5433** (the container's 5432 is published as
-   5433; the packaged config already points there). No Docker? See
+   answers on host port **5433**. That is the container's 5432, published
+   as 5433. The packaged config already points there. No Docker? See
    [docs/INSTALL.md](docs/INSTALL.md) for the native-Postgres path
    (port 5432).
 
@@ -128,11 +128,11 @@ command. Each command says what it does and what success looks like.
    ```
 
    The bundled schema stores 4096-dimension vectors. `qwen3-embedding`
-   produces exactly 4096. The older default `nomic-embed-text` (768d)
-   does not fit: real (non-degraded) ingest into the bundled schema
-   needs a 4096-dimension model, or you must change the column. The
-   ingest guard and `corpus-kb doctor` catch a mismatch and print the
-   fix. See [docs/OPERATIONS.md](docs/OPERATIONS.md).
+   produces exactly 4096. The older `nomic-embed-text` (768d) does not
+   fit. Real (non-degraded) ingest into the bundled schema needs a
+   4096-dimension model. Or you change the column yourself. The ingest
+   guard and `corpus-kb doctor` catch a mismatch and print the fix.
+   See [docs/OPERATIONS.md](docs/OPERATIONS.md).
 
 6. Point the runtime at that model.
 
