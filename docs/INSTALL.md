@@ -217,11 +217,11 @@ HTTP mode (starts HTTP + JSON-RPC socket + projections):
 corpus-kb start --transport http --port 8010
 ```
 
-MCP stdio mode for editor agents is **not implemented yet** —
-`corpus-kb start --transport stdio` and `corpus-kb --transport stdio` exit
-with a clear message instead of pretending. Editors should call the HTTP
-API (see [API.md](API.md)) until the MCP server lands; the pre-staged
-config files in `mcp-configs/` will work unchanged once it does.
+MCP stdio mode for editor agents: `corpus-kb --transport stdio`.
+The server registers the catalogue operations plus the research/coding/
+release surfaces as MCP tools and serves them over stdin/stdout. The
+config files in `mcp-configs/` launch exactly this command. HTTP stays
+available side by side (see [API.md](API.md)).
 
 ---
 

@@ -200,60 +200,57 @@ Every table has row-level security policies keyed to `app.current_tenant_id`. Th
 
 ## MCP tool reference
 
-The MCP stdio server is **not implemented yet** (see
-[README — Editor integration](../README.md#editor-integration)); the table
-below is the tool surface the `mcp-configs/` files pre-stage for it. Today
-these capabilities are reachable over HTTP ([API.md](API.md)) and, for the
-research/coding surfaces and the ingest front door, as first-class CLI
-commands ([research.md](research.md), [INGESTION.md](INGESTION.md)).
+The MCP stdio server is real: `corpus-kb --transport stdio` serves the
+tools below over stdin/stdout (`src/corpus_kb/mcp_server.py`). The tool
+list is GENERATED from the same registry the CLI and HTTP surfaces use —
+the parity catalogue (`src/corpus_kb/contracts/`) plus the research/coding
+rows in `src/corpus_kb/surface_registry.py` — so a new catalogue row gains
+an MCP tool automatically, and the parity gate
+(`tests/test_surface_parity_deep.py`) holds every surface to the same
+envelope.
 
-When the MCP server lands, editors will be able to call these tools (`ingest_status`
-and `ingest_reembed` are registered in `surface_registry.py` and pre-staged in the
-editor configs' autoApprove lists):
+Honest caveats:
 
-| Category | Tool | Description |
-|----------|------|-------------|
-| Ingest | `ingest_file` | Ingest a single file |
-| Ingest | `ingest_text` | Ingest raw text with a type hint and optional source identifier |
-| Ingest | `ingest_directory` | Recursively ingest a directory |
+- The graph/query family (`add_entity`, `add_relation`, `query`,
+  `verify_answer`) is reachable over HTTP and the JSON-RPC socket; the
+  catalogue gives it no MCP surface yet.
+- The `autoApprove` lists in `mcp-configs/*.json` keep legacy names from
+  the original design (for example `search_context`, `sql_query`) that
+  have no MCP tool today. Unknown names are harmless: they never match.
+- Interactive demos (`research demo`) stay CLI-only by design.
+
+| Ingest | `ingest_text` | Ingest raw text with a source label and a document type |
+| Ingest | `ingest_file` | Ingest one file; the document type is auto-detected |
+| Ingest | `ingest_directory` | Ingest the supported files under one directory in one walk |
+| Ingest | `ingest_url` | Fetch (or crawl) a website and ingest its HTML pages |
 | Ingest | `ingest_status` | Recent runs from the `ingest_runs` ledger |
 | Ingest | `ingest_reembed` | Re-embed degraded (zero-vector) chunks |
-| Ingest | `list_documents` | List ingested documents |
-| Ingest | `delete_document` | Delete a document |
-| Search | `search` | Hybrid search |
-| Search | `search_context` | Search with surrounding chunks |
-| Search | `search_similar` | Find chunks similar to a given chunk |
-| Search | `retrieve_context` | Search results formatted for LLM context |
-| SQL | `sql_query` | Run a read-only SQL query |
-| SQL | `sql_execute` | Run a safe write SQL query |
-| SQL | `sql_tables` | List tables and schemas |
-| Graph | `add_entity` | Add an entity |
-| Graph | `add_relation` | Add a relation |
-| Graph | `search_graph` | Search entities |
-| Graph | `bfs` | BFS traversal |
-| Graph | `get_entity_relations` | Get relations for an entity |
-| Tags | `add_tag` | Create a tag |
-| Tags | `tag_document` | Apply a tag |
-| Tags | `untag_document` | Remove a tag |
-| Tags | `get_document_tags` | List tags on a document |
-| Metadata | `set_metadata` | Set metadata |
-| Metadata | `get_metadata` | Retrieve metadata |
-| Version | `list_versions` | List event store versions |
-| Version | `create_tag` | Tag a version |
-| Version | `checkout_version` | Time-travel read |
-| Version | `restore_version` | Restore to a version |
-| Version | `create_branch` | Create a branch |
-| Version | `list_branches` | List branches |
-| Version | `switch_branch` | Switch branch |
-| Stats | `get_stats` | Database statistics |
-| Stats | `query_document_stats` | Aggregate document statistics |
+| Documents | `list_documents` | List ingested documents |
+| Documents | `delete_document` | Delete one document by ID |
+| Search | `search` | Hybrid vector + full-text search |
+| Research | `research_ingest_transcript` | Ingest one transcript: turns, roles, exchanges |
+| Research | `research_ingest` | Dynamic ingest of file/dir/glob with dedup |
+| Research | `notebook_ask` | Grounded Q&A with cited sentences |
+| Research | `notebook_evidence` | Evidence for one code: ranked units |
+| Research | `notebook_uncoded` | Uncoded units ranked by margin |
+| Research | `notebook_overlap` | Code overlap: flagged pairs and confusion |
+| Coding | `coding_run` | Deductive coding run against a codebook version |
+| Coding | `inductive_run` | Inductive pass: summaries, clusters, proposed codes |
+| Coding | `codebook_promote` | Promote a proposed code (human gate) |
+| Review | `review_execute` | Record one accept/override review decision |
+| Release | `release_assess` | Compose every release gate; writes nothing |
+| Release | `release_request` | Open a draft release pinned to the content hash |
+| Release | `release_review` | Show the review packet: gates, waivers, next actions |
+| Release | `release_execute` | Execute the release with a named approver |
+| Release | `release_status` | Stage, release state, blockers, next command |
+| Release | `release_compare` | Diff the manifests of two releases |
+| Cycle | `research_cycle` | Full pipeline with in/on/out-of-loop postures and halt gates |
 
-The full HTTP equivalents are listed in [API.md](API.md). The
-research/coding/notebook surfaces (ingest-transcript, coding run/inductive,
-codebook promote, review accept/override, governance report, notebook
-ask/evidence/uncoded/overlap, research cycle/demo) follow the same naming
-scheme — see the surface registry in `src/corpus_kb/surface_registry.py`
-for the authoritative CLI↔MCP-name mapping.
+The HTTP equivalents are listed in [API.md](API.md); the CLI command
+paths live in the surface registry (`src/corpus_kb/surface_registry.py`),
+the authoritative CLI↔MCP-name mapping. Each tool takes the same
+parameters as its HTTP route; every tool returns the shared envelope its
+catalogue row declares.
 
 ---
 

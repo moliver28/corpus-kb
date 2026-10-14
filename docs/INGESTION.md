@@ -35,9 +35,9 @@ corpus-kb start --transport http --port 8010
 corpus-kb ingest path/to/notes.md
 ```
 
-The MCP-over-stdio server is **not implemented yet**:
-`corpus-kb --transport stdio` exits with a clear message pointing at the
-HTTP server instead of pretending to speak MCP.
+`corpus-kb --transport stdio` serves the ingest tools (`ingest_text`,
+`ingest_file`, `ingest_directory`, `ingest_url`, `ingest_status`,
+`ingest_reembed`) over MCP, next to the HTTP routes shown above.
 
 ## Pipeline Stages
 

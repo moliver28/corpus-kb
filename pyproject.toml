@@ -217,12 +217,11 @@ DEP002 = [
     # an import edge; rich may be a typer extra).
     "rich",
     "pgvector",
-    # Declared for surfaces with no import edge yet: the MCP stdio server is
-    # pre-staged but unimplemented, and the tree-sitter grammars belong to a
-    # code chunker that no longer exists in the tree. Ratchet follow-up:
-    # either wire the surface or drop the dependency (with
-    # licenses.lock.json regenerated) in a dependency-scoped PR.
-    "mcp",
+    # Declared for surfaces with no import edge: the tree-sitter grammars
+    # belong to a code chunker that no longer exists in the tree. Ratchet
+    # follow-up: drop the dependency (with licenses.lock.json regenerated)
+    # in a dependency-scoped PR. (The `mcp` entry left this list in Wave 4A:
+    # mcp_server.py imports the SDK, so deptry sees the edge.)
     "tree-sitter",
     "tree-sitter-python",
     "tree-sitter-javascript",

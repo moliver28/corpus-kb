@@ -1,4 +1,4 @@
-"""Zero-drift flagship gate: envelope parity across shared tool / HTTP / socket.
+"""Zero-drift flagship gate: envelope parity across shared tool / HTTP / socket / MCP.
 
 The catalogue in ``corpus_kb.contracts`` is THE source of truth: this test
 and ``corpus-kb operations`` iterate the SAME rows, so they cannot diverge.
@@ -9,14 +9,18 @@ catalogue declares:
       through (the tool layer; for handler-paired socket/HTTP ops it pins
       the shared envelope construction);
   (b) ``http``    — the Starlette route via TestClient (stubbed pool);
-  (c) ``socket``  — the JSON-RPC request-processing entry point.
+  (c) ``socket``  — the JSON-RPC request-processing entry point;
+  (d) ``mcp``     — the registry-generated MCP server (Wave 4A) called
+      through the SDK's in-memory transport, no stdio subprocess.
 
 Per operation the gate asserts:
 
   1. SUCCESS envelope key-sets are equal across legs, minus the additive
      keys the catalogue declares for that surface (``http_extra`` /
      ``socket_extra``). An undeclared extra key on ONE surface fails with
-     a printed diff.
+     a printed diff. The MCP surface declares NO extras: the tool
+     functions ARE the envelope, so its key-set must equal the shared
+     leg's exactly.
   2. The catalogue's ``envelope_keys`` are all present on the shared leg,
      so the documented contract holds on the real envelopes.
 
@@ -37,7 +41,7 @@ import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
@@ -248,8 +252,10 @@ async def _shared_add_relation(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def _release_leg(fn_name: str, http: str, body: dict[str, Any], **tool_kwargs: Any) -> Any:
-    """Shared + HTTP legs for one release op (tool leg, then POST route)."""
+def _release_leg(
+    fn_name: str, http: str, body: dict[str, Any], mcp_args: dict[str, Any], **tool_kwargs: Any
+) -> Any:
+    """Shared + HTTP + MCP legs for one release op."""
     fn: Callable[..., Any] = getattr(release_tools_module, fn_name)
 
     async def shared(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -258,7 +264,7 @@ def _release_leg(fn_name: str, http: str, body: dict[str, Any], **tool_kwargs: A
     def http_spec(ctx: dict[str, Any]) -> dict[str, Any]:
         return {"method": "post", "path": http, "json": dict(body)}
 
-    return shared, http_spec
+    return {"shared": shared, "http": http_spec, "mcp": _mcp(mcp_args)}
 
 
 async def _shared_release_compare(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -296,11 +302,21 @@ class _Leg:
     shared: Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
     http: Callable[[dict[str, Any]], dict[str, Any]]
     socket: Callable[[dict[str, Any]], tuple[str, dict[str, Any]]] | None = None
+    # The MCP tool arguments (ops with an MCP surface only; the catalogue
+    # registers those tools under the operation's own name).
+    mcp: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
 
 def _sock(method: str, params: dict[str, Any]) -> Any:
     def spec(ctx: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         return method, dict(params)
+
+    return spec
+
+
+def _mcp(args: dict[str, Any]) -> Any:
+    def spec(ctx: dict[str, Any]) -> dict[str, Any]:
+        return dict(args)
 
     return spec
 
@@ -317,6 +333,7 @@ LEGS: dict[str, _Leg] = {
             {"text": TEXT_BODY, "source": "parity-seed", "source_type": "text"},
         ),
         _sock("ingest_text", {"text": TEXT_BODY, "source": "parity-seed"}),
+        _mcp({"text": TEXT_BODY, "source": "parity-seed", "source_type": "text"}),
     ),
     "ingest_file": _Leg(
         _shared_ingest_file,
@@ -326,6 +343,7 @@ LEGS: dict[str, _Leg] = {
             "json": {"file_path": str(ctx[_FILE_PATH])},
         },
         lambda ctx: ("ingest_file", {"file_path": str(ctx[_FILE_PATH])}),
+        lambda ctx: {"file_path": str(ctx[_FILE_PATH])},
     ),
     "ingest_directory": _Leg(
         lambda ctx: _shared_ingest_directory(ctx),
@@ -335,24 +353,29 @@ LEGS: dict[str, _Leg] = {
             "json": {"directory_path": str(ctx[_DIR_PATH])},
         },
         # No socket method exists; the catalogue row records that.
+        mcp=lambda ctx: {"directory_path": str(ctx[_DIR_PATH])},
     ),
     "ingest_url": _Leg(
         _shared_ingest_url,
         _post("/api/ingest/url", {"url": "https://parity.example.com"}),
         _sock("ingest_url", {"url": "https://parity.example.com"}),
+        _mcp({"url": "https://parity.example.com"}),
     ),
     "ingest_status": _Leg(
         _shared_ingest_status,
         _get("/api/ingest/status", {"limit": 5}),
+        mcp=_mcp({"limit": 5}),
     ),
     "ingest_reembed": _Leg(
         _shared_ingest_reembed,
         _post("/api/ingest/reembed", {}),
+        mcp=_mcp({}),
     ),
     "search": _Leg(
         _shared_search,
         _post("/api/search", {"query": "parity probe", "k": 3}),
         _sock("search", {"query": "parity probe", "k": 3}),
+        _mcp({"query": "parity probe", "k": 3}),
     ),
     "query": _Leg(
         _shared_query,
@@ -368,11 +391,13 @@ LEGS: dict[str, _Leg] = {
         _shared_list_documents,
         _get("/api/documents", {"limit": 5, "offset": 0}),
         _sock("list_documents", {"limit": 5, "offset": 0}),
+        _mcp({"limit": 5, "offset": 0}),
     ),
     "delete_document": _Leg(
         lambda ctx: _shared_delete_document(ctx),
         lambda ctx: {"method": "delete", "path": f"/api/documents/{DOC_ID}"},
         # No socket method exists; the catalogue row records that.
+        mcp=_mcp({"document_id": DOC_ID}),
     ),
     "add_entity": _Leg(
         _shared_add_entity,
@@ -401,36 +426,45 @@ LEGS: dict[str, _Leg] = {
         ),
     ),
     "release_assess": _Leg(
-        *_release_leg(
+        **_release_leg(
             "release_assess",
             "/api/release/assess",
+            {"codebook_version_id": CV},
             {"codebook_version_id": CV},
             codebook_version_id=CV,
         )
     ),
     "release_request": _Leg(
-        *_release_leg(
+        **_release_leg(
             "release_request",
             "/api/release/request",
+            {"codebook_version_id": CV, "creator": "parity"},
             {"codebook_version_id": CV, "creator": "parity"},
             codebook_version_id=CV,
             creator="parity",
         )
     ),
     "release_review": _Leg(
-        *_release_leg(
+        **_release_leg(
             "release_review",
             "/api/release/review",
+            {"codebook_version_id": CV, "release_id": RELEASE_ID},
             {"codebook_version_id": CV, "release_id": RELEASE_ID},
             codebook_version_id=CV,
             release_id=RELEASE_ID,
         )
     ),
     "release_execute": _Leg(
-        *_release_leg(
+        **_release_leg(
             "release_execute",
             "/api/release/release",
             {"codebook_version_id": CV, "release_id": RELEASE_ID, "approver": "parity"},
+            {
+                "codebook_version_id": CV,
+                "release_id": RELEASE_ID,
+                "approver": "parity",
+                "waivers": [["gate", "parity waiver"]],
+            },
             codebook_version_id=CV,
             release_id=RELEASE_ID,
             approver="parity",
@@ -440,6 +474,7 @@ LEGS: dict[str, _Leg] = {
     "release_status": _Leg(
         lambda ctx: _shared_release_status(ctx),
         _get("/api/release/status", {"codebook_version_id": CV}),
+        mcp=_mcp({"codebook_version_id": CV}),
     ),
     "release_compare": _Leg(
         _shared_release_compare,
@@ -447,16 +482,27 @@ LEGS: dict[str, _Leg] = {
             "/api/release/compare",
             {"codebook_version_id": CV, "old_release_id": RELEASE_ID, "new_release_id": RELEASE_ID},
         ),
+        mcp=_mcp(
+            {
+                "codebook_version_id": CV,
+                "old_release_id": RELEASE_ID,
+                "new_release_id": RELEASE_ID,
+            }
+        ),
     ),
     "research_ingest_transcript": _Leg(
         _shared_transcript,
         _post("/api/research/ingest-transcript", {"file_path": "interview.txt"}),
+        mcp=_mcp({"file_path": "interview.txt"}),
     ),
     "notebook_ask": _Leg(
         _shared_notebook_ask,
         _post(
             "/api/notebook/ask",
             {"project_id": PROJECT_ID, "question": "parity question?", "retrieval_only": True},
+        ),
+        mcp=_mcp(
+            {"question": "parity question?", "project_id": PROJECT_ID, "retrieval_only": True}
         ),
     ),
 }
@@ -723,11 +769,17 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     file_path = tmp_path / "parity.txt"
     file_path.write_text(TEXT_BODY, encoding="utf-8")
 
+    # Wave 4A: one registry-generated MCP server over the SAME stubbed pool
+    # and config — the mcp leg proves the generated tools return the shared
+    # envelope.
+    from corpus_kb.mcp_server import build_mcp_server
+
     yield {
         "pool": pool,
         "config": _offline_config(),
         "client": TestClient(create_http_app()),
         "server": JSONRPCServer(),
+        "mcp_server": build_mcp_server(pool, _offline_config()),
         _FILE_PATH: file_path,
         _DIR_PATH: tmp_path,
     }
@@ -748,6 +800,13 @@ def test_catalogue_and_legs_agree() -> None:
     assert set(LEGS) == op_names, f"catalogue/legs drift: {sorted(op_names ^ set(LEGS))}"
     for op in OPERATIONS:
         assert len(op.surfaces) >= 2, f"{op.name} must have two or more surfaces"
+        # Wave 4A: every catalogue MCP surface gets an MCP leg (and only
+        # those do) — the MCP server is generated from the same rows.
+        has_surface = bool(surfaces_of(op, "mcp"))
+        has_leg = LEGS[op.name].mcp is not None
+        assert has_surface == has_leg, (
+            f"{op.name}: MCP surface/leg mismatch (surface={has_surface}, leg={has_leg})"
+        )
 
 
 def test_catalogue_matches_surface_registry() -> None:
@@ -831,7 +890,33 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
         keys["socket"] = set(rpc["result"])
         allowed["socket"] = set(op.socket_extra)
 
+    if leg.mcp is not None:
+        # The MCP leg: in-memory client against the generated server. MCP
+        # adds NO envelope keys — the tool functions ARE the envelope — so
+        # the allowed-extra set stays empty and drift fails loudly.
+        payload = await _call_mcp_tool(ctx["mcp_server"], op.name, leg.mcp(ctx))
+        keys["mcp"] = set(payload)
+        allowed["mcp"] = set()
+
     _assert_parity(op.name, keys, allowed)
+
+
+async def _call_mcp_tool(
+    mcp_server: Any, tool_name: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    """One tools/call round-trip over the SDK's in-memory transport."""
+    from mcp.client._memory import InMemoryTransport
+    from mcp.client.session import ClientSession
+
+    transport = InMemoryTransport(mcp_server)
+    async with (
+        transport as (read_stream, write_stream),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        await session.initialize()
+        result = await session.call_tool(tool_name, arguments)
+    assert not result.is_error, f"{tool_name}: {result.content[0].text}"
+    return cast("dict[str, Any]", json.loads(result.content[0].text))
 
 
 def test_inventory_covers_catalogue() -> None:
