@@ -1,6 +1,11 @@
 # Harness Zero-Drift Program (October 2026)
 
-Status: ACTIVE. Waves execute in order. Each wave merges as one squash PR with CI green.
+Status: COMPLETE. All five waves shipped to master with green CI:
+W1 `af00703` (#93), W2 `1348c2c` (#95), W3 `3f34819` (#96),
+W4 `4c91db7` (#98), W5 `c690121` (#99). The standards below stay binding;
+the CI enforcement map is live. Known ratchets: sentence-length warnings
+(163, flip to error after the reference-doc rewrite), xenon D → C,
+`uv.lock` regeneration (standalone dependency PR).
 
 ## Purpose
 
