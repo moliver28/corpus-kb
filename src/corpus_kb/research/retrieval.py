@@ -30,6 +30,7 @@ from uuid import UUID, uuid5
 import asyncpg
 
 from corpus_kb.config import load_config
+from corpus_kb.errors import MigrationMissingError
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.research.chunking import CHILD_QA, meeting_windows, unit_kind
 from corpus_kb.research.retrieval_settings import (
@@ -512,9 +513,12 @@ async def _rrf(
             rrf_k,
         )
     except asyncpg.UndefinedFunctionError as exc:
-        raise RuntimeError(
-            "corpus.rrf_fusion() is not installed — apply migration 006 "
-            "(corpus_kb/migrations/006_rrf_fusion.sql)"
+        raise MigrationMissingError(
+            "corpus.rrf_fusion() is missing. Research retrieval needs migration 006.",
+            remediation=(
+                "Apply migration 006: run scripts/migrate.py "
+                "(corpus_kb/migrations/006_rrf_fusion.sql)."
+            ),
         ) from exc
     by_uuid = {str(row["chunk_id"]): row for row in dense + lexical}
     fused: list[dict[str, object]] = []

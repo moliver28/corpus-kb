@@ -19,6 +19,7 @@ import asyncpg
 import pytest
 
 from corpus_kb.domain.models import SearchQuery
+from corpus_kb.errors import MigrationMissingError
 from corpus_kb.handlers.query_handler import QueryHandler
 from tests.mock_pg import transaction_cm
 
@@ -346,5 +347,5 @@ async def test_handle_search_missing_rrf_function_is_loud() -> None:
         pool=mock_pool,
         config={"embedding": {"provider": "ollama", "model": "nomic-embed-text"}},
     )
-    with pytest.raises(RuntimeError, match="006"):
+    with pytest.raises(MigrationMissingError, match="006"):
         await handler.handle_search(SearchQuery(query="test", k=5))

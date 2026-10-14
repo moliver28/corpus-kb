@@ -31,6 +31,7 @@ from corpus_kb.domain.models import (
     VerifyAnswerQuery,
     VerifyAnswerResult,
 )
+from corpus_kb.errors import MigrationMissingError
 from corpus_kb.handlers.query_integrity import (
     REASON_FILTER_EMPTY,
     REASON_NO_EMBEDDER,
@@ -560,9 +561,12 @@ class QueryHandler:
                     self._retrieval_settings.rrf_k,
                 )
             except asyncpg.UndefinedFunctionError as exc:
-                raise RuntimeError(
-                    "corpus.rrf_fusion() is not installed — apply migration 006 "
-                    "(corpus_kb/migrations/006_rrf_fusion.sql) via scripts/migrate.py"
+                raise MigrationMissingError(
+                    "corpus.rrf_fusion() is missing. Hybrid search needs migration 006.",
+                    remediation=(
+                        "Apply migration 006: run scripts/migrate.py "
+                        "(corpus_kb/migrations/006_rrf_fusion.sql)."
+                    ),
                 ) from exc
 
             # Re-attach provenance (file_path/start_line/...) from the raw
