@@ -314,3 +314,11 @@ claudemd_section
 http_route
 assert_full_surface_parity
 assert_parity_outside_allowlist
+
+# PEP 562 module protocol (corpus_kb/__init__.py): the interpreter calls the
+# module-level __getattr__ on failed attribute access (corpus_kb.__version__,
+# single-sourced from importlib.metadata) and __dir__ on dir(). Verified live:
+# tests/test_cli.py asserts --version and the Wave-4B clean-venv check runs
+# dir(corpus_kb): 2 name(s)
+__getattr__
+__dir__
