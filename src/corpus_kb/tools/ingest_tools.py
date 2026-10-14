@@ -19,6 +19,7 @@ import asyncpg
 from ..ingest_watch import WATCH_SUFFIXES
 from ..ingestion.registry import strategy_names
 from .ingest_common import ingest_text, load_config_or_pass, run_pipeline
+from .ingest_store import DEFAULT_TENANT_ID
 from .ingest_surface_tools import ingest_reembed, ingest_status
 from .ingest_url_tools import ingest_url
 
@@ -131,8 +132,27 @@ async def list_documents(
     pg_pool: asyncpg.Pool,
     config: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    """List all ingested documents."""
-    return {"status": "success", "documents": []}
+    """List all ingested documents (the shared query-handler envelope).
+
+    Same operation, same envelope on every surface: MCP/HTTP/socket all
+    return ``{"status": "success", "result": [documents]}`` through the one
+    query handler.
+    """
+    from uuid import UUID
+
+    from corpus_kb.domain.models import ListDocumentsQuery
+    from corpus_kb.handlers.query_handler import QueryHandler
+
+    config = load_config_or_pass(config)
+    handler = QueryHandler(pg_pool, config=config)
+    results = await handler.handle_list_documents(
+        ListDocumentsQuery(
+            tenant_id=UUID(DEFAULT_TENANT_ID),
+            limit=100,
+            offset=0,
+        )
+    )
+    return {"status": "success", "result": [r.model_dump() for r in results]}
 
 
 async def delete_document(
