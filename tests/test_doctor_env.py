@@ -134,6 +134,16 @@ async def test_dimension_guard_warns_on_untypmodded_column() -> None:
     assert "no fixed width" in check.detail
 
 
+async def test_dimension_guard_warns_on_non_vector_column() -> None:
+    """A half-migrated database (jsonb column) names the schema state."""
+    conn = _HistConn({"width": -1, "typ": "jsonb"})
+    check = await dimension_guard_check(conn, {"embedding": {"dimensions": 768}})
+    assert check.status == STATUS_WARN
+    assert "jsonb" in check.detail
+    assert "not a vector column" in check.detail
+    assert check.fix == "corpus-kb setup"
+
+
 async def test_dimension_guard_survives_histogram_failure() -> None:
     """A broken histogram read degrades to the plain typmod verdict."""
 

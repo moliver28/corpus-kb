@@ -123,6 +123,16 @@ async def dimension_guard_check(conn: asyncpg.Connection, config: dict[str, Any]
         )
     width = int(row["width"])
     typ = str(row["typ"])
+    if not typ.startswith("vector"):
+        # e.g. jsonb on a half-migrated database: the width question is
+        # meaningless until the real vector column exists.
+        return ResearchCheck(
+            name=name,
+            status=STATUS_WARN,
+            detail=f"chunks_vectors.vector is {typ}, not a vector column (schema incomplete)",
+            fix=SETUP_FIX,
+            doc=DOC_GETTING_STARTED,
+        )
     if width < 0:
         # Un-typmodded vector column: pgvector accepts any width; the
         # per-row dimensions column stays the only honesty marker.
