@@ -43,8 +43,7 @@ VECTOR_TYPEMOD_SQL = (
     "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'vector'"
 )
 DIMENSIONS_HISTOGRAM_SQL = (
-    "SELECT dimensions, count(*) AS n FROM chunks_vectors "
-    "GROUP BY dimensions ORDER BY dimensions"
+    "SELECT dimensions, count(*) AS n FROM chunks_vectors GROUP BY dimensions ORDER BY dimensions"
 )
 
 DEFAULT_EMBEDDING_DIMENSIONS = 768
@@ -83,8 +82,7 @@ def env_var_check(environ: dict[str, str] | None = None) -> ResearchCheck:
         name="CORPUS_KB env vars",
         status=STATUS_WARN,
         detail=(
-            f"{len(unknown)} variable(s) set but NOT read by this version: "
-            f"{', '.join(unknown)}"
+            f"{len(unknown)} variable(s) set but NOT read by this version: {', '.join(unknown)}"
         ),
         fix="Remove the variable, or set the matching key in config.yaml (see docs/ADMIN.md)",
         doc=DOC_ADMIN,
@@ -189,8 +187,7 @@ async def _dimensions_histogram(conn: asyncpg.Connection, width: int) -> dict[in
         # The histogram is bonus context; a failed read must never break doctor.
         return {width: 0}
     return {
-        (int(r["dimensions"]) if r["dimensions"] is not None else None): int(r["n"])
-        for r in rows
+        (int(r["dimensions"]) if r["dimensions"] is not None else None): int(r["n"]) for r in rows
     }
 
 

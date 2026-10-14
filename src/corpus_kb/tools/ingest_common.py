@@ -26,7 +26,7 @@ import asyncpg
 from ..config import load_config
 from ..errors import ConfigError
 from ..extraction import ExtractStats
-from ..ingest.hierarchy_settings import load_hierarchy_settings
+from ..ingest.hierarchy_settings import HierarchySettings, load_hierarchy_settings
 from ..ingestion.base import (
     DETECT_HEAD_CHARS,
     PlanConformanceError,
@@ -287,7 +287,16 @@ async def _run_locked_stages(
     is_file: bool,
     empty_reason: str | None = None,
 ) -> dict[str, object]:
-    """Pipeline stages under the advisory lock: open the ledger, store, close."""
+    """Pipeline stages under the advisory lock: open the ledger, store, close.
+
+    Zero-drift W4C xenon ratchet: the stage bodies moved to private helpers
+    IN THIS FILE (``_prepare_chunks_for_store``, ``_stage_store_and_embed``,
+    ``_stage_shadow_hierarchy``, ``_stage_extract_entities``,
+    ``_stage_result_dict``) so the complexity gate holds at --max-absolute D.
+    They resolve the module globals (``embed_chunks``,
+    ``PostgresIngestStore``) at call time, so tests monkeypatching
+    ``ingest_common.*`` attributes keep working unchanged.
+    """
     ingest_store = PostgresIngestStore(pg_pool, tenant_id)
 
     unchanged_doc = await ingest_store.unchanged_doc_id(document.path, file_hash)
@@ -303,146 +312,40 @@ async def _run_locked_stages(
 
     document_id, run_id = await ingest_store.begin_run(document, file_hash)
     try:
-        # A zero-chunk plan must never complete clean: the EmptyPlanError
-        # seeds the stage error list BEFORE finish_run, so the ledger closes
-        # failed and the unchanged-probe can never enshrine an empty run as
-        # success. The strategy's empty_reason (when it gave one) is
-        # surfaced verbatim in the result dict.
         errors: list[str] = []
-        if not chunks:
-            errors.append(f"EmptyPlanError: {empty_reason or 'strategy produced no chunks'}")
-        document.document_id = document_id
-        for chunk in chunks:
-            chunk.document_id = document_id
-            chunk.chunk_hash = _sha256(chunk.text)
-            chunk.source_timestamp = (
-                datetime.fromtimestamp(Path(path).stat().st_mtime, tz=UTC)
-                if is_file
-                else datetime.now(UTC)
-            )
-
-        if _contextual_enabled(config, source_type):
-            from ..rag.contextualizer import ContextGenerator
-
-            blurbs = ContextGenerator(config).generate_blurbs(text, [c.text for c in chunks])
-            for chunk, blurb in zip(chunks, blurbs, strict=True):
-                chunk.context_blurb = blurb or None
-
-        embed_note: str | None = None
-        pg_chunk_count = 0
-        pg_vector_count = 0
-        inserted_chunk_ids: set[str] = set()
-        try:
-            inserted_chunk_ids = await ingest_store.store_chunks(chunks)
-            pg_chunk_count = len(inserted_chunk_ids)
-        except Exception as exc:
-            logger.warning("Postgres chunk write failed: %s", exc)
-            errors.append(f"PostgresWriteError: {exc}")
-
-        new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
-
-        embed_texts_override = {
-            str(c.chunk_id): build_embedding_input(c.text, c.context_blurb) for c in new_chunks
-        }
-        embed_meta: dict[str, object] = {}
-        degraded, embed_err = await embed_chunks(
-            new_chunks,
+        _prepare_chunks_for_store(
+            document,
+            chunks,
+            path,
+            is_file,
             config,
-            pool=pg_pool,
-            text_override=embed_texts_override,
-            document_text=text,
-            meta=embed_meta,
+            source_type,
+            text,
+            document_id,
+            errors,
+            empty_reason,
         )
-        if embed_err is not None:
-            if _embedding_failure_is_fatal(new_chunks):
-                logger.warning("embed_chunks: %s", embed_err)
-                errors.append(f"EmbeddingError: {embed_err}")
-            else:
-                # The fallback provider produced real vectors: degraded, but
-                # everything stored. A note, NOT an error — otherwise no run
-                # on a fallback-dependent host would ever count as completed
-                # and the dedupe probe would never fire.
-                embed_note = embed_err
 
-        # One shared config read for the vector write (model, dimensions,
-        # matryoshka dim) — the exact keys+defaults the reembed repair path
-        # reads (ingest_cfg.vector_write_config).
-        embedding_model, dimensions, v1024_dim = vector_write_config(config)
-        vectors_1024: dict[str, list[float]] = {}
-        if v1024_dim is not None and not degraded:
-            for c in new_chunks:
-                if c.embedding is not None:
-                    vectors_1024[str(c.chunk_id)] = matryoshka_slice(c.embedding, v1024_dim)
+        (
+            pg_chunk_count,
+            pg_vector_count,
+            degraded,
+            embed_note,
+            embed_meta,
+        ) = await _stage_store_and_embed(ingest_store, chunks, config, text, pg_pool, errors)
 
-        try:
-            pg_vector_count = await ingest_store.store_vectors(
-                new_chunks,
-                embedding_model,
-                dimensions=dimensions,
-                vectors_1024=vectors_1024 or None,
-            )
-        except ConfigError:
-            # The dimension-switch guard: a model/schema width mismatch is a
-            # CONFIG problem with a named fix — raise it typed so the surfaces
-            # map it through the error taxonomy (fail_run already closed the
-            # ledger on the way through the BaseException handler below).
-            raise
-        except Exception as exc:
-            logger.warning("Postgres vector write failed: %s", exc)
-            errors.append(f"PostgresWriteError: {exc}")
-            pg_chunk_count = 0
-            pg_vector_count = 0
+        (
+            hierarchy_settings,
+            shadow_chunk_count,
+            shadow_vector_count,
+            shadow_note,
+        ) = await _stage_shadow_hierarchy(
+            config, document, text, chunks, pg_pool, tenant_id, errors
+        )
 
-        # U48/P6: side-by-side SHADOW hierarchy — additive only. The v1
-        # chunks/vectors above stay the live search corpus; any shadow failure
-        # is logged and isolated so it can never break the live ingest.
-        hierarchy_settings = load_hierarchy_settings(config)
-        shadow_chunk_count = 0
-        shadow_vector_count = 0
-        shadow_note: str | None = None
-        if hierarchy_settings.enabled:
-            try:
-                from ..tools.shadow_ingest import write_shadow_hierarchy
-
-                shadow_chunk_count, shadow_vector_count, shadow_note = await write_shadow_hierarchy(
-                    pool=pg_pool,
-                    tenant_id=tenant_id,
-                    document_id=document.document_id,
-                    text=text,
-                    chunks=chunks,
-                    config=config,
-                    settings=hierarchy_settings,
-                )
-            except Exception as exc:
-                logger.warning("Shadow hierarchy write failed: %s", exc)
-                errors.append(f"ShadowWriteError: {exc}")
-
-        # Extract entities and relations
-        entities: list[Entity] = []
-        relations: list[Relation] = []
-        extractor_id = "none"
-        stats = ExtractStats(backend="none", notes=("extraction disabled",))
-        if _extract_entities_flag(config):
-            try:
-                entities, relations, extractor_id, stats = await extract_with_fallback(
-                    chunks, ontology(config), document.document_id, config, pool=pg_pool
-                )
-                if entities:
-                    await ingest_store.store_entities(entities)
-                if relations:
-                    graph_cfg = _nested_dict(config, "graph")
-                    await ingest_store.store_relations(
-                        relations,
-                        model_version=graph_cfg.get("model_version"),
-                        prompt_version=graph_cfg.get("prompt_version"),
-                    )
-            except Exception as exc:
-                logger.warning("Entity extraction failed: %s", exc)
-                errors.append(f"ExtractionError: {exc}")
-                stats = ExtractStats(
-                    backend=extractor_id,
-                    notes=(f"extraction failed: {type(exc).__name__}: {exc}",),
-                )
+        entities, relations, extractor_id, stats = await _stage_extract_entities(
+            ingest_store, chunks, document_id, config, pg_pool, errors
+        )
 
         # Mirror chunks into LlamaIndex RAG backend (additive path)
         if rag_backend is not None:
@@ -480,57 +383,28 @@ async def _run_locked_stages(
         # error; failed with the error text otherwise.
         await ingest_store.finish_run(run_id, file_hash, stages, errors)
 
-        result: dict[str, object] = {
-            # Nothing reports success on a partial ingest: any stage error
-            # flips the status (the ledger row is 'failed' either way).
-            "status": "success" if not errors else "partial",
-            "document_id": document.document_id,
-            "path": path,
-            "source_type": source_type,
-            "size_bytes": document.size_bytes,
-            "chunk_count": len(chunks),
-            "entity_count": len(entities),
-            "relation_count": len(relations),
-            "pg_chunk_count": pg_chunk_count,
-            "pg_vector_count": pg_vector_count,
-            "degraded": degraded,
-            "extractor_id": extractor_id,
-            # Honest extraction accounting: requested vs kept vs where the
-            # difference went, plus failure notes from the fallback chain.
-            "extraction": {
-                "extractor_id": extractor_id,
-                "requested_entities": stats.requested_entities,
-                "kept_entities": stats.kept_entities,
-                "requested_relations": stats.requested_relations,
-                "kept_relations": stats.kept_relations,
-                "dropped_by_cap": stats.dropped_by_cap,
-                "dropped_by_confidence": stats.dropped_by_confidence,
-                "dropped_by_other": stats.dropped_by_other,
-                "duration_ms": round(stats.duration_ms, 3),
-                "notes": list(stats.notes),
-            },
-            "entities": {entity.name: entity.entity_id for entity in entities},
-            "errors": errors,
-            "run_id": run_id,
-        }
-        if embed_note is not None:
-            result["embed_note"] = embed_note
-        # Honest embedding accounting (late-chunking wiring): WHICH technique
-        # produced the vectors, and — only when late chunking was requested
-        # but unavailable — the concrete reason it fell back.
-        result["embedding_mode"] = str(embed_meta.get("embedding_mode", POOLED_MODE))
-        if embed_meta.get("embedding_note") is not None:
-            result["embedding_note"] = embed_meta["embedding_note"]
-        if empty_reason is not None:
-            result["empty_reason"] = empty_reason
-        # Shadow keys are present ONLY when the hierarchy flag is on, so the
-        # flag-off result dict stays byte-identical to the pre-U48 shape.
-        if hierarchy_settings.enabled:
-            result["shadow_chunk_count"] = shadow_chunk_count
-            result["shadow_vector_count"] = shadow_vector_count
-            if shadow_note is not None:
-                result["shadow_note"] = shadow_note
-        return result
+        return _stage_result_dict(
+            document=document,
+            chunks=chunks,
+            source_type=source_type,
+            path=path,
+            degraded=degraded,
+            embed_note=embed_note,
+            embed_meta=embed_meta,
+            empty_reason=empty_reason,
+            hierarchy_settings=hierarchy_settings,
+            shadow_chunk_count=shadow_chunk_count,
+            shadow_vector_count=shadow_vector_count,
+            shadow_note=shadow_note,
+            entities=entities,
+            relations=relations,
+            extractor_id=extractor_id,
+            stats=stats,
+            pg_chunk_count=pg_chunk_count,
+            pg_vector_count=pg_vector_count,
+            errors=errors,
+            run_id=run_id,
+        )
     except BaseException as exc:
         # BaseException, not Exception: asyncio.CancelledError (watch-mode
         # Ctrl-C) is a BaseException in 3.11+ and must still close the
@@ -539,6 +413,283 @@ async def _run_locked_stages(
         # cancellation (or any other BaseException) propagates unchanged.
         await ingest_store.fail_run(run_id, f"{type(exc).__name__}: {exc}")
         raise
+
+
+def _prepare_chunks_for_store(
+    document: Document,
+    chunks: list[Chunk],
+    path: str,
+    is_file: bool,
+    config: dict[str, object],
+    source_type: str,
+    text: str,
+    document_id: str,
+    errors: list[str],
+    empty_reason: str | None,
+) -> None:
+    """Stage 1: identity + provenance + optional contextual blurbs.
+
+    A zero-chunk plan must never complete clean: the EmptyPlanError seeds
+    the stage error list BEFORE finish_run, so the ledger closes failed and
+    the unchanged-probe can never enshrine an empty run as success. The
+    strategy's empty_reason (when it gave one) is surfaced verbatim in the
+    result dict by the caller.
+    """
+    if not chunks:
+        errors.append(f"EmptyPlanError: {empty_reason or 'strategy produced no chunks'}")
+    document.document_id = document_id
+    for chunk in chunks:
+        chunk.document_id = document_id
+        chunk.chunk_hash = _sha256(chunk.text)
+        chunk.source_timestamp = (
+            datetime.fromtimestamp(Path(path).stat().st_mtime, tz=UTC)
+            if is_file
+            else datetime.now(UTC)
+        )
+
+    if _contextual_enabled(config, source_type):
+        from ..rag.contextualizer import ContextGenerator
+
+        blurbs = ContextGenerator(config).generate_blurbs(text, [c.text for c in chunks])
+        for chunk, blurb in zip(chunks, blurbs, strict=True):
+            chunk.context_blurb = blurb or None
+
+
+async def _stage_store_and_embed(
+    ingest_store: PostgresIngestStore,
+    chunks: list[Chunk],
+    config: dict[str, object],
+    text: str,
+    pg_pool: asyncpg.Pool,
+    errors: list[str],
+) -> tuple[int, int, bool, str | None, dict[str, object]]:
+    """Stage 2: store chunks, embed the new ones, store their vectors.
+
+    Returns (pg_chunk_count, pg_vector_count, degraded, embed_note, embed_meta).
+    Stage errors are appended to ``errors``; the dimension-switch guard's
+    ConfigError propagates typed (a width mismatch is a config problem, not
+    a write failure — the BaseException handler in the caller closes the
+    ledger on the way out).
+    """
+    embed_note: str | None = None
+    pg_chunk_count = 0
+    pg_vector_count = 0
+    inserted_chunk_ids: set[str] = set()
+    try:
+        inserted_chunk_ids = await ingest_store.store_chunks(chunks)
+        pg_chunk_count = len(inserted_chunk_ids)
+    except Exception as exc:
+        logger.warning("Postgres chunk write failed: %s", exc)
+        errors.append(f"PostgresWriteError: {exc}")
+
+    new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
+
+    embed_texts_override = {
+        str(c.chunk_id): build_embedding_input(c.text, c.context_blurb) for c in new_chunks
+    }
+    embed_meta: dict[str, object] = {}
+    degraded, embed_err = await embed_chunks(
+        new_chunks,
+        config,
+        pool=pg_pool,
+        text_override=embed_texts_override,
+        document_text=text,
+        meta=embed_meta,
+    )
+    if embed_err is not None:
+        if _embedding_failure_is_fatal(new_chunks):
+            logger.warning("embed_chunks: %s", embed_err)
+            errors.append(f"EmbeddingError: {embed_err}")
+        else:
+            # The fallback provider produced real vectors: degraded, but
+            # everything stored. A note, NOT an error — otherwise no run
+            # on a fallback-dependent host would ever count as completed
+            # and the dedupe probe would never fire.
+            embed_note = embed_err
+
+    # One shared config read for the vector write (model, dimensions,
+    # matryoshka dim) — the exact keys+defaults the reembed repair path
+    # reads (ingest_cfg.vector_write_config).
+    embedding_model, dimensions, v1024_dim = vector_write_config(config)
+    vectors_1024: dict[str, list[float]] = {}
+    if v1024_dim is not None and not degraded:
+        for c in new_chunks:
+            if c.embedding is not None:
+                vectors_1024[str(c.chunk_id)] = matryoshka_slice(c.embedding, v1024_dim)
+
+    try:
+        pg_vector_count = await ingest_store.store_vectors(
+            new_chunks,
+            embedding_model,
+            dimensions=dimensions,
+            vectors_1024=vectors_1024 or None,
+        )
+    except ConfigError:
+        raise
+    except Exception as exc:
+        logger.warning("Postgres vector write failed: %s", exc)
+        errors.append(f"PostgresWriteError: {exc}")
+        pg_chunk_count = 0
+        pg_vector_count = 0
+    return pg_chunk_count, pg_vector_count, degraded, embed_note, embed_meta
+
+
+async def _stage_shadow_hierarchy(
+    config: dict[str, object],
+    document: Document,
+    text: str,
+    chunks: list[Chunk],
+    pg_pool: asyncpg.Pool,
+    tenant_id: str,
+    errors: list[str],
+) -> tuple[HierarchySettings, int, int, str | None]:
+    """Stage 3: the U48/P6 side-by-side SHADOW hierarchy (additive only).
+
+    The v1 chunks/vectors stay the live search corpus; any shadow failure is
+    logged and isolated so it can never break the live ingest. Returns
+    (hierarchy_settings, shadow_chunk_count, shadow_vector_count, shadow_note).
+    """
+    hierarchy_settings = load_hierarchy_settings(config)
+    shadow_chunk_count = 0
+    shadow_vector_count = 0
+    shadow_note: str | None = None
+    if hierarchy_settings.enabled:
+        try:
+            from ..tools.shadow_ingest import write_shadow_hierarchy
+
+            shadow_chunk_count, shadow_vector_count, shadow_note = await write_shadow_hierarchy(
+                pool=pg_pool,
+                tenant_id=tenant_id,
+                document_id=document.document_id,
+                text=text,
+                chunks=chunks,
+                config=config,
+                settings=hierarchy_settings,
+            )
+        except Exception as exc:
+            logger.warning("Shadow hierarchy write failed: %s", exc)
+            errors.append(f"ShadowWriteError: {exc}")
+    return hierarchy_settings, shadow_chunk_count, shadow_vector_count, shadow_note
+
+
+async def _stage_extract_entities(
+    ingest_store: PostgresIngestStore,
+    chunks: list[Chunk],
+    document_id: str,
+    config: dict[str, object],
+    pg_pool: asyncpg.Pool,
+    errors: list[str],
+) -> tuple[list[Entity], list[Relation], str, ExtractStats]:
+    """Stage 4: extract entities/relations and persist them.
+
+    Every failure lands in ``errors`` with an honest ExtractStats note; the
+    disabled path reports ``extractor_id="none"`` instead of pretending.
+    """
+    entities: list[Entity] = []
+    relations: list[Relation] = []
+    extractor_id = "none"
+    stats = ExtractStats(backend="none", notes=("extraction disabled",))
+    if not _extract_entities_flag(config):
+        return entities, relations, extractor_id, stats
+    try:
+        entities, relations, extractor_id, stats = await extract_with_fallback(
+            chunks, ontology(config), document_id, config, pool=pg_pool
+        )
+        if entities:
+            await ingest_store.store_entities(entities)
+        if relations:
+            graph_cfg = _nested_dict(config, "graph")
+            await ingest_store.store_relations(
+                relations,
+                model_version=graph_cfg.get("model_version"),
+                prompt_version=graph_cfg.get("prompt_version"),
+            )
+    except Exception as exc:
+        logger.warning("Entity extraction failed: %s", exc)
+        errors.append(f"ExtractionError: {exc}")
+        stats = ExtractStats(
+            backend=extractor_id,
+            notes=(f"extraction failed: {type(exc).__name__}: {exc}",),
+        )
+    return entities, relations, extractor_id, stats
+
+
+def _stage_result_dict(
+    *,
+    document: Document,
+    chunks: list[Chunk],
+    source_type: str,
+    path: str,
+    degraded: bool,
+    embed_note: str | None,
+    embed_meta: dict[str, object],
+    empty_reason: str | None,
+    hierarchy_settings: HierarchySettings,
+    shadow_chunk_count: int,
+    shadow_vector_count: int,
+    shadow_note: str | None,
+    entities: list[Entity],
+    relations: list[Relation],
+    extractor_id: str,
+    stats: ExtractStats,
+    pg_chunk_count: int,
+    pg_vector_count: int,
+    errors: list[str],
+    run_id: str,
+) -> dict[str, object]:
+    """Stage 5: the run result dict (nothing reports success on a partial).
+
+    Any stage error flips the status (the ledger row is 'failed' either
+    way). Shadow keys are present ONLY when the hierarchy flag is on, so
+    the flag-off result dict stays byte-identical to the pre-U48 shape.
+    """
+    result: dict[str, object] = {
+        "status": "success" if not errors else "partial",
+        "document_id": document.document_id,
+        "path": path,
+        "source_type": source_type,
+        "size_bytes": document.size_bytes,
+        "chunk_count": len(chunks),
+        "entity_count": len(entities),
+        "relation_count": len(relations),
+        "pg_chunk_count": pg_chunk_count,
+        "pg_vector_count": pg_vector_count,
+        "degraded": degraded,
+        "extractor_id": extractor_id,
+        # Honest extraction accounting: requested vs kept vs where the
+        # difference went, plus failure notes from the fallback chain.
+        "extraction": {
+            "extractor_id": extractor_id,
+            "requested_entities": stats.requested_entities,
+            "kept_entities": stats.kept_entities,
+            "requested_relations": stats.requested_relations,
+            "kept_relations": stats.kept_relations,
+            "dropped_by_cap": stats.dropped_by_cap,
+            "dropped_by_confidence": stats.dropped_by_confidence,
+            "dropped_by_other": stats.dropped_by_other,
+            "duration_ms": round(stats.duration_ms, 3),
+            "notes": list(stats.notes),
+        },
+        "entities": {entity.name: entity.entity_id for entity in entities},
+        "errors": errors,
+        "run_id": run_id,
+    }
+    if embed_note is not None:
+        result["embed_note"] = embed_note
+    # Honest embedding accounting (late-chunking wiring): WHICH technique
+    # produced the vectors, and — only when late chunking was requested
+    # but unavailable — the concrete reason it fell back.
+    result["embedding_mode"] = str(embed_meta.get("embedding_mode", POOLED_MODE))
+    if embed_meta.get("embedding_note") is not None:
+        result["embedding_note"] = embed_meta["embedding_note"]
+    if empty_reason is not None:
+        result["empty_reason"] = empty_reason
+    if hierarchy_settings.enabled:
+        result["shadow_chunk_count"] = shadow_chunk_count
+        result["shadow_vector_count"] = shadow_vector_count
+        if shadow_note is not None:
+            result["shadow_note"] = shadow_note
+    return result
 
 
 async def ingest_text(

@@ -24,6 +24,8 @@ from typing import Any, ClassVar
 import asyncpg
 import pytest
 
+from corpus_kb.errors import ConfigError
+
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "src" / "corpus_kb" / "migrations"
 MIGRATION_022 = MIGRATIONS / "022_ingest_integrity.sql"
@@ -829,17 +831,26 @@ async def test_advisory_lock_contention_returns_honest_skip(integrity_pool, inte
         )
         await blocker.close()
 
-    # Lock released: the run is admitted (it may complete or degrade — the
-    # point is that it is no longer the contention skip).
-    result = await ingest_module.ingest_text(
-        text=text,
-        pg_pool=integrity_pool,
-        source_type="text",
-        config={"graph": {"extract_entities": False}},
-        tenant_id=TENANT,
-        source=source,
-    )
-    assert result["status"] in {"success", "partial"}
+    # Lock released: the run is admitted (it may complete, degrade, or — on
+    # the live vector(4096) schema with a 768-dim embedder — raise the typed
+    # width ConfigError). The point is that it is no longer the contention
+    # skip: only "skipped"/"concurrent-run" would be a lie here.
+    admitted_result: dict[str, object] | None = None
+    admitted_config_error: ConfigError | None = None
+    try:
+        admitted_result = await ingest_module.ingest_text(
+            text=text,
+            pg_pool=integrity_pool,
+            source_type="text",
+            config={"graph": {"extract_entities": False}},
+            tenant_id=TENANT,
+            source=source,
+        )
+    except ConfigError as exc:
+        admitted_config_error = exc
+    assert admitted_config_error is None or "embedding.model" in (admitted_config_error.remediation)
+    if admitted_result is not None:
+        assert admitted_result["status"] in {"success", "partial"}
     run_row = await _tenant_fetchrow(
         integrity_pool,
         "SELECT status FROM ingest_runs WHERE start_hash = $1",

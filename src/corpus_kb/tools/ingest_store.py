@@ -104,6 +104,7 @@ def _width_config_error(exc: asyncpg.DataError, embedding_model: str) -> ConfigE
         ),
     )
 
+
 _DOCUMENT_UPSERT_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
         chunk_count, file_size, file_hash, metadata)
@@ -382,9 +383,7 @@ class PostgresIngestStore:
                         continue
                     vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
                     v1024 = (vectors_1024 or {}).get(str(chunk.chunk_id))
-                    v1024_str = (
-                        "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
-                    )
+                    v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
                     degraded = all(v == 0.0 for v in chunk.embedding)
                     await conn.execute(
                         """

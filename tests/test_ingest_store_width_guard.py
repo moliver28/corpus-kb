@@ -69,7 +69,7 @@ class _WidthProbePool:
     def __init__(self, conn: _WidthProbeConn) -> None:
         self._conn = conn
 
-    def acquire(self):  # noqa: ANN201 - async-context-manager pool double
+    def acquire(self) -> _PooledConn:
         return _PooledConn(self._conn)
 
 
@@ -131,9 +131,7 @@ async def test_dataerror_translated_to_config_error() -> None:
     )
     store = PostgresIngestStore(cast(asyncpg.Pool, _WidthProbePool(conn)), TENANT)
     with pytest.raises(ConfigError) as excinfo:
-        await store.store_vectors(
-            [_chunk([0.1])], "qwen3-embedding:0.6b", dimensions=4096
-        )
+        await store.store_vectors([_chunk([0.1])], "qwen3-embedding:0.6b", dimensions=4096)
     assert "1024" in str(excinfo.value)
     assert "4096" in str(excinfo.value)
     assert "embedding.model" in excinfo.value.remediation
