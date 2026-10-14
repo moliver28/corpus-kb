@@ -165,6 +165,9 @@ surface the command handler then adds the audit keys
 `aggregate_id`/`aggregate_version` (or `event_sourcing_error` when the
 audit write failed after the successful delete).
 
+Neither `ingest_directory` nor `delete_document` has a socket method; the
+parity catalogue records that by listing no socket surface.
+
 ---
 
 ## Search
