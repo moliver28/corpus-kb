@@ -1,0 +1,7 @@
+# ASD-STE100: keep sentences short. The zero-drift program binds 20 words.
+extends: conditional
+level: error
+scope: sentence
+message: "Keep sentences to 20 words or fewer (this one has %s words)."
+limit: 20
+link: https://asd-ste100.org

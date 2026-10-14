@@ -1,0 +1,7 @@
+# Spell check against the project accept list. One word per line in
+# CorpusSTE/accept.txt. Add a term there only when it is a real project name.
+extends: spelling
+level: error
+message: "Did you really mean '%s'?"
+ignore:
+  - CorpusSTE/accept.txt
