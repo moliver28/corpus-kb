@@ -4,6 +4,9 @@
 # block. Contributor loop: `vale README.md docs/*.md`.
 name: docs-quality
 
+# PR-only: the github-pr-check reporter needs a pull request, and every docs
+# change reaches master through one. (A master-push trigger made reviewdog
+# exit "this is not PullRequest build" and failed the job on c690121.)
 on:
   pull_request:
     paths:
@@ -12,9 +15,6 @@ on:
       - ".vale.ini"
       - "styles/**"
       - ".github/workflows/docs-quality.yml"
-  push:
-    branches:
-      - master
 
 permissions:
   contents: read
