@@ -18,12 +18,65 @@ from corpus_kb.cli_research_ask import register as register_ask
 from corpus_kb.cli_research_ingest import register as register_ingest
 from corpus_kb.cli_research_report import register as register_report
 from corpus_kb.cli_research_views import register as register_views
-from corpus_kb.cli_support import _cli_approve, _pid, _run_async, _tenant, wired_pool
+from corpus_kb.cli_support import (
+    _cli_approve,
+    _cli_approve_no,
+    _cli_approve_yes,
+    _pid,
+    _run_async,
+    _tenant,
+    wired_pool,
+)
+from corpus_kb.research.cycle_gates import (
+    EXIT_APPROVAL_DENIED,
+    EXIT_AWAITING_APPROVAL,
+    EXIT_UNAVAILABLE,
+    GATE_EXIT_CODES,
+)
 
 research_app = typer.Typer(help="Research domain: transcript ingestion")
 
 # The ingest commands register first (they are the first two in help).
 register_ingest(research_app)
+
+
+def _cycle_epilog() -> str:
+    """Build the help epilog from cycle_gates (the ONE exit-code table).
+
+    Help text is part of the CLI contract, so the codes render from the
+    gate module's constants and cannot drift from the halts the command
+    actually returns.
+    """
+    lines = [
+        "Exit codes:",
+        "  0: run complete.",
+        f"  {EXIT_UNAVAILABLE}: embeddings unavailable; stage cannot run.",
+    ]
+    for gate, code in sorted(GATE_EXIT_CODES.items(), key=lambda item: item[1]):
+        lines.append(f"  {code}: gate halt: {gate}.")
+    lines.append(f"  {EXIT_APPROVAL_DENIED}: approval denied.")
+    lines.append(f"  {EXIT_AWAITING_APPROVAL}: awaiting approval (mode on, no --approve).")
+    return "\n".join(lines)
+
+
+_CYCLE_EPILOG = _cycle_epilog()
+
+
+def _approval_choice(approve: bool, deny: bool) -> object:
+    """Pick the approval callback: an explicit flag wins over the prompt.
+
+    The callback (cli_support._cli_approve or an unattended stub) is the
+    ONE seam run_cycle awaits at each on-mode boundary; the flags only
+    choose which callback runs. No stdin patching: a headless run with
+    --approve never reaches input().
+    """
+    if approve and deny:
+        raise typer.BadParameter("--approve and --deny cannot be used together.")
+    if approve:
+        return _cli_approve_yes
+    if deny:
+        return _cli_approve_no
+    return _cli_approve
 
 
 @research_app.command("demo")
@@ -39,7 +92,7 @@ def research_demo() -> int:
     return _run_async(run_demo(load_config()))
 
 
-@research_app.command("cycle")
+@research_app.command("cycle", epilog=_CYCLE_EPILOG)
 def research_cycle(
     mode: str = typer.Option(
         "out", "--mode", help="in: exactly one stage | on: approve each stage | out: to the gates"
@@ -55,6 +108,16 @@ def research_cycle(
     ),
     json_output: bool = typer.Option(
         False, "--json", help="Machine-readable stage/gate events (one JSON per line)"
+    ),
+    approve_all: bool = typer.Option(
+        False,
+        "--approve",
+        help="Approve every gate without asking. Use only for unattended runs.",
+    ),
+    deny_all: bool = typer.Option(
+        False,
+        "--deny",
+        help="Deny every gate without asking. Use only for unattended runs.",
     ),
     watch: str = typer.Option(
         None, "--watch", help="Foreground: re-run the cycle when transcripts land in this directory"
@@ -78,7 +141,7 @@ def research_cycle(
             codebook_version_id,
             guide,
             json_output,
-            _cli_approve,
+            _approval_choice(approve_all, deny_all),
             watch,
         )
     )

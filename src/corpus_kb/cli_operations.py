@@ -61,6 +61,7 @@ def build_inventory() -> dict[str, Any]:
                 "parity": "skipped",
                 "reason": skip.reason,
                 "surfaces": [_surface_json(s) for s in skip.surfaces],
+                "exit_codes": list(skip.exit_codes) if skip.exit_codes else None,
             }
             for skip in SKIPPED_OPERATIONS
         ],
