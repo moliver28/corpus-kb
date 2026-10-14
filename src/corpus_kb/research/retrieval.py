@@ -40,6 +40,7 @@ from corpus_kb.research.retrieval_settings import (
     should_use_exact_scan,
 )
 from corpus_kb.research.search_settings import (
+    PGVECTOR_VERSION_SQL,
     HnswSettings,
     apply_hnsw_settings,
     load_hnsw_settings,
@@ -72,10 +73,6 @@ FROM research_exchanges e
 JOIN documents d ON d.doc_id = e.doc_id
 WHERE e.tenant_id = $1 AND d.project_id = $2 AND e.embedding IS NOT NULL
 """
-
-# U20: probe for the installed pgvector version (see search_settings for the
-# fail-closed gating contract).
-_PGVECTOR_VERSION_SQL = "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
 
 # Assignment-confidence floors (todo-18 notebook filter): --min-confidence X
 # admits X and every STRONGER level.
@@ -187,7 +184,7 @@ async def research_search(
     settings = hnsw_settings if hnsw_settings is not None else load_hnsw_settings(config)
 
     async with tenant_connection(pool, q.tenant_id) as conn:
-        version_row = await conn.fetchrow(_PGVECTOR_VERSION_SQL)
+        version_row = await conn.fetchrow(PGVECTOR_VERSION_SQL)
         extversion = None if version_row is None else str(version_row["extversion"])
         if supports_iterative_scan(extversion):
             await apply_hnsw_settings(conn, settings)

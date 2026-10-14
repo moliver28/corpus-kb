@@ -27,6 +27,10 @@ authors = [
 
 dependencies = [
     "mcp[cli]>=1.0",
+    # httpx is imported directly (web fetch, HTTP surfaces, MCP client glue).
+    # Floor matches ollama's own httpx requirement so one shared resolver
+    # range covers both (previously transitive-only; zero-drift Wave 4B).
+    "httpx>=0.27",
     "ollama>=0.4",
     "pyyaml>=6.0",
     "tree-sitter>=0.23",
@@ -217,12 +221,11 @@ DEP002 = [
     # an import edge; rich may be a typer extra).
     "rich",
     "pgvector",
-    # Declared for surfaces with no import edge yet: the MCP stdio server is
-    # pre-staged but unimplemented, and the tree-sitter grammars belong to a
-    # code chunker that no longer exists in the tree. Ratchet follow-up:
-    # either wire the surface or drop the dependency (with
-    # licenses.lock.json regenerated) in a dependency-scoped PR.
-    "mcp",
+    # Declared for surfaces with no import edge: the tree-sitter grammars
+    # belong to a code chunker that no longer exists in the tree. Ratchet
+    # follow-up: drop the dependency (with licenses.lock.json regenerated)
+    # in a dependency-scoped PR. (The `mcp` entry left this list in Wave 4A:
+    # mcp_server.py imports the SDK, so deptry sees the edge.)
     "tree-sitter",
     "tree-sitter-python",
     "tree-sitter-javascript",
@@ -275,16 +278,17 @@ help = "Vulture dead-code scan; tests/whitelist.py carries verified false positi
 cmd = "deptry src/"
 help = "deptry unused/missing dependency scan (config in [tool.deptry])"
 
-# Ratchet plan (current codebase has 1 F + 15 D blocks outside the Wave-3
-# file scope, so absolute B cannot pass yet):
-#   W4+: split tools/ingest_common._run_locked_stages (F) -> max-absolute D
+# Ratchet plan (W4C: the last F block is gone — tools/ingest_common.
+# _run_locked_stages was split into private stage helpers in the same file,
+# so absolute D now passes; 15 D blocks remain outside Wave-3/4 file scope):
 #   W5+: fix the 15 D blocks -> max-absolute C; then C -> B.
+#   (C is the next ratchet step; absolute B is the end state.)
 # max-average B is the current-passing mean; any broad complexity
 # regression trips it. NOTE for future editors: no percent sign in this
 # file — radon (xenon's engine) parses pyproject via configparser and
 # rejects percent characters.
 [tool.poe.tasks.complexity]
-cmd = "xenon src/ --max-absolute F --max-average B"
+cmd = "xenon src/ --max-absolute D --max-average B"
 help = "Xenon complexity gate (ratchet to --max-absolute B; see comment above)"
 
 # Needs coverage data first: run ``poe test-cov`` to generate coverage.xml,

@@ -35,9 +35,9 @@ corpus-kb start --transport http --port 8010
 corpus-kb ingest path/to/notes.md
 ```
 
-The MCP-over-stdio server is **not implemented yet**:
-`corpus-kb --transport stdio` exits with a clear message pointing at the
-HTTP server instead of pretending to speak MCP.
+`corpus-kb --transport stdio` serves the ingest tools (`ingest_text`,
+`ingest_file`, `ingest_directory`, `ingest_url`, `ingest_status`,
+`ingest_reembed`) over MCP, next to the HTTP routes shown above.
 
 ## Pipeline Stages
 
@@ -299,8 +299,9 @@ Postgres:
    `documents.created_at`, `chunks.chunk_type`, `chunks.source_type`, `tag`,
    and `metadata`). The predicates are bound as parameters and appended to
    both the vector and FTS SQL arms.
-2. **Vector search** with pgvector (IVFFlat/HNSW index type chosen by
-   `search.index_type`), using matryoshka candidate generation when enabled.
+2. **Vector search** with pgvector (both the IVFFlat and HNSW indexes exist;
+   both are built on the same column — no config key picks between them),
+   using matryoshka candidate generation when enabled.
 3. **Full-text search** over `coalesce(context_blurb,'') || ' ' || text`
    via Postgres `plainto_tsquery`.
 4. **Reciprocal Rank Fusion (RRF)** in pure SQL using
@@ -315,9 +316,8 @@ embedding (embedder degraded mode) abstains the vector arm instead of
 returning arbitrary cosine orderings.
 
 - **File**: `src/corpus_kb/handlers/query_handler.py`
-- **Config**: `search.rrf_k`, `search.expand_context`, `search.index_type`,
-  `search.reranker`, `search.reranker_model`, `search.rerank`,
-  `search.exclude_degraded`
+- **Config**: `search.rrf_k`, `search.reranker`, `search.reranker_model`,
+  `search.rerank`, `search.exclude_degraded`
 
 ## Reranker Configuration
 

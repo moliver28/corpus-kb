@@ -107,12 +107,44 @@ def test_gray_zone_halt_lists_pending_review_commands(
     assert f"corpus-kb review accept {assignment_id}" in out
 
 
-def test_root_transport_stdio_fails_honestly() -> None:
-    """The mcp-configs invoke `corpus-kb --transport stdio`; until the MCP
-    server exists the CLI must exit cleanly (2) with guidance instead of
-    typer's "no such option" crash."""
+def test_root_transport_stdio_runs_the_mcp_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The mcp-configs editors launch `corpus-kb --transport stdio`; the
+    root callback must route to the MCP stdio server (never the HTTP
+    stack), and report its taxonomy exit code."""
     from typer.testing import CliRunner
 
+    calls: list[int] = []
+
+    def _fake_server() -> int:
+        calls.append(1)
+        return 0
+
+    monkeypatch.setattr("corpus_kb.mcp_server.run_stdio_server", _fake_server)
+
     result = CliRunner().invoke(cli.app, ["--transport", "stdio"])
+    assert result.exit_code == 0, result.output
+    assert calls == [1]
+
+
+def test_root_transport_stdio_reports_config_failure_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stdio startup failure surfaces the taxonomy exit code (3)."""
+    from typer.testing import CliRunner
+
+    monkeypatch.setattr("corpus_kb.mcp_server.run_stdio_server", lambda: 3)
+
+    result = CliRunner().invoke(cli.app, ["--transport", "stdio"])
+    assert result.exit_code == 3
+
+
+def test_root_transport_http_points_at_start() -> None:
+    """The root --transport flag serves stdio only; HTTP has its own
+    command, so anything else is an honest exit-2 pointer."""
+    from typer.testing import CliRunner
+
+    result = CliRunner().invoke(cli.app, ["--transport", "http"])
     assert result.exit_code == 2
-    assert "does not yet speak MCP over stdio" in result.output
+    assert "corpus-kb start --transport http" in result.output

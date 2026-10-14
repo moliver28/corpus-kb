@@ -58,7 +58,7 @@ Any MCP-compatible editor: OpenCode, Claude Code, Cursor, VS Code with Cline, an
 
 ## How do I switch from HTTP mode to MCP stdio mode?
 
-You can't yet — the MCP-over-stdio server is **not implemented**. `corpus-kb start --transport stdio` exits with a message pointing at HTTP rather than speaking garbage to an editor. Point editors at the HTTP API today; the config files in `mcp-configs/` are pre-staged for the day the MCP server lands.
+Run `corpus-kb --transport stdio`. The server speaks MCP over stdin/stdout and registers the catalogue operations plus the research/coding/release surfaces as tools. The config files in `mcp-configs/` launch exactly this command. HTTP stays available side by side: `corpus-kb start --transport http --port 8010`.
 
 ## Where is the configuration file?
 

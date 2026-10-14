@@ -28,14 +28,82 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 import asyncpg
 
+from ..errors import ConfigError
 from ..utils.models import Chunk, Document, Entity, Relation
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+
+# pgvector enforces the EXACT typmod width of the target column (verified on
+# pgvector 0.8.3 / Postgres 16.14: a 768-dim insert into vector(4096) fails
+# with SQLSTATE 22000 "expected 4096 dimensions, not 768" — no padding, no
+# truncation). atttypmod for a vector(N) column is exactly N (-1 un-typmodded).
+_VECTOR_TYPEMOD_SQL = (
+    "SELECT a.atttypmod AS width, format_type(a.atttypid, a.atttypmod) AS typ "
+    "FROM pg_attribute a "
+    "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'vector'"
+)
+_DIMENSION_MISMATCH_RE = re.compile(r"expected (\d+) dimensions, not (\d+)")
+
+
+async def assert_vector_column_width(
+    conn: asyncpg.Connection,
+    dimensions: int,
+    embedding_model: str,
+) -> None:
+    """Fail fast when ``dimensions`` cannot enter ``chunks_vectors.vector``.
+
+    The shipped schema fixes the column at ``vector(4096)`` (a max-capacity
+    slot; storage/schema.sql), so the shipped default model (nomic-embed-text,
+    768d) CANNOT ingest until the config switches model. Probe the catalog
+    once and raise a typed ConfigError naming the schema reality and the two
+    config keys, BEFORE the per-chunk inserts fail mid-transaction. The probe
+    is advisory: an unreadable catalog or a missing table defers to the
+    INSERT's own error.
+    """
+    try:
+        row = await conn.fetchrow(_VECTOR_TYPEMOD_SQL)
+    except Exception:
+        return
+    if row is None:
+        return
+    width = int(row["width"])
+    if width < 0 or width == dimensions:
+        return
+    raise ConfigError(
+        f"Embedding width {dimensions} does not fit the vector column {row['typ']}. "
+        "pgvector needs an exact match. Every vector insert will fail.",
+        remediation=(
+            f"chunks_vectors.vector stores exactly {width} dimensions. Set "
+            f"embedding.model to a model that emits {width} dimensions (example: "
+            f"qwen3-embedding:8b-q8_0), set embedding.dimensions to {width}, then "
+            "re-ingest."
+        ),
+    )
+
+
+def _width_config_error(exc: asyncpg.DataError, embedding_model: str) -> ConfigError:
+    """Translate a pgvector width DataError into the typed ConfigError."""
+    match = _DIMENSION_MISMATCH_RE.search(str(exc))
+    if match is None:
+        raise exc
+    expected, actual = int(match.group(1)), int(match.group(2))
+    return ConfigError(
+        f"Embedding width {actual} does not fit the vector column vector({expected}) "
+        f"(model {embedding_model!r}). pgvector needs an exact match.",
+        remediation=(
+            f"chunks_vectors.vector stores exactly {expected} dimensions. Set "
+            f"embedding.model to a model that emits {expected} dimensions (example: "
+            f"qwen3-embedding:8b-q8_0), set embedding.dimensions to {expected}, then "
+            "re-ingest."
+        ),
+    )
+
 
 _DOCUMENT_UPSERT_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
@@ -294,6 +362,11 @@ class PostgresIngestStore:
         next to a fresh vector. Each write also states the row's ``degraded``
         flag honestly (all-zero vectors are the embedder-failure marker) and
         mirrors it onto the owning chunks row.
+
+        Width guard: the vector column typmod is probed ONCE up front
+        (:func:`assert_vector_column_width`) and any pgvector width DataError
+        inside the loop is re-raised as the same typed ConfigError — a
+        model/dimension mismatch is a config problem, not a write failure.
         """
         if not chunks:
             return 0
@@ -303,39 +376,43 @@ class PostgresIngestStore:
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 self._tenant_id,
             )
-            for chunk in chunks:
-                if chunk.embedding is None:
-                    continue
-                vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
-                v1024 = (vectors_1024 or {}).get(str(chunk.chunk_id))
-                v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
-                degraded = all(v == 0.0 for v in chunk.embedding)
-                await conn.execute(
-                    """
-                    INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, vector_1024,
-                        embedding_model, dimensions, degraded)
-                    VALUES ($1, $2, $3::vector, $4::vector, $5, $6, $7)
-                    ON CONFLICT (chunk_id) DO UPDATE
-                    SET vector = $3::vector,
-                        vector_1024 = $4::vector,
-                        embedding_model = $5, dimensions = $6, embedded_at = NOW(),
-                        degraded = $7
-                    """,
-                    chunk.chunk_id,
-                    self._tenant_id,
-                    vector_str,
-                    v1024_str,
-                    embedding_model,
-                    dimensions,
-                    degraded,
-                )
-                await conn.execute(
-                    "UPDATE chunks SET degraded = $3 WHERE chunk_id = $1 AND tenant_id = $2",
-                    chunk.chunk_id,
-                    self._tenant_id,
-                    degraded,
-                )
-                count += 1
+            await assert_vector_column_width(conn, dimensions, embedding_model)
+            try:
+                for chunk in chunks:
+                    if chunk.embedding is None:
+                        continue
+                    vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
+                    v1024 = (vectors_1024 or {}).get(str(chunk.chunk_id))
+                    v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
+                    degraded = all(v == 0.0 for v in chunk.embedding)
+                    await conn.execute(
+                        """
+                        INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, vector_1024,
+                            embedding_model, dimensions, degraded)
+                        VALUES ($1, $2, $3::vector, $4::vector, $5, $6, $7)
+                        ON CONFLICT (chunk_id) DO UPDATE
+                        SET vector = $3::vector,
+                            vector_1024 = $4::vector,
+                            embedding_model = $5, dimensions = $6, embedded_at = NOW(),
+                            degraded = $7
+                        """,
+                        chunk.chunk_id,
+                        self._tenant_id,
+                        vector_str,
+                        v1024_str,
+                        embedding_model,
+                        dimensions,
+                        degraded,
+                    )
+                    await conn.execute(
+                        "UPDATE chunks SET degraded = $3 WHERE chunk_id = $1 AND tenant_id = $2",
+                        chunk.chunk_id,
+                        self._tenant_id,
+                        degraded,
+                    )
+                    count += 1
+            except asyncpg.DataError as exc:
+                raise _width_config_error(exc, embedding_model) from exc
         return count
 
     async def store_entities(self, entities: list[Entity]) -> int:

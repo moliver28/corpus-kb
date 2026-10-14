@@ -76,32 +76,25 @@ def load_config(path: str | None = None) -> dict[str, object]:
                 file_config = cast(dict[str, object], yaml.safe_load(f) or {})
             _deep_update(config, file_config)
 
-    # Environment variable overrides
-    # CORPUS_KB_STORAGE_PATH -> config["storage"]["path"]
-    # CORPUS_KB_EMBEDDING_MODEL -> config["embedding"]["model"]
-    # CORPUS_KB_GRAPH_BACKEND -> config["graph"]["backend"]
+    # Environment variable overrides. Every mapped variable is live: the
+    # config key it writes has a real consumer (install.py, install_state.py,
+    # server_wiring.py). Removed keys and their variables are gone for good —
+    # doctor reports any set-but-unmapped CORPUS_KB_* variable (see
+    # KNOWN_CORPUS_KB_ENV_VARS and _setup/doctor_env.py).
     env_overrides: dict[tuple[str, str], str] = {
-        ("storage", "path"): "CORPUS_KB_STORAGE_PATH",
         ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
         ("embedding", "dimensions"): "CORPUS_KB_EMBEDDING_DIMENSIONS",
         ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
-        ("graph", "db_path"): "CORPUS_KB_GRAPH_PATH",
         ("server", "transport"): "CORPUS_KB_TRANSPORT",
         ("server", "port"): "CORPUS_KB_PORT",
         ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
-        ("installer", "auto_detect"): "CORPUS_KB_INSTALL_AUTO_DETECT",
-        ("installer", "profile"): "CORPUS_KB_INSTALL_PROFILE",
         ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
-        ("installer", "database_mode"): "CORPUS_KB_INSTALL_DATABASE_MODE",
         ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
-        ("installer", "postgres_port"): "CORPUS_KB_INSTALL_POSTGRES_PORT",
-        ("installer", "ollama_mode"): "CORPUS_KB_INSTALL_OLLAMA_MODE",
-        ("installer", "telemetry"): "CORPUS_KB_INSTALL_TELEMETRY",
         ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
     }
 
-    bool_keys = {"auto_detect", "telemetry", "verify_image_signature"}
-    int_keys = {"dimensions", "port", "postgres_port"}
+    bool_keys = {"verify_image_signature"}
+    int_keys = {"dimensions", "port"}
 
     for (section, key), env_var in env_overrides.items():
         value = os.environ.get(env_var)
@@ -114,11 +107,64 @@ def load_config(path: str | None = None) -> dict[str, object]:
             else:
                 section_dict[key] = value
 
+    apply_extraction_backend_alias(config)
+
     mrl_error = matryoshka_mrl_error(config)
     if mrl_error is not None:
         raise ValueError(mrl_error)
 
     return config
+
+
+def apply_extraction_backend_alias(config: dict[str, object]) -> None:
+    """Sync ``graph.extractor`` with the preferred ``extraction.backend`` key.
+
+    The extraction backend used to live at ``graph.extractor`` — the wrong
+    section (embedding uses ``embedding.provider``, the graph store uses
+    ``graph.backend``). ``extraction.backend`` is the preferred key now;
+    ``graph.extractor`` keeps working forever as the accepted alias.
+
+    Precedence: a non-empty ``extraction.backend`` string WINS and is
+    mirrored into ``graph.extractor``, so every consumer that still reads
+    the alias (ingest_extract's fallback chain) sees the effective value.
+    When only ``graph.extractor`` is set, it stays authoritative — old
+    configs and hand-built dicts never silently lose their backend.
+    Mutates ``config`` in place; safe on any dict shape.
+    """
+    extraction = config.get("extraction")
+    backend: object | None = None
+    if isinstance(extraction, dict):
+        raw = extraction.get("backend")
+        if isinstance(raw, str) and raw:
+            backend = raw
+    if backend is None:
+        return
+    graph = config.get("graph")
+    if not isinstance(graph, dict):
+        graph = {}
+        config["graph"] = graph
+    graph["extractor"] = backend
+
+
+# Every CORPUS_KB_* variable the code reads: the load_config override map
+# above plus the two direct readers (config discovery in this module,
+# snapshot interval in domain/application.py). doctor reports any set
+# variable outside this set as a warning (see _setup/doctor_env.py).
+KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
+    {
+        "CORPUS_KB_CONFIG",
+        "CORPUS_KB_DATABASE_URL",
+        "CORPUS_KB_EMBEDDING_MODEL",
+        "CORPUS_KB_EMBEDDING_DIMENSIONS",
+        "CORPUS_KB_GRAPH_BACKEND",
+        "CORPUS_KB_TRANSPORT",
+        "CORPUS_KB_PORT",
+        "CORPUS_KB_INSTALL_DATA_DIR",
+        "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
+        "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
+        "CORPUS_KB_SNAPSHOT_PERIOD",
+    }
+)
 
 
 def matryoshka_mrl_error(config: dict[str, object]) -> str | None:
@@ -158,13 +204,14 @@ def get_default_config() -> dict[str, object]:
     """Return the default configuration dict (no file needed)."""
     config: dict[str, object] = {
         "server": {
-            "name": "corpus-kb",
             "transport": "stdio",
             "host": "localhost",
             "port": 8010,
         },
         "graph": {
             "backend": "age",
+            # Accepted legacy alias for extraction.backend (kept forever);
+            # see apply_extraction_backend_alias.
             "extractor": "pgml",
             "model_version": "langextract-default",
             "prompt_version": "v1",
@@ -187,14 +234,8 @@ def get_default_config() -> dict[str, object]:
             # reports it for the shipped YAMLs. Default stays off.
             "mrl_trained": False,
         },
-        "chunking": {
-            "max_size": 4096,
-            "overlap": 200,
-        },
         "search": {
             "rrf_k": 60,
-            "expand_context": True,
-            "index_type": "hnsw",
             "reranker": "none",
             "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
             # U45/U21 shared retrieval knobs, read by
@@ -336,14 +377,14 @@ def get_default_config() -> dict[str, object]:
         "database": {
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
         },
+        # extraction.backend is the PREFERRED extraction-backend key;
+        # graph.extractor (above) stays as the accepted legacy alias.
+        "extraction": {
+            "backend": "pgml",
+        },
         "installer": {
-            "auto_detect": True,
-            "database_mode": "container",
             "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
-            "postgres_port": 5433,
-            "ollama_mode": "external",
             "data_dir": str(Path.home() / ".corpus-kb"),
-            "telemetry": False,
             "verify_image_signature": True,
             "profiles": {
                 "minimal": {
