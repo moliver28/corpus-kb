@@ -79,3 +79,19 @@ def test_research_report_help_exposes_level_and_json() -> None:
     output = _strip_ansi(result.output)
     assert "--level" in output
     assert "--json" in output
+
+
+def test_version_flag_prints_single_sourced_version() -> None:
+    """``corpus-kb --version`` prints the package version and exits 0."""
+    from corpus_kb import __version__
+
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert result.output.strip() == __version__
+
+
+def test_version_flag_works_without_subcommand() -> None:
+    """``--version`` exits before the no-subcommand help branch runs."""
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert "Usage" not in result.output

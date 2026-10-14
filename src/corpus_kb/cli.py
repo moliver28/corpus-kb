@@ -59,6 +59,14 @@ register_ingest_commands(app)
 register_operations(app)
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from corpus_kb import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
 def _root(
     ctx: typer.Context,
@@ -66,6 +74,13 @@ def _root(
         None,
         "--transport",
         help="Reserved for the MCP stdio editor surface (not yet implemented)",
+    ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Print the version and exit",
     ),
 ) -> None:
     """Corpus-KB: local RAG knowledge base for AI code editors."""
