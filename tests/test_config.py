@@ -2,99 +2,61 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import cast
 from unittest.mock import patch
 
 import pytest
 
-from corpus_kb.config import _apply_research_defaults, load_config
+from corpus_kb.config import (
+    KNOWN_CORPUS_KB_ENV_VARS,
+    _apply_research_defaults,
+    apply_extraction_backend_alias,
+    load_config,
+)
 
 
 @pytest.fixture
 def no_env_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clear installer-related env vars before each test."""
-    for var in (
-        "CORPUS_KB_INSTALL_AUTO_DETECT",
-        "CORPUS_KB_INSTALL_PROFILE",
-        "CORPUS_KB_INSTALL_DATA_DIR",
-        "CORPUS_KB_INSTALL_DATABASE_MODE",
-        "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
-        "CORPUS_KB_INSTALL_POSTGRES_PORT",
-        "CORPUS_KB_INSTALL_OLLAMA_MODE",
-        "CORPUS_KB_INSTALL_TELEMETRY",
-        "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
-        "CORPUS_KB_STORAGE_PATH",
-        "CORPUS_KB_EMBEDDING_MODEL",
-        "CORPUS_KB_EMBEDDING_DIMENSIONS",
-        "CORPUS_KB_GRAPH_BACKEND",
-        "CORPUS_KB_GRAPH_PATH",
-        "CORPUS_KB_TRANSPORT",
-        "CORPUS_KB_PORT",
-        "CORPUS_KB_DATABASE_URL",
-    ):
+    """Clear every mapped CORPUS_KB_* env var before each test."""
+    for var in KNOWN_CORPUS_KB_ENV_VARS:
         monkeypatch.delenv(var, raising=False)
 
 
 def test_installer_defaults(no_env_overrides: None) -> None:
-    """Installer block carries the expected default settings."""
+    """Installer block carries exactly the settings the installer reads."""
     cfg = load_config()
     installer = cast(dict[str, object], cfg["installer"])
 
-    assert installer["auto_detect"] is True
-    assert installer["database_mode"] == "container"
     assert installer["postgres_image"] == "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17"
-    assert installer["postgres_port"] == 5433
-    assert installer["ollama_mode"] == "external"
-    assert installer["data_dir"] in {str(Path.home() / ".corpus-kb"), "~/.corpus-kb"}
-    assert installer["telemetry"] is False
     assert installer["verify_image_signature"] is True
     assert "profiles" in installer
+    assert "data_dir" in installer
+    # Dead keys (zero-drift audit row 11) stay dead.
+    for dead in ("auto_detect", "database_mode", "postgres_port", "ollama_mode", "telemetry"):
+        assert dead not in installer
 
 
 def test_installer_env_overrides_string_values(no_env_overrides: None) -> None:
     """String installer settings can be overridden via CORPUS_KB_INSTALL_* env vars."""
     env = {
-        "CORPUS_KB_INSTALL_DATABASE_MODE": "external",
         "CORPUS_KB_INSTALL_POSTGRES_IMAGE": "postgres:17",
-        "CORPUS_KB_INSTALL_OLLAMA_MODE": "container",
         "CORPUS_KB_INSTALL_DATA_DIR": "/tmp/corpus-data",
-        "CORPUS_KB_INSTALL_PROFILE": "performance",
     }
     with patch.dict("os.environ", env, clear=False):
         cfg = load_config()
 
     installer = cast(dict[str, object], cfg["installer"])
-    assert installer["database_mode"] == "external"
     assert installer["postgres_image"] == "postgres:17"
-    assert installer["ollama_mode"] == "container"
     assert installer["data_dir"] == "/tmp/corpus-data"
-    assert installer["profile"] == "performance"
-
-
-def test_installer_env_overrides_int_value(no_env_overrides: None) -> None:
-    """CORPUS_KB_INSTALL_POSTGRES_PORT is parsed as an integer."""
-    with patch.dict("os.environ", {"CORPUS_KB_INSTALL_POSTGRES_PORT": "15432"}, clear=False):
-        cfg = load_config()
-
-    installer = cast(dict[str, object], cfg["installer"])
-    assert installer["postgres_port"] == 15432
-    assert isinstance(installer["postgres_port"], int)
 
 
 @pytest.mark.parametrize(
     ("var", "raw", "expected"),
     [
-        ("CORPUS_KB_INSTALL_AUTO_DETECT", "false", False),
-        ("CORPUS_KB_INSTALL_AUTO_DETECT", "0", False),
-        ("CORPUS_KB_INSTALL_AUTO_DETECT", "no", False),
-        ("CORPUS_KB_INSTALL_AUTO_DETECT", "true", True),
-        ("CORPUS_KB_INSTALL_AUTO_DETECT", "1", True),
-        ("CORPUS_KB_INSTALL_TELEMETRY", "true", True),
-        ("CORPUS_KB_INSTALL_TELEMETRY", "1", True),
-        ("CORPUS_KB_INSTALL_TELEMETRY", "false", False),
         ("CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE", "false", False),
+        ("CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE", "0", False),
         ("CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE", "yes", True),
+        ("CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE", "true", True),
     ],
 )
 def test_installer_env_overrides_boolean_values(
@@ -108,30 +70,102 @@ def test_installer_env_overrides_boolean_values(
         cfg = load_config()
 
     installer = cast(dict[str, object], cfg["installer"])
-    key = var.replace("CORPUS_KB_INSTALL_", "").lower()
-    assert installer[key] is expected
+    assert installer["verify_image_signature"] is expected
 
 
-def test_installer_block_does_not_break_existing_overrides(no_env_overrides: None) -> None:
-    """Non-installer env overrides still apply alongside installer defaults."""
+def test_int_env_overrides_parse_as_int(no_env_overrides: None) -> None:
+    """CORPUS_KB_EMBEDDING_DIMENSIONS and CORPUS_KB_PORT parse as integers."""
     env = {
-        "CORPUS_KB_DATABASE_URL": "postgresql://env:user@envhost:7777/envdb",
-        "CORPUS_KB_EMBEDDING_MODEL": "env-model",
+        "CORPUS_KB_EMBEDDING_DIMENSIONS": "4096",
         "CORPUS_KB_PORT": "9000",
     }
     with patch.dict("os.environ", env, clear=False):
         cfg = load_config()
 
-    database_cfg = cast(dict[str, object], cfg["database"])
-    embedding_cfg = cast(dict[str, object], cfg["embedding"])
-    server_cfg = cast(dict[str, object], cfg["server"])
-    assert database_cfg["connection_string"] == "postgresql://env:user@envhost:7777/envdb"
-    assert embedding_cfg["model"] == "env-model"
-    assert server_cfg["port"] == 9000
-    # Installer defaults are still present when not overridden.
+    embedding = cast(dict[str, object], cfg["embedding"])
+    server = cast(dict[str, object], cfg["server"])
+    assert embedding["dimensions"] == 4096
+    assert isinstance(embedding["dimensions"], int)
+    assert server["port"] == 9000
+    assert isinstance(server["port"], int)
+
+
+def test_dead_env_mappings_are_ignored(no_env_overrides: None) -> None:
+    """Removed mappings neither crash config load nor invent config keys.
+
+    ``CORPUS_KB_STORAGE_PATH`` used to KeyError at load (no ``storage``
+    section exists in the defaults and NOTHING read the key); the removed
+    installer/graph mappings wrote keys with zero consumers.
+    """
+    dead_vars = {
+        "CORPUS_KB_STORAGE_PATH": "/tmp/storage",
+        "CORPUS_KB_GRAPH_PATH": "/tmp/graph.db",
+        "CORPUS_KB_INSTALL_PROFILE": "performance",
+        "CORPUS_KB_INSTALL_AUTO_DETECT": "false",
+        "CORPUS_KB_INSTALL_DATABASE_MODE": "external",
+        "CORPUS_KB_INSTALL_POSTGRES_PORT": "15432",
+        "CORPUS_KB_INSTALL_OLLAMA_MODE": "container",
+        "CORPUS_KB_INSTALL_TELEMETRY": "true",
+    }
+    with patch.dict("os.environ", dead_vars, clear=False):
+        cfg = load_config()  # must not raise
+
+    assert "storage" not in cfg
     installer = cast(dict[str, object], cfg["installer"])
-    assert installer["postgres_port"] == 5433
-    assert installer["telemetry"] is False
+    assert "profile" not in installer
+
+
+def test_dead_config_keys_absent(no_env_overrides: None) -> None:
+    """Dead keys stay out of the loaded config (both defaults and YAML)."""
+    cfg = load_config()
+    server = cast(dict[str, object], cfg["server"])
+    assert "name" not in server
+    assert "chunking" not in cfg
+    assert "llamaindex" not in cfg
+    search = cast(dict[str, object], cfg["search"])
+    assert "expand_context" not in search
+    assert "index_type" not in search
+    database = cast(dict[str, object], cfg["database"])
+    assert "auto_migrate" not in database
+
+
+def test_extractor_alias_backend_wins(no_env_overrides: None) -> None:
+    """A set extraction.backend overrides graph.extractor (mirrored onto it)."""
+    config: dict[str, object] = {
+        "extraction": {"backend": "regex"},
+        "graph": {"extractor": "langextract"},
+    }
+    apply_extraction_backend_alias(config)
+    graph = cast(dict[str, object], config["graph"])
+    assert graph["extractor"] == "regex"
+
+
+def test_extractor_alias_legacy_only_kept(no_env_overrides: None) -> None:
+    """Without extraction.backend, graph.extractor stays authoritative."""
+    config: dict[str, object] = {"graph": {"extractor": "regex"}}
+    apply_extraction_backend_alias(config)
+    graph = cast(dict[str, object], config["graph"])
+    assert graph["extractor"] == "regex"
+
+
+def test_extractor_alias_survives_missing_sections() -> None:
+    """The alias sync is safe on hand-built dicts without graph/extraction."""
+    config: dict[str, object] = {}
+    apply_extraction_backend_alias(config)
+    assert "graph" not in config
+    config = {"extraction": {"backend": "regex"}}
+    apply_extraction_backend_alias(config)
+    graph = cast(dict[str, object], config["graph"])
+    assert graph["extractor"] == "regex"
+
+
+def test_extractor_alias_applied_by_load_config(no_env_overrides: None) -> None:
+    """load_config normalizes the shipped YAML: alias reflects the preferred key."""
+    cfg = load_config()
+    graph = cast(dict[str, object], cfg["graph"])
+    extraction = cast(dict[str, object], cfg["extraction"])
+    assert extraction["backend"] == "pgml"
+    assert graph["extractor"] == "pgml"
 
 
 def test_research_defaults_are_not_aliased_across_loads() -> None:
