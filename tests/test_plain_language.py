@@ -95,7 +95,6 @@ def _strip_markdown(md: str) -> str:
 # A file listed here is skipped with its measured grade until that rewrite
 # lands. A file NOT listed here that exceeds the grade bound FAILS this gate.
 PENDING_W5B_REWRITE: dict[str, str] = {
-    "README.md": "Wave 5B rewrites the README quickstart (ratchet target: grade <= 9).",
     "harness-distribution.md": "Wave 5B rewrites the distribution doc.",
 }
 
