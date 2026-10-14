@@ -96,21 +96,22 @@ corpus-kb doctor                    # read-only diagnostics
 corpus-kb setup                     # guided setup with confirmations
 
 # Or load the schema manually:
-#   psql -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb \
+#   psql -d postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb \
 #     -f src/corpus_kb/migrations/001_corpus_schema.sql
 
-# 5. Pull the embedding model
-ollama pull nomic-embed-text
+# 5. Pull an embedding model that fits the bundled schema (4096 dims)
+ollama pull qwen3-embedding:8b-q8_0
+export CORPUS_KB_EMBEDDING_MODEL=qwen3-embedding:8b-q8_0
+export CORPUS_KB_EMBEDDING_DIMENSIONS=4096
 
 # 6. Start the server
-export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
+export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
 corpus-kb start --transport http --port 8010
 
 # 7. New to qualitative coding? Run the narrated demo (~5 minutes).
-#    The demo needs a research-grade embedder (>=1024 dims), so pull that
-#    first - the base nomic-embed-text model (768 dims) makes the demo
-#    abstain by design:
-ollama pull qwen3-embedding:8b-q8_0
+#    The demo needs a research-grade embedder (>=1024 dims) - the qwen3
+#    model from step 5 qualifies; base nomic-embed-text (768 dims) makes
+#    the demo abstain by design:
 corpus-kb research demo
 # then read docs/getting-started.md to run it on your own transcripts
 ```
@@ -140,6 +141,7 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
 | [Features](docs/FEATURES.md) | Ingest, search, graph, tags, metadata, versioning, embedding models, LlamaIndex RAG |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
+| [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
 | [API](docs/API.md) | HTTP routes, request bodies, curl examples, MCP tool reference |
 | [Development](docs/DEVELOPMENT.md) | Architecture deep dive, testing, PR workflow, conventions |
 | [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
