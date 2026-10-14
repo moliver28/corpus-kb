@@ -70,10 +70,8 @@ stack rather than sync it.
 
 ### Catalog entries a consumer adds
 
-The seven corpus commands (five shipped today; `corpus-demo` and
-`corpus-research-cycle` land with the todo-19 demo surface and the todo-20
-research cycle) plus the corpus MCP server — names sourced from
-`surface_registry.py` (`WRAPPERS` / `SURFACES`):
+The nine corpus commands plus the corpus MCP server — all shipped. Names
+sourced from `surface_registry.py` (`WRAPPERS` / `SURFACES`):
 
 | Catalog entry | Kind | Source surface(s) | Status |
 |---------------|------|-------------------|--------|
@@ -82,10 +80,12 @@ research cycle) plus the corpus MCP server — names sourced from
 | `corpus-codebook-promote` | command | `codebook promote` | shipped |
 | `corpus-research-report` | command | `research report` | shipped |
 | `corpus-review` | command | `review accept`, `review override` | shipped |
-| `corpus-demo` | command | `research demo` | planned (todo 19) |
-| `corpus-research-cycle` | command | `research cycle` | planned (todo 20) |
+| `corpus-demo` | command | `research demo` | shipped |
+| `corpus-research-cycle` | command | `research cycle` | shipped |
+| `corpus-release` | command | `release assess/request/review/execute/status/compare` | shipped |
+| `corpus-ingest-front-door` | command | `ingest`, `ingest-status`, `ingest-reembed` | shipped |
 | `corpus-kb` | MCP server | all `SURFACES` `.mcp_tool` names (stdio transport) | shipped |
 
-When the planned commands land, their wrappers are added to the registry
-and `gen_harness_pack.py` starts emitting them — the catalog entries above
-then resolve to real files with no doc change.
+New wrappers come from the registry: add the `Wrapper` row, run
+`gen_harness_pack.py`, and the catalog entries above resolve to real files
+with no doc change.
