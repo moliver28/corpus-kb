@@ -602,14 +602,15 @@ def _parent_key(child: _Child, windows: dict[str, dict[int, str]]) -> str | None
     return None
 
 
-async def _citations(
-    conn: asyncpg.Connection,
-    parents: list[tuple[str, _Child, float]],
-    windows: dict[str, dict[int, str]],
-) -> list[Citation]:
+async def _citation_lookup_rows(
+    conn: asyncpg.Connection, parents: list[tuple[str, _Child, float]]
+) -> tuple[
+    dict[str, tuple[str, object]],
+    dict[int, asyncpg.Record],
+    dict[int, asyncpg.Record],
+]:
+    """Fetch the doc/exchange/answer-unit rows the citations render from."""
     doc_ids = sorted({child.doc_id for _, child, _ in parents})
-    if not doc_ids:
-        return []
     doc_rows = await conn.fetch(
         """
         SELECT d.doc_id, d.title, p.name AS project_name
@@ -640,6 +641,76 @@ async def _citations(
             unit_ids,
         ):
             unit_rows[int(row["unit_id"])] = row
+    return docs, exchange_rows, unit_rows
+
+
+def _exchange_citation(
+    parent_key: str,
+    matched: _Child,
+    score: float,
+    row: asyncpg.Record,
+    unit_rows: dict[int, asyncpg.Record],
+    title: str,
+    project_name: object,
+) -> Citation:
+    """One exchange-shaped citation: question + seq-ordered answer text."""
+    answer_ids = [int(u) for u in row["a_unit_ids"]]
+    answers = sorted(
+        (unit_rows[u] for u in answer_ids if u in unit_rows),
+        key=lambda r: int(r["seq"]),
+    )
+    answer_text = " ".join(str(r["text"]) for r in answers)
+    return Citation(
+        doc_id=UUID(matched.doc_id),
+        doc_title=title,
+        project_name=None if project_name is None else str(project_name),
+        exchange_seq=int(row["seq"]),
+        question_text=row["question_text"],
+        answer_text=answer_text,
+        answer_highlight=_highlight(matched, answer_text),
+        matched_kind=matched.kind,
+        score=score,
+        unit_seqs=tuple(int(r["seq"]) for r in answers),
+    )
+
+
+def _window_citation(
+    parent_key: str,
+    matched: _Child,
+    score: float,
+    windows: dict[str, dict[int, str]],
+    title: str,
+    project_name: object,
+) -> Citation:
+    """One window-shaped citation: the chunk window with the match outlined."""
+    members = windows.get(parent_key, {})
+    window_text = " ".join(members[seq] for seq in sorted(members))
+    start = window_text.find(matched.text)
+    return Citation(
+        doc_id=UUID(matched.doc_id),
+        doc_title=title,
+        project_name=None if project_name is None else str(project_name),
+        exchange_seq=None,
+        question_text=None,
+        answer_text=window_text,
+        answer_highlight=(start, start + len(matched.text))
+        if start >= 0
+        else (0, len(window_text)),
+        matched_kind=matched.kind,
+        score=score,
+        unit_seqs=tuple(sorted(members)),
+    )
+
+
+async def _citations(
+    conn: asyncpg.Connection,
+    parents: list[tuple[str, _Child, float]],
+    windows: dict[str, dict[int, str]],
+) -> list[Citation]:
+    doc_ids = sorted({child.doc_id for _, child, _ in parents})
+    if not doc_ids:
+        return []
+    docs, exchange_rows, unit_rows = await _citation_lookup_rows(conn, parents)
 
     citations: list[Citation] = []
     for parent_key, matched, score in parents:
@@ -648,45 +719,12 @@ async def _citations(
             row = exchange_rows.get(int(parent_key.split(":")[1]))
             if row is None:
                 continue
-            answer_ids = [int(u) for u in row["a_unit_ids"]]
-            answers = sorted(
-                (unit_rows[u] for u in answer_ids if u in unit_rows),
-                key=lambda r: int(r["seq"]),
-            )
-            answer_text = " ".join(str(r["text"]) for r in answers)
             citations.append(
-                Citation(
-                    doc_id=UUID(matched.doc_id),
-                    doc_title=title,
-                    project_name=None if project_name is None else str(project_name),
-                    exchange_seq=int(row["seq"]),
-                    question_text=row["question_text"],
-                    answer_text=answer_text,
-                    answer_highlight=_highlight(matched, answer_text),
-                    matched_kind=matched.kind,
-                    score=score,
-                    unit_seqs=tuple(int(r["seq"]) for r in answers),
-                )
+                _exchange_citation(parent_key, matched, score, row, unit_rows, title, project_name)
             )
         else:
-            members = windows.get(parent_key, {})
-            window_text = " ".join(members[seq] for seq in sorted(members))
-            start = window_text.find(matched.text)
             citations.append(
-                Citation(
-                    doc_id=UUID(matched.doc_id),
-                    doc_title=title,
-                    project_name=None if project_name is None else str(project_name),
-                    exchange_seq=None,
-                    question_text=None,
-                    answer_text=window_text,
-                    answer_highlight=(start, start + len(matched.text))
-                    if start >= 0
-                    else (0, len(window_text)),
-                    matched_kind=matched.kind,
-                    score=score,
-                    unit_seqs=tuple(sorted(members)),
-                )
+                _window_citation(parent_key, matched, score, windows, title, project_name)
             )
     return citations
 

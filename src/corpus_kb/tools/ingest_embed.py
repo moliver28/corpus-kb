@@ -63,6 +63,119 @@ def _assign_embeddings(chunks: list[Chunk], vectors: list[list[float]]) -> None:
         chunk.embedding = vector
 
 
+async def _resolve_plan(
+    config: dict[str, object],
+    document_text: str | None,
+    pool: asyncpg.Pool | None,
+) -> tuple[IngestEmbeddingPlan | None, str, str | None]:
+    """Resolve the embedding plan, its mode and its honesty note.
+
+    Without document text there is no plan (pooled mode); with one, the plan
+    comes from ``select_ingest_embedder`` (off the event loop: the default
+    factory may construct the HF stack on its first call, seconds-to-minutes,
+    memoized per process after).
+    """
+    if document_text is None:
+        # Honest fallback when late chunking was requested but the caller
+        # could not supply the document (e.g. the reembed repair path).
+        note = (
+            "late_chunking requested but no document text was provided to "
+            "embed_chunks; pooled fallback"
+            if late_chunking_requested(config)
+            else None
+        )
+        return None, POOLED_MODE, note
+    plan = await asyncio.to_thread(select_ingest_embedder, config, pool)
+    return plan, plan.mode, plan.note
+
+
+async def _embed_late(
+    plan: IngestEmbeddingPlan,
+    chunks: list[Chunk],
+    document_text: str,
+    text_override: dict[str, str] | None,
+    mode: str,
+    note: str | None,
+    meta: dict[str, object] | None,
+) -> tuple[bool, str | None]:
+    """The late-chunking path: span-carrying chunks pool document token states.
+
+    The late path runs synchronous HF/torch forwards; offload to a worker
+    thread so the server event loop (uvicorn + socket share it) never blocks
+    behind a multi-second window forward.
+    """
+    vectors, span_note, spans_used = await asyncio.to_thread(
+        _late_chunk_vectors, plan, chunks, document_text, text_override
+    )
+    if span_note is not None:
+        note = f"{note}; {span_note}" if note else span_note
+    if meta is not None:
+        # Mode honesty: "late-chunking" only when at least one chunk
+        # was actually late-chunked; an all-pooled run with the flag
+        # on is reported as pooled (the note carries the reason).
+        meta["embedding_mode"] = mode if spans_used > 0 else POOLED_MODE
+        if note is not None:
+            meta["embedding_note"] = note
+    if vectors and _all_zero(vectors):
+        _assign_embeddings(chunks, vectors)
+        return True, "Connection failed: LateChunkEmbedder returned zero vectors"
+    _assign_embeddings(chunks, vectors)
+    return False, None
+
+
+async def _embed_with_fallback(
+    config: dict[str, object],
+    pool: asyncpg.Pool | None,
+    plan: IngestEmbeddingPlan | None,
+    chunks: list[Chunk],
+    texts: list[str],
+) -> tuple[bool, str | None]:
+    """Pooled embedding with the zero-vector fallback chain.
+
+    When the primary returns zero-vectors (the embedder-failure marker), the
+    ``embedding.fallback_provider`` embedder is tried; its vectors win when
+    real. Every branch assigns SOME vectors before reporting.
+    """
+    embedding_cfg = _nested_dict(config, "embedding")
+    provider_value = embedding_cfg.get("provider")
+    provider = provider_value if isinstance(provider_value, str) else "pgml"
+
+    embedder = plan.embedder if plan is not None else create_embedder(config, pool)
+    vectors = await aembed_batch(embedder, texts)
+
+    if vectors and _all_zero(vectors):
+        fallback_value = embedding_cfg.get("fallback_provider")
+        fallback_provider = fallback_value if isinstance(fallback_value, str) else "ollama"
+        if fallback_provider == provider:
+            _assign_embeddings(chunks, vectors)
+            return (
+                True,
+                f"Connection failed: {type(embedder).__name__} returned zero vectors",
+            )
+        fallback_config = dict(config)
+        fallback_embedding = dict(embedding_cfg)
+        fallback_embedding["provider"] = fallback_provider
+        fallback_config["embedding"] = fallback_embedding
+        fallback_embedder = create_embedder(fallback_config, pool)
+        fallback_vectors = await aembed_batch(fallback_embedder, texts)
+        if fallback_vectors and not _all_zero(fallback_vectors):
+            _assign_embeddings(chunks, fallback_vectors)
+            return (
+                True,
+                f"Connection failed: {provider} returned zero vectors; "
+                f"embeddings produced by fallback {fallback_provider}",
+            )
+        _assign_embeddings(chunks, vectors)
+        return (
+            True,
+            f"Connection failed: {provider} and fallback "
+            f"{fallback_provider} both returned zero vectors",
+        )
+
+    _assign_embeddings(chunks, vectors)
+    return False, None
+
+
 async def embed_chunks(
     chunks: list[Chunk],
     config: dict[str, object],
@@ -102,91 +215,18 @@ async def embed_chunks(
                 meta["embedding_mode"] = POOLED_MODE
             return False, None
 
-        if document_text is None:
-            plan: IngestEmbeddingPlan | None = None
-            mode = POOLED_MODE
-            # Honest fallback when late chunking was requested but the caller
-            # could not supply the document (e.g. the reembed repair path).
-            note = (
-                "late_chunking requested but no document text was provided to "
-                "embed_chunks; pooled fallback"
-                if late_chunking_requested(config)
-                else None
-            )
-        else:
-            # Off the loop: the default factory may construct the HF stack on
-            # its first call (seconds-to-minutes; memoized per process after).
-            plan = await asyncio.to_thread(select_ingest_embedder, config, pool)
-            mode = plan.mode
-            note = plan.note
-
+        plan, mode, note = await _resolve_plan(config, document_text, pool)
         if plan is not None and plan.spans_provider is not None:
             assert document_text is not None  # plan only exists with document text
-            # The late path runs synchronous HF/torch forwards; offload to a
-            # worker thread so the server event loop (uvicorn + socket share
-            # it) never blocks behind a multi-second window forward.
-            vectors, span_note, spans_used = await asyncio.to_thread(
-                _late_chunk_vectors, plan, chunks, document_text, text_override
-            )
-            if span_note is not None:
-                note = f"{note}; {span_note}" if note else span_note
-            if meta is not None:
-                # Mode honesty: "late-chunking" only when at least one chunk
-                # was actually late-chunked; an all-pooled run with the flag
-                # on is reported as pooled (the note carries the reason).
-                meta["embedding_mode"] = mode if spans_used > 0 else POOLED_MODE
-                if note is not None:
-                    meta["embedding_note"] = note
-            if vectors and _all_zero(vectors):
-                _assign_embeddings(chunks, vectors)
-                return True, "Connection failed: LateChunkEmbedder returned zero vectors"
-            _assign_embeddings(chunks, vectors)
-            return False, None
+            return await _embed_late(plan, chunks, document_text, text_override, mode, note, meta)
 
         if meta is not None:
             meta["embedding_mode"] = mode
             if note is not None:
                 meta["embedding_note"] = note
 
-        embedding_cfg = _nested_dict(config, "embedding")
-        provider_value = embedding_cfg.get("provider")
-        provider = provider_value if isinstance(provider_value, str) else "pgml"
-
-        embedder = plan.embedder if plan is not None else create_embedder(config, pool)
         texts = [(text_override or {}).get(str(chunk.chunk_id), chunk.text) for chunk in chunks]
-        vectors = await aembed_batch(embedder, texts)
-
-        if vectors and _all_zero(vectors):
-            fallback_value = embedding_cfg.get("fallback_provider")
-            fallback_provider = fallback_value if isinstance(fallback_value, str) else "ollama"
-            if fallback_provider == provider:
-                _assign_embeddings(chunks, vectors)
-                return (
-                    True,
-                    f"Connection failed: {type(embedder).__name__} returned zero vectors",
-                )
-            fallback_config = dict(config)
-            fallback_embedding = dict(embedding_cfg)
-            fallback_embedding["provider"] = fallback_provider
-            fallback_config["embedding"] = fallback_embedding
-            fallback_embedder = create_embedder(fallback_config, pool)
-            fallback_vectors = await aembed_batch(fallback_embedder, texts)
-            if fallback_vectors and not _all_zero(fallback_vectors):
-                _assign_embeddings(chunks, fallback_vectors)
-                return (
-                    True,
-                    f"Connection failed: {provider} returned zero vectors; "
-                    f"embeddings produced by fallback {fallback_provider}",
-                )
-            _assign_embeddings(chunks, vectors)
-            return (
-                True,
-                f"Connection failed: {provider} and fallback "
-                f"{fallback_provider} both returned zero vectors",
-            )
-
-        _assign_embeddings(chunks, vectors)
-        return False, None
+        return await _embed_with_fallback(config, pool, plan, chunks, texts)
     except Exception as exc:
         return True, f"{type(exc).__name__}: {exc}"
 

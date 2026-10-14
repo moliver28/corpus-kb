@@ -181,6 +181,137 @@ async def _embedder_abstains(pool: asyncpg.Pool, config: dict[str, Any]) -> bool
     return embedder_check(config, pgml_installed).status != "ok"
 
 
+async def _start_run(
+    pool: asyncpg.Pool,
+    tenant_id: UUID,
+    cfg: dict[str, Any],
+    mode: str,
+    *,
+    json_output: bool,
+    guide: bool,
+) -> tuple[Any, Any, tuple[Any, ...], str, str | None, bool]:
+    """Open the coding run: resume point, stack, recorder, banners.
+
+    Returns (recorder, handler, stack, run_id, resume_after, suppressed).
+    Emits EVENT_CYCLE_STARTED and the guide/resume banners (when not
+    json_output), and catches projections up after a human pause.
+    """
+    recorder = CycleRecorder(json_output=json_output)
+    last = await _last_cycle_run(pool, tenant_id)
+    resume_after, suppressed = resume_point(last)
+    resume_from = str(last["run_id"]) if last else None
+    reader, handler, _embedder, _projection, _docs, _embeds = build_stack(
+        pool, cfg, str((cfg.get("database") or {}).get("connection_string", ""))
+    )
+    stack = (reader, handler, _embedder, _projection, _docs, _embeds)
+    started = handler.start_coding_run(
+        tenant_id,
+        params={
+            "kind": "cycle",
+            "mode": mode,
+            "resume_from_run": resume_from,
+        },
+    )
+    run_id = str(started["run_id"])
+    recorder.emit(EVENT_CYCLE_STARTED, run_id=run_id, mode=mode, stages=list(STAGES))
+    if guide and not json_output:
+        print(guide_copy.CYCLE_TITLE)
+        print(guide_copy.CYCLE_INTRO)
+        print(f"docs: {guide_copy.CYCLE_DOC}")
+    if resume_after and resume_from and not json_output:
+        print(guide_copy.CYCLE_RESUME_HINT.format(stage=resume_after, run_id=resume_from))
+    if resume_after:
+        # The human acted between runs (promote, review) through surfaces
+        # that advance projections; re-read the world before continuing so
+        # stage reads (e.g. the latest codebook version) see their actions.
+        from corpus_kb.research.cycle_render import catch_up_all
+
+        await catch_up_all(stack, tenant_id)
+    return recorder, handler, stack, run_id, resume_after, suppressed
+
+
+def _print_stage_view(stage: str, receipt: dict[str, Any], json_output: bool) -> None:
+    """Human-facing stage output for the report and notebook stages."""
+    if json_output:
+        return
+    from corpus_kb.research.demo import _print_ask, _print_report_summary
+    from corpus_kb.research.governance_report import _mapping
+
+    if stage == "report":
+        _print_report_summary(_mapping(receipt.get("novice_view")))
+    if stage == "notebook" and receipt.get("status") != "skipped":
+        _print_ask(receipt)
+
+
+async def _abort_unavailable_stage(
+    handler: Any,
+    stack: tuple[Any, ...],
+    recorder: CycleRecorder,
+    tenant_id: UUID,
+    run_id: str,
+    stage: str,
+    receipt: dict[str, Any],
+) -> int:
+    """Seal a stage that could not run and stop the coding run."""
+    recorder.emit(
+        EVENT_STAGE_UNAVAILABLE,
+        run_id=run_id,
+        stage=stage,
+        reason=str(receipt.get("reason", "")),
+    )
+    await seal(
+        handler,
+        stack,
+        tenant_id,
+        UUID(run_id),
+        {"kind": "stage_unavailable", "stage": stage},
+    )
+    handler.stop_coding_run(tenant_id, UUID(run_id))
+    return EXIT_UNAVAILABLE
+
+
+async def _post_stage_mode_stop(
+    pool: asyncpg.Pool,
+    handler: Any,
+    stack: tuple[Any, ...],
+    recorder: CycleRecorder,
+    tenant_id: UUID,
+    run_id: str,
+    stage: str,
+    alarms: list[Alarm],
+    *,
+    mode: str,
+    codebook_version_id: UUID | None,
+    json_output: bool,
+    approve: Callable[[str], Awaitable[bool]] | None,
+) -> int | None:
+    """Mode-specific stop after a completed stage (exit code, or None to continue).
+
+    ``in``: propose alarms and stop the run (a success needs no checkpoint —
+    the proposal itself is event-sourced through the app; a failed proposal
+    lands its receipt on the stage checkpoint, same kind/stage — resume
+    semantics unchanged — instead of vanishing with the process (F4)).
+    ``on``: ask the human between stages; stop when they say so.
+    """
+    if mode == "in":
+        proposal = await _propose_alarms(
+            pool, handler, tenant_id, codebook_version_id, alarms, json_output
+        )
+        if proposal is not None:
+            await seal(
+                handler,
+                stack,
+                tenant_id,
+                UUID(run_id),
+                {"kind": "stage_complete", "stage": stage, "change_proposals": proposal},
+            )
+        handler.stop_coding_run(tenant_id, UUID(run_id))
+        return 0
+    if mode == "on":
+        return await approval(recorder, handler, stack, tenant_id, UUID(run_id), stage, approve)
+    return None
+
+
 async def run_cycle(
     pool: asyncpg.Pool,
     tenant_id: UUID,
@@ -201,8 +332,6 @@ async def run_cycle(
     if mode not in MODES:
         raise ValueError(f"unknown cycle mode: {mode!r} (expected one of {sorted(MODES)})")
     from corpus_kb.config import load_config
-    from corpus_kb.research.demo import _print_ask, _print_report_summary
-    from corpus_kb.research.governance_report import _mapping
 
     cfg = cfg if cfg is not None else load_config()
     config: dict[str, Any] = dict(cfg)
@@ -212,39 +341,11 @@ async def run_cycle(
         return EXIT_UNAVAILABLE
     configured = halt_on if halt_on is not None else _configured_halt_on(config)
     halt_set = effective_halt_on(configured)
-    recorder = CycleRecorder(json_output=json_output)
 
-    last = await _last_cycle_run(pool, tenant_id)
-    resume_after, suppressed = resume_point(last)
-    resume_from = str(last["run_id"]) if last else None
-    reader, handler, _embedder, _projection, _docs, _embeds = build_stack(
-        pool, config, str((config.get("database") or {}).get("connection_string", ""))
+    recorder, handler, stack, run_id, resume_after, suppressed = await _start_run(
+        pool, tenant_id, config, mode, json_output=json_output, guide=guide
     )
-    stack = (reader, handler, _embedder, _projection, _docs, _embeds)
-    started = handler.start_coding_run(
-        tenant_id,
-        params={
-            "kind": "cycle",
-            "mode": mode,
-            "resume_from_run": resume_from,
-        },
-    )
-    run_id = str(started["run_id"])
-    recorder.emit(EVENT_CYCLE_STARTED, run_id=run_id, mode=mode, stages=list(STAGES))
     alarms: list[Alarm] = []  # U25: monitored alarms across this cycle's stages
-    if guide and not json_output:
-        print(guide_copy.CYCLE_TITLE)
-        print(guide_copy.CYCLE_INTRO)
-        print(f"docs: {guide_copy.CYCLE_DOC}")
-    if resume_after and resume_from and not json_output:
-        print(guide_copy.CYCLE_RESUME_HINT.format(stage=resume_after, run_id=resume_from))
-    if resume_after:
-        # The human acted between runs (promote, review) through surfaces
-        # that advance projections; re-read the world before continuing so
-        # stage reads (e.g. the latest codebook version) see their actions.
-        from corpus_kb.research.cycle_render import catch_up_all
-
-        await catch_up_all(stack, tenant_id)
 
     for stage in stages_after(resume_after):
         recorder.emit(EVENT_STAGE_STARTED, run_id=run_id, stage=stage)
@@ -261,25 +362,10 @@ async def run_cycle(
             allow_draft,
         )
         if str(receipt.get("status")) == "unavailable":
-            recorder.emit(
-                EVENT_STAGE_UNAVAILABLE,
-                run_id=run_id,
-                stage=stage,
-                reason=str(receipt.get("reason", "")),
+            return await _abort_unavailable_stage(
+                handler, stack, recorder, tenant_id, run_id, stage, receipt
             )
-            await seal(
-                handler,
-                stack,
-                tenant_id,
-                UUID(run_id),
-                {"kind": "stage_unavailable", "stage": stage},
-            )
-            handler.stop_coding_run(tenant_id, UUID(run_id))
-            return EXIT_UNAVAILABLE
-        if stage == "report" and not json_output:
-            _print_report_summary(_mapping(receipt.get("novice_view")))
-        if stage == "notebook" and not json_output and receipt.get("status") != "skipped":
-            _print_ask(receipt)
+        _print_stage_view(stage, receipt, json_output)
         recorder.emit(
             EVENT_STAGE_COMPLETED, run_id=run_id, stage=stage, receipt=bounded_receipt(receipt)
         )
@@ -302,29 +388,22 @@ async def run_cycle(
                 findings,
                 halted,
             )
-        if mode == "in":
-            # The proposal itself is event-sourced (ReleaseService persists
-            # through the app), so a success needs no checkpoint here; a
-            # failed proposal lands its receipt on the stage checkpoint
-            # (same kind/stage — resume semantics unchanged) instead of
-            # vanishing with the process (F4).
-            proposal = await _propose_alarms(
-                pool, handler, tenant_id, codebook_version_id, alarms, json_output
-            )
-            if proposal is not None:
-                await seal(
-                    handler,
-                    stack,
-                    tenant_id,
-                    UUID(run_id),
-                    {"kind": "stage_complete", "stage": stage, "change_proposals": proposal},
-                )
-            handler.stop_coding_run(tenant_id, UUID(run_id))
-            return 0
-        if mode == "on":
-            stop = await approval(recorder, handler, stack, tenant_id, UUID(run_id), stage, approve)
-            if stop is not None:
-                return stop
+        stop = await _post_stage_mode_stop(
+            pool,
+            handler,
+            stack,
+            recorder,
+            tenant_id,
+            run_id,
+            stage,
+            alarms,
+            mode=mode,
+            codebook_version_id=codebook_version_id,
+            json_output=json_output,
+            approve=approve,
+        )
+        if stop is not None:
+            return stop
 
     proposal_receipt = await _propose_alarms(
         pool, handler, tenant_id, codebook_version_id, alarms, json_output
