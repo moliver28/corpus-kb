@@ -1,0 +1,21 @@
+# CorpusSTE base rule: ASD-STE100 word-choice bans for docs.
+# The same ban list gates Python strings in tests/test_plain_language.py
+# (BANNED_IDIOMS), which also covers "just" and "speak" — Vale matches these
+# two inside ordinary words too often, so they live in the Python gate only.
+extends: existence
+level: warning
+scope: text
+message: "Avoid '%s'. Use a plain, everyday word instead."
+tokens:
+  - garbage
+  - simply
+  - obviously
+  - and so on
+  - etc.
+  - please note
+  - in order to
+  - utilize
+  - leverage
+  - prior to
+  - subsequently
+  - utilizing
