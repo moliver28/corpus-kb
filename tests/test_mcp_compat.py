@@ -23,12 +23,15 @@ async def test_tool_signatures_unchanged() -> None:
             "tenant_id",
             "source",
         },
+        # W3A unification: recursive joined the signature (default True) so
+        # the HTTP recursive flag rides the ONE shared directory walk.
         "ingest_directory": {
             "directory_path",
             "pg_pool",
             "config",
             "tenant_id",
             "source_type",
+            "recursive",
         },
         # W1B honesty wave: list_documents delegates to QueryHandler, so it
         # takes the same pagination + tenant arguments as the HTTP/socket
