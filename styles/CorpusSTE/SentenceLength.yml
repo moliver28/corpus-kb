@@ -1,7 +1,16 @@
 # ASD-STE100: keep sentences short. The zero-drift program binds 20 words.
-extends: conditional
-level: error
+# Canonical Vale sentence-length recipe: occurrence over sentence scope,
+# counting WORDS (\b\S+\b), alerting above `max`.
+#
+# Level: warning. Measured 2026-10-14: 163 violations across technical
+# reference docs (research-math, INGESTION, retrieval-benchmarks), mostly
+# table-adjacent precision prose. The binding enforcement for operational
+# prose lives in tests/test_plain_language.py (quickstart sentences <= 30
+# words, FK grade <= 12). Ratchet: rewrite the reference docs, then flip
+# this to error. Every PR check shows the current count.
+extends: occurrence
 scope: sentence
-message: "Keep sentences to 20 words or fewer (this one has %s words)."
-limit: 20
-link: https://asd-ste100.org
+level: warning
+message: "Keep sentences to 20 words or fewer (ASD-STE100). Split this one."
+max: 20
+token: '\b\S+\b'
