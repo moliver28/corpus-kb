@@ -171,6 +171,35 @@ Note: no mature standalone OSS ASD-STE100 checker exists (BSEC, HyperSTE,
 Congree are commercial). Issue 9 of the spec is free to download from
 asd-ste100.org and is the rule source for our Vale style + native checker.
 
+## CI enforcement map
+
+Each rule lands in CI together with the tooling that implements it. A wave's
+PR is not done until its job is green on GitHub Actions. CI calls the same
+`poe` targets developers run locally (one source of gate commands).
+
+| Rule | CI enforcement | Workflow / job | Lands |
+|------|----------------|----------------|-------|
+| Route liveness | `tests/test_http_route_smoke.py` runs in the test job; a dead route fails the PR | ci.yml / test | 1 |
+| Cross-surface envelope parity | `tests/test_surface_parity_deep.py` in the test job; undeclared key on one surface fails with a diff | ci.yml / test | 1 (seed) → 2 (full) |
+| MCP surface parity | FastMCP in-memory `Client` calls in the same parity test | ci.yml / test | 4 |
+| OpenAPI spec freshness | CI regenerates `corpus-kb operations --openapi` and runs `git diff --exit-code` | ci.yml / contract | 2 |
+| Breaking API changes | `oasdiff breaking` of PR spec vs master spec; failure blocks merge | ci.yml / contract | 2 |
+| HTTP conformance | `schemathesis run` against the app with a fixed hypothesis seed | ci.yml / contract | 2 |
+| Layering | `lint-imports` (import-linter contracts in `pyproject.toml`) | ci.yml / lint | 2 |
+| Gate commands | all CI jobs call `poe lint`, `poe types`, `poe verify`, `poe gen` — not raw commands | ci.yml (all jobs) | 2 |
+| Dead code | `vulture src/` with `tests/whitelist.py`; new hits fail | ci.yml / lint | 3 |
+| Unused / missing deps | `deptry src/` | ci.yml / lint | 3 |
+| Function complexity | `xenon --max-absolute B` | ci.yml / lint | 3 |
+| Coverage on changes | `diff-cover --fail-under 90` on the PR diff | ci.yml / test | 3 |
+| Generated artifacts | `gen_harness_pack.py --check`, `cog --check docs/*.md` | ci.yml / contract | 2 (pack) → 5 (cog) |
+| ASD-STE100 prose | Vale GitHub Action with `.vale.ini` + `styles/CorpusSTE` | docs-quality.yml | 5 |
+| Grade level + string rules | `pytest -m ste` walks docs, tool docstrings, and error-message tables (Flesch-Kincaid ≤ 9, sentence ≤ 20 words) | ci.yml / test | 5 |
+| Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
+
+Rule for future waves: every new gate is (a) a `poe` target, (b) called by a
+CI job, (c) documented in this table and in `AGENTS.md`. A gate that exists
+only locally is not a gate.
+
 ## Issue mapping
 
 - #84–#86, #80, #76 stay open (feature work, credential-gated; not this program).

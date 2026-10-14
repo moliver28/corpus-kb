@@ -173,6 +173,23 @@ The `PostgresGraphStore` implementation includes:
 - **Commit message validator** (`.github/workflows/commit-validate.yml`) checks each line individually — use single-line commit messages or ensure every body line starts with a conventional commit prefix.
 - Safe prefixes: `feat|fix|docs|chore|test|refactor|perf`. Avoid `build:`, `ci:`, and `style:`.
 
+## Zero-Drift Program Standards (BINDING for all future work)
+
+The zero-drift program ([docs/research/harness-zero-drift-program.md](docs/research/harness-zero-drift-program.md)) defines binding rules. Any plan, by any agent or human, MUST follow them. CI enforces each rule; the enforcement map is in that document.
+
+1. **One operation, one handler, many surfaces.** Implement the shared handler in `src/corpus_kb/tools/`. Wire CLI, HTTP, socket (and MCP, once Wave 4 lands) as thin adapters to it. Never write a second pipeline for the same operation (the `command_handler` ingest split is the cautionary tale).
+2. **Registry-first updates.** To add or change an operation: update the parity catalogue (`tests/test_surface_parity_deep.py`) and/or `surface_registry.py` FIRST, then the handler, then regenerate (`gen_harness_pack.py`, `cog`). CI regenerates and diffs; a stale artifact fails the PR.
+3. **One envelope per operation family.** Surfaces may only add keys listed in the parity test's explicit `ALLOWED_EXTRA` map. Undeclared envelope keys on one surface fail CI.
+4. **Errors go through the taxonomy.** Raise typed errors from `corpus_kb/errors.py` (Wave 2). One failure class maps to one HTTP status + socket code + CLI exit code. Never add a catch-all `except Exception → 400` route handler.
+5. **Layering is law.** Import direction: `api → tools → handlers → storage`. Enforced by import-linter (Wave 2). No surface module may contain pipeline logic.
+6. **Plain English (ASD-STE100) everywhere user-facing.** Short active sentences, 20 words or fewer. Simple words. No idioms. Applies to error messages, help text, doctor output, docstrings, and docs. Enforced from Wave 5 by Vale (docs) and `pytest -m ste` (Python strings, Flesch-Kincaid grade ≤ 9).
+7. **Size and hygiene gates.** 250-line soft limit per source file (already repo rule), function complexity gate (xenon, Wave 3), no dead code (vulture, Wave 3), no unused dependencies (deptry, Wave 3).
+8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen` (Wave 2+). CI runs the same targets — if you bypass them locally, CI will catch it.
+9. **Deterministic output.** Query/search results must be stably ordered (tiebreakers, Wave 2). A harness must be able to snapshot results.
+10. **Every new gate needs three things:** a `poe` target, a CI job that calls it, and a row in the enforcement map + a line here. A gate that exists only locally is not a gate.
+
+Plans that violate these rules must be amended before implementation. If a rule blocks legitimate work, change the rule in the program document first — never silently around it.
+
 ## Known Issues (check open GitHub issues before fixing)
 
 - **#13 (HIGH BUG)**: ✅ Resolved — ontology pipeline adapted to Postgres. Entity/relation extraction works via `src/corpus_kb/extraction/` with regex, langextract, pgml, and bert backends.
