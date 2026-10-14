@@ -4,6 +4,23 @@ This guide takes you from a clean machine to a running Corpus-KB server. The cur
 
 All commands assume you are at the repo root.
 
+## Two database paths: 5433 (compose) vs 5432 (native)
+
+Pick one before you start. Ports differ, and the port tells you which path is live.
+
+- **Compose path (default).** You have Docker. Run `corpus-kb setup`. It
+  starts the bundled Postgres container and loads the schema. The container
+  listens on 5432 inside; compose publishes it on host port **5433**. The
+  packaged config already points at 5433, so it works unchanged. The manual
+  steps in Step 1 and Step 2 below are then NOT needed.
+- **Native path.** You have no Docker, or you run your own Postgres. It
+  usually listens on **5432**. Follow Step 1 and Step 2, then set
+  `CORPUS_KB_DATABASE_URL` so the runtime and `corpus-kb doctor` target
+  your server.
+
+The full contract (ports, exit codes, vocabularies) lives in
+[OPERATIONS.md](OPERATIONS.md).
+
 ---
 
 ## Prerequisites
@@ -112,7 +129,11 @@ pip install -e ".[graphqlite,dev]"
 
 ## Step 4: Load the schema
 
-The easiest way is to use the migration runner:
+The easiest way is the compose path: `corpus-kb setup` starts the bundled
+Postgres and runs every migration. Skip to Step 5.
+
+On the native path, use the migration runner with your server's URL
+(native Postgres listens on 5432):
 
 ```bash
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
@@ -147,19 +168,33 @@ The root `scripts/install.py` file still exists as a deprecation shim: it warns 
 
 ## Step 5: Install and start Ollama
 
-Download Ollama from [ollama.com](https://ollama.com) and start it. Then pull an embedding model:
+Download Ollama from [ollama.com](https://ollama.com) and start it.
+
+One rule decides the model: **the schema column is fixed at 4096 dimensions,
+and pgvector needs an exact match.** The bundled schema stores `vector(4096)`.
+For real (non-degraded) ingest you must either run a 4096-dimension model or
+change the column yourself:
 
 ```bash
-ollama pull nomic-embed-text
+ollama pull qwen3-embedding:8b-q8_0     # 4096 dimensions — fits the shipped schema
 ```
 
-`nomic-embed-text` is the default: about 274 MB, 768 dimensions, and fast on CPU. For higher quality, pull `qwen3-embedding:8b-q8_0` and update `config.yaml` to `dimensions: 4096`.
+`nomic-embed-text` (768d, about 274 MB) is the shipped config default and the
+installer's recommendation for smaller machines. It does NOT fit the bundled
+schema: ingest raises a `config_error` that names the fix. Two guards catch
+the mismatch early — the ingest write path and the `corpus-kb doctor`
+"embedding dimensions vs schema" check. The full model↔schema matrix lives in
+[ADMIN.md](ADMIN.md); the guard behavior is summarized in
+[OPERATIONS.md](OPERATIONS.md).
 
 ---
 
 ## Step 6: Configure Corpus-KB
 
-Create or edit `config.yaml` at the repo root:
+Create or edit `config.yaml` at the repo root. The connection string below
+targets the **compose** path (host port 5433). On the **native** path, use
+port 5432 instead — or skip the file edit and export
+`CORPUS_KB_DATABASE_URL`:
 
 ```yaml
 server:
@@ -168,14 +203,18 @@ server:
   port: 8010
 
 database:
-  connection_string: "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+  # compose path (default): the bundled container publishes 5433.
+  # native path: change 5433 to 5432.
+  connection_string: "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb"
 
 embedding:
   provider: ollama
-  model: nomic-embed-text
+  # The shipped schema stores vector(4096). Use a 4096-dimension model
+  # (see Step 5), or change the column yourself.
+  model: qwen3-embedding:8b-q8_0
   base_url: http://localhost:11434
   batch_size: 32
-  dimensions: 768
+  dimensions: 4096
 
 search:
   rrf_k: 60
@@ -294,3 +333,4 @@ Change `--port` or set `CORPUS_KB_PORT`. The JSON-RPC socket uses port `8011` on
 - Read the [Features overview](FEATURES.md)
 - Browse the [API reference](API.md)
 - Learn how to operate the system in [Admin](ADMIN.md)
+- Ports, exit codes, vocabularies, tenancy: [Operations](OPERATIONS.md)
