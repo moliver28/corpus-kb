@@ -95,10 +95,10 @@ async def ingest_directory(
 ) -> dict[str, object]:
     """Ingest the supported files in a directory. This is the ONE walk.
 
-    Every surface (CLI, MCP, HTTP) routes through this function. It expands
-    to the files whose suffix is in ``ingest_watch.WATCH_SUFFIXES`` — the
-    same modality table the CLI front door and the watcher use — and runs
-    each file through :func:`ingest_file`.
+    MCP and HTTP route through this function. The CLI front door applies
+    the same ``WATCH_SUFFIXES`` filter and calls :func:`ingest_file` per
+    file for its per-file output. A file is ingested only when its suffix
+    is in ``ingest_watch.WATCH_SUFFIXES`` — the one modality table.
 
     Envelope (one meaning per key on every surface):
 
