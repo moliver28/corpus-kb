@@ -47,7 +47,9 @@ Request body:
 
 `source_type` is validated against the ingestion-strategy registry. An
 explicit value overrides content detection; an unknown value is rejected
-with the standard error envelope.
+with the standard error envelope. The file is never decoded as text on
+the surface: the ingestion strategy partitions the file, so binary
+formats (PDF, DOCX, PPTX) work.
 
 ### POST /api/ingest/text
 
@@ -58,6 +60,17 @@ curl -X POST http://localhost:8010/api/ingest/text \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world", "source": "notes", "source_type": "text"}'
 ```
+
+`source_type` is the document type. It must be one of `code`, `markdown`,
+`text`, `transcript`; anything else returns
+`{"status": "error", "message": "Invalid source_type: <value>"}` — the
+same envelope the tool layer returns.
+
+Ingest envelopes (`file`, `text`, `directory`) match the shared tool
+envelope exactly, plus the declared additive event-store wrapper keys
+`aggregate_id` and `aggregate_version` (plus `event_sourcing_error` only
+when event sourcing failed after a successful pipeline). The socket
+methods `ingest_file` and `ingest_text` return the same shape.
 
 ### POST /api/ingest/directory
 

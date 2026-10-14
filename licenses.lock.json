@@ -197,9 +197,9 @@
   },
   {
     "name": "eventsourcing",
-    "version": "9.5.5",
+    "version": "9.5.6",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/eventsourcing/9.5.5/",
+    "homepage": "https://pypi.org/project/eventsourcing/9.5.6/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
@@ -1009,9 +1009,9 @@
   },
   {
     "name": "wrapt",
-    "version": "2.5.0",
+    "version": "2.5.1",
     "license": "BSD-2-Clause",
-    "homepage": "https://pypi.org/project/wrapt/2.5.0/",
+    "homepage": "https://pypi.org/project/wrapt/2.5.1/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-2-Clause"
   },
   {

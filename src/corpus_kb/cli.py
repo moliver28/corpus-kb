@@ -290,50 +290,29 @@ def coding_run(
 
 
 def _coding_run_coroutine(codebook_version_id: str, project_id: str | None, alpha: float):
-    from corpus_kb.config import load_config
-    from corpus_kb.handlers.research_handler import get_research_handler
-    from corpus_kb.projections.checkpoint import CheckpointManager
-    from corpus_kb.projections.dlq import DLQHandler
-    from corpus_kb.projections.documents_projection import DocumentsProjection
-    from corpus_kb.projections.embed_projection import EmbedChunksProjection
-    from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.projections.research._embed import ResearchEmbedder
-    from corpus_kb.projections.research_projection import ResearchProjection
-    from corpus_kb.rag import create_embedder
-    from corpus_kb.research.deductive_run import run_deductive
+    from corpus_kb.tools.research_tools import coding_run as coding_run_tool
 
     async def _run() -> int:
+        import json
+
         import asyncpg
+
+        from corpus_kb.config import load_config
 
         cfg = load_config()
         db = cfg.get("database", {})
         conn_str = str(db.get("connection_string", ""))
         pool = await asyncpg.create_pool(conn_str)
         try:
-            app = _get_app(conn_str)
-            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
-            get_research_handler(pool)
-            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-            checkpoint = CheckpointManager(pool)
-            dlq = DLQHandler(pool)
-            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
-            docs = DocumentsProjection(pool, checkpoint, dlq)
-            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
-
-            from uuid import UUID as _UUID
-
-            summary = await run_deductive(
+            # The shared tool advances ALL projections (research + documents
+            # + embeds) — the same post-condition every other surface gets.
+            summary = await coding_run_tool(
                 pool,
-                _tenant(),
-                _UUID(codebook_version_id),
-                project_id=_pid(project_id),
+                codebook_version_id,
+                project_id=project_id,
+                tenant_id=_DEFAULT_TENANT,
                 cal_alpha=alpha,
             )
-            await projection.catch_up(reader)
-            await docs.catch_up(reader, _tenant())
-            await embeds.catch_up(reader, _tenant())
-            import json
-
             print(json.dumps(summary, indent=2, default=str))
             return 0 if summary.get("status") == "success" else 1
         finally:
@@ -406,21 +385,14 @@ def _ingest_coroutine(
     source_type: str | None = None,
 ):
     _validate_strategy_override(source_type)
-    from corpus_kb.config import load_config
-    from corpus_kb.handlers.research_handler import get_research_handler
-    from corpus_kb.projections.checkpoint import CheckpointManager
-    from corpus_kb.projections.dlq import DLQHandler
-    from corpus_kb.projections.documents_projection import DocumentsProjection
-    from corpus_kb.projections.embed_projection import EmbedChunksProjection
-    from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.projections.research._embed import ResearchEmbedder
-    from corpus_kb.projections.research_projection import ResearchProjection
-    from corpus_kb.rag import create_embedder
+    from corpus_kb.tools.research_tools import research_ingest, research_ingest_transcript
 
     async def _run() -> int:
         from pathlib import Path
 
         import asyncpg
+
+        from corpus_kb.config import load_config
 
         cfg = load_config()
         if source_type is not None:
@@ -433,15 +405,6 @@ def _ingest_coroutine(
         conn_str = str(db.get("connection_string", ""))
         pool = await asyncpg.create_pool(conn_str)
         try:
-            app = _get_app(conn_str)
-            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
-            handler = get_research_handler(pool)
-            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-            checkpoint = CheckpointManager(pool)
-            dlq = DLQHandler(pool)
-            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
-            docs = DocumentsProjection(pool, checkpoint, dlq)
-            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
             if watch:
                 from pathlib import Path
 
@@ -454,17 +417,23 @@ def _ingest_coroutine(
                 async def ingest_one(file_path: Path) -> None:
                     if source_type is None:
                         _print_detection_summary(file_path, cfg)
-                    await handler.ingest_transcript(_tenant(), str(file_path), _pid(project_id))
-                    await projection.catch_up(reader)
-                    await docs.catch_up(reader, _tenant())
-                    await embeds.catch_up(reader, _tenant())
+                    # Shared tool: ingest + the one projection catch-up.
+                    await research_ingest_transcript(
+                        str(file_path),
+                        pool,
+                        project_id=project_id,
+                        tenant_id=_DEFAULT_TENANT,
+                    )
 
                 await watch_dir(pool, _tenant(), Path(path), interval, ingest_one)
                 return 0
-            result = await handler.ingest_path(_tenant(), path, _pid(project_id), force=force)
-            await projection.catch_up(reader)
-            await docs.catch_up(reader, _tenant())
-            await embeds.catch_up(reader, _tenant())
+            result = await research_ingest(
+                path,
+                pool,
+                project_id=project_id,
+                tenant_id=_DEFAULT_TENANT,
+                force=force,
+            )
             import json
 
             print(json.dumps(result, indent=2, default=str))
@@ -488,12 +457,6 @@ def _pid(project_id: str | None):
     from uuid import UUID
 
     return UUID(project_id) if project_id else None
-
-
-def _get_app(conn_str: str):
-    from corpus_kb.domain.application import get_app
-
-    return get_app(conn_str)
 
 
 @research_app.command("ingest-transcript")
@@ -541,50 +504,25 @@ def coding_inductive(
 
 
 def _inductive_coroutine(project_id: str | None):
-    from corpus_kb.config import load_config
-    from corpus_kb.handlers.llm_handler import LlmHandler
-    from corpus_kb.handlers.research_handler import get_research_handler
-    from corpus_kb.projections.checkpoint import CheckpointManager
-    from corpus_kb.projections.dlq import DLQHandler
-    from corpus_kb.projections.documents_projection import DocumentsProjection
-    from corpus_kb.projections.embed_projection import EmbedChunksProjection
-    from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.projections.research._embed import ResearchEmbedder
-    from corpus_kb.projections.research_projection import ResearchProjection
-    from corpus_kb.rag import create_embedder
-    from corpus_kb.research.inductive_run import run_inductive
+    from corpus_kb.tools.research_tools import inductive_run as inductive_run_tool
 
     async def _run() -> int:
         import json
 
         import asyncpg
 
+        from corpus_kb.config import load_config
+
         cfg = load_config()
         db = cfg.get("database", {})
         conn_str = str(db.get("connection_string", ""))
         pool = await asyncpg.create_pool(conn_str)
         try:
-            app = _get_app(conn_str)
-            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
-            get_research_handler(pool)
-            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-            checkpoint = CheckpointManager(pool)
-            dlq = DLQHandler(pool)
-            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
-            docs = DocumentsProjection(pool, checkpoint, dlq)
-            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
-
-            summary = await run_inductive(
+            summary = await inductive_run_tool(
                 pool,
-                _tenant(),
-                project_id=_pid(project_id),
-                llm=LlmHandler(cfg),
-                embedder=embedder,
-                cfg=cfg,
+                project_id=project_id,
+                tenant_id=_DEFAULT_TENANT,
             )
-            await projection.catch_up(reader)
-            await docs.catch_up(reader, _tenant())
-            await embeds.catch_up(reader, _tenant())
             print(json.dumps(summary, indent=2, default=str))
             if summary.get("status") == "unavailable":
                 return 2
@@ -622,53 +560,33 @@ def _promote_coroutine(
     label: str | None,
     tau_dup: float | None,
 ):
-    from corpus_kb.config import load_config
-    from corpus_kb.projections.checkpoint import CheckpointManager
-    from corpus_kb.projections.dlq import DLQHandler
-    from corpus_kb.projections.documents_projection import DocumentsProjection
-    from corpus_kb.projections.embed_projection import EmbedChunksProjection
-    from corpus_kb.projections.event_reader import EventReader
-    from corpus_kb.projections.research._embed import ResearchEmbedder
-    from corpus_kb.projections.research_projection import ResearchProjection
-    from corpus_kb.rag import create_embedder
-    from corpus_kb.research.inductive_run import inductive_config
-    from corpus_kb.research.promote_code import promote_proposal
+    from corpus_kb.tools.research_tools import codebook_promote as promote_tool
 
     async def _run() -> int:
         import json
 
         import asyncpg
 
+        from corpus_kb.config import load_config
+
         cfg = load_config()
         db = cfg.get("database", {})
         conn_str = str(db.get("connection_string", ""))
         pool = await asyncpg.create_pool(conn_str)
         try:
-            app = _get_app(conn_str)
-            reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
-            embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-            checkpoint = CheckpointManager(pool)
-            dlq = DLQHandler(pool)
-            projection = ResearchProjection(pool, checkpoint, dlq, embedder)
-            docs = DocumentsProjection(pool, checkpoint, dlq)
-            embeds = EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq)
-
-            settings = inductive_config(cfg)
-            effective_tau = tau_dup if tau_dup is not None else float(str(settings["tau_dup"]))
-            result = await promote_proposal(
+            # tau_dup None means "calibrated/config default" — the shared
+            # tool resolves it exactly as the MCP/HTTP surfaces do.
+            result = await promote_tool(
                 pool,
-                _tenant(),
                 proposed_id,
                 name,
                 definition,
                 inclusion=inclusion,
                 exclusion=exclusion,
-                tau_dup=effective_tau,
                 label=label,
+                tau_dup=tau_dup,
+                tenant_id=_DEFAULT_TENANT,
             )
-            await projection.catch_up(reader)
-            await docs.catch_up(reader, _tenant())
-            await embeds.catch_up(reader, _tenant())
             print(json.dumps(result, indent=2, default=str))
             if result.get("status") == "promoted":
                 return 0
