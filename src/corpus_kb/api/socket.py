@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 class MethodNotFoundError(Exception):
     """Raised by _dispatch when no handler exists for the requested method."""
 
+
 # Platform-specific socket path
 if sys.platform == "win32":
     DEFAULT_SOCKET_PATH = r"\\.\pipe\corpus-kb"
