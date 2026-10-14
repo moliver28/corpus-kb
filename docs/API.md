@@ -1,6 +1,6 @@
 # API Reference
 
-Corpus-KB exposes HTTP REST and JSON-RPC over a Unix socket or Windows named pipe today. An MCP-over-stdio server is planned but **not implemented yet** — `corpus-kb --transport stdio` exits with a clear message pointing at the HTTP server. This page lists the HTTP routes and gives curl examples for each.
+Corpus-KB exposes MCP over stdio, HTTP REST, and JSON-RPC over a Unix socket or Windows named pipe. This page lists the HTTP routes and gives curl examples for each; the MCP tool reference lives in [FEATURES.md](FEATURES.md).
 
 ---
 
@@ -10,7 +10,7 @@ Corpus-KB exposes HTTP REST and JSON-RPC over a Unix socket or Windows named pip
 |----------|----------|---------|
 | HTTP | Scripts, browsers, integrations, editors (via an HTTP bridge) | `http://localhost:8010` |
 | JSON-RPC socket | Local inter-process calls | `/tmp/corpus-kb.sock` or `127.0.0.1:8011` on Windows |
-| MCP stdio | Editor agents — planned, not implemented yet | `corpus-kb --transport stdio` (exits with a pointer to HTTP) |
+| MCP stdio | Editor agents | `corpus-kb --transport stdio` (the `mcp-configs/` files launch this command) |
 
 There is no authentication today. Corpus-KB is intended to run locally.
 

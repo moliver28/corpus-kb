@@ -109,7 +109,7 @@ All active code is under `src/corpus_kb/`:
 - `src/corpus_kb/config.yaml` — Packaged default config.
 - `config.yaml` — Root runtime config.
 - `config/ontology.yaml` — Entity/relation type vocabulary.
-- `mcp-configs/` — Per-editor MCP config files (`claude-code.json`, `cursor.json`, `codex.json`, all using the `"mcpServers"` legacy key). The OpenCode editor config is the root `opencode.json`, which uses the `"mcp"` key (new format). **Do not** use `mcpServers` in OpenCode format. These configs pre-stage the not-yet-implemented MCP stdio server; `validate_configs.py` checks their internal consistency.
+- `mcp-configs/` — Per-editor MCP config files (`claude-code.json`, `cursor.json`, `codex.json`, all using the `"mcpServers"` legacy key). The OpenCode editor config is the root `opencode.json`, which uses the `"mcp"` key (new format). **Do not** use `mcpServers` in OpenCode format. These configs launch the MCP stdio server (`src/corpus_kb/mcp_server.py`, `corpus-kb --transport stdio`); `validate_configs.py` checks their internal consistency.
 
 ## Import Convention (IMPORTANT)
 
