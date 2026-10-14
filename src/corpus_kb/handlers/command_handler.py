@@ -1,27 +1,20 @@
 """Command handler — the event-sourcing envelope over the shared ingest tools.
 
-The INGEST pipeline lives in the tool layer (``tools.ingest_tools.ingest_file``
+The ingest pipeline lives in the tool layer (``tools.ingest_tools.ingest_file``
 — binary-safe, strategy-aware; ``tools.ingest_common.ingest_text`` — document
 type whitelist). CLI, MCP, HTTP and socket surfaces all go through those ONE
-implementations; this handler keeps only the eventsourcing responsibility:
-run the shared tool function, then create a Document aggregate and fire
-Ingested + ChunksAdded events for the audit trail.
+implementations; this handler only runs the shared tool function, then
+creates a Document aggregate + fires events for the audit trail.
 
-Envelope contract (zero drift across surfaces): the HTTP/socket response is
-the tool envelope EXACTLY, plus the DECLARED additive wrapper keys
-``aggregate_id`` / ``aggregate_version`` (and ``event_sourcing_error`` only
-when event sourcing failed after a successful pipeline).
+Envelope contract: the HTTP/socket response is the tool envelope EXACTLY,
+plus the DECLARED additive wrapper keys ``aggregate_id``/``aggregate_version``
+(``event_sourcing_error`` appears only when event sourcing failed after a
+successful pipeline). ``source_type`` means ONE thing everywhere: an
+ingestion-STRATEGY override on file ingest, the whitelisted DOCUMENT type on
+text ingest; the detected document type comes back in the envelope and is
+copied into the event row so the ledger stays coherent.
 
-``source_type`` means ONE thing on every surface: on file ingest it names an
-optional INGESTION STRATEGY (validated against the registry); on text ingest
-it is the DOCUMENT type under the shared whitelist. The detected document
-type comes back in the envelope and is copied into the event row, so the
-ledger stays coherent.
-
-Usage:
-    from corpus_kb.handlers.command_handler import get_command_handler
-    handler = get_command_handler(pool)
-    result = await handler.handle_ingest_file(IngestFileCommand(file_path='test.py'))
+Usage: ``await get_command_handler(pool).handle_ingest_file(cmd)``
 """
 
 from __future__ import annotations
@@ -51,9 +44,8 @@ logger = logging.getLogger(__name__)
 class CommandHandler:
     """Dispatches commands to domain aggregates via the eventsourcing app.
 
-    For ingest commands: run the shared tool pipeline (partition → chunk →
-    embed → extract → store), then create a Document aggregate + fire events
-    for audit trail. For entity/relation commands: create aggregates directly.
+    Ingest commands run the shared tool pipeline, then fire audit events;
+    entity/relation commands create aggregates directly.
     """
 
     def __init__(
@@ -72,13 +64,16 @@ class CommandHandler:
             self._app = get_app()
         return self._app
 
-    async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, object]:
-        """Ingest a file: shared tool pipeline → Document aggregate → events."""
+    def _require_pool(self) -> asyncpg.Pool:
         if self._pool is None:
             raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
+        return self._pool
+
+    async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, object]:
+        """Ingest a file: shared tool pipeline → Document aggregate → events."""
         result = await ingest_file_tool(
             cmd.file_path,
-            self._pool,
+            self._require_pool(),
             self._config,
             tenant_id=str(cmd.tenant_id),
             source_type=cmd.source_type,
@@ -87,11 +82,9 @@ class CommandHandler:
 
     async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
         """Ingest raw text: shared tool pipeline (whitelist included) → events."""
-        if self._pool is None:
-            raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
         result = await ingest_text_tool(
             cmd.text,
-            self._pool,
+            self._require_pool(),
             source_type=cmd.source_type,
             config=self._config,
             tenant_id=str(cmd.tenant_id),
@@ -188,19 +181,16 @@ class CommandHandler:
         source: str,
         tenant_id: UUID,
     ) -> dict[str, object]:
-        """Attach the eventsourcing audit trail to a SUCCESSFUL tool envelope.
+        """Attach the audit trail to a SUCCESSFUL tool envelope.
 
         The Document aggregate records the DOCUMENT source type from the
         envelope (the pipeline's detection result) — never the caller's
-        strategy override — so the event ledger stays coherent. Any
-        non-success envelope (error / partial / skipped) passes through
-        unchanged: the tool layer already reported honestly, and there is
-        no completed ingest to audit.
+        strategy override. Non-success envelopes pass through unchanged:
+        the tool layer already reported honestly.
         """
         if result.get("status") != "success":
             return result
 
-        # 2. Create Document aggregate + fire events (audit trail)
         try:
             doc = Document(
                 tenant_id=tenant_id,
@@ -223,9 +213,7 @@ class CommandHandler:
         return result
 
 
-# ============================================================================
-# Singleton
-# ============================================================================
+# --- Singleton ---------------------------------------------------------------
 
 _command_handler: CommandHandler | None = None
 
@@ -237,8 +225,7 @@ def get_command_handler(
     """Get or create the singleton CommandHandler.
 
     Passing ``pool`` on an existing singleton updates its pool, so a lazily
-    wired surface (HTTP route / socket dispatch after server startup) always
-    sees the live pool server_wiring created.
+    wired surface always sees the live pool server_wiring created.
     """
     global _command_handler
     if _command_handler is None:
