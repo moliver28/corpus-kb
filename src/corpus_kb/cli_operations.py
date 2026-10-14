@@ -15,10 +15,7 @@ from typing import Any
 
 import typer
 
-from corpus_kb.contracts.catalogue_research import (
-    OPERATIONS,
-    SKIPPED_OPERATIONS,
-)
+from corpus_kb.contracts import OPERATIONS, SKIPPED_OPERATIONS
 from corpus_kb.contracts.model import ERROR_MAP, HTTP, Operation, SurfaceSpec
 
 
