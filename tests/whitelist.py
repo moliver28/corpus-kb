@@ -303,6 +303,12 @@ add_document
 batch_add_entities
 batch_add_relations
 
+# MCP tool wrapper dynamics (mcp_tools.build_wrapper: the SDK reads the
+# advertised signature via inspect.signature(); __qualname__ is set for
+# honest tool-frame names): 2 name(s)
+__qualname__
+__signature__
+
 # surface registry/parity helpers (tests + gen_harness_pack dispatch by name): 10 name(s)
 SERVER_ARGS
 SERVER_AUTO_APPROVE
