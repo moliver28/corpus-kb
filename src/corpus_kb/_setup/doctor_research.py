@@ -697,6 +697,12 @@ async def research_checks(
         extversion = await conn.fetchval(PGVECTOR_VERSION_SQL)
         checks.append(check_pgvector_version(None if extversion is None else str(extversion)))
         checks.extend(await db_checks(conn, config))
+        # Configuration truth (Wave 4C): the configured embedding dimensions
+        # must match the chunks_vectors.vector typmod — pgvector enforces the
+        # exact width, so a mismatch fails every vector insert.
+        from corpus_kb._setup.doctor_env import dimension_guard_check
+
+        checks.append(await dimension_guard_check(conn, config))
     except Exception as exc:
         checks.append(
             ResearchCheck(

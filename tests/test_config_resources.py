@@ -27,11 +27,11 @@ def test_packaged_config_matches_root_config() -> None:
 def test_load_config_resolves_from_cwd_in_dev_mode() -> None:
     """When run from the repo root, ``load_config()`` finds ``./config.yaml``."""
     cfg = load_config()
-    server_cfg = cast(dict[str, object], cfg["server"])
-    assert server_cfg["name"] == "corpus-kb"
     assert "installer" in cfg
     installer_cfg = cast(dict[str, object], cfg["installer"])
-    assert installer_cfg["auto_detect"] is True
+    assert installer_cfg["postgres_image"] == "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17"
+    extraction_cfg = cast(dict[str, object], cfg["extraction"])
+    assert extraction_cfg["backend"] == "pgml"
 
 
 def test_default_config_promotes_g1_winner() -> None:

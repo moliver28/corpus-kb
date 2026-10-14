@@ -2,7 +2,7 @@
 
 **Local RAG system for AI code editors. Ingest your codebase. Ask questions. Get answers. No cloud.**
 
-Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine: Postgres stores the data, Ollama generates embeddings, and a local server exposes the whole thing through HTTP endpoints and a JSON-RPC socket (an MCP stdio server is planned — see [Editor integration](#editor-integration)).
+Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine: Postgres stores the data, Ollama generates embeddings, and a local server exposes the whole thing over MCP stdio, HTTP endpoints, and a JSON-RPC socket (see [Editor integration](#editor-integration)).
 
 ---
 
@@ -24,7 +24,7 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 
 ```mermaid
 graph TB
-    Editor[AI Code Editor] -->|"MCP stdio - planned"| MCP[FastMCP Server]
+    Editor[AI Code Editor] -->|"MCP stdio"| MCP[MCP Server]
     Editor -->|HTTP :8010| HTTP[Starlette API]
     Editor -->|JSON-RPC socket| Socket[Unix socket / named pipe]
     MCP --> Handlers[Command / Query Handlers]
@@ -157,13 +157,14 @@ See [docs/INSTALL.md](docs/INSTALL.md) for the full setup guide.
 
 ## Editor integration
 
-Editors and scripts drive Corpus-KB through the **HTTP API** (any MCP-compatible editor can call it via an HTTP bridge) and the JSON-RPC socket:
+Editors connect over **MCP stdio** (native, no bridge), the **HTTP API**, or the JSON-RPC socket:
 
+- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files for Claude Code, Cursor, Codex, and OpenCode launch exactly this command. The server registers the catalogue operations plus the research/coding/release surfaces as MCP tools; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference
 - HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md))
 - JSON-RPC socket: same command, for local automation
 - The research and coding surfaces are first-class CLI commands (`corpus-kb research ...`, `corpus-kb coding ...`), and ingestion has a top-level front door (`corpus-kb ingest`, with `--watch` auto-heal plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`)
 
-An MCP-over-stdio server is planned but **not implemented yet**: the config files in `mcp-configs/` are pre-staged for it, and `corpus-kb --transport stdio` exits with a clear message rather than pretending. Until the MCP server lands, point editors at the HTTP API.
+Both stdio and HTTP serve the same shared tool functions, so envelopes match across surfaces (enforced by the parity gate in `tests/test_surface_parity_deep.py`).
 
 ---
 

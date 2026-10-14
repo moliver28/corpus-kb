@@ -1,16 +1,20 @@
 """Server wiring — initializes all components and starts all protocols.
 
-On startup:
-  1. Load config
-  2. Initialize asyncpg pool (Postgres)
-  3. Initialize CorpusApplication (eventsourcing)
-  4. Initialize handlers (command, query, idempotency)
-  5. Start projections (EmbedChunksProjection, DocumentsProjection)
-  6. Start HTTP server (uvicorn + Starlette)
-  7. Start socket server (JSON-RPC)
-  8. Start MCP server (FastMCP)
+Two transports:
 
-All run on the same asyncio event loop.
+  * stdio: the MCP tool surface for editor agents
+    (`corpus_kb.mcp_server.run_stdio_server` — the registry-generated
+    server; this module only routes to it).
+  * http/sse: full stack, started by :func:`startup` + :func:`run_all`:
+    1. Load config
+    2. Initialize asyncpg pool (Postgres)
+    3. Initialize CorpusApplication (eventsourcing)
+    4. Initialize handlers (command, query, idempotency)
+    5. Start projections (EmbedChunksProjection, DocumentsProjection)
+    6. Start HTTP server (uvicorn + Starlette)
+    7. Start socket server (JSON-RPC)
+
+All HTTP-mode services run on the same asyncio event loop.
 """
 
 from __future__ import annotations
@@ -310,11 +314,12 @@ async def shutdown(services: dict[str, object]) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Entry point: initialize and run all services.
+    """Entry point: initialize and run the selected transport.
 
     Supports --transport (stdio|http|sse) and --port CLI args.
-    Default: stdio (MCP over stdin/stdout for editor agents).
-    HTTP/SSE: starts Starlette HTTP server + JSON-RPC socket + projections.
+    Default: http. stdio serves the registry-generated MCP tools over
+    stdin/stdout for editor agents. HTTP/SSE starts the Starlette HTTP
+    server + JSON-RPC socket + projections.
 
     Args:
         argv: Optional argument list. When omitted, ``sys.argv`` is used.
@@ -342,14 +347,11 @@ def main(argv: list[str] | None = None) -> None:
     )
 
     if args.transport == "stdio":
-        # MCP stdio mode is NOT implemented: the FastMCP server is unwired.
-        # Fail fast with a clear message - silently running the HTTP server
-        # on a stdio transport would speak garbage to the editor client.
-        logger.error(
-            "MCP stdio server is not implemented yet; use --transport http "
-            "(editors should call the HTTP API until the MCP surface lands)"
-        )
-        sys.exit(2)
+        # The MCP tool surface for editor agents: the registry-generated
+        # server (mcp_server.py) owns pool, build, and the stdio loop.
+        from corpus_kb.mcp_server import run_stdio_server
+
+        sys.exit(run_stdio_server())
     else:
         # HTTP/SSE mode: start all protocols
         logger.info("Starting in %s mode on port %d", args.transport, args.port)

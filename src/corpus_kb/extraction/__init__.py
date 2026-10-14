@@ -10,15 +10,44 @@ from .pgml_backend import PgmlExtractor
 from .protocol import Extractor, ExtractStats, OntologyViolationError
 from .regex_backend import RegexExtractor
 
+# The extractor names create_extractor (and the ingest fallback chain in
+# tools/ingest_extract.py) resolve. "llamaindex" is named but deferred.
+EXTRACTION_BACKENDS: frozenset[str] = frozenset({"regex", "langextract", "pgml", "gliner"})
+
+
+def extraction_backend_name(config: dict[str, object]) -> str:
+    """Resolve the extraction backend: ``extraction.backend`` wins.
+
+    ``extraction.backend`` is the PREFERRED key (the old placement at
+    ``graph.extractor`` mixed two concerns); the alias stays accepted
+    forever. When both are set the preferred key wins; when only the alias
+    is set it stays authoritative. Anything unreadable falls back to
+    ``"pgml"`` (the shipped default). ``config.load_config`` mirrors the
+    preferred key onto the alias so every reader agrees.
+    """
+    extraction = config.get("extraction")
+    if isinstance(extraction, dict):
+        raw = cast(dict[str, object], extraction).get("backend")
+        if isinstance(raw, str) and raw:
+            return raw
+    graph = config.get("graph")
+    if isinstance(graph, dict):
+        raw = cast(dict[str, object], graph).get("extractor")
+        if isinstance(raw, str) and raw:
+            return raw
+    return "pgml"
+
 
 def create_extractor(config: dict[str, object], pool: object | None = None) -> Extractor:
     """Create an extractor from the configuration dictionary.
 
     Args:
-        config: Application configuration. Reads ``graph.extractor``,
-            defaulting to ``"pgml"``. The ``"gliner"`` backend additionally
-            reads ``extraction.gliner`` (``model``, ``revision``, ``types``)
-            and requires ``extraction.gliner.enabled: true``.
+        config: Application configuration. Reads ``extraction.backend``
+            (preferred) with ``graph.extractor`` as the accepted legacy
+            alias, defaulting to ``"pgml"``. The ``"gliner"`` backend
+            additionally reads ``extraction.gliner`` (``model``,
+            ``revision``, ``types``) and requires
+            ``extraction.gliner.enabled: true``.
         pool: Optional asyncpg pool for database-backed extractors
             (currently ``pgml``).
 
@@ -30,15 +59,12 @@ def create_extractor(config: dict[str, object], pool: object | None = None) -> E
         ValueError: For an unknown extractor name, or ``"gliner"`` while
             ``extraction.gliner.enabled`` is false.
     """
-    graph_config = config.get("graph", {})
-    extractor_name = "pgml"
+    extractor_name = extraction_backend_name(config)
     fixture_dir: str | None = None
     live_fallback = False
+    graph_config = config.get("graph", {})
     if isinstance(graph_config, dict):
         typed_config = cast(dict[str, object], graph_config)
-        raw_name = typed_config.get("extractor", "pgml")
-        if isinstance(raw_name, str):
-            extractor_name = raw_name
         raw_fixture_dir = typed_config.get("fixture_dir")
         if isinstance(raw_fixture_dir, str):
             fixture_dir = raw_fixture_dir
@@ -92,6 +118,7 @@ def _create_gliner(config: dict[str, object]) -> GlinerExtractor:
 
 
 __all__ = [
+    "EXTRACTION_BACKENDS",
     "ExtractStats",
     "Extractor",
     "GlinerExtractor",
@@ -100,4 +127,5 @@ __all__ = [
     "PgmlExtractor",
     "RegexExtractor",
     "create_extractor",
+    "extraction_backend_name",
 ]

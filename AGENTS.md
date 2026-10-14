@@ -109,7 +109,7 @@ All active code is under `src/corpus_kb/`:
 - `src/corpus_kb/config.yaml` — Packaged default config.
 - `config.yaml` — Root runtime config.
 - `config/ontology.yaml` — Entity/relation type vocabulary.
-- `mcp-configs/` — Per-editor MCP config files (`claude-code.json`, `cursor.json`, `codex.json`, all using the `"mcpServers"` legacy key). The OpenCode editor config is the root `opencode.json`, which uses the `"mcp"` key (new format). **Do not** use `mcpServers` in OpenCode format. These configs pre-stage the not-yet-implemented MCP stdio server; `validate_configs.py` checks their internal consistency.
+- `mcp-configs/` — Per-editor MCP config files (`claude-code.json`, `cursor.json`, `codex.json`, all using the `"mcpServers"` legacy key). The OpenCode editor config is the root `opencode.json`, which uses the `"mcp"` key (new format). **Do not** use `mcpServers` in OpenCode format. These configs launch the MCP stdio server (`src/corpus_kb/mcp_server.py`, `corpus-kb --transport stdio`); `validate_configs.py` checks their internal consistency.
 
 ## Import Convention (IMPORTANT)
 
@@ -149,7 +149,9 @@ These override `config.yaml` values at runtime. Use `corpus_kb.config.load_confi
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
-No new environment variables were introduced by the ingestion-rigor program. Ingestion-strategy and extraction config lives in `config.yaml` only — `ingestion.strategies`, `ingestion.default`, `extraction.gliner.*`, `search.exclude_degraded`, `search.qa_context_in_fts` — with no env override; authoring guide at `docs/INGESTION-STRATEGIES.md`.
+The DEFINITIVE env-var table (11 variables, each with consumed-by) lives in `docs/ADMIN.md`; `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS` is the code truth and `corpus-kb doctor` warns about set-but-unread `CORPUS_KB_*` variables. Dead mappings were removed in the zero-drift W4C config-truth pass (`CORPUS_KB_STORAGE_PATH` used to KeyError the config loader).
+
+No new environment variables were introduced by the ingestion-rigor program. Ingestion-strategy and extraction config lives in `config.yaml` only — `ingestion.strategies`, `ingestion.default`, `extraction.backend`, `extraction.gliner.*`, `search.exclude_degraded`, `search.qa_context_in_fts` — with no env override; authoring guide at `docs/INGESTION-STRATEGIES.md`.
 
 ## GraphStore Pattern (for new backends)
 

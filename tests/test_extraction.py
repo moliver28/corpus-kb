@@ -9,11 +9,13 @@ from unittest.mock import MagicMock
 import pytest
 
 from corpus_kb.extraction import (
+    GlinerExtractor,
     LangExtractExtractor,
     OntologyViolationError,
     PgmlExtractor,
     RegexExtractor,
     create_extractor,
+    extraction_backend_name,
 )
 from corpus_kb.ontology import load_ontology
 from corpus_kb.utils.models import Chunk
@@ -308,6 +310,47 @@ class TestExtractorFactory:
         assert isinstance(extractor_b, PgmlExtractor)
         assert extractor_a._pool is pool_a
         assert extractor_b._pool is pool_b
+
+
+class TestExtractionBackendAlias:
+    """extraction.backend is the PREFERRED key; graph.extractor stays accepted."""
+
+    def test_preferred_backend_wins_over_legacy_alias(self) -> None:
+        """When both keys are set, extraction.backend decides the extractor."""
+        config: dict[str, object] = {
+            "extraction": {"backend": "regex"},
+            "graph": {"extractor": "langextract"},
+        }
+        assert extraction_backend_name(config) == "regex"
+        assert isinstance(create_extractor(config), RegexExtractor)
+
+    def test_legacy_alias_alone_still_works(self) -> None:
+        """Old configs with only graph.extractor keep their backend."""
+        config: dict[str, object] = {"graph": {"extractor": "regex"}}
+        assert extraction_backend_name(config) == "regex"
+        assert isinstance(create_extractor(config), RegexExtractor)
+
+    def test_preferred_backend_gliner_reads_gliner_block(self) -> None:
+        """extraction.backend=gliner resolves the same opt-in gliner path."""
+        config: dict[str, object] = {
+            "extraction": {
+                "backend": "gliner",
+                "gliner": {"enabled": True},
+            },
+        }
+        assert isinstance(create_extractor(config), GlinerExtractor)
+
+    def test_empty_preferred_key_falls_back_to_alias(self) -> None:
+        """An empty extraction.backend string never shadows the alias."""
+        config: dict[str, object] = {
+            "extraction": {"backend": ""},
+            "graph": {"extractor": "regex"},
+        }
+        assert extraction_backend_name(config) == "regex"
+
+    def test_no_keys_defaults_to_pgml(self) -> None:
+        """No backend key anywhere resolves to the shipped default."""
+        assert extraction_backend_name({}) == "pgml"
 
     def test_factory_unknown_extractor_raises_value_error(self) -> None:
         """Given an unsupported extractor name, factory raises ValueError."""

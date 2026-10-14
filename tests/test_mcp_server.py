@@ -1,0 +1,360 @@
+"""Wave 4A: the MCP stdio server is real and registry-generated.
+
+The gate proves four things, all offline (stub pool, no Ollama, no
+subprocess, no stdio):
+
+  1. The server builds, and every catalogue MCP surface plus every
+     ``surface_registry`` MCP row is a registered tool — the EXCLUDE set
+     stays empty or carries a reason.
+  2. The advertised parameter schema comes from the shared function's
+     real signature (catalogue ParamSpec names, honest defaults).
+  3. In-memory client round-trips return the shared envelope for
+     representative ops across families (ingest, search, documents,
+     release, research).
+  4. Both transport guards (``corpus-kb --transport stdio`` and
+     ``server_wiring --transport stdio``) select ``run_stdio_server``;
+     the HTTP path stays byte-identical.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+from uuid import UUID
+
+import pytest
+from mcp.client._memory import InMemoryTransport
+from mcp.client.session import ClientSession
+from mcp.server.mcpserver import MCPServer
+
+import corpus_kb.handlers.query_handler as query_handler_module
+import corpus_kb.handlers.release_handlers as release_handlers_module
+import corpus_kb.tools.ingest_common as ingest_common_module
+import corpus_kb.tools.notebook_tools as notebook_tools_module
+import corpus_kb.tools.research_tools as research_tools_module
+from corpus_kb.contracts import OPERATIONS
+from corpus_kb.contracts.model import MCP, surfaces_of
+from corpus_kb.mcp_server import build_mcp_server, run_stdio_server
+from corpus_kb.mcp_tools import EXCLUDED_TOOLS, build_wrapper, resolve_function
+from corpus_kb.surface_registry import SURFACES
+
+CV = "11111111-1111-1111-1111-111111111111"
+PROJECT_ID = "44444444-4444-4444-4444-444444444444"
+
+
+class _StubConn:
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        if "pg_try_advisory_lock" in sql:
+            return True
+        if "to_regclass" in sql:
+            return "public.ingest_runs"
+        if "information_schema.columns" in sql:
+            return 2
+        return 0
+
+    async def execute(self, sql: str, *args: Any) -> str:
+        return "OK"
+
+    async def fetch(self, sql: str, *args: Any) -> list[Any]:
+        return []
+
+    def transaction(self) -> _StubConn:
+        return self
+
+    async def __aenter__(self) -> _StubConn:
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+class _StubPool:
+    def __init__(self) -> None:
+        self._conn = _StubConn()
+
+    def acquire(self) -> _StubPool:
+        return self
+
+    async def __aenter__(self) -> Any:
+        return self._conn
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+    async def close(self) -> None:
+        return None
+
+
+def _offline_config() -> dict[str, Any]:
+    return {
+        "graph": {"extract_entities": False},
+        "embedding": {"provider": "pgml"},
+        "ingest": {"hierarchy": {"enabled": False}},
+    }
+
+
+def _make_server() -> MCPServer:
+    return build_mcp_server(_StubPool(), _offline_config())
+
+
+async def _call(server: MCPServer, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+    transport = InMemoryTransport(server)
+    async with (
+        transport as (read_stream, write_stream),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        await session.initialize()
+        result = await session.call_tool(name, arguments)
+    assert not result.is_error, f"{name}: {result.content[0].text}"
+    return json.loads(result.content[0].text)
+
+
+# ---------------------------------------------------------------------------
+# Registration
+# ---------------------------------------------------------------------------
+
+
+async def test_every_declared_mcp_tool_is_registered() -> None:
+    """Catalogue MCP surfaces + registry MCP rows == the registered set."""
+    server = _make_server()
+    registered = {tool.name for tool in await server.list_tools()}
+    catalogue_mcp = {s.route for op in OPERATIONS for s in surfaces_of(op, MCP)}
+    registry_mcp = {s.mcp_tool for s in SURFACES if s.mcp_tool}
+    assert registered == catalogue_mcp | registry_mcp
+    # The historical lie (declared names with no function) stays dead.
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 27
+
+
+async def test_exclude_set_stays_empty_or_reasoned() -> None:
+    """A tool may be skipped only with an honest recorded reason."""
+    assert isinstance(EXCLUDED_TOOLS, dict)
+    server = _make_server()
+    registered = {tool.name for tool in await server.list_tools()}
+    for name, reason in EXCLUDED_TOOLS.items():
+        assert isinstance(reason, str) and reason, f"EXCLUDED_TOOLS[{name!r}] needs a reason"
+        # A skipped catalogue surface must not be registered.
+        assert name not in registered
+
+
+def test_registry_row_without_function_fails_the_build() -> None:
+    """Every registry MCP name outside the catalogue has a function mapping
+    (catalogue-covered rows register through the catalogue leg)."""
+    from corpus_kb.mcp_tools import REGISTRY_TOOL_FUNCTIONS
+
+    catalogue_mcp = {s.route for op in OPERATIONS for s in surfaces_of(op, MCP)}
+    for surface in SURFACES:
+        if surface.mcp_tool and surface.mcp_tool not in catalogue_mcp:
+            assert surface.mcp_tool in REGISTRY_TOOL_FUNCTIONS, surface.name
+
+
+def test_handler_override_targets_resolve() -> None:
+    from corpus_kb.mcp_tools import TOOL_LAYER_OVERRIDES
+
+    for spec in TOOL_LAYER_OVERRIDES.values():
+        assert callable(resolve_function(spec))
+
+
+def test_catalogue_param_drift_fails_the_build() -> None:
+    """A catalogue parameter the function does not take fails loudly."""
+    from corpus_kb.contracts import get_operation
+
+    op = get_operation("search")
+    assert op is not None
+
+    async def narrower(pg_pool: Any, query: str, k: int = 10) -> dict[str, object]:
+        return {}
+
+    with pytest.raises(ValueError, match="no_such_param"):
+        build_wrapper(narrower, None, None, ("query", "k", "no_such_param"), "search")
+
+
+# ---------------------------------------------------------------------------
+# Schema + round-trips
+# ---------------------------------------------------------------------------
+
+
+async def test_search_schema_matches_catalogue_params() -> None:
+    server = _make_server()
+    tools = {tool.name: tool for tool in await server.list_tools()}
+    schema = tools["search"].input_schema
+    assert set(schema["properties"]) == {"query", "k", "source_type", "self_query", "tenant_id"}
+    assert schema["required"] == ["query"]
+    assert schema["properties"]["k"]["default"] == 10
+
+
+async def test_round_trip_ingest_text(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
+    class _StubStore:
+        def __init__(self, pool: Any, tenant_id: str = "t") -> None:
+            pass
+
+        async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+            return None
+
+        async def begin_run(self, document: Any, file_hash: str) -> tuple[str, str]:
+            return "doc-1", "run-1"
+
+        async def store_chunks(self, chunks: list[Any]) -> set[str]:
+            return set()
+
+        async def store_vectors(self, *args: Any, **kwargs: Any) -> int:
+            return 0
+
+        async def store_entities(self, entities: list[Any]) -> int:
+            return 0
+
+        async def store_relations(self, *args: Any, **kwargs: Any) -> int:
+            return 0
+
+        async def update_document(self, document: Any, file_hash: str) -> None:
+            return None
+
+        async def finish_run(self, *args: Any) -> None:
+            return None
+
+        async def fail_run(self, *args: Any) -> None:
+            return None
+
+    monkeypatch.setattr(ingest_common_module, "PostgresIngestStore", _StubStore)
+    payload = await _call(
+        _make_server(), "ingest_text", {"text": "hello " * 4, "source": "mcp-test"}
+    )
+    assert payload["status"] == "success"
+    assert payload["document_id"] == "doc-1"
+
+
+async def test_round_trip_search(monkeypatch: pytest.MonkeyPatch) -> None:
+    from corpus_kb.handlers.query_integrity import DegradedExcluded, SearchEnvelope
+
+    async def canned_search(self: Any, query: Any) -> SearchEnvelope:
+        return SearchEnvelope(status="success", results=[], degraded_excluded=DegradedExcluded())
+
+    monkeypatch.setattr(query_handler_module.QueryHandler, "handle_search_with_meta", canned_search)
+    payload = await _call(_make_server(), "search", {"query": "probe", "k": 3})
+    assert set(payload) == {"status", "result", "degraded_excluded"}
+    assert payload["status"] == "success"
+
+
+async def test_round_trip_list_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def canned_list_documents(self: Any, query: Any) -> list[Any]:
+        return []
+
+    monkeypatch.setattr(
+        query_handler_module.QueryHandler, "handle_list_documents", canned_list_documents
+    )
+    payload = await _call(_make_server(), "list_documents", {"limit": 5, "offset": 0})
+    assert payload == {"status": "success", "result": []}
+
+
+async def test_round_trip_delete_document() -> None:
+    payload = await _call(
+        _make_server(), "delete_document", {"document_id": "00000000-0000-0000-0000-00000000000d"}
+    )
+    assert payload == {
+        "status": "success",
+        "document_id": "00000000-0000-0000-0000-00000000000d",
+    }
+
+
+async def test_round_trip_release_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Result:
+        def to_payload(self) -> dict[str, Any]:
+            return {
+                "status": "ok",
+                "codebook_version_id": CV,
+                "current_stage": "assess",
+                "release_state": "idle",
+                "blocking_criteria": [],
+                "recommended_next_action": "release assess",
+                "active_release": None,
+                "draft": None,
+                "pending_change_proposals": [],
+                "data_sufficiency": {},
+            }
+
+    async def stub(*args: Any, **kwargs: Any) -> _Result:
+        return _Result()
+
+    monkeypatch.setattr(release_handlers_module, "status_report", stub)
+    payload = await _call(_make_server(), "release_status", {"codebook_version_id": CV})
+    assert payload["status"] == "ok"
+    assert payload["current_stage"] == "assess"
+
+
+async def test_round_trip_research_transcript(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Handler:
+        async def ingest_transcript(
+            self,
+            tenant_id: UUID,
+            file_path: str,
+            project_id: UUID | None = None,
+            title: str | None = None,
+            force: bool = False,
+        ) -> dict[str, Any]:
+            return {"status": "success", "doc_id": "doc-1", "n_turns": 2}
+
+    async def noop_advance(pool: Any, tenant_id: UUID) -> None:
+        return None
+
+    monkeypatch.setattr(research_tools_module, "get_research_handler", lambda pool: _Handler())
+    monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
+    payload = await _call(_make_server(), "research_ingest_transcript", {"file_path": "t.txt"})
+    assert payload["status"] == "success"
+    assert payload["doc_id"] == "doc-1"
+
+
+async def test_notebook_ask_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def canned_ask(pool: Any, embedder: Any, llm: Any, query: Any) -> dict[str, Any]:
+        return {"status": "answer", "sentences": ["s."], "llm_calls": 0}
+
+    monkeypatch.setattr(notebook_tools_module, "notebook_ask", canned_ask)
+    payload = await _call(
+        _make_server(),
+        "notebook_ask",
+        {"question": "q?", "project_id": PROJECT_ID, "retrieval_only": True},
+    )
+    assert payload["status"] == "answer"
+
+
+# ---------------------------------------------------------------------------
+# Transport guards
+# ---------------------------------------------------------------------------
+
+
+def test_cli_and_server_wiring_select_run_stdio_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both stdio guards route to mcp_server.run_stdio_server; HTTP untouched."""
+    from typer.testing import CliRunner
+
+    from corpus_kb import server_wiring
+    from corpus_kb.cli import app
+
+    calls: list[str] = []
+
+    def _fake() -> int:
+        calls.append("stdio")
+        return 0
+
+    monkeypatch.setattr("corpus_kb.mcp_server.run_stdio_server", _fake)
+
+    result = CliRunner().invoke(app, ["--transport", "stdio"])
+    assert result.exit_code == 0, result.output
+
+    with pytest.raises(SystemExit) as excinfo:
+        server_wiring.main(["--transport", "stdio"])
+    assert excinfo.value.code == 0
+
+    assert calls == ["stdio", "stdio"]
+
+
+def test_run_stdio_server_returns_taxonomy_exit_for_config_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A config failure exits 3 with the remediation line on stderr."""
+    from corpus_kb.errors import ConfigError
+
+    async def boom() -> None:
+        raise ConfigError("No database connection string.", remediation="Run corpus-kb setup.")
+
+    monkeypatch.setattr("corpus_kb.mcp_server._serve_stdio", boom)
+    assert run_stdio_server() == 3

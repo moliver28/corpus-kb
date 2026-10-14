@@ -59,26 +59,48 @@ register_ingest_commands(app)
 register_operations(app)
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        from corpus_kb import __version__
+
+        typer.echo(__version__)
+        raise typer.Exit()
+
+
 @app.callback(invoke_without_command=True)
 def _root(
     ctx: typer.Context,
     transport: str = typer.Option(
         None,
         "--transport",
-        help="Reserved for the MCP stdio editor surface (not yet implemented)",
+        help="Serve the MCP tools over stdio (editor agents). HTTP: corpus-kb start",
+    ),
+    version: bool = typer.Option(
+        False,
+        "--version",
+        callback=_version_callback,
+        is_eager=True,
+        help="Print the version and exit",
     ),
 ) -> None:
     """Corpus-KB: local RAG knowledge base for AI code editors."""
     if transport is not None:
-        # The mcp-configs/ editor configs launch `corpus-kb --transport
-        # stdio`. The FastMCP stdio server is not wired yet; failing with a
-        # clear message beats typer's "no such option" crash, and running
-        # the HTTP server on stdio would speak garbage to the editor.
-        print(
-            "corpus-kb does not yet speak MCP over stdio; the editor-facing "
-            "API today is HTTP (corpus-kb start --transport http --port 8010)."
-        )
-        raise typer.Exit(code=2)
+        if transport != "stdio":
+            # The root --transport flag serves ONE purpose: the mcp-configs/
+            # editor configs launch `corpus-kb --transport stdio`. Anything
+            # else gets an honest pointer; the HTTP server is `start`.
+            typer.echo(
+                f"Unknown transport '{transport}' for the root command. "
+                "Use `corpus-kb --transport stdio` (editor agents) or "
+                "`corpus-kb start --transport http`."
+            )
+            raise typer.Exit(code=2)
+        # The editor-facing stdio surface: serve the registry-generated MCP
+        # tools until the editor disconnects (blocks; exit code is the
+        # taxonomy's: 0 clean, 3 config/database).
+        from corpus_kb.mcp_server import run_stdio_server
+
+        raise typer.Exit(code=run_stdio_server())
     if ctx.invoked_subcommand is None:
         typer.echo(ctx.get_help())
 

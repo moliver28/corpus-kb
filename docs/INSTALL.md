@@ -163,7 +163,6 @@ Create or edit `config.yaml` at the repo root:
 
 ```yaml
 server:
-  name: corpus-kb
   transport: http
   host: localhost
   port: 8010
@@ -178,22 +177,21 @@ embedding:
   batch_size: 32
   dimensions: 768
 
-chunking:
-  max_size: 4096
-  overlap: 200
-
 search:
   rrf_k: 60
-  expand_context: true
-  index_type: hnsw
 
 graph:
   backend: postgres
-  extractor: langextract
   ontology_path: config/ontology.yaml
+
+extraction:
+  backend: langextract
 ```
 
-You can also use environment variables. These override any value in `config.yaml`:
+Every key above has a live consumer. The full reference (including keys this
+sample omits) is [ADMIN.md](ADMIN.md).
+
+You can also use environment variables. These override some values in `config.yaml` — the definitive table lives in [ADMIN.md](ADMIN.md):
 
 | Variable | Maps to |
 |----------|---------|
@@ -217,11 +215,11 @@ HTTP mode (starts HTTP + JSON-RPC socket + projections):
 corpus-kb start --transport http --port 8010
 ```
 
-MCP stdio mode for editor agents is **not implemented yet** —
-`corpus-kb start --transport stdio` and `corpus-kb --transport stdio` exit
-with a clear message instead of pretending. Editors should call the HTTP
-API (see [API.md](API.md)) until the MCP server lands; the pre-staged
-config files in `mcp-configs/` will work unchanged once it does.
+MCP stdio mode for editor agents: `corpus-kb --transport stdio`.
+The server registers the catalogue operations plus the research/coding/
+release surfaces as MCP tools and serves them over stdin/stdout. The
+config files in `mcp-configs/` launch exactly this command. HTTP stays
+available side by side (see [API.md](API.md)).
 
 ---
 
