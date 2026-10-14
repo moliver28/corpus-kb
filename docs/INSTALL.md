@@ -163,7 +163,6 @@ Create or edit `config.yaml` at the repo root:
 
 ```yaml
 server:
-  name: corpus-kb
   transport: http
   host: localhost
   port: 8010
@@ -178,22 +177,21 @@ embedding:
   batch_size: 32
   dimensions: 768
 
-chunking:
-  max_size: 4096
-  overlap: 200
-
 search:
   rrf_k: 60
-  expand_context: true
-  index_type: hnsw
 
 graph:
   backend: postgres
-  extractor: langextract
   ontology_path: config/ontology.yaml
+
+extraction:
+  backend: langextract
 ```
 
-You can also use environment variables. These override any value in `config.yaml`:
+Every key above has a live consumer. The full reference (including keys this
+sample omits) is [ADMIN.md](ADMIN.md).
+
+You can also use environment variables. These override some values in `config.yaml` — the definitive table lives in [ADMIN.md](ADMIN.md):
 
 | Variable | Maps to |
 |----------|---------|

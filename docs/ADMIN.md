@@ -6,14 +6,13 @@ This page is for operators: configuration, schema, maintenance, and troubleshoot
 
 ## Configuration reference
 
-All tunable values live in `config.yaml` at the project root. Environment variables override any value in the file.
+All tunable values live in `config.yaml` at the project root. Environment variables override some values in the file (see the table below). Every key listed here has a live consumer; dead keys are removed on sight.
 
 ### server
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `name` | `corpus-kb` | Server name |
-| `transport` | `stdio` | `stdio`, `http`, or `sse` |
+| `transport` | `stdio` | `stdio`, `http`, or `socket` |
 | `host` | `localhost` | HTTP server host |
 | `port` | `8010` | HTTP server port |
 
@@ -21,41 +20,59 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `connection_string` | (none) | Postgres URL. Required. |
+| `connection_string` | `postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb` | Postgres URL |
 
 ### embedding
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `provider` | `ollama` | Embedding provider |
-| `model` | `nomic-embed-text` | Ollama model name |
+| `provider` | `pgml` | Embedding provider (`pgml` or `ollama`) |
+| `fallback_provider` | `ollama` | Provider used when the primary fails |
+| `model` | `nomic-embed-text` | Model name. WARNING: the shipped schema only accepts 4096-dimension vectors — see "Embedding dimensions and the vector schema" |
 | `base_url` | `http://localhost:11434` | Ollama API URL |
 | `batch_size` | `32` | Embeddings per batch |
-| `dimensions` | `768` | Vector dimensions (must match model) |
-
-### chunking
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `max_size` | `4096` | Max chunk size in characters |
-| `overlap` | `200` | Characters to overlap between chunks |
+| `dimensions` | `768` | Vector dimensions for the model. Must match the schema column (4096) for ingest to work |
+| `mrl_trained` | `false` | Whether the model is Matryoshka-trained (gates the matryoshka search arm) |
+| `late_chunking` | `true` | Late chunking for document ingest when the model supports it |
 
 ### search
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `rrf_k` | `60` | Reciprocal Rank Fusion constant |
-| `expand_context` | `true` | Include surrounding chunks by default |
+| `reranker` | `none` | Legacy reranker switch |
+| `reranker_model` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Legacy reranker model |
+| `exclude_degraded` | `true` | Vector search skips rows flagged degraded |
+| `qa_context_in_fts` | `false` | Opt-in FTS index for transcript Q/A text |
+| `candidates_per_branch` | `150` | Candidates per retrieval branch |
+| `exact_filter_selectivity_threshold` | `0.05` | Selectivity gate for exact-filter plans |
+| `matryoshka_enabled` | `false` | Two-stage matryoshka retrieval (needs `embedding.mrl_trained`) |
+| `matryoshka_dim` | `1024` | Front-slice width for the matryoshka arm |
+| `candidate_multiplier` | `8` | Over-retrieval multiplier |
+| `rerank.*`, `self_query.*`, `hnsw.*` | (blocks) | Rerank, self-query, and HNSW scan sub-settings |
 
 ### graph
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `extractor` | `regex` | `regex` or `langextract` |
-| `extract_entities` | (true) | Enable entity extraction |
+| `backend` | `age` | Graph store backend (`age` or `postgres`) |
+| `extractor` | `pgml` | LEGACY alias for `extraction.backend`. Accepted forever; `extraction.backend` wins when both are set |
+| `extract_entities` | `true` | Enable entity extraction during ingest |
 | `ontology_path` | `config/ontology.yaml` | Ontology vocabulary file |
-| `fixture_dir` | `tests/fixtures/langextract_recorded` | Recorded fixtures for tests |
+| `fixture_dir` | `tests/fixtures/langextract_recorded` | Recorded fixtures for offline runs |
 | `live_fallback` | `false` | Allow live LLM calls when no fixture exists |
+| `model_version` | `langextract-default` | Extraction provenance tag stored on relations |
+| `prompt_version` | `v1` | Extraction prompt provenance tag |
+
+### extraction
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `backend` | `pgml` | PREFERRED extraction-backend key: `regex`, `langextract`, `pgml`, or `gliner` |
+| `gliner.enabled` | `false` | Opt-in gate for the GLiNER2 backend |
+| `gliner.model` | `fastino/gliner2-large-v1` | GLiNER2 model |
+| `gliner.revision` | `main` | Model revision |
+| `gliner.types` | `[person, organization, location, date, money, product]` | Mention-level types |
 
 ### research
 
@@ -87,16 +104,46 @@ revision tag are fixed in code — deliberately not configuration.
 | `centroid_drift_threshold` | `0.15` | Mean cosine drift between snapshots triggering early refresh |
 | `tau_dup` | `0.85` | Promote-time duplicate gate (calibrated from gold when available) |
 
+### installer
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `postgres_image` | `ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17` | Postgres image for `corpus-kb setup` |
+| `data_dir` | `~/.corpus-kb` | Installer checkpoint + data directory |
+| `verify_image_signature` | `true` | Verify the Postgres image signature (cosign) before pull |
+| `profiles.*` | (block) | Hardware profiles (minimal / balanced / performance) |
+
 ### Environment variables
 
-| Variable | Overrides |
-|----------|-----------|
-| `CORPUS_KB_DATABASE_URL` | `database.connection_string` |
-| `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` |
-| `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` |
-| `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` |
-| `CORPUS_KB_TRANSPORT` | `server.transport` |
-| `CORPUS_KB_PORT` | `server.port` |
+Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set variable is NOT in this table (the variable is dead for this version — remove it or set the config key instead).
+
+| Variable | Overrides / feeds | Consumed by |
+|----------|-------------------|-------------|
+| `CORPUS_KB_CONFIG` | config discovery: absolute path to the config file | `config.load_config` |
+| `CORPUS_KB_DATABASE_URL` | `database.connection_string` | `load_config`, `server_wiring`, `domain.application`, `_setup.migrate`, `_setup.install`, `_setup.validate_migration` |
+| `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` | `load_config` |
+| `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` | `load_config` |
+| `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` | `load_config` |
+| `CORPUS_KB_TRANSPORT` | `server.transport` | `load_config` |
+| `CORPUS_KB_PORT` | `server.port` | `load_config` |
+| `CORPUS_KB_INSTALL_DATA_DIR` | `installer.data_dir` | installer checkpoint state (`_setup.install_state`) |
+| `CORPUS_KB_INSTALL_POSTGRES_IMAGE` | `installer.postgres_image` | `corpus-kb setup` image pull/verify (`_setup.install`) |
+| `CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE` | `installer.verify_image_signature` | `corpus-kb setup` image verify (`_setup.install`) |
+| `CORPUS_KB_SNAPSHOT_PERIOD` | (no config key; aggregate snapshot interval, default 100) | `domain.application` |
+
+### Embedding dimensions and the vector schema
+
+The vector column `chunks_vectors.vector` is a FIXED `vector(4096)` typmod. pgvector enforces the exact width — verified on pgvector 0.8.3 / Postgres 16.14:
+
+| Model | Dimensions | Can ingest into the shipped schema? |
+|-------|------------|-------------------------------------|
+| `nomic-embed-text` (shipped default) | 768 | NO — every vector insert fails with SQLSTATE 22000 |
+| `qwen3-embedding:8b-q8_0` | 4096 | YES — matches the column |
+
+Vectors are never padded and never truncated. Two guards make this honest:
+
+1. **At ingest**: the write path probes the column width and raises a `config_error` naming the schema reality and the fix (set `embedding.model` to a 4096-dimension model, set `embedding.dimensions` to 4096, re-ingest).
+2. **In doctor**: the `embedding dimensions vs schema` check compares `embedding.dimensions` with the column typmod and reports the stored per-row dimension histogram. FAIL on mismatch.
 
 ---
 
