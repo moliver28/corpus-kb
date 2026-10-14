@@ -286,8 +286,11 @@ def _assert_relaxed_ordering_shape(sql: str, id_col: str) -> None:
     assert "<=>" in cte_body
     assert "ORDER BY" in cte_body and "LIMIT" in cte_body
     assert "ORDER BY" in outer, sql
-    # ...and the outer ordering is EXACT over the materialized set.
-    assert "ORDER BY candidate.dist + 0" in outer, sql
+    # ...and the outer ordering is EXACT over the materialized set, with the
+    # stable-id tiebreaker (zero-drift rule 9; same contract as the search
+    # arms pinned in test_query_determinism.py).
+    tiebreak = f"candidate.{id_col.split('.')[1]}"
+    assert f"ORDER BY candidate.dist + 0, {tiebreak} ASC" in outer, sql
 
 
 def test_analytics_units_sql_uses_relaxed_ordering_pattern() -> None:
