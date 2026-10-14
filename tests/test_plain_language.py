@@ -104,7 +104,7 @@ MAX_QUICKSTART_SENTENCE_WORDS = 30
 
 
 def _doc_paths() -> list[Path]:
-    return sorted((REPO / "docs").glob("*.md")) + [REPO / "README.md"]
+    return [*sorted((REPO / "docs").glob("*.md")), REPO / "README.md"]
 
 
 @pytest.mark.parametrize("path", _doc_paths(), ids=lambda p: p.name)
@@ -116,8 +116,7 @@ def test_doc_readability_grade(path: Path) -> None:
     if reason is not None and grade > MAX_DOC_GRADE:
         pytest.skip(f"W5B pending rewrite: FK grade {grade:.1f} > {MAX_DOC_GRADE}. {reason}")
     assert grade <= MAX_DOC_GRADE, (
-        f"{path.name}: FK grade {grade:.1f} > {MAX_DOC_GRADE}. Use shorter, "
-        "everyday sentences."
+        f"{path.name}: FK grade {grade:.1f} > {MAX_DOC_GRADE}. Use shorter, everyday sentences."
     )
 
 
@@ -136,8 +135,7 @@ def test_quickstart_sentences_short() -> None:
                 if _words(sentence) > MAX_QUICKSTART_SENTENCE_WORDS:
                     offenders.append(f"{path.name} [{heading}]: {sentence.strip()[:120]}")
     assert not offenders, (
-        "Quickstart sentences over "
-        f"{MAX_QUICKSTART_SENTENCE_WORDS} words: {offenders}"
+        f"Quickstart sentences over {MAX_QUICKSTART_SENTENCE_WORDS} words: {offenders}"
     )
 
 
