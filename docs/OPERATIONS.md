@@ -278,6 +278,13 @@ keys, and the error map. `--openapi` emits the HTTP spec from the same rows.
 See [API.md](API.md) for worked HTTP examples and [FEATURES.md](FEATURES.md)
 for the tool reference table.
 
+### Default return k
+
+`search` and `query` take an optional `k`. When a caller omits `k`, the
+handler uses `reranking.return_top_k` (default `20`). An explicit `k`
+always wins. The catalogue pins the same number. A lockstep test fails
+if the config default and the catalogue default drift apart.
+
 ---
 
 ## Where to go next

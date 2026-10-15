@@ -59,8 +59,9 @@ class RerankSettings:
     ``candidates`` bounds how many post-fusion results enter the reranker
     (the spec's top 50-100); ``over_retrieve_n`` is the arms' rerank
     pre-fetch width (QueryHandler feeds at most that many fused results);
-    ``return_top_k`` is accepted and range-validated now; it becomes the
-    default return k (catalogue contract change) in wave 3.
+    ``return_top_k`` IS the default return k (W3): a caller that omits k
+    on search/query gets this value, and the catalogue pins the same
+    number (lockstep test in tests/test_config_blocks.py).
     ``max_pair_tokens`` truncates the document side of each (query,
     document) pair before scoring; ``score_floor`` drops results below the
     calibrated score; ``calibration`` selects the score post-processing

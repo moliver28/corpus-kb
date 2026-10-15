@@ -179,7 +179,8 @@ async def test_search_schema_matches_catalogue_params() -> None:
     schema = tools["search"].input_schema
     assert set(schema["properties"]) == {"query", "k", "source_type", "self_query", "tenant_id"}
     assert schema["required"] == ["query"]
-    assert schema["properties"]["k"]["default"] == 10
+    # W3: the catalogue default k mirrors reranking.return_top_k (20).
+    assert schema["properties"]["k"]["default"] == 20
 
 
 async def test_round_trip_ingest_text(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:

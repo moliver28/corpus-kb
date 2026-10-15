@@ -37,7 +37,7 @@ async def search(request: Request) -> JSONResponse:
     query = SearchQuery(
         tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
         query=body["query"],
-        k=body.get("k", 10),
+        k=body.get("k"),
         source_type=body.get("source_type"),
         self_query=body.get("self_query"),
     )
@@ -101,7 +101,7 @@ async def route_query(request: Request) -> JSONResponse:
     query = RoutedQuery(
         tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
         query=body["query"],
-        k=body.get("k", 10),
+        k=body.get("k"),
     )
     handler = get_router_handler()
     result = await handler.handle_routed_query(query)
