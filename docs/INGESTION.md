@@ -251,8 +251,8 @@ it within the parent document. The blurb is concatenated with the raw chunk
 text at embedding time and indexed for full-text search.
 
 Generation follows the same deterministic fixture pattern as LangExtract.
-Fixtures are keyed by SHA256 of the document prefix plus chunk text and
-stored in `ingest.contextualize.fixture_dir`. When
+Fixtures are keyed by SHA256 of the prompt profile, the document prefix,
+and the chunk text. They live in `ingest.contextualize.fixture_dir`. When
 `ingest.contextualize.live_fallback` is
 `false`, missing fixtures produce an empty blurb rather than calling the
 LLM, which keeps CI deterministic. Any LLM error degrades to an empty blurb
@@ -562,7 +562,7 @@ cleanly.
 | `reranking.base_url` | `http://localhost:11434` | Ollama API URL for reranking |
 | `reranking.over_retrieve_n` | `60` | Number of fused results to rerank |
 | `reranking.candidates` | `100` | Cap on results entering the reranker |
-| `reranking.return_top_k` | `20` | Default return k from wave 3 (validated now) |
+| `reranking.return_top_k` | `20` | The default return k: search/query callers that omit k get this value |
 | `reranking.score_floor` | `0.15` | Minimum normalized rerank score to keep |
 | `reranking.calibration` | `minmax` | Score calibration method |
 
@@ -572,11 +572,25 @@ cleanly.
 |-----|---------|-------------|
 | `enabled` | `false` | Enable contextual retrieval for all source types |
 | `enabled_source_types` | `["interview", "research"]` | Source types that always get blurbs |
-| `model` | `qwen3:4b` | Model for blurb generation |
+| `backend` | `ollama` | Blurb generator backend; only `ollama` is supported, other values are rejected at load |
+| `model` | `qwen3:8b` | Model for blurb generation; missing model or down Ollama degrades to an empty blurb |
+| `prompt_profile` | `interview` | `interview` names the moderator question (transcript sources); `generic` is the neutral template |
+| `max_context_tokens` | `100` | Cap on the generated blurb (chars/4 estimated tokens); truncates at a sentence or word boundary |
+| `document_first_prompt` | `true` | `true` puts document context before the chunk in the prompt; `false` is the chunk-first variant |
+| `apply_to` | `["embedding", "lexical"]` | Write-time blurb targets: `embedding` builds the `blurb\n\ntext` embed input, `lexical` writes the `chunks.context_blurb` FTS column |
 | `base_url` | `http://localhost:11434` | Ollama API URL for blurb generation |
 | `temperature` | `0.0` | Sampling temperature for blurb generation |
-| `fixture_dir` | `tests/fixtures/contextual_recorded` | Recorded blurb fixtures |
+| `fixture_dir` | `tests/fixtures/contextual_recorded` | Recorded blurb fixtures; the cache key includes the profile |
 | `live_fallback` | `false` | Allow live LLM calls when no fixture exists |
+
+The two `apply_to` targets are independent write-time switches. With
+`lexical` omitted, the column write is `NULL` (the FTS expression stays
+blurb-free) while the embed input still carries the blurb. With
+`embedding` omitted, chunks embed raw text while the column still serves
+FTS. One trade-off: a blurb that reaches neither the column nor any
+persisted text cannot be recovered later. The reembed repair path
+rebuilds vectors from raw text when `lexical` is absent. Keep `lexical`
+in the list (the default) when repair fidelity matters.
 
 Legacy namespaces still load as aliases: `search.*`, `ingest.hierarchy.*`,
 and `contextual.*`. Canonical keys win. Alias use logs a deprecation

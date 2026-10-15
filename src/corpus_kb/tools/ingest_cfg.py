@@ -45,6 +45,27 @@ def vector_write_config(config: dict[str, object]) -> tuple[str, int, int | None
     return embedding_model, dimensions, v1024_dim
 
 
+def contextual_apply_to(config: dict[str, object]) -> tuple[bool, bool]:
+    """(embedding_applies, lexical_applies) from ``ingest.contextualize.apply_to``.
+
+        Write-time targets of the contextual blurb (W3). ``embedding`` puts the
+        ``blurb
+
+    text`` form into the embed input; ``lexical`` writes the
+        ``chunks.context_blurb`` column the FTS expression reads. The default
+        (missing/empty key or any list) is the pre-W3 behavior: both targets on.
+        An invalid list is harmless here — validate_configs and
+        config.load_config reject it; the pipeline just treats unknown values
+        as both-on so a typo can never silently drop the blurb.
+    """
+    contextualize = _nested_dict(_nested_dict(config, "ingest"), "contextualize")
+    apply_to = contextualize.get("apply_to")
+    if not isinstance(apply_to, list) or not apply_to:
+        return True, True
+    targets = {str(item) for item in apply_to}
+    return "embedding" in targets, "lexical" in targets
+
+
 def matryoshka_slice(vector: list[float], dim: int) -> list[float]:
     """Slice one full-dimension vector to ``dim`` and L2-normalize it.
 
