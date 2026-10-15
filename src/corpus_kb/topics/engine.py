@@ -96,10 +96,15 @@ class UmapModule(Protocol):
     ) -> object: ...
 
 
+def _import_module(name: str) -> ModuleType:
+    """The one import seam (tests substitute a ModuleNotFoundError here)."""
+    return importlib.import_module(name)
+
+
 def load_bertopic() -> ModuleType:
     """Import bertopic lazily; a missing extra is a typed error."""
     try:
-        return importlib.import_module("bertopic")
+        return _import_module("bertopic")
     except ModuleNotFoundError as exc:
         raise TopicDependencyError(
             "The topics feature needs the bertopic package (the [topics] extra)."
@@ -109,7 +114,7 @@ def load_bertopic() -> ModuleType:
 def load_umap() -> ModuleType:
     """Import umap lazily (a bertopic dependency, loaded through the same seam)."""
     try:
-        return importlib.import_module("umap")
+        return _import_module("umap")
     except ModuleNotFoundError as exc:
         raise TopicDependencyError(
             "The topics feature needs the umap-learn package (with bertopic)."

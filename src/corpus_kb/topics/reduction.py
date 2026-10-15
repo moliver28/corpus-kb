@@ -234,7 +234,11 @@ def apply_reduction(engine_result: EngineResult, reduction: ReductionResult) -> 
 
 
 def _resolve_survivors(merge_map: dict[int, int]) -> dict[int, int]:
-    """Absorbed -> FINAL survivor, chains resolved (a -> b, b -> c: a -> c)."""
+    """Absorbed -> FINAL survivor, chains resolved (a -> b, b -> c: a -> c).
+
+    A full cycle (0 -> 1, 1 -> 0) has no survivor; the pair is dropped so
+    a hostile model answer can never delete every topic.
+    """
     survivor_of: dict[int, int] = {}
     for absorbed, survivor in merge_map.items():
         target = survivor
@@ -242,7 +246,8 @@ def _resolve_survivors(merge_map: dict[int, int]) -> dict[int, int]:
         while target in merge_map and target not in seen:
             seen.add(target)
             target = merge_map[target]
-        survivor_of[absorbed] = target
+        if target != absorbed:
+            survivor_of[absorbed] = target
     return survivor_of
 
 
