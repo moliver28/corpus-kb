@@ -3,12 +3,10 @@
 The house pattern is ``research/search_settings.py`` (U20) and
 ``research/retrieval_settings.py`` (U45/U21): a frozen dataclass, module-level
 defaults, and a ``load_*_settings(config)`` reader so the YAML files,
-``config.py`` defaults and this module cannot drift. B2 owns the config
-files — the orchestrator wires the ``HIERARCHY_CONFIG_DEFAULTS`` block into
-``ingest.hierarchy.*`` in both YAMLs at the wave checkpoint; until then the
-module defaults ARE the behavior (missing keys fall back, never raise).
+``config.py`` defaults and this module cannot drift.
 
-Keys (all under ``ingest.hierarchy``):
+Keys (all under ``ingest.chunking`` — renamed from ``ingest.hierarchy`` in
+the config-v2 wave; the legacy namespace is an alias the loader applies):
 
 * ``enabled`` — the SHADOW-path flag (default True): ingest writes the
   child/chunk/parent hierarchy into the shadow tables alongside the
@@ -21,11 +19,10 @@ Keys (all under ``ingest.hierarchy``):
 * ``respect_boundaries`` — natural boundary kinds the packer snaps window
   edges to where the path provides them: ``speaker_turn``/``qa_pair``
   (research-grain path), ``slide``/``heading`` (main RAG path).
-* ``expand_to_parent`` — QUERY-time arm (default False until the shadow
-  benchmark passes): after RRF fusion, replace each hit's text with its
-  2048-token parent context (small-to-big). Lives beside the ingest keys
-  because the shadow index and its expansion are one feature contract;
-  the reader is shared by the ingest pipeline and ``QueryHandler``.
+
+The query-time ``expand_to_parent`` arm moved to ``retrieval.*`` (it is a
+retrieval behavior, not an ingest shape); it is read by
+``research/retrieval_settings.py`` and consumed by ``QueryHandler``.
 """
 
 from __future__ import annotations
@@ -43,22 +40,24 @@ DEFAULT_RESPECT_BOUNDARIES: tuple[str, ...] = (
     "heading",
 )
 
-HIERARCHY_CONFIG_DEFAULTS: dict[str, object] = {
+CHUNKING_CONFIG_DEFAULTS: dict[str, object] = {
     "enabled": True,
     "child_tokens": DEFAULT_CHILD_TOKENS,
     "chunk_tokens": DEFAULT_CHUNK_TOKENS,
     "parent_tokens": DEFAULT_PARENT_TOKENS,
     "overlap_tokens": DEFAULT_OVERLAP_TOKENS,
     "respect_boundaries": list(DEFAULT_RESPECT_BOUNDARIES),
-    "expand_to_parent": False,
 }
+
+# Backwards-compatible alias for the pre-v2 name (imports and tests read it).
+HIERARCHY_CONFIG_DEFAULTS = CHUNKING_CONFIG_DEFAULTS
 
 _KNOWN_BOUNDARY_KINDS = frozenset({"speaker_turn", "qa_pair", "slide", "heading", "symbol"})
 
 
 @dataclass(frozen=True)
 class HierarchySettings:
-    """Typed reads for the ``ingest.hierarchy.*`` knobs (U48/P6)."""
+    """Typed reads for the ``ingest.chunking.*`` knobs (U48/P6)."""
 
     enabled: bool = True
     child_tokens: int = DEFAULT_CHILD_TOKENS
@@ -66,7 +65,6 @@ class HierarchySettings:
     parent_tokens: int = DEFAULT_PARENT_TOKENS
     overlap_tokens: int = DEFAULT_OVERLAP_TOKENS
     respect_boundaries: tuple[str, ...] = DEFAULT_RESPECT_BOUNDARIES
-    expand_to_parent: bool = False
     extra: dict[str, object] = field(default_factory=dict)
 
 
@@ -74,9 +72,9 @@ def _positive_int(value: object, default: int, name: str) -> int:
     if value is None:
         return default
     if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"ingest.hierarchy.{name} must be an int; got {value!r}")
+        raise ValueError(f"ingest.chunking.{name} must be an int; got {value!r}")
     if value <= 0:
-        raise ValueError(f"ingest.hierarchy.{name} must be a positive int; got {value}")
+        raise ValueError(f"ingest.chunking.{name} must be a positive int; got {value}")
     return value
 
 
@@ -84,7 +82,7 @@ def _flag(value: object, default: bool, name: str) -> bool:
     if value is None:
         return default
     if not isinstance(value, bool):
-        raise ValueError(f"ingest.hierarchy.{name} must be a bool; got {value!r}")
+        raise ValueError(f"ingest.chunking.{name} must be a bool; got {value!r}")
     return value
 
 
@@ -93,31 +91,31 @@ def _boundaries(value: object) -> tuple[str, ...]:
         return DEFAULT_RESPECT_BOUNDARIES
     if not isinstance(value, (list, tuple)):
         raise ValueError(
-            f"ingest.hierarchy.respect_boundaries must be a list of strings; got {value!r}"
+            f"ingest.chunking.respect_boundaries must be a list of strings; got {value!r}"
         )
     items = tuple(value)
     if not all(isinstance(item, str) for item in items):
         raise ValueError(
-            f"ingest.hierarchy.respect_boundaries must be a list of strings; got {value!r}"
+            f"ingest.chunking.respect_boundaries must be a list of strings; got {value!r}"
         )
     unknown = [item for item in items if item not in _KNOWN_BOUNDARY_KINDS]
     if unknown:
         raise ValueError(
-            f"ingest.hierarchy.respect_boundaries has unknown kinds {unknown}; "
+            f"ingest.chunking.respect_boundaries has unknown kinds {unknown}; "
             f"known kinds: {sorted(_KNOWN_BOUNDARY_KINDS)}"
         )
     return items
 
 
 def load_hierarchy_settings(config: dict[str, object]) -> HierarchySettings:
-    """Read the ``ingest.hierarchy.*`` knobs, defaulting to the module constants.
+    """Read the ``ingest.chunking.*`` knobs, defaulting to the module constants.
 
     Invalid values raise ``ValueError`` — a misconfigured token budget must
     fail loudly rather than silently change the shadow hierarchy shape.
     """
     ingest = config.get("ingest", {})
     ingest_block: dict[str, object] = ingest if isinstance(ingest, dict) else {}
-    raw = ingest_block.get("hierarchy", {})
+    raw = ingest_block.get("chunking", {})
     block: dict[str, object] = raw if isinstance(raw, dict) else {}
     return HierarchySettings(
         enabled=_flag(block.get("enabled"), True, "enabled"),
@@ -130,6 +128,5 @@ def load_hierarchy_settings(config: dict[str, object]) -> HierarchySettings:
             block.get("overlap_tokens"), DEFAULT_OVERLAP_TOKENS, "overlap_tokens"
         ),
         respect_boundaries=_boundaries(block.get("respect_boundaries")),
-        expand_to_parent=_flag(block.get("expand_to_parent"), False, "expand_to_parent"),
-        extra={key: value for key, value in block.items() if key not in HIERARCHY_CONFIG_DEFAULTS},
+        extra={key: value for key, value in block.items() if key not in CHUNKING_CONFIG_DEFAULTS},
     )

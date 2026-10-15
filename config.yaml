@@ -7,23 +7,29 @@ server:
   port: 8010
 
 embedding:
-  provider: pgml
+  # ollama serves the 4B embedder; pgml cannot host a model of this size.
+  provider: ollama
   fallback_provider: ollama
-  model: nomic-embed-text
+  model: qwen3-embedding:4b
   base_url: http://localhost:11434
   batch_size: 32
-  dimensions: 768
-  # U32 MRL gating: is the model Matryoshka-trained (front-slice truncation
-  # + renormalization is a sound reduced-dim representation)? qwen3-embedding
-  # models ARE MRL-trained; nomic-embed-text is NOT. The two-stage matryoshka
-  # arm (search.matryoshka_enabled) refuses to activate while this is false
-  # (config load raises; validate_configs reports the same combination).
-  mrl_trained: false
+  # Native output width. Must equal the schema width (halfvec(2560)).
+  dimensions: 2560
+  # qwen3-embedding is Matryoshka-trained: front-slice truncation is sound.
+  # Gates the matryoshka arm and the Ollama dimensions passthrough.
+  mrl_trained: true
+  # Gates QUERY_INSTRUCTION_PREFIX at instruct() (query side only).
+  query_instruction: true
   # Late chunking (DOCUMENT ingest only — the G1 research choice is pooled
   # and stays pooled). Applied when the latechunk extra is installed and
   # embedding.model is a qwen3-embedding* token-level family; otherwise an
   # honest pooled fallback (embedding_note in the ingest result).
   late_chunking: true
+
+storage:
+  # chunks_vectors.embedding column type. halfvec is required at 2560 dims:
+  # pgvector HNSW caps the plain vector type at 2000, halfvec at 4000.
+  vector_type: halfvec
 
 # Website (URL) ingestion (src/corpus_kb/web/). ingest_url builds its
 # WebFetchConfig from this section — the shipped YAML is the live contract
@@ -56,10 +62,17 @@ ingestion:
     web: web_structure
   default: default
 
-search:
+retrieval:
+  # Only hybrid_rrf exists today; other values are rejected at load time.
+  mode: hybrid_rrf
+  # Live per-arm candidate depths before fusion (effective limit is
+  # max(candidates, k * 2), so small values never under-fetch below k).
+  vector_candidates: 150
+  lexical_candidates: 150
   rrf_k: 60
-  reranker: none
-  reranker_model: cross-encoder/ms-marco-MiniLM-L-6-v2
+  # Post-fusion small-to-big expansion: replace each hit with its parent
+  # context. Fail-open when the shadow hierarchy has no parent row.
+  expand_to_parent: true
   # Stage 3 degraded policy: when true, vector-search candidate CTEs exclude
   # rows whose stored vector is flagged degraded (all-zero backfill,
   # migration 022). Seed documents stay discoverable either way.
@@ -69,26 +82,11 @@ search:
   # searchable. Off by default because Postgres ts_rank has no IDF —
   # question text in the shared index skews ranking unsoundly.
   qa_context_in_fts: false
-  # U45/U21 shared retrieval knobs (research/retrieval_settings.py).
-  # candidates_per_branch 150 is the committed upgrade-program default
-  # (contextual-retrieval study value); return truncation is owned by
-  # each query's k field.
-  candidates_per_branch: 150
+  # U21: below this estimated selectivity, filtered queries take the exact
+  # scan instead of the HNSW probe.
   exact_filter_selectivity_threshold: 0.05
-  rerank:
-    enabled: true
-    backend: null
-    # Committed upgrade-program default: qwen3-reranker 4B. Not yet pullable
-    # from the Ollama registry — until it exists locally the stage degrades
-    # to the un-reranked RRF order with a logged warning.
-    model: qwen3-reranker:4b
-    base_url: http://localhost:11434
-    over_retrieve_n: 60
-    candidates: 100
-    max_pair_tokens: 768
-    timeout_seconds: 120
-    score_floor: 0.15
-    calibration: minmax
+  # Matryoshka two-tier retrieval: candidate fan-out is k * this multiplier.
+  candidate_multiplier: 8
   self_query:
     enabled: true
     model: qwen3:4b
@@ -96,22 +94,36 @@ search:
     timeout_seconds: 8
   matryoshka_enabled: false
   matryoshka_dim: 1024
-  candidate_multiplier: 8
   # U20: transaction-local HNSW settings (SET LOCAL inside the retrieval
   # transaction; requires pgvector >= 0.8 — older versions skip emission).
+  # m/ef_construction mirror the migration-025 index DDL; doctor warns on
+  # drift from the live index options.
   hnsw:
+    m: 16
+    ef_construction: 128
     iterative_scan: strict_order
     ef_search: 200
     max_scan_tuples: 20000
 
-contextual:
-  enabled: false          # feature-flagged; enabled per-source_type at ingest time (Task 12/16)
-  enabled_source_types: ["interview", "research"]
-  model: qwen3:4b
+reranking:
+  enabled: true
+  # null selects the qwen3 judgment scorer; "fake" is the test double.
+  backend: null
+  # Committed upgrade-program default: qwen3-reranker 4B. Not yet pullable
+  # from the Ollama registry — until it exists locally the stage degrades
+  # to the un-reranked RRF order with a logged warning.
+  model: qwen3-reranker:4b
   base_url: http://localhost:11434
-  temperature: 0.0
-  fixture_dir: tests/fixtures/contextual_recorded
-  live_fallback: false
+  # Rerank pre-fetch width: how many fused candidates a score-based reranker
+  # may see (bounded by the arms' candidate depths).
+  over_retrieve_n: 60
+  candidates: 100
+  # Accepted and validated now; becomes the default return k in wave 3.
+  return_top_k: 20
+  max_pair_tokens: 768
+  timeout_seconds: 120
+  score_floor: 0.15
+  calibration: minmax
 
 judge:
   enabled: true
@@ -306,10 +318,12 @@ installer:
   postgres_image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
   data_dir: ~/.corpus-kb
   verify_image_signature: true
+  # All three profiles embed at 2560 dims (the schema width); only the LLM
+  # varies. A different embedding width needs a schema migration first.
   profiles:
-    minimal: { ram_gb_max: 8, vram_gb_max: 0, model: "nomic-embed-text", llm: "qwen3:0.6b" }
-    balanced: { ram_gb_max: 16, vram_gb_max: 4, model: "nomic-embed-text", llm: "qwen3:4b" }
-    performance: { ram_gb_max: 999, vram_gb_max: 8, model: "qwen3-embedding:8b-q8_0", llm: "qwen3:14b" }
+    minimal: { ram_gb_max: 8, vram_gb_max: 0, model: "qwen3-embedding:4b", llm: "qwen3:0.6b" }
+    balanced: { ram_gb_max: 16, vram_gb_max: 4, model: "qwen3-embedding:4b", llm: "qwen3:4b" }
+    performance: { ram_gb_max: 999, vram_gb_max: 8, model: "qwen3-embedding:4b", llm: "qwen3:14b" }
 
 database:
   connection_string: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
@@ -331,14 +345,21 @@ coding:
 
 # Multi-granularity chunk hierarchy + shadow index (ingest/hierarchy_settings.py
 # is the source of truth). enabled writes the shadow hierarchy at ingest; the
-# live v1 corpus is untouched; expand_to_parent stays off until the shadow
-# benchmark passes.
+# live v1 corpus is untouched. expand_to_parent lives under retrieval now.
 ingest:
-  hierarchy:
+  chunking:
     enabled: true
     child_tokens: 128
     chunk_tokens: 512
     parent_tokens: 2048
     overlap_tokens: 64
     respect_boundaries: ["speaker_turn", "qa_pair", "slide", "heading"]
-    expand_to_parent: false
+  contextualize:
+    # feature-flagged; enabled per-source_type at ingest time (Task 12/16)
+    enabled: false
+    enabled_source_types: ["interview", "research"]
+    model: qwen3:4b
+    base_url: http://localhost:11434
+    temperature: 0.0
+    fixture_dir: tests/fixtures/contextual_recorded
+    live_fallback: false
