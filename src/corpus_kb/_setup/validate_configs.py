@@ -73,6 +73,9 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         # -- ingest front door (Stage 5, tools/ingest_surface_tools.py) ------
         "ingest_status",
         "ingest_reembed",
+        # -- topics layer (Wave 4, tools/topics_tools.py) ---------------------
+        "topics_build",
+        "topics_list",
     }
 )
 
@@ -566,12 +569,21 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "web.max_depth": int,
     "web.delay_seconds": float,
     "web.allow_private_addresses": bool,
+    # -- topics (Wave 4, src/corpus_kb/topics/) ------------------------------
+    # min_topic_size is str|int ("auto" or a positive int): the union is
+    # enforced by _topics_block_errors below, not by the single-type map.
+    "topics.enabled": bool,
+    "topics.method": str,
+    "topics.llm_reduction": bool,
+    "topics.llm": str,
+    "topics.llm_base_url": str,
 }
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})
 SUPPORTED_VECTOR_TYPES = frozenset({"halfvec"})
 SUPPORTED_CONTEXTUAL_PROFILES = frozenset({"interview", "generic"})
 SUPPORTED_APPLY_TO_TARGETS = frozenset({"embedding", "lexical"})
+SUPPORTED_TOPIC_METHODS = frozenset({"bertopic"})
 RETURN_TOP_K_MIN = 1
 RETURN_TOP_K_MAX = 1000
 
@@ -611,6 +623,36 @@ def _apply_to_errors(apply_to: object) -> list[str]:
     ]
 
 
+def _topics_block_errors(topics: dict[str, Any]) -> list[str]:
+    """Enum + union-type rules for the Wave 4 ``topics`` keys."""
+    errors: list[str] = []
+    if "method" in topics:
+        method = topics.get("method")
+        if method not in SUPPORTED_TOPIC_METHODS:
+            errors.append(
+                f"topics.method: must be one of {sorted(SUPPORTED_TOPIC_METHODS)} "
+                f"when present, got {method!r}"
+            )
+    # Presence + union type: "auto" or a positive int (bool is an int
+    # subclass — reject it the way the int keys do).
+    if "min_topic_size" not in topics:
+        errors.append(
+            "missing required key 'topics.min_topic_size' "
+            "(expected str or int: 'auto' or a positive int)"
+        )
+    else:
+        size = topics.get("min_topic_size")
+        size_ok = (isinstance(size, str) and size == "auto") or (
+            not isinstance(size, bool) and isinstance(size, int) and size > 0
+        )
+        if not size_ok:
+            errors.append(
+                "key 'topics.min_topic_size' must be the string 'auto' or a "
+                f"positive int, got {size!r}"
+            )
+    return errors
+
+
 def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
     """U32-style cross-field and enum rules beyond per-key type checks."""
     errors: list[str] = []
@@ -647,6 +689,10 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
         contextualize = ingest.get("contextualize")
         if isinstance(contextualize, dict):
             errors.extend(_contextualize_block_errors(contextualize))
+
+    topics = config.get("topics")
+    if isinstance(topics, dict):
+        errors.extend(_topics_block_errors(topics))
 
     errors.extend(_return_top_k_errors(config.get("reranking")))
     return errors

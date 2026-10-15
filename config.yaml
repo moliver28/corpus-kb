@@ -132,6 +132,26 @@ judge:
   base_url: http://localhost:11434
   max_claims: 20
 
+# Topic modeling over STORED chunk embeddings (src/corpus_kb/topics/).
+# topics_build consumes the vectors ingest already wrote; it never
+# re-embeds. Opt-in: the default keeps the feature dormant (bertopic is
+# the [topics] extra, never a core dependency).
+topics:
+  enabled: false
+  # Only "bertopic" is supported; other values are rejected at load.
+  method: bertopic
+  # LLM labels (and merges) the raw c-TF-IDF labels. A failed or missing
+  # model keeps the c-TF-IDF labels and records the note.
+  llm_reduction: true
+  # "auto" defers to the BERTopic default (10, reported); a positive int
+  # passes through.
+  min_topic_size: auto
+  # LLM for the reduction step (fixture-first; live_fallback gates calls).
+  llm: qwen3:4b
+  llm_base_url: http://localhost:11434
+  fixture_dir: tests/fixtures/topics_recorded
+  live_fallback: false
+
 # U42 provenance-keyed exact result cache (research/exact_cache.py).
 # enabled gates every access (--no-cache drops it at the CLI layer);
 # deductive runs default on, inductive discovery runs default off unless seeded.

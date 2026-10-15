@@ -27,7 +27,9 @@
         "query_document_stats",
         "sync_database",
         "ingest_status",
-        "ingest_reembed"
+        "ingest_reembed",
+        "topics_build",
+        "topics_list"
       ]
     }
   }

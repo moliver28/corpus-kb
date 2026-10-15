@@ -163,6 +163,22 @@ class JSONRPCServer:
                 source_type=params.get("source_type"),
             )
 
+        elif method == "topics_build":
+            from corpus_kb.api.research_http import research_pool
+            from corpus_kb.tools.topics_tools import topics_build as topics_build_tool
+
+            return await topics_build_tool(await research_pool(), tenant_id=tenant_id)
+
+        elif method == "topics_list":
+            from corpus_kb.api.research_http import research_pool
+            from corpus_kb.tools.topics_tools import topics_list as topics_list_tool
+
+            return await topics_list_tool(
+                await research_pool(),
+                tenant_id=tenant_id,
+                limit=int(params.get("limit", 50)),
+            )
+
         elif method == "search":
             from corpus_kb.domain.models import SearchQuery
             from corpus_kb.handlers.query_handler import get_query_handler

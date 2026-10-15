@@ -201,6 +201,21 @@ SURFACES: tuple[Surface, ...] = (
         description="Re-embed degraded (zero-vector) chunks once the provider is back.",
         http_route="/api/ingest/reembed",
     ),
+    # -- topics layer (Wave 4): full cli+mcp+http parity ----------------------
+    Surface(
+        name="topics-build",
+        cli_path="topics-build",
+        mcp_tool="topics_build",
+        description="Cluster stored chunk embeddings into topics (offline BERTopic).",
+        http_route="/api/topics/build",
+    ),
+    Surface(
+        name="topics-list",
+        cli_path="topics-list",
+        mcp_tool="topics_list",
+        description="List the built topics with sizes, labels, and keywords.",
+        http_route="/api/topics",
+    ),
 )
 
 # --------------------------------------------------------------------------
@@ -442,6 +457,28 @@ run-ledger surfaces.
   ```
 """
 
+_TOPICS_BODY = """# corpus-topics — the topic layer (Wave 4)
+
+Offline BERTopic over the chunk embeddings ingest already wrote. The
+feature is dormant by default: `topics.enabled: false` in config.yaml.
+
+- Build topics (consumes `chunks_vectors.embedding`; never re-embeds):
+
+  ```
+  corpus-kb topics-build
+  ```
+
+- List the built topics, largest first:
+
+  ```
+  corpus-kb topics-list [--limit N]
+  ```
+
+- A disabled feature is an honest no-op result, not an error. A missing
+  extra exits 3 with the remedy: `pip install 'corpus-kb[topics]'`.
+- All flags: `corpus-kb topics-build --help`
+"""
+
 WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-ingest",
@@ -522,6 +559,14 @@ WRAPPERS: tuple[Wrapper, ...] = (
         body=_FRONT_DOOR_BODY,
         covers=("ingest-status", "ingest-reembed"),
     ),
+    Wrapper(
+        name="corpus-topics",
+        title="corpus-topics",
+        description="Topic layer: offline BERTopic build + list over stored embeddings",
+        argument_hint="[--limit N]",
+        body=_TOPICS_BODY,
+        covers=("topics-build", "topics-list"),
+    ),
 )
 
 ACTIVE_WRAPPERS: tuple[Wrapper, ...] = tuple(w for w in WRAPPERS if not w.planned)
@@ -557,6 +602,9 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py)
     "ingest_status",
     "ingest_reembed",
+    # Wave 4 topics layer (tools/topics_tools.py)
+    "topics_build",
+    "topics_list",
 )
 
 # Marker fences for the generated .claude/CLAUDE.md research-commands section.

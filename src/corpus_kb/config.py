@@ -130,6 +130,14 @@ def load_config(path: str | None = None) -> dict[str, object]:
     if contextual_error is not None:
         raise ValueError(contextual_error)
 
+    # Wave 4 topics: method/min_topic_size are rejected AT LOAD with the
+    # remediation text (topics/settings.py owns the rules and messages).
+    from corpus_kb.topics.settings import topics_settings_error
+
+    topics_error = topics_settings_error(config)
+    if topics_error is not None:
+        raise ValueError(topics_error)
+
     return config
 
 
@@ -460,6 +468,7 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.research.cycle_consensus import CONSENSUS_CONFIG_DEFAULTS
     from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
     from corpus_kb.research.search_settings import HNSW_CONFIG_DEFAULTS
+    from corpus_kb.topics.settings import TOPICS_CONFIG_DEFAULTS
 
     research = cast(dict[str, object], config.setdefault("research", {}))
     # update() alone would alias the modules' nested default dicts into every
@@ -482,6 +491,9 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     # U20 index-build + scan parameters (research/search_settings.py).
     retrieval = cast(dict[str, object], config.setdefault("retrieval", {}))
     retrieval.setdefault("hnsw", _detached_defaults(HNSW_CONFIG_DEFAULTS))
+    # Wave 4 topics layer (topics/settings.py is the typed reader): the
+    # opt-in BERTopic block, dormant behind topics.enabled: false.
+    config.setdefault("topics", _detached_defaults(TOPICS_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:

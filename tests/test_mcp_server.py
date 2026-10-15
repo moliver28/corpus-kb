@@ -122,7 +122,7 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     registry_mcp = {s.mcp_tool for s in SURFACES if s.mcp_tool}
     assert registered == catalogue_mcp | registry_mcp
     # The historical lie (declared names with no function) stays dead.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 27
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 29
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

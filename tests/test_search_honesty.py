@@ -916,6 +916,13 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "web.max_depth": int,
         "web.delay_seconds": float,
         "web.allow_private_addresses": bool,
+        # Wave 4 topics layer (min_topic_size is the str|int union rule in
+        # _topics_block_errors, deliberately not in the single-type map).
+        "topics.enabled": bool,
+        "topics.method": str,
+        "topics.llm_reduction": bool,
+        "topics.llm": str,
+        "topics.llm_base_url": str,
     } == RUNTIME_CONFIG_KEYS
 
 

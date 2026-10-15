@@ -116,6 +116,14 @@ inductive = [
 # gliner2 import is lazy (extraction/_gliner2_types.py) so the extras-less
 # jobs stay green (same contract as latechunk/inductive).
 ner = ["gliner2>=2.1.0"]
+# Topic modeling over stored chunk embeddings (topics/engine.py, Wave 4;
+# gated by topics.enabled + the [topics] extra). BERTopic 0.16 is the
+# first line with the pinned-UMAP + precomputed-embeddings fit used here
+# and pulls the same BSD-family umap-learn/hdbscan/scikit-learn stack the
+# inductive extra already reviews. CI NEVER installs this extra; the
+# import is lazy inside the engine entry, so the extras-less jobs stay
+# green (same contract as latechunk/inductive/ner).
+topics = ["bertopic>=0.16"]
 # lxml is TEST-ONLY: real XSD validation of REFI-QDA exports in
 # tests/test_refi_qda.py (U27) via lxml.etree.XMLSchema. The runtime module
 # (coding/refi_qda) is stdlib-only; every lxml use is behind
@@ -206,6 +214,9 @@ DEP002 = [
     "umap-learn",
     "hdbscan",
     "gliner2",
+    # topics/engine.py imports bertopic lazily behind topics.enabled and CI
+    # never installs the extra, so deptry cannot see the import edge.
+    "bertopic",
     # Dev/tooling deps: consumed by tests/ and the gate commands, never
     # imported by src/.
     "pytest",

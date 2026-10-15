@@ -52,12 +52,17 @@ release_request_cmd
 release_review_cmd
 release_status_cmd
 
-# typed Protocol/stub parameters (interface-required, never called directly): 26 name(s)
+# typed Protocol/stub parameters (interface-required, never called directly): 30 name(s)
 X
 cluster_selection_method
 embedding_
 metric
 n_neighbors
+# -- Wave 4 topics engine Protocols (the lazy bertopic/umap seam) --------
+orient
+umap_model
+calculate_probabilities
+verbose
 transform
 prompt_description
 text_or_documents
