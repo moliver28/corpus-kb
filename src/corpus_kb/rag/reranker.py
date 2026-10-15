@@ -5,15 +5,25 @@ results are already fused by ``corpus.rrf_fusion()``.
 PgmlReranker (legacy ``search.reranker: pgml`` selector): cross-encoder
 reranking via ``pgml.rank()`` inside PostgreSQL.
 OllamaReranker (``reranking.enabled: true``, the canonical gate; the
-``search.reranker`` selector stays accepted as a legacy alias):
-scores (query, chunk) pairs with the qwen3-reranker judgment contract —
-that model family has NO rerank endpoint and NO float score output; it
-answers a yes/no relevance judgment, so the score is
-``P("yes") / P("yes") + P("no")`` computed from the TOKEN LOGPROBS of the
-judgment position (verified live against Ollama 0.31.1: ``/api/generate``
-accepts ``logprobs=true`` plus ``top_logprobs=<k>`` and returns per-token
-logprob arrays with ranked alternatives; ``logprobs`` as a number is
-rejected — it is bool-typed server-side).
+``search.reranker`` selector stays accepted as a legacy alias): scores
+(query, chunk) pairs with the qwen3 judgment contract — that model family
+has NO rerank endpoint and NO float score output; it answers a yes/no
+relevance judgment.
+
+W3 live verification against Ollama 0.31.1 (2026-10-15, qwen3:4b): the
+transport path for token-logprob grading WORKS — ``Client.generate``
+sends ``logprobs`` (bool) and ``top_logprobs`` (int, 0-20) as TOP-LEVEL
+body fields and the server answers 200 with per-token alternatives (a
+numeric ``logprobs`` is what 400s). Grading is still unusable there: the
+qwen3 4B revision reasons before any verdict, so the judgment position
+carries no yes/no mass within a bounded ``num_predict``, while
+mid-reasoning echo words (the quoted instruction "yes or no") carry
+P ~ 1.0 mass that poisons a max-mass scan. The live mode is therefore
+``generative-binary``: one bounded generate per pair with ``think``
+disabled, the verdict parsed from the response text, and a binary score
+{yes: 1.0, no: 0.0} with a neutral 0.5 whenever no unambiguous verdict
+appears (both words, or neither). True cross-encoder grading returns when
+Ollama ships a rerank endpoint or stable logprobs.
 FakeReranker: deterministic reranker for CI / degraded mode, mirroring
 FakeEmbedder in corpus_kb/rag/embedder.py.
 
@@ -22,17 +32,17 @@ unchanged so callers can continue operating in degraded mode — reranking
 must never break search. On any failure (connection, timeout, model not
 pulled) OllamaReranker returns None (``not_evaluable``, not raised, not
 zeros) so callers fall open to the pre-rerank RRF order — reranking is a
-strict quality add-on, never a hard dependency of search. A judgment
-position where neither yes nor no mass appears scores a neutral 0.5 and is
-counted in ``last_not_evaluable`` for honesty reporting.
+strict quality add-on, never a hard dependency of search. A pair whose
+response text yields no unambiguous yes/no verdict scores a neutral 0.5
+and is counted in ``last_not_evaluable`` for honesty reporting.
 """
 
 from __future__ import annotations
 
 import hashlib
 import logging
-import math
 import random
+import re
 from collections import OrderedDict
 from typing import Protocol, cast, runtime_checkable
 
@@ -52,16 +62,19 @@ DEFAULT_RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 RANK_TIMEOUT_SECONDS = 30.0
 MAX_CACHE_SIZE = 10_000
 
-# U30 judgment-scoring constants. TOP_LOGPROBS_K wide enough to capture the
-# yes/no variants (" yes", " Yes", "yes." ...) at the judgment position;
-# MAX_JUDGMENT_TOKENS bounds the generate so a rambling model cannot turn
-# one rerank score into a full completion.
-TOP_LOGPROBS_K = 20
-MAX_JUDGMENT_TOKENS = 8
+# Mode reported by OllamaReranker (QueryHandler surfaces it in the search
+# envelope's degraded_excluded.reasons so users know grading is coarser
+# than a cross-encoder score).
+RERANK_MODE_GENERATIVE_BINARY = "generative-binary"
 
-# Verified against Ollama 0.31.1 (2026-10-10): this exact prompt shape makes
-# the judgment the first word-bearing generated token — a leading-space token
-# is common, so the scorer scans positions and takes the max yes/no mass.
+# Bounded generation for one judgment (probed live on qwen3:4b: short
+# reasoning fits, the verdict word lands inside the budget, and a rambling
+# response truncates into the neutral-0.5 branch instead of running away).
+GENERATIVE_JUDGMENT_TOKENS = 96
+
+# The judgment prompt (unchanged since the U30 capture; the W3 generative
+# path reads the verdict from the response TEXT, so the shape stays the
+# same across model revisions).
 RERANK_PROMPT_TEMPLATE = (
     "Judge whether the Document meets the requirements based on the Query. "
     "Reply with exactly one word, yes or no.\n"
@@ -69,6 +82,8 @@ RERANK_PROMPT_TEMPLATE = (
     "Document: {document}\n"
     "Relevance:"
 )
+
+_VERDICT_RE = re.compile(r"\b(yes|no)\b")
 
 
 @runtime_checkable
@@ -155,21 +170,22 @@ class PgmlReranker:
 
 
 class OllamaReranker:
-    """qwen3-reranker scoring via Ollama token logprobs (U30 contract).
+    """qwen3 judgment scoring via bounded generative verdicts (U30 contract).
 
     qwen3-reranker has NO rerank endpoint and does not emit floats: it
-    answers a yes/no relevance judgment. The score is therefore
-    ``P(yes) / (P(yes) + P(no))`` computed from the token logprobs at the
-    judgment position. Each pair costs one short generate call with
-    ``logprobs=true`` and ``top_logprobs`` alternatives.
+    answers a yes/no relevance judgment. Each pair costs one short
+    generate call with ``think`` disabled and a bounded ``num_predict``;
+    the verdict is parsed from the response text and scored binary
+    (yes = 1.0, no = 0.0). A response with no unambiguous verdict (both
+    words present — e.g. the echoed instruction "yes or no" — or neither)
+    is ``not_evaluable`` and scores a neutral 0.5.
 
     ``score`` returns None (``not_evaluable``) when the backend is
     unavailable — connection refused, timed out, or the configured rerank
     model is not pulled (``qwen3-reranker`` was NOT present on the registry
     at implementation time; the default degrades to un-reranked RRF order
-    with a logged warning). Pairs whose judgment position carries neither
-    yes nor no mass score a neutral 0.5 and are counted in
-    ``last_not_evaluable``.
+    with a logged warning). ``rerank_mode`` reports
+    ``generative-binary`` so callers can label the coarser grading.
     """
 
     def __init__(self, config: dict[str, object] | None = None) -> None:
@@ -179,6 +195,7 @@ class OllamaReranker:
         self._client = Client(host=self.base_url, timeout=self._settings.timeout_seconds)
         self._cache: OrderedDict[str, float] = OrderedDict()
         self.last_not_evaluable = 0
+        self.rerank_mode = RERANK_MODE_GENERATIVE_BINARY
 
     def score(self, query: str, texts: list[str]) -> list[float] | None:
         """Return a relevance score per text, or None if the backend is unavailable."""
@@ -230,106 +247,72 @@ class OllamaReranker:
             return None
 
     def _score_pair(self, query: str, text: str) -> float | None:
-        """One generate call; P(yes)/(P(yes)+P(no)) from judgment logprobs."""
+        """One bounded generate; binary verdict parse, None when ambiguous."""
         # ~4 chars per token keeps the document side of the pair inside
         # max_pair_tokens without a tokenizer dependency (documented
         # approximation; truncation is a recall knob, not a correctness one).
         max_chars = self._settings.max_pair_tokens * 4
         prompt = RERANK_PROMPT_TEMPLATE.format(query=query, document=text[:max_chars])
-        response = self._client.generate(
-            model=self.model,
-            prompt=prompt,
-            stream=False,
-            options={"temperature": 0, "num_predict": MAX_JUDGMENT_TOKENS},
-            logprobs=True,
-            top_logprobs=TOP_LOGPROBS_K,
-        )
-        entries = _logprob_entries(response)
-        return _judgment_score(entries)
-
-
-class _LogprobAlt:
-    """One ranked alternative token at a generation position."""
-
-    __slots__ = ("logprob", "token")
-
-    def __init__(self, token: str, logprob: float) -> None:
-        self.token = token
-        self.logprob = logprob
-
-
-def _logprob_entries(response: object) -> list[list[_LogprobAlt]]:
-    """Extract per-position top-logprob alternatives from a generate response.
-
-    The ollama client returns pydantic models; dict fallbacks mirror the
-    coder_client contract. Each entry: ``.token/.logprob`` plus ranked
-    ``.top_logprobs`` alternatives (verified server behavior on 0.31.1).
-    The server includes the greedy token as the FIRST alternative, so tokens
-    are de-duplicated per position (first occurrence wins) — counting the
-    greedy token twice would inflate its side of the yes/no ratio.
-    """
-    raw_entries: object = getattr(response, "logprobs", None)
-    if raw_entries is None and isinstance(response, dict):
-        raw_entries = response.get("logprobs")
-    if not isinstance(raw_entries, (list, tuple)):
-        return []
-    positions: list[list[_LogprobAlt]] = []
-    for entry in raw_entries:
-        greedy_token = str(_field(entry, "token") or "")
-        greedy_lp = float(_field(entry, "logprob") or 0.0)
-        alts: list[_LogprobAlt] = [_LogprobAlt(greedy_token, greedy_lp)]
-        seen = {greedy_token}
-        raw_alts = _field(entry, "top_logprobs")
-        if not isinstance(raw_alts, (list, tuple)):
-            positions.append(alts)
-            continue
-        for alt in raw_alts:
-            token = str(_field(alt, "token") or "")
-            if token in seen:
-                continue
-            seen.add(token)
-            alts.append(_LogprobAlt(token, float(_field(alt, "logprob") or 0.0)))
-        positions.append(alts)
-    return positions
-
-
-def _field(entry: object, name: str) -> object:
-    """Read ``name`` off a pydantic logprob entry or its dict fallback."""
-    if isinstance(entry, dict):
-        return entry.get(name)
-    return getattr(entry, name, None)
-
-
-def _normalize_judgment(token: str) -> str:
-    """Normalize a token to its judgment word: strip space/punctuation, lower."""
-    return token.strip().lower().strip(".,!?:;\"'`")
-
-
-def _judgment_score(positions: list[list[_LogprobAlt]]) -> float | None:
-    """P(yes)/(P(yes)+P(no)) at the position with the most yes/no mass.
-
-    Models sometimes emit a leading-space or preamble token first, so every
-    generated position is scored and the one concentrating yes/no judgment
-    mass wins. None (not_evaluable) when no position carries any yes or no
-    probability at all.
-    """
-    best: tuple[float, float, float] | None = None
-    for alts in positions:
-        p_yes = 0.0
-        p_no = 0.0
-        for alt in alts:
-            judgment = _normalize_judgment(alt.token)
-            if judgment == "yes":
-                p_yes += math.exp(alt.logprob)
-            elif judgment == "no":
-                p_no += math.exp(alt.logprob)
-        total = p_yes + p_no
-        if total > 0.0 and (best is None or total > best[0]):
-            best = (total, p_yes, p_no)
-    if best is None:
+        response = self._generate(prompt)
+        verdict = _parse_verdict(_response_text(response))
+        if verdict == "yes":
+            return 1.0
+        if verdict == "no":
+            return 0.0
         return None
-    _, p_yes, p_no = best
-    return p_yes / (p_yes + p_no)
+
+    def _generate(self, prompt: str) -> object:
+        """One bounded judgment generate; ``think`` off for qwen3 verdicts.
+
+        qwen3 models otherwise spend the whole budget inside the thinking
+        channel (the response stays empty). A server or model that rejects
+        the ``think`` parameter gets ONE retry without it, so the generative
+        path also works where thinking is unsupported.
+        """
+        options: dict[str, object] = {
+            "temperature": 0,
+            "num_predict": GENERATIVE_JUDGMENT_TOKENS,
+        }
+        try:
+            return self._client.generate(
+                model=self.model,
+                prompt=prompt,
+                stream=False,
+                think=False,
+                options=options,
+            )
+        except ResponseError as exc:
+            if "think" not in str(exc).lower():
+                raise
+            logger.debug("Reranker retry without think (server rejected it): %s", exc)
+            return self._client.generate(
+                model=self.model,
+                prompt=prompt,
+                stream=False,
+                options=options,
+            )
+
+
+def _parse_verdict(text: str) -> str | None:
+    """The pair's verdict: 'yes'/'no' when EXACTLY one verdict word appears.
+
+    Deliberately conservative: reasoning models echo the instruction
+    ("reply with exactly one word, yes or no"), so both words present means
+    no readable verdict — None (neutral 0.5), never a guess. Case and
+    punctuation around the word are ignored.
+    """
+    words = set(_VERDICT_RE.findall(text.lower()))
+    if len(words) == 1:
+        return words.pop()
+    return None
+
+
+def _response_text(response: object) -> str:
+    """Read the generated text off a pydantic GenerateResponse or dict."""
+    raw = getattr(response, "response", None)
+    if raw is None and isinstance(response, dict):
+        raw = response.get("response")
+    return raw if isinstance(raw, str) else ""
 
 
 class FakeReranker:
