@@ -209,6 +209,7 @@ your own transcripts. Ports, exit codes, and vocabularies: see
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
 | [Ingestion strategies](docs/INGESTION-STRATEGIES.md) | Extending ingestion: config mapping, in-process registration, entry-point plugins |
+| [Topics](docs/TOPICS.md) | The topic layer: offline BERTopic over stored embeddings, LLM labels, config |
 | [Harness distribution](docs/harness-distribution.md) | Packaging and distributing the agent harness pack |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
 

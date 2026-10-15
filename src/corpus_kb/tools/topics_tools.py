@@ -20,10 +20,10 @@ from __future__ import annotations
 
 import asyncpg
 
-from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
-from ..topics import engine, reduction as reduction_mod
-from ..topics import writer
+from ..topics import engine, writer
+from ..topics import reduction as reduction_mod
 from ..topics.settings import load_topics_settings
+from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
 __all__ = ["topics_build", "topics_list"]
 
@@ -98,20 +98,22 @@ async def topics_build(
 
     rows = _topic_rows(engine_result, reduction)
     written = await writer.write_build(pg_pool, tenant_id, rows, engine_result.assignments)
-    topic_ids = written.get("topic_ids", {})
+    raw_ids = written.get("topic_ids", {})
+    topic_ids: dict[int, str] = raw_ids if isinstance(raw_ids, dict) else {}
+    topics_out: list[dict[str, object]] = [
+        {
+            "topic_id": topic_ids.get(row.topic_index),
+            "label": row.label,
+            "reduced_label": row.reduced_label,
+            "size": row.size,
+            "keywords": row.keywords,
+        }
+        for row in rows
+    ]
     return {
         "status": "success",
         "topic_count": len(rows),
-        "topics": [
-            {
-                "topic_id": topic_ids.get(row.topic_index),
-                "label": row.label,
-                "reduced_label": row.reduced_label,
-                "size": row.size,
-                "keywords": row.keywords,
-            }
-            for row in rows
-        ],
+        "topics": topics_out,
         "chunk_count": len(engine_result.assignments),
         "outlier_count": engine_result.outlier_count,
         "reduction": reduction.status if reduction is not None else "off",

@@ -257,8 +257,9 @@ async def test_writer_round_trip_and_wholesale_replace(conn: asyncpg.Connection)
 
     # Wholesale replace: the second build leaves exactly its own rows.
     second = [
-        TopicRow(topic_index=0, label="0_merged", reduced_label="All", size=2,
-                 keywords=[], params={})
+        TopicRow(
+            topic_index=0, label="0_merged", reduced_label="All", size=2, keywords=[], params={}
+        )
     ]
     second_assignments = [
         ("22222222-2222-2222-2222-222222222220", 0, 0.9),
@@ -271,8 +272,6 @@ async def test_writer_round_trip_and_wholesale_replace(conn: asyncpg.Connection)
     # RLS: inside one tenant-GUC transaction, the other tenant reads
     # nothing (FORCE RLS honors the in-transaction GUC only).
     async with conn.transaction():
-        await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)", OTHER_TENANT
-        )
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", OTHER_TENANT)
         other = await conn.fetch("SELECT count(*) AS n FROM topics")
     assert int(other[0]["n"]) == 0

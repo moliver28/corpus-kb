@@ -38,6 +38,30 @@ Per-command nuances:
 - `corpus-kb ingest-status` exits 0 on a report and 3 when the ledger is
   absent or the database is down. It never exits 1 or 2.
 
+### The topics family
+
+`corpus-kb topics-build` and `corpus-kb topics-list`
+(`src/corpus_kb/cli_topics.py`):
+
+| Code | Meaning |
+|------|---------|
+| 0 | The command answered. This includes the honest no-op outcomes: the feature is disabled, or the corpus is below the minimum topic size. |
+| 1 | The build failed. |
+| 3 | Configuration state: migration 026 missing, the `[topics]` extra missing, or the database is unreachable. |
+
+Per-command nuances:
+
+- The feature ships dormant (`topics.enabled: false`). `topics-build`
+  answers with a no-op envelope naming the flag. That is exit 0, never
+  an error.
+- A missing `bertopic` package exits 3 with the remedy:
+  `pip install 'corpus-kb[topics]'`. The HTTP surface answers 503 with
+  `error_type: dependency_missing`; the socket surface answers -32005.
+- `topics-list` is never gated by the flag. Reading an existing build
+  while the feature is off is safe.
+- LLM label reduction never fails the build. A down Ollama keeps the
+  c-TF-IDF labels and records the note in the result.
+
 ### The research cycle gates
 
 `corpus-kb research cycle` halts at human gates. Each gate has its own exit

@@ -26,12 +26,13 @@ import json
 
 import typer
 
+# Reuse the ingest front door's shared plumbing (same honest-sync rule);
+# cli_ingest imports corpus_kb.cli only lazily, so this import is acyclic.
+from corpus_kb.cli_ingest import _load_config, _open_pool, _run_sync
+
 EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_CONFIG = 3
-
-# Reuse the ingest front door's shared plumbing (same honest-sync rule).
-from corpus_kb.cli_ingest import _load_config, _open_pool, _run_sync  # noqa: I001
 
 
 def register(app: typer.Typer) -> None:
@@ -77,8 +78,8 @@ def _topic_list(result: dict[str, object]) -> list[dict[str, object]]:
 
 async def _build_flow(json_output: bool) -> int:
     from corpus_kb.errors import CorpusError
-    from corpus_kb.topics.engine import TopicDependencyError
     from corpus_kb.tools.topics_tools import topics_build
+    from corpus_kb.topics.engine import TopicDependencyError
 
     cfg = _load_config()
     pool = await _open_pool(cfg)

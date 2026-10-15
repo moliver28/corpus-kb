@@ -78,7 +78,7 @@ class BERTopicModel(Protocol):
 class BertopicModule(Protocol):
     """The lazy ``bertopic`` module surface."""
 
-    def BERTopic(
+    def BERTopic(  # noqa: N802 - mirrors the real library's class name
         self,
         *,
         min_topic_size: int,
@@ -91,7 +91,7 @@ class BertopicModule(Protocol):
 class UmapModule(Protocol):
     """The lazy ``umap`` module surface."""
 
-    def UMAP(
+    def UMAP(  # noqa: N802 - mirrors the real library's class name
         self, *, random_state: int, n_components: int, min_dist: float, metric: str
     ) -> object: ...
 

@@ -24,7 +24,7 @@ from pathlib import Path
 
 from ollama import Client
 
-from .engine import EngineResult, OUTLIER_TOPIC, TopicBuild
+from .engine import OUTLIER_TOPIC, EngineResult, TopicBuild
 from .settings import TopicsSettings
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,9 @@ def _render_topics(topics: list[TopicBuild]) -> str:
     lines = []
     for topic in topics:
         words = ", ".join(str(word) for word, _score in topic.keywords[:8])
-        lines.append(f"- topic {topic.topic_index} ({topic.size} chunks): '{topic.label}'; words: {words}")
+        lines.append(
+            f"- topic {topic.topic_index} ({topic.size} chunks): '{topic.label}'; words: {words}"
+        )
     return "\n".join(lines)
 
 
@@ -74,7 +76,7 @@ def _fixture_key(model: str, topics: list[TopicBuild]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
-    return hashlib.sha256(f"{model}\x00{payload}".encode("utf-8")).hexdigest()
+    return hashlib.sha256(f"{model}\x00{payload}".encode()).hexdigest()
 
 
 class TopicReducer:
@@ -97,9 +99,7 @@ class TopicReducer:
             parsed = _parse_answer(fixture, known)
             if parsed is not None:
                 labels, merge_map = parsed
-                return ReductionResult(
-                    status="fixture", labels=labels, merge_map=merge_map
-                )
+                return ReductionResult(status="fixture", labels=labels, merge_map=merge_map)
         if not self._settings.live_fallback:
             return ReductionResult(
                 status="skipped",
@@ -136,9 +136,7 @@ class TopicReducer:
         return text.strip()
 
 
-def _parse_answer(
-    raw: str, known: set[int]
-) -> tuple[dict[int, str], dict[int, int]] | None:
+def _parse_answer(raw: str, known: set[int]) -> tuple[dict[int, str], dict[int, int]] | None:
     """Parse the model answer into validated ``(labels, merge_map)``.
 
     Returns None when the answer is not the contracted JSON shape; the
@@ -157,7 +155,9 @@ def _parse_answer(
         return None
     if not isinstance(parsed, dict):
         return None
-    return (_valid_labels(parsed.get(_LABELS_KEY), known), _valid_merges(parsed.get(_MERGE_KEY), known))
+    labels = _valid_labels(parsed.get(_LABELS_KEY), known)
+    merges = _valid_merges(parsed.get(_MERGE_KEY), known)
+    return (labels, merges)
 
 
 def _valid_labels(raw: object, valid: set[int]) -> dict[int, str]:
@@ -202,15 +202,12 @@ def apply_reduction(engine_result: EngineResult, reduction: ReductionResult) -> 
     if not reduction.labels and not reduction.merge_map:
         return engine_result
     survivor_of = _resolve_survivors(reduction.merge_map)
-    by_index = {topic.topic_index: topic for topic in engine_result.topics}
     surviving_topics = [
         topic for topic in engine_result.topics if topic.topic_index not in survivor_of
     ]
     new_assignments: list[tuple[str, int, float]] = []
     for chunk_id, topic_index, probability in engine_result.assignments:
-        new_assignments.append(
-            (chunk_id, survivor_of.get(topic_index, topic_index), probability)
-        )
+        new_assignments.append((chunk_id, survivor_of.get(topic_index, topic_index), probability))
     recounted = _recount_sizes(surviving_topics, new_assignments)
     rebuilt = [
         TopicBuild(
@@ -251,7 +248,9 @@ def _resolve_survivors(merge_map: dict[int, int]) -> dict[int, int]:
     return survivor_of
 
 
-def _recount_sizes(topics: list[TopicBuild], assignments: list[tuple[str, int, float]]) -> dict[int, int]:
+def _recount_sizes(
+    topics: list[TopicBuild], assignments: list[tuple[str, int, float]]
+) -> dict[int, int]:
     counts = {topic.topic_index: 0 for topic in topics}
     for _chunk_id, topic_index, _probability in assignments:
         if topic_index in counts and topic_index != OUTLIER_TOPIC:

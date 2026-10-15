@@ -99,17 +99,15 @@ def test_load_config_raises_on_unknown_method(tmp_path: Path) -> None:
     assert base.count("method: bertopic") == 1  # only the topics block pins it
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text(base.replace("method: bertopic", "method: lda"), encoding="utf-8")
-    with pytest.raises(ValueError, match="topics.method"):
+    with pytest.raises(ValueError, match=r"topics.method"):
         load_config(str(cfg_file))
 
 
 def test_load_config_raises_on_bad_min_topic_size(tmp_path: Path) -> None:
     base = (REPO / "config.yaml").read_text(encoding="utf-8")
     cfg_file = tmp_path / "config.yaml"
-    cfg_file.write_text(
-        base.replace("min_topic_size: auto", "min_topic_size: 0"), encoding="utf-8"
-    )
-    with pytest.raises(ValueError, match="topics.min_topic_size"):
+    cfg_file.write_text(base.replace("min_topic_size: auto", "min_topic_size: 0"), encoding="utf-8")
+    with pytest.raises(ValueError, match=r"topics.min_topic_size"):
         load_config(str(cfg_file))
 
 

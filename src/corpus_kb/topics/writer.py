@@ -26,7 +26,7 @@ class TopicRow:
     label: str
     reduced_label: str | None
     size: int
-    keywords: list[object] = field(default_factory=list)
+    keywords: list[list[object]] = field(default_factory=list)
     params: dict[str, object] = field(default_factory=dict)
 
 

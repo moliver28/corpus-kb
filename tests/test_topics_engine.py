@@ -17,7 +17,7 @@ get_topic). The fakes prove:
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 
@@ -45,7 +45,7 @@ class _FakeTopicInfo:
 class _FakeBERTopic:
     """Records its config; splits docs round-robin into two topics."""
 
-    last_kwargs: dict[str, Any] = {}
+    last_kwargs: ClassVar[dict[str, Any]] = {}
 
     def __init__(self, **kwargs: Any) -> None:
         type(self).last_kwargs = dict(kwargs)
@@ -74,7 +74,7 @@ class _FakeBERTopic:
 
 
 class _FakeUMAP:
-    last_kwargs: dict[str, Any] = {}
+    last_kwargs: ClassVar[dict[str, Any]] = {}
 
     def __init__(self, **kwargs: Any) -> None:
         type(self).last_kwargs = dict(kwargs)

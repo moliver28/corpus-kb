@@ -637,7 +637,8 @@ def _topics_block_errors(topics: dict[str, Any]) -> list[str]:
     # subclass — reject it the way the int keys do).
     if "min_topic_size" not in topics:
         errors.append(
-            "missing required key 'topics.min_topic_size' (expected str or int: 'auto' or a positive int)"
+            "missing required key 'topics.min_topic_size' "
+            "(expected str or int: 'auto' or a positive int)"
         )
     else:
         size = topics.get("min_topic_size")

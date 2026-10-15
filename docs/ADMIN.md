@@ -78,6 +78,22 @@ Legacy namespaces: `search.*`, `ingest.hierarchy.*`, and `contextual.*`
 still work as aliases. Canonical keys win; alias use logs a deprecation
 warning.
 
+### topics
+
+The Wave 4 topic layer (`src/corpus_kb/topics/`, docs/TOPICS.md). Ships
+dormant; the BERTopic import needs the `[topics]` extra.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Feature flag. `topics-build` answers with an honest no-op while off |
+| `method` | `bertopic` | Only `bertopic` exists; unknown values are rejected at load |
+| `llm_reduction` | `true` | LLM labels (and merges) on top of the c-TF-IDF labels; failures keep the c-TF-IDF labels |
+| `min_topic_size` | `auto` | `"auto"` = the BERTopic default (10, reported); or a positive int |
+| `llm` | `qwen3:4b` | The reduction model |
+| `llm_base_url` | `http://localhost:11434` | Ollama host for the reduction step |
+| `fixture_dir` | `tests/fixtures/topics_recorded` | Recorded reduction answers (SHA256-keyed) |
+| `live_fallback` | `false` | Allow live reduction calls when no fixture exists |
+
 ### graph
 
 | Key | Default | Description |

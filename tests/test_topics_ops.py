@@ -21,7 +21,6 @@ import pytest
 
 from corpus_kb.tools import topics_tools
 from corpus_kb.topics.engine import EngineResult, StoredChunk, TopicBuild
-from corpus_kb.topics.settings import TopicsSettings
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 
@@ -144,7 +143,9 @@ async def test_build_success_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(topics_tools.engine, "read_stored_embeddings", _read_rows_stub(pool))
     monkeypatch.setattr(topics_tools.engine, "build_topics", lambda chunks, settings: _FIT)
 
-    async def fake_write(pg_pool: Any, tenant_id: str, topics: Any, assignments: Any) -> dict[str, Any]:
+    async def fake_write(
+        pg_pool: Any, tenant_id: str, topics: Any, assignments: Any
+    ) -> dict[str, Any]:
         return {
             "topics_written": len(topics),
             "assignments_written": len(assignments),
@@ -221,6 +222,7 @@ async def test_list_success_reads_writer_rows(monkeypatch: pytest.MonkeyPatch) -
 
 async def test_list_is_not_gated_by_the_enabled_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     """Reading an existing build while the flag is off stays safe."""
+
     async def fake_read(pg_pool: Any, tenant_id: str, limit: int = 50) -> list[dict[str, Any]]:
         return []
 

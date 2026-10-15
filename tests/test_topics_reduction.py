@@ -13,8 +13,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from corpus_kb.topics import reduction
 from corpus_kb.topics.engine import EngineResult, TopicBuild
 from corpus_kb.topics.reduction import ReductionResult, TopicReducer, apply_reduction

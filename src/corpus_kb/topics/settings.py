@@ -98,10 +98,7 @@ def _min_topic_size_error(value: object) -> str | None:
     if isinstance(value, str):
         if value == "auto":
             return None
-        return (
-            "topics.min_topic_size: must be the string 'auto' or a positive "
-            f"int; got {value!r}"
-        )
+        return f"topics.min_topic_size: must be the string 'auto' or a positive int; got {value!r}"
     if isinstance(value, int) and value > 0:
         return None
     return (
