@@ -28,7 +28,7 @@ async def search(
     query: str,
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
-    k: int = 10,
+    k: int | None = None,
     source_type: str | None = None,
     self_query: bool | None = None,
 ) -> dict[str, object]:
@@ -38,7 +38,8 @@ async def search(
     POST /api/search and the socket ``search`` method make — then serializes
     with ``envelope_to_payload``, so all three surfaces return the same
     envelope: ``{"status", "result", "degraded_excluded"}`` (plus ``remedy``
-    only in the degraded_empty case).
+    only in the degraded_empty case). ``k=None`` (omitted) resolves to
+    ``reranking.return_top_k`` inside the handler.
     """
     from corpus_kb.domain.models import SearchQuery
     from corpus_kb.handlers.query_handler import QueryHandler

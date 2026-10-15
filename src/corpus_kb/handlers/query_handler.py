@@ -40,6 +40,7 @@ from corpus_kb.handlers import query_crud
 from corpus_kb.handlers.query_integrity import (
     REASON_FILTER_EMPTY,
     REASON_NO_EMBEDDER,
+    REASON_RERANK_MODE_GENERATIVE,
     SearchEnvelope,
     degraded_candidate_predicate,
     finalize_envelope,
@@ -52,7 +53,7 @@ from corpus_kb.handlers.query_vector_arms import (
 )
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.rerank_settings import load_rerank_settings
-from corpus_kb.rag.reranker import build_reranker, create_reranker
+from corpus_kb.rag.reranker import RERANK_MODE_GENERATIVE_BINARY, build_reranker, create_reranker
 from corpus_kb.research.retrieval_settings import load_retrieval_settings
 from corpus_kb.research.search_settings import (
     HnswSettings,
@@ -158,7 +159,11 @@ class QueryHandler:
         ``degraded_excluded`` {count, reasons} and flips to
         ``degraded_empty`` (+ pinned remedy) when nothing was returned under
         degraded conditions.
+
+        Default k (W3 contract): ``k=None`` (caller omitted k) resolves to
+        ``reranking.return_top_k`` — an explicit caller k always wins.
         """
+        query = self._resolve_default_k(query)
         # Stage 3 honesty: every vector-arm impairment is recorded in
         # ``reasons`` and surfaced in the envelope's ``degraded_excluded`` —
         # the silent FTS-only fallbacks become visible.
@@ -195,9 +200,16 @@ class QueryHandler:
         #    runs outside the handler's connection so a max_size=1 pool
         #    cannot deadlock on the reranker's own acquire.
         final_results = await self._post_fuse(
-            fused_results, semantic_query, query.k, over_retrieve_n, str(query.tenant_id)
+            fused_results, semantic_query, query.k, over_retrieve_n, str(query.tenant_id), reasons
         )
         return finalize_envelope(final_results, reasons, excluded_count=excluded_count)
+
+    def _resolve_default_k(self, query: SearchQuery) -> SearchQuery:
+        """W3 default-k contract: ``k=None`` (caller omitted k) becomes
+        ``reranking.return_top_k``; an explicit caller k always wins."""
+        if query.k is None:
+            return query.model_copy(update={"k": self._rerank_settings.return_top_k})
+        return query
 
     def _resolve_predicates(self, query: SearchQuery) -> tuple[str, list]:
         """Resolve the semantic query and its dynamic filter predicates.
@@ -265,6 +277,10 @@ class QueryHandler:
         (tests/test_query_determinism.py counts this module's ORDER BY
         clauses) — do not move it to another module.
         """
+        # W3 default-k contract: an omitted k (None) resolves to
+        # reranking.return_top_k. handle_search_with_meta already resolved
+        # it; this re-resolution keeps every entry point safe.
+        k = query.k if query.k is not None else self._rerank_settings.return_top_k
         # NOTE: SELECT_LIST/DEDUP_PREDICATE (handlers/query_vector_arms.py)
         # name the literal tables "chunks"/"documents" — build_filter_sql()
         # emits dynamic predicates using fully-qualified column refs like
@@ -307,7 +323,7 @@ class QueryHandler:
             """,
             semantic_query,
             str(query.tenant_id),
-            max(self._retrieval_settings.lexical_candidates, query.k * 2),
+            max(self._retrieval_settings.lexical_candidates, k * 2),
             *params,
         )
 
@@ -320,7 +336,7 @@ class QueryHandler:
                 """,
                 _fusion_payload(vector_results),
                 _fusion_payload(fts_results),
-                query.k,
+                k,
                 self._retrieval_settings.rrf_k,
             )
         except asyncpg.UndefinedFunctionError as exc:
@@ -472,11 +488,14 @@ class QueryHandler:
         k: int,
         over_retrieve_n: int,
         tenant_id: str,
+        reasons: list[str] | None = None,
     ) -> list[SearchResult]:
         """Post-RRF reranking, then the additive parent-expansion hook.
 
         U48/P6: every return passes through _maybe_expand_to_parent (default
-        OFF = identity).
+        OFF = identity). ``reasons`` (when given) carries the rerank-mode
+        note: a generative-binary scorer's verdicts are binary parses, so
+        the envelope says so instead of implying cross-encoder grading.
         """
         if self._reranker is None:
             return await self._maybe_expand_to_parent(fused_results, tenant_id)
@@ -490,6 +509,10 @@ class QueryHandler:
             raw_scores = await asyncio.to_thread(self._reranker.score, semantic_query, cand_texts)
             if raw_scores is None:
                 return await self._maybe_expand_to_parent(fused_results, tenant_id)
+            if reasons is not None and (
+                getattr(self._reranker, "rerank_mode", None) == RERANK_MODE_GENERATIVE_BINARY
+            ):
+                reasons.append(REASON_RERANK_MODE_GENERATIVE)
             if self._rerank_settings.calibration == "minmax":
                 lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
                 if hi <= lo:

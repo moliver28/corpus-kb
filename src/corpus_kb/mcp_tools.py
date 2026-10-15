@@ -23,8 +23,9 @@ Two sources feed one generator:
 The wrapper exposes ONLY the catalogue's parameters (or, for registry
 tools, the function's own minus pool/config). Pool and config are
 injected, never advertised. The JSON schema comes from the shared
-function's real signature, so the advertised tool cannot drift from the
-tested code.
+function's real signature, with catalogue defaults winning where the row
+pins the effective default (the W3 search/query ``k``), so the advertised
+tool cannot drift from the tested code or the catalogue.
 
 Tool modules load lazily (importlib inside the build), keeping this
 module's import cost at stdlib + mcp + contracts.
@@ -136,7 +137,14 @@ def _function_exposed(fn: Any, pool_name: str | None) -> tuple[str, ...]:
     return tuple(name for name in inspect.signature(fn).parameters if name not in skip)
 
 
-def build_wrapper(fn: Any, pool: Any, config: Any, exposed: tuple[str, ...], name: str) -> Any:
+def build_wrapper(
+    fn: Any,
+    pool: Any,
+    config: Any,
+    exposed: tuple[str, ...],
+    name: str,
+    catalogue_defaults: dict[str, object] | None = None,
+) -> Any:
     """Wrap one shared function into an MCP tool callable.
 
     The wrapper's signature carries only the exposed parameters, with the
@@ -144,11 +152,20 @@ def build_wrapper(fn: Any, pool: Any, config: Any, exposed: tuple[str, ...], nam
     bound in the closure and never advertised. The result is a plain dict
     (the envelope); ``structured_output=False`` keeps the wire shape a
     JSON text block.
+
+    ``catalogue_defaults`` (catalogue tools only) overrides a signature
+    default for the ADVERTISED schema when the catalogue row carries the
+    effective default: the W3 ``search``/``query`` ``k`` resolves an
+    omitted value from ``reranking.return_top_k`` at runtime, so the
+    function signature is ``None`` while the catalogue pins 20. The
+    runtime behavior still comes from the shared function; only the
+    advertised default follows the catalogue.
     """
     signature = inspect.signature(fn)
     # get_type_hints resolves the tools' string annotations (future
     # annotations) against the shared function's own module globals.
     hints = get_type_hints(fn)
+    defaults = catalogue_defaults or {}
     parameters = []
     for param_name in exposed:
         if param_name not in signature.parameters:
@@ -156,11 +173,14 @@ def build_wrapper(fn: Any, pool: Any, config: Any, exposed: tuple[str, ...], nam
                 f"Tool {name!r}: exposed parameter {param_name!r} is not a parameter "
                 f"of the shared function"
             )
+        default = signature.parameters[param_name].default
+        if param_name in defaults:
+            default = defaults[param_name]
         parameters.append(
             inspect.Parameter(
                 param_name,
                 inspect.Parameter.POSITIONAL_OR_KEYWORD,
-                default=signature.parameters[param_name].default,
+                default=default,
                 annotation=hints.get(param_name, str),
             )
         )
@@ -199,8 +219,13 @@ def register_catalogue_tools(server: MCPServer, pool: Any, config: Any) -> list[
             continue
         fn = resolve_function(TOOL_LAYER_OVERRIDES.get(op.name, op.handler))
         exposed = _catalogue_exposed(op, fn)
+        defaults = {
+            spec.name: spec.default
+            for spec in op.params
+            if not spec.required and spec.default is not None
+        }
         server.add_tool(
-            build_wrapper(fn, pool, config, exposed, tool_name),
+            build_wrapper(fn, pool, config, exposed, tool_name, catalogue_defaults=defaults),
             name=tool_name,
             description=op.description,
             structured_output=False,

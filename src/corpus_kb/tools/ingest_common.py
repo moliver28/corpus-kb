@@ -39,7 +39,7 @@ from ..ontology import Ontology, load_ontology
 from ..rag.embedder_selection import POOLED_MODE
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
-from .ingest_cfg import _nested_dict, matryoshka_slice, vector_write_config
+from .ingest_cfg import _nested_dict, contextual_apply_to, matryoshka_slice, vector_write_config
 from .ingest_embed import (
     _all_zero,
     _assign_embeddings,
@@ -481,6 +481,22 @@ async def _stage_store_and_embed(
     pg_chunk_count = 0
     pg_vector_count = 0
     inserted_chunk_ids: set[str] = set()
+
+    # W3 apply_to semantics (write-time blurb targets). The blurb was
+    # computed ONCE in _prepare_chunks_for_store; ``apply_to`` decides
+    # where it lands: "lexical" -> the chunks.context_blurb column (the
+    # FTS expression reads it), "embedding" -> the ``blurb\n\ntext`` embed
+    # input. When lexical is OFF the column write is NULL — the blurb is
+    # captured here BEFORE the clear so the embed input can still carry it.
+    # Trade-off (documented in docs/INGESTION.md): with lexical OFF the
+    # blurb is never persisted, so a later reembed repair rebuilds those
+    # vectors from raw text.
+    embedding_applies, lexical_applies = contextual_apply_to(config)
+    embed_blurbs = {str(c.chunk_id): c.context_blurb for c in chunks if c.context_blurb}
+    if not lexical_applies:
+        for chunk in chunks:
+            chunk.context_blurb = None
+
     try:
         inserted_chunk_ids = await ingest_store.store_chunks(chunks)
         pg_chunk_count = len(inserted_chunk_ids)
@@ -491,7 +507,10 @@ async def _stage_store_and_embed(
     new_chunks = [c for c in chunks if str(c.chunk_id) in inserted_chunk_ids]
 
     embed_texts_override = {
-        str(c.chunk_id): build_embedding_input(c.text, c.context_blurb) for c in new_chunks
+        str(c.chunk_id): build_embedding_input(
+            c.text, embed_blurbs.get(str(c.chunk_id)) if embedding_applies else None
+        )
+        for c in new_chunks
     }
     embed_meta: dict[str, object] = {}
     degraded, embed_err = await embed_chunks(

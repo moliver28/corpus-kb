@@ -15,6 +15,7 @@ from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.tools.ingest_common import (
     _extract_entities_flag,
     _extractor_name,
+    _stage_store_and_embed,
     embed_chunks,
     extract_with_fallback,
     load_config_or_pass,
@@ -582,3 +583,107 @@ def test_contextual_enabled_flag_respects_source_type_allowlist() -> None:
 
     cfg_forced_on = {"ingest": {"contextualize": {"enabled": True, "enabled_source_types": []}}}
     assert _contextual_enabled(cfg_forced_on, source_type="anything") is True
+
+
+# ---------------------------------------------------------------------------
+# W3 apply_to semantics (write-time contextual-blurb targets)
+# ---------------------------------------------------------------------------
+
+
+class _RecordingIngestStore:
+    """Fake PostgresIngestStore: records chunk writes, accepts every chunk."""
+
+    def __init__(self) -> None:
+        self.stored_chunks: list[Chunk] = []
+
+    async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
+        self.stored_chunks.extend(chunks)
+        return {str(c.chunk_id) for c in chunks}
+
+    async def store_vectors(
+        self,
+        chunks: list[Chunk],
+        model: str,
+        dimensions: int,
+        vectors_1024: dict[str, list[float]] | None = None,
+    ) -> int:
+        return len(chunks)
+
+
+class _EmbedCapture:
+    """Monkeypatch stand-in for ingest_common.embed_chunks: records inputs."""
+
+    def __init__(self) -> None:
+        self.text_overrides: list[dict[str, str]] = []
+
+    async def __call__(
+        self,
+        chunks: list[Chunk],
+        config: dict[str, object],
+        pool: object = None,
+        text_override: dict[str, str] | None = None,
+        document_text: str | None = None,
+        meta: dict[str, object] | None = None,
+    ) -> tuple[bool, str | None]:
+        self.text_overrides.append(dict(text_override or {}))
+        return False, None
+
+
+def _blurred_chunks() -> list[Chunk]:
+    return [
+        Chunk(
+            document_id="doc-1",
+            text="chunk body",
+            source_type="text",
+            context_blurb="the blurb",
+        ),
+    ]
+
+
+def _apply_to_config(targets: list[str]) -> dict[str, object]:
+    return {"ingest": {"contextualize": {"apply_to": targets}}}
+
+
+@pytest.mark.asyncio
+async def test_apply_to_default_embeds_and_writes_blurb(monkeypatch) -> None:
+    """Default (both targets) = pre-W3 behavior: column carries the blurb
+    AND the embed input is blurb+text."""
+    capture = _EmbedCapture()
+    monkeypatch.setattr("corpus_kb.tools.ingest_common.embed_chunks", capture)
+    store = _RecordingIngestStore()
+    errors: list[str] = []
+    await _stage_store_and_embed(store, _blurred_chunks(), {}, "doc text", None, errors)
+    assert errors == []
+    assert store.stored_chunks[0].context_blurb == "the blurb"
+    (override,) = capture.text_overrides
+    assert list(override.values()) == ["the blurb\n\nchunk body"]
+
+
+@pytest.mark.asyncio
+async def test_apply_to_embedding_only_writes_null_column(monkeypatch) -> None:
+    """lexical NOT in apply_to: the column write is NULL, but the embed
+    input still carries blurb+text (captured before the clear)."""
+    capture = _EmbedCapture()
+    monkeypatch.setattr("corpus_kb.tools.ingest_common.embed_chunks", capture)
+    store = _RecordingIngestStore()
+    await _stage_store_and_embed(
+        store, _blurred_chunks(), _apply_to_config(["embedding"]), "doc text", None, []
+    )
+    assert store.stored_chunks[0].context_blurb is None
+    (override,) = capture.text_overrides
+    assert list(override.values()) == ["the blurb\n\nchunk body"]
+
+
+@pytest.mark.asyncio
+async def test_apply_to_lexical_only_embeds_raw_text(monkeypatch) -> None:
+    """embedding NOT in apply_to: the column carries the blurb, the embed
+    input is the raw chunk text."""
+    capture = _EmbedCapture()
+    monkeypatch.setattr("corpus_kb.tools.ingest_common.embed_chunks", capture)
+    store = _RecordingIngestStore()
+    await _stage_store_and_embed(
+        store, _blurred_chunks(), _apply_to_config(["lexical"]), "doc text", None, []
+    )
+    assert store.stored_chunks[0].context_blurb == "the blurb"
+    (override,) = capture.text_overrides
+    assert list(override.values()) == ["chunk body"]

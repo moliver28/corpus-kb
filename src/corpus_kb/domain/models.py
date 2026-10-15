@@ -83,11 +83,15 @@ class DeleteDocumentCommand(DomainCommand):
 
 
 class SearchQuery(BaseModel):
-    """Hybrid vector + FTS search query."""
+    """Hybrid vector + FTS search query.
+
+    ``k=None`` (caller omitted k) resolves to ``reranking.return_top_k``
+    in the QueryHandler (W3 contract); an explicit k always wins.
+    """
 
     tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
     query: str
-    k: int = 10
+    k: int | None = None
     source_type: str | None = None
     self_query: bool | None = None  # None -> use config default
 
@@ -142,11 +146,15 @@ class VerifyAnswerQuery(BaseModel):
 
 
 class RoutedQuery(BaseModel):
-    """Query routed to the most appropriate retrieval strategy."""
+    """Query routed to the most appropriate retrieval strategy.
+
+    ``k=None`` (caller omitted k) resolves to ``reranking.return_top_k``
+    when the router takes the vector path (same contract as SearchQuery).
+    """
 
     tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
     query: str
-    k: int = 10
+    k: int | None = None
 
 
 # ============================================================================

@@ -152,7 +152,10 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         handler="corpus_kb.tools.search_tools:search",
         params=(
             ParamSpec("query", required=True),
-            ParamSpec("k", default=10),
+            # W3: the pinned default k mirrors reranking.return_top_k (the
+            # runtime default when a caller omits k); the lockstep test in
+            # tests/test_config_blocks.py fails if they drift.
+            ParamSpec("k", default=20),
             ParamSpec("source_type"),
             ParamSpec("self_query"),
             _TENANT,
@@ -169,7 +172,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         family="search",
         description="Route one question to the vector, SQL, or graph backend.",
         handler="corpus_kb.handlers.router_handler:RouterHandler.handle_routed_query",
-        params=(ParamSpec("query", required=True), ParamSpec("k", default=10), _TENANT),
+        params=(ParamSpec("query", required=True), ParamSpec("k", default=20), _TENANT),
         envelope_keys=("status", "result"),
         surfaces=(SurfaceSpec(HTTP, "/api/query", "POST"), SurfaceSpec(SOCKET, "query")),
     ),

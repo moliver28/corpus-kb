@@ -118,7 +118,8 @@ reranking:
   # may see (bounded by the arms' candidate depths).
   over_retrieve_n: 60
   candidates: 100
-  # Accepted and validated now; becomes the default return k in wave 3.
+  # The default return k: a caller that omits k on search/query gets
+  # this value (catalogue lockstep; tests/test_config_blocks.py pins it).
   return_top_k: 20
   max_pair_tokens: 768
   timeout_seconds: 120
@@ -358,7 +359,22 @@ ingest:
     # feature-flagged; enabled per-source_type at ingest time (Task 12/16)
     enabled: false
     enabled_source_types: ["interview", "research"]
-    model: qwen3:4b
+    # W3 contextualize v2 keys. Only "ollama" is supported; other values
+    # are rejected at load. Blurb generation degrades honestly to an empty
+    # blurb when the model is not pulled or Ollama is down.
+    backend: ollama
+    model: qwen3:8b
+    # "interview" names the moderator question (transcript sources);
+    # "generic" is the neutral template for any document.
+    prompt_profile: interview
+    # Cap on the GENERATED blurb (chars/4 estimated tokens).
+    max_context_tokens: 100
+    # true = document context first, then the chunk (the recommended order).
+    document_first_prompt: true
+    # Write-time targets: "embedding" puts blurb+text into the embed input,
+    # "lexical" writes the chunks.context_blurb column the FTS expression
+    # reads. Default keeps both (pre-W3 behavior).
+    apply_to: ["embedding", "lexical"]
     base_url: http://localhost:11434
     temperature: 0.0
     fixture_dir: tests/fixtures/contextual_recorded

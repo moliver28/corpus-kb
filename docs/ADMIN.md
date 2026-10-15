@@ -69,7 +69,7 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `model` | `qwen3-reranker:4b` | Rerank model |
 | `over_retrieve_n` | `60` | Rerank pre-fetch width for the fused candidates |
 | `candidates` | `100` | Cap on results entering the reranker |
-| `return_top_k` | `20` | Accepted and validated now; becomes the default return k in wave 3 |
+| `return_top_k` | `20` | The default return k: search/query callers that omit k get this value |
 | `max_pair_tokens` | `768` | Document-side truncation per scored pair |
 | `score_floor` | `0.15` | Drop results below the calibrated score |
 | `calibration` | `minmax` | Score post-processing (`minmax` or `none`) |

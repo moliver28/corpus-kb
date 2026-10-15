@@ -37,6 +37,10 @@ REASON_ZERO_QUERY = "zero-query-embedding"
 REASON_VECTOR_ARM_ERROR = "vector-arm-error"
 REASON_NO_EMBEDDER = "no-embedder"
 REASON_FILTER_EMPTY = "degraded-filter-active"
+# W3: the score-based reranker graded pairs generatively (binary yes/no
+# parses, not cross-encoder scores). Rides the existing reasons list so the
+# search envelope key-set stays pinned.
+REASON_RERANK_MODE_GENERATIVE = "rerank-mode-generative-binary"
 
 STATUS_SUCCESS = "success"
 STATUS_DEGRADED_EMPTY = "degraded_empty"

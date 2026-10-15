@@ -121,6 +121,15 @@ def load_config(path: str | None = None) -> dict[str, object]:
     if mrl_error is not None:
         raise ValueError(mrl_error)
 
+    # W3 contextualize v2: backend/profile/apply_to/max_context_tokens are
+    # rejected AT LOAD with the remediation text (rag/contextual_settings.py
+    # is the single source of both the rules and the messages).
+    from corpus_kb.rag.contextual_settings import contextualize_settings_error
+
+    contextual_error = contextualize_settings_error(config)
+    if contextual_error is not None:
+        raise ValueError(contextual_error)
+
     return config
 
 
@@ -447,6 +456,7 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     """
     from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
     from corpus_kb.ingest.hierarchy_settings import CHUNKING_CONFIG_DEFAULTS
+    from corpus_kb.rag.contextual_settings import CONTEXTUAL_CONFIG_DEFAULTS
     from corpus_kb.research.cycle_consensus import CONSENSUS_CONFIG_DEFAULTS
     from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
     from corpus_kb.research.search_settings import HNSW_CONFIG_DEFAULTS
@@ -466,20 +476,9 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     # (ingest/hierarchy_settings.py): the canonical block is ingest.chunking.
     ingest = cast(dict[str, object], config.setdefault("ingest", {}))
     ingest.setdefault("chunking", _detached_defaults(CHUNKING_CONFIG_DEFAULTS))
-    # Contextual retrieval (rag/contextualizer.py reads this block; wave 3
-    # adds the five contextualize-v2 keys).
-    ingest.setdefault(
-        "contextualize",
-        {
-            "enabled": False,
-            "enabled_source_types": ["interview", "research"],
-            "model": "qwen3:4b",
-            "base_url": "http://localhost:11434",
-            "temperature": 0.0,
-            "fixture_dir": "tests/fixtures/contextual_recorded",
-            "live_fallback": False,
-        },
-    )
+    # Contextual retrieval (rag/contextual_settings.py is the typed reader;
+    # W3 contextualize v2: backend/profile/cap/ordering/apply_to keys).
+    ingest.setdefault("contextualize", _detached_defaults(CONTEXTUAL_CONFIG_DEFAULTS))
     # U20 index-build + scan parameters (research/search_settings.py).
     retrieval = cast(dict[str, object], config.setdefault("retrieval", {}))
     retrieval.setdefault("hnsw", _detached_defaults(HNSW_CONFIG_DEFAULTS))

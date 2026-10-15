@@ -539,6 +539,13 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "ingest.chunking.respect_boundaries": list,
     # -- ingest.contextualize (renamed from contextual.*) ------------------
     "ingest.contextualize.enabled": bool,
+    # W3 contextualize v2 keys (rag/contextual_settings.py owns the rules).
+    "ingest.contextualize.backend": str,
+    "ingest.contextualize.model": str,
+    "ingest.contextualize.prompt_profile": str,
+    "ingest.contextualize.max_context_tokens": int,
+    "ingest.contextualize.document_first_prompt": bool,
+    "ingest.contextualize.apply_to": list,
     # -- retrieval (renamed from search.*) ----------------------------------
     "retrieval.mode": str,
     "retrieval.vector_candidates": int,
@@ -563,8 +570,45 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})
 SUPPORTED_VECTOR_TYPES = frozenset({"halfvec"})
+SUPPORTED_CONTEXTUAL_PROFILES = frozenset({"interview", "generic"})
+SUPPORTED_APPLY_TO_TARGETS = frozenset({"embedding", "lexical"})
 RETURN_TOP_K_MIN = 1
 RETURN_TOP_K_MAX = 1000
+
+
+def _contextualize_block_errors(contextualize: dict[str, Any]) -> list[str]:
+    """Enum + shape rules for the W3 ``ingest.contextualize`` keys."""
+    errors: list[str] = []
+    if "backend" in contextualize:
+        backend = contextualize.get("backend")
+        if backend != "ollama":
+            errors.append(
+                f"ingest.contextualize.backend: must be 'ollama' when present, got {backend!r}"
+            )
+    profile = contextualize.get("prompt_profile")
+    if profile is not None and profile not in SUPPORTED_CONTEXTUAL_PROFILES:
+        profiles = ", ".join(sorted(SUPPORTED_CONTEXTUAL_PROFILES))
+        errors.append(
+            f"ingest.contextualize.prompt_profile: must be one of ({profiles}), got {profile!r}"
+        )
+    errors.extend(_apply_to_errors(contextualize.get("apply_to")))
+    return errors
+
+
+def _apply_to_errors(apply_to: object) -> list[str]:
+    """Non-empty subset-of-{embedding, lexical} rule for ``apply_to``."""
+    if apply_to is None:
+        return []
+    if not isinstance(apply_to, list) or not apply_to:
+        return [f"ingest.contextualize.apply_to: must be a non-empty list, got {apply_to!r}"]
+    unknown = [t for t in apply_to if t not in SUPPORTED_APPLY_TO_TARGETS]
+    if not unknown:
+        return []
+    targets = ", ".join(sorted(SUPPORTED_APPLY_TO_TARGETS))
+    return [
+        f"ingest.contextualize.apply_to: unknown target(s) {unknown!r}; "
+        f"supported targets: {targets}"
+    ]
 
 
 def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
@@ -601,25 +645,26 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
     ingest = config.get("ingest")
     if isinstance(ingest, dict):
         contextualize = ingest.get("contextualize")
-        if isinstance(contextualize, dict) and "backend" in contextualize:
-            backend = contextualize.get("backend")
-            if backend != "ollama":
-                errors.append(
-                    f"ingest.contextualize.backend: must be 'ollama' when present, got {backend!r}"
-                )
+        if isinstance(contextualize, dict):
+            errors.extend(_contextualize_block_errors(contextualize))
 
-    reranking = config.get("reranking")
-    if isinstance(reranking, dict):
-        top_k = reranking.get("return_top_k")
-        if isinstance(top_k, bool) or not isinstance(top_k, int):
-            errors.append(f"reranking.return_top_k: must be an int, got {type(top_k).__name__}")
-        elif not RETURN_TOP_K_MIN <= top_k <= RETURN_TOP_K_MAX:
-            errors.append(
-                f"reranking.return_top_k: must be between {RETURN_TOP_K_MIN} and "
-                f"{RETURN_TOP_K_MAX}, got {top_k}"
-            )
-
+    errors.extend(_return_top_k_errors(config.get("reranking")))
     return errors
+
+
+def _return_top_k_errors(reranking: object) -> list[str]:
+    """Positive-int range rule for ``reranking.return_top_k``."""
+    if not isinstance(reranking, dict):
+        return []
+    top_k = reranking.get("return_top_k")
+    if isinstance(top_k, bool) or not isinstance(top_k, int):
+        return [f"reranking.return_top_k: must be an int, got {type(top_k).__name__}"]
+    if not RETURN_TOP_K_MIN <= top_k <= RETURN_TOP_K_MAX:
+        return [
+            f"reranking.return_top_k: must be between {RETURN_TOP_K_MIN} and "
+            f"{RETURN_TOP_K_MAX}, got {top_k}"
+        ]
+    return []
 
 
 def validate_runtime_config(config: dict[str, Any]) -> list[str]:

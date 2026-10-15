@@ -171,7 +171,7 @@ class JSONRPCServer:
             query = SearchQuery(
                 tenant_id=UUID(tenant_id),
                 query=params["query"],
-                k=params.get("k", 10),
+                k=params.get("k"),
                 source_type=params.get("source_type"),
                 self_query=params.get("self_query"),
             )
@@ -186,7 +186,7 @@ class JSONRPCServer:
             routed_query = RoutedQuery(
                 tenant_id=UUID(tenant_id),
                 query=params["query"],
-                k=params.get("k", 10),
+                k=params.get("k"),
             )
             result = await get_router_handler().handle_routed_query(routed_query)
             return {"status": "success", "result": result.model_dump(mode="json")}
