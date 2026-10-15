@@ -134,7 +134,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
     Operation(
         name="ingest_reembed",
         family="ingest",
-        description="Re-embed degraded (zero-vector) chunks; honest counts.",
+        description="Re-embed degraded (zero-vector) and stale (NULL) chunks; honest counts.",
         handler="corpus_kb.tools.ingest_surface_tools:ingest_reembed",
         params=(ParamSpec("limit"), ParamSpec("doc_id"), _TENANT),
         envelope_keys=("status", "scanned", "fixed", "failed"),

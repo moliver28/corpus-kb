@@ -7,10 +7,13 @@ doctor exit code):
   environment that this version does not read. Pure and offline: it runs
   even when Postgres is unreachable.
 * :func:`dimension_guard_check` — compares the configured
-  ``embedding.dimensions`` with the actual ``chunks_vectors.vector``
+  ``embedding.dimensions`` with the actual ``chunks_vectors.embedding``
   typmod and reports the stored per-row dimensions histogram. pgvector
   enforces the exact typmod width, so a mismatch means EVERY vector
   insert fails; the check fails with the config fix.
+* :func:`hnsw_index_check` — compares the configured ``retrieval.hnsw``
+  m/ef_construction with the live index options (pg_class.reloptions) and
+  WARNS on drift (never fails: the index options are a build-time choice).
 """
 
 from __future__ import annotations
@@ -33,21 +36,26 @@ DOC_ADMIN = "docs/ADMIN.md"
 
 SETUP_FIX = "corpus-kb setup"
 
-# Empirical contract (pgvector 0.8.3, Postgres 16): INSERT of a 768-dim
-# vector into a vector(4096) column fails with SQLSTATE 22000 ("expected
-# 4096 dimensions, not 768"). pgvector never pads and never truncates.
-# atttypmod for a vector(N) column is exactly N (and -1 when un-typmodded).
+# Empirical contract (pgvector 0.8.x, Postgres 16): INSERT of a 768-dim
+# vector into a halfvec(2560) column fails with SQLSTATE 22000 ("expected
+# 2560 dimensions, not 768"). pgvector never pads and never truncates.
+# atttypmod for a vector(N)/halfvec(N) column is exactly N (-1 un-typmodded).
 VECTOR_TYPEMOD_SQL = (
     "SELECT format_type(a.atttypid, a.atttypmod) AS typ, a.atttypmod AS width "
     "FROM pg_attribute a "
-    "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'vector'"
+    "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'embedding'"
 )
 DIMENSIONS_HISTOGRAM_SQL = (
     "SELECT dimensions, count(*) AS n FROM chunks_vectors GROUP BY dimensions ORDER BY dimensions"
 )
 
-DEFAULT_EMBEDDING_DIMENSIONS = 768
-DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
+# The migration-025 HNSW index and its WITH options (retrieval.hnsw mirrors
+# these; drift between config and the live index is a WARN, not a FAIL).
+HNSW_INDEX_NAME = "idx_chunks_vectors_hnsw_halfvec2560"
+HNSW_RELOPTIONS_SQL = "SELECT reloptions FROM pg_class WHERE relname = $1 AND relkind = 'i'"
+
+DEFAULT_EMBEDDING_DIMENSIONS = 2560
+DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:4b"
 
 
 def unknown_env_vars(environ: dict[str, str] | None = None) -> list[str]:
@@ -96,15 +104,20 @@ def _configured_dimensions(config: dict[str, Any]) -> tuple[int, str]:
         return DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL
     raw_dims = emb_cfg.get("dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
     try:
-        dimensions = int(raw_dims)  # type: ignore[arg-type]
+        dimensions = int(raw_dims)
     except (TypeError, ValueError):
         dimensions = 0
     model = str(emb_cfg.get("model", DEFAULT_EMBEDDING_MODEL))
     return dimensions, model
 
 
+def _is_vector_family(typ: str) -> bool:
+    """True for the pgvector column families this check understands."""
+    return typ.startswith("vector") or typ.startswith("halfvec")
+
+
 async def dimension_guard_check(conn: asyncpg.Connection, config: dict[str, Any]) -> ResearchCheck:
-    """Configured embedding dimensions must match the vector column typmod.
+    """Configured embedding dimensions must match the embedding column typmod.
 
     Reads the catalog (no RLS applies to pg_attribute) for the column type,
     then reads the stored per-row dimensions histogram inside a tenant-GUC
@@ -117,19 +130,19 @@ async def dimension_guard_check(conn: asyncpg.Connection, config: dict[str, Any]
         return ResearchCheck(
             name=name,
             status=STATUS_WARN,
-            detail="chunks_vectors.vector not found (migrations not applied)",
+            detail="chunks_vectors.embedding not found (migrations not applied)",
             fix=SETUP_FIX,
             doc=DOC_GETTING_STARTED,
         )
     width = int(row["width"])
     typ = str(row["typ"])
-    if not typ.startswith("vector"):
+    if not _is_vector_family(typ):
         # e.g. jsonb on a half-migrated database: the width question is
         # meaningless until the real vector column exists.
         return ResearchCheck(
             name=name,
             status=STATUS_WARN,
-            detail=f"chunks_vectors.vector is {typ}, not a vector column (schema incomplete)",
+            detail=f"chunks_vectors.embedding is {typ}, not a vector column (schema incomplete)",
             fix=SETUP_FIX,
             doc=DOC_GETTING_STARTED,
         )
@@ -139,7 +152,7 @@ async def dimension_guard_check(conn: asyncpg.Connection, config: dict[str, Any]
         return ResearchCheck(
             name=name,
             status=STATUS_WARN,
-            detail=f"vector column {typ} has no fixed width; inserts accept any dimensions",
+            detail=f"embedding column {typ} has no fixed width; inserts accept any dimensions",
             fix="re-create the column with an exact typmod (see src/corpus_kb/storage/schema.sql)",
             doc=DOC_ADMIN,
         )
@@ -153,8 +166,9 @@ async def dimension_guard_check(conn: asyncpg.Connection, config: dict[str, Any]
             ),
             fix=(
                 f"Set embedding.model to a model that emits {width} dimensions "
-                "(example: qwen3-embedding:8b-q8_0), set embedding.dimensions to "
-                f"{width}, then re-ingest."
+                "(example: qwen3-embedding:4b), set embedding.dimensions to "
+                f"{width}, then re-ingest. Any other width needs a column "
+                "migration (migration 025 is the current regime)."
             ),
             doc=DOC_ADMIN,
         )
@@ -184,6 +198,63 @@ async def dimension_guard_check(conn: asyncpg.Connection, config: dict[str, Any]
     )
 
 
+async def hnsw_index_check(conn: asyncpg.Connection, config: dict[str, Any]) -> ResearchCheck:
+    """Configured retrieval.hnsw m/ef_construction vs the live index options.
+
+    A WARN-only cross-check (the research checks never flip the doctor exit
+    code): rebuilding an HNSW index is a deliberate operator decision, so
+    drift between config and pg_class.reloptions is reported, not failed.
+    A missing index is also a WARN — pre-0.7 pgvector installs skip it.
+    """
+    name = "retrieval.hnsw vs live index"
+    retrieval = config.get("retrieval") or {}
+    hnsw = retrieval.get("hnsw") if isinstance(retrieval, dict) else None
+    hnsw = hnsw if isinstance(hnsw, dict) else {}
+    try:
+        cfg_m = int(hnsw.get("m", 16))
+        cfg_ef = int(hnsw.get("ef_construction", 128))
+    except (TypeError, ValueError):
+        cfg_m, cfg_ef = 16, 128
+    row = await conn.fetchrow(HNSW_RELOPTIONS_SQL, HNSW_INDEX_NAME)
+    if row is None or row["reloptions"] is None:
+        return ResearchCheck(
+            name=name,
+            status=STATUS_WARN,
+            detail=f"{HNSW_INDEX_NAME} not found (pgvector < 0.7 skips the halfvec index)",
+            fix="run: corpus-kb setup (applies migration 025)",
+            doc=DOC_ADMIN,
+        )
+    options: dict[str, str] = {}
+    for raw in row["reloptions"]:
+        text = str(raw)
+        if "=" in text:
+            key, value = text.split("=", 1)
+            options[key.strip()] = value.strip()
+    live_m = options.get("m")
+    live_ef = options.get("ef_construction")
+    if live_m == str(cfg_m) and live_ef == str(cfg_ef):
+        return ResearchCheck(
+            name=name,
+            status=STATUS_OK,
+            detail=f"{HNSW_INDEX_NAME} matches config (m={cfg_m}, ef_construction={cfg_ef})",
+            doc=DOC_ADMIN,
+        )
+    return ResearchCheck(
+        name=name,
+        status=STATUS_WARN,
+        detail=(
+            f"{HNSW_INDEX_NAME} was built with m={live_m}, ef_construction={live_ef} "
+            f"but config says m={cfg_m}, ef_construction={cfg_ef} "
+            "(the index options are build-time; rebuild to apply the config)"
+        ),
+        fix=(
+            f"drop and recreate {HNSW_INDEX_NAME} with the configured options "
+            "(see migration 025 for the statement)"
+        ),
+        doc=DOC_ADMIN,
+    )
+
+
 async def _dimensions_histogram(conn: asyncpg.Connection, width: int) -> dict[int | None, int]:
     """Per-row ``dimensions`` histogram; unreadable tables return {} gracefully."""
     try:
@@ -204,5 +275,6 @@ async def _dimensions_histogram(conn: asyncpg.Connection, width: int) -> dict[in
 __all__ = [
     "dimension_guard_check",
     "env_var_check",
+    "hnsw_index_check",
     "unknown_env_vars",
 ]

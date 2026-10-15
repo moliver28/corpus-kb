@@ -18,7 +18,7 @@ code name + brief definition.
 **Status: `insufficient_data`.** No frozen labeled set exists yet, so no
 metric has ever been produced and **no retrieval default was flipped**.
 RRF stays the wired behavior it already was (SQL-side
-`corpus.rrf_fusion`, Σ1/(k+rank), `search.rrf_k` = 60 now read from
+`corpus.rrf_fusion`, Σ1/(k+rank), `retrieval.rrf_k` = 60 now read from
 config via `research/retrieval_settings.py`). The default-flip gate
 (`recommend_default`) demands a measured report where RRF ≥ vector-only on
 recall@k inside the latency budget before anything changes.
@@ -29,15 +29,15 @@ is deliberately no `return_top_k` knob.
 
 | key | shipped default | reader |
 |---|---|---|
-| `search.rrf_k` | 60 | `RetrievalSettings.rrf_k` |
-| `search.candidates_per_branch` | 150 (committed upgrade-program value; module default 50) | `RetrievalSettings.candidates_per_branch` |
-| `search.exact_filter_selectivity_threshold` | 0.05 | `RetrievalSettings.exact_filter_selectivity_threshold` |
+| `retrieval.rrf_k` | 60 | `RetrievalSettings.rrf_k` |
+| `retrieval.vector_candidates` / `retrieval.lexical_candidates` | 150 each (live arm LIMITs: max(candidates, k * 2)) | `RetrievalSettings.vector_candidates` / `lexical_candidates` |
+| `retrieval.exact_filter_selectivity_threshold` | 0.05 | `RetrievalSettings.exact_filter_selectivity_threshold` |
 
 ## U21 — exact-scan fallback (wired)
 
 A filtered vector query runs a paired-count probe (`matched/total`, same
 join shape as the arm). When the probe falls below
-`search.exact_filter_selectivity_threshold`, the handler runs a filtered
+`retrieval.exact_filter_selectivity_threshold`, the handler runs a filtered
 EXACT distance scan instead of the ANN probe. The threshold default is
 0.05 — a documented starting point, not a tuned optimum. The scan is a
 candidate CTE with no distance ORDER BY. The planner therefore cannot use
@@ -114,7 +114,7 @@ judgment. The score is `P(yes)/(P(yes)+P(no))` from token logprobs, via
 `/api/generate` with `logprobs=true` + `top_logprobs=<k>`. This was verified
 live on Ollama 0.31.1: `logprobs` is bool-typed server-side, and a number is
 rejected.
-Config: `search.rerank.*` via `rag/rerank_settings.py` (`RERANK_CONFIG_DEFAULTS`),
+Config: `reranking.*` via `rag/rerank_settings.py` (`RERANK_CONFIG_DEFAULTS`),
 **default OFF** per spec v6 U30 until the U45 harness shows an nDCG/recall
 gain inside the p95 budget. Every Ollama client
 (`coder_client`, `rag/embedder.py`, `rag/reranker.py`) is now timeout-bound

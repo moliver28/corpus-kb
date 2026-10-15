@@ -328,3 +328,14 @@ assert_parity_outside_allowlist
 # dir(corpus_kb): 2 name(s)
 __getattr__
 __dir__
+
+# config-v2 typed-reader fields owned for contract completeness (the block
+# declares the whole canonical namespace even where W1 has no live consumer
+# yet; qa_context_in_fts gates migration-023 index maintenance):
+qa_context_in_fts
+used_legacy_keys
+mode_error
+profile_for_model
+native_dimensions
+EmbeddingModelProfile
+EMBEDDING_MODEL_PROFILES

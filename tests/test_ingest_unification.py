@@ -160,7 +160,7 @@ def _ingest_config() -> dict[str, object]:
     return {
         "graph": {"extract_entities": False},
         "embedding": {"provider": "pgml"},
-        "ingest": {"hierarchy": {"enabled": False}},
+        "ingest": {"chunking": {"enabled": False}},
     }
 
 

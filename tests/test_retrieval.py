@@ -79,7 +79,9 @@ async def test_hybrid_search_rrf_fusion() -> None:
     mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
     embedder = MagicMock()
-    embedder.embed.return_value = [0.0] * 768
+    # Non-zero: an all-zero query embedding abstains the vector arm (the
+    # stage-3 guard), which would skip the vector fetch this test pins.
+    embedder.embed.return_value = [0.1] * 2560
 
     handler = QueryHandler(pool=mock_pool, embedder=embedder)
     results = await handler.handle_search(SearchQuery(query="test", k=1))
@@ -91,7 +93,7 @@ async def test_hybrid_search_rrf_fusion() -> None:
 
 @pytest.mark.asyncio
 async def test_rrf_k_config_flows_into_fusion_call() -> None:
-    """search.rrf_k must reach corpus.rrf_fusion — the literal 60 was inert
+    """retrieval.rrf_k must reach corpus.rrf_fusion — the literal 60 was inert
     (U45 finding: a typed reader existed but the call site never read it)."""
     cid = UUID("00000000-0000-0000-0000-000000000001")
     did = UUID("00000000-0000-0000-0000-000000000002")
@@ -123,7 +125,7 @@ async def test_rrf_k_config_flows_into_fusion_call() -> None:
     handler = QueryHandler(
         pool=mock_pool,
         embedder=embedder,
-        config={"embedding": {"provider": "pgml"}, "search": {"rrf_k": 42}},
+        config={"embedding": {"provider": "pgml"}, "retrieval": {"rrf_k": 42}},
     )
     await handler.handle_search(SearchQuery(query="test", k=1))
 
@@ -211,7 +213,13 @@ async def test_handle_search_returns_provenance_fields() -> None:
 
     handler = QueryHandler(
         pool=mock_pool,
-        config={"embedding": {"provider": "ollama"}},  # no embedder -> vector skipped
+        config={
+            "embedding": {"provider": "ollama"},  # no embedder -> vector skipped
+            # Pin the two-fetch contract: parent expansion would add a third
+            # fetch (retrieval.expand_to_parent defaults true in config v2).
+            "retrieval": {"expand_to_parent": False},
+            "reranking": {"enabled": False},
+        },
     )
     results = await handler.handle_search(SearchQuery(query="hello", k=3))
     assert mock_conn.fetch.call_count == 2  # FTS arm + corpus.rrf_fusion
@@ -243,7 +251,7 @@ async def test_handle_search_filters_tombstoned_and_superseded(pg_pool) -> None:
 
     config = {
         "graph": {"extract_entities": False},
-        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+        "embedding": {"model": "qwen3-embedding:4b", "dimensions": 2560},
     }
     source = "test-search-tombstone-filter"
     unique_phrase = "kerflumph vermillion second section marker"

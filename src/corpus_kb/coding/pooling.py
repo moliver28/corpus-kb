@@ -163,7 +163,7 @@ async def run_similarity_pooling(
             # Get all chunks with vectors
             chunks = await conn.fetch(
                 """
-                SELECT c.chunk_id, cv.vector FROM chunks c
+                SELECT c.chunk_id, cv.embedding FROM chunks c
                 JOIN chunks_vectors cv ON c.chunk_id = cv.chunk_id
                 WHERE c.tenant_id = $1
                 """,
@@ -172,7 +172,7 @@ async def run_similarity_pooling(
 
             for chunk in chunks:
                 chunk_id = chunk["chunk_id"]
-                chunk_vector = chunk["vector"]
+                chunk_vector = chunk["embedding"]
 
                 # Compute cosine similarity between probe_vector and chunk_vector
                 similarity = cosine_similarity(probe_vector, chunk_vector)

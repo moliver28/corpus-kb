@@ -95,13 +95,15 @@ def _handler(
 
 
 _PGML_CONFIG: dict[str, object] = {
-    "embedding": {"provider": "pgml", "model": "nomic-embed-text"},
+    "embedding": {"provider": "pgml", "model": "qwen3-embedding:4b"},
     "search": {"reranker": "none"},
+    "reranking": {"enabled": False},
 }
 
 _OLLAMA_CONFIG: dict[str, object] = {
-    "embedding": {"provider": "ollama", "model": "qwen3-embedding:8b-q8_0", "dimensions": 1024},
+    "embedding": {"provider": "ollama", "model": "qwen3-embedding:4b", "dimensions": 2560},
     "search": {"reranker": "none"},
+    "reranking": {"enabled": False},
 }
 
 
@@ -121,7 +123,7 @@ async def test_pgml_vector_arm_uses_materialized_candidate_cte() -> None:
     assert "WITH candidate AS MATERIALIZED" in sql
     # ANN scan + LIMIT stay INSIDE the CTE...
     cte_body = sql.split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
-    assert "ORDER BY cv.vector <=>" in cte_body
+    assert "ORDER BY cv.embedding <=>" in cte_body
     assert "LIMIT $4" in cte_body
     assert "cv.tenant_id = $3" in cte_body
     # ...and the exact ordering is applied OUTSIDE over the materialized set.
@@ -139,12 +141,12 @@ async def test_ollama_plain_arm_uses_materialized_candidate_cte() -> None:
     handler = _handler(_RecordingPool(conn), dict(_OLLAMA_CONFIG), embedder=embedder)
     await handler.handle_search(SearchQuery(query="housing policy", k=5))
 
-    sqls = _vector_sql(conn, "$1::vector")
+    sqls = _vector_sql(conn, "$1::halfvec")
     assert sqls, "ollama plain vector arm did not run"
     sql = sqls[0]
     assert "WITH candidate AS MATERIALIZED" in sql
     cte_body = sql.split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
-    assert "ORDER BY cv.vector <=> $1::vector" in cte_body
+    assert "ORDER BY cv.embedding <=> $1::halfvec" in cte_body
     assert "cv.tenant_id = $2" in cte_body
     outer = sql.split(") SELECT", 1)[1]
     assert "ORDER BY candidate.score + 0 DESC, chunks.chunk_id ASC" in outer
@@ -155,7 +157,7 @@ async def test_matryoshka_arm_materializes_candidates_and_reorders_outside() -> 
     conn = _RecordingConn()
     embedder = FakeEmbedder(dimensions=1024)
     config = dict(_OLLAMA_CONFIG)
-    config["search"] = {"reranker": "none", "matryoshka_enabled": True, "matryoshka_dim": 1024}
+    config["retrieval"] = {"matryoshka_enabled": True, "matryoshka_dim": 1024}
     handler = _handler(_RecordingPool(conn), config, embedder=embedder)
     await handler.handle_search(SearchQuery(query="housing policy", k=5))
 
@@ -165,7 +167,7 @@ async def test_matryoshka_arm_materializes_candidates_and_reorders_outside() -> 
     assert "WITH cand AS MATERIALIZED" in sql
     outer = sql.split(") SELECT", 1)[1]
     # Exact full-dimension distance ordering OUTSIDE the materialized CTE.
-    assert "ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC, chunks.chunk_id ASC" in outer
+    assert "ORDER BY (1 - (cand.embedding <=> $1::halfvec)) + 0 DESC, chunks.chunk_id ASC" in outer
 
 
 @pytest.mark.asyncio
@@ -191,8 +193,7 @@ async def test_search_similar_uses_materialized_candidate_cte() -> None:
 async def test_hnsw_settings_applied_as_set_local_inside_transaction() -> None:
     conn = _RecordingConn(extversion="0.8.2")
     config = dict(_PGML_CONFIG)
-    config["search"] = {
-        "reranker": "none",
+    config["retrieval"] = {
         "hnsw": {"iterative_scan": "strict_order", "ef_search": 200, "max_scan_tuples": 20000},
     }
     handler = _handler(_RecordingPool(conn), config)
@@ -215,7 +216,7 @@ async def test_hnsw_settings_applied_as_set_local_inside_transaction() -> None:
 async def test_hnsw_off_mode_emits_no_set_local() -> None:
     conn = _RecordingConn(extversion="0.8.2")
     config = dict(_PGML_CONFIG)
-    config["search"] = {"reranker": "none", "hnsw": {"iterative_scan": "off"}}
+    config["retrieval"] = {"hnsw": {"iterative_scan": "off"}}
     handler = _handler(_RecordingPool(conn), config)
     await handler.handle_search(SearchQuery(query="housing policy", k=5))
 
@@ -337,11 +338,10 @@ from corpus_kb.research.retrieval_settings import (  # noqa: E402
 )
 
 _OLLAMA_FILTERED_CONFIG: dict[str, object] = {
-    "embedding": {"provider": "ollama", "model": "qwen3-embedding:8b-q8_0", "dimensions": 1024},
-    "search": {
-        "reranker": "none",
-        "exact_filter_selectivity_threshold": 0.05,
-    },
+    "embedding": {"provider": "ollama", "model": "qwen3-embedding:4b", "dimensions": 2560},
+    "search": {"reranker": "none"},
+    "reranking": {"enabled": False},
+    "retrieval": {"exact_filter_selectivity_threshold": 0.05},
 }
 
 
@@ -378,7 +378,7 @@ async def test_selective_filter_routes_to_exact_scan_arm(monkeypatch) -> None:
     handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG), embedder=embedder)
     await handler.handle_search(SearchQuery(query="housing policy", k=5, source_type="interview"))
 
-    sqls = _vector_sql(conn, "$1::vector")
+    sqls = _vector_sql(conn, "$1::halfvec")
     assert sqls, "vector arm did not run"
     exact = [s for s in sqls if "WITH candidate AS MATERIALIZED" in s and "LIMIT $3" in s]
     assert exact, "exact-scan arm did not run"
@@ -409,10 +409,10 @@ async def test_broad_filter_stays_on_ann_arm(monkeypatch) -> None:
     handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG), embedder=embedder)
     await handler.handle_search(SearchQuery(query="housing policy", k=5, source_type="interview"))
 
-    sqls = _vector_sql(conn, "$1::vector")
+    sqls = _vector_sql(conn, "$1::halfvec")
     assert sqls, "vector arm did not run"
     cte_body = sqls[0].split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
-    assert "ORDER BY cv.vector <=> $1::vector" in cte_body
+    assert "ORDER BY cv.embedding <=> $1::halfvec" in cte_body
     assert "LIMIT $3" in cte_body
 
 
@@ -430,16 +430,17 @@ async def test_probe_failure_fails_open_to_ann(monkeypatch) -> None:
     embedder = FakeEmbedder(dimensions=1024)
     handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG), embedder=embedder)
     await handler.handle_search(SearchQuery(query="housing policy", k=5, source_type="interview"))
-    sqls = _vector_sql(conn, "$1::vector")
+    sqls = _vector_sql(conn, "$1::halfvec")
     assert sqls, "search must continue when the probe fails"
     cte_body = sqls[0].split("AS MATERIALIZED (", 1)[1].split(") SELECT", 1)[0]
-    assert "ORDER BY cv.vector <=> $1::vector" in cte_body
+    assert "ORDER BY cv.embedding <=> $1::halfvec" in cte_body
 
 
 def test_retrieval_settings_defaults_are_consumed_by_handler() -> None:
     conn = _RecordingConn()
-    handler = _handler(_RecordingPool(conn), dict(_OLLAMA_FILTERED_CONFIG))
-    assert handler._retrieval_settings == RetrievalSettings()
+    config = dict(_OLLAMA_FILTERED_CONFIG)
+    handler = _handler(_RecordingPool(conn), config)
+    assert handler._retrieval_settings == load_retrieval_settings(config)
 
 
 def test_retrieval_settings_ship_no_return_top_k() -> None:
@@ -452,9 +453,11 @@ def test_retrieval_settings_ship_no_return_top_k() -> None:
 
     assert all(f.name != "return_top_k" for f in dataclasses.fields(RetrievalSettings))
     assert "return_top_k" not in RETRIEVAL_CONFIG_DEFAULTS
-    # A config that still carries the key is ignored, not consumed.
-    settings = load_retrieval_settings({"search": {"return_top_k": 5}})
-    assert settings == RetrievalSettings()
+    # A config that still carries the key is ignored, not consumed. (The
+    # RERANKING side accepts it: reranking.return_top_k, validated in
+    # rag/rerank_settings.py and wired to the catalogue contract in wave 3.)
+    settings = load_retrieval_settings({"retrieval": {"return_top_k": 5}})
+    assert settings == load_retrieval_settings({})
 
 
 def test_research_rrf_call_carries_settings_rrf_k() -> None:

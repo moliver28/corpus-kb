@@ -4,9 +4,20 @@ Each arm is ONE module function that runs one embedding provider's vector
 retrieval and returns ``(rows, reason)``. ``rows`` is the candidate list the
 RRF fusion consumes; ``reason`` is ``None`` on a clean run or the honesty
 string for the search envelope's ``degraded_excluded`` (the arm never
-raises for a failed fetch — it degrades and says so). SQL text here is
-byte-identical to the pre-split inline arms; the recording-conn tests pin
-it (tests/test_search_honesty.py, tests/test_vector_search_ordering.py).
+raises for a failed fetch — it degrades and says so).
+
+Config v2 (dimension regime): the main column is ``chunks_vectors.embedding``
+(``halfvec(2560)`` — halfvec is required because pgvector HNSW caps the
+plain vector type at 2000 dims), so every probe casts the query vector to
+``::halfvec`` and compares against ``cv.embedding``. The matryoshka arm's
+``vector_1024`` slice stays a plain ``vector(1024)`` column.
+
+Arm LIMIT contract (config v2 live wiring): the candidate depth is
+``max(vector_candidates, k * 2)`` — ``retrieval.vector_candidates`` is the
+live knob and ``k * 2`` is the floor that keeps small candidate configs
+from under-fetching below k. The rerank pre-fetch width
+(``reranking.over_retrieve_n``) is a POST-fusion concern owned by
+QueryHandler and no longer inflates the arm LIMITs.
 """
 
 from __future__ import annotations
@@ -89,7 +100,7 @@ async def pgml_vector_arm(
     semantic_query: str,
     tenant_id: str,
     k: int,
-    over_retrieve_n: int,
+    vector_candidates: int,
     dynamic_predicates: list[Predicate],
     degraded_pred: str,
     exact_threshold: float,
@@ -99,6 +110,7 @@ async def pgml_vector_arm(
 
     frag, params = build_filter_sql(dynamic_predicates, start_index=5)
     vector_results: list[asyncpg.Record] = []
+    vector_limit = max(vector_candidates, k * 2)
     try:
         # Arm isolation (Wave 5 finding): the reads run inside a nested
         # transaction (a SAVEPOINT under the handler's transaction). A
@@ -119,9 +131,9 @@ async def pgml_vector_arm(
                     f"""
                     WITH candidate AS MATERIALIZED (
                         SELECT cv.chunk_id AS candidate_chunk_id,
-                               1 - (cv.vector <=> (
+                               1 - (cv.embedding <=> (
                                    SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                               )::vector) AS score
+                               )::halfvec) AS score
                         FROM chunks_vectors cv
                         JOIN chunks ON cv.chunk_id = chunks.chunk_id
                         JOIN documents ON chunks.doc_id = documents.doc_id
@@ -137,7 +149,7 @@ async def pgml_vector_arm(
                     model,
                     semantic_query,
                     tenant_id,
-                    max(k * 2, over_retrieve_n),
+                    vector_limit,
                     *params,
                 )
             else:
@@ -150,16 +162,16 @@ async def pgml_vector_arm(
                     f"""
                 WITH candidate AS MATERIALIZED (
                     SELECT cv.chunk_id AS candidate_chunk_id,
-                           1 - (cv.vector <=> (
+                           1 - (cv.embedding <=> (
                                SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                           )::vector) AS score
+                           )::halfvec) AS score
                     FROM chunks_vectors cv
                     JOIN chunks ON cv.chunk_id = chunks.chunk_id
                     JOIN documents ON chunks.doc_id = documents.doc_id
                     WHERE cv.tenant_id = $3 {DEDUP_PREDICATE} {frag} {degraded_pred}
-                    ORDER BY cv.vector <=> (
+                    ORDER BY cv.embedding <=> (
                         SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1
-                    )::vector
+                    )::halfvec
                     LIMIT $4
                 )
                 SELECT {SELECT_LIST}, candidate.score AS score
@@ -172,7 +184,7 @@ async def pgml_vector_arm(
                     model,
                     semantic_query,
                     tenant_id,
-                    max(k * 2, over_retrieve_n),
+                    vector_limit,
                     *params,
                 )
     except Exception as exc:
@@ -188,7 +200,7 @@ async def ollama_vector_arm(
     semantic_query: str,
     tenant_id: str,
     k: int,
-    over_retrieve_n: int,
+    vector_candidates: int,
     dynamic_predicates: list[Predicate],
     degraded_pred: str,
     matryoshka_enabled: bool,
@@ -204,11 +216,11 @@ async def ollama_vector_arm(
         # rollback-to-savepoint must keep the shared handler transaction
         # alive for the lexical arm.
         async with conn.transaction():
-            vector_limit = max(k * 2, over_retrieve_n)
+            vector_limit = max(vector_candidates, k * 2)
             from corpus_kb.rag.self_query import build_filter_sql
 
             if matryoshka_enabled:
-                q4096 = embedder.embed(semantic_query)
+                qfull = embedder.embed(semantic_query)
                 frag, params = build_filter_sql(dynamic_predicates, start_index=6)
                 candidate_n = k * int(candidate_multiplier)
                 # Stage 3 zero-query guard: an all-zero query embedding
@@ -216,15 +228,15 @@ async def ollama_vector_arm(
                 # FIRST under DESC — abstain instead of returning
                 # garbage confident-looking hits. The lexical arm below
                 # still runs.
-                if is_all_zero(q4096):
+                if is_all_zero(qfull):
                     return [], REASON_ZERO_QUERY
-                q1024 = embedder.embed_matryoshka(semantic_query, matryoshka_dim)
-                # U40: MATERIALIZED candidate CTE (1024-d probe scan) +
+                qslice = embedder.embed_matryoshka(semantic_query, matryoshka_dim)
+                # U40: MATERIALIZED candidate CTE (sliced-dim probe scan) +
                 # exact full-dimension re-ordering OUTSIDE the CTE.
                 vector_results = await conn.fetch(
                     f"""
                     WITH cand AS MATERIALIZED (
-                        SELECT cv.chunk_id, cv.vector
+                        SELECT cv.chunk_id, cv.embedding
                         FROM chunks_vectors cv
                         JOIN chunks ON cv.chunk_id = chunks.chunk_id
                         JOIN documents ON chunks.doc_id = documents.doc_id
@@ -234,18 +246,18 @@ async def ollama_vector_arm(
                         LIMIT $5
                     )
                     SELECT {SELECT_LIST},
-                           1 - (cand.vector <=> $1::vector) AS score
+                           1 - (cand.embedding <=> $1::halfvec) AS score
                     FROM cand
                     JOIN chunks ON cand.chunk_id = chunks.chunk_id
                     JOIN documents ON chunks.doc_id = documents.doc_id
-                    ORDER BY (1 - (cand.vector <=> $1::vector)) + 0 DESC,
+                    ORDER BY (1 - (cand.embedding <=> $1::halfvec)) + 0 DESC,
                              chunks.chunk_id ASC
                     LIMIT $3
                     """,
-                    str(q4096),
+                    str(qfull),
                     tenant_id,
                     vector_limit,
-                    str(q1024),
+                    str(qslice),
                     candidate_n,
                     *params,
                 )
@@ -269,7 +281,7 @@ async def ollama_vector_arm(
                         f"""
                         WITH candidate AS MATERIALIZED (
                             SELECT cv.chunk_id AS candidate_chunk_id,
-                                   1 - (cv.vector <=> $1::vector) AS score
+                                   1 - (cv.embedding <=> $1::halfvec) AS score
                             FROM chunks_vectors cv
                             JOIN chunks ON cv.chunk_id = chunks.chunk_id
                             JOIN documents ON chunks.doc_id = documents.doc_id
@@ -295,13 +307,13 @@ async def ollama_vector_arm(
                         f"""
                     WITH candidate AS MATERIALIZED (
                         SELECT cv.chunk_id AS candidate_chunk_id,
-                               1 - (cv.vector <=> $1::vector) AS score
+                               1 - (cv.embedding <=> $1::halfvec) AS score
                         FROM chunks_vectors cv
                         JOIN chunks ON cv.chunk_id = chunks.chunk_id
                         JOIN documents ON chunks.doc_id = documents.doc_id
                         WHERE cv.tenant_id = $2 {DEDUP_PREDICATE} {frag}
                           {degraded_pred}
-                        ORDER BY cv.vector <=> $1::vector
+                        ORDER BY cv.embedding <=> $1::halfvec
                         LIMIT $3
                     )
                     SELECT {SELECT_LIST}, candidate.score AS score

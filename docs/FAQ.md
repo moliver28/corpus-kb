@@ -10,7 +10,7 @@ Yes. The current release requires PostgreSQL 17 with pgvector and Apache AGE. Ea
 
 ## Do I need a GPU?
 
-No. The default model, `nomic-embed-text`, runs well on CPU. It is about 274 MB and produces 768-dimensional embeddings.
+Mostly. `qwen3-embedding:4b` (the shipped default) runs on CPU, just slower than the old 768d nomic model. It produces 2560-dimensional embeddings. A GPU helps but is not required.
 
 ## Can I use OpenAI embeddings instead of Ollama?
 
@@ -18,7 +18,7 @@ Not out of the box. Corpus-KB currently calls Ollama's local embedding API. You 
 
 ## Can I run without Ollama?
 
-Yes. Ingest continues when Ollama is unreachable, but the affected chunks are stored with zero vectors and flagged `degraded`. Search leaves degraded chunks out of vector results by default (`search.exclude_degraded: true`). It reports what it excluded in the `degraded_excluded` field of the response, and still runs the full-text arm. Once Ollama is back, `corpus-kb ingest-reembed` re-embeds the flagged chunks and clears the flag.
+Yes. Ingest continues when Ollama is unreachable, but the affected chunks are stored with zero vectors and flagged `degraded`. Search leaves degraded chunks out of vector results by default (`retrieval.exclude_degraded: true`). It reports what it excluded in the `degraded_excluded` field of the response, and still runs the full-text arm. Once Ollama is back, `corpus-kb ingest-reembed` re-embeds the flagged chunks and clears the flag.
 
 ## Can I teach it a new file format?
 

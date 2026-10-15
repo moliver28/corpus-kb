@@ -50,7 +50,6 @@ from corpus_kb.handlers.query_vector_arms import (
     ollama_vector_arm,
     pgml_vector_arm,
 )
-from corpus_kb.ingest.hierarchy_settings import load_hierarchy_settings
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.rerank_settings import load_rerank_settings
 from corpus_kb.rag.reranker import build_reranker, create_reranker
@@ -127,27 +126,24 @@ class QueryHandler:
             if reranker is not None
             else (build_reranker(self._config) or create_reranker(self._config, pool))
         )
-        search_cfg = self._config.get("search", {}) or {}
-        self._rerank_cfg = search_cfg.get("rerank", {}) or {}
-        # Stage 3 degraded policy: candidate CTEs exclude rows whose stored
-        # vector is flagged degraded (migration 022) when this is true.
-        self._exclude_degraded = bool(search_cfg.get("exclude_degraded", True))
+        # Config v2: the retrieval knobs live under ``retrieval.*`` and the
+        # rerank knobs under ``reranking.*`` (legacy namespaces are aliases
+        # the loader already normalized).
         self._rerank_settings = load_rerank_settings(self._config)
-        self._self_query_enabled = bool(
-            (search_cfg.get("self_query", {}) or {}).get("enabled", False)
-        )
-        self._matryoshka_enabled = bool(search_cfg.get("matryoshka_enabled", False))
-        self._matryoshka_dim = int(search_cfg.get("matryoshka_dim", 1024))
-        self._candidate_multiplier = int(search_cfg.get("candidate_multiplier", 8))
-        # U20: transaction-local HNSW scan settings (search.hnsw.*).
-        self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
         # U45/U21: shared retrieval knobs (``rrf_k`` feeds the fusion call
-        # below; the threshold drives the exact-scan arm).
+        # below; the threshold drives the exact-scan arm; the candidate
+        # depths drive the live vector/FTS arm LIMITs; ``mode`` is
+        # enum-validated here — a bad value fails loudly at construction).
         self._retrieval_settings = load_retrieval_settings(self._config)
-        # U48/P6: shadow hierarchy settings — ONLY the query-time
-        # expand_to_parent arm is read here (default False until the shadow
-        # benchmark passes); ingest-side keys are owned by the pipeline.
-        self._hierarchy_settings = load_hierarchy_settings(self._config)
+        self._exclude_degraded = self._retrieval_settings.exclude_degraded
+        self._self_query_enabled = bool(self._retrieval_settings.self_query.get("enabled", False))
+        self._matryoshka_enabled = self._retrieval_settings.matryoshka_enabled
+        self._matryoshka_dim = self._retrieval_settings.matryoshka_dim
+        self._candidate_multiplier = self._retrieval_settings.candidate_multiplier
+        # U20: transaction-local HNSW scan settings (retrieval.hnsw.*).
+        self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
+        # U48/P6: the ingest-side hierarchy keys are owned by the pipeline;
+        # the query-time expand_to_parent arm lives on retrieval settings.
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: self-query filtering -> vector (matryoshka two-tier or
@@ -245,7 +241,7 @@ class QueryHandler:
         directly and must not inflate the vector/FTS LIMIT.
         """
         return (
-            int(self._rerank_cfg.get("over_retrieve_n", 60))
+            self._rerank_settings.over_retrieve_n
             if callable(getattr(self._reranker, "score", None))
             else 0
         )
@@ -311,7 +307,7 @@ class QueryHandler:
             """,
             semantic_query,
             str(query.tenant_id),
-            max(query.k * 2, over_retrieve_n),
+            max(self._retrieval_settings.lexical_candidates, query.k * 2),
             *params,
         )
 
@@ -379,16 +375,16 @@ class QueryHandler:
         pipeline continue with the lexical arm alone.
         """
         embedding_cfg = self._config.get("embedding", {}) or {}
-        provider = str(embedding_cfg.get("provider", "pgml"))
+        provider = str(embedding_cfg.get("provider", "ollama"))
         if provider == "pgml":
-            model = str(embedding_cfg.get("model", "nomic-embed-text"))
+            model = str(embedding_cfg.get("model", "qwen3-embedding:4b"))
             vector_results, arm_reason = await pgml_vector_arm(
                 conn,
                 model=model,
                 semantic_query=semantic_query,
                 tenant_id=str(query.tenant_id),
                 k=query.k,
-                over_retrieve_n=over_retrieve_n,
+                vector_candidates=self._retrieval_settings.vector_candidates,
                 dynamic_predicates=dynamic_predicates,
                 degraded_pred=degraded_pred,
                 exact_threshold=self._retrieval_settings.exact_filter_selectivity_threshold,
@@ -400,7 +396,7 @@ class QueryHandler:
                 semantic_query=semantic_query,
                 tenant_id=str(query.tenant_id),
                 k=query.k,
-                over_retrieve_n=over_retrieve_n,
+                vector_candidates=self._retrieval_settings.vector_candidates,
                 dynamic_predicates=dynamic_predicates,
                 degraded_pred=degraded_pred,
                 matryoshka_enabled=self._matryoshka_enabled,
@@ -486,7 +482,7 @@ class QueryHandler:
             return await self._maybe_expand_to_parent(fused_results, tenant_id)
 
         if callable(getattr(self._reranker, "score", None)):
-            # U30: rerank at most search.rerank.candidates of the fused
+            # U30: rerank at most reranking.candidates of the fused
             # results — never more than were over-retrieved from the arms.
             rerank_n = min(over_retrieve_n, self._rerank_settings.candidates)
             candidates = fused_results[:rerank_n]
@@ -531,12 +527,13 @@ class QueryHandler:
     ) -> list[SearchResult]:
         """U48/P6 additive arm: small-to-big parent expansion post-fusion.
 
-        Default OFF — the flag-off passthrough returns the SAME list object
-        without touching the pool, so live-path behavior is byte-identical.
+        Gated by ``retrieval.expand_to_parent`` (config v2; the flag moved
+        from ingest.hierarchy and flipped to true). The flag-off passthrough
+        returns the SAME list object without touching the pool.
         Fail-open: any expansion error returns the results unchanged (same
         contract as the U21 selectivity probe).
         """
-        if not self._hierarchy_settings.expand_to_parent or not results:
+        if not self._retrieval_settings.expand_to_parent or not results:
             return results
         from corpus_kb.rag.parent_expand import expand_to_parent
 

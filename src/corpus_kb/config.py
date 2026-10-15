@@ -19,6 +19,8 @@ from typing import cast
 
 import yaml
 
+from corpus_kb.config_aliases import apply_legacy_aliases
+
 
 def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
     """Recursively overlay values onto a base dictionary (mutating base)."""
@@ -75,6 +77,12 @@ def load_config(path: str | None = None) -> dict[str, object]:
             with Path(packaged_path).open() as f:
                 file_config = cast(dict[str, object], yaml.safe_load(f) or {})
             _deep_update(config, file_config)
+
+    # Legacy namespace aliases (search.* / ingest.hierarchy.* / contextual.*):
+    # copied into the canonical keys when the canonical key is absent, with a
+    # deprecation warning. Runs BEFORE the typed readers and cross-field gates
+    # so every consumer only ever sees canonical keys.
+    apply_legacy_aliases(config)
 
     # Environment variable overrides. Every mapped variable is live: the
     # config key it writes has a real consumer (install.py, install_state.py,
@@ -170,33 +178,35 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
 def matryoshka_mrl_error(config: dict[str, object]) -> str | None:
     """U32 cross-field gate on the two-stage matryoshka search arm.
 
-    ``search.matryoshka_enabled: true`` front-slices stored embeddings to
+    ``retrieval.matryoshka_enabled: true`` front-slices stored embeddings to
     ``matryoshka_dim`` and re-ranks at full dimension. That is only sound
     when the embedder is Matryoshka-trained (``embedding.mrl_trained:
     true``); truncating a non-MRL model (nomic-embed-text) silently
     degrades retrieval. Returns the refusal message for the invalid
-    combination, or None when the arm is off (the default) or the model
-    declared MRL-trained. ``load_config`` raises the message as a config
-    error, so the arm cannot activate silently; type checking of the two
-    keys is owned by ``validate_configs.validate_runtime_config``.
+    combination, or None when the arm is off or the model declared
+    MRL-trained. ``load_config`` raises the message as a config error, so
+    the arm cannot activate silently; type checking of the two keys is
+    owned by ``validate_configs.validate_runtime_config``. The legacy
+    ``search.matryoshka_enabled`` spelling is normalized by the alias
+    layer before this gate runs.
     """
-    search = config.get("search")
+    retrieval = config.get("retrieval")
     embedding = config.get("embedding")
-    if not isinstance(search, dict) or not isinstance(embedding, dict):
+    if not isinstance(retrieval, dict) or not isinstance(embedding, dict):
         return None
     # Truthiness, matching the runtime consumers (QueryHandler /
     # ingest_common read the key through bool()): a quoted "true" or 1 in a
     # hand-edited YAML must trip the gate, not slip past `is not True`.
-    if not search.get("matryoshka_enabled"):
+    if not retrieval.get("matryoshka_enabled"):
         return None
     if embedding.get("mrl_trained") is True:
         return None
     return (
-        "search.matryoshka_enabled: true requires embedding.mrl_trained: true — "
+        "retrieval.matryoshka_enabled: true requires embedding.mrl_trained: true — "
         "two-stage matryoshka retrieval front-slices embeddings, which is only "
         "sound for Matryoshka-trained models (qwen3-embedding is MRL-trained; "
         "nomic-embed-text is NOT). Switch the embedding model first, or set "
-        "search.matryoshka_enabled: false."
+        "retrieval.matryoshka_enabled: false."
     )
 
 
@@ -217,50 +227,58 @@ def get_default_config() -> dict[str, object]:
             "prompt_version": "v1",
         },
         "embedding": {
-            "provider": "pgml",
+            # ollama serves the 4B embedder; pgml cannot host a model of
+            # this size.
+            "provider": "ollama",
             "fallback_provider": "ollama",
-            "model": "nomic-embed-text",
+            "model": "qwen3-embedding:4b",
             "base_url": "http://localhost:11434",
             "batch_size": 32,
-            "dimensions": 768,
-            # U32 MRL gating: declares whether the configured model is
-            # Matryoshka-trained, i.e. front-slice truncation + L2
-            # renormalization is a sound reduced-dimension representation.
-            # qwen3-embedding models ARE MRL-trained; nomic-embed-text is
-            # NOT (truncating it degrades retrieval instead of preserving
-            # it). The two-stage matryoshka arm (search.matryoshka_enabled)
-            # refuses to activate while this is false: load_config raises a
-            # config error on the combination, and validate_runtime_config
-            # reports it for the shipped YAMLs. Default stays off.
-            "mrl_trained": False,
+            # Native output width. Must equal the schema width
+            # (chunks_vectors.embedding = halfvec(2560)).
+            "dimensions": 2560,
+            # U32 MRL gating: qwen3-embedding is Matryoshka-trained, so
+            # front-slice truncation + L2 renormalization is a sound
+            # reduced-dimension representation. Gates the two-stage
+            # matryoshka arm (retrieval.matryoshka_enabled) and the Ollama
+            # dimensions passthrough.
+            "mrl_trained": True,
+            # Gates QUERY_INSTRUCTION_PREFIX at instruct() (query side only).
+            "query_instruction": True,
+            # Late chunking gate (see the packaged config.yaml for the full
+            # contract; honest pooled fallback when the extra/model lacks
+            # token-level support).
+            "late_chunking": True,
         },
-        "search": {
+        "storage": {
+            # chunks_vectors.embedding column type. halfvec is REQUIRED at
+            # 2560 dims: pgvector HNSW caps plain vector at 2000, halfvec
+            # at 4000 (migration 025).
+            "vector_type": "halfvec",
+        },
+        "retrieval": {
+            # Only hybrid_rrf exists today; other values are rejected at
+            # load time (load_retrieval_settings).
+            "mode": "hybrid_rrf",
+            # Live per-arm candidate depths before fusion (effective limit
+            # is max(candidates, k * 2), so small values never under-fetch
+            # below k).
+            "vector_candidates": 150,
+            "lexical_candidates": 150,
             "rrf_k": 60,
-            "reranker": "none",
-            "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-            # U45/U21 shared retrieval knobs, read by
-            # corpus_kb.research.retrieval_settings.load_retrieval_settings.
-            # candidates_per_branch 150 is the committed upgrade-program
-            # default (contextual-retrieval study value), not the module
-            # default; return truncation is owned by each query's k field.
-            "candidates_per_branch": 150,
+            # Post-fusion small-to-big parent expansion (moved from
+            # ingest.hierarchy; fail-open).
+            "expand_to_parent": True,
+            # Stage 3 degraded policy: candidate CTEs drop rows flagged
+            # degraded (migration 022).
+            "exclude_degraded": True,
+            "qa_context_in_fts": False,
+            # U21: below this estimated selectivity, filtered queries take
+            # the exact scan instead of the HNSW probe.
             "exact_filter_selectivity_threshold": 0.05,
-            "rerank": {
-                "enabled": True,
-                # Committed upgrade-program default: qwen3-reranker 4B. That
-                # tag is not yet pullable from the Ollama registry — until a
-                # model with it exists locally, the rerank stage degrades to
-                # the un-reranked RRF order with a logged warning
-                # (rag/rerank_settings.py contract).
-                "model": "qwen3-reranker:4b",
-                "base_url": "http://localhost:11434",
-                "over_retrieve_n": 60,
-                "candidates": 100,
-                "max_pair_tokens": 768,
-                "timeout_seconds": 120,
-                "score_floor": 0.15,
-                "calibration": "minmax",
-            },
+            # Matryoshka two-tier retrieval: candidate fan-out is
+            # k * this multiplier.
+            "candidate_multiplier": 8,
             "self_query": {
                 "enabled": True,
                 "model": "qwen3:4b",
@@ -269,26 +287,29 @@ def get_default_config() -> dict[str, object]:
             },
             "matryoshka_enabled": False,
             "matryoshka_dim": 1024,
-            "candidate_multiplier": 8,
-            # U20: transaction-local HNSW scan settings, read by
-            # corpus_kb.research.search_settings.load_hnsw_settings and applied
-            # as SET LOCAL inside the retrieval transaction. Defaults mirror
-            # HnswSettings(); keep the three files (config.py, config.yaml,
-            # src/corpus_kb/config.yaml) byte-consistent on values.
-            "hnsw": {
-                "iterative_scan": "strict_order",
-                "ef_search": 200,
-                "max_scan_tuples": 20000,
-            },
         },
-        "contextual": {
-            "enabled": False,
-            "enabled_source_types": ["interview", "research"],
-            "model": "qwen3:4b",
+        "reranking": {
+            "enabled": True,
+            # null selects the qwen3 judgment scorer; "fake" is the test
+            # double (build_reranker).
+            "backend": None,
+            # Committed upgrade-program default: qwen3-reranker 4B. That
+            # tag is not yet pullable from the Ollama registry — until a
+            # model with it exists locally, the rerank stage degrades to
+            # the un-reranked RRF order with a logged warning
+            # (rag/rerank_settings.py contract).
+            "model": "qwen3-reranker:4b",
             "base_url": "http://localhost:11434",
-            "temperature": 0.0,
-            "fixture_dir": "tests/fixtures/contextual_recorded",
-            "live_fallback": False,
+            # Rerank pre-fetch width for score-based rerankers.
+            "over_retrieve_n": 60,
+            "candidates": 100,
+            # Accepted and range-validated now; becomes the default return
+            # k (catalogue contract change) in wave 3.
+            "return_top_k": 20,
+            "max_pair_tokens": 768,
+            "timeout_seconds": 120,
+            "score_floor": 0.15,
+            "calibration": "minmax",
         },
         # U42 provenance-keyed exact result cache, read by
         # corpus_kb.research.exact_cache.load_cache_settings. `enabled` gates
@@ -386,46 +407,49 @@ def get_default_config() -> dict[str, object]:
             "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
             "data_dir": str(Path.home() / ".corpus-kb"),
             "verify_image_signature": True,
+            # All three profiles embed at 2560 dims (the schema width);
+            # only the LLM varies. A different embedding width needs a
+            # schema migration first.
             "profiles": {
                 "minimal": {
                     "ram_gb_max": 8,
                     "vram_gb_max": 0,
-                    "model": "nomic-embed-text",
+                    "model": "qwen3-embedding:4b",
                     "llm": "qwen3:0.6b",
                 },
                 "balanced": {
                     "ram_gb_max": 16,
                     "vram_gb_max": 4,
-                    "model": "nomic-embed-text",
+                    "model": "qwen3-embedding:4b",
                     "llm": "qwen3:4b",
                 },
                 "performance": {
                     "ram_gb_max": 999,
                     "vram_gb_max": 8,
-                    "model": "qwen3-embedding:8b-q8_0",
+                    "model": "qwen3-embedding:4b",
                     "llm": "qwen3:14b",
                 },
             },
         },
     }
-    _apply_research_defaults(config)
+    _apply_typed_module_defaults(config)
     return config
 
 
-def _apply_research_defaults(config: dict[str, object]) -> None:
-    """Merge the typed modules' research defaults into the default config.
+def _apply_typed_module_defaults(config: dict[str, object]) -> None:
+    """Merge the typed modules' defaults into the default config.
 
-    research.release.* (release profiles/enforcement) and the measurement
-    blocks (alt_test, prompt_stability, routing, audit, review, labeling,
-    judgment_distribution) come from the owning modules so the defaults in
+    research.release.* + the measurement blocks, ingest.chunking.*,
+    retrieval.hnsw.* come from the owning modules so the defaults in
     config.py, both config.yaml files and the typed readers cannot drift.
     Imported lazily: config.py is loaded before the package is fully
     importable in some tool paths (validate_configs, installer).
     """
     from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
-    from corpus_kb.ingest.hierarchy_settings import HIERARCHY_CONFIG_DEFAULTS
+    from corpus_kb.ingest.hierarchy_settings import CHUNKING_CONFIG_DEFAULTS
     from corpus_kb.research.cycle_consensus import CONSENSUS_CONFIG_DEFAULTS
     from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
+    from corpus_kb.research.search_settings import HNSW_CONFIG_DEFAULTS
 
     research = cast(dict[str, object], config.setdefault("research", {}))
     # update() alone would alias the modules' nested default dicts into every
@@ -438,10 +462,27 @@ def _apply_research_defaults(config: dict[str, object]) -> None:
     # reader): runs = N independent inductive passes per cycle, aggregated by
     # the release-layer consensus before themes surface.
     research.setdefault("consensus", dict(CONSENSUS_CONFIG_DEFAULTS))
-    # Multi-granularity chunk hierarchy + shadow index (ingest/hierarchy_settings.py)
-    hierarchy_defaults = dict(HIERARCHY_CONFIG_DEFAULTS)
-    hierarchy_defaults["respect_boundaries"] = list(hierarchy_defaults["respect_boundaries"])
-    config.setdefault("ingest", {}).setdefault("hierarchy", {}).update(hierarchy_defaults)
+    # Multi-granularity chunk hierarchy + shadow index
+    # (ingest/hierarchy_settings.py): the canonical block is ingest.chunking.
+    ingest = cast(dict[str, object], config.setdefault("ingest", {}))
+    ingest.setdefault("chunking", _detached_defaults(CHUNKING_CONFIG_DEFAULTS))
+    # Contextual retrieval (rag/contextualizer.py reads this block; wave 3
+    # adds the five contextualize-v2 keys).
+    ingest.setdefault(
+        "contextualize",
+        {
+            "enabled": False,
+            "enabled_source_types": ["interview", "research"],
+            "model": "qwen3:4b",
+            "base_url": "http://localhost:11434",
+            "temperature": 0.0,
+            "fixture_dir": "tests/fixtures/contextual_recorded",
+            "live_fallback": False,
+        },
+    )
+    # U20 index-build + scan parameters (research/search_settings.py).
+    retrieval = cast(dict[str, object], config.setdefault("retrieval", {}))
+    retrieval.setdefault("hnsw", _detached_defaults(HNSW_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:

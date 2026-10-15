@@ -9,7 +9,7 @@ import pytest
 
 from corpus_kb.config import (
     KNOWN_CORPUS_KB_ENV_VARS,
-    _apply_research_defaults,
+    _apply_typed_module_defaults,
     apply_extraction_backend_alias,
     load_config,
 )
@@ -110,7 +110,10 @@ def test_dead_env_mappings_are_ignored(no_env_overrides: None) -> None:
     with patch.dict("os.environ", dead_vars, clear=False):
         cfg = load_config()  # must not raise
 
-    assert "storage" not in cfg
+    # storage.* is a CANONICAL section now (vector_type); the dead env var
+    # must not have invented keys inside it.
+    storage = cast(dict[str, object], cfg["storage"])
+    assert "path" not in storage
     installer = cast(dict[str, object], cfg["installer"])
     assert "profile" not in installer
 
@@ -122,9 +125,9 @@ def test_dead_config_keys_absent(no_env_overrides: None) -> None:
     assert "name" not in server
     assert "chunking" not in cfg
     assert "llamaindex" not in cfg
-    search = cast(dict[str, object], cfg["search"])
-    assert "expand_context" not in search
-    assert "index_type" not in search
+    retrieval = cast(dict[str, object], cfg["retrieval"])
+    assert "expand_context" not in retrieval
+    assert "index_type" not in retrieval
     database = cast(dict[str, object], cfg["database"])
     assert "auto_migrate" not in database
 
@@ -171,14 +174,14 @@ def test_extractor_alias_applied_by_load_config(no_env_overrides: None) -> None:
 def test_research_defaults_are_not_aliased_across_loads() -> None:
     """Mutating a loaded config's research block must not poison the defaults."""
     first: dict[str, object] = {}
-    _apply_research_defaults(first)
+    _apply_typed_module_defaults(first)
     first_research = cast(dict[str, object], first["research"])
     measurement = cast(dict[str, object], first_research["judgment_distribution"])
     measurement["use_mean"] = True
     measurement["injected"] = True
 
     second: dict[str, object] = {}
-    _apply_research_defaults(second)
+    _apply_typed_module_defaults(second)
     second_research = cast(dict[str, object], second["research"])
     fresh = cast(dict[str, object], second_research["judgment_distribution"])
     assert fresh == {"use_mean": False}
@@ -192,7 +195,7 @@ def test_nested_research_defaults_are_not_aliased_across_loads() -> None:
     every later load in the process.
     """
     first: dict[str, object] = {}
-    _apply_research_defaults(first)
+    _apply_typed_module_defaults(first)
     first_research = cast(dict[str, object], first["research"])
     first_release = cast(dict[str, object], first_research["release"])
     first_profiles = cast(dict[str, object], first_release["profiles"])
@@ -202,7 +205,7 @@ def test_nested_research_defaults_are_not_aliased_across_loads() -> None:
     team["injected"] = True
 
     second: dict[str, object] = {}
-    _apply_research_defaults(second)
+    _apply_typed_module_defaults(second)
     second_research = cast(dict[str, object], second["research"])
     second_release = cast(dict[str, object], second_research["release"])
     second_profiles = cast(dict[str, object], second_release["profiles"])

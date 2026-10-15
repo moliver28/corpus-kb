@@ -104,12 +104,14 @@ def load_config_or_pass(config: dict[str, object] | None) -> dict[str, object]:
 def _contextual_enabled(config: dict[str, object], source_type: str) -> bool:
     """Return True if contextual retrieval should run for this source_type.
 
-    Contextualization is on unconditionally when ``contextual.enabled`` is
-    True. Otherwise it is on only for source_types listed in
-    ``contextual.enabled_source_types`` (default-on allowlist for
-    interview/research data per the approved feature default).
+    Contextualization is on unconditionally when
+    ``ingest.contextualize.enabled`` is True. Otherwise it is on only for
+    source_types listed in ``ingest.contextualize.enabled_source_types``
+    (default-on allowlist for interview/research data per the approved
+    feature default). The legacy ``contextual.*`` namespace is an alias
+    the loader applies before this read.
     """
-    cfg = _nested_dict(config, "contextual")
+    cfg = _nested_dict(_nested_dict(config, "ingest"), "contextualize")
     if bool(cfg.get("enabled", False)):
         return True
     allowlist = cfg.get("enabled_source_types", [])

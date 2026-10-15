@@ -29,10 +29,11 @@ from corpus_kb.chunking.hierarchy_tree import (
     build_hierarchy,
 )
 from corpus_kb.ingest.hierarchy_settings import (
-    HIERARCHY_CONFIG_DEFAULTS,
+    CHUNKING_CONFIG_DEFAULTS,
     HierarchySettings,
     load_hierarchy_settings,
 )
+from corpus_kb.research.retrieval_settings import load_retrieval_settings
 from corpus_kb.utils.models import Chunk
 
 DEFAULTS = HierarchySettings()
@@ -179,13 +180,24 @@ def test_settings_default_to_committed_upgrade_program_values() -> None:
     assert settings.overlap_tokens == 64
     assert settings.respect_boundaries == ("speaker_turn", "qa_pair", "slide", "heading")
     assert settings.enabled is True
-    assert settings.expand_to_parent is False
 
 
-def test_settings_loader_roundtrips_hierarchy_config_defaults() -> None:
-    """HIERARCHY_CONFIG_DEFAULTS is exactly the block the orchestrator wires
-    into ingest.hierarchy.*; loading it must reproduce the default settings."""
-    settings = load_hierarchy_settings({"ingest": {"hierarchy": dict(HIERARCHY_CONFIG_DEFAULTS)}})
+def test_expand_to_parent_lives_under_retrieval_now() -> None:
+    """The query-time arm moved to retrieval.expand_to_parent (config v2).
+
+    The hierarchy settings no longer carry it; the typed retrieval reader
+    owns it and defaults it to TRUE.
+    """
+    settings = load_hierarchy_settings({"ingest": {"chunking": {"expand_to_parent": True}}})
+    assert not hasattr(settings, "expand_to_parent")
+    retrieval = load_retrieval_settings({})
+    assert retrieval.expand_to_parent is True
+
+
+def test_settings_loader_roundtrips_chunking_config_defaults() -> None:
+    """CHUNKING_CONFIG_DEFAULTS is exactly the block the orchestrator wires
+    into ingest.chunking.*; loading it must reproduce the default settings."""
+    settings = load_hierarchy_settings({"ingest": {"chunking": dict(CHUNKING_CONFIG_DEFAULTS)}})
     assert settings == HierarchySettings()
 
 
@@ -193,14 +205,13 @@ def test_settings_loader_applies_overrides() -> None:
     settings = load_hierarchy_settings(
         {
             "ingest": {
-                "hierarchy": {
+                "chunking": {
                     "enabled": False,
                     "child_tokens": 96,
                     "chunk_tokens": 384,
                     "parent_tokens": 1024,
                     "overlap_tokens": 32,
                     "respect_boundaries": ["heading"],
-                    "expand_to_parent": True,
                 }
             }
         }
@@ -211,7 +222,6 @@ def test_settings_loader_applies_overrides() -> None:
     assert settings.parent_tokens == 1024
     assert settings.overlap_tokens == 32
     assert settings.respect_boundaries == ("heading",)
-    assert settings.expand_to_parent is True
 
 
 @pytest.mark.parametrize(
@@ -220,7 +230,6 @@ def test_settings_loader_applies_overrides() -> None:
         ({"child_tokens": 0}, "positive int"),
         ({"child_tokens": "128"}, "must be an int"),
         ({"enabled": "yes"}, "must be a bool"),
-        ({"expand_to_parent": 1}, "must be a bool"),
         ({"respect_boundaries": "heading"}, "must be a list"),
         ({"respect_boundaries": ["nonsense"]}, "unknown kinds"),
         ({"respect_boundaries": [1, 2]}, "must be a list of strings"),
@@ -228,7 +237,7 @@ def test_settings_loader_applies_overrides() -> None:
 )
 def test_settings_loader_rejects_invalid_values(block: dict[str, Any], match: str) -> None:
     with pytest.raises(ValueError, match=match):
-        load_hierarchy_settings({"ingest": {"hierarchy": block}})
+        load_hierarchy_settings({"ingest": {"chunking": block}})
 
 
 # ---------------------------------------------------------------------------
@@ -317,7 +326,7 @@ def test_qa_pair_not_in_respect_boundaries_packs_raw_turns() -> None:
     exchange_of = {turn.seq: turn.seq // 2 for turn in turns}
     segments = segments_from_turns(turns, exchange_of)
     settings = load_hierarchy_settings(
-        {"ingest": {"hierarchy": {"respect_boundaries": ["speaker_turn"]}}}
+        {"ingest": {"chunking": {"respect_boundaries": ["speaker_turn"]}}}
     )
     tree = build_hierarchy("doc-6", segments, settings, group_kind="qa_pair")
     for chunk_node in tree.by_level(LEVEL_CHUNK):
@@ -386,9 +395,9 @@ def test_code_symbol_chunks_tag_symbol_boundary_kind() -> None:
     segments = segments_from_chunks(chunks)
     assert [seg.kind for seg in segments] == ["symbol", "symbol"]
     assert all(seg.group_id is None for seg in segments)
-    # 'symbol' is a recognized ingest.hierarchy.respect_boundaries kind.
+    # 'symbol' is a recognized ingest.chunking.respect_boundaries kind.
     settings = load_hierarchy_settings(
-        {"ingest": {"hierarchy": {"respect_boundaries": ["symbol", "heading"]}}}
+        {"ingest": {"chunking": {"respect_boundaries": ["symbol", "heading"]}}}
     )
     assert settings.respect_boundaries == ("symbol", "heading")
 

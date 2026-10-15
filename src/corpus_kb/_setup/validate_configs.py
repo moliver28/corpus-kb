@@ -524,13 +524,32 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     # (graph.extractor is the accepted legacy alias — see
     # corpus_kb.extraction.extraction_backend_name).
     "extraction.backend": str,
-    "search.exclude_degraded": bool,
-    "search.qa_context_in_fts": bool,
-    "search.matryoshka_enabled": bool,
     "embedding.mrl_trained": bool,
     "embedding.late_chunking": bool,
+    "embedding.query_instruction": bool,
+    "storage.vector_type": str,
     "ingestion.default": str,
     "ingestion.strategies": dict,
+    # -- ingest.chunking (canonical home of the hierarchy knobs) -----------
+    "ingest.chunking.enabled": bool,
+    "ingest.chunking.child_tokens": int,
+    "ingest.chunking.chunk_tokens": int,
+    "ingest.chunking.parent_tokens": int,
+    "ingest.chunking.overlap_tokens": int,
+    "ingest.chunking.respect_boundaries": list,
+    # -- ingest.contextualize (renamed from contextual.*) ------------------
+    "ingest.contextualize.enabled": bool,
+    # -- retrieval (renamed from search.*) ----------------------------------
+    "retrieval.mode": str,
+    "retrieval.vector_candidates": int,
+    "retrieval.lexical_candidates": int,
+    "retrieval.rrf_k": int,
+    "retrieval.expand_to_parent": bool,
+    "retrieval.hnsw.m": int,
+    "retrieval.hnsw.ef_construction": int,
+    # -- reranking (renamed from search.rerank.*) ---------------------------
+    "reranking.enabled": bool,
+    "reranking.return_top_k": int,
     # -- website (URL) ingestion (src/corpus_kb/web/, WebFetchConfig) -------
     "web.user_agent": str,
     "web.timeout_seconds": int,
@@ -542,14 +561,76 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "web.allow_private_addresses": bool,
 }
 
+SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})
+SUPPORTED_VECTOR_TYPES = frozenset({"halfvec"})
+RETURN_TOP_K_MIN = 1
+RETURN_TOP_K_MAX = 1000
+
+
+def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
+    """U32-style cross-field and enum rules beyond per-key type checks."""
+    errors: list[str] = []
+
+    retrieval = config.get("retrieval")
+    if isinstance(retrieval, dict):
+        mode = retrieval.get("mode")
+        if mode not in SUPPORTED_RETRIEVAL_MODES:
+            errors.append(
+                f"retrieval.mode: must be one of {sorted(SUPPORTED_RETRIEVAL_MODES)}, got {mode!r}"
+            )
+        if retrieval.get("matryoshka_enabled") is True:
+            embedding = config.get("embedding")
+            mrl = embedding.get("mrl_trained") if isinstance(embedding, dict) else None
+            if mrl is not True:
+                errors.append(
+                    "retrieval.matryoshka_enabled: true requires embedding.mrl_trained: true "
+                    "(two-stage matryoshka retrieval front-slices embeddings, which is only "
+                    "sound for Matryoshka-trained models; qwen3-embedding is MRL-trained, "
+                    "nomic-embed-text is not)"
+                )
+
+    storage = config.get("storage")
+    if isinstance(storage, dict):
+        vector_type = storage.get("vector_type")
+        if vector_type not in SUPPORTED_VECTOR_TYPES:
+            errors.append(
+                f"storage.vector_type: must be one of {sorted(SUPPORTED_VECTOR_TYPES)}, "
+                f"got {vector_type!r}"
+            )
+
+    ingest = config.get("ingest")
+    if isinstance(ingest, dict):
+        contextualize = ingest.get("contextualize")
+        if isinstance(contextualize, dict) and "backend" in contextualize:
+            backend = contextualize.get("backend")
+            if backend != "ollama":
+                errors.append(
+                    f"ingest.contextualize.backend: must be 'ollama' when present, got {backend!r}"
+                )
+
+    reranking = config.get("reranking")
+    if isinstance(reranking, dict):
+        top_k = reranking.get("return_top_k")
+        if isinstance(top_k, bool) or not isinstance(top_k, int):
+            errors.append(f"reranking.return_top_k: must be an int, got {type(top_k).__name__}")
+        elif not RETURN_TOP_K_MIN <= top_k <= RETURN_TOP_K_MAX:
+            errors.append(
+                f"reranking.return_top_k: must be between {RETURN_TOP_K_MIN} and "
+                f"{RETURN_TOP_K_MAX}, got {top_k}"
+            )
+
+    return errors
+
 
 def validate_runtime_config(config: dict[str, Any]) -> list[str]:
     """Validate the runtime config.yaml keys in RUNTIME_CONFIG_KEYS.
 
     Every key must be PRESENT (explicit in both config.yaml files — the
     default lives in code, but the shipped YAML is the visible contract)
-    and hold the expected type. Also enforces the U32 cross-field rule:
-    ``search.matryoshka_enabled: true`` requires ``embedding.mrl_trained:
+    and hold the expected type. Also enforces the cross-field rules:
+    ``retrieval.mode`` is enum-locked to hybrid_rrf, ``storage.vector_type``
+    to halfvec, ``reranking.return_top_k`` is a positive int in range, and
+    ``retrieval.matryoshka_enabled: true`` requires ``embedding.mrl_trained:
     true`` (the two-stage arm front-slices embeddings, which is only sound
     for Matryoshka-trained models; the runtime refuses the same combination
     in ``config.load_config``).
@@ -581,17 +662,7 @@ def validate_runtime_config(config: dict[str, Any]) -> list[str]:
                 errors.append(
                     f"key '{dotted}' must be {expected.__name__}, got {type(node).__name__}"
                 )
-    search = config.get("search")
-    embedding = config.get("embedding")
-    if isinstance(search, dict) and search.get("matryoshka_enabled") is True:
-        mrl = embedding.get("mrl_trained") if isinstance(embedding, dict) else None
-        if mrl is not True:
-            errors.append(
-                "search.matryoshka_enabled: true requires embedding.mrl_trained: true "
-                "(two-stage matryoshka retrieval front-slices embeddings, which is only "
-                "sound for Matryoshka-trained models; qwen3-embedding is MRL-trained, "
-                "nomic-embed-text is not)"
-            )
+    errors.extend(_validate_cross_field_rules(config))
     return errors
 
 

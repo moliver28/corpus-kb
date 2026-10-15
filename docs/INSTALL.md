@@ -170,21 +170,20 @@ The root `scripts/install.py` file still exists as a deprecation shim: it warns 
 
 Download Ollama from [ollama.com](https://ollama.com) and start it.
 
-One rule decides the model: **the schema column is fixed at 4096 dimensions,
-and pgvector needs an exact match.** The bundled schema stores `vector(4096)`.
-For real (non-degraded) ingest you must either run a 4096-dimension model or
-change the column yourself:
+One rule decides the model: **the schema column is fixed at 2560 dimensions,
+and pgvector needs an exact match.** The bundled schema stores `halfvec(2560)`.
+Pull the model that fits it:
 
 ```bash
-ollama pull qwen3-embedding:8b-q8_0     # 4096 dimensions — fits the shipped schema
+ollama pull qwen3-embedding:4b     # 2560 dimensions — the shipped default
 ```
 
-`nomic-embed-text` (768d, about 274 MB) is the shipped config default and the
-installer's recommendation for smaller machines. It does NOT fit the bundled
-schema: ingest raises a `config_error` that names the fix. Two guards catch
-the mismatch early — the ingest write path and the `corpus-kb doctor`
-"embedding dimensions vs schema" check. The full model↔schema matrix lives in
-[ADMIN.md](ADMIN.md); the guard behavior is summarized in
+`qwen3-embedding:4b` is the shipped config default and the installer's
+recommendation for every profile. Any other model width needs a schema
+migration first; ingest raises a `config_error` that names the fix. Two
+guards catch a mismatch early — the ingest write path and the `corpus-kb
+doctor` "embedding dimensions vs schema" check. The full model↔schema matrix
+lives in [ADMIN.md](ADMIN.md); the guard behavior is summarized in
 [OPERATIONS.md](OPERATIONS.md).
 
 ---
@@ -209,9 +208,9 @@ database:
 
 embedding:
   provider: ollama
-  # The shipped schema stores vector(4096). Use a 4096-dimension model
-  # (see Step 5), or change the column yourself.
-  model: qwen3-embedding:8b-q8_0
+  # The shipped schema stores halfvec(2560). Use the matching model.
+  model: qwen3-embedding:4b
+  dimensions: 2560
   base_url: http://localhost:11434
   batch_size: 32
   dimensions: 4096

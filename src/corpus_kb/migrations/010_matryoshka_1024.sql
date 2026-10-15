@@ -13,9 +13,32 @@ SET app.current_tenant_id = '00000000-0000-0000-0000-000000000001';
 
 ALTER TABLE chunks_vectors ADD COLUMN IF NOT EXISTS vector_1024 vector(1024);
 
-UPDATE chunks_vectors
-SET vector_1024 = l2_normalize(subvector(vector, 1, 1024))
-WHERE vector_1024 IS NULL AND vector IS NOT NULL;
+-- Backfill from whichever main-column shape exists. Fresh installs run this
+-- migration AFTER the halfvec(2560) schema.sql end state (the migration-025
+-- regime), where the `vector` column never existed and the source column is
+-- `embedding` (cast to vector for subvector()). Databases migrated in the
+-- original order still have `vector`. (Runner note: applied migrations are
+-- recorded by filename and never re-run — this guard exists for the
+-- fresh-install path only.)
+DO $$
+DECLARE
+    has_old_vector BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'chunks_vectors'
+          AND column_name = 'vector'
+    ) INTO has_old_vector;
+    IF has_old_vector THEN
+        UPDATE chunks_vectors
+        SET vector_1024 = l2_normalize(subvector(vector, 1, 1024))
+        WHERE vector_1024 IS NULL AND vector IS NOT NULL;
+    ELSE
+        UPDATE chunks_vectors
+        SET vector_1024 = l2_normalize(subvector(embedding::vector, 1, 1024))
+        WHERE vector_1024 IS NULL AND embedding IS NOT NULL;
+    END IF;
+END $$;
 
 DO $$
 BEGIN

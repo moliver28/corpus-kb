@@ -10,9 +10,9 @@ fixed): chunk ids are now DERIVED with the same deterministic uuid5 the
 DocumentsProjection writes, so both projections agree without widening the
 frozen legacy event payload.
 
-Configurable embedding model via config (nomic-embed-text 768d or
-qwen3-embedding:8b-q8_0 4096d). Vectors are derived data — never stored in
-event payloads. All writes run in one transaction with the tenant GUC
+Configurable embedding model via config (default qwen3-embedding:4b at
+its native 2560 dims, stored as halfvec). Vectors are derived data — never
+stored in event payloads. All writes run in one transaction with the tenant GUC
 (tenant_connection): chunks_vectors is FORCE-put under RLS.
 """
 
@@ -98,10 +98,10 @@ class EmbedChunksProjection:
                         await conn.execute(
                             """
                             INSERT INTO chunks_vectors
-                            (chunk_id, tenant_id, vector, embedding_model)
-                            VALUES ($1, $2, $3::vector, $4)
+                            (chunk_id, tenant_id, embedding, embedding_model)
+                            VALUES ($1, $2, $3::halfvec, $4)
                             ON CONFLICT (chunk_id) DO UPDATE SET
-                                vector = $3::vector,
+                                embedding = $3::halfvec,
                                 embedding_model = $4,
                                 embedded_at = NOW()
                             """,

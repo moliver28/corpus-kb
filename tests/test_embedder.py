@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 from ollama._types import EmbedResponse, ResponseError
 
+from corpus_kb.errors import ConfigError
 from corpus_kb.rag.embedder import (
     FakeEmbedder,
     OllamaEmbedder,
@@ -19,10 +20,10 @@ from corpus_kb.rag.embedder import (
 _LIVE_CONFIG: dict[str, object] = {
     "embedding": {
         "provider": "ollama",
-        "model": "qwen3-embedding:8b-q8_0",
+        "model": "qwen3-embedding:4b",
         "base_url": "http://localhost:11434",
         "batch_size": 32,
-        "dimensions": 4096,
+        "dimensions": 2560,
     }
 }
 
@@ -290,15 +291,136 @@ class TestCreateEmbedder:
         embedder = create_embedder(_FAKE_CONFIG, pool=None)
         assert isinstance(embedder, OllamaEmbedder)
 
-    def test_missing_provider_defaults_to_pgml(self) -> None:
+    def test_missing_provider_defaults_to_ollama(self) -> None:
+        # The shipped provider default flipped pgml -> ollama (a 4B embedder
+        # cannot be served in-database).
         config: dict[str, object] = {"embedding": {"dimensions": 768}}
         embedder = create_embedder(config, pool=None)
-        assert isinstance(embedder, PgmlEmbedder)
+        assert isinstance(embedder, OllamaEmbedder)
 
     def test_unknown_provider_raises_clear_error(self) -> None:
         config: dict[str, object] = {"embedding": {"provider": "cloud-api"}}
         with pytest.raises(ValueError, match="cloud-api"):
             create_embedder(config, pool=None)
+
+
+# ---------------------------------------------------------------------------
+# Dimensions passthrough + returned-width validation (config v2)
+# ---------------------------------------------------------------------------
+
+
+class _RecordingClient:
+    """Stand-in for ollama.Client recording the embed() kwargs."""
+
+    def __init__(self, embeddings: list[list[float]]) -> None:
+        self._embeddings = embeddings
+        self.calls: list[dict[str, object]] = []
+
+    def embed(self, **kwargs: object) -> EmbedResponse:
+        self.calls.append(dict(kwargs))
+        return EmbedResponse(embeddings=self._embeddings)
+
+
+class TestDimensionsPassthrough:
+    def _embedder(self, config: dict[str, object], client: _RecordingClient) -> OllamaEmbedder:
+        embedder = OllamaEmbedder(config)
+        embedder._client = client
+        return embedder
+
+    def test_mrl_and_lower_dims_pass_dimensions(self) -> None:
+        client = _RecordingClient([[0.1] * 1024])
+        embedder = self._embedder(
+            {
+                "embedding": {
+                    "model": "qwen3-embedding:4b",
+                    "mrl_trained": True,
+                    "dimensions": 1024,
+                }
+            },
+            client,
+        )
+        assert embedder.embed("q") == [0.1] * 1024
+        assert client.calls[0]["dimensions"] == 1024
+
+    def test_non_mrl_omits_dimensions(self) -> None:
+        client = _RecordingClient([[0.1] * 768])
+        embedder = self._embedder(
+            {
+                "embedding": {
+                    "model": "nomic-embed-text",
+                    "mrl_trained": False,
+                    "dimensions": 768,
+                }
+            },
+            client,
+        )
+        embedder.embed("q")
+        assert "dimensions" not in client.calls[0]
+
+    def test_mrl_at_native_width_omits_dimensions(self) -> None:
+        # Requesting the native width must stay byte-identical to the
+        # pre-v2 call (no dimensions kwarg at all).
+        client = _RecordingClient([[0.1] * 2560])
+        embedder = self._embedder(
+            {
+                "embedding": {
+                    "model": "qwen3-embedding:4b",
+                    "mrl_trained": True,
+                    "dimensions": 2560,
+                }
+            },
+            client,
+        )
+        embedder.embed("q")
+        assert "dimensions" not in client.calls[0]
+
+    def test_mrl_unknown_model_omits_dimensions(self) -> None:
+        client = _RecordingClient([[0.1] * 512])
+        embedder = self._embedder(
+            {
+                "embedding": {
+                    "model": "some-unknown-model",
+                    "mrl_trained": True,
+                    "dimensions": 512,
+                }
+            },
+            client,
+        )
+        embedder.embed("q")
+        assert "dimensions" not in client.calls[0]
+
+
+class TestReturnedWidthValidation:
+    def test_wrong_width_raises_config_error_with_remediation(self) -> None:
+        # The model emitted 768 dims but embedding.dimensions says 2560.
+        client = _RecordingClient([[0.1] * 768])
+        embedder = OllamaEmbedder(
+            {
+                "embedding": {
+                    "model": "nomic-embed-text",
+                    "dimensions": 2560,
+                }
+            }
+        )
+        embedder._client = client
+        with pytest.raises(ConfigError) as excinfo:
+            embedder.embed("q")
+        assert "768" in str(excinfo.value)
+        assert "2560" in str(excinfo.value)
+        assert "native" in excinfo.value.remediation
+
+    def test_matching_width_passes(self) -> None:
+        client = _RecordingClient([[0.1] * 768])
+        embedder = OllamaEmbedder(
+            {
+                "embedding": {
+                    "model": "nomic-embed-text",
+                    "dimensions": 768,
+                }
+            }
+        )
+        embedder._client = client
+        assert embedder.embed("q") == [0.1] * 768
 
 
 # ---------------------------------------------------------------------------

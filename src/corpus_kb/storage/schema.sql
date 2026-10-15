@@ -130,50 +130,47 @@ CREATE POLICY chunks_tenant_isolation ON chunks
 CREATE TABLE IF NOT EXISTS chunks_vectors (
     chunk_id UUID PRIMARY KEY REFERENCES chunks(chunk_id) ON DELETE CASCADE,
     tenant_id UUID NOT NULL,
-    -- FIXED TYPODM (4096), deliberately NOT the embedding.dimensions config
-    -- default: pgvector requires an exact-match typmod, and this column is
-    -- the MAX-CAPACITY slot for every supported model (nomic 768d through
-    -- qwen3-embedding 4096d). Migration 007 backfills `dimensions INT` per
-    -- row and migration 012 copies this exact typmod for answer_ctx_vectors
-    -- ("vector(4096) columns match chunks_vectors.vector exactly"); the
-    -- 4096-dim fixtures in tests/test_es_foundation.py pin the contract.
-    -- Changing the model dimensionality is a column-migration decision, not
-    -- a config flip (tests/research_db.py executes this file verbatim).
+    -- FIXED TYPODM (halfvec(2560)), the dimension-regime contract: the
+    -- shipped default embedder is qwen3-embedding:4b at its NATIVE 2560
+    -- dims. halfvec is REQUIRED at this width — pgvector HNSW caps the
+    -- plain `vector` type at 2000 dims, `halfvec` at 4000 — so this column
+    -- carries a real hnsw index (below). Migration 025 retypes the
+    -- pre-regime vector(4096) column to this shape; its rollback restores
+    -- the 4096 shape but not the old vectors.
     --
-    -- EMPIRICAL CONTRACT (pgvector 0.8.3, Postgres 16.14, verified on the
-    -- live server): pgvector ENFORCES the typmod width exactly. A 768-dim
-    -- INSERT into vector(4096) FAILS with SQLSTATE 22000 ("expected 4096
-    -- dimensions, not 768"); a 4097-dim INSERT fails the same way. Vectors
-    -- are never padded and never truncated. Model-vs-schema matrix
-    -- (docs/ADMIN.md): ONLY a model emitting exactly 4096 dims can write
-    -- here (qwen3-embedding:8b-q8_0); the shipped default model
-    -- (nomic-embed-text, 768d) CANNOT ingest. The ingest write path raises
-    -- a typed ConfigError naming the fix (tools/ingest_store.
-    -- assert_vector_column_width), and `corpus-kb doctor` reports the
-    -- "embedding dimensions vs schema" check as FAIL on the mismatch.
-    vector vector(4096),
-    embedding_model VARCHAR(255) NOT NULL DEFAULT 'nomic-embed-text',
-    embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT vector_not_null CHECK (vector IS NOT NULL)
+    -- EMPIRICAL CONTRACT (pgvector 0.8.x, Postgres 16): pgvector ENFORCES
+    -- the typmod width exactly. A 768-dim INSERT into halfvec(2560) FAILS
+    -- with SQLSTATE 22000 ("expected 2560 dimensions, not 768"); widths are
+    -- never padded and never truncated. Model-schema matrix (docs/ADMIN.md):
+    -- only a model emitting exactly 2560 dims writes here as shipped
+    -- (qwen3-embedding:4b); any other width needs a column migration. The
+    -- ingest write path raises a typed ConfigError naming the fix
+    -- (tools/ingest_store.assert_vector_column_width) and `corpus-kb
+    -- doctor` reports the "embedding dimensions vs schema" check on drift.
+    -- Stale rows (embedding IS NULL after a model switch, migration 025)
+    -- are a supported state: rebuild via `corpus-kb ingest-reembed`.
+    embedding halfvec(2560),
+    embedding_model VARCHAR(255) NOT NULL DEFAULT 'qwen3-embedding:4b',
+    embedded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Vector search index (ivfflat for cosine distance)
-CREATE INDEX idx_chunks_vectors_ivfflat ON chunks_vectors USING ivfflat (vector vector_cosine_ops) WITH (lists = 100);
-
--- HNSW index (better recall for 1M+ vectors, slower build)
-CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw
-    ON chunks_vectors USING hnsw (vector vector_cosine_ops)
-    WITH (m = 16, ef_construction = 200);
+-- Vector search index (hnsw over halfvec cosine distance; m/ef_construction
+-- mirror retrieval.hnsw in config — doctor warns on drift from these
+-- options). The former ivfflat (lists = 100) and the dead 4096-dim hnsw
+-- attempts were dropped by migration 025.
+CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw_halfvec2560
+    ON chunks_vectors USING hnsw (embedding halfvec_cosine_ops)
+    WITH (m = 16, ef_construction = 128);
 
 CREATE INDEX idx_chunks_vectors_tenant ON chunks_vectors(tenant_id);
 CREATE INDEX idx_chunks_vectors_model ON chunks_vectors(embedding_model);
 
 -- The following column was added by migration 007 (chunk dedup + provenance):
---   dimensions INT  -- embedding vector dimensionality, backfilled to 4096
+--   dimensions INT  -- embedding vector dimensionality, written per row
 
 -- The following column and index were added by migration 010 (matryoshka
 -- two-tier ANN index, Feature 4, default off):
---   vector_1024 vector(1024)  -- front-sliced, L2-renormalized 4096d vector
+--   vector_1024 vector(1024)  -- front-sliced, L2-renormalized 2560d vector
 --   CREATE INDEX IF NOT EXISTS idx_chunks_vectors_hnsw_1024
 --       ON chunks_vectors USING hnsw (vector_1024 vector_cosine_ops)
 --       WITH (m = 16, ef_construction = 200);
@@ -350,8 +347,10 @@ CREATE POLICY idempotency_tenant_isolation ON idempotency_keys
 --    'true' flag so it returns NULL instead of error if unset (safer).
 -- 3. All vector operations go through chunks_vectors which has its own
 --    RLS policy — vector search is tenant-isolated.
--- 4. The embedding_model column allows swapping between nomic-embed-text
---    (768d) and qwen3-embedding:8b-q8_0 (4096d) via config.
+-- 4. The embedding_model column allows swapping embedding models via
+--    config; the column width is FIXED at halfvec(2560) (the native
+--    qwen3-embedding:4b width). Any other width needs a column migration
+--    (migration 025 is the current regime).
 -- 5. To set tenant context: SET LOCAL app.current_tenant_id = '<uuid>';
 --    (done in postgres_setup.py setup_tenant_context())
 -- ============================================================================

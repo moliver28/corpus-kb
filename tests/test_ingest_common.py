@@ -570,13 +570,15 @@ def test_contextual_enabled_flag_respects_source_type_allowlist() -> None:
     from corpus_kb.tools.ingest_common import _contextual_enabled
 
     cfg = {
-        "contextual": {
-            "enabled": False,
-            "enabled_source_types": ["interview", "research"],
+        "ingest": {
+            "contextualize": {
+                "enabled": False,
+                "enabled_source_types": ["interview", "research"],
+            }
         }
     }
     assert _contextual_enabled(cfg, source_type="interview") is True
     assert _contextual_enabled(cfg, source_type="code") is False
 
-    cfg_forced_on = {"contextual": {"enabled": True, "enabled_source_types": []}}
+    cfg_forced_on = {"ingest": {"contextualize": {"enabled": True, "enabled_source_types": []}}}
     assert _contextual_enabled(cfg_forced_on, source_type="anything") is True

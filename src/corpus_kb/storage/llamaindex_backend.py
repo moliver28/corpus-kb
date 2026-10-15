@@ -32,7 +32,7 @@ class LlamaIndexPostgresBackend:
         self._connection_string = str(db_cfg.get("connection_string", "")) or str(
             config.get("database_connection_string", "")
         )
-        self._embed_model = str(emb_cfg.get("model", "nomic-embed-text"))
+        self._embed_model = str(emb_cfg.get("model", "qwen3-embedding:4b"))
         self._embed_dimensions = int(emb_cfg.get("dimensions", 768))
         self._embed_base_url = str(emb_cfg.get("base_url", "http://localhost:11434"))
 

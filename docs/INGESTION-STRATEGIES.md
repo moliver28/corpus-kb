@@ -221,11 +221,11 @@ Notes on the example:
 - **Test with the conformance suite.** Run your strategy through the same
   invariant checks the built-ins pass before you ship the entry point.
 
-## Why `search.qa_context_in_fts` defaults to false
+## Why `retrieval.qa_context_in_fts` defaults to false
 
 Transcript chunks carry `qa_context` (the question, participants, exchange
 id). Including that text in the shared full-text index is **opt-in**
-(`search.qa_context_in_fts: true`). The reason: Postgres `ts_rank` has no
+(`retrieval.qa_context_in_fts: true`). The reason: Postgres `ts_rank` has no
 IDF. Question phrasing repeats across nearly every exchange. So question
 text in the shared FTS index systematically skews ranking toward transcript
 boilerplate. Keep it off until you have evaluated retrieval quality on your

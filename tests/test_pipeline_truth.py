@@ -44,7 +44,7 @@ _DIRECTORY_ENVELOPE_KEYS = {
 _OFFLINE_CONFIG: dict[str, Any] = {
     "graph": {"extract_entities": False},
     "embedding": {"provider": "pgml"},
-    "ingest": {"hierarchy": {"enabled": False}},
+    "ingest": {"chunking": {"enabled": False}},
 }
 
 

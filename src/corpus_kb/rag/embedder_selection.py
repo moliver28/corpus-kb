@@ -27,7 +27,12 @@ from typing import cast
 
 import asyncpg
 
-from corpus_kb.rag.embedder import Embedder, create_embedder
+from corpus_kb.rag.embedder import (
+    DEFAULT_EMBEDDING_DIMENSIONS,
+    DEFAULT_EMBEDDING_MODEL,
+    Embedder,
+    create_embedder,
+)
 from corpus_kb.rag.embedders import is_latechunk_installed
 from corpus_kb.rag.embedders.late_chunk import LateChunkEmbedder, LateChunkSpan
 
@@ -106,7 +111,7 @@ def select_ingest_embedder(
     if not late_chunking_requested(config):
         return IngestEmbeddingPlan(mode=POOLED_MODE, embedder=create_embedder(config, pool))
     embedding = cast(dict[str, object], config.get("embedding", {}))
-    model = str(embedding.get("model", "nomic-embed-text"))
+    model = str(embedding.get("model", DEFAULT_EMBEDDING_MODEL))
     if not is_latechunk_installed():
         return IngestEmbeddingPlan(
             mode=POOLED_MODE,
@@ -144,7 +149,7 @@ def select_ingest_embedder(
     # match embedding.dimensions — the configured value is what lands in the
     # vector store and the search corpus. A mismatch means ingest would write
     # wrong-width (or mislabeled) vectors; refuse with the remedy instead.
-    configured_dims_raw = embedding.get("dimensions", 768)
+    configured_dims_raw = embedding.get("dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
     configured_dims = (
         configured_dims_raw
         if isinstance(configured_dims_raw, int) and not isinstance(configured_dims_raw, bool)

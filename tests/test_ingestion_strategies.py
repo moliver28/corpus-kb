@@ -397,7 +397,7 @@ def test_conformance_rejects_non_serializable_metadata() -> None:
 
 _INGEST_CONFIG: dict[str, object] = {
     "graph": {"extract_entities": False},
-    "ingest": {"hierarchy": {"enabled": False}},
+    "ingest": {"chunking": {"enabled": False}},
     "embedding": {
         "provider": "pgml",
         "fallback_provider": "ollama",

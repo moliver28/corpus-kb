@@ -1,11 +1,12 @@
 """Dimension-switch guard: width-mismatched vector writes fail with a typed error.
 
-Empirical contract (pgvector 0.8.3 / Postgres 16.14): INSERT of a 768-dim
-vector into a ``vector(4096)`` column fails with SQLSTATE 22000 ("expected
-4096 dimensions, not 768"). The shipped default model (nomic-embed-text,
-768d) therefore cannot ingest into the shipped schema. The guard surfaces
-that as a ``ConfigError`` (taxonomy: config_error) with the schema reality
-and the config fix — never as a generic Postgres write failure.
+Empirical contract (pgvector 0.8.x / Postgres 16): INSERT of a 768-dim
+vector into a ``halfvec(2560)`` column fails with SQLSTATE 22000 ("expected
+2560 dimensions, not 768"). The shipped schema is the native width of the
+default model (qwen3-embedding:4b, 2560d); any other model width cannot
+ingest. The guard surfaces that as a ``ConfigError`` (taxonomy:
+config_error) with the schema reality and the config fix — never as a
+generic Postgres write failure.
 
 All tests are hermetic: recording connection doubles, no database.
 """
@@ -91,13 +92,13 @@ def _chunk(embedding: list[float] | None = None) -> Chunk:
 
 
 async def test_width_guard_raises_config_error_on_mismatch() -> None:
-    """A 768-dim write against vector(4096) raises ConfigError before any insert."""
-    conn = _WidthProbeConn({"width": 4096, "typ": "vector(4096)"})
+    """A 768-dim write against halfvec(2560) raises ConfigError before any insert."""
+    conn = _WidthProbeConn({"width": 2560, "typ": "halfvec(2560)"})
     store = PostgresIngestStore(cast(asyncpg.Pool, _WidthProbePool(conn)), TENANT)
     with pytest.raises(ConfigError) as excinfo:
         await store.store_vectors([_chunk([0.1, 0.2])], "nomic-embed-text", dimensions=768)
     message = str(excinfo.value)
-    assert "4096" in message
+    assert "2560" in message
     assert "768" in message
     remediation = excinfo.value.remediation
     assert "embedding.model" in remediation
@@ -107,11 +108,9 @@ async def test_width_guard_raises_config_error_on_mismatch() -> None:
 
 async def test_width_guard_allows_matching_dimensions() -> None:
     """A width-matched write proceeds through the normal insert path."""
-    conn = _WidthProbeConn({"width": 4096, "typ": "vector(4096)"})
+    conn = _WidthProbeConn({"width": 2560, "typ": "halfvec(2560)"})
     store = PostgresIngestStore(cast(asyncpg.Pool, _WidthProbePool(conn)), TENANT)
-    count = await store.store_vectors(
-        [_chunk([0.1, 0.2])], "qwen3-embedding:8b-q8_0", dimensions=4096
-    )
+    count = await store.store_vectors([_chunk([0.1, 0.2])], "qwen3-embedding:4b", dimensions=2560)
     assert count == 1
 
 
@@ -119,21 +118,21 @@ async def test_width_guard_defers_when_table_missing() -> None:
     """No catalog row (pre-migration database): the guard stays silent."""
     conn = _WidthProbeConn(None)
     store = PostgresIngestStore(cast(asyncpg.Pool, _WidthProbePool(conn)), TENANT)
-    count = await store.store_vectors([_chunk([0.1])], "nomic-embed-text", dimensions=768)
+    count = await store.store_vectors([_chunk([0.1])], "qwen3-embedding:4b", dimensions=2560)
     assert count == 1
 
 
 async def test_dataerror_translated_to_config_error() -> None:
     """A pgvector width DataError inside the loop becomes the typed ConfigError."""
     conn = _WidthProbeConn(
-        {"width": 4096, "typ": "vector(4096)"},
-        insert_error=asyncpg.DataError("expected 4096 dimensions, not 1024"),
+        {"width": 2560, "typ": "halfvec(2560)"},
+        insert_error=asyncpg.DataError("expected 2560 dimensions, not 1024"),
     )
     store = PostgresIngestStore(cast(asyncpg.Pool, _WidthProbePool(conn)), TENANT)
     with pytest.raises(ConfigError) as excinfo:
-        await store.store_vectors([_chunk([0.1])], "qwen3-embedding:0.6b", dimensions=4096)
+        await store.store_vectors([_chunk([0.1])], "some-model", dimensions=1024)
     assert "1024" in str(excinfo.value)
-    assert "4096" in str(excinfo.value)
+    assert "2560" in str(excinfo.value)
     assert "embedding.model" in excinfo.value.remediation
 
 
@@ -147,4 +146,4 @@ async def test_assert_vector_column_width_probe_is_advisory() -> None:
             return None
 
     conn = _BrokenCatalogConn(None)
-    await assert_vector_column_width(conn, 768, "nomic-embed-text")  # must not raise
+    await assert_vector_column_width(conn, 2560, "qwen3-embedding:4b")  # must not raise

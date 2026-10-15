@@ -74,9 +74,9 @@ def _cycle_config(dsn: str) -> dict[str, object]:
     db["connection_string"] = dsn
     cfg["embedding"] = {
         "provider": "ollama",
-        "model": "qwen3-embedding:8b-q8_0",
+        "model": "qwen3-embedding:4b",
         "base_url": OLLAMA_URL,
-        "dimensions": 4096,
+        "dimensions": 2560,
         "batch_size": 8,
     }
     return cfg

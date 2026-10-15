@@ -75,12 +75,12 @@ machine:
   SCHEMA public` line is required).
 
 **2. A research-grade embedder.** Research embeddings require at least
-1024 dimensions. The default `nomic-embed-text` (768) is not enough, and the
-pipeline abstains (returns no vectors) rather than pad. Pull the embedder
-and point the config at it:
+1024 dimensions. The shipped `qwen3-embedding:4b` (2560) qualifies: the
+pipeline MRL-slices it to the research width, never padding. Pull it and
+point the config at it:
 
 ```bash
-ollama pull qwen3-embedding:8b-q8_0
+ollama pull qwen3-embedding:4b
 ```
 
 ```yaml

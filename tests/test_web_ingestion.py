@@ -737,7 +737,7 @@ def test_config_from_mapping_falls_back_to_defaults() -> None:
 _INGEST_CONFIG: dict[str, object] = {
     "graph": {"extract_entities": False},
     "embedding": {"provider": "pgml"},
-    "ingest": {"hierarchy": {"enabled": False}},
+    "ingest": {"chunking": {"enabled": False}},
     "web": {
         "user_agent": TEST_AGENT,
         "timeout_seconds": 5,

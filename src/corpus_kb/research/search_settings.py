@@ -11,7 +11,7 @@ This module owns the whole contract:
 * :class:`HnswSettings` — the frozen settings model (defaults follow the
   pgvector-recommended safe posture: ``strict_order`` guarantees strictly
   distance-ordered results over the retrieved candidate set).
-* :func:`load_hnsw_settings` — reads ``search.hnsw.*`` from the loaded
+* :func:`load_hnsw_settings` — reads ``retrieval.hnsw.*`` from the loaded
   config with these same defaults (config.py ships the identical block so
   the YAML files, the in-code defaults and this module never drift).
 * :func:`set_local_statements` — pure SQL emission (empty for ``off``).
@@ -39,6 +39,20 @@ ITERATIVE_SCAN_MODES = frozenset({"off", "relaxed_order", "strict_order"})
 DEFAULT_ITERATIVE_SCAN = "strict_order"
 DEFAULT_EF_SEARCH = 200
 DEFAULT_MAX_SCAN_TUPLES = 20000
+# Index-build parameters (migration 025 DDL). The doctor cross-checks these
+# against the live index options and warns on drift.
+DEFAULT_HNSW_M = 16
+DEFAULT_HNSW_EF_CONSTRUCTION = 128
+
+# The canonical retrieval.hnsw block (three-way default sync with config.py
+# and both config.yaml files).
+HNSW_CONFIG_DEFAULTS: dict[str, object] = {
+    "m": DEFAULT_HNSW_M,
+    "ef_construction": DEFAULT_HNSW_EF_CONSTRUCTION,
+    "iterative_scan": DEFAULT_ITERATIVE_SCAN,
+    "ef_search": DEFAULT_EF_SEARCH,
+    "max_scan_tuples": DEFAULT_MAX_SCAN_TUPLES,
+}
 
 # pgvector 0.8.0 introduced hnsw.iterative_scan (iterative scans over
 # filtered indexes); 0.8 is also the doctor's minimum for the feature gate.
@@ -98,47 +112,69 @@ class SqlExecutor(Protocol):
 
 @dataclass(frozen=True)
 class HnswSettings:
-    """Transaction-local HNSW scan settings (U20).
+    """Transaction-local HNSW scan settings (U20) + index-build parameters.
 
     Defaults mirror the pgvector docs' safe posture: ``strict_order``
     returns strictly distance-ordered results at the cost of extra page
     reads; ``ef_search``/``max_scan_tuples`` bound the per-query scan
     effort. ``iterative_scan="off"`` reproduces pre-0.8 behavior exactly.
+    ``m``/``ef_construction`` mirror the migration-025 index DDL; they are
+    build-time values the doctor compares against the live index options.
     """
 
     iterative_scan: str = DEFAULT_ITERATIVE_SCAN
     ef_search: int = DEFAULT_EF_SEARCH
     max_scan_tuples: int = DEFAULT_MAX_SCAN_TUPLES
+    m: int = DEFAULT_HNSW_M
+    ef_construction: int = DEFAULT_HNSW_EF_CONSTRUCTION
 
     def __post_init__(self) -> None:
-        _validate(self.iterative_scan, self.ef_search, self.max_scan_tuples)
+        _validate(
+            self.iterative_scan,
+            self.ef_search,
+            self.max_scan_tuples,
+            self.m,
+            self.ef_construction,
+        )
 
 
-def _validate(iterative_scan: str, ef_search: int, max_scan_tuples: int) -> None:
+def _validate(
+    iterative_scan: str,
+    ef_search: int,
+    max_scan_tuples: int,
+    m: int = DEFAULT_HNSW_M,
+    ef_construction: int = DEFAULT_HNSW_EF_CONSTRUCTION,
+) -> None:
     if iterative_scan not in ITERATIVE_SCAN_MODES:
         modes = ", ".join(sorted(ITERATIVE_SCAN_MODES))
         raise ValueError(
-            f"search.hnsw.iterative_scan must be one of ({modes}); got {iterative_scan!r}"
+            f"retrieval.hnsw.iterative_scan must be one of ({modes}); got {iterative_scan!r}"
         )
     if ef_search <= 0:
-        raise ValueError(f"search.hnsw.ef_search must be a positive int; got {ef_search}")
+        raise ValueError(f"retrieval.hnsw.ef_search must be a positive int; got {ef_search}")
     if max_scan_tuples <= 0:
         raise ValueError(
-            f"search.hnsw.max_scan_tuples must be a positive int; got {max_scan_tuples}"
+            f"retrieval.hnsw.max_scan_tuples must be a positive int; got {max_scan_tuples}"
+        )
+    if m <= 0:
+        raise ValueError(f"retrieval.hnsw.m must be a positive int; got {m}")
+    if ef_construction <= 0:
+        raise ValueError(
+            f"retrieval.hnsw.ef_construction must be a positive int; got {ef_construction}"
         )
 
 
 def load_hnsw_settings(config: dict[str, object]) -> HnswSettings:
-    """Read ``search.hnsw.*`` from a loaded config, defaulting safely.
+    """Read ``retrieval.hnsw.*`` from a loaded config, defaulting safely.
 
     Missing keys fall back to :class:`HnswSettings` defaults; invalid values
     raise ``ValueError`` (a misconfigured scan mode must fail loudly, not
     silently fall back to a different retrieval posture).
     """
-    search = config.get("search", {})
+    retrieval = config.get("retrieval", {})
     hnsw: dict[str, object] = {}
-    if isinstance(search, dict):
-        block = cast(dict[str, object], search).get("hnsw", {})
+    if isinstance(retrieval, dict):
+        block = cast(dict[str, object], retrieval).get("hnsw", {})
         if isinstance(block, dict):
             hnsw = cast(dict[str, object], block)
 
@@ -147,11 +183,17 @@ def load_hnsw_settings(config: dict[str, object]) -> HnswSettings:
     max_scan_tuples = _coerce_positive_int(
         hnsw.get("max_scan_tuples"), DEFAULT_MAX_SCAN_TUPLES, "max_scan_tuples"
     )
-    _validate(iterative_scan, ef_search, max_scan_tuples)
+    m = _coerce_positive_int(hnsw.get("m"), DEFAULT_HNSW_M, "m")
+    ef_construction = _coerce_positive_int(
+        hnsw.get("ef_construction"), DEFAULT_HNSW_EF_CONSTRUCTION, "ef_construction"
+    )
+    _validate(iterative_scan, ef_search, max_scan_tuples, m, ef_construction)
     return HnswSettings(
         iterative_scan=iterative_scan,
         ef_search=ef_search,
         max_scan_tuples=max_scan_tuples,
+        m=m,
+        ef_construction=ef_construction,
     )
 
 
@@ -159,18 +201,18 @@ def _coerce_positive_int(value: object, default: int, name: str) -> int:
     if value is None:
         return default
     if isinstance(value, bool):
-        raise ValueError(f"search.hnsw.{name} must be an int; got {value!r}")
+        raise ValueError(f"retrieval.hnsw.{name} must be an int; got {value!r}")
     if isinstance(value, int):
         coerced = value
     elif isinstance(value, str):
         try:
             coerced = int(value)
         except ValueError as exc:
-            raise ValueError(f"search.hnsw.{name} must be an int; got {value!r}") from exc
+            raise ValueError(f"retrieval.hnsw.{name} must be an int; got {value!r}") from exc
     else:
-        raise ValueError(f"search.hnsw.{name} must be an int; got {value!r}")
+        raise ValueError(f"retrieval.hnsw.{name} must be an int; got {value!r}")
     if coerced <= 0:
-        raise ValueError(f"search.hnsw.{name} must be a positive int; got {coerced}")
+        raise ValueError(f"retrieval.hnsw.{name} must be a positive int; got {coerced}")
     return coerced
 
 

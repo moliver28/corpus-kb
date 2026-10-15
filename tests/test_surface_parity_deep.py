@@ -665,7 +665,7 @@ def _offline_config() -> dict[str, Any]:
     return {
         "graph": {"extract_entities": False},
         "embedding": {"provider": "pgml"},
-        "ingest": {"hierarchy": {"enabled": False}},
+        "ingest": {"chunking": {"enabled": False}},
     }
 
 

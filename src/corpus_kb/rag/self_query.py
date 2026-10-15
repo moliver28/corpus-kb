@@ -73,7 +73,7 @@ class SelfQueryParser:
     def __init__(self, config: dict[str, object] | None = None) -> None:
         cfg = cast(
             dict[str, object],
-            ((config or {}).get("search", {}) or {}).get("self_query", {}) or {},
+            ((config or {}).get("retrieval", {}) or {}).get("self_query", {}) or {},
         )
         self.model = str(cfg.get("model", "qwen3:4b"))
         self.base_url = str(cfg.get("base_url", "http://localhost:11434"))

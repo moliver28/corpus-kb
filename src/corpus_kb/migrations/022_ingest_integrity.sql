@@ -124,13 +124,39 @@ EXCEPTION WHEN OTHERS THEN
     RAISE;
 END $$;
 
-UPDATE chunks_vectors SET degraded = TRUE
-WHERE degraded = FALSE
-  AND vector IS NOT NULL
-  AND l2_distance(
-      vector,
-      ('[' || array_to_string(array_fill(0::float8, ARRAY[vector_dims(vector)]), ',') || ']')::vector
-  ) = 0;
+-- Zero-vector flagging, guarded on the main-column shape: fresh installs
+-- run this migration against the halfvec(2560) schema.sql end state (the
+-- migration-025 regime) where `vector` never existed and the column is
+-- `embedding` (cast to vector for l2_distance/vector_dims). (Runner note:
+-- applied migrations are recorded by filename and never re-run — this
+-- guard exists for the fresh-install path only.)
+DO $$
+DECLARE
+    has_old_vector BOOLEAN;
+BEGIN
+    SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'chunks_vectors'
+          AND column_name = 'vector'
+    ) INTO has_old_vector;
+    IF has_old_vector THEN
+        UPDATE chunks_vectors SET degraded = TRUE
+        WHERE degraded = FALSE
+          AND vector IS NOT NULL
+          AND l2_distance(
+              vector,
+              ('[' || array_to_string(array_fill(0::float8, ARRAY[vector_dims(vector)]), ',') || ']')::vector
+          ) = 0;
+    ELSE
+        UPDATE chunks_vectors SET degraded = TRUE
+        WHERE degraded = FALSE
+          AND embedding IS NOT NULL
+          AND l2_distance(
+              embedding::vector,
+              ('[' || array_to_string(array_fill(0::float8, ARRAY[vector_dims(embedding::vector)]), ',') || ']')::vector
+          ) = 0;
+    END IF;
+END $$;
 
 -- Mirror the flag onto the owning chunk rows (write-path keeps them in sync).
 UPDATE chunks SET degraded = TRUE
