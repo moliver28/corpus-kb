@@ -420,7 +420,7 @@ class TestFloorsCalibrationModuleTenantConn:
         chunk_id = uuid4()
         conn = _FakeConn(
             fetchval_results=[[1.0, 0.0]],
-            fetch_results=[[{"chunk_id": chunk_id, "vector": [1.0, 0.0]}]],
+            fetch_results=[[{"chunk_id": chunk_id, "embedding": [1.0, 0.0]}]],
         )
         monkeypatch.setattr(
             floors_calibration, "tenant_connection", _spy_tenant_connection(calls, conn)
