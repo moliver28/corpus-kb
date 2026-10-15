@@ -204,7 +204,7 @@ class _RecordingStore:
 def _config() -> dict[str, object]:
     return {
         "graph": {"extract_entities": False},
-        "ingest": {"hierarchy": {"enabled": False}},
+        "ingest": {"chunking": {"enabled": False}},
         "contextual": {"enabled": False},
         "embedding": {
             "provider": "pgml",

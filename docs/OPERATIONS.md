@@ -241,10 +241,11 @@ lives in [ADMIN.md](ADMIN.md).
 The full matrix lives in [ADMIN.md](ADMIN.md) under "Embedding dimensions
 and the vector schema". The contract in brief:
 
-- The shipped schema stores `vector(4096)` — exactly 4096 dimensions.
+- The shipped schema stores `halfvec(2560)` — exactly 2560 dimensions.
 - pgvector enforces the exact width. No padding. No truncation.
-- `nomic-embed-text` (768d) cannot ingest into the shipped schema. Use
-  `qwen3-embedding:8b-q8_0` (4096d), or change the column yourself.
+- `qwen3-embedding:4b` (2560d) is the shipped default and fits the column.
+- Any other model width needs a schema migration first (migration 025 is
+  the current regime).
 - The ingest write path checks the column width first and raises a
   `config_error` that names the fix (`src/corpus_kb/tools/ingest_store.py`).
 - `corpus-kb doctor` has an "embedding dimensions vs schema" check. It

@@ -12,7 +12,6 @@ bit-for-bit identical to hierarchy OFF for the same content.
 from __future__ import annotations
 
 import asyncio
-import re
 from pathlib import Path
 
 import asyncpg
@@ -74,13 +73,9 @@ async def _create_db() -> str:
 
     conn = await asyncpg.connect(DSN)
     try:
-        # Same >2000-dim index strip as tests/research_db.py (pgvector limit).
-        base_sql = re.sub(
-            r"CREATE INDEX[^;]*ON chunks_vectors USING (ivfflat|hnsw)\s*\([^;]*vector[^;]*;",
-            "-- index on vector(4096) omitted: exceeds pgvector 2000-dim limit",
-            SCHEMA_SQL.read_text(encoding="utf-8"),
-        )
-        await conn.execute(base_sql)
+        # The halfvec(2560) schema (migration 025 regime) carries only
+        # LEGAL indexes — the old >2000-dim strip is gone; verbatim apply.
+        await conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
         # Full numeric chain (minus extension-gated 004/005) so the v1 tables
         # carry the columns the ingest pipeline writes (chunk_hash from 007,
         # the 010 vector layout, ...) — the research_db.py harness pattern.
@@ -415,14 +410,13 @@ async def test_rollback_021_drops_cleanly_and_migration_reapplies(m021_dsn: str)
 
 def _ingest_config(hierarchy_enabled: bool) -> dict[str, object]:
     """pgml primary with no usable pgml extension -> deterministic zero-vector
-    degraded path (no Ollama needed). dimensions matches the fixture
-    database's fixed vector(4096) column: pgvector enforces the exact typmod
-    width, so a mismatched width now raises the typed ConfigError (the
-    dimension-switch guard) instead of degrading to a vector-write failure.
-    The zero-vector fallback emits configured-dimensions-length vectors, so
-    4096 keeps the v1 inserts width-clean; shadow VECTORS stay honestly
-    skipped (research embedder abstains) while the shadow TEXT hierarchy
-    still lands."""
+    degraded path (no Ollama needed). dims match the fixture
+    database's fixed halfvec(2560) column: pgvector enforces the exact typmod
+    width, so a mismatched width raises the typed ConfigError (the
+    dimension-switch guard). The zero-vector fallback emits configured-
+    dimensions-length vectors, so 2560 keeps the v1 inserts width-clean;
+    shadow VECTORS stay honestly skipped (research embedder abstains) while
+    the shadow TEXT hierarchy still lands."""
     return {
         "graph": {"extract_entities": False},
         "embedding": {
@@ -430,10 +424,10 @@ def _ingest_config(hierarchy_enabled: bool) -> dict[str, object]:
             "fallback_provider": "ollama",
             "model": "nomic-embed-text",
             "base_url": "http://localhost:65432",
-            "dimensions": 4096,
+            "dimensions": 2560,
             "batch_size": 32,
         },
-        "ingest": {"hierarchy": {"enabled": hierarchy_enabled}},
+        "ingest": {"chunking": {"enabled": hierarchy_enabled}},
     }
 
 

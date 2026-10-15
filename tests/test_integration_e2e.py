@@ -12,12 +12,12 @@ Tests:
 
 All tests run against the throwaway full-schema database (the conftest
 ``research_dsn`` session fixture: schema.sql + migrations, dropped after
-the session). That schema pins ``chunks_vectors.vector`` at vector(4096),
-and pgvector enforces the exact width, so the fixtures run at 4096
-embedding dimensions: the FakeEmbedder stub emits 4096-dim vectors, the
-typed width guard passes, and the inserts are REAL vector(4096) inserts.
-One pin test keeps the 768-dim default honest: it asserts the typed
-ConfigError fires against this schema.
+the session). That schema pins ``chunks_vectors.embedding`` at
+halfvec(2560) (the migration-025 regime), and pgvector enforces the exact
+width, so the fixtures run at 2560 embedding dimensions: the FakeEmbedder
+stub emits 2560-dim vectors, the typed width guard passes, and the inserts
+are REAL halfvec(2560) inserts. One pin test keeps a mismatched width
+honest: it asserts the typed ConfigError fires against this schema.
 
 All tests use async pytest + real Postgres. Embeddings use the
 deterministic FakeEmbedder stub (house pattern, no Ollama dependency).
@@ -36,19 +36,19 @@ pytestmark = pytest.mark.requires_postgres
 
 DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
-# The shipped schema pins the vector column at 4096 (storage/schema.sql;
-# pgvector enforces the exact typmod width on insert).
-SCHEMA_WIDTH = 4096
+# The shipped schema pins the embedding column at halfvec(2560)
+# (storage/schema.sql; pgvector enforces the exact typmod width on insert).
+SCHEMA_WIDTH = 2560
 
 
 @pytest.fixture(autouse=True)
 def _schema_width_env(monkeypatch: pytest.MonkeyPatch, research_dsn: str):
-    """Point every load_config() at the throwaway database at 4096 dims.
+    """Point every load_config() at the throwaway database at 2560 dims.
 
-    The 768-dim shipped default cannot enter vector(4096); the typed width
-    guard (ingest_store.assert_vector_column_width) would stop the ingest
-    before any insert. These tests prove the guard, the pipeline, and the
-    schema AGREE at 4096.
+    A mismatched width cannot enter halfvec(2560); the typed width guard
+    (ingest_store.assert_vector_column_width) would stop the ingest before
+    any insert. These tests prove the guard, the pipeline, and the schema
+    AGREE at 2560.
     """
     monkeypatch.setenv("CORPUS_KB_DATABASE_URL", research_dsn)
     monkeypatch.setenv("CORPUS_KB_EMBEDDING_DIMENSIONS", str(SCHEMA_WIDTH))
@@ -58,7 +58,7 @@ def _schema_width_env(monkeypatch: pytest.MonkeyPatch, research_dsn: str):
 def _deterministic_embeddings(monkeypatch: pytest.MonkeyPatch):
     """Swap the Ollama client for the deterministic FakeEmbedder stub.
 
-    The stub emits 4096-dim unit vectors (the schema width), so ingest
+    The stub emits 2560-dim unit vectors (the schema width), so ingest
     inserts succeed for the right reason without a running Ollama. The
     seam is the ingest embed factory (tools.ingest_embed imports it at
     module scope).
@@ -358,11 +358,11 @@ class TestE2EIntegration:
         assert result["error_type"] == "FileNotFoundError"
 
     @pytest.mark.asyncio
-    async def test_width_guard_rejects_shipped_default_against_vector_4096(self, clean_db, db_conn):
-        """The 768-dim default cannot enter vector(4096): typed ConfigError.
+    async def test_width_guard_rejects_mismatched_width(self, clean_db, db_conn):
+        """A 768-dim width cannot enter halfvec(2560): typed ConfigError.
 
         Pin for the W4c width guard against the LIVE schema: the shipped
-        default (nomic-embed-text, 768d) must fail fast with the typed
+        mismatched width (nomic-embed-text, 768d) must fail fast with the typed
         error naming the schema reality, before any per-chunk insert.
         """
         from corpus_kb.errors import ConfigError
@@ -370,5 +370,5 @@ class TestE2EIntegration:
 
         with pytest.raises(ConfigError) as excinfo:
             await assert_vector_column_width(db_conn, 768, "nomic-embed-text")
-        assert "vector(4096)" in str(excinfo.value)
+        assert "halfvec(2560)" in str(excinfo.value)
         assert "embedding.dimensions" in excinfo.value.remediation

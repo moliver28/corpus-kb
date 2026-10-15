@@ -44,8 +44,10 @@ async def _reader(pool: asyncpg.Pool):
     return EventReader(pool, app.mapper, app.recorder.events_table_name), app
 
 
-def _fake4096() -> FakeEmbedder:
-    return FakeEmbedder({"embedding": {"dimensions": 4096}})
+def _fake2560() -> FakeEmbedder:
+    # The schema width (halfvec(2560), migration 025 regime): the stub
+    # emits exactly what the column accepts.
+    return FakeEmbedder({"embedding": {"dimensions": 2560}})
 
 
 async def _projections(pool: asyncpg.Pool, reader_and_app):
@@ -53,7 +55,7 @@ async def _projections(pool: asyncpg.Pool, reader_and_app):
     checkpoint = CheckpointManager(pool)
     dlq = DLQHandler(pool)
     docs = DocumentsProjection(pool, checkpoint, dlq)
-    embeds = EmbedChunksProjection(pool, _fake4096(), checkpoint, dlq)
+    embeds = EmbedChunksProjection(pool, _fake2560(), checkpoint, dlq)
     return reader, app, docs, embeds
 
 

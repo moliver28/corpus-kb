@@ -41,7 +41,7 @@ The ingest pipeline runs five stages:
 4. **Extract** - Run the ontology-aware extractor to find entities and relations.
 5. **Store** - Persist chunks, vectors, entities, and relations directly to Postgres. The event store records what happened for audit and replay.
 
-If the embedding provider is unavailable, embedding falls back to zero vectors. The affected chunks are flagged degraded in Postgres. Search leaves them out of vector results by default (`search.exclude_degraded: true`) while reporting the exclusion in the response. `corpus-kb ingest-reembed` repairs them once the provider is back.
+If the embedding provider is unavailable, embedding falls back to zero vectors. The affected chunks are flagged degraded in Postgres. Search leaves them out of vector results by default (`retrieval.exclude_degraded: true`) while reporting the exclusion in the response. `corpus-kb ingest-reembed` repairs them once the provider is back.
 
 ---
 
@@ -64,7 +64,7 @@ flowchart LR
 - **Full-text search** finds exact and near-exact keyword matches using Postgres `to_tsvector`.
 - **RRF fusion** merges the two ranked lists into a single result list without needing calibrated scores.
 
-Degraded (zero-vector) chunks are excluded from the vector arm while `search.exclude_degraded` is `true` (the default). The response's `degraded_excluded` field says exactly what was left out.
+Degraded (zero-vector) chunks are excluded from the vector arm while `retrieval.exclude_degraded` is `true` (the default). The response's `degraded_excluded` field says exactly what was left out.
 
 You can filter by source type (`code`, `markdown`, `text`) and request surrounding context chunks.
 
@@ -128,19 +128,9 @@ Switch embedding providers and models by changing `config.yaml`:
 ```yaml
 embedding:
   provider: ollama  # "ollama" | "pgml"
-  model: nomic-embed-text
-  dimensions: 768
+  model: qwen3-embedding:4b
+  dimensions: 2560
   batch_size: 32
-```
-
-For higher quality, use a larger model:
-
-```yaml
-embedding:
-  provider: ollama
-  model: qwen3-embedding:8b-q8_0
-  dimensions: 4096
-  batch_size: 128
 ```
 
 To use PostgresML for in-database embeddings (requires the `pgml` extension):
@@ -149,10 +139,10 @@ To use PostgresML for in-database embeddings (requires the `pgml` extension):
 embedding:
   provider: pgml
   model: intfloat/e5-small-v2
-  dimensions: 768
+  dimensions: 384
 ```
 
-Make sure the `dimensions` value matches the model and that the `chunks_vectors` table was created with a compatible vector size. The default schema uses `vector(4096)` so either 768 or 4096 works as long as you keep the setting consistent.
+The `dimensions` value must match the model output exactly. pgvector enforces the width with no padding and no truncation. The shipped schema stores `halfvec(2560)`; any other width needs a column migration first (migration 025 is the current regime).
 
 ### Late chunking (document pipeline)
 

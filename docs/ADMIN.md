@@ -26,30 +26,57 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `provider` | `pgml` | Embedding provider (`pgml` or `ollama`) |
+| `provider` | `ollama` | Embedding provider (`ollama` or `pgml`). pgml cannot serve a 4B embedder |
 | `fallback_provider` | `ollama` | Provider used when the primary fails |
-| `model` | `nomic-embed-text` | Model name. WARNING: the shipped schema only accepts 4096-dimension vectors — see "Embedding dimensions and the vector schema" |
+| `model` | `qwen3-embedding:4b` | Model name. Must emit exactly 2560 dimensions — see "Embedding dimensions and the vector schema" |
 | `base_url` | `http://localhost:11434` | Ollama API URL |
 | `batch_size` | `32` | Embeddings per batch |
-| `dimensions` | `768` | Vector dimensions for the model. Must match the schema column (4096) for ingest to work |
-| `mrl_trained` | `false` | Whether the model is Matryoshka-trained (gates the matryoshka search arm) |
+| `dimensions` | `2560` | Vector dimensions for the model. Must match the schema column for ingest to work |
+| `mrl_trained` | `true` | Whether the model is Matryoshka-trained (gates the matryoshka arm and the dimensions passthrough) |
+| `query_instruction` | `true` | Gates the query-side instruction prefix at `instruct()` |
 | `late_chunking` | `true` | Late chunking for document ingest when the model supports it |
 
-### search
+### storage
 
 | Key | Default | Description |
 |-----|---------|-------------|
+| `vector_type` | `halfvec` | `chunks_vectors.embedding` column type. halfvec is required at 2560 dims: HNSW caps `vector` at 2000 dims, `halfvec` at 4000 |
+
+### retrieval
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `mode` | `hybrid_rrf` | Only supported value today; other values are rejected at load time |
+| `vector_candidates` | `150` | Live vector-arm depth before fusion. Effective limit is `max(candidates, k * 2)` |
+| `lexical_candidates` | `150` | Live FTS-arm depth before fusion. Same floor rule |
 | `rrf_k` | `60` | Reciprocal Rank Fusion constant |
-| `reranker` | `none` | Legacy reranker switch |
-| `reranker_model` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Legacy reranker model |
+| `expand_to_parent` | `true` | Post-fusion small-to-big parent expansion. Fail-open |
 | `exclude_degraded` | `true` | Vector search skips rows flagged degraded |
 | `qa_context_in_fts` | `false` | Opt-in FTS index for transcript Q/A text |
-| `candidates_per_branch` | `150` | Candidates per retrieval branch |
 | `exact_filter_selectivity_threshold` | `0.05` | Selectivity gate for exact-filter plans |
 | `matryoshka_enabled` | `false` | Two-stage matryoshka retrieval (needs `embedding.mrl_trained`) |
 | `matryoshka_dim` | `1024` | Front-slice width for the matryoshka arm |
-| `candidate_multiplier` | `8` | Over-retrieval multiplier |
-| `rerank.*`, `self_query.*`, `hnsw.*` | (blocks) | Rerank, self-query, and HNSW scan sub-settings |
+| `candidate_multiplier` | `8` | Matryoshka candidate fan-out (candidates = k * multiplier) |
+| `self_query.*` | (block) | Predicate parser sub-settings |
+| `hnsw.*` | (block) | `m`/`ef_construction` (index DDL, mirrored by migration 025) plus the scan trio |
+
+### reranking
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Score-based rerank stage (degrades honestly to the fused order) |
+| `backend` | `null` | `null` selects the qwen3 judgment scorer; `fake` is the test double |
+| `model` | `qwen3-reranker:4b` | Rerank model |
+| `over_retrieve_n` | `60` | Rerank pre-fetch width for the fused candidates |
+| `candidates` | `100` | Cap on results entering the reranker |
+| `return_top_k` | `20` | Accepted and validated now; becomes the default return k in wave 3 |
+| `max_pair_tokens` | `768` | Document-side truncation per scored pair |
+| `score_floor` | `0.15` | Drop results below the calibrated score |
+| `calibration` | `minmax` | Score post-processing (`minmax` or `none`) |
+
+Legacy namespaces: `search.*`, `ingest.hierarchy.*`, and `contextual.*`
+still work as aliases. Canonical keys win; alias use logs a deprecation
+warning.
 
 ### graph
 
@@ -133,17 +160,29 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 
 ### Embedding dimensions and the vector schema
 
-The vector column `chunks_vectors.vector` is a FIXED `vector(4096)` typmod. pgvector enforces the exact width — verified on pgvector 0.8.3 / Postgres 16.14:
+The vector column `chunks_vectors.embedding` is a FIXED `halfvec(2560)` typmod (migration 025). pgvector enforces the exact width — verified on pgvector 0.8.x / Postgres 16:
 
 | Model | Dimensions | Can ingest into the shipped schema? |
 |-------|------------|-------------------------------------|
-| `nomic-embed-text` (shipped default) | 768 | NO — every vector insert fails with SQLSTATE 22000 |
-| `qwen3-embedding:8b-q8_0` | 4096 | YES — matches the column |
+| `qwen3-embedding:4b` (shipped default) | 2560 | YES — matches the column |
+| `nomic-embed-text` | 768 | NO — every vector insert fails with SQLSTATE 22000 |
+| `qwen3-embedding:8b-q8_0` | 4096 | NO — needs a schema migration first |
 
-Vectors are never padded and never truncated. Two guards make this honest:
+halfvec is required at this width: pgvector HNSW caps `vector` at 2000
+dimensions and `halfvec` at 4000. The 2560-dim column carries a real HNSW
+index (`halfvec_cosine_ops`, m = 16, ef_construction = 128). The doctor
+warns when `retrieval.hnsw.m`/`ef_construction` drift from the live index
+options.
 
-1. **At ingest**: the write path probes the column width and raises a `config_error` naming the schema reality and the fix. Set `embedding.model` to a 4096-dimension model, set `embedding.dimensions` to 4096, then re-ingest.
-2. **In doctor**: the `embedding dimensions vs schema` check compares `embedding.dimensions` with the column typmod and reports the stored per-row dimension histogram. FAIL on mismatch.
+Vectors are never padded and never truncated. Three guards make this honest:
+
+1. **At ingest**: the write path probes the column width and raises a `config_error` naming the schema reality and the fix. Set `embedding.model` to a 2560-dimension model, set `embedding.dimensions` to 2560, then re-ingest.
+2. **At the embedder**: the first embed response is width-checked; a model that returns a different width raises a `config_error` with the native-width fix.
+3. **In doctor**: the `embedding dimensions vs schema` check compares `embedding.dimensions` with the column typmod and reports the stored per-row dimension histogram. FAIL on mismatch.
+
+A model switch invalidates all stored embeddings. Migration 025 retypes the
+column; old rows become stale (`embedding IS NULL`). `corpus-kb
+ingest-reembed` rebuilds stale rows, not only degraded-flagged rows.
 
 ---
 
@@ -272,8 +311,8 @@ Run migrations (`python src/corpus_kb/_setup/migrate.py`) or load the schema SQL
 ### Vector search returns empty results
 
 - Verify Ollama is running and the model is pulled.
-- Check that `chunks_vectors` rows exist and have non-null `vector` values.
-- Verify `embedding.dimensions` matches the vector column size.
+- Check that `chunks_vectors` rows exist and have non-null `embedding` values. Stale rows (`embedding IS NULL`) rebuild via `corpus-kb ingest-reembed`.
+- Verify `embedding.dimensions` matches the embedding column size.
 
 ### Projections fall behind
 

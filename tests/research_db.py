@@ -10,7 +10,6 @@ tests using it are marked requires_postgres and auto-skip in CI.
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 import asyncpg
@@ -40,12 +39,11 @@ async def create_research_db() -> str:
     await superconn.close()
 
     conn = await asyncpg.connect(DSN)
+    # The halfvec(2560) schema (migration 025 regime) carries only LEGAL
+    # indexes (halfvec caps at 4000 dims), so the old regex that stripped
+    # the dead 4096-dim ivfflat/hnsw attempts is gone — the file executes
+    # verbatim.
     base_sql = SCHEMA_SQL.read_text(encoding="utf-8")
-    base_sql = re.sub(
-        r"CREATE INDEX[^;]*ON chunks_vectors USING (ivfflat|hnsw)\s*\([^;]*vector[^;]*;",
-        "-- index on vector(4096) omitted: exceeds pgvector 2000-dim limit",
-        base_sql,
-    )
     await conn.execute(base_sql)
     from corpus_kb._setup.migrate import ensure_migrations_table
 

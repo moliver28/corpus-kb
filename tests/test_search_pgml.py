@@ -85,7 +85,9 @@ async def test_pgml_path_uses_inline_embed_and_never_calls_python_embedder() -> 
     assert vector_call.args[1] == "nomic-embed-text"
     assert vector_call.args[2] == "hello world"
     assert vector_call.args[3] == str(query.tenant_id)
-    assert vector_call.args[4] == 6
+    # Config v2 live wiring: LIMIT = max(retrieval.vector_candidates, k * 2)
+    # = max(150, 6) — the rerank pre-fetch no longer inflates the arm LIMIT.
+    assert vector_call.args[4] == 150
 
     assert len(results) == 1
     assert results[0].chunk_id == cid
@@ -254,8 +256,12 @@ async def test_unknown_provider_raises_clear_error() -> None:
 
 
 @pytest.mark.asyncio
-async def test_default_config_uses_pgml_path() -> None:
-    """With no explicit config, QueryHandler loads defaults and takes the pgml path."""
+async def test_default_config_takes_ollama_path() -> None:
+    """With no explicit config, QueryHandler loads the shipped defaults.
+
+    Config v2 flips embedding.provider to ollama. Without an embedder wired
+    the vector arm records REASON_NO_EMBEDDER and degrades to lexical-only
+    (that honesty is asserted below) — no pgml.embed SQL is issued."""
     cid, did = uuid4(), uuid4()
     vector_row = {
         "chunk_id": cid,
@@ -278,7 +284,9 @@ async def test_default_config_uses_pgml_path() -> None:
     handler = QueryHandler(pool=mock_pool)
     results = await handler.handle_search(SearchQuery(query="defaults", k=2))
 
-    vector_call = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
-    assert "pgml.embed" in vector_call.args[0]
-    assert vector_call.args[1] == "nomic-embed-text"
+    fetches = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list
+    assert all("pgml.embed" not in call.args[0] for call in fetches)
+    # FTS arm first (the vector arm abstained), then the SQL fusion.
+    assert "plainto_tsquery" in fetches[0].args[0]
+    assert "rrf_fusion" in fetches[1].args[0]
     assert len(results) == 1

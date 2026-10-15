@@ -613,28 +613,86 @@ class TestRuntimeWebKeys:
     def test_float_keys_accept_int_but_not_bool(self):
         # web/settings.py accepts int where a float is declared (e.g.
         # `delay_seconds: 1`), so the validator must not reject it; a bool
-        # stays rejected for every non-bool key.
-        config = {
-            "extraction": {"backend": "pgml"},
-            "search": {
-                "exclude_degraded": True,
-                "qa_context_in_fts": False,
-                "matryoshka_enabled": False,
-            },
-            "embedding": {"mrl_trained": False, "late_chunking": True},
-            "ingestion": {"default": "default", "strategies": {}},
-            "web": {
-                "user_agent": "bot/1.0",
-                "timeout_seconds": 30,
-                "max_bytes": 1024,
-                "respect_robots": True,
-                "max_pages": 2,
-                "max_depth": 1,
-                "delay_seconds": 1,
-                "allow_private_addresses": False,
-            },
-        }
+        # stays rejected for every non-bool key. Base: the shipped YAML
+        # (the full canonical key set), then override the one key under test.
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["web"]["delay_seconds"] = 1
         assert validate_runtime_config(config) == []
         config["web"]["delay_seconds"] = True
         errors = validate_runtime_config(config)
         assert any("key 'web.delay_seconds' must be float" in e for e in errors)
+
+
+class TestRuntimeCanonicalKeys:
+    """RUNTIME_CONFIG_KEYS learned the config-v2 canonical namespaces."""
+
+    def test_canonical_keys_declared(self):
+        expected = {
+            "embedding.query_instruction": bool,
+            "storage.vector_type": str,
+            "ingest.chunking.enabled": bool,
+            "ingest.chunking.child_tokens": int,
+            "ingest.chunking.chunk_tokens": int,
+            "ingest.chunking.parent_tokens": int,
+            "ingest.chunking.overlap_tokens": int,
+            "ingest.chunking.respect_boundaries": list,
+            "ingest.contextualize.enabled": bool,
+            "retrieval.mode": str,
+            "retrieval.vector_candidates": int,
+            "retrieval.lexical_candidates": int,
+            "retrieval.rrf_k": int,
+            "retrieval.expand_to_parent": bool,
+            "retrieval.hnsw.m": int,
+            "retrieval.hnsw.ef_construction": int,
+            "reranking.enabled": bool,
+            "reranking.return_top_k": int,
+        }
+        for dotted, expected_type in expected.items():
+            assert RUNTIME_CONFIG_KEYS[dotted] is expected_type, dotted
+
+    def test_legacy_search_keys_are_gone_from_the_contract(self):
+        # The shipped YAMLs carry only canonical keys; the legacy names are
+        # aliases the LOADER accepts, not keys the SHIPPED YAML must have.
+        assert "search.exclude_degraded" not in RUNTIME_CONFIG_KEYS
+        assert "search.qa_context_in_fts" not in RUNTIME_CONFIG_KEYS
+        assert "search.matryoshka_enabled" not in RUNTIME_CONFIG_KEYS
+
+    def test_mode_enum_locked_to_hybrid_rrf(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        assert validate_runtime_config(config) == []
+        config["retrieval"]["mode"] = "vector_only"
+        errors = validate_runtime_config(config)
+        assert any("retrieval.mode" in e and "hybrid_rrf" in e for e in errors)
+
+    def test_vector_type_enum_locked_to_halfvec(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["storage"]["vector_type"] = "vector"
+        errors = validate_runtime_config(config)
+        assert any("storage.vector_type" in e and "halfvec" in e for e in errors)
+
+    def test_contextualize_backend_must_be_ollama_when_present(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["ingest"]["contextualize"]["backend"] = "openai"
+        errors = validate_runtime_config(config)
+        assert any("ingest.contextualize.backend" in e for e in errors)
+
+    def test_return_top_k_range_enforced(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["reranking"]["return_top_k"] = 0
+        errors = validate_runtime_config(config)
+        assert any("reranking.return_top_k" in e for e in errors)
+        config["reranking"]["return_top_k"] = 1001
+        errors = validate_runtime_config(config)
+        assert any("reranking.return_top_k" in e for e in errors)
+        config["reranking"]["return_top_k"] = "20"
+        errors = validate_runtime_config(config)
+        assert any("reranking.return_top_k" in e for e in errors)
+
+    def test_matryoshka_cross_field_rule_on_retrieval(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["retrieval"]["matryoshka_enabled"] = True
+        config["embedding"]["mrl_trained"] = False
+        errors = validate_runtime_config(config)
+        assert any(
+            "retrieval.matryoshka_enabled" in e and "embedding.mrl_trained" in e for e in errors
+        )

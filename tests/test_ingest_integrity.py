@@ -301,7 +301,7 @@ def _ingest_config() -> dict[str, object]:
     return {
         "graph": {"extract_entities": False},
         "embedding": {"provider": "pgml"},
-        "ingest": {"hierarchy": {"enabled": False}},
+        "ingest": {"chunking": {"enabled": False}},
     }
 
 
@@ -476,8 +476,7 @@ async def test_run_pipeline_crash_marks_run_failed_and_raises(
     monkeypatch.setattr(contextualizer_module, "ContextGenerator", _Boom)
     config: dict[str, object] = {
         "graph": {"extract_entities": False},
-        "contextual": {"enabled": True},
-        "ingest": {"hierarchy": {"enabled": False}},
+        "ingest": {"contextualize": {"enabled": True}, "chunking": {"enabled": False}},
     }
 
     with pytest.raises(RuntimeError, match="contextual service down"):
@@ -595,12 +594,8 @@ async def test_run_pipeline_nonconformant_plan_raises_before_any_write(
 
 
 async def _apply_schema_and_migrations(conn: Any) -> None:
-    base_sql = re.sub(
-        r"CREATE INDEX[^;]*ON chunks_vectors USING (ivfflat|hnsw)\s*\([^;]*vector[^;]*;",
-        "-- index on vector(4096) omitted: exceeds pgvector 2000-dim limit",
-        SCHEMA_SQL.read_text(encoding="utf-8"),
-    )
-    await conn.execute(base_sql)
+    # The halfvec(2560) schema carries only LEGAL indexes — verbatim apply.
+    await conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
     from corpus_kb._setup.migrate import ensure_migrations_table
 
     await ensure_migrations_table(conn)
@@ -887,26 +882,26 @@ async def test_store_vectors_overwrites_stale_1024_and_sets_degraded(
         "vector probe",
     )
     # Seed a stale row: old vector_1024 slice + healthy degraded flag.
-    v4096 = "[" + ",".join("0.25" for _ in range(4096)) + "]"
+    v2560 = "[" + ",".join("0.25" for _ in range(2560)) + "]"
     stale_1024 = "[" + ",".join("0.5" for _ in range(1024)) + "]"
     await _tenant_execute(
         integrity_pool,
         """
-        INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, vector_1024,
+        INSERT INTO chunks_vectors (chunk_id, tenant_id, embedding, vector_1024,
             embedding_model, dimensions, degraded)
-        VALUES ($1, $2, $3::vector, $4::vector, 'old-model', 4096, FALSE)
+        VALUES ($1, $2, $3::halfvec, $4::vector, 'old-model', 2560, FALSE)
         """,
         chunk_id,
         TENANT,
-        v4096,
+        v2560,
         stale_1024,
     )
 
     # Re-embed: fresh 768-slot-free write with NO matryoshka map. The stale
     # vector_1024 must be OVERWRITTEN (NULL), not COALESCEd, and the degraded
     # flag must state this write honestly (real vector -> FALSE).
-    chunk.embedding = [0.125] * 4096
-    written = await store.store_vectors([chunk], "new-model", dimensions=4096)
+    chunk.embedding = [0.125] * 2560
+    written = await store.store_vectors([chunk], "new-model", dimensions=2560)
     assert written == 1
     row = await _tenant_fetchrow(
         integrity_pool,
@@ -922,8 +917,8 @@ async def test_store_vectors_overwrites_stale_1024_and_sets_degraded(
     assert chunk_row["degraded"] is False
 
     # An all-zero embedder output poisons: degraded must flip on BOTH rows.
-    chunk.embedding = [0.0] * 4096
-    await store.store_vectors([chunk], "new-model", dimensions=4096)
+    chunk.embedding = [0.0] * 2560
+    await store.store_vectors([chunk], "new-model", dimensions=2560)
     row = await _tenant_fetchrow(
         integrity_pool,
         "SELECT degraded FROM chunks_vectors WHERE chunk_id = $1",
@@ -1047,12 +1042,8 @@ async def _create_force_rls_db() -> str:
         await owner.execute(
             "GRANT CONNECT ON DATABASE corpus_kb_ir075_force_rls_test TO corpus_ir075_probe"
         )
-        base_sql = re.sub(
-            r"CREATE INDEX[^;]*ON chunks_vectors USING (ivfflat|hnsw)\s*\([^;]*vector[^;]*;",
-            "-- index on vector(4096) omitted: exceeds pgvector 2000-dim limit",
-            SCHEMA_SQL.read_text(encoding="utf-8"),
-        )
-        await owner.execute(base_sql)
+        # The halfvec(2560) schema carries only LEGAL indexes.
+        await owner.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
         from corpus_kb._setup.migrate import ensure_migrations_table
 
         await ensure_migrations_table(owner)

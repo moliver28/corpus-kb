@@ -83,8 +83,8 @@ def test_embedder_check_ok() -> None:
     config = {
         "embedding": {
             "provider": "ollama",
-            "model": "qwen3-embedding:8b-q8_0",
-            "dimensions": 4096,
+            "model": "qwen3-embedding:4b",
+            "dimensions": 2560,
         },
         "research": {"embedder": {"dimensions": 1024}},
     }

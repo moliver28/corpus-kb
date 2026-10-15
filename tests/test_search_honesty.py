@@ -162,13 +162,17 @@ def _handler(
 
 
 _PGML_CONFIG: dict[str, object] = {
-    "embedding": {"provider": "pgml", "model": "nomic-embed-text"},
-    "search": {"exclude_degraded": True, "reranker": "none"},
+    "embedding": {"provider": "pgml", "model": "qwen3-embedding:4b"},
+    "retrieval": {"exclude_degraded": True},
+    "search": {"reranker": "none"},
+    "reranking": {"enabled": False},
 }
 
 _OLLAMA_CONFIG: dict[str, object] = {
     "embedding": {"provider": "ollama", "model": "stub", "dimensions": 8},
-    "search": {"exclude_degraded": True, "reranker": "none"},
+    "retrieval": {"exclude_degraded": True},
+    "search": {"reranker": "none"},
+    "reranking": {"enabled": False},
 }
 
 
@@ -277,8 +281,8 @@ async def test_pgml_candidate_cte_excludes_degraded() -> None:
 @pytest.mark.asyncio
 async def test_flag_off_keeps_candidate_sql_unfiltered() -> None:
     config = {
-        "embedding": {"provider": "pgml", "model": "nomic-embed-text"},
-        "search": {"exclude_degraded": False},
+        "embedding": {"provider": "pgml", "model": "qwen3-embedding:4b"},
+        "retrieval": {"exclude_degraded": False},
     }
     conn = _RecordingConn()
     await _handler(_RecordingPool(conn), config).handle_search(
@@ -304,7 +308,7 @@ async def test_ollama_exact_and_matryoshka_ctes_exclude_degraded() -> None:
 async def test_matryoshka_candidate_cte_excludes_degraded() -> None:
     config = {
         "embedding": {"provider": "ollama", "model": "stub", "dimensions": 8},
-        "search": {"exclude_degraded": True, "matryoshka_enabled": True},
+        "retrieval": {"exclude_degraded": True, "matryoshka_enabled": True},
     }
     conn = _RecordingConn()
     await _handler(_RecordingPool(conn), config, _RealEmbedder()).handle_search(
@@ -326,8 +330,8 @@ async def test_search_similar_filters_candidates_never_seed() -> None:
     # Exactly ONE degraded predicate: on the candidate WHERE clause.
     assert sql.count("cv.degraded = FALSE") == 1
     # The seed subqueries stay unfiltered — seed documents stay discoverable.
-    assert sql.count("SELECT vector FROM chunks_vectors WHERE chunk_id = $1") == 2
-    seed_fragments = sql.split("SELECT vector FROM chunks_vectors WHERE chunk_id = $1")[1:]
+    assert sql.count("SELECT embedding FROM chunks_vectors WHERE chunk_id = $1") == 2
+    seed_fragments = sql.split("SELECT embedding FROM chunks_vectors WHERE chunk_id = $1")[1:]
     assert all(not frag.startswith(") AND cv.degraded") for frag in seed_fragments)
 
 
@@ -335,8 +339,8 @@ async def test_search_similar_filters_candidates_never_seed() -> None:
 async def test_selectivity_probe_matches_candidate_universe() -> None:
     """The U21 probe counts the SAME rows the candidate CTE will scan."""
     config = {
-        "embedding": {"provider": "pgml", "model": "nomic-embed-text"},
-        "search": {"exclude_degraded": True},
+        "embedding": {"provider": "pgml", "model": "qwen3-embedding:4b"},
+        "retrieval": {"exclude_degraded": True},
     }
     conn = _RecordingConn()
     from corpus_kb.rag.self_query import ParsedQuery, Predicate
@@ -555,6 +559,7 @@ def _candidate_row() -> dict[str, object]:
         "doc_id": str(uuid4()),
         "text": "body text",
         "context_blurb": "a blurb",
+        "was_stale": False,
     }
 
 
@@ -869,17 +874,32 @@ async def test_doctor_db_checks_append_stage3_checks(
 
 
 def test_runtime_config_keys_declare_stage3_key() -> None:
-    # U32 (issue #81) added embedding.mrl_trained to the runtime contract;
-    # its matryoshka fix registered search.matryoshka_enabled alongside it.
+    # Config v2 moved the stage-3 keys under retrieval.* / reranking.*; the
+    # legacy search.* spellings are LOADER aliases, not shipped-YAML keys.
     # The website-ingestion feature added the web.* fetch/crawl keys.
     # W4C config-truth added extraction.backend (the preferred backend key).
     assert {
         "extraction.backend": str,
-        "search.exclude_degraded": bool,
-        "search.qa_context_in_fts": bool,
-        "search.matryoshka_enabled": bool,
         "embedding.mrl_trained": bool,
         "embedding.late_chunking": bool,
+        "embedding.query_instruction": bool,
+        "storage.vector_type": str,
+        "ingest.chunking.enabled": bool,
+        "ingest.chunking.child_tokens": int,
+        "ingest.chunking.chunk_tokens": int,
+        "ingest.chunking.parent_tokens": int,
+        "ingest.chunking.overlap_tokens": int,
+        "ingest.chunking.respect_boundaries": list,
+        "ingest.contextualize.enabled": bool,
+        "retrieval.mode": str,
+        "retrieval.vector_candidates": int,
+        "retrieval.lexical_candidates": int,
+        "retrieval.rrf_k": int,
+        "retrieval.expand_to_parent": bool,
+        "retrieval.hnsw.m": int,
+        "retrieval.hnsw.ef_construction": int,
+        "reranking.enabled": bool,
+        "reranking.return_top_k": int,
         "ingestion.default": str,
         "ingestion.strategies": dict,
         "web.user_agent": str,
@@ -911,39 +931,35 @@ _WEB_KEYS: dict[str, object] = {
 
 
 def test_validate_runtime_config_accepts_bool() -> None:
-    config = {
-        "search": {
+    # Base: the shipped YAML (it carries every RUNTIME_CONFIG_KEY), with the
+    # stage-3 flags flipped through their canonical retrieval.* home.
+    config = cast(dict[str, object], load_yaml(ROOT / "config.yaml"))
+    cast(dict[str, object], config["retrieval"]).update(
+        {
             "exclude_degraded": True,
             "qa_context_in_fts": False,
             "matryoshka_enabled": False,
-        },
-        **_EXTRACTION_KEYS,
-        **_EMBEDDING_KEYS,
-        **_INGESTION_KEYS,
-        **_WEB_KEYS,
-    }
+        }
+    )
     assert validate_runtime_config(config) == []
-    config_off = {
-        "search": {
+    config_off = cast(dict[str, object], load_yaml(ROOT / "config.yaml"))
+    cast(dict[str, object], config_off["retrieval"]).update(
+        {
             "exclude_degraded": False,
             "qa_context_in_fts": False,
             "matryoshka_enabled": False,
-        },
-        **_EXTRACTION_KEYS,
-        **_EMBEDDING_KEYS,
-        **_INGESTION_KEYS,
-        **_WEB_KEYS,
-    }
+        }
+    )
     assert validate_runtime_config(config_off) == []
 
 
 def test_validate_runtime_config_rejects_missing_and_mistyped() -> None:
-    missing = validate_runtime_config({"search": {}})
-    assert any("missing required key 'search.exclude_degraded'" in e for e in missing)
-    string_val = validate_runtime_config({"search": {"exclude_degraded": "true"}})
+    missing = validate_runtime_config({"retrieval": {"mode": "hybrid_rrf"}})
+    assert any("missing required key" in e for e in missing)
+    string_val = validate_runtime_config({"reranking": {"enabled": "true"}})
     assert any("must be bool" in e for e in string_val)
-    no_search = validate_runtime_config({})
-    assert any("missing required key" in e for e in no_search)
+    no_keys = validate_runtime_config({})
+    assert any("missing required key" in e for e in no_keys)
 
 
 def test_shipped_config_yamls_carry_exclude_degraded() -> None:
@@ -951,5 +967,5 @@ def test_shipped_config_yamls_carry_exclude_degraded() -> None:
         cfg = load_yaml(ROOT / rel)
         errors = validate_runtime_config(cfg)
         assert errors == [], f"{rel}: {errors}"
-        search = cfg["search"]
-        assert search["exclude_degraded"] is True
+        retrieval = cfg["retrieval"]
+        assert retrieval["exclude_degraded"] is True

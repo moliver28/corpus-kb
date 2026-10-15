@@ -121,7 +121,7 @@ Zero-vector rows are flagged `degraded = true` on `chunks` and
 `chunk_vectors` (migration `022_ingest_integrity.sql`) — they are never
 silently mixed into vector search:
 
-- `search.exclude_degraded` (default `true`) keeps degraded rows out of the
+- `retrieval.exclude_degraded` (default `true`) keeps degraded rows out of the
   vector-search candidate sets. The lexical (full-text) arm still runs.
 - The search envelope reports what it left out in `degraded_excluded`
   ({count, reasons}). `count` = candidate rows the filter excluded;
@@ -135,7 +135,7 @@ silently mixed into vector search:
   reports honest scanned/fixed/failed counts.
 
 When **matryoshka two-tier retrieval** is enabled, the full embedding is
-stored in `chunks_vectors.vector`. A front-sliced, L2-renormalized 1024d
+stored in `chunks_vectors.embedding`. A front-sliced, L2-renormalized 1024d
 projection is stored in `vector_1024`. The 1024d column gets an HNSW index
 for fast candidate generation. The query layer rescores candidates on
 the exact full-dimension column. Re-embedding overwrites stale projections
@@ -144,9 +144,9 @@ instead of keeping them.
 - **Files**: `src/corpus_kb/rag/embedder.py`
 - **Config**: `embedding.provider`, `embedding.fallback_provider`,
   `embedding.model`, `embedding.base_url`, `embedding.dimensions`,
-  `search.matryoshka_enabled`, `search.matryoshka_dim`,
-  `search.exclude_degraded`
-- **Fallback**: Ollama zero vectors flagged degraded (768d or configured
+  `retrieval.matryoshka_enabled`, `retrieval.matryoshka_dim`,
+  `retrieval.exclude_degraded`
+- **Fallback**: Ollama zero vectors flagged degraded (configured
   dimensions)
 
 ### Stage 4: Extract
@@ -252,16 +252,18 @@ text at embedding time and indexed for full-text search.
 
 Generation follows the same deterministic fixture pattern as LangExtract.
 Fixtures are keyed by SHA256 of the document prefix plus chunk text and
-stored in `contextual.fixture_dir`. When `contextual.live_fallback` is
+stored in `ingest.contextualize.fixture_dir`. When
+`ingest.contextualize.live_fallback` is
 `false`, missing fixtures produce an empty blurb rather than calling the
 LLM, which keeps CI deterministic. Any LLM error degrades to an empty blurb
 without failing ingest.
 
 The feature is gated by `source_type`:
 
-- `contextual.enabled: true` turns it on for every ingest.
+- `ingest.contextualize.enabled: true` turns it on for every ingest.
 - Otherwise it runs only for `source_type` values listed in
-  `contextual.enabled_source_types` (default: `["interview", "research"]`).
+  `ingest.contextualize.enabled_source_types` (default:
+  `["interview", "research"]`).
 
 At query time, the FTS expression uses
 `to_tsvector('english', coalesce(context_blurb,'') || ' ' || text)`, so
@@ -270,24 +272,24 @@ adds the `context_blurb` column and a GIN index on the contextual
 expression.
 
 - **File**: `src/corpus_kb/rag/contextualizer.py`
-- **Config block**: `contextual`
+- **Config block**: `ingest.contextualize`
 
 ## Matryoshka Two-Tier Retrieval
 
-When `search.matryoshka_enabled` is `true` and the embedding provider is
+When `retrieval.matryoshka_enabled` is `true` and the embedding provider is
 `ollama`, the pipeline stores both the full embedding and a 1024d
 front-sliced, L2-renormalized projection. Query execution uses the 1024d
 HNSW index to retrieve `k * candidate_multiplier` candidates. It rescores
 the candidates with the exact full-dimension vector and returns the top
 results.
 
-Matryoshka is **off by default** (`search.matryoshka_enabled: false`). It
+Matryoshka is **off by default** (`retrieval.matryoshka_enabled: false`). It
 requires migration `010_matryoshka_1024.sql`, which adds the `vector_1024`
 column and the `idx_chunks_vectors_hnsw_1024` HNSW index.
 
 - **File**: `src/corpus_kb/handlers/query_handler.py`
-- **Config**: `search.matryoshka_enabled`, `search.matryoshka_dim`,
-  `search.candidate_multiplier`
+- **Config**: `retrieval.matryoshka_enabled`, `retrieval.matryoshka_dim`,
+  `retrieval.candidate_multiplier`
 
 ## Search Stage
 
@@ -301,8 +303,8 @@ Postgres:
    and `metadata`). The predicates are bound as parameters and appended to
    both the vector and FTS SQL arms.
 2. **Vector search** with pgvector, using matryoshka candidate generation
-   when enabled. Both the IVFFlat and HNSW indexes exist. Both are built on
-   the same column; no config key picks between them.
+   when enabled. The main column carries one HNSW index
+   (`halfvec_cosine_ops`, m=16, ef_construction=128 — migration 025).
 3. **Full-text search** over `coalesce(context_blurb,'') || ' ' || text`
    via Postgres `plainto_tsquery`.
 4. **Reciprocal Rank Fusion (RRF)** in pure SQL using
@@ -310,29 +312,30 @@ Postgres:
 5. **Optional reranking** via the configured reranker backend.
 
 Degraded (zero-vector) chunks are excluded from the vector candidate sets
-when `search.exclude_degraded` is `true` (the default). The exclusion is
+when `retrieval.exclude_degraded` is `true` (the default). The exclusion is
 applied to candidates only, never to the seed documents. The envelope
 reports the count and reasons in `degraded_excluded`. An all-zero query
 embedding (embedder degraded mode) abstains the vector arm instead of
 returning arbitrary cosine orderings.
 
 - **File**: `src/corpus_kb/handlers/query_handler.py`
-- **Config**: `search.rrf_k`, `search.reranker`, `search.reranker_model`,
-  `search.rerank`, `search.exclude_degraded`
+- **Config**: `retrieval.rrf_k`, `retrieval.vector_candidates`,
+  `retrieval.lexical_candidates`, `reranking.*`,
+  `retrieval.exclude_degraded`
 
 ## Reranker Configuration
 
 Reranking happens after RRF fusion. Two selection mechanisms coexist:
 
-- `search.reranker` chooses the legacy async reranker:
+- `reranking.*` is the score-based pipeline block (canonical):
+  - `enabled: true` (the default) builds an `OllamaReranker`.
+  - `backend: fake` builds the deterministic `FakeReranker` for CI.
+  - `model`, `base_url`, `over_retrieve_n`, `score_floor`, and
+    `calibration` tune scoring and filtering.
+- `search.reranker` stays as the accepted legacy selector:
   - `none` (default): identity pass-through.
   - `pgml`: `pgml.rank()` cross-encoder reranking inside Postgres.
   - `ollama`: qwen3-reranker scoring via Ollama's generate API.
-- `search.rerank` is the newer score-based pipeline block:
-  - `enabled: true` builds an `OllamaReranker`.
-  - `backend: fake` builds the deterministic `FakeReranker` for CI.
-  - `model`, `base_url`, `batch_size`, `over_retrieve_n`, `score_floor`,
-    and `calibration` tune scoring and filtering.
 
 Score-based rerankers over-retrieve `over_retrieve_n` fused results,
 score each `(query, text)` pair, apply `calibration` (currently min-max),
@@ -340,8 +343,8 @@ filter below `score_floor`, and return the top `k`. On any backend failure
 reranking falls back to the pre-rerank RRF order so search never breaks.
 
 - **File**: `src/corpus_kb/rag/reranker.py`
-- **Config**: `search.reranker`, `search.reranker_model`, and the
-  `search.rerank` block
+- **Config**: the `reranking` block; the legacy `search.reranker` and
+  `search.reranker_model` selectors stay accepted
 
 ## Self-Query Filters
 
@@ -365,7 +368,7 @@ On parse or LLM failure the parser degrades to the original query with no
 predicates.
 
 - **File**: `src/corpus_kb/rag/self_query.py`
-- **Config block**: `search.self_query`
+- **Config block**: `retrieval.self_query`
 
 ## Judge and Answer Verification
 
@@ -527,41 +530,53 @@ cleanly.
 | `extraction.gliner.types` | 6 mention types | Mention types GLiNER2 extracts (person, organization, location, date, money, product) |
 | `ingestion.strategies` | `{transcript: transcript}` | source_type → strategy-name map (extension ladder 1; see INGESTION-STRATEGIES.md) |
 | `ingestion.default` | `default` | Strategy used when no override, mapping, or detection matches |
-| `embedding.provider` | `pgml` | Embedding provider (`pgml` or `ollama`) |
+| `embedding.provider` | `ollama` | Embedding provider (`ollama` or `pgml`) |
 | `embedding.fallback_provider` | `ollama` | Fallback embedding provider |
-| `embedding.model` | `nomic-embed-text` | Embedding model (Ollama) |
-| `embedding.dimensions` | `768` | Vector dimensions |
+| `embedding.model` | `qwen3-embedding:4b` | Embedding model (Ollama) |
+| `embedding.dimensions` | `2560` | Vector dimensions (must equal the schema width) |
 | `embedding.base_url` | `http://localhost:11434` | Ollama API URL |
-| `search.rrf_k` | `60` | RRF rank constant |
-| `search.reranker` | `none` | Legacy reranker backend (`none`, `pgml`, or `ollama`) |
-| `search.reranker_model` | `cross-encoder/ms-marco-MiniLM-L-6-v2` | Cross-encoder for pgml reranking |
-| `search.rerank.enabled` | `true` | Enable the score-based reranker pipeline |
-| `search.rerank.backend` | (none) | Score-based backend; `fake` for CI |
-| `search.rerank.model` | `qwen3-reranker:8b` | Ollama reranker model |
-| `search.rerank.base_url` | `http://localhost:11434` | Ollama API URL for reranking |
-| `search.rerank.batch_size` | `16` | Number of chunks scored per Ollama batch |
-| `search.rerank.over_retrieve_n` | `60` | Number of fused results to rerank |
-| `search.rerank.score_floor` | `0.15` | Minimum normalized rerank score to keep |
-| `search.rerank.calibration` | `minmax` | Score calibration method |
-| `search.self_query.enabled` | `true` | Enable self-query filter extraction |
-| `search.self_query.model` | `qwen3:4b` | Chat model for self-query parsing |
-| `search.self_query.base_url` | `http://localhost:11434` | Ollama API URL for self-query |
-| `search.self_query.timeout_seconds` | `8` | Timeout for self-query LLM calls |
-| `search.matryoshka_enabled` | `false` | Enable two-tier 1024d ANN retrieval |
-| `search.matryoshka_dim` | `1024` | Dimension of the front-sliced projection |
-| `search.candidate_multiplier` | `8` | Candidate multiplier for matryoshka retrieval |
-| `search.exclude_degraded` | `true` | Exclude degraded (zero-vector) chunks from vector-search candidates |
-| `search.qa_context_in_fts` | `false` | Include transcript `qa_context` in the FTS index (opt-in — see INGESTION-STRATEGIES.md for why this is off by default) |
-| `search.hnsw.iterative_scan` | `strict_order` | Transaction-local pgvector iterative scan mode (off/relaxed_order/strict_order; needs pgvector >= 0.8) |
-| `search.hnsw.ef_search` | `200` | Transaction-local HNSW ef_search (SET LOCAL per retrieval transaction) |
-| `search.hnsw.max_scan_tuples` | `20000` | Transaction-local HNSW max_scan_tuples cap |
-| `contextual.enabled` | `false` | Enable contextual retrieval for all source types |
-| `contextual.enabled_source_types` | `["interview", "research"]` | Source types that always get contextual blurbs |
-| `contextual.model` | `qwen3:4b` | Model for blurb generation |
-| `contextual.base_url` | `http://localhost:11434` | Ollama API URL for blurb generation |
-| `contextual.temperature` | `0.0` | Sampling temperature for blurb generation |
-| `contextual.fixture_dir` | `tests/fixtures/contextual_recorded` | Recorded blurb fixtures |
-| `contextual.live_fallback` | `false` | Allow live LLM calls when no fixture exists |
+| `storage.vector_type` | `halfvec` | Embedding column type (HNSW caps `vector` at 2000 dims) |
+| `retrieval.mode` | `hybrid_rrf` | Retrieval strategy (single supported value today) |
+| `retrieval.vector_candidates` | `150` | Live vector-arm depth (effective limit: max(candidates, k * 2)) |
+| `retrieval.lexical_candidates` | `150` | Live FTS-arm depth (same floor rule) |
+| `retrieval.rrf_k` | `60` | RRF rank constant |
+| `retrieval.expand_to_parent` | `true` | Post-fusion small-to-big parent expansion |
+| `retrieval.exclude_degraded` | `true` | Exclude degraded (zero-vector) chunks from vector-search candidates |
+| `retrieval.qa_context_in_fts` | `false` | Include transcript `qa_context` in the FTS index (opt-in — see INGESTION-STRATEGIES.md for why this is off by default) |
+| `retrieval.exact_filter_selectivity_threshold` | `0.05` | Selectivity gate for the filtered exact scan |
+| `retrieval.matryoshka_enabled` | `false` | Enable two-tier 1024d ANN retrieval |
+| `retrieval.matryoshka_dim` | `1024` | Dimension of the front-sliced projection |
+| `retrieval.candidate_multiplier` | `8` | Candidate multiplier for matryoshka retrieval |
+| `retrieval.self_query.enabled` | `true` | Enable self-query filter extraction |
+| `retrieval.self_query.model` | `qwen3:4b` | Chat model for self-query parsing |
+| `retrieval.self_query.base_url` | `http://localhost:11434` | Ollama API URL for self-query |
+| `retrieval.self_query.timeout_seconds` | `8` | Timeout for self-query LLM calls |
+| `retrieval.hnsw.m` | `16` | HNSW index m (migration 025 DDL; doctor warns on drift) |
+| `retrieval.hnsw.ef_construction` | `128` | HNSW index ef_construction (same) |
+| `retrieval.hnsw.iterative_scan` | `strict_order` | Transaction-local pgvector iterative scan mode (off/relaxed_order/strict_order; needs pgvector >= 0.8) |
+| `retrieval.hnsw.ef_search` | `200` | Transaction-local HNSW ef_search (SET LOCAL per retrieval transaction) |
+| `retrieval.hnsw.max_scan_tuples` | `20000` | Transaction-local HNSW max_scan_tuples cap |
+| `reranking.enabled` | `true` | Enable the score-based reranker pipeline |
+| `reranking.backend` | (none) | Score-based backend; `fake` for CI |
+| `reranking.model` | `qwen3-reranker:4b` | Ollama reranker model |
+| `reranking.base_url` | `http://localhost:11434` | Ollama API URL for reranking |
+| `reranking.over_retrieve_n` | `60` | Number of fused results to rerank |
+| `reranking.candidates` | `100` | Cap on results entering the reranker |
+| `reranking.return_top_k` | `20` | Default return k from wave 3 (validated now) |
+| `reranking.score_floor` | `0.15` | Minimum normalized rerank score to keep |
+| `reranking.calibration` | `minmax` | Score calibration method |
+
+| `ingest.contextualize.enabled` | `false` | Enable contextual retrieval for all source types |
+| `ingest.contextualize.enabled_source_types` | `["interview", "research"]` | Source types that always get contextual blurbs |
+| `ingest.contextualize.model` | `qwen3:4b` | Model for blurb generation |
+| `ingest.contextualize.base_url` | `http://localhost:11434` | Ollama API URL for blurb generation |
+| `ingest.contextualize.temperature` | `0.0` | Sampling temperature for blurb generation |
+| `ingest.contextualize.fixture_dir` | `tests/fixtures/contextual_recorded` | Recorded blurb fixtures |
+| `ingest.contextualize.live_fallback` | `false` | Allow live LLM calls when no fixture exists |
+
+Legacy aliases: the old `search.*`, `ingest.hierarchy.*`, and
+`contextual.*` names still load. Canonical keys win. Alias use logs a
+deprecation warning.
 | `judge.enabled` | `true` | Enable claim-level groundedness verification |
 | `judge.model` | `qwen3:4b` | Model for claim decomposition and entailment |
 | `judge.base_url` | `http://localhost:11434` | Ollama API URL for the judge |

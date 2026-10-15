@@ -1,8 +1,8 @@
-"""Doctor configuration-truth checks: env vars + embedding-dimension guard.
+"""Doctor configuration-truth checks: env vars + dimension guard + hnsw check.
 
 Hermetic: connection doubles, no database. The dimension check pins the
 empirical pgvector contract (typmod width is enforced exactly; the shipped
-vector(4096) column rejects every non-4096 insert).
+halfvec(2560) column rejects every non-2560 insert).
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from typing import Any
 from corpus_kb._setup.doctor_env import (
     dimension_guard_check,
     env_var_check,
+    hnsw_index_check,
     unknown_env_vars,
 )
 from corpus_kb._setup.doctor_research import STATUS_FAIL, STATUS_OK, STATUS_WARN
@@ -92,18 +93,18 @@ def test_env_var_check_warns_with_names_and_fix() -> None:
 
 
 async def test_dimension_guard_fails_on_width_mismatch() -> None:
-    conn = _HistConn({"width": 4096, "typ": "vector(4096)"})
+    conn = _HistConn({"width": 2560, "typ": "halfvec(2560)"})
     config: dict[str, Any] = {"embedding": {"model": "nomic-embed-text", "dimensions": 768}}
     check = await dimension_guard_check(conn, config)
     assert check.status == STATUS_FAIL
-    assert "4096" in check.detail and "768" in check.detail
+    assert "2560" in check.detail and "768" in check.detail
     assert "embedding.model" in check.fix
     assert "embedding.dimensions" in check.fix
 
 
 async def test_dimension_guard_ok_when_matching() -> None:
-    conn = _HistConn({"width": 768, "typ": "vector(768)"}, [{"dimensions": 768, "n": 3}])
-    config: dict[str, Any] = {"embedding": {"model": "nomic-embed-text", "dimensions": 768}}
+    conn = _HistConn({"width": 2560, "typ": "halfvec(2560)"}, [{"dimensions": 2560, "n": 3}])
+    config: dict[str, Any] = {"embedding": {"model": "qwen3-embedding:4b", "dimensions": 2560}}
     check = await dimension_guard_check(conn, config)
     assert check.status == STATUS_OK
     assert conn.guc_set  # histogram read ran under the tenant GUC
@@ -111,10 +112,10 @@ async def test_dimension_guard_ok_when_matching() -> None:
 
 async def test_dimension_guard_warns_on_stale_rows() -> None:
     conn = _HistConn(
-        {"width": 4096, "typ": "vector(4096)"},
-        [{"dimensions": 4096, "n": 5}, {"dimensions": 768, "n": 2}],
+        {"width": 2560, "typ": "halfvec(2560)"},
+        [{"dimensions": 4096, "n": 5}, {"dimensions": 2560, "n": 2}],
     )
-    config: dict[str, Any] = {"embedding": {"model": "qwen3-embedding", "dimensions": 4096}}
+    config: dict[str, Any] = {"embedding": {"model": "qwen3-embedding:4b", "dimensions": 2560}}
     check = await dimension_guard_check(conn, config)
     assert check.status == STATUS_WARN
     assert "--reembed" in check.fix
@@ -128,8 +129,8 @@ async def test_dimension_guard_warns_when_column_missing() -> None:
 
 
 async def test_dimension_guard_warns_on_untypmodded_column() -> None:
-    conn = _HistConn({"width": -1, "typ": "vector"})
-    check = await dimension_guard_check(conn, {"embedding": {"dimensions": 768}})
+    conn = _HistConn({"width": -1, "typ": "halfvec"})
+    check = await dimension_guard_check(conn, {"embedding": {"dimensions": 2560}})
     assert check.status == STATUS_WARN
     assert "no fixed width" in check.detail
 
@@ -137,7 +138,7 @@ async def test_dimension_guard_warns_on_untypmodded_column() -> None:
 async def test_dimension_guard_warns_on_non_vector_column() -> None:
     """A half-migrated database (jsonb column) names the schema state."""
     conn = _HistConn({"width": -1, "typ": "jsonb"})
-    check = await dimension_guard_check(conn, {"embedding": {"dimensions": 768}})
+    check = await dimension_guard_check(conn, {"embedding": {"dimensions": 2560}})
     assert check.status == STATUS_WARN
     assert "jsonb" in check.detail
     assert "not a vector column" in check.detail
@@ -151,6 +152,53 @@ async def test_dimension_guard_survives_histogram_failure() -> None:
         async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
             raise RuntimeError("histogram unavailable")
 
-    conn = _BrokenHistConn({"width": 768, "typ": "vector(768)"})
-    check = await dimension_guard_check(conn, {"embedding": {"dimensions": 768}})
+    conn = _BrokenHistConn({"width": 2560, "typ": "halfvec(2560)"})
+    check = await dimension_guard_check(conn, {"embedding": {"dimensions": 2560}})
+    assert check.status == STATUS_OK
+
+
+# --- hnsw index options cross-check ------------------------------------------
+
+
+class _HnswConn(_HistConn):
+    """Connection double answering the reloptions probe for the hnsw index."""
+
+    def __init__(self, reloptions: list[str] | None) -> None:
+        super().__init__({"width": 2560, "typ": "halfvec(2560)"})
+        self._reloptions = reloptions
+
+    async def fetchrow(self, sql: str, *args: object) -> dict[str, object] | None:
+        if "reloptions" in sql:
+            if self._reloptions is None:
+                return None
+            return {"reloptions": self._reloptions}
+        return await super().fetchrow(sql, *args)
+
+
+async def test_hnsw_check_ok_when_options_match() -> None:
+    conn = _HnswConn(["m=16", "ef_construction=128"])
+    config: dict[str, Any] = {"retrieval": {"hnsw": {"m": 16, "ef_construction": 128}}}
+    check = await hnsw_index_check(conn, config)
+    assert check.status == STATUS_OK
+
+
+async def test_hnsw_check_warns_on_drift() -> None:
+    conn = _HnswConn(["m=16", "ef_construction=200"])
+    config: dict[str, Any] = {"retrieval": {"hnsw": {"m": 16, "ef_construction": 128}}}
+    check = await hnsw_index_check(conn, config)
+    assert check.status == STATUS_WARN
+    assert "ef_construction=200" in check.detail
+
+
+async def test_hnsw_check_warns_when_index_missing() -> None:
+    conn = _HnswConn(None)
+    check = await hnsw_index_check(conn, {"retrieval": {"hnsw": {}}})
+    assert check.status == STATUS_WARN
+    assert "not found" in check.detail
+
+
+async def test_hnsw_check_defaults_to_ddl_values() -> None:
+    # An empty hnsw block falls back to the migration-025 DDL values.
+    conn = _HnswConn(["m=16", "ef_construction=128"])
+    check = await hnsw_index_check(conn, {"retrieval": {}})
     assert check.status == STATUS_OK

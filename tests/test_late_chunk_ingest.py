@@ -22,8 +22,6 @@ import pytest
 
 # Single-sourced with the exact-dict pin in test_search_honesty so a future
 # RUNTIME_CONFIG_KEYS addition updates both fixtures together.
-from test_search_honesty import _WEB_KEYS
-
 from corpus_kb._setup.validate_configs import (
     RUNTIME_CONFIG_KEYS,
     load_yaml,
@@ -744,17 +742,12 @@ def test_runtime_config_keys_declare_late_chunking():
 
 
 def _runtime_config(late_chunking: object = True) -> dict[str, object]:
-    return {
-        "extraction": {"backend": "pgml"},
-        "search": {
-            "exclude_degraded": True,
-            "qa_context_in_fts": False,
-            "matryoshka_enabled": False,
-        },
-        "embedding": {"mrl_trained": False, "late_chunking": late_chunking},
-        "ingestion": {"default": "default", "strategies": {}},
-        **_WEB_KEYS,
-    }
+    # Base: the shipped YAML (it carries every RUNTIME_CONFIG_KEY), with the
+    # keys under test overridden — the canonical key set keeps growing, so
+    # hand-rolled partial fixtures would rot on every new key.
+    cfg = load_yaml(ROOT / "src/corpus_kb/config.yaml")
+    cfg["embedding"]["late_chunking"] = late_chunking
+    return cfg
 
 
 def test_validate_runtime_config_accepts_late_chunking_bool():

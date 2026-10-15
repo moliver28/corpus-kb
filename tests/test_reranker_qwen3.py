@@ -118,7 +118,7 @@ class _FakeOllamaClient:
 
 def _reranker_with_client(monkeypatch, client: _FakeOllamaClient) -> OllamaReranker:
     monkeypatch.setattr("corpus_kb.rag.reranker.Client", lambda **kw: client)
-    return OllamaReranker({"search": {"rerank": {"enabled": True, "model": "qwen3-reranker:4b"}}})
+    return OllamaReranker({"reranking": {"enabled": True, "model": "qwen3-reranker:4b"}})
 
 
 def test_score_uses_judgment_probabilities_and_caches(monkeypatch) -> None:
@@ -175,8 +175,10 @@ def test_score_degrades_to_none_on_wedged_server(monkeypatch) -> None:
 
 
 def test_rerank_settings_defaults_and_reads() -> None:
+    # Config v2: the module default flipped to enabled=True (the YAML drift
+    # fix) and the block moved from search.rerank.* to reranking.*.
     assert RerankSettings() == RerankSettings(
-        enabled=False,
+        enabled=True,
         model="qwen3-reranker:4b",
         base_url="http://localhost:11434",
         candidates=100,
@@ -187,21 +189,35 @@ def test_rerank_settings_defaults_and_reads() -> None:
     )
     assert load_rerank_settings({}) == RerankSettings()
     loaded = load_rerank_settings(
-        {"search": {"rerank": {"enabled": True, "candidates": 40, "calibration": "none"}}}
+        {"reranking": {"enabled": True, "candidates": 40, "calibration": "none"}}
     )
     assert loaded.enabled is True
     assert loaded.candidates == 40
     assert loaded.calibration == "none"
     assert RERANK_CONFIG_DEFAULTS["max_pair_tokens"] == 768
+    assert RERANK_CONFIG_DEFAULTS["return_top_k"] == 20
+    assert RERANK_CONFIG_DEFAULTS["over_retrieve_n"] == 60
+
+
+def test_return_top_k_range_validation() -> None:
+    """Accepted+validated now (1..1000); the catalogue contract flips in W3."""
+    assert load_rerank_settings({"reranking": {"return_top_k": 1}}).return_top_k == 1
+    assert load_rerank_settings({"reranking": {"return_top_k": 1000}}).return_top_k == 1000
+    with pytest.raises(ValueError, match="return_top_k"):
+        load_rerank_settings({"reranking": {"return_top_k": 0}})
+    with pytest.raises(ValueError, match="return_top_k"):
+        load_rerank_settings({"reranking": {"return_top_k": 1001}})
+    with pytest.raises(ValueError, match="return_top_k"):
+        load_rerank_settings({"reranking": {"return_top_k": "20"}})
 
 
 def test_rerank_settings_rejects_invalid_values() -> None:
     with pytest.raises(ValueError, match="calibration"):
-        load_rerank_settings({"search": {"rerank": {"calibration": "zscore"}}})
+        load_rerank_settings({"reranking": {"calibration": "zscore"}})
     with pytest.raises(ValueError, match="candidates"):
-        load_rerank_settings({"search": {"rerank": {"candidates": 0}}})
+        load_rerank_settings({"reranking": {"candidates": 0}})
     with pytest.raises(ValueError, match="score_floor"):
-        load_rerank_settings({"search": {"rerank": {"score_floor": "low"}}})
+        load_rerank_settings({"reranking": {"score_floor": "low"}})
 
 
 def test_rerank_block_ships_no_batch_size_anywhere() -> None:
@@ -215,19 +231,22 @@ def test_rerank_block_ships_no_batch_size_anywhere() -> None:
 
     from corpus_kb.config import get_default_config
 
-    assert "batch_size" not in get_default_config()["search"]["rerank"]
+    assert "batch_size" not in get_default_config()["reranking"]
     repo = Path(__file__).resolve().parent.parent
     for rel in ("config.yaml", Path("src") / "corpus_kb" / "config.yaml"):
         data = yaml.safe_load((repo / rel).read_text(encoding="utf-8"))
-        assert "batch_size" not in (data.get("search") or {}).get("rerank", {}), (
-            f"{rel} still ships search.rerank.batch_size"
+        assert "batch_size" not in data.get("reranking", {}), (
+            f"{rel} still ships reranking.batch_size"
         )
 
 
 def test_build_reranker_gate_respects_enabled_flag() -> None:
-    assert build_reranker({}) is None
-    assert isinstance(build_reranker({"search": {"rerank": {"enabled": True}}}), OllamaReranker)
-    fake = build_reranker({"search": {"rerank": {"enabled": True, "backend": "fake"}}})
+    # Config v2: enabled defaults TRUE, so an empty config builds the
+    # (honestly-degrading) OllamaReranker; only enabled=False disables.
+    assert build_reranker({"reranking": {"enabled": False}}) is None
+    assert isinstance(build_reranker({}), OllamaReranker)
+    assert isinstance(build_reranker({"reranking": {"enabled": True}}), OllamaReranker)
+    fake = build_reranker({"reranking": {"enabled": True, "backend": "fake"}})
     assert hasattr(fake, "score")
 
 
@@ -237,13 +256,13 @@ def _handler(config: dict[str, object], pool: MagicMock) -> QueryHandler:
     return QueryHandler(cast("object", pool), reranker=None, config=config)
 
 
-def test_query_handler_prefers_rerank_block_over_legacy_selector() -> None:
+def test_query_handler_prefers_reranking_block_over_legacy_selector() -> None:
     pool = MagicMock()
     pool.acquire = MagicMock(return_value=transaction_cm())
     handler = _handler(
-        {"search": {"reranker": "none", "rerank": {"enabled": True, "backend": "fake"}}},
+        {"reranking": {"enabled": True, "backend": "fake"}},
         pool,
     )
-    assert hasattr(handler._reranker, "score")  # the search.rerank path won
-    disabled = _handler({"search": {"reranker": "none"}}, pool)
+    assert hasattr(handler._reranker, "score")  # the reranking path won
+    disabled = _handler({"reranking": {"enabled": False}, "search": {"reranker": "none"}}, pool)
     assert disabled._reranker is not None  # legacy identity fallback stands

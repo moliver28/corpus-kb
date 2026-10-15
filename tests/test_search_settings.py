@@ -1,4 +1,4 @@
-"""Tests for U20 transaction-local HNSW settings (search.hnsw.* config keys)."""
+"""Tests for U20 transaction-local HNSW settings (retrieval.hnsw.* config keys)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import pytest
 
 from corpus_kb.research.search_settings import (
     DEFAULT_EF_SEARCH,
+    DEFAULT_HNSW_EF_CONSTRUCTION,
+    DEFAULT_HNSW_M,
     DEFAULT_ITERATIVE_SCAN,
     DEFAULT_MAX_SCAN_TUPLES,
     HnswSettings,
@@ -34,47 +36,63 @@ def test_default_constants_align_with_dataclass() -> None:
     assert DEFAULT_ITERATIVE_SCAN == "strict_order"
     assert DEFAULT_EF_SEARCH == 200
     assert DEFAULT_MAX_SCAN_TUPLES == 20000
+    assert DEFAULT_HNSW_M == 16
+    assert DEFAULT_HNSW_EF_CONSTRUCTION == 128
 
 
-def test_load_hnsw_settings_reads_search_hnsw_block() -> None:
+def test_load_hnsw_settings_reads_retrieval_hnsw_block() -> None:
     config = {
-        "search": {
+        "retrieval": {
             "hnsw": {
                 "iterative_scan": "relaxed_order",
                 "ef_search": 400,
                 "max_scan_tuples": 50000,
+                "m": 32,
+                "ef_construction": 256,
             }
         }
     }
     settings = load_hnsw_settings(config)
     assert settings == HnswSettings(
-        iterative_scan="relaxed_order", ef_search=400, max_scan_tuples=50000
+        iterative_scan="relaxed_order",
+        ef_search=400,
+        max_scan_tuples=50000,
+        m=32,
+        ef_construction=256,
     )
 
 
 def test_load_hnsw_settings_defaults_when_block_missing() -> None:
     assert load_hnsw_settings({}) == HnswSettings()
-    assert load_hnsw_settings({"search": {}}) == HnswSettings()
-    assert load_hnsw_settings({"search": {"hnsw": {}}}) == HnswSettings()
+    assert load_hnsw_settings({"retrieval": {}}) == HnswSettings()
+    assert load_hnsw_settings({"retrieval": {"hnsw": {}}}) == HnswSettings()
 
 
 def test_load_hnsw_settings_partial_block_fills_defaults() -> None:
-    settings = load_hnsw_settings({"search": {"hnsw": {"ef_search": 64}}})
+    settings = load_hnsw_settings({"retrieval": {"hnsw": {"ef_search": 64}}})
     assert settings == HnswSettings(
-        iterative_scan=DEFAULT_ITERATIVE_SCAN, ef_search=64, max_scan_tuples=20000
+        iterative_scan=DEFAULT_ITERATIVE_SCAN,
+        ef_search=64,
+        max_scan_tuples=20000,
+        m=DEFAULT_HNSW_M,
+        ef_construction=DEFAULT_HNSW_EF_CONSTRUCTION,
     )
 
 
 def test_load_hnsw_settings_rejects_unknown_mode() -> None:
     with pytest.raises(ValueError, match="iterative_scan"):
-        load_hnsw_settings({"search": {"hnsw": {"iterative_scan": "turbo"}}})
+        load_hnsw_settings({"retrieval": {"hnsw": {"iterative_scan": "turbo"}}})
 
 
 def test_load_hnsw_settings_rejects_nonpositive_limits() -> None:
     with pytest.raises(ValueError, match="ef_search"):
-        load_hnsw_settings({"search": {"hnsw": {"ef_search": 0}}})
+        load_hnsw_settings({"retrieval": {"hnsw": {"ef_search": 0}}})
     with pytest.raises(ValueError, match="max_scan_tuples"):
-        load_hnsw_settings({"search": {"hnsw": {"max_scan_tuples": -1}}})
+        load_hnsw_settings({"retrieval": {"hnsw": {"max_scan_tuples": -1}}})
+    with pytest.raises(ValueError, match=r"hnsw\.m"):
+        load_hnsw_settings({"retrieval": {"hnsw": {"m": 0}}})
+    with pytest.raises(ValueError, match="ef_construction"):
+        load_hnsw_settings({"retrieval": {"hnsw": {"ef_construction": -8}}})
 
 
 def test_off_mode_emits_no_statements() -> None:
@@ -138,20 +156,22 @@ def test_apply_hnsw_settings_off_is_noop() -> None:
     assert executed == []
 
 
-def test_default_config_ships_search_hnsw_block() -> None:
+def test_default_config_ships_retrieval_hnsw_block() -> None:
     from typing import cast
 
     from corpus_kb.config import get_default_config
 
-    search = cast(dict[str, object], get_default_config()["search"])
-    assert cast(dict[str, object], search["hnsw"]) == {
+    retrieval = cast(dict[str, object], get_default_config()["retrieval"])
+    assert cast(dict[str, object], retrieval["hnsw"]) == {
+        "m": DEFAULT_HNSW_M,
+        "ef_construction": DEFAULT_HNSW_EF_CONSTRUCTION,
         "iterative_scan": DEFAULT_ITERATIVE_SCAN,
         "ef_search": DEFAULT_EF_SEARCH,
         "max_scan_tuples": DEFAULT_MAX_SCAN_TUPLES,
     }
 
 
-def test_both_yaml_files_ship_search_hnsw_block() -> None:
+def test_both_yaml_files_ship_retrieval_hnsw_block() -> None:
     from pathlib import Path
 
     import yaml
@@ -159,12 +179,14 @@ def test_both_yaml_files_ship_search_hnsw_block() -> None:
     repo = Path(__file__).resolve().parent.parent
     for rel in ("config.yaml", Path("src") / "corpus_kb" / "config.yaml"):
         data = yaml.safe_load((repo / rel).read_text(encoding="utf-8"))
-        hnsw = (data.get("search") or {}).get("hnsw")
+        hnsw = (data.get("retrieval") or {}).get("hnsw")
         assert hnsw == {
+            "m": DEFAULT_HNSW_M,
+            "ef_construction": DEFAULT_HNSW_EF_CONSTRUCTION,
             "iterative_scan": DEFAULT_ITERATIVE_SCAN,
             "ef_search": DEFAULT_EF_SEARCH,
             "max_scan_tuples": DEFAULT_MAX_SCAN_TUPLES,
-        }, f"{rel} search.hnsw block missing or inconsistent"
+        }, f"{rel} retrieval.hnsw block missing or inconsistent"
 
 
 def test_load_hnsw_settings_matches_default_config() -> None:

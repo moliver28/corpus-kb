@@ -68,7 +68,8 @@ def _hit(text: str = "hit text") -> SearchResult:
 
 def _handler(pool: _FakePool, *, expand: bool) -> QueryHandler:
     config: dict[str, object] = {
-        "ingest": {"hierarchy": {"expand_to_parent": expand}},
+        "retrieval": {"expand_to_parent": expand},
+        "reranking": {"enabled": False},
     }
     return QueryHandler(pool, reranker=None, config=config)
 

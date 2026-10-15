@@ -31,7 +31,10 @@ PGML_CONFIG = {
     "search": {
         "reranker": "pgml",
         "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
-    }
+    },
+    # Config v2: the score-based reranking block defaults to enabled, which
+    # would preempt the legacy pgml selector under test — disable it here.
+    "reranking": {"enabled": False},
 }
 
 
@@ -303,7 +306,12 @@ async def test_handle_search_default_reranker_issues_no_rank_sql() -> None:
 
     handler = QueryHandler(
         pool=pool,
-        config={"embedding": {"provider": "ollama"}},
+        config={
+            "embedding": {"provider": "ollama"},
+            "reranking": {"enabled": False},
+            # Pin the two-fetch contract (config v2 flips expand_to_parent on).
+            "retrieval": {"expand_to_parent": False},
+        },
     )
     results = await handler.handle_search(SearchQuery(query="q", k=2))
 
@@ -407,12 +415,12 @@ def test_fake_reranker_is_deterministic() -> None:
 
 
 def test_build_reranker_returns_none_when_disabled() -> None:
-    cfg = {"search": {"rerank": {"enabled": False}}}
+    cfg = {"reranking": {"enabled": False}}
     assert build_reranker(cfg) is None
 
 
 def test_build_reranker_returns_fake_in_test_mode() -> None:
-    cfg = {"search": {"rerank": {"enabled": True, "backend": "fake"}}}
+    cfg = {"reranking": {"enabled": True, "backend": "fake"}}
     reranker = build_reranker(cfg)
     assert reranker is not None
     assert reranker.score("q", ["x"]) == FakeReranker().score("q", ["x"])

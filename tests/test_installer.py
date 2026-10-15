@@ -46,7 +46,7 @@ async def test_doctor_cpu_only() -> None:
 
     output = stdout_capture.getvalue()
     assert "Profile:      minimal" in output
-    assert "ollama pull nomic-embed-text" in output
+    assert "ollama pull qwen3-embedding:4b" in output
 
 
 @pytest.mark.asyncio
