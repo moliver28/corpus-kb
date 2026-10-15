@@ -1,14 +1,15 @@
 """Rerankers for Corpus-KB.
 
-IdentityReranker (``search.reranker: none``, the default): pass-through —
+IdentityReranker (legacy ``search.reranker: none`` selector): pass-through —
 results are already fused by ``corpus.rrf_fusion()``.
-PgmlReranker (``search.reranker: pgml``): cross-encoder reranking via
-``pgml.rank()`` inside PostgreSQL.
-OllamaReranker (``search.reranker: ollama`` or ``search.rerank.enabled``):
+PgmlReranker (legacy ``search.reranker: pgml`` selector): cross-encoder
+reranking via ``pgml.rank()`` inside PostgreSQL.
+OllamaReranker (``reranking.enabled: true``, the canonical gate; the
+``search.reranker`` selector stays accepted as a legacy alias):
 scores (query, chunk) pairs with the qwen3-reranker judgment contract —
 that model family has NO rerank endpoint and NO float score output; it
 answers a yes/no relevance judgment, so the score is
-``P("yes") / (P("yes") + P("no"))`` computed from the TOKEN LOGPROBS of the
+``P("yes") / P("yes") + P("no")`` computed from the TOKEN LOGPROBS of the
 judgment position (verified live against Ollama 0.31.1: ``/api/generate``
 accepts ``logprobs=true`` plus ``top_logprobs=<k>`` and returns per-token
 logprob arrays with ranked alternatives; ``logprobs`` as a number is
@@ -350,8 +351,8 @@ def build_reranker(config: dict[str, object]) -> object | None:
     """Build the configured reranker, or None if disabled (U30 production gate)."""
     if not load_rerank_settings(config).enabled:
         return None
-    rerank_cfg = cast(dict[str, object], (config.get("search", {}) or {}).get("rerank", {}) or {})
-    if rerank_cfg.get("backend") == "fake":
+    reranking = cast(dict[str, object], (config.get("reranking", {}) or {}))
+    if reranking.get("backend") == "fake":
         return FakeReranker()
     return OllamaReranker(config)
 

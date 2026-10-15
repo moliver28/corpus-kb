@@ -40,13 +40,14 @@ logger = logging.getLogger(__name__)
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 # pgvector enforces the EXACT typmod width of the target column (verified on
-# pgvector 0.8.3 / Postgres 16.14: a 768-dim insert into vector(4096) fails
-# with SQLSTATE 22000 "expected 4096 dimensions, not 768" — no padding, no
-# truncation). atttypmod for a vector(N) column is exactly N (-1 un-typmodded).
+# pgvector 0.8.3 / Postgres 16.14: a 768-dim insert into halfvec(2560) fails
+# with SQLSTATE 22000 "expected 2560 dimensions, not 768" — no padding, no
+# truncation). atttypmod for a vector(N)/halfvec(N) column is exactly N
+# (-1 un-typmodded).
 _VECTOR_TYPEMOD_SQL = (
     "SELECT a.atttypmod AS width, format_type(a.atttypid, a.atttypmod) AS typ "
     "FROM pg_attribute a "
-    "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'vector'"
+    "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'embedding'"
 )
 _DIMENSION_MISMATCH_RE = re.compile(r"expected (\d+) dimensions, not (\d+)")
 
@@ -56,15 +57,15 @@ async def assert_vector_column_width(
     dimensions: int,
     embedding_model: str,
 ) -> None:
-    """Fail fast when ``dimensions`` cannot enter ``chunks_vectors.vector``.
+    """Fail fast when ``dimensions`` cannot enter ``chunks_vectors.embedding``.
 
-    The shipped schema fixes the column at ``vector(4096)`` (a max-capacity
-    slot; storage/schema.sql), so the shipped default model (nomic-embed-text,
-    768d) CANNOT ingest until the config switches model. Probe the catalog
-    once and raise a typed ConfigError naming the schema reality and the two
-    config keys, BEFORE the per-chunk inserts fail mid-transaction. The probe
-    is advisory: an unreadable catalog or a missing table defers to the
-    INSERT's own error.
+    The shipped schema fixes the column at ``halfvec(2560)`` (the native
+    width of the default qwen3-embedding:4b; storage/schema.sql), so a
+    model emitting any other width CANNOT ingest until the config or the
+    schema migrates. Probe the catalog once and raise a typed ConfigError
+    naming the schema reality and the two config keys, BEFORE the per-chunk
+    inserts fail mid-transaction. The probe is advisory: an unreadable
+    catalog or a missing table defers to the INSERT's own error.
     """
     try:
         row = await conn.fetchrow(_VECTOR_TYPEMOD_SQL)
@@ -76,13 +77,14 @@ async def assert_vector_column_width(
     if width < 0 or width == dimensions:
         return
     raise ConfigError(
-        f"Embedding width {dimensions} does not fit the vector column {row['typ']}. "
+        f"Embedding width {dimensions} does not fit the embedding column {row['typ']}. "
         "pgvector needs an exact match. Every vector insert will fail.",
         remediation=(
-            f"chunks_vectors.vector stores exactly {width} dimensions. Set "
+            f"chunks_vectors.embedding stores exactly {width} dimensions. Set "
             f"embedding.model to a model that emits {width} dimensions (example: "
-            f"qwen3-embedding:8b-q8_0), set embedding.dimensions to {width}, then "
-            "re-ingest."
+            "qwen3-embedding:4b), set embedding.dimensions to "
+            f"{width}, then re-ingest. Any other width needs a column "
+            "migration (migration 025 is the current regime)."
         ),
     )
 
@@ -94,13 +96,14 @@ def _width_config_error(exc: asyncpg.DataError, embedding_model: str) -> ConfigE
         raise exc
     expected, actual = int(match.group(1)), int(match.group(2))
     return ConfigError(
-        f"Embedding width {actual} does not fit the vector column vector({expected}) "
+        f"Embedding width {actual} does not fit the embedding column halfvec({expected}) "
         f"(model {embedding_model!r}). pgvector needs an exact match.",
         remediation=(
-            f"chunks_vectors.vector stores exactly {expected} dimensions. Set "
+            f"chunks_vectors.embedding stores exactly {expected} dimensions. Set "
             f"embedding.model to a model that emits {expected} dimensions (example: "
-            f"qwen3-embedding:8b-q8_0), set embedding.dimensions to {expected}, then "
-            "re-ingest."
+            "qwen3-embedding:4b), set embedding.dimensions to "
+            f"{expected}, then re-ingest. Any other width needs a column "
+            "migration (migration 025 is the current regime)."
         ),
     )
 
@@ -352,7 +355,7 @@ class PostgresIngestStore:
         self,
         chunks: list[Chunk],
         embedding_model: str,
-        dimensions: int = 768,
+        dimensions: int = 2560,
         vectors_1024: dict[str, list[float]] | None = None,
     ) -> int:
         """Insert chunk vectors. vectors_1024, if provided, is keyed by chunk_id (str).
@@ -363,7 +366,7 @@ class PostgresIngestStore:
         flag honestly (all-zero vectors are the embedder-failure marker) and
         mirrors it onto the owning chunks row.
 
-        Width guard: the vector column typmod is probed ONCE up front
+        Width guard: the embedding column typmod is probed ONCE up front
         (:func:`assert_vector_column_width`) and any pgvector width DataError
         inside the loop is re-raised as the same typed ConfigError — a
         model/dimension mismatch is a config problem, not a write failure.
@@ -387,11 +390,11 @@ class PostgresIngestStore:
                     degraded = all(v == 0.0 for v in chunk.embedding)
                     await conn.execute(
                         """
-                        INSERT INTO chunks_vectors (chunk_id, tenant_id, vector, vector_1024,
+                        INSERT INTO chunks_vectors (chunk_id, tenant_id, embedding, vector_1024,
                             embedding_model, dimensions, degraded)
-                        VALUES ($1, $2, $3::vector, $4::vector, $5, $6, $7)
+                        VALUES ($1, $2, $3::halfvec, $4::vector, $5, $6, $7)
                         ON CONFLICT (chunk_id) DO UPDATE
-                        SET vector = $3::vector,
+                        SET embedding = $3::halfvec,
                             vector_1024 = $4::vector,
                             embedding_model = $5, dimensions = $6, embedded_at = NOW(),
                             degraded = $7

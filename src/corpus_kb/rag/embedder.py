@@ -23,10 +23,18 @@ from ollama import Client
 from ollama._types import EmbedResponse
 
 from ..config import load_config
+from ..errors import ConfigError
+from .model_profiles import native_dimensions
 
 logger = logging.getLogger(__name__)
 
 MAX_CACHE_SIZE = 10_000
+
+# The shipped defaults (three-way sync: config.py defaults, both config.yaml
+# files, this module). No silent other fallback exists; a config missing the
+# key gets exactly this pair.
+DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:4b"
+DEFAULT_EMBEDDING_DIMENSIONS = 2560
 
 # Bound on every embed call (seconds). Same contract as nli_client.py
 # (commit 3e37bed): without a client timeout, a server that accepts TCP but
@@ -42,6 +50,8 @@ UNIT_NORM_TOLERANCE = 0.02
 # Query-side instruction for instruction-tuned embedding models (e.g.
 # Qwen3-Embedding). Applied to QUERIES only — documents are embedded raw.
 # Todo 13's G1 ablation tunes the wording here, not at call sites.
+# BYTE-IDENTICAL CONTRACT: the text is cache-keyed (sha256 of the instructed
+# text); changing it invalidates every recorded fixture and cache entry.
 QUERY_INSTRUCTION_PREFIX = (
     "Instruct: Given a qualitative research query, retrieve relevant interview exchanges\nQuery: "
 )
@@ -51,7 +61,10 @@ def instruct(text: str) -> str:
     """Prefix a query with the instruction-tuned embedding instruction.
 
     Instruction-tuned embedding models expect the instruction on the QUERY
-    side only; instructing documents too degrades retrieval.
+    side only; instructing documents too degrades retrieval. Gated per
+    embedder instance by ``embedding.query_instruction`` (see
+    ``OllamaEmbedder.instruct``) — the research grain keeps calling this
+    module function directly (its own committed contract).
     """
     return QUERY_INSTRUCTION_PREFIX + text
 
@@ -89,10 +102,16 @@ class OllamaEmbedder:
         self._config = config or load_config()
         embedding = cast(dict[str, object], self._config.get("embedding", {}))
 
-        self.model = _str_or_default(embedding, "model", "nomic-embed-text")
+        self.model = _str_or_default(embedding, "model", DEFAULT_EMBEDDING_MODEL)
         self.base_url = _str_or_default(embedding, "base_url", "http://localhost:11434")
         self.batch_size = _int_or_default(embedding, "batch_size", 32)
-        self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self.dimensions = _int_or_default(embedding, "dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
+        # Config-v2 gates: ``query_instruction`` toggles the query-side
+        # prefix at instruct(); ``mrl_trained`` (with a configured width
+        # BELOW the model's native width) arms the Ollama dimensions
+        # passthrough.
+        self.query_instruction = bool(embedding.get("query_instruction", True))
+        self.mrl_trained = bool(embedding.get("mrl_trained", False))
 
         self._client = Client(host=self.base_url, timeout=EMBED_TIMEOUT_SECONDS)
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
@@ -139,12 +158,59 @@ class OllamaEmbedder:
 
         return results
 
+    def _request_dimensions(self) -> int | None:
+        """The ``dimensions`` value to pass to Ollama, or None for native.
+
+        MRL passthrough contract: only when the model is declared
+        Matryoshka-trained AND the configured width is LOWER than the
+        model's native width. Requesting the native width (or truncating a
+        non-MRL model) is refused — the native call is byte-identical to
+        the pre-v2 behavior.
+        """
+        if not self.mrl_trained:
+            return None
+        native = native_dimensions(self.model)
+        if native is None or self.dimensions >= native:
+            return None
+        return self.dimensions
+
+    def _validate_returned_width(self, vectors: list[list[float]]) -> None:
+        """Raised-dim contract: the model must emit the configured width.
+
+        A width mismatch means the config and the model disagree (wrong
+        ``embedding.dimensions``, or a model whose output is not what its
+        profile says). Zero vectors from the degraded fallback never reach
+        this check (that path returns early).
+        """
+        for vector in vectors:
+            if len(vector) != self.dimensions:
+                raise ConfigError(
+                    f"Embedding model {self.model!r} returned {len(vector)} dimensions "
+                    f"but embedding.dimensions is configured as {self.dimensions}. "
+                    "The schema stores exactly the configured width.",
+                    remediation=(
+                        "Set embedding.dimensions to the model's native output width "
+                        f"(native width for {self.model!r}: "
+                        f"{native_dimensions(self.model)}), then re-ingest. If the model "
+                        "is not the intended one, set embedding.model first. Check "
+                        "docs/ADMIN.md for the model-schema matrix."
+                    ),
+                )
+
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
         try:
-            response: EmbedResponse = self._client.embed(
-                model=self.model,
-                input=texts,
-            )
+            request_dimensions = self._request_dimensions()
+            if request_dimensions is not None:
+                response: EmbedResponse = self._client.embed(
+                    model=self.model,
+                    input=texts,
+                    dimensions=request_dimensions,
+                )
+            else:
+                response = self._client.embed(
+                    model=self.model,
+                    input=texts,
+                )
         # httpx.TimeoutException is a SIBLING of NetworkError (both under
         # TransportError): an expired EMBED_TIMEOUT_SECONDS bound must
         # degrade to zero vectors exactly like a refused connection.
@@ -155,7 +221,9 @@ class OllamaEmbedder:
             )
             return [[0.0] * self.dimensions for _ in texts]
 
-        return [list(vector) for vector in response.embeddings]
+        vectors = [list(vector) for vector in response.embeddings]
+        self._validate_returned_width(vectors)
+        return vectors
 
     def embed_matryoshka(self, text: str, dim: int) -> list[float]:
         """Matryoshka-truncated embedding: reuses embed(), no extra network call."""
@@ -165,7 +233,14 @@ class OllamaEmbedder:
         return [_slice_normalize(v, dim) for v in self.embed_batch(texts)]
 
     def instruct(self, text: str) -> str:
-        """Return the query-side instructed text (see module-level instruct)."""
+        """Query-side instructed text, gated by ``embedding.query_instruction``.
+
+        False/absent-falsy returns the text unchanged (documents and
+        instruction-less models must embed raw); the prefix text itself is
+        byte-identical (it is cache-keyed).
+        """
+        if not self.query_instruction:
+            return text
         return instruct(text)
 
 
@@ -244,8 +319,8 @@ class PgmlEmbedder:
     ) -> None:
         self._config = config or load_config()
         embedding = cast(dict[str, object], self._config.get("embedding", {}))
-        self.model = _str_or_default(embedding, "model", "nomic-embed-text")
-        self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self.model = _str_or_default(embedding, "model", DEFAULT_EMBEDDING_MODEL)
+        self.dimensions = _int_or_default(embedding, "dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
         raw_batch_size = _int_or_default(embedding, "batch_size", self.DEFAULT_BATCH_SIZE)
         self.batch_size = max(1, min(self.MAX_BATCH_SIZE, raw_batch_size))
         self._pool = pool
@@ -307,8 +382,9 @@ class FakeEmbedder:
             dict[str, object],
             (config or load_config()).get("embedding", {}),
         )
-        self.dimensions = _int_or_default(embedding, "dimensions", 768)
+        self.dimensions = _int_or_default(embedding, "dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
         self.model = "fake-embedder"
+        self.query_instruction = bool(embedding.get("query_instruction", True))
 
     def embed(self, text: str) -> list[float]:
         """Return a deterministic vector for ``text``."""
@@ -326,7 +402,9 @@ class FakeEmbedder:
         return [_slice_normalize(v, dim) for v in self.embed_batch(texts)]
 
     def instruct(self, text: str) -> str:
-        """Return the query-side instructed text (see module-level instruct)."""
+        """Query-side instructed text, gated by ``embedding.query_instruction``."""
+        if not self.query_instruction:
+            return text
         return instruct(text)
 
     def _vector_for(self, text: str) -> list[float]:
@@ -335,7 +413,7 @@ class FakeEmbedder:
         return [rng.uniform(-1.0, 1.0) for _ in range(self.dimensions)]
 
 
-DEFAULT_EMBEDDING_PROVIDER = "pgml"
+DEFAULT_EMBEDDING_PROVIDER = "ollama"
 
 
 def create_embedder(
@@ -344,9 +422,10 @@ def create_embedder(
 ) -> OllamaEmbedder | PgmlEmbedder:
     """Return the embedder selected by ``embedding.provider`` in config.
 
-    - ``"pgml"`` (default): PgmlEmbedder, embedding in-database via the pool.
-      Without a pool it still constructs, but returns zero-vectors.
-    - ``"ollama"``: OllamaEmbedder, embedding via a local Ollama instance.
+    - ``"ollama"`` (default): OllamaEmbedder, embedding via a local Ollama
+      instance.
+    - ``"pgml"``: PgmlEmbedder, embedding in-database via the pool. Without
+      a pool it still constructs, but returns zero-vectors.
 
     Raises ``ValueError`` for any other provider.
     """

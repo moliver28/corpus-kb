@@ -39,7 +39,10 @@ CONTEXTUAL_TIMEOUT_SECONDS = 120.0
 
 class ContextGenerator:
     def __init__(self, config: dict[str, object] | None = None) -> None:
-        cfg = cast(dict[str, object], (config or {}).get("contextual", {}) or {})
+        cfg = cast(
+            dict[str, object],
+            (((config or {}).get("ingest", {}) or {}).get("contextualize", {}) or {}),
+        )
         self.model = str(cfg.get("model", "qwen3:4b"))
         self.base_url = str(cfg.get("base_url", "http://localhost:11434"))
         self.temperature = float(cfg.get("temperature", 0.0))

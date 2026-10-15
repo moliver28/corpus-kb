@@ -72,22 +72,25 @@ def load_installer_profiles(config: dict[str, Any]) -> dict[str, Any]:
     profiles = installer.get("profiles", {})
     if not isinstance(profiles, dict) or not profiles:
         profiles = {
+            # Schema-coherent: all three profiles embed at 2560 dims (the
+            # halfvec(2560) schema width); only the LLM varies. A different
+            # embedding width needs a schema migration first.
             "minimal": {
                 "ram_gb_max": 8,
                 "vram_gb_max": 0,
-                "model": "nomic-embed-text",
+                "model": "qwen3-embedding:4b",
                 "llm": "qwen3:0.6b",
             },
             "balanced": {
                 "ram_gb_max": 16,
                 "vram_gb_max": 4,
-                "model": "nomic-embed-text",
+                "model": "qwen3-embedding:4b",
                 "llm": "qwen3:4b",
             },
             "performance": {
                 "ram_gb_max": 999,
                 "vram_gb_max": 8,
-                "model": "qwen3-embedding:8b-q8_0",
+                "model": "qwen3-embedding:4b",
                 "llm": "qwen3:14b",
             },
         }

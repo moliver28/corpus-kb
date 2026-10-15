@@ -1,4 +1,4 @@
-"""Degraded-chunk repair for the ingest pipeline (zero-drift Wave 3B split).
+"""Degraded + stale chunk repair for the ingest pipeline (zero-drift 3B split).
 
 Moved byte-identical from ``ingest_common``: ``reembed_degraded`` — the
 Stage-3 handler behind ``corpus-kb ingest-reembed`` and the MCP/HTTP
@@ -6,6 +6,12 @@ reembed surfaces. ``ingest_common`` re-exports it. The vector-write
 config reads (model, dimensions, matryoshka dim) come from the shared
 ``vector_write_config`` so a repair and a fresh ingest read them
 identically.
+
+Config-v2 extension: the repair ALSO targets STALE rows —
+``chunks_vectors.embedding IS NULL`` — which is the state migration 025
+leaves behind when the embedding model changes (the old model's vectors
+cannot convert). Degraded (all-zero-flagged) behavior is unchanged; the
+summary reports the counts per class.
 """
 
 from __future__ import annotations
@@ -31,20 +37,24 @@ async def reembed_degraded(
     limit: int | None = None,
     doc_id: str | None = None,
 ) -> dict[str, object]:
-    """Re-embed chunks whose stored vector is flagged degraded (Stage 3).
+    """Re-embed chunks whose stored vector is degraded or stale (Stage 3).
 
-    Targets rows where ``chunks_vectors.degraded`` or ``chunks.degraded`` is
-    TRUE (the migration-022 flags), rebuilds each embedding input with
-    ``build_embedding_input`` (the exact bytes a fresh ingest would embed),
-    and on a non-zero result writes the repaired vector and CLEARS the
-    degraded flags. All-zero output leaves the row flagged — a repair that
-    produced the degraded-mode marker is a failure, never a silent "fix".
+    Targets rows where ``chunks_vectors.degraded`` or ``chunks.degraded``
+    is TRUE (the migration-022 flags) OR ``chunks_vectors.embedding`` IS
+    NULL (the migration-025 stale state after a model switch), rebuilds
+    each embedding input with ``build_embedding_input`` (the exact bytes a
+    fresh ingest would embed), and on a non-zero result writes the repaired
+    vector and CLEARS the degraded flags. All-zero output leaves the row
+    flagged — a repair that produced the degraded-mode marker is a failure,
+    never a silent "fix".
 
     Requires migration 022; on a pre-migration database the degraded columns
     do not exist, so this returns ``{"status": "unavailable", ...}`` instead
     of crashing. CLI/surface registration is Stage 5; this is the handler.
 
-    Returns an honest ``{scanned, fixed, failed}`` summary.
+    Returns an honest ``{status, scanned, fixed, failed}`` summary; the
+    ``stale`` count (repaired rows that were stale rather than degraded)
+    is added only when non-zero, per the conditional-envelope contract.
     """
     async with pg_pool.acquire() as conn, conn.transaction():
         # set_config FIRST inside the transaction: a LOCAL GUC issued on an
@@ -74,10 +84,12 @@ async def reembed_degraded(
         rows = await conn.fetch(
             """
             SELECT cv.chunk_id::text AS chunk_id, c.doc_id::text AS doc_id,
-                   c.text, c.context_blurb
+                   c.text, c.context_blurb,
+                   (cv.embedding IS NULL) AS was_stale
             FROM chunks_vectors cv
             JOIN chunks c ON c.chunk_id = cv.chunk_id
-            WHERE cv.tenant_id = $1 AND (cv.degraded = TRUE OR c.degraded = TRUE)
+            WHERE cv.tenant_id = $1
+              AND (cv.degraded = TRUE OR c.degraded = TRUE OR cv.embedding IS NULL)
               AND ($2::uuid IS NULL OR c.doc_id = $2::uuid)
             ORDER BY cv.embedded_at NULLS LAST
             LIMIT $3
@@ -115,13 +127,59 @@ async def reembed_degraded(
 
     embedding_model, dimensions, v1024_dim = vector_write_config(config)
 
+    stale_by_chunk = {row["chunk_id"] for row in rows if row["was_stale"]}
+    fixed, failed, stale = await _write_repairs(
+        pg_pool,
+        tenant_id=tenant_id,
+        chunks=chunks,
+        stale_by_chunk=stale_by_chunk,
+        embedding_model=embedding_model,
+        dimensions=dimensions,
+        v1024_dim=v1024_dim,
+    )
+    summary: dict[str, object] = {
+        "status": "success",
+        "scanned": len(chunks),
+        "fixed": fixed,
+        "failed": failed,
+    }
+    if stale > 0:
+        summary["stale"] = stale
+    if embed_meta.get("embedding_mode") is not None:
+        summary["embedding_mode"] = embed_meta["embedding_mode"]
+    if embed_meta.get("embedding_note") is not None:
+        summary["embedding_note"] = embed_meta["embedding_note"]
+    if degraded and embed_err is not None:
+        # The write path above already judged each vector per-chunk; this
+        # flag reports the PRIMARY provider's health honestly (a fallback
+        # repair still succeeds but the primary needs attention).
+        summary["degraded"] = True
+        summary["warning"] = embed_err
+    return summary
+
+
+async def _write_repairs(
+    pg_pool: asyncpg.Pool,
+    *,
+    tenant_id: str,
+    chunks: list[Chunk],
+    stale_by_chunk: set[str],
+    embedding_model: str,
+    dimensions: int,
+    v1024_dim: int | None,
+) -> tuple[int, int, int]:
+    """Write the repaired vectors; return (fixed, failed, stale) counts.
+
+    One transaction, tenant GUC first: the UPDATEs additionally pin
+    tenant_id explicitly so a missing/lost tenant context can never match
+    (or, worse, clear flags on) another tenant's rows. All-zero output
+    leaves the row flagged and counts as failed — a repair that produced
+    the degraded-mode marker is a failure, never a silent "fix".
+    """
     fixed = 0
     failed = 0
+    stale = 0
     async with pg_pool.acquire() as conn, conn.transaction():
-        # Same GUC-in-transaction contract as the scan block above; the
-        # UPDATEs additionally pin tenant_id explicitly so a missing/lost
-        # tenant context can never match (or, worse, clear flags on) another
-        # tenant's rows.
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
         for chunk in chunks:
             if chunk.embedding is None or _all_zero([chunk.embedding]):
@@ -138,7 +196,7 @@ async def reembed_degraded(
             await conn.execute(
                 """
                 UPDATE chunks_vectors
-                SET vector = $2::vector,
+                SET embedding = $2::halfvec,
                     vector_1024 = COALESCE($3::vector, chunks_vectors.vector_1024),
                     embedding_model = $4, dimensions = $5,
                     embedded_at = NOW(), degraded = FALSE
@@ -157,20 +215,6 @@ async def reembed_degraded(
                 tenant_id,
             )
             fixed += 1
-    summary: dict[str, object] = {
-        "status": "success",
-        "scanned": len(chunks),
-        "fixed": fixed,
-        "failed": failed,
-    }
-    if embed_meta.get("embedding_mode") is not None:
-        summary["embedding_mode"] = embed_meta["embedding_mode"]
-    if embed_meta.get("embedding_note") is not None:
-        summary["embedding_note"] = embed_meta["embedding_note"]
-    if degraded and embed_err is not None:
-        # The write path above already judged each vector per-chunk; this
-        # flag reports the PRIMARY provider's health honestly (a fallback
-        # repair still succeeds but the primary needs attention).
-        summary["degraded"] = True
-        summary["warning"] = embed_err
-    return summary
+            if chunk.chunk_id in stale_by_chunk:
+                stale += 1
+    return fixed, failed, stale
