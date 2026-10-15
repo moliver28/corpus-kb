@@ -12,8 +12,8 @@ strongest terms (c-TF-IDF). Outlier chunks stay unassigned.
 
 When `topics.llm_reduction` is on, a local Ollama model writes a short
 label per topic. It may also merge near-duplicate topics. This step
-never fails the build: if the model is down, the c-TF-IDF labels stay
-and the result records the note.
+never fails the build. A down model keeps the c-TF-IDF labels. The
+result records the note.
 
 ## Requirements
 
