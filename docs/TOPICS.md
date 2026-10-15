@@ -11,7 +11,7 @@ pipeline clusters those vectors and labels each cluster with its
 strongest terms (c-TF-IDF). Outlier chunks stay unassigned.
 
 When `topics.llm_reduction` is on, a local Ollama model writes a short
-human label per topic and may merge near-duplicate topics. This step
+label per topic. It may also merge near-duplicate topics. This step
 never fails the build: if the model is down, the c-TF-IDF labels stay
 and the result records the note.
 
