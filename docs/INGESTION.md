@@ -578,9 +578,9 @@ cleanly.
 | `fixture_dir` | `tests/fixtures/contextual_recorded` | Recorded blurb fixtures |
 | `live_fallback` | `false` | Allow live LLM calls when no fixture exists |
 
-Legacy aliases: the old `search.*`, `ingest.hierarchy.*`, and
-`contextual.*` names still load. Canonical keys win. Alias use logs a
-deprecation warning.
+Legacy namespaces still load as aliases: `search.*`, `ingest.hierarchy.*`,
+and `contextual.*`. Canonical keys win. Alias use logs a deprecation
+warning.
 | `judge.enabled` | `true` | Enable claim-level groundedness verification |
 | `judge.model` | `qwen3:4b` | Model for claim decomposition and entailment |
 | `judge.base_url` | `http://localhost:11434` | Ollama API URL for the judge |

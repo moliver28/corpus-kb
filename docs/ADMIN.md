@@ -176,9 +176,10 @@ options.
 
 Vectors are never padded and never truncated. Three guards make this honest:
 
-1. **At ingest**: the write path probes the column width first. A mismatch raises a `config_error` naming the fix. Set `embedding.model` to a 2560-dimension model, set `embedding.dimensions` to 2560, then re-ingest.
-2. **At the embedder**: the first embed response is width-checked; a model that returns a different width raises a `config_error` with the native-width fix.
-3. **In doctor**: the `embedding dimensions vs schema` check compares `embedding.dimensions` with the column typmod and reports the stored per-row dimension histogram. FAIL on mismatch.
+1. **At ingest**: the write path probes the column width first. A mismatch raises a typed `config_error`.
+2. The fix: point `embedding.model` at a model emitting 2560 dimensions. Set `embedding.dimensions` to 2560. Then re-ingest.
+3. **At the embedder**: the first embed response is width-checked. A wrong-width model raises a `config_error` with the native-width fix.
+4. **In doctor**: the dimension check compares the config with the column typmod. It reports the stored per-row histogram. FAIL on mismatch.
 
 A model switch invalidates all stored embeddings. Migration 025 retypes the
 column; old rows become stale (`embedding IS NULL`). `corpus-kb
