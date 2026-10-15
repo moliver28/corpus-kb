@@ -4,7 +4,10 @@
       "name": "Corpus-KB",
       "description": "Local RAG system — search, ingest, knowledge graph, SQL queries over your code and documents",
       "command": "corpus-kb",
-      "args": ["--transport", "stdio"],
+      "args": [
+        "--transport",
+        "stdio"
+      ],
       "env": {},
       "disabled": false,
       "autoApprove": [
@@ -25,7 +28,9 @@
         "query_document_stats",
         "sync_database",
         "ingest_status",
-        "ingest_reembed"
+        "ingest_reembed",
+        "topics_build",
+        "topics_list"
       ]
     }
   }

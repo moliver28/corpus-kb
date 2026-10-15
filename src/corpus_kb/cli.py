@@ -60,6 +60,12 @@ app = typer.Typer(help="Corpus-KB command-line interface")
 register_ingest_commands(app)
 register_operations(app)
 
+# Wave 4 topics front door: cli_topics imports corpus_kb.cli nowhere (it
+# reuses the cli_ingest plumbing), so this import stays acyclic.
+from corpus_kb.cli_topics import register as register_topics_commands  # noqa: E402
+
+register_topics_commands(app)
+
 
 def _version_callback(value: bool) -> None:
     if value:

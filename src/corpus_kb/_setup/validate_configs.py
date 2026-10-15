@@ -73,6 +73,9 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         # -- ingest front door (Stage 5, tools/ingest_surface_tools.py) ------
         "ingest_status",
         "ingest_reembed",
+        # -- topics layer (Wave 4, tools/topics_tools.py) ---------------------
+        "topics_build",
+        "topics_list",
     }
 )
 

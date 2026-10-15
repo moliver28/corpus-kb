@@ -28,6 +28,7 @@ Route families (the Route order below is the original single-file order):
   api/routes_tags_metadata.py  POST /api/tags, /api/metadata  GET /api/metadata
                                POST+GET /api/documents/{doc_id}/tags
   api/research_http.py         research + release surfaces (U5/P7)
+  api/routes_topics.py         POST /api/topics/build  GET /api/topics
 """
 
 from __future__ import annotations
@@ -85,6 +86,7 @@ from corpus_kb.api.routes_tags_metadata import (
     set_metadata_route,
     tag_document_route,
 )
+from corpus_kb.api.routes_topics import topics_build_route, topics_list_route
 
 
 def create_http_app() -> Starlette:
@@ -97,6 +99,9 @@ def create_http_app() -> Starlette:
         # Stage-5 ingest front door: status + reembed surfaces.
         Route("/api/ingest/status", ingest_status_route, methods=["GET"]),
         Route("/api/ingest/reembed", ingest_reembed_route, methods=["POST"]),
+        # Wave 4 topics layer.
+        Route("/api/topics/build", topics_build_route, methods=["POST"]),
+        Route("/api/topics", topics_list_route, methods=["GET"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),

@@ -62,6 +62,7 @@ import corpus_kb.tools.notebook_tools as notebook_tools_module
 import corpus_kb.tools.release_tools as release_tools_module
 import corpus_kb.tools.research_tools as research_tools_module
 import corpus_kb.tools.search_tools as search_tools_module
+import corpus_kb.tools.topics_tools as topics_tools_module
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.contracts import OPERATIONS, SKIPPED_OPERATIONS
@@ -201,6 +202,14 @@ async def _shared_ingest_status(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_ingest_reembed(ctx: dict[str, Any]) -> dict[str, Any]:
     return await ingest_surface_tools_module.ingest_reembed(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_topics_build(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await topics_tools_module.topics_build(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_topics_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await topics_tools_module.topics_list(ctx["pool"], config=ctx["config"], limit=50)
 
 
 async def _shared_search(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -370,6 +379,18 @@ LEGS: dict[str, _Leg] = {
         _shared_ingest_reembed,
         _post("/api/ingest/reembed", {}),
         mcp=_mcp({}),
+    ),
+    "topics_build": _Leg(
+        _shared_topics_build,
+        _post("/api/topics/build", {}),
+        _sock("topics_build", {}),
+        _mcp({}),
+    ),
+    "topics_list": _Leg(
+        _shared_topics_list,
+        _get("/api/topics", {"limit": 50}),
+        _sock("topics_list", {"limit": 50}),
+        _mcp({"limit": 50}),
     ),
     "search": _Leg(
         _shared_search,
@@ -831,6 +852,8 @@ def test_catalogue_matches_surface_registry() -> None:
         "release_assess",
         "release_status",
         "ingest_status",
+        "topics_build",
+        "topics_list",
         "research_ingest_transcript",
         "notebook_ask",
     } <= set(checked)

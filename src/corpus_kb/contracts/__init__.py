@@ -4,7 +4,8 @@ Row types live in ``contracts.model``, the shared envelope tuples in
 ``contracts.envelopes``, and the rows themselves in
 ``contracts.catalogue`` (ingest + search), ``contracts.catalogue_documents``
 (documents + graph), ``contracts.catalogue_release`` (release lifecycle),
-and ``contracts.catalogue_research`` (research rows + the SKIP set). This
+``contracts.catalogue_research`` (research rows + the SKIP set), and
+``contracts.catalogue_topics`` (the Wave 4 topics family). This
 package assembles the FINAL catalogue: ``OPERATIONS`` is
 the tuple every consumer (the parity gate, ``corpus-kb operations``)
 iterates, so the test and the inventory can never diverge.
@@ -19,6 +20,7 @@ from corpus_kb.contracts.catalogue_research import (
     RESEARCH_OPERATIONS,
     SKIPPED_OPERATIONS,
 )
+from corpus_kb.contracts.catalogue_topics import TOPICS_OPERATIONS
 from corpus_kb.contracts.model import (
     DEFAULT_TENANT_ID,
     ERROR_MAP,
@@ -35,6 +37,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *DOCUMENTS_OPERATIONS,
     *RELEASE_OPERATIONS,
     *RESEARCH_OPERATIONS,
+    *TOPICS_OPERATIONS,
 )
 
 __all__ = [
