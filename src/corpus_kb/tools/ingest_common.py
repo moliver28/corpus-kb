@@ -254,6 +254,7 @@ async def run_pipeline(
                 rag_backend=rag_backend,
                 is_file=is_file,
                 empty_reason=plan.empty_reason,
+                strategy=resolution.strategy.name,
             )
             # Strategy provenance (plan Section 0): which seam produced the
             # chunks. Attached here because resolution/plan live in this scope.
@@ -288,6 +289,7 @@ async def _run_locked_stages(
     rag_backend: RagBackend | None,
     is_file: bool,
     empty_reason: str | None = None,
+    strategy: str | None = None,
 ) -> dict[str, object]:
     """Pipeline stages under the advisory lock: open the ledger, store, close.
 
@@ -297,7 +299,9 @@ async def _run_locked_stages(
     ``_stage_result_dict``) so the complexity gate holds at --max-absolute D.
     They resolve the module globals (``embed_chunks``,
     ``PostgresIngestStore``) at call time, so tests monkeypatching
-    ``ingest_common.*`` attributes keep working unchanged.
+    ``ingest_common.*`` attributes keep working unchanged. ``strategy``
+    (the resolved strategy name) only feeds the shadow hierarchy's boundary
+    adapter choice.
     """
     ingest_store = PostgresIngestStore(pg_pool, tenant_id)
 
@@ -342,7 +346,7 @@ async def _run_locked_stages(
             shadow_vector_count,
             shadow_note,
         ) = await _stage_shadow_hierarchy(
-            config, document, text, chunks, pg_pool, tenant_id, errors
+            config, document, text, chunks, pg_pool, tenant_id, errors, strategy
         )
 
         entities, relations, extractor_id, stats = await _stage_extract_entities(
@@ -544,12 +548,15 @@ async def _stage_shadow_hierarchy(
     pg_pool: asyncpg.Pool,
     tenant_id: str,
     errors: list[str],
+    strategy: str | None = None,
 ) -> tuple[HierarchySettings, int, int, str | None]:
     """Stage 3: the U48/P6 side-by-side SHADOW hierarchy (additive only).
 
     The v1 chunks/vectors stay the live search corpus; any shadow failure is
-    logged and isolated so it can never break the live ingest. Returns
-    (hierarchy_settings, shadow_chunk_count, shadow_vector_count, shadow_note).
+    logged and isolated so it can never break the live ingest. ``strategy``
+    (the resolved strategy name) steers the shadow tree's boundary adapter.
+    Returns (hierarchy_settings, shadow_chunk_count, shadow_vector_count,
+    shadow_note).
     """
     hierarchy_settings = load_hierarchy_settings(config)
     shadow_chunk_count = 0
@@ -567,6 +574,7 @@ async def _stage_shadow_hierarchy(
                 chunks=chunks,
                 config=config,
                 settings=hierarchy_settings,
+                strategy=strategy,
             )
         except Exception as exc:
             logger.warning("Shadow hierarchy write failed: %s", exc)
