@@ -566,13 +566,17 @@ cleanly.
 | `reranking.score_floor` | `0.15` | Minimum normalized rerank score to keep |
 | `reranking.calibration` | `minmax` | Score calibration method |
 
-| `ingest.contextualize.enabled` | `false` | Enable contextual retrieval for all source types |
-| `ingest.contextualize.enabled_source_types` | `["interview", "research"]` | Source types that always get contextual blurbs |
-| `ingest.contextualize.model` | `qwen3:4b` | Model for blurb generation |
-| `ingest.contextualize.base_url` | `http://localhost:11434` | Ollama API URL for blurb generation |
-| `ingest.contextualize.temperature` | `0.0` | Sampling temperature for blurb generation |
-| `ingest.contextualize.fixture_dir` | `tests/fixtures/contextual_recorded` | Recorded blurb fixtures |
-| `ingest.contextualize.live_fallback` | `false` | Allow live LLM calls when no fixture exists |
+#### ingest.contextualize
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable contextual retrieval for all source types |
+| `enabled_source_types` | `["interview", "research"]` | Source types that always get blurbs |
+| `model` | `qwen3:4b` | Model for blurb generation |
+| `base_url` | `http://localhost:11434` | Ollama API URL for blurb generation |
+| `temperature` | `0.0` | Sampling temperature for blurb generation |
+| `fixture_dir` | `tests/fixtures/contextual_recorded` | Recorded blurb fixtures |
+| `live_fallback` | `false` | Allow live LLM calls when no fixture exists |
 
 Legacy aliases: the old `search.*`, `ingest.hierarchy.*`, and
 `contextual.*` names still load. Canonical keys win. Alias use logs a

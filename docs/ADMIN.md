@@ -176,7 +176,7 @@ options.
 
 Vectors are never padded and never truncated. Three guards make this honest:
 
-1. **At ingest**: the write path probes the column width and raises a `config_error` naming the schema reality and the fix. Set `embedding.model` to a 2560-dimension model, set `embedding.dimensions` to 2560, then re-ingest.
+1. **At ingest**: the write path probes the column width first. A mismatch raises a `config_error` naming the fix. Set `embedding.model` to a 2560-dimension model, set `embedding.dimensions` to 2560, then re-ingest.
 2. **At the embedder**: the first embed response is width-checked; a model that returns a different width raises a `config_error` with the native-width fix.
 3. **In doctor**: the `embedding dimensions vs schema` check compares `embedding.dimensions` with the column typmod and reports the stored per-row dimension histogram. FAIL on mismatch.
 
