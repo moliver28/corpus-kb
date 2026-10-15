@@ -35,12 +35,12 @@ async def _fetch_vectors(
     if not chunk_ids:
         return {}
     rows = await conn.fetch(
-        "SELECT chunk_id, vector FROM chunks_vectors"
+        "SELECT chunk_id, embedding FROM chunks_vectors"
         " WHERE tenant_id=$1 AND chunk_id = ANY($2::uuid[])",
         tenant_id,
         chunk_ids,
     )
-    return {row["chunk_id"]: row["vector"] for row in rows}
+    return {row["chunk_id"]: row["embedding"] for row in rows}
 
 
 async def calibrate_code_floors(

@@ -133,20 +133,20 @@ async def search_similar(
         # U40: ANN scan inside a MATERIALIZED CTE, exact ordering applied
         # outside over the retrieved set (`score + 0`, per pgvector docs).
         # Stage 3: degraded rows are excluded from CANDIDATES only — the
-        # seed subqueries (SELECT vector ... WHERE chunk_id = $1) stay
+        # seed subqueries (SELECT embedding ... WHERE chunk_id = $1) stay
         # unfiltered so a degraded seed document remains discoverable.
         degraded_pred = degraded_candidate_predicate(exclude_degraded)
         rows = await conn.fetch(
             f"""
             WITH candidate AS MATERIALIZED (
                 SELECT cv.chunk_id AS candidate_chunk_id,
-                       1 - (cv.vector <=> (
-                           SELECT vector FROM chunks_vectors WHERE chunk_id = $1
+                       1 - (cv.embedding <=> (
+                           SELECT embedding FROM chunks_vectors WHERE chunk_id = $1
                        )) AS score
                 FROM chunks_vectors cv
                 WHERE cv.tenant_id = $2 AND cv.chunk_id != $1 {degraded_pred}
-                ORDER BY cv.vector <=> (
-                    SELECT vector FROM chunks_vectors WHERE chunk_id = $1
+                ORDER BY cv.embedding <=> (
+                    SELECT embedding FROM chunks_vectors WHERE chunk_id = $1
                 )
                 LIMIT $3
             )

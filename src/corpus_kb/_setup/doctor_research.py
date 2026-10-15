@@ -552,7 +552,7 @@ async def db_checks(conn: asyncpg.Connection, config: dict[str, Any]) -> list[Re
 # Stage 3 doctor additions: degraded/zero-vector corpus health. All three
 # checks are self-guarded (to_regclass / information_schema) so a database
 # without migration 022 reports "not applied" instead of crashing.
-_ZERO_VECTOR_SQL = "SELECT count(*) FROM chunks_vectors WHERE vector::text ~ '^\\[0(,0)*\\]$'"
+_ZERO_VECTOR_SQL = "SELECT count(*) FROM chunks_vectors WHERE embedding::text ~ '^\\[0(,0)*\\]$'"
 DEGRADED_COLUMN_SQL = (
     "SELECT count(*) FROM information_schema.columns "
     "WHERE table_schema = 'public' AND table_name = ANY($1::text[]) "
@@ -699,11 +699,13 @@ async def research_checks(
         checks.append(check_pgvector_version(None if extversion is None else str(extversion)))
         checks.extend(await db_checks(conn, config))
         # Configuration truth (Wave 4C): the configured embedding dimensions
-        # must match the chunks_vectors.vector typmod — pgvector enforces the
+        # must match the chunks_vectors.embedding typmod — pgvector enforces the
         # exact width, so a mismatch fails every vector insert.
-        from corpus_kb._setup.doctor_env import dimension_guard_check
+        from corpus_kb._setup.doctor_env import dimension_guard_check, hnsw_index_check
 
         checks.append(await dimension_guard_check(conn, config))
+        # Build-time index options vs config (WARN-only cross-check).
+        checks.append(await hnsw_index_check(conn, config))
     except Exception as exc:
         checks.append(
             ResearchCheck(

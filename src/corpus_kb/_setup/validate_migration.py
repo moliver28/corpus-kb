@@ -94,7 +94,7 @@ async def validate() -> bool:
 
     # Check 9: Sample vector has correct dimensions
     if pg_vector_count > 0:
-        vec_sample = await conn.fetchrow("SELECT vector FROM chunks_vectors LIMIT 1")
+        vec_sample = await conn.fetchrow("SELECT embedding FROM chunks_vectors LIMIT 1")
         if vec_sample and vec_sample["vector"]:
             vec_str = str(vec_sample["vector"])
             # pgvector format: [0.1,0.2,...] — count commas for dimension estimate

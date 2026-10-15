@@ -178,7 +178,7 @@ async def evaluate_arms(
     from corpus_kb.rag.embedder import instruct
     from corpus_kb.storage.tenant_conn import tenant_connection
 
-    depth = max(settings.candidates_per_branch, k * 2)
+    depth = max(settings.vector_candidates, k * 2)
     latencies: dict[str, list[float]] = {arm: [] for arm in arms}
     recalls: dict[str, list[float]] = {arm: [] for arm in arms}
     mrrs: dict[str, list[float]] = {arm: [] for arm in arms}
