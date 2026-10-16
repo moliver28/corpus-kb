@@ -163,9 +163,11 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         envelope_keys=("status", "result", "degraded_excluded"),
         surfaces=(
             SurfaceSpec(MCP, "search"),
+            SurfaceSpec(CLI, "search"),
             SurfaceSpec(HTTP, "/api/search", "POST"),
             SurfaceSpec(SOCKET, "search"),
         ),
+        exit_codes=(0, 1, 2, 3),
     ),
     Operation(
         name="query",
