@@ -167,13 +167,22 @@ command. Each command says what it does and what success looks like.
 
 9. Search it.
 
+   The CLI talks to the configured database directly; no server needed:
+
+   ```bash
+   corpus-kb search "how does startup work"
+   ```
+
+   Or curl a running server:
+
    ```bash
    curl -X POST http://localhost:8010/api/search \
      -H "Content-Type: application/json" \
      -d '{"query": "how does startup work"}'
    ```
 
-   Success: the JSON answer lists scored results.
+   Success: ranked scored results. Add `--json` for the machine-readable
+   envelope.
 
 New to qualitative coding? Run the narrated demo (~5 minutes). The demo
 needs a research-grade embedder (1024 dimensions or more), so pull the
