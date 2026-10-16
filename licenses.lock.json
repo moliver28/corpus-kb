@@ -967,9 +967,9 @@
   },
   {
     "name": "unstructured",
-    "version": "0.27.27",
+    "version": "0.27.28",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/unstructured/0.27.27/",
+    "homepage": "https://pypi.org/project/unstructured/0.27.28/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {

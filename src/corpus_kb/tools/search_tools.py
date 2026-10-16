@@ -40,9 +40,19 @@ async def search(
     envelope: ``{"status", "result", "degraded_excluded"}`` (plus ``remedy``
     only in the degraded_empty case). ``k=None`` (omitted) resolves to
     ``reranking.return_top_k`` inside the handler.
+
+    The handler does NOT build an embedder itself (the server wiring owns
+    that job and its comment warns what happens without one): a caller that
+    skips it silently loses the vector arm. This entry builds the
+    config-driven embedder per call so CLI and MCP callers get full hybrid
+    search, not FTS-only results. Construction is cheap (no I/O).
     """
     from corpus_kb.domain.models import SearchQuery
     from corpus_kb.handlers.query_handler import QueryHandler
+    from corpus_kb.rag import create_embedder
+
+    cfg = load_config_or_pass(config)
+    embedder = create_embedder(cfg, pg_pool)
 
     search_query = SearchQuery(
         tenant_id=UUID(tenant_id),
@@ -51,6 +61,6 @@ async def search(
         source_type=source_type,
         self_query=self_query,
     )
-    handler = QueryHandler(pg_pool, config=load_config_or_pass(config))
+    handler = QueryHandler(pg_pool, embedder, config=cfg)
     envelope = await handler.handle_search_with_meta(search_query)
     return envelope_to_payload(envelope)
