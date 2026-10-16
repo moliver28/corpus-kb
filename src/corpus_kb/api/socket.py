@@ -7,6 +7,11 @@ Error codes:
   -32600: Invalid request
   -32601: Method not found
   -32603: Internal error
+
+The method table lives in ``api/socket_ops.py``: one arm per catalogue
+operation, core arms ported from the old dispatch chain plus generated
+arms over the shared HTTP tool-route table. This module owns the server:
+connection handling, request parsing, and the error mapping.
 """
 
 from __future__ import annotations
@@ -18,22 +23,16 @@ import logging
 import sys
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+
+from corpus_kb.api.socket_ops import MethodNotFoundError
 
 logger = logging.getLogger(__name__)
-
-
-class MethodNotFoundError(Exception):
-    """Raised by _dispatch when no handler exists for the requested method."""
-
 
 # Platform-specific socket path
 if sys.platform == "win32":
     DEFAULT_SOCKET_PATH = r"\\.\pipe\corpus-kb"
 else:
     DEFAULT_SOCKET_PATH = "/tmp/corpus-kb.sock"
-
-DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 class JSONRPCServer:
@@ -124,139 +123,10 @@ class JSONRPCServer:
             return _error(-32603, str(exc), req_id)
 
     async def _dispatch(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        """Dispatch RPC method to appropriate handler."""
-        tenant_id = params.get("tenant_id", DEFAULT_TENANT)
+        """Dispatch one RPC method through the shared arm table."""
+        from corpus_kb.api.socket_ops import dispatch
 
-        if method == "ingest_file":
-            from corpus_kb.domain.models import IngestFileCommand
-            from corpus_kb.handlers.command_handler import get_command_handler
-
-            cmd = IngestFileCommand(
-                tenant_id=UUID(tenant_id),
-                file_path=params["file_path"],
-                content=params.get("content"),
-                source_type=params.get("source_type"),
-            )
-            return await get_command_handler().handle_ingest_file(cmd)
-
-        elif method == "ingest_text":
-            from corpus_kb.domain.models import IngestTextCommand
-            from corpus_kb.handlers.command_handler import get_command_handler
-
-            cmd = IngestTextCommand(
-                tenant_id=UUID(tenant_id),
-                text=params["text"],
-                source=params.get("source", "raw_text"),
-                source_type=params.get("source_type", "text"),
-            )
-            return await get_command_handler().handle_ingest_text(cmd)
-
-        elif method == "ingest_url":
-            from corpus_kb.api.research_http import research_pool
-            from corpus_kb.tools.ingest_tools import ingest_url
-
-            return await ingest_url(
-                str(params["url"]),
-                await research_pool(),
-                tenant_id=tenant_id,
-                crawl=bool(params.get("crawl", False)),
-                source_type=params.get("source_type"),
-            )
-
-        elif method == "topics_build":
-            from corpus_kb.api.research_http import research_pool
-            from corpus_kb.tools.topics_tools import topics_build as topics_build_tool
-
-            return await topics_build_tool(await research_pool(), tenant_id=tenant_id)
-
-        elif method == "topics_list":
-            from corpus_kb.api.research_http import research_pool
-            from corpus_kb.tools.topics_tools import topics_list as topics_list_tool
-
-            return await topics_list_tool(
-                await research_pool(),
-                tenant_id=tenant_id,
-                limit=int(params.get("limit", 50)),
-            )
-
-        elif method == "search":
-            from corpus_kb.domain.models import SearchQuery
-            from corpus_kb.handlers.query_handler import get_query_handler
-            from corpus_kb.handlers.query_integrity import envelope_to_payload
-
-            query = SearchQuery(
-                tenant_id=UUID(tenant_id),
-                query=params["query"],
-                k=params.get("k"),
-                source_type=params.get("source_type"),
-                self_query=params.get("self_query"),
-            )
-            envelope = await get_query_handler().handle_search_with_meta(query)
-            # Same additive envelope as POST /api/search (parity contract).
-            return envelope_to_payload(envelope)
-
-        elif method == "query":
-            from corpus_kb.domain.models import RoutedQuery
-            from corpus_kb.handlers.router_handler import get_router_handler
-
-            routed_query = RoutedQuery(
-                tenant_id=UUID(tenant_id),
-                query=params["query"],
-                k=params.get("k"),
-            )
-            result = await get_router_handler().handle_routed_query(routed_query)
-            return {"status": "success", "result": result.model_dump(mode="json")}
-
-        elif method == "list_documents":
-            from corpus_kb.domain.models import ListDocumentsQuery
-            from corpus_kb.handlers.query_handler import get_query_handler
-
-            query = ListDocumentsQuery(
-                tenant_id=UUID(tenant_id),
-                limit=params.get("limit", 100),
-                offset=params.get("offset", 0),
-            )
-            results = await get_query_handler().handle_list_documents(query)
-            return {"status": "success", "result": [r.model_dump() for r in results]}
-
-        elif method == "add_entity":
-            from corpus_kb.domain.models import AddEntityCommand
-            from corpus_kb.handlers.command_handler import get_command_handler
-
-            cmd = AddEntityCommand(
-                tenant_id=UUID(tenant_id),
-                name=params["name"],
-                entity_type=params.get("entity_type", "concept"),
-                metadata=params.get("metadata", {}),
-            )
-            return get_command_handler().handle_add_entity(cmd)
-
-        elif method == "verify_answer":
-            from corpus_kb.domain.models import VerifyAnswerQuery
-            from corpus_kb.handlers.query_handler import get_query_handler
-
-            query = VerifyAnswerQuery(
-                answer=params.get("answer", ""), chunk_ids=params.get("chunk_ids", [])
-            )
-            result = await get_query_handler().handle_verify_answer(query)
-            return {"status": "success", "result": result.model_dump(mode="json")}
-
-        elif method == "add_relation":
-            from corpus_kb.domain.models import AddRelationCommand
-            from corpus_kb.handlers.command_handler import get_command_handler
-
-            cmd = AddRelationCommand(
-                tenant_id=UUID(tenant_id),
-                source_entity_id=UUID(params["source_entity_id"]),
-                target_entity_id=UUID(params["target_entity_id"]),
-                relation_type=params.get("relation_type", "related_to"),
-                weight=params.get("weight", 1.0),
-                metadata=params.get("metadata", {}),
-            )
-            return get_command_handler().handle_add_relation(cmd)
-
-        else:
-            raise MethodNotFoundError(method)
+        return await dispatch(method, params)
 
 
 def _error(code: int, message: str, req_id: Any = None) -> dict[str, Any]:

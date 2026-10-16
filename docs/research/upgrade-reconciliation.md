@@ -80,6 +80,14 @@ verified against earlier wave branches; the final audit re-verified every
 
 ## Addendum (P7 surface-parity wave, 2026-10-12)
 
+0. **Closeout (full-surface-parity wave, 2026-10-13).** The allowlist is
+   EMPTY: `research-cycle` and `research-demo` gained their MCP + HTTP
+   legs as synchronous long-running calls (`/api/research/cycle`,
+   `/api/research/demo`, the `research_cycle`/`research_demo` tools),
+   so `assert_full_surface_parity` now holds against the live registry
+   with zero exceptions. `TRANSPORT_ALLOWLIST` stays as a mechanism (an
+   empty dict, documented in `surface_registry_parity.py`) for a future
+   honest gap. The entries below are the historical P7 record.
 1. **MECE enforcement is ON.** `surface_registry_parity.assert_parity_outside_allowlist`
    runs against the live registry in `tests/test_surface_registry_consistency.py`
    and `tests/test_surface_parity.py`: every research/release operation must

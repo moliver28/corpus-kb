@@ -73,6 +73,18 @@ from corpus_kb.cli_search import register as register_search_commands  # noqa: E
 
 register_search_commands(app)
 
+# Full-surface parity front doors: the graph/documents commands, the
+# query/verify commands, and the raw-text ingest command. Each module
+# reuses the cli_ingest plumbing and imports corpus_kb.cli nowhere, so
+# these imports stay acyclic.
+from corpus_kb.cli_graph import register as register_graph_commands  # noqa: E402
+from corpus_kb.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
+from corpus_kb.cli_query import register as register_query_commands  # noqa: E402
+
+register_graph_commands(app)
+register_ingest_text_command(app)
+register_query_commands(app)
+
 
 def _version_callback(value: bool) -> None:
     if value:

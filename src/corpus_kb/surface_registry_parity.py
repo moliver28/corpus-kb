@@ -3,11 +3,14 @@
 ``surface_registry.SURFACES`` is the ONE source of truth for the
 research/coding command surfaces. This helper states the END-STATE contract:
 every operation must be reachable on every declared transport (CLI / MCP /
-HTTP). Since P7 (U5) the contract is ENFORCED against the live registry:
-every research surface carries an HTTP route and the release lifecycle
-ships on all three transports. The ONLY exceptions are the explicit,
-documented ``TRANSPORT_ALLOWLIST`` below — honest staging, never silent
-gaps (reconciliation note: ``docs/research/upgrade-reconciliation.md``).
+HTTP). Since the full-surface-parity wave the registry is complete: every
+surface carries cli + mcp + http, so :func:`assert_full_surface_parity`
+holds against the live registry with NO exceptions.
+
+The :data:`TRANSPORT_ALLOWLIST` mechanism stays (an empty dict) so the
+documented-exception pattern remains available: if a future surface
+genuinely cannot serve a transport, add it here with an honest reason and
+switch the enforcement back to :func:`assert_parity_outside_allowlist`.
 
 STRICTLY STDLIB-ONLY, mirroring ``surface_registry.py``: zero ``corpus_kb``
 or third-party imports, so path-based loaders can use both modules together.
@@ -18,17 +21,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 # Documented exceptions to full transport parity (surface name -> transports
-# it is ALLOWED to miss). Everything else must be cli+mcp+http complete.
-#
-# * research-cycle: an interactive posture loop (in/on/out-of-loop approval
-#   boundary, foreground --watch tailing) — not a mechanical
-#   request/response, so it has no HTTP route by design.
-# * research-demo: CLI-only by design (registry r13: a narrated demo needs
-#   no MCP tool and no HTTP route; both render as absent on purpose).
-TRANSPORT_ALLOWLIST: dict[str, frozenset[str]] = {
-    "research-cycle": frozenset({"http"}),
-    "research-demo": frozenset({"mcp", "http"}),
-}
+# it is ALLOWED to miss). EMPTY since the full-surface-parity wave: every
+# research/coding surface is cli+mcp+http complete (research-cycle and
+# research-demo gained their http+mcp legs as synchronous calls).
+TRANSPORT_ALLOWLIST: dict[str, frozenset[str]] = {}
 
 
 class SurfaceParityError(AssertionError):

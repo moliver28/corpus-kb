@@ -1,18 +1,17 @@
-"""U5/P7 MECE surface-parity tests — the binding five-command contract.
+"""U5/P7 MECE surface-parity tests — the binding transport contract.
 
 The release lifecycle ops (``assess``/``request``/``review``/``release``/
-``status``/``compare`` — the five v6 §6 commands plus ``request``, the
-mechanically required draft-opener) MUST be reachable on ALL THREE
-transports: CLI (real registered commands), MCP (names validated in
+``status``/``compare``) and every research surface MUST be reachable on ALL
+THREE transports: CLI (real registered commands), MCP (names validated in
 ``validate_configs.VALID_TOOL_NAMES`` + real tool functions), and HTTP
 (real routes in ``create_http_app()``). A missing surface anywhere fails
 this suite.
 
-Pre-existing research operations were swept in the same wave: every
-mechanically HTTP-shaped one got a route; the ONLY exceptions are the
-documented ``TRANSPORT_ALLOWLIST`` (research-cycle: interactive postures;
-research-demo: CLI-only by design) — asserted here to be exactly the gaps
-that exist, never silent.
+Since the full-surface-parity wave the registry is complete:
+``research-cycle`` and ``research-demo`` gained their MCP + HTTP legs as
+synchronous long-running calls, and ``TRANSPORT_ALLOWLIST`` is empty. The
+tests below pin that end state — no exceptions left behind, and the
+allowlist mechanism stays available (empty) for a future honest gap.
 """
 
 from __future__ import annotations
@@ -124,24 +123,23 @@ def test_pre_existing_mechanical_routes_exist_too() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_full_parity_holds_outside_the_allowlist() -> None:
+def test_full_parity_holds_everywhere() -> None:
+    """End state: no documented gaps, no raw gaps — both contracts green."""
+    assert TRANSPORT_ALLOWLIST == {}
     assert surface_coverage_gaps(reg.SURFACES, TRANSPORT_ALLOWLIST) == []
     assert_parity_outside_allowlist(reg.SURFACES)  # must not raise
-    with pytest.raises(AssertionError):
-        assert_full_surface_parity(reg.SURFACES)  # raw contract still bites
+    assert_full_surface_parity(reg.SURFACES)  # the raw contract now holds
 
 
-def test_allowlist_names_real_surfaces_with_exactly_their_gaps() -> None:
+def test_allowlist_stays_empty_and_referenceable() -> None:
+    """The mechanism stays available; today it documents zero exceptions."""
     surface_names = {surface.name for surface in reg.SURFACES}
     assert set(TRANSPORT_ALLOWLIST) <= surface_names
     raw_gaps = {
         gap.split(": ")[0]: gap.split(": ")[1] for gap in surface_coverage_gaps(reg.SURFACES)
     }
-    assert set(raw_gaps) == set(TRANSPORT_ALLOWLIST), raw_gaps
-    missing_by_surface = {
-        name: frozenset(part.replace("missing ", "").split(", ")) for name, part in raw_gaps.items()
-    }
-    assert missing_by_surface == TRANSPORT_ALLOWLIST
+    assert raw_gaps == {}
+    assert set(raw_gaps) == set(TRANSPORT_ALLOWLIST)
 
 
 def test_allowlist_is_documented_in_the_reconciliation_doc() -> None:

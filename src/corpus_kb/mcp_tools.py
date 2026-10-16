@@ -64,6 +64,12 @@ TOOL_LAYER_OVERRIDES: dict[str, str] = {
     "release_compare": "corpus_kb.tools.release_tools:release_compare",
     "research_ingest_transcript": "corpus_kb.tools.research_tools:research_ingest_transcript",
     "notebook_ask": "corpus_kb.tools.notebook_tools:notebook_ask_tool",
+    # Full-surface parity wave: rows whose handler names the deeper
+    # handler, mapped to the tool layer the HTTP route mirrors.
+    "query": "corpus_kb.tools.query_tools:query",
+    "verify_answer": "corpus_kb.tools.query_tools:verify_answer",
+    "add_entity": "corpus_kb.tools.graph_tools:add_entity",
+    "add_relation": "corpus_kb.tools.graph_tools:add_relation",
 }
 
 # surface_registry MCP tool names OUTSIDE the catalogue, mapped to their

@@ -19,6 +19,34 @@ Shipped:
   and the `topics_build`/`topics_list` op ladder (catalogue + parity +
   OPERATIONS). uv.lock regenerated (bertopic + plotly added).
 
+## Surface parity wave (2026-10-13, post-closeout)
+
+Full surface parity shipped on `feature/feat-full-surface-parity` (based
+on master `81af1f6`): every catalogue operation is reachable on all four
+surfaces (MCP, CLI, HTTP, socket) and the parity gate enforces exactly
+that.
+
+- The 11 registry-only ops joined the contracts catalogue with real
+  envelope key-sets: `research_ingest`, `coding_run`, `inductive_run`,
+  `codebook_promote`, `research_report`, `review_execute`,
+  `notebook_evidence`, `notebook_uncoded`, `notebook_overlap`,
+  `research_cycle`, `research_demo`. `corpus-kb operations` prints 0
+  skipped; the catalogue holds 34 ops.
+- New tool layers: `tools/query_tools.py` (`query`, `verify_answer`),
+  `tools/graph_tools.py` (`add_entity`, `add_relation`), and
+  `tools/demo_tools.py` (`research_demo`). The socket dispatch moved to
+  a table (`api/socket_ops.py`): 34 arms, one per op, generated for the
+  research/release families from the same table the HTTP routes use.
+- New CLI front doors: `cli_graph.py` (add-entity, add-relation,
+  list-documents, delete-document), `cli_query.py` (query,
+  verify-answer), `cli_ingest_text.py` (ingest-text). Honest exits
+  0/1/3; `--json` prints the exact handler envelope.
+- `research_cycle` and `research_demo` gained HTTP + MCP + socket legs
+  as synchronous long-running calls. `codebook_promote` stays an
+  explicit human act on every surface. `TRANSPORT_ALLOWLIST` is empty.
+- The deep parity gate now requires all four surfaces and all four legs
+  per catalogue row. MCP tool count: 29 → 34.
+
 ## Decisions (locked by the user, 2026-10-14)
 
 1. Default embedding = `qwen3-embedding:4b` at its **native 2560 dims**, with

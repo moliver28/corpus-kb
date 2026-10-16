@@ -289,7 +289,11 @@ def _set_company(path: Path, company: str) -> None:
     """python-pptx has no extended-properties API: rewrite Company in app.xml."""
     with zipfile.ZipFile(path) as archive:
         entries = {info.filename: archive.read(info.filename) for info in archive.infolist()}
-    root = ET.fromstring(entries["docProps/app.xml"])
+    raw = entries["docProps/app.xml"]
+    # self-generated file, but refuse DTDs outright — no parser hardening needed then.
+    if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
+        raise ValueError("unexpected DTD in docProps/app.xml")
+    root = ET.fromstring(raw)
     node = root.find(f"{_EXTENDED_NS}Company")
     if node is None:
         node = ET.SubElement(root, f"{_EXTENDED_NS}Company")

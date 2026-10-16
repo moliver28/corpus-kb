@@ -122,7 +122,7 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     registry_mcp = {s.mcp_tool for s in SURFACES if s.mcp_tool}
     assert registered == catalogue_mcp | registry_mcp
     # The historical lie (declared names with no function) stays dead.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 29
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 34
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:
@@ -314,6 +314,252 @@ async def test_notebook_ask_round_trip(monkeypatch: pytest.MonkeyPatch) -> None:
         {"question": "q?", "project_id": PROJECT_ID, "retrieval_only": True},
     )
     assert payload["status"] == "answer"
+
+
+# ---------------------------------------------------------------------------
+# Full-surface parity wave: one call-through per new tool
+# ---------------------------------------------------------------------------
+
+ENTITY_A = "55555555-5555-5555-5555-555555555555"
+ENTITY_B = "66666666-6666-6666-6666-666666666666"
+ASSIGNMENT_ID = "77777777-7777-7777-7777-777777777777"
+_REQUIRED_REPORT_KEYS = (
+    "isr_pooled",
+    "isr_by_source_type",
+    "run_stop",
+    "coverage_explicit",
+    "coverage_qdep",
+    "gray_zone_share",
+    "tier3_disagreement_rate",
+    "link_accuracy",
+    "review_backlog",
+    "kappa_alpha",
+    "residual",
+    "coverage_curve",
+    "missing_codes",
+    "cluster_stability",
+    "overlap",
+    "keywords",
+    "g3_audit",
+    "conformal",
+    "run_manifest",
+    "codebook_diff",
+)
+
+
+async def _canned(payload: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    return payload
+
+
+async def test_round_trip_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    from corpus_kb.domain.models import RouteDecision, RoutedResult
+    from corpus_kb.handlers import router_handler as router_module
+
+    class _StubRouter:
+        async def handle_routed_query(self, query: Any) -> RoutedResult:
+            return RoutedResult(
+                decision=RouteDecision(route="semantic", confidence=0.9, fallback=False),
+                results=[],
+            )
+
+    monkeypatch.setattr(router_module, "get_router_handler", lambda: _StubRouter())
+    payload = await _call(_make_server(), "query", {"query": "probe", "k": 3})
+    assert payload == {
+        "status": "success",
+        "result": {
+            "decision": {"route": "semantic", "confidence": 0.9, "fallback": False},
+            "results": [],
+        },
+    }
+
+
+async def test_round_trip_verify_answer(monkeypatch: pytest.MonkeyPatch) -> None:
+    from corpus_kb.domain.models import VerifyAnswerResult
+
+    async def canned_verify(self: Any, query: Any) -> VerifyAnswerResult:
+        return VerifyAnswerResult(verdicts=[], groundedness=1.0, abstained=True)
+
+    monkeypatch.setattr(query_handler_module.QueryHandler, "handle_verify_answer", canned_verify)
+    payload = await _call(_make_server(), "verify_answer", {"answer": "a", "chunk_ids": []})
+    assert payload["status"] == "success"
+    assert payload["result"]["abstained"] is True
+
+
+async def test_round_trip_add_entity(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.handlers.command_handler as command_handler_module
+
+    class _Saved:
+        def save(self, aggregate: Any) -> None:
+            return None
+
+    monkeypatch.setattr(command_handler_module, "get_app", lambda: _Saved())
+    payload = await _call(_make_server(), "add_entity", {"name": "probe", "entity_type": "concept"})
+    assert payload["status"] == "success"
+    assert payload["name"] == "probe"
+    assert payload["entity_id"]
+
+
+async def test_round_trip_research_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Handler:
+        async def ingest_path(
+            self, tenant_id: UUID, path: str, project_id: Any = None, force: bool = False
+        ) -> dict[str, Any]:
+            return {"status": "success", "files_found": 1, "ingested": 1}
+
+    async def noop_advance(pool: Any, tenant_id: UUID) -> None:
+        return None
+
+    monkeypatch.setattr(research_tools_module, "get_research_handler", lambda pool: _Handler())
+    monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
+    payload = await _call(_make_server(), "research_ingest", {"path": "corpus/"})
+    assert payload["status"] == "success"
+    assert payload["files_found"] == 1
+
+
+async def test_round_trip_coding_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.research.deductive_run as deductive_run_module
+
+    async def canned(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"status": "success", "run_id": "run-1", "n_units": 3}
+
+    async def noop_advance(pool: Any, tenant_id: UUID) -> None:
+        return None
+
+    monkeypatch.setattr(deductive_run_module, "run_deductive", canned)
+    monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
+    payload = await _call(_make_server(), "coding_run", {"codebook_version_id": CV})
+    assert payload["status"] == "success"
+
+
+async def test_round_trip_inductive_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.config as config_module
+    import corpus_kb.handlers.llm_handler as llm_handler_module
+    import corpus_kb.rag as rag_module
+    import corpus_kb.research.inductive_run as inductive_module
+
+    async def canned(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"status": "success", "run_id": "run-1", "n_units": 2}
+
+    async def noop_advance(pool: Any, tenant_id: UUID) -> None:
+        return None
+
+    monkeypatch.setattr(config_module, "load_config", lambda: {"embedding": {"provider": "pgml"}})
+    monkeypatch.setattr(inductive_module, "run_inductive", canned)
+    monkeypatch.setattr(rag_module, "create_embedder", lambda cfg, pool: None)
+    monkeypatch.setattr(llm_handler_module, "LlmHandler", lambda cfg: object())
+    monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
+    payload = await _call(_make_server(), "inductive_run", {})
+    assert payload["status"] == "success"
+
+
+async def test_round_trip_codebook_promote(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.config as config_module
+    import corpus_kb.research.promote_code as promote_module
+
+    async def canned(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"status": "promoted", "proposal_id": 1, "tau_dup": 0.8}
+
+    async def noop_advance(pool: Any, tenant_id: UUID) -> None:
+        return None
+
+    monkeypatch.setattr(config_module, "load_config", lambda: {})
+    monkeypatch.setattr(promote_module, "promote_proposal", canned)
+    monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
+    payload = await _call(
+        _make_server(), "codebook_promote", {"proposed_id": 1, "name": "n", "definition": "d"}
+    )
+    assert payload["status"] == "promoted"
+
+
+async def test_round_trip_research_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.research.governance_report as governance_module
+    import corpus_kb.research.report_runner as report_runner_module
+
+    async def canned(*args: Any, **kwargs: Any) -> object:
+        return object()
+
+    report = {"schema_version": "1.0", **{key: {} for key in _REQUIRED_REPORT_KEYS}}
+    monkeypatch.setattr(report_runner_module, "build_report", canned)
+    monkeypatch.setattr(governance_module, "to_dict", lambda r: dict(report))
+    payload = await _call(_make_server(), "research_report", {"level": "novice"})
+    assert payload["schema_version"] == "1.0"
+    assert "g3_audit" in payload
+
+
+async def test_round_trip_review_execute(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.config as config_module
+    import corpus_kb.research.review_surface as review_module
+
+    async def canned(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {
+            "status": "success",
+            "assignment_id": ASSIGNMENT_ID,
+            "decision": "accept",
+            "projection": {},
+        }
+
+    monkeypatch.setattr(config_module, "load_config", lambda: {})
+    monkeypatch.setattr(review_module, "execute_review", canned)
+    payload = await _call(
+        _make_server(),
+        "review_execute",
+        {"assignment_id": ASSIGNMENT_ID, "decision": "accept", "reviewer": "parity"},
+    )
+    assert payload["status"] == "success"
+    assert payload["decision"] == "accept"
+
+
+async def test_round_trip_notebook_views(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def canned_evidence(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"status": "ok", "code": "c", "code_id": "1", "n_units": 0, "tabs": {}}
+
+    async def canned_uncoded(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"status": "ok", "version_id": CV, "units": [], "n_uncoded": 0}
+
+    async def canned_overlap(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"status": "ok", "version_id": CV, "flagged_pairs": []}
+
+    monkeypatch.setattr(notebook_tools_module, "evidence_for_code", canned_evidence)
+    monkeypatch.setattr(notebook_tools_module, "uncoded_units", canned_uncoded)
+    monkeypatch.setattr(notebook_tools_module, "overlap_view", canned_overlap)
+    evidence = await _call(_make_server(), "notebook_evidence", {"code": "c"})
+    assert evidence["status"] == "ok"
+    uncoded = await _call(_make_server(), "notebook_uncoded", {})
+    assert uncoded["n_uncoded"] == 0
+    overlap = await _call(_make_server(), "notebook_overlap", {})
+    assert overlap["status"] == "ok"
+
+
+async def test_round_trip_research_cycle(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.config as config_module
+    import corpus_kb.research.cycle as cycle_module
+    import corpus_kb.research.cycle_state as cycle_state_module
+
+    async def canned_cycle(*args: Any, **kwargs: Any) -> int:
+        return 0
+
+    async def canned_checkpoint(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"kind": "final"}
+
+    monkeypatch.setattr(config_module, "load_config", lambda: {})
+    monkeypatch.setattr(cycle_module, "run_cycle", canned_cycle)
+    monkeypatch.setattr(cycle_state_module, "last_cycle_checkpoint", canned_checkpoint)
+    payload = await _call(_make_server(), "research_cycle", {"mode": "in"})
+    assert payload["status"] == "completed"
+    assert payload["exit_code"] == 0
+
+
+async def test_round_trip_research_demo(monkeypatch: pytest.MonkeyPatch) -> None:
+    import corpus_kb.research.demo as demo_module
+
+    async def canned_demo(cfg: Any = None) -> int:
+        return 0
+
+    monkeypatch.setattr(demo_module, "run_demo", canned_demo)
+    payload = await _call(_make_server(), "research_demo", {})
+    assert payload["status"] == "completed"
+    assert payload["exit_code"] == 0
+    assert "narration" in payload
 
 
 # ---------------------------------------------------------------------------

@@ -12,6 +12,7 @@ from corpus_kb.contracts.model import (
     DEFAULT_TENANT_ID,
     HTTP,
     MCP,
+    SOCKET,
     Operation,
     ParamSpec,
     SurfaceSpec,
@@ -47,6 +48,7 @@ RELEASE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(MCP, "release_assess"),
             SurfaceSpec(CLI, "release assess"),
             SurfaceSpec(HTTP, "/api/release/assess", "POST"),
+            SurfaceSpec(SOCKET, "release_assess"),
         ),
     ),
     Operation(
@@ -67,6 +69,7 @@ RELEASE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(MCP, "release_request"),
             SurfaceSpec(CLI, "release request"),
             SurfaceSpec(HTTP, "/api/release/request", "POST"),
+            SurfaceSpec(SOCKET, "release_request"),
         ),
     ),
     Operation(
@@ -96,6 +99,7 @@ RELEASE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(MCP, "release_review"),
             SurfaceSpec(CLI, "release review"),
             SurfaceSpec(HTTP, "/api/release/review", "POST"),
+            SurfaceSpec(SOCKET, "release_review"),
         ),
     ),
     Operation(
@@ -124,6 +128,7 @@ RELEASE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(MCP, "release_execute"),
             SurfaceSpec(CLI, "release release"),
             SurfaceSpec(HTTP, "/api/release/release", "POST"),
+            SurfaceSpec(SOCKET, "release_execute"),
         ),
         exit_codes=(0, 1),
     ),
@@ -149,6 +154,7 @@ RELEASE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(MCP, "release_status"),
             SurfaceSpec(CLI, "release status"),
             SurfaceSpec(HTTP, "/api/release/status", "GET"),
+            SurfaceSpec(SOCKET, "release_status"),
         ),
     ),
     Operation(
@@ -169,6 +175,7 @@ RELEASE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(MCP, "release_compare"),
             SurfaceSpec(CLI, "release compare"),
             SurfaceSpec(HTTP, "/api/release/compare", "POST"),
+            SurfaceSpec(SOCKET, "release_compare"),
         ),
     ),
 )

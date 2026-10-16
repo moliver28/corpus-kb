@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from corpus_kb.contracts.envelopes import AGGREGATE_EXTRA
 from corpus_kb.contracts.model import (
+    CLI,
     DEFAULT_TENANT_ID,
     HTTP,
     MCP,
@@ -33,9 +34,11 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         envelope_keys=("status", "result"),
         surfaces=(
             SurfaceSpec(MCP, "list_documents"),
+            SurfaceSpec(CLI, "list-documents"),
             SurfaceSpec(HTTP, "/api/documents", "GET"),
             SurfaceSpec(SOCKET, "list_documents"),
         ),
+        exit_codes=(0, 1, 3),
     ),
     Operation(
         name="delete_document",
@@ -49,9 +52,12 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         envelope_keys=("status", "document_id"),
         surfaces=(
             SurfaceSpec(MCP, "delete_document"),
+            SurfaceSpec(CLI, "delete-document"),
             SurfaceSpec(HTTP, "/api/documents/{doc_id}", "DELETE"),
+            SurfaceSpec(SOCKET, "delete_document"),
         ),
         http_extra=AGGREGATE_EXTRA,
+        exit_codes=(0, 1, 3),
     ),
     Operation(
         name="add_entity",
@@ -66,9 +72,12 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         envelope_keys=("status", "entity_id", "name", "entity_type"),
         surfaces=(
+            SurfaceSpec(MCP, "add_entity"),
+            SurfaceSpec(CLI, "add-entity"),
             SurfaceSpec(HTTP, "/api/entities", "POST"),
             SurfaceSpec(SOCKET, "add_entity"),
         ),
+        exit_codes=(0, 1, 3),
     ),
     Operation(
         name="add_relation",
@@ -85,8 +94,11 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         envelope_keys=("status", "relation_id", "relation_type"),
         surfaces=(
+            SurfaceSpec(MCP, "add_relation"),
+            SurfaceSpec(CLI, "add-relation"),
             SurfaceSpec(HTTP, "/api/relations", "POST"),
             SurfaceSpec(SOCKET, "add_relation"),
         ),
+        exit_codes=(0, 1, 3),
     ),
 )

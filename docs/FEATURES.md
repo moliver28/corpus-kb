@@ -201,13 +201,9 @@ envelope.
 
 Honest caveats:
 
-- The graph/query family (`add_entity`, `add_relation`, `query`,
-  `verify_answer`) is reachable over HTTP and the JSON-RPC socket; the
-  catalogue gives it no MCP surface yet.
 - The `autoApprove` lists in `mcp-configs/*.json` keep legacy names from
   the original design (for example `search_context`, `sql_query`) that
   have no MCP tool today. Unknown names are harmless: they never match.
-- Interactive demos (`research demo`) stay CLI-only by design.
 
 | Surface | Tool | Description |
 |---|---|---|
@@ -219,7 +215,11 @@ Honest caveats:
 | Ingest | `ingest_reembed` | Re-embed degraded (zero-vector) chunks |
 | Documents | `list_documents` | List ingested documents |
 | Documents | `delete_document` | Delete one document by ID |
+| Graph | `add_entity` | Add one entity to the knowledge graph |
+| Graph | `add_relation` | Add one relation between two entities |
 | Search | `search` | Hybrid vector + full-text search |
+| Search | `query` | Route one question to the vector, SQL, or graph backend |
+| Search | `verify_answer` | Check each claim of an answer against the cited chunks |
 | Research | `research_ingest_transcript` | Ingest one transcript: turns, roles, exchanges |
 | Research | `research_ingest` | Dynamic ingest of file/dir/glob with dedup |
 | Research | `notebook_ask` | Grounded Q&A with cited sentences |
@@ -237,7 +237,8 @@ Honest caveats:
 | Release | `release_execute` | Execute the release with a named approver |
 | Release | `release_status` | Stage, release state, blockers, next command |
 | Release | `release_compare` | Diff the manifests of two releases |
-| Cycle | `research_cycle` | Full pipeline with in/on/out-of-loop postures and halt gates |
+| Cycle | `research_cycle` | Full pipeline with halt gates; long-running, synchronous |
+| Cycle | `research_demo` | Narrated demo pipeline; long-running, synchronous |
 
 The HTTP equivalents are listed in [API.md](API.md); the CLI command
 paths live in the surface registry (`src/corpus_kb/surface_registry.py`),

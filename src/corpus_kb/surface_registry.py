@@ -127,21 +127,20 @@ SURFACES: tuple[Surface, ...] = (
         cli_path="research cycle",
         mcp_tool="research_cycle",
         description=(
-            "Research cycle (todo 20): the full pipeline with in/on/out-of-loop "
-            "postures and human-critical halt gates (promotion is hard-floored)."
+            "Research cycle: full pipeline with halt gates; long-running, "
+            "synchronous on every surface (promotion is human-gated)."
         ),
-        # No HTTP route by DESIGN: interactive postures (approval boundary,
-        # foreground watch) are not a mechanical request/response. Documented
-        # exception: surface_registry_parity.TRANSPORT_ALLOWLIST.
+        http_route="/api/research/cycle",
     ),
-    # CLI-ONLY (r13): no MCP tool - agents do not need a narrated demo, and a
-    # tool here would red validate-configs/agent-config-consistency untouched
-    # by this surface. Empty mcp_tool renders as (none) in the CLAUDE.md table.
+    # The narrated demo: every surface runs the same pipeline; the CLI
+    # narrates, http/mcp/socket return the receipt envelope (long-running,
+    # synchronous — see contracts.catalogue_research).
     Surface(
         name="research-demo",
         cli_path="research demo",
-        mcp_tool="",
-        description="Narrated end-to-end pipeline on the bundled demo corpus (CLI only).",
+        mcp_tool="research_demo",
+        description="Narrated demo pipeline on the bundled demo corpus; long-running.",
+        http_route="/api/research/demo",
     ),
     # -- release lifecycle (U5, P7, v6 §6): full cli+mcp+http parity --------
     Surface(
@@ -343,7 +342,9 @@ corpus-kb research demo
   docs/getting-started.md "Before you start").
 - Every stage narrates what it is doing and links the relevant docs.
 - Re-runs are safe: file and text hashes make ingested files no-ops.
-- CLI-only by design; all flags: `corpus-kb research demo --help`
+- Long-running and synchronous on every surface: http/mcp/socket POSTs
+  return a receipt envelope (status, exit code, captured narration).
+- All flags: `corpus-kb research demo --help`
 """
 
 _RELEASE_BODY = """# corpus-release — the release lifecycle (v6 §6)
@@ -429,6 +430,8 @@ Postures:
   stage/gate event per line for agents.
 - Unattended runs: `--approve` confirms every gate without asking;
   `--deny` refuses every gate. Closed stdin cannot hang the cycle.
+- Long-running and synchronous on every surface: http/mcp/socket POSTs
+  run the same cycle and return the receipt when it ends.
   Exit codes: 0 complete; 2 embeddings unavailable; 10-17 one gate
   halted; 20 approval denied; 21 awaiting approval.
 - All flags: `corpus-kb research cycle --help`

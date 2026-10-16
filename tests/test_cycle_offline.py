@@ -487,24 +487,23 @@ def test_unreleased_draft_halt_is_wired_into_the_default_posture() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Exit-code surfacing: help epilog + the inventory skip row (W5C)
+# Exit-code surfacing: help epilog + the catalogue row in the inventory
 # ---------------------------------------------------------------------------
 
 
-def test_inventory_skip_row_carries_the_cycle_exit_codes() -> None:
-    """The research_cycle skip row publishes the documented exit codes.
+def test_inventory_row_carries_the_cycle_exit_codes() -> None:
+    """The research_cycle catalogue row publishes the documented exit codes.
 
-    The row stays in the SKIP set (the pipeline needs a live database, so
-    the parity gate does not run it), but the harness must be able to
-    read its exit contract from the inventory. The tuple must agree with
-    cycle_gates — the ONE exit-code table — plus the universal 0.
+    The op is a full catalogue row since the surface-parity wave (the
+    offline parity gate stubs the pipeline), and the harness must be able
+    to read its exit contract from the inventory. The tuple must agree
+    with cycle_gates — the ONE exit-code table — plus the universal 0.
     """
     from corpus_kb.cli_operations import build_inventory
-    from corpus_kb.contracts import SKIPPED_OPERATIONS
+    from corpus_kb.contracts import get_operation
 
-    skips = {skip.name: skip for skip in SKIPPED_OPERATIONS}
-    row = skips["research_cycle"]
-    assert row.exit_codes is not None
+    row = get_operation("research_cycle")
+    assert row is not None and row.exit_codes is not None
 
     expected = (
         0,
@@ -515,5 +514,5 @@ def test_inventory_skip_row_carries_the_cycle_exit_codes() -> None:
     )
     assert tuple(sorted(row.exit_codes)) == tuple(sorted(expected))
 
-    skip_json = {r["name"]: r for r in build_inventory()["skipped"]}
-    assert skip_json["research_cycle"]["exit_codes"] == list(row.exit_codes)
+    ops_json = {r["name"]: r for r in build_inventory()["operations"]}
+    assert ops_json["research_cycle"]["exit_codes"] == list(row.exit_codes)
