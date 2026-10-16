@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
 
-from corpus_kb.chunking.unstructured_chunker import chunk_elements
-from corpus_kb.partitioning import partition
+from corpus_kb.chunking.unstructured_chunker import MAX_CHUNK_CHARS, chunk_elements
+from corpus_kb.partitioning import ElementProxy, partition
 
 _FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -72,3 +73,34 @@ def test_partition_pdf_hi_res() -> None:
         assert chunk.source_start_char is not None
         assert chunk.source_end_char is not None
         assert chunk.source_start_char < chunk.source_end_char
+
+
+def test_chunk_elements_splits_oversized_element() -> None:
+    """One element over the plan budget splits; slices stay exact and ordered."""
+    # No newlines at all: the splitter must fall through to whitespace cuts.
+    text = ("alpha beta gamma delta " * 2500).strip()  # ~55k chars, one element
+    elements = [ElementProxy(text=text, element_type="NarrativeText", element_id="big")]
+    chunks = chunk_elements(elements, text, document_id="d")
+
+    assert len(chunks) > 1
+    for chunk in chunks:
+        assert len(chunk.text) <= MAX_CHUNK_CHARS
+        assert chunk.metadata["element_type"] == "NarrativeText"
+    assert "".join(chunk.text for chunk in chunks) == text
+    for prev, nxt in pairwise(chunks):
+        assert nxt.source_start_char == prev.source_end_char
+        assert nxt.start_line >= prev.end_line
+
+
+def test_chunk_elements_oversized_prefers_paragraph_cuts() -> None:
+    """A giant multi-paragraph element splits at blank lines, not mid-word."""
+    para = "Sentence one. Sentence two. Sentence three.\n\n"
+    text = para * 300  # ~13.5k chars of clean paragraphs
+    elements = [ElementProxy(text=text, element_type="NarrativeText", element_id="big")]
+    chunks = chunk_elements(elements, text, document_id="d")
+
+    assert len(chunks) > 1
+    assert "".join(chunk.text for chunk in chunks) == text
+    for chunk in chunks:
+        assert len(chunk.text) <= MAX_CHUNK_CHARS
+        assert chunk.text.rstrip().endswith("Sentence three.")

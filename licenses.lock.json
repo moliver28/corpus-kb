@@ -406,6 +406,13 @@
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
+    "name": "Markdown",
+    "version": "3.11.1",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/Markdown/3.11.1/",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
+  },
+  {
     "name": "markdown-it-py",
     "version": "4.2.0",
     "license": "MIT",
@@ -554,9 +561,9 @@
   },
   {
     "name": "platformdirs",
-    "version": "4.13.0",
+    "version": "4.13.3",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/platformdirs/4.13.0/",
+    "homepage": "https://pypi.org/project/platformdirs/4.13.3/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
@@ -645,9 +652,9 @@
   },
   {
     "name": "pypdf",
-    "version": "6.20.1",
+    "version": "6.21.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/pypdf/6.20.1/",
+    "homepage": "https://pypi.org/project/pypdf/6.21.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
