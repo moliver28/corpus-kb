@@ -675,3 +675,22 @@ def test_source_type_override_notice_is_honest(capsys: pytest.CaptureFixture[str
     out = capsys.readouterr().out
     assert "strategy override code: accepted" in out
     assert "registry not consulted" in out
+
+
+def test_default_strategy_splits_oversized_raw_text_to_conformant_plan() -> None:
+    """One 50k-char element must yield a plan validate_plan accepts (W-fix)."""
+    from corpus_kb.chunking.unstructured_chunker import MAX_CHUNK_CHARS
+    from corpus_kb.ingestion.base import TOKEN_BUDGET_CHARS
+
+    # Lockstep: the splitter's limit and the plan validator's budget are the
+    # SAME contract; a drift here would re-open the oversize-plan failure.
+    assert MAX_CHUNK_CHARS == TOKEN_BUDGET_CHARS
+
+    raw = "Plain prose sentence for the oversize test. " * 1200  # ~52k chars
+    plan = DefaultStrategy().build_chunks(
+        raw, "big.txt", SourceProfile(source_type="text", is_file=False, path="big.txt")
+    )
+    assert len(plan.chunks) > 1
+    assert validate_plan(plan) == []
+    for chunk in plan.chunks:
+        assert len(chunk.text) <= TOKEN_BUDGET_CHARS
