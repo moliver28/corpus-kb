@@ -173,17 +173,12 @@ def test_parity_helper_lists_every_gap_not_just_the_first() -> None:
     assert "2 of 2" in message
 
 
-def test_live_registry_parity_outside_documented_allowlist() -> None:
-    """P7 enforcement: every operation is cli+mcp+http complete EXCEPT the
-    documented allowlist (research-cycle: no HTTP by design; research-demo:
-    CLI-only by design). A new surface with a missing transport fails HERE,
-    and an allowlist entry whose surface gained its transports must be
-    removed (stale documentation is an error, not a shrug)."""
-    raw_gaps = surface_coverage_gaps(reg.SURFACES)
-    assert raw_gaps, "allowlist surfaces gained full parity: empty TRANSPORT_ALLOWLIST"
-    for gap in raw_gaps:
-        name = gap.split(":")[0]
-        assert name in TRANSPORT_ALLOWLIST, f"undocumented parity gap: {gap}"
-    assert_parity_outside_allowlist(reg.SURFACES)  # must not raise
-    with pytest.raises(SurfaceParityError):
-        assert_full_surface_parity(reg.SURFACES)  # the raw contract still holds
+def test_live_registry_full_transport_parity() -> None:
+    """Full-surface-parity wave: every operation is cli+mcp+http complete
+    with NO allowlist exceptions left behind. The allowlist mechanism stays
+    available (empty) for a future honest exception; any entry in it must
+    still match a real gap, and any gap must be documented."""
+    assert TRANSPORT_ALLOWLIST == {}, "stale allowlist entries: remove them"
+    assert surface_coverage_gaps(reg.SURFACES) == []
+    assert_full_surface_parity(reg.SURFACES)  # the raw contract now holds
+    assert_parity_outside_allowlist(reg.SURFACES)  # the documented path still runs

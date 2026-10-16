@@ -194,8 +194,9 @@ def _minimal_report() -> ResearchReport:
     )
 
 
-def test_demo_module_is_cli_only_no_mcp_tool_registered() -> None:
-    """r13: the demo registers NO MCP tool (validate-configs untouched)."""
+def test_demo_module_declares_every_surface() -> None:
+    """Surface parity: the demo row carries cli + mcp + http, and the MCP
+    tool name is a validated tool (the generated server registers it)."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -205,8 +206,20 @@ def test_demo_module_is_cli_only_no_mcp_tool_registered() -> None:
     reg = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(reg)
     row = next(s for s in reg.SURFACES if s.name == "research-demo")
-    assert row.mcp_tool == ""
+    assert row.mcp_tool == "research_demo"
     assert row.cli_path == "research demo"
+    assert row.http_route == "/api/research/demo"
+
+    from corpus_kb._setup import validate_configs
+
+    assert "research_demo" in validate_configs.VALID_TOOL_NAMES
+
+    from corpus_kb.contracts import get_operation
+
+    op = get_operation("research_demo")
+    assert op is not None
+    kinds = {surface.kind for surface in op.surfaces}
+    assert kinds == {"cli", "http", "mcp", "socket"}
 
 
 def test_demo_fail_fast_gate_blocks_abstaining_embedders() -> None:

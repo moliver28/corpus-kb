@@ -48,13 +48,24 @@ import pytest
 from starlette.testclient import TestClient
 
 import corpus_kb.api.research_http as research_http_module
+import corpus_kb.config as config_module
 import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.delete_audit as delete_audit_module
+import corpus_kb.handlers.llm_handler as llm_handler_module
 import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.projections.research._embed as research_embed_module
 import corpus_kb.rag as rag_module
+import corpus_kb.research.cycle as research_cycle_module
+import corpus_kb.research.cycle_state as research_cycle_state_module
+import corpus_kb.research.deductive_run as deductive_run_module
+import corpus_kb.research.demo as research_demo_module
+import corpus_kb.research.governance_report as governance_report_module
+import corpus_kb.research.inductive_run as inductive_run_module
+import corpus_kb.research.promote_code as promote_code_module
+import corpus_kb.research.report_runner as report_runner_module
+import corpus_kb.research.review_surface as review_surface_module
 import corpus_kb.tools.ingest_common as ingest_common_module
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools_module
 import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
@@ -78,6 +89,7 @@ TENANT = "00000000-0000-0000-0000-000000000001"
 CV = "11111111-1111-1111-1111-111111111111"  # codebook version id
 RELEASE_ID = "33333333-3333-3333-3333-333333333333"
 PROJECT_ID = "44444444-4444-4444-4444-444444444444"
+ASSIGNMENT_ID = "77777777-7777-7777-7777-777777777777"
 ENTITY_A = "55555555-5555-5555-5555-555555555555"
 ENTITY_B = "66666666-6666-6666-6666-666666666666"
 
@@ -155,6 +167,94 @@ _TRANSCRIPT = {
     "file_sha256": "abc",
 }
 _ASK = {"status": "answer", "sentences": ["parity sentence."], "evidence": [], "llm_calls": 1}
+
+# Canned envelopes for the promoted research ops (full surface parity wave):
+# the key sets the shared tool layer really returns.
+_INGEST_PATH = {
+    "status": "success",
+    "files_found": 1,
+    "ingested": 1,
+    "skipped": 0,
+    "errors": 0,
+    "results": [],
+}
+_CODING = {
+    "status": "success",
+    "run_id": "run-1",
+    "codebook_version_id": CV,
+    "n_units": 3,
+    "n_codes": 2,
+    "explicit": 1,
+    "question_dependent": 1,
+    "review": 1,
+}
+_INDUCTIVE = {"status": "success", "run_id": "run-1", "n_units": 3}
+_PROMOTE = {
+    "status": "promoted",
+    "proposal_id": 1,
+    "codebook_version_id": CV,
+    "code_id": "code-1",
+    "n_members": 3,
+    "tau_dup": 0.8,
+    "max_cos": 0.5,
+    "rederivation": "k-medoids",
+}
+_REQUIRED_REPORT_KEYS = (
+    "isr_pooled",
+    "isr_by_source_type",
+    "run_stop",
+    "coverage_explicit",
+    "coverage_qdep",
+    "gray_zone_share",
+    "tier3_disagreement_rate",
+    "link_accuracy",
+    "review_backlog",
+    "kappa_alpha",
+    "residual",
+    "coverage_curve",
+    "missing_codes",
+    "cluster_stability",
+    "overlap",
+    "keywords",
+    "g3_audit",
+    "conformal",
+    "run_manifest",
+    "codebook_diff",
+)
+# The schema-pinned artifact: the real SCHEMA_VERSION or validate_required
+# reports the report itself missing.
+_REPORT = {"schema_version": "1.0", **{key: {} for key in _REQUIRED_REPORT_KEYS}}
+_REVIEWED = {
+    "status": "success",
+    "assignment_id": ASSIGNMENT_ID,
+    "decision": "accept",
+    "projection": {},
+}
+_EVIDENCE = {
+    "status": "ok",
+    "code": "parity-code",
+    "code_id": "code-1",
+    "definition": "the parity code",
+    "version_id": CV,
+    "n_units": 1,
+    "tabs": {"explicit": [], "question_dependent": []},
+}
+_UNCODED = {"status": "ok", "version_id": CV, "units": [], "n_uncoded": 0}
+_OVERLAP = {
+    "status": "ok",
+    "version_id": CV,
+    "tau_overlap": 0.8,
+    "matrix": [],
+    "flagged_pairs": [],
+    "borderline_units": [],
+}
+_CYCLE = {
+    "status": "completed",
+    "exit_code": 0,
+    "gate": None,
+    "checkpoint_kind": "final",
+    "resume_hint": "",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +364,7 @@ async def _shared_add_relation(ctx: dict[str, Any]) -> dict[str, Any]:
 def _release_leg(
     fn_name: str, http: str, body: dict[str, Any], mcp_args: dict[str, Any], **tool_kwargs: Any
 ) -> Any:
-    """Shared + HTTP + MCP legs for one release op."""
+    """Shared + HTTP + socket + MCP legs for one release op."""
     fn: Callable[..., Any] = getattr(release_tools_module, fn_name)
 
     async def shared(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -273,7 +373,12 @@ def _release_leg(
     def http_spec(ctx: dict[str, Any]) -> dict[str, Any]:
         return {"method": "post", "path": http, "json": dict(body)}
 
-    return {"shared": shared, "http": http_spec, "mcp": _mcp(mcp_args)}
+    return {
+        "shared": shared,
+        "http": http_spec,
+        "socket": _sock(fn_name, dict(body)),
+        "mcp": _mcp(mcp_args),
+    }
 
 
 async def _shared_release_compare(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -288,6 +393,59 @@ async def _shared_notebook_ask(ctx: dict[str, Any]) -> dict[str, Any]:
     return await notebook_tools_module.notebook_ask_tool(
         "parity question?", ctx["pool"], PROJECT_ID, retrieval_only=True
     )
+
+
+# -- Promoted research ops: the shared tool layer is the ONE function ------
+
+
+async def _shared_research_ingest(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await research_tools_module.research_ingest("interview.txt", ctx["pool"])
+
+
+async def _shared_coding_run(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await research_tools_module.coding_run(ctx["pool"], CV)
+
+
+async def _shared_inductive_run(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await research_tools_module.inductive_run(ctx["pool"])
+
+
+async def _shared_codebook_promote(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await research_tools_module.codebook_promote(ctx["pool"], 1, "n", "d")
+
+
+async def _shared_research_report(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await research_tools_module.research_report(ctx["pool"], level="novice")
+
+
+async def _shared_review_execute(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await research_tools_module.review_execute(
+        ctx["pool"], ASSIGNMENT_ID, "accept", "parity"
+    )
+
+
+async def _shared_notebook_evidence(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await notebook_tools_module.notebook_evidence_tool("parity-code", ctx["pool"])
+
+
+async def _shared_notebook_uncoded(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await notebook_tools_module.notebook_uncoded_tool(ctx["pool"])
+
+
+async def _shared_notebook_overlap(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await notebook_tools_module.notebook_overlap_tool(ctx["pool"])
+
+
+async def _shared_research_cycle(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.cycle_tools import research_cycle
+
+    return await research_cycle(ctx["pool"], mode="in")
+
+
+async def _shared_research_demo(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.demo_tools import research_demo
+
+    return await research_demo()
 
 
 def _post(path: str, body: dict[str, Any]) -> Any:
@@ -361,8 +519,8 @@ LEGS: dict[str, _Leg] = {
             "path": "/api/ingest/directory",
             "json": {"directory_path": str(ctx[_DIR_PATH])},
         },
-        # No socket method exists; the catalogue row records that.
-        mcp=lambda ctx: {"directory_path": str(ctx[_DIR_PATH])},
+        lambda ctx: ("ingest_directory", {"directory_path": str(ctx[_DIR_PATH])}),
+        lambda ctx: {"directory_path": str(ctx[_DIR_PATH])},
     ),
     "ingest_url": _Leg(
         _shared_ingest_url,
@@ -373,11 +531,13 @@ LEGS: dict[str, _Leg] = {
     "ingest_status": _Leg(
         _shared_ingest_status,
         _get("/api/ingest/status", {"limit": 5}),
+        _sock("ingest_status", {"limit": 5}),
         mcp=_mcp({"limit": 5}),
     ),
     "ingest_reembed": _Leg(
         _shared_ingest_reembed,
         _post("/api/ingest/reembed", {}),
+        _sock("ingest_reembed", {}),
         mcp=_mcp({}),
     ),
     "topics_build": _Leg(
@@ -402,11 +562,13 @@ LEGS: dict[str, _Leg] = {
         _shared_query,
         _post("/api/query", {"query": "parity probe", "k": 3}),
         _sock("query", {"query": "parity probe", "k": 3}),
+        mcp=_mcp({"query": "parity probe", "k": 3}),
     ),
     "verify_answer": _Leg(
         _shared_verify,
         _post("/api/verify", {"answer": "parity answer", "chunk_ids": []}),
         _sock("verify_answer", {"answer": "parity answer", "chunk_ids": []}),
+        mcp=_mcp({"answer": "parity answer", "chunk_ids": []}),
     ),
     "list_documents": _Leg(
         _shared_list_documents,
@@ -417,13 +579,14 @@ LEGS: dict[str, _Leg] = {
     "delete_document": _Leg(
         lambda ctx: _shared_delete_document(ctx),
         lambda ctx: {"method": "delete", "path": f"/api/documents/{DOC_ID}"},
-        # No socket method exists; the catalogue row records that.
+        _sock("delete_document", {"document_id": DOC_ID}),
         mcp=_mcp({"document_id": DOC_ID}),
     ),
     "add_entity": _Leg(
         _shared_add_entity,
         _post("/api/entities", {"name": "parity-entity", "entity_type": "concept"}),
         _sock("add_entity", {"name": "parity-entity", "entity_type": "concept"}),
+        mcp=_mcp({"name": "parity-entity", "entity_type": "concept"}),
     ),
     "add_relation": _Leg(
         _shared_add_relation,
@@ -444,6 +607,14 @@ LEGS: dict[str, _Leg] = {
                 "relation_type": "related_to",
                 "weight": 1.0,
             },
+        ),
+        mcp=_mcp(
+            {
+                "source_entity_id": ENTITY_A,
+                "target_entity_id": ENTITY_B,
+                "relation_type": "related_to",
+                "weight": 1.0,
+            }
         ),
     ),
     "release_assess": _Leg(
@@ -495,12 +666,17 @@ LEGS: dict[str, _Leg] = {
     "release_status": _Leg(
         lambda ctx: _shared_release_status(ctx),
         _get("/api/release/status", {"codebook_version_id": CV}),
+        _sock("release_status", {"codebook_version_id": CV}),
         mcp=_mcp({"codebook_version_id": CV}),
     ),
     "release_compare": _Leg(
         _shared_release_compare,
         _post(
             "/api/release/compare",
+            {"codebook_version_id": CV, "old_release_id": RELEASE_ID, "new_release_id": RELEASE_ID},
+        ),
+        _sock(
+            "release_compare",
             {"codebook_version_id": CV, "old_release_id": RELEASE_ID, "new_release_id": RELEASE_ID},
         ),
         mcp=_mcp(
@@ -514,6 +690,7 @@ LEGS: dict[str, _Leg] = {
     "research_ingest_transcript": _Leg(
         _shared_transcript,
         _post("/api/research/ingest-transcript", {"file_path": "interview.txt"}),
+        _sock("research_ingest_transcript", {"file_path": "interview.txt"}),
         mcp=_mcp({"file_path": "interview.txt"}),
     ),
     "notebook_ask": _Leg(
@@ -522,9 +699,86 @@ LEGS: dict[str, _Leg] = {
             "/api/notebook/ask",
             {"project_id": PROJECT_ID, "question": "parity question?", "retrieval_only": True},
         ),
+        _sock(
+            "notebook_ask",
+            {"project_id": PROJECT_ID, "question": "parity question?", "retrieval_only": True},
+        ),
         mcp=_mcp(
             {"question": "parity question?", "project_id": PROJECT_ID, "retrieval_only": True}
         ),
+    ),
+    # -- promoted research ops (full surface parity wave) --------------------
+    "research_ingest": _Leg(
+        _shared_research_ingest,
+        _post("/api/research/ingest", {"path": "interview.txt"}),
+        _sock("research_ingest", {"path": "interview.txt"}),
+        mcp=_mcp({"path": "interview.txt"}),
+    ),
+    "coding_run": _Leg(
+        _shared_coding_run,
+        _post("/api/coding/run", {"codebook_version_id": CV}),
+        _sock("coding_run", {"codebook_version_id": CV}),
+        mcp=_mcp({"codebook_version_id": CV}),
+    ),
+    "inductive_run": _Leg(
+        _shared_inductive_run,
+        _post("/api/coding/inductive", {}),
+        _sock("inductive_run", {}),
+        mcp=_mcp({}),
+    ),
+    "codebook_promote": _Leg(
+        _shared_codebook_promote,
+        _post("/api/codebook/promote", {"proposed_id": 1, "name": "n", "definition": "d"}),
+        _sock("codebook_promote", {"proposed_id": 1, "name": "n", "definition": "d"}),
+        mcp=_mcp({"proposed_id": 1, "name": "n", "definition": "d"}),
+    ),
+    "research_report": _Leg(
+        _shared_research_report,
+        _post("/api/research/report", {"level": "novice"}),
+        _sock("research_report", {"level": "novice"}),
+        mcp=_mcp({"level": "novice"}),
+    ),
+    "review_execute": _Leg(
+        _shared_review_execute,
+        _post(
+            "/api/review/execute",
+            {"assignment_id": ASSIGNMENT_ID, "decision": "accept", "reviewer": "parity"},
+        ),
+        _sock(
+            "review_execute",
+            {"assignment_id": ASSIGNMENT_ID, "decision": "accept", "reviewer": "parity"},
+        ),
+        mcp=_mcp({"assignment_id": ASSIGNMENT_ID, "decision": "accept", "reviewer": "parity"}),
+    ),
+    "notebook_evidence": _Leg(
+        _shared_notebook_evidence,
+        _post("/api/notebook/evidence", {"code": "parity-code"}),
+        _sock("notebook_evidence", {"code": "parity-code"}),
+        mcp=_mcp({"code": "parity-code"}),
+    ),
+    "notebook_uncoded": _Leg(
+        _shared_notebook_uncoded,
+        _post("/api/notebook/uncoded", {}),
+        _sock("notebook_uncoded", {}),
+        mcp=_mcp({}),
+    ),
+    "notebook_overlap": _Leg(
+        _shared_notebook_overlap,
+        _post("/api/notebook/overlap", {}),
+        _sock("notebook_overlap", {}),
+        mcp=_mcp({}),
+    ),
+    "research_cycle": _Leg(
+        _shared_research_cycle,
+        _post("/api/research/cycle", {"mode": "in"}),
+        _sock("research_cycle", {"mode": "in"}),
+        mcp=_mcp({"mode": "in"}),
+    ),
+    "research_demo": _Leg(
+        _shared_research_demo,
+        _post("/api/research/demo", {}),
+        _sock("research_demo", {}),
+        mcp=_mcp({}),
     ),
 }
 
@@ -681,6 +935,20 @@ class _StubResearchHandler:
     ) -> dict[str, Any]:
         return dict(_TRANSCRIPT)
 
+    async def ingest_path(
+        self,
+        tenant_id: UUID,
+        path: str,
+        project_id: UUID | None = None,
+        force: bool = False,
+    ) -> dict[str, Any]:
+        return dict(_INGEST_PATH)
+
+
+class _StubLlmHandler:
+    def __init__(self, config: Any = None) -> None:
+        self.config = config
+
 
 def _offline_config() -> dict[str, Any]:
     return {
@@ -701,6 +969,17 @@ def _release_stub(payload: dict[str, Any]) -> Callable[..., Any]:
 def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
     """One stubbed world for all legs, torn down per test."""
     monkeypatch.setattr(ingest_common_module, "PostgresIngestStore", _StubStore)
+
+    # Partition seam: the file legs never exercise unstructured here (the
+    # pipeline's partition behavior is covered by the ingest tests). An
+    # empty element list keeps the walk hermetic on hosts without libmagic.
+    import corpus_kb.ingestion.strategies.default as default_strategy_module
+
+    monkeypatch.setattr(
+        default_strategy_module,
+        "unstructured_partition",
+        lambda *args: [],
+    )
     pool = _FakePool()
     saved = _SavedAggregate()
     monkeypatch.setattr(command_handler_module, "get_app", lambda: saved)
@@ -738,7 +1017,8 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         release_handlers_module, "compare_version_releases", _release_stub(_COMPARE)
     )
 
-    # Research transcript: stub the handler + the projection catch-up.
+    # Research transcript + path ingest: stub the handler + the projection
+    # catch-up.
     monkeypatch.setattr(
         research_tools_module, "get_research_handler", lambda pool: _StubResearchHandler()
     )
@@ -747,6 +1027,51 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         return None
 
     monkeypatch.setattr(research_tools_module, "advance_all_projections", noop_advance)
+
+    # Promoted research ops (full surface parity wave): stub at the exact
+    # seam the shared tool layer imports at call time.
+    monkeypatch.setattr(config_module, "load_config", _offline_config)
+    monkeypatch.setattr(llm_handler_module, "LlmHandler", _StubLlmHandler)
+
+    async def stub_result(payload: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
+        return payload
+
+    monkeypatch.setattr(deductive_run_module, "run_deductive", lambda *a, **k: stub_result(_CODING))
+    monkeypatch.setattr(
+        inductive_run_module, "run_inductive", lambda *a, **k: stub_result(_INDUCTIVE)
+    )
+    monkeypatch.setattr(
+        promote_code_module, "promote_proposal", lambda *a, **k: stub_result(_PROMOTE)
+    )
+
+    async def stub_report(*args: Any, **kwargs: Any) -> object:
+        return object()
+
+    monkeypatch.setattr(report_runner_module, "build_report", stub_report)
+    monkeypatch.setattr(governance_report_module, "to_dict", lambda report: dict(_REPORT))
+    monkeypatch.setattr(
+        review_surface_module, "execute_review", lambda *a, **k: stub_result(_REVIEWED)
+    )
+    monkeypatch.setattr(
+        notebook_tools_module, "evidence_for_code", lambda *a, **k: stub_result(_EVIDENCE)
+    )
+    monkeypatch.setattr(
+        notebook_tools_module, "uncoded_units", lambda *a, **k: stub_result(_UNCODED)
+    )
+    monkeypatch.setattr(
+        notebook_tools_module, "overlap_view", lambda *a, **k: stub_result(_OVERLAP)
+    )
+
+    async def stub_exit_zero(*args: Any, **kwargs: Any) -> int:
+        return 0
+
+    monkeypatch.setattr(research_cycle_module, "run_cycle", stub_exit_zero)
+
+    async def stub_checkpoint(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {"kind": "final"}
+
+    monkeypatch.setattr(research_cycle_state_module, "last_cycle_checkpoint", stub_checkpoint)
+    monkeypatch.setattr(research_demo_module, "run_demo", stub_exit_zero)
 
     # Notebook ask: retrieval-only leg; stub the embedder boundary + handler.
     async def canned_ask(pool: Any, embedder: Any, llm: Any, query: Any) -> dict[str, Any]:
@@ -820,9 +1145,15 @@ def test_catalogue_and_legs_agree() -> None:
     assert not op_names & skip_names, "an op cannot be both tested and skipped"
     assert set(LEGS) == op_names, f"catalogue/legs drift: {sorted(op_names ^ set(LEGS))}"
     for op in OPERATIONS:
-        assert len(op.surfaces) >= 2, f"{op.name} must have two or more surfaces"
-        # Wave 4A: every catalogue MCP surface gets an MCP leg (and only
-        # those do) — the MCP server is generated from the same rows.
+        # Full surface parity: every catalogue operation declares all four
+        # surfaces and carries a leg for each one that runs envelopes.
+        kinds = {surface.kind for surface in op.surfaces}
+        assert kinds == {"cli", "http", "mcp", "socket"}, (
+            f"{op.name} must declare all four surfaces (has {sorted(kinds)})"
+        )
+        assert LEGS[op.name].socket is not None, f"{op.name} needs a socket leg"
+        # Every catalogue MCP surface gets an MCP leg (and only those do) —
+        # the MCP server is generated from the same rows.
         has_surface = bool(surfaces_of(op, "mcp"))
         has_leg = LEGS[op.name].mcp is not None
         assert has_surface == has_leg, (
@@ -856,6 +1187,12 @@ def test_catalogue_matches_surface_registry() -> None:
         "topics_list",
         "research_ingest_transcript",
         "notebook_ask",
+        "research_ingest",
+        "coding_run",
+        "codebook_promote",
+        "notebook_evidence",
+        "research_cycle",
+        "research_demo",
     } <= set(checked)
 
 
