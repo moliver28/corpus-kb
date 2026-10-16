@@ -126,9 +126,7 @@ def query(
 
 # Module-level singleton (B008): mutable-annotated typer defaults must not
 # call typer.Option inline. No annotation: typer.Option is a function.
-_CHUNK_ID_OPTION = typer.Option(
-    None, "--chunk-id", help="A cited chunk UUID (repeatable)"
-)
+_CHUNK_ID_OPTION = typer.Option(None, "--chunk-id", help="A cited chunk UUID (repeatable)")
 
 
 def verify_answer(
