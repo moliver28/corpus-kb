@@ -10,6 +10,7 @@ tests using it are marked requires_postgres and auto-skip in CI.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import asyncpg
@@ -19,6 +20,10 @@ DB_NAME = "corpus_kb_t11_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
 SUPER_DSN = f"{BASE_DSN}/postgres"
 TEST_TENANT = "00000000-0000-0000-0000-000000000002"
+
+# DDL identifiers cannot be bound; guard the constant instead.
+if not re.fullmatch(r"[a-z_0-9]+", DB_NAME):
+    raise ValueError(f"DB_NAME must be a bare identifier, got {DB_NAME!r}")
 
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "src" / "corpus_kb" / "migrations"
