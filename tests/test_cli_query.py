@@ -9,6 +9,7 @@ are exercised end-to-end without a database.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
@@ -18,6 +19,14 @@ from corpus_kb.cli import app
 from corpus_kb.errors import CorpusError
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\[[0-9;]*m")
+
+
+def _flat_help(output: str) -> str:
+    """Rich help output with ANSI escapes stripped and whitespace joined."""
+    return " ".join(_ANSI.sub("", output).split())
+
 
 DOC_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 
@@ -184,6 +193,6 @@ def test_help_documents_exit_codes() -> None:
     for command in ("query", "verify-answer"):
         result = runner.invoke(app, [command, "--help"])
         assert result.exit_code == 0
-        flat = " ".join(result.output.split())
+        flat = _flat_help(result.output)
         assert "1 failed" in flat
         assert "3 the database is unreachable" in flat
