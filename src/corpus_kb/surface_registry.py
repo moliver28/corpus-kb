@@ -216,6 +216,14 @@ SURFACES: tuple[Surface, ...] = (
         description="List the built topics with sizes, labels, and keywords.",
         http_route="/api/topics",
     ),
+    # -- core search op (the last surface it was missing): full cli+mcp+http --
+    Surface(
+        name="search",
+        cli_path="search",
+        mcp_tool="search",
+        description="Hybrid vector + full-text search with the degraded envelope.",
+        http_route="/api/search",
+    ),
 )
 
 # --------------------------------------------------------------------------

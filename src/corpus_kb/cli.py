@@ -66,6 +66,13 @@ from corpus_kb.cli_topics import register as register_topics_commands  # noqa: E
 
 register_topics_commands(app)
 
+# The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
+# the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
+# import stays acyclic.
+from corpus_kb.cli_search import register as register_search_commands  # noqa: E402
+
+register_search_commands(app)
+
 
 def _version_callback(value: bool) -> None:
     if value:
