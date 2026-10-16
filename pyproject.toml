@@ -343,6 +343,10 @@ help = "All quality gates: lint + format-check + types + dead-code + deps + comp
 cmd = "python scripts/gen_harness_pack.py --check"
 help = "Regenerate/diff-check the harness command pack"
 
+[tool.poe.tasks.license-lock]
+cmd = "uv run --frozen python scripts/generate_license_lock.py"
+help = "Regenerate licenses.lock.json from the pinned uv.lock environment (matches CI)"
+
 [tool.poe.tasks.check]
 sequence = ["verify", "gen"]
 help = "verify + gen: everything a PR must pass locally"
