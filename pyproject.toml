@@ -42,7 +42,10 @@ dependencies = [
     "tree-sitter-java>=0.23",
     "pydantic>=2.0",
     "rich>=13.0",
-    "unstructured>=0.13",
+    # unstructured[md]: the md extra ships the `markdown` package that
+    # partition_md() needs. Plain `unstructured` cannot ingest markdown —
+    # the most common RAG format — so the extra is REQUIRED, not optional.
+    "unstructured[md]>=0.13",
     # python-pptx: pure-Python MIT, first-class PPTX structure.
     "python-pptx>=1.0",
     "asyncpg>=0.29.0",
