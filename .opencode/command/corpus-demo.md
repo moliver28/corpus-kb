@@ -18,4 +18,6 @@ corpus-kb research demo
   docs/getting-started.md "Before you start").
 - Every stage narrates what it is doing and links the relevant docs.
 - Re-runs are safe: file and text hashes make ingested files no-ops.
-- CLI-only by design; all flags: `corpus-kb research demo --help`
+- Long-running and synchronous on every surface: http/mcp/socket POSTs
+  return a receipt envelope (status, exit code, captured narration).
+- All flags: `corpus-kb research demo --help`

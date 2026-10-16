@@ -40,6 +40,8 @@ Postures:
   stage/gate event per line for agents.
 - Unattended runs: `--approve` confirms every gate without asking;
   `--deny` refuses every gate. Closed stdin cannot hang the cycle.
+- Long-running and synchronous on every surface: http/mcp/socket POSTs
+  run the same cycle and return the receipt when it ends.
   Exit codes: 0 complete; 2 embeddings unavailable; 10-17 one gate
   halted; 20 approval denied; 21 awaiting approval.
 - All flags: `corpus-kb research cycle --help`

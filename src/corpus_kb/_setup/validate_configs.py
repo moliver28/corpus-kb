@@ -63,6 +63,7 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "notebook_uncoded",
         "notebook_overlap",
         "research_cycle",
+        "research_demo",
         # -- release lifecycle (U5, tools/release_tools.py, P7) --------------
         "release_assess",
         "release_request",
