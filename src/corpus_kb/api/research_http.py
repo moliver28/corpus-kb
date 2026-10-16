@@ -85,7 +85,13 @@ class ToolRoute:
 
 def _tool_routes() -> tuple[ToolRoute, ...]:
     """The route table (tool modules imported lazily, api/http.py style)."""
-    from corpus_kb.tools import notebook_tools, release_tools, research_tools
+    from corpus_kb.tools import (
+        cycle_tools,
+        demo_tools,
+        notebook_tools,
+        release_tools,
+        research_tools,
+    )
 
     return (
         # -- release lifecycle (U5, v6 §6) --------------------------------
@@ -220,7 +226,40 @@ def _tool_routes() -> tuple[ToolRoute, ...]:
             (),
             ("project_id", "tenant_id", "version_id"),
         ),
+        # -- full surface parity wave: the long-running orchestrators -----
+        # Synchronous POSTs, exactly like the CLI: one call runs the whole
+        # stage/cycle and returns the receipt when it ends. The cycle's
+        # codebook_promotion gate stays hard-floored (a human promotes).
+        ToolRoute(
+            "/api/research/cycle",
+            cycle_tools.research_cycle,
+            "pg_pool",
+            (),
+            (
+                "approve",
+                "codebook_version_id",
+                "guide",
+                "halt_on",
+                "ingest_dir",
+                "mode",
+                "project_id",
+                "question",
+                "tenant_id",
+            ),
+        ),
+        ToolRoute(
+            "/api/research/demo",
+            demo_tools.research_demo,
+            None,
+            (),
+            (),
+        ),
     )
+
+
+def tool_routes() -> tuple[ToolRoute, ...]:
+    """The public route table (the socket arms build from the same rows)."""
+    return _tool_routes()
 
 
 def _route_by_path() -> dict[str, ToolRoute]:
