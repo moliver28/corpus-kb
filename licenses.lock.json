@@ -820,9 +820,9 @@
   },
   {
     "name": "SQLAlchemy",
-    "version": "2.0.54",
+    "version": "2.0.55",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/SQLAlchemy/2.0.54/",
+    "homepage": "https://pypi.org/project/SQLAlchemy/2.0.55/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
