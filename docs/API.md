@@ -419,11 +419,13 @@ placeholder.
 | `/api/notebook/evidence` | POST | `notebook_evidence` | **code**, project_id, version_id, limit, tenant_id |
 | `/api/notebook/uncoded` | POST | `notebook_uncoded` | project_id, version_id, k, tenant_id |
 | `/api/notebook/overlap` | POST | `notebook_overlap` | project_id, version_id, tenant_id |
+| `/api/research/cycle` | POST | `research_cycle` | mode, project_id, ingest_dir, question, codebook_version_id, guide, approve, halt_on, tenant_id |
+| `/api/research/demo` | POST | `research_demo` | (no body) |
 
-`research-cycle` (interactive postures, approval boundary, watch mode) and
-`research-demo` (CLI-only by design) intentionally have NO HTTP route —
-the documented parity allowlist in
-`src/corpus_kb/surface_registry_parity.py`.
+The cycle and the demo are long-running and synchronous. One POST runs the
+whole pipeline and returns the receipt when it ends. This is the same call
+the CLI makes. The cycle's `codebook_promotion` gate stays hard-floored.
+No surface automates promotion.
 
 ```bash
 curl -X POST http://localhost:8010/api/research/report   -H "Content-Type: application/json" -d "{}"

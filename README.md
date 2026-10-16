@@ -228,12 +228,14 @@ your own transcripts. Ports, exit codes, and vocabularies: see
 
 Editors connect over **MCP stdio** (native, no bridge), the **HTTP API**, or the JSON-RPC socket:
 
-- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files for Claude Code, Cursor, Codex, and OpenCode launch exactly this command. The server registers the catalogue operations plus the research/coding/release surfaces as MCP tools; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference.
+- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files for Claude Code, Cursor, Codex, and OpenCode launch exactly this command. The server registers every catalogue operation as an MCP tool; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference.
 - HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md)).
 - JSON-RPC socket: same command, for local automation.
 - The research and coding surfaces are first-class CLI commands (`corpus-kb research ...` and `corpus-kb coding ...`). Ingestion has a top-level front door: `corpus-kb ingest` with `--watch` auto-heal, plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`.
 
-Both stdio and HTTP serve the same shared tool functions, so envelopes match across surfaces. The parity gate in `tests/test_surface_parity_deep.py` enforces this.
+Every catalogue operation is reachable on all four surfaces (MCP, CLI,
+HTTP, socket) and returns the same envelope on each. The parity gate in
+`tests/test_surface_parity_deep.py` enforces this.
 
 ---
 

@@ -62,6 +62,29 @@ Per-command nuances:
 - LLM label reduction never fails the build. A down Ollama keeps the
   c-TF-IDF labels and records the note in the result.
 
+### The search, query, and graph families
+
+`corpus-kb search`, `query`, `verify-answer`, `add-entity`, `add-relation`,
+`list-documents`, `delete-document`, and `ingest-text` (the
+`cli_search.py` / `cli_query.py` / `cli_graph.py` / `cli_ingest_text.py`
+front doors):
+
+| Code | Meaning |
+|------|---------|
+| 0 | The command answered. An empty `list-documents` or `search` result is still 0. A `verify-answer` abstention is still 0 and is reported. A `delete-document` of an unknown ID is still 0; the delete is idempotent. |
+| 1 | The command failed. An error envelope or a `CorpusError` prints and exits 1. |
+| 3 | The database is unreachable. Bad DSN, wrong credentials, or the server is down. |
+
+Per-command nuances:
+
+- Every command takes `--json`. It prints the exact handler envelope, so
+  the CLI, MCP, HTTP, and socket surfaces return byte-shape-identical
+  payloads for one operation.
+- `ingest-text -` reads the raw text from stdin.
+- `query` prints the routed backend and the ranked hits in human mode.
+- `add-entity` and `add-relation` write through the same aggregate
+  command handler the HTTP routes use, so the audit trail is identical.
+
 ### The research cycle gates
 
 `corpus-kb research cycle` halts at human gates. Each gate has its own exit
@@ -85,6 +108,14 @@ code (`src/corpus_kb/research/cycle_gates.py`):
 To resume: act on the gate, then re-run the same command. The run continues
 after its last checkpoint. Config may add gates via `research.cycle.halt_on`.
 Config may never remove `codebook_promotion`.
+
+The cycle is long-running and synchronous on every surface. An HTTP POST
+to `/api/research/cycle`, the `research_cycle` MCP tool, and the socket
+method run the same pipeline. Each call returns the receipt when the run
+ends: `status`, `exit_code`, `gate`, `checkpoint_kind`, `resume_hint`.
+Promotion stays a human act on every surface. The narrated demo works the
+same way. The `/api/research/demo` route, the `research_demo` tool, and
+the socket method return a receipt with the captured narration.
 
 ### Codebook promotion
 
@@ -285,11 +316,13 @@ Editors connect over stdio. The command is:
 corpus-kb --transport stdio
 ```
 
-This serves 27 MCP tools, generated from the same registry the CLI and HTTP
-surfaces use (`src/corpus_kb/mcp_server.py`). The `mcp-configs/` files for
-Claude Code, Cursor, and Codex, plus the root `opencode.json`, launch this
-command. Tool names, parameters, and envelopes match the other surfaces;
-the parity gate holds all surfaces to one envelope per operation.
+This serves 34 MCP tools, generated from the same catalogue the CLI, HTTP,
+and socket surfaces use (`src/corpus_kb/mcp_server.py`). Every catalogue
+operation — 34 of them — is reachable on all four surfaces: MCP, CLI,
+HTTP, and socket. The `mcp-configs/` files for Claude Code, Cursor, and
+Codex, plus the root `opencode.json`, launch this command. Tool names,
+parameters, and envelopes match the other surfaces; the parity gate holds
+all surfaces to one envelope per operation.
 
 The live inventory of every operation is:
 
