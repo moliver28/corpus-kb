@@ -31,7 +31,6 @@ async def search(
     k: int | None = None,
     source_type: str | None = None,
     self_query: bool | None = None,
-    embedder: object | None = None,
 ) -> dict[str, object]:
     """Hybrid vector + full-text search with the honest degraded envelope.
 
@@ -44,18 +43,16 @@ async def search(
 
     The handler does NOT build an embedder itself (the server wiring owns
     that job and its comment warns what happens without one): a caller that
-    skips it silently loses the vector arm. When no embedder is handed in,
-    this builds the config-driven one so CLI and MCP callers get full
-    hybrid search, not FTS-only results.
+    skips it silently loses the vector arm. This entry builds the
+    config-driven embedder per call so CLI and MCP callers get full hybrid
+    search, not FTS-only results. Construction is cheap (no I/O).
     """
     from corpus_kb.domain.models import SearchQuery
     from corpus_kb.handlers.query_handler import QueryHandler
+    from corpus_kb.rag import create_embedder
 
     cfg = load_config_or_pass(config)
-    if embedder is None:
-        from corpus_kb.rag import create_embedder
-
-        embedder = create_embedder(cfg, pg_pool)
+    embedder = create_embedder(cfg, pg_pool)
 
     search_query = SearchQuery(
         tenant_id=UUID(tenant_id),
