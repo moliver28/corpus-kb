@@ -19,6 +19,7 @@ re-derived prototype refs.
 from __future__ import annotations
 
 import json
+import os
 import uuid as uuid_mod
 from typing import Any, cast
 
@@ -304,9 +305,9 @@ async def seeded_db(monkeypatch):
 
 
 async def _db_exists(db_name: str) -> bool:
-    from tests import research_db
-
     import asyncpg
+
+    from tests import research_db
 
     admin = await asyncpg.connect(research_db.SUPER_DSN, user="postgres", password="postgres")
     try:
