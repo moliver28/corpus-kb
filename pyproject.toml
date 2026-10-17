@@ -142,6 +142,10 @@ topics = ["bertopic>=0.16"]
 # gates run through poe (``poe dead-code`` etc.) so local, CI, and agents
 # execute one command each (program standards 7/8/10).
 dev = [
+    # ruff: the lint gate (poe lint, ci.yml lint job) runs it but it was
+    # never declared - a locked-environment sync dropped it silently.
+    # Pinned to the exact ci.yml version so local lint == CI lint.
+    "ruff==0.15.18",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
