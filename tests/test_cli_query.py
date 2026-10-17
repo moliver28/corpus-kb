@@ -35,9 +35,7 @@ _CFG = {"embedding": {"model": "nomic-embed-text", "dimensions": 768}}
 _QUERY = {
     "status": "success",
     "result": {
-        "route": "semantic",
-        "confidence": 0.9,
-        "fallback": False,
+        "decision": {"route": "semantic", "confidence": 0.9, "fallback": False},
         "results": [{"doc_id": DOC_ID, "text": "startup\nbehavior", "score": 0.9}],
     },
 }
@@ -109,12 +107,17 @@ def test_query_human_output_ranks_results(monkeypatch: pytest.MonkeyPatch) -> No
     _patch_world(monkeypatch, "query", fake)
     result = runner.invoke(app, ["query", "how does startup work?"])
     assert result.exit_code == 0, result.output
-    assert "route: semantic" in result.output
-    assert f"1. {DOC_ID} :: startup behavior" in result.output
+    assert "route: semantic (confidence 0.90)" in _flat_help(result.output)
+    assert f"1. {DOC_ID} :: startup behavior" in _flat_help(result.output)
 
 
 def test_query_empty_prints_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _RecordingTool({"status": "success", "result": {"route": "semantic", "results": []}})
+    fake = _RecordingTool(
+        {
+            "status": "success",
+            "result": {"decision": {"route": "semantic"}, "results": []},
+        }
+    )
     _patch_world(monkeypatch, "query", fake)
     result = runner.invoke(app, ["query", "anything"])
     assert result.exit_code == 0, result.output
