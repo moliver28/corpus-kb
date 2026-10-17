@@ -205,7 +205,12 @@ async def test_coding_rls_forced_and_tenant_scoped_on_live_db() -> None:
             assert row["relforcerowsecurity"] is True, f"{row['relname']} not FORCE RLS"
 
         # Probe: a non-owner role sees zero rows of another tenant's data.
-        grants = " ".join(f"GRANT SELECT ON {table} TO {PROBE_ROLE};" for table in CODING_TABLES)
+        # USAGE on the schema is not guaranteed: hardened hosts revoke it
+        # from PUBLIC, which hides every table from the probe role.
+        grants = " ".join(
+            [f"GRANT USAGE ON SCHEMA public TO {PROBE_ROLE};"]
+            + [f"GRANT SELECT ON {table} TO {PROBE_ROLE};" for table in CODING_TABLES]
+        )
         await conn.execute(
             f"""
             DO $$

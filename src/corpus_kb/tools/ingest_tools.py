@@ -172,7 +172,7 @@ async def list_documents(
     # pool explicitly.
     handler = QueryHandler(pg_pool, config=load_config_or_pass(config))
     results = await handler.handle_list_documents(query)
-    return {"status": "success", "result": [r.model_dump() for r in results]}
+    return {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
 
 
 async def delete_document(

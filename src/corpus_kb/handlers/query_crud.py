@@ -37,13 +37,14 @@ from corpus_kb.domain.models import (
 )
 from corpus_kb.handlers.query_integrity import degraded_candidate_predicate
 from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.utils.json_safe import json_safe
 
 
 async def sql_query(pool: asyncpg.Pool, query: SQLQuery) -> list[dict[str, object]]:
     """Execute a read-only SQL query."""
     async with tenant_connection(pool, str(query.tenant_id)) as conn:
         rows = await conn.fetch(query.sql, *query.params.values())
-        return [dict(row) for row in rows]
+        return [json_safe(dict(row)) for row in rows]
 
 
 async def list_documents(pool: asyncpg.Pool, query: ListDocumentsQuery) -> list[DocumentResult]:
