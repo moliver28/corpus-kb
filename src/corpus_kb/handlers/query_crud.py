@@ -5,15 +5,14 @@ module functions; QueryHandler keeps thin delegating methods so every
 surface (HTTP/socket/CLI/tests) keeps its exact call shape. SQL and logic
 are byte-identical to the pre-split methods.
 
-Tenant-context note: only :func:`search_similar` adopted
-``storage.tenant_conn.tenant_connection`` — it is the one handler whose
-original shape (acquire → transaction → set_config → read) matches the
-helper exactly. The others issue ``set_config`` on an autocommit
-connection with NO explicit transaction (``sql_query``, ``list_documents``,
-``list_entities``, ``search_context``) or set no tenant context at all
-(``verify_answer``); wrapping them in the helper's transaction would
-change runtime behavior, so they keep their original (bug-compatible)
-shape until a dedicated transactional-correctness wave.
+Tenant-context note: every handler acquires through
+:func:`storage.tenant_conn.tenant_connection` (acquire → transaction →
+set_config → read). The pre-wave shapes issued ``set_config`` on an
+autocommit connection, where the transaction-local setting evaporates
+before the read; any database whose ``app.current_tenant_id`` default is
+empty then failed with ``invalid input syntax for type uuid: ""`` inside
+the RLS policy. Fixed in the tenant-correctness fix, not kept
+bug-compatible: the broken shape never worked on a strict database.
 """
 
 from __future__ import annotations
@@ -42,22 +41,14 @@ from corpus_kb.storage.tenant_conn import tenant_connection
 
 async def sql_query(pool: asyncpg.Pool, query: SQLQuery) -> list[dict[str, object]]:
     """Execute a read-only SQL query."""
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)",
-            str(query.tenant_id),
-        )
+    async with tenant_connection(pool, str(query.tenant_id)) as conn:
         rows = await conn.fetch(query.sql, *query.params.values())
         return [dict(row) for row in rows]
 
 
 async def list_documents(pool: asyncpg.Pool, query: ListDocumentsQuery) -> list[DocumentResult]:
     """List documents with pagination."""
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)",
-            str(query.tenant_id),
-        )
+    async with tenant_connection(pool, str(query.tenant_id)) as conn:
         rows = await conn.fetch(
             """
             SELECT doc_id, source, source_type, chunk_count, created_at
@@ -84,11 +75,7 @@ async def list_documents(pool: asyncpg.Pool, query: ListDocumentsQuery) -> list[
 
 async def list_entities(pool: asyncpg.Pool, query: ListEntitiesQuery) -> list[EntityResult]:
     """List entities, optionally filtered by type."""
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)",
-            str(query.tenant_id),
-        )
+    async with tenant_connection(pool, str(query.tenant_id)) as conn:
         if query.entity_type:
             rows = await conn.fetch(
                 """
@@ -196,11 +183,7 @@ async def search_context(
     )
     # Expand each result with surrounding chunks
     expanded: list[SearchResult] = []
-    async with pool.acquire() as conn:
-        await conn.execute(
-            "SELECT set_config('app.current_tenant_id', $1, true)",
-            str(query.tenant_id),
-        )
+    async with tenant_connection(pool, str(query.tenant_id)) as conn:
         for result in base_results:
             expanded.append(result)
             context = await conn.fetch(
@@ -253,7 +236,7 @@ async def verify_answer(
 
     if not query.chunk_ids or judge is None:
         return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
-    async with pool.acquire() as conn:
+    async with tenant_connection(pool, str(query.tenant_id)) as conn:
         rows = await conn.fetch(
             "SELECT chunk_id, text FROM chunks WHERE tenant_id = $1 AND chunk_id = ANY($2)",
             str(query.tenant_id),
