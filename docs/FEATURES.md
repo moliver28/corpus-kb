@@ -220,6 +220,7 @@ Honest caveats:
 | Search | `search` | Hybrid vector + full-text search |
 | Search | `query` | Route one question to the vector, SQL, or graph backend |
 | Search | `verify_answer` | Check each claim of an answer against the cited chunks |
+| Search | `ask` | Cited answer generated from retrieved evidence |
 | Research | `research_ingest_transcript` | Ingest one transcript: turns, roles, exchanges |
 | Research | `research_ingest` | Dynamic ingest of file/dir/glob with dedup |
 | Research | `notebook_ask` | Grounded Q&A with cited sentences |

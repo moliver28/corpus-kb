@@ -223,6 +223,50 @@ curl -X POST http://localhost:8010/api/search/context \
   -d '{"query": "authentication", "k": 5, "context_chunks": 2}'
 ```
 
+### POST /api/ask
+
+Answer a question from retrieved evidence.
+
+```bash
+curl -X POST http://localhost:8010/api/ask \
+  -H "Content-Type: application/json" \
+  -d '{"query": "how does startup work", "k": 5}'
+```
+
+The route searches with the hybrid retriever, then generates with the
+local LLM at temperature 0. Every answer sentence must carry an evidence
+index like `[1]`. Sentences without a valid index are dropped, never
+shown uncited.
+
+Response body (`status`, `result`, `degraded_excluded`):
+
+```json
+{
+  "status": "success",
+  "result": {
+    "answer": "The startup order is documented [1].",
+    "sentences": [{"text": "The startup order is documented [1].", "citations": [1]}],
+    "sources": [
+      {"n": 1, "chunk_id": "...", "source": "runbook.md", "text": "...", "score": 0.9}
+    ],
+    "verify": {"groundedness": 1.0, "verdicts": [], "abstained": true},
+    "model": "qwen3:4b",
+    "note": null
+  },
+  "degraded_excluded": {"count": 0, "reasons": []}
+}
+```
+
+Honest statuses: `success`, `empty`, and `degraded`. `empty` means no
+evidence matched; no LLM call runs. `degraded` means generation failed;
+the evidence list ships with a `note`. `degraded_excluded` mirrors
+`/api/search` and reports what the degraded filter could not see.
+
+When `judge.enabled` is true, the answer is decomposed into claims and
+checked against the sources. `verify.groundedness` is the entailed share.
+The verifier abstains rather than guessing: no judge, no claims, or a
+judge outage all answer `abstained: true`.
+
 ---
 
 ## SQL queries

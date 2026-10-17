@@ -73,6 +73,13 @@ from corpus_kb.cli_search import register as register_search_commands  # noqa: E
 
 register_search_commands(app)
 
+# UX Wave 1 ask front door: cli_ask mirrors cli_search (it reuses the
+# cli_ingest plumbing and imports corpus_kb.cli nowhere), so this import
+# stays acyclic.
+from corpus_kb.cli_ask import register as register_ask_command  # noqa: E402
+
+register_ask_command(app)
+
 # Full-surface parity front doors: the graph/documents commands, the
 # query/verify commands, and the raw-text ingest command. Each module
 # reuses the cli_ingest plumbing and imports corpus_kb.cli nowhere, so

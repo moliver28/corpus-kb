@@ -18,6 +18,7 @@ Route families (the Route order below is the original single-file order):
   api/routes_search.py         POST /api/search, /api/search/similar,
                                /api/search/context, /api/verify, /api/query,
                                /api/query/sql, /api/embed
+  api/routes_ask.py            POST /api/ask
   api/routes_coding.py         POST /api/coding/* (six routes)
   api/routes_meta.py           GET /api/documents, /api/entities, /api/versions,
                                /api/stats, /api/tables, /api/document-stats
@@ -38,6 +39,7 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Route
 
 from corpus_kb.api.research_http import research_routes
+from corpus_kb.api.routes_ask import ask
 from corpus_kb.api.routes_coding import (
     coding_calibrate_floors,
     coding_code_batch,
@@ -109,6 +111,8 @@ def create_http_app() -> Starlette:
         Route("/api/query", route_query, methods=["POST"]),
         Route("/api/query/sql", query_sql, methods=["POST"]),
         Route("/api/embed", embed_text, methods=["POST"]),
+        # UX Wave 1 ask operation: the grounded answer front door.
+        Route("/api/ask", ask, methods=["POST"]),
         Route("/api/coding/embed-codebook", coding_embed_codebook, methods=["POST"]),
         Route("/api/coding/pool", coding_pool, methods=["POST"]),
         Route("/api/coding/code-batch", coding_code_batch, methods=["POST"]),

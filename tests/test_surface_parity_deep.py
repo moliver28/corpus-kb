@@ -316,6 +316,12 @@ async def _shared_search(ctx: dict[str, Any]) -> dict[str, Any]:
     return await search_tools_module.search(ctx["pool"], "parity probe", config=ctx["config"], k=3)
 
 
+async def _shared_ask(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.ask_tools import ask as ask_tool
+
+    return await ask_tool("parity question?", ctx["config"], k=3, pg_pool=ctx["pool"])
+
+
 async def _shared_query(ctx: dict[str, Any]) -> dict[str, Any]:
     result = await router_handler_module.get_router_handler().handle_routed_query(
         RoutedQuery(tenant_id=UUID(TENANT), query="parity probe", k=3)
@@ -557,6 +563,12 @@ LEGS: dict[str, _Leg] = {
         _post("/api/search", {"query": "parity probe", "k": 3}),
         _sock("search", {"query": "parity probe", "k": 3}),
         _mcp({"query": "parity probe", "k": 3}),
+    ),
+    "ask": _Leg(
+        _shared_ask,
+        _post("/api/ask", {"query": "parity question?", "k": 3}),
+        _sock("ask", {"query": "parity question?", "k": 3}),
+        _mcp({"query": "parity question?", "k": 3}),
     ),
     "query": _Leg(
         _shared_query,

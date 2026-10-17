@@ -35,6 +35,7 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
     {
         # -- master corpus-kb MCP tools -------------------------------------
         "search",
+        "ask",
         "search_context",
         "search_similar",
         "retrieve_context",
