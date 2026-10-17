@@ -24,7 +24,8 @@
         "query_document_stats",
         "sync_database",
         "ingest_status",
-        "ingest_reembed"
+        "ingest_reembed",
+        "ask"
       ]
     }
   }

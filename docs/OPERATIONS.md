@@ -64,10 +64,10 @@ Per-command nuances:
 
 ### The search, query, and graph families
 
-`corpus-kb search`, `query`, `verify-answer`, `add-entity`, `add-relation`,
-`list-documents`, `delete-document`, and `ingest-text` (the
-`cli_search.py` / `cli_query.py` / `cli_graph.py` / `cli_ingest_text.py`
-front doors):
+`corpus-kb search`, `ask`, `query`, `verify-answer`, `add-entity`,
+`add-relation`, `list-documents`, `delete-document`, and `ingest-text` (the
+`cli_search.py` / `cli_ask.py` / `cli_query.py` / `cli_graph.py` /
+`cli_ingest_text.py` front doors):
 
 | Code | Meaning |
 |------|---------|
@@ -82,6 +82,10 @@ Per-command nuances:
   payloads for one operation.
 - `ingest-text -` reads the raw text from stdin.
 - `query` prints the routed backend and the ranked hits in human mode.
+- `ask` prints the cited answer sentences, the sources, and the
+  groundedness when the judge ran. An `ask` outcome of `empty` (no
+  evidence) or `degraded` (generation down, evidence only) is still 0;
+  the note prints.
 - `add-entity` and `add-relation` write through the same aggregate
   command handler the HTTP routes use, so the audit trail is identical.
 

@@ -223,6 +223,14 @@ SURFACES: tuple[Surface, ...] = (
         description="Hybrid vector + full-text search with the degraded envelope.",
         http_route="/api/search",
     ),
+    # -- ask operation (UX program Wave 1): full cli+mcp+http parity ----------
+    Surface(
+        name="ask",
+        cli_path="ask",
+        mcp_tool="ask",
+        description="Answer a question from retrieved evidence with cited sentences.",
+        http_route="/api/ask",
+    ),
 )
 
 # --------------------------------------------------------------------------
@@ -616,6 +624,8 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     # Wave 4 topics layer (tools/topics_tools.py)
     "topics_build",
     "topics_list",
+    # Ask operation (UX Wave 1, tools/ask_tools.py)
+    "ask",
 )
 
 # Marker fences for the generated .claude/CLAUDE.md research-commands section.

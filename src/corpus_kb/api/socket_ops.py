@@ -205,6 +205,18 @@ async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     return envelope_to_payload(envelope)
 
 
+async def _ask(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.ask_tools import ask as ask_tool
+
+    return await ask_tool(
+        str(params.get("query", "")),
+        tenant_id=tenant_id,
+        k=params.get("k"),
+        pg_pool=await research_pool(),
+    )
+
+
 async def _query(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import RoutedQuery
     from corpus_kb.handlers.router_handler import get_router_handler
@@ -281,6 +293,7 @@ _CORE_ARMS: dict[str, Arm] = {
     "topics_build": _topics_build,
     "topics_list": _topics_list,
     "search": _search,
+    "ask": _ask,
     "query": _query,
     "list_documents": _list_documents,
     "add_entity": _add_entity,

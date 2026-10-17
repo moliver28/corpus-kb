@@ -33,6 +33,7 @@ import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.handlers.tag_handler as tag_handler_module
 import corpus_kb.handlers.versioning_handler as versioning_handler_module
+import corpus_kb.tools.ask_tools as ask_tools
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.research_http import ToolRoute, _tool_routes
@@ -601,6 +602,39 @@ def test_ingest_url_route_supplies_pool(monkeypatch: Any) -> None:
     kwargs = cast("dict[str, object]", captured.get("kwargs", {}))
     assert set(kwargs) <= {"tenant_id", "crawl", "source_type"}
     assert kwargs.get("tenant_id") == DEFAULT_TENANT
+
+
+def test_ask_route_supplies_pool(monkeypatch: Any) -> None:
+    """POST /api/ask reaches the shared ask tool with the shared pool."""
+    captured: dict[str, object] = {}
+
+    async def stub(query: str, **kwargs: object) -> dict[str, object]:
+        captured["query"] = query
+        captured["kwargs"] = kwargs
+        return dict(_CANNED)
+
+    monkeypatch.setattr(ask_tools, "ask", stub)
+    pool = _FakePool()
+    monkeypatch.setattr(research_http, "_pool", pool)
+
+    client = TestClient(create_http_app())
+    response = client.post("/api/ask", json={"query": "how does startup work?", "k": 3})
+
+    assert _assert_live_response(response) == _CANNED
+    assert captured["query"] == "how does startup work?"
+    kwargs = cast("dict[str, object]", captured["kwargs"])
+    assert kwargs.get("pg_pool") is pool, "route did not supply the shared pool"
+    assert kwargs.get("k") == 3
+
+
+def test_ask_route_requires_query() -> None:
+    """A missing query answers the ONE error envelope, never a 500."""
+    client = TestClient(create_http_app())
+    response = client.post("/api/ask", json={})
+    assert response.status_code == 400
+    payload = response.json()
+    assert payload["status"] == "error"
+    assert payload["error_type"] == "validation_error"
 
 
 def test_embed_route_returns_live_json(monkeypatch: Any) -> None:

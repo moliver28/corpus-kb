@@ -30,7 +30,8 @@
         "ingest_status",
         "ingest_reembed",
         "topics_build",
-        "topics_list"
+        "topics_list",
+        "ask"
       ]
     }
   }
