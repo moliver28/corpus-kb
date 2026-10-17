@@ -51,12 +51,23 @@ def _emit_query(result: dict[str, object], json_output: bool) -> None:
         return
     payload = result.get("result")
     body = payload if isinstance(payload, dict) else {}
-    print(f"route: {body.get(_ROUTED_ROUTE, 'unknown')}")
+    # The routed envelope: {"decision": {"route", "confidence", "fallback"},
+    # "results": [backend-shaped rows]} — SQL rows are stat dicts, vector
+    # rows carry text. Render the decision first, then rows generically.
+    decision = body.get("decision")
+    route = decision.get("route", "unknown") if isinstance(decision, dict) else "unknown"
+    confidence = decision.get("confidence") if isinstance(decision, dict) else None
+    suffix = f" (confidence {confidence:.2f})" if isinstance(confidence, (int, float)) else ""
+    print(f"route: {route}{suffix}")
     hits = body.get(_ROUTED_RESULTS)
     rows = [row for row in hits if isinstance(row, dict)] if isinstance(hits, list) else []
     for rank, row in enumerate(rows, start=1):
         text = " ".join(str(row.get("text", "")).split())
-        print(f"{rank}. {row.get('doc_id', '?')} :: {text[:160]}")
+        if text:
+            print(f"{rank}. {row.get('doc_id', '?')} :: {text[:160]}")
+        else:
+            flat = ", ".join(f"{key}: {value}" for key, value in list(row.items())[:8])
+            print(f"{rank}. {flat[:160]}")
     if not rows:
         print("no results")
 
@@ -84,7 +95,7 @@ async def _query_flow(question: str, k: int | None, json_output: bool) -> int:
     cfg = _load_config()
     pool = await _open_pool(cfg)
     try:
-        result = await query(question, config=cfg, k=k)
+        result = await query(question, config=cfg, k=k, pg_pool=pool)
     except CorpusError as exc:
         print(f"ERROR: {exc}")
         return EXIT_FAILED
