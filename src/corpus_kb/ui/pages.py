@@ -118,7 +118,7 @@ def register_pages(ui: UiNamespace) -> None:
                 if view["note"]:
                     ui.markdown(str(view["note"]))
                 for sentence in cast(list[dict[str, object]], view["sentences"]):
-                    ui.chat_message(str(sentence.get("text", "")), sent_by_user=False)
+                    ui.chat_message(str(sentence.get("text", "")), sent=False)
                 sources = cast(list[dict[str, object]], view["sources"])
                 if sources:
                     ui.markdown(sources_markdown(sources))

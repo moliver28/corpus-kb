@@ -875,7 +875,7 @@ requires-dist = [
     { name = "mapie", marker = "extra == 'dev'", specifier = ">=1.0" },
     { name = "marimo", marker = "extra == 'notebook'", specifier = ">=0.25" },
     { name = "mcp", extras = ["cli"], specifier = ">=1.0" },
-    { name = "nicegui", marker = "extra == 'ui'", specifier = ">=3.5" },
+    { name = "nicegui", marker = "extra == 'ui'", specifier = ">=3.18" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "ollama", specifier = ">=0.4" },
     { name = "openinference-semantic-conventions", marker = "extra == 'otel'", specifier = ">=0.1.41" },

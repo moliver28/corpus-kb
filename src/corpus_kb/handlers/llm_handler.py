@@ -20,7 +20,9 @@ from ..config import load_config
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT_S = 30.0
+# Local models load from disk on first use; a cold 4B load plus inference
+# routinely passes 30 s. The claim judge already allows 120 s (rag/judge.py).
+DEFAULT_TIMEOUT_S = 120.0
 
 
 class LlmHandler:

@@ -141,9 +141,21 @@ async def test_schedule_browser_open_returns_task_when_allowed(
 def test_build_ui_mounts_nicegui_routes_into_fastapi() -> None:
     nicegui = pytest.importorskip("nicegui")
     from fastapi import FastAPI
+    from starlette.testclient import TestClient
 
     application = FastAPI()
     ui_app.build_ui(application)
-    paths = {getattr(route, "path", "") for route in application.routes}
-    assert any(path.startswith("/_nicegui") for path in paths), sorted(paths)
+    # run_with integrates at the root (mount_path '/'), so the contract is
+    # behavioral: every registered page serves a real NiceGUI document.
+    with TestClient(application) as client:
+        statuses = {
+            path: client.get(path).status_code
+            for path in (
+                "/",
+                "/add",
+                "/ask",
+                "/library",
+            )
+        }
+    assert all(code == 200 for code in statuses.values()), statuses
     assert hasattr(nicegui, "ui")  # the extra really provided the namespace
