@@ -23,6 +23,8 @@ DEFAULT_RERANK_ENABLED = True
 DEFAULT_RERANK_BACKEND: str | None = None
 DEFAULT_RERANK_MODEL = "qwen3-reranker:4b"
 DEFAULT_RERANK_BASE_URL = "http://localhost:11434"
+# llama-server's default port (reranking.backend: llamacpp reads this URL).
+DEFAULT_RERANK_LLAMACPP_URL = "http://localhost:8080"
 DEFAULT_OVER_RETRIEVE_N = 60
 DEFAULT_RERANK_CANDIDATES = 100
 DEFAULT_RETURN_TOP_K = 20
@@ -42,6 +44,7 @@ RERANK_CONFIG_DEFAULTS: dict[str, object] = {
     "backend": DEFAULT_RERANK_BACKEND,
     "model": DEFAULT_RERANK_MODEL,
     "base_url": DEFAULT_RERANK_BASE_URL,
+    "llamacpp_url": DEFAULT_RERANK_LLAMACPP_URL,
     "over_retrieve_n": DEFAULT_OVER_RETRIEVE_N,
     "candidates": DEFAULT_RERANK_CANDIDATES,
     "return_top_k": DEFAULT_RETURN_TOP_K,
@@ -72,6 +75,7 @@ class RerankSettings:
     backend: str | None = DEFAULT_RERANK_BACKEND
     model: str = DEFAULT_RERANK_MODEL
     base_url: str = DEFAULT_RERANK_BASE_URL
+    llamacpp_url: str = DEFAULT_RERANK_LLAMACPP_URL
     over_retrieve_n: int = DEFAULT_OVER_RETRIEVE_N
     candidates: int = DEFAULT_RERANK_CANDIDATES
     return_top_k: int = DEFAULT_RETURN_TOP_K
@@ -111,6 +115,7 @@ def load_rerank_settings(config: dict[str, object]) -> RerankSettings:
     backend = str(backend_raw) if backend_raw is not None else None
     model = str(block.get("model", DEFAULT_RERANK_MODEL))
     base_url = str(block.get("base_url", DEFAULT_RERANK_BASE_URL))
+    llamacpp_url = str(block.get("llamacpp_url", DEFAULT_RERANK_LLAMACPP_URL))
     over_retrieve_n = _positive_int(
         block.get("over_retrieve_n"), DEFAULT_OVER_RETRIEVE_N, "over_retrieve_n"
     )
@@ -139,6 +144,7 @@ def load_rerank_settings(config: dict[str, object]) -> RerankSettings:
         backend=backend,
         model=model,
         base_url=base_url,
+        llamacpp_url=llamacpp_url,
         over_retrieve_n=over_retrieve_n,
         candidates=candidates,
         return_top_k=return_top_k,
