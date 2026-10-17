@@ -19,8 +19,9 @@ defaults stand.
 from __future__ import annotations
 
 import time
+from collections.abc import Hashable
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Protocol, TypeVar
 from uuid import UUID
 
 import asyncpg
@@ -35,6 +36,11 @@ from corpus_kb.research.retrieval_settings import RetrievalSettings
 
 ARMS = ("vector", "fts", "rrf", "rrf_rerank")
 INSUFFICIENT_DATA = "insufficient_data"
+
+# The metric math is label-type agnostic: the U45 arms score unit ids, the
+# W5 eval harness scores the same units' deterministic chunk-id UUIDs. One
+# TypeVar keeps both callers on THESE functions (no reimplementation).
+_L = TypeVar("_L", bound=Hashable)
 
 
 class _Reranker(Protocol):
@@ -104,20 +110,20 @@ async def load_reviewed_labels(
     ]
 
 
-def _recall_k(ranked: list[int], relevant: frozenset[int], k: int) -> float:
+def _recall_k(ranked: list[_L], relevant: frozenset[_L], k: int) -> float:
     if not relevant:
         return 0.0
     return len(set(ranked[:k]) & relevant) / len(relevant)
 
 
-def _mrr(ranked: list[int], relevant: frozenset[int]) -> float:
+def _mrr(ranked: list[_L], relevant: frozenset[_L]) -> float:
     for pos, unit_id in enumerate(ranked, start=1):
         if unit_id in relevant:
             return 1.0 / pos
     return 0.0
 
 
-def _ndcg(ranked: list[int], relevant: frozenset[int], k: int = 10) -> float:
+def _ndcg(ranked: list[_L], relevant: frozenset[_L], k: int = 10) -> float:
     if not relevant:
         return 0.0
     dcg = sum(

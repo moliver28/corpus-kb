@@ -352,3 +352,17 @@ EMBEDDING_MODEL_PROFILES
 # -> the ChatMessage constructor), never this Protocol.
 on_click
 sent_by_user
+
+# UX Wave 5 eval harness (the lazy deepeval seam): the OllamaJudgeLLM
+# methods exist for deepeval's DeepEvalBaseLLM contract (the library calls
+# them, never our code), and the _TestCaseModule Protocol parameters mirror
+# deepeval's LLMTestCase keyword API. build_golden is a Typer command
+# (registered by decorator, invoked by the CLI entry point).
+build_golden
+actual_output
+expected_output
+retrieval_context
+load_model
+load_responses
+a_generate
+get_model_name
