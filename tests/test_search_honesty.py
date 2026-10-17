@@ -926,6 +926,8 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "topics.llm_reduction": bool,
         "topics.llm": str,
         "topics.llm_base_url": str,
+        # UX Wave 3 browser UI (the [ui] extra's feature flag).
+        "ui.enabled": bool,
     } == RUNTIME_CONFIG_KEYS
 
 

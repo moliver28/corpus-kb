@@ -17,6 +17,7 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 - **Multi-tenant Postgres** with row-level security on every table
 - **Full-stack installer** with hardware detection, profile-based recommendations, and guided setup
 - **MCP, HTTP, and socket APIs** so any editor or script can talk to it
+- **Browser UI** with drag-and-drop ingest, cited answers, and plain-language health checks ([docs/UI.md](docs/UI.md))
 
 ---
 
