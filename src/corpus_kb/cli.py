@@ -80,10 +80,15 @@ register_search_commands(app)
 from corpus_kb.cli_graph import register as register_graph_commands  # noqa: E402
 from corpus_kb.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
 from corpus_kb.cli_query import register as register_query_commands  # noqa: E402
+from corpus_kb.cli_quickstart import register as register_quickstart  # noqa: E402
 
 register_graph_commands(app)
 register_ingest_text_command(app)
 register_query_commands(app)
+
+# Novice first-run lifecycle command (setup/doctor family): cli_quickstart
+# imports corpus_kb.cli nowhere, so this import stays acyclic.
+register_quickstart(app)
 
 
 def _version_callback(value: bool) -> None:
