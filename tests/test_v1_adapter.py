@@ -247,7 +247,8 @@ def test_chat_stream_frames_are_valid_openai_chunks(gate_on: None, monkeypatch: 
     ids = {frame["id"] for frame in frames}
     models = {frame["model"] for frame in frames}
     assert len(ids) == 1, "all frames of one stream share one completion id"
-    assert ids.pop().startswith("chatcmpl-")
+    completion_id = ids.pop()
+    assert completion_id.startswith("chatcmpl-")
     assert models == {"corpus-kb-custom"}
 
     # The concatenated deltas must equal the non-stream content exactly.

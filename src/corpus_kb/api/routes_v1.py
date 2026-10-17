@@ -37,7 +37,6 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from corpus_kb.api._v1_wire import (
-    _SSE_MEDIA_TYPE,
     ChatCompletionRequest,
     EmbeddingsRequest,
     completion_content,
@@ -48,6 +47,8 @@ from corpus_kb.api._v1_wire import (
     validation_error,
 )
 from corpus_kb.config import load_config
+
+_SSE_MEDIA_TYPE = "text/event-stream"
 
 # ---------------------------------------------------------------------------
 # Route handlers (tool imports INSIDE the bodies — the house test seam)

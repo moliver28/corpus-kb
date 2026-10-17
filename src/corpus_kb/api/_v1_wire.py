@@ -27,7 +27,6 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 _DONE = "[DONE]"
-_SSE_MEDIA_TYPE = "text/event-stream"
 _NO_EVIDENCE_CONTENT = "No evidence matched this question in the knowledge base."
 
 
