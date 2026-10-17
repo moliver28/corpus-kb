@@ -63,6 +63,23 @@ from corpus_kb.research.search_settings import (
     pgvector_version,
     supports_iterative_scan,
 )
+from corpus_kb.utils.tracing import (
+    ATTR_CANDIDATES_IN,
+    ATTR_CANDIDATES_OUT,
+    ATTR_EXCLUDED_COUNT,
+    ATTR_FUSED_COUNT,
+    ATTR_RERANK_MODEL,
+    ATTR_ROW_COUNT,
+    ATTR_RRF_K,
+    SPAN_EXPAND_PARENT,
+    SPAN_QUERY,
+    SPAN_RERANK,
+    SPAN_RETRIEVE_DEGRADED_PROBE,
+    SPAN_RETRIEVE_FTS,
+    SPAN_RETRIEVE_VECTOR,
+    SPAN_RRF_FUSION,
+    span,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -163,46 +180,52 @@ class QueryHandler:
         Default k (W3 contract): ``k=None`` (caller omitted k) resolves to
         ``reranking.return_top_k`` — an explicit caller k always wins.
         """
-        query = self._resolve_default_k(query)
-        # Stage 3 honesty: every vector-arm impairment is recorded in
-        # ``reasons`` and surfaced in the envelope's ``degraded_excluded`` —
-        # the silent FTS-only fallbacks become visible.
-        reasons: list[str] = []
-        semantic_query, dynamic_predicates = self._resolve_predicates(query)
-        over_retrieve_n = self._over_retrieve_n()
+        with span(SPAN_QUERY):
+            query = self._resolve_default_k(query)
+            # Stage 3 honesty: every vector-arm impairment is recorded in
+            # ``reasons`` and surfaced in the envelope's ``degraded_excluded`` —
+            # the silent FTS-only fallbacks become visible.
+            reasons: list[str] = []
+            semantic_query, dynamic_predicates = self._resolve_predicates(query)
+            over_retrieve_n = self._over_retrieve_n()
 
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                str(query.tenant_id),
-            )
-            # U20: transaction-local HNSW settings (SET LOCAL dies with this
-            # transaction — a pooled connection never leaks them). Gated on
-            # the installed pgvector version: emitting `SET LOCAL hnsw.*`
-            # below 0.8 aborts the query, so unknown/old versions keep the
-            # pre-iterative-scan behavior (fail closed).
-            extversion = await pgvector_version(conn)
-            if supports_iterative_scan(extversion):
-                await apply_hnsw_settings(conn, self._hnsw_settings)
+            async with self._pool.acquire() as conn, conn.transaction():
+                await conn.execute(
+                    "SELECT set_config('app.current_tenant_id', $1, true)",
+                    str(query.tenant_id),
+                )
+                # U20: transaction-local HNSW settings (SET LOCAL dies with this
+                # transaction — a pooled connection never leaks them). Gated on
+                # the installed pgvector version: emitting `SET LOCAL hnsw.*`
+                # below 0.8 aborts the query, so unknown/old versions keep the
+                # pre-iterative-scan behavior (fail closed).
+                extversion = await pgvector_version(conn)
+                if supports_iterative_scan(extversion):
+                    await apply_hnsw_settings(conn, self._hnsw_settings)
 
-            degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
-            fused_results, excluded_count = await self._search_in_connection(
-                conn,
-                query,
+                degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
+                fused_results, excluded_count = await self._search_in_connection(
+                    conn,
+                    query,
+                    semantic_query,
+                    dynamic_predicates,
+                    degraded_pred,
+                    over_retrieve_n,
+                    reasons,
+                )
+
+            # 4. Reranking (post-RRF) + envelope finalization. The rerank stage
+            #    runs outside the handler's connection so a max_size=1 pool
+            #    cannot deadlock on the reranker's own acquire.
+            final_results = await self._post_fuse(
+                fused_results,
                 semantic_query,
-                dynamic_predicates,
-                degraded_pred,
+                query.k,
                 over_retrieve_n,
+                str(query.tenant_id),
                 reasons,
             )
-
-        # 4. Reranking (post-RRF) + envelope finalization. The rerank stage
-        #    runs outside the handler's connection so a max_size=1 pool
-        #    cannot deadlock on the reranker's own acquire.
-        final_results = await self._post_fuse(
-            fused_results, semantic_query, query.k, over_retrieve_n, str(query.tenant_id), reasons
-        )
-        return finalize_envelope(final_results, reasons, excluded_count=excluded_count)
+            return finalize_envelope(final_results, reasons, excluded_count=excluded_count)
 
     def _resolve_default_k(self, query: SearchQuery) -> SearchQuery:
         """W3 default-k contract: ``k=None`` (caller omitted k) becomes
@@ -298,47 +321,61 @@ class QueryHandler:
         #    matryoshka two-tier retrieval). Each arm returns
         #    (rows, reason|None); a reason is an arm impairment for the
         #    honesty envelope, never a raised error.
-        vector_results = await self._vector_arm_rows(
-            conn, query, semantic_query, dynamic_predicates, degraded_pred, over_retrieve_n, reasons
-        )
-        excluded_count = await self._degraded_probe(
-            conn, query, vector_results, reasons, dynamic_predicates
-        )
+        with span(SPAN_RETRIEVE_VECTOR) as current:
+            vector_results = await self._vector_arm_rows(
+                conn,
+                query,
+                semantic_query,
+                dynamic_predicates,
+                degraded_pred,
+                over_retrieve_n,
+                reasons,
+            )
+            current.set_attribute(ATTR_ROW_COUNT, len(vector_results))
+        with span(SPAN_RETRIEVE_DEGRADED_PROBE) as current:
+            excluded_count = await self._degraded_probe(
+                conn, query, vector_results, reasons, dynamic_predicates
+            )
+            current.set_attribute(ATTR_EXCLUDED_COUNT, excluded_count)
 
         # 2. Full-text search (contextual expression if any chunk has a blurb;
         #    coalesce is a no-op otherwise).
         from corpus_kb.rag.self_query import build_filter_sql
 
         frag, params = build_filter_sql(dynamic_predicates, start_index=4)
-        fts_results = await conn.fetch(
-            f"""
-            SELECT {SELECT_LIST},
-                   ts_rank({fts_vector}, plainto_tsquery('english', $1)) AS score
-            FROM chunks
-            JOIN documents ON chunks.doc_id = documents.doc_id
-            WHERE chunks.tenant_id = $2 {DEDUP_PREDICATE} {frag}
-              AND {fts_vector} @@ plainto_tsquery('english', $1)
-            ORDER BY score DESC, chunks.chunk_id ASC
-            LIMIT $3
-            """,
-            semantic_query,
-            str(query.tenant_id),
-            max(self._retrieval_settings.lexical_candidates, k * 2),
-            *params,
-        )
+        with span(SPAN_RETRIEVE_FTS) as current:
+            fts_results = await conn.fetch(
+                f"""
+                SELECT {SELECT_LIST},
+                       ts_rank({fts_vector}, plainto_tsquery('english', $1)) AS score
+                FROM chunks
+                JOIN documents ON chunks.doc_id = documents.doc_id
+                WHERE chunks.tenant_id = $2 {DEDUP_PREDICATE} {frag}
+                  AND {fts_vector} @@ plainto_tsquery('english', $1)
+                ORDER BY score DESC, chunks.chunk_id ASC
+                LIMIT $3
+                """,
+                semantic_query,
+                str(query.tenant_id),
+                max(self._retrieval_settings.lexical_candidates, k * 2),
+                *params,
+            )
+            current.set_attribute(ATTR_ROW_COUNT, len(fts_results))
 
         # 3. RRF fusion in PostgreSQL (migrations/006_rrf_fusion.sql).
         try:
-            fused_rows = await conn.fetch(
-                """
-                SELECT chunk_id, text, source, doc_id, score
-                FROM corpus.rrf_fusion($1::jsonb, $2::jsonb, $3, $4)
-                """,
-                _fusion_payload(vector_results),
-                _fusion_payload(fts_results),
-                k,
-                self._retrieval_settings.rrf_k,
-            )
+            with span(SPAN_RRF_FUSION, **{ATTR_RRF_K: self._retrieval_settings.rrf_k}) as current:
+                fused_rows = await conn.fetch(
+                    """
+                    SELECT chunk_id, text, source, doc_id, score
+                    FROM corpus.rrf_fusion($1::jsonb, $2::jsonb, $3, $4)
+                    """,
+                    _fusion_payload(vector_results),
+                    _fusion_payload(fts_results),
+                    k,
+                    self._retrieval_settings.rrf_k,
+                )
+                current.set_attribute(ATTR_FUSED_COUNT, len(fused_rows))
         except asyncpg.UndefinedFunctionError as exc:
             raise missing_rrf_fusion_error(exc) from exc
 
@@ -506,39 +543,54 @@ class QueryHandler:
             rerank_n = min(over_retrieve_n, self._rerank_settings.candidates)
             candidates = fused_results[:rerank_n]
             cand_texts = [r.text for r in candidates]
-            raw_scores = await asyncio.to_thread(self._reranker.score, semantic_query, cand_texts)
-            if raw_scores is None:
-                return await self._maybe_expand_to_parent(fused_results, tenant_id)
-            if reasons is not None and (
-                getattr(self._reranker, "rerank_mode", None) == RERANK_MODE_GENERATIVE_BINARY
-            ):
-                reasons.append(REASON_RERANK_MODE_GENERATIVE)
-            if self._rerank_settings.calibration == "minmax":
-                lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
-                if hi <= lo:
-                    # Degenerate span (all-equal scores — the all-
-                    # not_evaluable case scores every pair at the neutral
-                    # 0.5): minmax maps every score to 0.0 and score_floor
-                    # would then drop ALL fused results. Fail open to the
-                    # un-reranked RRF order — reranking must never break
-                    # search (rag/reranker.py degrade contract).
+            rerank_model = str(getattr(self._reranker, "model", "") or "")
+            with span(
+                SPAN_RERANK,
+                **{ATTR_RERANK_MODEL: rerank_model, ATTR_CANDIDATES_IN: rerank_n},
+            ) as current:
+                raw_scores = await asyncio.to_thread(
+                    self._reranker.score, semantic_query, cand_texts
+                )
+                if raw_scores is None:
                     return await self._maybe_expand_to_parent(fused_results, tenant_id)
-                span = hi - lo
-                reranked = [
-                    r.model_copy(update={"score": (s - lo) / span})
-                    for r, s in zip(candidates, raw_scores, strict=True)
-                ]
-            else:
-                reranked = [
-                    r.model_copy(update={"score": float(s)})
-                    for r, s in zip(candidates, raw_scores, strict=True)
-                ]
-            reranked = [r for r in reranked if r.score >= self._rerank_settings.score_floor]
-            reranked.sort(key=lambda r: r.score, reverse=True)
-            return await self._maybe_expand_to_parent(reranked[:k], tenant_id)
+                if reasons is not None and (
+                    getattr(self._reranker, "rerank_mode", None) == RERANK_MODE_GENERATIVE_BINARY
+                ):
+                    reasons.append(REASON_RERANK_MODE_GENERATIVE)
+                if self._rerank_settings.calibration == "minmax":
+                    lo, hi = (min(raw_scores), max(raw_scores)) if raw_scores else (0.0, 1.0)
+                    if hi <= lo:
+                        # Degenerate span (all-equal scores — the all-
+                        # not_evaluable case scores every pair at the neutral
+                        # 0.5): minmax maps every score to 0.0 and score_floor
+                        # would then drop ALL fused results. Fail open to the
+                        # un-reranked RRF order — reranking must never break
+                        # search (rag/reranker.py degrade contract).
+                        return await self._maybe_expand_to_parent(fused_results, tenant_id)
+                    # `width` was previously the local `span = hi - lo`;
+                    # renamed because `span` now names the tracing helper.
+                    width = hi - lo
+                    reranked = [
+                        r.model_copy(update={"score": (s - lo) / width})
+                        for r, s in zip(candidates, raw_scores, strict=True)
+                    ]
+                else:
+                    reranked = [
+                        r.model_copy(update={"score": float(s)})
+                        for r, s in zip(candidates, raw_scores, strict=True)
+                    ]
+                reranked = [r for r in reranked if r.score >= self._rerank_settings.score_floor]
+                reranked.sort(key=lambda r: r.score, reverse=True)
+                top_k = reranked[:k]
+                current.set_attribute(ATTR_CANDIDATES_OUT, len(top_k))
+                return await self._maybe_expand_to_parent(top_k, tenant_id)
 
         if callable(getattr(self._reranker, "rerank", None)):
-            rerank_results = await self._reranker.rerank(semantic_query, fused_results)
+            with span(
+                SPAN_RERANK, **{ATTR_RERANK_MODEL: str(getattr(self._reranker, "model", "") or "")}
+            ) as current:
+                rerank_results = await self._reranker.rerank(semantic_query, fused_results)
+                current.set_attribute(ATTR_CANDIDATES_OUT, len(rerank_results))
             return await self._maybe_expand_to_parent(rerank_results, tenant_id)
 
         return await self._maybe_expand_to_parent(fused_results, tenant_id)
@@ -561,7 +613,10 @@ class QueryHandler:
         from corpus_kb.rag.parent_expand import expand_to_parent
 
         try:
-            return await expand_to_parent(self._pool, tenant_id, results)
+            with span(SPAN_EXPAND_PARENT) as current:
+                expanded = await expand_to_parent(self._pool, tenant_id, results)
+                current.set_attribute(ATTR_ROW_COUNT, len(expanded))
+                return expanded
         except Exception as exc:
             logger.warning("Parent expansion failed; returning fused results: %s", exc)
             return results

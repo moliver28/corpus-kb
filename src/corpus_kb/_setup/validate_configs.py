@@ -586,6 +586,10 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "server.openai_compat": bool,
     # -- ui (UX program Wave 3, src/corpus_kb/ui/) ---------------------------
     "ui.enabled": bool,
+    # -- observability (UX program Wave 4, src/corpus_kb/utils/tracing.py) ---
+    "observability.enabled": bool,
+    "observability.otlp_endpoint": str,
+    "observability.service_name": str,
 }
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})

@@ -39,6 +39,26 @@ from ..ontology import Ontology, load_ontology
 from ..rag.embedder_selection import POOLED_MODE
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
+from ..utils.tracing import (
+    ATTR_BATCH_SIZE,
+    ATTR_CHUNK_COUNT,
+    ATTR_ELEMENT_COUNT,
+    ATTR_EMBEDDING_MODE,
+    ATTR_EMBEDDING_MODEL,
+    ATTR_ENTITY_COUNT,
+    ATTR_EXTRACT_BACKEND,
+    ATTR_RELATION_COUNT,
+    ATTR_ROW_COUNT,
+    ATTR_SOURCE_TYPE,
+    ATTR_STRATEGY,
+    SPAN_CHUNK,
+    SPAN_EMBED,
+    SPAN_EXTRACT,
+    SPAN_INGEST,
+    SPAN_PARTITION,
+    SPAN_STORE,
+    span,
+)
 from .ingest_cfg import _nested_dict, contextual_apply_to, matryoshka_slice, vector_write_config
 from .ingest_embed import (
     _all_zero,
@@ -191,89 +211,99 @@ async def run_pipeline(
         ``strategy_basis``, ``detection_confidence``, ``detection_reason``
         (and ``warnings`` when non-empty).
     """
-    resolution = resolve_strategy(
-        source_type,
-        Path(path).name,
-        text[:DETECT_HEAD_CHARS],
-        config,
-        strategy_override=strategy_name,
-    )
-    profile = SourceProfile(source_type=source_type, is_file=is_file, path=path)
-    plan = resolution.strategy.build_chunks(text, Path(path).name, profile)
-    # Conformance escalation (Section 0): a non-conformant plan would
-    # silently tombstone or corrupt rows downstream (ingest_store tombstones
-    # chunk_index >= len(chunks)), so it FAILS here — before the advisory
-    # lock and the ledger, while nothing has been written. plan.warnings
-    # stays the soft channel for strategy self-reported notes.
-    conformance_problems = validate_plan(plan)
-    if conformance_problems:
-        raise PlanConformanceError(
-            f"ingestion strategy {resolution.strategy.name!r} produced a "
-            "non-conformant plan: " + "; ".join(conformance_problems)
-        )
-    if resolution.detection is not None:
-        plan.detection_confidence = resolution.detection.confidence
-        plan.detection_reason = resolution.detection.reason
-    # For files the strategy derives the document text from the parsed
-    # content (previously the unstructured partition step did); binary
-    # formats work because the strategy partitions the FILE, never decoding
-    # bytes as UTF-8 first.
-    text = plan.document_text
-    document = build_document(path, source_type, text)
-    chunks = chunks_from_plan(plan, document.document_id)
-    file_hash = _sha256(text)
-
-    # Serialize concurrent ingests of the same content per tenant. The lock is
-    # session-scoped on its own pooled connection, so a crashed process
-    # releases it server-side automatically.
-    async with pg_pool.acquire() as lock_conn:
-        acquired = await lock_conn.fetchval(
-            "SELECT pg_try_advisory_lock(hashtextextended($1 || ':' || $2, 0))",
-            tenant_id,
-            file_hash,
-        )
-        if not acquired:
-            return {
-                "status": "skipped",
-                "reason": "concurrent-run",
-                "path": path,
-                "source_type": source_type,
-                "errors": [],
-            }
-        try:
-            result = await _run_locked_stages(
-                document=document,
-                chunks=chunks,
-                file_hash=file_hash,
-                text=text,
-                source_type=source_type,
-                path=path,
-                config=config,
-                pg_pool=pg_pool,
-                tenant_id=tenant_id,
-                rag_backend=rag_backend,
-                is_file=is_file,
-                empty_reason=plan.empty_reason,
-                strategy=resolution.strategy.name,
+    with span(SPAN_INGEST, **{ATTR_SOURCE_TYPE: source_type}):
+        # `partition` covers strategy resolution + the strategy's parse (the
+        # registry fused partition+chunk into one strategy call, so the plan's
+        # chunk count doubles as the element count here). `chunk` covers the
+        # plan -> Chunk model conversion.
+        with span(SPAN_PARTITION) as partition_span:
+            resolution = resolve_strategy(
+                source_type,
+                Path(path).name,
+                text[:DETECT_HEAD_CHARS],
+                config,
+                strategy_override=strategy_name,
             )
-            # Strategy provenance (plan Section 0): which seam produced the
-            # chunks. Attached here because resolution/plan live in this scope.
-            result["strategy"] = resolution.strategy.name
-            result["strategy_basis"] = resolution.basis
-            if resolution.detection is not None:
-                result["detection_confidence"] = round(resolution.detection.confidence, 4)
-                result["detection_reason"] = resolution.detection.reason
-            if resolution.detected is not None:
-                result["detected_strategy"] = resolution.detected
-            if plan.warnings:
-                result["warnings"] = list(plan.warnings)
-            return result
-        finally:
-            await lock_conn.execute(
-                "SELECT pg_advisory_unlock(hashtextextended($1 || ':' || $2, 0))",
+            profile = SourceProfile(source_type=source_type, is_file=is_file, path=path)
+            plan = resolution.strategy.build_chunks(text, Path(path).name, profile)
+            partition_span.set_attribute(ATTR_STRATEGY, resolution.strategy.name)
+            partition_span.set_attribute(ATTR_ELEMENT_COUNT, len(plan.chunks))
+        # Conformance escalation (Section 0): a non-conformant plan would
+        # silently tombstone or corrupt rows downstream (ingest_store tombstones
+        # chunk_index >= len(chunks)), so it FAILS here — before the advisory
+        # lock and the ledger, while nothing has been written. plan.warnings
+        # stays the soft channel for strategy self-reported notes.
+        conformance_problems = validate_plan(plan)
+        if conformance_problems:
+            raise PlanConformanceError(
+                f"ingestion strategy {resolution.strategy.name!r} produced a "
+                "non-conformant plan: " + "; ".join(conformance_problems)
+            )
+        if resolution.detection is not None:
+            plan.detection_confidence = resolution.detection.confidence
+            plan.detection_reason = resolution.detection.reason
+        # For files the strategy derives the document text from the parsed
+        # content (previously the unstructured partition step did); binary
+        # formats work because the strategy partitions the FILE, never decoding
+        # bytes as UTF-8 first.
+        text = plan.document_text
+        document = build_document(path, source_type, text)
+        with span(SPAN_CHUNK, **{ATTR_STRATEGY: resolution.strategy.name}) as chunk_span:
+            chunks = chunks_from_plan(plan, document.document_id)
+            chunk_span.set_attribute(ATTR_CHUNK_COUNT, len(chunks))
+        file_hash = _sha256(text)
+
+        # Serialize concurrent ingests of the same content per tenant. The lock is
+        # session-scoped on its own pooled connection, so a crashed process
+        # releases it server-side automatically.
+        async with pg_pool.acquire() as lock_conn:
+            acquired = await lock_conn.fetchval(
+                "SELECT pg_try_advisory_lock(hashtextextended($1 || ':' || $2, 0))",
                 tenant_id,
                 file_hash,
             )
+            if not acquired:
+                return {
+                    "status": "skipped",
+                    "reason": "concurrent-run",
+                    "path": path,
+                    "source_type": source_type,
+                    "errors": [],
+                }
+            try:
+                result = await _run_locked_stages(
+                    document=document,
+                    chunks=chunks,
+                    file_hash=file_hash,
+                    text=text,
+                    source_type=source_type,
+                    path=path,
+                    config=config,
+                    pg_pool=pg_pool,
+                    tenant_id=tenant_id,
+                    rag_backend=rag_backend,
+                    is_file=is_file,
+                    empty_reason=plan.empty_reason,
+                    strategy=resolution.strategy.name,
+                )
+                # Strategy provenance (plan Section 0): which seam produced the
+                # chunks. Attached here because resolution/plan live in this scope.
+                result["strategy"] = resolution.strategy.name
+                result["strategy_basis"] = resolution.basis
+                if resolution.detection is not None:
+                    result["detection_confidence"] = round(resolution.detection.confidence, 4)
+                    result["detection_reason"] = resolution.detection.reason
+                if resolution.detected is not None:
+                    result["detected_strategy"] = resolution.detected
+                if plan.warnings:
+                    result["warnings"] = list(plan.warnings)
+                return result
+            finally:
+                await lock_conn.execute(
+                    "SELECT pg_advisory_unlock(hashtextextended($1 || ':' || $2, 0))",
+                    tenant_id,
+                    file_hash,
+                )
 
 
 async def _run_locked_stages(
@@ -349,9 +379,13 @@ async def _run_locked_stages(
             config, document, text, chunks, pg_pool, tenant_id, errors, strategy
         )
 
-        entities, relations, extractor_id, stats = await _stage_extract_entities(
-            ingest_store, chunks, document_id, config, pg_pool, errors
-        )
+        with span(SPAN_EXTRACT) as extract_span:
+            entities, relations, extractor_id, stats = await _stage_extract_entities(
+                ingest_store, chunks, document_id, config, pg_pool, errors
+            )
+            extract_span.set_attribute(ATTR_EXTRACT_BACKEND, extractor_id)
+            extract_span.set_attribute(ATTR_ENTITY_COUNT, len(entities))
+            extract_span.set_attribute(ATTR_RELATION_COUNT, len(relations))
 
         # Mirror chunks into LlamaIndex RAG backend (additive path)
         if rag_backend is not None:
@@ -498,8 +532,10 @@ async def _stage_store_and_embed(
             chunk.context_blurb = None
 
     try:
-        inserted_chunk_ids = await ingest_store.store_chunks(chunks)
-        pg_chunk_count = len(inserted_chunk_ids)
+        with span(SPAN_STORE) as store_span:
+            inserted_chunk_ids = await ingest_store.store_chunks(chunks)
+            pg_chunk_count = len(inserted_chunk_ids)
+            store_span.set_attribute(ATTR_CHUNK_COUNT, pg_chunk_count)
     except Exception as exc:
         logger.warning("Postgres chunk write failed: %s", exc)
         errors.append(f"PostgresWriteError: {exc}")
@@ -513,14 +549,23 @@ async def _stage_store_and_embed(
         for c in new_chunks
     }
     embed_meta: dict[str, object] = {}
-    degraded, embed_err = await embed_chunks(
-        new_chunks,
-        config,
-        pool=pg_pool,
-        text_override=embed_texts_override,
-        document_text=text,
-        meta=embed_meta,
-    )
+    # One shared config read for the vector write (model, dimensions,
+    # matryoshka dim) — the exact keys+defaults the reembed repair path
+    # reads (ingest_cfg.vector_write_config). Read before the embed span so
+    # the span can record the model name.
+    embedding_model, dimensions, v1024_dim = vector_write_config(config)
+    with span(SPAN_EMBED, **{ATTR_EMBEDDING_MODEL: embedding_model}) as embed_span:
+        degraded, embed_err = await embed_chunks(
+            new_chunks,
+            config,
+            pool=pg_pool,
+            text_override=embed_texts_override,
+            document_text=text,
+            meta=embed_meta,
+        )
+        embed_span.set_attribute(ATTR_BATCH_SIZE, len(new_chunks))
+        embed_mode = str(embed_meta.get("embedding_mode", POOLED_MODE))
+        embed_span.set_attribute(ATTR_EMBEDDING_MODE, embed_mode)
     if embed_err is not None:
         if _embedding_failure_is_fatal(new_chunks):
             logger.warning("embed_chunks: %s", embed_err)
@@ -532,10 +577,6 @@ async def _stage_store_and_embed(
             # and the dedupe probe would never fire.
             embed_note = embed_err
 
-    # One shared config read for the vector write (model, dimensions,
-    # matryoshka dim) — the exact keys+defaults the reembed repair path
-    # reads (ingest_cfg.vector_write_config).
-    embedding_model, dimensions, v1024_dim = vector_write_config(config)
     vectors_1024: dict[str, list[float]] = {}
     if v1024_dim is not None and not degraded:
         for c in new_chunks:
@@ -543,12 +584,14 @@ async def _stage_store_and_embed(
                 vectors_1024[str(c.chunk_id)] = matryoshka_slice(c.embedding, v1024_dim)
 
     try:
-        pg_vector_count = await ingest_store.store_vectors(
-            new_chunks,
-            embedding_model,
-            dimensions=dimensions,
-            vectors_1024=vectors_1024 or None,
-        )
+        with span(SPAN_STORE, **{ATTR_EMBEDDING_MODEL: embedding_model}) as store_span:
+            pg_vector_count = await ingest_store.store_vectors(
+                new_chunks,
+                embedding_model,
+                dimensions=dimensions,
+                vectors_1024=vectors_1024 or None,
+            )
+            store_span.set_attribute(ATTR_ROW_COUNT, pg_vector_count)
     except ConfigError:
         raise
     except Exception as exc:

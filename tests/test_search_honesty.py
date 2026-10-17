@@ -930,6 +930,10 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "ui.enabled": bool,
         # UX Wave 2: the /v1 OpenAI-compatibility gate (api/routes_v1.py).
         "server.openai_compat": bool,
+        # UX Wave 4 tracing (utils/tracing.py is the typed reader).
+        "observability.enabled": bool,
+        "observability.otlp_endpoint": str,
+        "observability.service_name": str,
     } == RUNTIME_CONFIG_KEYS
 
 

@@ -167,6 +167,17 @@ topics:
 ui:
   enabled: true
 
+# OpenTelemetry tracing (UX program Wave 4, src/corpus_kb/utils/tracing.py).
+# Off by default: opentelemetry-api is a no-op tracer without the SDK, so
+# spans cost nothing. Turn enabled on and install the [otel] extra to ship
+# OTLP spans to any collector (Jaeger, Phoenix, Langfuse); see
+# docs/OBSERVABILITY.md. Tracing setup failure never blocks server startup.
+# otlp_endpoint is the OTLP/HTTP base URL; /v1/traces is appended.
+observability:
+  enabled: false
+  otlp_endpoint: "http://localhost:4318"
+  service_name: "corpus-kb"
+
 # U42 provenance-keyed exact result cache (research/exact_cache.py).
 # enabled gates every access (--no-cache drops it at the CLI layer);
 # deductive runs default on, inductive discovery runs default off unless seeded.

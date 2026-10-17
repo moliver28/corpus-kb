@@ -17,6 +17,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
+from corpus_kb.utils.tracing import SPAN_ASK, current_trace_id, span
 
 __all__ = ["ask"]
 
@@ -42,6 +43,10 @@ async def ask(
 
     With no ``pg_pool``, a pool is opened from the config's connection
     string and closed after the call (the query_tools convention).
+
+    The whole operation runs inside the ``corpus_kb.ask`` span, so the
+    envelope carries ``trace_id`` whenever tracing is enabled (never when
+    it is off — the key is absent, not null).
     """
     from corpus_kb.ask.composer import compose_answer
     from corpus_kb.handlers.llm_handler import LlmHandler
@@ -49,26 +54,31 @@ async def ask(
     from corpus_kb.rag import create_embedder
 
     cfg = load_config_or_pass(config)
-    own_pool: asyncpg.Pool | None = None
-    pool = pg_pool
-    if pool is None:
-        dsn = str((cfg.get("database", {}) or {}).get("connection_string", ""))
-        pool = own_pool = await asyncpg.create_pool(dsn)
-    try:
-        embedder = create_embedder(cfg, pool)
-        handler = QueryHandler(pool, embedder, config=cfg)
-        bundle = await compose_answer(
-            query,
-            handler,
-            LlmHandler(cfg),
-            judge=_resolve_judge(cfg),
-            tenant_id=UUID(tenant_id),
-            k=k,
-        )
-        return bundle.to_payload()
-    finally:
-        if own_pool is not None:
-            await own_pool.close()
+    with span(SPAN_ASK):
+        own_pool: asyncpg.Pool | None = None
+        pool = pg_pool
+        if pool is None:
+            dsn = str((cfg.get("database", {}) or {}).get("connection_string", ""))
+            pool = own_pool = await asyncpg.create_pool(dsn)
+        try:
+            embedder = create_embedder(cfg, pool)
+            handler = QueryHandler(pool, embedder, config=cfg)
+            bundle = await compose_answer(
+                query,
+                handler,
+                LlmHandler(cfg),
+                judge=_resolve_judge(cfg),
+                tenant_id=UUID(tenant_id),
+                k=k,
+            )
+            payload = bundle.to_payload()
+            trace_id = current_trace_id()
+            if trace_id is not None:
+                payload["trace_id"] = trace_id
+            return payload
+        finally:
+            if own_pool is not None:
+                await own_pool.close()
 
 
 def _resolve_judge(cfg: dict[str, object]) -> object | None:
