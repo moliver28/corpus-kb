@@ -20,6 +20,8 @@ All responses use `application/json`. Errors look like:
 {"status": "error", "error": "...", "error_type": "..."}
 ```
 
+The `/v1` adapter below uses the OpenAI error shape instead.
+
 ---
 
 ## Ingest
@@ -505,6 +507,122 @@ curl -X POST http://localhost:8010/api/release/assess   -H "Content-Type: applic
 # the D1 status view (stage, blockers, sufficiency, next command)
 curl "http://localhost:8010/api/release/status?codebook_version_id=<uuid>"
 ```
+
+---
+
+## OpenAI-compatible API (v1)
+
+Point any OpenAI SDK client at `http://localhost:8010/v1`.
+Tested frontends include Open WebUI, LibreChat, and Jan.
+In Open WebUI, add an OpenAI connection with that base URL.
+
+The adapter serves three routes:
+
+| Route | Purpose |
+|-------|---------|
+| `POST /v1/chat/completions` | Grounded answers, JSON or SSE streaming |
+| `POST /v1/embeddings` | Embeddings from the configured embedder |
+| `GET /v1/models` | The embedding and answer model names |
+
+The flag `server.openai_compat` (default true) gates all three routes.
+
+### POST /v1/chat/completions
+
+The chat route runs the same ask pipeline as `POST /api/ask`.
+Retrieval, generation, citations, and verification behave identically.
+The last user message becomes the query.
+The reply joins the answer and a `Sources:` list into one `content` string.
+An `empty` result states that no evidence matched.
+A `degraded` pipeline (LLM down) answers HTTP 503 with the note.
+
+```bash
+curl -X POST http://localhost:8010/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{"messages": [{"role": "user", "content": "how does startup work"}]}'
+```
+
+The body follows the OpenAI chat schema:
+
+```json
+{
+  "model": null,
+  "messages": [{"role": "user", "content": "how does startup work"}],
+  "stream": false,
+  "temperature": 0
+}
+```
+
+`model` is optional and defaults to the configured `llm.model`.
+`temperature` is accepted but ignored; generation always runs at 0.
+Responses omit `usage` because token counts are not tracked.
+
+Non-streaming replies use the OpenAI completion shape:
+
+```json
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": 1760000000,
+  "model": "qwen3:4b",
+  "choices": [
+    {
+      "index": 0,
+      "message": {"role": "assistant", "content": "The answer [1].\n\nSources:\n1. runbook.md"},
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
+
+With `"stream": true`, the route emits server-sent events.
+The answer is generated in full before the first frame.
+Frames then carry the whole answer in small pieces.
+The stream ends with a `stop` frame, then `data: [DONE]`.
+There is no token-level streaming yet.
+
+### POST /v1/embeddings
+
+This route embeds one string or a list of strings.
+The default Ollama provider needs no database for this route.
+
+```bash
+curl -X POST http://localhost:8010/v1/embeddings \
+  -H "Content-Type: application/json" \
+  -d '{"input": ["alpha", "beta"]}'
+```
+
+The response carries one indexed `embedding` entry per input.
+`model` is optional and defaults to the configured `embedding.model`.
+Responses omit `usage` for the same reason as above.
+
+### GET /v1/models
+
+Lists two entries: the embedding model and the answer model.
+
+```bash
+curl http://localhost:8010/v1/models
+```
+
+```json
+{
+  "object": "list",
+  "data": [
+    {"id": "qwen3-embedding:4b", "object": "model"},
+    {"id": "qwen3:4b", "object": "model"}
+  ]
+}
+```
+
+### Error shape
+
+Errors use the OpenAI error object, not the `/api` envelope:
+
+```json
+{"error": {"message": "...", "type": "invalid_request_error", "code": null}}
+```
+
+Malformed bodies answer 400 or 422 with `invalid_request_error`.
+A degraded pipeline answers 503 with `service_unavailable`.
 
 ---
 

@@ -5,6 +5,9 @@ server:
   transport: stdio
   host: localhost
   port: 8010
+  # Gates the OpenAI-compatible /v1 adapter (POST /v1/chat/completions,
+  # POST /v1/embeddings, GET /v1/models).
+  openai_compat: true
 
 embedding:
   # ollama serves the 4B embedder; pgml cannot host a model of this size.

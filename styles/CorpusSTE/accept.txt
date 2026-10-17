@@ -7,6 +7,10 @@ Ollama
 Postgres
 PostgreSQL
 pgml
+OpenAI
+LibreChat
+Open WebUI
+SSE
 RRF
 MCP
 stdio
