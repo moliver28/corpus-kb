@@ -134,7 +134,7 @@ class DatabaseUnavailableError(CorpusError):
 
     error_type = "database_unavailable"
     http_status, socket_code, cli_exit = ERROR_MAP["database_unavailable"]
-    remediation = "Run corpus-kb setup to start the database. Then try again."
+    remediation = "Run corpus-kb quickstart or corpus-kb setup. Then try again."
 
 
 class MigrationMissingError(CorpusError):
@@ -142,7 +142,7 @@ class MigrationMissingError(CorpusError):
 
     error_type = "migration_missing"
     http_status, socket_code, cli_exit = ERROR_MAP["migration_missing"]
-    remediation = "Apply the named migration. Run scripts/migrate.py, then try again."
+    remediation = "Apply the named migration. Run corpus-kb quickstart, then try again."
 
 
 class DependencyMissingError(CorpusError):

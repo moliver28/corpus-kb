@@ -1,17 +1,17 @@
-"""Throwaway-database harness for the todo-11 research tests.
+"""Throwaway-database harness for the research tests.
 
 Mirrors the spike: creates a scratch database (OWNER corpus_user, extensions
-as superuser), applies storage/schema.sql + migrations 001-016 skipping the
-extension-gated 004/005 (docker image unavailable on this host — todo-5
-substitution precedent), and drops it after the session. Requires Postgres;
-tests using it are marked requires_postgres and auto-skip in CI.
+as superuser), applies storage/schema.sql + the numbered migrations through
+the SHARED bootstrap (corpus_kb._setup.schema_apply — quickstart uses the
+same code, so the two cannot drift), skipping the extension-gated
+004/005, and drops it after the session. Requires Postgres; tests using
+it are marked requires_postgres and auto-skip in CI.
 """
 
 from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
 
 import asyncpg
 
@@ -25,12 +25,6 @@ TEST_TENANT = "00000000-0000-0000-0000-000000000002"
 if not re.fullmatch(r"[a-z_0-9]+", DB_NAME):
     raise ValueError(f"DB_NAME must be a bare identifier, got {DB_NAME!r}")
 
-REPO = Path(__file__).resolve().parent.parent
-MIGRATIONS = REPO / "src" / "corpus_kb" / "migrations"
-SCHEMA_SQL = REPO / "src" / "corpus_kb" / "storage" / "schema.sql"
-
-_EXTENSION_GATED = {"004_enable_age.sql", "005_enable_pgml.sql"}
-
 
 async def create_research_db() -> str:
     admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
@@ -43,27 +37,13 @@ async def create_research_db() -> str:
     await superconn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
     await superconn.close()
 
-    conn = await asyncpg.connect(DSN)
     # The halfvec(2560) schema (migration 025 regime) carries only LEGAL
-    # indexes (halfvec caps at 4000 dims), so the old regex that stripped
-    # the dead 4096-dim ivfflat/hnsw attempts is gone — the file executes
-    # verbatim.
-    base_sql = SCHEMA_SQL.read_text(encoding="utf-8")
-    await conn.execute(base_sql)
-    from corpus_kb._setup.migrate import ensure_migrations_table
+    # indexes (halfvec caps at 4000 dims), so the file executes verbatim.
+    # Extension-gated 004/005 are skipped with a loud warning by the shared
+    # bootstrap; applied names are recorded in corpus.schema_migrations.
+    from corpus_kb._setup.schema_apply import apply_schema
 
-    await ensure_migrations_table(conn)
-    for path in sorted(MIGRATIONS.iterdir()):
-        if path.suffix != ".sql" or not path.name[0].isdigit():
-            continue
-        if path.name in _EXTENSION_GATED:
-            continue
-        await conn.execute(path.read_text(encoding="utf-8"))
-        await conn.execute(
-            "INSERT INTO corpus.schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING",
-            path.name,
-        )
-    await conn.close()
+    await apply_schema(DSN)
     return DSN
 
 
