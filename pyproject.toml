@@ -239,6 +239,9 @@ DEP002 = [
     "diff-cover",
     "pre-commit",
     "textstat",
+    # Lint gate tool (poe lint, ci.yml): consumed as a program, never imported.
+    # Pinned to the ci.yml version in the dev extra so local lint == CI lint.
+    "ruff",
     # Declared but unreferenced in src/ today. Ratchet follow-up: verify and
     # drop, or document the dynamic use (pgvector may register types without
     # an import edge; rich may be a typer extra).
