@@ -512,3 +512,22 @@ def test_verify_postgres_image_skip_verify_returns_early() -> None:
             skip_verify=True,
         )
     mock_run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_check_postgres_dead_port_reports_a_reason() -> None:
+    """An unreachable Postgres never reports an empty message (doctor parens).
+
+    asyncpg's own connect timeout raises ``TimeoutError`` whose ``str()``
+    is empty; the probe must still name the target so the doctor line
+    reads ``UNREACHABLE (<reason>)`` and never ``UNREACHABLE ()``.
+    """
+    from corpus_kb._setup.setup_steps import check_postgres
+
+    ok, msg = await check_postgres("postgresql://corpus_user:secret@localhost:54390/corpus_kb")
+    assert ok is False
+    assert msg, "an unreachable Postgres must report a reason"
+    assert "localhost" in msg
+    # Credentials from the DSN never leak into the message.
+    assert "corpus_user" not in msg
+    assert "secret" not in msg

@@ -240,7 +240,7 @@ async def _list_documents(params: dict[str, Any], tenant_id: str) -> dict[str, A
         offset=params.get("offset", 0),
     )
     results = await get_query_handler().handle_list_documents(query)
-    return {"status": "success", "result": [r.model_dump() for r in results]}
+    return {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
 
 
 async def _add_entity(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:

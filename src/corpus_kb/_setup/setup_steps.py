@@ -19,6 +19,7 @@ import subprocess
 import sys
 from collections.abc import Awaitable, Callable
 from typing import Any
+from urllib.parse import urlsplit
 
 import asyncpg
 import httpx
@@ -71,7 +72,32 @@ async def check_postgres(connection_string: str) -> tuple[bool, str]:
         await conn.close()
         return True, str(version)
     except Exception as exc:
-        return False, str(exc)
+        detail = _error_detail(exc)
+        target = _dsn_target(connection_string)
+        if target:
+            return False, f"Cannot reach Postgres at {target}: {detail}"
+        return False, f"Cannot reach Postgres: {detail}"
+
+
+def _error_detail(exc: Exception) -> str:
+    """Non-empty reason for a failed probe (asyncpg timeouts str() empty)."""
+    text = str(exc).strip()
+    if text:
+        return text
+    if isinstance(exc, TimeoutError):
+        return "the connection timed out"
+    return type(exc).__name__
+
+
+def _dsn_target(connection_string: str) -> str | None:
+    """Host:port from a postgres DSN, or None when it does not parse."""
+    try:
+        parts = urlsplit(connection_string)
+    except ValueError:
+        return None
+    if not parts.hostname:
+        return None
+    return f"{parts.hostname}:{parts.port or 5432}"
 
 
 async def check_ollama(base_url: str) -> tuple[bool, str]:
@@ -81,7 +107,7 @@ async def check_ollama(base_url: str) -> tuple[bool, str]:
             response = await client.get(f"{base_url}/api/tags")
             return response.status_code == 200, f"status {response.status_code}"
     except Exception as exc:
-        return False, str(exc)
+        return False, f"Cannot reach Ollama at {base_url}: {_error_detail(exc)}"
 
 
 async def check_extensions(connection_string: str) -> ExtensionMap | None:

@@ -147,7 +147,7 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
     """
     payload: dict[str, object] = {
         "status": envelope.status,
-        "result": [r.model_dump() for r in envelope.results],
+        "result": [r.model_dump(mode="json") for r in envelope.results],
         "degraded_excluded": envelope.degraded_excluded.to_dict(),
     }
     if envelope.remedy is not None:

@@ -19,6 +19,7 @@ re-derived prototype refs.
 from __future__ import annotations
 
 import json
+import os
 import uuid as uuid_mod
 from typing import Any, cast
 
@@ -258,9 +259,21 @@ async def _registry_theory(pool: Any, tenant_id: str, code_id: str) -> dict[str,
 
 
 @pytest.fixture()
-async def seeded_db():
+async def seeded_db(monkeypatch):
     from tests import research_db
 
+    # This module must NOT touch the session scratch DB: research_db's
+    # unpatched DB_NAME is the one the session research_dsn fixture created,
+    # so create/drop here would wipe it for every later research consumer
+    # (full-suite ordering poison — see test_research_report_fixture for the
+    # established pattern). Patch to a module-owned name instead.
+    original_db_name = research_db.DB_NAME
+    original_dsn = research_db.DSN
+    saved_url = os.environ.get("CORPUS_KB_DATABASE_URL")
+    saved_snapshot = os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD")
+
+    monkeypatch.setattr(research_db, "DB_NAME", "corpus_kb_tind_test")
+    monkeypatch.setattr(research_db, "DSN", f"{research_db.BASE_DSN}/corpus_kb_tind_test")
     dsn = await research_db.create_research_db()
     research_db.set_env(dsn)
     await research_db.reset_singletons()
@@ -273,6 +286,35 @@ async def seeded_db():
     finally:
         await pool.close()
         await research_db.drop_research_db()
+        if await _db_exists(original_db_name):
+            # Re-bind the eventsourcing singleton to the session DB exactly
+            # the way the session fixture left it (env -> reset -> construct).
+            os.environ["CORPUS_KB_DATABASE_URL"] = original_dsn
+            await research_db.reset_singletons()
+            from corpus_kb.domain.application import get_app
+
+            get_app()
+        if saved_url is None:
+            os.environ.pop("CORPUS_KB_DATABASE_URL", None)
+        else:
+            os.environ["CORPUS_KB_DATABASE_URL"] = saved_url
+        if saved_snapshot is None:
+            os.environ.pop("CORPUS_KB_SNAPSHOT_PERIOD", None)
+        else:
+            os.environ["CORPUS_KB_SNAPSHOT_PERIOD"] = saved_snapshot
+
+
+async def _db_exists(db_name: str) -> bool:
+    import asyncpg
+
+    from tests import research_db
+
+    admin = await asyncpg.connect(research_db.SUPER_DSN, user="postgres", password="postgres")
+    try:
+        row = await admin.fetchrow("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
+        return row is not None
+    finally:
+        await admin.close()
 
 
 @pytest.mark.asyncio

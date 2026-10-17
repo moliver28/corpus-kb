@@ -26,7 +26,7 @@ _DOC_PAYLOAD: dict[str, object] = {
 class _FakeDoc:
     """Stands in for a DocumentResult pydantic model."""
 
-    def model_dump(self) -> dict[str, object]:
+    def model_dump(self, mode: str = "python") -> dict[str, object]:
         return dict(_DOC_PAYLOAD)
 
 

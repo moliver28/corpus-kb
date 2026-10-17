@@ -35,7 +35,9 @@ async def list_documents(request: Request) -> JSONResponse:
     )
     handler = get_query_handler()
     results = await handler.handle_list_documents(query)
-    return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )
 
 
 @route_errors
@@ -52,7 +54,9 @@ async def list_entities(request: Request) -> JSONResponse:
     )
     handler = get_query_handler()
     results = await handler.handle_list_entities(query)
-    return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )
 
 
 @route_errors

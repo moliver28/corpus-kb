@@ -61,7 +61,9 @@ async def search_similar(request: Request) -> JSONResponse:
     )
     handler = get_query_handler()
     results = await handler.handle_search_similar(query)
-    return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )
 
 
 @route_errors
@@ -78,7 +80,9 @@ async def search_context(request: Request) -> JSONResponse:
     )
     handler = get_query_handler()
     results = await handler.handle_search_context(query)
-    return JSONResponse({"status": "success", "result": [r.model_dump() for r in results]})
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )
 
 
 @route_errors
