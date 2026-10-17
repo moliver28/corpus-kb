@@ -42,6 +42,7 @@ from ..utils.models import Chunk, Document, Entity, Relation
 from ..utils.tracing import (
     ATTR_BATCH_SIZE,
     ATTR_CHUNK_COUNT,
+    ATTR_DEGRADED,
     ATTR_ELEMENT_COUNT,
     ATTR_EMBEDDING_MODE,
     ATTR_EMBEDDING_MODEL,
@@ -566,6 +567,7 @@ async def _stage_store_and_embed(
         embed_span.set_attribute(ATTR_BATCH_SIZE, len(new_chunks))
         embed_mode = str(embed_meta.get("embedding_mode", POOLED_MODE))
         embed_span.set_attribute(ATTR_EMBEDDING_MODE, embed_mode)
+        embed_span.set_attribute(ATTR_DEGRADED, degraded)
     if embed_err is not None:
         if _embedding_failure_is_fatal(new_chunks):
             logger.warning("embed_chunks: %s", embed_err)
