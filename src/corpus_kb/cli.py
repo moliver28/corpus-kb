@@ -97,6 +97,12 @@ register_query_commands(app)
 # imports corpus_kb.cli nowhere, so this import stays acyclic.
 register_quickstart(app)
 
+# Sample-corpus lifecycle command (UX program Wave 6, quickstart family):
+# cli_demo_kb imports corpus_kb.cli nowhere, so this import stays acyclic.
+from corpus_kb.cli_demo_kb import register as register_demo_kb  # noqa: E402
+
+register_demo_kb(app)
+
 
 def _version_callback(value: bool) -> None:
     if value:

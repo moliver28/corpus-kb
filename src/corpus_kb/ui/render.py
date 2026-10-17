@@ -7,11 +7,33 @@ NiceGUI import, no tool calls — functions in, markdown out.
 from __future__ import annotations
 
 __all__ = [
+    "demo_kb_markdown",
     "library_markdown",
     "receipt_line",
     "sources_markdown",
     "url_receipt_line",
 ]
+
+
+def demo_kb_markdown(view: dict[str, object]) -> str:
+    """The sample-knowledge receipt as one honest markdown block."""
+    if bool(view.get("ok")):
+        names = _names(view.get("ingested"))
+        return f"**Sample knowledge loaded**: {view.get('chunks', 0)} chunks ({names})."
+    message = str(view.get("message", "")) or "The sample corpus could not load."
+    remediation = str(view.get("remediation", "")) or ""
+    skipped = _names(view.get("skipped"))
+    line = f"**Sample knowledge**: {message}"
+    if skipped:
+        line += f" Unchanged files: {', '.join(skipped)}."
+    return line + (f" Fix: {remediation}" if remediation else "")
+
+
+def _names(value: object) -> list[str]:
+    """A JSON list of file names, or an empty list."""
+    if not isinstance(value, list):
+        return []
+    return [str(name) for name in value]
 
 
 def receipt_line(name: str, receipt: dict[str, object]) -> str:

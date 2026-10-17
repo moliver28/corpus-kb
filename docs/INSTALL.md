@@ -125,6 +125,14 @@ All remaining commands in this guide run from the repo root.
 pip install -e ".[graphqlite,dev]"
 ```
 
+The browser pages and the notebooks console are separate extras:
+
+```bash
+pip install -e ".[ui,notebook,dev]"
+```
+
+Without them the server runs headless and logs one line per missing extra.
+
 ---
 
 ## Step 4: Load the schema
@@ -259,6 +267,10 @@ release surfaces as MCP tools and serves them over stdin/stdout. The
 config files in `mcp-configs/` launch exactly this command. HTTP stays
 available side by side (see [API.md](API.md)).
 
+With the `[ui]` extra installed, the same command serves the browser
+pages at `http://localhost:8010` (see [UI.md](UI.md)). With `[notebook]`,
+marimo notebooks appear at `/notebooks` (see [NOTEBOOKS.md](NOTEBOOKS.md)).
+
 ---
 
 ## Step 8: Ingest and search
@@ -333,3 +345,4 @@ Change `--port` or set `CORPUS_KB_PORT`. The JSON-RPC socket uses port `8011` on
 - Browse the [API reference](API.md)
 - Learn how to operate the system in [Admin](ADMIN.md)
 - Ports, exit codes, vocabularies, tenancy: [Operations](OPERATIONS.md)
+- The novice path in the browser: [UI.md](UI.md)

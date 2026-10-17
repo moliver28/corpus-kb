@@ -1,53 +1,112 @@
-# Getting started with qualitative coding in Corpus-KB
+# Getting started with Corpus-KB
 
-This page is for researchers who have never run an automated coding pipeline.
-Read it once top to bottom, run the demo, then point the same commands at your
-own transcripts.
+Corpus-KB answers questions from your own files, with citations. This
+page gets you there two ways: the browser for novices, the terminal for
+everyone else. Pick one; you can switch at any time.
 
-## What is qualitative coding?
+## The browser path
 
-Qualitative coding is the practice of reading interview or focus-group
-transcripts and labeling passages with **codes**. Codes are short, defined
-categories such as "transportation barriers" or "cost concerns".
-Traditionally a human
-reads every line and applies codes by hand. Corpus-KB automates the reading
-and the first-pass labeling. Humans stay in charge of every decision
-that defines or changes the codebook.
+The browser pages need one extra. Install it, then run two commands:
 
-A **codebook** is the authoritative set of codes. Each code has a name, a
-definition, inclusion/exclusion criteria, and (for automated coding) gold
-exemplar passages. Codebooks are versioned; every promotion creates a new
-immutable version.
+```bash
+pip install 'corpus-kb[ui]'
+corpus-kb setup
+corpus-kb start
+```
 
-## Deductive vs inductive
+`corpus-kb setup` starts the bundled Postgres container and loads the
+schema. `corpus-kb start` starts the server and opens your browser at
+`http://localhost:8010`. Set `CORPUS_KB_UI_OPEN=0` to keep the tab
+closed.
 
-- **Deductive coding** starts from a codebook you already believe in and asks
-  "which passages match which code?" Corpus-KB scores every codable unit
-  against the codebook in three views (the answer alone, question+answer, and
-  the question alone). It applies per-code calibrated thresholds and routes
-  uncertain calls to review. Run it with `corpus-kb coding run`.
-- **Inductive coding** starts without a codebook and asks "what themes are
-  in this corpus?" Corpus-KB summarizes and clusters units (UMAP/HDBSCAN,
-  optional extra) and proposes candidate codes. Proposed codes are NEVER
-  auto-promoted; you promote them with `corpus-kb codebook promote`.
+The **Add** page takes drag-dropped files and web addresses. It also
+has a **Load sample knowledge** button: five short sample files that
+exercise the pipeline without your data. The **Ask** page answers with
+citations and a verification badge. The **Library** page lists your
+documents and discovered topics. The **Overview** page shows the
+doctor's health checks in plain language.
 
-A typical project alternates. An inductive pass proposes codes; you promote
-the good ones. Then deductive runs apply the grown codebook across the corpus.
+The pages ride the running server. There is no new daemon and no new
+port. Details: [UI.md](UI.md).
 
-## Why human gates exist
+## The terminal quickstart
 
-Automated coding is fast but fallible, and a codebook encodes your research
-judgment. Corpus-KB therefore halts for humans at the points where a wrong
-automated step would silently corrupt the research record:
+From zero to a working system in about ten minutes. Each step is one
+command. Each command says what it does and what success looks like.
 
-- **Codebook promotion** is always a human command. A proposed code becomes a
-  code only when you name it, define it, and pass the duplicate gate.
-- **Thresholds fitted on fewer than 20 gold exemplars per code are flagged
-  unreliable**. Unreliable codes route everything to review instead of
-  auto-assigning.
-- **Review decisions are explicit.** Every model assignment can be accepted
-  (`corpus-kb review accept`) or overruled (`corpus-kb review override`);
-  overrides feed threshold refits and the G3 audit.
+1. Clone the repo.
+
+   ```bash
+   git clone https://github.com/moliver28/corpus-kb.git
+   cd corpus-kb
+   ```
+
+2. Install the package.
+
+   ```bash
+   pip install -e .
+   ```
+
+   Success: `corpus-kb --version` prints a version number.
+
+3. Start the database and load the schema.
+
+   ```bash
+   corpus-kb setup
+   ```
+
+   Success: the last line says the setup finished. The database answers
+   on host port **5433**. No Docker? See [INSTALL.md](INSTALL.md) for
+   the native-Postgres path.
+
+4. Check the system.
+
+   ```bash
+   corpus-kb doctor
+   ```
+
+   Read-only checks. Success: every line says `OK` or `SKIP`. A `FAIL`
+   line names its fix.
+
+5. Pull an embedding model that fits the schema.
+
+   ```bash
+   ollama pull qwen3-embedding:8b-q8_0
+   export CORPUS_KB_EMBEDDING_MODEL=qwen3-embedding:8b-q8_0
+   export CORPUS_KB_EMBEDDING_DIMENSIONS=4096
+   ```
+
+   The bundled schema stores 4096-dimension vectors. The ingest guard
+   and `corpus-kb doctor` catch a mismatch and print the fix. See
+   [OPERATIONS.md](OPERATIONS.md).
+
+6. Start the server.
+
+   ```bash
+   corpus-kb start --transport http --port 8010
+   ```
+
+7. Ingest one file from another terminal.
+
+   ```bash
+   curl -X POST http://localhost:8010/api/ingest/file \
+     -H "Content-Type: application/json" \
+     -d '{"file_path": "src/corpus_kb/server_wiring.py"}'
+   ```
+
+8. Search it.
+
+   ```bash
+   corpus-kb search "how does startup work"
+   ```
+
+   Success: ranked scored results. Add `--json` for the machine
+   envelope.
+
+Prefer one guided command instead? `corpus-kb quickstart` probes
+Ollama, resolves Postgres, applies the schema, and prints the doctor
+report. New to qualitative coding? Run `corpus-kb research demo` after
+step 5; the demo needs a research-grade embedder.
 
 ## Before you start: a database and an embedder
 
@@ -83,14 +142,6 @@ point the config at it:
 ollama pull qwen3-embedding:4b
 ```
 
-```yaml
-embedding:
-  provider: ollama
-  model: qwen3-embedding:8b-q8_0
-  base_url: http://localhost:11434
-  dimensions: 4096
-```
-
 `corpus-kb doctor` reports the embedder config status with the exact fix
 when something is off. It also counts degraded (zero-vector) chunks and
 incomplete ingest runs. The demo fail-fasts with the same guidance if the
@@ -98,10 +149,10 @@ configured embedder would abstain.
 
 ## Run the demo
 
-The fastest way to see the whole pipeline is the narrated demo. It bundles a
-two-interview mini corpus and a small codebook under `docs/demo-corpus/`.
-It walks through ingest, coding, review, the governance report, and a cited
-notebook answer. The demo explains each stage as it goes (~5 minutes):
+The fastest way to see the research pipeline is the narrated demo. It
+bundles a two-interview mini corpus and a small codebook under
+`docs/demo-corpus/`. It walks through ingest, coding, review, the
+governance report, and a cited notebook answer (~5 minutes):
 
 ```bash
 corpus-kb research demo
@@ -111,9 +162,15 @@ With the database and embedder from the previous section in place, no other
 arguments are needed. Re-runs are safe: file and text hashes make
 already-ingested files no-ops.
 
-## Ingest your first transcript
+## Your own transcripts
 
-Real transcripts go in as files (`.txt` first-class, plus `.vtt`, `.srt`,
+Real transcripts go in as files. The sections below walk one full pass:
+ingest, codebook, coding, review, and a cited answer. The full command
+reference is [research.md](research.md).
+
+### Ingest your first transcript
+
+Transcripts go in as files (`.txt` first-class, plus `.vtt`, `.srt`,
 `.csv`, `.docx`). A plain-text transcript just needs `Speaker: text` lines:
 
 ```bash
@@ -138,7 +195,7 @@ becomes the moderator). It links question-answer exchanges and records
 everything as events. Projections build the read models. Re-runs process
 only new or changed files.
 
-## Build a codebook
+### Build a codebook
 
 Two ways to get a codebook version:
 
@@ -156,7 +213,7 @@ Two ways to get a codebook version:
 For reliable automated thresholds you want at least 20 gold exemplars per
 code. Below that, coding still runs but routes to review (see the demo).
 
-## Run coding
+### Run coding
 
 ```bash
 corpus-kb coding run --codebook-version-id <uuid> [--project-id <uuid>]
@@ -166,14 +223,14 @@ The summary reports explicit / question-dependent / review splits. Assignments
 land in the review queue whenever thresholds are gray, ambiguous, or
 unreliable.
 
-## Review assignments
+### Review assignments
 
 ```bash
 corpus-kb review accept <assignment-id> --reviewer "your-name"
 corpus-kb review override <assignment-id> --reviewer "your-name" --note "why"
 ```
 
-## Ask the notebook
+### Ask the notebook
 
 ```bash
 corpus-kb research ask "How do transportation problems shape food access?" \
@@ -183,13 +240,11 @@ corpus-kb research ask "How do transportation problems shape food access?" \
 Every answer sentence carries an exchange-level citation (document, speaker,
 timestamp/turn range). Add `--retrieval-only` for evidence without generation.
 
-## Report and iterate
+## Where to go next
 
-```bash
-corpus-kb research report --level novice
-```
-
-Then read [understanding-your-report.md](understanding-your-report.md) for a
-plain-language guide to every field. The full research command set, including
-the orchestrated cycle (`corpus-kb research cycle`), is documented in
-[research.md](research.md).
+- [UI.md](UI.md) — the four browser pages in detail.
+- [OBSERVABILITY.md](OBSERVABILITY.md) — trace every operation with OpenTelemetry.
+- [EVALUATION.md](EVALUATION.md) — score retrieval and answers on your own golden set.
+- [NOTEBOOKS.md](NOTEBOOKS.md) — marimo notebooks served at `/notebooks`.
+- [OPERATIONS.md](OPERATIONS.md) — ports, exit codes, and the operator's contract.
+- [understanding-your-report.md](understanding-your-report.md) — every report field in plain language.

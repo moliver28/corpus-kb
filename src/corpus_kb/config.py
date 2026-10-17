@@ -148,6 +148,15 @@ def load_config(path: str | None = None) -> dict[str, object]:
     if ui_error is not None:
         raise ValueError(ui_error)
 
+    # UX Wave 6 notebooks console: notebooks.enabled must be a real bool and
+    # notebooks.directory a non-empty string AT LOAD (notebooks/settings.py
+    # owns the rules and the remediation text).
+    from corpus_kb.notebooks.settings import notebooks_settings_error
+
+    notebooks_error = notebooks_settings_error(config)
+    if notebooks_error is not None:
+        raise ValueError(notebooks_error)
+
     return config
 
 
@@ -529,6 +538,12 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.ui.settings import UI_CONFIG_DEFAULTS
 
     config.setdefault("ui", _detached_defaults(UI_CONFIG_DEFAULTS))
+    # UX Wave 6 notebooks console (notebooks/settings.py is the typed
+    # reader): the marimo console block, mounted at /notebooks behind the
+    # [notebook] extra. Same passthrough rule as ui above.
+    from corpus_kb.notebooks.settings import NOTEBOOKS_CONFIG_DEFAULTS
+
+    config.setdefault("notebooks", _detached_defaults(NOTEBOOKS_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:

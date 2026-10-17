@@ -6,6 +6,56 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 
 ---
 
+## Two ways to start
+
+Pick the path that fits you. Both end at the same working system.
+
+### The novice path: the browser
+
+No terminal work beyond two commands. First install the package with the
+browser UI extra:
+
+```bash
+pip install 'corpus-kb[ui]'
+```
+
+Then start the stack. `corpus-kb setup` starts Postgres and loads the
+schema. `corpus-kb start` starts the server and opens your browser:
+
+```bash
+corpus-kb setup
+corpus-kb start
+```
+
+The browser shows four pages at `http://localhost:8010`:
+
+- **Add** — drag files in, add a web page, or click **Load sample knowledge** for five short demo files.
+- **Ask** — answers built from your files. Each answer cites its sources and shows a verification badge.
+- **Library** — your documents, chunk counts, and discovered topics.
+- **Overview** — the doctor's health checks in plain language.
+
+Details and screenshots of the flow: [docs/UI.md](docs/UI.md).
+
+### The expert path: terminals and APIs
+
+Every operation is reachable programmatically. One line per surface:
+
+- **MCP stdio** for editor agents: `corpus-kb --transport stdio` — [docs/API.md](docs/API.md)
+- **HTTP API** with curl examples: [docs/API.md](docs/API.md)
+- **OpenAI-compatible adapter** at `/v1` (chat completions, embeddings): [docs/API.md](docs/API.md)
+- **JSON-RPC socket** for local automation: [docs/API.md](docs/API.md)
+- **CLI**: `corpus-kb ingest`, `corpus-kb search`, `corpus-kb ask` — [docs/getting-started.md](docs/getting-started.md)
+- **Tracing** with OpenTelemetry spans: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
+- **Offline evaluation** of retrieval and answers: [docs/EVALUATION.md](docs/EVALUATION.md)
+- **marimo notebooks** served at `/notebooks`: [docs/NOTEBOOKS.md](docs/NOTEBOOKS.md)
+- **Topics** (offline BERTopic over stored embeddings): [docs/TOPICS.md](docs/TOPICS.md)
+
+First time on a terminal? `corpus-kb quickstart` walks you from zero to
+a first search. The step-by-step quickstart is in
+[docs/getting-started.md](docs/getting-started.md).
+
+---
+
 ## What you get
 
 - **Hybrid search** that blends vector similarity, full-text search, and rank fusion, with honest handling of degraded (zero-vector) chunks
@@ -18,6 +68,7 @@ Corpus-KB is a private knowledge base for AI coding assistants. It reads your co
 - **Full-stack installer** with hardware detection, profile-based recommendations, and guided setup
 - **MCP, HTTP, and socket APIs** so any editor or script can talk to it
 - **Browser UI** with drag-and-drop ingest, cited answers, and plain-language health checks ([docs/UI.md](docs/UI.md))
+- **Notebooks console** — marimo notebooks served by the running server ([docs/NOTEBOOKS.md](docs/NOTEBOOKS.md))
 
 ---
 
@@ -77,142 +128,23 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 
 ---
 
-## Quick start
-
-From zero to a working system in about ten minutes. Each step is one
-command. Each command says what it does and what success looks like.
-
-1. Clone the repo.
-
-   ```bash
-   git clone https://github.com/moliver28/corpus-kb.git
-   cd corpus-kb
-   ```
-
-   You now have the source. All later commands run from this folder.
-
-2. Install the package.
-
-   ```bash
-   pip install -e ".[dev]"
-   ```
-
-   Success: `corpus-kb --version` prints a version number.
-
-3. Start the database and load the schema.
-
-   ```bash
-   corpus-kb setup
-   ```
-
-   This starts the bundled Postgres container and runs the migrations.
-   Success: the last line says the setup finished. The database then
-   answers on host port **5433**. That is the container's 5432, published
-   as 5433. The packaged config already points there. No Docker? See
-   [docs/INSTALL.md](docs/INSTALL.md) for the native-Postgres path
-   (port 5432).
-
-4. Check the system.
-
-   ```bash
-   corpus-kb doctor
-   ```
-
-   Read-only checks. Success: every line says `OK` or `SKIP`. A `FAIL`
-   line names its fix. Doctor always exits 0; read the report, not the
-   exit code.
-
-5. Pull an embedding model that fits the schema.
-
-   ```bash
-   ollama pull qwen3-embedding:8b-q8_0
-   ```
-
-   The bundled schema stores 4096-dimension vectors. `qwen3-embedding`
-   produces exactly 4096. The older `nomic-embed-text` (768d) does not
-   fit. Real (non-degraded) ingest into the bundled schema needs a
-   4096-dimension model. Or you change the column yourself. The ingest
-   guard and `corpus-kb doctor` catch a mismatch and print the fix.
-   See [docs/OPERATIONS.md](docs/OPERATIONS.md).
-
-6. Point the runtime at that model.
-
-   ```bash
-   export CORPUS_KB_EMBEDDING_MODEL=qwen3-embedding:8b-q8_0
-   export CORPUS_KB_EMBEDDING_DIMENSIONS=4096
-   ```
-
-   These variables override the config file (the installer may have
-   written the 768d default model there). Success: `corpus-kb doctor`
-   reports the model and the dimension check as `OK`.
-
-7. Start the server.
-
-   ```bash
-   corpus-kb start --transport http --port 8010
-   ```
-
-   Success: the log says the HTTP API listens on port 8010 and the
-   socket server is up. Leave this terminal open.
-
-8. Ingest one file from another terminal.
-
-   ```bash
-   curl -X POST http://localhost:8010/api/ingest/file \
-     -H "Content-Type: application/json" \
-     -d '{"file_path": "src/corpus_kb/server_wiring.py"}'
-   ```
-
-   Success: the JSON answer says `"status": "success"` and reports a
-   chunk count.
-
-9. Search it.
-
-   The CLI talks to the configured database directly; no server needed:
-
-   ```bash
-   corpus-kb search "how does startup work"
-   ```
-
-   Or curl a running server:
-
-   ```bash
-   curl -X POST http://localhost:8010/api/search \
-     -H "Content-Type: application/json" \
-     -d '{"query": "how does startup work"}'
-   ```
-
-   Success: ranked scored results. Add `--json` for the machine-readable
-   envelope.
-
-New to qualitative coding? Run the narrated demo (~5 minutes). The demo
-needs a research-grade embedder (1024 dimensions or more), so pull the
-qwen3 model from step 5 first. The base `nomic-embed-text` model (768
-dimensions) makes the demo abstain by design:
-
-```bash
-corpus-kb research demo
-```
-
-Then read [docs/getting-started.md](docs/getting-started.md) to run it on
-your own transcripts. Ports, exit codes, and vocabularies: see
-[docs/OPERATIONS.md](docs/OPERATIONS.md). The full setup guide is
-[docs/INSTALL.md](docs/INSTALL.md).
-
----
-
 ## Documentation
 
 | Page | What it covers |
 |------|----------------|
+| [Getting started](docs/getting-started.md) | Both paths: the browser for novices, the terminal quickstart for everyone else |
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
+| [Browser UI](docs/UI.md) | The four pages: Add, Ask, Library, Overview |
 | [Features](docs/FEATURES.md) | Ingest, search, graph, tags, metadata, versioning, embedding models, LlamaIndex RAG |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
 | [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
-| [API](docs/API.md) | HTTP routes, request bodies, curl examples, MCP tool reference |
+| [API](docs/API.md) | HTTP routes, the `/v1` OpenAI adapter, curl examples, MCP tool reference |
+| [Observability](docs/OBSERVABILITY.md) | OpenTelemetry spans, exporters, zero-cost when off |
+| [Evaluation](docs/EVALUATION.md) | Golden sets, recall/MRR/nDCG, answer metrics |
+| [Notebooks](docs/NOTEBOOKS.md) | The marimo console and the three example notebooks |
 | [Development](docs/DEVELOPMENT.md) | Architecture deep dive, testing, PR workflow, conventions |
-| [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Research](docs/research.md) | Research command reference, config keys, embedding requirements |
+| [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Understanding your report](docs/understanding-your-report.md) | Plain-language guide to every governance-report section |
 | [Research math](docs/research-math.md) | Every formula, its v5 source, and its calibration provenance |
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
@@ -222,6 +154,10 @@ your own transcripts. Ports, exit codes, and vocabularies: see
 | [Topics](docs/TOPICS.md) | The topic layer: offline BERTopic over stored embeddings, LLM labels, config |
 | [Harness distribution](docs/harness-distribution.md) | Packaging and distributing the agent harness pack |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
+
+The qualitative-coding walkthrough keeps its home in
+[docs/getting-started.md](docs/getting-started.md), under "Your own
+transcripts".
 
 ---
 
