@@ -331,8 +331,8 @@ async def startup(
 
     # 5b. Browser UI (UX program Wave 3): the lazy [ui] extra behind
     # ui.enabled. A missing or broken UI logs and continues — never raise.
-    from corpus_kb.ui.app import UiContext, set_ui_context
     from corpus_kb.ui.settings import load_ui_settings
+    from corpus_kb.ui.types import UiContext, set_ui_context
 
     ui_mounted = False
     if load_ui_settings(cfg).enabled:
@@ -421,7 +421,7 @@ async def run_all(services: dict[str, object]) -> None:
             browser_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await browser_task
-        socket_server.stop()
+        await socket_server.stop()
         projection_task.cancel()
         docs_projection_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
@@ -502,14 +502,20 @@ def main(argv: list[str] | None = None) -> None:
 
         async def _run() -> None:
             cfg: dict[str, object] | None = None
-            if args.ui is not None:
-                # The --ui/--no-ui flag overrides the ui.enabled config key
-                # (load once here so startup sees the overridden value).
+            if args.ui is not None or "CORPUS_KB_PORT" not in os.environ:
+                # The --ui/--no-ui flag overrides the ui.enabled config key;
+                # the --port flag fills in for an unset CORPUS_KB_PORT (the
+                # documented priority is env var, then CLI flag, then YAML).
+                # Load once here so startup and run_all see the overrides.
                 from corpus_kb.config import load_config
 
                 cfg = load_config()
-                ui_block = cast(dict[str, object], cfg.setdefault("ui", {}))
-                ui_block["enabled"] = bool(args.ui)
+                server_block = cast(dict[str, object], cfg.setdefault("server", {}))
+                if args.ui is not None:
+                    ui_block = cast(dict[str, object], cfg.setdefault("ui", {}))
+                    ui_block["enabled"] = bool(args.ui)
+                if "CORPUS_KB_PORT" not in os.environ:
+                    server_block["port"] = args.port
             services = await startup(cfg)
             try:
                 await run_all(services)
