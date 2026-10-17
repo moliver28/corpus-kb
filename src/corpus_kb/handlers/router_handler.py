@@ -17,6 +17,13 @@ import math
 from typing import cast
 
 from corpus_kb.domain.models import RouteDecision, RoutedQuery, RoutedResult, SearchQuery
+from corpus_kb.utils.tracing import (
+    ATTR_CONFIDENCE,
+    ATTR_FALLBACK,
+    ATTR_ROUTE,
+    SPAN_ROUTE_DECIDE,
+    span,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +83,11 @@ class RouterHandler:
         return RouteDecision(route=best_route, confidence=best_score, fallback=False)
 
     async def handle_routed_query(self, query: RoutedQuery) -> RoutedResult:
-        decision = await self._classify(query.query)
+        with span(SPAN_ROUTE_DECIDE) as current:
+            decision = await self._classify(query.query)
+            current.set_attribute(ATTR_ROUTE, decision.route)
+            current.set_attribute(ATTR_CONFIDENCE, decision.confidence)
+            current.set_attribute(ATTR_FALLBACK, decision.fallback)
         if decision.route == "graph":
             hit = await self._graph.handle_search_graph(query.tenant_id, query.query, None, limit=1)
             if not hit:

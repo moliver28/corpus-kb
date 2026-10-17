@@ -24,11 +24,20 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
+from corpus_kb.utils.tracing import SPAN_ROUTE, SPAN_VERIFY_ANSWER, current_trace_id, span
 
 if TYPE_CHECKING:
     from corpus_kb.handlers.router_handler import RouterHandler
 
 __all__ = ["query", "verify_answer"]
+
+
+def _with_trace_id(payload: dict[str, object]) -> dict[str, object]:
+    """Attach the active trace id when one is recording (never when off)."""
+    trace_id = current_trace_id()
+    if trace_id is not None:
+        payload["trace_id"] = trace_id
+    return payload
 
 
 async def _resolve_router_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> RouterHandler:
@@ -84,25 +93,29 @@ async def query(
     When no server has wired the router singleton, the stack is built over
     ``pg_pool`` (injected by the MCP wrapper, passed by the CLI). With
     neither, a pool is opened from the config's connection string.
+
+    The operation runs inside the ``corpus_kb.route`` span, so the envelope
+    carries ``trace_id`` whenever tracing is enabled (absent when off).
     """
     from corpus_kb.domain.models import RoutedQuery
 
     cfg = load_config_or_pass(config)
-    own_pool: asyncpg.Pool | None = None
-    pool = pg_pool
-    if pool is None:
-        import asyncpg as _asyncpg
+    with span(SPAN_ROUTE):
+        own_pool: asyncpg.Pool | None = None
+        pool = pg_pool
+        if pool is None:
+            import asyncpg as _asyncpg
 
-        dsn = str((cfg.get("database", {}) or {}).get("connection_string", ""))
-        pool = own_pool = await _asyncpg.create_pool(dsn)
-    try:
-        router = await _resolve_router_handler(cfg, pool)
-        routed = RoutedQuery(tenant_id=UUID(tenant_id), query=query, k=k)
-        result = await router.handle_routed_query(routed)
-        return {"status": "success", "result": result.model_dump(mode="json")}
-    finally:
-        if own_pool is not None:
-            await own_pool.close()
+            dsn = str((cfg.get("database", {}) or {}).get("connection_string", ""))
+            pool = own_pool = await _asyncpg.create_pool(dsn)
+        try:
+            router = await _resolve_router_handler(cfg, pool)
+            routed = RoutedQuery(tenant_id=UUID(tenant_id), query=query, k=k)
+            result = await router.handle_routed_query(routed)
+            return _with_trace_id({"status": "success", "result": result.model_dump(mode="json")})
+        finally:
+            if own_pool is not None:
+                await own_pool.close()
 
 
 async def verify_answer(
@@ -122,21 +135,26 @@ async def verify_answer(
     rule): without it the handler abstains on every call, which silently
     downgrades the operation to "always abstain".
     ``tenant_id`` scopes the chunk lookup the same way the HTTP route does.
+
+    The operation runs inside the ``corpus_kb.verify_answer`` span, so the
+    envelope carries ``trace_id`` whenever tracing is enabled (absent when
+    off).
     """
     from corpus_kb.domain.models import VerifyAnswerQuery
     from corpus_kb.handlers.query_handler import QueryHandler
 
     cfg = load_config_or_pass(config)
-    judge = None
-    if (cfg.get("judge", {}) or {}).get("enabled", False):
-        from corpus_kb.rag.judge import OllamaJudge
+    with span(SPAN_VERIFY_ANSWER):
+        judge = None
+        if (cfg.get("judge", {}) or {}).get("enabled", False):
+            from corpus_kb.rag.judge import OllamaJudge
 
-        judge = OllamaJudge(cfg)
+            judge = OllamaJudge(cfg)
 
-    verified = VerifyAnswerQuery(
-        answer=answer,
-        chunk_ids=[UUID(chunk) for chunk in (chunk_ids or [])],
-    )
-    handler = QueryHandler(pg_pool, judge=judge, config=cfg)
-    result = await handler.handle_verify_answer(verified)
-    return {"status": "success", "result": result.model_dump(mode="json")}
+        verified = VerifyAnswerQuery(
+            answer=answer,
+            chunk_ids=[UUID(chunk) for chunk in (chunk_ids or [])],
+        )
+        handler = QueryHandler(pg_pool, judge=judge, config=cfg)
+        result = await handler.handle_verify_answer(verified)
+        return _with_trace_id({"status": "success", "result": result.model_dump(mode="json")})

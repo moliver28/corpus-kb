@@ -22,6 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from corpus_kb.domain.models import SearchResult
+from corpus_kb.utils.tracing import current_trace_id
 
 # Pinned remedy (plan §Stage 3.3): shown whenever a search returns no
 # results under degraded conditions. ``corpus-kb ingest --reembed`` is the
@@ -70,13 +71,17 @@ class SearchEnvelope:
 
     ``status`` is ``success`` or ``degraded_empty`` (results empty AND at
     least one arm-impairment reason recorded). ``remedy`` carries the pinned
-    reembed message only in the ``degraded_empty`` case.
+    reembed message only in the ``degraded_empty`` case. ``trace_id`` is
+    captured inside the ``corpus_kb.query`` span (finalize_envelope) — it is
+    None whenever tracing is off, and ``envelope_to_payload`` only emits the
+    key when it is set, so the off-path envelope shape is unchanged.
     """
 
     status: str
     results: list[SearchResult]
     degraded_excluded: DegradedExcluded
     remedy: str | None = None
+    trace_id: str | None = None
 
 
 def is_all_zero(vector: list[float] | None) -> bool:
@@ -108,7 +113,12 @@ def finalize_envelope(
     removed (from the handler's probe; 0 when the probe never ran). It
     becomes ``DegradedExcluded.count`` — reasons and count are independent:
     an arm impairment (zero-query, arm error) can be recorded with count 0.
+
+    The active trace id (if any) is captured HERE — finalize runs inside the
+    ``corpus_kb.query`` span, so the id is the one shared by the whole span
+    tree, and every surface that later serializes the envelope carries it.
     """
+    trace_id = current_trace_id()
     reasons_out = list(reasons)
     if not results and reasons_out:
         return SearchEnvelope(
@@ -116,11 +126,13 @@ def finalize_envelope(
             results=[],
             degraded_excluded=DegradedExcluded(count=excluded_count, reasons=reasons_out),
             remedy=REEMBED_REMEDY,
+            trace_id=trace_id,
         )
     return SearchEnvelope(
         status=STATUS_SUCCESS,
         results=results,
         degraded_excluded=DegradedExcluded(count=excluded_count, reasons=reasons_out),
+        trace_id=trace_id,
     )
 
 
@@ -129,6 +141,9 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
 
     Additive over the legacy {status, result} shape: existing consumers
     reading status+result keep working; honest clients read the new field.
+    ``trace_id`` appears ONLY when the envelope captured a live trace
+    (tracing enabled) — with tracing off the key-set is byte-identical to
+    the pre-tracing shape.
     """
     payload: dict[str, object] = {
         "status": envelope.status,
@@ -137,4 +152,6 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
     }
     if envelope.remedy is not None:
         payload["remedy"] = envelope.remedy
+    if envelope.trace_id is not None:
+        payload["trace_id"] = envelope.trace_id
     return payload

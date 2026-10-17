@@ -177,6 +177,18 @@ async def startup(
 
     cfg = config or load_config()
 
+    # 0. Observability (UX program Wave 4): tracing setup must never break
+    #    startup. Disabled (the default) is a no-op; a missing [otel] extra
+    #    or any setup failure logs ONE honest line and the server continues
+    #    with tracing off.
+    try:
+        from corpus_kb.utils.tracing import setup_tracing
+
+        setup_tracing(cfg)
+    except Exception as exc:
+        remedy = getattr(exc, "remediation", "")
+        logger.warning("Tracing not enabled: %s. Remedy: %s", exc, remedy)
+
     # 1. Postgres pool
     db_cfg = cfg.get("database", {})
     conn_str = db_cfg.get("connection_string", "") or os.environ.get("CORPUS_KB_DATABASE_URL", "")
@@ -400,6 +412,11 @@ async def shutdown(services: dict[str, object]) -> None:
     pool = services["pool"]
     if isinstance(pool, asyncpg.Pool):
         await pool.close()
+    # Observability (UX program Wave 4): flush pending spans on the way out.
+    # Best-effort and safe when tracing was never enabled.
+    from corpus_kb.utils.tracing import shutdown_tracing
+
+    shutdown_tracing()
     logger.info("asyncpg pool closed")
 
 

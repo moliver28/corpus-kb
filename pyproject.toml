@@ -271,11 +271,6 @@ DEP002 = [
     "openinference-semantic-conventions",
     "deepeval",
     "marimo",
-    # Temporary W0 holds. fastapi gains its real import edge in W3
-    # (api/http.py) and opentelemetry-api in W4 (utils/tracing.py); the
-    # wave that lands the import removes its entry from this list.
-    "fastapi",
-    "opentelemetry-api",
     # Dev/tooling deps: consumed by tests/ and the gate commands, never
     # imported by src/.
     "pytest",

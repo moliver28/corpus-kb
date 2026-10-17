@@ -211,15 +211,30 @@ async def compose_answer(
     carries ONLY sentences whose [n] index resolves to retrieved evidence
     (the grounded contract); everything else is dropped.
     """
-    envelope = await handler.handle_search_with_meta(
-        SearchQuery(tenant_id=tenant_id, query=question, k=k)
+    from corpus_kb.utils.tracing import (
+        ATTR_CLAIMS,
+        ATTR_GROUNDEDNESS,
+        ATTR_MODEL,
+        ATTR_ROW_COUNT,
+        SPAN_ASK_GENERATE,
+        SPAN_ASK_RETRIEVE,
+        SPAN_ASK_VERIFY,
+        span,
     )
+
+    with span(SPAN_ASK_RETRIEVE) as current:
+        envelope = await handler.handle_search_with_meta(
+            SearchQuery(tenant_id=tenant_id, query=question, k=k)
+        )
+        current.set_attribute(ATTR_ROW_COUNT, len(envelope.results))
     sources = evidence_blocks(envelope.results)
     degraded = envelope.degraded_excluded.to_dict()
     model = _model_name(llm)
     if not sources:
         return AnswerBundle(STATUS_EMPTY, "", [], sources, _abstain(), model, NO_EVIDENCE, degraded)
-    text, gen_model, failed = await _generate(llm, question, sources)
+    with span(SPAN_ASK_GENERATE) as current:
+        text, gen_model, failed = await _generate(llm, question, sources)
+        current.set_attribute(ATTR_MODEL, gen_model)
     model = gen_model or model
     if failed:
         return AnswerBundle(
@@ -231,12 +246,21 @@ async def compose_answer(
             STATUS_DEGRADED, "", [], sources, _abstain(), model, NO_CITABLE_SENTENCES, degraded
         )
     answer = " ".join(str(sentence["text"]) for sentence in sentences)
+    with span(SPAN_ASK_VERIFY) as current:
+        verify = verify_claims(judge, answer, sources)
+        verdicts = verify.get("verdicts")
+        groundedness = verify.get("groundedness")
+        current.set_attribute(ATTR_CLAIMS, len(verdicts) if isinstance(verdicts, list) else 0)
+        current.set_attribute(
+            ATTR_GROUNDEDNESS,
+            float(groundedness) if isinstance(groundedness, (int, float)) else 0.0,
+        )
     return AnswerBundle(
         STATUS_SUCCESS,
         answer,
         sentences,
         sources,
-        verify_claims(judge, answer, sources),
+        verify,
         model,
         None,
         degraded,

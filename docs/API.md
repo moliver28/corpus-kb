@@ -194,7 +194,9 @@ error, no embedder, filter-active). A legitimately empty search (no
 candidates existed at all) returns plain `success` with `count: 0` and no
 remedy. The status is `degraded_empty` when results came back empty AND at
 least one impairment was recorded. The remedy: start Ollama, then
-run `corpus-kb ingest-reembed`.
+run `corpus-kb ingest-reembed`. With tracing on, the envelope also carries
+`trace_id`, the 32-char hex id of the active OpenTelemetry trace. It is
+absent when tracing is off (see docs/OBSERVABILITY.md).
 
 ### Result ordering
 

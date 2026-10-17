@@ -97,6 +97,7 @@ def load_config(path: str | None = None) -> dict[str, object]:
         ("server", "port"): "CORPUS_KB_PORT",
         ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
         ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
+        ("observability", "otlp_endpoint"): "CORPUS_KB_OTLP_ENDPOINT",
         ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
         ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
         ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
@@ -194,6 +195,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_TRANSPORT",
         "CORPUS_KB_PORT",
         "CORPUS_KB_OPENAI_COMPAT",
+        "CORPUS_KB_OTLP_ENDPOINT",
         "CORPUS_KB_INSTALL_DATA_DIR",
         "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
         "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
@@ -437,6 +439,15 @@ def get_default_config() -> dict[str, object]:
         # graph.extractor (above) stays as the accepted legacy alias.
         "extraction": {
             "backend": "pgml",
+        },
+        # OpenTelemetry tracing (UX program Wave 4). Off by default: the
+        # no-op opentelemetry-api tracer makes every span free. Enable with
+        # the [otel] extra; see docs/OBSERVABILITY.md. utils/tracing.py is
+        # the typed reader (its DEFAULT_* constants must stay in lockstep).
+        "observability": {
+            "enabled": False,
+            "otlp_endpoint": "http://localhost:4318",
+            "service_name": "corpus-kb",
         },
         "installer": {
             "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
