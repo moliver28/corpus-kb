@@ -582,6 +582,8 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "topics.llm_reduction": bool,
     "topics.llm": str,
     "topics.llm_base_url": str,
+    # -- server (HTTP adapter gates) -----------------------------------------
+    "server.openai_compat": bool,
 }
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})
