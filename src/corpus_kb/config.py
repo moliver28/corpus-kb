@@ -307,8 +307,10 @@ def get_default_config() -> dict[str, object]:
         },
         "reranking": {
             "enabled": True,
-            # null selects the qwen3 judgment scorer; "fake" is the test
-            # double (build_reranker).
+            # backend selects the scorer: null = qwen3 judgment scorer via
+            # Ollama, "llamacpp" = true cross-encoder client (POST /v1/rerank
+            # on llamacpp_url), "generative" = the null alias, "fake" = the
+            # test double (build_reranker).
             "backend": None,
             # Committed upgrade-program default: qwen3-reranker 4B. That
             # tag is not yet pullable from the Ollama registry — until a
@@ -317,6 +319,9 @@ def get_default_config() -> dict[str, object]:
             # (rag/rerank_settings.py contract).
             "model": "qwen3-reranker:4b",
             "base_url": "http://localhost:11434",
+            # llama.cpp /v1/rerank server for backend: "llamacpp"
+            # (llama-server listens on 8080 by default).
+            "llamacpp_url": "http://localhost:8080",
             # Rerank pre-fetch width for score-based rerankers.
             "over_retrieve_n": 60,
             "candidates": 100,

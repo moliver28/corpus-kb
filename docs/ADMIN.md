@@ -65,14 +65,30 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `true` | Score-based rerank stage (degrades honestly to the fused order) |
-| `backend` | `null` | `null` selects the qwen3 judgment scorer; `fake` is the test double |
+| `backend` | `null` | `null`/`generative` = qwen3 judgment scorer; `llamacpp` = true cross-encoder via llama-server; `fake` = test double |
 | `model` | `qwen3-reranker:4b` | Rerank model |
+| `llamacpp_url` | `http://localhost:8080` | `/v1/rerank` endpoint for backend `llamacpp` (llama-server default port) |
 | `over_retrieve_n` | `60` | Rerank pre-fetch width for the fused candidates |
 | `candidates` | `100` | Cap on results entering the reranker |
 | `return_top_k` | `20` | The default return k: search/query callers that omit k get this value |
 | `max_pair_tokens` | `768` | Document-side truncation per scored pair |
 | `score_floor` | `0.15` | Drop results below the calibrated score |
 | `calibration` | `minmax` | Score post-processing (`minmax` or `none`) |
+
+#### Real cross-encoder reranking via llama-server
+
+Ollama 0.31.1 has no rerank endpoint. It also refuses reranker GGUFs on
+the generate route, so it cannot produce true cross-encoder scores. The
+standard path is a rank-capable llama.cpp server:
+
+1. Download a rank-pooling GGUF (for example `Qwen3-Reranker-0.6B-Q8_0.gguf`).
+2. Start the server: `llama-server -m Qwen3-Reranker-0.6B-Q8_0.gguf --port 8080`.
+3. Set `reranking.backend: llamacpp` in `config.yaml`, then restart corpus-kb.
+
+The reranker then posts to `http://localhost:8080/v1/rerank` and returns
+graded relevance scores. `corpus-kb doctor` probes the server under
+"reranker backend". Without the server, the stage falls open to the fused
+RRF order.
 
 Legacy namespaces: `search.*`, `ingest.hierarchy.*`, and `contextual.*`
 still work as aliases. Canonical keys win; alias use logs a deprecation

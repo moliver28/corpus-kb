@@ -107,13 +107,18 @@ retrieval:
 
 reranking:
   enabled: true
-  # null selects the qwen3 judgment scorer; "fake" is the test double.
+  # backend selects the scorer: null = qwen3 judgment scorer via Ollama,
+  # llamacpp = true cross-encoder via POST {llamacpp_url}/v1/rerank
+  # (llama-server; see docs/ADMIN.md), generative = the null alias,
+  # fake = the test double.
   backend: null
   # Committed upgrade-program default: qwen3-reranker 4B. Not yet pullable
   # from the Ollama registry — until it exists locally the stage degrades
   # to the un-reranked RRF order with a logged warning.
   model: qwen3-reranker:4b
   base_url: http://localhost:11434
+  # /v1/rerank endpoint for backend: llamacpp (llama-server's default port).
+  llamacpp_url: http://localhost:8080
   # Rerank pre-fetch width: how many fused candidates a score-based reranker
   # may see (bounded by the arms' candidate depths).
   over_retrieve_n: 60

@@ -561,6 +561,9 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     # -- reranking (renamed from search.rerank.*) ---------------------------
     "reranking.enabled": bool,
     "reranking.return_top_k": int,
+    # reranking.backend is NOT here: null is the shipped default, so the
+    # null-or-enum union is enforced by _reranking_block_errors below.
+    "reranking.llamacpp_url": str,
     # -- website (URL) ingestion (src/corpus_kb/web/, WebFetchConfig) -------
     "web.user_agent": str,
     "web.timeout_seconds": int,
@@ -585,6 +588,9 @@ SUPPORTED_VECTOR_TYPES = frozenset({"halfvec"})
 SUPPORTED_CONTEXTUAL_PROFILES = frozenset({"interview", "generic"})
 SUPPORTED_APPLY_TO_TARGETS = frozenset({"embedding", "lexical"})
 SUPPORTED_TOPIC_METHODS = frozenset({"bertopic"})
+# reranking.backend values (null also valid — the qwen3 judgment scorer).
+# "generative" is the explicit alias of null; "fake" is the test double.
+SUPPORTED_RERANK_BACKENDS = frozenset({"llamacpp", "generative", "fake"})
 RETURN_TOP_K_MIN = 1
 RETURN_TOP_K_MAX = 1000
 
@@ -695,7 +701,20 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
     if isinstance(topics, dict):
         errors.extend(_topics_block_errors(topics))
 
+    reranking = config.get("reranking")
+    if isinstance(reranking, dict):
+        errors.extend(_reranking_block_errors(reranking))
     errors.extend(_return_top_k_errors(config.get("reranking")))
+    return errors
+
+
+def _reranking_block_errors(reranking: dict[str, Any]) -> list[str]:
+    """Enum rule for ``reranking.backend`` (None is the shipped default)."""
+    errors: list[str] = []
+    backend = reranking.get("backend")
+    if backend is not None and backend not in SUPPORTED_RERANK_BACKENDS:
+        backends = ", ".join(sorted(SUPPORTED_RERANK_BACKENDS))
+        errors.append(f"reranking.backend: must be null or one of ({backends}), got {backend!r}")
     return errors
 
 
@@ -721,7 +740,8 @@ def validate_runtime_config(config: dict[str, Any]) -> list[str]:
     default lives in code, but the shipped YAML is the visible contract)
     and hold the expected type. Also enforces the cross-field rules:
     ``retrieval.mode`` is enum-locked to hybrid_rrf, ``storage.vector_type``
-    to halfvec, ``reranking.return_top_k`` is a positive int in range, and
+    to halfvec, ``reranking.backend`` to null or the supported set,
+    ``reranking.return_top_k`` is a positive int in range, and
     ``retrieval.matryoshka_enabled: true`` requires ``embedding.mrl_trained:
     true`` (the two-stage arm front-slices embeddings, which is only sound
     for Matryoshka-trained models; the runtime refuses the same combination

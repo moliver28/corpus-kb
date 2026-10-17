@@ -26,6 +26,10 @@ appears (both words, or neither). True cross-encoder grading returns when
 Ollama ships a rerank endpoint or stable logprobs.
 FakeReranker: deterministic reranker for CI / degraded mode, mirroring
 FakeEmbedder in corpus_kb/rag/embedder.py.
+LlamaCppReranker (``reranking.backend: llamacpp``): true cross-encoder
+scores via a llama.cpp ``/v1/rerank`` server (rag/rerank_llamacpp.py) —
+the only backend that returns graded relevance floats today, since
+Ollama 0.31.1 cannot serve reranker GGUFs in any mode.
 
 On any pgml failure PgmlReranker logs a warning and returns the input
 unchanged so callers can continue operating in degraded mode — reranking
@@ -331,12 +335,23 @@ def _cache_key(query: str, text: str) -> str:
 
 
 def build_reranker(config: dict[str, object]) -> object | None:
-    """Build the configured reranker, or None if disabled (U30 production gate)."""
+    """Build the configured reranker, or None if disabled (U30 production gate).
+
+    ``reranking.backend`` selects the scorer: ``"llamacpp"`` builds the
+    true cross-encoder client, ``"fake"`` the test double, and
+    null/``"generative"``/absent the qwen3 judgment scorer (OllamaReranker).
+    """
     if not load_rerank_settings(config).enabled:
         return None
     reranking = cast(dict[str, object], (config.get("reranking", {}) or {}))
     if reranking.get("backend") == "fake":
         return FakeReranker()
+    if reranking.get("backend") == "llamacpp":
+        # Function-local import: rerank_llamacpp shares the cache helpers
+        # defined in this module, so the dependency is one-way at runtime.
+        from .rerank_llamacpp import LlamaCppReranker
+
+        return LlamaCppReranker(config)
     return OllamaReranker(config)
 
 

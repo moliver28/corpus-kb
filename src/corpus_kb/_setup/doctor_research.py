@@ -681,6 +681,12 @@ async def research_checks(
     checks.append(judgment_distribution_check(config))
     checks.append(surface_parity_check())
     checks.append(zero_vector_canary(config, ollama_ok))
+    # Reranker-backend truth (llama.cpp recipe wave): probes /health on the
+    # llama.cpp server, or the model list on Ollama — offline-safe, so it
+    # runs BEFORE the database connect.
+    from corpus_kb._setup.doctor_reranker import reranker_backend_check
+
+    checks.append(await reranker_backend_check(config))
     try:
         conn = await asyncpg.connect(conn_str, timeout=3)
     except Exception as exc:

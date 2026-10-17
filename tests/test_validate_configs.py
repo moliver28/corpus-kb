@@ -696,3 +696,41 @@ class TestRuntimeCanonicalKeys:
         assert any(
             "retrieval.matryoshka_enabled" in e and "embedding.mrl_trained" in e for e in errors
         )
+
+
+class TestRuntimeRerankerBackendKeys:
+    """RUNTIME_CONFIG_KEYS learned reranking.llamacpp_url; backend is enum-checked."""
+
+    def test_llamacpp_url_key_declared(self):
+        assert RUNTIME_CONFIG_KEYS["reranking.llamacpp_url"] is str
+
+    def test_backend_not_a_single_type_key(self):
+        # null is the shipped default, so the null-or-enum union is
+        # enforced by _reranking_block_errors, not the single-type map.
+        assert "reranking.backend" not in RUNTIME_CONFIG_KEYS
+        assert "llamacpp" in validate_configs.SUPPORTED_RERANK_BACKENDS
+
+    def test_shipped_yamls_carry_llamacpp_url_and_validate(self):
+        for name in ("config.yaml", "src/corpus_kb/config.yaml"):
+            cfg = validate_configs.load_yaml(ROOT / name)
+            assert validate_runtime_config(cfg) == [], name
+            assert cfg["reranking"]["llamacpp_url"] == "http://localhost:8080", name
+
+    def test_backend_enum_accepts_shipped_and_llamacpp_values(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        for value in (None, "generative", "fake", "llamacpp"):
+            config["reranking"]["backend"] = value
+            errors = validate_runtime_config(config)
+            assert not any("reranking.backend" in e for e in errors), value
+
+    def test_unknown_backend_value_rejected(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["reranking"]["backend"] = "ollama"
+        errors = validate_runtime_config(config)
+        assert any("reranking.backend" in e and "llamacpp" in e for e in errors)
+
+    def test_mistyped_llamacpp_url_rejected(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["reranking"]["llamacpp_url"] = 8080
+        errors = validate_runtime_config(config)
+        assert any("key 'reranking.llamacpp_url' must be str" in e for e in errors)
