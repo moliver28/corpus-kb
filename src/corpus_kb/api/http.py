@@ -30,6 +30,7 @@ Route families (the Route order below is the original single-file order):
                                POST+GET /api/documents/{doc_id}/tags
   api/research_http.py         research + release surfaces (U5/P7)
   api/routes_topics.py         POST /api/topics/build  GET /api/topics
+  api/routes_v1.py             OpenAI-compatible /v1/* (gate: server.openai_compat)
 """
 
 from __future__ import annotations
@@ -89,6 +90,7 @@ from corpus_kb.api.routes_tags_metadata import (
     tag_document_route,
 )
 from corpus_kb.api.routes_topics import topics_build_route, topics_list_route
+from corpus_kb.api.routes_v1 import v1_routes
 
 
 def create_http_app() -> Starlette:
@@ -139,6 +141,10 @@ def create_http_app() -> Starlette:
         # Research + release surfaces (U5/P7) — routes defined in
         # api/research_http.py over the shared tool layer.
         *research_routes(),
+        # OpenAI-compatible /v1 adapter (UX Wave 2) — routes defined in
+        # api/routes_v1.py over the ask tool + embedder; empty tuple when
+        # server.openai_compat is off.
+        *v1_routes(),
     ]
 
     app = Starlette(routes=routes)

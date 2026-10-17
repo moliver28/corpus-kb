@@ -926,6 +926,8 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "topics.llm_reduction": bool,
         "topics.llm": str,
         "topics.llm_base_url": str,
+        # UX Wave 2: the /v1 OpenAI-compatibility gate (api/routes_v1.py).
+        "server.openai_compat": bool,
     } == RUNTIME_CONFIG_KEYS
 
 

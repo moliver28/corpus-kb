@@ -95,13 +95,14 @@ def load_config(path: str | None = None) -> dict[str, object]:
         ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
         ("server", "transport"): "CORPUS_KB_TRANSPORT",
         ("server", "port"): "CORPUS_KB_PORT",
+        ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
         ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
         ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
         ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
         ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
     }
 
-    bool_keys = {"verify_image_signature"}
+    bool_keys = {"verify_image_signature", "openai_compat"}
     int_keys = {"dimensions", "port"}
 
     for (section, key), env_var in env_overrides.items():
@@ -184,6 +185,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_GRAPH_BACKEND",
         "CORPUS_KB_TRANSPORT",
         "CORPUS_KB_PORT",
+        "CORPUS_KB_OPENAI_COMPAT",
         "CORPUS_KB_INSTALL_DATA_DIR",
         "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
         "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
@@ -234,6 +236,9 @@ def get_default_config() -> dict[str, object]:
             "transport": "stdio",
             "host": "localhost",
             "port": 8010,
+            # Gates the OpenAI-compatible /v1 adapter (api/routes_v1.py);
+            # on by default so chat frontends work out of the box.
+            "openai_compat": True,
         },
         "graph": {
             "backend": "age",
