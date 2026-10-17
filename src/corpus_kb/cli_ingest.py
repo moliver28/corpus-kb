@@ -77,12 +77,14 @@ def _run_sync(coro: Callable[[], Coroutine[Any, Any, int]]) -> int:
         raise typer.Exit(code=EXIT_OK) from None
     except OSError as exc:
         print(f"ERROR: cannot reach the database/provider: {exc}")
+        print("Fix: check the service is running, or run corpus-kb quickstart.")
         raise typer.Exit(code=EXIT_CONFIG) from None
     except asyncpg.PostgresError as exc:
         # Bad DSN / wrong password / unknown database surface as
         # asyncpg.PostgresError subclasses, not OSError — same honest
         # config/connection bucket, exit 3.
         print(f"ERROR: cannot reach the database (check DSN/credentials): {exc}")
+        print("Fix: check the DSN in config.yaml, or run corpus-kb quickstart.")
         raise typer.Exit(code=EXIT_CONFIG) from None
 
 
