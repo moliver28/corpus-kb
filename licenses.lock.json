@@ -120,9 +120,9 @@
   },
   {
     "name": "click",
-    "version": "8.5.0",
+    "version": "8.3.3",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/click/8.5.0/",
+    "homepage": "https://pypi.org/project/click/8.3.3/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
@@ -201,6 +201,13 @@
     "license": "BSD-3-Clause",
     "homepage": "https://pypi.org/project/eventsourcing/9.5.5/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
+  },
+  {
+    "name": "fastapi",
+    "version": "0.143.3",
+    "license": "MIT",
+    "homepage": "https://pypi.org/project/fastapi/0.143.3/",
+    "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
     "name": "filelock",
@@ -456,9 +463,9 @@
   },
   {
     "name": "multidict",
-    "version": "6.8.0",
+    "version": "6.9.1",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/multidict/6.8.0/",
+    "homepage": "https://pypi.org/project/multidict/6.9.1/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
@@ -533,9 +540,9 @@
   },
   {
     "name": "opentelemetry-api",
-    "version": "1.44.0",
+    "version": "1.45.1",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/opentelemetry-api/1.44.0/",
+    "homepage": "https://pypi.org/project/opentelemetry-api/1.45.1/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
@@ -750,9 +757,9 @@
   },
   {
     "name": "rich",
-    "version": "15.0.0",
+    "version": "14.3.4",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/rich/15.0.0/",
+    "homepage": "https://pypi.org/project/rich/14.3.4/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {

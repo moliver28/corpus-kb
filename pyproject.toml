@@ -64,6 +64,14 @@ dependencies = [
     "starlette>=0.35",
     "typer>=0.15",
     "uvicorn>=0.24",
+    # fastapi: the HTTP composition root returns FastAPI (a Starlette
+    # subclass) so NiceGUI's documented ui.run_with mount serves from the
+    # same app and port. Pure-Python MIT; routes/TestClient/uvicorn all
+    # unchanged by the swap.
+    "fastapi>=0.115",
+    # opentelemetry-api ONLY: no-op tracers when the [otel] extra is absent
+    # (Apache-2.0, one transitive). SDK + OTLP exporter live in the extra.
+    "opentelemetry-api>=1.45",
     "psutil>=6.0",
     "llama-index-core>=0.11",
     "llama-index-vector-stores-postgres>=0.2",
@@ -127,6 +135,36 @@ ner = ["gliner2>=2.1.0"]
 # import is lazy inside the engine entry, so the extras-less jobs stay
 # green (same contract as latechunk/inductive/ner).
 topics = ["bertopic>=0.16"]
+# Browser UI (UX program W3): NiceGUI is MIT, FastAPI-native (ui.run_with
+# shares the running server and port), typed, and ships prebuilt assets —
+# no Node toolchain anywhere. uvicorn[standard] adds the websockets layer
+# Socket.IO needs; the base uvicorn pin cannot serve NiceGUI.
+# CI NEVER installs this extra; the import is lazy behind ui.enabled, so
+# the extras-less jobs stay green (same contract as latechunk/inductive/
+# ner/topics).
+ui = [
+    "nicegui>=3.5",
+    "uvicorn[standard]>=0.24",
+]
+# Tracing (UX program W4): opentelemetry-api is already a core dep (it is
+# a no-op without this extra). The extra adds the SDK, the pure-Python
+# OTLP-over-HTTP exporter (no grpcio on Windows), and the OpenInference
+# span-attribute vocabulary (zero deps, Apache-2.0; official OTel GenAI
+# semconv are still experimental). CI NEVER installs this extra.
+otel = [
+    "opentelemetry-sdk>=1.45",
+    "opentelemetry-exporter-otlp-proto-http>=1.45",
+    "openinference-semantic-conventions>=0.1.41",
+]
+# Offline evaluation (UX program W5): DeepEval is Apache-2.0 with an
+# official Ollama integration (local judge, no API key, no cloud). It
+# hard-depends on the openai SDK — offline-safe because the judge is only
+# ever pointed at local Ollama. CI NEVER installs this extra.
+eval = ["deepeval>=4.3"]
+# Researcher console (UX program W6): marimo notebooks are reproducible
+# .py files served by the running server via create_asgi_app. Apache-2.0.
+# CI NEVER installs this extra (same lazy contract).
+notebook = ["marimo>=0.25"]
 # lxml is TEST-ONLY: real XSD validation of REFI-QDA exports in
 # tests/test_refi_qda.py (U27) via lxml.etree.XMLSchema. The runtime module
 # (coding/refi_qda) is stdlib-only; every lxml use is behind
@@ -224,6 +262,20 @@ DEP002 = [
     # topics/engine.py imports bertopic lazily behind topics.enabled and CI
     # never installs the extra, so deptry cannot see the import edge.
     "bertopic",
+    # UX program extras (W0): every consumer imports these lazily behind
+    # runtime gates and CI never installs them, so deptry cannot see the
+    # import edges.
+    "nicegui",
+    "opentelemetry-sdk",
+    "opentelemetry-exporter-otlp-proto-http",
+    "openinference-semantic-conventions",
+    "deepeval",
+    "marimo",
+    # Temporary W0 holds. fastapi gains its real import edge in W3
+    # (api/http.py) and opentelemetry-api in W4 (utils/tracing.py); the
+    # wave that lands the import removes its entry from this list.
+    "fastapi",
+    "opentelemetry-api",
     # Dev/tooling deps: consumed by tests/ and the gate commands, never
     # imported by src/.
     "pytest",
