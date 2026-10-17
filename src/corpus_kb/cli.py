@@ -189,11 +189,21 @@ def doctor() -> int:
 def start(
     transport: str = typer.Option("http", "--transport", help="Server transport"),
     port: int = typer.Option(8010, "--port", help="HTTP server port"),
+    ui: bool | None = typer.Option(
+        None,
+        "--ui/--no-ui",
+        help="Serve the browser UI (default: follow the ui.enabled config key)",
+    ),
 ) -> int:
     """Start the Corpus-KB server."""
     from corpus_kb.server_wiring import main as server_main
 
-    server_main(["--transport", transport, "--port", str(port)])
+    argv = ["--transport", transport, "--port", str(port)]
+    if ui is True:
+        argv.append("--ui")
+    elif ui is False:
+        argv.append("--no-ui")
+    server_main(argv)
     return 0
 
 

@@ -24,6 +24,8 @@ import contextlib
 import logging
 import os
 import sys
+import webbrowser
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
 import asyncpg
@@ -34,6 +36,75 @@ if TYPE_CHECKING:
     from corpus_kb.storage.graph_store import GraphStore
 
 logger = logging.getLogger(__name__)
+
+# Browser auto-open (UX program Wave 3): set to "0" to keep the server
+# from opening a browser tab (tests, headless hosts). Anything else —
+# including unset — follows the ui.enabled mount outcome.
+UI_OPEN_ENV_VAR = "CORPUS_KB_UI_OPEN"
+
+UI_OPEN_DELAY_SECONDS = 1.5
+
+
+@dataclass(frozen=True)
+class UiMountResult:
+    """The startup UI gate's outcome: mounted, or the honest reason not.
+
+    ``remediation`` names the fix (the ``[ui]`` extra install command);
+    an empty remediation means the failure is logged, not user-fixable
+    by an install.
+    """
+
+    mounted: bool
+    remediation: str = ""
+
+
+def mount_ui(http_app: object) -> UiMountResult:
+    """Try to mount the browser UI. NEVER raises into startup.
+
+    A missing ``[ui]`` extra logs one honest line and returns its
+    remediation; any other mount failure logs and continues too — a
+    broken UI must not kill the server.
+    """
+    from corpus_kb.ui.app import UI_EXTRA_REMEDIATION, UiDependencyError, build_ui
+
+    try:
+        build_ui(http_app)
+    except UiDependencyError:
+        logger.info("[ui] extra not installed — browser UI disabled. pip install 'corpus-kb[ui]'")
+        return UiMountResult(mounted=False, remediation=UI_EXTRA_REMEDIATION)
+    except Exception as exc:
+        logger.warning("Browser UI failed to mount (%s); continuing without it.", exc)
+        return UiMountResult(mounted=False)
+    return UiMountResult(mounted=True)
+
+
+def browser_open_enabled(environ: dict[str, str] | None = None) -> bool:
+    """The auto-open guard: ``CORPUS_KB_UI_OPEN=0`` keeps the tab closed."""
+    env = os.environ if environ is None else environ
+    return env.get(UI_OPEN_ENV_VAR) != "0"
+
+
+async def open_browser_when_up(host: str, port: int, delay: float = UI_OPEN_DELAY_SECONDS) -> None:
+    """Open the browser once the server has had a moment to bind."""
+    await asyncio.sleep(delay)
+    webbrowser.open(f"http://{host}:{port}")
+
+
+def schedule_browser_open(
+    services: dict[str, object],
+    host: str,
+    port: int,
+) -> asyncio.Task[None] | None:
+    """Schedule the delayed auto-open, or return None when it must not fire.
+
+    Fires ONLY when the ``[ui]`` extra actually mounted (``ui_mounted``
+    in the services dict) AND the env guard allows it.
+    """
+    if not services.get("ui_mounted", False):
+        return None
+    if not browser_open_enabled():
+        return None
+    return asyncio.create_task(open_browser_when_up(host, port))
 
 
 async def create_graph_store(
@@ -230,6 +301,16 @@ async def startup(
 
     http_app = create_http_app()
 
+    # 5b. Browser UI (UX program Wave 3): the lazy [ui] extra behind
+    # ui.enabled. A missing or broken UI logs and continues — never raise.
+    from corpus_kb.ui.app import UiContext, set_ui_context
+    from corpus_kb.ui.settings import load_ui_settings
+
+    ui_mounted = False
+    if load_ui_settings(cfg).enabled:
+        set_ui_context(UiContext(config=cfg, pool=pool))
+        ui_mounted = mount_ui(http_app).mounted
+
     # 6. Socket server
     from corpus_kb.api.socket import get_socket_server
 
@@ -250,6 +331,7 @@ async def startup(
         "config": cfg,
         "rag_backend": rag_backend,
         "router_handler": router_handler,
+        "ui_mounted": ui_mounted,
     }
 
 
@@ -283,6 +365,10 @@ async def run_all(services: dict[str, object]) -> None:
     projection_task = asyncio.create_task(embed_projection.run(default_tenant, event_reader))
     docs_projection_task = asyncio.create_task(docs_projection.run(default_tenant, event_reader))
 
+    # Browser auto-open (UX program Wave 3): fires ONLY when the [ui]
+    # extra actually mounted and CORPUS_KB_UI_OPEN is not "0".
+    browser_task = schedule_browser_open(services, str(host), port)
+
     # Start HTTP server via uvicorn
     config_obj = uvicorn.Config(
         http_app,
@@ -296,6 +382,10 @@ async def run_all(services: dict[str, object]) -> None:
         logger.info("Starting HTTP server on %s:%d", host, port)
         await server.serve()
     finally:
+        if browser_task is not None:
+            browser_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await browser_task
         socket_server.stop()
         projection_task.cancel()
         docs_projection_task.cancel()
@@ -339,6 +429,20 @@ def main(argv: list[str] | None = None) -> None:
         default=8010,
         help="HTTP server port (default: 8010)",
     )
+    ui_group = parser.add_mutually_exclusive_group()
+    ui_group.add_argument(
+        "--ui",
+        dest="ui",
+        action="store_true",
+        default=None,
+        help="Serve the browser UI (overrides the ui.enabled config key)",
+    )
+    ui_group.add_argument(
+        "--no-ui",
+        dest="ui",
+        action="store_false",
+        help="Disable the browser UI (overrides the ui.enabled config key)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -357,7 +461,16 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("Starting in %s mode on port %d", args.transport, args.port)
 
         async def _run() -> None:
-            services = await startup()
+            cfg: dict[str, object] | None = None
+            if args.ui is not None:
+                # The --ui/--no-ui flag overrides the ui.enabled config key
+                # (load once here so startup sees the overridden value).
+                from corpus_kb.config import load_config
+
+                cfg = load_config()
+                ui_block = cast(dict[str, object], cfg.setdefault("ui", {}))
+                ui_block["enabled"] = bool(args.ui)
+            services = await startup(cfg)
             try:
                 await run_all(services)
             finally:

@@ -344,3 +344,11 @@ profile_for_model
 native_dimensions
 EmbeddingModelProfile
 EMBEDDING_MODEL_PROFILES
+
+# UX Wave 3 NiceGUI Protocols (the lazy nicegui seam in ui/app.py): the
+# keyword-argument parameters of the pinned element surface. Vulture sees
+# them as unused because NiceGUI's library code calls the handlers the
+# pages pass in (on_click -> the real Button.on_click wiring; sent_by_user
+# -> the ChatMessage constructor), never this Protocol.
+on_click
+sent_by_user

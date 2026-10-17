@@ -139,6 +139,14 @@ def load_config(path: str | None = None) -> dict[str, object]:
     if topics_error is not None:
         raise ValueError(topics_error)
 
+    # UX Wave 3 browser UI: ui.enabled must be a real bool AT LOAD
+    # (ui/settings.py owns the rule and the remediation text).
+    from corpus_kb.ui.settings import ui_settings_error
+
+    ui_error = ui_settings_error(config)
+    if ui_error is not None:
+        raise ValueError(ui_error)
+
     return config
 
 
@@ -504,6 +512,12 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     # Wave 4 topics layer (topics/settings.py is the typed reader): the
     # opt-in BERTopic block, dormant behind topics.enabled: false.
     config.setdefault("topics", _detached_defaults(TOPICS_CONFIG_DEFAULTS))
+    # UX Wave 3 browser UI (ui/settings.py is the typed reader): the block
+    # MUST exist here or the setup write-back would silently drop ui.*
+    # keys from user configs (the same passthrough rule as research above).
+    from corpus_kb.ui.settings import UI_CONFIG_DEFAULTS
+
+    config.setdefault("ui", _detached_defaults(UI_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:

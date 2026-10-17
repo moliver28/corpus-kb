@@ -160,6 +160,13 @@ topics:
   fixture_dir: tests/fixtures/topics_recorded
   live_fallback: false
 
+# Browser UI (UX program Wave 3, src/corpus_kb/ui/): four NiceGUI pages
+# served by the running HTTP server (no new daemon, no new port). The
+# pages are lazy behind the [ui] extra; without it the server logs one
+# line and runs on. Set enabled: false to skip the mount entirely.
+ui:
+  enabled: true
+
 # U42 provenance-keyed exact result cache (research/exact_cache.py).
 # enabled gates every access (--no-cache drops it at the CLI layer);
 # deductive runs default on, inductive discovery runs default off unless seeded.
