@@ -1,7 +1,9 @@
-"""HTTP adapter — Starlette REST API for Corpus-KB.
+"""HTTP adapter — FastAPI REST API for Corpus-KB.
 
-Composition root only: it builds the Starlette app from the per-family
-route modules (zero-drift split of the former single-file route table).
+Composition root only: it builds the FastAPI app (a Starlette subclass,
+so plain starlette.routing.Route objects and the TestClient are
+unchanged) from the per-family route modules (zero-drift split of the
+former single-file route table).
 
 Thin adapters: parse JSON → construct Pydantic command/query →
 call handler → return JSONResponse. No business logic here.
@@ -35,7 +37,7 @@ Route families (the Route order below is the original single-file order):
 
 from __future__ import annotations
 
-from starlette.applications import Starlette
+from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import Route
 
@@ -93,8 +95,14 @@ from corpus_kb.api.routes_topics import topics_build_route, topics_list_route
 from corpus_kb.api.routes_v1 import v1_routes
 
 
-def create_http_app() -> Starlette:
-    """Create the Starlette HTTP application."""
+def create_http_app() -> FastAPI:
+    """Create the HTTP application.
+
+    FastAPI subclasses Starlette, so every plain ``starlette.routing.Route``
+    (and the TestClient, and uvicorn) keeps working unchanged. The extra
+    default routes it adds (/docs, /openapi.json) are additive; existing
+    tests assert route subsets, not equality.
+    """
     routes = [
         Route("/api/ingest/file", ingest_file, methods=["POST"]),
         Route("/api/ingest/text", ingest_text, methods=["POST"]),
@@ -147,7 +155,7 @@ def create_http_app() -> Starlette:
         *v1_routes(),
     ]
 
-    app = Starlette(routes=routes)
+    app = FastAPI(routes=routes)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:3000"],

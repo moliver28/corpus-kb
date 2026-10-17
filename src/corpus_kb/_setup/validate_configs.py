@@ -584,6 +584,8 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "topics.llm_base_url": str,
     # -- server (HTTP adapter gates) -----------------------------------------
     "server.openai_compat": bool,
+    # -- ui (UX program Wave 3, src/corpus_kb/ui/) ---------------------------
+    "ui.enabled": bool,
 }
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})

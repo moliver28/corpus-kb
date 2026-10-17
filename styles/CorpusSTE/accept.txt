@@ -36,6 +36,7 @@ openCypher
 Cypher
 FastAPI
 FastMCP
+NiceGUI
 Typer
 httpx
 asyncio
