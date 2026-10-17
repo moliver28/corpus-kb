@@ -906,6 +906,9 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "retrieval.hnsw.ef_construction": int,
         "reranking.enabled": bool,
         "reranking.return_top_k": int,
+        # backend is the null-or-enum union rule in _reranking_block_errors,
+        # deliberately not in the single-type map (null is the default).
+        "reranking.llamacpp_url": str,
         "ingestion.default": str,
         "ingestion.strategies": dict,
         "web.user_agent": str,
