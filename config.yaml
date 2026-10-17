@@ -167,6 +167,15 @@ topics:
 ui:
   enabled: true
 
+# marimo notebooks console (UX program Wave 6, src/corpus_kb/notebooks/):
+# serves a folder of marimo .py notebooks at /notebooks on the SAME HTTP
+# server. Lazy behind the [notebook] extra; without it (or without the
+# folder) the server logs one line and runs on. directory resolves
+# against the process working directory. Notebooks reload on restart.
+notebooks:
+  enabled: true
+  directory: notebooks
+
 # OpenTelemetry tracing (UX program Wave 4, src/corpus_kb/utils/tracing.py).
 # Off by default: opentelemetry-api is a no-op tracer without the SDK, so
 # spans cost nothing. Turn enabled on and install the [otel] extra to ship

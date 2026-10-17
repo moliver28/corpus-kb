@@ -78,6 +78,22 @@ def mount_ui(http_app: object) -> UiMountResult:
     return UiMountResult(mounted=True)
 
 
+def wire_notebooks(http_app: object, cfg: dict[str, object]) -> bool:
+    """Mount the notebooks console when the config gate is on. NEVER raises.
+
+    UX program Wave 6: the gate mirrors ``mount_ui`` — behind
+    ``notebooks.enabled``, the lazy ``[notebook]`` extra, one honest log
+    line on absence, and the server continues either way.
+    """
+    from corpus_kb.notebooks.console import mount_notebooks
+    from corpus_kb.notebooks.settings import load_notebooks_settings
+
+    settings = load_notebooks_settings(cfg)
+    if not settings.enabled:
+        return False
+    return mount_notebooks(http_app, settings.directory)
+
+
 def browser_open_enabled(environ: dict[str, str] | None = None) -> bool:
     """The auto-open guard: ``CORPUS_KB_UI_OPEN=0`` keeps the tab closed."""
     env = os.environ if environ is None else environ
@@ -323,6 +339,12 @@ async def startup(
         set_ui_context(UiContext(config=cfg, pool=pool))
         ui_mounted = mount_ui(http_app).mounted
 
+    # 5c. marimo notebooks console (UX program Wave 6): the lazy [notebook]
+    #     extra behind notebooks.enabled, mounted at /notebooks on the SAME
+    #     HTTP app (no new daemon, no new port). Absence logs ONE honest
+    #     line and continues — the 5b contract, mirrored.
+    notebooks_mounted = wire_notebooks(http_app, cfg)
+
     # 6. Socket server
     from corpus_kb.api.socket import get_socket_server
 
@@ -344,6 +366,7 @@ async def startup(
         "rag_backend": rag_backend,
         "router_handler": router_handler,
         "ui_mounted": ui_mounted,
+        "notebooks_mounted": notebooks_mounted,
     }
 
 

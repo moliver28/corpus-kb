@@ -182,6 +182,26 @@ The backend is defined in `src/corpus_kb/storage/llamaindex_backend.py` and impl
 
 ---
 
+## Sample knowledge and notebooks
+
+Two on-ramps make the first ten minutes easy.
+
+**Sample knowledge**: `docs/demo-kb/` holds five short markdown files (a
+welcome, an FAQ, architecture notes, a meeting record, and a glossary).
+One click on the **Add** page (**Load sample knowledge**) or one command
+(`corpus-kb demo-kb`) ingests them through the standard pipeline. The
+receipt lists every file and its chunk count. The folder ships with the
+repository; installed wheels report its absence with a fix.
+
+**Notebooks console**: with the `[notebook]` extra, the running server
+serves marimo notebooks at `/notebooks`. Three examples ship:
+topic exploration, a retrieval ablation (FTS vs vector vs RRF ranks),
+and an evaluation-report chart. The console is lazy: no extra or no
+folder logs one line, and the server runs on. See
+[NOTEBOOKS.md](NOTEBOOKS.md).
+
+---
+
 ## Multi-tenancy ready
 
 Every table has row-level security policies keyed to `app.current_tenant_id`. The default tenant is `00000000-0000-0000-0000-000000000001`. In the future, adding real multi-tenancy is a matter of issuing tenant-scoped tokens and setting the tenant context per request.
@@ -252,6 +272,8 @@ catalogue row declares.
 ## Next steps
 
 - [Install Corpus-KB](INSTALL.md)
+- [Browser UI](UI.md)
+- [Notebooks console](NOTEBOOKS.md)
 - [Ingestion pipeline details](INGESTION.md)
 - [Ingestion strategies](INGESTION-STRATEGIES.md)
 - [Admin guide: configuration and maintenance](ADMIN.md)

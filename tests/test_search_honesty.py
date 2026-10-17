@@ -928,6 +928,9 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "topics.llm_base_url": str,
         # UX Wave 3 browser UI (the [ui] extra's feature flag).
         "ui.enabled": bool,
+        # UX Wave 6 notebooks console (the [notebook] extra's flag + folder).
+        "notebooks.enabled": bool,
+        "notebooks.directory": str,
         # UX Wave 2: the /v1 OpenAI-compatibility gate (api/routes_v1.py).
         "server.openai_compat": bool,
         # UX Wave 4 tracing (utils/tracing.py is the typed reader).

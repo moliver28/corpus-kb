@@ -13,8 +13,10 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+from corpus_kb.ui.demo_kb_vm import demo_kb_view
 from corpus_kb.ui.health import check_line, overview_checks
 from corpus_kb.ui.render import (
+    demo_kb_markdown,
     library_markdown,
     receipt_line,
     sources_markdown,
@@ -85,6 +87,15 @@ def register_pages(ui: UiNamespace) -> None:
                     ui.markdown(f"```\n{preview}\n```")
 
         ui.button("Run the demo", on_click=run_demo)
+
+        async def load_sample() -> None:
+            """The general-RAG sample corpus, loaded through the CLI's loader."""
+            ui.notify("Loading the sample knowledge corpus.")
+            view = await demo_kb_view(ctx.config, ctx.pool)
+            with results:
+                ui.markdown(demo_kb_markdown(view))
+
+        ui.button("Load sample knowledge", on_click=load_sample)
 
     async def page_ask() -> None:
         """Cited answers with the honest verification badge."""

@@ -36,7 +36,9 @@ off. With neither flag, the `ui.enabled` config key decides.
 - **Add** ingests your files. Drag files onto the page, or paste a page
   address (URL). A progress bar tracks each file. Each row reports
   chunks, connections, or the error with its fix. The demo button runs
-  the narrated demo pipeline and shows its steps.
+  the narrated demo pipeline and shows its steps. The **Load sample
+  knowledge** button ingests five short sample files in one click
+  (see [FEATURES.md](FEATURES.md)).
 - **Ask** answers one question from your documents. Each sentence cites
   its sources. A badge states the verdict: `verified`, `partial`, or
   `not verified`. The badge never claims a pass on an abstention.

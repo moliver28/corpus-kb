@@ -586,6 +586,9 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "server.openai_compat": bool,
     # -- ui (UX program Wave 3, src/corpus_kb/ui/) ---------------------------
     "ui.enabled": bool,
+    # -- notebooks (UX program Wave 6, src/corpus_kb/notebooks/) -------------
+    "notebooks.enabled": bool,
+    "notebooks.directory": str,
     # -- observability (UX program Wave 4, src/corpus_kb/utils/tracing.py) ---
     "observability.enabled": bool,
     "observability.otlp_endpoint": str,
