@@ -143,7 +143,9 @@ topics = ["bertopic>=0.16"]
 # the extras-less jobs stay green (same contract as latechunk/inductive/
 # ner/topics).
 ui = [
-    "nicegui>=3.5",
+    # Floor 3.18: ui.chat_message renamed sent_by_user to sent there; the
+    # Ask page uses the new kwarg.
+    "nicegui>=3.18",
     "uvicorn[standard]>=0.24",
 ]
 # Tracing (UX program W4): opentelemetry-api is already a core dep (it is
