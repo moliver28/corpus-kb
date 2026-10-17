@@ -218,6 +218,13 @@ app.add_typer(review_app, name="review")
 
 app.add_typer(release_app, name="release")
 
+# UX Wave 5 offline eval (a lifecycle command family, NOT a catalogue
+# operation): cli_eval imports corpus_kb.cli nowhere, so this import
+# stays acyclic.
+from corpus_kb.cli_eval import eval_app  # noqa: E402
+
+app.add_typer(eval_app, name="eval")
+
 
 def _review_command(decision: str):
     def _cmd(
