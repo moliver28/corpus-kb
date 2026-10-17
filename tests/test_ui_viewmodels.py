@@ -193,6 +193,9 @@ async def test_overview_checks_report_a_missing_connection_string(
 ) -> None:
     from corpus_kb._setup import doctor_env, setup_steps
 
+    # Env wins over config (the doctor's documented precedence): the env
+    # var must be gone, or CI's exported DSN would make the probe run.
+    monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
     monkeypatch.setattr(
         doctor_env,
         "env_var_check",
