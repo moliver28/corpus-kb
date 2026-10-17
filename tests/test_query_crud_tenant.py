@@ -31,11 +31,20 @@ def test_every_crud_handler_reads_inside_tenant_connection() -> None:
 
 
 @pytest.mark.requires_postgres
-async def test_list_documents_on_strict_database_returns_empty_not_error() -> None:
+async def test_list_documents_on_strict_database_returns_empty_not_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Live: on a scratch DB (empty tenant default), list returns [] without raise."""
-    from tests.research_db import create_research_db, drop_research_db
+    from tests import research_db
 
-    dsn = await create_research_db()
+    # Do NOT touch the session scratch DB: research_db's unpatched DB_NAME is
+    # the one the session research_dsn fixture created, and dropping it here
+    # poisons every later research consumer (full-suite ordering poison — see
+    # test_research_report_fixture for the established pattern).
+    monkeypatch.setattr(research_db, "DB_NAME", "corpus_kb_qcrud_test")
+    monkeypatch.setattr(research_db, "DSN", f"{research_db.BASE_DSN}/corpus_kb_qcrud_test")
+
+    dsn = await research_db.create_research_db()
     try:
         os.environ["CORPUS_KB_DATABASE_URL"] = dsn
         from corpus_kb.cli_ingest import _load_config, _open_pool
@@ -51,4 +60,4 @@ async def test_list_documents_on_strict_database_returns_empty_not_error() -> No
             await pool.close()
     finally:
         os.environ.pop("CORPUS_KB_DATABASE_URL", None)
-        await drop_research_db()
+        await research_db.drop_research_db()

@@ -46,3 +46,9 @@ scripts/_*.ps1
 
 # Environment
 .env
+
+# Build artifacts
+build/
+
+# Local tooling state
+.zcodeignore

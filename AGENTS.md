@@ -149,7 +149,7 @@ These override `config.yaml` values at runtime. Use `corpus_kb.config.load_confi
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
-The DEFINITIVE env-var table (11 variables, each with consumed-by) lives in `docs/ADMIN.md`; `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS` is the code truth and `corpus-kb doctor` warns about set-but-unread `CORPUS_KB_*` variables. Dead mappings were removed in the zero-drift W4C config-truth pass (`CORPUS_KB_STORAGE_PATH` used to KeyError the config loader).
+The DEFINITIVE env-var table (13 variables, each with consumed-by) lives in `docs/ADMIN.md`; `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS` is the code truth and `corpus-kb doctor` warns about set-but-unread `CORPUS_KB_*` variables. Dead mappings were removed in the zero-drift W4C config-truth pass (`CORPUS_KB_STORAGE_PATH` used to KeyError the config loader).
 
 No new environment variables were introduced by the ingestion-rigor program. Ingestion-strategy and extraction config lives in `config.yaml` only — `ingestion.strategies`, `ingestion.default`, `extraction.backend`, `extraction.gliner.*`, `search.exclude_degraded`, `search.qa_context_in_fts` — with no env override; authoring guide at `docs/INGESTION-STRATEGIES.md`.
 
