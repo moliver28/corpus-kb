@@ -21,7 +21,7 @@ from __future__ import annotations
 import time
 from collections.abc import Hashable
 from dataclasses import dataclass, field
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 from uuid import UUID
 
 import asyncpg
@@ -133,7 +133,7 @@ def _ndcg(ranked: list[_L], relevant: frozenset[_L], k: int = 10) -> float:
     return float(dcg / ideal) if ideal > 0 else 0.0
 
 
-def _ranked_unit_ids(payloads: list[dict[str, object]]) -> list[int]:
+def _ranked_unit_ids(payloads: list[dict[str, Any]]) -> list[int]:
     return [int(p["_unit_id"]) for p in payloads if p.get("_unit_id") is not None]
 
 
@@ -146,13 +146,14 @@ async def _run_arm(
     reranker: _Reranker | None,
     query_text: str,
     exact_threshold: float,
+    rrf_k: int,
 ) -> list[int]:
     dense, fts = await _unit_arms(conn, query_vector, q, depth, exact_threshold)
     if arm == "vector":
         return _ranked_unit_ids(dense)
     if arm == "fts":
         return _ranked_unit_ids(fts)
-    fused = await _rrf(conn, dense, fts, depth)
+    fused = await _rrf(conn, dense, fts, depth, rrf_k)
     if arm == "rrf":
         return _ranked_unit_ids(fused)
     if reranker is None or not fused:
@@ -213,6 +214,7 @@ async def evaluate_arms(
                     reranker,
                     eq.text,
                     settings.exact_filter_selectivity_threshold,
+                    settings.rrf_k,
                 )
                 latencies[arm].append((time.perf_counter() - start) * 1000.0)
                 recalls[arm].append(_recall_k(ranked, eq.relevant, k))

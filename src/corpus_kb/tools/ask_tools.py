@@ -12,6 +12,7 @@ to evidence-only with a note, never an error).
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -24,11 +25,11 @@ __all__ = ["ask"]
 
 async def ask(
     query: str,
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     k: int | None = None,
     pg_pool: asyncpg.Pool | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Answer one question from retrieved evidence with cited sentences.
 
     Delegates to :func:`corpus_kb.ask.compose_answer` — retrieval via
@@ -81,7 +82,7 @@ async def ask(
                 await own_pool.close()
 
 
-def _resolve_judge(cfg: dict[str, object]) -> object | None:
+def _resolve_judge(cfg: dict[str, Any]) -> object | None:
     """The config-driven judge, wired when judge.enabled (verify_answer rule)."""
     if not (cfg.get("judge", {}) or {}).get("enabled", False):
         return None

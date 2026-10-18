@@ -24,7 +24,7 @@ import asyncio
 import json
 import logging
 from dataclasses import dataclass, replace
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid5
 
 import asyncpg
@@ -35,6 +35,7 @@ from corpus_kb.research.chunking import CHILD_QA, meeting_windows, unit_kind
 from corpus_kb.research.retrieval_settings import (
     DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
     RetrievalSettings,
+    SelectivityReader,
     estimate_selectivity,
     load_retrieval_settings,
     should_use_exact_scan,
@@ -42,6 +43,7 @@ from corpus_kb.research.retrieval_settings import (
 from corpus_kb.research.search_settings import (
     PGVECTOR_VERSION_SQL,
     HnswSettings,
+    SqlExecutor,
     apply_hnsw_settings,
     load_hnsw_settings,
     missing_rrf_fusion_error,
@@ -187,12 +189,12 @@ async def research_search(
         version_row = await conn.fetchrow(PGVECTOR_VERSION_SQL)
         extversion = None if version_row is None else str(version_row["extversion"])
         if supports_iterative_scan(extversion):
-            await apply_hnsw_settings(conn, settings)
+            await apply_hnsw_settings(cast("SqlExecutor", conn), settings)
         dense_units, fts_units = await _unit_arms(
             conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold
         )
-        dense_ex: list[dict[str, object]] = []
-        fts_ex: list[dict[str, object]] = []
+        dense_ex: list[dict[str, Any]] = []
+        fts_ex: list[dict[str, Any]] = []
         if q.include_exchange_children:
             dense_ex, fts_ex = await _exchange_arms(
                 conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold
@@ -278,10 +280,10 @@ async def _unit_arms(
     q: ResearchQuery,
     depth: int,
     exact_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
-) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     dense_sql = _Sql(str(q.tenant_id), str(q.project_id))
     filters = _unit_filters(dense_sql, q)
-    dense: list[dict[str, object]] = []
+    dense: list[dict[str, Any]] = []
     if query_vector is not None:
         vec = dense_sql.p(str(query_vector))
         limit = dense_sql.p(depth)
@@ -290,7 +292,9 @@ async def _unit_arms(
         # every matching row is scored exactly instead (same result schema).
         selectivity = (
             await estimate_selectivity(
-                conn, _UNIT_COUNT_SQL.format(filters=filters), list(dense_sql.values)
+                cast("SelectivityReader", conn),
+                _UNIT_COUNT_SQL.format(filters=filters),
+                list(dense_sql.values),
             )
             if filters
             else None
@@ -374,17 +378,19 @@ async def _exchange_arms(
     q: ResearchQuery,
     depth: int,
     exact_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
-) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     dense_sql = _Sql(str(q.tenant_id), str(q.project_id))
     filters = _exchange_filters(dense_sql, q)
-    dense: list[dict[str, object]] = []
+    dense: list[dict[str, Any]] = []
     if query_vector is not None:
         vec = dense_sql.p(str(query_vector))
         limit = dense_sql.p(depth)
         # U21: same probe + exact-scan fallback as _unit_arms.
         selectivity = (
             await estimate_selectivity(
-                conn, _EXCHANGE_COUNT_SQL.format(filters=filters), list(dense_sql.values)
+                cast("SelectivityReader", conn),
+                _EXCHANGE_COUNT_SQL.format(filters=filters),
+                list(dense_sql.values),
             )
             if filters
             else None
@@ -453,10 +459,10 @@ async def _exchange_arms(
     return dense, [_exchange_payload(r) for r in rows]
 
 
-def _unit_payload(row: asyncpg.Record) -> dict[str, object]:
+def _unit_payload(row: asyncpg.Record) -> dict[str, Any]:
     unit_id = int(row["unit_id"])
     exchange_id = row["exchange_id"]
-    payload: dict[str, object] = {
+    payload: dict[str, Any] = {
         "chunk_id": _child_uuid(f"unit:{unit_id}"),
         "text": str(row["text"]),
         "source": "",
@@ -472,9 +478,9 @@ def _unit_payload(row: asyncpg.Record) -> dict[str, object]:
     return payload
 
 
-def _exchange_payload(row: asyncpg.Record) -> dict[str, object]:
+def _exchange_payload(row: asyncpg.Record) -> dict[str, Any]:
     exchange_id = int(row["exchange_id"])
-    payload: dict[str, object] = {
+    payload: dict[str, Any] = {
         "chunk_id": _child_uuid(f"exchange:{exchange_id}"),
         "text": str(row["text"]),
         "source": "",
@@ -492,11 +498,11 @@ def _exchange_payload(row: asyncpg.Record) -> dict[str, object]:
 
 async def _rrf(
     conn: asyncpg.Connection,
-    dense: list[dict[str, object]],
-    lexical: list[dict[str, object]],
+    dense: list[dict[str, Any]],
+    lexical: list[dict[str, Any]],
     depth: int,
     rrf_k: int,
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     if not dense and not lexical:
         return []
     try:
@@ -511,9 +517,9 @@ async def _rrf(
     except asyncpg.UndefinedFunctionError as exc:
         raise missing_rrf_fusion_error(exc) from exc
     by_uuid = {str(row["chunk_id"]): row for row in dense + lexical}
-    fused: list[dict[str, object]] = []
+    fused: list[dict[str, Any]] = []
     for row in rows:
-        item: dict[str, object] = {
+        item: dict[str, Any] = {
             "chunk_id": str(row["chunk_id"]),
             "text": row["text"],
             "source": "",
@@ -533,7 +539,7 @@ async def _rrf(
     return fused
 
 
-def _children_from_fused(fused: list[dict[str, object]]) -> list[_Child]:
+def _children_from_fused(fused: list[dict[str, Any]]) -> list[_Child]:
     children: list[_Child] = []
     for row in fused:
         if "_key" not in row:

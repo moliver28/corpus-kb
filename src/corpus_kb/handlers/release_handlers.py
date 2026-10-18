@@ -31,7 +31,7 @@ projections may lag; nothing here reads them for lifecycle truth.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -51,7 +51,7 @@ from corpus_kb.research.release.gate_types import GateInputs, GateResult, GateSt
 from corpus_kb.research.release.gates import ALL_RELEASE_GATES
 from corpus_kb.research.release.manifest import ReleaseManifest
 from corpus_kb.research.release.profiles import resolve_profile
-from corpus_kb.research.release.service import ReleaseService
+from corpus_kb.research.release.service import EventSink, ReleaseService
 
 # Lifecycle stages (derived, honest; labels rendered via guide_copy).
 STAGE_PRE_DRAFT = "pre_draft"
@@ -76,14 +76,14 @@ class AssessResult:
     codebook_version_id: str
     profile: str
     enforcement: str
-    gate_results: list[dict[str, object]]
+    gate_results: list[dict[str, Any]]
     required_gate_ids: list[str]
     required_failing: list[str]
     required_not_evaluable: list[str]
     all_required_pass_without_waivers: bool
     data_sufficiency: dict[str, bool] = field(default_factory=dict)
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "status": "assessed",
             "codebook_version_id": self.codebook_version_id,
@@ -107,7 +107,7 @@ class RequestResult:
     manifest_sha256: str
     profile: str
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "status": self.status,
             "release_id": self.release_id,
@@ -124,7 +124,7 @@ class ReviewPacket:
     release_state: str
     profile: str
     enforcement: str
-    evidence: list[dict[str, object]]
+    evidence: list[dict[str, Any]]
     failing_gates: list[str]
     not_evaluable_gates: list[str]
     waived_gates: list[str]
@@ -132,7 +132,7 @@ class ReviewPacket:
     next_actions: list[str]
     recommended_next_action: str
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "status": "review_packet",
             "release_id": self.release_id,
@@ -161,7 +161,7 @@ class ReleaseOutcome:
     warnings: list[str]
     reason: str = ""
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "status": self.status,
             "release_id": self.release_id,
@@ -182,12 +182,12 @@ class StatusReport:
     release_state: str
     blocking_criteria: list[str]
     recommended_next_action: str
-    active_release: dict[str, object] | None
-    draft: dict[str, object] | None
-    pending_change_proposals: list[dict[str, object]]
+    active_release: dict[str, Any] | None
+    draft: dict[str, Any] | None
+    pending_change_proposals: list[dict[str, Any]]
     data_sufficiency: dict[str, bool] = field(default_factory=dict)
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "status": "ok",
             "codebook_version_id": self.codebook_version_id,
@@ -208,13 +208,13 @@ class CompareResult:
 
     old_release_id: str
     new_release_id: str
-    diff: dict[str, object]
+    diff: dict[str, Any]
 
     @property
     def identical(self) -> bool:
         return bool(self.diff.get("identical"))
 
-    def to_payload(self) -> dict[str, object]:
+    def to_payload(self) -> dict[str, Any]:
         return {
             "status": "compared",
             "old_release_id": self.old_release_id,
@@ -228,7 +228,7 @@ class CompareResult:
 # ---------------------------------------------------------------------------
 
 
-def unmet_required_gates(record: dict[str, object]) -> list[str]:
+def unmet_required_gates(record: dict[str, Any]) -> list[str]:
     """Required gates that are neither pass nor waived on one release record."""
     profile = resolve_profile(str(record.get("profile")))
     gates = record.get("gates")
@@ -246,7 +246,7 @@ def unmet_required_gates(record: dict[str, object]) -> list[str]:
     return unmet
 
 
-def release_stage(record: dict[str, object] | None) -> str:
+def release_stage(record: dict[str, Any] | None) -> str:
     """Map one release record (or None) to its honest lifecycle stage."""
     if record is None:
         return STAGE_PRE_DRAFT
@@ -281,14 +281,14 @@ _AUDIT_ALL_SQL = (
 )
 
 
-async def _audit_rows_all(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict[str, object]]:
+async def _audit_rows_all(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict[str, Any]]:
     """Every audit_partitions row for the tenant (no scope filter: the U9
     partition evidence and the U17 audit sample split off the same rows)."""
     from corpus_kb.storage.tenant_conn import tenant_connection
 
     async with tenant_connection(pool, tenant_id) as conn:
         rows = await conn.fetch(_AUDIT_ALL_SQL, tenant_id)
-    mapped: list[dict[str, object]] = []
+    mapped: list[dict[str, Any]] = []
     for row in rows:
         inclusion = row["inclusion_probability"]
         seed = row["seed"]
@@ -320,7 +320,7 @@ async def gate_inputs_for_version(
     stay ABSENT: their gates answer ``not_evaluable`` — the honesty
     contract. ``run_id`` opts in the run-checkpoint blocks (reliability).
     """
-    blocks: dict[str, object] = {}
+    blocks: dict[str, Any] = {}
     sufficiency: dict[str, bool] = {}
     codebook = await codebook_categories(pool, tenant_id, codebook_version_id)
     blocks["codebook"] = codebook
@@ -363,19 +363,24 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _record_or_raise(aggregate: CodebookVersion, release_id: UUID) -> dict[str, object]:
+def _record_or_raise(aggregate: CodebookVersion, release_id: UUID) -> dict[str, Any]:
     record = aggregate.releases.get(str(release_id))
     if record is None:
         raise ValueError(f"release {release_id} not found on codebook version {aggregate.id}")
     return record
 
 
-def _dict_or_empty(value: object) -> dict[str, object]:
+def _dict_or_empty(value: object) -> dict[str, Any]:
     """Event-store JSON blocks arrive as `object`; coerce honestly (None/other -> {})."""
     return dict(value) if isinstance(value, dict) else {}
 
 
-def _manifest_from_payload(payload: dict[str, object], release_id: str) -> ReleaseManifest:
+def _list_or_empty(value: object) -> list[object]:
+    """Event-store JSON arrays arrive as `object`; coerce honestly (None/other -> [])."""
+    return list(value) if isinstance(value, list) else []
+
+
+def _manifest_from_payload(payload: dict[str, Any], release_id: str) -> ReleaseManifest:
     """Rebuild the typed manifest from a stored manifest_json payload."""
     if not payload:
         raise ValueError(f"release {release_id} carries no manifest payload")
@@ -390,7 +395,10 @@ def _manifest_from_payload(payload: dict[str, object], release_id: str) -> Relea
         method_declaration=_dict_or_empty(payload.get("method_declaration")),
         machine_profile=_dict_or_empty(payload.get("machine_profile")),
         created_at=str(timestamps.get("created_at", "")),
-        codes=[dict(code) for code in codes_raw] if isinstance(codes_raw, list) else [],
+        codes=cast(
+            "list[dict[str, object]]",
+            [dict(code) for code in codes_raw] if isinstance(codes_raw, list) else [],
+        ),
         parent_release_id=(
             str(payload["parent_release_id"]) if payload.get("parent_release_id") else None
         ),
@@ -408,7 +416,7 @@ def _manifest_for_version(
     fabricating a profile.
     """
     profile = resolve_profile(profile_name)
-    codes = [
+    codes: list[dict[str, object]] = [
         {
             "name": str(code.get("name", code_id)),
             "definition": str(code.get("definition", "")),
@@ -449,10 +457,12 @@ async def assess_release(
         codebook_version_id=str(codebook_version_id),
         profile=str(bundle.get("profile", "")),
         enforcement=str(bundle.get("enforcement", "")),
-        gate_results=list(bundle.get("gate_results") or []),
-        required_gate_ids=list(bundle.get("required_gate_ids") or []),
-        required_failing=list(bundle.get("required_failing") or []),
-        required_not_evaluable=list(bundle.get("required_not_evaluable") or []),
+        gate_results=cast("list[dict[str, Any]]", _list_or_empty(bundle.get("gate_results"))),
+        required_gate_ids=[str(item) for item in _list_or_empty(bundle.get("required_gate_ids"))],
+        required_failing=[str(item) for item in _list_or_empty(bundle.get("required_failing"))],
+        required_not_evaluable=[
+            str(item) for item in _list_or_empty(bundle.get("required_not_evaluable"))
+        ],
         all_required_pass_without_waivers=bool(bundle.get("all_required_pass_without_waivers")),
         data_sufficiency=sufficiency,
     )
@@ -473,7 +483,7 @@ async def request_release(
         raise ValueError(f"codebook version {codebook_version_id} is not in tenant {tenant_id}")
     app = _app_sink()
     rid = release_id or uuid4()
-    receipt = ReleaseService(app).request_release(
+    receipt = ReleaseService(cast("EventSink", app)).request_release(
         aggregate,
         release_id=rid,
         codebook_id=codebook_id or codebook_version_id,
@@ -571,7 +581,7 @@ async def execute_release(
     approver: str,
     waivers: tuple[tuple[str, str], ...] = (),
     run_id: UUID | None = None,
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
 ) -> ReleaseOutcome:
     """Evaluate, record, waive (explicitly), then execute the transition.
 
@@ -587,7 +597,7 @@ async def execute_release(
     if str(aggregate.tenant_id) != str(tenant_id):
         raise ValueError(f"codebook version {codebook_version_id} is not in tenant {tenant_id}")
     record = _record_or_raise(aggregate, release_id)
-    service = ReleaseService(app, config=config)
+    service = ReleaseService(cast("EventSink", app), config=config)
     inputs, _sufficiency = await gate_inputs_for_version(
         pool, tenant_id, codebook_version_id, run_id
     )
@@ -627,8 +637,10 @@ async def execute_release(
         release_id=str(outcome.get("release_id", "")),
         approver=str(outcome.get("approver", approver)),
         enforcement=str(outcome.get("enforcement", "")),
-        unmet_required_gates=list(outcome.get("unmet_required_gates") or []),
-        warnings=list(outcome.get("warnings") or []),
+        unmet_required_gates=[
+            str(item) for item in _list_or_empty(outcome.get("unmet_required_gates"))
+        ],
+        warnings=[str(item) for item in _list_or_empty(outcome.get("warnings"))],
         reason=str(outcome.get("reason", "")),
     )
 
@@ -667,7 +679,7 @@ async def status_report(
             blocking.append(f"{gate_id}: {status}")
     _inputs, sufficiency = await gate_inputs_for_version(pool, tenant_id, codebook_version_id)
 
-    def _brief(record: dict[str, object]) -> dict[str, object]:
+    def _brief(record: dict[str, Any]) -> dict[str, Any]:
         return {
             "release_id": str(record.get("release_id", "")),
             "profile": str(record.get("profile", "")),

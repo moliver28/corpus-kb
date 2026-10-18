@@ -116,8 +116,11 @@ def build_hierarchy(
     group merging only happens when that kind is listed in
     ``settings.respect_boundaries``.
     """
-    do_merge = group_kind is not None and group_kind in settings.respect_boundaries
-    mid_segments = merge_groups(segments, group_kind) if do_merge else list(segments)
+    mid_segments = (
+        merge_groups(segments, group_kind)
+        if group_kind is not None and group_kind in settings.respect_boundaries
+        else list(segments)
+    )
 
     child_windows = pack_windows(segments, settings.child_tokens, settings.overlap_tokens)
     chunk_windows = pack_windows(mid_segments, settings.chunk_tokens, settings.overlap_tokens)

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 from uuid import UUID
 
 import asyncpg
@@ -27,7 +28,8 @@ async def tenant_connection(
         async with tenant_connection(pool, tenant_id) as conn:
             await conn.fetch("SELECT * FROM documents")
     """
-    async with pool.acquire() as conn, conn.transaction():
+    async with pool.acquire() as acquired, acquired.transaction():
+        conn = cast("asyncpg.Connection", acquired)
         await conn.execute(
             "SELECT set_config('app.current_tenant_id', $1, true)",
             str(tenant_id),

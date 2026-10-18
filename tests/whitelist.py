@@ -366,3 +366,12 @@ load_model
 load_responses
 a_generate
 get_model_name
+
+# Optional-extra Protocols (_inductive_types) and console seams: Vulture sees
+# the names as unused because the real umap/hdbscan library calls them (the
+# HDBSCAN keyword API, fit_transform) and mount_notebooks' MountableApp is
+# only referenced through a cast string.
+gen_min_span_tree
+algorithm
+fit_transform
+MountableApp

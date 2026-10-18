@@ -14,7 +14,7 @@ from __future__ import annotations
 import inspect
 import logging
 import math
-from typing import cast
+from typing import Any, cast
 
 from corpus_kb.domain.models import RouteDecision, RoutedQuery, RoutedResult, SearchQuery
 from corpus_kb.utils.tracing import (
@@ -37,13 +37,13 @@ class RouterHandler:
         graph_handler,
         versioning_handler,
         embedder,
-        config: dict[str, object],
+        config: dict[str, Any],
     ) -> None:
         self._query = query_handler
         self._graph = graph_handler
         self._versioning = versioning_handler
         self._embedder = embedder
-        routing_cfg = cast(dict[str, object], config.get("routing", {}) or {})
+        routing_cfg = cast(dict[str, Any], config.get("routing", {}) or {})
         self._threshold = float(routing_cfg.get("confidence_threshold", 0.35))
         prototypes = cast(dict[str, list[str]], routing_cfg.get("prototypes", {}) or {})
         self._prototypes: dict[str, list[str]] = {}

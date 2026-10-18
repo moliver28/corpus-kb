@@ -13,6 +13,7 @@ import json
 import logging
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 import asyncpg
 
@@ -104,7 +105,7 @@ class GraphStore(ABC):
         pass
 
     @abstractmethod
-    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
+    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
         """Breadth-first search from a starting entity."""
         pass
 
@@ -171,7 +172,7 @@ class PostgresGraphStore(GraphStore):
             "SELECT set_config('app.current_tenant_id', $1, false)",
             self._tenant_id,
         )
-        return conn
+        return cast("asyncpg.Connection", conn)
 
     async def _release_conn(self, conn: asyncpg.Connection) -> None:
         """Release a connection back to the pool if it was acquired (not in a transaction)."""
@@ -369,7 +370,7 @@ class PostgresGraphStore(GraphStore):
         finally:
             await self._release_conn(conn)
 
-    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
+    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
         """Breadth-first search using a recursive CTE."""
         conn = await self._get_conn()
         try:
@@ -473,7 +474,7 @@ class PostgresGraphStore(GraphStore):
     @asynccontextmanager
     async def transaction(self):
         """Acquire a connection, set tenant context, wrap in a Postgres transaction."""
-        conn = await self._pool.acquire()
+        conn = cast("asyncpg.Connection", await self._pool.acquire())
         self._conn = conn
         try:
             async with conn.transaction():

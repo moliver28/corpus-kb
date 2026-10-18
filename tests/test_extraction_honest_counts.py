@@ -193,12 +193,15 @@ def _entity(
 
 
 async def test_store_entities_merges_provenance_and_counts_only_inserts() -> None:
-    conn = _StoreConn([{"entity_id": "e1"}, None])  # second row = conflict skip
+    # The upsert RETURNS the canonical id on conflict too: both entities map.
+    conn = _StoreConn([{"entity_id": "e1"}, {"entity_id": "e2"}])
     store = PostgresIngestStore(_StorePool(conn), "tenant")
 
-    count = await store.store_entities([_entity("Alpha"), _entity("Beta")])
+    alpha, beta = _entity("Alpha"), _entity("Beta")
+    id_map = await store.store_entities([alpha, beta])
 
-    assert count == 1
+    assert id_map == {alpha.entity_id: "e1", beta.entity_id: "e2"}
+    assert len(conn.calls) == 2
     assert len(conn.calls) == 2
     persisted = json.loads(str(conn.calls[0][5]))
     assert persisted["extractor"] == "gliner"

@@ -127,23 +127,8 @@ class _StubStore:
         return None
 
 
-class _FakeApp:
-    """Stand-in eventsourcing app with a canned event history."""
-
-    def __init__(self, history: list[Any]) -> None:
-        self._history = history
-        self.saved: list[Any] = []
-        self.repository = self
-
-    def get(self, aggregate_id: Any) -> list[Any]:
-        return list(self._history)
-
-    def save(self, aggregate: Any) -> None:
-        self.saved.append(aggregate)
-
-
-class _FakeDoc:
-    """Stands in for the eventsourcing Document aggregate."""
+class _FakeAggregate:
+    """Stands in for the reconstructed eventsourcing Document aggregate."""
 
     def __init__(self) -> None:
         self.version = 7
@@ -152,9 +137,28 @@ class _FakeDoc:
     def delete(self) -> None:
         self.deleted = True
 
-    @classmethod
-    def reconstruct(cls, doc_id: Any, events: list[Any]) -> _FakeDoc:
-        return cls()
+
+class _FakeApp:
+    """Stand-in eventsourcing app over the real 9.x Repository contract.
+
+    ``repository.get`` returns the RECONSTRUCTED AGGREGATE (or raises
+    ``AggregateNotFoundError``) — never a list of events.
+    """
+
+    def __init__(self, history: list[Any]) -> None:
+        self._history = history
+        self.saved: list[Any] = []
+        self.repository = self
+
+    def get(self, aggregate_id: Any) -> Any:
+        from eventsourcing.application import AggregateNotFoundError
+
+        if not self._history:
+            raise AggregateNotFoundError(aggregate_id)
+        return self._history[0]
+
+    def save(self, aggregate: Any) -> None:
+        self.saved.append(aggregate)
 
 
 @pytest.fixture
@@ -269,8 +273,7 @@ def test_http_ingest_directory_missing_dir_is_200_error_envelope(offline_env: An
 async def test_delete_handler_attaches_audit_when_history_exists(
     monkeypatch: pytest.MonkeyPatch, offline_env: _FakeApp
 ) -> None:
-    offline_env._history = [object()]
-    monkeypatch.setattr(delete_audit_module, "Document", _FakeDoc)
+    offline_env._history = [_FakeAggregate()]
     handler = command_handler_module.get_command_handler()
 
     result = await handler.handle_delete_document(DeleteDocumentCommand(doc_id=uuid4()))

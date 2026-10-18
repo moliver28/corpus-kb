@@ -21,6 +21,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
@@ -45,7 +46,7 @@ MAX_TURNS_PER_EVENT = 50
 MAX_EXCHANGES_PER_EVENT = 100
 
 
-def codebook_sha256(codes: list[dict[str, object]]) -> str:
+def codebook_sha256(codes: list[dict[str, Any]]) -> str:
     """Content sha of a code set — the codebook_versions UNIQUE(tenant, sha256) key.
 
     Module-level so callers (e.g. the demo's re-run-safe seed) can look up an
@@ -96,7 +97,7 @@ class ResearchHandler:
         project_id: UUID | None = None,
         title: str | None = None,
         force: bool = False,
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         """One transcript file -> turn store + Document aggregate + events."""
         file_path = Path(path)
         if not file_path.exists():
@@ -173,10 +174,10 @@ class ResearchHandler:
         path: str,
         project_id: UUID | None = None,
         force: bool = False,
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         """Dynamic ingestion: file, directory, or glob (per-file auto-detect)."""
         files = await scan_path(Path(path))
-        results: list[dict[str, object]] = []
+        results: list[dict[str, Any]] = []
         for file_path in files:
             try:
                 results.append(
@@ -195,8 +196,8 @@ class ResearchHandler:
         }
 
     def create_codebook_version(
-        self, tenant_id: UUID, label: str, codes: list[dict[str, object]], notes: str = ""
-    ) -> dict[str, object]:
+        self, tenant_id: UUID, label: str, codes: list[dict[str, Any]], notes: str = ""
+    ) -> dict[str, Any]:
         sha = codebook_sha256(codes)
         version = CodebookVersion(tenant_id=tenant_id, label=label, sha256=sha, notes=notes)
         version.add_codes(tenant_id=tenant_id, codes=codes)
@@ -209,8 +210,8 @@ class ResearchHandler:
         llm_name: str = "",
         embed_model: str = "",
         model_revision: str = "",
-        params: dict[str, object] | None = None,
-    ) -> dict[str, object]:
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         run = CodingRun(
             tenant_id=tenant_id,
             llm_name=llm_name,
@@ -222,14 +223,14 @@ class ResearchHandler:
         return {"status": "success", "run_id": str(run.id)}
 
     def checkpoint_coding_run(
-        self, tenant_id: UUID, run_id: UUID, payload: dict[str, object]
-    ) -> dict[str, object]:
+        self, tenant_id: UUID, run_id: UUID, payload: dict[str, Any]
+    ) -> dict[str, Any]:
         run = self._load_run(run_id)
         run.add_checkpoint(tenant_id=tenant_id, payload=payload)
         self.app.save(run)
         return {"status": "success", "run_id": str(run_id), "state": run.state}
 
-    def stop_coding_run(self, tenant_id: UUID, run_id: UUID) -> dict[str, object]:
+    def stop_coding_run(self, tenant_id: UUID, run_id: UUID) -> dict[str, Any]:
         run = self._load_run(run_id)
         run.stop(
             tenant_id=tenant_id,
@@ -238,7 +239,7 @@ class ResearchHandler:
         self.app.save(run)
         return {"status": "success", "run_id": str(run_id), "state": run.state}
 
-    def record_assignment(self, tenant_id: UUID, **kwargs: object) -> dict[str, object]:
+    def record_assignment(self, tenant_id: UUID, **kwargs: object) -> dict[str, Any]:
         """Record one per-unit assignment (per-unit aggregate => no contention)."""
         # Decision routing: explicit status wins (deductive v2 routing rides the
         # event); when the caller omits it, derive from evidence_basis/stance so
@@ -256,30 +257,30 @@ class ResearchHandler:
                 status = "auto"
         assignment = CodingAssignment(
             tenant_id=tenant_id,
-            unit_id=int(kwargs["unit_id"]),
+            unit_id=int(cast("int", kwargs["unit_id"])),
             code_id=UUID(str(kwargs["code_id"])),
             run_id=UUID(str(kwargs["run_id"])),
             cb_version_id=UUID(str(kwargs["cb_version_id"]))
             if kwargs.get("cb_version_id")
             else None,
-            sim_answer=kwargs.get("sim_answer"),
-            sim_qa=kwargs.get("sim_qa"),
-            sim_q=kwargs.get("sim_q"),
-            evidence_basis=kwargs.get("evidence_basis"),
-            stance=kwargs.get("stance"),
-            term_origin=kwargs.get("term_origin"),
+            sim_answer=cast("float | None", kwargs.get("sim_answer")),
+            sim_qa=cast("float | None", kwargs.get("sim_qa")),
+            sim_q=cast("float | None", kwargs.get("sim_q")),
+            evidence_basis=cast("str | None", kwargs.get("evidence_basis")),
+            stance=cast("str | None", kwargs.get("stance")),
+            term_origin=cast("str | None", kwargs.get("term_origin")),
             rationale=str(kwargs.get("rationale", "")),
-            confidence=kwargs.get("confidence"),
-            tier_fired=kwargs.get("tier_fired"),
+            confidence=cast("str | None", kwargs.get("confidence")),
+            tier_fired=cast("int | None", kwargs.get("tier_fired")),
             status=status,
         )
         self.app.save(assignment)
         if kwargs.get("signals"):
             assignment.record_signals(
                 tenant_id=tenant_id,
-                unit_id=int(kwargs["unit_id"]),
+                unit_id=int(cast("int", kwargs["unit_id"])),
                 run_id=UUID(str(kwargs["run_id"])),
-                signals=list(kwargs["signals"]),
+                signals=list(cast("list[dict[str, object]]", kwargs["signals"])),
             )
             self.app.save(assignment)
         return {
@@ -295,7 +296,7 @@ class ResearchHandler:
         reviewer: str,
         decision: str,
         note: str = "",
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         assignment = self.app.repository.get(assignment_aggregate_id)
         if not isinstance(assignment, CodingAssignment):
             raise ValueError(f"aggregate {assignment_aggregate_id} is not a CodingAssignment")
@@ -304,8 +305,8 @@ class ResearchHandler:
         return {"status": "success", "assignment_id": str(assignment.id), "decision": decision}
 
     def set_keywords(
-        self, tenant_id: UUID, version_id: UUID, code_id: UUID, keywords: list[dict[str, object]]
-    ) -> dict[str, object]:
+        self, tenant_id: UUID, version_id: UUID, code_id: UUID, keywords: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Set one code's synthesized keyword list (KeywordSetUpdated event)."""
         version = self.app.repository.get(version_id)
         if not isinstance(version, CodebookVersion):

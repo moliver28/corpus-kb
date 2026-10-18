@@ -255,7 +255,9 @@ async def test_handle_search_filters_tombstoned_and_superseded(pg_pool) -> None:
     }
     source = "test-search-tombstone-filter"
     unique_phrase = "kerflumph vermillion second section marker"
-    async with pg_pool.acquire() as conn:
+    from corpus_kb.storage.tenant_conn import tenant_connection
+
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         await conn.execute(
             "DELETE FROM documents WHERE tenant_id = $1 AND source = $2",
             str(DEFAULT_TENANT_ID),
@@ -277,7 +279,10 @@ async def test_handle_search_filters_tombstoned_and_superseded(pg_pool) -> None:
         "sanity check: chunk must be findable before tombstoning"
     )
 
-    async with pg_pool.acquire() as conn:
+    # FORCE RLS: the tombstone UPDATE must run with the tenant GUC set, or
+    # the policy's current_setting('app.current_tenant_id')::uuid cast fails
+    # on the empty unset value.
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         updated = await conn.execute(
             "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2",
             str(DEFAULT_TENANT_ID),

@@ -22,6 +22,7 @@ Usage: ``await get_command_handler(pool).handle_ingest_file(cmd)``
 from __future__ import annotations
 
 import logging
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -55,7 +56,7 @@ class CommandHandler:
 
     def __init__(
         self,
-        config: dict[str, object] | None = None,
+        config: dict[str, Any] | None = None,
         pool: asyncpg.Pool | None = None,
     ) -> None:
         self._config = load_config_or_pass(config)
@@ -74,7 +75,7 @@ class CommandHandler:
             raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
         return self._pool
 
-    async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, object]:
+    async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, Any]:
         """Ingest a file: shared tool pipeline → Document aggregate → events."""
         result = await ingest_file_tool(
             cmd.file_path,
@@ -85,7 +86,7 @@ class CommandHandler:
         )
         return self._attach_events(result, source=cmd.file_path, tenant_id=cmd.tenant_id)
 
-    async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, object]:
+    async def handle_ingest_text(self, cmd: IngestTextCommand) -> dict[str, Any]:
         """Ingest raw text: shared tool pipeline (whitelist included) → events."""
         result = await ingest_text_tool(
             cmd.text,
@@ -97,7 +98,7 @@ class CommandHandler:
         )
         return self._attach_events(result, source=cmd.source, tenant_id=cmd.tenant_id)
 
-    async def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, object]:
+    async def handle_ingest_directory(self, cmd: IngestDirectoryCommand) -> dict[str, Any]:
         """Ingest a directory through the ONE shared walk, then audit files.
 
         The tool owns the walk, the ``WATCH_SUFFIXES`` filter, and the
@@ -125,7 +126,7 @@ class CommandHandler:
                 )
         return result
 
-    def handle_add_entity(self, cmd: AddEntityCommand) -> dict[str, object]:
+    def handle_add_entity(self, cmd: AddEntityCommand) -> dict[str, Any]:
         """Add an entity to the knowledge graph via aggregate."""
         entity = Entity(
             tenant_id=cmd.tenant_id,
@@ -142,7 +143,7 @@ class CommandHandler:
             "entity_type": cmd.entity_type,
         }
 
-    def handle_add_relation(self, cmd: AddRelationCommand) -> dict[str, object]:
+    def handle_add_relation(self, cmd: AddRelationCommand) -> dict[str, Any]:
         """Add a relation between two entities via aggregate."""
         relation = Relation(
             tenant_id=cmd.tenant_id,
@@ -165,7 +166,7 @@ class CommandHandler:
             "relation_type": cmd.relation_type,
         }
 
-    async def handle_delete_document(self, cmd: DeleteDocumentCommand) -> dict[str, object]:
+    async def handle_delete_document(self, cmd: DeleteDocumentCommand) -> dict[str, Any]:
         """Delete one document through the ONE shared tool implementation.
 
         ``tools.ingest_tools.delete_document`` owns the real row delete
@@ -184,10 +185,10 @@ class CommandHandler:
 
     def _attach_events(
         self,
-        result: dict[str, object],
+        result: dict[str, Any],
         source: str,
         tenant_id: UUID,
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         """Attach the audit trail to a SUCCESSFUL tool envelope.
 
         The Document aggregate records the DOCUMENT source type from the
@@ -226,7 +227,7 @@ _command_handler: CommandHandler | None = None
 
 
 def get_command_handler(
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | None = None,
 ) -> CommandHandler:
     """Get or create the singleton CommandHandler.

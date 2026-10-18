@@ -8,6 +8,9 @@ demo-offline test keeps its import path.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import cast
+
 import typer
 
 from corpus_kb.cli_support import _pid, _run_async, _tenant, cast_dict, cast_list, wired_pool
@@ -90,7 +93,9 @@ def _print_report(report: object, level: str) -> None:
         for action in cast_list(actions):
             print(f"-> {action}")
         print()
-        anchors = _mapping(view).get("doc_links") or guide_copy.REPORT_DOC_ANCHORS
+        anchors = cast(
+            "Mapping[str, str]", _mapping(view).get("doc_links") or guide_copy.REPORT_DOC_ANCHORS
+        )
         for section, link in anchors.items():
             print(f"guide[{section}]: {link}")
     else:

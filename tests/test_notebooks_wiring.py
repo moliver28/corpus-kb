@@ -75,7 +75,11 @@ def test_mount_never_kills_the_server_when_app_rejects(
     def build() -> object:
         return object()
 
-    builder = SimpleNamespace(with_dynamic_directory=lambda _d: SimpleNamespace(build=build))
+    def fake_with_dynamic_directory(*, path: str, directory: str) -> SimpleNamespace:
+        assert path == NOTEBOOKS_MOUNT_PATH
+        return SimpleNamespace(build=build)
+
+    builder = SimpleNamespace(with_dynamic_directory=fake_with_dynamic_directory)
     monkeypatch.setattr(
         console, "_import_module", lambda name: SimpleNamespace(create_asgi_app=lambda: builder)
     )
@@ -90,7 +94,11 @@ def test_mount_success_path_mounts_the_marimo_app(monkeypatch: pytest.MonkeyPatc
     def build() -> object:
         return marimo_app
 
-    builder = SimpleNamespace(with_dynamic_directory=lambda _d: SimpleNamespace(build=build))
+    def fake_with_dynamic_directory(*, path: str, directory: str) -> SimpleNamespace:
+        assert path == NOTEBOOKS_MOUNT_PATH
+        return SimpleNamespace(build=build)
+
+    builder = SimpleNamespace(with_dynamic_directory=fake_with_dynamic_directory)
     monkeypatch.setattr(
         console, "_import_module", lambda name: SimpleNamespace(create_asgi_app=lambda: builder)
     )

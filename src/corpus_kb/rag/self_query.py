@@ -17,14 +17,14 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Any, cast
 
 import httpx
 from ollama import Client, ResponseError
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_COLUMNS: dict[str, dict[str, object]] = {
+ALLOWED_COLUMNS: dict[str, dict[str, Any]] = {
     "documents.source_type": {"kind": "text", "ops": {"="}},
     "documents.language": {"kind": "text", "ops": {"="}},
     "documents.created_at": {"kind": "date", "ops": {"<", ">", "<=", ">="}},
@@ -70,9 +70,9 @@ class ParsedQuery:
 
 
 class SelfQueryParser:
-    def __init__(self, config: dict[str, object] | None = None) -> None:
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
         cfg = cast(
-            dict[str, object],
+            dict[str, Any],
             ((config or {}).get("retrieval", {}) or {}).get("self_query", {}) or {},
         )
         self.model = str(cfg.get("model", "qwen3:4b"))

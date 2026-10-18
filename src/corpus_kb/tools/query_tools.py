@@ -18,7 +18,7 @@ POST /api/verify return: ``{"status": "success", "result": ...}``.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import asyncpg
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 __all__ = ["query", "verify_answer"]
 
 
-def _with_trace_id(payload: dict[str, object]) -> dict[str, object]:
+def _with_trace_id(payload: dict[str, Any]) -> dict[str, Any]:
     """Attach the active trace id when one is recording (never when off)."""
     trace_id = current_trace_id()
     if trace_id is not None:
@@ -40,7 +40,7 @@ def _with_trace_id(payload: dict[str, object]) -> dict[str, object]:
     return payload
 
 
-async def _resolve_router_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> RouterHandler:
+async def _resolve_router_handler(cfg: dict[str, Any], pool: asyncpg.Pool) -> RouterHandler:
     """Return the wired router, or build the full stack over this pool.
 
     Mirrors the server wiring's handler section (graph store with the
@@ -77,11 +77,11 @@ async def _resolve_router_handler(cfg: dict[str, object], pool: asyncpg.Pool) ->
 
 async def query(
     query: str,
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     k: int | None = None,
     pg_pool: asyncpg.Pool | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Route one question to the vector, SQL, or graph backend.
 
     Delegates to the ``RouterHandler`` — the same handler POST /api/query
@@ -121,10 +121,10 @@ async def query(
 async def verify_answer(
     pg_pool: asyncpg.Pool,
     answer: str = "",
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     chunk_ids: list[str] | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Check each claim of an answer against the cited chunks.
 
     Delegates to ``QueryHandler.handle_verify_answer`` — the same call

@@ -39,7 +39,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
-from starlette.routing import Route
+from starlette.routing import BaseRoute, Route
 
 from corpus_kb.api.research_http import research_routes
 from corpus_kb.api.routes_ask import ask
@@ -103,7 +103,7 @@ def create_http_app() -> FastAPI:
     default routes it adds (/docs, /openapi.json) are additive; existing
     tests assert route subsets, not equality.
     """
-    routes = [
+    routes: list[BaseRoute] = [
         Route("/api/ingest/file", ingest_file, methods=["POST"]),
         Route("/api/ingest/text", ingest_text, methods=["POST"]),
         Route("/api/ingest/directory", ingest_directory, methods=["POST"]),

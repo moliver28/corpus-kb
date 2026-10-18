@@ -321,6 +321,15 @@ markers = [
     "ste: ASD-STE100 plain-language gate (docs, error strings, tool docstrings)",
 ]
 asyncio_mode = "auto"
+# Third-party warning noise (no repo-side fix exists):
+# - umap warns that random_state pins n_jobs=1 — our determinism contract
+#   (inductive engine, r7) sets random_state on purpose.
+# - pynvml deprecation: pypi.org/project/pynvml tells maintainers to move to
+#   nvidia-ml-py; we consume it transitively and must not add the replacement.
+filterwarnings = [
+    'ignore:n_jobs value 1 overridden to 1 by setting random_state:UserWarning',
+    'ignore:The pynvml package is deprecated:FutureWarning',
+]
 
 # ---------------------------------------------------------------------------
 # Zero-drift gate commands (Wave 2). CI calls the SAME targets — one source

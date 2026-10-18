@@ -13,6 +13,8 @@ import pytest
 
 pytest.importorskip("deepeval")
 
+from deepeval.models import DeepEvalBaseLLM
+
 from corpus_kb.eval.deepeval_adapter import (
     METRIC_NAMES,
     build_answer_metrics,
@@ -22,8 +24,20 @@ from corpus_kb.eval.deepeval_adapter import (
 CFG: dict[str, object] = {"llm": {"model": "qwen3:4b", "base_url": "http://localhost:11434"}}
 
 
-class _FakeJudge:
-    """A plain object standing in for the DeepEvalBaseLLM judge."""
+class _FakeJudge(DeepEvalBaseLLM):
+    """A stub judge (upgraded deepeval type-checks the model argument)."""
+
+    def load_model(self):
+        return None
+
+    def get_model_name(self) -> str:
+        return "fake-judge"
+
+    def generate(self, prompt: str) -> str:
+        return ""
+
+    async def a_generate(self, prompt: str) -> str:
+        return ""
 
 
 class _ConstantMetric:

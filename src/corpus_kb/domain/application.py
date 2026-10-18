@@ -71,6 +71,21 @@ class CorpusApplication(Application):
 _app: CorpusApplication | None = None
 
 
+def events_table_name(app: Application) -> str:
+    """The recorder's backing events table.
+
+    eventsourcing types the base recorder as ApplicationRecorder, which does
+    not declare the name; every backend this app constructs (the
+    eventsourcing-postgres recorder) carries ``events_table_name``. The
+    getattr keeps that dependency optional at type level and raises a plain
+    error when a recorder without the attribute is plugged in.
+    """
+    name = getattr(app.recorder, "events_table_name", None)
+    if not name:
+        raise RuntimeError("The configured event recorder has no events_table_name.")
+    return str(name)
+
+
 def get_app(connection_string: str | None = None) -> CorpusApplication:
     """Get or create the singleton CorpusApplication instance.
 

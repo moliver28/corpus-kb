@@ -18,7 +18,7 @@ import platform
 import subprocess
 import sys
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 from urllib.parse import urlsplit
 
 import asyncpg
@@ -198,7 +198,11 @@ async def install_database(conn_str: str, apply: bool) -> int:
 
     # Create database if it does not exist (connect to postgres maintenance db).
     try:
-        parsed = asyncpg.connection._parse_connstring(conn_str)
+        parse_connstring = cast(
+            "Callable[[str], dict[str, str]]",
+            getattr(asyncpg.connection, "_parse_connstring", None),
+        )
+        parsed = parse_connstring(conn_str)
         dbname = parsed.get("database", "corpus_kb")
         maintenance_dsn = conn_str.replace(f"/{dbname}", "/postgres")
         conn = await asyncpg.connect(maintenance_dsn, timeout=5)
