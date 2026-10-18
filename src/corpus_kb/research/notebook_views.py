@@ -74,7 +74,7 @@ async def evidence_for_code(
     project_id: UUID | None = None,
     version_id: UUID | None = None,
     limit: int = 200,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Evidence view for one code: ranked units + flags + conformal sizes."""
     from corpus_kb.research.notebook import resolve_code
 
@@ -108,12 +108,12 @@ async def evidence_for_code(
             for row in await conn.fetch(_DISAGREEMENT_SQL, str(tenant_id), unit_ids)
         }
         conformal = await _conformal_per_unit(conn, tenant_id)
-    tabs: dict[str, list[dict[str, object]]] = {"explicit": [], "question_dependent": []}
+    tabs: dict[str, list[dict[str, Any]]] = {"explicit": [], "question_dependent": []}
     for row in rows:
         basis = str(row["evidence_basis"] or "explicit_in_answer")
         tab = "explicit" if basis == "explicit_in_answer" else "question_dependent"
         unit_id = int(row["unit_id"])
-        entry: dict[str, object] = {
+        entry: dict[str, Any] = {
             "unit_id": unit_id,
             "text": str(row["text"]),
             "confidence": row["confidence"],
@@ -171,7 +171,7 @@ async def uncoded_units(
     project_id: UUID | None = None,
     version_id: UUID | None = None,
     k: int = 25,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Uncoded units ranked by nearest-code margin (the missing-code radar)."""
     del embedder  # residuals are SQL-side; kept in the signature for surface parity
     async with tenant_connection(pool, tenant_id) as conn:
@@ -210,6 +210,7 @@ async def uncoded_units(
                 """,
                 str(tenant_id),
             )
+            or 0
         )
         n_uncoded = n_codable - int(
             await conn.fetchval(
@@ -222,6 +223,7 @@ async def uncoded_units(
                 """,
                 str(tenant_id),
             )
+            or 0
         )
         if n_uncoded <= 0:
             return {"status": "empty", "message": "no uncoded units", "version_id": str(resolved)}
@@ -264,7 +266,7 @@ async def overlap_view(
     project_id: UUID | None = None,
     version_id: UUID | None = None,
     delta_amb: float = DEFAULT_DELTA_AMB,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Code-overlap view: flagged pairs, confusion, borderline-margin units."""
     del project_id  # centroids/assignments are codebook-version-scoped by design
     async with tenant_connection(pool, tenant_id) as conn:
@@ -340,7 +342,7 @@ def _unit_margins(assignments: list[dict[str, Any]]) -> dict[int, float]:
 
 async def _unit_details(
     conn: asyncpg.Connection, tenant_id: UUID, unit_ids: list[int]
-) -> list[dict[str, object]]:
+) -> list[dict[str, Any]]:
     if not unit_ids:
         return []
     rows = await conn.fetch(

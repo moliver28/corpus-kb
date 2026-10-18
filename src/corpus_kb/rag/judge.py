@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import cast
+from typing import Any, cast
 
 import httpx
 from ollama import Client, ResponseError
@@ -26,8 +26,8 @@ JUDGE_TIMEOUT_SECONDS = 120.0
 
 
 class OllamaJudge:
-    def __init__(self, config: dict[str, object] | None = None) -> None:
-        cfg = cast(dict[str, object], (config or {}).get("judge", {}) or {})
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        cfg = cast(dict[str, Any], (config or {}).get("judge", {}) or {})
         self.model = str(cfg.get("model", "qwen3:4b"))
         self.base_url = str(cfg.get("base_url", "http://localhost:11434"))
         self.max_claims = int(cfg.get("max_claims", 20))

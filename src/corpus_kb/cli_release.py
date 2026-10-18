@@ -23,7 +23,7 @@ shared handler payload (stable schemas pinned by tests).
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import typer
@@ -65,7 +65,7 @@ def _waiver_pairs(raw: list[str]) -> tuple[tuple[str, str], ...]:
     return tuple(pairs)
 
 
-def _emit(payload: dict[str, object], json_output: bool) -> None:
+def _emit(payload: dict[str, Any], json_output: bool) -> None:
     """--json prints the handler payload verbatim; human mode renders below."""
     import json
 
@@ -80,7 +80,7 @@ async def _pool_conn():
     from corpus_kb.config import load_config
 
     cfg = load_config()
-    db = cast("dict[str, object]", cfg.get("database") or {})
+    db = cast("dict[str, Any]", cfg.get("database") or {})
     return await asyncpg.create_pool(str(db.get("connection_string", "")))
 
 
@@ -102,7 +102,6 @@ def release_assess_cmd(
         import json
 
         from corpus_kb.handlers import release_handlers
-        from corpus_kb.research import guide_copy
 
         pool = await _pool_conn()
         try:
@@ -119,20 +118,22 @@ def release_assess_cmd(
         if json_output:
             print(json.dumps(payload, indent=2, default=str))
         else:
-            _print_assess(payload, guide_copy)
+            _print_assess(payload)
         return 0
 
     return _finish(_run())
 
 
-def _print_assess(payload: dict[str, object], guide_copy: object) -> None:
+def _print_assess(payload: dict[str, Any]) -> None:
+    from corpus_kb.research import guide_copy
+
     print(guide_copy.RELEASE_TITLE)
     print(guide_copy.RELEASE_ASSESS_HEADER)
     print(
         f"  version {payload.get('codebook_version_id')} "
         f"profile={payload.get('profile')} enforcement={payload.get('enforcement')}"
     )
-    for gate in cast("list[dict[str, object]]", payload.get("gate_results") or []):
+    for gate in cast("list[dict[str, Any]]", payload.get("gate_results") or []):
         print(
             "  "
             + guide_copy.RELEASE_LINE.format(
@@ -219,7 +220,6 @@ def release_review_cmd(
         import json
 
         from corpus_kb.handlers import release_handlers
-        from corpus_kb.research import guide_copy
 
         pool = await _pool_conn()
         try:
@@ -235,19 +235,21 @@ def release_review_cmd(
         if json_output:
             print(json.dumps(payload, indent=2, default=str))
         else:
-            _print_review_packet(payload, guide_copy)
+            _print_review_packet(payload)
         return 0
 
     return _finish(_run())
 
 
-def _print_review_packet(payload: dict[str, object], guide_copy: object) -> None:
+def _print_review_packet(payload: dict[str, Any]) -> None:
+    from corpus_kb.research import guide_copy
+
     print(guide_copy.RELEASE_REVIEW_PACKET_HEADER)
     print(
         f"  release {payload.get('release_id')} state={payload.get('release_state')} "
         f"profile={payload.get('profile')} enforcement={payload.get('enforcement')}"
     )
-    evidence = cast("list[dict[str, object]]", payload.get("evidence") or [])
+    evidence = cast("list[dict[str, Any]]", payload.get("evidence") or [])
     print(f"\n{guide_copy.RELEASE_EVIDENCE_HEADER}")
     if evidence:
         for gate in evidence:
@@ -344,7 +346,6 @@ def release_status_cmd(
         import json
 
         from corpus_kb.handlers import release_handlers
-        from corpus_kb.research import guide_copy
 
         pool = await _pool_conn()
         try:
@@ -359,13 +360,15 @@ def release_status_cmd(
         if json_output:
             print(json.dumps(payload, indent=2, default=str))
         else:
-            _print_status(payload, guide_copy)
+            _print_status(payload)
         return 0
 
     return _finish(_run())
 
 
-def _print_status(payload: dict[str, object], guide_copy: object) -> None:
+def _print_status(payload: dict[str, Any]) -> None:
+    from corpus_kb.research import guide_copy
+
     stage = str(payload.get("current_stage", ""))
     labels = cast("dict[str, str]", guide_copy.RELEASE_STAGE_LABELS)
     print(guide_copy.RELEASE_TITLE)
@@ -375,19 +378,19 @@ def _print_status(payload: dict[str, object], guide_copy: object) -> None:
     active = payload.get("active_release")
     if active:
         print(f"\n{guide_copy.RELEASE_ACTIVE_RELEASE_HEADER}")
-        for key, value in cast("dict[str, object]", active).items():
+        for key, value in cast("dict[str, Any]", active).items():
             print(f"  {key}: {value}")
     draft = payload.get("draft")
     if draft:
         print(f"\n{guide_copy.RELEASE_DRAFT_HEADER}")
-        for key, value in cast("dict[str, object]", draft).items():
+        for key, value in cast("dict[str, Any]", draft).items():
             print(f"  {key}: {value}")
     blocking = cast("list[str]", payload.get("blocking_criteria") or [])
     if blocking:
         print(f"\n{guide_copy.RELEASE_UNMET_HEADER}")
         for criterion in blocking:
             print(f"  {criterion}")
-    proposals = cast("list[dict[str, object]]", payload.get("pending_change_proposals") or [])
+    proposals = cast("list[dict[str, Any]]", payload.get("pending_change_proposals") or [])
     print(f"\n{guide_copy.RELEASE_PROPOSALS_HEADER}: {len(proposals)}")
     for proposal in proposals:
         print(
@@ -425,7 +428,6 @@ def release_compare_cmd(
         import json
 
         from corpus_kb.handlers import release_handlers
-        from corpus_kb.research import guide_copy
 
         result = await release_handlers.compare_version_releases(
             _tenant(),
@@ -437,13 +439,15 @@ def release_compare_cmd(
         if json_output:
             print(json.dumps(payload, indent=2, default=str))
         else:
-            _print_compare(payload, guide_copy)
+            _print_compare(payload)
         return 0
 
     return _finish(_run())
 
 
-def _print_compare(payload: dict[str, object], guide_copy: object) -> None:
+def _print_compare(payload: dict[str, Any]) -> None:
+    from corpus_kb.research import guide_copy
+
     print(
         f"compare {payload.get('old_release_id')} -> {payload.get('new_release_id')}: "
         f"{'identical' if payload.get('identical') else 'DIFFERENT'}"

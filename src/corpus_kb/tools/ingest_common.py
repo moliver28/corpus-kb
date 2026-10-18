@@ -20,6 +20,7 @@ import hashlib
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 import asyncpg
 
@@ -117,12 +118,12 @@ def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def load_config_or_pass(config: dict[str, object] | None) -> dict[str, object]:
+def load_config_or_pass(config: dict[str, Any] | None) -> dict[str, Any]:
     """Return the provided config dict, or load the default config if None."""
     return config if config is not None else load_config()
 
 
-def _contextual_enabled(config: dict[str, object], source_type: str) -> bool:
+def _contextual_enabled(config: dict[str, Any], source_type: str) -> bool:
     """Return True if contextual retrieval should run for this source_type.
 
     Contextualization is on unconditionally when
@@ -139,7 +140,7 @@ def _contextual_enabled(config: dict[str, object], source_type: str) -> bool:
     return isinstance(allowlist, list) and source_type in allowlist
 
 
-def ontology(config: dict[str, object]) -> Ontology:
+def ontology(config: dict[str, Any]) -> Ontology:
     """Load the ontology from ``graph.ontology_path`` in config, falling back to default."""
     graph = _nested_dict(config, "graph")
     ontology_path = graph.get("ontology_path")
@@ -162,13 +163,13 @@ async def run_pipeline(
     text: str,
     source_type: str,
     path: str,
-    config: dict[str, object],
+    config: dict[str, Any],
     pg_pool: asyncpg.Pool,
     tenant_id: str = DEFAULT_TENANT_ID,
     rag_backend: RagBackend | None = None,
     is_file: bool = False,
     strategy_name: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Run the full ingest pipeline: resolve strategy, build chunks, embed,
     extract, store.
 
@@ -314,14 +315,14 @@ async def _run_locked_stages(
     text: str,
     source_type: str,
     path: str,
-    config: dict[str, object],
+    config: dict[str, Any],
     pg_pool: asyncpg.Pool,
     tenant_id: str,
     rag_backend: RagBackend | None,
     is_file: bool,
     empty_reason: str | None = None,
     strategy: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Pipeline stages under the advisory lock: open the ledger, store, close.
 
     Zero-drift W4C xenon ratchet: the stage bodies moved to private helpers
@@ -407,7 +408,7 @@ async def _run_locked_stages(
             logger.warning("Document update failed: %s", exc)
             errors.append(f"PostgresWriteError: {exc}")
 
-        stages: dict[str, object] = {
+        stages: dict[str, Any] = {
             "chunks": pg_chunk_count,
             "vectors": pg_vector_count,
             "entities": len(entities),
@@ -461,7 +462,7 @@ def _prepare_chunks_for_store(
     chunks: list[Chunk],
     path: str,
     is_file: bool,
-    config: dict[str, object],
+    config: dict[str, Any],
     source_type: str,
     text: str,
     document_id: str,
@@ -499,11 +500,11 @@ def _prepare_chunks_for_store(
 async def _stage_store_and_embed(
     ingest_store: PostgresIngestStore,
     chunks: list[Chunk],
-    config: dict[str, object],
+    config: dict[str, Any],
     text: str,
     pg_pool: asyncpg.Pool,
     errors: list[str],
-) -> tuple[int, int, bool, str | None, dict[str, object]]:
+) -> tuple[int, int, bool, str | None, dict[str, Any]]:
     """Stage 2: store chunks, embed the new ones, store their vectors.
 
     Returns (pg_chunk_count, pg_vector_count, degraded, embed_note, embed_meta).
@@ -549,7 +550,7 @@ async def _stage_store_and_embed(
         )
         for c in new_chunks
     }
-    embed_meta: dict[str, object] = {}
+    embed_meta: dict[str, Any] = {}
     # One shared config read for the vector write (model, dimensions,
     # matryoshka dim) — the exact keys+defaults the reembed repair path
     # reads (ingest_cfg.vector_write_config). Read before the embed span so
@@ -605,7 +606,7 @@ async def _stage_store_and_embed(
 
 
 async def _stage_shadow_hierarchy(
-    config: dict[str, object],
+    config: dict[str, Any],
     document: Document,
     text: str,
     chunks: list[Chunk],
@@ -650,7 +651,7 @@ async def _stage_extract_entities(
     ingest_store: PostgresIngestStore,
     chunks: list[Chunk],
     document_id: str,
-    config: dict[str, object],
+    config: dict[str, Any],
     pg_pool: asyncpg.Pool,
     errors: list[str],
 ) -> tuple[list[Entity], list[Relation], str, ExtractStats]:
@@ -670,13 +671,28 @@ async def _stage_extract_entities(
             chunks, ontology(config), document_id, config, pool=pg_pool
         )
         if entities:
-            await ingest_store.store_entities(entities)
+            entity_id_map = await ingest_store.store_entities(entities)
+            # The dedup keeps the canonical entity row; re-point the
+            # relations at it so the FK cannot see extraction-time ids.
+            relations = [
+                relation.model_copy(
+                    update={
+                        "source_entity_id": entity_id_map.get(
+                            relation.source_entity_id, relation.source_entity_id
+                        ),
+                        "target_entity_id": entity_id_map.get(
+                            relation.target_entity_id, relation.target_entity_id
+                        ),
+                    }
+                )
+                for relation in relations
+            ]
         if relations:
             graph_cfg = _nested_dict(config, "graph")
             await ingest_store.store_relations(
                 relations,
-                model_version=graph_cfg.get("model_version"),
-                prompt_version=graph_cfg.get("prompt_version"),
+                model_version=cast("str | None", graph_cfg.get("model_version")),
+                prompt_version=cast("str | None", graph_cfg.get("prompt_version")),
             )
     except Exception as exc:
         logger.warning("Entity extraction failed: %s", exc)
@@ -696,7 +712,7 @@ def _stage_result_dict(
     path: str,
     degraded: bool,
     embed_note: str | None,
-    embed_meta: dict[str, object],
+    embed_meta: dict[str, Any],
     empty_reason: str | None,
     hierarchy_settings: HierarchySettings,
     shadow_chunk_count: int,
@@ -710,14 +726,14 @@ def _stage_result_dict(
     pg_vector_count: int,
     errors: list[str],
     run_id: str,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Stage 5: the run result dict (nothing reports success on a partial).
 
     Any stage error flips the status (the ledger row is 'failed' either
     way). Shadow keys are present ONLY when the hierarchy flag is on, so
     the flag-off result dict stays byte-identical to the pre-U48 shape.
     """
-    result: dict[str, object] = {
+    result: dict[str, Any] = {
         "status": "success" if not errors else "partial",
         "document_id": document.document_id,
         "path": path,
@@ -770,10 +786,10 @@ async def ingest_text(
     text: str,
     pg_pool: asyncpg.Pool,
     source_type: str = "text",
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     source: str = "raw_text",
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Ingest raw text with optional type hint and source identifier.
 
     Lives here (rather than only in ``ingest_tools``) so tests and other

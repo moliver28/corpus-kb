@@ -21,6 +21,7 @@ The UMAP-reduced space is only HDBSCAN's input — never the assignment space.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -49,7 +50,7 @@ def min_cluster_size_for(n: int) -> int:
     return max(MIN_CLUSTER_SIZE_FLOOR, math.ceil(CLUSTER_FRACTION * n))
 
 
-def run_manifest(n_units: int) -> dict[str, object]:
+def run_manifest(n_units: int) -> dict[str, Any]:
     """Determinism manifest recorded with every clustering checkpoint."""
     return {
         "umap_random_state": UMAP_RANDOM_STATE,

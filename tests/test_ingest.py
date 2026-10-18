@@ -11,6 +11,11 @@ from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.tools.ingest_tools import delete_document, ingest_text
 from corpus_kb.utils.models import Entity
 
+# Same database the pg_pool fixture binds; keeps get_app/ingest dedup and
+# the schema tables in ONE database (RLS + content-hash dedup see the same
+# rows).
+_TEST_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test"
+
 # ============================================================================
 # Entity Extraction Tests
 # ============================================================================
@@ -94,9 +99,7 @@ Tokens are cached for performance.
 """
         config = {
             "graph": {"extract_entities": True, "backend": "postgres"},
-            "database": {
-                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-            },
+            "database": {"connection_string": _TEST_DSN},
         }
         result = await ingest_text(
             text=markdown_text,
@@ -119,9 +122,7 @@ Tokens are cached for performance.
         markdown_text = "# MyService\nA service."
         config = {
             "graph": {"extract_entities": False, "backend": "postgres"},
-            "database": {
-                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-            },
+            "database": {"connection_string": _TEST_DSN},
         }
         result = await ingest_text(
             text=markdown_text,
@@ -142,9 +143,7 @@ Tokens are cached for performance.
         text = "Some text"
         config = {
             "graph": {"extract_entities": True, "backend": "postgres"},
-            "database": {
-                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-            },
+            "database": {"connection_string": _TEST_DSN},
         }
         result = await ingest_text(
             text=text,
@@ -173,9 +172,7 @@ Tokens are cached for performance.
         markdown_text = "# ReingestDoc\nContent stays the same.\n"
         config = {
             "graph": {"extract_entities": True, "backend": "postgres"},
-            "database": {
-                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-            },
+            "database": {"connection_string": _TEST_DSN},
         }
         async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
             await conn.execute(
@@ -204,7 +201,9 @@ Tokens are cached for performance.
         assert second["status"] == "skipped"
         assert second["document_id"] == doc_id
 
-        async with pg_pool.acquire() as conn:
+        # FORCE RLS: tenant-scoped reads need the tenant GUC, or the policy's
+        # current_setting(...)::uuid cast fails on the empty unset value.
+        async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
             rows = await conn.fetch(
                 "SELECT COUNT(*) AS cnt FROM documents WHERE source = $1", source
             )
@@ -218,9 +217,7 @@ Tokens are cached for performance.
         second_text = "# Second\nChanged content with more words.\n\nExtra paragraph.\n"
         config = {
             "graph": {"extract_entities": True, "backend": "postgres"},
-            "database": {
-                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-            },
+            "database": {"connection_string": _TEST_DSN},
         }
         async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
             await conn.execute(
@@ -263,9 +260,7 @@ Tokens are cached for performance.
         markdown_text = "# DeleteMe\nDelete this document.\n"
         config = {
             "graph": {"extract_entities": True, "backend": "postgres"},
-            "database": {
-                "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-            },
+            "database": {"connection_string": _TEST_DSN},
         }
         async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
             await conn.execute(
@@ -287,7 +282,7 @@ Tokens are cached for performance.
         delete_result = await delete_document(doc_id, pg_pool)
         assert delete_result["status"] == "success"
 
-        async with pg_pool.acquire() as conn:
+        async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
             rows = await conn.fetch(
                 "SELECT COUNT(*) AS cnt FROM documents WHERE doc_id = $1", doc_id
             )
@@ -309,7 +304,7 @@ class TestGraphStore:
             name="TestService",
             entity_type="CLASS",
             source_type="code",
-            source_document_id="doc-123",
+            source_document_id="7b354b12-af7b-481f-9e25-d4d37744a053",
         )
         entity_id = await store.add_entity(entity)
         assert entity_id is not None

@@ -26,7 +26,7 @@ import os
 import sys
 import webbrowser
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import asyncpg
 
@@ -78,7 +78,7 @@ def mount_ui(http_app: object) -> UiMountResult:
     return UiMountResult(mounted=True)
 
 
-def wire_notebooks(http_app: object, cfg: dict[str, object]) -> bool:
+def wire_notebooks(http_app: object, cfg: dict[str, Any]) -> bool:
     """Mount the notebooks console when the config gate is on. NEVER raises.
 
     UX program Wave 6: the gate mirrors ``mount_ui`` — behind
@@ -107,7 +107,7 @@ async def open_browser_when_up(host: str, port: int, delay: float = UI_OPEN_DELA
 
 
 def schedule_browser_open(
-    services: dict[str, object],
+    services: dict[str, Any],
     host: str,
     port: int,
 ) -> asyncio.Task[None] | None:
@@ -124,7 +124,7 @@ def schedule_browser_open(
 
 
 async def create_graph_store(
-    cfg: dict[str, object],
+    cfg: dict[str, Any],
     pool: asyncpg.Pool,
 ) -> GraphStore:
     """Instantiate the configured GraphStore backend.
@@ -175,8 +175,8 @@ async def initialize_postgres_pool(
 
 
 async def startup(
-    config: dict[str, object] | None = None,
-) -> dict[str, object]:
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Initialize all components. Returns a dict of initialized services.
 
     Call this once at server startup. The returned dict contains:
@@ -217,7 +217,7 @@ async def startup(
     pool = await initialize_postgres_pool(conn_str)
 
     # 2. Eventsourcing application
-    from corpus_kb.domain.application import get_app
+    from corpus_kb.domain.application import events_table_name, get_app
 
     app = get_app(conn_str)
 
@@ -278,7 +278,7 @@ async def startup(
     # 3d. Coding handler (deductive coding pipeline behind /api/coding/*)
     from corpus_kb.handlers.coding_handler import CodingHandler, set_coding_handler
 
-    coding_cfg = cast(dict[str, object], cfg.get("coding", {}) or {})
+    coding_cfg = cast(dict[str, Any], cfg.get("coding", {}) or {})
     set_coding_handler(
         CodingHandler(
             pool,
@@ -306,7 +306,7 @@ async def startup(
     # Shared read path over the eventsourcing lib's events table
     # (topic/state + notification_id bigserial), decoding via the app Mapper.
     # The table is lib-owned and named after the application class.
-    event_reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+    event_reader = EventReader(pool, app.mapper, events_table_name(app))
 
     # Embedder for projection (provider selected by embedding.provider)
     from corpus_kb.rag import create_embedder
@@ -370,7 +370,7 @@ async def startup(
     }
 
 
-async def run_all(services: dict[str, object]) -> None:
+async def run_all(services: dict[str, Any]) -> None:
     """Run HTTP + socket servers concurrently. MCP runs separately via FastMCP.
 
     Projections run as background tasks within the same event loop.
@@ -430,7 +430,7 @@ async def run_all(services: dict[str, object]) -> None:
         logger.info("All servers stopped")
 
 
-async def shutdown(services: dict[str, object]) -> None:
+async def shutdown(services: dict[str, Any]) -> None:
     """Graceful shutdown: close pools, stop projections."""
     pool = services["pool"]
     if isinstance(pool, asyncpg.Pool):
@@ -501,7 +501,7 @@ def main(argv: list[str] | None = None) -> None:
         logger.info("Starting in %s mode on port %d", args.transport, args.port)
 
         async def _run() -> None:
-            cfg: dict[str, object] | None = None
+            cfg: dict[str, Any] | None = None
             if args.ui is not None or "CORPUS_KB_PORT" not in os.environ:
                 # The --ui/--no-ui flag overrides the ui.enabled config key;
                 # the --port flag fills in for an unset CORPUS_KB_PORT (the
@@ -510,9 +510,9 @@ def main(argv: list[str] | None = None) -> None:
                 from corpus_kb.config import load_config
 
                 cfg = load_config()
-                server_block = cast(dict[str, object], cfg.setdefault("server", {}))
+                server_block = cast(dict[str, Any], cfg.setdefault("server", {}))
                 if args.ui is not None:
-                    ui_block = cast(dict[str, object], cfg.setdefault("ui", {}))
+                    ui_block = cast(dict[str, Any], cfg.setdefault("ui", {}))
                     ui_block["enabled"] = bool(args.ui)
                 if "CORPUS_KB_PORT" not in os.environ:
                     server_block["port"] = args.port

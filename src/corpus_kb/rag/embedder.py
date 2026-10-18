@@ -15,7 +15,7 @@ import logging
 import math
 import random
 from collections import OrderedDict
-from typing import Protocol, cast, runtime_checkable
+from typing import Any, Protocol, cast, runtime_checkable
 
 import asyncpg
 import httpx
@@ -83,12 +83,15 @@ class Embedder(Protocol):
 
     def embed(self, text: str) -> list[float]:
         """Return a single embedding vector for ``text``."""
+        ...
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for ``texts``, in input order."""
+        ...
 
     def instruct(self, text: str) -> str:
         """Return the query-side instructed text (see module-level instruct)."""
+        ...
 
 
 class OllamaEmbedder:
@@ -98,9 +101,9 @@ class OllamaEmbedder:
     so callers can continue operating in degraded mode.
     """
 
-    def __init__(self, config: dict[str, object] | None = None) -> None:
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
         self._config = config or load_config()
-        embedding = cast(dict[str, object], self._config.get("embedding", {}))
+        embedding = cast(dict[str, Any], self._config.get("embedding", {}))
 
         self.model = _str_or_default(embedding, "model", DEFAULT_EMBEDDING_MODEL)
         self.base_url = _str_or_default(embedding, "base_url", "http://localhost:11434")
@@ -287,12 +290,12 @@ def _slice_normalize(vec: list[float], dim: int) -> list[float]:
     return [x / norm for x in sliced]
 
 
-def _str_or_default(config: dict[str, object], key: str, default: str) -> str:
+def _str_or_default(config: dict[str, Any], key: str, default: str) -> str:
     value = config.get(key, default)
     return str(value) if value is not None else default
 
 
-def _int_or_default(config: dict[str, object], key: str, default: int) -> int:
+def _int_or_default(config: dict[str, Any], key: str, default: int) -> int:
     value = config.get(key, default)
     if isinstance(value, int):
         return value
@@ -314,11 +317,11 @@ class PgmlEmbedder:
 
     def __init__(
         self,
-        config: dict[str, object] | None = None,
+        config: dict[str, Any] | None = None,
         pool: asyncpg.Pool | None = None,
     ) -> None:
         self._config = config or load_config()
-        embedding = cast(dict[str, object], self._config.get("embedding", {}))
+        embedding = cast(dict[str, Any], self._config.get("embedding", {}))
         self.model = _str_or_default(embedding, "model", DEFAULT_EMBEDDING_MODEL)
         self.dimensions = _int_or_default(embedding, "dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
         raw_batch_size = _int_or_default(embedding, "batch_size", self.DEFAULT_BATCH_SIZE)
@@ -377,9 +380,9 @@ class FakeEmbedder:
     and has length ``dimensions``.
     """
 
-    def __init__(self, config: dict[str, object] | None = None) -> None:
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
         embedding = cast(
-            dict[str, object],
+            dict[str, Any],
             (config or load_config()).get("embedding", {}),
         )
         self.dimensions = _int_or_default(embedding, "dimensions", DEFAULT_EMBEDDING_DIMENSIONS)
@@ -417,7 +420,7 @@ DEFAULT_EMBEDDING_PROVIDER = "ollama"
 
 
 def create_embedder(
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | None = None,
 ) -> OllamaEmbedder | PgmlEmbedder:
     """Return the embedder selected by ``embedding.provider`` in config.
@@ -430,7 +433,7 @@ def create_embedder(
     Raises ``ValueError`` for any other provider.
     """
     cfg = config or load_config()
-    embedding = cast(dict[str, object], cfg.get("embedding", {}))
+    embedding = cast(dict[str, Any], cfg.get("embedding", {}))
     provider = _str_or_default(embedding, "provider", DEFAULT_EMBEDDING_PROVIDER)
     if provider == "pgml":
         return PgmlEmbedder(cfg, pool)

@@ -12,6 +12,8 @@ research imports stay inside the functions.
 
 from __future__ import annotations
 
+from typing import Any
+
 import typer
 
 from corpus_kb.cli_research_ask import register as register_ask
@@ -165,7 +167,7 @@ def _cycle_coroutine(
 
     async def _run() -> int:
         async with wired_pool() as wired:
-            kwargs: dict[str, object] = {
+            kwargs: dict[str, Any] = {
                 "mode": mode,
                 "project_id": _pid(project_id),
                 "ingest_dir": drop_dir,

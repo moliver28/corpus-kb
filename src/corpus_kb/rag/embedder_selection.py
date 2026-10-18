@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 import asyncpg
 
@@ -64,7 +64,7 @@ class IngestEmbeddingPlan:
     spans_provider: SpansProvider | None = None
 
 
-def late_chunking_requested(config: dict[str, object]) -> bool:
+def late_chunking_requested(config: dict[str, Any]) -> bool:
     """Truthiness read of ``embedding.late_chunking`` (default True).
 
     Same semantics as the U32 matryoshka gate: a quoted "true" or 1 in a
@@ -97,7 +97,7 @@ _late_embedder_singleton: LateChunkEmbedder | None = None
 
 
 def select_ingest_embedder(
-    config: dict[str, object],
+    config: dict[str, Any],
     pool: asyncpg.Pool | None = None,
     late_chunk_factory: LateChunkFactory | None = None,
 ) -> IngestEmbeddingPlan:
@@ -109,13 +109,15 @@ def select_ingest_embedder(
     construction never raises out of this function.
     """
     if not late_chunking_requested(config):
-        return IngestEmbeddingPlan(mode=POOLED_MODE, embedder=create_embedder(config, pool))
-    embedding = cast(dict[str, object], config.get("embedding", {}))
+        return IngestEmbeddingPlan(
+            mode=POOLED_MODE, embedder=cast("Embedder", create_embedder(config, pool))
+        )
+    embedding = cast(dict[str, Any], config.get("embedding", {}))
     model = str(embedding.get("model", DEFAULT_EMBEDDING_MODEL))
     if not is_latechunk_installed():
         return IngestEmbeddingPlan(
             mode=POOLED_MODE,
-            embedder=create_embedder(config, pool),
+            embedder=cast("Embedder", create_embedder(config, pool)),
             note=(
                 "late_chunking requested but the latechunk extra is not installed. "
                 'Pooled fallback. Run: pip install -e ".[latechunk]"'
@@ -124,7 +126,7 @@ def select_ingest_embedder(
     if not model.startswith(TOKEN_LEVEL_MODEL_PREFIX):
         return IngestEmbeddingPlan(
             mode=POOLED_MODE,
-            embedder=create_embedder(config, pool),
+            embedder=cast("Embedder", create_embedder(config, pool)),
             note=(
                 f"late_chunking requested but embedding model {model!r} is not a "
                 f"token-level-capable family. Only {TOKEN_LEVEL_MODEL_PREFIX}* "
@@ -139,7 +141,7 @@ def select_ingest_embedder(
     except Exception as exc:
         return IngestEmbeddingPlan(
             mode=POOLED_MODE,
-            embedder=create_embedder(config, pool),
+            embedder=cast("Embedder", create_embedder(config, pool)),
             note=(
                 "late_chunking requested but LateChunkEmbedder failed to load "
                 f"({type(exc).__name__}: {exc}). Pooled fallback."
@@ -158,7 +160,7 @@ def select_ingest_embedder(
     if configured_dims > 0 and embedder.dimensions != configured_dims:
         return IngestEmbeddingPlan(
             mode=POOLED_MODE,
-            embedder=create_embedder(config, pool),
+            embedder=cast("Embedder", create_embedder(config, pool)),
             note=(
                 "late_chunking requested but the activated model outputs "
                 f"{embedder.dimensions}-dim vectors while embedding.dimensions is "

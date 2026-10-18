@@ -10,11 +10,11 @@ Yes. The current release requires PostgreSQL 17 with pgvector and Apache AGE. Ea
 
 ## Do I need a GPU?
 
-Mostly. `qwen3-embedding:4b` (the shipped default) runs on CPU, just slower than the old 768d nomic model. It produces 2560-dimensional embeddings. A GPU helps but is not required.
+No. The shipped default `qwen3-embedding:4b` runs on CPU. A GPU makes ingest and search faster, but nothing requires one.
 
 ## Can I use OpenAI embeddings instead of Ollama?
 
-Not out of the box. Corpus-KB currently calls Ollama's local embedding API. You could add a new embedder implementation that calls OpenAI, but that would require a code change.
+Not out of the box. The built-in providers are Ollama and PostgresML (`embedding.provider: pgml`). Adding a cloud embedder would require a code change, and the local-first design does not call out to one.
 
 ## Can I run without Ollama?
 
@@ -26,7 +26,7 @@ Yes — ingestion is pluggable at three levels. Map a source type to an existing
 
 ## How is this different from a cloud vector database like Pinecone?
 
-Corpus-KB is 100% local. Your code never leaves your machine. It also gives you three query patterns (vector search, SQL, and graph traversal) rather than just vector retrieval.
+Corpus-KB is 100% local. Your code never leaves your machine. It also gives you three query patterns (vector search, SQL, and graph traversal), not vector retrieval alone.
 
 ## How is this different from ripgrep?
 
@@ -46,7 +46,7 @@ Python, JavaScript, TypeScript, JSX, TSX, Rust, Go, Java, and C are supported. S
 
 ## Can I use a different embedding model?
 
-Yes. Any model available through Ollama works. Update `config.yaml` with the model name and dimensions, then pull it with `ollama pull <model>`.
+Yes. Any model available through Ollama works. Update `config.yaml` with the model name and dimensions, then pull it with `ollama pull <model>`. One rule applies: the schema column is fixed at `halfvec(2560)`, so the model must emit exactly 2560 dimensions. Another width needs a schema migration first. The ingest guard and `corpus-kb doctor` catch a mismatch and name the fix.
 
 ## Does it work with large codebases?
 
@@ -54,11 +54,11 @@ Yes. Postgres handles millions of rows and vectors. Ingest directories recursive
 
 ## What editors are supported?
 
-Any MCP-compatible editor: OpenCode, Claude Code, Cursor, VS Code with Cline, and others.
+Any MCP-compatible client: Claude Code, Cursor, Codex, OpenCode, Hermes, Cline, and others. The `mcp-configs/` files cover Claude Code, Cursor, and Codex; OpenCode uses the root `opencode.json`. Generic MCP clients need no config file — they point at `corpus-kb --transport stdio`. See [harness-distribution.md](harness-distribution.md).
 
 ## How do I switch from HTTP mode to MCP stdio mode?
 
-Run `corpus-kb --transport stdio`. The server speaks MCP over stdin/stdout and registers the catalogue operations plus the research/coding/release surfaces as tools. The config files in `mcp-configs/` launch exactly this command. HTTP stays available side by side: `corpus-kb start --transport http --port 8010`.
+Run `corpus-kb --transport stdio`. The server speaks MCP over stdin/stdout and registers every catalogue operation as a tool. The config files in `mcp-configs/` launch exactly this command. HTTP stays available side by side: `corpus-kb start --transport http --port 8010`.
 
 ## Where is the configuration file?
 

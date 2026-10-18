@@ -35,7 +35,7 @@ from corpus_kb.research.scoring import SCORING_BATCH_ROWS, stream_scores
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
-def _thresholds_from_theory(theory: dict[str, Any]) -> dict[str, object]:
+def _thresholds_from_theory(theory: dict[str, Any]) -> dict[str, Any]:
     block = theory.get("thresholds") or {}
     cv_range = block.get("cv_range") or {}
     return {
@@ -116,7 +116,7 @@ def _coverage_of(
 async def _load_gold_by_code(
     tconn: asyncpg.Connection,
     tenant_id: UUID,
-    codes_all: list[dict[str, object]],
+    codes_all: list[dict[str, Any]],
 ) -> dict[str, list[tuple[list[float], list[float], list[float], str]]]:
     """Gold view vectors (answer, qa, question, basis) per code id."""
     gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]] = {}
@@ -127,7 +127,7 @@ async def _load_gold_by_code(
 
 
 def _score_codes(
-    codes: list[dict[str, object]],
+    codes: list[dict[str, Any]],
     units: list[Any],
     gold_by_code: dict[str, list[tuple[list[float], list[float], list[float], str]]],
     skipped: dict[str, str],
@@ -206,9 +206,9 @@ async def run_deductive(
     codebook_version_id: UUID,
     project_id: UUID | None = None,
     cal_alpha: float = CONFORMAL_ALPHA,
-    cfg: dict[str, object] | None = None,
+    cfg: dict[str, Any] | None = None,
     allow_draft: bool = False,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Launch one deductive run: score codable units, record assignments.
 
     Returns a summary with per-basis counts, coverage split, and any skipped
@@ -240,7 +240,7 @@ async def run_deductive(
 
     cache = load_cache_settings(config)
     handler = ResearchHandler(pool)
-    run_params: dict[str, object] = {
+    run_params: dict[str, Any] = {
         "cal_alpha": cal_alpha,
         "scoring_batch_rows": SCORING_BATCH_ROWS,
     }
@@ -294,7 +294,7 @@ async def run_deductive(
     return summary
 
 
-def _cache_block(cache: CacheSettings) -> dict[str, object]:
+def _cache_block(cache: CacheSettings) -> dict[str, Any]:
     """The U42 cache gate, evaluated and recorded per deductive run.
 
     The deductive v2 engine scores deterministically against prototypes and
@@ -313,7 +313,7 @@ def _cache_block(cache: CacheSettings) -> dict[str, object]:
 
 def _conformal_block(
     sets_by_unit: dict[int, set[int]], cal_alpha: float, empirical_coverage: float
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Set-size distribution + coverage (the report reads this block).
 
     ``per_unit`` persists set sizes > 1 only (the routing-relevant minority;

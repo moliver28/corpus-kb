@@ -70,7 +70,7 @@ rather than sync it.
 
 ### Catalog entries a consumer adds
 
-The nine corpus commands plus the corpus MCP server — all shipped. Names
+The ten corpus commands plus the corpus MCP server — all shipped. Names
 sourced from `surface_registry.py` (`WRAPPERS` / `SURFACES`):
 
 | Catalog entry | Kind | Source surface(s) | Status |

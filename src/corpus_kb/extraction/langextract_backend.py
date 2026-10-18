@@ -6,7 +6,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
@@ -158,7 +158,7 @@ class LangExtractExtractor:
                 )
                 continue
 
-            metadata: dict[str, object] = {"extractor": self.extractor_id, "text": text}
+            metadata: dict[str, Any] = {"extractor": self.extractor_id, "text": text}
             if extraction.confidence is not None:
                 metadata["confidence"] = extraction.confidence
             entities.append(
@@ -208,7 +208,7 @@ def _load_fixture(path: Path) -> list[NormalizedExtraction]:
             line = line.strip()
             if not line:
                 continue
-            raw = cast(dict[str, object], json.loads(line))
+            raw = cast(dict[str, Any], json.loads(line))
 
             cls = raw.get("extraction_class")
             extraction_text = raw.get("extraction_text")
@@ -219,7 +219,7 @@ def _load_fixture(path: Path) -> list[NormalizedExtraction]:
             start: int | None = None
             end: int | None = None
             if isinstance(interval_raw, dict):
-                interval = cast(dict[str, object], interval_raw)
+                interval = cast(dict[str, Any], interval_raw)
                 start_raw = interval.get("start_pos")
                 end_raw = interval.get("end_pos")
                 if isinstance(start_raw, int) and not isinstance(start_raw, bool):
@@ -312,7 +312,7 @@ def _parse_typed_relations(
                 target_entity_id=obj.entity_id,
                 relation_type=extraction.extraction_class,
                 chunk_id=chunk.chunk_id,
-                confidence=attrs.get("confidence"),
+                confidence=cast("float | None", attrs.get("confidence")),
                 extractor_id=extractor_id,
                 metadata={},
             )

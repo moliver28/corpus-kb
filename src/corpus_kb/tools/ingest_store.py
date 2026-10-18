@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from typing import Any, cast
 
 import asyncpg
 
@@ -225,7 +226,7 @@ class PostgresIngestStore:
         self,
         run_id: str,
         file_hash: str,
-        stages: dict[str, object],
+        stages: dict[str, Any],
         errors: list[str],
     ) -> None:
         """Close the ledger row LAST, after every store stage has settled.
@@ -379,7 +380,9 @@ class PostgresIngestStore:
                 "SELECT set_config('app.current_tenant_id', $1, true)",
                 self._tenant_id,
             )
-            await assert_vector_column_width(conn, dimensions, embedding_model)
+            await assert_vector_column_width(
+                cast("asyncpg.Connection", conn), dimensions, embedding_model
+            )
             try:
                 for chunk in chunks:
                     if chunk.embedding is None:
@@ -418,17 +421,23 @@ class PostgresIngestStore:
                 raise _width_config_error(exc, embedding_model) from exc
         return count
 
-    async def store_entities(self, entities: list[Entity]) -> int:
-        """Insert entities into the entities table. Returns inserted count.
+    async def store_entities(self, entities: list[Entity]) -> dict[str, str]:
+        """Insert entities into the entities table.
+
+        Returns ``{extraction_id: canonical_id}``: the (tenant_id, name,
+        entity_type) dedup keeps the FIRST stored row for a known entity,
+        so relations must point at the canonical id, never the extraction-
+        time one (an unknown extraction id violates the relations FK on the
+        next ingest of a document mentioning a known entity).
 
         The entities table has no confidence/extractor_id columns
         (migration 008 added them to relations only), so that provenance
         is merged into the persisted metadata JSONB here instead of being
         dropped at the write boundary.
         """
+        id_map: dict[str, str] = {}
         if not entities:
-            return 0
-        count = 0
+            return id_map
         async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
@@ -440,7 +449,8 @@ class PostgresIngestStore:
                     INSERT INTO entities (entity_id, tenant_id, name, entity_type,
                         source_document_id, metadata)
                     VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
+                    ON CONFLICT (tenant_id, name, entity_type) DO UPDATE
+                        SET entity_id = entities.entity_id
                     RETURNING entity_id
                     """,
                     entity.entity_id,
@@ -451,8 +461,8 @@ class PostgresIngestStore:
                     _entity_persisted_metadata(entity),
                 )
                 if row is not None:
-                    count += 1
-        return count
+                    id_map[entity.entity_id] = str(row["entity_id"])
+        return id_map
 
     async def store_relations(
         self,
@@ -514,7 +524,7 @@ def _entity_persisted_metadata(entity: Entity) -> str:
     be silently dropped at the write boundary even when the extractor
     measured them.
     """
-    persisted: dict[str, object] = dict(entity.metadata)
+    persisted: dict[str, Any] = dict(entity.metadata)
     if entity.extractor_id and "extractor" not in persisted:
         persisted["extractor"] = entity.extractor_id
     if entity.confidence is not None and "confidence" not in persisted:

@@ -22,6 +22,10 @@ _ONTOLOGY_PATH = Path("config/ontology.yaml")
 
 def _build_config() -> dict[str, object]:
     config = load_config()
+    # extraction.backend is the authoritative key (graph.extractor is the
+    # legacy alias and loses to the packaged pgml default).
+    extraction = cast(dict[str, object], config.setdefault("extraction", {}))
+    extraction["backend"] = "langextract"
     graph = cast(dict[str, object], config.setdefault("graph", {}))
     graph["extractor"] = "langextract"
     graph["fixture_dir"] = str(_FIXTURE_DIR.resolve())
@@ -91,7 +95,7 @@ async def test_reingest_unchanged_is_skipped(pg_pool) -> None:
     await _delete_document(pg_pool, source)
     config = {
         "graph": {"extract_entities": False},
-        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+        "embedding": {"model": "qwen3-embedding:4b", "dimensions": 2560},
     }
     text = "# Doc\nStable content.\n"
     first = await ingest_text(
@@ -110,7 +114,7 @@ async def test_edit_and_reingest_supersedes_changed_chunk(pg_pool) -> None:
 
     config = {
         "graph": {"extract_entities": False},
-        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+        "embedding": {"model": "qwen3-embedding:4b", "dimensions": 2560},
     }
     source = "test-edit-reingest"
     await _delete_document(pg_pool, source)

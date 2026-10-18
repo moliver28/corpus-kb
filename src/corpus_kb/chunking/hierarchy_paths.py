@@ -30,6 +30,7 @@ offsets over the concatenated turn text.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -160,7 +161,7 @@ class IndexedTurn:
 
 
 def segments_from_turns(
-    turns: list[TurnLike],
+    turns: Sequence[TurnLike],
     exchange_of: dict[int, int | str] | None = None,
 ) -> list[Segment]:
     """Research-path segments: speaker turns, optionally exchange-grouped.

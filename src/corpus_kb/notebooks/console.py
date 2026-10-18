@@ -18,6 +18,7 @@ import importlib
 import logging
 from pathlib import Path
 from types import ModuleType
+from typing import Protocol, cast
 
 from corpus_kb.errors import DependencyMissingError
 
@@ -27,6 +28,12 @@ NOTEBOOK_EXTRA_REMEDIATION = "pip install 'corpus-kb[notebook]'"
 
 # The mount point on the running HTTP app (one server, one port).
 NOTEBOOKS_MOUNT_PATH = "/notebooks"
+
+
+class MountableApp(Protocol):
+    """The one ASGI-app surface the console needs (FastAPI or a test double)."""
+
+    def mount(self, path: str, app: object) -> object: ...
 
 
 class MarimoDependencyError(DependencyMissingError):
@@ -78,7 +85,7 @@ def mount_notebooks(app: object, directory: str | Path) -> bool:
         return False
     try:
         asgi_app = _build_asgi_app(marimo, path)
-        app.mount(NOTEBOOKS_MOUNT_PATH, asgi_app)
+        cast("MountableApp", app).mount(NOTEBOOKS_MOUNT_PATH, asgi_app)
     except Exception as exc:
         logger.warning("Notebooks console failed to mount (%s); continuing without it.", exc)
         return False
@@ -98,4 +105,10 @@ def _build_asgi_app(marimo: ModuleType, directory: Path) -> object:
     is untyped by necessity; the calls mirror marimo's documented API.
     """
     builder = marimo.create_asgi_app()
-    return builder.with_dynamic_directory(str(directory)).build()
+    # marimo >= 0.25 takes a keyword-only mount path. Passing the outer mount
+    # path keeps the dynamic middleware's base_path in sync with the FastAPI
+    # app.mount(NOTEBOOKS_MOUNT_PATH, ...) below (same URL layout as the old
+    # positional-directory API; marimo handles both stripped and kept prefixes).
+    return builder.with_dynamic_directory(
+        path=NOTEBOOKS_MOUNT_PATH, directory=str(directory)
+    ).build()

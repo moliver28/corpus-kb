@@ -19,6 +19,7 @@ import logging
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from typing import Any, cast
 
 import asyncpg
 
@@ -136,7 +137,7 @@ def _ag_str(value: object) -> str | None:
     return None if parsed is None else str(parsed)
 
 
-def _ag_dict(value: object) -> dict[str, object]:
+def _ag_dict(value: object) -> dict[str, Any]:
     parsed = _ag(value)
     if isinstance(parsed, dict):
         return {str(k): v for k, v in parsed.items()}
@@ -191,7 +192,7 @@ class AgeGraphStore(GraphStore):
         """Return the transaction connection, or acquire + set up a pooled one."""
         if self._conn is not None:
             return self._conn
-        conn = await self._pool.acquire()
+        conn = cast("asyncpg.Connection", await self._pool.acquire())
         try:
             await self._setup_conn(conn)
         except BaseException:
@@ -330,7 +331,7 @@ class AgeGraphStore(GraphStore):
         """Search entity vertices by case-insensitive name contains + type."""
         conn = await self._get_conn()
         try:
-            params: dict[str, object] = {
+            params: dict[str, Any] = {
                 "name": name,
                 "tenant_id": self._tenant_id,
             }
@@ -361,7 +362,7 @@ class AgeGraphStore(GraphStore):
         finally:
             await self._release_conn(conn)
 
-    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
+    async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
         """BFS via a variable-length cypher MATCH; depth is int-validated."""
         try:
             depth = int(max_depth)
@@ -460,7 +461,7 @@ class AgeGraphStore(GraphStore):
     @asynccontextmanager
     async def transaction(self):
         """Acquire a connection, run AGE + tenant setup, wrap writes in a transaction."""
-        conn = await self._pool.acquire()
+        conn = cast("asyncpg.Connection", await self._pool.acquire())
         try:
             await self._setup_conn(conn)
         except BaseException:

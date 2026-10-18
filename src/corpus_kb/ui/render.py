@@ -6,6 +6,8 @@ NiceGUI import, no tool calls — functions in, markdown out.
 
 from __future__ import annotations
 
+from typing import Any
+
 __all__ = [
     "demo_kb_markdown",
     "library_markdown",
@@ -15,7 +17,7 @@ __all__ = [
 ]
 
 
-def demo_kb_markdown(view: dict[str, object]) -> str:
+def demo_kb_markdown(view: dict[str, Any]) -> str:
     """The sample-knowledge receipt as one honest markdown block."""
     if bool(view.get("ok")):
         names = _names(view.get("ingested"))
@@ -36,7 +38,7 @@ def _names(value: object) -> list[str]:
     return [str(name) for name in value]
 
 
-def receipt_line(name: str, receipt: dict[str, object]) -> str:
+def receipt_line(name: str, receipt: dict[str, Any]) -> str:
     """One Add receipt as one markdown line (honest on failure)."""
     if bool(receipt.get("ok")):
         return (
@@ -48,7 +50,7 @@ def receipt_line(name: str, receipt: dict[str, object]) -> str:
     return f"**{name}** failed: {message}" + (f" Fix: {remediation}" if remediation else "")
 
 
-def url_receipt_line(address: str, receipt: dict[str, object]) -> str:
+def url_receipt_line(address: str, receipt: dict[str, Any]) -> str:
     """One URL ingest receipt as one markdown line (honest on failure)."""
     if bool(receipt.get("ok")):
         failed = int(receipt.get("failed_pages", 0) or 0)
@@ -63,7 +65,7 @@ def url_receipt_line(address: str, receipt: dict[str, object]) -> str:
     return f"**{address}** failed: {message}"
 
 
-def sources_markdown(sources: list[dict[str, object]]) -> str:
+def sources_markdown(sources: list[dict[str, Any]]) -> str:
     """The Ask page's numbered source list."""
     if not sources:
         return ""
@@ -74,7 +76,7 @@ def sources_markdown(sources: list[dict[str, object]]) -> str:
     return "\n".join(lines)
 
 
-def library_markdown(documents: list[dict[str, object]], topics: list[dict[str, object]]) -> str:
+def library_markdown(documents: list[dict[str, Any]], topics: list[dict[str, Any]]) -> str:
     """The Library page as two small markdown tables (or the honest empty note)."""
     lines: list[str] = []
     if documents:

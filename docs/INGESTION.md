@@ -13,25 +13,24 @@ embedding service (Ollama) is unavailable, the pipeline stores zero-vector
 fallbacks and flags the affected chunks as **degraded**. It reports the
 failure in structured error output.
 
-The default backend is the **unified PostgreSQL 17 ecosystem** (pgvector +
-Apache AGE + PostgresML) with Ollama for optional local LLM inference.
-All heavy operations (embeddings, reranking, RRF fusion, and NER extraction)
-can run inside Postgres. Ollama provides a CPU-only fallback path.
+The storage backend is the **unified PostgreSQL 17 ecosystem** (pgvector +
+Apache AGE, with PostgresML optional). Embeddings come from the configured
+provider: **Ollama by default**, or **PostgresML** for in-database
+embeddings. The local LLM (question answering, judging, blurbs) runs on
+Ollama. All heavy operations can also run inside Postgres when the `pgml`
+extension is installed.
 
 ## Quick Start
 
 ```bash
-# 1. Start the full stack
-docker compose up -d
-
-# 2. Run the guided one-line setup (dry-run first, then apply)
+# 1. Start the stack and load the schema (dry-run first to preview)
 corpus-kb setup --dry-run
 corpus-kb setup
 
-# 3. Start the HTTP server (the editor-facing API today)
+# 2. Start the HTTP server
 corpus-kb start --transport http --port 8010
 
-# 4. Ingest from the command line
+# 3. Ingest from the command line
 corpus-kb ingest path/to/notes.md
 ```
 
@@ -113,10 +112,11 @@ its `source_start_char` and `source_end_char` offsets for provenance.
 
 ### Stage 3: Embed
 
-By default embeddings are generated inside Postgres via **PostgresML**
-(`pgml.embed()`), sending a batch of chunk texts as a single SQL call. When
-pgml is unavailable, the pipeline falls back to the configured
-`fallback_provider` (Ollama by default), and ultimately to zero vectors.
+By default embeddings come from the configured **Ollama** model
+(`embedding.provider: ollama`). Set `embedding.provider: pgml` to generate
+them inside Postgres with `pgml.embed()`. When the primary provider is
+unreachable, the pipeline falls back to the configured
+`fallback_provider`, and ultimately to zero vectors.
 Zero-vector rows are flagged `degraded = true` on `chunks` and
 `chunk_vectors` (migration `022_ingest_integrity.sql`) — they are never
 silently mixed into vector search:

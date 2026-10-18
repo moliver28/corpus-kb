@@ -18,6 +18,9 @@ from __future__ import annotations
 # dist-info metadata, so they resolve the real version below.
 _DEV_FALLBACK_VERSION = "0.0.0.dev0"
 
+# Bound lazily through module __getattr__ below (dist-info metadata lookup).
+__version__: str
+
 __all__ = ["__version__"]
 
 

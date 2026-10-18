@@ -31,7 +31,7 @@ def _detect_gpu_vram_gb() -> tuple[float, bool]:
         for i in range(device_count):
             handle = pynvml.nvmlDeviceGetHandleByIndex(i)
             mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            total_bytes += mem_info.total
+            total_bytes += int(mem_info.total)
         pynvml.nvmlShutdown()
         return total_bytes / (1024**3), True
     except Exception:

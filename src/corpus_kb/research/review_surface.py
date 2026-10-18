@@ -115,7 +115,7 @@ def validate_rubric_verdict(verdict: str) -> str:
     return verdict
 
 
-def aggregate_rubric(reviews: Iterable[Mapping[str, Any]]) -> dict[str, object]:
+def aggregate_rubric(reviews: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Fold recorded rubric verdicts into the run-report block (U48).
 
     Honest aggregation: ``n == 0`` reports ``agreement_rate: None`` (unknown,
@@ -208,7 +208,7 @@ async def _advance_assignments(
     full-suite cross-test failure). A later full ResearchProjection.catch_up
     remains the checkpoint authority and re-applies idempotently.
     """
-    from corpus_kb.domain.application import get_app
+    from corpus_kb.domain.application import events_table_name, get_app
     from corpus_kb.projections.checkpoint import CheckpointManager
     from corpus_kb.projections.event_reader import EventReader
     from corpus_kb.projections.research._common import DEFAULT_TENANT
@@ -216,7 +216,7 @@ async def _advance_assignments(
     from corpus_kb.projections.research_projection import RESEARCH_PROJECTION_NAME
 
     app = get_app(conn_str)
-    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+    reader = EventReader(pool, app.mapper, events_table_name(app))
     checkpoint = CheckpointManager(pool)
     cp = await checkpoint.get_checkpoint(RESEARCH_PROJECTION_NAME, DEFAULT_TENANT)
     last_sequence = int(cp["last_sequence"]) if cp and cp["last_sequence"] else 0

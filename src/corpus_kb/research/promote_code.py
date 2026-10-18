@@ -98,7 +98,7 @@ async def promote_proposal(
     exclusion: str = "",
     tau_dup: float | None = None,
     label: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Promote one proposed code into a new codebook version (human gate)."""
     from corpus_kb.handlers.research_handler import ResearchHandler
     from corpus_kb.research.inductive_store import load_unit_views_by_ids
@@ -199,7 +199,7 @@ async def _mint_version(
     exclusion: str,
     derived: DerivedPrototypes,
     label: str,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     from uuid import uuid4
 
     from corpus_kb.domain.codebook import CodebookVersion
@@ -236,7 +236,7 @@ async def _mint_version(
     return {"version_id": str(version.id), "code_id": code_id}
 
 
-def handler_create_sha(codes: list[dict[str, object]]) -> str:
+def handler_create_sha(codes: list[dict[str, Any]]) -> str:
     import hashlib
 
     return hashlib.sha256(repr(sorted(str(c) for c in codes)).encode()).hexdigest()

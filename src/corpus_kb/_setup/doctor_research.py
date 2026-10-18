@@ -565,7 +565,7 @@ REEMBED_FIX = "start Ollama, then run: corpus-kb ingest --reembed"
 
 async def _zero_vector_check(conn: asyncpg.Connection) -> ResearchCheck:
     """Count stored all-zero vectors (the degraded-mode failure marker)."""
-    zero_vectors = int(await conn.fetchval(_ZERO_VECTOR_SQL))
+    zero_vectors = int(await conn.fetchval(_ZERO_VECTOR_SQL) or 0)
     if zero_vectors:
         return ResearchCheck(
             name="zero-vector chunks",
@@ -585,7 +585,7 @@ async def _zero_vector_check(conn: asyncpg.Connection) -> ResearchCheck:
 
 async def _degraded_flag_check(conn: asyncpg.Connection) -> ResearchCheck:
     """Count rows flagged degraded by the ingest pipeline (migration 022)."""
-    present = int(await conn.fetchval(DEGRADED_COLUMN_SQL, ["chunks", "chunks_vectors"]))
+    present = int(await conn.fetchval(DEGRADED_COLUMN_SQL, ["chunks", "chunks_vectors"]) or 0)
     if present != 2:
         return ResearchCheck(
             name="degraded flags",
@@ -595,9 +595,11 @@ async def _degraded_flag_check(conn: asyncpg.Connection) -> ResearchCheck:
             doc=DOC_GETTING_STARTED,
         )
     vector_degraded = int(
-        await conn.fetchval("SELECT count(*) FROM chunks_vectors WHERE degraded = TRUE")
+        await conn.fetchval("SELECT count(*) FROM chunks_vectors WHERE degraded = TRUE") or 0
     )
-    chunk_degraded = int(await conn.fetchval("SELECT count(*) FROM chunks WHERE degraded = TRUE"))
+    chunk_degraded = int(
+        await conn.fetchval("SELECT count(*) FROM chunks WHERE degraded = TRUE") or 0
+    )
     if vector_degraded or chunk_degraded:
         return ResearchCheck(
             name="degraded flags",
@@ -630,7 +632,7 @@ async def _ingest_runs_check(conn: asyncpg.Connection) -> ResearchCheck:
             fix=SETUP_FIX,
             doc=DOC_GETTING_STARTED,
         )
-    incomplete = int(await conn.fetchval(INGEST_RUNS_INCOMPLETE_SQL))
+    incomplete = int(await conn.fetchval(INGEST_RUNS_INCOMPLETE_SQL) or 0)
     if incomplete:
         return ResearchCheck(
             name="ingest runs ledger",
@@ -651,16 +653,16 @@ async def _ingest_runs_check(conn: asyncpg.Connection) -> ResearchCheck:
 async def _events_head(conn: asyncpg.Connection) -> int | None:
     """MAX(notification_id) of the eventsourcing events table, or None."""
     try:
-        from corpus_kb.domain.application import get_app
+        from corpus_kb.domain.application import events_table_name, get_app
 
         app = get_app()
-        table = app.recorder.events_table_name
+        table = events_table_name(app)
     except Exception:
         return None
     rel = await conn.fetchval("SELECT to_regclass($1)", f"public.{table}")
     if rel is None:
         return None
-    return int(await conn.fetchval(f"SELECT COALESCE(MAX(notification_id), 0) FROM {table}"))
+    return int(await conn.fetchval(f"SELECT COALESCE(MAX(notification_id), 0) FROM {table}") or 0)
 
 
 async def research_checks(

@@ -24,8 +24,8 @@ def _build_degraded_config() -> dict[str, object]:
     graph["fixture_dir"] = str(_FIXTURE_DIR.resolve())
     graph["live_fallback"] = False
     embedding = cast(dict[str, object], config.setdefault("embedding", {}))
-    embedding["model"] = "qwen3-embedding:8b"
-    embedding["dimensions"] = 4096
+    embedding["model"] = "qwen3-embedding:4b"
+    embedding["dimensions"] = 2560
     embedding["base_url"] = "http://localhost:99999"
     embedding["batch_size"] = 32
     return config

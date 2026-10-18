@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
+
+import asyncpg
 
 from .gliner_backend import GlinerExtractor
 from .langextract_backend import LangExtractExtractor
@@ -15,7 +17,7 @@ from .regex_backend import RegexExtractor
 EXTRACTION_BACKENDS: frozenset[str] = frozenset({"regex", "langextract", "pgml", "gliner"})
 
 
-def extraction_backend_name(config: dict[str, object]) -> str:
+def extraction_backend_name(config: dict[str, Any]) -> str:
     """Resolve the extraction backend: ``extraction.backend`` wins.
 
     ``extraction.backend`` is the PREFERRED key (the old placement at
@@ -27,18 +29,18 @@ def extraction_backend_name(config: dict[str, object]) -> str:
     """
     extraction = config.get("extraction")
     if isinstance(extraction, dict):
-        raw = cast(dict[str, object], extraction).get("backend")
+        raw = cast(dict[str, Any], extraction).get("backend")
         if isinstance(raw, str) and raw:
             return raw
     graph = config.get("graph")
     if isinstance(graph, dict):
-        raw = cast(dict[str, object], graph).get("extractor")
+        raw = cast(dict[str, Any], graph).get("extractor")
         if isinstance(raw, str) and raw:
             return raw
     return "pgml"
 
 
-def create_extractor(config: dict[str, object], pool: object | None = None) -> Extractor:
+def create_extractor(config: dict[str, Any], pool: asyncpg.Pool | None = None) -> Extractor:
     """Create an extractor from the configuration dictionary.
 
     Args:
@@ -64,7 +66,7 @@ def create_extractor(config: dict[str, object], pool: object | None = None) -> E
     live_fallback = False
     graph_config = config.get("graph", {})
     if isinstance(graph_config, dict):
-        typed_config = cast(dict[str, object], graph_config)
+        typed_config = cast(dict[str, Any], graph_config)
         raw_fixture_dir = typed_config.get("fixture_dir")
         if isinstance(raw_fixture_dir, str):
             fixture_dir = raw_fixture_dir
@@ -87,7 +89,7 @@ def create_extractor(config: dict[str, object], pool: object | None = None) -> E
             raise ValueError(f"Unsupported graph extractor: {unreachable}")
 
 
-def _create_gliner(config: dict[str, object]) -> GlinerExtractor:
+def _create_gliner(config: dict[str, Any]) -> GlinerExtractor:
     """Build the gliner extractor from ``extraction.gliner`` config.
 
     Opt-in: refuses to construct while ``extraction.gliner.enabled`` is
@@ -95,11 +97,11 @@ def _create_gliner(config: dict[str, object]) -> GlinerExtractor:
     silently loads a multi-hundred-MB model.
     """
     extraction_config = config.get("extraction", {})
-    gliner_config: dict[str, object] = {}
+    gliner_config: dict[str, Any] = {}
     if isinstance(extraction_config, dict):
-        raw_gliner = cast(dict[str, object], extraction_config).get("gliner", {})
+        raw_gliner = cast(dict[str, Any], extraction_config).get("gliner", {})
         if isinstance(raw_gliner, dict):
-            gliner_config = cast(dict[str, object], raw_gliner)
+            gliner_config = cast(dict[str, Any], raw_gliner)
 
     if gliner_config.get("enabled") is not True:
         raise ValueError("gliner extractor is opt-in: set extraction.gliner.enabled: true")

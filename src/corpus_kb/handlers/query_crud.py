@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 import asyncpg
 
@@ -36,11 +37,12 @@ from corpus_kb.domain.models import (
     VerifyAnswerResult,
 )
 from corpus_kb.handlers.query_integrity import degraded_candidate_predicate
+from corpus_kb.rag.judge import OllamaJudge
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.utils.json_safe import json_safe
 
 
-async def sql_query(pool: asyncpg.Pool, query: SQLQuery) -> list[dict[str, object]]:
+async def sql_query(pool: asyncpg.Pool, query: SQLQuery) -> list[dict[str, Any]]:
     """Execute a read-only SQL query."""
     async with tenant_connection(pool, str(query.tenant_id)) as conn:
         rows = await conn.fetch(query.sql, *query.params.values())
@@ -246,12 +248,12 @@ async def verify_answer(
     cited_texts = [row["text"] for row in rows]
     if not cited_texts:
         return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
-    claims = judge.decompose(query.answer)
+    claims = cast("OllamaJudge", judge).decompose(query.answer)
     if not claims:
         return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
     verdicts: list[ClaimVerdict] = []
     for claim in claims:
-        label, confidence = judge.entail(claim, cited_texts)
+        label, confidence = cast("OllamaJudge", judge).entail(claim, cited_texts)
         verdicts.append(
             ClaimVerdict(
                 claim=claim,

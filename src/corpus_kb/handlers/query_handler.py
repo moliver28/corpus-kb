@@ -19,6 +19,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
+from typing import Any, cast
 
 import asyncpg
 
@@ -51,12 +53,14 @@ from corpus_kb.handlers.query_vector_arms import (
     ollama_vector_arm,
     pgml_vector_arm,
 )
-from corpus_kb.rag.embedder import OllamaEmbedder
+from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 from corpus_kb.rag.rerank_settings import load_rerank_settings
 from corpus_kb.rag.reranker import RERANK_MODE_GENERATIVE_BINARY, build_reranker, create_reranker
 from corpus_kb.research.retrieval_settings import load_retrieval_settings
 from corpus_kb.research.search_settings import (
     HnswSettings,
+    SqlExecutor,
+    VersionReader,
     apply_hnsw_settings,
     load_hnsw_settings,
     missing_rrf_fusion_error,
@@ -124,11 +128,11 @@ class QueryHandler:
     def __init__(
         self,
         pool: asyncpg.Pool,
-        embedder: OllamaEmbedder | None = None,
+        embedder: OllamaEmbedder | PgmlEmbedder | None = None,
         reranker: object | None = None,
         self_query_parser: object | None = None,
         judge: object | None = None,
-        config: dict[str, object] | None = None,
+        config: dict[str, Any] | None = None,
     ) -> None:
         self._pool = pool
         self._embedder = embedder
@@ -189,7 +193,8 @@ class QueryHandler:
             semantic_query, dynamic_predicates = self._resolve_predicates(query)
             over_retrieve_n = self._over_retrieve_n()
 
-            async with self._pool.acquire() as conn, conn.transaction():
+            async with self._pool.acquire() as acquired, acquired.transaction():
+                conn = cast("asyncpg.Connection", acquired)
                 await conn.execute(
                     "SELECT set_config('app.current_tenant_id', $1, true)",
                     str(query.tenant_id),
@@ -199,9 +204,9 @@ class QueryHandler:
                 # the installed pgvector version: emitting `SET LOCAL hnsw.*`
                 # below 0.8 aborts the query, so unknown/old versions keep the
                 # pre-iterative-scan behavior (fail closed).
-                extversion = await pgvector_version(conn)
+                extversion = await pgvector_version(cast("VersionReader", conn))
                 if supports_iterative_scan(extversion):
-                    await apply_hnsw_settings(conn, self._hnsw_settings)
+                    await apply_hnsw_settings(cast("SqlExecutor", conn), self._hnsw_settings)
 
                 degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
                 fused_results, excluded_count = await self._search_in_connection(
@@ -217,10 +222,11 @@ class QueryHandler:
             # 4. Reranking (post-RRF) + envelope finalization. The rerank stage
             #    runs outside the handler's connection so a max_size=1 pool
             #    cannot deadlock on the reranker's own acquire.
+            resolved_k = query.k if query.k is not None else self._rerank_settings.return_top_k
             final_results = await self._post_fuse(
                 fused_results,
                 semantic_query,
-                query.k,
+                resolved_k,
                 over_retrieve_n,
                 str(query.tenant_id),
                 reasons,
@@ -247,7 +253,14 @@ class QueryHandler:
             query.self_query if query.self_query is not None else self._self_query_enabled
         )
         if use_self_query and self._self_query_parser is not None:
-            parsed = self._self_query_parser.parse(query.query)
+            # Duck-typed test seam (stubs pass _StubParser); the cast keeps
+            # that contract without widening the stored attribute's type.
+            from corpus_kb.rag.self_query import ParsedQuery
+
+            parse_fn = cast(
+                "Callable[[str], ParsedQuery]", getattr(self._self_query_parser, "parse", None)
+            )
+            parsed = parse_fn(query.query)
             semantic_query = parsed.semantic_query
             dynamic_predicates = list(parsed.predicates)
         if query.source_type:
@@ -382,13 +395,13 @@ class QueryHandler:
         # Re-attach provenance (file_path/start_line/...) from the raw
         # vector/FTS rows — corpus.rrf_fusion returns only the five fused
         # columns, so provenance must be joined back by chunk_id.
-        provenance: dict[str, dict[str, object]] = {}
+        provenance: dict[str, dict[str, Any]] = {}
         for row in vector_results:
             provenance.setdefault(str(row["chunk_id"]), dict(row))
         for row in fts_results:
             provenance.setdefault(str(row["chunk_id"]), dict(row))
 
-        def _to_result(row: dict[str, object]) -> SearchResult:
+        def _to_result(row: dict[str, Any]) -> SearchResult:
             meta = provenance.get(str(row["chunk_id"]), {})
             heading = meta.get("heading_path")
             return SearchResult(
@@ -429,6 +442,8 @@ class QueryHandler:
         """
         embedding_cfg = self._config.get("embedding", {}) or {}
         provider = str(embedding_cfg.get("provider", "ollama"))
+        # The caller resolved the default k; narrow it for the typed arm calls.
+        resolved_k = query.k if query.k is not None else self._rerank_settings.return_top_k
         if provider == "pgml":
             model = str(embedding_cfg.get("model", "qwen3-embedding:4b"))
             vector_results, arm_reason = await pgml_vector_arm(
@@ -436,7 +451,7 @@ class QueryHandler:
                 model=model,
                 semantic_query=semantic_query,
                 tenant_id=str(query.tenant_id),
-                k=query.k,
+                k=resolved_k,
                 vector_candidates=self._retrieval_settings.vector_candidates,
                 dynamic_predicates=dynamic_predicates,
                 degraded_pred=degraded_pred,
@@ -445,10 +460,10 @@ class QueryHandler:
         elif provider == "ollama" and self._embedder:
             vector_results, arm_reason = await ollama_vector_arm(
                 conn,
-                embedder=self._embedder,
+                embedder=cast("OllamaEmbedder", self._embedder),
                 semantic_query=semantic_query,
                 tenant_id=str(query.tenant_id),
-                k=query.k,
+                k=resolved_k,
                 vector_candidates=self._retrieval_settings.vector_candidates,
                 dynamic_predicates=dynamic_predicates,
                 degraded_pred=degraded_pred,
@@ -548,8 +563,11 @@ class QueryHandler:
                 SPAN_RERANK,
                 **{ATTR_RERANK_MODEL: rerank_model, ATTR_CANDIDATES_IN: rerank_n},
             ) as current:
-                raw_scores = await asyncio.to_thread(
-                    self._reranker.score, semantic_query, cand_texts
+                score_fn = getattr(self._reranker, "score", None)
+                raw_scores = (
+                    await asyncio.to_thread(score_fn, semantic_query, cand_texts)
+                    if score_fn
+                    else None
                 )
                 if raw_scores is None:
                     return await self._maybe_expand_to_parent(fused_results, tenant_id)
@@ -589,7 +607,8 @@ class QueryHandler:
             with span(
                 SPAN_RERANK, **{ATTR_RERANK_MODEL: str(getattr(self._reranker, "model", "") or "")}
             ) as current:
-                rerank_results = await self._reranker.rerank(semantic_query, fused_results)
+                rerank_fn = getattr(self._reranker, "rerank", None)
+                rerank_results = await rerank_fn(semantic_query, fused_results) if rerank_fn else []
                 current.set_attribute(ATTR_CANDIDATES_OUT, len(rerank_results))
             return await self._maybe_expand_to_parent(rerank_results, tenant_id)
 
@@ -610,11 +629,15 @@ class QueryHandler:
         """
         if not self._retrieval_settings.expand_to_parent or not results:
             return results
-        from corpus_kb.rag.parent_expand import expand_to_parent
+        from corpus_kb.rag.parent_expand import ParentPool, expand_to_parent
 
         try:
             with span(SPAN_EXPAND_PARENT) as current:
-                expanded = await expand_to_parent(self._pool, tenant_id, results)
+                # asyncpg.Pool satisfies the minimal ParentPool surface at
+                # runtime; the proxy reader is not a static subtype.
+                expanded = await expand_to_parent(
+                    cast("ParentPool", self._pool), tenant_id, results
+                )
                 current.set_attribute(ATTR_ROW_COUNT, len(expanded))
                 return expanded
         except Exception as exc:
@@ -624,7 +647,7 @@ class QueryHandler:
     # -- Small CRUD-ish handlers (moved to handlers/query_crud.py; the
     #    delegating methods keep the public surface byte-identical). --
 
-    async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, object]]:
+    async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a read-only SQL query."""
         return await query_crud.sql_query(self._pool, query)
 

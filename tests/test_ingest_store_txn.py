@@ -159,9 +159,10 @@ async def test_store_entities_sets_tenant_guc_inside_transaction() -> None:
     store = PostgresIngestStore(_RecordingPool(conn), TENANT)
     entity = Entity(name="Alpha", entity_type="Concept", source_type="text")
 
-    count = await store.store_entities([entity])
+    id_map = await store.store_entities([entity])
 
-    assert count == 1
+    # The double echoes the RETURNING id back; the map keys extraction id.
+    assert id_map == {entity.entity_id: entity.entity_id}
     _assert_guc_first_inside_transaction(conn)
     assert any("INSERT INTO entities" in sql for sql in conn.sql[2:-1])
 
@@ -186,7 +187,7 @@ async def test_empty_inputs_return_before_touching_the_pool() -> None:
 
     assert await store.store_chunks([]) == set()
     assert await store.store_vectors([], "nomic-embed-text") == 0
-    assert await store.store_entities([]) == 0
+    assert await store.store_entities([]) == {}
     assert await store.store_relations([]) == 0
 
     assert conn.sql == []

@@ -8,9 +8,15 @@ Corpus-KB exposes MCP over stdio, HTTP REST, and JSON-RPC over a Unix socket or 
 
 | Protocol | Use case | Address |
 |----------|----------|---------|
-| HTTP | Scripts, browsers, integrations, editors (via an HTTP bridge) | `http://localhost:8010` |
+| HTTP | Scripts, the browser UI, integrations | `http://localhost:8010` |
+| OpenAI-compatible (v1) | OpenAI SDK clients and chat frontends | `http://localhost:8010/v1` |
 | JSON-RPC socket | Local inter-process calls | `/tmp/corpus-kb.sock` or `127.0.0.1:8011` on Windows |
-| MCP stdio | Editor agents | `corpus-kb --transport stdio` (the `mcp-configs/` files launch this command) |
+| MCP stdio | Editor agents | `corpus-kb --transport stdio` (every catalogue operation is a tool) |
+
+The `mcp-configs/` files (Claude Code, Cursor, Codex) and the root
+`opencode.json` (OpenCode) launch the stdio server. Generic MCP clients
+(Hermes, Cline, and others) need no config file; they point at the same
+command. See [harness-distribution.md](harness-distribution.md).
 
 There is no authentication today. Corpus-KB is intended to run locally.
 

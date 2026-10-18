@@ -226,7 +226,7 @@ async def _phase_compose(
     config: dict[str, Any],
     completed: list[str],
     *,
-    compose_cmd: list[str] | str | None,
+    compose_cmd: str | None,
     postgres_image: str,
     skip_image_verify: bool,
     build_local: bool,
