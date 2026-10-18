@@ -33,8 +33,9 @@ Keys (under ``retrieval``):
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,14 @@ DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD = 0.05
 DEFAULT_CANDIDATE_MULTIPLIER = 8
 DEFAULT_MATRYOSHKA_ENABLED = False
 DEFAULT_MATRYOSHKA_DIM = 1024
-DEFAULT_SELF_QUERY: dict[str, object] = {
+DEFAULT_SELF_QUERY: dict[str, Any] = {
     "enabled": True,
     "model": "qwen3:4b",
     "base_url": "http://localhost:11434",
     "timeout_seconds": 8,
 }
 
-RETRIEVAL_CONFIG_DEFAULTS: dict[str, object] = {
+RETRIEVAL_CONFIG_DEFAULTS: dict[str, Any] = {
     "mode": DEFAULT_MODE,
     "vector_candidates": DEFAULT_VECTOR_CANDIDATES,
     "lexical_candidates": DEFAULT_LEXICAL_CANDIDATES,
@@ -108,7 +109,7 @@ class RetrievalSettings:
     candidate_multiplier: int = DEFAULT_CANDIDATE_MULTIPLIER
     matryoshka_enabled: bool = DEFAULT_MATRYOSHKA_ENABLED
     matryoshka_dim: int = DEFAULT_MATRYOSHKA_DIM
-    self_query: dict[str, object] = field(default_factory=dict)
+    self_query: dict[str, Any] = field(default_factory=dict)
 
 
 def _positive_int(value: object, default: int, name: str) -> int:
@@ -140,7 +141,7 @@ def _fraction(value: object, default: float, name: str) -> float:
     return coerced
 
 
-def load_retrieval_settings(config: dict[str, object]) -> RetrievalSettings:
+def load_retrieval_settings(config: dict[str, Any]) -> RetrievalSettings:
     """Read the ``retrieval.*`` knobs, defaulting to the module constants.
 
     Invalid values raise ``ValueError`` — a misconfigured fusion constant or
@@ -148,8 +149,8 @@ def load_retrieval_settings(config: dict[str, object]) -> RetrievalSettings:
     retrieval behavior.
     """
     retrieval = config.get("retrieval", {})
-    block: dict[str, object] = retrieval if isinstance(retrieval, dict) else {}
-    block = cast(dict[str, object], block)
+    block: dict[str, Any] = retrieval if isinstance(retrieval, dict) else {}
+    block = cast(dict[str, Any], block)
 
     mode = str(block.get("mode", DEFAULT_MODE))
     error = mode_error(mode)
@@ -157,9 +158,9 @@ def load_retrieval_settings(config: dict[str, object]) -> RetrievalSettings:
         raise ValueError(error)
 
     self_query_raw = block.get("self_query")
-    self_query: dict[str, object] = dict(DEFAULT_SELF_QUERY)
+    self_query: dict[str, Any] = dict(DEFAULT_SELF_QUERY)
     if isinstance(self_query_raw, dict):
-        self_query.update(cast(dict[str, object], self_query_raw))
+        self_query.update(cast(dict[str, Any], self_query_raw))
 
     return RetrievalSettings(
         mode=mode,
@@ -229,7 +230,7 @@ async def estimate_selectivity(
         return None
     if row is None:
         return None
-    record = cast("dict[str, object]", dict(row)) if not isinstance(row, dict) else row
+    record = cast("Mapping[str, Any]", row)
     try:
         return selectivity_ratio(int(record["matched"]), int(record["total"]))
     except (KeyError, TypeError, ValueError) as exc:

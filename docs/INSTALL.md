@@ -221,7 +221,6 @@ embedding:
   dimensions: 2560
   base_url: http://localhost:11434
   batch_size: 32
-  dimensions: 4096
 
 search:
   rrf_k: 60
@@ -262,10 +261,10 @@ corpus-kb start --transport http --port 8010
 ```
 
 MCP stdio mode for editor agents: `corpus-kb --transport stdio`.
-The server registers the catalogue operations plus the research/coding/
-release surfaces as MCP tools and serves them over stdin/stdout. The
-config files in `mcp-configs/` launch exactly this command. HTTP stays
-available side by side (see [API.md](API.md)).
+The server registers every catalogue operation as an MCP tool and serves
+them over stdin/stdout. The config files in `mcp-configs/` and the root
+`opencode.json` launch exactly this command. HTTP stays available side
+by side (see [API.md](API.md)).
 
 With the `[ui]` extra installed, the same command serves the browser
 pages at `http://localhost:8010` (see [UI.md](UI.md)). With `[notebook]`,

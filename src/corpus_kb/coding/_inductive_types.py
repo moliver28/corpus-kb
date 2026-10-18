@@ -55,6 +55,8 @@ class UmapModelLike(Protocol):
 
     def transform(self, X: np.ndarray) -> np.ndarray: ...  # noqa: N803
 
+    def fit_transform(self, X: np.ndarray) -> np.ndarray: ...  # noqa: N803
+
 
 class UmapModuleLike(Protocol):
     """``umap`` module surface used by the inductive engine."""
@@ -97,6 +99,8 @@ class HdbscanModuleLike(Protocol):
         min_samples: int | None = ...,
         metric: str = ...,
         cluster_selection_method: str = ...,
+        algorithm: str = ...,
+        gen_min_span_tree: bool = ...,
     ) -> HdbscanModelLike: ...
 
 

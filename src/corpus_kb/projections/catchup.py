@@ -19,6 +19,7 @@ import asyncpg
 async def advance_all_projections(pool: asyncpg.Pool, tenant_id: UUID) -> None:
     """Advance research + documents + embeds projections to the event head."""
     from corpus_kb.config import load_config
+    from corpus_kb.domain.application import events_table_name
     from corpus_kb.handlers.research_handler import get_research_handler
     from corpus_kb.projections.checkpoint import CheckpointManager
     from corpus_kb.projections.dlq import DLQHandler
@@ -31,7 +32,7 @@ async def advance_all_projections(pool: asyncpg.Pool, tenant_id: UUID) -> None:
 
     cfg = load_config()
     app = get_research_handler(pool).app
-    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+    reader = EventReader(pool, app.mapper, events_table_name(app))
     checkpoint = CheckpointManager(pool)
     dlq = DLQHandler(pool)
     embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))

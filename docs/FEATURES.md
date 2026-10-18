@@ -68,6 +68,24 @@ Degraded (zero-vector) chunks are excluded from the vector arm while `retrieval.
 
 You can filter by source type (`code`, `markdown`, `text`) and request surrounding context chunks.
 
+### Search quality controls
+
+Four stages tune recall and precision. Each stage fails open: retrieval keeps working without it.
+
+- **Parent expansion** (`retrieval.expand_to_parent`, default on): after fusion, each hit can pull in its parent chunk for context.
+- **Self-query filters** (`retrieval.self_query.*`): a local LLM parses filters out of the question. Every predicate is validated against a fixed whitelist and bound as a parameter. No LLM text reaches the SQL.
+- **RRF fusion** (`corpus.rrf_fusion`): deterministic rank merging; tied scores keep a stable order.
+- **Reranking** (`reranking.*`, on by default): a local judgment scorer reorders the fused results. Set `reranking.backend: llamacpp` for true cross-encoder scores from a llama.cpp reranker server. A reranker failure falls back to the fused order.
+
+### Answer routing and verification
+
+- **Adaptive routing** (`routing.*`): each question is matched to an intent prototype. Semantic questions run hybrid search, relational questions run SQL aggregates, and graph questions run entity traversal. Low confidence falls back to hybrid search.
+- **Answer verification** (`judge.*`): each answer is split into claims and scored against the cited chunks. The result is a groundedness score with `entailed` / `contradicted` / `unsupported` verdicts. The verifier abstains rather than guessing.
+
+### Contextual retrieval
+
+`ingest.contextualize.*` generates a short blurb per chunk that states where the chunk sits in its document. The blurb joins the embedding input and the full-text index. Missing LLM fixtures degrade to an empty blurb, so CI stays deterministic.
+
 ---
 
 ## Knowledge graph
@@ -107,7 +125,7 @@ Both are tenant-isolated through RLS and queryable through SQL.
 
 ---
 
-## Versioning and time travel
+## Versioning and replay
 
 Corpus-KB uses event sourcing. Every ingest, update, and delete appends an immutable event to the event store. Projections read those events and build the Postgres tables.
 
@@ -184,7 +202,7 @@ The backend is defined in `src/corpus_kb/storage/llamaindex_backend.py` and impl
 
 ## Sample knowledge and notebooks
 
-Two on-ramps make the first ten minutes easy.
+Two built-in helpers shorten the first ten minutes.
 
 **Sample knowledge**: `docs/demo-kb/` holds five short markdown files (a
 welcome, an FAQ, architecture notes, a meeting record, and a glossary).
@@ -205,6 +223,22 @@ folder logs one line, and the server runs on. See
 ## Multi-tenancy ready
 
 Every table has row-level security policies keyed to `app.current_tenant_id`. The default tenant is `00000000-0000-0000-0000-000000000001`. In the future, adding real multi-tenancy is a matter of issuing tenant-scoped tokens and setting the tenant context per request.
+
+---
+
+## Research and coding subsystem
+
+Corpus-KB runs qualitative coding studies end to end. The subsystem covers transcript ingestion, codebook governance, coding runs, human review, reporting, and a gated release lifecycle.
+
+- **Transcripts**: `research ingest-transcript` parses speaker turns into questions and answers. `research ingest` takes files, directories, or globs with hash dedup and a `--watch` drop folder.
+- **Codebooks**: `coding inductive` proposes codes from clusters. `codebook promote` mints a new version, and promotion is always a human decision.
+- **Coding runs**: `coding run` scores units against a codebook version with calibrated thresholds. Gray or ambiguous assignments route to review.
+- **Review**: `review accept` and `review override` record one human decision per assignment.
+- **Reporting**: `research report` emits the governance report: exhaustiveness, cluster stability, overlap, inter-rater reliability, and the G3 audit.
+- **The cycle**: `research cycle` chains the pipeline with halt gates at every human-critical step. `research demo` narrates the same pipeline on a bundled demo corpus.
+- **Releases**: `release assess/request/review/release/status/compare` walk a codebook version from draft to a released codebook with gate evidence and named approvers.
+
+Start with the [getting-started walkthrough](getting-started.md); the full command reference is [research.md](research.md).
 
 ---
 
@@ -260,6 +294,8 @@ Honest caveats:
 | Release | `release_compare` | Diff the manifests of two releases |
 | Cycle | `research_cycle` | Full pipeline with halt gates; long-running, synchronous |
 | Cycle | `research_demo` | Narrated demo pipeline; long-running, synchronous |
+| Topics | `topics_build` | Cluster stored chunk embeddings into topics (offline BERTopic) |
+| Topics | `topics_list` | List built topics with sizes, labels, and keywords |
 
 The HTTP equivalents are listed in [API.md](API.md); the CLI command
 paths live in the surface registry (`src/corpus_kb/surface_registry.py`),

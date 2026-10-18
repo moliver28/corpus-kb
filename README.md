@@ -1,8 +1,8 @@
 # Corpus-KB
 
-**Local RAG system for AI code editors. Ingest your codebase. Ask questions. Get answers. No cloud.**
+**A local NLP engine for files, transcripts, and code. Ingest, search, ask, extract, and code. No cloud.**
 
-Corpus-KB is a private knowledge base for AI coding assistants. It reads your code, documentation, and notes, then answers questions grounded in your actual files. Everything runs on your machine. Postgres stores the data, and Ollama generates embeddings. A local server exposes the whole thing over MCP stdio, HTTP endpoints, and a JSON-RPC socket. See [Editor integration](#editor-integration).
+Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coders get a CLI with a guided quickstart. Expert researchers get a qualitative-coding pipeline, an OpenAI-compatible API, and MCP tools for coding agents. Everything runs on your machine. Postgres stores the data. Ollama or PostgresML generates embeddings. One server exposes the catalogue over MCP stdio, HTTP REST, and a JSON-RPC socket. An OpenAI-compatible adapter serves `/v1` chat and embeddings. See [Editor integration](#editor-integration).
 
 ---
 
@@ -59,14 +59,22 @@ a first search. The step-by-step quickstart is in
 ## What you get
 
 - **Hybrid search** that blends vector similarity, full-text search, and rank fusion, with honest handling of degraded (zero-vector) chunks
+- **Reranking** — a local judgment scorer by default, or a true cross-encoder through llama.cpp
+- **Answer generation** with per-sentence citations, plus claim-level verification with honest abstention
+- **Query routing** — each question goes to vector search, SQL aggregates, or graph traversal
+- **Self-query filters** — natural-language filters parsed into parameterized SQL predicates
 - **Knowledge graph** with entities, relations, and BFS traversal
 - **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER2)
-- **Pluggable ingestion strategies** — map source types in config, register in-process, or ship an entry-point plugin ([docs/INGESTION-STRATEGIES.md](docs/INGESTION-STRATEGIES.md))
+- **Pluggable ingestion strategies** — default, transcript, PPTX slide structure, and web page structure, extensible three ways ([docs/INGESTION-STRATEGIES.md](docs/INGESTION-STRATEGIES.md))
+- **Website ingestion** — a robots-respecting fetcher with same-domain crawl and heading-section chunks
+- **Late chunking** — one model pass per document; chunk vectors pool from their own token spans
+- **Qualitative coding** — transcript ingestion, codebooks, deductive and inductive runs, human review, governance reports, and a gated release lifecycle
+- **Topics** — offline BERTopic clustering over stored embeddings ([docs/TOPICS.md](docs/TOPICS.md))
 - **LlamaIndex RAG backend** with PGVectorStore and Ollama for local vector search
-- **Event sourcing** for audit trails and time-travel queries
+- **Event sourcing** for audit trails and rebuildable projections
 - **Multi-tenant Postgres** with row-level security on every table
 - **Full-stack installer** with hardware detection, profile-based recommendations, and guided setup
-- **MCP, HTTP, and socket APIs** so any editor or script can talk to it
+- **MCP, HTTP, socket, and CLI surfaces** so any editor or script can talk to it
 - **Browser UI** with drag-and-drop ingest, cited answers, and plain-language health checks ([docs/UI.md](docs/UI.md))
 - **Notebooks console** — marimo notebooks served by the running server ([docs/NOTEBOOKS.md](docs/NOTEBOOKS.md))
 
@@ -135,7 +143,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Getting started](docs/getting-started.md) | Both paths: the browser for novices, the terminal quickstart for everyone else |
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
 | [Browser UI](docs/UI.md) | The four pages: Add, Ask, Library, Overview |
-| [Features](docs/FEATURES.md) | Ingest, search, graph, tags, metadata, versioning, embedding models, LlamaIndex RAG |
+| [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
 | [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
 | [API](docs/API.md) | HTTP routes, the `/v1` OpenAI adapter, curl examples, MCP tool reference |
@@ -165,8 +173,8 @@ transcripts".
 
 Editors connect over **MCP stdio** (native, no bridge), the **HTTP API**, or the JSON-RPC socket:
 
-- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files for Claude Code, Cursor, Codex, and OpenCode launch exactly this command. The server registers every catalogue operation as an MCP tool; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference.
-- HTTP: `corpus-kb start --transport http --port 8010` — every ingest/search/graph/research surface has a route (see [docs/API.md](docs/API.md)).
+- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files (Claude Code, Cursor, Codex) and the root `opencode.json` (OpenCode) launch exactly this command. Generic MCP clients such as Hermes or Cline need no config file: they point at the same stdio server. See [docs/harness-distribution.md](docs/harness-distribution.md). The server registers every catalogue operation as an MCP tool; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference.
+- HTTP: `corpus-kb start --transport http --port 8010` — every catalogue operation has a route, plus the `/v1` OpenAI adapter (see [docs/API.md](docs/API.md)).
 - JSON-RPC socket: same command, for local automation.
 - The research and coding surfaces are first-class CLI commands (`corpus-kb research ...` and `corpus-kb coding ...`). Ingestion has a top-level front door: `corpus-kb ingest` with `--watch` auto-heal, plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`.
 

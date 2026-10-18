@@ -103,7 +103,10 @@ class LlamaIndexPostgresBackend:
             vector_store=self._vector_store,
             embed_model=self._ollama_embedding,
         )
-        await index_obj.async_insert_nodes(nodes)
+        insert_nodes = getattr(index_obj, "async_insert_nodes", None)
+        if insert_nodes is None:
+            return
+        await insert_nodes(nodes)
         logger.info("Indexed %d LlamaIndex nodes for source %s", len(nodes), source_id)
 
     async def retrieve(
@@ -130,8 +133,8 @@ class LlamaIndexPostgresBackend:
                 {
                     "node_id": node.id_,
                     "source_id": node.metadata.get("source_id", ""),
-                    "text": node.text,
-                    "score": float(node_with_score.score),
+                    "text": str(getattr(node, "text", "")),
+                    "score": float(node_with_score.score or 0.0),
                     "metadata": dict(node.metadata),
                 }
             )

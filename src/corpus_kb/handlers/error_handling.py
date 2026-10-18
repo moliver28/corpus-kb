@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ _NO_RETRY = (ValueError, KeyError, FileNotFoundError, TypeError)
 def handle_errors(
     timeout_seconds: float = 30.0,
     max_retries: int = 3,
-) -> Callable[[Callable[..., T]], Callable[..., T]]:
+) -> Callable[[Callable[..., Awaitable[T]]], Callable[..., T | dict[str, str]]]:
     """Decorator: wrap handler method with error handling, timeout, retry.
 
     Args:
@@ -35,9 +35,9 @@ def handle_errors(
         Decorated function that returns error dict on failure.
     """
 
-    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+    def decorator(func: Callable[..., Awaitable[T]]) -> Callable[..., T | dict[str, str]]:
         @wraps(func)
-        async def wrapper(*args: Any, **kwargs: Any) -> Any:
+        async def wrapper(*args: Any, **kwargs: Any) -> T | dict[str, str]:
             last_error: Exception | None = None
             for attempt in range(max_retries):
                 try:
@@ -87,7 +87,9 @@ def handle_errors(
             )
             return _error_dict(last_error or RuntimeError("Unknown error"))
 
-        return wrapper  # type: ignore[return-value]
+        # functools.wraps types the wrapper as the wrapped callable; widen it
+        # to the decorator's honest contract (result or error dict).
+        return cast("Callable[..., T | dict[str, str]]", wrapper)
 
     return decorator
 

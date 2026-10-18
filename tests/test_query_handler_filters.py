@@ -33,7 +33,7 @@ async def test_self_query_predicate_narrows_results(pg_pool) -> None:
     """
     config = {
         "graph": {"extract_entities": False},
-        "embedding": {"model": "qwen3-embedding:8b", "dimensions": 4096},
+        "embedding": {"model": "qwen3-embedding:4b", "dimensions": 2560},
     }
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         await conn.execute(

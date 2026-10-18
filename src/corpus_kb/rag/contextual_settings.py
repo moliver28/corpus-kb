@@ -34,7 +34,7 @@ W3 keys and their contracts:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import cast
+from typing import Any, cast
 
 DEFAULT_CONTEXTUAL_ENABLED = False
 DEFAULT_ENABLED_SOURCE_TYPES: list[str] = ["interview", "research"]
@@ -53,7 +53,7 @@ SUPPORTED_CONTEXTUAL_BACKENDS = frozenset({"ollama"})
 SUPPORTED_PROMPT_PROFILES = frozenset({"interview", "generic"})
 SUPPORTED_APPLY_TO_TARGETS = frozenset({"embedding", "lexical"})
 
-CONTEXTUAL_CONFIG_DEFAULTS: dict[str, object] = {
+CONTEXTUAL_CONFIG_DEFAULTS: dict[str, Any] = {
     "enabled": DEFAULT_CONTEXTUAL_ENABLED,
     "enabled_source_types": list(DEFAULT_ENABLED_SOURCE_TYPES),
     "model": DEFAULT_CONTEXTUAL_MODEL,
@@ -110,7 +110,7 @@ def _apply_to_error(value: object) -> str | None:
     return None
 
 
-def contextualize_settings_error(config: dict[str, object]) -> str | None:
+def contextualize_settings_error(config: dict[str, Any]) -> str | None:
     """Remediation text for invalid contextualize values, or None when valid.
 
     Only VALUES are rejected — a partial block (missing keys) is fine and
@@ -144,7 +144,7 @@ def contextualize_settings_error(config: dict[str, object]) -> str | None:
     return None
 
 
-def load_contextual_settings(config: dict[str, object]) -> ContextualSettings:
+def load_contextual_settings(config: dict[str, Any]) -> ContextualSettings:
     """Read ``ingest.contextualize.*`` with defaults; invalid values raise.
 
     Raises ``ValueError`` with the same remediation text load_config uses,
@@ -175,7 +175,7 @@ def load_contextual_settings(config: dict[str, object]) -> ContextualSettings:
     )
 
 
-def _contextualize_block(config: dict[str, object]) -> dict[str, object]:
+def _contextualize_block(config: dict[str, Any]) -> dict[str, Any]:
     """The ``ingest.contextualize`` mapping, or an empty one."""
     ingest = config.get("ingest")
     if not isinstance(ingest, dict):
@@ -183,4 +183,4 @@ def _contextualize_block(config: dict[str, object]) -> dict[str, object]:
     block = ingest.get("contextualize")
     if not isinstance(block, dict):
         return {}
-    return cast(dict[str, object], block)
+    return cast(dict[str, Any], block)

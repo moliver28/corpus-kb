@@ -13,7 +13,7 @@ and cli.py re-exports the two printers for the strategy tests.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import typer
 
@@ -138,7 +138,7 @@ def _validate_strategy_override(source_type: str | None) -> None:
         )
 
 
-def _print_detection_summary(path: Path, cfg: dict[str, object]) -> None:
+def _print_detection_summary(path: Path, cfg: dict[str, Any]) -> None:
     """Print the genuine content-detection summary line, e.g.
     detected: transcript (0.80, moderator-pattern) -> strategy transcript (via detection).
 

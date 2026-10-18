@@ -18,8 +18,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
+
+if TYPE_CHECKING:
+    from corpus_kb.domain.codebook import CodebookVersion
 
 from corpus_kb.research import guide_copy
 
@@ -75,6 +78,7 @@ def load_demo_codebook(root: Path | None = None) -> dict[str, Any]:
 
 def _wiring(pool: Any, cfg: dict[str, Any], conn_str: str) -> tuple[Any, ...]:
     """The shared production stack every research CLI command builds."""
+    from corpus_kb.domain.application import events_table_name
     from corpus_kb.handlers.research_handler import ResearchHandler
     from corpus_kb.projections.checkpoint import CheckpointManager
     from corpus_kb.projections.dlq import DLQHandler
@@ -86,7 +90,7 @@ def _wiring(pool: Any, cfg: dict[str, Any], conn_str: str) -> tuple[Any, ...]:
     from corpus_kb.rag import create_embedder
 
     app = _get_app(conn_str)
-    reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
+    reader = EventReader(pool, app.mapper, events_table_name(app))
     # A per-run handler (not the process-wide singleton): run_demo owns this
     # pool's lifecycle, and a singleton created by an earlier command in the
     # same process would hold an already-closed pool.
@@ -195,7 +199,7 @@ async def _seed_codebook(
         notes=str(codebook.get("notes", "")),
     )
     version_id = UUID(str(result["version_id"]))
-    version = handler.app.repository.get(version_id)
+    version = cast("CodebookVersion", handler.app.repository.get(version_id))
     for code, code_def in zip(codes, codebook["codes"], strict=True):
         refs = shas_by_code.get(str(code_def["name"]), [])
         if refs:
@@ -384,7 +388,7 @@ async def run_demo(cfg: dict[str, Any] | None = None) -> int:
         from corpus_kb.research.report_runner import build_report
 
         report = await build_report(pool, tenant_id, version_id, level=guide_copy.LEVEL_NOVICE)
-        view = to_dict(report).get("novice_view") or novice_view(report)
+        view = cast("dict[str, Any]", to_dict(report).get("novice_view") or novice_view(report))
         _print_report_summary(view)
 
         _narrate(stage_ask)

@@ -13,6 +13,7 @@ it sees, and this tool is handed a pool explicitly).
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -26,12 +27,12 @@ __all__ = ["search"]
 async def search(
     pg_pool: asyncpg.Pool,
     query: str,
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     k: int | None = None,
     source_type: str | None = None,
     self_query: bool | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Hybrid vector + full-text search with the honest degraded envelope.
 
     Delegates to ``QueryHandler.handle_search_with_meta`` — the same call

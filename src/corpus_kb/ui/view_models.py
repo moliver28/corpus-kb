@@ -12,6 +12,8 @@ string shaping lives in ``ui/render.py``.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import asyncpg
 
 from corpus_kb.tools.ask_tools import ask
@@ -45,14 +47,14 @@ _POOL_MISSING_MESSAGE = (
 )
 
 
-def verify_badge(verify: dict[str, object] | None) -> dict[str, object]:
+def verify_badge(verify: dict[str, Any] | None) -> dict[str, Any]:
     """Map the ask result's verify record to one honest badge.
 
     Abstained (no judge ran, or nothing to check) is "not verified" —
     never presented as a pass. A full entailment set is "verified";
     anything else is "partial".
     """
-    record: dict[str, object] = verify or {}
+    record: dict[str, Any] = verify or {}
     raw = record.get("groundedness", 0.0)
     groundedness = float(raw) if isinstance(raw, (int, float)) else 0.0
     # No verify record at all is the same honesty as an abstention: the
@@ -65,11 +67,11 @@ def verify_badge(verify: dict[str, object] | None) -> dict[str, object]:
 
 async def ask_view(
     query: str,
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     k: int | None = None,
     pg_pool: asyncpg.Pool | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """One cited answer, shaped for the Ask page.
 
     Returns ``{status, sentences, sources, verify_badge, note,
@@ -94,10 +96,10 @@ async def ask_view(
 
 
 async def library_rows(
-    config: dict[str, object] | None,
+    config: dict[str, Any] | None,
     pool: asyncpg.Pool,
     limit: int = 100,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """The Library page's rows: documents and discovered topics.
 
     Both reads route through the same tool functions the MCP/HTTP
@@ -127,11 +129,11 @@ async def library_rows(
 
 async def add_via_path(
     path: str,
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     source_type: str | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Ingest one file through the standard tool; shape the receipt."""
     result = await ingest_file(str(path), _pool_or_raise(pool), config, tenant_id, source_type)
     return _receipt(result)
@@ -139,10 +141,10 @@ async def add_via_path(
 
 async def add_via_url(
     url: str,
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Ingest one website through the standard tool; shape the receipt."""
     result = await ingest_url(str(url), _pool_or_raise(pool), config, tenant_id)
     ok = str(result.get("status", "error")) == "success"
@@ -152,13 +154,13 @@ async def add_via_url(
         "ok": ok,
         "status": str(result.get("status", "error")),
         "pages": len(pages),
-        "documents": int(result.get("total_documents", 0) or 0),
+        "documents": int(cast("int", result.get("total_documents", 0))),
         "failed_pages": failed,
         "message": "" if ok else str(result.get("message", "")),
     }
 
 
-async def demo_receipt(config: dict[str, object] | None = None) -> dict[str, object]:
+async def demo_receipt(config: dict[str, Any] | None = None) -> dict[str, Any]:
     """The narrated demo, honestly: narration, status, never a crash.
 
     A missing demo corpus (non-editable installs) surfaces as the tool's
@@ -187,7 +189,7 @@ async def demo_receipt(config: dict[str, object] | None = None) -> dict[str, obj
 # ---------------------------------------------------------------------------
 
 
-def _dict_list(value: object) -> list[dict[str, object]]:
+def _dict_list(value: object) -> list[dict[str, Any]]:
     """A JSON list of objects, or an empty list."""
     if not isinstance(value, list):
         return []
@@ -201,7 +203,7 @@ def _pool_or_raise(pool: asyncpg.Pool | None) -> asyncpg.Pool:
     return pool
 
 
-def _receipt(result: dict[str, object]) -> dict[str, object]:
+def _receipt(result: dict[str, Any]) -> dict[str, Any]:
     """One ingest receipt: ok flag, counts, and the error text + fix."""
     status = str(result.get("status", "error"))
     ok = status == "success"

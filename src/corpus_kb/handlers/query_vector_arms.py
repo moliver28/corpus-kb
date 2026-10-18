@@ -23,6 +23,7 @@ QueryHandler and no longer inflates the arm LIMITs.
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 import asyncpg
 
@@ -34,6 +35,7 @@ from corpus_kb.handlers.query_integrity import (
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.rag.self_query import Predicate
 from corpus_kb.research.retrieval_settings import (
+    SelectivityReader,
     estimate_selectivity,
     should_use_exact_scan,
 )
@@ -84,7 +86,7 @@ async def _use_exact_scan(
     if dynamic_predicates:
         probe_frag, probe_params = build_filter_sql(dynamic_predicates, start_index=2)
         selectivity = await estimate_selectivity(
-            conn,
+            cast("SelectivityReader", conn),
             _COUNT_SQL_TEMPLATE.format(
                 frag=probe_frag, dedup=DEDUP_PREDICATE + " " + degraded_pred
             ),

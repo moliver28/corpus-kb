@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 from collections.abc import Mapping
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import yaml
 
@@ -35,7 +35,9 @@ def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
             base[key] = value
 
 
-def load_config(path: str | None = None) -> dict[str, object]:
+# The config tree is schemaless YAML; Any is the honest leaf type. It lets
+# callers index nested sections without casting every hop.
+def load_config(path: str | None = None) -> dict[str, Any]:
     """Load config from a YAML file, merged with defaults and env var overrides.
 
     Args:

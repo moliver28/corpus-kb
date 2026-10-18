@@ -17,7 +17,7 @@ become a hard dependency of search, rag/reranker.py degrade contract).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 
 DEFAULT_RERANK_ENABLED = True
 DEFAULT_RERANK_BACKEND: str | None = None
@@ -39,7 +39,7 @@ RETURN_TOP_K_MIN = 1
 RETURN_TOP_K_MAX = 1000
 
 
-RERANK_CONFIG_DEFAULTS: dict[str, object] = {
+RERANK_CONFIG_DEFAULTS: dict[str, Any] = {
     "enabled": DEFAULT_RERANK_ENABLED,
     "backend": DEFAULT_RERANK_BACKEND,
     "model": DEFAULT_RERANK_MODEL,
@@ -97,7 +97,7 @@ def _return_top_k_error(value: object) -> str | None:
     return None
 
 
-def load_rerank_settings(config: dict[str, object]) -> RerankSettings:
+def load_rerank_settings(config: dict[str, Any]) -> RerankSettings:
     """Read ``reranking.*`` from a loaded config, defaulting safely.
 
     Invalid values raise ``ValueError`` — a misconfigured calibration mode
@@ -106,7 +106,7 @@ def load_rerank_settings(config: dict[str, object]) -> RerankSettings:
     reranking = config.get("reranking", {})
     if not isinstance(reranking, dict):
         return RerankSettings()
-    block = cast(dict[str, object], reranking)
+    block = cast(dict[str, Any], reranking)
 
     enabled = block.get("enabled", DEFAULT_RERANK_ENABLED)
     if not isinstance(enabled, bool):

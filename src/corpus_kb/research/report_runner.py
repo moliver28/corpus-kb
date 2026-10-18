@@ -93,7 +93,7 @@ async def _analyze_candidates(
     tenant_id: UUID,
     models: dict[str, Any],
     gold_by_code: dict[str, list[dict[str, Any]]],
-) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, Any]], float]:
+) -> tuple[dict[str, Any], list[dict[str, Any]], int, float | None]:
     """Derive the tau section, missing-code candidates and their queueing."""
     codable = models["codable"]
     prototypes = models["prototypes"]
@@ -139,8 +139,8 @@ async def build_report(
     codebook_version_id: UUID | None = None,
     *,
     level: str = guide_copy.LEVEL_EXPERT,
-    g3_report: dict[str, object] | None = None,
-    run_manifest: dict[str, object] | None = None,
+    g3_report: dict[str, Any] | None = None,
+    run_manifest: dict[str, Any] | None = None,
     force_index_proof: bool = False,
 ) -> ResearchReport:
     """Build the schema-pinned governance report from live read models."""

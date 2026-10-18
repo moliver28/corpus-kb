@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import asyncpg
 
@@ -53,9 +53,9 @@ class DemoCorpusMissingError(DependencyMissingError):
 
 
 async def load_demo_kb(
-    config: dict[str, object] | None = None,
+    config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | None = None,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """Ingest every demo corpus file; return the receipt envelope.
 
     When ``pool`` is None the loader opens one from the configured DSN
@@ -79,7 +79,7 @@ async def load_demo_kb(
             status = str(result.get("status", "error"))
             if status == "success":
                 ingested.append(name)
-                chunk_counts[name] = int(result.get("chunk_count", 0) or 0)
+                chunk_counts[name] = int(cast("int", result.get("chunk_count", 0)))
             elif status == "skipped":
                 skipped.append(name)
             else:
@@ -104,11 +104,11 @@ def _demo_files() -> list[Path]:
     return files
 
 
-async def _open_pool(cfg: dict[str, object]) -> asyncpg.Pool:
+async def _open_pool(cfg: dict[str, Any]) -> asyncpg.Pool:
     """One pool for a CLI-shaped call (closed by the caller's finally)."""
     from corpus_kb.server_wiring import initialize_postgres_pool
 
-    db_cfg = cast(dict[str, object], cfg.get("database", {}) or {})
+    db_cfg = cast(dict[str, Any], cfg.get("database", {}) or {})
     dsn = str(db_cfg.get("connection_string", ""))
     return await initialize_postgres_pool(dsn)
 
@@ -118,10 +118,10 @@ def _envelope(
     skipped: list[str],
     chunk_counts: dict[str, int],
     failures: dict[str, str],
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """The house receipt: status, result, and an honest failure message."""
     status = "success" if not failures else "partial"
-    envelope: dict[str, object] = {
+    envelope: dict[str, Any] = {
         "status": status,
         "result": {
             "ingested": ingested,

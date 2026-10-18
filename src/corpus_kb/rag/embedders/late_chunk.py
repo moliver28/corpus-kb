@@ -235,7 +235,13 @@ class LateChunkEmbedder:
 
 
 def is_latechunk_installed() -> bool:
-    """True when the optional latechunk stack is importable (smoke/skip gates)."""
-    import importlib.util
+    """True when the optional latechunk stack actually imports (smoke/skip gates)."""
+    import importlib
 
-    return importlib.util.find_spec("sentence_transformers") is not None
+    try:
+        importlib.import_module("sentence_transformers")
+    except Exception:
+        # Absent extra, or a half-installed stack (e.g. torch missing) that
+        # find_spec alone would wrongly report as usable.
+        return False
+    return True

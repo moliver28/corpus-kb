@@ -94,7 +94,7 @@ async def _propose_alarms(
     version_id: UUID | None,
     alarms: list[Alarm],
     json_output: bool,
-) -> dict[str, object] | None:
+) -> dict[str, Any] | None:
     """U25: turn this cycle's monitored alarms into a change proposal.
 
     Resolves the version's ACTIVE release through the release read tables;
@@ -121,7 +121,7 @@ async def _propose_alarms(
     try:
         active = await resolve_active_release(pool, tenant_id, resolved)
         if active is None or not active.is_released:
-            receipt: dict[str, object] = {
+            receipt: dict[str, Any] = {
                 "status": "no_active_release",
                 "codebook_version_id": str(resolved),
                 "alarms": [alarm.block() for alarm in alarms],
@@ -189,7 +189,7 @@ async def _start_run(
     *,
     json_output: bool,
     guide: bool,
-) -> tuple[Any, Any, tuple[Any, ...], str, str | None, bool]:
+) -> tuple[Any, Any, tuple[Any, ...], str, str | None, str | None]:
     """Open the coding run: resume point, stack, recorder, banners.
 
     Returns (recorder, handler, stack, run_id, resume_after, suppressed).
@@ -408,7 +408,7 @@ async def run_cycle(
     proposal_receipt = await _propose_alarms(
         pool, handler, tenant_id, codebook_version_id, alarms, json_output
     )
-    seal_payload: dict[str, object] = {"kind": "cycle_complete", "stages": STAGES}
+    seal_payload: dict[str, Any] = {"kind": "cycle_complete", "stages": STAGES}
     if proposal_receipt is not None:
         # U25: the run-report payload surfaces the change proposals.
         seal_payload["change_proposals"] = proposal_receipt
@@ -429,7 +429,7 @@ async def _run_stage(
     question: str | None,
     version_id: UUID | None,
     allow_draft: bool = False,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     if stage == "ingest":
         return await stage_ingest(pool, stack, tenant_id, project_id, ingest_dir)
     if stage == "inductive":
@@ -458,7 +458,7 @@ async def _run_stage_or_consensus(
     question: str | None,
     version_id: UUID | None,
     allow_draft: bool = False,
-) -> dict[str, object]:
+) -> dict[str, Any]:
     """The inductive stage becomes the U48 N-run consensus when configured.
 
     ``research.consensus.runs`` (live through cycle_consensus) decides: 1
@@ -495,7 +495,7 @@ async def _run_stage_or_consensus(
             allow_draft,
         )
 
-    async def run_once() -> dict[str, object]:
+    async def run_once() -> dict[str, Any]:
         return await _run_stage(
             stage,
             pool,

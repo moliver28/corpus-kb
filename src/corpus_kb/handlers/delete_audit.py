@@ -12,7 +12,10 @@ with no audit event, so unknown ids never raise here.
 from __future__ import annotations
 
 import logging
+from typing import Any, cast
 from uuid import UUID
+
+from eventsourcing.application import AggregateNotFoundError
 
 from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
@@ -20,7 +23,7 @@ from corpus_kb.domain.application import get_app
 logger = logging.getLogger(__name__)
 
 
-def attach_delete_event(result: dict[str, object], doc_id: str) -> dict[str, object]:
+def attach_delete_event(result: dict[str, Any], doc_id: str) -> dict[str, Any]:
     """Attach the Deleted audit event to a SUCCESSFUL delete envelope.
 
     Adds the additive keys ``aggregate_id``/``aggregate_version`` when the
@@ -32,13 +35,15 @@ def attach_delete_event(result: dict[str, object], doc_id: str) -> dict[str, obj
 
     try:
         app = get_app()
-        doc_events = list(app.repository.get(UUID(doc_id)))
-        if doc_events:
-            doc = Document.reconstruct(UUID(doc_id), doc_events)
-            doc.delete()
-            app.save(doc)
-            result["aggregate_id"] = doc_id
-            result["aggregate_version"] = doc.version
+        # eventsourcing 9.x: Repository.get returns the RECONSTRUCTED aggregate
+        # (or raises AggregateNotFoundError when the document has no events).
+        doc = cast("Document", app.repository.get(UUID(doc_id)))
+        doc.delete()
+        app.save(doc)
+        result["aggregate_id"] = doc_id
+        result["aggregate_version"] = doc.version
+    except AggregateNotFoundError:
+        pass  # no stored aggregate history: nothing to audit (old empty-history skip)
     except Exception as exc:
         logger.warning("Delete audit failed (deletion succeeded): %s", exc)
         result["event_sourcing_error"] = str(exc)

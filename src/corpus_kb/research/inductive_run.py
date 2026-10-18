@@ -126,7 +126,7 @@ _STOPWORDS = frozenset(
 )
 
 
-def inductive_config(cfg: dict[str, object] | None) -> dict[str, object]:
+def inductive_config(cfg: dict[str, Any] | None) -> dict[str, Any]:
     """research.inductive block with engine defaults filled in."""
     research = (cfg or {}).get("research") or {}
     block = (research if isinstance(research, dict) else {}).get("inductive") or {}
@@ -169,8 +169,8 @@ async def run_inductive(
     project_id: UUID | None = None,
     llm: SummaryChatClient | None = None,
     embedder: SummaryEmbedder | None = None,
-    cfg: dict[str, object] | None = None,
-) -> dict[str, object]:
+    cfg: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """One inductive pass; returns the summary the CLI/MCP surfaces print."""
     from corpus_kb.coding._inductive_types import InductiveDependencyError
 
@@ -204,8 +204,8 @@ async def _execute(
     project_id: UUID | None,
     llm: SummaryChatClient | None,
     embedder: SummaryEmbedder | None,
-    settings: dict[str, object],
-) -> dict[str, object]:
+    settings: dict[str, Any],
+) -> dict[str, Any]:
     baseline = await latest_baseline_dbcv(pool, tenant_id, run_id)
     async with tenant_connection(pool, tenant_id) as conn:
         pairs = await load_codable_pairs(conn, tenant_id, project_id)
@@ -308,7 +308,7 @@ async def _execute(
     return summary
 
 
-def _pins(manifest: dict[str, object]) -> dict[str, object]:
+def _pins(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "n_components": int(str(manifest["n_components"])),
         "random_state": int(str(manifest["umap_random_state"])),
@@ -393,9 +393,9 @@ async def _grow(
     centroids: dict[int, list[float]],
     code_names: list[str],
     llm: SummaryChatClient | None,
-    settings: dict[str, object],
-    pins: dict[str, object],
-) -> dict[str, object]:
+    settings: dict[str, Any],
+    pins: dict[str, Any],
+) -> dict[str, Any]:
     """Incremental growth: batches vs centroids, ISR per batch, meta-decisions.
 
     Cadence (v5 §9.5): after each batch the centroids REFRESH incrementally
@@ -446,7 +446,7 @@ async def _grow(
                     decision = await meta_decide(llm, obs["unit_id"], question, answer, code_names)
                     if decision.decision == "new":
                         meta_new += 1
-                    extra: dict[str, object] = {
+                    extra: dict[str, Any] = {
                         "meta_decision": decision.decision,
                         "meta_prompt_id": decision.prompt_id,
                         "assignments": assignments,

@@ -71,14 +71,14 @@ command. Each command says what it does and what success looks like.
 5. Pull an embedding model that fits the schema.
 
    ```bash
-   ollama pull qwen3-embedding:8b-q8_0
-   export CORPUS_KB_EMBEDDING_MODEL=qwen3-embedding:8b-q8_0
-   export CORPUS_KB_EMBEDDING_DIMENSIONS=4096
+   ollama pull qwen3-embedding:4b
    ```
 
-   The bundled schema stores 4096-dimension vectors. The ingest guard
-   and `corpus-kb doctor` catch a mismatch and print the fix. See
-   [OPERATIONS.md](OPERATIONS.md).
+   The bundled schema stores `halfvec(2560)` vectors. `qwen3-embedding:4b`
+   (2560 dimensions) matches it. Another model width needs a schema
+   migration first. The ingest guard and `corpus-kb doctor` catch a
+   mismatch and print the fix. The model↔schema matrix is in
+   [ADMIN.md](ADMIN.md).
 
 6. Start the server.
 
@@ -171,7 +171,7 @@ reference is [research.md](research.md).
 ### Ingest your first transcript
 
 Transcripts go in as files (`.txt` first-class, plus `.vtt`, `.srt`,
-`.csv`, `.docx`). A plain-text transcript just needs `Speaker: text` lines:
+`.csv`, `.docx`). A plain-text transcript needs `Speaker: text` lines:
 
 ```bash
 # one file
