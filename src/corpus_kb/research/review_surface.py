@@ -91,7 +91,7 @@ async def execute_review(
     """
     if decision not in DECISIONS:
         raise ValueError(f"decision must be one of {DECISIONS}, got {decision!r}")
-    handler = ResearchHandler(pool)
+    handler = ResearchHandler(pool, dsn=conn_str)
     result = handler.review_assignment(
         tenant_id,
         assignment_aggregate_id=assignment_aggregate_id,

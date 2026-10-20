@@ -82,8 +82,13 @@ async def run_keyword_synthesis(
     widen_n: int = 0,
     seed: int = 42,
     emit_events: bool = True,
+    dsn: str | None = None,
 ) -> dict[str, object]:
-    """Synthesize + persist keyword sets for every code in one version."""
+    """Synthesize + persist keyword sets for every code in one version.
+
+    ``dsn`` binds the event-writing handler to the caller's database
+    (None keeps the env/config resolution).
+    """
     async with tenant_connection(pool, tenant_id) as conn:
         members = await _member_unit_ids(conn, codebook_version_id)
         member_texts = {
@@ -115,7 +120,7 @@ async def run_keyword_synthesis(
     )
 
     if emit_events:
-        handler = ResearchHandler(pool)
+        handler = ResearchHandler(pool, dsn=dsn)
         for code_id, keywords in positives.items():
             payload = [
                 {

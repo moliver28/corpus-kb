@@ -441,7 +441,7 @@ async def _run_stage(
             pool, stack, tenant_id, project_id, version_id, cfg=cfg, allow_draft=allow_draft
         )
     if stage == "keywords":
-        return await stage_keywords(pool, tenant_id, version_id)
+        return await stage_keywords(pool, tenant_id, version_id, cfg)
     if stage == "report":
         return await stage_report(pool, stack, tenant_id, project_id, version_id)
     return await stage_notebook(pool, stack, tenant_id, cfg, project_id, question)

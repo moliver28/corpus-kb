@@ -23,6 +23,7 @@ from uuid import UUID
 import asyncpg
 import numpy as np
 
+from corpus_kb.domain.application import dsn_from_config
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research.calibration import CONFORMAL_ALPHA, conformal_sets
 from corpus_kb.research.deduction_guard import guard_deductive_run
@@ -239,7 +240,7 @@ async def run_deductive(
         }
 
     cache = load_cache_settings(config)
-    handler = ResearchHandler(pool)
+    handler = ResearchHandler(pool, dsn=dsn_from_config(config))
     run_params: dict[str, Any] = {
         "cal_alpha": cal_alpha,
         "scoring_batch_rows": SCORING_BATCH_ROWS,

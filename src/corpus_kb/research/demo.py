@@ -93,8 +93,9 @@ def _wiring(pool: Any, cfg: dict[str, Any], conn_str: str) -> tuple[Any, ...]:
     reader = EventReader(pool, app.mapper, events_table_name(app))
     # A per-run handler (not the process-wide singleton): run_demo owns this
     # pool's lifecycle, and a singleton created by an earlier command in the
-    # same process would hold an already-closed pool.
-    handler = ResearchHandler(pool)
+    # same process would hold an already-closed pool. The DSN binds the
+    # handler's aggregate writes to the same database the pool reads.
+    handler = ResearchHandler(pool, dsn=conn_str)
     embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
     checkpoint = CheckpointManager(pool)
     dlq = DLQHandler(pool)
@@ -187,11 +188,12 @@ async def _seed_codebook(
     codes: list[dict[str, Any]],
     codebook: dict[str, Any],
     shas_by_code: dict[str, list[str]],
+    conn_str: str,
 ) -> UUID:
     """Seed one CodebookVersion aggregate (Created + CodeAdded + PrototypeUpdated)."""
     from corpus_kb.handlers.research_handler import ResearchHandler
 
-    handler = ResearchHandler(pool)
+    handler = ResearchHandler(pool, dsn=conn_str)
     result = handler.create_codebook_version(
         tenant_id,
         str(codebook.get("label", "demo-codebook")),
@@ -353,14 +355,19 @@ async def run_demo(cfg: dict[str, Any] | None = None) -> int:
         if version_id is not None:
             print(f"codebook version {version_id} reused (seeded by an earlier run)")
         else:
-            version_id = await _seed_codebook(pool, tenant_id, codes, codebook, shas_by_code)
+            version_id = await _seed_codebook(
+                pool, tenant_id, codes, codebook, shas_by_code, conn_str
+            )
             await _catch_up(reader, projection, docs, embeds, tenant_id)
             print(f"codebook version {version_id} seeded and projected")
 
         _narrate(stage_coding)
         from corpus_kb.research.deductive_run import run_deductive
 
-        summary = await run_deductive(pool, tenant_id, version_id, project_id=project_id)
+        # The injected cfg (not a disk reload) decides enforcement AND binds
+        # the run's event writes to the database this demo drives — the same
+        # F8 rule the cycle stage follows.
+        summary = await run_deductive(pool, tenant_id, version_id, project_id=project_id, cfg=cfg)
         await _catch_up(reader, projection, docs, embeds, tenant_id)
         print(
             f"units={summary.get('n_units')} codes={summary.get('n_codes')} "

@@ -21,6 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from typing import Any
 from urllib.parse import urlparse
 
 from eventsourcing.application import Application
@@ -97,6 +98,12 @@ class CorpusApplication(Application):
     Projections subscribe to events and update read models.
     """
 
+    # eventsourcing declares snapshotting_intervals as ClassVar and re-reads
+    # it on every save. CorpusApplication binds the interval PER INSTANCE
+    # (see __init__) so one construction can never rewrite another app's
+    # snapshot behavior.
+    snapshotting_intervals: dict[type[Any], int]
+
     def __init__(self, connection_string: str, backend: str = "postgres") -> None:
         # The parsed env is passed EXPLICITLY (the env param wins over
         # os.environ in construct_env) — mutating os.environ here would make
@@ -104,13 +111,21 @@ class CorpusApplication(Application):
         # POSTGRES_* values and ignore its own argument.
         env = _eventsourcing_env(backend, connection_string)
         # Auto-snapshot the Document aggregate (todo-11 STEP 0, item (h)).
-        # The interval is read from CLASS attributes during construction, so
-        # it must be set before super().__init__().
+        # The interval is read from env AT CONSTRUCTION and bound to THIS
+        # INSTANCE. snapshotting_intervals is a ClassVar in eventsourcing
+        # and is re-read on every save, so the todo-11 shape (writing the
+        # class attribute before super().__init__) let a SECOND app
+        # construction — another DSN or backend, or one built while
+        # CORPUS_KB_SNAPSHOT_PERIOD was unset — silently rewrite the FIRST
+        # app's snapshot behavior. IS_SNAPSHOTTING_ENABLED rides in this
+        # app's env instead of the class flag for the same reason.
         interval = int(os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD", "100"))
+        self.snapshotting_intervals = {}
         if interval > 0:
             from corpus_kb.domain.aggregates import Document
 
-            type(self).snapshotting_intervals = {Document: interval}
+            self.snapshotting_intervals = {Document: interval}
+            env["IS_SNAPSHOTTING_ENABLED"] = "y"
         super().__init__(env=env)
 
 
@@ -151,6 +166,19 @@ def _resolve_connection_string() -> str:
             "Set CORPUS_KB_DATABASE_URL or configure database.connection_string "
             "in config.yaml."
         ) from e
+
+
+def dsn_from_config(cfg: dict[str, Any] | None) -> str | None:
+    """The connection string inside a loaded config dict, or None.
+
+    Runners use it to bind the event-store app to the SAME database their
+    asyncpg pool reads (the app cache keys on (backend, DSN)). None (no
+    config, or no database.connection_string in it) keeps the historical
+    bare-get_app resolution: env var first, then config.yaml.
+    """
+    if not cfg:
+        return None
+    return str((cfg.get("database") or {}).get("connection_string", "") or "") or None
 
 
 def get_app(connection_string: str | None = None, backend: str = "postgres") -> CorpusApplication:
