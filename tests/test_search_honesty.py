@@ -251,12 +251,32 @@ def test_finalize_envelope_empty_without_reasons_is_success() -> None:
 def test_envelope_to_payload_shape() -> None:
     envelope = finalize_envelope([], [REASON_ZERO_QUERY], excluded_count=4)
     payload = envelope_to_payload(envelope)
-    assert set(payload) == {"status", "result", "degraded_excluded", "remedy"}
+    # Storage-portability §6: the engine index modes are guaranteed keys.
+    assert set(payload) == {
+        "status",
+        "result",
+        "degraded_excluded",
+        "remedy",
+        "vector_index_mode",
+        "lexical_index_mode",
+    }
     assert payload["status"] == STATUS_DEGRADED_EMPTY
     assert payload["degraded_excluded"] == {"count": 4, "reasons": [REASON_ZERO_QUERY]}
     healthy = envelope_to_payload(finalize_envelope([], []))
-    assert set(healthy) == {"status", "result", "degraded_excluded"}
+    assert set(healthy) == {
+        "status",
+        "result",
+        "degraded_excluded",
+        "vector_index_mode",
+        "lexical_index_mode",
+    }
     assert healthy["degraded_excluded"] == {"count": 0, "reasons": []}
+    # Postgres defaults on the legacy constructor path; the conditional
+    # notes are absent (the embedding_mode/embedding_note contract shape).
+    assert healthy["vector_index_mode"] == "hnsw_ann"
+    assert healthy["lexical_index_mode"] == "gin_auto"
+    assert "vector_index_note" not in healthy
+    assert "lexical_index_note" not in healthy
 
 
 # ============================================================================
