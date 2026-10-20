@@ -14,13 +14,14 @@ Never crashes on small seed sets.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import cross_val_predict
-from threadpoolctl import threadpool_limits
 
-from .tier_a import head_estimator
+from .tier_a import head_estimator, thread_pin
+
+if TYPE_CHECKING:
+    from sklearn.linear_model import LogisticRegression
 
 __all__ = ["MAX_CV_FOLDS", "Calibration", "apply_platt", "fit_platt", "out_of_fold_scores"]
 
@@ -53,7 +54,9 @@ def out_of_fold_scores(
     if min_count < 2:
         return None, None, SKIPPED_TOO_FEW
     cv = min(MAX_CV_FOLDS, min_count)
-    with threadpool_limits(1):
+    from sklearn.model_selection import cross_val_predict
+
+    with thread_pin():
         scores = cross_val_predict(
             head_estimator(),
             features,
@@ -74,8 +77,10 @@ def fit_platt(
     class calibrates its own column against its own one-vs-rest target.
     """
     matrix = scores if scores.ndim == 2 else scores.reshape(-1, 1)
+    from sklearn.linear_model import LogisticRegression
+
     fitted: list[tuple[str, LogisticRegression]] = []
-    with threadpool_limits(1):
+    with thread_pin():
         for index, cls in enumerate(classes):
             column = matrix[:, index] if matrix.shape[1] > 1 else matrix[:, 0]
             target = (labels == cls).astype(int)
@@ -89,7 +94,7 @@ def apply_platt(calibration: Calibration, raw_scores: np.ndarray) -> np.ndarray:
     """Calibrated probabilities over score rows (rows sum to one)."""
     matrix = raw_scores if raw_scores.ndim == 2 else raw_scores.reshape(-1, 1)
     columns: list[np.ndarray] = []
-    with threadpool_limits(1):
+    with thread_pin():
         for index, (_cls, calibrator) in enumerate(calibration.models):
             column = matrix[:, index] if matrix.shape[1] > 1 else matrix[:, 0]
             columns.append(calibrator.predict_proba(column.reshape(-1, 1))[:, 1])

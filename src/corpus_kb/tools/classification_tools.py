@@ -124,6 +124,10 @@ async def classification_build(
     tier_settings = settings.classification
     if not tier_settings.enabled:
         return _disabled_build()
+    if tier_settings.tier == "head":
+        # The typed dependency gate runs before any probing, so an
+        # extras-less install answers the honest envelope (503 / exit 3).
+        tier_a.ensure_sklearn()
     if not await store.classification_tables_present(pg_pool):
         return _unavailable_build()
     if not seed_file:

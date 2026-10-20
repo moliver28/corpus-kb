@@ -15,23 +15,78 @@ deterministic by construction. Every model parameter is recorded in
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
-import sklearn
-from sklearn.linear_model import LogisticRegression
-from threadpoolctl import threadpool_limits
 
-__all__ = ["HeadFit", "fit_head", "head_estimator", "predict_from_scores"]
+from corpus_kb.errors import DependencyMissingError
+
+if TYPE_CHECKING:
+    from sklearn.linear_model import LogisticRegression
+
+__all__ = [
+    "HeadDependencyError",
+    "HeadFit",
+    "ensure_sklearn",
+    "fit_head",
+    "head_estimator",
+    "predict_from_scores",
+    "sklearn_version",
+    "thread_pin",
+]
 
 HEAD_SOLVER = "lbfgs"
 HEAD_C = 1.0
 HEAD_MAX_ITER = 1000
 SAMPLE_POLICY = "seed_rows_only"
 
+_CLASSIFY_INSTALL = (
+    "The classification head needs scikit-learn. "
+    "Install the extra: pip install 'corpus-kb[classify]'."
+)
+
+
+class HeadDependencyError(DependencyMissingError):
+    """The ``[classify]`` extra is not installed."""
+
+    remediation = _CLASSIFY_INSTALL
+
+
+def ensure_sklearn() -> None:
+    """Raise HeadDependencyError when the [classify] extra is absent.
+
+    Builds call this at the start, so an extras-less install answers the
+    typed dependency envelope instead of a mid-fit ModuleNotFoundError.
+    """
+    try:
+        import sklearn  # noqa: F401
+        import threadpoolctl  # noqa: F401
+    except ImportError as exc:
+        raise HeadDependencyError(_CLASSIFY_INSTALL) from exc
+
+
+def thread_pin() -> AbstractContextManager:
+    """Single-thread BLAS for this block (the bitwise-determinism pin)."""
+    ensure_sklearn()
+    from threadpoolctl import threadpool_limits
+
+    return threadpool_limits(1)
+
+
+def sklearn_version() -> str:
+    ensure_sklearn()
+    import sklearn
+
+    return str(sklearn.__version__)
+
 
 def head_estimator() -> LogisticRegression:
     """The one head spec (fit, OOF folds, and Platt all reuse it)."""
+    ensure_sklearn()
+    from sklearn.linear_model import LogisticRegression
+
     return LogisticRegression(solver=HEAD_SOLVER, C=HEAD_C, max_iter=HEAD_MAX_ITER)
 
 
@@ -45,7 +100,7 @@ class HeadFit:
 
     def decision_scores(self, features: np.ndarray) -> np.ndarray:
         """Raw decision scores over feature rows (single-thread pinned)."""
-        with threadpool_limits(1):
+        with thread_pin():
             return np.asarray(self.model.decision_function(features))
 
 
@@ -57,14 +112,14 @@ def fit_head(features: np.ndarray, labels: np.ndarray) -> HeadFit:
     """
     classes = sorted({str(label) for label in labels})
     model = head_estimator()
-    with threadpool_limits(1):
+    with thread_pin():
         model.fit(features, [str(label) for label in labels])
     params: dict[str, object] = {
         "tier": "head",
         "solver": HEAD_SOLVER,
         "C": HEAD_C,
         "max_iter": HEAD_MAX_ITER,
-        "sklearn_version": sklearn.__version__,
+        "sklearn_version": sklearn_version(),
         "n_train": len(labels),
         "classes": classes,
         "sample_policy": SAMPLE_POLICY,

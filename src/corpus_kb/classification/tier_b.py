@@ -25,10 +25,10 @@ from types import ModuleType
 from typing import Protocol, cast
 
 import numpy as np
-import sklearn
-from threadpoolctl import threadpool_limits
 
 from corpus_kb.errors import DependencyMissingError
+
+from .tier_a import sklearn_version, thread_pin
 
 __all__ = [
     "SETFIT_MODEL_ID",
@@ -129,7 +129,7 @@ class SetfitFit:
 
     def decision_scores(self, features: np.ndarray) -> np.ndarray:
         """Head decision scores over embedding feature rows (single-thread pinned)."""
-        with threadpool_limits(1):
+        with thread_pin():
             return np.asarray(self.model.model_head.decision_function(features))
 
 
@@ -146,7 +146,7 @@ def fit_setfit(train_texts: list[str], train_labels: list[str]) -> SetfitFit:
         "end_to_end": False,
         "device": DEVICE,
         "torch_seed": TORCH_SEED,
-        "sklearn_version": sklearn.__version__,
+        "sklearn_version": sklearn_version(),
         "n_train": len(train_labels),
         "classes": sorted(set(train_labels)),
         "sample_policy": SAMPLE_POLICY,
