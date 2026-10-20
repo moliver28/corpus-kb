@@ -349,6 +349,7 @@ class PostgresGraphStore(GraphStore):
                 FROM relations
                 WHERE tenant_id = $1
                   AND (source_entity_id = $2 OR target_entity_id = $2)
+                ORDER BY relation_id ASC
                 """,
                 self._tenant_id,
                 entity_id,
