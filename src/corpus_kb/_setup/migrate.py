@@ -3,7 +3,7 @@
 Backend-dispatched on the DSN scheme (storage portability program):
 
 - ``duckdb:///...`` names a DuckDB database file. The runner applies
-  ``corpus_kb/migrations_duckdb/`` (the full schema mirror, 000..026)
+  ``corpus_kb/migrations_duckdb/`` (the full schema mirror, 000..029)
   through a synchronous duckdb connection and tracks applied files in
   that file's own ``schema_migrations`` table.
 - anything else is a Postgres DSN. The Postgres path applies

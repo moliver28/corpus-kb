@@ -129,7 +129,7 @@ def test_full_migration_set_applies_once(tmp_path: Path) -> None:
     run_duckdb_migrations(dsn)
 
     expected = {p.name for p in _DUCKDB_MIGRATIONS}
-    assert len(expected) >= 27, "the mirror must cover 000..026"
+    assert len(expected) >= 30, "the mirror must cover 000..029"
 
     con = _connect_read_only(dsn)
     try:
@@ -147,7 +147,7 @@ def test_migrations_apply_twice_cleanly(tmp_path: Path) -> None:
     con = _connect_read_only(dsn)
     try:
         assert _applied_names(con) == {p.name for p in _DUCKDB_MIGRATIONS}
-        assert len(_table_names(con)) == 53  # 52 mirrored + schema_migrations
+        assert len(_table_names(con)) == 57  # 56 mirrored + schema_migrations
     finally:
         con.close()
 
@@ -254,6 +254,143 @@ def test_core_rows_round_trip(migrated_dsn: str) -> None:
             [relation_id],
         ).fetchone()
         assert rel == (relation_id, entity_id, other_entity, chunk_id, metadata_text)
+    finally:
+        con.close()
+
+
+# ---------------------------------------------------------------------------
+# Analysis-domain round trip (migrations 027-029)
+# ---------------------------------------------------------------------------
+
+
+def test_labeling_rows_round_trip(migrated_dsn: str) -> None:
+    """A labeling function and its aggregated chunk label round-trip; the
+    migration-028 CHECK mirror is enforced on DuckDB."""
+    import duckdb
+
+    tenant = "00000000-0000-0000-0000-000000000001"
+    doc_id = "11111111-1111-1111-1111-111111111112"
+    chunk_id = "22222222-2222-2222-2222-222222222223"
+    lf_id = "55555555-5555-5555-5555-555555555555"
+    config = '{"pattern": "^\\\\d{4}"}'
+    detail = '{"lf:date-regex": 0.92}'
+
+    con = _connect(migrated_dsn)
+    try:
+        con.execute("BEGIN TRANSACTION")
+        con.execute(
+            "INSERT INTO documents (doc_id, tenant_id, source, metadata) VALUES (?, ?, ?, ?)",
+            [doc_id, tenant, "labeling-round-trip", "{}"],
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text,"
+            " heading_path, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [chunk_id, tenant, doc_id, 0, "labeled body", "[]", "{}"],
+        )
+        con.execute(
+            "INSERT INTO label_functions (lf_id, tenant_id, name, kind, config)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [lf_id, tenant, "date-regex", "regex", config],
+        )
+        con.execute(
+            "INSERT INTO chunk_labels (tenant_id, chunk_id, label, probability, detail)"
+            " VALUES (?, ?, ?, ?, ?)",
+            [tenant, chunk_id, "dated", 0.92, detail],
+        )
+        con.execute("COMMIT")
+
+        lf = con.execute(
+            "SELECT lf_id, kind, config FROM label_functions WHERE lf_id = ?", [lf_id]
+        ).fetchone()
+        assert lf == (lf_id, "regex", config)
+
+        row = con.execute(
+            "SELECT chunk_id, label, probability, detail FROM chunk_labels"
+            " WHERE tenant_id = ? AND chunk_id = ?",
+            [tenant, chunk_id],
+        ).fetchone()
+        assert row == (chunk_id, "dated", 0.92, detail)
+
+        # The probability CHECK port is a live constraint, not prose.
+        with pytest.raises(duckdb.ConstraintException):
+            con.execute(
+                "INSERT INTO chunk_labels (tenant_id, chunk_id, label, probability)"
+                " VALUES (?, ?, ?, ?)",
+                [tenant, "22222222-2222-2222-2222-222222222229", "bad", 1.5],
+            )
+    finally:
+        con.close()
+
+
+def test_classification_rows_round_trip(migrated_dsn: str) -> None:
+    """A label set and its per-chunk prediction round-trip, including the
+    nullable calibrated probability and the review flag."""
+    import duckdb
+
+    tenant = "00000000-0000-0000-0000-000000000001"
+    doc_id = "11111111-1111-1111-1111-111111111113"
+    chunk_id = "22222222-2222-2222-2222-222222222224"
+    set_id = "66666666-6666-6666-6666-666666666666"
+    classes = '["dated", "undated"]'
+    params = '{"tier": "setfit", "seed": 42}'
+
+    con = _connect(migrated_dsn)
+    try:
+        con.execute("BEGIN TRANSACTION")
+        con.execute(
+            "INSERT INTO documents (doc_id, tenant_id, source, metadata) VALUES (?, ?, ?, ?)",
+            [doc_id, tenant, "classification-round-trip", "{}"],
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text,"
+            " heading_path, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [chunk_id, tenant, doc_id, 0, "predicted body", "[]", "{}"],
+        )
+        con.execute(
+            "INSERT INTO label_sets (set_id, tenant_id, name, classes) VALUES (?, ?, ?, ?)",
+            [set_id, tenant, "dates", classes],
+        )
+        con.execute(
+            "INSERT INTO chunk_predictions (tenant_id, chunk_id, set_id, label,"
+            " probability, calibrated_probability, tier, review, params)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [tenant, chunk_id, set_id, "dated", 0.9, None, "setfit", True, params],
+        )
+        con.execute("COMMIT")
+
+        row = con.execute(
+            "SELECT chunk_id, set_id, label, probability, calibrated_probability,"
+            " tier, review, params FROM chunk_predictions"
+            " WHERE tenant_id = ? AND chunk_id = ?",
+            [tenant, chunk_id],
+        ).fetchone()
+        assert row == (
+            chunk_id,
+            set_id,
+            "dated",
+            0.9,
+            None,
+            "setfit",
+            True,
+            params,
+        )
+
+        # The nullable calibrated CHECK port rejects out-of-range values.
+        with pytest.raises(duckdb.ConstraintException):
+            con.execute(
+                "INSERT INTO chunk_predictions (tenant_id, chunk_id, set_id, label,"
+                " probability, calibrated_probability, tier)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                [
+                    tenant,
+                    "22222222-2222-2222-2222-222222222230",
+                    set_id,
+                    "undated",
+                    0.5,
+                    1.5,
+                    "head",
+                ],
+            )
     finally:
         con.close()
 
