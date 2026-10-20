@@ -26,14 +26,12 @@ import os
 import sys
 import webbrowser
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import asyncpg
 
 from corpus_kb.errors import ConfigError, DatabaseUnavailableError
-
-if TYPE_CHECKING:
-    from corpus_kb.storage.graph_store import GraphStore
+from corpus_kb.storage.graph_factory import create_graph_store
 
 logger = logging.getLogger(__name__)
 
@@ -123,37 +121,6 @@ def schedule_browser_open(
     return asyncio.create_task(open_browser_when_up(host, port))
 
 
-async def create_graph_store(
-    cfg: dict[str, Any],
-    pool: asyncpg.Pool,
-) -> GraphStore:
-    """Instantiate the configured GraphStore backend.
-
-    backend="age" tries AgeGraphStore first and falls back to
-    PostgresGraphStore when Apache AGE is unavailable. backend="postgres"
-    selects PostgresGraphStore directly.
-    """
-    from corpus_kb.storage import AgeGraphStore, AgeUnavailableError, PostgresGraphStore
-
-    graph_cfg = cfg.get("graph", {})
-    backend = graph_cfg.get("backend", "age")
-
-    if backend == "age":
-        try:
-            store: GraphStore = AgeGraphStore(pool)
-            await store.search_entities("")  # probe AGE availability
-            return store
-        except AgeUnavailableError as exc:
-            logger.warning(
-                "Apache AGE graph backend unavailable: %s. Falling back to PostgresGraphStore.",
-                exc,
-            )
-            return PostgresGraphStore(pool)
-    if backend == "postgres":
-        return PostgresGraphStore(pool)
-    raise ValueError(f"Unknown graph backend: {backend!r}. Use 'age' or 'postgres'.")
-
-
 async def initialize_postgres_pool(
     connection_string: str,
 ) -> asyncpg.Pool:
@@ -205,7 +172,12 @@ async def startup(
         remedy = getattr(exc, "remediation", "")
         logger.warning("Tracing not enabled: %s. Remedy: %s", exc, remedy)
 
-    # 1. Postgres pool
+    # 1. Database backend: read ONCE, then wire per ecosystem (program §3.4).
+    #    The asyncpg pool exists only on the Postgres path and the event
+    #    store is keyed on (backend, DSN). The remaining handlers are still
+    #    Postgres-only (phases D/E own those ports), so a duckdb selection
+    #    is refused here — typed, with the fix — instead of failing deep
+    #    inside a pool-only handler.
     db_cfg = cfg.get("database", {})
     conn_str = db_cfg.get("connection_string", "") or os.environ.get("CORPUS_KB_DATABASE_URL", "")
     if not conn_str:
@@ -213,13 +185,19 @@ async def startup(
             "No database connection string. Set CORPUS_KB_DATABASE_URL or "
             "configure database.connection_string in config.yaml."
         )
+    backend = str(db_cfg.get("backend") or "postgres")
+    if backend != "postgres":
+        raise ConfigError(
+            "The server stack runs on Postgres today.",
+            remediation="Set database.backend to postgres. Then start the server.",
+        )
 
     pool = await initialize_postgres_pool(conn_str)
 
     # 2. Eventsourcing application
     from corpus_kb.domain.application import events_table_name, get_app
 
-    app = get_app(conn_str)
+    app = get_app(conn_str, backend=backend)
 
     # 3. Handlers
     from corpus_kb.handlers.command_handler import get_command_handler
@@ -261,8 +239,8 @@ async def startup(
     from corpus_kb.handlers.tag_handler import TagHandler, set_tag_handler
     from corpus_kb.handlers.versioning_handler import VersioningHandler, set_versioning_handler
 
-    graph_store = await create_graph_store(cfg, pool)
-    graph_handler = GraphHandler(graph_store)
+    graph_store = await create_graph_store(cfg, pool, backend)
+    graph_handler = GraphHandler(graph_store, config=cfg)
     set_graph_handler(graph_handler)
     set_tag_handler(TagHandler(pool))
     set_versioning_handler(VersioningHandler(pool))

@@ -74,6 +74,8 @@ def duckdb_conn_string_to_path(conn_string: str) -> str:
     path = unquote(parsed.path)
     if re.match(r"^/[A-Za-z]:(/|$)", path):
         path = path[1:]  # Windows drive letter: strip the URL's leading slash
+    if path.startswith("/") and path[1:].startswith(":memory:"):
+        path = path[1:]  # in-memory: duckdb would otherwise join the cwd drive
     while path.startswith("//"):
         path = path[1:]
     return path

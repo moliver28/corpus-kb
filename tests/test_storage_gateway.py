@@ -72,6 +72,17 @@ def test_dsn_inverse_is_idempotent_and_passes_plain_paths_through() -> None:
     assert duckdb_conn_string_to_path("C:/plain/path.duckdb") == "C:/plain/path.duckdb"
 
 
+def test_dsn_inverse_strips_the_leading_slash_before_memory() -> None:
+    """``duckdb:///:memory:`` must land as ``:memory:``, never a cwd file.
+
+    Without the strip, Windows joins the leaked leading slash onto the
+    current drive (``F:\\:memory:``) and the connect fails with a syntax
+    error. Plain ``:memory:`` passes through untouched.
+    """
+    assert duckdb_conn_string_to_path("duckdb:///:memory:") == ":memory:"
+    assert duckdb_conn_string_to_path(":memory:") == ":memory:"
+
+
 def test_dsn_inverse_rejects_foreign_schemes() -> None:
     with pytest.raises(ValueError, match="scheme"):
         duckdb_conn_string_to_path("postgresql://corpus_user@localhost/corpus_kb")
