@@ -66,9 +66,12 @@ import corpus_kb.research.inductive_run as inductive_run_module
 import corpus_kb.research.promote_code as promote_code_module
 import corpus_kb.research.report_runner as report_runner_module
 import corpus_kb.research.review_surface as review_surface_module
+import corpus_kb.tools.analysis_tools as analysis_tools_module
+import corpus_kb.tools.classification_tools as classification_tools_module
 import corpus_kb.tools.ingest_common as ingest_common_module
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools_module
 import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
+import corpus_kb.tools.labeling_tools as labeling_tools_module
 import corpus_kb.tools.notebook_tools as notebook_tools_module
 import corpus_kb.tools.release_tools as release_tools_module
 import corpus_kb.tools.research_tools as research_tools_module
@@ -310,6 +313,44 @@ async def _shared_topics_build(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_topics_list(ctx: dict[str, Any]) -> dict[str, Any]:
     return await topics_tools_module.topics_list(ctx["pool"], config=ctx["config"], limit=50)
+
+
+# -- Analysis program Wave 0 (stub handlers: the disabled envelope is the
+#    shared contract every surface answers, exactly like the topics ops) --
+
+
+async def _shared_topics_trends(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await topics_tools_module.topics_trends(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_labeling_build(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await labeling_tools_module.labeling_build(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_labeling_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await labeling_tools_module.labeling_list(ctx["pool"], config=ctx["config"], limit=50)
+
+
+async def _shared_labeling_lfs(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await labeling_tools_module.labeling_lfs(ctx["pool"], config=ctx["config"], limit=50)
+
+
+async def _shared_classification_build(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await classification_tools_module.classification_build(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_classification_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await classification_tools_module.classification_list(
+        ctx["pool"], config=ctx["config"], limit=50
+    )
+
+
+async def _shared_analysis_backfill_dates(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await analysis_tools_module.analysis_backfill_dates(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_analyze_run(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await analysis_tools_module.analyze_run(ctx["pool"], config=ctx["config"])
 
 
 async def _shared_search(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -557,6 +598,55 @@ LEGS: dict[str, _Leg] = {
         _get("/api/topics", {"limit": 50}),
         _sock("topics_list", {"limit": 50}),
         _mcp({"limit": 50}),
+    ),
+    # -- analysis program Wave 0 (stub handlers, disabled path) --------------
+    "topics_trends": _Leg(
+        _shared_topics_trends,
+        _post("/api/topics/trends", {}),
+        _sock("topics_trends", {}),
+        _mcp({}),
+    ),
+    "labeling_build": _Leg(
+        _shared_labeling_build,
+        _post("/api/labeling/build", {}),
+        _sock("labeling_build", {}),
+        _mcp({}),
+    ),
+    "labeling_list": _Leg(
+        _shared_labeling_list,
+        _get("/api/labeling", {"limit": 50}),
+        _sock("labeling_list", {"limit": 50}),
+        _mcp({"limit": 50}),
+    ),
+    "labeling_lfs": _Leg(
+        _shared_labeling_lfs,
+        _get("/api/labeling/lfs", {"limit": 50}),
+        _sock("labeling_lfs", {"limit": 50}),
+        _mcp({"limit": 50}),
+    ),
+    "classification_build": _Leg(
+        _shared_classification_build,
+        _post("/api/classification/build", {}),
+        _sock("classification_build", {}),
+        _mcp({}),
+    ),
+    "classification_list": _Leg(
+        _shared_classification_list,
+        _get("/api/classification", {"limit": 50}),
+        _sock("classification_list", {"limit": 50}),
+        _mcp({"limit": 50}),
+    ),
+    "analysis_backfill_dates": _Leg(
+        _shared_analysis_backfill_dates,
+        _post("/api/analysis/backfill-dates", {}),
+        _sock("analysis_backfill_dates", {}),
+        _mcp({}),
+    ),
+    "analyze_run": _Leg(
+        _shared_analyze_run,
+        _post("/api/analyze", {}),
+        _sock("analyze_run", {}),
+        _mcp({}),
     ),
     "search": _Leg(
         _shared_search,
@@ -1197,6 +1287,15 @@ def test_catalogue_matches_surface_registry() -> None:
         "ingest_status",
         "topics_build",
         "topics_list",
+        # Analysis program Wave 0 (the registry skeleton rows).
+        "topics_trends",
+        "labeling_build",
+        "labeling_list",
+        "labeling_lfs",
+        "classification_build",
+        "classification_list",
+        "analysis_backfill_dates",
+        "analyze_run",
         "research_ingest_transcript",
         "notebook_ask",
         "research_ingest",

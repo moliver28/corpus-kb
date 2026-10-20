@@ -31,6 +31,14 @@
         "ingest_reembed",
         "topics_build",
         "topics_list",
+        "topics_trends",
+        "labeling_build",
+        "labeling_list",
+        "labeling_lfs",
+        "classification_build",
+        "classification_list",
+        "analysis_backfill_dates",
+        "analyze_run",
         "ask"
       ]
     }

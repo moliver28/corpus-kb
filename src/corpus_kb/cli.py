@@ -66,6 +66,20 @@ from corpus_kb.cli_topics import register as register_topics_commands  # noqa: E
 
 register_topics_commands(app)
 
+# Corpus analysis program front doors (Wave 0 skeleton): cli_labeling /
+# cli_classification / cli_analysis mirror cli_topics (they reuse the
+# cli_ingest plumbing and import corpus_kb.cli nowhere), so these imports
+# stay acyclic.
+from corpus_kb.cli_analysis import register as register_analysis_commands  # noqa: E402
+from corpus_kb.cli_classification import (  # noqa: E402
+    register as register_classification_commands,
+)
+from corpus_kb.cli_labeling import register as register_labeling_commands  # noqa: E402
+
+register_labeling_commands(app)
+register_classification_commands(app)
+register_analysis_commands(app)
+
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.

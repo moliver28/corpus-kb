@@ -288,4 +288,12 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-ingest-front-door` | `corpus-kb ingest-reembed` | `ingest_reembed` | Re-embed degraded (zero-vector) chunks once the provider is back. |
 | `corpus-topics` | `corpus-kb topics-build` | `topics_build` | Cluster stored chunk embeddings into topics (offline BERTopic). |
 | `corpus-topics` | `corpus-kb topics-list` | `topics_list` | List the built topics with sizes, labels, and keywords. |
+| `corpus-topics` | `corpus-kb topics-trends` | `topics_trends` | Per-topic frequency series over binned document dates. |
+| `corpus-labeling` | `corpus-kb labeling-build` | `labeling_build` | Score the labeling functions and write the aggregated chunk labels. |
+| `corpus-labeling` | `corpus-kb labeling-list` | `labeling_list` | List the built chunk labels with probabilities. |
+| `corpus-labeling` | `corpus-kb labeling-lfs` | `labeling_lfs` | List the registered labeling functions with kinds and coverage. |
+| `corpus-classification` | `corpus-kb classification-build` | `classification_build` | Fit the few-shot classifier against a seed set; write predictions. |
+| `corpus-classification` | `corpus-kb classification-list` | `classification_list` | List the built chunk predictions, bounded by limit. |
+| `corpus-analysis` | `corpus-kb analysis-backfill-dates` | `analysis_backfill_dates` | Backfill documents.document_date from chunk metadata (idempotent). |
+| `corpus-analysis` | `corpus-kb analyze-run` | `analyze_run` | Run the composed corpus analysis and write the report. |
 <!-- corpus-harness:research-commands:end -->

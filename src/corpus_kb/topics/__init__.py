@@ -9,6 +9,7 @@ Modules:
   extra; deterministic UMAP pin recorded in every result).
 - ``reduction``  — LLM topic labels/merges, fixture-first, fail-open.
 - ``writer``     — tenant-scoped Postgres writes (migration 026).
+- ``trends``     — temporal series helpers for ``topics_trends`` (WP-4).
 """
 
 from __future__ import annotations

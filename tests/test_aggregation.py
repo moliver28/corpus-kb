@@ -7,6 +7,7 @@ import pytest
 
 from corpus_kb.coding.aggregation import (
     MISSING,
+    DawidSkeneResult,
     aggregate_signals,
     dawid_skene,
     evaluate_agreement,
@@ -141,3 +142,112 @@ def test_evaluate_agreement_heldout() -> None:
     assert stats == {"n": 4, "accuracy": 0.75}
     empty = evaluate_agreement(predicted, truth, mask=np.array([False] * 4))
     assert empty == {"n": 0, "accuracy": 0.0}
+
+
+# ---------------------------------------------------------------------------
+# Vectorized M-step (F7): hand-checked values + scale + old-vs-new parity.
+# ---------------------------------------------------------------------------
+
+
+def test_m_step_matches_hand_computed_confusions() -> None:
+    # One EM step from the majority-vote init; the confusions are worked by
+    # hand. Items: (0,0) (0,1) (1,1) (MISSING,0) -> init labels 0,0,1,0.
+    annotations = np.array([[0, 0], [0, 1], [1, 1], [MISSING, 0]])
+    result = dawid_skene(annotations, n_classes=2, max_iter=1)
+    assert result.n_observed == 7
+    # Annotator 0 saw items 0,1,2 (posterior rows [1,0] [1,0] [0,1]):
+    # confusion ~ identity. Annotator 1 saw all four: (0<-0) x2, (0<-1),
+    # (1<-1) -> row 0 = [2/3, 1/3], row 1 = [0, 1].
+    assert np.allclose(result.error_rates[0], np.eye(2), atol=1e-6)
+    assert np.allclose(result.error_rates[1], [[2 / 3, 1 / 3], [0.0, 1.0]], atol=1e-6)
+    assert np.allclose(result.class_priors, [0.75, 0.25], atol=1e-6)
+
+
+def rng_mask(shape: tuple[int, int], seed: int) -> np.ndarray:
+    """A deterministic ~10 percent MISSING mask."""
+    rng = np.random.default_rng(seed)
+    return rng.random(shape) < 0.1
+
+
+def _multiclass_annotations(
+    truth: np.ndarray, n_classes: int, accuracies: list[float], seed: int
+) -> np.ndarray:
+    """(n_items, n_annotators) labels drawn at per-annotator accuracy."""
+    rng = np.random.default_rng(seed)
+    out = np.empty((truth.size, len(accuracies)), dtype=int)
+    for j, acc in enumerate(accuracies):
+        flip = rng.random(truth.size) > acc
+        out[:, j] = np.where(flip, (truth + 1) % n_classes, truth)
+    return out
+
+
+def test_vectorized_m_step_bitwise_across_runs_at_scale() -> None:
+    truth = np.array([0, 1, 2, 3] * 1250)
+    annotations = _multiclass_annotations(
+        truth, 4, [0.9, 0.8, 0.7, 0.6, 0.85, 0.75, 0.7, 0.65], seed=21
+    )
+    annotations[rng_mask(annotations.shape, seed=9)] = MISSING
+    a = dawid_skene(annotations, n_classes=4, max_iter=25)
+    b = dawid_skene(annotations, n_classes=4, max_iter=25)
+    assert np.array_equal(a.labels, b.labels)
+    assert np.array_equal(a.posterior, b.posterior)
+    assert np.array_equal(a.error_rates, b.error_rates)
+    assert np.array_equal(a.class_priors, b.class_priors)
+
+
+def test_vectorized_m_step_bitwise_matches_naive_reference() -> None:
+    """The np.add.at reduction must equal the former per-item loops exactly.
+
+    The reference below is the pre-vectorization M-step (per-annotator,
+    per-item accumulation); identical outputs prove the reduction changed
+    performance only, never results.
+    """
+
+    def naive_em(annotations: np.ndarray, n_classes: int, max_iter: int) -> DawidSkeneResult:
+        a = np.asarray(annotations, dtype=int)
+        n_items, n_annotators = a.shape
+        observed = a != MISSING
+        # Majority-vote init, ties to the lowest class (the same rule the
+        # module uses).
+        init = np.zeros(n_items, dtype=int)
+        for i in range(n_items):
+            seen = a[i][a[i] != MISSING]
+            if len(seen):
+                init[i] = int(np.argmax(np.bincount(seen, minlength=n_classes).astype(float)))
+        posterior = np.zeros((n_items, n_classes), dtype=float)
+        posterior[np.arange(n_items), init] = 1.0
+        error = np.empty((n_annotators, n_classes, n_classes), dtype=float)
+        prior = np.full(n_classes, 1.0 / n_classes)
+        for _ in range(max_iter):
+            prior = posterior.mean(axis=0)
+            for j in range(n_annotators):
+                error[j] = np.full((n_classes, n_classes), 1e-8)
+                idx = np.where(observed[:, j])[0]
+                for i in idx:
+                    error[j][:, a[i, j]] += posterior[i]
+                error[j] /= error[j].sum(axis=1, keepdims=True)
+            log_post = np.log(np.clip(prior, 1e-12, None))[None, :].repeat(n_items, axis=0)
+            for j in range(n_annotators):
+                idx = observed[:, j]
+                log_post[idx] += np.log(np.clip(error[j][:, a[idx, j]].T, 1e-12, None))
+            posterior = np.exp(log_post - log_post.max(axis=1, keepdims=True))
+            posterior /= posterior.sum(axis=1, keepdims=True)
+        return DawidSkeneResult(
+            labels=np.argmax(posterior, axis=1),
+            posterior=posterior,
+            class_priors=prior,
+            error_rates=error,
+            n_iter=max_iter,
+            converged=False,
+            n_observed=int(observed.sum()),
+        )
+
+    truth = np.array([0, 1, 0, 1, 2, 2] * 40)
+    annotations = _rng_annotations(truth, [0.9, 0.75, 0.6], seed=17)
+    annotations[5, 1] = MISSING
+    annotations[100, 0] = MISSING
+    fast = dawid_skene(annotations, n_classes=3, max_iter=15)
+    slow = naive_em(annotations, n_classes=3, max_iter=15)
+    assert np.array_equal(fast.posterior, slow.posterior)
+    assert np.array_equal(fast.error_rates, slow.error_rates)
+    assert np.array_equal(fast.class_priors, slow.class_priors)

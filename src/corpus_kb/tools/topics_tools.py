@@ -10,6 +10,10 @@ One handler per operation, shared by every surface — the
     the ``[topics]`` extra is missing (surfaces map it: HTTP 503,
     socket -32005, CLI exit 3).
   * :func:`topics_list` — the tenant's built topics, largest first.
+  * :func:`topics_trends` — per-topic frequency series over binned
+    document dates (WP-4): one fit through the engine path above, then
+    one BERTopic ``topics_over_time`` call; undated chunks follow the
+    configured drop/report policy.
 
 Envelope: ``{status, topic_count, topics}`` on every outcome, so the
 parity gate holds on the disabled path too (the parity harness runs the
@@ -20,12 +24,14 @@ from __future__ import annotations
 
 import asyncpg
 
+from ..analysis.settings import load_analysis_settings
 from ..topics import engine, writer
 from ..topics import reduction as reduction_mod
+from ..topics import trends as trends_mod
 from ..topics.settings import load_topics_settings
 from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
-__all__ = ["topics_build", "topics_list"]
+__all__ = ["topics_build", "topics_list", "topics_trends"]
 
 # Read/list bounds (the ingest_status convention: bounded, honest windows).
 DEFAULT_LIST_LIMIT = 50
@@ -154,3 +160,115 @@ async def topics_list(
         return _unavailable()
     rows = await writer.read_topics(pg_pool, tenant_id, bounded)
     return {"status": "success", "topic_count": len(rows), "topics": rows}
+
+
+# ---------------------------------------------------------------------------
+# topics_trends (WP-4, analysis program Wave 0)
+# ---------------------------------------------------------------------------
+
+
+def _trends_disabled() -> dict[str, object]:
+    """The honest no-op envelope for ``analysis.topics.over_time.enabled:
+    false`` (the documented dormant default)."""
+    return {
+        "status": "disabled",
+        "reason": "analysis.topics.over_time.enabled is false in the loaded config.",
+        "remedy": "Set analysis.topics.over_time.enabled: true, then retry.",
+        "topic_count": 0,
+        "trends": [],
+    }
+
+
+def _trends_unavailable() -> dict[str, object]:
+    """The honest pre-migration envelope: the flag is on, storage is not."""
+    return {
+        "status": "unavailable",
+        "reason": ("topics tables or documents.document_date absent (migration 027 not applied)"),
+        "remedy": "run corpus-kb setup",
+        "topic_count": 0,
+        "trends": [],
+    }
+
+
+def _trends_insufficient(dated: int, undated: int, needed: int) -> dict[str, object]:
+    """The honest empty-corpus envelope: too few dated chunks to fit."""
+    return {
+        "status": "insufficient_data",
+        "reason": (
+            f"{dated} dated chunks is below the minimum topic size ({needed}); "
+            f"{undated} undated chunks excluded."
+        ),
+        "remedy": "Ingest more dated documents, or lower topics.min_topic_size.",
+        "topic_count": 0,
+        "trends": [],
+    }
+
+
+def _trends_failed(reason: str) -> dict[str, object]:
+    """The honest failed envelope for the guarded upstream TOT call (F9)."""
+    return {
+        "status": "failed",
+        "reason": (f"topics_over_time raised {reason}. A fresh fit carries no deleted topics."),
+        "remedy": "rebuild topics first (topics-build), then retry",
+        "topic_count": 0,
+        "trends": [],
+    }
+
+
+async def topics_trends(
+    pg_pool: asyncpg.Pool,
+    config: dict[str, object] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    bins: int | None = None,
+) -> dict[str, object]:
+    """Per-topic frequency series over binned document dates (WP-4).
+
+    One fit through the same engine path as ``topics_build`` (never
+    re-embeds, never re-fits per bin), then ONE ``topics_over_time``
+    call over the dated chunks. Undated chunks follow the configured
+    policy (``drop`` by default; ``report`` lists up to 20 chunk ids).
+    Returns ``{status, topic_count, trends}`` plus, on the success path,
+    the bins, the dated/undated coverage and the recorded params.
+    """
+    cfg = load_config_or_pass(config)
+    analysis = load_analysis_settings(cfg)
+    if not analysis.over_time.enabled:
+        return _trends_disabled()
+    if not await trends_mod.storage_ready(pg_pool):
+        return _trends_unavailable()
+    topics_settings = load_topics_settings(cfg)
+    floor = max(MIN_BUILD_DOCUMENTS, topics_settings.resolved_min_topic_size())
+    chunks = await engine.read_stored_embeddings(pg_pool, tenant_id)
+    dated, undated = trends_mod.split_dated(chunks)
+    if len(dated) < floor:
+        return _trends_insufficient(len(dated), len(undated), floor)
+    engine_result, model = engine.build_topics_with_model(
+        [chunk for chunk, _date in dated],
+        topics_settings,
+        max_embeddings=analysis.topics_max_embeddings,
+    )
+    outcome = trends_mod.collect_trends(model, engine_result, dated, analysis.over_time, bins)
+    if outcome.failure is not None:
+        return _trends_failed(outcome.failure)
+    params: dict[str, object] = {
+        **engine_result.params,
+        "bins": outcome.bins,
+        "evolution_tuning": False,
+        "undated_policy": analysis.over_time.undated,
+    }
+    if outcome.clamped_from is not None:
+        params["bins_clamped_from"] = outcome.clamped_from
+    envelope: dict[str, object] = {
+        "status": "success",
+        "topic_count": len(outcome.trends),
+        "trends": outcome.trends,
+        "dated_count": len(dated),
+        "undated_count": len(undated),
+        "bins": outcome.bins,
+        "params": params,
+    }
+    if analysis.over_time.undated == "report" and undated:
+        envelope["undated_chunk_ids"] = [
+            chunk.chunk_id for chunk in undated[: trends_mod.MAX_LISTED_UNDATED]
+        ]
+    return envelope

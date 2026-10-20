@@ -58,11 +58,16 @@ def test_active_wrappers_after_p7() -> None:
         "corpus-research-cycle",
         "corpus-release",
         "corpus-ingest-front-door",
-        # Wave 4 topics layer (topics-build + topics-list).
+        # Wave 4 topics layer (topics-build + topics-list) + the analysis
+        # program's topics-trends op.
         "corpus-topics",
+        # Corpus analysis program (Wave 0 registry skeleton).
+        "corpus-labeling",
+        "corpus-classification",
+        "corpus-analysis",
     ]
     assert [w.name for w in reg.WRAPPERS if w.planned] == []
-    assert len(reg.WRAPPERS) == 10
+    assert len(reg.WRAPPERS) == 13
 
 
 def test_wrapper_bodies_are_invocation_guidance_only() -> None:

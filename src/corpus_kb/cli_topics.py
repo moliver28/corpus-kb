@@ -6,6 +6,8 @@ Top-level commands registered on the main app (see ``register``):
     STORED chunk embeddings (the same handler the MCP + HTTP + socket
     surfaces call).
   * ``corpus-kb topics-list``  — the built topics, largest first.
+  * ``corpus-kb topics-trends`` — the temporal trends build (analysis
+    program WP-4): per-topic series over binned document dates.
 
 HONEST EXIT CODES (stable for scripting, documented in each command's
 help): ``0`` the command answered (including the honest no-op outcomes:
@@ -36,9 +38,11 @@ EXIT_CONFIG = 3
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the two topics commands to the main Typer app."""
+    """Attach the topics commands to the main Typer app."""
     app.command("topics-build")(topics_build)
     app.command("topics-list")(topics_list)
+    # Analysis program trends op (WP-4): temporal topic trends.
+    app.command("topics-trends")(topics_trends)
 
 
 def _exit_for(result: dict[str, object], *, failed_status: str = "error") -> int:
@@ -135,3 +139,31 @@ def topics_list(
     database down).
     """
     return _run_sync(lambda: _list_flow(limit, json_output))
+
+
+async def _trends_flow(bins: int | None, json_output: bool) -> int:
+    from corpus_kb.tools.topics_tools import topics_trends
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await topics_trends(pool, cfg, bins=bins)
+    finally:
+        await pool.close()
+    _emit(result, json_output)
+    return _exit_for(result)
+
+
+def topics_trends(
+    bins: int | None = typer.Option(
+        None, "--bins", min=1, help="Date bins for the trends build (default: auto)"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Per-topic frequency series over binned document dates.
+
+    Requires analysis.topics.over_time.enabled: true. Exit codes: 0
+    done (or an honest no-op: disabled, engine not built), 1 the run
+    failed, 3 migration missing / database down.
+    """
+    return _run_sync(lambda: _trends_flow(bins, json_output))

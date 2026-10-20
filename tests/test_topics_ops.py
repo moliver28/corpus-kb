@@ -101,10 +101,17 @@ def _embedding_rows(n: int) -> list[dict[str, Any]]:
 
 
 def _read_rows_stub(pool: _ProbePool) -> Any:
-    async def _read(pg_pool: Any, tenant_id: str, limit: int = 20000) -> list[StoredChunk]:
+    async def _read(pg_pool: Any, tenant_id: str, limit: int | None = None) -> list[StoredChunk]:
         return [
-            StoredChunk(chunk_id=str(row["chunk_id"]), text=str(row["text"]), vector=[0.1, 1.0])
-            for row in pool._conn._rows
+            StoredChunk(
+                chunk_id=str(row["chunk_id"]),
+                text=str(row["text"]),
+                vector=[0.1, 1.0],
+                doc_id=f"doc-{i}",
+                document_date=row.get("document_date"),
+                source_timestamp=row.get("source_timestamp"),
+            )
+            for i, row in enumerate(pool._conn._rows)
         ]
 
     return _read

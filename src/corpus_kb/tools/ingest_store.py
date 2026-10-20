@@ -29,10 +29,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime
 from typing import Any, cast
 
 import asyncpg
 
+from ..analysis.dates import parse_date_value
 from ..errors import ConfigError
 from ..utils.models import Chunk, Document, Entity, Relation
 
@@ -111,12 +113,25 @@ def _width_config_error(exc: asyncpg.DataError, embedding_model: str) -> ConfigE
 
 _DOCUMENT_UPSERT_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
-        chunk_count, file_size, file_hash, metadata)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        chunk_count, file_size, file_hash, metadata, document_date)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT (tenant_id, source) DO UPDATE
-    SET chunk_count = $5, file_size = $6, file_hash = $7, updated_at = NOW()
+    SET chunk_count = $5, file_size = $6, file_hash = $7,
+        document_date = COALESCE(EXCLUDED.document_date, documents.document_date),
+        updated_at = NOW()
     RETURNING doc_id::text
 """
+
+
+def _document_date_param(document: Document) -> datetime | None:
+    """The resolved date for the upsert's ``document_date`` (None -> NULL).
+
+    The date rides in ``document.metadata`` (``document_date``, ISO text)
+    so the Document model stays schema-stable. The COALESCE rule in the
+    SQL decides the merge: a newly resolved date fills the column, a NULL
+    never clears a stored date.
+    """
+    return parse_date_value(document.metadata.get("document_date"))
 
 
 class PostgresIngestStore:
@@ -189,6 +204,7 @@ class PostgresIngestStore:
                 document.size_bytes,
                 file_hash,
                 json.dumps(document.metadata),
+                _document_date_param(document),
             )
             doc_id: str = row["doc_id"]
             run_id = await conn.fetchval(
@@ -220,6 +236,7 @@ class PostgresIngestStore:
                 document.size_bytes,
                 file_hash,
                 json.dumps(document.metadata),
+                _document_date_param(document),
             )
 
     async def finish_run(

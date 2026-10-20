@@ -24,6 +24,7 @@ from typing import Any, cast
 
 import asyncpg
 
+from ..analysis.dates import plan_document_date
 from ..config import load_config
 from ..errors import ConfigError
 from ..extraction import ExtractStats
@@ -250,6 +251,14 @@ async def run_pipeline(
         # bytes as UTF-8 first.
         text = plan.document_text
         document = build_document(path, source_type, text)
+        # WP-1 date provenance: the declared document date (web
+        # published_time/modified_time, pptx core-properties, a future
+        # declared-date strategy) rides in metadata as ISO text, so the
+        # Document model stays schema-stable. ingest_store lifts it into
+        # the documents.document_date column on write.
+        document_date = plan_document_date(chunk.metadata for chunk in plan.chunks)
+        if document_date is not None:
+            document.metadata["document_date"] = document_date.isoformat()
         with span(SPAN_CHUNK, **{ATTR_STRATEGY: resolution.strategy.name}) as chunk_span:
             chunks = chunks_from_plan(plan, document.document_id)
             chunk_span.set_attribute(ATTR_CHUNK_COUNT, len(chunks))

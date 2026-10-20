@@ -67,3 +67,17 @@ Migration 026 adds two tenant-scoped tables:
 
 Every build replaces the tenant's rows. The tables are derived data:
 delete them and nothing breaks; rebuild with one command.
+
+## Trends over time
+
+`topics-trends` adds dates. It reuses the fit path (it never
+re-embeds) and counts each topic per document-date bin over the dated
+chunks. Undated chunks follow `analysis.topics.over_time.undated`:
+`drop` (the default) skips them and reports the count; `report` also
+lists up to 20 chunk ids.
+
+Rebuild contract: run `topics-trends` against a fresh topics state
+after a big ingest. The trends run refreshes
+`documents.document_date` first. The composed `analyze-run` report
+does this for you; its sections and config live in docs/ANALYSIS.md.
+

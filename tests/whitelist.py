@@ -85,6 +85,13 @@ truncation
 IrrCodeVerdict
 prevalence_affected
 
+# Protocol keyword-only parameters that mirror real upstream signatures
+# (tier_b's SetFitModel.fit; the engine's topics_over_time seam). The
+# names must match the real calls; vulture sees only the Protocol text.
+end_to_end
+nr_bins
+evolution_tuning
+
 # dynamically-dispatched or test-patched names (verified by repo-wide grep): 149 name(s)
 aggregate_signals
 class_priors
@@ -375,3 +382,11 @@ gen_min_span_tree
 algorithm
 fit_transform
 MountableApp
+
+# Corpus analysis program (analysis/settings.py, Wave 0 skeleton): the
+# typed-reader field the WP-3 engine reads (the seed floor) and the
+# "auto"-resolving helper the WP-4 trends build calls. Vulture sees them
+# as unused because the engines land in later waves; the settings tests
+# pin both contracts today.
+min_labels_per_class
+resolved_bins

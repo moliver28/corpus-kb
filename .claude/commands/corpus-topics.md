@@ -19,6 +19,13 @@ feature is dormant by default: `topics.enabled: false` in config.yaml.
   corpus-kb topics-list [--limit N]
   ```
 
+- Topic trends over document dates (analysis program; dormant by
+  default, needs `analysis.topics.over_time.enabled: true`):
+
+  ```
+  corpus-kb topics-trends [--bins N]
+  ```
+
 - A disabled feature is an honest no-op result, not an error. A missing
   extra exits 3 with the remedy: `pip install 'corpus-kb[topics]'`.
 - All flags: `corpus-kb topics-build --help`

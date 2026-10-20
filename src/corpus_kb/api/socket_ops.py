@@ -188,6 +188,95 @@ async def _topics_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]
     )
 
 
+async def _topics_trends(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.topics_tools import topics_trends as topics_trends_tool
+
+    bins = params.get("bins")
+    return await topics_trends_tool(
+        await research_pool(),
+        tenant_id=tenant_id,
+        bins=int(bins) if bins is not None else None,
+    )
+
+
+async def _labeling_build(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.labeling_tools import labeling_build as labeling_build_tool
+
+    return await labeling_build_tool(await research_pool(), tenant_id=tenant_id)
+
+
+async def _labeling_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.labeling_tools import labeling_list as labeling_list_tool
+
+    return await labeling_list_tool(
+        await research_pool(),
+        tenant_id=tenant_id,
+        limit=int(params.get("limit", 50)),
+    )
+
+
+async def _labeling_lfs(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.labeling_tools import labeling_lfs as labeling_lfs_tool
+
+    return await labeling_lfs_tool(
+        await research_pool(),
+        tenant_id=tenant_id,
+        limit=int(params.get("limit", 50)),
+    )
+
+
+async def _classification_build(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.classification_tools import (
+        classification_build as classification_build_tool,
+    )
+
+    seed_file = params.get("seed_file")
+    return await classification_build_tool(
+        await research_pool(),
+        tenant_id=tenant_id,
+        seed_file=str(seed_file) if seed_file is not None else None,
+    )
+
+
+async def _classification_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.classification_tools import (
+        classification_list as classification_list_tool,
+    )
+
+    return await classification_list_tool(
+        await research_pool(),
+        tenant_id=tenant_id,
+        limit=int(params.get("limit", 50)),
+    )
+
+
+async def _analysis_backfill_dates(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.analysis_tools import (
+        analysis_backfill_dates as analysis_backfill_dates_tool,
+    )
+
+    return await analysis_backfill_dates_tool(await research_pool(), tenant_id=tenant_id)
+
+
+async def _analyze_run(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.analysis_tools import analyze_run as analyze_run_tool
+
+    output = params.get("output")
+    return await analyze_run_tool(
+        await research_pool(),
+        tenant_id=tenant_id,
+        output=str(output) if output is not None else None,
+    )
+
+
 async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import SearchQuery
     from corpus_kb.handlers.query_handler import get_query_handler
@@ -292,6 +381,16 @@ _CORE_ARMS: dict[str, Arm] = {
     "delete_document": _delete_document,
     "topics_build": _topics_build,
     "topics_list": _topics_list,
+    # Analysis program Wave 0 (labeling/classification/analysis families
+    # + the topics trends op): honest no-op stubs until the engines land.
+    "topics_trends": _topics_trends,
+    "labeling_build": _labeling_build,
+    "labeling_list": _labeling_list,
+    "labeling_lfs": _labeling_lfs,
+    "classification_build": _classification_build,
+    "classification_list": _classification_list,
+    "analysis_backfill_dates": _analysis_backfill_dates,
+    "analyze_run": _analyze_run,
     "search": _search,
     "ask": _ask,
     "query": _query,
