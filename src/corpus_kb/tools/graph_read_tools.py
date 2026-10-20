@@ -25,7 +25,7 @@ from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 if TYPE_CHECKING:
     from corpus_kb.handlers.graph_handler import GraphHandler
 
-__all__ = ["get_entity_relations", "search_graph"]
+__all__ = ["get_entity_relations", "graph_neighbors", "search_graph"]
 
 
 async def _resolve_graph_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> GraphHandler:
@@ -84,3 +84,34 @@ async def get_entity_relations(
     handler = await _resolve_graph_handler(cfg, pg_pool)
     rows = await handler.handle_get_entity_relations(UUID(tenant_id), UUID(entity_id), limit=limit)
     return {"status": "success", "result": rows}
+
+
+async def graph_neighbors(
+    pg_pool: asyncpg.Pool,
+    entity_id: str,
+    config: dict[str, object] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    hops: int = 1,
+    direction: str = "both",
+    relation_types: list[str] | None = None,
+    entity_types: list[str] | None = None,
+    limit: int = 100,
+) -> dict[str, object]:
+    """List neighbors within 1 to 3 hops of one entity.
+
+    Delegates to ``GraphHandler.handle_graph_neighbors`` — the same call
+    POST /api/graph/neighbors and the socket method make. Rows are ordered
+    ``(depth, name, entity_id)`` at their shallowest depth. Envelope:
+    ``{"status", "result"}``.
+    """
+    cfg = load_config_or_pass(config)
+    handler = await _resolve_graph_handler(cfg, pg_pool)
+    return await handler.handle_graph_neighbors(
+        UUID(tenant_id),
+        UUID(entity_id),
+        hops=hops,
+        direction=direction,
+        relation_types=relation_types,
+        entity_types=entity_types,
+        limit=limit,
+    )

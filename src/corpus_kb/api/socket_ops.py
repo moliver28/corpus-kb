@@ -308,6 +308,22 @@ async def _get_entity_relations(params: dict[str, Any], tenant_id: str) -> dict[
     )
 
 
+async def _graph_neighbors(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import graph_neighbors as neighbors_tool
+
+    return await neighbors_tool(
+        await research_pool(),
+        str(params["entity_id"]),
+        tenant_id=tenant_id,
+        hops=int(params.get("hops", 1)),
+        direction=str(params.get("direction", "both")),
+        relation_types=params.get("relation_types"),
+        entity_types=params.get("entity_types"),
+        limit=int(params.get("limit", 100)),
+    )
+
+
 _CORE_ARMS: dict[str, Arm] = {
     "ingest_file": _ingest_file,
     "ingest_text": _ingest_text,
@@ -327,6 +343,7 @@ _CORE_ARMS: dict[str, Arm] = {
     "add_relation": _add_relation,
     "search_graph": _search_graph,
     "get_entity_relations": _get_entity_relations,
+    "graph_neighbors": _graph_neighbors,
 }
 
 

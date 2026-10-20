@@ -274,3 +274,47 @@ def test_get_entity_relations_uncapped_by_default(monkeypatch: pytest.MonkeyPatc
     assert result.exit_code == 0
     assert "no relations" in result.output
     assert fake.calls[0]["limit"] is None
+
+
+def test_graph_neighbors_passes_hops_direction_and_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = {
+        "status": "success",
+        "result": [{"entity_id": ENTITY_ID, "name": "N", "depth": 1}],
+    }
+    fake = _RecordingTool(envelope)
+    _patch_hops_world(monkeypatch, "graph_neighbors", fake)
+    result = runner.invoke(
+        app,
+        [
+            "graph-neighbors",
+            ENTITY_ID,
+            "--hops",
+            "2",
+            "--direction",
+            "out",
+            "--relation-type",
+            "CALLS",
+            "--entity-type",
+            "CLASS",
+            "--limit",
+            "10",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["hops"] == 2
+    assert call["direction"] == "out"
+    assert call["relation_types"] == ["CALLS"]
+    assert call["entity_types"] == ["CLASS"]
+    assert call["limit"] == 10
+
+
+def test_graph_neighbors_cli_rejects_four_hops(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": []})
+    _patch_hops_world(monkeypatch, "graph_neighbors", fake)
+    result = runner.invoke(app, ["graph-neighbors", ENTITY_ID, "--hops", "4"])
+    assert result.exit_code != 0

@@ -34,6 +34,7 @@ def register(app: typer.Typer) -> None:
     """Attach the graph read commands to the main Typer app."""
     app.command("search-graph")(search_graph)
     app.command("get-entity-relations")(get_entity_relations)
+    app.command("graph-neighbors")(graph_neighbors)
 
 
 def _emit_rows(result: dict[str, object], json_output: bool, label: str) -> None:
@@ -125,3 +126,70 @@ def get_entity_relations(
     database is unreachable.
     """
     return _run_sync(lambda: _get_entity_relations_flow(entity_id, limit, json_output))
+
+
+async def _graph_neighbors_flow(
+    entity_id: str,
+    hops: int,
+    direction: str,
+    relation_types: tuple[str, ...],
+    entity_types: tuple[str, ...],
+    limit: int,
+    json_out: bool,
+) -> int:
+    from corpus_kb.errors import CorpusError
+    from corpus_kb.tools.graph_read_tools import graph_neighbors
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await graph_neighbors(
+            pool,
+            entity_id,
+            config=cfg,
+            hops=hops,
+            direction=direction,
+            relation_types=list(relation_types) or None,
+            entity_types=list(entity_types) or None,
+            limit=limit,
+        )
+    except CorpusError as exc:
+        print(f"ERROR: {exc}")
+        return EXIT_FAILED
+    finally:
+        await pool.close()
+    _emit_rows(result, json_out, "neighbors")
+    return _exit_code(result)
+
+
+# B008: repeatable list options read module-level singleton defaults (typer
+# reuses the same Option info object; the value lists stay per-call).
+_RELATION_TYPE_OPTION = typer.Option(None, "--relation-type", help="Keep this type")
+_ENTITY_TYPE_OPTION = typer.Option(None, "--entity-type", help="Keep this type")
+
+
+def graph_neighbors(
+    entity_id: str = typer.Argument(..., help="The entity UUID to start from"),
+    hops: int = typer.Option(1, "--hops", min=1, max=3, help="Depth: 1 to 3"),
+    direction: str = typer.Option("both", "--direction", help="in, out, or both"),
+    relation_type: list[str] | None = _RELATION_TYPE_OPTION,
+    entity_type: list[str] | None = _ENTITY_TYPE_OPTION,
+    limit: int = typer.Option(100, "--limit", min=1, help="How many rows to show"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """List neighbors within 1-3 hops (ordered by depth, name, ID).
+
+    Exit codes: 0 answered (an empty list is still 0), 1 failed, 3 the
+    database is unreachable.
+    """
+    return _run_sync(
+        lambda: _graph_neighbors_flow(
+            entity_id,
+            hops,
+            direction,
+            tuple(relation_type or ()),
+            tuple(entity_type or ()),
+            limit,
+            json_output,
+        )
+    )

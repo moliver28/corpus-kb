@@ -45,6 +45,7 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "list_branches",
         "get_entity_relations",
         "search_graph",
+        "graph_neighbors",
         "sql_query",
         "sql_tables",
         "get_document_tags",

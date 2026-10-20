@@ -142,4 +142,27 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 3),
     ),
+    Operation(
+        name="graph_neighbors",
+        family="graph",
+        description="List entities within 1 to 3 hops. Rows carry their depth.",
+        handler="corpus_kb.tools.graph_read_tools:graph_neighbors",
+        params=(
+            ParamSpec("entity_id", required=True),
+            ParamSpec("hops", default=1),
+            ParamSpec("direction", default="both"),
+            ParamSpec("relation_types"),
+            ParamSpec("entity_types"),
+            ParamSpec("limit", default=100),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "graph_neighbors"),
+            SurfaceSpec(CLI, "graph-neighbors"),
+            SurfaceSpec(HTTP, "/api/graph/neighbors", "POST"),
+            SurfaceSpec(SOCKET, "graph_neighbors"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
 )

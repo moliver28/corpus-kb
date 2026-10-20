@@ -2,7 +2,7 @@
 
 POST /api/entities, /api/relations
 DELETE /api/documents/{doc_id}
-POST /api/graph/search, /api/graph/bfs
+POST /api/graph/search, /api/graph/bfs, /api/graph/neighbors
 GET  /api/graph/relations/{entity_id}
 
 Thin adapters: parse JSON, call the shared handler layer, return
@@ -99,6 +99,26 @@ async def bfs_traversal(request: Request) -> JSONResponse:
         body.get("max_depth", 3),
     )
     return JSONResponse({"status": "success", "result": results})
+
+
+@route_errors
+async def graph_neighbors(request: Request) -> JSONResponse:
+    """POST /api/graph/neighbors — neighbors within 1-3 hops of an entity."""
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    body = await parse_body(request)
+    handler = get_graph_handler()
+    return JSONResponse(
+        await handler.handle_graph_neighbors(
+            UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
+            UUID(body["entity_id"]),
+            hops=body.get("hops", 1),
+            direction=body.get("direction", "both"),
+            relation_types=body.get("relation_types"),
+            entity_types=body.get("entity_types"),
+            limit=body.get("limit", 100),
+        )
+    )
 
 
 @route_errors
