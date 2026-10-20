@@ -239,6 +239,7 @@ fetched_at
 # dataclass/pydantic model fields (data-model surface, attribute-read): 21 name(s)
 _deleted
 reset_app
+close_app
 snapshotting_intervals
 recalibrate_thresholds
 refine_definition
