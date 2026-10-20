@@ -43,7 +43,6 @@ def _pool() -> _ProbePool:
 
 
 OFF = {}  # no analysis block: the dormant default
-LABELING_ON = {"analysis": {"labeling": {"enabled": True}}}
 CLASSIFICATION_ON = {"analysis": {"classification": {"enabled": True}}}
 OVER_TIME_ON = {"analysis": {"topics": {"over_time": {"enabled": True}}}}
 
@@ -61,25 +60,10 @@ async def test_labeling_build_disabled_is_an_honest_noop() -> None:
     assert result["labels"] == []
 
 
-async def test_labeling_list_and_lfs_disabled_share_the_gate() -> None:
-    listed = await labeling_tools.labeling_list(_pool(), config=OFF, tenant_id=TENANT)
-    assert listed["status"] == "disabled"
-    assert listed["label_count"] == 0
-    assert listed["labels"] == []
-    lfs = await labeling_tools.labeling_lfs(_pool(), config=OFF, tenant_id=TENANT)
-    assert lfs["status"] == "disabled"
-    assert lfs["lf_count"] == 0
-    assert lfs["lfs"] == []
-
-
-async def test_labeling_ops_enabled_answer_unavailable_on_the_skeleton() -> None:
-    """Flag on + no engine = the honest wave-0 envelope, never fake data."""
-    for tool in (labeling_tools.labeling_build, labeling_tools.labeling_list):
-        result = await tool(_pool(), config=LABELING_ON, tenant_id=TENANT)
-        assert result["status"] == "unavailable"
-        assert "not built yet" in str(result["reason"])
-    lfs = await labeling_tools.labeling_lfs(_pool(), config=LABELING_ON, tenant_id=TENANT)
-    assert lfs["status"] == "unavailable"
+# The remaining labeling behavior moved to tests/test_labeling_ops.py when
+# the WP-2 engine landed: the build answers the migration-028 probe and the
+# LF-file gates there; both reads drop the flag gate (the topics_list rule)
+# and answer the tables check with bounded windows.
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +187,6 @@ async def test_topics_trends_enabled_answers_unavailable_on_the_skeleton() -> No
     ("tool", "keys"),
     [
         (labeling_tools.labeling_build, {"status", "reason", "remedy", "label_count", "labels"}),
-        (labeling_tools.labeling_lfs, {"status", "reason", "remedy", "lf_count", "lfs"}),
         (
             classification_tools.classification_build,
             {
@@ -225,7 +208,6 @@ async def test_topics_trends_enabled_answers_unavailable_on_the_skeleton() -> No
     ],
     ids=[
         "labeling_build",
-        "labeling_lfs",
         "classification_build",
         "analysis_backfill_dates",
         "analyze_run",
