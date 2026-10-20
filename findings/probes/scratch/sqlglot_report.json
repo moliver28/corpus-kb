@@ -1,0 +1,463 @@
+{
+  "sqlglot_version": "30.23.0",
+  "per_file": {
+    "001_corpus_schema.sql": {
+      "statements": 4,
+      "families": {
+        "CREATE SCHEMA": 1,
+        "CREATE TABLE": 3
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "create_schema": 1,
+        "gen_random_uuid": 2
+      }
+    },
+    "002_corpus_rag_schema.sql": {
+      "statements": 1,
+      "families": {
+        "CREATE SCHEMA": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "create_schema": 1
+      }
+    },
+    "003_enable_extensions.sql": {
+      "statements": 2,
+      "families": {
+        "CREATE EXTENSION": 2
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "create_extension": 2,
+        "uuid_ossp": 1
+      }
+    },
+    "004_enable_age.sql": {
+      "statements": 2,
+      "families": {
+        "CREATE EXTENSION": 1,
+        "DO": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "create_extension": 1,
+        "plpgsql_do_block": 1,
+        "create_graph_age": 1
+      }
+    },
+    "005_enable_pgml.sql": {
+      "statements": 1,
+      "families": {
+        "CREATE EXTENSION": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "create_extension": 1
+      }
+    },
+    "006_rrf_fusion.sql": {
+      "statements": 1,
+      "families": {
+        "CREATE OR REPLACE FUNCTION": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {}
+    },
+    "007_chunk_dedup_provenance.sql": {
+      "statements": 6,
+      "families": {
+        "SET": 1,
+        "ALTER TABLE CHUNKS": 1,
+        "CREATE INDEX": 2,
+        "ALTER": 1,
+        "UPDATE": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1
+      }
+    },
+    "008_typed_relations.sql": {
+      "statements": 4,
+      "families": {
+        "SET": 1,
+        "ALTER TABLE RELATIONS": 1,
+        "CREATE INDEX": 1,
+        "DO": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "plpgsql_do_block": 1
+      }
+    },
+    "009_contextual_blurb.sql": {
+      "statements": 3,
+      "families": {
+        "SET": 1,
+        "ALTER TABLE CHUNKS": 1,
+        "DO": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "index_method_gin": 1,
+        "plpgsql_do_block": 1,
+        "to_tsvector_family": 1
+      }
+    },
+    "010_matryoshka_1024.sql": {
+      "statements": 4,
+      "families": {
+        "SET": 1,
+        "ALTER": 1,
+        "DO": 2
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "vector_type": 1,
+        "plpgsql_do_block": 2,
+        "index_method_hnsw": 1,
+        "opclass": 1
+      }
+    },
+    "011_force_rls.sql": {
+      "statements": 12,
+      "families": {
+        "DO": 12
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "rls_force": 12,
+        "plpgsql_do_block": 12
+      }
+    },
+    "012_coding_schema.sql": {
+      "statements": 75,
+      "families": {
+        "SET": 1,
+        "CREATE TABLE": 12,
+        "CREATE INDEX": 28,
+        "ALTER": 12,
+        "DO": 12,
+        "CREATE UNIQUE INDEX": 1,
+        "CREATE OR REPLACE FUNCTION": 3,
+        "DROP TRIGGER": 3,
+        "CREATE TRIGGER": 3
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "vector_type": 3,
+        "rls_enable": 12,
+        "create_policy": 12,
+        "plpgsql_do_block": 12,
+        "current_setting": 12,
+        "gen_random_uuid": 2,
+        "plpgsql_function": 3,
+        "create_trigger": 3
+      }
+    },
+    "013_force_rls_coding.sql": {
+      "statements": 12,
+      "families": {
+        "DO": 12
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "rls_force": 12,
+        "plpgsql_do_block": 12
+      }
+    },
+    "014_codebook_versions_unique.sql": {
+      "statements": 9,
+      "families": {
+        "ALTER": 4,
+        "CREATE TEMP": 1,
+        "UPDATE": 1,
+        "DELETE FROM": 2,
+        "DO": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "rls_force": 4,
+        "plpgsql_do_block": 1
+      }
+    },
+    "015_chunk_signals_upsert.sql": {
+      "statements": 8,
+      "families": {
+        "ALTER": 4,
+        "DROP TRIGGER": 1,
+        "CREATE TEMP": 1,
+        "DELETE FROM": 1,
+        "DROP FUNCTION": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "rls_force": 2
+      }
+    },
+    "016_research_domain.sql": {
+      "statements": 36,
+      "families": {
+        "SET": 1,
+        "ALTER": 1,
+        "ALTER TABLE DOCUMENTS": 8,
+        "CREATE INDEX": 10,
+        "CREATE TABLE": 11,
+        "DO": 5
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "gen_random_uuid": 1,
+        "vector_type": 3,
+        "rls_enable": 1,
+        "rls_force": 1,
+        "create_policy": 1,
+        "plpgsql_do_block": 5,
+        "current_setting": 1,
+        "index_method_hnsw": 4,
+        "opclass": 4,
+        "halfvec_type": 2
+      }
+    },
+    "017_inductive_engine.sql": {
+      "statements": 6,
+      "families": {
+        "CREATE TABLE": 3,
+        "CREATE INDEX": 2,
+        "DO": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "vector_type": 2,
+        "rls_enable": 1,
+        "rls_force": 1,
+        "create_policy": 1,
+        "plpgsql_do_block": 1,
+        "current_setting": 1
+      }
+    },
+    "018_keyword_synthesis.sql": {
+      "statements": 5,
+      "families": {
+        "CREATE TABLE": 1,
+        "CREATE INDEX": 2,
+        "DO": 2
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "rls_enable": 1,
+        "rls_force": 1,
+        "plpgsql_do_block": 2,
+        "create_policy": 1,
+        "current_setting": 1
+      }
+    },
+    "019_codebook_releases.sql": {
+      "statements": 18,
+      "families": {
+        "CREATE TABLE": 4,
+        "CREATE UNIQUE INDEX": 1,
+        "CREATE INDEX": 4,
+        "CREATE OR REPLACE FUNCTION": 2,
+        "DROP TRIGGER": 3,
+        "CREATE TRIGGER": 3,
+        "DO": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "plpgsql_function": 2,
+        "create_trigger": 3,
+        "rls_enable": 1,
+        "rls_force": 1,
+        "create_policy": 1,
+        "plpgsql_do_block": 1,
+        "current_setting": 1
+      }
+    },
+    "020_exact_result_cache.sql": {
+      "statements": 9,
+      "families": {
+        "SET": 1,
+        "CREATE TABLE": 1,
+        "CREATE INDEX": 1,
+        "DO": 1,
+        "CREATE OR REPLACE FUNCTION": 1,
+        "DROP TRIGGER": 2,
+        "CREATE TRIGGER": 2
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "rls_enable": 1,
+        "rls_force": 1,
+        "create_policy": 1,
+        "plpgsql_do_block": 1,
+        "current_setting": 1,
+        "plpgsql_function": 1,
+        "create_trigger": 2
+      }
+    },
+    "021_shadow_vectors.sql": {
+      "statements": 7,
+      "families": {
+        "SET": 1,
+        "CREATE TABLE": 2,
+        "CREATE INDEX": 2,
+        "DO": 2
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "gen_random_uuid": 1,
+        "vector_type": 1,
+        "rls_enable": 1,
+        "rls_force": 1,
+        "create_policy": 1,
+        "plpgsql_do_block": 2,
+        "current_setting": 1,
+        "index_method_hnsw": 1,
+        "opclass": 1,
+        "halfvec_type": 1
+      }
+    },
+    "022_ingest_integrity.sql": {
+      "statements": 15,
+      "families": {
+        "SET": 1,
+        "CREATE TABLE": 1,
+        "CREATE INDEX": 4,
+        "ALTER TABLE CHUNKS": 1,
+        "ALTER": 1,
+        "DO": 6,
+        "UPDATE": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "gen_random_uuid": 1,
+        "rls_enable": 1,
+        "rls_force": 5,
+        "create_policy": 1,
+        "plpgsql_do_block": 6,
+        "current_setting": 1
+      }
+    },
+    "023_qa_context.sql": {
+      "statements": 4,
+      "families": {
+        "SET": 1,
+        "ALTER TABLE CHUNKS": 1,
+        "DO": 2
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "index_method_gin": 2,
+        "plpgsql_do_block": 2,
+        "current_setting": 1,
+        "to_tsvector_family": 1
+      }
+    },
+    "024_rrf_fusion_tiebreak.sql": {
+      "statements": 1,
+      "families": {
+        "CREATE OR REPLACE FUNCTION": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {}
+    },
+    "025_halfvec_2560.sql": {
+      "statements": 12,
+      "families": {
+        "SET": 1,
+        "DROP INDEX": 2,
+        "DO": 4,
+        "ALTER": 3,
+        "UPDATE": 2
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "plpgsql_do_block": 4,
+        "halfvec_type": 2,
+        "vector_type": 2,
+        "index_method_hnsw": 1,
+        "opclass": 1
+      }
+    },
+    "026_topics.sql": {
+      "statements": 6,
+      "families": {
+        "SET": 1,
+        "CREATE TABLE": 2,
+        "CREATE INDEX": 2,
+        "DO": 1
+      },
+      "parse_failures": [],
+      "transpile_failures": [],
+      "pg_construct_flags": {
+        "guc_set": 1,
+        "gen_random_uuid": 1,
+        "rls_enable": 1,
+        "rls_force": 1,
+        "create_policy": 1,
+        "plpgsql_do_block": 1,
+        "current_setting": 1
+      }
+    }
+  },
+  "global_failure_families": {},
+  "global_construct_flags": {
+    "create_schema": 2,
+    "gen_random_uuid": 8,
+    "create_extension": 4,
+    "uuid_ossp": 1,
+    "plpgsql_do_block": 67,
+    "create_graph_age": 1,
+    "guc_set": 12,
+    "index_method_gin": 3,
+    "to_tsvector_family": 2,
+    "vector_type": 12,
+    "index_method_hnsw": 7,
+    "opclass": 7,
+    "rls_force": 42,
+    "rls_enable": 20,
+    "create_policy": 20,
+    "current_setting": 21,
+    "plpgsql_function": 6,
+    "create_trigger": 8,
+    "halfvec_type": 5
+  }
+}
