@@ -326,7 +326,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
-          key: ollama-${{ env.OLLAMA_MODEL }}-${{ runner.os }}
+          # The live legs exercise all three: nomic-embed-text (legacy
+          # default), qwen3-embedding:4b (the shipped config.yaml default),
+          # and qwen3-embedding:8b-q8_0 (the 4096-dim MRL-slice proof).
+          key: ollama-nomic-embed-text-qwen3-4b-qwen3-8b-${{ runner.os }}
 
       - name: Install Ollama (Ubuntu)
         run: |
@@ -334,10 +337,15 @@ jobs:
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
 
-      - name: Pull embedding model
-        # continue-on-error: tests use zero-vector fallback when unavailable.
+      - name: Pull embedding models
+        # continue-on-error: tests that can degrade to zero-vector fallback
+        # still run when a pull fails; live-model tests (research embed
+        # proof) fail loudly instead, which is the honest signal.
         continue-on-error: true
-        run: ollama pull ${{ env.OLLAMA_MODEL }}
+        run: |
+          ollama pull nomic-embed-text
+          ollama pull qwen3-embedding:4b
+          ollama pull qwen3-embedding:8b-q8_0
 
       - name: Verify Ollama
         run: |

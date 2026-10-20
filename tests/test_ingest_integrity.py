@@ -25,7 +25,7 @@ import asyncpg
 import pytest
 
 from corpus_kb.errors import ConfigError
-from tests.research_db import super_dsn_for
+from tests.research_db import RLS_PROBE_ROLE, ensure_rls_probe, super_dsn_for
 
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "src" / "corpus_kb" / "migrations"
@@ -631,6 +631,11 @@ def integrity_dsn():
         try:
             await superconn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             await superconn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+            # The FORCE-RLS negative assertions below run through the shared
+            # non-superuser probe role (see tests/research_db.py): the app
+            # role is the bootstrap SUPERUSER in the CI service image, and a
+            # superuser bypasses row level security entirely.
+            await ensure_rls_probe(superconn)
         finally:
             await superconn.close()
 
@@ -642,6 +647,8 @@ def integrity_dsn():
             # again to restore the pre-011 conditions this harness targets.
             await conn.execute("ALTER TABLE chunks NO FORCE ROW LEVEL SECURITY")
             await conn.execute("ALTER TABLE chunks_vectors NO FORCE ROW LEVEL SECURITY")
+            # The probe role writes the ledger row in the FORCE-RLS test.
+            await conn.execute(f"GRANT INSERT ON ingest_runs TO {RLS_PROBE_ROLE}")
         finally:
             await conn.close()
         return DSN
@@ -694,12 +701,19 @@ async def test_ingest_runs_table_is_force_rls(integrity_pool) -> None:
         )
         assert forced is True
         # Owner writes without the tenant GUC are rejected (FORCE + policy).
-        with pytest.raises(asyncpg.PostgresError):
-            await conn.execute(
-                "INSERT INTO ingest_runs (tenant_id, source_type) VALUES ($1, $2)",
-                TENANT,
-                "text",
-            )
+        # Exercise it through the non-superuser probe role: the app role is
+        # the bootstrap SUPERUSER in the CI service image, and a superuser
+        # bypasses row level security entirely.
+        await conn.execute(f"SET ROLE {RLS_PROBE_ROLE}")
+        try:
+            with pytest.raises(asyncpg.PostgresError):
+                await conn.execute(
+                    "INSERT INTO ingest_runs (tenant_id, source_type) VALUES ($1, $2)",
+                    TENANT,
+                    "text",
+                )
+        finally:
+            await conn.execute("RESET ROLE")
 
 
 @pytest.mark.requires_postgres

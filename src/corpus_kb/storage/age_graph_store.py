@@ -217,7 +217,7 @@ class AgeGraphStore(GraphStore):
             self._age_checked = True
         try:
             await conn.execute("LOAD 'age'")
-            await conn.execute('SET search_path = ag_catalog, "", public')
+            await conn.execute('SET search_path = ag_catalog, "$user", public')
         except asyncpg.PostgresError as exc:
             if _is_age_absence_error(exc):
                 raise _age_unavailable(f"session setup failed: {exc}") from exc

@@ -61,6 +61,21 @@ def super_dsn_for(db_name: str) -> str:
 
 SUPER_DSN = super_dsn_for("postgres")
 
+
+async def ensure_rls_probe(conn: asyncpg.Connection) -> None:
+    """Create the cluster-wide RLS probe role once, then grant it to the app role.
+
+    Any admin (superuser) connection may call this; the role creation is
+    idempotent and the membership grant is what lets a plain app role SET
+    ROLE to the probe (a superuser may SET ROLE to any role regardless).
+    """
+    await conn.execute(
+        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{RLS_PROBE_ROLE}') "
+        f"THEN CREATE ROLE {RLS_PROBE_ROLE} NOLOGIN; END IF; END $$"
+    )
+    await conn.execute(f"GRANT {RLS_PROBE_ROLE} TO {_PG_USER}")
+
+
 # DDL identifiers cannot be bound; guard the constants instead.
 if not re.fullmatch(r"[a-z_0-9]+", DB_NAME):
     raise ValueError(f"DB_NAME must be a bare identifier, got {DB_NAME!r}")
@@ -81,14 +96,9 @@ async def create_research_db() -> str:
     superconn = await asyncpg.connect(super_dsn_for(DB_NAME))
     await superconn.execute("CREATE EXTENSION IF NOT EXISTS vector")
     await superconn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
-    # Cluster-level RLS probe role: create it once, and let the app role
-    # SET ROLE to it (a superuser may SET ROLE to any role anyway; the
-    # membership grant is what makes the switch work for a plain role).
-    await superconn.execute(
-        f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{RLS_PROBE_ROLE}') "
-        f"THEN CREATE ROLE {RLS_PROBE_ROLE} NOLOGIN; END IF; END $$"
-    )
-    await superconn.execute(f"GRANT {RLS_PROBE_ROLE} TO {_PG_USER}")
+    # Cluster-level RLS probe role (see RLS_PROBE_ROLE): create once, grant
+    # the app role membership so tests can SET ROLE to it.
+    await ensure_rls_probe(superconn)
     await superconn.close()
 
     # The halfvec(2560) schema (migration 025 regime) carries only LEGAL
