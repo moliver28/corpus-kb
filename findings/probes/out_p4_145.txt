@@ -1,0 +1,11 @@
+duckdb 1.4.5
+varchar roundtrip : [('6BA7B810-9DAD-11D1-80B4-00C04FD430C8',), ('6ba7b810-9dad-11d1-80b4-00c04fd430c8',)]
+uuid roundtrip    : [(UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8'),), (UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8'),)]
+uuid::VARCHAR     : [('6ba7b810-9dad-11d1-80b4-00c04fd430c8',)]
+gen_random_uuid() : [(UUID('b79ee8a3-3878-4791-8983-22c3bbf7b45f'),)]
+gen ::VARCHAR     : [('083fa605-08c8-458d-bfb9-d98f81c69e40',)]
+bind uuid.UUID obj : UUID -> WHERE id = ? count: [(2,)]
+bind str upper     : WHERE id = ? count: [(2,)]
+bind str braces    : WHERE id = ? count: [(2,)]
+varchar col = uuid.UUID obj: [(2,)]
+join v.s = u.id    : [(2,)]
