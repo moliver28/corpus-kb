@@ -165,4 +165,26 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 3),
     ),
+    Operation(
+        name="graph_traverse",
+        family="graph",
+        description="Walk the graph from one entity. Rows carry their depth.",
+        handler="corpus_kb.tools.graph_read_tools:graph_traverse",
+        params=(
+            ParamSpec("entity_id", required=True),
+            ParamSpec("max_depth"),
+            ParamSpec("relation_types"),
+            ParamSpec("entity_types"),
+            ParamSpec("limit", default=100),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result", "truncated"),
+        surfaces=(
+            SurfaceSpec(MCP, "graph_traverse"),
+            SurfaceSpec(CLI, "graph-traverse"),
+            SurfaceSpec(HTTP, "/api/graph/traverse", "POST"),
+            SurfaceSpec(SOCKET, "graph_traverse"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
 )

@@ -88,17 +88,47 @@ async def search_graph(request: Request) -> JSONResponse:
 
 @route_errors
 async def bfs_traversal(request: Request) -> JSONResponse:
-    """POST /api/graph/bfs - BFS traversal from an entity."""
+    """POST /api/graph/bfs - BFS traversal from an entity.
+
+    DEPRECATED: use ``graph_traverse`` (POST /api/graph/traverse). This
+    route stays one release and then goes away.
+    """
     from corpus_kb.handlers.graph_handler import get_graph_handler
 
     body = await parse_body(request)
     handler = get_graph_handler()
     results = await handler.handle_bfs(
-        UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         UUID(body["start_entity_id"]),
         body.get("max_depth", 3),
     )
-    return JSONResponse({"status": "success", "result": results})
+    return JSONResponse(
+        {
+            "status": "success",
+            "result": results,
+            "deprecated": "Use graph_traverse (POST /api/graph/traverse).",
+        }
+    )
+
+
+@route_errors
+async def graph_traverse(request: Request) -> JSONResponse:
+    """POST /api/graph/traverse — walk from an entity up to the depth cap."""
+    from corpus_kb.handlers.graph_handler import get_graph_handler
+
+    body = await parse_body(request)
+    handler = get_graph_handler()
+    raw_depth = body.get("max_depth")
+    return JSONResponse(
+        await handler.handle_graph_traverse(
+            UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
+            UUID(body["entity_id"]),
+            max_depth=int(raw_depth) if raw_depth is not None else None,
+            relation_types=body.get("relation_types"),
+            entity_types=body.get("entity_types"),
+            limit=body.get("limit", 100),
+        )
+    )
 
 
 @route_errors

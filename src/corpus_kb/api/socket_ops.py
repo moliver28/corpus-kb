@@ -324,6 +324,22 @@ async def _graph_neighbors(params: dict[str, Any], tenant_id: str) -> dict[str, 
     )
 
 
+async def _graph_traverse(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import graph_traverse as traverse_tool
+
+    raw_depth = params.get("max_depth")
+    return await traverse_tool(
+        await research_pool(),
+        str(params["entity_id"]),
+        tenant_id=tenant_id,
+        max_depth=int(raw_depth) if raw_depth is not None else None,
+        relation_types=params.get("relation_types"),
+        entity_types=params.get("entity_types"),
+        limit=int(params.get("limit", 100)),
+    )
+
+
 _CORE_ARMS: dict[str, Arm] = {
     "ingest_file": _ingest_file,
     "ingest_text": _ingest_text,
@@ -344,6 +360,7 @@ _CORE_ARMS: dict[str, Arm] = {
     "search_graph": _search_graph,
     "get_entity_relations": _get_entity_relations,
     "graph_neighbors": _graph_neighbors,
+    "graph_traverse": _graph_traverse,
 }
 
 

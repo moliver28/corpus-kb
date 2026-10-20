@@ -318,3 +318,26 @@ def test_graph_neighbors_cli_rejects_four_hops(monkeypatch: pytest.MonkeyPatch) 
     _patch_hops_world(monkeypatch, "graph_neighbors", fake)
     result = runner.invoke(app, ["graph-neighbors", ENTITY_ID, "--hops", "4"])
     assert result.exit_code != 0
+
+
+def test_graph_traverse_reports_truncation_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {
+        "status": "success",
+        "result": [{"entity_id": ENTITY_ID, "name": "N", "depth": 1}],
+        "truncated": False,
+    }
+    fake = _RecordingTool(envelope)
+    _patch_hops_world(monkeypatch, "graph_traverse", fake)
+    result = runner.invoke(app, ["graph-traverse", ENTITY_ID, "--max-depth", "2", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["max_depth"] == 2
+
+
+def test_graph_traverse_default_depth_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": [], "truncated": False})
+    _patch_hops_world(monkeypatch, "graph_traverse", fake)
+    result = runner.invoke(app, ["graph-traverse", ENTITY_ID])
+    assert result.exit_code == 0
+    assert fake.calls[0]["max_depth"] is None

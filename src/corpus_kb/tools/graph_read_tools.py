@@ -25,7 +25,12 @@ from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 if TYPE_CHECKING:
     from corpus_kb.handlers.graph_handler import GraphHandler
 
-__all__ = ["get_entity_relations", "graph_neighbors", "search_graph"]
+__all__ = [
+    "get_entity_relations",
+    "graph_neighbors",
+    "graph_traverse",
+    "search_graph",
+]
 
 
 async def _resolve_graph_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> GraphHandler:
@@ -111,6 +116,36 @@ async def graph_neighbors(
         UUID(entity_id),
         hops=hops,
         direction=direction,
+        relation_types=relation_types,
+        entity_types=entity_types,
+        limit=limit,
+    )
+
+
+async def graph_traverse(
+    pg_pool: asyncpg.Pool,
+    entity_id: str,
+    config: dict[str, object] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    max_depth: int | None = None,
+    relation_types: list[str] | None = None,
+    entity_types: list[str] | None = None,
+    limit: int = 100,
+) -> dict[str, object]:
+    """Walk the graph from one entity up to the depth cap.
+
+    Delegates to ``GraphHandler.handle_graph_traverse`` — the same call
+    POST /api/graph/traverse and the socket method make. Depths 1..3 take
+    the neighbors fast path; deeper walks recurse. ``max_depth=None``
+    resolves ``graph.max_hops`` (default 5). Envelope:
+    ``{"status", "result", "truncated"}``.
+    """
+    cfg = load_config_or_pass(config)
+    handler = await _resolve_graph_handler(cfg, pg_pool)
+    return await handler.handle_graph_traverse(
+        UUID(tenant_id),
+        UUID(entity_id),
+        max_depth=max_depth,
         relation_types=relation_types,
         entity_types=entity_types,
         limit=limit,

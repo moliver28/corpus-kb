@@ -676,6 +676,12 @@ LEGS: dict[str, _Leg] = {
         _sock("graph_neighbors", {"entity_id": ENTITY_A, "hops": 2, "direction": "out"}),
         _mcp({"entity_id": ENTITY_A, "hops": 2, "direction": "out"}),
     ),
+    "graph_traverse": _Leg(
+        _shared_graph_traverse,
+        _post("/api/graph/traverse", {"entity_id": ENTITY_A, "max_depth": 2}),
+        _sock("graph_traverse", {"entity_id": ENTITY_A, "max_depth": 2}),
+        _mcp({"entity_id": ENTITY_A, "max_depth": 2}),
+    ),
     "release_assess": _Leg(
         **_release_leg(
             "release_assess",
