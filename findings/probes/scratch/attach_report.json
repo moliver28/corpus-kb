@@ -1,0 +1,593 @@
+{
+  "pg_side": {
+    "chunks_vectors_pg_columns": [
+      {
+        "column_name": "chunk_id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "numeric_precision": null,
+        "numeric_scale": null
+      },
+      {
+        "column_name": "tenant_id",
+        "data_type": "uuid",
+        "udt_name": "uuid",
+        "numeric_precision": null,
+        "numeric_scale": null
+      },
+      {
+        "column_name": "embedding",
+        "data_type": "USER-DEFINED",
+        "udt_name": "halfvec",
+        "numeric_precision": null,
+        "numeric_scale": null
+      },
+      {
+        "column_name": "embedding_model",
+        "data_type": "character varying",
+        "udt_name": "varchar",
+        "numeric_precision": null,
+        "numeric_scale": null
+      },
+      {
+        "column_name": "embedded_at",
+        "data_type": "timestamp with time zone",
+        "udt_name": "timestamptz",
+        "numeric_precision": null,
+        "numeric_scale": null
+      },
+      {
+        "column_name": "dimensions",
+        "data_type": "integer",
+        "udt_name": "int4",
+        "numeric_precision": 32,
+        "numeric_scale": 0
+      },
+      {
+        "column_name": "vector_1024",
+        "data_type": "USER-DEFINED",
+        "udt_name": "vector",
+        "numeric_precision": null,
+        "numeric_scale": null
+      },
+      {
+        "column_name": "degraded",
+        "data_type": "boolean",
+        "udt_name": "bool",
+        "numeric_precision": null,
+        "numeric_scale": null
+      }
+    ],
+    "jsonb_vector_cols_sample": [
+      {
+        "table_schema": "public",
+        "table_name": "answer_ctx_vectors",
+        "column_name": "vector",
+        "data_type": "USER-DEFINED",
+        "udt_name": "vector"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "batch_status",
+        "column_name": "manifest",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunk_codes",
+        "column_name": "confidence",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunk_codes",
+        "column_name": "tier_signals",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunk_codes",
+        "column_name": "rationale_vector",
+        "data_type": "USER-DEFINED",
+        "udt_name": "vector"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunk_signals",
+        "column_name": "score",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunks",
+        "column_name": "heading_path",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunks",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunks",
+        "column_name": "qa_context",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunks_vectors",
+        "column_name": "embedding",
+        "data_type": "USER-DEFINED",
+        "udt_name": "halfvec"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "chunks_vectors",
+        "column_name": "vector_1024",
+        "data_type": "USER-DEFINED",
+        "udt_name": "vector"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_keywords",
+        "column_name": "ll",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_keywords",
+        "column_name": "log_ratio",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_registry",
+        "column_name": "examples",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_registry",
+        "column_name": "theory",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_registry",
+        "column_name": "pool_floor",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_registry",
+        "column_name": "residual_floor",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_registry",
+        "column_name": "prototype_vectors",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_registry",
+        "column_name": "definition_vector",
+        "data_type": "USER-DEFINED",
+        "udt_name": "vector"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "code_registry",
+        "column_name": "probe_vector",
+        "data_type": "USER-DEFINED",
+        "udt_name": "vector"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "codebook_releases",
+        "column_name": "manifest_json",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "codebook_versions",
+        "column_name": "diff",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "coding_gate_decisions",
+        "column_name": "verdict",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "doc_extraction_audit",
+        "column_name": "miss_rate_point",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "doc_extraction_audit",
+        "column_name": "miss_rate_ub95",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "documents",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "embedding_cache",
+        "column_name": "embedding",
+        "data_type": "USER-DEFINED",
+        "udt_name": "vector"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "entities",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "final_codes",
+        "column_name": "confidence",
+        "data_type": "numeric",
+        "udt_name": "numeric"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "idempotency_keys",
+        "column_name": "command_payload",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "idempotency_keys",
+        "column_name": "result",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "ingest_runs",
+        "column_name": "stages",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "corpus",
+        "table_name": "nodes",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "relations",
+        "column_name": "metadata",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "release_gate_results",
+        "column_name": "value",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "release_gate_results",
+        "column_name": "threshold",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "release_gate_results",
+        "column_name": "evidence_refs",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "release_gate_results",
+        "column_name": "evaluator",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "research_exact_cache",
+        "column_name": "component_hashes",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      },
+      {
+        "table_schema": "public",
+        "table_name": "research_exact_cache",
+        "column_name": "response",
+        "data_type": "jsonb",
+        "udt_name": "jsonb"
+      }
+    ],
+    "unbounded_numeric": [
+      {
+        "table_name": "code_registry",
+        "column_name": "pool_floor"
+      },
+      {
+        "table_name": "code_registry",
+        "column_name": "residual_floor"
+      },
+      {
+        "table_name": "code_keywords",
+        "column_name": "ll"
+      },
+      {
+        "table_name": "code_keywords",
+        "column_name": "log_ratio"
+      },
+      {
+        "table_name": "chunk_signals",
+        "column_name": "score"
+      },
+      {
+        "table_name": "chunk_codes",
+        "column_name": "confidence"
+      },
+      {
+        "table_name": "final_codes",
+        "column_name": "confidence"
+      },
+      {
+        "table_name": "doc_extraction_audit",
+        "column_name": "miss_rate_point"
+      },
+      {
+        "table_name": "doc_extraction_audit",
+        "column_name": "miss_rate_ub95"
+      }
+    ]
+  },
+  "duck_side": {
+    "chunks_vectors_duckdb_types": [
+      [
+        "chunk_id",
+        "UUID"
+      ],
+      [
+        "tenant_id",
+        "UUID"
+      ],
+      [
+        "embedding",
+        "VARCHAR"
+      ],
+      [
+        "embedding_model",
+        "VARCHAR"
+      ],
+      [
+        "embedded_at",
+        "TIMESTAMP WITH TIME ZONE"
+      ],
+      [
+        "dimensions",
+        "INTEGER"
+      ],
+      [
+        "vector_1024",
+        "VARCHAR"
+      ],
+      [
+        "degraded",
+        "BOOLEAN"
+      ]
+    ],
+    "documents_duckdb_types": [
+      [
+        "doc_id",
+        "UUID"
+      ],
+      [
+        "tenant_id",
+        "UUID"
+      ],
+      [
+        "source",
+        "VARCHAR"
+      ],
+      [
+        "source_type",
+        "VARCHAR"
+      ],
+      [
+        "chunk_count",
+        "INTEGER"
+      ],
+      [
+        "file_size",
+        "BIGINT"
+      ],
+      [
+        "file_hash",
+        "VARCHAR"
+      ],
+      [
+        "language",
+        "VARCHAR"
+      ],
+      [
+        "metadata",
+        "VARCHAR"
+      ],
+      [
+        "created_at",
+        "TIMESTAMP WITH TIME ZONE"
+      ],
+      [
+        "updated_at",
+        "TIMESTAMP WITH TIME ZONE"
+      ],
+      [
+        "project_id",
+        "UUID"
+      ],
+      [
+        "title",
+        "VARCHAR"
+      ],
+      [
+        "source_path",
+        "VARCHAR"
+      ],
+      [
+        "source_hash",
+        "VARCHAR"
+      ],
+      [
+        "parser_name",
+        "VARCHAR"
+      ],
+      [
+        "parser_version",
+        "VARCHAR"
+      ],
+      [
+        "doc_version",
+        "INTEGER"
+      ],
+      [
+        "parse_quality",
+        "VARCHAR"
+      ]
+    ],
+    "code_registry_duckdb_types": [
+      [
+        "code_id",
+        "VARCHAR"
+      ],
+      [
+        "tenant_id",
+        "UUID"
+      ],
+      [
+        "codebook_version_id",
+        "UUID"
+      ],
+      [
+        "name",
+        "VARCHAR"
+      ],
+      [
+        "brief_definition",
+        "VARCHAR"
+      ],
+      [
+        "full_definition",
+        "VARCHAR"
+      ],
+      [
+        "inclusion_criteria",
+        "VARCHAR"
+      ],
+      [
+        "exclusion_criteria",
+        "VARCHAR"
+      ],
+      [
+        "examples",
+        "VARCHAR"
+      ],
+      [
+        "theory",
+        "VARCHAR"
+      ],
+      [
+        "actor_scope",
+        "VARCHAR"
+      ],
+      [
+        "is_provisional",
+        "BOOLEAN"
+      ],
+      [
+        "pool_floor",
+        "DOUBLE"
+      ],
+      [
+        "residual_floor",
+        "DOUBLE"
+      ],
+      [
+        "prototype_vectors",
+        "VARCHAR"
+      ],
+      [
+        "definition_vector",
+        "VARCHAR"
+      ],
+      [
+        "probe_vector",
+        "VARCHAR"
+      ],
+      [
+        "superseded_by",
+        "VARCHAR"
+      ],
+      [
+        "created_at",
+        "TIMESTAMP WITH TIME ZONE"
+      ]
+    ],
+    "scratch_ctas_rows": 5,
+    "scratch_vectors_rows": 5,
+    "scratch_constraints": [],
+    "scratch_vectors_cols": {
+      "chunk_id": "UUID",
+      "tenant_id": "UUID",
+      "embedding": "VARCHAR",
+      "embedding_model": "VARCHAR",
+      "embedded_at": "TIMESTAMP WITH TIME ZONE",
+      "dimensions": "INTEGER",
+      "vector_1024": "VARCHAR",
+      "degraded": "BOOLEAN"
+    },
+    "halfvec_sample": {
+      "duckdb_type": "VARCHAR",
+      "python_type": "NoneType",
+      "value_prefix": null,
+      "parseable": null
+    }
+  }
+}
