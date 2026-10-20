@@ -168,7 +168,7 @@ async def test_connection_setup_loads_age_and_sets_search_path(
     await store.search_entities("x")
     executed = [sql for (m, sql, _a) in conn.calls if m == "execute"]
     assert "LOAD 'age'" in executed
-    assert 'SET search_path = ag_catalog, "", public' in executed
+    assert 'SET search_path = ag_catalog, "$user", public' in executed
     assert any("set_config('app.current_tenant_id'" in sql for sql in executed)
     probed = [sql for (m, sql, _a) in conn.calls if m == "fetchrow"]
     assert any("pg_extension" in sql for sql in probed)
