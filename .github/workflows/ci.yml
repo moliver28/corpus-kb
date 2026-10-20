@@ -268,6 +268,60 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,duckdb]"
 
+      - name: Bootstrap service database (extensions + schema)
+        # Workflow note: this job was single-owner (sp-gateway); the storage
+        # portability integrator touched it in Phase B to add this step.
+        #
+        # The service container starts EMPTY: initdb creates corpus_kb but
+        # nothing applies the schema, so every live-Postgres test would fail
+        # with "relation ... does not exist". Prepare it with the repo's own
+        # bootstrap (corpus_kb._setup.schema_apply — the same code the
+        # quickstart and tests/research_db.py use):
+        #   1. extensions the migrations need (pgvector/uuid-ossp) plus
+        #      age/pgml, which this bundled image ships;
+        #   2. the corpus_kb graph created with Apache AGE's LOAD +
+        #      search_path ritual (upstream apache/age#2504, pinned
+        #      1.7.0~rc0: create_graph resolves the graphid_ops operator
+        #      class through the caller's search_path, and fails with a
+        #      misleading "graphid_ops does not exist" without it);
+        #   3. storage/schema.sql + numbered migrations. The extension-gated
+        #      004/005 are skipped here by design; the durable effects above
+        #      make them re-apply as recorded no-ops when tests run the
+        #      migration runner.
+        # Idempotent throughout, so re-running a failed job is safe.
+        run: |
+          python - <<'PY'
+          import asyncio
+
+          import asyncpg
+
+          from corpus_kb._setup.schema_apply import apply_schema
+
+          DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+
+          async def main() -> None:
+              conn = await asyncpg.connect(DSN)
+              try:
+                  await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+                  await conn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+                  await conn.execute("CREATE EXTENSION IF NOT EXISTS age")
+                  await conn.execute("CREATE EXTENSION IF NOT EXISTS pgml")
+                  await conn.execute("LOAD 'age'")
+                  await conn.execute('SET search_path = ag_catalog, "$user", public')
+                  has_graph = await conn.fetchval(
+                      "SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'corpus_kb'"
+                  )
+                  if not has_graph:
+                      await conn.execute("SELECT ag_catalog.create_graph('corpus_kb')")
+              finally:
+                  await conn.close()
+              result = await apply_schema(DSN)
+              print("schema bootstrap applied:", len(result.applied))
+              print("skipped (extension-gated):", result.skipped)
+
+          asyncio.run(main())
+          PY
+
       - name: Cache Ollama models
         uses: actions/cache@v4
         with:

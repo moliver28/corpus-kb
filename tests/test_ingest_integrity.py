@@ -25,6 +25,7 @@ import asyncpg
 import pytest
 
 from corpus_kb.errors import ConfigError
+from tests.research_db import super_dsn_for
 
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "src" / "corpus_kb" / "migrations"
@@ -35,7 +36,10 @@ SCHEMA_SQL = REPO / "src" / "corpus_kb" / "storage" / "schema.sql"
 BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
 DB_NAME = "corpus_kb_ir022_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
-SUPER_DSN = f"{BASE_DSN}/postgres"
+# Admin/extension connections follow the env-derived research_db contract
+# (program rule 20): locally the superuser is postgres, in the CI service
+# image it is the bootstrap role corpus_user. No hardcoded role overrides.
+SUPER_DSN = super_dsn_for("postgres")
 
 TENANT = "00000000-0000-0000-0000-000000000002"
 
@@ -616,14 +620,14 @@ def integrity_dsn():
     async def _create() -> str:
         import asyncpg
 
-        admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+        admin = await asyncpg.connect(SUPER_DSN)
         try:
             await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
             await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
         finally:
             await admin.close()
 
-        superconn = await asyncpg.connect(DSN, user="postgres", password="postgres")
+        superconn = await asyncpg.connect(super_dsn_for(DB_NAME))
         try:
             await superconn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             await superconn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
@@ -1013,7 +1017,7 @@ class _SingleConnPool:
 async def _create_force_rls_db() -> str:
     import asyncpg
 
-    admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+    admin = await asyncpg.connect(SUPER_DSN)
     try:
         await admin.execute('DROP DATABASE IF EXISTS "corpus_kb_ir075_force_rls_test" WITH (FORCE)')
         await admin.execute('CREATE DATABASE "corpus_kb_ir075_force_rls_test" OWNER corpus_user')
@@ -1028,7 +1032,7 @@ async def _create_force_rls_db() -> str:
             """
         )
         # Extensions need superuser; run them against the scratch DB.
-        scratch = await asyncpg.connect(IR075_DSN, user="postgres", password="postgres")
+        scratch = await asyncpg.connect(super_dsn_for("corpus_kb_ir075_force_rls_test"))
         try:
             await scratch.execute("CREATE EXTENSION IF NOT EXISTS vector")
             await scratch.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')

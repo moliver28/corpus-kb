@@ -288,6 +288,8 @@ async def test_projection_failure_lands_dlq_row(pool, reader_and_app):
 
 
 async def test_rls_blocks_cross_tenant_reads(pool):
+    import research_db
+
     other = uuid.uuid4()
     async with pool.acquire() as conn, conn.transaction():
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
@@ -299,8 +301,14 @@ async def test_rls_blocks_cross_tenant_reads(pool):
             "tenant A secret",
         )
     async with pool.acquire() as conn, conn.transaction():
+        # Read through the non-owner RLS probe role: the app role is the
+        # bootstrap SUPERUSER in the CI service image, and a superuser
+        # bypasses row level security entirely, so the app-role read would
+        # see tenant A's rows there no matter what the policies say.
+        await conn.execute(f"SET ROLE {research_db.RLS_PROBE_ROLE}")
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(other))
         seen = await conn.fetchval("SELECT count(*) FROM research_transcript_text")
+        await conn.execute("RESET ROLE")
     assert seen == 0
 
 

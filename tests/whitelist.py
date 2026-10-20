@@ -398,3 +398,31 @@ resolved_bins
 # the same adopters. Exercise in tests/test_storage_gateway.py.
 write_batch
 run_transaction
+
+# Storage portability Phase B interfaces (issue #127, sp-dialect +
+# sp-migrate-data): the frozen Dialect SQL shims are adopted by the search
+# and ingest ports in Wave D, and the migrate handler by its CLI adapter in
+# Wave E, per the program schedule. sanitize_fts_query normalizes the FTS
+# arm's lexical query (search port, Wave D); vector_distance / vector_cast /
+# matryoshka_probe / fts_match / fts_rank are the search-port fragments;
+# jsonb_set_shim is the projector/batching write shim; advisory_lock /
+# advisory_unlock are the ingest-integrity lock pair; planner_flags /
+# uuid_new / zero_vector_guard serve the analytics and ingest ports; and
+# dialect_for is the resolution entry point every Wave-D adopter calls.
+# migrate is the handler one operation (Wave E CLI adapter). All are pinned
+# contract-by-contract in tests/test_storage_dialect.py and
+# tests/test_migrate_data.py.
+sanitize_fts_query
+vector_distance
+vector_cast
+matryoshka_probe
+fts_match
+fts_rank
+jsonb_set_shim
+advisory_lock
+advisory_unlock
+planner_flags
+uuid_new
+zero_vector_guard
+dialect_for
+migrate
