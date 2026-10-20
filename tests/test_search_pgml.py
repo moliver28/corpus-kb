@@ -286,7 +286,10 @@ async def test_default_config_takes_ollama_path() -> None:
 
     fetches = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list
     assert all("pgml.embed" not in call.args[0] for call in fetches)
-    # FTS arm first (the vector arm abstained), then the SQL fusion.
+    # The abstaining vector arm issues no fetch; the FTS arm is the first of
+    # two (the second is the parent-expansion read, fail-open on the mock).
+    # Fusion is the pure Python rrf_fuse — no fusion SQL round trip remains.
+    assert len(fetches) == 2
     assert "plainto_tsquery" in fetches[0].args[0]
-    assert "rrf_fusion" in fetches[1].args[0]
+    assert all("corpus.rrf_fusion" not in call.args[0] for call in fetches)
     assert len(results) == 1

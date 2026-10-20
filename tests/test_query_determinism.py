@@ -2,14 +2,19 @@
 
 Two layers are pinned here:
 
-* Unit: a stub connection returns fused rows with TIED scores in shuffled
-  input order. The handler (and research _rrf) must return them ordered by
-  score DESC then chunk id ASC — the same output for every input order.
+* Unit: the query handler fuses its two arms with the pure Python port
+  (handlers/query_fusion.py, an exact mirror of corpus.rrf_fusion
+  migration 024). Stub arm rows with TIED fused scores must come out
+  ordered by score DESC then chunk id ASC — the same output for every
+  equivalent input. research/retrieval still calls the SQL function; its
+  stub keeps the same contract.
 * SQL shape: every score-ordered ORDER BY across the query-handler modules
   (query_vector_arms.py + query_handler.py + query_crud.py — the Wave-3
-  split of the pre-2026-10 single query_handler.py) and research/retrieval.py
-  carries the chunk-id tiebreaker, and migration 024 pins the same order
-  inside corpus.rrf_fusion.
+  split of the pre-2026-10 single query_handler.py; query_fusion.py carries
+  no SQL, its Python sort is pinned by tests/test_query_fusion.py and by
+  the total-order unit below) and research/retrieval.py carries the
+  chunk-id tiebreaker, and migration 024 pins the same order inside
+  corpus.rrf_fusion.
 
 All offline: no Postgres, no Ollama.
 """
@@ -26,6 +31,7 @@ import pytest
 
 from corpus_kb.domain.models import DEFAULT_TENANT_ID, SearchQuery
 from corpus_kb.errors import MigrationMissingError
+from corpus_kb.handlers.query_fusion import rrf_fuse
 from corpus_kb.handlers.query_handler import QueryHandler
 from corpus_kb.research.retrieval import _rrf
 from corpus_kb.research.search_settings import missing_rrf_fusion_error
@@ -46,11 +52,21 @@ def _det_uuid(name: str) -> str:
 
 
 class _ScriptedConn:
-    """Asyncpg stand-in: canned rows for the fusion call, records SQL."""
+    """Asyncpg stand-in: canned ARM rows, records SQL.
 
-    def __init__(self, fused_rows: list[dict[str, object]]) -> None:
+    The handler fuses in Python (handlers/query_fusion.py) — no
+    corpus.rrf_fusion SQL is issued, so this stub scripts the vector and
+    FTS arm outputs and the fusion runs for real over them.
+    """
+
+    def __init__(
+        self,
+        vector_rows: list[dict[str, object]] | None = None,
+        fts_rows: list[dict[str, object]] | None = None,
+    ) -> None:
         self.sql: list[str] = []
-        self.fused_rows = fused_rows
+        self.vector_rows = vector_rows or []
+        self.fts_rows = fts_rows or []
 
     async def execute(self, sql: str, *args: object) -> str:
         self.sql.append(sql)
@@ -58,12 +74,10 @@ class _ScriptedConn:
 
     async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
         self.sql.append(sql)
-        if "rrf_fusion" in sql:
-            return list(self.fused_rows)
         if "pgml.embed" in sql:
-            return []
+            return list(self.vector_rows)
         if "plainto_tsquery" in sql:
-            return []
+            return list(self.fts_rows)
         return []
 
     async def fetchrow(self, sql: str, *args: object) -> dict[str, object] | None:
@@ -120,47 +134,77 @@ def _fused_row(chunk_id: str, score: float) -> dict[str, object]:
     }
 
 
+def _arm_row(chunk_id: str, score: float = 0.5) -> dict[str, object]:
+    """One vector/FTS arm row (the fusion input shape the arms SELECT)."""
+    return {
+        "chunk_id": chunk_id,
+        "text": f"text for {chunk_id[:8]}",
+        "source": "stub",
+        "doc_id": _det_uuid("doc"),
+        "score": score,
+    }
+
+
 @pytest.mark.asyncio
 async def test_handler_orders_tied_fused_rows_by_chunk_id() -> None:
-    """Tied fused scores come out ordered by chunk id ASC, whatever the
-    input order — and two runs with different input orders agree."""
-    ids = [_det_uuid(f"chunk-{i}") for i in range(4)]
-    tied = 0.03
-    expected = sorted(ids)  # all scores tie, so chunk id decides
+    """Tied fused scores come out ordered by chunk id ASC.
 
-    for shuffled in ([3, 1, 0, 2], [2, 3, 0, 1]):
-        rows = [_fused_row(ids[i], tied) for i in shuffled]
-        conn = _ScriptedConn(rows)
-        handler = QueryHandler(
-            cast("object", _ScriptedPool(conn)), embedder=None, reranker=None, config=dict(_CONFIG)
-        )
-        envelope = await handler.handle_search_with_meta(
-            SearchQuery(query="housing", tenant_id=DEFAULT_TENANT_ID, k=4)
-        )
-        assert [str(r.chunk_id) for r in envelope.results] == expected
+    The vector hit and the rank-1 FTS hit each score 1/(rrf_k + 1) — a tie
+    the pure fusion must break by chunk id, never by arm output order."""
+    ids = [_det_uuid(f"chunk-{i}") for i in range(3)]
+    conn = _ScriptedConn(
+        vector_rows=[_arm_row(ids[2])],
+        fts_rows=[_arm_row(ids[0]), _arm_row(ids[1])],
+    )
+    handler = QueryHandler(
+        cast("object", _ScriptedPool(conn)), embedder=None, reranker=None, config=dict(_CONFIG)
+    )
+    envelope = await handler.handle_search_with_meta(
+        SearchQuery(query="housing", tenant_id=DEFAULT_TENANT_ID, k=3)
+    )
+    # ids[2] (vector rank 1) ties ids[0] (FTS rank 1) at 1/(rrf_k+1);
+    # ids[1] (FTS rank 2) trails. Chunk id ASC decides the tie band.
+    assert [str(r.chunk_id) for r in envelope.results] == [*sorted([ids[0], ids[2]]), ids[1]]
 
 
 @pytest.mark.asyncio
 async def test_handler_orders_mixed_scores_then_chunk_id() -> None:
-    """Score DESC wins first; chunk id breaks the ties inside a score band."""
+    """Score DESC wins first; chunk id breaks the ties inside a score band.
+
+    ids[2] is hit by BOTH arms (contributions sum per migration 024) and
+    lands above the 1/(rrf_k+1) tie band of ids[3] and ids[0]."""
     ids = [_det_uuid(f"chunk-{i}") for i in range(4)]
-    rows = [
-        _fused_row(ids[3], 0.05),
-        _fused_row(ids[0], 0.09),
-        _fused_row(ids[2], 0.05),
-        _fused_row(ids[1], 0.09),
-    ]
-    # uuid5 values do not follow index order — build the expected order from
-    # the contract: 0.09 band first, chunk id ASC inside each band.
-    expected = sorted(ids[0:2]) + sorted(ids[2:4])
-    conn = _ScriptedConn(rows)
+    conn = _ScriptedConn(
+        vector_rows=[_arm_row(ids[3]), _arm_row(ids[2])],
+        fts_rows=[_arm_row(ids[0]), _arm_row(ids[2])],
+    )
     handler = QueryHandler(
         cast("object", _ScriptedPool(conn)), embedder=None, reranker=None, config=dict(_CONFIG)
     )
     envelope = await handler.handle_search_with_meta(
         SearchQuery(query="housing", tenant_id=DEFAULT_TENANT_ID, k=4)
     )
-    assert [str(r.chunk_id) for r in envelope.results] == expected
+    assert [str(r.chunk_id) for r in envelope.results] == [ids[2], *sorted([ids[0], ids[3]])]
+
+
+def test_query_fusion_total_order_pin() -> None:
+    """query_fusion.rrf_fuse (the handler's fusion port) returns the
+    migration-024 total order — fscore DESC, then chunk id ASC — including
+    the tie band, whatever the leg argument order."""
+    ids = [_det_uuid(f"pin-{i}") for i in range(3)]
+    dense = [
+        {"chunk_id": cid, "text": "d", "source": "s", "doc_id": _det_uuid("doc"), "score": 0.1}
+        for cid in ids
+    ]
+    lexical = [
+        {"chunk_id": cid, "text": "l", "source": "s", "doc_id": _det_uuid("doc"), "score": 0.2}
+        for cid in reversed(ids)
+    ]
+    for legs in ((lexical, dense), (dense, lexical)):
+        fused = rrf_fuse(*legs, k=10)
+        keys = [(-r.score, r.chunk_id) for r in fused]
+        assert keys == sorted(keys)  # total order: fscore DESC, cid ASC
+        assert len({r.chunk_id for r in fused}) == len(fused)
 
 
 def test_rrf_orders_tied_rows_by_chunk_id() -> None:
@@ -217,14 +261,17 @@ def _desc_order_by_clauses(path: Path) -> list[str]:
 
 
 def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
-    # Wave-3 split: the single pre-split query_handler.py is now three
+    # Wave-3 split: the single pre-split query_handler.py is now several
     # modules; the audit covers ALL of them so the invariant set is
-    # unchanged (same 7 clauses, same tiebreaker regex).
+    # unchanged (same 7 clauses, same tiebreaker regex). query_fusion.py is
+    # scanned too — it carries no SQL ORDER BY (the fusion is a Python sort,
+    # pinned by tests/test_query_fusion.py and the total-order unit above).
     clauses: list[str] = []
     for rel in (
         "src/corpus_kb/handlers/query_vector_arms.py",
         "src/corpus_kb/handlers/query_handler.py",
         "src/corpus_kb/handlers/query_crud.py",
+        "src/corpus_kb/handlers/query_fusion.py",
     ):
         clauses.extend(_desc_order_by_clauses(ROOT / rel))
     assert len(clauses) == 7, clauses  # 5 vector arms + FTS + search_similar
@@ -312,11 +359,15 @@ def test_missing_rrf_fusion_error_is_shared_and_chained() -> None:
     assert "corpus.rrf_fusion() is not installed" in str(err)
     assert "scripts/migrate.py" not in str(err)
     assert "corpus-kb setup" in err.remediation
-    # Single source: both call sites delegate, neither restates the message.
-    for module in (
-        ROOT / "src/corpus_kb/handlers/query_handler.py",
-        ROOT / "src/corpus_kb/research/retrieval.py",
-    ):
-        source = module.read_text(encoding="utf-8")
-        assert "missing_rrf_fusion_error(exc)" in source, module
-        assert "is not installed" not in source, module
+    # Single source: the one remaining SQL fusion call site delegates and
+    # never restates the message. The query handler fuses in Python
+    # (handlers/query_fusion.py) — it has no fusion SQL left to fail, and
+    # its source must not carry the helper (dead import) either.
+    source = (ROOT / "src/corpus_kb/research/retrieval.py").read_text(encoding="utf-8")
+    assert "missing_rrf_fusion_error(exc)" in source
+    assert "is not installed" not in source
+    handler_source = (ROOT / "src/corpus_kb/handlers/query_handler.py").read_text(encoding="utf-8")
+    assert "missing_rrf_fusion_error" not in handler_source
+    # No fusion SQL is issued from the handler anymore (the docstring may
+    # still NAME the migration it mirrors).
+    assert "FROM corpus.rrf_fusion" not in handler_source

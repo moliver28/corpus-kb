@@ -1,9 +1,12 @@
-"""Tests for corpus.rrf_fusion (migration 006) — RRF fusion in pure SQL.
+"""Tests for corpus.rrf_fusion (migration 006, tie order from 024) — RRF
+fusion in pure SQL.
 
 Live tests run against PG16 on localhost:5432 via the explicit-DSN pattern
 from tests/test_migrations.py (service-gated skip when unreachable). They
 prove the SQL function produces byte-identical chunk_id ordering and
-float-equal fused scores versus the Python RRF loop it replaced.
+float-equal fused scores versus the pure Python port of it
+(handlers/query_fusion.py). The query handler fuses with that port; the
+research path still calls the SQL function.
 """
 
 from __future__ import annotations
@@ -19,7 +22,6 @@ import asyncpg
 import pytest
 
 from corpus_kb.domain.models import SearchQuery
-from corpus_kb.errors import MigrationMissingError
 from corpus_kb.handlers.query_handler import QueryHandler
 from tests.mock_pg import transaction_cm
 
@@ -279,8 +281,11 @@ async def test_rrf_fusion_respects_k_limit(live_conn) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_search_calls_sql_rrf_function() -> None:
-    """handle_search ships both sides as JSONB to corpus.rrf_fusion."""
+async def test_handle_search_fuses_in_python_without_fusion_sql() -> None:
+    """handle_search fuses via handlers.query_fusion.rrf_fuse — the exact
+    Python port of this migration. No corpus.rrf_fusion SQL is issued on
+    the handler path, and a lexical-only rank-1 hit comes out with the RRF
+    score 1/(60 + 1)."""
     cid, did = uuid4(), uuid4()
     fts_row = {
         "chunk_id": cid,
@@ -289,17 +294,10 @@ async def test_handle_search_calls_sql_rrf_function() -> None:
         "source": "s1",
         "score": 0.5,
     }
-    fused_row = {
-        "chunk_id": cid,
-        "text": "fts hit",
-        "source": "s1",
-        "doc_id": did,
-        "score": 1.0 / 61,
-    }
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
     mock_conn.transaction = MagicMock(return_value=transaction_cm())
-    mock_conn.fetch = AsyncMock(side_effect=[[fts_row], [fused_row]])
+    mock_conn.fetch = AsyncMock(side_effect=[[fts_row]])  # FTS arm: the only fetch
 
     mock_pool = MagicMock()
     mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
@@ -311,41 +309,11 @@ async def test_handle_search_calls_sql_rrf_function() -> None:
     )  # no embedder -> vector side empty
     results = await handler.handle_search(SearchQuery(query="test", k=5))
 
-    fusion_call = mock_conn.fetch.call_args_list[1]
-    assert "corpus.rrf_fusion" in fusion_call.args[0]
-    assert json.loads(fusion_call.args[1]) == []  # empty vector side
-    fts_payload = json.loads(fusion_call.args[2])
-    assert fts_payload[0]["chunk_id"] == str(cid)
-    assert fts_payload[0]["doc_id"] == str(did)
-    assert fusion_call.args[3] == 5
-    assert fusion_call.args[4] == 60
+    issued = [call.args[0] for call in mock_conn.fetch.call_args_list]
+    assert issued, "the lexical arm must still run"
+    assert all("corpus.rrf_fusion" not in sql for sql in issued)
     assert len(results) == 1
     assert results[0].chunk_id == cid
     assert results[0].doc_id == did
-
-
-@pytest.mark.asyncio
-async def test_handle_search_missing_rrf_function_is_loud() -> None:
-    """A missing corpus.rrf_fusion raises a clear error naming migration 006."""
-    mock_conn = AsyncMock()
-    mock_conn.execute = AsyncMock()
-    mock_conn.transaction = MagicMock(return_value=transaction_cm())
-    mock_conn.fetch = AsyncMock(
-        side_effect=[
-            [],
-            asyncpg.UndefinedFunctionError(
-                "function corpus.rrf_fusion(jsonb, jsonb, integer, integer) does not exist"
-            ),
-        ]
-    )
-
-    mock_pool = MagicMock()
-    mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
-    mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
-
-    handler = QueryHandler(
-        pool=mock_pool,
-        config={"embedding": {"provider": "ollama", "model": "nomic-embed-text"}},
-    )
-    with pytest.raises(MigrationMissingError, match="006"):
-        await handler.handle_search(SearchQuery(query="test", k=5))
+    assert results[0].score == pytest.approx(1.0 / 61)
+    assert results[0].text == "fts hit"  # the lexical side wins the metadata

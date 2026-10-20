@@ -243,27 +243,14 @@ async def test_pgml_reranker_score_count_mismatch_returns_unreranked(
 async def test_handle_search_pgml_reranker_reorders_fused_results() -> None:
     """search.reranker="pgml": handle_search reranks via pgml.rank after fusion."""
     cid1, cid2, did = uuid4(), uuid4(), uuid4()
-    fts_row = {
-        "chunk_id": cid1,
-        "text": "alpha",
-        "doc_id": did,
-        "source": "s1",
-        "score": 0.5,
-    }
-    fused_rows = [
-        {
-            "chunk_id": cid1,
-            "text": "alpha",
-            "source": "s1",
-            "doc_id": did,
-            "score": 0.9,
-        },
-        {"chunk_id": cid2, "text": "beta", "source": "s1", "doc_id": did, "score": 0.8},
+    fts_rows = [
+        {"chunk_id": cid1, "text": "alpha", "doc_id": did, "source": "s1", "score": 0.5},
+        {"chunk_id": cid2, "text": "beta", "doc_id": did, "source": "s1", "score": 0.4},
     ]
     rank_rows = [{"corpus_id": 1, "score": 0.9}, {"corpus_id": 0, "score": 0.1}]
     # provider=ollama without embedder -> vector side empty; fetch order:
-    # fts, fusion, rank.
-    pool = _make_pool(fetch_side_effect=[[fts_row], fused_rows, rank_rows])
+    # fts arm, pgml.rank (fusion is the pure Python rrf_fuse — no SQL).
+    pool = _make_pool(fetch_side_effect=[fts_rows, rank_rows])
 
     handler = QueryHandler(
         pool=pool,
@@ -271,10 +258,13 @@ async def test_handle_search_pgml_reranker_reorders_fused_results() -> None:
     )
     results = await handler.handle_search(SearchQuery(query="q", k=2))
 
+    # pgml.rank put corpus_id 1 (beta) first; scores stay the RRF values
+    # 1/61 (alpha, lexical rank 1) and 1/62 (beta, rank 2) — only the order
+    # changes.
     assert [r.chunk_id for r in results] == [cid2, cid1]
-    assert [r.score for r in results] == [0.8, 0.9]
+    assert [r.score for r in results] == [1.0 / 62, 1.0 / 61]
 
-    rank_call = _last_conn(pool).fetch.call_args_list[2]
+    rank_call = _last_conn(pool).fetch.call_args_list[1]
     assert "pgml.rank" in rank_call.args[0]
     assert rank_call.args[1] == "cross-encoder/ms-marco-MiniLM-L-6-v2"
     assert rank_call.args[2] == "q"
@@ -285,38 +275,27 @@ async def test_handle_search_pgml_reranker_reorders_fused_results() -> None:
 async def test_handle_search_default_reranker_issues_no_rank_sql() -> None:
     """Default search.reranker="none": fused order returned, no pgml.rank call."""
     cid1, cid2, did = uuid4(), uuid4(), uuid4()
-    fts_row = {
-        "chunk_id": cid1,
-        "text": "alpha",
-        "doc_id": did,
-        "source": "s1",
-        "score": 0.5,
-    }
-    fused_rows = [
-        {
-            "chunk_id": cid1,
-            "text": "alpha",
-            "source": "s1",
-            "doc_id": did,
-            "score": 0.9,
-        },
-        {"chunk_id": cid2, "text": "beta", "source": "s1", "doc_id": did, "score": 0.8},
+    fts_rows = [
+        {"chunk_id": cid1, "text": "alpha", "doc_id": did, "source": "s1", "score": 0.5},
+        {"chunk_id": cid2, "text": "beta", "doc_id": did, "source": "s1", "score": 0.4},
     ]
-    pool = _make_pool(fetch_side_effect=[[fts_row], fused_rows])
+    pool = _make_pool(fetch_side_effect=[fts_rows])
 
     handler = QueryHandler(
         pool=pool,
         config={
             "embedding": {"provider": "ollama"},
             "reranking": {"enabled": False},
-            # Pin the two-fetch contract (config v2 flips expand_to_parent on).
+            # Pin the one-fetch contract (config v2 flips expand_to_parent on;
+            # fusion runs in Python, so the FTS arm is the only fetch left).
             "retrieval": {"expand_to_parent": False},
         },
     )
     results = await handler.handle_search(SearchQuery(query="q", k=2))
 
+    # Lexical ranks 1 and 2 fuse to 1/61 and 1/62: rank order survives.
     assert [r.chunk_id for r in results] == [cid1, cid2]
-    assert _last_conn(pool).fetch.call_count == 2
+    assert _last_conn(pool).fetch.call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -349,14 +328,14 @@ class _NotEvaluableClient:
         return SimpleNamespace(response="", logprobs=[position])
 
 
-def _fused_fixture() -> tuple[dict[str, object], list[dict[str, object]], object, object]:
+def _fused_fixture() -> tuple[list[dict[str, object]], object, object]:
+    """Two lexical arm rows; the Python fusion fuses them to 1/61 and 1/62."""
     cid1, cid2, did = uuid4(), uuid4(), uuid4()
-    fts_row = {"chunk_id": cid1, "text": "alpha", "doc_id": did, "source": "s1", "score": 0.5}
-    fused_rows = [
-        {"chunk_id": cid1, "text": "alpha", "source": "s1", "doc_id": did, "score": 0.9},
-        {"chunk_id": cid2, "text": "beta", "source": "s1", "doc_id": did, "score": 0.8},
+    fts_rows = [
+        {"chunk_id": cid1, "text": "alpha", "doc_id": did, "source": "s1", "score": 0.5},
+        {"chunk_id": cid2, "text": "beta", "doc_id": did, "source": "s1", "score": 0.4},
     ]
-    return fts_row, fused_rows, cid1, cid2
+    return fts_rows, cid1, cid2
 
 
 @pytest.mark.asyncio
@@ -365,8 +344,8 @@ async def test_minmax_all_equal_scores_fail_open_to_fused_order() -> None:
     score to 0.0, so score_floor would drop ALL fused results and search
     would return [] despite having results. Must fail open to the fused RRF
     order instead — reranking never breaks search."""
-    fts_row, fused_rows, cid1, cid2 = _fused_fixture()
-    pool = _make_pool(fetch_side_effect=[[fts_row], fused_rows])
+    fts_rows, cid1, cid2 = _fused_fixture()
+    pool = _make_pool(fetch_side_effect=[fts_rows])
     handler = QueryHandler(
         pool=pool,
         reranker=_ConstantReranker(0.5),
@@ -376,7 +355,7 @@ async def test_minmax_all_equal_scores_fail_open_to_fused_order() -> None:
 
     assert [r.chunk_id for r in results] == [cid1, cid2]
     # Un-reranked RRF scores survive untouched.
-    assert [r.score for r in results] == pytest.approx([0.9, 0.8])
+    assert [r.score for r in results] == pytest.approx([1.0 / 61, 1.0 / 62])
 
 
 @pytest.mark.asyncio
@@ -388,8 +367,8 @@ async def test_all_not_evaluable_rerank_fail_open_to_fused_order(monkeypatch) ->
     monkeypatch.setattr("corpus_kb.rag.reranker.Client", lambda **kw: _NotEvaluableClient())
     reranker = OllamaReranker({"search": {"rerank": {"enabled": True}}})
 
-    fts_row, fused_rows, cid1, cid2 = _fused_fixture()
-    pool = _make_pool(fetch_side_effect=[[fts_row], fused_rows])
+    fts_rows, cid1, cid2 = _fused_fixture()
+    pool = _make_pool(fetch_side_effect=[fts_rows])
     handler = QueryHandler(
         pool=pool,
         reranker=reranker,

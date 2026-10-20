@@ -416,13 +416,20 @@ def test_fusion_error_helper_raises_migration_missing() -> None:
 
 
 def test_fusion_call_sites_delegate_to_the_shared_helper() -> None:
+    """The remaining SQL fusion call site delegates, and never restates.
+
+    research/retrieval still calls corpus.rrf_fusion in SQL, so its missing-
+    function failure must go through the shared helper. The query handler
+    fuses in Python (handlers/query_fusion.py) — it carries no fusion SQL
+    and therefore no fusion error path at all."""
     from corpus_kb.handlers import query_handler
     from corpus_kb.research import retrieval
 
-    assert "missing_rrf_fusion_error(exc)" in inspect.getsource(query_handler)
-    assert "MigrationMissingError" not in inspect.getsource(query_handler)
     assert "missing_rrf_fusion_error(exc)" in inspect.getsource(retrieval)
     assert "MigrationMissingError" not in inspect.getsource(retrieval)
+    # The handler port has neither the helper nor the SQL function call.
+    assert "missing_rrf_fusion_error" not in inspect.getsource(query_handler)
+    assert "FROM corpus.rrf_fusion" not in inspect.getsource(query_handler)
 
 
 async def test_server_wiring_without_connection_string_raises_config_error(
