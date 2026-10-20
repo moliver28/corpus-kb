@@ -18,7 +18,7 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import DEFAULT_TENANT_ID, parse_body, route_errors
 from corpus_kb.domain.models import AddEntityCommand, AddRelationCommand
 
 
@@ -107,9 +107,10 @@ async def get_entity_relations(request: Request) -> JSONResponse:
     from corpus_kb.handlers.graph_handler import get_graph_handler
 
     entity_id = request.path_params.get("entity_id")
+    tenant_id = UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID))
     handler = get_graph_handler()
     results = await handler.handle_get_entity_relations(
-        UUID("00000000-0000-0000-0000-000000000001"),
+        tenant_id,
         UUID(entity_id),
     )
     return JSONResponse({"status": "success", "result": results})

@@ -878,6 +878,9 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
     # legacy search.* spellings are LOADER aliases, not shipped-YAML keys.
     # The website-ingestion feature added the web.* fetch/crawl keys.
     # W4C config-truth added extraction.backend (the preferred backend key).
+    # The storage-portability program added database.backend, graph.max_hops,
+    # and the two DuckDB-side retrieval knobs (docs/research/
+    # storage-portability-program.md §3).
     assert {
         "extraction.backend": str,
         "embedding.mrl_trained": bool,
@@ -898,6 +901,10 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "ingest.contextualize.document_first_prompt": bool,
         "ingest.contextualize.apply_to": list,
         "retrieval.mode": str,
+        # Storage-portability keys: the DuckDB-side search knobs. Postgres
+        # ignores both (validate_configs pins the enum rules separately).
+        "retrieval.vector_index": str,
+        "retrieval.fts_rebuild_debounce_s": float,
         "retrieval.vector_candidates": int,
         "retrieval.lexical_candidates": int,
         "retrieval.rrf_k": int,
@@ -933,6 +940,11 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "notebooks.directory": str,
         # UX Wave 2: the /v1 OpenAI-compatibility gate (api/routes_v1.py).
         "server.openai_compat": bool,
+        # Storage-portability program §3: the backend switch and the graph
+        # traversal depth cap (enum/range rules live in _database_block_errors
+        # and _max_hops_errors, outside the single-type map).
+        "database.backend": str,
+        "graph.max_hops": int,
         # UX Wave 4 tracing (utils/tracing.py is the typed reader).
         "observability.enabled": bool,
         "observability.otlp_endpoint": str,

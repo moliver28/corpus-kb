@@ -19,7 +19,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any, cast
 
 import asyncpg
@@ -39,6 +39,7 @@ from corpus_kb.domain.models import (
     VerifyAnswerResult,
 )
 from corpus_kb.handlers import query_crud
+from corpus_kb.handlers.query_fusion import FusedRow, RowLike, rrf_fuse
 from corpus_kb.handlers.query_integrity import (
     REASON_FILTER_EMPTY,
     REASON_NO_EMBEDDER,
@@ -63,7 +64,6 @@ from corpus_kb.research.search_settings import (
     VersionReader,
     apply_hnsw_settings,
     load_hnsw_settings,
-    missing_rrf_fusion_error,
     pgvector_version,
     supports_iterative_scan,
 )
@@ -100,22 +100,6 @@ JOIN chunks ON cv.chunk_id = chunks.chunk_id
 JOIN documents ON chunks.doc_id = documents.doc_id
 WHERE cv.tenant_id = $1 {dedup} {frag}
 """
-
-
-def _fusion_payload(rows: list[asyncpg.Record]) -> str:
-    """Serialize one hybrid-search side to the JSONB shape corpus.rrf_fusion expects."""
-    return json.dumps(
-        [
-            {
-                "chunk_id": str(row["chunk_id"]),
-                "text": row["text"],
-                "source": row["source"],
-                "doc_id": str(row["doc_id"]),
-                "score": float(row["score"]),
-            }
-            for row in rows
-        ]
-    )
 
 
 class QueryHandler:
@@ -375,41 +359,41 @@ class QueryHandler:
             )
             current.set_attribute(ATTR_ROW_COUNT, len(fts_results))
 
-        # 3. RRF fusion in PostgreSQL (migrations/006_rrf_fusion.sql).
-        try:
-            with span(SPAN_RRF_FUSION, **{ATTR_RRF_K: self._retrieval_settings.rrf_k}) as current:
-                fused_rows = await conn.fetch(
-                    """
-                    SELECT chunk_id, text, source, doc_id, score
-                    FROM corpus.rrf_fusion($1::jsonb, $2::jsonb, $3, $4)
-                    """,
-                    _fusion_payload(vector_results),
-                    _fusion_payload(fts_results),
-                    k,
-                    self._retrieval_settings.rrf_k,
-                )
-                current.set_attribute(ATTR_FUSED_COUNT, len(fused_rows))
-        except asyncpg.UndefinedFunctionError as exc:
-            raise missing_rrf_fusion_error(exc) from exc
+        # 3. RRF fusion in Python (handlers/query_fusion.py) — an exact port
+        #    of corpus.rrf_fusion (migration 024): same rank constant, same
+        #    1-based per-leg ranks, same float summation, same metadata rule,
+        #    same total order. No fusion SQL is issued on this path anymore;
+        #    research/retrieval.py keeps the SQL function for now.
+        with span(SPAN_RRF_FUSION, **{ATTR_RRF_K: self._retrieval_settings.rrf_k}) as current:
+            # asyncpg.Record satisfies the fusion's RowLike surface at
+            # runtime; the cast mirrors the SqlExecutor/ParentPool seams
+            # (asyncpg's overloaded __getitem__ defeats structural checks).
+            fused_rows = rrf_fuse(
+                lexical=cast("Sequence[RowLike]", fts_results),
+                dense=cast("Sequence[RowLike]", vector_results),
+                k=k,
+                rrf_k=self._retrieval_settings.rrf_k,
+            )
+            current.set_attribute(ATTR_FUSED_COUNT, len(fused_rows))
 
         # Re-attach provenance (file_path/start_line/...) from the raw
-        # vector/FTS rows — corpus.rrf_fusion returns only the five fused
-        # columns, so provenance must be joined back by chunk_id.
+        # vector/FTS rows — the fusion carries only the five fused columns,
+        # so provenance must be joined back by chunk_id.
         provenance: dict[str, dict[str, Any]] = {}
         for row in vector_results:
             provenance.setdefault(str(row["chunk_id"]), dict(row))
         for row in fts_results:
             provenance.setdefault(str(row["chunk_id"]), dict(row))
 
-        def _to_result(row: dict[str, Any]) -> SearchResult:
-            meta = provenance.get(str(row["chunk_id"]), {})
+        def _to_result(row: FusedRow) -> SearchResult:
+            meta = provenance.get(str(row.chunk_id), {})
             heading = meta.get("heading_path")
             return SearchResult(
-                chunk_id=row["chunk_id"],
-                text=row["text"],
-                score=float(row["score"]),
-                source=row["source"],
-                doc_id=row["doc_id"],
+                chunk_id=row.chunk_id,
+                text=row.text,
+                score=float(row.score),
+                source=row.source,
+                doc_id=row.doc_id,
                 file_path=meta.get("file_path"),
                 start_line=meta.get("start_line"),
                 end_line=meta.get("end_line"),
@@ -417,10 +401,11 @@ class QueryHandler:
                 heading_path=json.loads(heading) if heading else None,
             )
 
-        fused_results = [_to_result(dict(row)) for row in fused_rows]
+        fused_results = [_to_result(row) for row in fused_rows]
         # Zero-drift determinism (rule 9): fused score DESC, then chunk id
-        # ASC. The SQL fusion returns this order (migration 024); the sort
-        # re-asserts it so tied rows cannot permute between runs.
+        # ASC. The Python fusion returns this order (query_fusion.rrf_fuse
+        # mirrors migration 024); the sort re-asserts it so tied rows cannot
+        # permute between runs.
         fused_results.sort(key=lambda r: (-r.score, r.chunk_id))
         return fused_results, excluded_count
 

@@ -122,10 +122,15 @@ async def _run_cycle(dsn: str, **kwargs: object) -> tuple[int, str]:
 
 def _projection_stack(
     pool: asyncpg.Pool,
+    conn_str: str,
 ) -> tuple[EventReader, ResearchProjection, DocumentsProjection, EmbedChunksProjection]:
     from corpus_kb.domain.application import get_app
 
-    app = get_app()
+    # Bind by explicit DSN: the app cache keys on (backend, DSN), and the
+    # session env var is restored after the fixture binds — a bare get_app()
+    # would resolve config.yaml (the compose stack) and build a second app
+    # on the wrong database (see tests/conftest.py research_dsn).
+    app = get_app(conn_str)
     reader = EventReader(pool, app.mapper, app.recorder.events_table_name)
     checkpoint = CheckpointManager(pool)
     dlq = DLQHandler(pool)
@@ -150,8 +155,8 @@ async def test_gray_zone_gate_converges_after_reviews(research_dsn: str, tmp_pat
     pool = await asyncpg.create_pool(research_dsn)
     try:
         # -- World: real ingest events, projected with the deterministic embedder.
-        reader, projection, _docs, _embeds = _projection_stack(pool)
-        handler = ResearchHandler(pool)
+        reader, projection, _docs, _embeds = _projection_stack(pool, research_dsn)
+        handler = ResearchHandler(pool, dsn=research_dsn)
         for name in TRANSCRIPTS:
             target = tmp_path / name
             target.write_text((CYCLE_CORPUS / name).read_text(encoding="utf-8"), encoding="utf-8")
@@ -196,7 +201,7 @@ async def test_gray_zone_gate_converges_after_reviews(research_dsn: str, tmp_pat
         ]
         shas_by_code = await _resolve_exemplar_shas(pool, TENANT, codebook)
         assert shas_by_code["transportation_barrier"], "exemplar texts must match ingested units"
-        version_id = await _seed_codebook(pool, TENANT, codes, codebook, shas_by_code)
+        version_id = await _seed_codebook(pool, TENANT, codes, codebook, shas_by_code, research_dsn)
         await projection.catch_up(reader)
         assert version_id is not None
     finally:

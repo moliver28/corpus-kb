@@ -98,8 +98,13 @@ async def promote_proposal(
     exclusion: str = "",
     tau_dup: float | None = None,
     label: str | None = None,
+    dsn: str | None = None,
 ) -> dict[str, Any]:
-    """Promote one proposed code into a new codebook version (human gate)."""
+    """Promote one proposed code into a new codebook version (human gate).
+
+    ``dsn`` binds the event-writing handler to the caller's database
+    (None keeps the env/config resolution).
+    """
     from corpus_kb.handlers.research_handler import ResearchHandler
     from corpus_kb.research.inductive_store import load_unit_views_by_ids
 
@@ -147,7 +152,7 @@ async def promote_proposal(
                 "merge_suggestion": closest,
             }
 
-    handler = ResearchHandler(pool)
+    handler = ResearchHandler(pool, dsn=dsn)
     version = await _mint_version(
         pool,
         handler,

@@ -102,14 +102,20 @@ async def stage_deductive(
     return summary
 
 
-async def stage_keywords(pool: Any, tenant_id: UUID, version_id: UUID | None) -> dict[str, object]:
+async def stage_keywords(
+    pool: Any,
+    tenant_id: UUID,
+    version_id: UUID | None,
+    cfg: dict[str, Any] | None = None,
+) -> dict[str, object]:
+    from corpus_kb.domain.application import dsn_from_config
     from corpus_kb.research.cycle_reads import latest_version_id
     from corpus_kb.research.keyword_surface import run_keyword_synthesis
 
     resolved = version_id or await latest_version_id(pool, tenant_id)
     if resolved is None:
         return {"status": "unavailable", "reason": "no codebook version exists yet"}
-    return await run_keyword_synthesis(pool, tenant_id, resolved)
+    return await run_keyword_synthesis(pool, tenant_id, resolved, dsn=dsn_from_config(cfg))
 
 
 async def stage_report(

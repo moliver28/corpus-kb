@@ -36,7 +36,8 @@ async def test_retrieval_basic() -> None:
 
 @pytest.mark.asyncio
 async def test_hybrid_search_rrf_fusion() -> None:
-    """Vector and FTS results are fused via the corpus.rrf_fusion SQL function."""
+    """Vector and FTS results are fused via the pure-Python rrf_fuse
+    (handlers/query_fusion.py — the exact port of corpus.rrf_fusion)."""
     cid = UUID("00000000-0000-0000-0000-000000000001")
     did = UUID("00000000-0000-0000-0000-000000000002")
     mock_conn = AsyncMock()
@@ -92,32 +93,44 @@ async def test_hybrid_search_rrf_fusion() -> None:
 
 
 @pytest.mark.asyncio
-async def test_rrf_k_config_flows_into_fusion_call() -> None:
-    """retrieval.rrf_k must reach corpus.rrf_fusion — the literal 60 was inert
-    (U45 finding: a typed reader existed but the call site never read it)."""
+async def test_rrf_k_config_flows_into_fusion_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """retrieval.rrf_k must reach the fusion call — the literal 60 was inert
+    (U45 finding: a typed reader existed but the call site never read it).
+
+    sp-query-fusion moved fusion from the corpus.rrf_fusion SQL function to
+    the pure-Python rrf_fuse (handlers/query_fusion.py, an exact port). The
+    handler binds it at import time, so the recorded call here is the real
+    invocation the pipeline makes — config value, legs, and all.
+    """
+    import corpus_kb.handlers.query_handler as qh
+
     cid = UUID("00000000-0000-0000-0000-000000000001")
     did = UUID("00000000-0000-0000-0000-000000000002")
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
     mock_conn.transaction = MagicMock(return_value=transaction_cm())
+    # Two legs only: the pgml vector arm fetch, then the FTS arm fetch.
+    # Fusion itself issues no SQL anymore.
     mock_conn.fetch = AsyncMock(
         side_effect=[
             [{"chunk_id": cid, "text": "vector hit", "doc_id": did, "source": "s1", "score": 0.9}],
             [{"chunk_id": cid, "text": "fts hit", "doc_id": did, "source": "s1", "score": 0.5}],
-            [
-                {
-                    "chunk_id": cid,
-                    "text": "fts hit",
-                    "source": "s1",
-                    "doc_id": did,
-                    "score": 2.0 / 43,
-                }
-            ],
         ]
     )
     mock_pool = MagicMock()
     mock_pool.acquire.return_value.__aenter__ = AsyncMock(return_value=mock_conn)
     mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    fusion_calls: list[dict] = []
+    real_fuse = qh.rrf_fuse
+
+    def recording_fuse(*args: object, **kwargs: object) -> object:
+        fusion_calls.append({"args": args, "kwargs": kwargs})
+        return real_fuse(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(qh, "rrf_fuse", recording_fuse)
 
     embedder = MagicMock()
     embedder.embed.return_value = [0.0] * 768
@@ -127,13 +140,21 @@ async def test_rrf_k_config_flows_into_fusion_call() -> None:
         embedder=embedder,
         config={"embedding": {"provider": "pgml"}, "retrieval": {"rrf_k": 42}},
     )
-    await handler.handle_search(SearchQuery(query="test", k=1))
+    results = await handler.handle_search(SearchQuery(query="test", k=1))
 
-    fusion_call = mock_conn.fetch.call_args_list[2]
-    assert "corpus.rrf_fusion" in fusion_call.args[0]
-    # args = (sql, payload_vector, payload_fts, query.k, rrf_k)
-    assert fusion_call.args[3] == 1  # query.k unchanged
-    assert fusion_call.args[4] == 42  # was hardcoded 60
+    assert len(fusion_calls) == 1
+    kwargs = fusion_calls[0]["kwargs"]
+    assert kwargs["rrf_k"] == 42  # was hardcoded 60
+    assert kwargs["k"] == 1  # query.k unchanged
+    # Both legs reached the fusion, dense leg first (the SQL UNION ALL order).
+    dense_ids = [str(row["chunk_id"]) for row in kwargs["dense"]]
+    lexical_ids = [str(row["chunk_id"]) for row in kwargs["lexical"]]
+    assert dense_ids == [str(cid)]
+    assert lexical_ids == [str(cid)]
+    # The 42 shows up in the math too: the chunk hit both legs at rank 1,
+    # so the fused score is 1/43 + 1/43.
+    assert len(results) == 1
+    assert results[0].score == pytest.approx(2.0 / 43)
 
 
 def test_search_query_and_result_have_new_fields() -> None:
@@ -179,10 +200,11 @@ async def test_handle_search_returns_provenance_fields() -> None:
     the five provenance columns on each mocked row. Constructed with no
     embedder and provider=ollama, so handle_search's vector arm is skipped
     entirely (the `provider == "ollama" and self._embedder` guard) and
-    exactly two conn.fetch calls happen: one for the FTS arm and one for
-    the corpus.rrf_fusion SQL fusion. Provenance is re-attached from the
-    raw FTS rows after fusion, so the returned SearchResult keeps
-    file_path/start_line/etc."""
+    exactly one conn.fetch call happens: the FTS arm. sp-query-fusion moved
+    the RRF fusion to the pure-Python rrf_fuse (handlers/query_fusion.py),
+    so no fusion SQL is issued. The fusion carries only the five fused
+    columns, and provenance is re-attached from the raw FTS rows by
+    chunk_id, so the returned SearchResult keeps file_path/start_line/etc."""
     mock_conn = AsyncMock()
     mock_conn.execute = AsyncMock()
     mock_transaction = MagicMock()
@@ -215,14 +237,14 @@ async def test_handle_search_returns_provenance_fields() -> None:
         pool=mock_pool,
         config={
             "embedding": {"provider": "ollama"},  # no embedder -> vector skipped
-            # Pin the two-fetch contract: parent expansion would add a third
+            # Pin the one-fetch contract: parent expansion would add a second
             # fetch (retrieval.expand_to_parent defaults true in config v2).
             "retrieval": {"expand_to_parent": False},
             "reranking": {"enabled": False},
         },
     )
     results = await handler.handle_search(SearchQuery(query="hello", k=3))
-    assert mock_conn.fetch.call_count == 2  # FTS arm + corpus.rrf_fusion
+    assert mock_conn.fetch.call_count == 1  # FTS arm only — fusion is Python-side
     assert len(results) == 1
     assert results[0].file_path == "a.py"
     assert results[0].start_line == 10

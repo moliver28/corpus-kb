@@ -155,6 +155,7 @@ async def codebook_promote(
     with a merge suggestion when the gate fires.
     """
     from corpus_kb.config import load_config
+    from corpus_kb.domain.application import dsn_from_config
     from corpus_kb.research.inductive_run import inductive_config
     from corpus_kb.research.promote_code import promote_proposal
 
@@ -170,6 +171,7 @@ async def codebook_promote(
         exclusion=exclusion,
         tau_dup=effective_tau,
         label=label,
+        dsn=dsn_from_config(cfg),
     )
     await advance_all_projections(pool, UUID(tenant_id))
     return result

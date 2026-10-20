@@ -62,14 +62,23 @@ class ResearchHandler:
         self,
         pool: asyncpg.Pool,
         embed_fn: Callable[[str], list[float]] | None = None,
+        dsn: str | None = None,
     ) -> None:
         self._pool = pool
         self._embed_fn = embed_fn
+        self._dsn = dsn
         self._default_embed_fn: Callable[[str], list[float]] | None | None = None
 
     @property
     def app(self):
-        return get_app()
+        # Bind the event store to THIS handler's database. A bare get_app()
+        # resolves env/config, which is not the database self._pool reads
+        # whenever the pool was built from an explicit DSN (the research
+        # fixtures' scratch DB, any duckdb backend) — the app cache is keyed
+        # on (backend, DSN), so the explicit DSN keeps aggregate writes on
+        # the same store the pool reads. None keeps the env/config
+        # resolution (the production default).
+        return get_app(self._dsn) if self._dsn else get_app()
 
     def _link_embed(self) -> Callable[[str], list[float]] | None:
         """Sync embed fn for cross_ref linking (todo-11 deferred, wired todo-12).

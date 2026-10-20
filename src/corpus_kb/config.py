@@ -95,6 +95,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
         ("embedding", "dimensions"): "CORPUS_KB_EMBEDDING_DIMENSIONS",
         ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
+        ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
         ("server", "transport"): "CORPUS_KB_TRANSPORT",
         ("server", "port"): "CORPUS_KB_PORT",
         ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
@@ -120,6 +121,13 @@ def load_config(path: str | None = None) -> dict[str, Any]:
                 section_dict[key] = value
 
     apply_extraction_backend_alias(config)
+
+    # Storage-portability backend truth: Postgres-only engine selections are
+    # refused while database.backend is duckdb (the mix gate runs AFTER the
+    # alias layers, so it sees the effective extraction backend).
+    mix_errors = backend_mix_errors(config)
+    if mix_errors:
+        raise ValueError(mix_errors[0])
 
     mrl_error = matryoshka_mrl_error(config)
     if mrl_error is not None:
@@ -209,6 +217,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
     {
         "CORPUS_KB_CONFIG",
         "CORPUS_KB_DATABASE_URL",
+        "CORPUS_KB_DATABASE_BACKEND",
         "CORPUS_KB_EMBEDDING_MODEL",
         "CORPUS_KB_EMBEDDING_DIMENSIONS",
         "CORPUS_KB_GRAPH_BACKEND",
@@ -259,6 +268,77 @@ def matryoshka_mrl_error(config: dict[str, object]) -> str | None:
     )
 
 
+# Backend-mix refusals (storage-portability program §11 rule 15 string
+# bank — the texts are binding and used verbatim; validate_configs mirrors
+# them because the CI validate-configs job installs only PyYAML and cannot
+# import this package. tests/test_backend_config_truth.py pins the
+# equality between the two renderings).
+AGE_ON_DUCKDB_ERROR = "Set database.backend to postgres, or remove the graph.backend setting."
+PGML_EMBEDDER_ON_DUCKDB_ERROR = (
+    "PostgresML runs only on Postgres. The Ollama embedder will be used instead."
+)
+PGML_RERANKER_ON_DUCKDB_ERROR = (
+    "PostgresML reranking runs only on Postgres. The Ollama reranker will be used instead."
+)
+PGML_EXTRACTION_ON_DUCKDB_ERROR = (
+    "PostgresML extraction runs only on Postgres. The regex extractor will be used instead."
+)
+
+
+def _section_dict(config: dict[str, object], section: str) -> dict[str, object]:
+    """The named config section when it is a mapping, else an empty dict."""
+    node = config.get(section)
+    return node if isinstance(node, dict) else {}
+
+
+def _effective_extraction_backend(config: dict[str, object]) -> str | None:
+    """The extraction backend the alias layer would settle on.
+
+    Mirrors ``apply_extraction_backend_alias`` precedence: a non-empty
+    ``extraction.backend`` wins; only when it is absent does the legacy
+    ``graph.extractor`` alias stay authoritative.
+    """
+    extraction = _section_dict(config, "extraction")
+    raw = extraction.get("backend")
+    if isinstance(raw, str) and raw:
+        return raw
+    graph = _section_dict(config, "graph")
+    raw = graph.get("extractor")
+    if isinstance(raw, str) and raw:
+        return raw
+    return None
+
+
+def backend_mix_errors(config: dict[str, object]) -> list[str]:
+    """Refuse Postgres-only engine selections while ``database.backend`` is duckdb.
+
+    One operation, one truth: AGE and PostgresML (embedder, legacy
+    ``search.reranker``, extraction) physically cannot run on DuckDB, so a
+    duckdb selection that still names one is refused AT LOAD with a
+    plain-English remediation — never a silent downgrade. Returns every
+    violation in a fixed order (age, embedder, reranker, extraction);
+    empty when the backend is not ``duckdb`` (Postgres accepts all of
+    these) — an unknown ``database.backend`` value is NOT a mix and is
+    left to ``validate_configs``' enum rule. Pure: no IO, no globals.
+    """
+    database = _section_dict(config, "database")
+    if database.get("backend") != "duckdb":
+        return []
+    errors: list[str] = []
+    graph = _section_dict(config, "graph")
+    if graph.get("backend") == "age":
+        errors.append(AGE_ON_DUCKDB_ERROR)
+    embedding = _section_dict(config, "embedding")
+    if "pgml" in (embedding.get("provider"), embedding.get("fallback_provider")):
+        errors.append(PGML_EMBEDDER_ON_DUCKDB_ERROR)
+    search = _section_dict(config, "search")
+    if search.get("reranker") == "pgml":
+        errors.append(PGML_RERANKER_ON_DUCKDB_ERROR)
+    if _effective_extraction_backend(config) == "pgml":
+        errors.append(PGML_EXTRACTION_ON_DUCKDB_ERROR)
+    return errors
+
+
 def get_default_config() -> dict[str, object]:
     """Return the default configuration dict (no file needed)."""
     config: dict[str, object] = {
@@ -272,6 +352,9 @@ def get_default_config() -> dict[str, object]:
         },
         "graph": {
             "backend": "age",
+            # Graph traversal depth cap (1..25; 25 is today's AGE cap).
+            # Consumed by the neighbor/traverse operations (program §5.2).
+            "max_hops": 5,
             # Accepted legacy alias for extraction.backend (kept forever);
             # see apply_extraction_backend_alias.
             "extractor": "pgml",
@@ -312,6 +395,13 @@ def get_default_config() -> dict[str, object]:
             # Only hybrid_rrf exists today; other values are rejected at
             # load time (load_retrieval_settings).
             "mode": "hybrid_rrf",
+            # DuckDB vector-search mode: exact_scan (default, deterministic)
+            # or hnsw (the experimental vss extension; doctor warns).
+            # Postgres keeps its pgvector HNSW and ignores this key.
+            "vector_index": "exact_scan",
+            # DuckDB fts-index rebuild debounce (seconds, positive). DuckDB
+            # FTS has no auto-refresh; the gateway rebuilds on a debounce.
+            "fts_rebuild_debounce_s": 2.0,
             # Live per-arm candidate depths before fusion (effective limit
             # is max(candidates, k * 2), so small values never under-fetch
             # below k).
@@ -453,6 +543,11 @@ def get_default_config() -> dict[str, object]:
             },
         },
         "database": {
+            # Storage engine selector: postgres (default) or duckdb. The
+            # backend-mix gate (backend_mix_errors) refuses Postgres-only
+            # engine selections (AGE, pgml) while duckdb is set. Consumed
+            # by the storage gateway (storage-portability program §3).
+            "backend": "postgres",
             "connection_string": "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb",
         },
         # extraction.backend is the PREFERRED extraction-backend key;
