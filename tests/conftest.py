@@ -145,7 +145,10 @@ def research_dsn():
     async def _bind_app() -> None:
         from corpus_kb.domain.application import get_app
 
-        get_app()  # construct the singleton while env points at the throwaway DB
+        # Bind by explicit DSN: the app cache is keyed on (backend, DSN), so
+        # a bare get_app() would resolve config.yaml (the compose stack) and
+        # build a second app on the wrong database.
+        get_app(dsn)
 
     asyncio.run(_bind_app())
     # Restore immediately: the eventsourcing singleton stays bound to the
@@ -185,7 +188,7 @@ async def reader_and_app(research_dsn):
     from corpus_kb.domain.application import get_app
     from corpus_kb.projections.event_reader import EventReader
 
-    app = get_app()
+    app = get_app(research_dsn)
     pool = await __import__("asyncpg").create_pool(research_dsn)
     try:
         yield EventReader(pool, app.mapper, app.recorder.events_table_name), app

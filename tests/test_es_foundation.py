@@ -38,9 +38,11 @@ TENANT = UUID(TEST_TENANT)
 
 
 async def _reader(pool: asyncpg.Pool):
+    import research_db
+
     from corpus_kb.domain.application import get_app
 
-    app = get_app()
+    app = get_app(research_db.DSN)
     return EventReader(pool, app.mapper, app.recorder.events_table_name), app
 
 
@@ -60,6 +62,8 @@ async def _projections(pool: asyncpg.Pool, reader_and_app):
 
 
 async def _save_two_documents() -> tuple[UUID, UUID]:
+    import research_db
+
     from corpus_kb.domain.application import get_app
 
     doc = Document(
@@ -76,7 +80,7 @@ async def _save_two_documents() -> tuple[UUID, UUID]:
         file_hash="d" * 64,
     )
     doc2.add_chunks(chunk_count=1, chunk_texts=["P2: Same experience here."])
-    app = get_app()
+    app = get_app(research_db.DSN)
     app.save(doc)
     app.save(doc2)
     return UUID(str(doc.id)), UUID(str(doc2.id))
@@ -334,9 +338,11 @@ async def test_tenant_contract_on_all_document_events(pool, reader_and_app):
         tenant_id=TENANT,
         turns=[{"seq": 0, "text_sha256": uuid.uuid4().hex, "speaker": "M", "role": "moderator"}],
     )
+    import research_db
+
     from corpus_kb.domain.application import get_app
 
-    get_app().save(doc)
+    get_app(research_db.DSN).save(doc)
     notifications = await reader.read_since(0, limit=1000)
     research_topics = {
         "Document.Ingested",
