@@ -1,9 +1,11 @@
 """The operation catalogue: documents and graph families.
 
-``list_documents``/``delete_document`` (documents) and
-``add_entity``/``add_relation`` (graph) live here. The delete row pins the
-Wave 3A unification: the tool's row delete is the ONE implementation; the
-HTTP command handler adds the audit aggregate (``AGGREGATE_EXTRA``).
+``list_documents``/``delete_document`` (documents) and the graph rows
+(``add_entity``/``add_relation`` plus the §5.1 read births
+``search_graph``/``get_entity_relations``/``graph_neighbors``/
+``graph_traverse``) live here. The delete row pins the Wave 3A unification:
+the tool's row delete is the ONE implementation; the HTTP command handler
+adds the audit aggregate (``AGGREGATE_EXTRA``).
 Registry-first rule: change the row first, then the surfaces, then the
 gates. All strings are plain English (ASD-STE100).
 """
@@ -98,6 +100,26 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(CLI, "add-relation"),
             SurfaceSpec(HTTP, "/api/relations", "POST"),
             SurfaceSpec(SOCKET, "add_relation"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="search_graph",
+        family="graph",
+        description="Search graph entities by name. Rows carry name and type.",
+        handler="corpus_kb.tools.graph_read_tools:search_graph",
+        params=(
+            ParamSpec("query", required=True),
+            ParamSpec("entity_type"),
+            ParamSpec("limit", default=100),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "search_graph"),
+            SurfaceSpec(CLI, "search-graph"),
+            SurfaceSpec(HTTP, "/api/graph/search", "POST"),
+            SurfaceSpec(SOCKET, "search_graph"),
         ),
         exit_codes=(0, 1, 3),
     ),

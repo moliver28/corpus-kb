@@ -205,3 +205,51 @@ def test_help_documents_exit_codes() -> None:
         assert "0" in flat
         assert "1 failed" in flat
         assert "3 the database is unreachable" in flat
+
+
+# ============================================================================
+# Graph read front door (storage-portability §5.1): cli_graph_hops
+# ============================================================================
+
+
+def _patch_hops_world(
+    monkeypatch: pytest.MonkeyPatch,
+    fn_name: str,
+    fake: _RecordingTool,
+) -> _FakePool:
+    """Same seam patch as _patch_world, aimed at the cli_graph_hops flows."""
+    pool = _FakePool()
+
+    async def _open(_cfg: dict[str, object]) -> _FakePool:
+        return pool
+
+    def _cfg() -> dict[str, object]:
+        return dict(_CFG)
+
+    monkeypatch.setattr("corpus_kb.cli_graph_hops._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli_graph_hops._load_config", _cfg)
+    monkeypatch.setattr(f"corpus_kb.tools.graph_read_tools.{fn_name}", fake)
+    return pool
+
+
+def test_search_graph_json_is_the_tool_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {"status": "success", "result": [{"entity_id": ENTITY_ID, "name": "P"}]}
+    fake = _RecordingTool(envelope)
+    pool = _patch_hops_world(monkeypatch, "search_graph", fake)
+    result = runner.invoke(app, ["search-graph", "parity", "--limit", "5", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["args"][1] == "parity"
+    assert call["limit"] == 5
+    assert call["config"] == dict(_CFG)
+    assert call["args"][0] is pool
+    assert pool.closed is True
+
+
+def test_search_graph_empty_list_still_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": []})
+    _patch_hops_world(monkeypatch, "search_graph", fake)
+    result = runner.invoke(app, ["search-graph", "ghost"])
+    assert result.exit_code == 0
+    assert "no entities" in result.output

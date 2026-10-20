@@ -282,6 +282,19 @@ async def _add_relation(params: dict[str, Any], tenant_id: str) -> dict[str, Any
     return get_command_handler().handle_add_relation(cmd)
 
 
+async def _search_graph(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import search_graph as search_graph_tool
+
+    return await search_graph_tool(
+        await research_pool(),
+        str(params.get("query", "")),
+        tenant_id=tenant_id,
+        entity_type=params.get("entity_type"),
+        limit=int(params.get("limit", 100)),
+    )
+
+
 _CORE_ARMS: dict[str, Arm] = {
     "ingest_file": _ingest_file,
     "ingest_text": _ingest_text,
@@ -299,6 +312,7 @@ _CORE_ARMS: dict[str, Arm] = {
     "add_entity": _add_entity,
     "verify_answer": _verify_answer,
     "add_relation": _add_relation,
+    "search_graph": _search_graph,
 }
 
 
