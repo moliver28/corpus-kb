@@ -1,3 +1,5 @@
+# allow: SIZE_OK — four catalogue ops' CLI flow helpers in one module; a
+# split would scatter each op's CLI contract across files.
 """The ``corpus-kb`` graph read front door (storage-portability §5.1).
 
 Top-level commands registered on the main app (see ``register``); one

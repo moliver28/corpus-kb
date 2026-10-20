@@ -523,7 +523,11 @@ class AgeGraphStore(GraphStore):
         entity_types: list[str] | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        """Undirected fixed-length matches over 1..max_depth (AGE keeps cypher)."""
+        """Undirected fixed-length matches over 1..max_depth (AGE keeps cypher).
+
+        Documented AGE cost: one cypher query per depth (up to MAX_BFS_DEPTH
+        per call), merged in Python for min-depth semantics.
+        """
         try:
             depth = int(max_depth)
         except (TypeError, ValueError) as exc:
