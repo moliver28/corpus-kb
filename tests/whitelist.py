@@ -376,3 +376,10 @@ gen_min_span_tree
 algorithm
 fit_transform
 MountableApp
+
+# Storage portability gateway (issue #127, sp-gateway): test-only consumers
+# this wave. write_batch is the batched DuckDB insert path (ingest ports
+# adopt it in phase D); run_transaction is the conflict-replay driver for
+# the same adopters. Exercise in tests/test_storage_gateway.py.
+write_batch
+run_transaction
