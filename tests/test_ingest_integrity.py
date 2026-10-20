@@ -25,6 +25,7 @@ import asyncpg
 import pytest
 
 from corpus_kb.errors import ConfigError
+from tests.research_db import RLS_PROBE_ROLE, ensure_rls_probe, super_dsn_for
 
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "src" / "corpus_kb" / "migrations"
@@ -35,7 +36,10 @@ SCHEMA_SQL = REPO / "src" / "corpus_kb" / "storage" / "schema.sql"
 BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
 DB_NAME = "corpus_kb_ir022_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
-SUPER_DSN = f"{BASE_DSN}/postgres"
+# Admin/extension connections follow the env-derived research_db contract
+# (program rule 20): locally the superuser is postgres, in the CI service
+# image it is the bootstrap role corpus_user. No hardcoded role overrides.
+SUPER_DSN = super_dsn_for("postgres")
 
 TENANT = "00000000-0000-0000-0000-000000000002"
 
@@ -616,17 +620,22 @@ def integrity_dsn():
     async def _create() -> str:
         import asyncpg
 
-        admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+        admin = await asyncpg.connect(SUPER_DSN)
         try:
             await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
             await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
         finally:
             await admin.close()
 
-        superconn = await asyncpg.connect(DSN, user="postgres", password="postgres")
+        superconn = await asyncpg.connect(super_dsn_for(DB_NAME))
         try:
             await superconn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             await superconn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
+            # The FORCE-RLS negative assertions below run through the shared
+            # non-superuser probe role (see tests/research_db.py): the app
+            # role is the bootstrap SUPERUSER in the CI service image, and a
+            # superuser bypasses row level security entirely.
+            await ensure_rls_probe(superconn)
         finally:
             await superconn.close()
 
@@ -638,6 +647,8 @@ def integrity_dsn():
             # again to restore the pre-011 conditions this harness targets.
             await conn.execute("ALTER TABLE chunks NO FORCE ROW LEVEL SECURITY")
             await conn.execute("ALTER TABLE chunks_vectors NO FORCE ROW LEVEL SECURITY")
+            # The probe role writes the ledger row in the FORCE-RLS test.
+            await conn.execute(f"GRANT INSERT ON ingest_runs TO {RLS_PROBE_ROLE}")
         finally:
             await conn.close()
         return DSN
@@ -690,12 +701,19 @@ async def test_ingest_runs_table_is_force_rls(integrity_pool) -> None:
         )
         assert forced is True
         # Owner writes without the tenant GUC are rejected (FORCE + policy).
-        with pytest.raises(asyncpg.PostgresError):
-            await conn.execute(
-                "INSERT INTO ingest_runs (tenant_id, source_type) VALUES ($1, $2)",
-                TENANT,
-                "text",
-            )
+        # Exercise it through the non-superuser probe role: the app role is
+        # the bootstrap SUPERUSER in the CI service image, and a superuser
+        # bypasses row level security entirely.
+        await conn.execute(f"SET ROLE {RLS_PROBE_ROLE}")
+        try:
+            with pytest.raises(asyncpg.PostgresError):
+                await conn.execute(
+                    "INSERT INTO ingest_runs (tenant_id, source_type) VALUES ($1, $2)",
+                    TENANT,
+                    "text",
+                )
+        finally:
+            await conn.execute("RESET ROLE")
 
 
 @pytest.mark.requires_postgres
@@ -1013,7 +1031,7 @@ class _SingleConnPool:
 async def _create_force_rls_db() -> str:
     import asyncpg
 
-    admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+    admin = await asyncpg.connect(SUPER_DSN)
     try:
         await admin.execute('DROP DATABASE IF EXISTS "corpus_kb_ir075_force_rls_test" WITH (FORCE)')
         await admin.execute('CREATE DATABASE "corpus_kb_ir075_force_rls_test" OWNER corpus_user')
@@ -1028,7 +1046,7 @@ async def _create_force_rls_db() -> str:
             """
         )
         # Extensions need superuser; run them against the scratch DB.
-        scratch = await asyncpg.connect(IR075_DSN, user="postgres", password="postgres")
+        scratch = await asyncpg.connect(super_dsn_for("corpus_kb_ir075_force_rls_test"))
         try:
             await scratch.execute("CREATE EXTENSION IF NOT EXISTS vector")
             await scratch.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')

@@ -166,10 +166,33 @@ def research_dsn():
 
 
 @pytest.fixture
-async def research_pool(research_dsn):
+async def fresh_research_app(research_dsn: str) -> str:
+    """Rebind the research eventsourcing app for ONE test, on its own loop.
+
+    The session ``research_dsn`` fixture binds the app once, on the
+    throwaway event loop of an ``asyncio.run`` call. Handing that stale
+    app (whose psycopg pool is pinned to a dead loop) to later tests ends
+    in ``PoolTimeout: couldn't get a connection after 30.00 sec`` some
+    distance into the session — observed on the CI leg and in long local
+    sessions alike. Each research test instead resets the singletons,
+    points the env at the throwaway database (no-arg ``get_app()`` calls
+    resolve it), and builds a fresh app on the current loop.
+    """
+    import research_db
+
+    research_db.set_env(research_dsn)
+    await research_db.reset_singletons()
+    from corpus_kb.domain.application import get_app
+
+    get_app(research_dsn)
+    yield research_dsn
+
+
+@pytest.fixture
+async def research_pool(fresh_research_app: str):
     import asyncpg
 
-    pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=4)
+    pool = await asyncpg.create_pool(fresh_research_app, min_size=1, max_size=4)
     yield pool
     await pool.close()
 
@@ -184,12 +207,13 @@ async def superuser(research_dsn):
 
 
 @pytest.fixture
-async def reader_and_app(research_dsn):
+async def reader_and_app(fresh_research_app: str):
     from corpus_kb.domain.application import get_app
     from corpus_kb.projections.event_reader import EventReader
 
-    app = get_app(research_dsn)
-    pool = await __import__("asyncpg").create_pool(research_dsn)
+    dsn = fresh_research_app
+    app = get_app(dsn)
+    pool = await __import__("asyncpg").create_pool(dsn)
     try:
         yield EventReader(pool, app.mapper, app.recorder.events_table_name), app
     finally:
@@ -197,10 +221,10 @@ async def reader_and_app(research_dsn):
 
 
 @pytest.fixture
-async def pool(research_dsn):
+async def pool(fresh_research_app: str):
     import asyncpg
 
-    pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=4)
+    pool = await asyncpg.create_pool(fresh_research_app, min_size=1, max_size=4)
     yield pool
     await pool.close()
 

@@ -648,7 +648,11 @@ def test_research_db_dsn_is_env_derived(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("POSTGRES_SUPERUSER_PASSWORD", "rootpw")
     module = importlib.reload(importlib.import_module("research_db"))
     assert module.BASE_DSN == "postgresql://svc:pw@pg.internal:6543"
-    assert module.SUPER_DSN == "postgresql://root:rootpw@pg.internal:6543"
+    # Admin DSNs name the postgres maintenance database explicitly: asyncpg
+    # defaults a database-less DSN to the USER name, which only resolves on
+    # hosts where a database named after the role exists.
+    assert module.SUPER_DSN == "postgresql://root:rootpw@pg.internal:6543/postgres"
+    assert module.super_dsn_for("scratch") == "postgresql://root:rootpw@pg.internal:6543/scratch"
     assert f"{module.BASE_DSN}/{module.DB_NAME}" == module.DSN
 
     for name in (
@@ -662,4 +666,4 @@ def test_research_db_dsn_is_env_derived(monkeypatch: pytest.MonkeyPatch) -> None
         monkeypatch.delenv(name, raising=False)
     fallback = importlib.reload(importlib.import_module("research_db"))
     assert fallback.BASE_DSN == "postgresql://corpus_user:corpus_pass@localhost:5432"
-    assert fallback.SUPER_DSN == "postgresql://postgres:postgres@localhost:5432"
+    assert fallback.SUPER_DSN == "postgresql://postgres:postgres@localhost:5432/postgres"

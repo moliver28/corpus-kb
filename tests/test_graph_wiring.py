@@ -481,6 +481,14 @@ class TestGraphWiringLiveFallback:
         except Exception:
             pytest.skip("Postgres not available")
         try:
+            # The premise is "this server has no AGE". The bundled CI image
+            # ships the extension (and the bootstrap creates the graph), so
+            # there the store is rightly a live AgeGraphStore and this
+            # fallback premise does not apply.
+            if await pool.fetchval(
+                "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age')"
+            ):
+                pytest.skip("server has the age extension; the fallback premise does not apply")
             cfg: dict[str, object] = {"graph": {"backend": "age"}}
             with caplog.at_level(logging.WARNING):
                 store = await create_graph_store(cfg, pool)
