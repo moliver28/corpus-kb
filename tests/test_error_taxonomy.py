@@ -126,6 +126,27 @@ def test_legacy_exception_names_stay_mapped() -> None:
     assert error_status("UndefinedFunctionError") == 503
 
 
+def test_duckdb_exception_names_stay_mapped() -> None:
+    """The DuckDB store/gateway error surface speaks the taxonomy per class.
+
+    Lock and catalog failures translate to typed errors at the store
+    boundary (``duckdb_store._translate_error``); these raw-class rows pin
+    the honest triple when a name still escapes through a legacy envelope.
+    """
+    # Contention and environment: the database-unavailable triple.
+    for name in ("IOException", "ConnectionException", "TransactionException"):
+        assert ERROR_MAP[name] == (503, -32003, 3), name
+    # Missing schema objects: the migration-missing triple.
+    assert ERROR_MAP["CatalogException"] == (503, -32004, 3)
+    # Bad caller input: the invalid-params triple.
+    for name in ("InvalidInputException", "ConversionException", "ParserException"):
+        assert ERROR_MAP[name] == (400, -32602, 1), name
+    # A constraint collision is a conflict, not a crash.
+    assert ERROR_MAP["ConstraintException"] == (409, -32002, 3)
+    # A feature the engine lacks: the dependency-missing triple.
+    assert ERROR_MAP["NotImplementedException"] == (503, -32005, 3)
+
+
 @pytest.mark.parametrize("unknown", ["", "not_a_type", "RuntimeError"])
 def test_unknown_error_type_defaults_to_500(unknown: str) -> None:
     assert error_status(unknown) == 500

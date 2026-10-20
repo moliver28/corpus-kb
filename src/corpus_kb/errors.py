@@ -66,6 +66,22 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     "InterfaceError": (503, -32003, 3),
     "UndefinedTableError": (503, -32004, 3),
     "UndefinedFunctionError": (503, -32004, 3),
+    # duckdb class names surfaced through legacy envelopes. The DuckDB
+    # graph store translates its failures at the store boundary (lock and
+    # catalog errors become typed taxonomy errors); these per-class rows
+    # cover the raw names that can still escape (file locks, write-write
+    # conflicts, malformed values or SQL, constraint collisions).
+    "IOException": (503, -32003, 3),
+    "ConnectionException": (503, -32003, 3),
+    "TransactionException": (503, -32003, 3),
+    "PermissionException": (503, -32003, 3),
+    "CatalogException": (503, -32004, 3),
+    "NotImplementedException": (503, -32005, 3),
+    "InvalidInputException": (400, -32602, 1),
+    "ConversionException": (400, -32602, 1),
+    "ParserException": (400, -32602, 1),
+    "SyntaxException": (400, -32602, 1),
+    "ConstraintException": (409, -32002, 3),
 }
 
 DEFAULT_ERROR_TYPE = "internal_error"
