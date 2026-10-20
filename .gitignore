@@ -50,5 +50,8 @@ scripts/_*.ps1
 # Build artifacts
 build/
 
+# Program worktrees (storage-portability parallel agents)
+.worktrees/
+
 # Local tooling state
 .zcodeignore

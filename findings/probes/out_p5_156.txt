@@ -1,0 +1,11 @@
+duckdb 1.5.6
+json_set scalar-tgt  : ERROR CatalogException: Catalog Error: Scalar Function with name json_set does not exist!
+Did you mean "json_exists"?
+jsonb_set            : ERROR CatalogException: Catalog Error: Scalar Function with name jsonb_set does not exist!
+Did you mean "json_exists"?
+merge_patch REPL thr : [('{"thresholds":{"a":1,"t":9}}',)]
+merge_patch plain-str: [('{"thresholds":{"a":1,"t":9}}',)]
+merge_patch deepkeys : [('{"keep":2,"thresholds":{"a":1,"t":9}}',)]
+two-step null then mp: [('{"keep":2,"thresholds":{"t":9}}',)]
+merge_patch arr repl : [('{"completed":[3]}',)]
+json_object top keys : [('{"thresholds":{"t":9}}',)]

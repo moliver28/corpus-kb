@@ -1,0 +1,6 @@
+Traceback (most recent call last):
+  File "<stdin>", line 5, in <module>
+_duckdb.ConversionException: Conversion Error: Could not convert string 'ABC' to INT128 when casting from source column s
+
+LINE 1: SELECT s FROM v WHERE s = ?
+                              ^

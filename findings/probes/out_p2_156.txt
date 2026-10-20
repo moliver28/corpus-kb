@@ -1,0 +1,33 @@
+duckdb 1.5.6
+=== syntax error : SELEC 1
+  bad stmt error : ParserException: Parser Error: syntax error at or near "SELEC"
+
+LINE 1: SELEC 1
+        ^
+  select after   : [(1,)]
+  insert after   : OK
+  commit         : OK
+=== UndefinedTable: SELECT * FROM no_such_table_xyz
+  bad stmt error : CatalogException: Catalog Error: Table with name no_such_table_xyz does not exist!
+Did you mean "pg_tables"?
+
+LINE 1: SELECT * FROM no_such_table_xyz
+                      ^
+  select after   : [(2,)]
+  insert after   : OK
+  commit         : OK
+=== type error   : SELECT CAST('abc' AS INT)
+  bad stmt error : ConversionException: Conversion Error: Could not convert string 'abc' to INT32
+
+LINE 1: SELECT CAST('abc' AS INT)
+               ^
+  select ERROR   : TransactionException: TransactionContext Error: Current transaction is aborted (please ROLLBACK)
+  insert ERROR   : TransactionException: TransactionContext Error: Current transaction is aborted (please ROLLBACK)
+  commit         : OK
+final table content: [(1, 'one'), (2, 'two'), (2, 'two')]
+=== partial-work check: failed UPDATE after a successful INSERT
+  second insert error: ConversionException: Conversion Error: Could not convert string 'not-an-int' to INT32
+
+LINE 1: INSERT INTO t VALUES ('not-an-int', 'bad')
+                              ^
+post-commit rows: [(1, 'one'), (2, 'two'), (2, 'two')]

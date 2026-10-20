@@ -1,0 +1,6 @@
+# Regenerable scratch from probe runs - never commit.
+db*/
+ext_vendored/
+__pycache__/
+*.duckdb
+*.wal
