@@ -175,8 +175,26 @@ async def test_topics_trends_disabled_is_an_honest_noop() -> None:
 
 
 async def test_topics_trends_enabled_answers_unavailable_on_the_skeleton() -> None:
+    class _AbsentStorage:
+        """The 026 tables and the 027 date column both absent."""
+
+        async def fetchval(self, sql: str, *args: Any) -> None:
+            return None
+
+        def acquire(self) -> _AbsentStorage:
+            return self
+
+        async def __aenter__(self) -> _AbsentStorage:
+            return self
+
+        async def __aexit__(self, *args: Any) -> bool:
+            return False
+
+    # The trends engine is live now (WP-4), so the enabled path probes
+    # storage first (the topics_build convention); an absent schema is
+    # still the honest unavailable envelope, never a crash.
     result = await topics_tools.topics_trends(
-        _pool(), config=OVER_TIME_ON, tenant_id=TENANT, bins=12
+        _AbsentStorage(), config=OVER_TIME_ON, tenant_id=TENANT, bins=12
     )
     assert result["status"] == "unavailable"
 

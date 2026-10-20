@@ -337,6 +337,7 @@ markers = [
     "requires_ollama: mark test as needing a running Ollama service",
     "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
     "ste: ASD-STE100 plain-language gate (docs, error strings, tool docstrings)",
+    "slow: long-running perf fixture (100k synthetic chunks); skipped unless CORPUS_KB_PERF_RUN=1",
 ]
 asyncio_mode = "auto"
 # Third-party warning noise (no repo-side fix exists):

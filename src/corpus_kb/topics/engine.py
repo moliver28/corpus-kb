@@ -13,6 +13,11 @@ Design contract:
 - DETERMINISM: the UMAP random state is the pinned constant
   ``UMAP_RANDOM_STATE`` (42, the repo-wide research pin) and every model
   parameter is recorded in the result's ``params`` mapping.
+- CORPUS SCALE (WP-0): the read pages through ALL embedded chunks for
+  the tenant in bounded batches; the fit runs on a seeded sample
+  (``FIT_SAMPLE_SEED``) and the remainder is assigned through
+  ``transform`` (UMAP transform + hdbscan approximate_predict), which
+  is deterministic given the fitted state. One fit per build, never two.
 - "auto": ``min_topic_size: "auto"`` passes BERTopic's own default
   (``AUTO_MIN_TOPIC_SIZE``) and the resolved value is reported.
 
@@ -26,6 +31,7 @@ import importlib
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from types import ModuleType
 from typing import Protocol, cast
 
@@ -41,14 +47,37 @@ logger = logging.getLogger(__name__)
 
 TOPICS_EXTRA_REMEDIATION = "pip install 'corpus-kb[topics]'"
 
-# Bound on one build's working set: 20k chunks of 2560 halfvec floats.
+# One read batch and the default fit-sample cap: 20k chunks of 2560
+# halfvec floats per batch (WP-0: the read pages the whole corpus with
+# this bound; the fit samples this many vectors unless
+# ``analysis.topics.max_embeddings`` lowers it).
 MAX_EMBEDDINGS_PER_BUILD = 20000
+
+# The seeded-sample pin (the UMAP_RANDOM_STATE convention: a code
+# constant, recorded in every build result, never a knob).
+FIT_SAMPLE_SEED = 42
 
 # bertopic hands outliers the -1 topic id; they are honest non-membership.
 OUTLIER_TOPIC = -1
 
 # Keywords recorded per topic (the head of the c-TF-IDF ranking).
 KEYWORDS_PER_TOPIC = 10
+
+# Keyset-paginated read (WP-0): one bounded batch per fetch, ordered by
+# the chunk-id text so the pagination cursor cannot loop or skip. The
+# documents join carries the date provenance the temporal build needs.
+_READ_SQL = """
+SELECT cv.chunk_id::text AS chunk_id, c.text, cv.embedding::text AS embedding,
+       c.doc_id::text AS doc_id, d.document_date AS document_date,
+       c.source_timestamp AS source_timestamp
+FROM chunks_vectors cv
+JOIN chunks c ON c.chunk_id = cv.chunk_id AND c.tenant_id = cv.tenant_id
+JOIN documents d ON d.doc_id = c.doc_id AND d.tenant_id = c.tenant_id
+WHERE cv.tenant_id = $1::uuid AND cv.embedding IS NOT NULL
+  AND cv.chunk_id::text > $2::text
+ORDER BY cv.chunk_id::text
+LIMIT $3
+"""
 
 
 class TopicDependencyError(DependencyMissingError):
@@ -69,6 +98,21 @@ class BERTopicModel(Protocol):
     def fit_transform(
         self, documents: list[str], embeddings: object
     ) -> tuple[list[object], list[object] | None]: ...
+
+    def transform(
+        self, documents: list[str], embeddings: object
+    ) -> tuple[list[object], list[object] | None]: ...
+
+    # Keyword names mirror the real ``BERTopic.topics_over_time``.
+    def topics_over_time(
+        self,
+        docs: list[str],
+        timestamps: list[object],
+        *,
+        topics: list[int],
+        nr_bins: int,
+        evolution_tuning: bool,
+    ) -> TopicInfoFrame: ...
 
     def get_topic_info(self) -> TopicInfoFrame: ...
 
@@ -123,11 +167,18 @@ def load_umap() -> ModuleType:
 
 @dataclass(frozen=True)
 class StoredChunk:
-    """One chunk text plus its stored embedding (read-only view)."""
+    """One chunk text plus its stored embedding (read-only view).
+
+    ``document_date`` (migration 027) is the document-level date; the
+    chunk's own ``source_timestamp`` is the fallback (WP-4).
+    """
 
     chunk_id: str
     text: str
     vector: list[float]
+    doc_id: str = ""
+    document_date: datetime | None = None
+    source_timestamp: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -142,46 +193,62 @@ class TopicBuild:
 
 @dataclass(frozen=True)
 class EngineResult:
-    """The fit output: topics, per-chunk assignments, and the params record."""
+    """The fit output: topics, per-chunk assignments, and the params record.
+
+    ``doc_topics`` is the topic id for EVERY input chunk in input order
+    (outliers included as ``OUTLIER_TOPIC``). The temporal build (WP-4)
+    needs it: its docs, timestamps and topics must align one to one.
+    """
 
     topics: list[TopicBuild]
     assignments: list[tuple[str, int, float]]
     params: dict[str, object]
     outlier_count: int
+    doc_topics: list[int] = field(default_factory=list)
 
 
 async def read_stored_embeddings(
-    pg_pool: asyncpg.Pool, tenant_id: str, limit: int = MAX_EMBEDDINGS_PER_BUILD
+    pg_pool: asyncpg.Pool, tenant_id: str, limit: int | None = None
 ) -> list[StoredChunk]:
-    """Read chunk texts + stored embeddings for one tenant (tenant GUC).
+    """Read the tenant's embedded chunks (tenant GUC), batched.
 
-    Stale rows (``embedding IS NULL`` after the migration-025 retype) are
-    excluded: a NULL vector is not a topic signal. Ordering is by chunk id
-    so the fit sees one stable sequence.
+    ``limit=None`` (the default) reads EVERY embedded chunk; an int caps
+    the total across batches. Each fetch is bounded by
+    ``MAX_EMBEDDINGS_PER_BUILD`` rows (keyset pagination, so one stable
+    pass over any corpus size). Stale rows (``embedding IS NULL`` after
+    the migration-025 retype) are excluded: a NULL vector is not a topic
+    signal. Ordering is by chunk id so the fit sees one stable sequence.
     """
-    async with tenant_connection(pg_pool, tenant_id) as conn:
-        rows = await conn.fetch(
-            """
-            SELECT cv.chunk_id::text AS chunk_id, c.text, cv.embedding::text AS embedding
-            FROM chunks_vectors cv
-            JOIN chunks c ON c.chunk_id = cv.chunk_id AND c.tenant_id = cv.tenant_id
-            WHERE cv.tenant_id = $1::uuid AND cv.embedding IS NOT NULL
-            ORDER BY cv.chunk_id
-            LIMIT $2
-            """,
-            tenant_id,
-            int(limit),
-        )
     chunks: list[StoredChunk] = []
-    for row in rows:
-        chunks.append(
-            StoredChunk(
-                chunk_id=str(row["chunk_id"]),
-                text=str(row["text"]),
-                vector=_parse_halfvec_text(str(row["embedding"])),
-            )
-        )
+    async with tenant_connection(pg_pool, tenant_id) as conn:
+        after = ""  # every chunk-id text is greater than the empty string
+        while limit is None or len(chunks) < limit:
+            batch = MAX_EMBEDDINGS_PER_BUILD
+            if limit is not None:
+                batch = min(MAX_EMBEDDINGS_PER_BUILD, limit - len(chunks))
+            rows = await conn.fetch(_READ_SQL, tenant_id, after, batch)
+            if not rows:
+                break
+            chunks.extend(_stored_chunk(row) for row in rows)
+            after = str(rows[-1]["chunk_id"])
     return chunks
+
+
+def _stored_chunk(row: asyncpg.Record) -> StoredChunk:
+    """One row -> the frozen view (uuid -> text, timestamps kept)."""
+    return StoredChunk(
+        chunk_id=str(row["chunk_id"]),
+        text=str(row["text"]),
+        vector=_parse_halfvec_text(str(row["embedding"])),
+        doc_id=str(row["doc_id"]),
+        document_date=_as_datetime(row["document_date"]),
+        source_timestamp=_as_datetime(row["source_timestamp"]),
+    )
+
+
+def _as_datetime(value: object) -> datetime | None:
+    """asyncpg hands timestamptz back as datetime; anything else is None."""
+    return value if isinstance(value, datetime) else None
 
 
 def _parse_halfvec_text(raw: str) -> list[float]:
@@ -192,16 +259,40 @@ def _parse_halfvec_text(raw: str) -> list[float]:
     return [float(value) for value in parsed]
 
 
-def build_topics(chunks: list[StoredChunk], settings: TopicsSettings) -> EngineResult:
+def build_topics(
+    chunks: list[StoredChunk],
+    settings: TopicsSettings,
+    max_embeddings: int | None = None,
+) -> EngineResult:
     """Fit BERTopic over the stored vectors; deterministic, params recorded.
 
     Raises ``TopicDependencyError`` when the ``[topics]`` extra is absent.
     Fewer documents than the resolved ``min_topic_size`` is an honest
     empty result (the caller owns the status), never a crash.
     """
+    result, _model = build_topics_with_model(chunks, settings, max_embeddings)
+    return result
+
+
+def build_topics_with_model(
+    chunks: list[StoredChunk],
+    settings: TopicsSettings,
+    max_embeddings: int | None = None,
+) -> tuple[EngineResult, BERTopicModel]:
+    """Fit once and return the result AND the fitted model (the WP-4 seam).
+
+    Corpus-scale path (WP-0): the fit consumes a seeded sample of at
+    most ``max_embeddings`` vectors (``analysis.topics.max_embeddings``,
+    else ``MAX_EMBEDDINGS_PER_BUILD``); the remainder is assigned by
+    ``transform``. Below the fit floor is the caller's honest
+    ``insufficient_data`` gate, never this function's business.
+    """
     bertopic_module = cast(BertopicModule, load_bertopic())
     umap_module = cast(UmapModule, load_umap())
     min_topic_size = settings.resolved_min_topic_size()
+    sample_cap = max_embeddings if max_embeddings is not None else MAX_EMBEDDINGS_PER_BUILD
+    sample_index = _sample_index(len(chunks), sample_cap)
+    rest_index = [i for i in range(len(chunks)) if i not in set(sample_index)]
     params: dict[str, object] = {
         "method": settings.method,
         "min_topic_size_requested": settings.min_topic_size,
@@ -211,6 +302,10 @@ def build_topics(chunks: list[StoredChunk], settings: TopicsSettings) -> EngineR
         "calculate_probabilities": False,
         "embedding_source": "chunks_vectors.embedding",
         "documents": len(chunks),
+        "fit_sample_size": len(sample_index),
+        "fit_seed": FIT_SAMPLE_SEED,
+        "assignment_mode": "fit+transform" if rest_index else "fit",
+        "total_chunks": len(chunks),
     }
     model = bertopic_module.BERTopic(
         min_topic_size=min_topic_size,
@@ -218,10 +313,60 @@ def build_topics(chunks: list[StoredChunk], settings: TopicsSettings) -> EngineR
         calculate_probabilities=False,
         verbose=False,
     )
-    docs = [chunk.text for chunk in chunks]
-    vectors = np.array([chunk.vector for chunk in chunks], dtype=np.float32)
-    assigned, probabilities = model.fit_transform(docs, embeddings=vectors)
-    return _collect(model, chunks, assigned, probabilities, params)
+    sample = [chunks[i] for i in sample_index]
+    fit_docs = [chunk.text for chunk in sample]
+    fit_vectors = np.array([chunk.vector for chunk in sample], dtype=np.float32)
+    fit_topics, fit_probabilities = model.fit_transform(fit_docs, embeddings=fit_vectors)
+    rest_topics: list[object] = []
+    rest_probabilities: list[object] = []
+    if rest_index:
+        rest_docs = [chunks[i].text for i in rest_index]
+        rest_vectors = np.array([chunks[i].vector for i in rest_index], dtype=np.float32)
+        rest_topics, rest_raw_probabilities = model.transform(rest_docs, embeddings=rest_vectors)
+        if rest_raw_probabilities is not None:
+            rest_probabilities = list(rest_raw_probabilities)
+    assigned = _merge_values(
+        sample_index, list(fit_topics), rest_index, rest_topics, len(chunks), OUTLIER_TOPIC
+    )
+    probabilities = _merge_values(
+        sample_index,
+        list(fit_probabilities) if fit_probabilities is not None else [],
+        rest_index,
+        rest_probabilities,
+        len(chunks),
+        0.0,
+    )
+    return _collect(model, chunks, assigned, probabilities, params), model
+
+
+def _sample_index(total: int, cap: int) -> list[int]:
+    """The seeded fit sample (sorted: one stable input order)."""
+    if total <= cap:
+        return list(range(total))
+    rng = np.random.default_rng(FIT_SAMPLE_SEED)
+    return sorted(int(index) for index in rng.choice(total, size=cap, replace=False))
+
+
+def _merge_values(
+    sample_index: list[int],
+    sample_values: list[object],
+    rest_index: list[int],
+    rest_values: list[object],
+    total: int,
+    fill: object,
+) -> list[object]:
+    """Scatter sample/transform values back into input order.
+
+    ``fill`` marks a position no model output reached: ``OUTLIER_TOPIC``
+    for topic ids (honest non-membership), 0.0 for probabilities (the
+    missing-probability default).
+    """
+    merged: list[object] = [fill] * total
+    for position, value in enumerate(sample_values):
+        merged[sample_index[position]] = value
+    for position, value in enumerate(rest_values):
+        merged[rest_index[position]] = value
+    return merged
 
 
 def _make_umap(umap_module: UmapModule) -> object:
@@ -273,5 +418,9 @@ def _collect(
     params["probabilities_note"] = "approximate (calculate_probabilities=false)"
     params["outliers"] = outlier_count
     return EngineResult(
-        topics=topics, assignments=assignments, params=params, outlier_count=outlier_count
+        topics=topics,
+        assignments=assignments,
+        params=params,
+        outlier_count=outlier_count,
+        doc_topics=[int(cast("int", raw)) for raw in assigned],
     )
