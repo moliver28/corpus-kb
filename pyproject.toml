@@ -103,6 +103,15 @@ Changelog = "https://github.com/moliver28/corpus-kb/blob/master/CHANGELOG.md"
 graphqlite = ["graphqlite>=0.4"]
 langextract = ["langextract"]
 pynvml = ["pynvml"]
+# DuckDB storage backend (storage portability program, issue #127, rule 9):
+# opt-in engine behind graph.backend: duckdb. MIT license. Pinned to the
+# 1.4 LTS line only (decision log 2026-10-19): 1.4.0 is the LTS release with
+# one-year support; 1.5+ is not yet vetted. NEVER move this into base
+# dependencies (rule 9: license-lock churn). CI NEVER installs this extra;
+# the consumer uses a plain function-local `import duckdb` behind backend
+# selection, so the extras-less jobs stay green (same contract as
+# latechunk/inductive/ner/topics).
+duckdb = ["duckdb>=1.4,<1.5"]
 # Late chunking (todo 13, v5 5.3): token-level hidden states need the local
 # transformers stack, never Ollama's pooled endpoint. License-reviewed
 # permissive set: sentence-transformers Apache-2.0, transformers Apache-2.0,
@@ -273,6 +282,13 @@ DEP002 = [
     "openinference-semantic-conventions",
     "deepeval",
     "marimo",
+    # The [duckdb] extra (storage portability program, rule 9) ships ahead of
+    # its first consumer: the plain function-local `import duckdb` lands with
+    # the storage work package, not with the extra. Unlike the extras above,
+    # rule 9 forbids importlib for duckdb — the import must stay deptry-
+    # visible — so this entry self-retires once that import lands. DEP004 is
+    # ignored separately below.
+    "duckdb",
     # Dev/tooling deps: consumed by tests/ and the gate commands, never
     # imported by src/.
     "pytest",
@@ -313,6 +329,11 @@ DEP002 = [
 # mcp[cli]/ollama). Ratchet follow-up: declare httpx explicitly and
 # regenerate licenses.lock.json in a dependency-scoped PR.
 DEP003 = ["httpx"]
+# The [duckdb] extra (storage portability program, rule 9): the first
+# `import duckdb` must not trip DEP004 (missing), because the distribution
+# is declared in the extra, never in base dependencies. Never `importlib`
+# strings — the import must stay deptry-visible.
+DEP004 = ["duckdb"]
 
 [tool.pytest.ini_options]
 markers = [
