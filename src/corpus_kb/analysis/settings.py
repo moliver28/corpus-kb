@@ -250,20 +250,20 @@ def load_analysis_settings(config: dict[str, object]) -> AnalysisSettings:
     return AnalysisSettings(
         labeling=LabelingSettings(
             enabled=bool(labeling.get("enabled", DEFAULT_LABELING_ENABLED)),
-            min_signals=int(labeling.get("min_signals", DEFAULT_LABELING_MIN_SIGNALS)),
+            min_signals=_as_int(labeling.get("min_signals", DEFAULT_LABELING_MIN_SIGNALS)),
             lfs_file=cast("str | None", labeling.get("lfs_file", DEFAULT_LFS_FILE)),
         ),
         classification=ClassificationSettings(
             enabled=bool(classification.get("enabled", DEFAULT_CLASSIFICATION_ENABLED)),
-            tier=str(classification.get("tier", DEFAULT_CLASSIFICATION_TIER)),
-            min_labels_per_class=int(
+            tier=_as_str(classification.get("tier", DEFAULT_CLASSIFICATION_TIER)),
+            min_labels_per_class=_as_int(
                 classification.get("min_labels_per_class", DEFAULT_MIN_LABELS_PER_CLASS)
             ),
         ),
         over_time=OverTimeSettings(
             enabled=bool(over_time.get("enabled", DEFAULT_OVER_TIME_ENABLED)),
             bins=typed_bins,
-            undated=str(over_time.get("undated", DEFAULT_OVER_TIME_UNDATED)),
+            undated=_as_str(over_time.get("undated", DEFAULT_OVER_TIME_UNDATED)),
         ),
         topics_max_embeddings=cast(
             "int | None",
@@ -280,6 +280,16 @@ def _child_block(parent: dict[str, object], key: str) -> dict[str, object]:
     if not isinstance(block, dict):
         return {}
     return cast(dict[str, object], block)
+
+
+def _as_int(value: object) -> int:
+    """Narrow a validated value: analysis_settings_error ran first."""
+    return cast("int", value)
+
+
+def _as_str(value: object) -> str:
+    """Narrow a validated value: analysis_settings_error ran first."""
+    return cast("str", value)
 
 
 def _analysis_block(config: dict[str, object]) -> dict[str, object]:

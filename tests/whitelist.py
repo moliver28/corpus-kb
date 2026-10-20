@@ -85,6 +85,13 @@ truncation
 IrrCodeVerdict
 prevalence_affected
 
+# Protocol keyword-only parameters that mirror real upstream signatures
+# (tier_b's SetFitModel.fit; the engine's topics_over_time seam). The
+# names must match the real calls; vulture sees only the Protocol text.
+end_to_end
+nr_bins
+evolution_tuning
+
 # dynamically-dispatched or test-patched names (verified by repo-wide grep): 149 name(s)
 aggregate_signals
 class_priors

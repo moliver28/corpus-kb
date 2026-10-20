@@ -39,13 +39,6 @@ class LFSpec:
     classes: tuple[str, ...]
     lfs: tuple[LabelingFunction, ...]
 
-    def index_of(self, class_name: str) -> int:
-        """The class index, or -1 when the name is not in the vocabulary."""
-        try:
-            return self.classes.index(class_name)
-        except ValueError:
-            return -1
-
 
 def load_lfs(path: str) -> LFSpec:
     """Parse and validate one LF definitions file (fail fast, with fixes).

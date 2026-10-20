@@ -52,8 +52,6 @@ def test_load_assigns_indices_in_class_order(tmp_path: Any) -> None:
     assert spec.classes == ("relevant", "noise")
     assert [lf.name for lf in spec.lfs] == ["sla", "uptime", "neg-uptime", "web-faq"]
     assert [lf.label_index for lf in spec.lfs] == [0, 0, 1, 1]
-    assert spec.index_of("noise") == 1
-    assert spec.index_of("missing") == -1
 
 
 def test_load_accepts_zero_lfs(tmp_path: Any) -> None:
