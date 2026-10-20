@@ -173,7 +173,7 @@ notebook = ["marimo>=0.25"]
 # installs this extra; the import stays lazy behind
 # analysis.classification.enabled, so the extras-less jobs stay green
 # (same contract as latechunk/inductive/ner/topics).
-classify = ["scikit-learn>=1.5"]
+classify = ["scikit-learn>=1.5", "threadpoolctl>=3.5"]
 # Opt-in SetFit tier (analysis.classification.tier: setfit): SetFit is
 # Apache-2.0 and pulls sentence-transformers + transformers; torch is
 # already reviewed in the latechunk extra. CI NEVER installs this extra;

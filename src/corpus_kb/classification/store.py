@@ -133,3 +133,20 @@ async def read_predictions(
         }
         for row in rows
     ]
+
+
+async def count_predictions(pg_pool: asyncpg.Pool, tenant_id: str) -> tuple[int, int]:
+    """Total stored predictions and the review-flagged subset (one scan)."""
+    async with tenant_connection(pg_pool, tenant_id) as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT count(*) AS total,
+                   count(*) FILTER (WHERE review) AS flagged
+            FROM chunk_predictions
+            WHERE tenant_id = $1
+            """,
+            tenant_id,
+        )
+    if row is None:
+        return (0, 0)
+    return (int(row["total"]), int(row["flagged"]))

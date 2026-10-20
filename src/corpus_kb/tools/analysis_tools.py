@@ -195,12 +195,12 @@ async def _classification_section(
     tenant_id: str,
     settings: AnalysisSettings,
 ) -> report_mod.AnalysisSection:
-    """Few-shot predictions: analyze never invents seeds.
+    """Few-shot predictions: analyze reports the stored build.
 
-    No stored set -> ``skipped``. With one, the build handler answers
-    (its honest guard names the seed file when the composed run has
-    none to pass — the stored set keeps the file name only, so a re-fit
-    stays with ``classification-build``).
+    Analyze never invents seeds: the seed file stays with the user, so a
+    re-fit stays with ``classification-build``. With no stored set the
+    section is ``skipped``; with one, the section reports the stored
+    totals and a bounded sample through the read handler.
     """
     if not settings.classification.enabled:
         return report_mod.disabled_section(
@@ -216,7 +216,14 @@ async def _classification_section(
         seeded = await classification_store.read_predictions(pg_pool, tenant_id, 1)
         if not seeded:
             return {"status": "skipped", "reason": _SKIPPED_REASON, "remedy": _SKIPPED_REMEDY}
-        return await classification_tools.classification_build(pg_pool, config, tenant_id)
+        total, flagged = await classification_store.count_predictions(pg_pool, tenant_id)
+        window = await classification_tools.classification_list(pg_pool, config, tenant_id)
+        return {
+            "status": "success",
+            "prediction_count": total,
+            "review_count": flagged,
+            "sample": window.get("predictions", []),
+        }
 
     return await report_mod.run_section("classification", run)
 

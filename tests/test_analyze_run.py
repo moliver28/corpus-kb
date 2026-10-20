@@ -105,16 +105,6 @@ def _labels() -> dict[str, object]:
     }
 
 
-def _predictions() -> dict[str, object]:
-    return {
-        "status": "success",
-        "prediction_count": 5,
-        "class_count": 2,
-        "review_count": 1,
-        "params": {"seed_file": "seeds.json"},
-    }
-
-
 def _prediction_row() -> dict[str, object]:
     return {
         "chunk_id": "00000000-0000-0000-0000-0000000000aa",
@@ -150,8 +140,15 @@ def _patch_all_success(monkeypatch: pytest.MonkeyPatch) -> None:
         "read_predictions",
         _returns([_prediction_row()]),
     )
+
+    async def _fake_count(*args: object, **kwargs: object) -> tuple[int, int]:
+        return (5, 1)
+
+    monkeypatch.setattr(analysis_tools.classification_store, "count_predictions", _fake_count)
     monkeypatch.setattr(
-        analysis_tools.classification_tools, "classification_build", _returns(_predictions())
+        analysis_tools.classification_tools,
+        "classification_list",
+        _returns({"status": "success", "prediction_count": 5, "predictions": [_prediction_row()]}),
     )
     monkeypatch.setattr(analysis_tools.topics_tools, "topics_trends", _returns(_trends()))
 
@@ -283,15 +280,9 @@ async def test_classification_without_a_seed_set_is_skipped(
     assert reason == "no seed label set; run classification-build with a seed file first"
 
 
-async def test_classification_with_a_seed_set_delegates_without_a_seed_file(
+async def test_classification_with_a_stored_set_reports_it_without_a_rebuild(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    calls: list[tuple[object, ...]] = []
-
-    async def fake_build(*args: object, **kwargs: object) -> dict[str, object]:
-        calls.append(args)
-        return _predictions()
-
     monkeypatch.setattr(
         analysis_tools.classification_store, "classification_tables_present", _returns_bool(True)
     )
@@ -300,16 +291,30 @@ async def test_classification_with_a_seed_set_delegates_without_a_seed_file(
         "read_predictions",
         _returns([_prediction_row()]),
     )
-    monkeypatch.setattr(analysis_tools.classification_tools, "classification_build", fake_build)
+
+    async def _fake_count(*args: object, **kwargs: object) -> tuple[int, int]:
+        return (1200, 37)
+
+    monkeypatch.setattr(analysis_tools.classification_store, "count_predictions", _fake_count)
+    monkeypatch.setattr(
+        analysis_tools.classification_tools,
+        "classification_list",
+        _returns({"status": "success", "prediction_count": 50, "predictions": [_prediction_row()]}),
+    )
+    monkeypatch.setattr(
+        analysis_tools.classification_tools,
+        "classification_build",
+        _raises(AssertionError("the classification build must not run in the composed report")),
+    )
     result = await analysis_tools.analyze_run(
         _ProbePool(), config=CLASSIFICATION_ON, tenant_id=TENANT
     )
     classification = result["sections"][2]
     assert classification["status"] == "success"
-    assert classification["detail"]["prediction_count"] == 5
-    # (pool, config, tenant) only — analyze never passes a seed file.
-    assert len(calls) == 1
-    assert len(calls[0]) == 3
+    detail = classification["detail"]
+    assert detail["prediction_count"] == 1200
+    assert detail["review_count"] == 37
+    assert detail["sample"] == [_prediction_row()]
 
 
 # ---------------------------------------------------------------------------
