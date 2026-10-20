@@ -20,6 +20,7 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 
 | Key | Default | Description |
 |-----|---------|-------------|
+| `backend` | `postgres` | Storage engine: `postgres` or `duckdb`. The loader refuses Postgres-only engines while `duckdb` is set |
 | `connection_string` | `postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb` | Postgres URL |
 
 ### embedding
@@ -47,6 +48,8 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | Key | Default | Description |
 |-----|---------|-------------|
 | `mode` | `hybrid_rrf` | Only supported value today; other values are rejected at load time |
+| `vector_index` | `exact_scan` | DuckDB vector search mode: `exact_scan` or `hnsw`. Postgres keeps its pgvector HNSW and ignores this key |
+| `fts_rebuild_debounce_s` | `2.0` | Seconds between DuckDB full-text index rebuilds. Positive numbers only |
 | `vector_candidates` | `150` | Live vector-arm depth before fusion. Effective limit is `max(candidates, k * 2)` |
 | `lexical_candidates` | `150` | Live FTS-arm depth before fusion. Same floor rule |
 | `rrf_k` | `60` | Reciprocal Rank Fusion constant |
@@ -115,6 +118,7 @@ dormant; the BERTopic import needs the `[topics]` extra.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `backend` | `age` | Graph store backend (`age` or `postgres`) |
+| `max_hops` | `5` | Graph traversal depth cap. Positive int, 1 to 25; the ceiling matches the AGE cap |
 | `extractor` | `pgml` | LEGACY alias for `extraction.backend`. Accepted forever; `extraction.backend` wins when both are set |
 | `extract_entities` | `true` | Enable entity extraction during ingest |
 | `ontology_path` | `config/ontology.yaml` | Ontology vocabulary file |
@@ -180,6 +184,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 |----------|-------------------|-------------|
 | `CORPUS_KB_CONFIG` | config discovery: absolute path to the config file | `config.load_config` |
 | `CORPUS_KB_DATABASE_URL` | `database.connection_string` | `load_config`, `server_wiring`, `domain.application`, `_setup.migrate`, `_setup.install`, `_setup.validate_migration` |
+| `CORPUS_KB_DATABASE_BACKEND` | `database.backend` | `load_config` |
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` | `load_config` |
 | `CORPUS_KB_EMBEDDING_DIMENSIONS` | `embedding.dimensions` | `load_config` |
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` | `load_config` |

@@ -68,6 +68,13 @@ ingestion:
 retrieval:
   # Only hybrid_rrf exists today; other values are rejected at load time.
   mode: hybrid_rrf
+  # DuckDB vector-search mode: exact_scan (default, deterministic) or hnsw
+  # (the experimental vss extension; doctor warns). Postgres keeps its
+  # pgvector HNSW and ignores this key.
+  vector_index: exact_scan
+  # DuckDB fts-index rebuild debounce (seconds, positive). DuckDB FTS has
+  # no auto-refresh; the gateway rebuilds the index on this debounce.
+  fts_rebuild_debounce_s: 2.0
   # Live per-arm candidate depths before fusion (effective limit is
   # max(candidates, k * 2), so small values never under-fetch below k).
   vector_candidates: 150
@@ -361,6 +368,9 @@ extraction:
 
 graph:
   backend: age
+  # Graph traversal depth cap (1..25; 25 is today's AGE cap). Consumed by
+  # the graph neighbor/traverse operations.
+  max_hops: 5
   # Legacy alias for extraction.backend (accepted forever; extraction.backend
   # wins when both are set).
   extractor: pgml
@@ -382,6 +392,10 @@ installer:
     performance: { ram_gb_max: 999, vram_gb_max: 8, model: "qwen3-embedding:4b", llm: "qwen3:14b" }
 
 database:
+  # Storage engine selector: postgres (default) or duckdb. The loader
+  # refuses Postgres-only engines (AGE, pgml) while duckdb is set.
+  # Env override: CORPUS_KB_DATABASE_BACKEND (docs/ADMIN.md).
+  backend: postgres
   connection_string: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
 
 # LLM for chat + text generation via local Ollama HTTP API

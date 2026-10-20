@@ -553,6 +553,10 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "ingest.contextualize.apply_to": list,
     # -- retrieval (renamed from search.*) ----------------------------------
     "retrieval.mode": str,
+    # Storage-portability keys (docs/research/storage-portability-program.md
+    # §3): the DuckDB-side search knobs. Postgres ignores both.
+    "retrieval.vector_index": str,
+    "retrieval.fts_rebuild_debounce_s": float,
     "retrieval.vector_candidates": int,
     "retrieval.lexical_candidates": int,
     "retrieval.rrf_k": int,
@@ -584,6 +588,10 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "topics.llm_base_url": str,
     # -- server (HTTP adapter gates) -----------------------------------------
     "server.openai_compat": bool,
+    # -- database (storage-portability program §3) ----------------------------
+    "database.backend": str,
+    # -- graph traversal ------------------------------------------------------
+    "graph.max_hops": int,
     # -- ui (UX program Wave 3, src/corpus_kb/ui/) ---------------------------
     "ui.enabled": bool,
     # -- notebooks (UX program Wave 6, src/corpus_kb/notebooks/) -------------
@@ -597,6 +605,28 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
 
 SUPPORTED_RETRIEVAL_MODES = frozenset({"hybrid_rrf"})
 SUPPORTED_VECTOR_TYPES = frozenset({"halfvec"})
+# database.backend values (storage-portability program §3).
+SUPPORTED_DATABASE_BACKENDS = frozenset({"postgres", "duckdb"})
+# retrieval.vector_index values: the DuckDB-side search mode. Postgres
+# keeps its pgvector HNSW and ignores the key.
+SUPPORTED_VECTOR_INDEX_MODES = frozenset({"exact_scan", "hnsw"})
+# graph.max_hops: traversal depth cap. The ceiling is today's AGE cap.
+MAX_HOPS_MIN = 1
+MAX_HOPS_CEILING = 25
+# Backend-mix refusals (program §11 rule 15 string bank, VERBATIM). This
+# module cannot import corpus_kb (the CI validate-configs job installs only
+# PyYAML), so corpus_kb.config mirrors this logic; a lockstep test pins the
+# equality of the two renderings.
+AGE_ON_DUCKDB_ERROR = "Set database.backend to postgres, or remove the graph.backend setting."
+PGML_EMBEDDER_ON_DUCKDB_ERROR = (
+    "PostgresML runs only on Postgres. The Ollama embedder will be used instead."
+)
+PGML_RERANKER_ON_DUCKDB_ERROR = (
+    "PostgresML reranking runs only on Postgres. The Ollama reranker will be used instead."
+)
+PGML_EXTRACTION_ON_DUCKDB_ERROR = (
+    "PostgresML extraction runs only on Postgres. The regex extractor will be used instead."
+)
 SUPPORTED_CONTEXTUAL_PROFILES = frozenset({"interview", "generic"})
 SUPPORTED_APPLY_TO_TARGETS = frozenset({"embedding", "lexical"})
 SUPPORTED_TOPIC_METHODS = frozenset({"bertopic"})
@@ -676,6 +706,12 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
     """U32-style cross-field and enum rules beyond per-key type checks."""
     errors: list[str] = []
 
+    errors.extend(_database_block_errors(config))
+
+    graph = config.get("graph")
+    if isinstance(graph, dict):
+        errors.extend(_max_hops_errors(graph.get("max_hops")))
+
     retrieval = config.get("retrieval")
     if isinstance(retrieval, dict):
         mode = retrieval.get("mode")
@@ -683,6 +719,11 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
             errors.append(
                 f"retrieval.mode: must be one of {sorted(SUPPORTED_RETRIEVAL_MODES)}, got {mode!r}"
             )
+        vector_index = retrieval.get("vector_index")
+        if vector_index not in SUPPORTED_VECTOR_INDEX_MODES:
+            modes = ", ".join(sorted(SUPPORTED_VECTOR_INDEX_MODES))
+            errors.append(f"retrieval.vector_index: must be one of ({modes}), got {vector_index!r}")
+        errors.extend(_fts_debounce_errors(retrieval.get("fts_rebuild_debounce_s")))
         if retrieval.get("matryoshka_enabled") is True:
             embedding = config.get("embedding")
             mrl = embedding.get("mrl_trained") if isinstance(embedding, dict) else None
@@ -718,6 +759,92 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
         errors.extend(_reranking_block_errors(reranking))
     errors.extend(_return_top_k_errors(config.get("reranking")))
     return errors
+
+
+def _database_block_errors(config: dict[str, Any]) -> list[str]:
+    """Enum + backend-mix rules for the storage-portability keys."""
+    errors: list[str] = []
+    database = config.get("database")
+    if isinstance(database, dict):
+        backend = database.get("backend")
+        if backend is not None and backend not in SUPPORTED_DATABASE_BACKENDS:
+            backends = ", ".join(sorted(SUPPORTED_DATABASE_BACKENDS))
+            errors.append(f"database.backend: must be one of ({backends}), got {backend!r}")
+    errors.extend(_backend_mix_errors(config))
+    return errors
+
+
+def _effective_extraction_backend(config: dict[str, Any]) -> str | None:
+    """The extraction backend the loader's alias layer settles on.
+
+    Mirrors corpus_kb.config.apply_extraction_backend_alias precedence: a
+    non-empty ``extraction.backend`` wins; the legacy ``graph.extractor``
+    alias stays authoritative only when the preferred key is absent.
+    """
+    extraction = config.get("extraction")
+    if isinstance(extraction, dict):
+        raw = extraction.get("backend")
+        if isinstance(raw, str) and raw:
+            return raw
+    graph = config.get("graph")
+    if isinstance(graph, dict):
+        raw = graph.get("extractor")
+        if isinstance(raw, str) and raw:
+            return raw
+    return None
+
+
+def _backend_mix_errors(config: dict[str, Any]) -> list[str]:
+    """Mirror of corpus_kb.config.backend_mix_errors (same bank texts).
+
+    AGE and PostgresML selections cannot run while ``database.backend`` is
+    duckdb; the loader refuses them AT LOAD and this validator reports the
+    same combinations for the shipped YAMLs and user configs. Returns every
+    violation in a fixed order; empty unless the backend is exactly
+    ``duckdb`` (an unknown value is the enum rule's job, not a mix).
+    """
+    database = config.get("database")
+    if not isinstance(database, dict) or database.get("backend") != "duckdb":
+        return []
+    errors: list[str] = []
+    graph = config.get("graph")
+    if isinstance(graph, dict) and graph.get("backend") == "age":
+        errors.append(AGE_ON_DUCKDB_ERROR)
+    embedding = config.get("embedding")
+    if isinstance(embedding, dict) and "pgml" in (
+        embedding.get("provider"),
+        embedding.get("fallback_provider"),
+    ):
+        errors.append(PGML_EMBEDDER_ON_DUCKDB_ERROR)
+    search = config.get("search")
+    if isinstance(search, dict) and search.get("reranker") == "pgml":
+        errors.append(PGML_RERANKER_ON_DUCKDB_ERROR)
+    if _effective_extraction_backend(config) == "pgml":
+        errors.append(PGML_EXTRACTION_ON_DUCKDB_ERROR)
+    return errors
+
+
+def _max_hops_errors(hops: object) -> list[str]:
+    """Positive-int range rule for ``graph.max_hops`` (ceiling 25)."""
+    if isinstance(hops, bool) or not isinstance(hops, int):
+        return [f"graph.max_hops: must be an int, got {type(hops).__name__}"]
+    if not MAX_HOPS_MIN <= hops <= MAX_HOPS_CEILING:
+        return [
+            f"graph.max_hops: must be between {MAX_HOPS_MIN} and {MAX_HOPS_CEILING}, got {hops}"
+        ]
+    return []
+
+
+def _fts_debounce_errors(debounce: object) -> list[str]:
+    """Positive-number rule for ``retrieval.fts_rebuild_debounce_s``."""
+    if isinstance(debounce, bool) or not isinstance(debounce, (int, float)):
+        return [
+            f"retrieval.fts_rebuild_debounce_s: must be a positive number, "
+            f"got {type(debounce).__name__}"
+        ]
+    if debounce <= 0:
+        return [f"retrieval.fts_rebuild_debounce_s: must be a positive number, got {debounce}"]
+    return []
 
 
 def _reranking_block_errors(reranking: dict[str, Any]) -> list[str]:
