@@ -107,10 +107,10 @@ pynvml = ["pynvml"]
 # opt-in engine behind graph.backend: duckdb. MIT license. Pinned to the
 # 1.4 LTS line only (decision log 2026-10-19): 1.4.0 is the LTS release with
 # one-year support; 1.5+ is not yet vetted. NEVER move this into base
-# dependencies (rule 9: license-lock churn). CI NEVER installs this extra;
-# the consumer uses a plain function-local `import duckdb` behind backend
-# selection, so the extras-less jobs stay green (same contract as
-# latechunk/inductive/ner/topics).
+# dependencies (rule 9: license-lock churn). CI installs this extra from the
+# first-import commit onward (§11 rule 1); until that commit lands, the
+# extras-less jobs stay green (unlike latechunk/inductive/ner/topics, whose
+# imports stay lazy behind config gates).
 duckdb = ["duckdb>=1.4,<1.5"]
 # Late chunking (todo 13, v5 5.3): token-level hidden states need the local
 # transformers stack, never Ollama's pooled endpoint. License-reviewed
