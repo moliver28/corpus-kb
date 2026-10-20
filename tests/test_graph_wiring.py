@@ -89,6 +89,8 @@ class FakeGraphStore(GraphStore):
         self.search_calls: list[tuple[str, str | None]] = []
         self.bfs_calls: list[tuple[str, int]] = []
         self.relation_calls: list[str] = []
+        self.neighbor_calls: list[tuple[str, int, str, int]] = []
+        self.traverse_calls: list[tuple[str, int, int]] = []
         self.closed = False
 
     async def add_entity(self, entity: Entity) -> str:
@@ -133,6 +135,45 @@ class FakeGraphStore(GraphStore):
             "max_depth": max_depth,
             "visited": {start_entity_id: 0, "ent-2": 1, "ent-3": 2},
         }
+
+    async def neighbors(
+        self,
+        entity_id: str,
+        hops: int = 1,
+        direction: str = "both",
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, object]]:
+        self.neighbor_calls.append((entity_id, hops, direction, limit))
+        return [
+            {
+                "entity_id": "ent-2",
+                "name": "EntityTwo",
+                "entity_type": "CLASS",
+                "metadata": {},
+                "depth": 1,
+            }
+        ]
+
+    async def traverse(
+        self,
+        entity_id: str,
+        max_depth: int = 5,
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, object]]:
+        self.traverse_calls.append((entity_id, max_depth, limit))
+        return [
+            {
+                "entity_id": "ent-2",
+                "name": "EntityTwo",
+                "entity_type": "CLASS",
+                "metadata": {},
+                "depth": 1,
+            }
+        ]
 
     async def close(self) -> None:
         self.closed = True
@@ -197,6 +238,27 @@ class TestCreateGraphStore:
 
             async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
                 return {}
+
+            async def neighbors(
+                self,
+                entity_id: str,
+                hops: int = 1,
+                direction: str = "both",
+                relation_types: list[str] | None = None,
+                entity_types: list[str] | None = None,
+                limit: int = 100,
+            ) -> list[dict[str, object]]:
+                return []
+
+            async def traverse(
+                self,
+                entity_id: str,
+                max_depth: int = 5,
+                relation_types: list[str] | None = None,
+                entity_types: list[str] | None = None,
+                limit: int = 100,
+            ) -> list[dict[str, object]]:
+                return []
 
             async def close(self) -> None:
                 pass
@@ -382,6 +444,116 @@ class TestGraphHandlerDelegation:
         await handler.handle_get_entity_relations(TENANT_ID, UUID(int=2))
         assert pool.acquire_count == 0
         assert pool.release_count == 0
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_neighbors_delegates(self) -> None:
+        """handle_graph_neighbors validates and routes to store.neighbors."""
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake)
+        entity_id = UUID("00000000-0000-0000-0000-0000000000e1")
+        envelope = await handler.handle_graph_neighbors(
+            TENANT_ID, entity_id, hops=2, direction="out", limit=10
+        )
+        assert fake.neighbor_calls == [(str(entity_id), 2, "out", 10)]
+        assert envelope == {
+            "status": "success",
+            "result": [
+                {
+                    "entity_id": "ent-2",
+                    "name": "EntityTwo",
+                    "entity_type": "CLASS",
+                    "metadata": {},
+                    "depth": 1,
+                }
+            ],
+        }
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_neighbors_rejects_bad_input(self) -> None:
+        """hops past the fast path and unknown directions are input errors."""
+        from corpus_kb.errors import ValidationError
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake)
+        entity_id = UUID(int=3)
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_neighbors(TENANT_ID, entity_id, hops=4)
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_neighbors(TENANT_ID, entity_id, direction="up")
+        assert fake.neighbor_calls == []
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_traverse_fast_path_under_three_hops(self) -> None:
+        """Depths 1..3 route to store.neighbors and fetch one extra row."""
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake)
+        entity_id = UUID(int=4)
+        envelope = await handler.handle_graph_traverse(TENANT_ID, entity_id, max_depth=3)
+        assert fake.traverse_calls == []
+        assert fake.neighbor_calls == [(str(entity_id), 3, "both", 101)]
+        assert envelope["status"] == "success"
+        assert envelope["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_traverse_deep_walks_and_reports_truncation(self) -> None:
+        """Depths past 3 route to store.traverse; an extra row pins truncated."""
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake, config={"graph": {"max_hops": 5}})
+        entity_id = UUID(int=5)
+        envelope = await handler.handle_graph_traverse(TENANT_ID, entity_id, max_depth=5)
+        assert fake.neighbor_calls == []
+        assert fake.traverse_calls == [(str(entity_id), 5, 101)]
+        assert envelope["truncated"] is False
+
+        class _DeepStore(FakeGraphStore):
+            async def traverse(
+                self,
+                entity_id: str,
+                max_depth: int = 5,
+                relation_types: list[str] | None = None,
+                entity_types: list[str] | None = None,
+                limit: int = 100,
+            ) -> list[dict[str, object]]:
+                self.traverse_calls.append((entity_id, max_depth, limit))
+                return [
+                    {"entity_id": "x", "depth": d, "name": "", "entity_type": "", "metadata": {}}
+                    for d in range(limit)
+                ]
+
+        deep = GraphHandler(_DeepStore(), config={"graph": {"max_hops": 5}})
+        filled = await deep.handle_graph_traverse(TENANT_ID, entity_id, max_depth=5, limit=100)
+        assert filled["truncated"] is True
+        assert len(filled["result"]) == 100
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_traverse_rejects_depth_past_ceiling(self) -> None:
+        """max_depth above graph.max_hops is an input error, not a walk."""
+        from corpus_kb.errors import ValidationError
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        handler = GraphHandler(FakeGraphStore(), config={"graph": {"max_hops": 5}})
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_traverse(TENANT_ID, UUID(int=6), max_depth=6)
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_traverse(TENANT_ID, UUID(int=6), max_depth=1)
+
+    def test_configured_max_hops_clamps(self) -> None:
+        """graph.max_hops resolves, defaults, and clamps to 1..25."""
+        from corpus_kb.handlers.graph_handler import configured_max_hops
+
+        assert configured_max_hops(None) == 5
+        assert configured_max_hops({}) == 5
+        assert configured_max_hops({"graph": {"max_hops": 12}}) == 12
+        assert configured_max_hops({"graph": {"max_hops": 99}}) == 25
+        assert configured_max_hops({"graph": {"max_hops": 0}}) == 1
+        assert configured_max_hops({"graph": {"max_hops": "nonsense"}}) == 5
 
     def test_public_method_signatures_unchanged(self) -> None:
         """The three public handler methods keep their original signatures."""
