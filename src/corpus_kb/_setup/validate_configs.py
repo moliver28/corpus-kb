@@ -78,6 +78,15 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         # -- topics layer (Wave 4, tools/topics_tools.py) ---------------------
         "topics_build",
         "topics_list",
+        # -- analysis program (Wave 0 skeleton, tools/*_tools.py) -------------
+        "topics_trends",
+        "labeling_build",
+        "labeling_list",
+        "labeling_lfs",
+        "classification_build",
+        "classification_list",
+        "analysis_backfill_dates",
+        "analyze_run",
     }
 )
 

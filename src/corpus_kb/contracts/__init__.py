@@ -5,8 +5,11 @@ Row types live in ``contracts.model``, the shared envelope tuples in
 ``contracts.catalogue`` (ingest + search), ``contracts.catalogue_documents``
 (documents + graph), ``contracts.catalogue_release`` (release lifecycle),
 ``contracts.catalogue_research`` (research rows + the SKIP set),
-``contracts.catalogue_topics`` (the Wave 4 topics family), and
-``contracts.catalogue_ask`` (the UX Wave 1 ask family). This
+``contracts.catalogue_topics`` (the Wave 4 topics family + the analysis
+program's trends op), ``contracts.catalogue_ask`` (the UX Wave 1 ask
+family), and the analysis program families
+``contracts.catalogue_labeling`` / ``contracts.catalogue_classification``
+/ ``contracts.catalogue_analysis`` (Wave 0 registry skeleton). This
 package assembles the FINAL catalogue: ``OPERATIONS`` is
 the tuple every consumer (the parity gate, ``corpus-kb operations``)
 iterates, so the test and the inventory can never diverge.
@@ -15,8 +18,11 @@ iterates, so the test and the inventory can never diverge.
 from __future__ import annotations
 
 from corpus_kb.contracts.catalogue import CORE_OPERATIONS
+from corpus_kb.contracts.catalogue_analysis import ANALYSIS_OPERATIONS
 from corpus_kb.contracts.catalogue_ask import ASK_OPERATIONS
+from corpus_kb.contracts.catalogue_classification import CLASSIFICATION_OPERATIONS
 from corpus_kb.contracts.catalogue_documents import DOCUMENTS_OPERATIONS
+from corpus_kb.contracts.catalogue_labeling import LABELING_OPERATIONS
 from corpus_kb.contracts.catalogue_release import RELEASE_OPERATIONS
 from corpus_kb.contracts.catalogue_research import (
     RESEARCH_OPERATIONS,
@@ -40,6 +46,9 @@ OPERATIONS: tuple[Operation, ...] = (
     *RELEASE_OPERATIONS,
     *RESEARCH_OPERATIONS,
     *TOPICS_OPERATIONS,
+    *LABELING_OPERATIONS,
+    *CLASSIFICATION_OPERATIONS,
+    *ANALYSIS_OPERATIONS,
     *ASK_OPERATIONS,
 )
 

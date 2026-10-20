@@ -375,3 +375,11 @@ gen_min_span_tree
 algorithm
 fit_transform
 MountableApp
+
+# Corpus analysis program (analysis/settings.py, Wave 0 skeleton): the
+# typed-reader field the WP-3 engine reads (the seed floor) and the
+# "auto"-resolving helper the WP-4 trends build calls. Vulture sees them
+# as unused because the engines land in later waves; the settings tests
+# pin both contracts today.
+min_labels_per_class
+resolved_bins

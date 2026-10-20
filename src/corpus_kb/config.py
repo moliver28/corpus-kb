@@ -142,6 +142,15 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     if topics_error is not None:
         raise ValueError(topics_error)
 
+    # Corpus analysis program: labeling.min_signals, classification.tier
+    # and topics.over_time.bins/undated are rejected AT LOAD with the
+    # remediation text (analysis/settings.py owns the rules and messages).
+    from corpus_kb.analysis.settings import analysis_settings_error
+
+    analysis_error = analysis_settings_error(config)
+    if analysis_error is not None:
+        raise ValueError(analysis_error)
+
     # UX Wave 3 browser UI: ui.enabled must be a real bool AT LOAD
     # (ui/settings.py owns the rule and the remediation text).
     from corpus_kb.ui.settings import ui_settings_error
@@ -546,6 +555,12 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     from corpus_kb.notebooks.settings import NOTEBOOKS_CONFIG_DEFAULTS
 
     config.setdefault("notebooks", _detached_defaults(NOTEBOOKS_CONFIG_DEFAULTS))
+    # Corpus analysis program (analysis/settings.py is the typed reader):
+    # the labeling/classification/topics-over-time blocks, every feature
+    # dormant behind enabled: false.
+    from corpus_kb.analysis.settings import ANALYSIS_CONFIG_DEFAULTS
+
+    config.setdefault("analysis", _detached_defaults(ANALYSIS_CONFIG_DEFAULTS))
 
 
 def _detached_defaults(defaults: Mapping[str, object]) -> dict[str, object]:

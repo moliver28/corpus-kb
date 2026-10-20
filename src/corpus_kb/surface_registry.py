@@ -215,6 +215,63 @@ SURFACES: tuple[Surface, ...] = (
         description="List the built topics with sizes, labels, and keywords.",
         http_route="/api/topics",
     ),
+    # -- analysis program (Wave 0 skeleton): full cli+mcp+http parity --------
+    Surface(
+        name="topics-trends",
+        cli_path="topics-trends",
+        mcp_tool="topics_trends",
+        description="Per-topic frequency series over binned document dates.",
+        http_route="/api/topics/trends",
+    ),
+    Surface(
+        name="labeling-build",
+        cli_path="labeling-build",
+        mcp_tool="labeling_build",
+        description="Score the labeling functions and write the aggregated chunk labels.",
+        http_route="/api/labeling/build",
+    ),
+    Surface(
+        name="labeling-list",
+        cli_path="labeling-list",
+        mcp_tool="labeling_list",
+        description="List the built chunk labels with probabilities.",
+        http_route="/api/labeling",
+    ),
+    Surface(
+        name="labeling-lfs",
+        cli_path="labeling-lfs",
+        mcp_tool="labeling_lfs",
+        description="List the registered labeling functions with kinds and coverage.",
+        http_route="/api/labeling/lfs",
+    ),
+    Surface(
+        name="classification-build",
+        cli_path="classification-build",
+        mcp_tool="classification_build",
+        description="Fit the few-shot classifier against a seed set; write predictions.",
+        http_route="/api/classification/build",
+    ),
+    Surface(
+        name="classification-list",
+        cli_path="classification-list",
+        mcp_tool="classification_list",
+        description="List the built chunk predictions, bounded by limit.",
+        http_route="/api/classification",
+    ),
+    Surface(
+        name="analysis-backfill-dates",
+        cli_path="analysis-backfill-dates",
+        mcp_tool="analysis_backfill_dates",
+        description="Backfill documents.document_date from chunk metadata (idempotent).",
+        http_route="/api/analysis/backfill-dates",
+    ),
+    Surface(
+        name="analyze-run",
+        cli_path="analyze-run",
+        mcp_tool="analyze_run",
+        description="Run the composed corpus analysis and write the report.",
+        http_route="/api/analyze",
+    ),
     # -- core search op (the last surface it was missing): full cli+mcp+http --
     Surface(
         name="search",
@@ -493,9 +550,85 @@ feature is dormant by default: `topics.enabled: false` in config.yaml.
   corpus-kb topics-list [--limit N]
   ```
 
+- Topic trends over document dates (analysis program; dormant by
+  default, needs `analysis.topics.over_time.enabled: true`):
+
+  ```
+  corpus-kb topics-trends [--bins N]
+  ```
+
 - A disabled feature is an honest no-op result, not an error. A missing
   extra exits 3 with the remedy: `pip install 'corpus-kb[topics]'`.
 - All flags: `corpus-kb topics-build --help`
+"""
+
+_LABELING_BODY = """# corpus-labeling — the weak-supervision labeling layer
+
+Score user-authored labeling functions over the corpus and aggregate
+them into probabilistic chunk labels. Dormant by default:
+`analysis.labeling.enabled: false` in config.yaml.
+
+- Build the chunk labels from the registered labeling functions:
+
+  ```
+  corpus-kb labeling-build
+  ```
+
+- List the built chunk labels and the registered functions:
+
+  ```
+  corpus-kb labeling-list [--limit N]
+  corpus-kb labeling-lfs [--limit N]
+  ```
+
+- A disabled feature is an honest no-op result, not an error.
+- All flags: `corpus-kb labeling-build --help`
+"""
+
+_CLASSIFICATION_BODY = """# corpus-classification — few-shot classification over the corpus
+
+Fit a classifier against a seed label set and write calibrated chunk
+predictions. Dormant by default: `analysis.classification.enabled:
+false` in config.yaml.
+
+- Build the predictions (tier `head` on stored embeddings, or the
+  opt-in `setfit` tier):
+
+  ```
+  corpus-kb classification-build [--seed-file <path>]
+  ```
+
+- List the built predictions (bounded window):
+
+  ```
+  corpus-kb classification-list [--limit N]
+  ```
+
+- A disabled feature is an honest no-op result, not an error.
+- All flags: `corpus-kb classification-build --help`
+"""
+
+_ANALYSIS_BODY = """# corpus-analysis — the composed analysis run
+
+Date provenance plus the composed corpus analysis report. The run is
+dormant until you enable the analysis flags it needs.
+
+- Backfill `documents.document_date` from chunk metadata (idempotent;
+  needs `analysis.topics.over_time.enabled: true`):
+
+  ```
+  corpus-kb analysis-backfill-dates
+  ```
+
+- Run the composed analysis (dates, labels, predictions, trends) and
+  write the report:
+
+  ```
+  corpus-kb analyze-run [--output <path>]
+  ```
+
+- A disabled feature is an honest no-op result, not an error.
+- All flags: `corpus-kb analyze-run --help`
 """
 
 WRAPPERS: tuple[Wrapper, ...] = (
@@ -584,7 +717,31 @@ WRAPPERS: tuple[Wrapper, ...] = (
         description="Topic layer: offline BERTopic build + list over stored embeddings",
         argument_hint="[--limit N]",
         body=_TOPICS_BODY,
-        covers=("topics-build", "topics-list"),
+        covers=("topics-build", "topics-list", "topics-trends"),
+    ),
+    Wrapper(
+        name="corpus-labeling",
+        title="corpus-labeling",
+        description="Labeling layer: build chunk labels, list labels and labeling functions",
+        argument_hint="[--limit N]",
+        body=_LABELING_BODY,
+        covers=("labeling-build", "labeling-list", "labeling-lfs"),
+    ),
+    Wrapper(
+        name="corpus-classification",
+        title="corpus-classification",
+        description="Classification layer: few-shot build over a seed set + predictions list",
+        argument_hint="[--seed-file <path>] [--limit N]",
+        body=_CLASSIFICATION_BODY,
+        covers=("classification-build", "classification-list"),
+    ),
+    Wrapper(
+        name="corpus-analysis",
+        title="corpus-analysis",
+        description="Analysis program: date backfill + the composed analysis run",
+        argument_hint="[--output <path>]",
+        body=_ANALYSIS_BODY,
+        covers=("analysis-backfill-dates", "analyze-run"),
     ),
 )
 
@@ -624,6 +781,17 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     # Wave 4 topics layer (tools/topics_tools.py)
     "topics_build",
     "topics_list",
+    # Corpus analysis program (tools/labeling_tools.py,
+    # tools/classification_tools.py, tools/analysis_tools.py, and the
+    # topics_trends stub in tools/topics_tools.py)
+    "topics_trends",
+    "labeling_build",
+    "labeling_list",
+    "labeling_lfs",
+    "classification_build",
+    "classification_list",
+    "analysis_backfill_dates",
+    "analyze_run",
     # Ask operation (UX Wave 1, tools/ask_tools.py)
     "ask",
 )

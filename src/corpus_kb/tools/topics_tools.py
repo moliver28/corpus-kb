@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import asyncpg
 
+from ..analysis.settings import load_analysis_settings
 from ..topics import engine, writer
 from ..topics import reduction as reduction_mod
 from ..topics.settings import load_topics_settings
 from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
-__all__ = ["topics_build", "topics_list"]
+__all__ = ["topics_build", "topics_list", "topics_trends"]
 
 # Read/list bounds (the ingest_status convention: bounded, honest windows).
 DEFAULT_LIST_LIMIT = 50
@@ -154,3 +155,54 @@ async def topics_list(
         return _unavailable()
     rows = await writer.read_topics(pg_pool, tenant_id, bounded)
     return {"status": "success", "topic_count": len(rows), "topics": rows}
+
+
+# ---------------------------------------------------------------------------
+# topics_trends (WP-4, analysis program Wave 0)
+# ---------------------------------------------------------------------------
+
+
+def _trends_disabled() -> dict[str, object]:
+    """The honest no-op envelope for ``analysis.topics.over_time.enabled:
+    false`` (the documented dormant default)."""
+    return {
+        "status": "disabled",
+        "reason": "analysis.topics.over_time.enabled is false in the loaded config.",
+        "remedy": "Set analysis.topics.over_time.enabled: true, then retry.",
+        "topic_count": 0,
+        "trends": [],
+    }
+
+
+def _trends_unavailable() -> dict[str, object]:
+    """The honest wave-0 envelope: the flag is on, the engine is not built."""
+    return {
+        "status": "unavailable",
+        "reason": (
+            "the topics-over-time engine is not built yet "
+            "(the analysis program ships the registry first)"
+        ),
+        "remedy": "keep analysis.topics.over_time.enabled: false until the engine lands",
+        "topic_count": 0,
+        "trends": [],
+    }
+
+
+async def topics_trends(
+    pg_pool: asyncpg.Pool,
+    config: dict[str, object] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    bins: int | None = None,
+) -> dict[str, object]:
+    """Per-topic frequency series over binned document dates (WP-4).
+
+    Reuses the existing topics fit (never re-embeds, never re-fits per
+    bin). Returns ``{status, topic_count, trends}`` plus, on the success
+    path, the bins and the dated/undated coverage. Wave 0: disabled or
+    unavailable, never a guess.
+    """
+    del pg_pool, tenant_id, bins  # the engine (WP-4) consumes the pool, tenant, bins
+    settings = load_analysis_settings(load_config_or_pass(config))
+    if not settings.over_time.enabled:
+        return _trends_disabled()
+    return _trends_unavailable()

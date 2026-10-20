@@ -32,6 +32,11 @@ Route families (the Route order below is the original single-file order):
                                POST+GET /api/documents/{doc_id}/tags
   api/research_http.py         research + release surfaces (U5/P7)
   api/routes_topics.py         POST /api/topics/build  GET /api/topics
+                               POST /api/topics/trends
+  api/routes_labeling.py       POST /api/labeling/build  GET /api/labeling
+                               GET  /api/labeling/lfs
+  api/routes_classification.py POST /api/classification/build  GET /api/classification
+  api/routes_analysis.py       POST /api/analysis/backfill-dates  POST /api/analyze
   api/routes_v1.py             OpenAI-compatible /v1/* (gate: server.openai_compat)
 """
 
@@ -42,7 +47,15 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import BaseRoute, Route
 
 from corpus_kb.api.research_http import research_routes
+from corpus_kb.api.routes_analysis import (
+    analysis_backfill_dates_route,
+    analyze_run_route,
+)
 from corpus_kb.api.routes_ask import ask
+from corpus_kb.api.routes_classification import (
+    classification_build_route,
+    classification_list_route,
+)
 from corpus_kb.api.routes_coding import (
     coding_calibrate_floors,
     coding_code_batch,
@@ -66,6 +79,11 @@ from corpus_kb.api.routes_ingest import (
     ingest_status_route,
     ingest_text,
     ingest_url_route,
+)
+from corpus_kb.api.routes_labeling import (
+    labeling_build_route,
+    labeling_lfs_route,
+    labeling_list_route,
 )
 from corpus_kb.api.routes_meta import (
     document_stats,
@@ -91,7 +109,11 @@ from corpus_kb.api.routes_tags_metadata import (
     set_metadata_route,
     tag_document_route,
 )
-from corpus_kb.api.routes_topics import topics_build_route, topics_list_route
+from corpus_kb.api.routes_topics import (
+    topics_build_route,
+    topics_list_route,
+    topics_trends_route,
+)
 from corpus_kb.api.routes_v1 import v1_routes
 
 
@@ -114,6 +136,16 @@ def create_http_app() -> FastAPI:
         # Wave 4 topics layer.
         Route("/api/topics/build", topics_build_route, methods=["POST"]),
         Route("/api/topics", topics_list_route, methods=["GET"]),
+        # Analysis program: temporal topic trends (WP-4).
+        Route("/api/topics/trends", topics_trends_route, methods=["POST"]),
+        # Analysis program Wave 0: labeling, classification, backfill, run.
+        Route("/api/labeling/build", labeling_build_route, methods=["POST"]),
+        Route("/api/labeling", labeling_list_route, methods=["GET"]),
+        Route("/api/labeling/lfs", labeling_lfs_route, methods=["GET"]),
+        Route("/api/classification/build", classification_build_route, methods=["POST"]),
+        Route("/api/classification", classification_list_route, methods=["GET"]),
+        Route("/api/analysis/backfill-dates", analysis_backfill_dates_route, methods=["POST"]),
+        Route("/api/analyze", analyze_run_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),

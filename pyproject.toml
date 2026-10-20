@@ -167,6 +167,19 @@ eval = ["deepeval>=4.3"]
 # .py files served by the running server via create_asgi_app. Apache-2.0.
 # CI NEVER installs this extra (same lazy contract).
 notebook = ["marimo>=0.25"]
+# Few-shot classification head (analysis program WP-3): the logistic head
+# over the stored embeddings runs on scikit-learn (BSD-3-Clause), the
+# same stack the [topics] extra already reviews transitively. CI NEVER
+# installs this extra; the import stays lazy behind
+# analysis.classification.enabled, so the extras-less jobs stay green
+# (same contract as latechunk/inductive/ner/topics).
+classify = ["scikit-learn>=1.5"]
+# Opt-in SetFit tier (analysis.classification.tier: setfit): SetFit is
+# Apache-2.0 and pulls sentence-transformers + transformers; torch is
+# already reviewed in the latechunk extra. CI NEVER installs this extra;
+# the import stays lazy behind the tier gate, so the extras-less jobs
+# stay green (same contract as latechunk/inductive/ner/topics).
+setfit = ["setfit>=1.2"]
 # lxml is TEST-ONLY: real XSD validation of REFI-QDA exports in
 # tests/test_refi_qda.py (U27) via lxml.etree.XMLSchema. The runtime module
 # (coding/refi_qda) is stdlib-only; every lxml use is behind
@@ -264,6 +277,11 @@ DEP002 = [
     # topics/engine.py imports bertopic lazily behind topics.enabled and CI
     # never installs the extra, so deptry cannot see the import edge.
     "bertopic",
+    # Analysis program extras (classify/setfit): the classification tier
+    # imports these lazily behind analysis.classification.* and CI never
+    # installs them, so deptry cannot see the import edges.
+    "scikit-learn",
+    "setfit",
     # UX program extras (W0): every consumer imports these lazily behind
     # runtime gates and CI never installs them, so deptry cannot see the
     # import edges.
