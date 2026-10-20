@@ -1005,7 +1005,16 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         return QueryHandler(_FakePool(), config=_offline_config())
 
     async def canned_search(self: Any, query: Any) -> SearchEnvelope:
-        return SearchEnvelope(status="success", results=[], degraded_excluded=DegradedExcluded())
+        # The engine index modes are guaranteed search-envelope keys
+        # (contracts/envelopes.py SEARCH_ENVELOPE); the canned world is the
+        # Postgres handler, so it states the Postgres modes explicitly.
+        return SearchEnvelope(
+            status="success",
+            results=[],
+            degraded_excluded=DegradedExcluded(),
+            vector_index_mode="hnsw_ann",
+            lexical_index_mode="gin_auto",
+        )
 
     async def canned_verify(self: Any, query: Any) -> VerifyAnswerResult:
         return _VERIFY_RESULT

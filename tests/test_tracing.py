@@ -82,9 +82,22 @@ def test_span_helper_is_a_noop_without_a_recording_span() -> None:
 def test_envelope_has_no_trace_id_when_tracing_off() -> None:
     """The pinned off-path key-set: identical to the honesty-test literal."""
     payload = envelope_to_payload(finalize_envelope([], []))
-    assert set(payload) == {"status", "result", "degraded_excluded"}
+    assert set(payload) == {
+        "status",
+        "result",
+        "degraded_excluded",
+        "vector_index_mode",
+        "lexical_index_mode",
+    }
     degraded = envelope_to_payload(finalize_envelope([], [REASON_ZERO_QUERY], excluded_count=4))
-    assert set(degraded) == {"status", "result", "degraded_excluded", "remedy"}
+    assert set(degraded) == {
+        "status",
+        "result",
+        "degraded_excluded",
+        "remedy",
+        "vector_index_mode",
+        "lexical_index_mode",
+    }
 
 
 def test_missing_sdk_raises_the_typed_error(monkeypatch: pytest.MonkeyPatch) -> None:

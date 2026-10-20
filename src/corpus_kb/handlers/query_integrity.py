@@ -46,6 +46,16 @@ REASON_RERANK_MODE_GENERATIVE = "rerank-mode-generative-binary"
 STATUS_SUCCESS = "success"
 STATUS_DEGRADED_EMPTY = "degraded_empty"
 
+# Engine-honesty modes (storage-portability program §1.1/§6): guaranteed
+# search-envelope keys. Postgres serves lexical search from the
+# auto-maintained tsvector GIN index and vector search through pgvector
+# HNSW (the per-query selectivity fallback is a scan choice inside that
+# same engine, not a second index). Both values are the engine defaults,
+# so the conditional ``*_index_note`` keys are never emitted on the PG
+# path; other engines state their own modes from their SearchBackend.
+PG_VECTOR_INDEX_MODE = "hnsw_ann"
+PG_LEXICAL_INDEX_MODE = "gin_auto"
+
 
 @dataclass(frozen=True)
 class DegradedExcluded:
@@ -75,6 +85,13 @@ class SearchEnvelope:
     captured inside the ``corpus_kb.query`` span (finalize_envelope) — it is
     None whenever tracing is off, and ``envelope_to_payload`` only emits the
     key when it is set, so the off-path envelope shape is unchanged.
+
+    ``vector_index_mode`` / ``lexical_index_mode`` are guaranteed envelope
+    keys (contracts/envelopes.py SEARCH_ENVELOPE): which index machinery
+    served the search. The defaults are the Postgres modes; every real run
+    sets them from the SearchBackend outcome — the defaults only serve
+    legacy constructors. The ``*_index_note`` keys are conditional (present
+    in the payload only when set).
     """
 
     status: str
@@ -82,6 +99,10 @@ class SearchEnvelope:
     degraded_excluded: DegradedExcluded
     remedy: str | None = None
     trace_id: str | None = None
+    vector_index_mode: str = PG_VECTOR_INDEX_MODE
+    lexical_index_mode: str = PG_LEXICAL_INDEX_MODE
+    vector_index_note: str | None = None
+    lexical_index_note: str | None = None
 
 
 def is_all_zero(vector: list[float] | None) -> bool:
@@ -106,6 +127,10 @@ def finalize_envelope(
     results: list[SearchResult],
     reasons: list[str],
     excluded_count: int = 0,
+    vector_index_mode: str = PG_VECTOR_INDEX_MODE,
+    lexical_index_mode: str = PG_LEXICAL_INDEX_MODE,
+    vector_index_note: str | None = None,
+    lexical_index_note: str | None = None,
 ) -> SearchEnvelope:
     """Build the final envelope: degraded_empty iff empty results + reasons.
 
@@ -113,6 +138,9 @@ def finalize_envelope(
     removed (from the handler's probe; 0 when the probe never ran). It
     becomes ``DegradedExcluded.count`` — reasons and count are independent:
     an arm impairment (zero-query, arm error) can be recorded with count 0.
+
+    The index modes come from the SearchBackend outcome (engine honesty,
+    program §6); the defaults keep legacy callers on the Postgres values.
 
     The active trace id (if any) is captured HERE — finalize runs inside the
     ``corpus_kb.query`` span, so the id is the one shared by the whole span
@@ -127,12 +155,20 @@ def finalize_envelope(
             degraded_excluded=DegradedExcluded(count=excluded_count, reasons=reasons_out),
             remedy=REEMBED_REMEDY,
             trace_id=trace_id,
+            vector_index_mode=vector_index_mode,
+            lexical_index_mode=lexical_index_mode,
+            vector_index_note=vector_index_note,
+            lexical_index_note=lexical_index_note,
         )
     return SearchEnvelope(
         status=STATUS_SUCCESS,
         results=results,
         degraded_excluded=DegradedExcluded(count=excluded_count, reasons=reasons_out),
         trace_id=trace_id,
+        vector_index_mode=vector_index_mode,
+        lexical_index_mode=lexical_index_mode,
+        vector_index_note=vector_index_note,
+        lexical_index_note=lexical_index_note,
     )
 
 
@@ -141,17 +177,24 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
 
     Additive over the legacy {status, result} shape: existing consumers
     reading status+result keep working; honest clients read the new field.
-    ``trace_id`` appears ONLY when the envelope captured a live trace
-    (tracing enabled) — with tracing off the key-set is byte-identical to
-    the pre-tracing shape.
+    ``vector_index_mode`` / ``lexical_index_mode`` are guaranteed keys and
+    always ride the payload; the ``*_index_note`` keys appear ONLY when set
+    (the embedding_mode/embedding_note contract shape). ``trace_id`` appears
+    only when the envelope captured a live trace (tracing enabled).
     """
     payload: dict[str, object] = {
         "status": envelope.status,
         "result": [r.model_dump(mode="json") for r in envelope.results],
         "degraded_excluded": envelope.degraded_excluded.to_dict(),
+        "vector_index_mode": envelope.vector_index_mode,
+        "lexical_index_mode": envelope.lexical_index_mode,
     }
     if envelope.remedy is not None:
         payload["remedy"] = envelope.remedy
+    if envelope.vector_index_note is not None:
+        payload["vector_index_note"] = envelope.vector_index_note
+    if envelope.lexical_index_note is not None:
+        payload["lexical_index_note"] = envelope.lexical_index_note
     if envelope.trace_id is not None:
         payload["trace_id"] = envelope.trace_id
     return payload

@@ -15,7 +15,7 @@ are plain English (ASD-STE100).
 
 from __future__ import annotations
 
-from corpus_kb.contracts.envelopes import AGGREGATE_EXTRA, INGEST_ENVELOPE
+from corpus_kb.contracts.envelopes import AGGREGATE_EXTRA, INGEST_ENVELOPE, SEARCH_ENVELOPE
 from corpus_kb.contracts.model import (
     CLI,
     DEFAULT_TENANT_ID,
@@ -164,7 +164,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("self_query"),
             _TENANT,
         ),
-        envelope_keys=("status", "result", "degraded_excluded"),
+        envelope_keys=SEARCH_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "search"),
             SurfaceSpec(CLI, "search"),
