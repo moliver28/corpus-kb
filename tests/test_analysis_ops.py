@@ -97,24 +97,10 @@ async def test_classification_build_disabled_is_an_honest_noop() -> None:
     assert result["params"] == {}
 
 
-async def test_classification_list_disabled_is_an_honest_noop() -> None:
-    result = await classification_tools.classification_list(
-        _pool(), config=OFF, tenant_id=TENANT, limit=7
-    )
-    assert result["status"] == "disabled"
-    assert result["prediction_count"] == 0
-    assert result["predictions"] == []
-
-
-async def test_classification_ops_enabled_answer_unavailable_on_the_skeleton() -> None:
-    build = await classification_tools.classification_build(
-        _pool(), config=CLASSIFICATION_ON, tenant_id=TENANT, seed_file="seed.json"
-    )
-    assert build["status"] == "unavailable"
-    listed = await classification_tools.classification_list(
-        _pool(), config=CLASSIFICATION_ON, tenant_id=TENANT
-    )
-    assert listed["status"] == "unavailable"
+# The remaining classification behavior moved to tests/test_classification_ops.py
+# when the WP-3 engine landed: the build answers the migration-029 probe and
+# the seed guards; the list drops the flag gate (the topics_list rule) and
+# reads the bounded prediction window.
 
 
 # ---------------------------------------------------------------------------
@@ -213,10 +199,6 @@ async def test_topics_trends_enabled_answers_unavailable_on_the_skeleton() -> No
             },
         ),
         (
-            classification_tools.classification_list,
-            {"status", "reason", "remedy", "prediction_count", "predictions"},
-        ),
-        (
             analysis_tools.analysis_backfill_dates,
             {"status", "reason", "remedy", "documents_scanned", "documents_dated"},
         ),
@@ -227,7 +209,6 @@ async def test_topics_trends_enabled_answers_unavailable_on_the_skeleton() -> No
         "labeling_build",
         "labeling_lfs",
         "classification_build",
-        "classification_list",
         "analysis_backfill_dates",
         "analyze_run",
         "topics_trends",
