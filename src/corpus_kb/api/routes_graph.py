@@ -108,9 +108,12 @@ async def get_entity_relations(request: Request) -> JSONResponse:
 
     entity_id = request.path_params.get("entity_id")
     tenant_id = UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID))
+    raw_limit = request.query_params.get("limit")
+    limit = int(raw_limit) if raw_limit else None
     handler = get_graph_handler()
     results = await handler.handle_get_entity_relations(
         tenant_id,
         UUID(entity_id),
+        limit=limit,
     )
     return JSONResponse({"status": "success", "result": results})

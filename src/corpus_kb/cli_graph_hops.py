@@ -4,6 +4,7 @@ Top-level commands registered on the main app (see ``register``); one
 command per catalogue read op, each added with its row:
 
   * ``corpus-kb search-graph QUERY``          — find graph entities by name.
+  * ``corpus-kb get-entity-relations ID``     — one entity's relations.
 
 Each command calls the SAME shared tool function the MCP + HTTP + socket
 surfaces call (``tools.graph_read_tools``), so every surface returns the
@@ -32,6 +33,7 @@ EXIT_FAILED = 1
 def register(app: typer.Typer) -> None:
     """Attach the graph read commands to the main Typer app."""
     app.command("search-graph")(search_graph)
+    app.command("get-entity-relations")(get_entity_relations)
 
 
 def _emit_rows(result: dict[str, object], json_output: bool, label: str) -> None:
@@ -93,3 +95,33 @@ def search_graph(
     database is unreachable.
     """
     return _run_sync(lambda: _search_graph_flow(query, entity_type, limit, json_output))
+
+
+async def _get_entity_relations_flow(entity_id: str, limit: int | None, json_out: bool) -> int:
+    from corpus_kb.errors import CorpusError
+    from corpus_kb.tools.graph_read_tools import get_entity_relations
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await get_entity_relations(pool, entity_id, config=cfg, limit=limit)
+    except CorpusError as exc:
+        print(f"ERROR: {exc}")
+        return EXIT_FAILED
+    finally:
+        await pool.close()
+    _emit_rows(result, json_out, "relations")
+    return _exit_code(result)
+
+
+def get_entity_relations(
+    entity_id: str = typer.Argument(..., help="The entity UUID"),
+    limit: int | None = typer.Option(None, "--limit", min=1, help="Cap the row count"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """List one entity's relations (ordered by relation ID).
+
+    Exit codes: 0 answered (an empty list is still 0), 1 failed, 3 the
+    database is unreachable.
+    """
+    return _run_sync(lambda: _get_entity_relations_flow(entity_id, limit, json_output))

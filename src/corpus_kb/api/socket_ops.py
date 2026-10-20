@@ -295,6 +295,19 @@ async def _search_graph(params: dict[str, Any], tenant_id: str) -> dict[str, Any
     )
 
 
+async def _get_entity_relations(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import get_entity_relations as relations_tool
+
+    raw_limit = params.get("limit")
+    return await relations_tool(
+        await research_pool(),
+        str(params["entity_id"]),
+        tenant_id=tenant_id,
+        limit=int(raw_limit) if raw_limit is not None else None,
+    )
+
+
 _CORE_ARMS: dict[str, Arm] = {
     "ingest_file": _ingest_file,
     "ingest_text": _ingest_text,
@@ -313,6 +326,7 @@ _CORE_ARMS: dict[str, Arm] = {
     "verify_answer": _verify_answer,
     "add_relation": _add_relation,
     "search_graph": _search_graph,
+    "get_entity_relations": _get_entity_relations,
 }
 
 

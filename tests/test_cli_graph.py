@@ -253,3 +253,24 @@ def test_search_graph_empty_list_still_exits_zero(monkeypatch: pytest.MonkeyPatc
     result = runner.invoke(app, ["search-graph", "ghost"])
     assert result.exit_code == 0
     assert "no entities" in result.output
+
+
+def test_get_entity_relations_passes_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {"status": "success", "result": [{"relation_id": "rel-1"}]}
+    fake = _RecordingTool(envelope)
+    _patch_hops_world(monkeypatch, "get_entity_relations", fake)
+    result = runner.invoke(app, ["get-entity-relations", ENTITY_ID, "--limit", "50", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["args"][1] == ENTITY_ID
+    assert call["limit"] == 50
+
+
+def test_get_entity_relations_uncapped_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": []})
+    _patch_hops_world(monkeypatch, "get_entity_relations", fake)
+    result = runner.invoke(app, ["get-entity-relations", ENTITY_ID])
+    assert result.exit_code == 0
+    assert "no relations" in result.output
+    assert fake.calls[0]["limit"] is None

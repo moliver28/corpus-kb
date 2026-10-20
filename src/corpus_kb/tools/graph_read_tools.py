@@ -25,7 +25,7 @@ from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 if TYPE_CHECKING:
     from corpus_kb.handlers.graph_handler import GraphHandler
 
-__all__ = ["search_graph"]
+__all__ = ["get_entity_relations", "search_graph"]
 
 
 async def _resolve_graph_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> GraphHandler:
@@ -63,4 +63,24 @@ async def search_graph(
     rows = await handler.handle_search_graph(
         UUID(tenant_id), query, entity_type=entity_type, limit=limit
     )
+    return {"status": "success", "result": rows}
+
+
+async def get_entity_relations(
+    pg_pool: asyncpg.Pool,
+    entity_id: str,
+    config: dict[str, object] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    limit: int | None = None,
+) -> dict[str, object]:
+    """List one entity's relations.
+
+    Delegates to ``GraphHandler.handle_get_entity_relations`` — the same
+    call GET /api/graph/relations/{id} and the socket method make. Rows
+    are ordered ``relation_id``. Envelope: ``{"status", "result"}``;
+    ``limit=None`` keeps the uncapped read the route always had.
+    """
+    cfg = load_config_or_pass(config)
+    handler = await _resolve_graph_handler(cfg, pg_pool)
+    rows = await handler.handle_get_entity_relations(UUID(tenant_id), UUID(entity_id), limit=limit)
     return {"status": "success", "result": rows}

@@ -556,7 +556,7 @@ class TestGraphHandlerDelegation:
         assert configured_max_hops({"graph": {"max_hops": "nonsense"}}) == 5
 
     def test_public_method_signatures_unchanged(self) -> None:
-        """The three public handler methods keep their original signatures."""
+        """The public handler methods keep their catalogue-facing signatures."""
         from corpus_kb.handlers.graph_handler import GraphHandler
 
         search_sig = inspect.signature(GraphHandler.handle_search_graph)
@@ -576,4 +576,5 @@ class TestGraphHandlerDelegation:
             "start_entity_id",
             "max_depth",
         ]
-        assert list(rel_sig.parameters) == ["self", "tenant_id", "entity_id"]
+        # The §5.1 birth adds the optional limit; None keeps the uncapped read.
+        assert list(rel_sig.parameters) == ["self", "tenant_id", "entity_id", "limit"]

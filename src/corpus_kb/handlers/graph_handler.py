@@ -114,11 +114,19 @@ class GraphHandler:
         return sorted(response, key=lambda row: (row["depth"], row["name"]))
 
     async def handle_get_entity_relations(
-        self, tenant_id: UUID, entity_id: UUID
+        self, tenant_id: UUID, entity_id: UUID, limit: int | None = None
     ) -> list[dict[str, Any]]:
-        """Get all relations for an entity (both outgoing and incoming)."""
+        """Get all relations for an entity, ordered ``relation_id``.
+
+        ``limit=None`` keeps the uncapped read the original route had; an
+        integer caps the row count without changing the order.
+        """
         relations = await self._graph_store.get_entity_relations(str(entity_id))
-        return [await _relation_to_response(self._graph_store, rel) for rel in relations]
+        rows = [await _relation_to_response(self._graph_store, rel) for rel in relations]
+        if limit is None:
+            return rows
+        capped = _int_field("limit", limit, 1, 10_000)
+        return rows[:capped]
 
     async def handle_graph_neighbors(
         self,

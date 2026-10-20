@@ -123,4 +123,23 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 3),
     ),
+    Operation(
+        name="get_entity_relations",
+        family="graph",
+        description="List one entity's relations. Rows carry both endpoint names.",
+        handler="corpus_kb.tools.graph_read_tools:get_entity_relations",
+        params=(
+            ParamSpec("entity_id", required=True),
+            ParamSpec("limit"),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "get_entity_relations"),
+            SurfaceSpec(CLI, "get-entity-relations"),
+            SurfaceSpec(HTTP, "/api/graph/relations/{entity_id}", "GET"),
+            SurfaceSpec(SOCKET, "get_entity_relations"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
 )

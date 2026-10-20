@@ -661,6 +661,12 @@ LEGS: dict[str, _Leg] = {
         _sock("search_graph", {"query": "parity"}),
         _mcp({"query": "parity"}),
     ),
+    "get_entity_relations": _Leg(
+        _shared_get_entity_relations,
+        _get(f"/api/graph/relations/{ENTITY_A}", {"limit": "50"}),
+        _sock("get_entity_relations", {"entity_id": ENTITY_A, "limit": 50}),
+        _mcp({"entity_id": ENTITY_A, "limit": 50}),
+    ),
     "release_assess": _Leg(
         **_release_leg(
             "release_assess",
