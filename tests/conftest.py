@@ -203,3 +203,77 @@ async def pool(research_dsn):
     pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=4)
     yield pool
     await pool.close()
+
+
+# ---------------------------------------------------------------------------
+# DuckDB gateway fixtures (storage portability program, rules 21 and 23).
+# The backend-parametrized fixture takes its file PATH as a fixture argument,
+# never the env var (research_dsn mutates CORPUS_KB_DATABASE_URL). Teardown
+# order is rule 21: close apps, then gateways, then delete files — Windows
+# raises PermissionError when an open database file is removed, so fixtures
+# always close().
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def duckdb_path(tmp_path: Path) -> Path:
+    """A fresh DuckDB database file path for one test."""
+    return tmp_path / "gateway.duckdb"
+
+
+@pytest.fixture
+async def duckdb_gateway(duckdb_path: Path):
+    from corpus_kb.storage.gateway import DuckDbGateway
+
+    gateway = await DuckDbGateway.connect(str(duckdb_path))
+    try:
+        yield gateway
+    finally:
+        await gateway.close()
+
+
+@pytest.fixture(scope="session")
+def duckdb_session_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Session-long DuckDB file path (rule 23: passed as a fixture argument)."""
+    return tmp_path_factory.mktemp("duckdb-session") / "session.duckdb"
+
+
+@pytest.fixture(scope="session")
+async def duckdb_session_gateway(duckdb_session_path: Path):
+    from corpus_kb.storage.gateway import DuckDbGateway
+
+    gateway = await DuckDbGateway.connect(str(duckdb_session_path))
+    try:
+        yield gateway
+    finally:
+        await gateway.close()
+        # Delete only after close; duckdb writes a `<file>.wal` sidecar.
+        for suffix in ("", ".wal"):
+            Path(f"{duckdb_session_path}{suffix}").unlink(missing_ok=True)
+
+
+#: Storage backends the suite can exercise today. The postgres leg joins when
+#: the full-parity harness lands (the PG service is live on the ubuntu CI leg
+#: since phase B); without Postgres the pg_pool fixture skips that leg.
+STORAGE_BACKENDS = ("duckdb",)
+
+
+@pytest.fixture(params=STORAGE_BACKENDS)
+def backend(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
+@pytest.fixture
+async def any_gateway(backend: str, request: pytest.FixtureRequest, duckdb_path: Path):
+    """Backend-parametrized SqlGateway: a DuckDB file gateway or the PG pool."""
+    from corpus_kb.storage.gateway import DuckDbGateway, PostgresGateway
+
+    if backend == "duckdb":
+        gateway = await DuckDbGateway.connect(str(duckdb_path))
+        try:
+            yield gateway
+        finally:
+            await gateway.close()
+        return
+    pool = await request.getfixturevalue("pg_pool")
+    yield PostgresGateway(pool)

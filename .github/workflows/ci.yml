@@ -9,7 +9,9 @@
 #
 # CI Gate Order: lint → type-check → validate-configs → test (3 OSes)
 # Tests depend on validate-configs passing. fail-fast: false so all OS
-# results are visible even if one fails.
+# results are visible even if one fails. The test legs split at phase B of
+# the storage portability program (issue #127, rule 20): ubuntu carries the
+# Postgres service container (Linux-only), windows/macos run without it.
 
 name: CI
 
@@ -97,9 +99,12 @@ jobs:
       - name: Install pyright and project deps
         # Project deps are needed so pyright can resolve third-party imports.
         # Without this, pyright reports 147+ false-positive missing-import errors.
+        # The duckdb extra is REQUIRED here from the first `import duckdb`
+        # commit onward (storage portability program, §11 rule 1): CI never
+        # sees an unresolvable import.
         run: |
           pip install pyright
-          pip install -e ".[dev]"
+          pip install -e ".[dev,duckdb]"
 
       - name: Pyright type check
         # pyrightconfig.json in the repo root downgrades pre-existing type
@@ -182,7 +187,15 @@ jobs:
         run: docker rm -f corpus-kb-postgres
 
   # ─────────────────────────────────────────────────────────────────────
-  # Test: 3-OS matrix (ubuntu, windows, macos) with Ollama
+  # Test: Postgres service leg (ubuntu) + cross-OS matrix (windows, macos)
+  #
+  # Split into two jobs because GitHub service containers are Linux-only
+  # (macOS runners have no Docker; Windows does not support service
+  # containers). Program rule 20: the Postgres service rides the ubuntu
+  # test leg ONLY, using the pinned bundled GHCR image — stock postgres:17
+  # lacks the pgvector/AGE/PostgresML extensions the migrations require
+  # (see the verify-postgres-image job). The live `requires_postgres`
+  # marks burn in on this leg; windows/macos keep auto-skipping Postgres.
   #
   # Ollama install strategy per OS:
   #   Ubuntu:  curl | sh (works reliably)
@@ -196,19 +209,42 @@ jobs:
   #   - continue-on-error on Ollama install/pull/verify so tests can run
   #     in degraded mode (zero-vector fallback) when Ollama is unavailable
   #
-  # Test step:
-  #   - timeout-minutes: 10 prevents hung tests from blocking CI
+  # Test steps:
+  #   - ubuntu timeout-minutes: 20 (rule 20: the live Postgres marks need
+  #     the higher ceiling) — cross-OS legs keep 10 (hang protection)
   # ─────────────────────────────────────────────────────────────────────
-  test:
-    name: "test (${{ matrix.os }})"
-    runs-on: ${{ matrix.os }}
+  test-ubuntu:
+    name: "test (ubuntu, postgres service)"
+    runs-on: ubuntu-latest
     needs: [validate-configs]
+
+    services:
+      postgres:
+        image: ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17
+        env:
+          POSTGRES_USER: corpus_user
+          POSTGRES_PASSWORD: corpus_pass
+          POSTGRES_DB: corpus_kb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U corpus_user -d corpus_kb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
     env:
-      CORPUS_KB_DATABASE_URL: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-      fail-fast: false
+      CORPUS_KB_DATABASE_URL: postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
+      # tests/research_db.py derives its DSNs from these; the values mirror
+      # the service env above (program rule 20 wiring). In the bundled image
+      # the bootstrap role (corpus_user) IS the superuser.
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: corpus_user
+      POSTGRES_PASSWORD: corpus_pass
+      POSTGRES_DB: corpus_kb
+      POSTGRES_SUPERUSER: corpus_user
+      POSTGRES_SUPERUSER_PASSWORD: corpus_pass
 
     steps:
       - uses: actions/checkout@v4
@@ -221,10 +257,73 @@ jobs:
           cache-dependency-path: pyproject.toml
 
       - name: Install system dependencies (Ubuntu)
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq build-essential
+
+      - name: Install dependencies
+        # Rule 1 (storage portability program): the extra ships from the
+        # first `import duckdb` commit onward.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,duckdb]"
+
+      - name: Cache Ollama models
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-${{ env.OLLAMA_MODEL }}-${{ runner.os }}
+
+      - name: Install Ollama (Ubuntu)
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve > /tmp/ollama.log 2>&1 &
+          sleep 5
+
+      - name: Pull embedding model
+        # continue-on-error: tests use zero-vector fallback when unavailable.
+        continue-on-error: true
+        run: ollama pull ${{ env.OLLAMA_MODEL }}
+
+      - name: Verify Ollama
+        run: |
+          for i in {1..10}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama is ready"
+              break
+            fi
+            echo "Attempt $i/10: Waiting for Ollama..."
+            sleep 1
+          done
+
+      - name: Run tests
+        # timeout-minutes: 20 — rule 20 requires >= 20 min on the ubuntu leg
+        # now that the live Postgres marks execute here. Still caps any hang.
+        timeout-minutes: 20
+        run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing
+
+  test-cross:
+    name: "test (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    needs: [validate-configs]
+    env:
+      # No Postgres service exists on these runners; requiring tests probe
+      # this URL, find it unreachable, and auto-skip.
+      CORPUS_KB_DATABASE_URL: postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest]
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install dependencies
         # shell: bash ensures the if-statement works on all OSes (Windows
@@ -234,7 +333,7 @@ jobs:
         # "Windows fatal exception: access violation" in magic.compat.py
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev,duckdb]"
           if [ "$RUNNER_OS" = "Windows" ]; then pip install python-magic-bin; fi
         shell: bash
 
@@ -247,26 +346,12 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install libmagic
 
-      - name: Cache Ollama models (Ubuntu/macOS)
-        if: runner.os != 'Windows'
-        uses: actions/cache@v4
-        with:
-          path: ~/.ollama/models
-          key: ollama-${{ env.OLLAMA_MODEL }}-${{ runner.os }}
-
       - name: Cache Ollama models (Windows)
         if: runner.os == 'Windows'
         uses: actions/cache@v4
         with:
           path: ${{ format('{0}\ollama\models', env.APPDATA) }}
           key: ollama-${{ env.OLLAMA_MODEL }}-${{ runner.os }}
-
-      - name: Install Ollama (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve > /tmp/ollama.log 2>&1 &
-          sleep 5
 
       - name: Install Ollama (macOS)
         # brew install is used instead of curl | sh because the install.sh
@@ -280,8 +365,8 @@ jobs:
 
       - name: Install Ollama (Windows)
         # continue-on-error: true because the OllamaSetup.exe silent
-        # installer (/S) frequently hangs or fails on GitHub Actions
-        # Windows runners. When it fails, tests run in degraded mode
+        # installer (/S) frequently hangs or fails on GitHub Actions Windows
+        # runners. When it fails, tests run in degraded mode
         # (OllamaEmbedder catches ConnectionError and returns zero vectors).
         #
         # The 120s Wait-Process timeout prevents indefinite hangs. If the
@@ -318,8 +403,8 @@ jobs:
         continue-on-error: true
         run: ollama pull ${{ env.OLLAMA_MODEL }}
 
-      - name: Verify Ollama (Ubuntu/macOS)
-        if: runner.os != 'Windows'
+      - name: Verify Ollama (macOS)
+        if: runner.os == 'macOS'
         run: |
           for i in {1..10}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then

@@ -238,7 +238,9 @@ where = ["src"]
 include = ["corpus_kb*"]
 
 [tool.setuptools.package-data]
-corpus_kb = ["*.yaml", "config/*.yaml", "migrations/*.sql"]
+# migrations_duckdb/*.sql (rule 12): the glob ships BEFORE the first DuckDB
+# migration file so the migrations WP cannot land a broken wheel.
+corpus_kb = ["*.yaml", "config/*.yaml", "migrations/*.sql", "migrations_duckdb/*.sql"]
 
 [tool.ruff]
 line-length = 100
