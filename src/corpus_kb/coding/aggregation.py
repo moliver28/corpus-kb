@@ -98,13 +98,17 @@ def dawid_skene(
     for step in range(1, max_iter + 1):
         n_iter = step
         # M-step: priors + per-annotator confusion from the current posteriors.
+        # Vectorized (F7): one np.add.at over (annotator, true-class,
+        # observed-class) cells, each weighted by the item posterior row. The
+        # flat cell index j*C*C + c*obs_class preserves the former per-item
+        # accumulation order, so results are unchanged.
         prior = posterior.mean(axis=0)
-        for j in range(n_annotators):
-            error[j] = np.full((n_classes, n_classes), 1e-8)
-            idx = np.where(observed[:, j])[0]
-            for i in idx:
-                error[j][:, a[i, j]] += posterior[i]
-            error[j] /= error[j].sum(axis=1, keepdims=True)
+        error[:] = 1e-8
+        items, annotators = np.nonzero(observed)
+        cells = (annotators[:, None] * n_classes + np.arange(n_classes)[None, :]) * n_classes
+        cells = cells + a[items, annotators][:, None]
+        np.add.at(error.reshape(-1), cells, posterior[items])
+        error /= error.sum(axis=2, keepdims=True)
         # E-step: posterior(c) proportional to prior_c * prod_j T_j[c, a_ij].
         log_post = np.log(np.clip(prior, 1e-12, None))[None, :].repeat(n_items, axis=0)
         for j in range(n_annotators):
