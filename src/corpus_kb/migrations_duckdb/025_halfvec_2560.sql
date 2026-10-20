@@ -1,0 +1,26 @@
+-- ============================================================================
+-- Migration 025: halfvec(2560) dimension regime (DuckDB mirror — pre-applied)
+-- ============================================================================
+-- Pair of migrations/025_halfvec_2560.sql. On Postgres this migration
+-- retypes the main vector column and the migration-012 coding vectors to
+-- halfvec(2560), nulls the stale embeddings, and builds the HNSW index.
+-- This mirror needs none of that: a fresh DuckDB install creates the
+-- end-state shapes directly (000 creates chunks_vectors.embedding as
+-- FLOAT[2560]; 012 creates the coding vectors as FLOAT[2560] and leaves
+-- answer_ctx_vectors.vector nullable).
+--
+-- Dropped here, with the Postgres step each replaces:
+--   * DROP INDEX of the dead 4096-dim indexes: those indexes never existed
+--     on DuckDB (000 creates the tenant and model indexes only).
+--   * the vector -> embedding rename and the halfvec(2560) retype: 000
+--     already creates the end-state column.
+--   * the matryoshka slice recompute (l2_normalize/subvector over stale
+--     rows): Postgres-only functions; fresh installs have no stale rows and
+--     the write path maintains vector_1024 per row.
+--   * the HNSW index build: DuckDB defaults to exact scan.
+--   * the coding vector retype loop: 012 already creates the end state.
+-- The embedding_model default tracks the shipped model. On Postgres the
+-- migration sets it with ALTER COLUMN SET DEFAULT; DuckDB refuses DEFAULT
+-- ALTERs on tables with dependent entries, and 000 already creates the
+-- column with this exact default, so no statement is needed.
+-- ============================================================================
