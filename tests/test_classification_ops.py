@@ -278,6 +278,7 @@ async def test_head_build_writes_calibrated_predictions(tmp_path: Path) -> None:
     assert extra_labels == {"alpha"}
 
 
+@pytest.mark.filterwarnings("ignore::UserWarning")
 async def test_many_class_build_records_the_degradation_warning(tmp_path: Path) -> None:
     count = 25
     rows: list[dict[str, object]] = []
