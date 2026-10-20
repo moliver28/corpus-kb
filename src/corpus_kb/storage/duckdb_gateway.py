@@ -17,8 +17,9 @@ DuckDB semantics encoded here (W0-verified, findings/storage-ops.md):
   concrete ``TransactionException`` type is matched — never a broad
   ``OperationalError``, which also catches locked-file ``IOException``.
 
-Shaping helpers (DSN conversion, status tags, append-only guard, connect
-error mapping) live in ``duckdb_support.py``.
+Shaping helpers (DSN conversion, status tags, append-only guard,
+``corpus.``-qualification guard, connect error mapping) live in
+``duckdb_support.py``.
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ from corpus_kb.storage.duckdb_support import (
     Row,
     _check_append_only,
     _is_count_result,
+    _reject_corpus_qualified,
     _Row,
     _status_tag,
     duckdb_conn_string_to_path,
@@ -89,6 +91,9 @@ class DuckDbGateway:
         await self._run_sync(lambda conn: conn.close())
 
     async def fetch(self, sql: str, *args: Any) -> list[Row]:
+        # The one guard choke point: fetch serves fetch/fetchrow/fetchval,
+        # execute serves DML+DDL. Qualified SQL dies here, before any lock.
+        _reject_corpus_qualified(sql)
         async with self._statement_gate():
             rows = await self._run_sync(lambda conn: self._rows(conn, sql, args))
         return cast("list[Row]", rows)
@@ -103,6 +108,7 @@ class DuckDbGateway:
 
     async def execute(self, sql: str, *args: Any) -> str:
         _check_append_only(sql)
+        _reject_corpus_qualified(sql)
         async with self._statement_gate():
             return await self._run_sync(lambda conn: self._tag(conn, sql, args))
 

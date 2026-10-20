@@ -2,10 +2,11 @@
 
 Pure shaping and mapping logic with no connection state: DSN conversion
 (program rule 13), connect-error mapping (rule 11), PG-format status-tag
-synthesis (``projections/research/_common.py`` parses these strings), and
-the append-only table guard (DuckDB has no triggers; sp-coding-port owns
-edits to the list). Split from the driver class to honor the 250-line
-module limit (program rule 7).
+synthesis (``projections/research/_common.py`` parses these strings), the
+append-only table guard, and the ``corpus.``-qualification guard (DuckDB
+has no triggers there; sp-coding-port owns edits to the append-only list).
+Split from the driver class to honor the 250-line module limit (program
+rule 7).
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from urllib.parse import unquote, urlparse
 
 import asyncpg
 
-from corpus_kb.errors import ConflictError, DatabaseUnavailableError
+from corpus_kb.errors import ConflictError, DatabaseUnavailableError, ValidationError
 
 if TYPE_CHECKING:  # function-local at runtime (program rule 9: deptry-visible)
     import duckdb
@@ -46,6 +47,11 @@ APPEND_ONLY_TABLES: frozenset[str] = frozenset(
 )
 
 _LOCKED_REMEDIATION = "Another program is using this database file. Close it, then try again."
+
+#: Bank string (program doc §11.15). Cited verbatim by the Wave D/E port docs.
+_CORPUS_QUALIFIED_MESSAGE = "Use unqualified table names on DuckDB. Remove the corpus. prefix."
+
+_CORPUS_QUALIFIED_RE = re.compile(r"\bcorpus\s*\.", re.IGNORECASE)
 
 
 def duckdb_path_to_conn_string(path: str | Path) -> str:
@@ -92,6 +98,51 @@ def map_connect_error(exc: Exception) -> Exception:
     if locked:
         return DatabaseUnavailableError(text, remediation=_LOCKED_REMEDIATION)
     return exc
+
+
+def _mask_literals(sql: str) -> str:
+    """Blank single-quoted strings and double-quoted identifiers.
+
+    Both regions are opaque; a doubled quote is an escape inside the
+    region, never its end. An unterminated literal just consumes the tail.
+    """
+    out: list[str] = []
+    i = 0
+    quote = ""
+    length = len(sql)
+    while i < length:
+        ch = sql[i]
+        if quote:
+            if ch == quote:
+                if i + 1 < length and sql[i + 1] == quote:
+                    i += 2  # escaped quote stays inside the literal
+                    continue
+                quote = ""
+            out.append(" ")
+        elif ch in ("'", '"'):
+            quote = ch
+            out.append(" ")
+        else:
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _reject_corpus_qualified(sql: str) -> None:
+    """Reject ``corpus.``-qualified SQL on the DuckDB path — typed, no rewrite.
+
+    DuckDB names the catalog after the database file stem, so
+    ``corpus.t`` only works on a file named ``corpus.duckdb`` and fails
+    with a raw catalog error on any other name. The migration mirror
+    flattens all tables to ``main``, so ported call sites pass bare
+    names. Text rewriting is forbidden: it would corrupt literal data
+    (program decision 2026-10-20). Postgres SQL keeps ``corpus.``.
+    """
+    if _CORPUS_QUALIFIED_RE.search(_mask_literals(sql)):
+        raise ValidationError(
+            _CORPUS_QUALIFIED_MESSAGE,
+            remediation="Remove the corpus. prefix from the SQL. Then run it again.",
+        )
 
 
 def _is_count_result(description: Sequence[Sequence[Any]]) -> bool:

@@ -22,7 +22,11 @@ import pytest
 duckdb = pytest.importorskip("duckdb")
 
 from corpus_kb._setup.schema_apply import packaged_schema_path  # noqa: E402
-from corpus_kb.errors import ConflictError, DatabaseUnavailableError  # noqa: E402
+from corpus_kb.errors import (  # noqa: E402
+    ConflictError,
+    DatabaseUnavailableError,
+    ValidationError,
+)
 from corpus_kb.storage.gateway import (  # noqa: E402
     APPEND_ONLY_TABLES,
     DuckDbGateway,
@@ -368,6 +372,83 @@ async def test_append_only_tables_reject_update_and_delete(duckdb_gateway: DuckD
 
 
 # ---------------------------------------------------------------------------
+# corpus.-qualification guard (Wave B blocker fix).
+#
+# DuckDB names a catalog after the database file stem, so
+# ``corpus.documents`` silently works on a file named corpus.duckdb and
+# fails with a raw catalog error on any other name. The gateway rejects
+# qualified SQL with a typed error BEFORE executing; quoted regions are
+# masked first, so literal data can neither trip nor dodge the guard.
+# ---------------------------------------------------------------------------
+
+
+CORPUS_QUALIFIED_MESSAGE = "Use unqualified table names on DuckDB. Remove the corpus. prefix."
+
+
+async def test_corpus_qualified_sql_raises_the_typed_error_on_any_filename(
+    tmp_path: Path,
+) -> None:
+    # corpus.duckdb is the file-stem collision case; kb.duckdb is the raw
+    # catalog-error case. The typed rejection must not depend on the name.
+    for name in ("corpus.duckdb", "kb.duckdb"):
+        gw = await DuckDbGateway.connect(str(tmp_path / name))
+        try:
+            with pytest.raises(ValidationError) as excinfo:
+                await gw.fetch("SELECT * FROM corpus.documents LIMIT 1")
+            assert str(excinfo.value) == CORPUS_QUALIFIED_MESSAGE
+            assert excinfo.value.error_type == "validation_error"
+            assert excinfo.value.remediation
+            for sql in (
+                "SELECT * FROM CORPUS.documents LIMIT 1",  # case-insensitive
+                "SELECT * FROM corpus . documents LIMIT 1",  # spaced dot
+                'SELECT * FROM corpus."documents" LIMIT 1',  # quoted table part
+            ):
+                with pytest.raises(ValidationError, match=re.escape(CORPUS_QUALIFIED_MESSAGE)):
+                    await gw.fetchrow(sql)
+                with pytest.raises(ValidationError, match=re.escape(CORPUS_QUALIFIED_MESSAGE)):
+                    await gw.execute(sql)
+        finally:
+            await gw.close()
+
+
+async def test_corpus_token_inside_quoted_regions_is_untouched(
+    duckdb_gateway: DuckDbGateway,
+) -> None:
+    gw = duckdb_gateway
+    # A string literal containing the token must pass through verbatim.
+    assert await gw.fetchval("SELECT 'corpus.x' AS t") == "corpus.x"
+    # A double-quoted identifier is opaque too.
+    row = await gw.fetchrow('SELECT 42 AS "corpus.c"')
+    assert row is not None and row["corpus.c"] == 42
+
+
+async def test_escaped_and_unbalanced_quotes_do_not_confuse_the_mask(
+    duckdb_gateway: DuckDbGateway,
+) -> None:
+    gw = duckdb_gateway
+    # A doubled quote is an escape inside one literal, never close+open:
+    # the token stays quoted and must reach DuckDB untouched.
+    assert await gw.fetchval("SELECT 'x''corpus.x''y' AS t") == "x'corpus.x'y"
+    # An unterminated literal must not hang or crash the scanner; DuckDB
+    # receives the statement and raises its own parser error (not ours).
+    with pytest.raises(duckdb.Error):
+        await gw.fetch("SELECT 'unclosed corpus.x")
+
+
+async def test_unqualified_names_work_on_a_migrated_scratch_db(
+    duckdb_gateway: DuckDbGateway,
+) -> None:
+    # The DuckDB migration mirror flattens every table to main, so ported
+    # call sites pass bare names. Until sp-duckdb-migrations lands, a
+    # scratch table stands in for the migrated schema.
+    gw = duckdb_gateway
+    await gw.execute("CREATE TABLE documents (chunk_id VARCHAR, title VARCHAR)")
+    await gw.execute("INSERT INTO documents VALUES ('c1', 't1')")
+    rows = await gw.fetch("SELECT * FROM documents ORDER BY chunk_id LIMIT 1")
+    assert [dict(r) for r in rows] == [{"chunk_id": "c1", "title": "t1"}]
+
+
+# ---------------------------------------------------------------------------
 # PostgresGateway: thin wrapper, byte-identical tags, tenant GUC.
 # ---------------------------------------------------------------------------
 
@@ -512,6 +593,34 @@ def test_research_db_applies_schema_verbatim_no_hnsw_strip_needed() -> None:
             "research_db applies schema.sql verbatim; a plain-vector hnsw index "
             "would break the session fixture (rule 22)"
         )
+
+
+@pytest.mark.requires_postgres
+async def test_applied_research_schema_keeps_hnsw_indexes(research_dsn: str) -> None:
+    """Rule 22 pin, applied half: the live scratch DB keeps hnsw indexes.
+
+    Needs a live Postgres, so it is gated by the existing requires_postgres
+    marker (auto-skip locally without Postgres; the ubuntu CI service leg
+    from phase B burns it in with the other live-PG marks).
+    """
+    import asyncpg
+
+    conn = await asyncpg.connect(research_dsn)
+    try:
+        rows = await conn.fetch(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'public' "
+            "AND indexdef ILIKE '%using hnsw%' ORDER BY indexdef"
+        )
+    finally:
+        await conn.close()
+    defs = [row["indexdef"] for row in rows]
+    assert defs, "applied research schema lost its hnsw indexes (rule 22)"
+    # Migration 010 adds a legitimate plain-vector hnsw index, so "all
+    # halfvec" is wrong; the pin is that the halfvec fragment the session
+    # fixture relies on survives application.
+    assert any("halfvec" in d for d in defs), (
+        f"applied research schema lost the halfvec hnsw index (rule 22); applied: {defs}"
+    )
 
 
 # ---------------------------------------------------------------------------
