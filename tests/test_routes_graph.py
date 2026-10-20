@@ -38,13 +38,14 @@ class _RecordingGraphHandler:
 
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self._rows = rows
-        self.calls: list[tuple[UUID, UUID]] = []
+        self.calls: list[tuple[UUID, UUID, int | None]] = []
 
     async def handle_get_entity_relations(
-        self, tenant_id: UUID, entity_id: UUID
+        self, tenant_id: UUID, entity_id: UUID, limit: int | None = None
     ) -> list[dict[str, Any]]:
-        self.calls.append((tenant_id, entity_id))
-        return [dict(row, tenant_id=str(tenant_id)) for row in self._rows]
+        self.calls.append((tenant_id, entity_id, limit))
+        rows = [dict(row, tenant_id=str(tenant_id)) for row in self._rows]
+        return rows if limit is None else rows[:limit]
 
 
 class _ScriptedConn:
@@ -109,7 +110,7 @@ class TestRelationsRouteTenant:
         )
 
         assert response.status_code == 200
-        assert stub.calls == [(UUID(OTHER_TENANT), entity_id)]
+        assert stub.calls == [(UUID(OTHER_TENANT), entity_id, None)]
         assert response.json()["result"] == [dict(rows[0], tenant_id=OTHER_TENANT)]
 
     def test_missing_tenant_falls_back_to_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -121,7 +122,7 @@ class TestRelationsRouteTenant:
         response = client.get(f"/api/graph/relations/{entity_id}")
 
         assert response.status_code == 200
-        assert stub.calls == [(UUID(DEFAULT_TENANT), entity_id)]
+        assert stub.calls == [(UUID(DEFAULT_TENANT), entity_id, None)]
 
 
 # ============================================================================

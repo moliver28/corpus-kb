@@ -51,6 +51,7 @@ import corpus_kb.api.research_http as research_http_module
 import corpus_kb.config as config_module
 import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.delete_audit as delete_audit_module
+import corpus_kb.handlers.graph_handler as graph_handler_module
 import corpus_kb.handlers.llm_handler as llm_handler_module
 import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
@@ -86,6 +87,7 @@ from corpus_kb.domain.models import RouteDecision, RoutedQuery, RoutedResult, Ve
 from corpus_kb.handlers.query_handler import QueryHandler
 from corpus_kb.handlers.query_integrity import DegradedExcluded, SearchEnvelope
 from corpus_kb.tools.ingest_tools import list_documents as list_documents_tool
+from corpus_kb.utils.models import Entity, Relation
 from corpus_kb.web.fetch import FetchedPage
 
 TENANT = "00000000-0000-0000-0000-000000000001"
@@ -408,6 +410,30 @@ async def _shared_add_relation(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+async def _shared_search_graph(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.graph_read_tools import search_graph
+
+    return await search_graph(ctx["pool"], "parity", config=ctx["config"])
+
+
+async def _shared_get_entity_relations(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.graph_read_tools import get_entity_relations
+
+    return await get_entity_relations(ctx["pool"], ENTITY_A, config=ctx["config"])
+
+
+async def _shared_graph_neighbors(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.graph_read_tools import graph_neighbors
+
+    return await graph_neighbors(ctx["pool"], ENTITY_A, hops=2, config=ctx["config"])
+
+
+async def _shared_graph_traverse(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.graph_read_tools import graph_traverse
+
+    return await graph_traverse(ctx["pool"], ENTITY_A, max_depth=2, config=ctx["config"])
+
+
 def _release_leg(
     fn_name: str, http: str, body: dict[str, Any], mcp_args: dict[str, Any], **tool_kwargs: Any
 ) -> Any:
@@ -719,6 +745,33 @@ LEGS: dict[str, _Leg] = {
             }
         ),
     ),
+    "search_graph": _Leg(
+        _shared_search_graph,
+        _post("/api/graph/search", {"query": "parity"}),
+        _sock("search_graph", {"query": "parity"}),
+        _mcp({"query": "parity"}),
+    ),
+    "get_entity_relations": _Leg(
+        _shared_get_entity_relations,
+        _get(f"/api/graph/relations/{ENTITY_A}", {"limit": "50"}),
+        _sock("get_entity_relations", {"entity_id": ENTITY_A, "limit": 50}),
+        _mcp({"entity_id": ENTITY_A, "limit": 50}),
+    ),
+    "graph_neighbors": _Leg(
+        _shared_graph_neighbors,
+        _post(
+            "/api/graph/neighbors",
+            {"entity_id": ENTITY_A, "hops": 2, "direction": "out"},
+        ),
+        _sock("graph_neighbors", {"entity_id": ENTITY_A, "hops": 2, "direction": "out"}),
+        _mcp({"entity_id": ENTITY_A, "hops": 2, "direction": "out"}),
+    ),
+    "graph_traverse": _Leg(
+        _shared_graph_traverse,
+        _post("/api/graph/traverse", {"entity_id": ENTITY_A, "max_depth": 2}),
+        _sock("graph_traverse", {"entity_id": ENTITY_A, "max_depth": 2}),
+        _mcp({"entity_id": ENTITY_A, "max_depth": 2}),
+    ),
     "release_assess": _Leg(
         **_release_leg(
             "release_assess",
@@ -1016,6 +1069,77 @@ class _StubRouter:
         return _ROUTED_RESULT
 
 
+class _ParityGraphStore:
+    """Canned GraphStore for the graph read ops: one entity, one relation.
+
+    The graph reads route through ``get_graph_handler``; the fixture pins
+    that singleton to this store so all four surfaces see one envelope.
+    """
+
+    async def search_entities(self, name: str, entity_type: str | None = None) -> list[Entity]:
+        return [
+            Entity(
+                entity_id=ENTITY_A,
+                name="parity-entity",
+                entity_type=entity_type or "concept",
+                source_type="code",
+                metadata={},
+            )
+        ]
+
+    async def get_entity(self, entity_id: str) -> Entity | None:
+        return None
+
+    async def get_entity_relations(self, entity_id: str) -> list[Relation]:
+        return [
+            Relation(
+                relation_id="rel-1",
+                source_entity_id=ENTITY_A,
+                target_entity_id=ENTITY_B,
+                relation_type="related_to",
+                weight=1.0,
+                metadata={},
+            )
+        ]
+
+    async def neighbors(
+        self,
+        entity_id: str,
+        hops: int = 1,
+        direction: str = "both",
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "entity_id": ENTITY_B,
+                "name": "parity-neighbor",
+                "entity_type": "concept",
+                "metadata": {},
+                "depth": 1,
+            }
+        ]
+
+    async def traverse(
+        self,
+        entity_id: str,
+        max_depth: int = 5,
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                "entity_id": ENTITY_B,
+                "name": "parity-neighbor",
+                "entity_type": "concept",
+                "metadata": {},
+                "depth": 1,
+            }
+        ]
+
+
 class _ReleaseResult:
     """Stand-in for the frozen release result dataclasses (to_payload)."""
 
@@ -1108,6 +1232,17 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
     monkeypatch.setattr(QueryHandler, "handle_list_documents", canned_list_documents)
     monkeypatch.setattr(router_handler_module, "get_router_handler", _StubRouter)
+
+    # Graph read ops: one canned store behind the handler singleton, so the
+    # MCP tool, the HTTP route, the socket arm, and the shared tool layer
+    # all answer through the same GraphHandler.
+    from corpus_kb.handlers.graph_handler import GraphHandler
+
+    monkeypatch.setattr(
+        graph_handler_module,
+        "get_graph_handler",
+        lambda: GraphHandler(_ParityGraphStore(), _offline_config()),
+    )
 
     # Release lifecycle: the tool layer calls these handler names at call time.
     monkeypatch.setattr(release_handlers_module, "assess_release", _release_stub(_ASSESS))

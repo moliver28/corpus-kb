@@ -316,6 +316,10 @@ add_document
 batch_add_entities
 batch_add_relations
 
+# DuckDbGraphStore (sp-hops): the class ships with its hermetic test leg;
+# the server-wiring consumer lands with sp-duckdb-store (phase C sibling).
+DuckDbGraphStore
+
 # MCP tool wrapper dynamics (mcp_tools.build_wrapper: the SDK reads the
 # advertised signature via inspect.signature(); __qualname__ is set for
 # honest tool-frame names): 2 name(s)

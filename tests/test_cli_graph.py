@@ -205,3 +205,139 @@ def test_help_documents_exit_codes() -> None:
         assert "0" in flat
         assert "1 failed" in flat
         assert "3 the database is unreachable" in flat
+
+
+# ============================================================================
+# Graph read front door (storage-portability §5.1): cli_graph_hops
+# ============================================================================
+
+
+def _patch_hops_world(
+    monkeypatch: pytest.MonkeyPatch,
+    fn_name: str,
+    fake: _RecordingTool,
+) -> _FakePool:
+    """Same seam patch as _patch_world, aimed at the cli_graph_hops flows."""
+    pool = _FakePool()
+
+    async def _open(_cfg: dict[str, object]) -> _FakePool:
+        return pool
+
+    def _cfg() -> dict[str, object]:
+        return dict(_CFG)
+
+    monkeypatch.setattr("corpus_kb.cli_graph_hops._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli_graph_hops._load_config", _cfg)
+    monkeypatch.setattr(f"corpus_kb.tools.graph_read_tools.{fn_name}", fake)
+    return pool
+
+
+def test_search_graph_json_is_the_tool_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {"status": "success", "result": [{"entity_id": ENTITY_ID, "name": "P"}]}
+    fake = _RecordingTool(envelope)
+    pool = _patch_hops_world(monkeypatch, "search_graph", fake)
+    result = runner.invoke(app, ["search-graph", "parity", "--limit", "5", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["args"][1] == "parity"
+    assert call["limit"] == 5
+    assert call["config"] == dict(_CFG)
+    assert call["args"][0] is pool
+    assert pool.closed is True
+
+
+def test_search_graph_empty_list_still_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": []})
+    _patch_hops_world(monkeypatch, "search_graph", fake)
+    result = runner.invoke(app, ["search-graph", "ghost"])
+    assert result.exit_code == 0
+    assert "no entities" in result.output
+
+
+def test_get_entity_relations_passes_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {"status": "success", "result": [{"relation_id": "rel-1"}]}
+    fake = _RecordingTool(envelope)
+    _patch_hops_world(monkeypatch, "get_entity_relations", fake)
+    result = runner.invoke(app, ["get-entity-relations", ENTITY_ID, "--limit", "50", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["args"][1] == ENTITY_ID
+    assert call["limit"] == 50
+
+
+def test_get_entity_relations_uncapped_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": []})
+    _patch_hops_world(monkeypatch, "get_entity_relations", fake)
+    result = runner.invoke(app, ["get-entity-relations", ENTITY_ID])
+    assert result.exit_code == 0
+    assert "no relations" in result.output
+    assert fake.calls[0]["limit"] is None
+
+
+def test_graph_neighbors_passes_hops_direction_and_filters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = {
+        "status": "success",
+        "result": [{"entity_id": ENTITY_ID, "name": "N", "depth": 1}],
+    }
+    fake = _RecordingTool(envelope)
+    _patch_hops_world(monkeypatch, "graph_neighbors", fake)
+    result = runner.invoke(
+        app,
+        [
+            "graph-neighbors",
+            ENTITY_ID,
+            "--hops",
+            "2",
+            "--direction",
+            "out",
+            "--relation-type",
+            "CALLS",
+            "--entity-type",
+            "CLASS",
+            "--limit",
+            "10",
+            "--json",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["hops"] == 2
+    assert call["direction"] == "out"
+    assert call["relation_types"] == ["CALLS"]
+    assert call["entity_types"] == ["CLASS"]
+    assert call["limit"] == 10
+
+
+def test_graph_neighbors_cli_rejects_four_hops(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": []})
+    _patch_hops_world(monkeypatch, "graph_neighbors", fake)
+    result = runner.invoke(app, ["graph-neighbors", ENTITY_ID, "--hops", "4"])
+    assert result.exit_code != 0
+
+
+def test_graph_traverse_reports_truncation_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {
+        "status": "success",
+        "result": [{"entity_id": ENTITY_ID, "name": "N", "depth": 1}],
+        "truncated": False,
+    }
+    fake = _RecordingTool(envelope)
+    _patch_hops_world(monkeypatch, "graph_traverse", fake)
+    result = runner.invoke(app, ["graph-traverse", ENTITY_ID, "--max-depth", "2", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["max_depth"] == 2
+
+
+def test_graph_traverse_default_depth_is_none(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": [], "truncated": False})
+    _patch_hops_world(monkeypatch, "graph_traverse", fake)
+    result = runner.invoke(app, ["graph-traverse", ENTITY_ID])
+    assert result.exit_code == 0
+    assert fake.calls[0]["max_depth"] is None

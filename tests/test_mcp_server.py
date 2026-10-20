@@ -122,7 +122,9 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     registry_mcp = {s.mcp_tool for s in SURFACES if s.mcp_tool}
     assert registered == catalogue_mcp | registry_mcp
     # The historical lie (declared names with no function) stays dead.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 43
+    # The §5.1 graph births (+4) and the analysis program's tools (+4)
+    # both extended the catalogue; the pin covers the union.
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 47
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

@@ -371,6 +371,64 @@ async def _add_relation(params: dict[str, Any], tenant_id: str) -> dict[str, Any
     return get_command_handler().handle_add_relation(cmd)
 
 
+async def _search_graph(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import search_graph as search_graph_tool
+
+    return await search_graph_tool(
+        await research_pool(),
+        str(params.get("query", "")),
+        tenant_id=tenant_id,
+        entity_type=params.get("entity_type"),
+        limit=int(params.get("limit", 100)),
+    )
+
+
+async def _get_entity_relations(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import get_entity_relations as relations_tool
+
+    raw_limit = params.get("limit")
+    return await relations_tool(
+        await research_pool(),
+        str(params["entity_id"]),
+        tenant_id=tenant_id,
+        limit=int(raw_limit) if raw_limit is not None else None,
+    )
+
+
+async def _graph_neighbors(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import graph_neighbors as neighbors_tool
+
+    return await neighbors_tool(
+        await research_pool(),
+        str(params["entity_id"]),
+        tenant_id=tenant_id,
+        hops=int(params.get("hops", 1)),
+        direction=str(params.get("direction", "both")),
+        relation_types=params.get("relation_types"),
+        entity_types=params.get("entity_types"),
+        limit=int(params.get("limit", 100)),
+    )
+
+
+async def _graph_traverse(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.graph_read_tools import graph_traverse as traverse_tool
+
+    raw_depth = params.get("max_depth")
+    return await traverse_tool(
+        await research_pool(),
+        str(params["entity_id"]),
+        tenant_id=tenant_id,
+        max_depth=int(raw_depth) if raw_depth is not None else None,
+        relation_types=params.get("relation_types"),
+        entity_types=params.get("entity_types"),
+        limit=int(params.get("limit", 100)),
+    )
+
+
 _CORE_ARMS: dict[str, Arm] = {
     "ingest_file": _ingest_file,
     "ingest_text": _ingest_text,
@@ -398,6 +456,10 @@ _CORE_ARMS: dict[str, Arm] = {
     "add_entity": _add_entity,
     "verify_answer": _verify_answer,
     "add_relation": _add_relation,
+    "search_graph": _search_graph,
+    "get_entity_relations": _get_entity_relations,
+    "graph_neighbors": _graph_neighbors,
+    "graph_traverse": _graph_traverse,
 }
 
 
