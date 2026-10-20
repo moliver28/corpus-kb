@@ -138,11 +138,10 @@ async def test_analyze_run_disabled_with_every_flag_off() -> None:
     assert result["sections"] == []
 
 
-async def test_analyze_run_with_one_flag_on_answers_unavailable() -> None:
-    result = await analysis_tools.analyze_run(
-        _pool(), config=OVER_TIME_ON, tenant_id=TENANT, output="report.json"
-    )
-    assert result["status"] == "unavailable"
+# The wave-0 stub retirement (WP-5): the composed run is live, so "one
+# flag on" no longer answers ``unavailable``. The composed behavior —
+# fixed section order, per-section isolation, the classification probe,
+# the deterministic artifact — lives in tests/test_analyze_run.py.
 
 
 # ---------------------------------------------------------------------------
