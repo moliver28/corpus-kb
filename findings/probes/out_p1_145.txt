@@ -1,0 +1,13 @@
+duckdb 1.4.5
+$1+$2 list        : OK rows=[(12,)] cols=['(CAST($1 AS INTEGER) + CAST($2 AS INTEGER))']
+repeated $1        : OK rows=[(10,)] cols=['(CAST($1 AS INTEGER) + CAST($1 AS INTEGER))']
+repeated $1 two-arg: ERROR InvalidInputException: Invalid Input Error: Parameter argument/count mismatch, identifiers of the excess parameters: 2
+LIMIT $1           : OK rows=[([0, 1, 2],)] cols=['list(i)']
+WHERE i > $1       : OK rows=[([7, 8, 9],)] cols=['list(i)']
+WHERE s LIKE $1    : OK rows=[(1,)] cols=['count_star()']
+? auto-increment   : OK rows=[(12,)] cols=['(CAST($1 AS INTEGER) + CAST($2 AS INTEGER))']
+? in LIMIT         : OK rows=[([0, 1],)] cols=['list(i)']
+$name dict         : OK rows=[(12,)] cols=['(CAST($a AS INTEGER) + CAST($b AS INTEGER))']
+$name in LIMIT     : OK rows=[([0, 1],)] cols=['list(i)']
+mix ? and $1       : ERROR InvalidInputException: Invalid Input Error: Parameter argument/count mismatch, identifiers of the excess parameters: 2
+$3 with 2 args     : ERROR InvalidInputException: Invalid Input Error: Parameter argument/count mismatch, identifiers of the excess parameters: 1, 2

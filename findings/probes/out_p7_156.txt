@@ -1,0 +1,14 @@
+duckdb 1.5.6
+7/2 (typeof)     : rows=[('DOUBLE', 3.5)] cols=[('typeof((7 / 2))', VARCHAR), ('(7 / 2)', DOUBLE)]
+7/2.0 (typeof)   : rows=[('DOUBLE', 3.5)] cols=[('typeof((7 / 2.0))', VARCHAR), ('(7 / 2.0)', DOUBLE)]
+'1.1'=1          : rows=[(True,)] cols=[("('1.1' = 1)", BOOLEAN)]
+typeof compare   : rows=[('BOOLEAN',)] cols=[("typeof(('1.1' = 1))", VARCHAR)]
+intvl month=30day: rows=[(True,)] cols=[("(CAST('1 month' AS INTERVAL) = CAST('30 days' AS INTERVAL))", BOOLEAN)]
+intvl month-days : rows=[(datetime.timedelta(0),)] cols=[("(CAST('1 month' AS INTERVAL) - CAST('30 days' AS INTERVAL))", INTERVAL)]
+typeof interval  : rows=[('INTERVAL',)] cols=[("typeof(CAST('1 month' AS INTERVAL))", VARCHAR)]
+date_trunc timestz: rows=[('TIMESTAMP WITH TIME ZONE',)] cols=[('typeof(date_trunc(\'day\', CAST(\'2024-01-02 03:04:05+00\' AS "TIMESTAMP WITH TIME ZONE")))', VARCHAR)]
+date_trunc ts    : rows=[('TIMESTAMP',)] cols=[("typeof(date_trunc('day', CAST('2024-01-02 03:04:05' AS TIMESTAMP)))", VARCHAR)]
+date_trunc date  : rows=[('TIMESTAMP',)] cols=[('typeof(date_trunc(\'day\', CAST(\'2024-01-02\' AS "DATE")))', VARCHAR)]
+SELECT 1 WHERE f : rows=[] cols=[('1', INTEGER)]
+WHERE false desc : rows=[] cols=[('x', INTEGER)]
+WHERE false metadata: [('x', INTEGER)] rowcount: 0

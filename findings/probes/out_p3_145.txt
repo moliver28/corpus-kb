@@ -1,0 +1,11 @@
+duckdb 1.4.5
+raw readback      : [('{"b":1,"a":2}',)]
+typeof(j)         : [('JSON',)]
+json() wrap       : [('{"b":1,"a":2}',)]
+merge_patch '{}'  : [('{"b":1,"a":2}',)]
+merge_patch add c : [('{"b":1,"a":2,"c":3}',)]
+to_json(json_col) : [('{"b":1,"a":2}',)]
+GROUP BY j        : [('{"b":1,"a":2}', 1), ('{"a":2,"b":1}', 1)]
+GROUP BY j::VARCHAR: [('{"a":2,"b":1}', 1), ('{"b":1,"a":2}', 1)]
+json '=' text-cmp : [(False,)]
+j->'a'            : [('2',), ('2',)]

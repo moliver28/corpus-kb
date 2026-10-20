@@ -1,0 +1,7 @@
+duckdb 1.5.6
+ON CONFLICT..RETURNING: [('a', 9)]
+post upsert rows     : [('a', 9), ('b', 2)]
+DISTINCT ON          : [('x', 1), ('y', 5)]
+FILTER (WHERE)       : [(7, 8)]
+ILIKE                : [(True,)]
+gen_random_uuid()    : [(UUID('76a40f58-ec36-4353-966d-ba66bac9a522'), 'UUID')]

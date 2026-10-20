@@ -1,0 +1,4 @@
+duckdb 1.4.5
+shim recipe: [('{"keep":1,"thresholds":{"t":9}}',)]
+prepared   : [('{}',)]
+empty-target: [('{"k":[1,2]}',)]
