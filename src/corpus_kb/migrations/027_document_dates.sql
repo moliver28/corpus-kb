@@ -30,6 +30,10 @@
 
 SET app.current_tenant_id = '00000000-0000-0000-0000-000000000001';
 
+-- Naive candidates parse at the session zone. Pin UTC so the same corpus
+-- backfills to the same dates on every host (the determinism contract).
+SET timezone = 'UTC';
+
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS document_date TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_date
