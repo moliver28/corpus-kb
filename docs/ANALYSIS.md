@@ -13,8 +13,8 @@ report. The default config ships every feature dormant.
 2. `labeling` — scores your labeling functions over the chunks and
    writes probabilistic labels (Dawid-Skene aggregation).
 3. `classification` — reports the seed-set state. The run never
-   invents seeds: with no stored set the section is `skipped`; with
-   one, the build handler answers its honest guard. A re-fit stays
+   invents seeds. With no stored set the section is `skipped`. With
+   one, the section reports the stored totals. A re-fit stays
    with `classification-build` and your seed file.
 4. `trends` — refreshes the dates first, then counts each topic per
    date bin over the dated chunks.
