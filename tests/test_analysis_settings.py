@@ -79,9 +79,27 @@ def test_resolved_bins_resolves_auto_and_passes_int_through() -> None:
 def test_partial_block_fills_defaults() -> None:
     settings = load_analysis_settings({"analysis": {"labeling": {"enabled": True}}})
     assert settings.labeling.enabled is True
-    assert settings.labeling.min_signals == 1
+    assert settings.labeling.min_signals == 3
+    assert settings.labeling.lfs_file is None
     assert settings.classification.enabled is False
     assert settings.over_time.undated == "drop"
+    assert settings.topics_max_embeddings is None
+
+
+def test_lfs_file_and_max_embeddings_round_trip() -> None:
+    settings = load_analysis_settings(
+        {
+            "analysis": {
+                "labeling": {"lfs_file": "lfs.json"},
+                "topics": {"max_embeddings": 50000},
+            }
+        }
+    )
+    assert settings.labeling.lfs_file == "lfs.json"
+    assert settings.topics_max_embeddings == 50000
+    bad = analysis_settings_error({"analysis": {"topics": {"max_embeddings": True}}})
+    assert bad is not None
+    assert "analysis.topics.max_embeddings" in bad
 
 
 def test_defaults_are_not_aliased_across_loads() -> None:
