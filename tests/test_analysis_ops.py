@@ -1,4 +1,4 @@
-"""Analysis program Wave 0 ops: honest outcomes on every stub handler.
+"""Analysis program ops: honest outcomes on every stub handler.
 
 The op layer (``tools/labeling_tools.py``, ``tools/classification_tools.py``,
 ``tools/analysis_tools.py``, and the ``topics_trends`` stub in
@@ -11,8 +11,13 @@ exist:
 * an enabled flag on the skeleton -> ``unavailable`` (the engine is not
   built yet), never a crash or fake data.
 
-No DB is touched: the disabled and unavailable paths run before any pool
-use, so a probe pool keeps the calls hermetic.
+WP-1 exception: the date backfill engine is live, so its enabled path
+needs a real database. Here it is pinned on the no-migration outcome
+(tables absent); the live rule and idempotency tests live in
+``tests/test_migration_027.py``.
+
+Mostly no DB is touched: the disabled and unavailable paths run before
+any pool use, so a probe pool keeps the calls hermetic.
 """
 
 from __future__ import annotations
@@ -125,11 +130,36 @@ async def test_backfill_disabled_names_the_gate() -> None:
     assert result["documents_dated"] == 0
 
 
-async def test_backfill_enabled_answers_unavailable_on_the_skeleton() -> None:
+class _TablesAbsentPool:
+    """Answers the column probe with 'table or column not there'."""
+
+    def acquire(self) -> _TablesAbsentPool:
+        return self
+
+    async def __aenter__(self) -> _TablesAbsentConn:
+        return _TablesAbsentConn()
+
+    async def __aexit__(self, *args: object) -> bool:
+        return False
+
+
+class _TablesAbsentConn:
+    """Every existence probe answers False (migration 027 has not run)."""
+
+    async def fetchval(self, sql: str) -> bool:
+        del sql
+        return False
+
+
+async def test_backfill_enabled_without_migration_027_answers_unavailable() -> None:
+    """Flag on + column absent = the honest no-migration envelope."""
     result = await analysis_tools.analysis_backfill_dates(
-        _pool(), config=OVER_TIME_ON, tenant_id=TENANT
+        _TablesAbsentPool(), config=OVER_TIME_ON, tenant_id=TENANT
     )
     assert result["status"] == "unavailable"
+    assert "migration 027" in str(result["reason"])
+    assert result["documents_scanned"] == 0
+    assert result["documents_dated"] == 0
 
 
 async def test_analyze_run_disabled_with_every_flag_off() -> None:

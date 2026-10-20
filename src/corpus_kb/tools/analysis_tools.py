@@ -1,4 +1,4 @@
-"""MCP/HTTP/socket/CLI handlers for the analysis ops (analysis program W0).
+"""MCP/HTTP/socket/CLI handlers for the analysis ops (analysis program).
 
 One handler per operation, shared by every surface — the
 ``tools/topics_tools.py`` pattern:
@@ -10,12 +10,11 @@ One handler per operation, shared by every surface — the
     labeling + classification + trends into one deterministic,
     snapshot-able report (WP-5).
 
-Wave 0 is the registry-first skeleton: the catalogue rows and the honest
-envelopes exist, the engines land later. Every handler answers the house
-envelopes on every state — the dormant default (every
-``analysis.*.enabled`` false) is a no-op envelope naming the flags; an
-enabled flag on the skeleton is ``unavailable`` (the engine is not built
-yet), never a crash or fake data.
+The backfill engine is live (WP-1); the composed run is still the wave-0
+stub. Every handler answers the house envelopes on every state — the
+dormant default (every ``analysis.*.enabled`` false) is a no-op envelope
+naming the flags; a missing migration answers ``unavailable``, never a
+crash or fake data.
 
 Envelope: ``{status, documents_scanned, documents_dated}`` for the
 backfill, ``{status, sections}`` for the composed run — guaranteed on
@@ -26,6 +25,11 @@ from __future__ import annotations
 
 import asyncpg
 
+from ..analysis.dates import (
+    BACKFILL_RULE_VERSION,
+    document_dates_present,
+    run_document_date_backfill,
+)
 from ..analysis.settings import load_analysis_settings
 from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
@@ -45,9 +49,9 @@ _UNAVAILABLE_REMEDY = "keep the analysis.*.enabled flags false until the engines
 _BACKFILL_DISABLED_REASON = "the date backfill needs analysis.topics.over_time.enabled: true."
 _BACKFILL_DISABLED_REMEDY = "Set analysis.topics.over_time.enabled: true, then retry."
 _BACKFILL_UNAVAILABLE_REASON = (
-    "the backfill engine is not built yet (the analysis program ships the registry first)"
+    "the documents.document_date column is missing (migration 027 has not run)."
 )
-_BACKFILL_UNAVAILABLE_REMEDY = "run migration 027 directly until the backfill op lands"
+_BACKFILL_UNAVAILABLE_REMEDY = "Run corpus-kb setup (or migration 027), then retry."
 
 
 def _disabled_backfill() -> dict[str, object]:
@@ -62,7 +66,7 @@ def _disabled_backfill() -> dict[str, object]:
 
 
 def _unavailable_backfill() -> dict[str, object]:
-    """The honest wave-0 envelope (backfill keys): flag on, engine absent."""
+    """The honest no-migration envelope (backfill keys): flag on, column absent."""
     return {
         "status": "unavailable",
         "reason": _BACKFILL_UNAVAILABLE_REASON,
@@ -99,15 +103,24 @@ async def analysis_backfill_dates(
 ) -> dict[str, object]:
     """Backfill ``documents.document_date`` from chunk metadata.
 
-    Returns ``{status, documents_scanned, documents_dated}`` (plus
-    reason/remedy on the honest no-op paths). Wave 0: disabled or
-    unavailable, never a partial write.
+    One tenant-scoped, idempotent UPDATE (the migration 027 rule: per
+    document the earliest of published_time, modified_time, then the
+    chunk's source_timestamp). Returns ``{status, documents_scanned,
+    documents_dated}`` plus the rule version in ``params``; a second run
+    dates nothing new.
     """
-    del pg_pool, tenant_id  # the backfill engine (a later wave) consumes these
     settings = load_analysis_settings(load_config_or_pass(config))
     if not settings.over_time.enabled:
         return _disabled_backfill()
-    return _unavailable_backfill()
+    if not await document_dates_present(pg_pool):
+        return _unavailable_backfill()
+    outcome = await run_document_date_backfill(pg_pool, tenant_id)
+    return {
+        "status": "success",
+        "documents_scanned": outcome.documents_scanned,
+        "documents_dated": outcome.documents_dated,
+        "params": {"rule_version": BACKFILL_RULE_VERSION},
+    }
 
 
 async def analyze_run(
