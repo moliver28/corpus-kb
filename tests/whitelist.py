@@ -434,3 +434,17 @@ _WAVE_B_SURFACE += (
     dialect_for,
     migrate,
 )
+
+# Wave D of the storage portability program (issue #127): command-leg and
+# ingest-leg surfaces the callers reach through protocols, config gates, or
+# thin tool wrappers, so vulture's static reach cannot see the use. The
+# names bind into one tuple — a real statement for CodeQL — and vulture
+# still counts each as used. The module is never imported.
+_WAVE_D_SURFACE = (
+    DuckDbRagBackend,
+    retrieve_lexical,
+    scored_arms,
+    assert_vector_column_width,
+    total_chunks,
+    total_relations,
+)
