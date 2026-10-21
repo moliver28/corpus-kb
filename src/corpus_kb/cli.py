@@ -176,6 +176,19 @@ def _root(
 def setup(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print steps without executing"),
     fresh: bool = typer.Option(False, "--fresh", help="Reset checkpoint and start from phase 1"),
+    backend: str = typer.Option(
+        "postgres",
+        "--backend",
+        help=(
+            "Storage backend: postgres (docker compose stack, default) or "
+            "duckdb (one local file, no Docker)"
+        ),
+    ),
+    dsn: str = typer.Option(
+        "",
+        "--dsn",
+        help="DuckDB file path or duckdb:/// DSN (with --backend duckdb)",
+    ),
     build_local: bool = typer.Option(
         False,
         "--build-local",
@@ -190,7 +203,11 @@ def setup(
         help="Skip cosign verification of the Postgres container image",
     ),
 ) -> int:
-    """One-line docker-compose + database + migrations + models setup."""
+    """One-line setup: docker stack + database + migrations + models.
+
+    With --backend duckdb this is the no-Docker path: one local file,
+    the SQLite event sidecar, and the config pair.
+    """
     from corpus_kb._setup.install import main as install_main
 
     argv = ["setup"]
@@ -198,6 +215,10 @@ def setup(
         argv.append("--dry-run")
     if fresh:
         argv.append("--fresh")
+    if backend != "postgres":
+        argv.extend(["--backend", backend])
+    if dsn:
+        argv.extend(["--dsn", dsn])
     if build_local:
         argv.append("--build-local")
     if skip_image_verify:

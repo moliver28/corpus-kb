@@ -259,6 +259,8 @@ corpus-kb setup
 
 Re-running is safe — already-applied migrations are skipped.
 
+On the DuckDB backend the same runner applies `src/corpus_kb/migrations_duckdb/`. It tracks them in the database file's own `schema_migrations` table. `corpus-kb setup --backend duckdb` runs it for you.
+
 ### Projection tables
 
 | Table | Purpose |
@@ -311,6 +313,46 @@ settle when the ingest commit lands.
   changed date on a re-ingest updates Postgres; DuckDB keeps the first.
 - `documents.chunk_count` stays 0 in the DuckDB table (one insert, no
   later update). Document reads compute the real count from `chunks`.
+
+## DuckDB backend: setup and doctor
+
+`database.backend: duckdb` selects the local one-file engine. The
+one-command path needs no Docker:
+
+```bash
+corpus-kb setup --backend duckdb                        # default file: ./corpus.duckdb
+corpus-kb setup --backend duckdb --dsn C:/data/kb.duckdb   # bare path or duckdb:/// DSN
+corpus-kb setup --backend duckdb --dry-run              # preview the steps
+```
+
+The run installs the `duckdb` extra when it is missing, applies
+`migrations_duckdb` (tracked in the file's own `schema_migrations`
+table), creates the SQLite event store beside the file
+(`<file>.events.db`), pre-installs the `fts` extension, and writes the
+config pair (`database.backend` + `database.connection_string`) into
+`config.yaml`. One confirmation covers the run. Re-running is safe.
+
+`corpus-kb doctor` prints a `Storage backend` section. On `duckdb` it
+reports:
+
+- **DuckDB file lock** — one process at a time may open the file. A FAIL
+  names the likely holder: a running server or another DuckDB program.
+- **FTS index watermark** — compares `chunks` rows with the lexical
+  index rows. A stale or missing index rebuilds at the next search.
+- **duckdb extension fts / vss / postgres** — `LOAD` probes on a scratch
+  connection. A failure prints the offline vendoring fix
+  (`extension_directory` plus a one-time `INSTALL` on an online
+  machine). Auto-install stays off.
+- **SQLite event store** — the sidecar opens, holds the library schema,
+  and its event count is readable. A FAIL names the config hazard where
+  the configured path IS the sidecar file.
+- **engine fit** — the engine in use plus a hedged size suggestion:
+  exact-scan search suits roughly 100k chunks; Postgres with HNSW suits
+  more. A suggestion, never a warning.
+
+On `postgres` the section prints the engine line and the same size
+suggestion. `CORPUS_KB_DATABASE_BACKEND` overrides `database.backend`
+for the doctor probe, matching the runtime.
 
 ---
 
