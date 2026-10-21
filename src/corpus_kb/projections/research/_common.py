@@ -1,4 +1,11 @@
-"""Shared helpers for the research projectors (todo-11 (c))."""
+"""Shared helpers for the research projectors (todo-11 (c)).
+
+Every session opens through the storage seam: ``resolve_store`` in the
+projector constructors, :func:`tenant_scope` in the module functions —
+tenant GUC + one transaction on Postgres, the gateway's BEGIN..COMMIT
+scope on DuckDB. SQL that diverges per engine is declared inline (the
+``ANY`` list-membership form only).
+"""
 
 from __future__ import annotations
 
@@ -6,10 +13,8 @@ import logging
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
 from corpus_kb.projections.event_reader import DomainNotification
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.research.conn import Store, dialect_of, tenant_scope
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +44,7 @@ def require_tenant(payload: dict[str, Any], notification: DomainNotification) ->
 
 
 async def store_turn_texts(
-    pool: asyncpg.Pool,
+    store: Store,
     tenant_id: UUID,
     texts_by_sha: dict[str, str],
     media_type: str = "text",
@@ -52,7 +57,7 @@ async def store_turn_texts(
     if not texts_by_sha:
         return 0
     written = 0
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(store, tenant_id) as conn:
         for text_sha, text in texts_by_sha.items():
             result = await conn.execute(
                 """
@@ -65,23 +70,28 @@ async def store_turn_texts(
                 text,
                 media_type,
             )
-            written += 0 if result.endswith("0") else 1
+            written += 0 if str(result).endswith("0") else 1
     return written
 
 
-async def lookup_turn_texts(pool: asyncpg.Pool, tenant_id: UUID, shas: list[str]) -> dict[str, str]:
+_LOOKUP_SHA_ANY_SQL = """
+            SELECT text_sha256, text FROM research_transcript_text
+            WHERE tenant_id = $1 AND text_sha256 = ANY($2)
+            """
+
+_LOOKUP_SHA_LIST_SQL = """
+            SELECT text_sha256, text FROM research_transcript_text
+            WHERE tenant_id = $1 AND list_contains($2::VARCHAR[], text_sha256)
+            """
+
+
+async def lookup_turn_texts(store: Store, tenant_id: UUID, shas: list[str]) -> dict[str, str]:
     """Resolve text_sha256 -> text for projection-side caching (read-only)."""
     if not shas:
         return {}
-    async with tenant_connection(pool, tenant_id) as conn:
-        rows = await conn.fetch(
-            """
-            SELECT text_sha256, text FROM research_transcript_text
-            WHERE tenant_id = $1 AND text_sha256 = ANY($2)
-            """,
-            str(tenant_id),
-            shas,
-        )
+    sql = _LOOKUP_SHA_LIST_SQL if dialect_of(store).is_duckdb else _LOOKUP_SHA_ANY_SQL
+    async with tenant_scope(store, tenant_id) as conn:
+        rows = await conn.fetch(sql, str(tenant_id), shas)
     return {row["text_sha256"]: row["text"] for row in rows}
 
 
@@ -135,3 +145,50 @@ async def upsert_unit(
         bool(turn.get("is_codable", True)),
         turn.get("turn_type"),
     )
+
+
+# List-membership over BIGINT ids: asyncpg binds the list for ``ANY``;
+# DuckDB has no ``= ANY``, so the twin casts the list and uses the engine's
+# ``list_contains`` (the rag/parent_expand precedent).
+_SEQ_ANY_SQL = "seq = ANY($3)"
+_SEQ_LIST_SQL = "list_contains($3::BIGINT[], seq)"
+_UNIT_ANY_SQL = "unit_id = ANY($3)"
+_UNIT_LIST_SQL = "list_contains($3::BIGINT[], unit_id)"
+
+
+async def unit_ids_by_seqs(
+    conn: Any, tenant_id: UUID, doc_id: UUID, seqs: Any, duck: bool
+) -> list[int]:
+    """Resolve turn seqs to unit ids, ascending by seq."""
+    rows = await conn.fetch(
+        f"""
+        SELECT unit_id FROM research_units
+        WHERE tenant_id = $1 AND doc_id = $2 AND {_SEQ_LIST_SQL if duck else _SEQ_ANY_SQL}
+        ORDER BY seq
+        """,
+        str(tenant_id),
+        str(doc_id),
+        [int(s) for s in seqs],
+    )
+    return [int(r["unit_id"]) for r in rows]
+
+
+async def unit_texts_by_ids(
+    conn: Any, tenant_id: UUID, doc_id: UUID, unit_ids: list[int], duck: bool
+) -> dict[int, Any]:
+    """Read unit texts for the given ids (question/qa cache resolution)."""
+    rows = await conn.fetch(
+        f"""
+        SELECT unit_id, text, role_in_exchange FROM research_units
+        WHERE tenant_id = $1 AND doc_id = $2 AND {_UNIT_LIST_SQL if duck else _UNIT_ANY_SQL}
+        """,
+        str(tenant_id),
+        str(doc_id),
+        unit_ids,
+    )
+    return {int(r["unit_id"]): r["text"] for r in rows}
+
+
+def opt_str(value: Any) -> str | None:
+    """None-safe str coercion (the projectors' shared row-value shape)."""
+    return None if value is None else str(value)

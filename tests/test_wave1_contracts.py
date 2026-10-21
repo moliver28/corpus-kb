@@ -10,9 +10,11 @@ Pins the three re-derived integration points end to end, fully offline
     in a 400 JSONResponse; the calibrate-floors backend ValueError path is
     deliberately a 200 with {"status": "error", ...} (see
     CodingHandler.handle_calibrate_floors).
-(b) tenant_conn contract — every coding DB path acquires its connection
-    through corpus_kb.storage.tenant_conn.tenant_connection (identity check
-    on each module's bound symbol, plus spies on the live call sites).
+(b) tenant-scope contract — every coding DB path acquires its connection
+    through corpus_kb.coding._scope.tenant_scope (identity check on each
+    module's bound symbol, plus spies on the live call sites); the Postgres
+    arm of that seam is still the master
+    corpus_kb.storage.tenant_conn.tenant_connection, unchanged.
 (c) Embedder Protocol contract — the instructed embed paths plumb the
     exact QUERY_INSTRUCTION_PREFIX to whatever embedder sits behind them.
 """
@@ -30,6 +32,7 @@ from starlette.testclient import TestClient
 
 from corpus_kb.api.http import create_http_app
 from corpus_kb.coding import floors_calibration, pooling, saturation_query
+from corpus_kb.coding._scope import tenant_scope as master_tenant_scope
 from corpus_kb.coding.floors import calibrate as calibrate_floors_stats
 from corpus_kb.coding.saturation import isr, run_stop
 from corpus_kb.handlers import coding_handler as coding_handler_module
@@ -40,7 +43,6 @@ from corpus_kb.handlers.coding_handler import (
 )
 from corpus_kb.rag import embedder as embedder_module
 from corpus_kb.rag.embedder import QUERY_INSTRUCTION_PREFIX
-from corpus_kb.storage import tenant_conn as tenant_conn_module
 
 _TENANT = "00000000-0000-0000-0000-000000000001"
 
@@ -68,7 +70,7 @@ _SATURATION_KEYS = {
     "should_stop",
 }
 
-# Every module with a coding DB path must bind THE master tenant_connection.
+# Every module with a coding DB path must bind THE shared tenant_scope.
 _CODING_DB_MODULES = (
     "corpus_kb.coding.codebook_loader",
     "corpus_kb.coding.coder_dispatch",
@@ -114,12 +116,12 @@ class _FakeConn:
         return self.fetchrow_results.pop(0) if self.fetchrow_results else None
 
 
-def _spy_tenant_connection(calls: list[tuple[object, UUID]], conn: _FakeConn) -> object:
-    """A tenant_connection stand-in that records (pool, tenant_id) per use."""
+def _spy_tenant_scope(calls: list[tuple[object, UUID]], conn: _FakeConn) -> object:
+    """A tenant_scope stand-in that records (store, tenant_id) per use."""
 
     @asynccontextmanager
-    async def fake(pool: object, tenant_id: UUID) -> AsyncIterator[_FakeConn]:
-        calls.append((pool, tenant_id))
+    async def fake(store: object, tenant_id: UUID) -> AsyncIterator[_FakeConn]:
+        calls.append((store, tenant_id))
         yield conn
 
     return fake
@@ -359,25 +361,40 @@ class TestSaturationRouteContract:
 # ============================================================================
 
 
-class TestTenantConnBindingContract:
+class TestTenantScopeBindingContract:
     @pytest.mark.parametrize("module_name", _CODING_DB_MODULES)
-    def test_module_binds_master_tenant_connection(self, module_name: str) -> None:
+    def test_module_binds_shared_tenant_scope(self, module_name: str) -> None:
         module = importlib.import_module(module_name)
-        assert hasattr(module, "tenant_connection"), (
-            f"{module_name} does not bind tenant_connection"
-        )
-        assert module.tenant_connection is tenant_conn_module.tenant_connection, (
-            f"{module_name} binds a copy, not master's tenant_connection"
+        assert hasattr(module, "tenant_scope"), f"{module_name} does not bind tenant_scope"
+        assert module.tenant_scope is master_tenant_scope, (
+            f"{module_name} binds a copy, not the shared tenant_scope"
         )
 
+    async def test_scope_routes_pools_through_master_tenant_connection(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The Postgres arm keeps today's shape: master tenant_connection."""
+        routed: list[object] = []
 
-class TestSaturationModuleTenantConn:
-    async def test_routes_through_tenant_connection(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        @asynccontextmanager
+        async def fake_master(pool: object, tenant_id: UUID) -> AsyncIterator[str]:
+            routed.append((pool, tenant_id))
+            yield "conn"
+
+        import corpus_kb.coding._scope as scope_module
+
+        monkeypatch.setattr(scope_module, "tenant_connection", fake_master)
+        pool, tenant = object(), uuid4()
+        async with master_tenant_scope(pool, tenant) as conn:
+            assert conn == "conn"
+        assert routed == [(pool, tenant)]
+
+
+class TestSaturationModuleTenantScope:
+    async def test_routes_through_tenant_scope(self, monkeypatch: pytest.MonkeyPatch) -> None:
         calls: list[tuple[object, UUID]] = []
         conn = _FakeConn(fetchval_results=[7, 120])
-        monkeypatch.setattr(
-            saturation_query, "tenant_connection", _spy_tenant_connection(calls, conn)
-        )
+        monkeypatch.setattr(saturation_query, "tenant_scope", _spy_tenant_scope(calls, conn))
         pool, tenant = object(), uuid4()
         result = await saturation_query.compute_saturation(pool, tenant)
         assert len(calls) == 1 and calls[0][0] is pool and calls[0][1] is tenant
@@ -398,9 +415,7 @@ class TestSaturationModuleTenantConn:
             "stop": datetime(2026, 1, 2),
         }
         conn = _FakeConn(fetchval_results=[7, 120, 2], fetchrow_results=[window])
-        monkeypatch.setattr(
-            saturation_query, "tenant_connection", _spy_tenant_connection(calls, conn)
-        )
+        monkeypatch.setattr(saturation_query, "tenant_scope", _spy_tenant_scope(calls, conn))
         result = await saturation_query.compute_saturation(
             object(), uuid4(), batch_id="run-1", threshold=0.05, min_samples=50
         )
@@ -412,8 +427,8 @@ class TestSaturationModuleTenantConn:
         )
 
 
-class TestFloorsCalibrationModuleTenantConn:
-    async def test_routes_through_tenant_connection_and_real_shape(
+class TestFloorsCalibrationModuleTenantScope:
+    async def test_routes_through_tenant_scope_and_real_shape(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls: list[tuple[object, UUID]] = []
@@ -422,9 +437,7 @@ class TestFloorsCalibrationModuleTenantConn:
             fetchval_results=[[1.0, 0.0]],
             fetch_results=[[{"chunk_id": chunk_id, "embedding": [1.0, 0.0]}]],
         )
-        monkeypatch.setattr(
-            floors_calibration, "tenant_connection", _spy_tenant_connection(calls, conn)
-        )
+        monkeypatch.setattr(floors_calibration, "tenant_scope", _spy_tenant_scope(calls, conn))
         pool, tenant, version = object(), uuid4(), uuid4()
         result = await floors_calibration.calibrate_code_floors(
             pool,
@@ -451,20 +464,18 @@ class TestFloorsCalibrationModuleTenantConn:
     ) -> None:
         calls: list[tuple[object, UUID]] = []
         conn = _FakeConn(fetchval_results=[None])
-        monkeypatch.setattr(
-            floors_calibration, "tenant_connection", _spy_tenant_connection(calls, conn)
-        )
+        monkeypatch.setattr(floors_calibration, "tenant_scope", _spy_tenant_scope(calls, conn))
         with pytest.raises(ValueError, match="probe_vector"):
             await floors_calibration.calibrate_code_floors(object(), uuid4(), "x", uuid4(), [], [])
 
 
-class TestPoolingModuleTenantConn:
-    async def test_all_pooling_paths_route_through_tenant_connection(
+class TestPoolingModuleTenantScope:
+    async def test_all_pooling_paths_route_through_tenant_scope(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls: list[tuple[object, UUID]] = []
         conn = _FakeConn(fetchval_results=[0, 0])
-        monkeypatch.setattr(pooling, "tenant_connection", _spy_tenant_connection(calls, conn))
+        monkeypatch.setattr(pooling, "tenant_scope", _spy_tenant_scope(calls, conn))
         pool, tenant, version = object(), uuid4(), uuid4()
         keyword_summary = await pooling.materialize_chunk_keyword_hits(pool, tenant, version)
         similarity_summary = await pooling.run_similarity_pooling(pool, tenant, version)
@@ -481,15 +492,13 @@ class TestPoolingModuleTenantConn:
         }
 
 
-class TestHandlerReliabilityTenantConn:
-    async def test_reliability_routes_through_tenant_connection(
+class TestHandlerReliabilityTenantScope:
+    async def test_reliability_routes_through_tenant_scope(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls: list[tuple[object, UUID]] = []
         conn = _FakeConn()
-        monkeypatch.setattr(
-            coding_handler_module, "tenant_connection", _spy_tenant_connection(calls, conn)
-        )
+        monkeypatch.setattr(coding_handler_module, "tenant_scope", _spy_tenant_scope(calls, conn))
         pool, tenant = object(), uuid4()
         handler = CodingHandler(pool=pool, embedder=None)
         result = await handler.handle_reliability(tenant)

@@ -472,6 +472,12 @@ help = "verify + gen: everything a PR must pass locally"
 # design) and cli -> tools, so the enforced contracts below pin the edges
 # that are true today and would catch a shadow pipeline:
 #   * nothing under tools/ or handlers/ may import the api adapters;
+#   * the gateway layer stays bootstrap-free: storage never imports the
+#     _setup installer (that is why _setup.migrate carries its own
+#     duckdb_dsn_to_path copy of the DSN convention);
+#   * handlers -> _setup stays the SANCTIONED bootstrap edge (apply_schema,
+#     the migration runner — lazy imports in migrate_stream/migrate_roundtrip),
+#     so it must NOT be forbidden here;
 #   * the contracts catalogue stays stdlib-light (no surface imports).
 # ---------------------------------------------------------------------------
 [tool.importlinter]
@@ -488,6 +494,12 @@ name = "handlers must not import api"
 type = "forbidden"
 source_modules = ["corpus_kb.handlers"]
 forbidden_modules = ["corpus_kb.api"]
+
+[[tool.importlinter.contracts]]
+name = "storage must not import the installer"
+type = "forbidden"
+source_modules = ["corpus_kb.storage"]
+forbidden_modules = ["corpus_kb._setup"]
 
 [[tool.importlinter.contracts]]
 name = "contracts must not import surfaces or pipeline packages"

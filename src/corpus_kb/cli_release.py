@@ -73,22 +73,9 @@ def _emit(payload: dict[str, Any], json_output: bool) -> None:
         print(json.dumps(payload, indent=2, default=str))
 
 
-async def _pool_conn():
-    """One asyncpg pool per invocation (the cli.py house pattern)."""
-    import asyncpg
-
-    from corpus_kb.config import load_config
-
-    cfg = load_config()
-    db = cast("dict[str, Any]", cfg.get("database") or {})
-    return await asyncpg.create_pool(str(db.get("connection_string", "")))
-
-
 # ---------------------------------------------------------------------------
 # assess
 # ---------------------------------------------------------------------------
-
-
 @release_app.command("assess")
 def release_assess_cmd(
     codebook_version_id: str = typer.Option(..., "--codebook-version-id", help="Version UUID"),
@@ -101,19 +88,17 @@ def release_assess_cmd(
     async def _run() -> int:
         import json
 
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
 
-        pool = await _pool_conn()
-        try:
+        async with wired_store() as wired:
             result = await release_handlers.assess_release(
-                pool,
+                wired.store,
                 _tenant(),
                 _uuid_or_raise(codebook_version_id),
                 profile_name=profile,
                 run_id=_uuid_or_raise(run_id) if run_id else None,
             )
-        finally:
-            await pool.close()
         payload = result.to_payload()
         if json_output:
             print(json.dumps(payload, indent=2, default=str))
@@ -172,21 +157,19 @@ def release_request_cmd(
     async def _run() -> int:
         import json
 
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
         from corpus_kb.research import guide_copy
 
-        pool = await _pool_conn()
-        try:
+        async with wired_store() as wired:
             result = await release_handlers.request_release(
-                pool,
+                wired.store,
                 _tenant(),
                 _uuid_or_raise(codebook_version_id),
                 creator,
                 codebook_id=_uuid_or_raise(codebook_id) if codebook_id else None,
                 profile_name=profile,
             )
-        finally:
-            await pool.close()
         payload = result.to_payload()
         if json_output:
             print(json.dumps(payload, indent=2, default=str))
@@ -219,18 +202,16 @@ def release_review_cmd(
     async def _run() -> int:
         import json
 
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
 
-        pool = await _pool_conn()
-        try:
+        async with wired_store() as wired:
             result = await release_handlers.review_release(
-                pool,
+                wired.store,
                 _tenant(),
                 _uuid_or_raise(codebook_version_id),
                 _uuid_or_raise(release_id),
             )
-        finally:
-            await pool.close()
         payload = result.to_payload()
         if json_output:
             print(json.dumps(payload, indent=2, default=str))
@@ -296,13 +277,13 @@ def release_execute_cmd(
     async def _run() -> int:
         import json
 
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
 
         pairs = _waiver_pairs(list(waive or []))
-        pool = await _pool_conn()
-        try:
+        async with wired_store() as wired:
             result = await release_handlers.execute_release(
-                pool,
+                wired.store,
                 _tenant(),
                 _uuid_or_raise(codebook_version_id),
                 _uuid_or_raise(release_id),
@@ -310,8 +291,6 @@ def release_execute_cmd(
                 waivers=pairs,
                 run_id=_uuid_or_raise(run_id) if run_id else None,
             )
-        finally:
-            await pool.close()
         payload = result.to_payload()
         if json_output or payload.get("status") == "blocked":
             print(json.dumps(payload, indent=2, default=str))
@@ -345,17 +324,15 @@ def release_status_cmd(
     async def _run() -> int:
         import json
 
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
 
-        pool = await _pool_conn()
-        try:
+        async with wired_store() as wired:
             result = await release_handlers.status_report(
-                pool,
+                wired.store,
                 _tenant(),
                 _uuid_or_raise(codebook_version_id),
             )
-        finally:
-            await pool.close()
         payload = result.to_payload()
         if json_output:
             print(json.dumps(payload, indent=2, default=str))

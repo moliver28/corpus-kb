@@ -100,7 +100,17 @@ def _cli_error_exit(exc: BaseException) -> int | None:
     import psycopg
     from eventsourcing.persistence import PersistenceError
 
+    from corpus_kb.errors import CorpusError
     from corpus_kb.research import guide_copy
+
+    if isinstance(exc, CorpusError):
+        # The typed taxonomy (duckdb connect failures land here through
+        # map_connect_error): one line, the remediation, the mapped exit.
+        print(f"ERROR: {exc}")
+        remediation = getattr(exc, "remediation", "")
+        if remediation:
+            print(remediation)
+        return int(exc.cli_exit)
 
     if isinstance(exc, ValueError):
         # unknown gate name, unknown proposal id, malformed UUID, bad decision

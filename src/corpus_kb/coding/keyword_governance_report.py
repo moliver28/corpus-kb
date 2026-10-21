@@ -17,17 +17,15 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.coding._scope import CodingStore, tenant_scope
 from corpus_kb.coding.keyness import g2, log_odds_dirichlet
 from corpus_kb.coding.keyword_governance import criterial_owner, find_collisions, over_df_cap
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 _DF_CAP_FRACTION = 0.012
 
 
 async def compute_keyword_governance(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
     codebook_version_id: UUID,
     cap_frac: float = _DF_CAP_FRACTION,
@@ -50,7 +48,7 @@ async def compute_keyword_governance(
       combined keyword-hit volume. Also persisted onto code_keywords.ll /
       .log_ratio (both NULL until now) so the score survives past this response.
     """
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         claim_rows = await conn.fetch(
             "SELECT keyword, code_id FROM code_keywords WHERE tenant_id=$1 AND status='active'",
             tenant_id,

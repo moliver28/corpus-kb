@@ -12,14 +12,12 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.coding._scope import CodingStore, tenant_scope
 from corpus_kb.coding.saturation import isr, run_stop
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 
 async def compute_saturation(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
     batch_id: str | None = None,
     threshold: float = 0.05,
@@ -39,7 +37,7 @@ async def compute_saturation(
     calls "discovered so far". Without a batch_id there is no "last run" to
     compare against, so `should_stop` is reported as None rather than guessed.
     """
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         unique_codes = await conn.fetchval(
             "SELECT COUNT(DISTINCT code_id) FROM final_codes "
             "WHERE tenant_id=$1 AND status='accepted'",

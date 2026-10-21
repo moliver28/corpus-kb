@@ -11,7 +11,7 @@ updated by async projections that subscribe to events.
 Usage:
     from corpus_kb.domain.application import get_app
     app = get_app()                          # postgres, DSN from config/env
-    app = get_app(dsn, backend="duckdb")     # sqlite store on a file
+    app = get_app(dsn, backend="duckdb")     # sqlite sidecar beside the .duckdb
     doc = Document(tenant_id=..., source='test.py', source_type='code')
     app.save(doc)  # persists events to the store
 """
@@ -55,29 +55,20 @@ def _postgres_env(conn_str: str) -> dict[str, str]:
     }
 
 
-def _sqlite_path_from_conn_str(conn_str: str) -> str:
-    """Map a duckdb DSN or bare path to a filesystem path for SQLITE_DBNAME.
-
-    The DSN follows the program's duckdb convention: 'duckdb:///C:/x.duckdb'
-    becomes the Windows path 'C:\\x.duckdb'. A bare path passes through,
-    normalized to OS separators. ':memory:' (bare or in a DSN) stays the
-    library's in-memory mode. A POSIX absolute file needs four slashes:
-    'duckdb:////abs/x.duckdb'.
-    """
-    if "://" not in conn_str:
-        return conn_str if conn_str == ":memory:" else os.path.normpath(conn_str)
-    parsed = urlparse(conn_str)
-    if parsed.scheme != "duckdb" or parsed.netloc:
-        raise ConfigError(f"Connection string {conn_str!r} is not a duckdb:/// DSN or a file path.")
-    path = parsed.path.removeprefix("/")
-    return path if path == ":memory:" else os.path.normpath(path)
-
-
 def _sqlite_env(conn_str: str) -> dict[str, str]:
-    """Build the env for the eventsourcing.sqlite module."""
+    """Build the env for the eventsourcing.sqlite module.
+
+    SQLITE_DBNAME is the sidecar file BESIDE the analytics .duckdb —
+    ``storage.duckdb_support.events_sidecar_path`` owns the name, the
+    same helper the migrate-data legs write to. One derivation: a
+    verified migrate plus a backend flip reopens the SAME store, never
+    the locked DuckDB file itself.
+    """
+    from corpus_kb.storage.duckdb_support import events_sidecar_path
+
     return {
         "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-        "SQLITE_DBNAME": _sqlite_path_from_conn_str(conn_str),
+        "SQLITE_DBNAME": events_sidecar_path(conn_str),
         "CREATE_TABLE": "y",
     }
 

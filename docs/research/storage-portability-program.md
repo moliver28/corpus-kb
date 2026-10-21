@@ -326,7 +326,7 @@ Dispatch is dependency-based under the global 4-cap: sp-dialect, sp-es-sqlite, a
 | 2. Registry-first | Catalogue/LEGS changes precede handlers in every phase that touches surfaces |
 | 3. One envelope per family | Guaranteed keys declared; conditional notes follow the embedding_mode shape |
 | 4. Errors via taxonomy | Gateway/duckdb errors map into `ERROR_MAP`; no catch-alls |
-| 5. Layering | SearchBackend protocol lives in `storage/` (implementations import downward); gateway in `storage/`; handlers never import drivers |
+| 5. Layering | SearchBackend protocol lives in `storage/` (implementations import downward); gateway in `storage/`; handlers never import drivers. Import-linter pins it: storage is forbidden `_setup` (the installer edge), while handlers -> `_setup` stays the sanctioned bootstrap edge (apply_schema, migration runner; lazy imports in migrate_stream/migrate_roundtrip) |
 | 6. Plain English | String bank §11.15; Vale + `poe ste` gates |
 | 7. Size/hygiene | New files ≤250 lines (§3.4); xenon re-grades on every port; vulture whitelist discipline |
 | 8. poe gates | Every WP ends at its listed done-when; integrator runs `poe check` |

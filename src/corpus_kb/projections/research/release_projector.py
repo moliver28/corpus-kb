@@ -21,11 +21,9 @@ import json
 import logging
 from typing import Any
 
-import asyncpg
-
 from corpus_kb.projections.research._common import event_payload, require_tenant
+from corpus_kb.research.conn import Store, resolve_store
 from corpus_kb.research.release.manifest import canonical_json_bytes
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +82,8 @@ WHERE release_id = $1 AND tenant_id = $2
 class ReleaseProjector:
     """Projects release lifecycle events into migration 019's tables."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self._pool = pool
+    def __init__(self, pool: Store | None = None, gateway: Any = None) -> None:
+        self._store = resolve_store(pool, gateway)
 
     async def handle(self, notification: Any) -> None:
         """Dispatch one notification on the CodebookVersion aggregate."""
@@ -108,7 +106,7 @@ class ReleaseProjector:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
         manifest = payload.get("manifest_json") or {}
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
                 SQL_INSERT_RELEASE,
                 str(payload["release_id"]),
@@ -128,7 +126,7 @@ class ReleaseProjector:
     async def on_gate_evaluated(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
                 SQL_UPSERT_GATE,
                 str(tenant_id),
@@ -146,7 +144,7 @@ class ReleaseProjector:
     async def on_waiver_recorded(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
                 SQL_INSERT_WAIVER,
                 str(tenant_id),
@@ -160,7 +158,7 @@ class ReleaseProjector:
     async def on_released(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             updated = await conn.execute(
                 SQL_RELEASE,
                 str(payload["release_id"]),
@@ -173,7 +171,7 @@ class ReleaseProjector:
     async def on_superseded(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             updated = await conn.execute(
                 SQL_SUPERSEDE,
                 str(payload["release_id"]),
@@ -186,7 +184,7 @@ class ReleaseProjector:
     async def on_retired(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             updated = await conn.execute(
                 SQL_RETIRE,
                 str(payload["release_id"]),
@@ -200,7 +198,7 @@ class ReleaseProjector:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
         manifest = payload.get("successor_manifest_json") or {}
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
                 SQL_INSERT_RELEASE,
                 str(payload["successor_release_id"]),

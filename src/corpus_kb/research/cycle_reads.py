@@ -32,6 +32,7 @@ from corpus_kb.research.cycle_gates import (
     gate_gray_zone_from_agreement,
     gate_pending_proposals,
 )
+from corpus_kb.storage.gateway import SqlGateway
 
 
 async def gate_findings_for(
@@ -210,7 +211,9 @@ async def version_codes(pool: asyncpg.Pool, tenant_id: UUID, version_id: UUID) -
         return await load_codes(conn, tenant_id, version_id)
 
 
-async def run_checkpoint(pool: asyncpg.Pool, tenant_id: UUID, run_id: UUID) -> dict[str, object]:
+async def run_checkpoint(
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, run_id: UUID
+) -> dict[str, object]:
     from corpus_kb.storage.tenant_conn import tenant_connection
 
     async with tenant_connection(pool, tenant_id) as conn:

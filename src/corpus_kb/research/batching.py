@@ -20,6 +20,7 @@ per-backend (Ollama parallel slots, pool size), not per-deployment.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -97,6 +98,28 @@ WHERE run_id = $1 AND tenant_id = $2
   AND NOT coalesce(checkpoint->'completed', '[]'::jsonb) @> to_jsonb($3::text)
 """
 
+# DuckDB twin: no jsonb_set/to_jsonb/@>. The twin reads the completed
+# array INSIDE the same UPDATE: json_extract_string pulls the elements as
+# a VARCHAR list, the WHERE clause skips the write when the item is
+# already present (UPDATE 0 — the idempotent no-op), and list_append
+# writes the extended array. ONE statement is one atomic row write, so
+# under run_resumable's bounded concurrency two markers can never drop
+# each other's item (a read-merge-write draft could: both read, both
+# merge, the second write clobbers the first).
+_DUCK_MARK_ITEM_SQL = """
+UPDATE research_runs
+SET checkpoint = json_merge_patch(
+    COALESCE(checkpoint, json('{}')),
+    json_object('completed', json(list_append(
+        COALESCE(json_extract_string(checkpoint->'completed', '$[*]'), []::VARCHAR[]),
+        $3
+    )))
+)
+WHERE run_id = $1 AND tenant_id = $2
+  AND NOT list_contains(
+        COALESCE(json_extract_string(checkpoint->'completed', '$[*]'), []::VARCHAR[]), $3)
+"""
+
 
 @dataclass(frozen=True)
 class RunMarker:
@@ -107,7 +130,11 @@ class RunMarker:
 
 
 async def load_completed_items(conn: RunConn, marker: RunMarker) -> set[str]:
-    """The set of item keys already recorded complete for this run."""
+    """The set of item keys already recorded complete for this run.
+
+    asyncpg decodes the jsonb column to a list; DuckDB returns the JSON
+    text form, so string reads parse before the set build.
+    """
     row = await conn.fetchrow(COMPLETED_ITEMS_SQL, marker.run_id, marker.tenant_id)
     if row is None:
         return set()
@@ -115,14 +142,27 @@ async def load_completed_items(conn: RunConn, marker: RunMarker) -> set[str]:
     # so dict and Record both flow through the same read.
     record = cast("Mapping[str, object]", row)
     completed = record.get("completed")
+    if isinstance(completed, str):
+        try:
+            completed = json.loads(completed)
+        except json.JSONDecodeError:
+            return set()
     if not isinstance(completed, (list, tuple)):
         return set()
     return {str(item) for item in completed}
 
 
-async def mark_item_completed(conn: RunConn, marker: RunMarker, item_key: str) -> bool:
-    """Record one item complete; True when the mark was newly appended."""
-    result = await conn.execute(MARK_ITEM_SQL, marker.run_id, marker.tenant_id, item_key)
+async def mark_item_completed(
+    conn: RunConn, marker: RunMarker, item_key: str, duck: bool = False
+) -> bool:
+    """Record one item complete; True when the mark was newly appended.
+
+    Both arms are ONE atomic statement: the UPDATE matches only when the
+    item is not already recorded, so a re-mark is a no-op (UPDATE 0) and
+    concurrent markers cannot lose each other's item on either backend.
+    """
+    sql = _DUCK_MARK_ITEM_SQL if duck else MARK_ITEM_SQL
+    result = await conn.execute(sql, marker.run_id, marker.tenant_id, item_key)
     status = result if isinstance(result, str) else str(result)
     return status.startswith("UPDATE 1")
 
@@ -134,6 +174,7 @@ async def run_resumable(
     key_of: Callable[[T], str],
     fn: Callable[[T], Awaitable[R]],
     concurrency: int = DEFAULT_CONCURRENCY,
+    duck: bool = False,
 ) -> list[R]:
     """Run ``fn`` over the not-yet-completed items, marking each on success.
 
@@ -146,7 +187,7 @@ async def run_resumable(
 
     async def _run_and_mark(item: T) -> R:
         value = await fn(item)
-        await mark_item_completed(conn, marker, key_of(item))
+        await mark_item_completed(conn, marker, key_of(item), duck)
         return value
 
     return await gather_bounded(pending, _run_and_mark, concurrency)
