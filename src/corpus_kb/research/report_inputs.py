@@ -15,6 +15,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.projections.research._embed import _parse_pg_vector
+from corpus_kb.storage.gateway import SqlGateway
 
 ASSIGNMENT_SUMMARY_SQL = """
 SELECT ra.unit_id, ra.code_id, ra.status, ra.evidence_basis, ra.rationale,
@@ -100,7 +101,7 @@ def _jsonb(value: Any) -> dict[str, Any]:
 
 
 async def load_assignment_rows(
-    conn: asyncpg.Connection, tenant_id: UUID, version_id: UUID
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, version_id: UUID
 ) -> list[dict[str, Any]]:
     return [
         {
@@ -131,7 +132,7 @@ async def load_codable_vectors(conn: asyncpg.Connection) -> list[dict[str, Any]]
 
 
 async def load_gold_views_typed(
-    conn: asyncpg.Connection, tenant_id: UUID, refs: list[str]
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, refs: list[str]
 ) -> list[dict[str, Any]]:
     if not refs:
         return []
@@ -194,7 +195,9 @@ async def load_keyword_hit_populations(
     return out
 
 
-async def load_versions(conn: asyncpg.Connection, tenant_id: UUID) -> list[dict[str, Any]]:
+async def load_versions(
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID
+) -> list[dict[str, Any]]:
     return [
         {
             "version_id": str(row["version_id"]),

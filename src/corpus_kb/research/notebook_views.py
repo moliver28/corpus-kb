@@ -15,7 +15,7 @@ Three project-scoped read views over the research read models:
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
@@ -36,6 +36,7 @@ from corpus_kb.research.report_inputs import (
     load_gold_views_typed,
     load_versions,
 )
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 CONFIDENCE_TIERS: dict[str, int] = {"high": 0, "medium": 1, "low": 2}
@@ -68,7 +69,7 @@ ORDER BY started_at DESC LIMIT 1
 
 
 async def evidence_for_code(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     code: str,
     project_id: UUID | None = None,
@@ -152,7 +153,9 @@ async def evidence_for_code(
     }
 
 
-async def _conformal_per_unit(conn: asyncpg.Connection, tenant_id: UUID) -> dict[int, int]:
+async def _conformal_per_unit(
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID
+) -> dict[int, int]:
     """Per-unit conformal set sizes (>1 only) from the latest run checkpoint."""
     row = await conn.fetchrow(_LATEST_RUN_SQL, str(tenant_id))
     if row is None:
@@ -165,7 +168,7 @@ async def _conformal_per_unit(conn: asyncpg.Connection, tenant_id: UUID) -> dict
 
 
 async def uncoded_units(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     embedder: ResearchEmbedder,
     tenant_id: UUID,
     project_id: UUID | None = None,
@@ -230,7 +233,12 @@ async def uncoded_units(
         # Scan depth = ALL codable units: a filtered HNSW scan can return
         # fewer rows than LIMIT (filtered-search gotcha), so the radar must
         # over-fetch the full codable set before the NOT EXISTS filter.
-        ranked = await uncoded_units_ranking(conn, prototypes, max(n_codable, k))
+        # analytics_sql keeps the asyncpg.Connection annotation until the
+        # research-store port (sp-research-port) widens it; the gateway
+        # satisfies the same fetch surface.
+        ranked = await uncoded_units_ranking(
+            cast("asyncpg.Connection", conn), prototypes, max(n_codable, k)
+        )
         scoped = ranked
         if project_id is not None:
             project_ids = {
@@ -261,7 +269,7 @@ async def uncoded_units(
 
 
 async def overlap_view(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     project_id: UUID | None = None,
     version_id: UUID | None = None,
@@ -309,7 +317,7 @@ async def overlap_view(
 
 
 async def _codes_of(
-    conn: asyncpg.Connection, tenant_id: UUID, version_id: UUID
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, version_id: UUID
 ) -> list[tuple[str, dict[str, Any]]]:
     rows = await conn.fetch(
         "SELECT code_id, theory FROM code_registry "
@@ -341,7 +349,7 @@ def _unit_margins(assignments: list[dict[str, Any]]) -> dict[int, float]:
 
 
 async def _unit_details(
-    conn: asyncpg.Connection, tenant_id: UUID, unit_ids: list[int]
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, unit_ids: list[int]
 ) -> list[dict[str, Any]]:
     if not unit_ids:
         return []

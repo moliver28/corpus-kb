@@ -13,6 +13,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.projections.research._embed import _parse_pg_vector
+from corpus_kb.storage.gateway import SqlGateway
 
 CENTROID_SQL = """
 SELECT ra.code_id, avg(ru.embedding_256) AS centroid, COUNT(*) AS n_units
@@ -41,7 +42,7 @@ WHERE u.unit_id = ANY($1::bigint[])
 
 
 async def code_centroids_256(
-    conn: asyncpg.Connection, codebook_version_id: UUID
+    conn: asyncpg.Connection | SqlGateway, codebook_version_id: UUID
 ) -> dict[str, list[float]]:
     """Per-code answer-space centroids: SQL avg() over embedding_256."""
     rows = await conn.fetch(CENTROID_SQL, str(codebook_version_id))
@@ -53,7 +54,7 @@ async def code_centroids_256(
 
 
 async def coded_unit_vectors_256(
-    conn: asyncpg.Connection, codebook_version_id: UUID
+    conn: asyncpg.Connection | SqlGateway, codebook_version_id: UUID
 ) -> list[dict[str, Any]]:
     """Assigned units' 256-d vectors + code ids (overlap/silhouette inputs)."""
     rows = await conn.fetch(CODED_VECTORS_SQL, str(codebook_version_id))

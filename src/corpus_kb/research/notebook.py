@@ -16,13 +16,14 @@ from __future__ import annotations
 import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
 
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.research.retrieval import Citation, ResearchQuery, research_search
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 CONFIDENCE_FLOORS: dict[str, tuple[str, ...]] = {
@@ -78,7 +79,9 @@ def validate_notebook_filters(min_confidence: str | None, review_status: str | N
     return None
 
 
-async def resolve_code(pool: asyncpg.Pool, tenant_id: UUID, code: str) -> dict[str, object] | None:
+async def resolve_code(
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, code: str
+) -> dict[str, object] | None:
     """Resolve a code NAME or UUID against the newest codebook version."""
     try:
         UUID(code)
@@ -184,7 +187,7 @@ async def enrich_citations(
             """,
             doc_ids,
         )
-    by_doc: dict[str, dict[int, asyncpg.Record]] = {}
+    by_doc: dict[str, dict[int, asyncpg.Record | dict[str, Any]]] = {}
     for row in unit_rows:
         by_doc.setdefault(str(row["doc_id"]), {})[int(row["seq"])] = row
 

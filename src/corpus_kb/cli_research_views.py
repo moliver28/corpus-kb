@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, cast
 
 import typer
 
-from corpus_kb.cli_support import _pid, _run_async, _tenant, cast_dict, wired_pool
+from corpus_kb.cli_support import _pid, _run_async, _tenant, cast_dict
 
 if TYPE_CHECKING:
     from corpus_kb.projections.research._embed import ResearchEmbedder
@@ -51,11 +51,12 @@ def _evidence_coroutine(
     import json
 
     async def _run() -> int:
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.research.notebook_views import evidence_for_code
 
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             result = await evidence_for_code(
-                wired.pool,
+                wired.store,
                 _tenant(),
                 code,
                 project_id=_pid(project_id),
@@ -110,11 +111,12 @@ def _uncoded_coroutine(project_id: str | None, version_id: str | None, k: int, j
     import json
 
     async def _run() -> int:
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.research.notebook_views import uncoded_units
 
-        async with wired_pool(embedder=True) as wired:
+        async with wired_store(embedder=True) as wired:
             result = await uncoded_units(
-                wired.pool,
+                wired.store,
                 cast("ResearchEmbedder", wired.embedder),
                 _tenant(),
                 project_id=_pid(project_id),
@@ -155,11 +157,12 @@ def _overlap_coroutine(project_id: str | None, version_id: str | None, json_outp
     import json
 
     async def _run() -> int:
+        from corpus_kb.cli_store import wired_store
         from corpus_kb.research.notebook_views import overlap_view
 
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             result = await overlap_view(
-                wired.pool,
+                wired.store,
                 _tenant(),
                 project_id=_pid(project_id),
                 version_id=_pid(version_id),

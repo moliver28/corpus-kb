@@ -16,6 +16,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.projections.research._embed import _parse_pg_vector
+from corpus_kb.storage.gateway import SqlGateway
 
 
 @dataclass(frozen=True)
@@ -92,7 +93,7 @@ async def load_unit_views(
 
 
 async def load_codes(
-    conn: asyncpg.Connection, tenant_id: UUID, version_id: UUID
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, version_id: UUID
 ) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
