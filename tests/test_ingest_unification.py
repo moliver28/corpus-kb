@@ -150,7 +150,7 @@ def _install_stubs(monkeypatch: pytest.MonkeyPatch) -> tuple[_FakePool, _SavedAg
     monkeypatch.setattr(ingest_module, "PostgresIngestStore", _StubStore)
     pool = _FakePool()
     saved = _SavedAggregate()
-    monkeypatch.setattr(command_handler_module, "get_app", lambda: saved)
+    monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: saved)
     command_handler_module.reset_command_handler()
     command_handler_module.get_command_handler(config=_ingest_config(), pool=pool)
     return pool, saved

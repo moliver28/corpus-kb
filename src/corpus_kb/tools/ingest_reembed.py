@@ -5,7 +5,9 @@ Stage-3 handler behind ``corpus-kb ingest-reembed`` and the MCP/HTTP
 reembed surfaces. ``ingest_common`` re-exports it. The vector-write
 config reads (model, dimensions, matryoshka dim) come from the shared
 ``vector_write_config`` so a repair and a fresh ingest read them
-identically.
+identically. Writes go through the SqlGateway (``ingest_sql`` carries the
+per-backend statement variants); the Postgres SQL text stays
+byte-identical.
 
 Config-v2 extension: the repair ALSO targets STALE rows —
 ``chunks_vectors.embedding IS NULL`` — which is the state migration 025
@@ -19,19 +21,32 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import asyncpg
+
 from ..utils.models import Chunk
 from .ingest_cfg import matryoshka_slice, vector_write_config
 from .ingest_embed import _all_zero, build_embedding_input, embed_chunks
-from .ingest_store import DEFAULT_TENANT_ID
+from .ingest_sql import (
+    COLUMNS_PROBE_DUCKDB,
+    COLUMNS_PROBE_PG,
+    DEGRADED_CLEAR_DUCKDB,
+    DEGRADED_CLEAR_PG,
+    REPAIR_SQL_DUCKDB,
+    REPAIR_SQL_PG,
+    SCAN_SQL_DUCKDB,
+    SCAN_SQL_PG,
+    vector_write_params,
+)
+from .ingest_store import DEFAULT_TENANT_ID, as_gateway, gateway_backend
 
 if TYPE_CHECKING:
-    import asyncpg
+    from ..storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
 
 
 async def reembed_degraded(
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object],
     tenant_id: str = DEFAULT_TENANT_ID,
     limit: int | None = None,
@@ -56,19 +71,15 @@ async def reembed_degraded(
     ``stale`` count (repaired rows that were stale rather than degraded)
     is added only when non-zero, per the conditional-envelope contract.
     """
-    async with pg_pool.acquire() as conn, conn.transaction():
-        # set_config FIRST inside the transaction: a LOCAL GUC issued on an
-        # autocommit connection evaporates with its statement, so the reads
-        # below would run GUC-less and match zero rows on FORCE-RLS
-        # deployments (the ingest_store ledger-method pattern).
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
-        present = await conn.fetchval(
-            """
-            SELECT count(*) FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = ANY($1::text[])
-              AND column_name = 'degraded'
-            """,
-            ["chunks", "chunks_vectors"],
+    gateway = as_gateway(pg_pool)
+    pool = pg_pool if isinstance(pg_pool, asyncpg.Pool) else None
+    is_duckdb = gateway_backend(gateway) == "duckdb"
+    async with gateway.transaction(tenant_id) as tx:
+        # The DuckDB probe hardcodes the table names (duckdb_columns()); the
+        # engine rejects unused bound parameters, so only the PG probe binds.
+        present = await tx.fetchval(
+            COLUMNS_PROBE_DUCKDB if is_duckdb else COLUMNS_PROBE_PG,
+            *(() if is_duckdb else (["chunks", "chunks_vectors"],)),
         )
         if present != 2:
             return {
@@ -81,19 +92,8 @@ async def reembed_degraded(
                 "fixed": 0,
                 "failed": 0,
             }
-        rows = await conn.fetch(
-            """
-            SELECT cv.chunk_id::text AS chunk_id, c.doc_id::text AS doc_id,
-                   c.text, c.context_blurb,
-                   (cv.embedding IS NULL) AS was_stale
-            FROM chunks_vectors cv
-            JOIN chunks c ON c.chunk_id = cv.chunk_id
-            WHERE cv.tenant_id = $1
-              AND (cv.degraded = TRUE OR c.degraded = TRUE OR cv.embedding IS NULL)
-              AND ($2::uuid IS NULL OR c.doc_id = $2::uuid)
-            ORDER BY cv.embedded_at NULLS LAST
-            LIMIT $3
-            """,
+        rows = await tx.fetch(
+            SCAN_SQL_DUCKDB if is_duckdb else SCAN_SQL_PG,
             tenant_id,
             doc_id,
             limit if limit is not None else 2**31 - 1,
@@ -120,7 +120,7 @@ async def reembed_degraded(
     # mode/note in the summary instead of silently mixing spaces.
     embed_meta: dict[str, object] = {}
     degraded, embed_err = await embed_chunks(
-        chunks, config, pool=pg_pool, text_override=text_override, meta=embed_meta
+        chunks, config, pool=pool, text_override=text_override, meta=embed_meta
     )
     if embed_err is not None:
         logger.warning("reembed_degraded: %s", embed_err)
@@ -129,13 +129,14 @@ async def reembed_degraded(
 
     stale_by_chunk = {row["chunk_id"] for row in rows if row["was_stale"]}
     fixed, failed, stale = await _write_repairs(
-        pg_pool,
+        gateway,
         tenant_id=tenant_id,
         chunks=chunks,
         stale_by_chunk=stale_by_chunk,
         embedding_model=embedding_model,
         dimensions=dimensions,
         v1024_dim=v1024_dim,
+        is_duckdb=is_duckdb,
     )
     summary: dict[str, object] = {
         "status": "success",
@@ -159,7 +160,7 @@ async def reembed_degraded(
 
 
 async def _write_repairs(
-    pg_pool: asyncpg.Pool,
+    gateway: SqlGateway,
     *,
     tenant_id: str,
     chunks: list[Chunk],
@@ -167,53 +168,38 @@ async def _write_repairs(
     embedding_model: str,
     dimensions: int,
     v1024_dim: int | None,
+    is_duckdb: bool,
 ) -> tuple[int, int, int]:
     """Write the repaired vectors; return (fixed, failed, stale) counts.
 
-    One transaction, tenant GUC first: the UPDATEs additionally pin
-    tenant_id explicitly so a missing/lost tenant context can never match
-    (or, worse, clear flags on) another tenant's rows. All-zero output
-    leaves the row flagged and counts as failed — a repair that produced
-    the degraded-mode marker is a failure, never a silent "fix".
+    One transaction scope, tenant context first. The UPDATEs additionally
+    pin tenant_id explicitly so a missing/lost tenant context can never
+    match (or, worse, clear flags on) another tenant's rows. All-zero
+    output leaves the row flagged and counts as failed — a repair that
+    produced the degraded-mode marker is a failure, never a silent "fix".
     """
     fixed = 0
     failed = 0
     stale = 0
-    async with pg_pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
+    repair_sql = REPAIR_SQL_DUCKDB if is_duckdb else REPAIR_SQL_PG
+    clear_sql = DEGRADED_CLEAR_DUCKDB if is_duckdb else DEGRADED_CLEAR_PG
+    async with gateway.transaction(tenant_id) as tx:
         for chunk in chunks:
             if chunk.embedding is None or _all_zero([chunk.embedding]):
                 failed += 1
                 continue
-            vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
-            v1024: str | None = None
-            if v1024_dim is not None:
-                v1024 = (
-                    "["
-                    + ",".join(str(v) for v in matryoshka_slice(chunk.embedding, v1024_dim))
-                    + "]"
-                )
-            await conn.execute(
-                """
-                UPDATE chunks_vectors
-                SET embedding = $2::halfvec,
-                    vector_1024 = COALESCE($3::vector, chunks_vectors.vector_1024),
-                    embedding_model = $4, dimensions = $5,
-                    embedded_at = NOW(), degraded = FALSE
-                WHERE chunk_id = $1::uuid AND tenant_id = $6
-                """,
+            v1024 = matryoshka_slice(chunk.embedding, v1024_dim) if v1024_dim is not None else None
+            embedding_param, v1024_param = vector_write_params(chunk.embedding, v1024)
+            await tx.execute(
+                repair_sql,
                 chunk.chunk_id,
-                vector_str,
-                v1024,
+                embedding_param,
+                v1024_param,
                 embedding_model,
                 dimensions,
                 tenant_id,
             )
-            await conn.execute(
-                "UPDATE chunks SET degraded = FALSE WHERE chunk_id = $1::uuid AND tenant_id = $2",
-                chunk.chunk_id,
-                tenant_id,
-            )
+            await tx.execute(clear_sql, chunk.chunk_id, tenant_id)
             fixed += 1
             if chunk.chunk_id in stale_by_chunk:
                 stale += 1

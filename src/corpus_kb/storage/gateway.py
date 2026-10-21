@@ -65,6 +65,17 @@ class SqlGateway(Protocol):
         raise NotImplementedError
 
 
+def is_gateway(store: asyncpg.Pool | SqlGateway) -> bool:
+    """True for SqlGateway stores: a transaction scope, no pool acquire.
+
+    The handlers' engine dispatch duck-types on purpose: anything else
+    (asyncpg pools, MagicMock pools, fetch-only test fakes) stays on the
+    shipped pool path. ``isinstance(x, SqlGateway)`` cannot do this — the
+    protocol is runtime-checkable, so a MagicMock pool passes it.
+    """
+    return not hasattr(store, "acquire") and hasattr(store, "transaction")
+
+
 class PostgresGateway:
     """Thin asyncpg wrapper. SQL text and status tags stay byte-identical."""
 

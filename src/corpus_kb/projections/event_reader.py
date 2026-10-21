@@ -28,6 +28,7 @@ this code path (SELECT only).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass
@@ -36,6 +37,8 @@ from typing import Any
 
 import asyncpg
 from eventsourcing.persistence import StoredEvent
+
+from corpus_kb.errors import InternalError
 
 logger = logging.getLogger(__name__)
 
@@ -71,17 +74,61 @@ class DomainNotification:
 
 
 class EventReader:
-    """Reads the lib's events table by notification_id, decoding via the Mapper."""
+    """Reads the event store by notification_id, decoding via the Mapper.
 
-    def __init__(self, pool: asyncpg.Pool, mapper: Any, events_table: str) -> None:
-        if not _IDENTIFIER.match(events_table):
-            raise ValueError(f"unsafe events table name: {events_table!r}")
+    Two read modes behind one API (storage portability program §7):
+
+    - ``recorder`` given: the eventsourcing recorder API
+      (``select_notifications``) — the portability path. On a duckdb
+      deployment the event store is the lib's SQLite file, which only the
+      recorder may open; the read runs in a worker thread because recorder
+      calls are synchronous. The same API serves the Postgres recorder.
+    - no ``recorder`` (the pinned positional construction): the legacy
+      Postgres SELECT over the lib's events table, byte-identical to the
+      pre-port reader.
+    """
+
+    def __init__(
+        self,
+        pool: asyncpg.Pool | None,
+        mapper: Any,
+        events_table: str,
+        *,
+        recorder: Any = None,
+    ) -> None:
         self._pool = pool
         self._mapper = mapper
         self._events_table = events_table
+        self._recorder = recorder
+        if recorder is None:
+            if not _IDENTIFIER.match(events_table):
+                raise ValueError(f"unsafe events table name: {events_table!r}")
+            if pool is None:
+                raise ValueError("EventReader needs a pool when no recorder is given")
 
     async def read_since(self, last_sequence: int, limit: int = 500) -> list[DomainNotification]:
         """Return events with notification_id > last_sequence, in sequence order."""
+        if self._recorder is not None:
+            return await self._read_since_recorder(last_sequence, limit)
+        return await self._read_since_pool(last_sequence, limit)
+
+    async def _read_since_recorder(
+        self, last_sequence: int, limit: int
+    ) -> list[DomainNotification]:
+        # inclusive_of_start=False keeps the strict "greater than the stored
+        # position" contract the pool path has always had.
+        notifications = await asyncio.to_thread(
+            lambda: self._recorder.select_notifications(
+                start=last_sequence, limit=limit, inclusive_of_start=False
+            )
+        )
+        return [
+            self._decode(n.id, n.originator_id, n.originator_version, n.topic, n.state)
+            for n in notifications
+        ]
+
+    async def _read_since_pool(self, last_sequence: int, limit: int) -> list[DomainNotification]:
+        assert self._pool is not None
         rows = await self._pool.fetch(
             f"""
             SELECT notification_id, originator_id, originator_version, topic, state
@@ -93,21 +140,46 @@ class EventReader:
             last_sequence,
             limit,
         )
-        notifications: list[DomainNotification] = []
-        for row in rows:
-            stored = StoredEvent(
-                originator_id=row["originator_id"],
-                originator_version=row["originator_version"],
-                topic=row["topic"],
-                state=bytes(row["state"]),
+        return [
+            self._decode(
+                row["notification_id"],
+                row["originator_id"],
+                row["originator_version"],
+                row["topic"],
+                row["state"],
             )
-            notifications.append(
-                DomainNotification(
-                    notification_id=int(row["notification_id"]),
-                    originator_id=str(row["originator_id"]),
-                    originator_version=int(row["originator_version"]),
-                    topic=row["topic"],
-                    event=self._mapper.to_domain_event(stored),
-                )
+            for row in rows
+        ]
+
+    def _decode(
+        self,
+        notification_id: int,
+        originator_id: Any,
+        originator_version: int,
+        topic: str,
+        state: Any,
+    ) -> DomainNotification:
+        """One stored row -> DomainNotification via the app's Mapper.
+
+        ``state`` is the lib's compressed JSON. A None state means a
+        corrupt store row; that fails typed here rather than tripping a
+        raw ``TypeError`` inside ``bytes(state)``.
+        """
+        if state is None:
+            raise InternalError(
+                f"Event store row {notification_id} carries no state.",
+                remediation="Check the event store table for damage. Restore it, then retry.",
             )
-        return notifications
+        stored = StoredEvent(
+            originator_id=originator_id,
+            originator_version=originator_version,
+            topic=topic,
+            state=bytes(state),
+        )
+        return DomainNotification(
+            notification_id=int(notification_id),
+            originator_id=str(originator_id),
+            originator_version=int(originator_version),
+            topic=topic,
+            event=self._mapper.to_domain_event(stored),
+        )

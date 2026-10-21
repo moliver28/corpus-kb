@@ -32,6 +32,7 @@ __all__ = [
     "_BACKOFF_SECONDS",
     "_MAX_PLACEHOLDERS",
     "Row",
+    "vector_literal",
 ]
 
 #: The gateway row type: asyncpg's Record on Postgres, key-and-position
@@ -67,6 +68,21 @@ _CORPUS_QUALIFIED_RE = re.compile(r"\bcorpus\s*\.", re.IGNORECASE)
 def duckdb_path_to_conn_string(path: str | Path) -> str:
     """Convert an OS path to a ``duckdb:///`` connection string."""
     return f"duckdb:///{str(path).replace(chr(92), '/')}"  # chr(92) = backslash
+
+
+def vector_literal(vector: list[float]) -> str:
+    """Pack one vector as the bind-ready compact ``[v1,v2,...]`` varchar.
+
+    THE one canonical formatter (storage portability program: four
+    pre-merge copies deduped here). DuckDB 1.4.5 converts a bound
+    fixed-size ARRAY parameter (list or numpy array) in about 2.7 s per
+    2560-float statement; the varchar plus an explicit ``FLOAT[k]`` cast
+    in the SQL costs about 10 ms. ``.9g`` is float32-faithful (``repr``
+    is not, past nine significant digits) and deterministic, so equal
+    vectors bind equal strings and replays score identically. The caller
+    writes the cast (``$n::FLOAT[k]``) next to the placeholder.
+    """
+    return "[" + ",".join(format(float(v), ".9g") for v in vector) + "]"
 
 
 def duckdb_conn_string_to_path(conn_string: str) -> str:

@@ -1,22 +1,18 @@
 """Command handler — the event-sourcing envelope over the shared tools.
 
 The pipelines live in the tool layer: ``ingest_file``/``ingest_directory``
-(binary-safe, strategy-aware; the directory walk is THE one walk, filtered
-by ``ingest_watch.WATCH_SUFFIXES``), ``ingest_text`` (document type
-whitelist), and ``delete_document`` (real tenant-honored row delete plus
-the aggregate audit). This handler runs the shared tool function, then
-attaches the audit events — see ``_attach_events`` and
-``handlers.delete_audit.attach_delete_event``.
+(binary-safe, strategy-aware; the directory walk is THE one walk),
+``ingest_text`` (document type whitelist), and ``delete_document`` (real
+tenant-honored row delete plus the aggregate audit). This handler runs
+the shared tool function, then attaches the audit events
+(``_attach_events`` / ``handlers.delete_audit.attach_delete_event``).
 
 Envelope contract: the HTTP/socket response is the tool envelope EXACTLY,
 plus the DECLARED additive wrapper keys ``aggregate_id``/``aggregate_version``
 (``event_sourcing_error`` appears only when event sourcing failed after a
 successful pipeline). ``source_type`` means ONE thing everywhere: an
-ingestion-STRATEGY override on file ingest, the whitelisted DOCUMENT type on
-text ingest; the detected document type comes back in the envelope and is
-copied into the event row so the ledger stays coherent.
-
-Usage: ``await get_command_handler(pool).handle_ingest_file(cmd)``
+ingestion-STRATEGY override on file ingest, the whitelisted DOCUMENT type
+on text ingest.
 """
 
 from __future__ import annotations
@@ -28,7 +24,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.domain.aggregates import Document, Entity, Relation
-from corpus_kb.domain.application import get_app
+from corpus_kb.domain.application import get_app_for_config
 from corpus_kb.domain.models import (
     AddEntityCommand,
     AddRelationCommand,
@@ -38,6 +34,7 @@ from corpus_kb.domain.models import (
     IngestTextCommand,
 )
 from corpus_kb.handlers.delete_audit import attach_delete_event
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.tools.ingest_common import ingest_text as ingest_text_tool
 from corpus_kb.tools.ingest_common import load_config_or_pass
 from corpus_kb.tools.ingest_tools import delete_document as delete_document_tool
@@ -48,26 +45,31 @@ logger = logging.getLogger(__name__)
 
 
 class CommandHandler:
-    """Dispatches commands to domain aggregates via the eventsourcing app.
-
-    Ingest commands run the shared tool pipeline, then fire audit events;
-    entity/relation commands create aggregates directly.
+    """Dispatches commands to domain aggregates via the eventsourcing app:
+    ingest tools plus audit events; entity/relation aggregates directly.
     """
 
     def __init__(
         self,
         config: dict[str, Any] | None = None,
         pool: asyncpg.Pool | None = None,
+        gateway: SqlGateway | None = None,
     ) -> None:
         self._config = load_config_or_pass(config)
         self._pool = pool
+        self._gateway = gateway
         self._app = None  # lazy init — only needed when Postgres is up
 
     @property
     def app(self):
-        """Lazy-load the eventsourcing app (requires Postgres)."""
+        """Lazy-load the eventsourcing app (Postgres pool or sqlite file).
+
+        The backend switch is the bank text in
+        :func:`domain.application.get_app_for_config` — the one
+        resolution every event-store caller shares.
+        """
         if self._app is None:
-            self._app = get_app()
+            self._app = get_app_for_config(self._config)
         return self._app
 
     def _require_pool(self) -> asyncpg.Pool:
@@ -102,8 +104,8 @@ class CommandHandler:
         """Ingest a directory through the ONE shared walk, then audit files.
 
         The tool owns the walk, the ``WATCH_SUFFIXES`` filter, and the
-        aggregate envelope. This wrapper only attaches the per-file audit
-        events, exactly like :meth:`handle_ingest_file` does per call.
+        aggregate envelope; this wrapper attaches the per-file audit
+        events exactly like :meth:`handle_ingest_file` does per call.
         """
         result = await ingest_directory_tool(
             cmd.directory_path,
@@ -170,18 +172,21 @@ class CommandHandler:
         """Delete one document through the ONE shared tool implementation.
 
         ``tools.ingest_tools.delete_document`` owns the real row delete
-        (tenant-honored, idempotent). This wrapper then attaches the
-        Deleted audit event — the same additive wrapper pattern as the
-        ingest audit in ``_attach_events``. It is async because the shared
-        implementation is async (asyncpg).
+        (tenant-honored, idempotent); this wrapper then attaches the
+        Deleted audit event — the ingest-audit additive pattern again.
+        The row store is the pool on Postgres; on DuckDB there is no
+        asyncpg pool, so the constructor's analytics gateway serves it.
         """
+        store = self._pool if self._pool is not None else self._gateway
+        if store is None:
+            raise RuntimeError("CommandHandler needs an asyncpg pool or a gateway for deletes.")
         result = await delete_document_tool(
             str(cmd.doc_id),
-            self._require_pool(),
+            store,
             self._config,
             tenant_id=str(cmd.tenant_id),
         )
-        return attach_delete_event(result, str(cmd.doc_id))
+        return attach_delete_event(result, str(cmd.doc_id), config=self._config)
 
     def _attach_events(
         self,
@@ -191,10 +196,8 @@ class CommandHandler:
     ) -> dict[str, Any]:
         """Attach the audit trail to a SUCCESSFUL tool envelope.
 
-        The Document aggregate records the DOCUMENT source type from the
-        envelope (the pipeline's detection result) — never the caller's
-        strategy override. Non-success envelopes pass through unchanged:
-        the tool layer already reported honestly.
+        The aggregate records the envelope's DOCUMENT source type (never
+        the caller's strategy override). Non-success envelopes pass through.
         """
         if result.get("status") != "success":
             return result
@@ -229,15 +232,16 @@ _command_handler: CommandHandler | None = None
 def get_command_handler(
     config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | None = None,
+    gateway: SqlGateway | None = None,
 ) -> CommandHandler:
     """Get or create the singleton CommandHandler.
 
-    Passing ``pool`` on an existing singleton updates its pool, so a lazily
-    wired surface always sees the live pool server_wiring created.
+    Passing ``pool`` on an existing singleton updates its pool, so a
+    lazily wired surface always sees the live pool server_wiring created.
     """
     global _command_handler
     if _command_handler is None:
-        _command_handler = CommandHandler(config, pool)
+        _command_handler = CommandHandler(config, pool, gateway)
     elif pool is not None:
         _command_handler._pool = pool
     return _command_handler

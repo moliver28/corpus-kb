@@ -181,6 +181,22 @@ def dsn_from_config(cfg: dict[str, Any] | None) -> str | None:
     return str((cfg.get("database") or {}).get("connection_string", "") or "") or None
 
 
+def get_app_for_config(cfg: dict[str, Any] | None) -> CorpusApplication:
+    """The config-truth app resolution shared by every event-store caller.
+
+    ``database.backend`` is the switch: the default keeps the bare
+    ``get_app()`` resolution (env var first, then config.yaml);
+    ``duckdb`` keys the app cache on the config DSN with the
+    ``eventsourcing.sqlite`` store, which must NOT be the analytics
+    ``.duckdb`` (SQLite cannot open it).
+    """
+    db_cfg = (cfg or {}).get("database", {})
+    dsn = dsn_from_config(cfg)
+    if str(db_cfg.get("backend") or "postgres") == "duckdb":
+        return get_app(dsn or "", backend="duckdb")
+    return get_app()
+
+
 def get_app(connection_string: str | None = None, backend: str = "postgres") -> CorpusApplication:
     """Get or create the CorpusApplication cached under (backend, conn_str).
 

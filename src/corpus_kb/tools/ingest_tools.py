@@ -1,9 +1,11 @@
 """MCP ingest tools for Corpus-KB.
 
-All ingest functions are async and require an asyncpg.Pool for Postgres writes.
-``source_type`` overrides on ingest_file/ingest_directory/ingest_url name a
-REGISTERED INGESTION STRATEGY (explicit resolution precedence); unknown names
-return a clear error listing the valid strategies.
+All ingest functions are async and take the storage seam: an asyncpg.Pool
+(Postgres) or any ``SqlGateway`` (e.g. ``DuckDbGateway``) — one pipeline,
+both backends. ``source_type`` overrides on ingest_file/ingest_directory/
+ingest_url name a REGISTERED INGESTION STRATEGY (explicit resolution
+precedence); unknown names return a clear error listing the valid
+strategies.
 
 ``ingest_url`` lives in ``ingest_url_tools.py`` (250-line soft limit; the
 registration helper there is private plumbing) and is re-exported here so the
@@ -19,7 +21,9 @@ import asyncpg
 
 from ..ingest_watch import WATCH_SUFFIXES
 from ..ingestion.registry import strategy_names
+from ..storage.gateway import SqlGateway
 from .ingest_common import DEFAULT_TENANT_ID, ingest_text, load_config_or_pass, run_pipeline
+from .ingest_store import as_gateway, gateway_backend
 from .ingest_surface_tools import ingest_reembed, ingest_status
 from .ingest_url_tools import ingest_url
 
@@ -50,7 +54,7 @@ def _validate_strategy_override(source_type: str) -> str | None:
 
 async def ingest_file(
     file_path: str,
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
     source_type: str | None = None,
@@ -87,7 +91,7 @@ async def ingest_file(
 
 async def ingest_directory(
     directory_path: str,
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
     source_type: str | None = None,
@@ -150,7 +154,7 @@ async def ingest_directory(
 
 
 async def list_documents(
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     limit: int = 100,
@@ -167,9 +171,10 @@ async def list_documents(
     from ..handlers.query_handler import QueryHandler
 
     query = ListDocumentsQuery(tenant_id=UUID(tenant_id), limit=limit, offset=offset)
-    # Built over the caller's pool (not the get_query_handler singleton):
+    # Built over the caller's storage seam (not the get_query_handler singleton):
     # the singleton pins the first pool it sees, and this tool is handed a
-    # pool explicitly.
+    # pool or gateway explicitly. The query handler takes the engine union,
+    # so a DuckDB gateway serves the read the same way a pool does.
     handler = QueryHandler(pg_pool, config=load_config_or_pass(config))
     results = await handler.handle_list_documents(query)
     return {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
@@ -177,33 +182,38 @@ async def list_documents(
 
 async def delete_document(
     document_id: str,
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
 ) -> dict[str, object]:
     """Delete a document row by ID. This is the ONE delete implementation.
 
     MCP and HTTP both route through this function. The delete runs in one
-    transaction with the tenant GUC set, so row-level security sees it.
-    Chunks, vectors, tags, metadata, and research rows cascade. Entity and
-    relation rows stay. Their document and chunk links become NULL.
-    Event-store rows persist.
+    ``gateway.transaction`` scope (Postgres: tenant GUC set, so row-level
+    security sees it). Chunks, vectors, tags, metadata, and research rows
+    cascade. Entity and relation rows stay. Their document and chunk links
+    become NULL. Event-store rows persist.
 
     The delete is idempotent: an unknown ID still answers ``success``. The
     event-store audit (``handlers.delete_audit.attach_delete_event``) is
     the command-handler wrapper's additive layer, the same pattern as the
     ingest audit, so audited and unaudited callers share one delete truth.
     """
+    is_duckdb = gateway_backend(as_gateway(pg_pool)) == "duckdb"
     try:
-        async with pg_pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                tenant_id,
-            )
-            await conn.execute(
-                "DELETE FROM documents WHERE doc_id = $1",
-                document_id,
-            )
+        async with as_gateway(pg_pool).transaction(tenant_id) as tx:
+            if is_duckdb:
+                # No RLS on DuckDB: the tenant predicate IS the isolation.
+                await tx.execute(
+                    "DELETE FROM documents WHERE doc_id = $1 AND tenant_id = $2",
+                    document_id,
+                    tenant_id,
+                )
+            else:
+                await tx.execute(
+                    "DELETE FROM documents WHERE doc_id = $1",
+                    document_id,
+                )
     except Exception:
         return {
             "status": "error",

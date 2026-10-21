@@ -281,9 +281,15 @@ def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
         "src/corpus_kb/handlers/query_fusion.py",
     ):
         clauses.extend(_desc_order_by_clauses(ROOT / rel))
-    assert len(clauses) == 7, clauses  # 5 vector arms + FTS + search_similar
+    # Wave-D integration adds one RECENCY clause (not a score order): the
+    # DuckDB list_documents arm carries created_at DESC with the doc_id ASC
+    # tiebreaker, so the count is 8 and the tiebreak set gains doc_id. The
+    # storage-layer engine arms keep their own pins (tests/test_duckdb_search.py).
+    assert len(clauses) == 8, clauses  # 5 vector arms + FTS + search_similar + recency
     for clause in clauses:
-        assert re.fullmatch(r"ORDER BY .+ DESC, (chunks\.chunk_id|c\.chunk_id) ASC", clause), clause
+        assert re.fullmatch(
+            r"ORDER BY .+ DESC, (chunks\.chunk_id|c\.chunk_id|doc_id) ASC", clause
+        ), clause
 
 
 def test_every_score_order_by_in_retrieval_carries_tiebreaker() -> None:

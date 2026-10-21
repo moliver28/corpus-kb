@@ -12,8 +12,13 @@ frozen legacy event payload.
 
 Configurable embedding model via config (default qwen3-embedding:4b at
 its native 2560 dims, stored as halfvec). Vectors are derived data — never
-stored in event payloads. All writes run in one transaction with the tenant GUC
-(tenant_connection): chunks_vectors is FORCE-put under RLS.
+stored in event payloads. All writes run in one transaction with the tenant
+context (the ``SqlGateway`` scope: tenant GUC on Postgres, BEGIN..COMMIT on
+DuckDB).
+
+Vector storage is the one per-backend SQL twin in this module: Postgres
+binds the halfvec text form (``$3::halfvec``), DuckDB the native float
+array (``$3::FLOAT[2560]`` — the migration-000/025 column regime).
 """
 
 from __future__ import annotations
@@ -27,20 +32,26 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.projections._drain import dispatch_notification, drain_sequence
+from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.ids import deterministic_chunk_id
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.storage.duckdb_gateway import DuckDbGateway
+from corpus_kb.storage.duckdb_support import vector_literal
+from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
 
 PROJECTION_NAME = "EmbedChunksProjection"
 BATCH_SIZE = 10
 
+#: The DuckDB ``chunks_vectors.embedding`` width (migrations 000 + 025).
+DUCKDB_EMBEDDING_DIMS = 2560
+
 
 class EmbedChunksProjection:
-    """Async projection: ChunksAdded event → embed → pgvector INSERT.
+    """Async projection: ChunksAdded event → embed → vector INSERT.
 
     Runs as a background task in the server event loop. Uses checkpoint
     tracking (global notification_id position) for crash recovery and the
@@ -49,16 +60,37 @@ class EmbedChunksProjection:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: asyncpg.Pool | None,
         embedder: OllamaEmbedder | PgmlEmbedder,
         checkpoint: CheckpointManager,
         dlq: DLQHandler,
+        gateway: SqlGateway | None = None,
     ) -> None:
-        self._pool = pool
+        self._gateway = resolve_gateway(pool, gateway)
         self._embedder = embedder
         self._checkpoint = checkpoint
         self._dlq = dlq
         self._running = False
+        # The one per-backend fragment: the cast and the bound value change
+        # together (halfvec takes the text form; FLOAT[k] takes the list).
+        if isinstance(self._gateway, DuckDbGateway):
+            self._vector_cast = f"$3::FLOAT[{DUCKDB_EMBEDDING_DIMS}]"
+        else:
+            self._vector_cast = "$3::halfvec"
+
+    def _vector_arg(self, vector: list[float]) -> Any:
+        """Bind form for one embedding.
+
+        Postgres keeps the halfvec text form (byte-identical to the
+        pre-port call site). DuckDB takes the canonical compact
+        :func:`duckdb_support.vector_literal` string behind the
+        ``FLOAT[k]`` cast: a 2560-float Python list parameter costs
+        seconds per statement to bind, the string form milliseconds
+        (sp-duckdb-search binding measurement).
+        """
+        if isinstance(self._gateway, DuckDbGateway):
+            return vector_literal(vector)
+        return str(vector)
 
     async def process_event(
         self,
@@ -92,22 +124,22 @@ class EmbedChunksProjection:
 
                 vectors = await aembed_batch(self._embedder, batch_texts)
 
-                async with tenant_connection(self._pool, tenant_id) as conn:
+                async with self._gateway.transaction(str(tenant_id)) as tx:
                     for j, vector in enumerate(vectors):
                         chunk_id = deterministic_chunk_id(doc_uuid, batch_start + j)
-                        await conn.execute(
-                            """
+                        await tx.execute(
+                            f"""
                             INSERT INTO chunks_vectors
                             (chunk_id, tenant_id, embedding, embedding_model)
-                            VALUES ($1, $2, $3::halfvec, $4)
+                            VALUES ($1, $2, {self._vector_cast}, $4)
                             ON CONFLICT (chunk_id) DO UPDATE SET
-                                embedding = $3::halfvec,
+                                embedding = {self._vector_cast},
                                 embedding_model = $4,
                                 embedded_at = NOW()
                             """,
                             str(chunk_id),
                             str(tenant_id),
-                            str(vector),
+                            self._vector_arg(vector),
                             self._embedder.model,
                         )
 
