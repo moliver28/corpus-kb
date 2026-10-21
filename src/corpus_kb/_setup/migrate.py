@@ -135,16 +135,17 @@ async def prepare_age_session(conn: asyncpg.Connection) -> bool:
 
     Apache AGE resolves its graphid_ops operator class through the caller's
     search_path (apache/age#2504), so migration 004 fails without this
-    ritual even when the extension is installed. The same two statements
-    run in AgeGraphStore session setup and in the CI bootstrap. Callers
-    that never touch AGE pay one LOAD round trip. Returns False when the
-    AGE shared library is absent, leaving the connection untouched.
+    ritual even when the extension is installed. ag_catalog sits LAST on
+    the path on purpose: unqualified migration DDL must keep creating in
+    ``public``, while the opclass, cypher() and agtype still resolve
+    through the path. Returns False when the AGE shared library is
+    absent, leaving the connection untouched.
     """
     try:
         await conn.execute("LOAD 'age'")
     except asyncpg.UndefinedFileError:
         return False
-    await conn.execute('SET search_path = ag_catalog, "$user", public')
+    await conn.execute('SET search_path = "$user", public, ag_catalog')
     return True
 
 

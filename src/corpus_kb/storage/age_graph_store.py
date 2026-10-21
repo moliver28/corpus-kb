@@ -224,7 +224,10 @@ class AgeGraphStore(GraphStore):
             self._age_checked = True
         try:
             await conn.execute("LOAD 'age'")
-            await conn.execute('SET search_path = ag_catalog, "$user", public')
+            # ag_catalog sits LAST: cypher(), agtype and the graphid_ops
+            # operator class resolve through the path, while the relational
+            # documents/chunks statements keep landing in public.
+            await conn.execute('SET search_path = "$user", public, ag_catalog')
         except asyncpg.PostgresError as exc:
             if _is_age_absence_error(exc):
                 raise _age_unavailable(f"session setup failed: {exc}") from exc
