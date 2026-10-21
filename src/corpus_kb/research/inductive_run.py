@@ -35,8 +35,6 @@ from collections import Counter
 from typing import Any, Protocol
 from uuid import UUID
 
-import asyncpg
-
 from corpus_kb.coding.inductive_cluster import (
     NOISE_LABEL,
     centroid_drift,
@@ -55,6 +53,7 @@ from corpus_kb.coding.saturation import isr
 from corpus_kb.domain.application import dsn_from_config
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research import guide_copy
+from corpus_kb.research.conn import Store, tenant_scope
 from corpus_kb.research.inductive_store import (
     find_observation,
     latest_baseline_dbcv,
@@ -65,7 +64,6 @@ from corpus_kb.research.inductive_store import (
     upsert_proposal,
 )
 from corpus_kb.research.promote_code import TAU_DUP_DEFAULT
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +163,7 @@ def all_noise_note(n_clusters: int, noise_units: int) -> str | None:
 
 
 async def run_inductive(
-    pool: asyncpg.Pool,
+    pool: Store,
     tenant_id: UUID,
     project_id: UUID | None = None,
     llm: SummaryChatClient | None = None,
@@ -198,7 +196,7 @@ async def run_inductive(
 
 
 async def _execute(
-    pool: asyncpg.Pool,
+    pool: Store,
     handler: ResearchHandler,
     tenant_id: UUID,
     run_id: UUID,
@@ -208,7 +206,7 @@ async def _execute(
     settings: dict[str, Any],
 ) -> dict[str, Any]:
     baseline = await latest_baseline_dbcv(pool, tenant_id, run_id)
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         pairs = await load_codable_pairs(conn, tenant_id, project_id)
         code_names = await _existing_code_names(conn, tenant_id)
         observations = await _observe(conn, tenant_id, run_id, pairs, llm, embedder)
@@ -249,7 +247,7 @@ async def _execute(
     drift = centroid_drift(centroids, final_centroids)
     dropped = dbcv_drop_flag(dbcv_baseline, final.relative_validity)
     original_noise = noise_labels_original_space(vectors, pilot.min_cluster_size)
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         for label, members in _cluster_members(final.labels).items():
             await upsert_proposal(
                 conn,
@@ -326,7 +324,7 @@ def _cluster_members(labels: list[int]) -> dict[int, list[int]]:
 
 
 async def _observe(
-    conn: asyncpg.Connection,
+    conn: Any,
     tenant_id: UUID,
     run_id: UUID,
     pairs: list[dict[str, Any]],
@@ -385,7 +383,7 @@ async def _observe(
 
 
 async def _grow(
-    pool: asyncpg.Pool,
+    pool: Store,
     handler: ResearchHandler,
     tenant_id: UUID,
     run_id: UUID,
@@ -429,7 +427,7 @@ async def _grow(
         labels_touched: set[int] = set()
         high_entropy = 0
         meta_new = 0
-        async with tenant_connection(pool, tenant_id) as conn:
+        async with tenant_scope(pool, tenant_id) as conn:
             for obs in batch:
                 nearest = nearest_centroids(obs["embedding"], current_centroids, k=3)
                 assignments, entropy = soft_assignment_entropy(obs["embedding"], current_centroids)
@@ -504,7 +502,7 @@ async def _grow(
     }
 
 
-async def _pair_texts(conn: asyncpg.Connection, tenant_id: UUID, unit_id: int) -> tuple[str, str]:
+async def _pair_texts(conn: Any, tenant_id: UUID, unit_id: int) -> tuple[str, str]:
     row = await conn.fetchrow(
         """
         SELECT u.text AS answer, q.text AS question
@@ -527,7 +525,7 @@ async def _pair_texts(conn: asyncpg.Connection, tenant_id: UUID, unit_id: int) -
     return str(row["question"] or ""), str(row["answer"] or "")
 
 
-async def _existing_code_names(conn: asyncpg.Connection, tenant_id: UUID) -> list[str]:
+async def _existing_code_names(conn: Any, tenant_id: UUID) -> list[str]:
     rows = await conn.fetch(
         """
         SELECT DISTINCT name FROM code_registry

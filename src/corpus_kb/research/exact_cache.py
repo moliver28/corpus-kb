@@ -158,6 +158,15 @@ VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6)
 ON CONFLICT (cache_key) DO NOTHING
 """
 
+# DuckDB twin: JSON columns cast ::JSON (no jsonb), reads return the text
+# form and get() parses it back.
+PUT_SQL_DUCK = """
+INSERT INTO research_exact_cache
+    (cache_key, tenant_id, component_hashes, response, model_name, model_digest)
+VALUES ($1, $2, $3::JSON, $4::JSON, $5, $6)
+ON CONFLICT (cache_key) DO NOTHING
+"""
+
 
 class CacheConn(Protocol):
     """Minimal asyncpg.Connection surface the cache needs (test-fake friendly)."""
@@ -176,7 +185,9 @@ async def get(conn: CacheConn, tenant_id: str, cache_key: str) -> dict[str, obje
 
     The tenant predicate rides in the WHERE clause (belt) — RLS (migration
     020) is the braces. A row written by another tenant is unreachable even
-    in the astronomically unlikely event of a key collision.
+    in the astronomically unlikely event of a key collision. asyncpg
+    decodes the jsonb column to a dict; DuckDB returns the JSON text and
+    the read parses it, so both engines flow through the same branch.
     """
     row = await conn.fetchrow(GET_SQL, cache_key, tenant_id)
     if row is None:
@@ -185,6 +196,8 @@ async def get(conn: CacheConn, tenant_id: str, cache_key: str) -> dict[str, obje
     # so dict and Record both flow through the same read.
     record = cast("Mapping[str, object]", row)
     response = record.get("response")
+    if isinstance(response, str):
+        response = json.loads(response)
     return dict(response) if isinstance(response, dict) else {"response": response}
 
 
@@ -196,10 +209,11 @@ async def put(
     response: dict[str, object],
     model_name: str,
     model_digest: str,
+    duck: bool = False,
 ) -> None:
     """Write one immutable cache row (conflict = keep the original)."""
     await conn.execute(
-        PUT_SQL,
+        PUT_SQL_DUCK if duck else PUT_SQL,
         cache_key,
         tenant_id,
         json.dumps(

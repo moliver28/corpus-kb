@@ -2,9 +2,14 @@
 
 Engine-owned operational tables (migration 017): research_observations,
 research_proposed_codes, research_noise_queue. Same ownership class as the
-content-addressed turn store — written by the inductive run under the tenant
-GUC, excluded from the event-rebuild drop-set. Every write is idempotent
-(ON CONFLICT) so re-runs are safe.
+content-addressed turn store — written by the inductive run under the
+tenant GUC, excluded from the event-rebuild drop-set. Every write is
+idempotent (ON CONFLICT) so re-runs are safe.
+
+Declared DuckDB divergences: vector/json casts (``::JSON``, fixed
+``FLOAT[1024]``), list-membership reads (``list_contains``), and the JSON
+``?``-operator probe that becomes a newest-first Python key scan (the
+engine allows one writer, so the read-modify semantics hold).
 """
 
 from __future__ import annotations
@@ -13,18 +18,38 @@ import json
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
 from corpus_kb.projections.research._embed import _parse_pg_vector
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.research.conn import Store, tenant_scope
+
+_VECTOR = "::FLOAT[1024]"
+
+
+def _vec_cast(duck: bool, idx: str) -> str:
+    """The vector parameter cast: fixed FLOAT[1024] on DuckDB, ::vector on PG."""
+    return f"{idx}{_VECTOR}" if duck else f"{idx}::vector"
+
+
+def _json_cast(duck: bool, idx: str) -> str:
+    return f"{idx}::JSON" if duck else f"{idx}::jsonb"
+
+
+def _ids_member(duck: bool, idx: str, column: str) -> str:
+    if duck:
+        return f"list_contains({idx}::BIGINT[], {column})"
+    return f"{column} = ANY({idx}::bigint[])"
 
 
 async def load_codable_pairs(
-    conn: asyncpg.Connection, tenant_id: UUID, project_id: UUID | None
+    conn: Any, tenant_id: UUID, project_id: UUID | None, duck: bool = False
 ) -> list[dict[str, Any]]:
     """Codable answer units with their moderator question text (stable order)."""
+    project_test = (
+        "($2::VARCHAR IS NULL OR u.project_id = $2::VARCHAR)"
+        if duck
+        else "($2::uuid IS NULL OR u.project_id = $2::uuid)"
+    )
     rows = await conn.fetch(
-        """
+        f"""
         SELECT u.unit_id, u.text AS answer, q.text AS question, x.stance
         FROM research_units u
         JOIN research_exchanges x
@@ -36,7 +61,7 @@ async def load_codable_pairs(
             ORDER BY seq LIMIT 1
         ) q ON TRUE
         WHERE u.tenant_id = $1 AND u.is_codable AND u.role_in_exchange = 'answer'
-          AND ($2::uuid IS NULL OR u.project_id = $2::uuid)
+          AND {project_test}
         ORDER BY u.unit_id
         """,
         str(tenant_id),
@@ -53,9 +78,7 @@ async def load_codable_pairs(
     ]
 
 
-async def find_observation(
-    conn: asyncpg.Connection, tenant_id: UUID, unit_id: int
-) -> dict[str, Any] | None:
+async def find_observation(conn: Any, tenant_id: UUID, unit_id: int) -> dict[str, Any] | None:
     """Latest existing observation for a unit (temp-0 reuse across runs)."""
     row = await conn.fetchrow(
         """
@@ -82,7 +105,7 @@ async def find_observation(
 
 
 async def upsert_observation(
-    conn: asyncpg.Connection,
+    conn: Any,
     tenant_id: UUID,
     unit_id: int,
     run_id: UUID,
@@ -96,14 +119,15 @@ async def upsert_observation(
     embedding: list[float] | None,
     embed_model: str,
     model_revision: str,
+    duck: bool = False,
 ) -> None:
     await conn.execute(
-        """
+        f"""
         INSERT INTO research_observations
         (tenant_id, unit_id, run_id, summary, question_dependent, prompt_id,
          model, temperature, parse_fallback, embedding, embedding_model,
          model_revision, dimensions)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::vector, $11, $12, $13)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, {_vec_cast(duck, "$10")}, $11, $12, $13)
         ON CONFLICT (tenant_id, unit_id, run_id) DO UPDATE SET
             summary = EXCLUDED.summary,
             question_dependent = EXCLUDED.question_dependent,
@@ -133,7 +157,7 @@ def _vector_literal(vec: list[float] | None) -> str | None:
 
 
 async def record_signal(
-    conn: asyncpg.Connection,
+    conn: Any,
     tenant_id: UUID,
     unit_id: int,
     run_id: UUID,
@@ -141,13 +165,14 @@ async def record_signal(
     soft_cluster_entropy: float,
     n_clusters: int,
     extra: dict[str, object],
+    duck: bool = False,
 ) -> None:
     """Tier-0 inductive signal row (todo-16's consumption surface)."""
     await conn.execute(
-        """
+        f"""
         INSERT INTO research_signals
         (tenant_id, unit_id, run_id, tier, soft_cluster_entropy, n_clusters, extra)
-        VALUES ($1, $2, $3, 0, $4, $5, $6::jsonb)
+        VALUES ($1, $2, $3, 0, $4, $5, {_json_cast(duck, "$6")})
         ON CONFLICT (tenant_id, unit_id, run_id, tier) DO UPDATE SET
             soft_cluster_entropy = EXCLUDED.soft_cluster_entropy,
             n_clusters = EXCLUDED.n_clusters,
@@ -163,7 +188,7 @@ async def record_signal(
 
 
 async def queue_noise(
-    conn: asyncpg.Connection,
+    conn: Any,
     tenant_id: UUID,
     unit_id: int,
     run_id: UUID,
@@ -188,7 +213,7 @@ async def queue_noise(
 
 
 async def upsert_proposal(
-    conn: asyncpg.Connection,
+    conn: Any,
     tenant_id: UUID,
     *,
     cluster_id: str,
@@ -198,13 +223,16 @@ async def upsert_proposal(
     centroid: list[float] | None,
     member_unit_ids: list[int],
     dbcv_relative_validity: float | None,
+    duck: bool = False,
 ) -> None:
+    members = "$8::BIGINT[]" if duck else "$8::bigint[]"
     await conn.execute(
-        """
+        f"""
         INSERT INTO research_proposed_codes
         (tenant_id, cluster_id, run_id, batch_no, suggested_label, centroid,
          centroid_snapshot, member_unit_ids, n_members, dbcv_relative_validity)
-        VALUES ($1, $2, $3, $4, $5, $6::vector, $7::jsonb, $8::bigint[], $9, $10)
+        VALUES ($1, $2, $3, $4, $5, {_vec_cast(duck, "$6")},
+                {_json_cast(duck, "$7")}, {members}, $9, $10)
         ON CONFLICT (tenant_id, cluster_id, run_id) DO UPDATE SET
             centroid = EXCLUDED.centroid,
             centroid_snapshot = EXCLUDED.centroid_snapshot,
@@ -226,7 +254,7 @@ async def upsert_proposal(
 
 
 async def load_unit_views_by_ids(
-    conn: asyncpg.Connection, tenant_id: UUID, unit_ids: list[int]
+    conn: Any, tenant_id: UUID, unit_ids: list[int], duck: bool = False
 ) -> dict[int, tuple[list[float], list[float], list[float]]]:
     """A/QA/Q view vectors for specific units (promotion re-derivation input).
 
@@ -237,7 +265,7 @@ async def load_unit_views_by_ids(
     if not unit_ids:
         return {}
     rows = await conn.fetch(
-        """
+        f"""
         SELECT u.unit_id, u.embedding AS a_vec, x.embedding AS qa_vec,
                q.embedding AS q_vec
         FROM research_units u
@@ -250,7 +278,7 @@ async def load_unit_views_by_ids(
                   AND embedding IS NOT NULL
                 ORDER BY seq LIMIT 1
             ) q ON TRUE
-            WHERE u.tenant_id = $1 AND u.unit_id = ANY($2::bigint[])
+            WHERE u.tenant_id = $1 AND {_ids_member(duck, "$2", "u.unit_id")}
               AND u.embedding IS NOT NULL AND x.embedding IS NOT NULL
         """,
         str(tenant_id),
@@ -266,16 +294,28 @@ async def load_unit_views_by_ids(
     return result
 
 
-async def latest_baseline_dbcv(pool: asyncpg.Pool, tenant_id: UUID, run_id: UUID) -> float | None:
-    """Most recent DBCV from earlier runs' checkpoints (drop tracking)."""
-    async with tenant_connection(pool, tenant_id) as conn:
+async def latest_baseline_dbcv(
+    store: Store, tenant_id: UUID, run_id: UUID, duck: bool = False
+) -> float | None:
+    """Most recent DBCV from earlier runs' checkpoints (drop tracking).
+
+    Postgres keeps its byte-identical ``?``-operator probe; DuckDB has no
+    JSON ``?``, so the rows scan newest-first in Python (single-writer
+    engine, same first-match semantics).
+    """
+    probe = (
+        "AND checkpoint IS NOT NULL"
+        if duck
+        else "AND checkpoint IS NOT NULL AND checkpoint ? 'dbcv_relative_validity'"
+    )
+    limit = "" if duck else "LIMIT 1"
+    async with tenant_scope(store, tenant_id) as conn:
         rows = await conn.fetch(
-            """
+            f"""
             SELECT checkpoint FROM research_runs
             WHERE tenant_id = $1 AND run_id <> $2
-              AND checkpoint IS NOT NULL
-              AND checkpoint ? 'dbcv_relative_validity'
-            ORDER BY started_at DESC LIMIT 1
+              {probe}
+            ORDER BY started_at DESC {limit}
             """,
             str(tenant_id),
             str(run_id),
