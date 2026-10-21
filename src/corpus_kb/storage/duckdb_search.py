@@ -38,6 +38,7 @@ from corpus_kb.rag.self_query import build_filter_sql
 from corpus_kb.research.retrieval_settings import load_retrieval_settings
 from corpus_kb.storage.dialect import DUCKDB, sanitize_fts_query
 from corpus_kb.storage.duckdb_fts import ensure_fts_index
+from corpus_kb.storage.duckdb_support import vector_literal
 from corpus_kb.storage.search_backend import SearchOutcome, SearchRequest
 
 logger = logging.getLogger(__name__)
@@ -118,19 +119,6 @@ class QueryEmbedder(Protocol):
 def _all_zero(vector: list[float] | None) -> bool:
     """True when the query embedding is the degraded all-zero marker."""
     return vector is not None and all(v == 0.0 for v in vector)
-
-
-def vector_literal(vector: list[float]) -> str:
-    """Pack a query vector as a no-space ``[v1,v2,...]`` varchar literal.
-
-    DuckDB 1.4.5 converts a bound fixed-size ARRAY parameter (from a list
-    OR numpy array) in roughly 2.7 s per 2560-float statement; the varchar
-    CAST of the same values (``$1::FLOAT[k]``, spike-5 verified, no spaces
-    after commas) costs about 10 ms. ``.9g`` is float32-faithful and
-    deterministic, so equal queries bind equal strings and replay
-    identical scores.
-    """
-    return "[" + ",".join(format(float(v), ".9g") for v in vector) + "]"
 
 
 class DuckDbSearchBackend:

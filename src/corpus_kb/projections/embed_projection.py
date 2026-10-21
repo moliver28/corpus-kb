@@ -38,6 +38,7 @@ from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.ids import deterministic_chunk_id
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
+from corpus_kb.storage.duckdb_support import vector_literal
 from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
@@ -81,13 +82,14 @@ class EmbedChunksProjection:
         """Bind form for one embedding.
 
         Postgres keeps the halfvec text form (byte-identical to the
-        pre-port call site). DuckDB takes the numbers as ONE compact
-        no-space array string behind the ``FLOAT[k]`` cast: a 2560-float
-        Python list parameter costs seconds per statement to bind, the
-        string form milliseconds (sp-duckdb-search binding measurement).
+        pre-port call site). DuckDB takes the canonical compact
+        :func:`duckdb_support.vector_literal` string behind the
+        ``FLOAT[k]`` cast: a 2560-float Python list parameter costs
+        seconds per statement to bind, the string form milliseconds
+        (sp-duckdb-search binding measurement).
         """
         if isinstance(self._gateway, DuckDbGateway):
-            return "[" + ",".join(repr(float(v)) for v in vector) + "]"
+            return vector_literal(vector)
         return str(vector)
 
     async def process_event(

@@ -19,8 +19,9 @@ shipped Postgres shapes, byte-identical) or a
 :class:`~corpus_kb.storage.gateway.SqlGateway` (portable wiring — the
 DuckDB arm, where tenancy rides the explicit ``tenant_id`` filters inside
 the gateway's ``transaction(tenant_id)`` scope). ``search_similar`` is
-Postgres-shaped (``<=>``): its DuckDB arm belongs to the search-backend
-dispatch, not here.
+dual-engine: Postgres keeps the pgvector ``<=>`` shape; the DuckDB arm
+serves the same contract from the mirror schema via
+``storage.duckdb_similar`` (full parity, program V1 goal).
 """
 
 from __future__ import annotations
@@ -46,6 +47,8 @@ from corpus_kb.domain.models import (
 )
 from corpus_kb.handlers.query_integrity import degraded_candidate_predicate
 from corpus_kb.rag.judge import OllamaJudge
+from corpus_kb.storage.duckdb_gateway import DuckDbGateway
+from corpus_kb.storage.duckdb_similar import similar_rows
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.utils.json_safe import json_safe
@@ -164,9 +167,26 @@ def _entities(rows: list[Any]) -> list[EntityResult]:
 
 
 async def search_similar(
-    pool: asyncpg.Pool, *, exclude_degraded: bool, query: SearchSimilarQuery
+    pool: asyncpg.Pool | SqlGateway, *, exclude_degraded: bool, query: SearchSimilarQuery
 ) -> list[SearchResult]:
-    """Find chunks similar to a given chunk via vector distance."""
+    """Find chunks similar to a given chunk via vector distance.
+
+    Both engines serve the SAME contract (k nearest, zero-vector rows
+    last, chunk_id tiebreaker, degraded candidates filtered, degraded
+    seeds still discoverable). Postgres keeps the pgvector ``<=>`` SQL
+    byte-identical; the DuckDB gateway scans the mirror schema exactly
+    (:mod:`corpus_kb.storage.duckdb_similar`).
+    """
+    if isinstance(pool, DuckDbGateway):
+        async with pool.transaction(str(query.tenant_id)) as reader:
+            rows = await similar_rows(
+                reader,
+                chunk_id=str(query.chunk_id),
+                tenant_id=str(query.tenant_id),
+                k=query.k,
+                degraded_pred=degraded_candidate_predicate(exclude_degraded),
+            )
+        return _similar_results(rows)
     async with tenant_connection(pool, query.tenant_id) as conn:
         # U40: ANN scan inside a MATERIALIZED CTE, exact ordering applied
         # outside over the retrieved set (`score + 0`, per pgvector docs).
@@ -202,21 +222,26 @@ async def search_similar(
             str(query.tenant_id),
             query.k,
         )
-        return [
-            SearchResult(
-                chunk_id=row["chunk_id"],
-                text=row["text"],
-                score=row["score"],
-                source=row["source"],
-                doc_id=row["doc_id"],
-                file_path=row["file_path"],
-                start_line=row["start_line"],
-                end_line=row["end_line"],
-                chunk_index=row["chunk_index"],
-                heading_path=json.loads(row["heading_path"]) if row["heading_path"] else None,
-            )
-            for row in rows
-        ]
+        return _similar_results(rows)
+
+
+def _similar_results(rows: list[Any]) -> list[SearchResult]:
+    """Row -> SearchResult mapping shared by both engine arms."""
+    return [
+        SearchResult(
+            chunk_id=row["chunk_id"],
+            text=row["text"],
+            score=row["score"],
+            source=row["source"],
+            doc_id=row["doc_id"],
+            file_path=row["file_path"],
+            start_line=row["start_line"],
+            end_line=row["end_line"],
+            chunk_index=row["chunk_index"],
+            heading_path=json.loads(row["heading_path"]) if row["heading_path"] else None,
+        )
+        for row in rows
+    ]
 
 
 async def search_context(

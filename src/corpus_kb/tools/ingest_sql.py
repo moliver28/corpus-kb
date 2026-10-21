@@ -22,6 +22,7 @@ import re
 from dataclasses import dataclass
 
 from ..errors import ConfigError
+from ..storage.duckdb_support import vector_literal
 from ..storage.gateway import SqlGateway
 
 __all__ = [
@@ -264,13 +265,14 @@ def vector_write_params(
 ) -> tuple[str, str | None]:
     """The (embedding, vector_1024) bind values: COMPACT array literals.
 
-    Both engines take the ``"[...]"`` literal (no internal spaces) that the
+    Both engines take the canonical ``"[...]"`` literal
+    (:func:`duckdb_support.vector_literal`, no internal spaces) that the
     SQL's explicit cast parses; binding a Python list into a DuckDB
     fixed-size array costs seconds per statement (sp-duckdb-search W0
     bench: 2.7s per bind vs ~10ms for the literal+cast form).
     """
-    embedding_str = "[" + ",".join(str(v) for v in embedding) + "]"
-    v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
+    embedding_str = vector_literal(embedding)
+    v1024_str = vector_literal(v1024) if v1024 else None
     return embedding_str, v1024_str
 
 

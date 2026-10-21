@@ -11,7 +11,8 @@ DuckDB 1.4 semantics (W0 findings + probes against the pinned wheel):
   does NOT, so the zero guard is ``sqrt(array_inner_product(v, v)) > 0``.
   Zero-vector rows take the sentinel ``-2.0`` and sort LAST — the PG
   NaN-last parity (DuckDB answers -1.0 for undefined cosine).
-- Fixed-size array binds go through :func:`vector_literal` (a compact
+- Fixed-size array binds go through
+  :func:`corpus_kb.storage.duckdb_support.vector_literal` (a compact
   varchar) plus an explicit ``::FLOAT[k]`` cast: a Python list bind
   costs seconds per statement on DuckDB 1.4.5.
 - The lexical arm is the fts extension's per-table ``match_bm25`` macro.
@@ -31,6 +32,7 @@ import logging
 from typing import Any, Protocol
 
 from corpus_kb.errors import ValidationError
+from corpus_kb.storage.duckdb_support import vector_literal
 from corpus_kb.storage.gateway import Row, SqlGateway
 from corpus_kb.storage.rag_backend import RetrievalResult
 
@@ -50,18 +52,6 @@ async def _embed_text(embedder: EmbedsText, text: str) -> list[float]:
         embedded = await embedder.embed(text)
         return list(embedded)
     return list(embedder.embed(text))
-
-
-def vector_literal(vector: list[float]) -> str:
-    """Compact array-string for a ``FLOAT[k]`` bind.
-
-    Binding a Python list or numpy array against fixed-size FLOAT[k]
-    costs seconds per statement on DuckDB 1.4.5; the same vector as a
-    space-free varchar with an explicit SQL cast costs milliseconds.
-    (sp-duckdb-search ships the same helper as ``vector_literal()`` in
-    its own tree; integration dedupes the two.)
-    """
-    return "[" + ",".join(repr(float(v)) for v in vector) + "]"
 
 
 def _vector_sql(table: str, dimensions: int, where: str, limit_param: int) -> str:

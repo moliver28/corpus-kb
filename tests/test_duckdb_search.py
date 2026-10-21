@@ -26,7 +26,7 @@ import pytest
 
 from corpus_kb.ask.composer import compose_answer
 from corpus_kb.contracts.envelopes import SEARCH_ENVELOPE
-from corpus_kb.domain.models import SearchQuery
+from corpus_kb.domain.models import SearchQuery, SearchSimilarQuery
 from corpus_kb.handlers.query_handler import QueryHandler
 from corpus_kb.handlers.query_integrity import envelope_to_payload
 from corpus_kb.storage.duckdb_search import (
@@ -34,7 +34,7 @@ from corpus_kb.storage.duckdb_search import (
     DUCKDB_VECTOR_INDEX_MODE,
     DuckDbSearchBackend,
 )
-from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
+from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string, vector_literal
 from corpus_kb.storage.gateway import DuckDbGateway
 from corpus_kb.storage.search_backend import SearchOutcome, SearchRequest
 
@@ -115,7 +115,6 @@ async def _seed(gateway: DuckDbGateway) -> None:
         (C_DEAD, TENANT1, "quick ghost", _one_hot("quick"), True),
         (C_T2, TENANT2, "quick foreigner", _one_hot("quick"), False),
     ]
-    from corpus_kb.storage.duckdb_search import vector_literal
 
     for i, (cid, tenant, text, emb, degraded) in enumerate(rows):
         doc = DOC1 if tenant == TENANT1 else DOC2
@@ -308,6 +307,67 @@ async def test_determinism_same_query_twice_identical_order(
     first = [(str(r.chunk_id), r.score) for r in await handler.handle_search(query)]
     second = [(str(r.chunk_id), r.score) for r in await handler.handle_search(query)]
     assert first == second
+
+
+# ---------------------------------------------------------------------------
+# search_similar: full parity with the pgvector arm (handlers/query_crud.py)
+# ---------------------------------------------------------------------------
+
+
+def _similar_query(chunk_id: str, k: int = 10) -> SearchSimilarQuery:
+    return SearchSimilarQuery(chunk_id=UUID(chunk_id), tenant_id=UUID(TENANT1), k=k)
+
+
+async def test_search_similar_orders_like_the_pg_contract(search_gw: DuckDbGateway) -> None:
+    handler = _handler(search_gw)
+    results = await handler.handle_search_similar(_similar_query(C_BOTH))
+    ids = [str(r.chunk_id) for r in results]
+    # Nearest first; the zero-vector candidate LAST (sentinel, pgvector
+    # would order it by NaN); tombstoned + foreign-tenant rows invisible.
+    assert ids == [C_LEX, C_ZERO]
+    assert results[0].score > results[1].score
+    top = results[0]
+    assert (top.text, top.source, top.doc_id) == ("quick walrus", "seed.md", UUID(DOC1))
+    assert top.heading_path is None and top.file_path is None
+
+
+async def test_search_similar_zero_seed_stays_deterministic(
+    search_gw: DuckDbGateway,
+) -> None:
+    handler = _handler(search_gw)
+    results = await handler.handle_search_similar(_similar_query(C_ZERO))
+    # Every distance is 2.0 (DuckDB is finite, pgvector NaN): the chunk_id
+    # tiebreaker must pin the order so replays cannot permute rows.
+    ids = [str(r.chunk_id) for r in results]
+    assert ids == sorted([C_BOTH, C_LEX])
+    assert all(r.score == -1.0 for r in results)
+
+
+async def test_search_similar_seed_without_embedding_returns_empty(
+    search_gw: DuckDbGateway,
+) -> None:
+    await search_gw.execute(
+        "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text)"
+        " VALUES ('c0000000-0000-0000-0000-000000000008', ?, ?, 8, 'no vector yet')",
+        TENANT1,
+        DOC1,
+    )
+    handler = _handler(search_gw)
+    no_vec = "c0000000-0000-0000-0000-000000000008"
+    results = await handler.handle_search_similar(_similar_query(no_vec))
+    assert results == []
+
+
+def test_vector_literal_is_the_canonical_9g_form() -> None:
+    # The one formatter (storage.duckdb_support): compact, no spaces,
+    # float32-faithful at nine significant digits — where repr(float)
+    # would print sixteen and drift from the stored FLOAT[k] value.
+    from corpus_kb.storage.duckdb_support import vector_literal as canonical
+
+    assert vector_literal is canonical
+    assert vector_literal([0.1, 1 / 3, 1e-8]) == "[0.1,0.333333333,1e-08]"
+    assert " " not in vector_literal([0.25, -2.5, 3.0])
+    assert vector_literal([]) == "[]"
 
 
 # ---------------------------------------------------------------------------
