@@ -23,7 +23,8 @@ import sqlite3
 import uuid
 from typing import TYPE_CHECKING
 
-from corpus_kb.errors import InternalError
+from corpus_kb.errors import ConflictError, InternalError
+from corpus_kb.handlers.migrate_attach import TARGET_NOT_EMPTY
 from corpus_kb.handlers.migrate_digest import EventRecord
 
 if TYPE_CHECKING:
@@ -197,6 +198,28 @@ def _collect_postgres_snapshots(conn_str: str, table: str) -> list[EventRecord]:
         for originator, version, topic, state in cur.fetchall():
             snapshots.append((originator_hex(originator), int(version), str(topic), bytes(state)))
     return snapshots
+
+
+def assert_postgres_events_empty(conn_str: str) -> None:
+    """The re-run gate for the PG event leg: both event tables must be empty.
+
+    The corpus-table empty gate never sees the eventsourcing tables —
+    they live beside it. ``insert_events`` has no upsert (the recorder
+    owns the composite type), so a re-run against a populated store would
+    crash half-written; the leg refuses first, with the same message the
+    corpus gate raises.
+    """
+    import psycopg
+
+    from corpus_kb.domain.application import CorpusApplication, events_table_name
+
+    app = CorpusApplication(conn_str, backend="postgres")
+    with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
+        for table in (_snapshot_table(app), events_table_name(app)):
+            cur.execute(f"SELECT count(*) FROM {table}")  # lib-owned + _table_guard names
+            row = cur.fetchone()
+            if row and row[0]:
+                raise ConflictError(TARGET_NOT_EMPTY, remediation=TARGET_NOT_EMPTY)
 
 
 def write_postgres_events(

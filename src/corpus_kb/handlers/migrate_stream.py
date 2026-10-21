@@ -166,6 +166,9 @@ async def to_postgres(duckdb_dsn: str, pg_dsn: str) -> dict:
             _entry_pair(con, entry, refs[entry.name.split(".")[-1]], entry.name, entry.name)
             for entry in copies
         ]
+        # The corpus empty gate above never sees the eventsourcing tables;
+        # the event leg refuses a populated store before its first write.
+        events_leg.assert_postgres_events_empty(pg_dsn)
         sqlite_path = events_leg.sqlite_path_for_duckdb_dsn(duckdb_dsn)
         sl_events, sl_snaps = events_leg.collect_sqlite_events(sqlite_path)
         events_leg.write_postgres_events(pg_dsn, sl_events, sl_snaps)

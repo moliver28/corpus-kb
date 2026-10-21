@@ -30,6 +30,7 @@ from corpus_kb.handlers.migrate_digest import (
     event_digest,
 )
 from corpus_kb.handlers.migrate_events import (
+    assert_postgres_events_empty,
     collect_sqlite_events,
     originator_hex,
     write_sqlite_events,
@@ -108,6 +109,89 @@ class TestEventStore:
         assert originator_hex(value) == value.hex
         assert originator_hex(dashed) == value.hex
         assert originator_hex(dashed.upper()) == value.hex
+
+
+# ---------------------------------------------------------------------------
+# PG event-leg re-run gate (hermetic, over psycopg fakes)
+# ---------------------------------------------------------------------------
+
+
+class _FakeGateCursor:
+    """One count query per event table, in call order."""
+
+    def __init__(self, counts: list[int]) -> None:
+        self._counts = counts
+        self._index = 0
+        self.tables: list[str] = []
+
+    def __enter__(self) -> _FakeGateCursor:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def execute(self, sql: str, params: object = None) -> None:
+        self.tables.append(sql.split("FROM ", 1)[1].strip())
+
+    def fetchone(self) -> tuple[int, ...]:
+        count = self._counts[self._index]
+        self._index += 1
+        return (count,)
+
+
+class _FakeGateConn:
+    def __init__(self, counts: list[int]) -> None:
+        self._cursor = _FakeGateCursor(counts)
+
+    def __enter__(self) -> _FakeGateConn:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        return None
+
+    def cursor(self) -> _FakeGateCursor:
+        return self._cursor
+
+
+class _FakeGateRecorder:
+    events_table_name = "app_events"
+
+
+class _FakeGateSnapRecorder:
+    snapshot_table_name = "app_snapshots"
+
+
+class _FakeGateSnapshots:
+    recorder = _FakeGateSnapRecorder()
+
+
+class _FakeGateApp:
+    recorder = _FakeGateRecorder()
+    snapshots = _FakeGateSnapshots()
+
+
+def _patch_gate(monkeypatch: pytest.MonkeyPatch, conn: _FakeGateConn) -> None:
+    monkeypatch.setattr("psycopg.connect", lambda dsn: conn)
+    monkeypatch.setattr(
+        "corpus_kb.domain.application.CorpusApplication", lambda conn_str, backend: _FakeGateApp()
+    )
+
+
+class TestPostgresEventGate:
+    def test_gate_refuses_a_populated_event_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        conn = _FakeGateConn([2, 0])
+        _patch_gate(monkeypatch, conn)
+        with pytest.raises(ConflictError, match="already has data"):
+            assert_postgres_events_empty("postgresql://u:p@h/corpus_kb")
+        assert conn._cursor.tables == ["app_snapshots"]
+
+    def test_gate_passes_an_empty_store_and_checks_both_tables(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = _FakeGateConn([0, 0])
+        _patch_gate(monkeypatch, conn)
+        assert assert_postgres_events_empty("postgresql://u:p@h/corpus_kb") is None
+        assert conn._cursor.tables == ["app_snapshots", "app_events"]
 
 
 # ---------------------------------------------------------------------------
