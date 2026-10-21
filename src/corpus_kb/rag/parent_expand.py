@@ -21,13 +21,16 @@ from __future__ import annotations
 import logging
 from collections.abc import Mapping
 from contextlib import AbstractAsyncContextManager
-from typing import Protocol
+from typing import Protocol, cast
 
 from ..domain.models import SearchResult
 
 logger = logging.getLogger(__name__)
 
 # Deterministic parent pick per v1 hit: DISTINCT ON + lowest parent seq.
+# Postgres form (byte-identical to the pre-port probe). The gateway form
+# swaps the hit-id membership test: DuckDB 1.4 mis-casts the JSON column
+# inside ``= ANY(...)``, while ``list_contains`` answers the same question.
 _PARENT_TEXT_SQL = """
 WITH hit_children AS (
     SELECT sc.metadata->>'v1_chunk_id' AS v1_chunk_id,
@@ -51,6 +54,11 @@ WHERE p.tenant_id = $1
 ORDER BY pl.v1_chunk_id, p.seq ASC
 """
 
+_PARENT_TEXT_SQL_GATEWAY = _PARENT_TEXT_SQL.replace(
+    "AND sc.metadata->>'v1_chunk_id' = ANY($2::text[])",
+    "AND list_contains($2::text[], sc.metadata->>'v1_chunk_id')",
+)
+
 
 class ParentReader(Protocol):
     """Minimal asyncpg surface the expansion probe needs."""
@@ -68,8 +76,27 @@ class ParentPool(Protocol):
         ...
 
 
+ParentStore = ParentPool | ParentReader
+
+
+async def _fetch_rows(
+    store: ParentStore, sql: str, args: tuple[object, ...]
+) -> list[Mapping[str, object]]:
+    """Pool stores acquire a reader; gateways ARE the reader.
+
+    A ``SqlGateway`` (the DuckDB arm) has ``fetch`` and no ``acquire``, so
+    it answers the probe directly; an asyncpg pool keeps the shipped
+    acquire shape.
+    """
+    if hasattr(store, "acquire"):
+        async with store.acquire() as conn:
+            return list(await conn.fetch(sql, *args))
+    reader = cast("ParentReader", store)
+    return list(await reader.fetch(sql, *args))
+
+
 async def expand_to_parent(
-    pool: ParentPool,
+    store: ParentStore,
     tenant_id: str,
     results: list[SearchResult],
 ) -> list[SearchResult]:
@@ -81,9 +108,9 @@ async def expand_to_parent(
     if not results:
         return results
     hit_ids = [str(result.chunk_id) for result in results]
+    sql = _PARENT_TEXT_SQL if hasattr(store, "acquire") else _PARENT_TEXT_SQL_GATEWAY
     try:
-        async with pool.acquire() as conn:
-            rows = await conn.fetch(_PARENT_TEXT_SQL, tenant_id, hit_ids)
+        rows = await _fetch_rows(store, sql, (tenant_id, hit_ids))
     except Exception as exc:
         # Fail-open (module contract): a broken shadow probe must never break
         # search — same degrader shape as the U21 selectivity probe.

@@ -5,7 +5,7 @@ module functions; QueryHandler keeps thin delegating methods so every
 surface (HTTP/socket/CLI/tests) keeps its exact call shape. SQL and logic
 are byte-identical to the pre-split methods.
 
-Tenant-context note: every handler acquires through
+Tenant-context note: every pool-path handler acquires through
 :func:`storage.tenant_conn.tenant_connection` (acquire → transaction →
 set_config → read). The pre-wave shapes issued ``set_config`` on an
 autocommit connection, where the transaction-local setting evaporates
@@ -13,6 +13,14 @@ before the read; any database whose ``app.current_tenant_id`` default is
 empty then failed with ``invalid input syntax for type uuid: ""`` inside
 the RLS policy. Fixed in the tenant-correctness fix, not kept
 bug-compatible: the broken shape never worked on a strict database.
+
+Storage: each function takes an ``asyncpg.Pool`` (legacy wiring — the
+shipped Postgres shapes, byte-identical) or a
+:class:`~corpus_kb.storage.gateway.SqlGateway` (portable wiring — the
+DuckDB arm, where tenancy rides the explicit ``tenant_id`` filters inside
+the gateway's ``transaction(tenant_id)`` scope). ``search_similar`` is
+Postgres-shaped (``<=>``): its DuckDB arm belongs to the search-backend
+dispatch, not here.
 """
 
 from __future__ import annotations
@@ -38,81 +46,121 @@ from corpus_kb.domain.models import (
 )
 from corpus_kb.handlers.query_integrity import degraded_candidate_predicate
 from corpus_kb.rag.judge import OllamaJudge
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.utils.json_safe import json_safe
 
+_VERIFY_CHUNKS_SQL = "SELECT chunk_id, text FROM chunks WHERE tenant_id = $1 AND chunk_id = ANY($2)"
+_VERIFY_CHUNKS_SQL_GATEWAY = (
+    "SELECT chunk_id, text FROM chunks WHERE tenant_id = $1 AND chunk_id = ANY($2::VARCHAR[])"
+)
 
-async def sql_query(pool: asyncpg.Pool, query: SQLQuery) -> list[dict[str, Any]]:
+
+def _is_gateway(store: asyncpg.Pool | SqlGateway) -> bool:
+    """True for SqlGateway stores: a transaction scope, no pool acquire.
+
+    Anything else (asyncpg pools, MagicMock pools, fetch-only test fakes)
+    stays on the shipped tenant_connection path.
+    """
+    return not hasattr(store, "acquire") and hasattr(store, "transaction")
+
+
+async def sql_query(pool: asyncpg.Pool | SqlGateway, query: SQLQuery) -> list[dict[str, Any]]:
     """Execute a read-only SQL query."""
+    if _is_gateway(pool):
+        async with pool.transaction(str(query.tenant_id)) as reader:
+            rows = await reader.fetch(query.sql, *query.params.values())
+        return [json_safe(dict(row)) for row in rows]
     async with tenant_connection(pool, str(query.tenant_id)) as conn:
         rows = await conn.fetch(query.sql, *query.params.values())
         return [json_safe(dict(row)) for row in rows]
 
 
-async def list_documents(pool: asyncpg.Pool, query: ListDocumentsQuery) -> list[DocumentResult]:
+async def list_documents(
+    pool: asyncpg.Pool | SqlGateway, query: ListDocumentsQuery
+) -> list[DocumentResult]:
     """List documents with pagination."""
-    async with tenant_connection(pool, str(query.tenant_id)) as conn:
-        rows = await conn.fetch(
-            """
-            SELECT doc_id, source, source_type, chunk_count, created_at
+    args = (str(query.tenant_id), query.limit, query.offset)
+    if _is_gateway(pool):
+        # created_at crosses as an ISO string on the gateway arm: DuckDB
+        # needs the optional pytz wheel for TIMESTAMPTZ -> Python.
+        sql = """
+            SELECT doc_id, source, source_type, chunk_count,
+                   created_at::VARCHAR AS created_at
             FROM documents
             WHERE tenant_id = $1
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
-            """,
-            str(query.tenant_id),
-            query.limit,
-            query.offset,
-        )
-        return [
-            DocumentResult(
-                doc_id=row["doc_id"],
-                source=row["source"],
-                source_type=row["source_type"],
-                chunk_count=row["chunk_count"],
-                created_at=str(row["created_at"]),
-            )
-            for row in rows
-        ]
-
-
-async def list_entities(pool: asyncpg.Pool, query: ListEntitiesQuery) -> list[EntityResult]:
-    """List entities, optionally filtered by type."""
+            """
+        async with pool.transaction(str(query.tenant_id)) as reader:
+            rows = await reader.fetch(sql, *args)
+        return _documents(rows)
+    sql = """
+        SELECT doc_id, source, source_type, chunk_count, created_at
+        FROM documents
+        WHERE tenant_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3
+        """
     async with tenant_connection(pool, str(query.tenant_id)) as conn:
-        if query.entity_type:
-            rows = await conn.fetch(
-                """
-                SELECT entity_id, name, entity_type, metadata
-                FROM entities
-                WHERE tenant_id = $1 AND entity_type = $2
-                ORDER BY name ASC
-                LIMIT $3
-                """,
-                str(query.tenant_id),
-                query.entity_type,
-                query.limit,
-            )
-        else:
-            rows = await conn.fetch(
-                """
-                SELECT entity_id, name, entity_type, metadata
-                FROM entities
-                WHERE tenant_id = $1
-                ORDER BY name ASC
-                LIMIT $2
-                """,
-                str(query.tenant_id),
-                query.limit,
-            )
-        return [
-            EntityResult(
-                entity_id=row["entity_id"],
-                name=row["name"],
-                entity_type=row["entity_type"],
-                metadata=dict(row["metadata"]) if row["metadata"] else {},
-            )
-            for row in rows
-        ]
+        rows = await conn.fetch(sql, *args)
+        return _documents(rows)
+
+
+def _documents(rows: list[Any]) -> list[DocumentResult]:
+    return [
+        DocumentResult(
+            doc_id=row["doc_id"],
+            source=row["source"],
+            source_type=row["source_type"],
+            chunk_count=row["chunk_count"],
+            created_at=str(row["created_at"]),
+        )
+        for row in rows
+    ]
+
+
+async def list_entities(
+    pool: asyncpg.Pool | SqlGateway, query: ListEntitiesQuery
+) -> list[EntityResult]:
+    """List entities, optionally filtered by type."""
+    if query.entity_type:
+        sql = """
+            SELECT entity_id, name, entity_type, metadata
+            FROM entities
+            WHERE tenant_id = $1 AND entity_type = $2
+            ORDER BY name ASC
+            LIMIT $3
+            """
+        args = (str(query.tenant_id), query.entity_type, query.limit)
+    else:
+        sql = """
+            SELECT entity_id, name, entity_type, metadata
+            FROM entities
+            WHERE tenant_id = $1
+            ORDER BY name ASC
+            LIMIT $2
+            """
+        args = (str(query.tenant_id), query.limit)
+    if _is_gateway(pool):
+        async with pool.transaction(str(query.tenant_id)) as reader:
+            rows = await reader.fetch(sql, *args)
+        return _entities(rows)
+    async with tenant_connection(pool, str(query.tenant_id)) as conn:
+        rows = await conn.fetch(sql, *args)
+        return _entities(rows)
+
+
+def _entities(rows: list[Any]) -> list[EntityResult]:
+    return [
+        EntityResult(
+            entity_id=row["entity_id"],
+            name=row["name"],
+            entity_type=row["entity_type"],
+            metadata=dict(row["metadata"]) if row["metadata"] else {},
+        )
+        for row in rows
+    ]
 
 
 async def search_similar(
@@ -172,7 +220,7 @@ async def search_similar(
 
 
 async def search_context(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     base_search: Callable[[SearchQuery], Awaitable[list[SearchResult]]],
     query: SearchContextQuery,
 ) -> list[SearchResult]:
@@ -184,67 +232,79 @@ async def search_context(
             k=query.k,
         )
     )
-    # Expand each result with surrounding chunks
-    expanded: list[SearchResult] = []
+    if _is_gateway(pool):
+        async with pool.transaction(str(query.tenant_id)) as reader:
+            return await _expand_context(reader, base_results, query)
     async with tenant_connection(pool, str(query.tenant_id)) as conn:
-        for result in base_results:
-            expanded.append(result)
-            context = await conn.fetch(
-                """
-                SELECT c.chunk_id, c.text, c.doc_id, d.source, 0.0 AS score,
-                       c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path
-                FROM chunks c
-                JOIN documents d ON c.doc_id = d.doc_id
-                WHERE c.doc_id = (SELECT doc_id FROM chunks WHERE chunk_id = $1)
-                  AND c.tenant_id = $2
-                  AND c.chunk_id != $1
-                  AND c.tombstoned_at IS NULL AND c.superseded_at IS NULL
-                  AND ABS(c.chunk_index - (
-                      SELECT chunk_index FROM chunks WHERE chunk_id = $1
-                  )) <= $3
-                ORDER BY ABS(c.chunk_index - (
-                    SELECT chunk_index FROM chunks WHERE chunk_id = $1
-                )) ASC, c.chunk_id ASC
-                LIMIT $3
-                """,
-                str(result.chunk_id),
-                str(query.tenant_id),
-                query.context_chunks,
-            )
-            for row in context:
-                expanded.append(
-                    SearchResult(
-                        chunk_id=row["chunk_id"],
-                        text=row["text"],
-                        score=0.0,
-                        source=row["source"],
-                        doc_id=row["doc_id"],
-                        file_path=row["file_path"],
-                        start_line=row["start_line"],
-                        end_line=row["end_line"],
-                        chunk_index=row["chunk_index"],
-                        heading_path=json.loads(row["heading_path"])
-                        if row["heading_path"]
-                        else None,
-                    )
+        return await _expand_context(conn, base_results, query)
+
+
+async def _expand_context(
+    reader: Any,
+    base_results: list[SearchResult],
+    query: SearchContextQuery,
+) -> list[SearchResult]:
+    """Expand each result with surrounding context chunks, in base order."""
+    expanded: list[SearchResult] = []
+    for result in base_results:
+        expanded.append(result)
+        context = await reader.fetch(
+            """
+            SELECT c.chunk_id, c.text, c.doc_id, d.source, 0.0 AS score,
+                   c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path
+            FROM chunks c
+            JOIN documents d ON c.doc_id = d.doc_id
+            WHERE c.doc_id = (SELECT doc_id FROM chunks WHERE chunk_id = $1)
+              AND c.tenant_id = $2
+              AND c.chunk_id != $1
+              AND c.tombstoned_at IS NULL AND c.superseded_at IS NULL
+              AND ABS(c.chunk_index - (
+                  SELECT chunk_index FROM chunks WHERE chunk_id = $1
+              )) <= $3
+            ORDER BY ABS(c.chunk_index - (
+                SELECT chunk_index FROM chunks WHERE chunk_id = $1
+            )) ASC, c.chunk_id ASC
+            LIMIT $3
+            """,
+            str(result.chunk_id),
+            str(query.tenant_id),
+            query.context_chunks,
+        )
+        for row in context:
+            expanded.append(
+                SearchResult(
+                    chunk_id=row["chunk_id"],
+                    text=row["text"],
+                    score=0.0,
+                    source=row["source"],
+                    doc_id=row["doc_id"],
+                    file_path=row["file_path"],
+                    start_line=row["start_line"],
+                    end_line=row["end_line"],
+                    chunk_index=row["chunk_index"],
+                    heading_path=json.loads(row["heading_path"]) if row["heading_path"] else None,
                 )
+            )
     return expanded
 
 
 async def verify_answer(
-    pool: asyncpg.Pool, *, judge: object | None, query: VerifyAnswerQuery
+    pool: asyncpg.Pool | SqlGateway, *, judge: object | None, query: VerifyAnswerQuery
 ) -> VerifyAnswerResult:
     """Verify an LLM-generated answer's claims against cited chunks."""
     from corpus_kb.domain.models import ClaimVerdict
 
     if not query.chunk_ids or judge is None:
         return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
-    async with tenant_connection(pool, str(query.tenant_id)) as conn:
-        rows = await conn.fetch(
-            "SELECT chunk_id, text FROM chunks WHERE tenant_id = $1 AND chunk_id = ANY($2)",
-            str(query.tenant_id),
-            [str(cid) for cid in query.chunk_ids],
-        )
+    args = (str(query.tenant_id), [str(cid) for cid in query.chunk_ids])
+    if _is_gateway(pool):
+        # The gateway arm carries the explicit array cast (DuckDB binds a
+        # bare untyped ANY list loosely); Postgres keeps its shipped SQL.
+        async with pool.transaction(str(query.tenant_id)) as reader:
+            rows = await reader.fetch(_VERIFY_CHUNKS_SQL_GATEWAY, *args)
+    else:
+        async with tenant_connection(pool, str(query.tenant_id)) as conn:
+            rows = await conn.fetch(_VERIFY_CHUNKS_SQL, *args)
     cited_texts = [row["text"] for row in rows]
     if not cited_texts:
         return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
