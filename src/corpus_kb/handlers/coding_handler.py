@@ -20,8 +20,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.coding._scope import CodingStore, tenant_scope
 from corpus_kb.coding.codebook_loader import CodebookEmbeddingError, load_codebook
 from corpus_kb.coding.coder_dispatch import dispatch_chunk
 from corpus_kb.coding.confidence_routing import Bands
@@ -38,7 +37,6 @@ from corpus_kb.coding.reliability_sampling import insufficient_codes, stratified
 from corpus_kb.coding.saturation_query import compute_saturation
 from corpus_kb.coding.speaker_role_projection import classify_speaker_roles
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -71,11 +69,17 @@ class CodingHandler:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: CodingStore,
         embedder: OllamaEmbedder | PgmlEmbedder | None = None,
         coder: str = "qwen3:8b",
         model: str = "qwen3:8b",
     ) -> None:
+        """Take one store: an asyncpg pool (Postgres) or a SqlGateway.
+
+        The gateway is the portable arm (storage portability program, §8):
+        every coding module below takes the same store kind, and the pool
+        path stays byte-identical.
+        """
         self._pool = pool
         self._embedder = embedder
         self._coder = coder
@@ -311,7 +315,7 @@ class CodingHandler:
         reliability.py uses it to treat a code outside that set as missing data
         rather than a fabricated reject.
         """
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with tenant_scope(self._pool, tenant_id) as conn:
             rows = await conn.fetch(
                 "SELECT DISTINCT ON (chunk_id, code_id, coder) "
                 "       chunk_id, code_id, coder, decision "

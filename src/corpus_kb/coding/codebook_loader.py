@@ -18,10 +18,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.coding._scope import CodingStore, ScopedConn, is_gateway, tenant_scope
 from corpus_kb.coding.codebook import CodebookError, codebook_sha256, validate_codebook
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 _INSERT_CODE = """
 INSERT INTO code_registry
@@ -29,6 +27,19 @@ INSERT INTO code_registry
    inclusion_criteria, exclusion_criteria, examples, theory,
    definition_vector, probe_vector)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (code_id, codebook_version_id, tenant_id) DO NOTHING
+"""
+
+# The gateway arm casts the pgvector literals through the DuckDB mirror's
+# FLOAT[2560] columns; binding a list parameter instead costs seconds per
+# statement (see duckdb_support.vector_literal). Postgres takes the bare
+# literal its pgvector column parses.
+_INSERT_CODE_DUCKDB = """
+INSERT INTO code_registry
+  (code_id, codebook_version_id, tenant_id, name, brief_definition,
+   inclusion_criteria, exclusion_criteria, examples, theory,
+   definition_vector, probe_vector)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::FLOAT[2560], $11::FLOAT[2560])
 ON CONFLICT (code_id, codebook_version_id, tenant_id) DO NOTHING
 """
 
@@ -62,9 +73,7 @@ def _is_degraded(vector: str) -> bool:
     return isinstance(values, list) and not any(values)
 
 
-async def _registered_code_ids(
-    conn: asyncpg.Connection, version_id: UUID, tenant: str
-) -> frozenset[str]:
+async def _registered_code_ids(conn: ScopedConn, version_id: UUID, tenant: str) -> frozenset[str]:
     """The code_ids already written to code_registry under this codebook version."""
     rows = await conn.fetch(
         "SELECT code_id FROM code_registry WHERE codebook_version_id=$1 AND tenant_id=$2",
@@ -75,7 +84,7 @@ async def _registered_code_ids(
 
 
 async def _resolve_version(
-    conn: asyncpg.Connection, doc: dict[str, Any], tenant: str
+    conn: ScopedConn, doc: dict[str, Any], tenant: str
 ) -> tuple[UUID, frozenset[str]]:
     """Insert-or-find this codebook's version row, plus the code_ids already on it."""
     version_sha256 = codebook_sha256(doc)
@@ -139,15 +148,16 @@ async def _embed_codes(
 
 
 async def _write_codes(
-    conn: asyncpg.Connection,
+    conn: ScopedConn,
     version_id: UUID,
     tenant: str,
     embedded: list[tuple[dict[str, Any], str, str]],
+    insert_sql: str = _INSERT_CODE,
 ) -> None:
     """Write every embedded code to code_registry in one transaction."""
     for code, definition_vector, probe_vector in embedded:
         await conn.execute(
-            _INSERT_CODE,
+            insert_sql,
             _code_id(code),
             version_id,
             tenant,
@@ -164,7 +174,7 @@ async def _write_codes(
 
 async def load_codebook(
     doc: dict[str, Any],
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant: str,
     embed_fn: Callable[..., Awaitable[str]],
 ) -> UUID:
@@ -190,8 +200,8 @@ async def load_codebook(
 
     Args:
         doc: Validated codebook document
-        pool: asyncpg pool (a bare connection will not do: the phases each open
-              their own tenant-scoped transaction)
+        pool: asyncpg pool or SqlGateway store (a bare connection will not do:
+              the phases each open their own tenant-scoped transaction)
         tenant: Tenant UUID
         embed_fn: Async function(text, instructed: bool) -> pgvector literal
                  (typically via /api/embed endpoint)
@@ -207,9 +217,10 @@ async def load_codebook(
             code_registry row is written.
     """
     validate_codebook(doc)
+    insert_sql = _INSERT_CODE_DUCKDB if is_gateway(pool) else _INSERT_CODE
 
     # Phase 1 (resolve): claim or find the version, and learn what is already on it.
-    async with tenant_connection(pool, tenant) as conn:
+    async with tenant_scope(pool, tenant) as conn:
         version_id, registered = await _resolve_version(conn, doc, tenant)
 
     pending = [code for code in doc.get("categories", []) if _code_id(code) not in registered]
@@ -219,7 +230,7 @@ async def load_codebook(
 
     # Phase 3 (write): one short transaction over the vectors phase 2 produced.
     if embedded:
-        async with tenant_connection(pool, tenant) as conn:
-            await _write_codes(conn, version_id, tenant, embedded)
+        async with tenant_scope(pool, tenant) as conn:
+            await _write_codes(conn, version_id, tenant, embedded, insert_sql)
 
     return version_id

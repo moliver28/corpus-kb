@@ -12,8 +12,7 @@ from dataclasses import asdict
 from typing import Any, Literal
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.coding._scope import CodingStore, ScopedConn, tenant_scope
 from corpus_kb.coding.coder_client import call_ollama
 from corpus_kb.coding.coder_window import (
     CODER_WINDOW_CONTRACT,
@@ -33,7 +32,6 @@ from corpus_kb.coding.qa_chaining import chain_context
 from corpus_kb.coding.quote_verification import classify_quote
 from corpus_kb.coding.uncertainty.tier1_logprob import logprob_entropy
 from corpus_kb.coding.uncertainty.types import assemble_tier_signals
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 __all__ = [
     "CODER_WINDOW_CONTRACT",
@@ -64,9 +62,7 @@ def _final_status(route: str) -> str:
         raise ValueError(f"Unmapped route for final_codes.status: {route!r}") from None
 
 
-async def _fetch_qa_context(
-    conn: asyncpg.Connection, tenant_id: UUID, chunk_id: UUID
-) -> str | None:
+async def _fetch_qa_context(conn: ScopedConn, tenant_id: UUID, chunk_id: UUID) -> str | None:
     """The moderator-chained context for this chunk, or None when inapplicable.
 
     Inert unless: (a) this chunk has a speaker_role in chunk_status (written
@@ -121,14 +117,14 @@ def _as_decision(decision: str) -> Literal["assign", "reject"]:
 
 
 async def _read_window(
-    pool: asyncpg.Pool, tenant_id: UUID, chunk_id: UUID, code_ids: list[str]
+    pool: CodingStore, tenant_id: UUID, chunk_id: UUID, code_ids: list[str]
 ) -> tuple[str | None, list[dict[str, Any]], str | None]:
     """Phase 1 (read): fetch the window inputs and close the transaction, so
     the pooled connection is not held (idle-in-transaction) across the model
     call. Returns (chunk_text, code_rows, qa_context); chunk_text is None when
     the chunk does not exist.
     """
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         chunk_text = await conn.fetchval(
             "SELECT text FROM chunks WHERE chunk_id=$1 AND tenant_id=$2", chunk_id, tenant_id
         )
@@ -229,7 +225,7 @@ def _quote_gate(output: CoderWindowOutput, chunk_text: str) -> tuple[str, bool, 
 
 
 async def _write_cell(
-    conn: asyncpg.Connection,
+    conn: ScopedConn,
     *,
     chunk_id: UUID,
     tenant_id: UUID,
@@ -342,7 +338,7 @@ async def _write_cell(
 
 
 async def dispatch_chunk(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
     chunk_id: UUID,
     code_ids: list[str],
@@ -393,7 +389,7 @@ async def dispatch_chunk(
     re-code a cell, pass a new `coding_pass`.
 
     Args:
-        pool: asyncpg pool
+        pool: asyncpg pool or SqlGateway store
         tenant_id: Tenant UUID
         chunk_id: Chunk to code
         code_ids: Candidate code IDs (<=5; more raises ValueError)
@@ -453,7 +449,7 @@ async def dispatch_chunk(
     # written: parse_decisions already failed the whole call above if any single
     # per-code decision was missing or invalid, and this transaction is all-or-nothing.
     results = []
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         for row in code_rows:
             results.append(
                 await _write_cell(

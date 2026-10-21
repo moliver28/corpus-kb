@@ -22,29 +22,34 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.coding._scope import CodingStore, ScopedConn, is_gateway, tenant_scope
 from corpus_kb.coding.floors import calibrate
 from corpus_kb.coding.pooling import cosine_similarity
-from corpus_kb.storage.tenant_conn import tenant_connection
+
+_VECTORS_SQL = (
+    "SELECT chunk_id, embedding FROM chunks_vectors"
+    " WHERE tenant_id=$1 AND chunk_id = ANY($2::uuid[])"
+)
+# The gateway arm binds VARCHAR ids: DuckDB refuses a uuid[]/VARCHAR compare.
+_VECTORS_SQL_DUCKDB = (
+    "SELECT chunk_id, embedding FROM chunks_vectors"
+    " WHERE tenant_id=$1 AND chunk_id = ANY($2::VARCHAR[])"
+)
 
 
 async def _fetch_vectors(
-    conn: asyncpg.Connection, tenant_id: UUID, chunk_ids: list[UUID]
-) -> dict[UUID, Any]:
+    conn: ScopedConn, tenant_id: UUID, chunk_ids: list[UUID], portable: bool
+) -> dict[str, Any]:
     if not chunk_ids:
         return {}
-    rows = await conn.fetch(
-        "SELECT chunk_id, embedding FROM chunks_vectors"
-        " WHERE tenant_id=$1 AND chunk_id = ANY($2::uuid[])",
-        tenant_id,
-        chunk_ids,
-    )
+    sql = _VECTORS_SQL_DUCKDB if portable else _VECTORS_SQL
+    ids: list[Any] = [str(c) for c in chunk_ids] if portable else list(chunk_ids)
+    rows = await conn.fetch(sql, tenant_id, ids)
     return {row["chunk_id"]: row["embedding"] for row in rows}
 
 
 async def calibrate_code_floors(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
     code_id: str,
     codebook_version_id: UUID,
@@ -72,7 +77,8 @@ async def calibrate_code_floors(
         ValueError: if code_id has no row (no probe_vector) under this
             codebook_version_id/tenant, so there is nothing to write into.
     """
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
+        portable = is_gateway(pool)
         probe_vector = await conn.fetchval(
             "SELECT probe_vector FROM code_registry "
             "WHERE code_id=$1 AND codebook_version_id=$2 AND tenant_id=$3",
@@ -86,8 +92,8 @@ async def calibrate_code_floors(
                 f"{codebook_version_id} for this tenant; load the codebook first"
             )
 
-        pos_vectors = await _fetch_vectors(conn, tenant_id, positive_chunk_ids)
-        neg_vectors = await _fetch_vectors(conn, tenant_id, negative_chunk_ids)
+        pos_vectors = await _fetch_vectors(conn, tenant_id, positive_chunk_ids, portable)
+        neg_vectors = await _fetch_vectors(conn, tenant_id, negative_chunk_ids, portable)
 
         pos_cosines = [cosine_similarity(v, probe_vector) for v in pos_vectors.values()]
         neg_cosines = [cosine_similarity(v, probe_vector) for v in neg_vectors.values()]
