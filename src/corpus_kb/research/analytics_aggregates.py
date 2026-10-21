@@ -32,6 +32,29 @@ WHERE ra.cb_version_id = $1 AND ru.embedding_256 IS NOT NULL
 GROUP BY ra.code_id
 """
 
+#: DuckDB has no avg() over fixed-size arrays, so the twin averages each
+#: element POSITION and re-lists in order — the same mean at DOUBLE
+#: precision (pgvector's avg keeps FLOAT4). ``generate_subscripts`` walks
+#: the positions; ``list(m ORDER BY i)`` pins the element order.
+CENTROID_SQL_DUCK = """
+WITH flat AS (
+    SELECT ra.code_id, ru.embedding_256,
+           generate_subscripts(ru.embedding_256, 1) AS i
+    FROM research_assignments ra
+    JOIN research_units ru
+      ON ru.unit_id = ra.unit_id AND ru.tenant_id = ra.tenant_id
+    WHERE ra.cb_version_id = $1 AND ru.embedding_256 IS NOT NULL
+),
+means AS (
+    SELECT code_id, i, avg(list_extract(embedding_256, i)) AS m
+    FROM flat
+    GROUP BY code_id, i
+)
+SELECT code_id, list(m ORDER BY i) AS centroid
+FROM means
+GROUP BY code_id
+"""
+
 CODED_VECTORS_SQL = """
 SELECT ra.unit_id, ra.code_id, ra.status, ru.embedding_256 AS vec
 FROM research_assignments ra
@@ -49,9 +72,16 @@ WHERE u.unit_id = ANY($1::bigint[])
 """
 
 
-async def code_centroids_256(conn: SqlConn, codebook_version_id: UUID) -> dict[str, list[float]]:
-    """Per-code answer-space centroids: SQL avg() over embedding_256."""
-    rows = await conn.fetch(CENTROID_SQL, str(codebook_version_id))
+async def code_centroids_256(
+    conn: SqlConn, codebook_version_id: UUID, duck: bool = False
+) -> dict[str, list[float]]:
+    """Per-code answer-space centroids: SQL avg() over embedding_256.
+
+    Postgres aggregates with pgvector's avg(); DuckDB has none over
+    arrays, so ``duck=True`` runs the position-wise twin (CENTROID_SQL_DUCK).
+    """
+    sql = CENTROID_SQL_DUCK if duck else CENTROID_SQL
+    rows = await conn.fetch(sql, str(codebook_version_id))
     out: dict[str, list[float]] = {}
     for row in rows:
         if row["centroid"]:

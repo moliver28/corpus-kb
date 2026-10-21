@@ -6,8 +6,8 @@ Three project-scoped read views over the research read models:
     flags, moderator_introduced flag, explicit vs question-dependent tabs,
     and per-unit conformal set-size (r11).
   * ``uncoded_units``      — uncoded units ranked by nearest-code similarity
-    margin (1 - residual): the no-missing-clusters radar (r7). HNSW-served
-    via analytics_sql, never a Python-side vector scan.
+    margin (1 - residual): the no-missing-clusters radar (r7). kNN-served
+    via the engine-dispatched analytics runners, never a Python-side scan.
   * ``overlap_view``       — flagged code pairs + shared-unit confusion +
     borderline top-2-margin units (r7), reusing the todo-17 overlap math.
 """
@@ -15,7 +15,7 @@ Three project-scoped read views over the research read models:
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import Any
 from uuid import UUID
 
 import asyncpg
@@ -36,7 +36,7 @@ from corpus_kb.research.report_inputs import (
     load_gold_views_typed,
     load_versions,
 )
-from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.gateway import SqlGateway, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 CONFIDENCE_TIERS: dict[str, int] = {"high": 0, "medium": 1, "low": 2}
@@ -230,14 +230,11 @@ async def uncoded_units(
         )
         if n_uncoded <= 0:
             return {"status": "empty", "message": "no uncoded units", "version_id": str(resolved)}
-        # Scan depth = ALL codable units: a filtered HNSW scan can return
+        # Scan depth = ALL codable units: a filtered kNN scan can return
         # fewer rows than LIMIT (filtered-search gotcha), so the radar must
         # over-fetch the full codable set before the NOT EXISTS filter.
-        # analytics_sql keeps the asyncpg.Connection annotation until the
-        # research-store port (sp-research-port) widens it; the gateway
-        # satisfies the same fetch surface.
         ranked = await uncoded_units_ranking(
-            cast("asyncpg.Connection", conn), prototypes, max(n_codable, k)
+            conn, prototypes, max(n_codable, k), duck=is_gateway(pool)
         )
         scoped = ranked
         if project_id is not None:
@@ -291,7 +288,7 @@ async def overlap_view(
             )
             for code_id, theory in codes
         }
-        centroids = await code_centroids_256(conn, resolved)
+        centroids = await code_centroids_256(conn, resolved, duck=is_gateway(pool))
         if not centroids:
             return {"status": "empty", "message": "no coded units for this codebook version"}
         coded_vectors = await coded_unit_vectors_256(conn, resolved)
