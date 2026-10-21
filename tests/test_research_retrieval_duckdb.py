@@ -21,8 +21,8 @@ import pytest
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.projections.research._embed import ResearchEmbedder
-from corpus_kb.research.retrieval import ResearchQuery, research_search
 from corpus_kb.rag.embedder import FakeEmbedder, instruct
+from corpus_kb.research.retrieval import ResearchQuery, research_search
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string, vector_literal
 

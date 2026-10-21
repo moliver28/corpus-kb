@@ -25,9 +25,9 @@ import pytest
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.research.analytics_sql import explain_plan, residual_scan, uncoded_units_ranking
 from corpus_kb.research.batching import RunMarker, mark_item_completed, run_resumable
+from corpus_kb.research.exact_cache import CacheKeyComponents
 from corpus_kb.research.exact_cache import get as cache_get
 from corpus_kb.research.exact_cache import put as cache_put
-from corpus_kb.research.exact_cache import CacheKeyComponents
 from corpus_kb.research.inductive_store import (
     load_codable_pairs,
     queue_noise,
