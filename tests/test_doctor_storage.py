@@ -265,6 +265,63 @@ async def test_storage_checks_duckdb_full_pass(
 
 
 @pytest.mark.asyncio
+async def test_storage_checks_survives_an_unreadable_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The read-only open and its reads sit inside the never-raises contract.
+
+    A file can pass the lock probe (a read-write open works) and still fail
+    the read-only open or the table reads — damage the lock probe never
+    touches. The section must report FAIL with a plain fix, never raise.
+    """
+    monkeypatch.delenv("CORPUS_KB_DATABASE_BACKEND", raising=False)
+    monkeypatch.setattr(  # the real probe downloads; the unit tests cover it
+        "corpus_kb._setup.doctor_storage.extension_load_check", lambda _con: []
+    )
+    from corpus_kb._setup.migrate import run_duckdb_migrations
+
+    db = tmp_path / "kb.duckdb"
+    run_duckdb_migrations(duckdb_path_to_conn_string(str(db)))
+    dsn = duckdb_path_to_conn_string(str(db))
+    config = {"database": {"backend": "duckdb", "connection_string": dsn}}
+
+    real_connect = duckdb.connect
+
+    def unreadable(path: str, read_only: bool = False, **kw: object) -> duckdb.DuckDBPyConnection:
+        if read_only:
+            raise duckdb.IOException("simulated damage at read time")
+        return real_connect(path, **kw)
+
+    monkeypatch.setattr(duckdb, "connect", unreadable)
+
+    checks = await storage_checks(config, dsn, postgres_ok=False)  # must not raise
+    read = [c for c in checks if c.name == "DuckDB file read"]
+    assert len(read) == 1, checks
+    assert read[0].status == STATUS_FAIL
+    assert "setup" in read[0].fix.lower()
+    assert any(c.name == "engine fit" for c in checks), "the section still completes"
+
+
+@pytest.mark.asyncio
+async def test_storage_checks_survives_a_corrupt_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A garbage file: the section prints, carries a FAIL, never raises."""
+    monkeypatch.delenv("CORPUS_KB_DATABASE_BACKEND", raising=False)
+    monkeypatch.setattr(  # the real probe downloads; the unit tests cover it
+        "corpus_kb._setup.doctor_storage.extension_load_check", lambda _con: []
+    )
+    db = tmp_path / "kb.duckdb"
+    db.write_bytes(b"not a duckdb file" * 64)
+    dsn = duckdb_path_to_conn_string(str(db))
+    config = {"database": {"backend": "duckdb", "connection_string": dsn}}
+
+    checks = await storage_checks(config, dsn, postgres_ok=False)  # must not raise
+    assert any(c.status == STATUS_FAIL for c in checks)
+    assert any(c.name == "engine fit" for c in checks), "the section still completes"
+
+
+@pytest.mark.asyncio
 async def test_storage_checks_duckdb_backend_without_duckdb_dsn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

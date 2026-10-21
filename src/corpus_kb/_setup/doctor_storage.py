@@ -121,6 +121,22 @@ def _chunk_count(con: duckdb.DuckDBPyConnection) -> int | None:
         return None
 
 
+def unreadable_file_check(path: str, exc: Exception) -> ResearchCheck:
+    """FAIL when the file passes the lock probe but cannot be read.
+
+    The lock probe opens read-write; damage the probe never touches can
+    still fail the read-only open or the table reads. The doctor reports
+    that as one FAIL with a plain fix — it never raises out of the section.
+    """
+    return ResearchCheck(
+        name="DuckDB file read",
+        status=STATUS_FAIL,
+        detail=f"Cannot read {path}: {exc}",
+        fix="Move the file away, then run corpus-kb setup --backend duckdb.",
+        doc=DOC_ADMIN,
+    )
+
+
 async def storage_checks(
     config: dict[str, Any], conn_str: str, postgres_ok: bool
 ) -> list[ResearchCheck]:
@@ -169,12 +185,15 @@ async def storage_checks(
     checks: list[ResearchCheck] = [duckdb_lock_check(path)]
     count: int | None = None
     if checks[0].status == STATUS_OK:
-        con = duckdb.connect(path, read_only=True)
         try:
-            count = _chunk_count(con)
-            checks.append(fts_watermark_check(con))
-        finally:
-            con.close()
+            con = duckdb.connect(path, read_only=True)
+            try:
+                count = _chunk_count(con)
+                checks.append(fts_watermark_check(con))
+            finally:
+                con.close()
+        except Exception as exc:
+            checks.append(unreadable_file_check(path, exc))
     with closing(duckdb.connect(":memory:")) as scratch:
         checks.extend(extension_load_check(scratch))
     checks.append(events_sidecar_check(conn_str))
@@ -202,4 +221,5 @@ __all__ = [
     "print_storage_checks",
     "resolved_backend",
     "storage_checks",
+    "unreadable_file_check",
 ]
