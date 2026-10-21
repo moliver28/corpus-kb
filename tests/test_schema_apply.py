@@ -16,27 +16,36 @@ import asyncpg
 import pytest
 
 from corpus_kb._setup.schema_apply import EXTENSION_GATED_MIGRATIONS, apply_schema
-from tests.research_db import SUPER_DSN, create_research_db, drop_research_db
+from tests.research_db import (
+    BASE_DSN,
+    SUPER_DSN,
+    create_research_db,
+    drop_research_db,
+    super_dsn_for,
+)
 
 SCRATCH_DB = "corpus_kb_schema_apply_test"
-SCRATCH_DSN = f"postgresql://corpus_user:corpus_pass@localhost:5432/{SCRATCH_DB}"
+SCRATCH_DSN = f"{BASE_DSN}/{SCRATCH_DB}"
 
 
 async def _create_scratch() -> None:
-    admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+    # Credentials come from the env-derived research_db DSNs (program rule
+    # 20): locally the superuser is postgres, in the CI service image it is
+    # the bootstrap role corpus_user. No hardcoded role override here.
+    admin = await asyncpg.connect(SUPER_DSN)
     await admin.execute(f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
     await admin.execute(f'CREATE DATABASE "{SCRATCH_DB}" OWNER corpus_user')
     await admin.close()
     # Extensions first, exactly like tests/research_db.py: the scratch role
     # is not a superuser, so it cannot CREATE EXTENSION itself.
-    su = await asyncpg.connect(SCRATCH_DSN, user="postgres", password="postgres")
+    su = await asyncpg.connect(super_dsn_for(SCRATCH_DB))
     await su.execute("CREATE EXTENSION IF NOT EXISTS vector")
     await su.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
     await su.close()
 
 
 async def _drop_scratch() -> None:
-    admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+    admin = await asyncpg.connect(SUPER_DSN)
     await admin.execute(f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
     await admin.close()
 
@@ -72,8 +81,19 @@ async def test_apply_schema_tracks_migrations_and_is_idempotent() -> None:
 
 
 @pytest.mark.requires_postgres
-async def test_research_db_harness_uses_the_shared_bootstrap() -> None:
+async def test_research_db_harness_uses_the_shared_bootstrap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The refactored research_db still provisions a full scratch stack."""
+    # Do NOT touch the session scratch DB: research_db's unpatched DB_NAME is
+    # the one the session research_dsn fixture created, so this create/drop
+    # would wipe it for every later research consumer (full-suite ordering
+    # poison — see test_query_crud_tenant for the established pattern).
+    # Patch to a module-owned name instead.
+    from tests import research_db
+
+    monkeypatch.setattr(research_db, "DB_NAME", "corpus_kb_shapp_test")
+    monkeypatch.setattr(research_db, "DSN", f"{BASE_DSN}/corpus_kb_shapp_test")
     dsn = await create_research_db()
     try:
         conn = await asyncpg.connect(dsn)

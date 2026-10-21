@@ -447,7 +447,9 @@ async def _db_exists(db_name: str) -> bool:
 
     from tests import research_db
 
-    admin = await asyncpg.connect(research_db.SUPER_DSN, user="postgres", password="postgres")
+    # Env-derived superuser DSN (program rule 20): the CI service image
+    # bootstraps corpus_user as the superuser, locally it is postgres.
+    admin = await asyncpg.connect(research_db.SUPER_DSN)
     try:
         return bool(await admin.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", db_name))
     finally:

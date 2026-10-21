@@ -166,7 +166,9 @@ async def test_connection_setup_loads_age_and_sets_search_path(
     await store.search_entities("x")
     executed = [sql for (m, sql, _a) in conn.calls if m == "execute"]
     assert "LOAD 'age'" in executed
-    assert 'SET search_path = ag_catalog, "", public' in executed
+    # ag_catalog last: resolvable for cypher/agtype/opclass, never a target
+    # for the store's relational statements.
+    assert 'SET search_path = "$user", public, ag_catalog' in executed
     assert any("set_config('app.current_tenant_id'" in sql for sql in executed)
     probed = [sql for (m, sql, _a) in conn.calls if m == "fetchrow"]
     assert any("pg_extension" in sql for sql in probed)
@@ -229,7 +231,9 @@ async def test_add_entity_merges_and_returns_id(conn: FakeConnection, store: Age
     assert result == entity.entity_id
     sql, args = cypher_calls(conn)[-1]
     assert "MERGE (e:Entity" in sql
-    assert "ON CREATE SET" in sql
+    # Create-only fill via coalesce: AGE cannot parse "ON CREATE SET"
+    # (apache/age#1619), so a matched vertex must keep its stored id.
+    assert "coalesce(e.entity_id" in sql
     params = json.loads(args[0])
     assert params["name"] == "Widget"
     assert params["entity_type"] == "CLASS"

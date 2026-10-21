@@ -105,8 +105,12 @@ async def test_setup_dry_run_build_local_lists_local_dockerfile() -> None:
 
 
 @pytest.mark.asyncio
-async def test_setup_dry_run_uses_default_dsn_when_missing() -> None:
+async def test_setup_dry_run_uses_default_dsn_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     """When no connection string is provided, setup falls back to the default DSN."""
+    # Establish the stated precondition: the env override must be ABSENT.
+    # The postgres-service CI leg exports CORPUS_KB_DATABASE_URL, and the
+    # installer reads it at call time.
+    monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
     stdout_capture = StringIO()
     with (
         patch.object(sys, "stdout", stdout_capture),

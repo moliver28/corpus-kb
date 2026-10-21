@@ -1,18 +1,152 @@
 """Idempotent SQL migration runner for Corpus-KB.
 
-Reads .sql files from corpus_kb/migrations/ sorted lexicographically, tracks
-applied migrations in corpus.schema_migrations, and runs each unapplied
-migration inside a transaction. Re-running is a no-op.
+Backend-dispatched on the DSN scheme (storage portability program):
+
+- ``duckdb:///...`` names a DuckDB database file. The runner applies
+  ``corpus_kb/migrations_duckdb/`` (the full schema mirror, 000..029)
+  through a synchronous duckdb connection and tracks applied files in
+  that file's own ``schema_migrations`` table.
+- anything else is a Postgres DSN. The Postgres path applies
+  ``corpus_kb/migrations/`` through asyncpg, exactly as before.
+
+Each runner owns its tracking table; both sort files lexicographically,
+apply unapplied files inside a transaction, and are no-ops when re-run.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
+from typing import TYPE_CHECKING
 
 import asyncpg
 
+if TYPE_CHECKING:
+    import duckdb
+
 logger = logging.getLogger(__name__)
+
+#: DSN prefix that selects the DuckDB backend (program doc section 3).
+#: ``duckdb:///C:/data/corpus.duckdb`` (Windows drive) and
+#: ``duckdb:///data/corpus.duckdb`` (relative) both route here.
+DUCKDB_DSN_PREFIX = "duckdb:///"
+
+_DUCKDB_MIGRATIONS_TABLE_SQL = """
+CREATE SCHEMA IF NOT EXISTS corpus;
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename VARCHAR PRIMARY KEY,
+    applied_at TIMESTAMPTZ DEFAULT now()
+);
+"""
+
+
+def duckdb_dsn_to_path(dsn: str) -> str:
+    """Strip the ``duckdb:///`` scheme from a DSN, returning the file path.
+
+    Local copy of the path convention the storage gateway owns (program
+    doc section 3.4): a Windows drive letter keeps its colon, a leading
+    slash marks a POSIX absolute path, anything else is relative to the
+    process working directory.
+    """
+    if not dsn.startswith(DUCKDB_DSN_PREFIX):
+        raise ValueError("Not a DuckDB DSN. Use the form duckdb:///C:/data/corpus.duckdb")
+    path = dsn[len(DUCKDB_DSN_PREFIX) :]
+    if not path:
+        raise ValueError("The DuckDB DSN names no file. Use duckdb:///C:/data/corpus.duckdb")
+    return path
+
+
+# ---------------------------------------------------------------------------
+# DuckDB backend
+# ---------------------------------------------------------------------------
+
+
+def _ensure_duckdb_migrations_table(con: duckdb.DuckDBPyConnection) -> None:
+    """Create the DuckDB-side schema_migrations tracking table."""
+    con.execute(_DUCKDB_MIGRATIONS_TABLE_SQL)
+
+
+def _applied_duckdb_migrations(con: duckdb.DuckDBPyConnection) -> set[str]:
+    """Return the set of migration filenames already applied on DuckDB."""
+    rows = con.execute("SELECT filename FROM schema_migrations ORDER BY filename").fetchall()
+    return {row[0] for row in rows}
+
+
+def run_duckdb_migrations(dsn: str) -> None:
+    """Run all unapplied DuckDB migrations against the file in ``dsn``.
+
+    Synchronous: the DuckDB client is synchronous (program doc section 2).
+    Each migration runs inside one transaction together with its
+    ``schema_migrations`` insert, so a failure leaves nothing recorded.
+    """
+    import importlib.resources as resources
+
+    import duckdb
+
+    ref = resources.files("corpus_kb") / "migrations_duckdb"
+    with resources.as_file(ref) as migration_dir:
+        if not migration_dir.exists():
+            logger.warning("DuckDB migrations directory not found: %s", migration_dir)
+            return
+
+        sql_files = sorted(
+            p
+            for p in migration_dir.iterdir()
+            if p.is_file() and p.suffix == ".sql" and re.match(r"^\d+_", p.name)
+        )
+
+        path = duckdb_dsn_to_path(dsn)
+        con: duckdb.DuckDBPyConnection = duckdb.connect(path)
+        try:
+            _ensure_duckdb_migrations_table(con)
+            done = _applied_duckdb_migrations(con)
+
+            for sql_file in sql_files:
+                if sql_file.name in done:
+                    logger.info("Migration already applied: %s", sql_file.name)
+                    continue
+
+                sql = sql_file.read_text(encoding="utf-8")
+                logger.info("Applying DuckDB migration: %s", sql_file.name)
+                con.execute("BEGIN TRANSACTION")
+                try:
+                    con.execute(sql)
+                    con.execute(
+                        "INSERT INTO schema_migrations (filename) VALUES (?)",
+                        [sql_file.name],
+                    )
+                    con.execute("COMMIT")
+                except Exception:
+                    con.execute("ROLLBACK")
+                    raise
+            logger.info("DuckDB migrations complete")
+        finally:
+            con.close()
+
+
+# ---------------------------------------------------------------------------
+# Postgres backend (unchanged path)
+# ---------------------------------------------------------------------------
+
+
+async def prepare_age_session(conn: asyncpg.Connection) -> bool:
+    """Put a live connection into the session state AGE DDL needs.
+
+    Apache AGE resolves its graphid_ops operator class through the caller's
+    search_path (apache/age#2504), so migration 004 fails without this
+    ritual even when the extension is installed. ag_catalog sits LAST on
+    the path on purpose: unqualified migration DDL must keep creating in
+    ``public``, while the opclass, cypher() and agtype still resolve
+    through the path. Returns False when the AGE shared library is
+    absent, leaving the connection untouched.
+    """
+    try:
+        await conn.execute("LOAD 'age'")
+    except asyncpg.UndefinedFileError:
+        return False
+    await conn.execute('SET search_path = "$user", public, ag_catalog')
+    return True
 
 
 async def ensure_migrations_table(conn: asyncpg.Connection) -> None:
@@ -35,7 +169,11 @@ async def applied_migrations(conn: asyncpg.Connection) -> set[str]:
 
 
 async def run_migrations(connection_string: str) -> None:
-    """Run all unapplied migrations in order."""
+    """Run all unapplied migrations in order on the backend the DSN names."""
+    if connection_string.startswith("duckdb:"):
+        await asyncio.to_thread(run_duckdb_migrations, connection_string)
+        return
+
     import importlib.resources as resources
 
     ref = resources.files("corpus_kb") / "migrations"
@@ -52,6 +190,7 @@ async def run_migrations(connection_string: str) -> None:
 
         conn = await asyncpg.connect(connection_string)
         try:
+            await prepare_age_session(conn)
             await ensure_migrations_table(conn)
             done = await applied_migrations(conn)
 
@@ -81,14 +220,13 @@ async def main() -> None:
     if not connection_string:
         raise SystemExit(
             "Set CORPUS_KB_DATABASE_URL to run migrations.\n"
-            "Example: postgresql://user:pass@localhost:5432/corpus_kb"
+            "Example: postgresql://user:pass@localhost:5432/corpus_kb\n"
+            "DuckDB example: duckdb:///C:/data/corpus.duckdb"
         )
     await run_migrations(connection_string)
 
 
 if __name__ == "__main__":
-    import asyncio
-
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",

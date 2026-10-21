@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from corpus_kb.domain.models import DEFAULT_TENANT_ID
@@ -9,12 +11,16 @@ from corpus_kb.graph.extractor import extract_entities
 from corpus_kb.storage.graph_store import PostgresGraphStore
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.tools.ingest_tools import delete_document, ingest_text
-from corpus_kb.utils.models import Entity
+from corpus_kb.utils.models import Document, Entity
 
 # Same database the pg_pool fixture binds; keeps get_app/ingest dedup and
 # the schema tables in ONE database (RLS + content-hash dedup see the same
-# rows).
-_TEST_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test"
+# rows). Env-derived like conftest's pg_pool, so the CI service database
+# and a local stack both resolve here.
+_TEST_DSN = os.environ.get(
+    "CORPUS_KB_DATABASE_URL",
+    "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test",
+)
 
 # ============================================================================
 # Entity Extraction Tests
@@ -300,11 +306,21 @@ class TestGraphStore:
     @pytest.mark.asyncio
     async def test_graph_store_add_entity(self, pg_pool) -> None:
         store = PostgresGraphStore(pg_pool)
+        # The entity's source_document_id carries a real FK to documents:
+        # create the referenced document instead of assuming a row a fresh
+        # database cannot have.
+        document = Document(
+            path="test://graph-store-add-entity",
+            source_type="code",
+            content="graph store add entity fixture",
+            size_bytes=32,
+        )
+        doc_id = await store.add_document(document)
         entity = Entity(
             name="TestService",
             entity_type="CLASS",
             source_type="code",
-            source_document_id="7b354b12-af7b-481f-9e25-d4d37744a053",
+            source_document_id=doc_id,
         )
         entity_id = await store.add_entity(entity)
         assert entity_id is not None

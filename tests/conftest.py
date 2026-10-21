@@ -166,10 +166,50 @@ def research_dsn():
 
 
 @pytest.fixture
-async def research_pool(research_dsn):
+async def fresh_research_app(research_dsn: str) -> str:
+    """Rebind the research eventsourcing app for ONE test, on its own loop.
+
+    The session ``research_dsn`` fixture binds the app once, on the
+    throwaway event loop of an ``asyncio.run`` call. Handing that stale
+    app (whose psycopg pool is pinned to a dead loop) to later tests ends
+    in ``PoolTimeout: couldn't get a connection after 30.00 sec`` some
+    distance into the session — observed on the CI leg and in long local
+    sessions alike. Each research test instead resets the singletons,
+    points the env at the throwaway database (no-arg ``get_app()`` calls
+    resolve it), and builds a fresh app on the current loop. The env is
+    restored on teardown so later pg_pool-based tests keep their own DSN.
+    """
+    import os
+
+    import research_db
+
+    saved_url = os.environ.get("CORPUS_KB_DATABASE_URL")
+    saved_snapshot = os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD")
+    research_db.set_env(research_dsn)
+    await research_db.reset_singletons()
+    from corpus_kb.domain.application import get_app
+
+    get_app(research_dsn)
+    yield research_dsn
+    # Close THIS test's app (its pool is pinned to this test's loop) before
+    # the loop goes away, then restore the env exactly like the session
+    # fixture does.
+    await research_db.reset_singletons()
+    if saved_url is None:
+        os.environ.pop("CORPUS_KB_DATABASE_URL", None)
+    else:
+        os.environ["CORPUS_KB_DATABASE_URL"] = saved_url
+    if saved_snapshot is None:
+        os.environ.pop("CORPUS_KB_SNAPSHOT_PERIOD", None)
+    else:
+        os.environ["CORPUS_KB_SNAPSHOT_PERIOD"] = saved_snapshot
+
+
+@pytest.fixture
+async def research_pool(fresh_research_app: str):
     import asyncpg
 
-    pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=4)
+    pool = await asyncpg.create_pool(fresh_research_app, min_size=1, max_size=4)
     yield pool
     await pool.close()
 
@@ -184,12 +224,13 @@ async def superuser(research_dsn):
 
 
 @pytest.fixture
-async def reader_and_app(research_dsn):
+async def reader_and_app(fresh_research_app: str):
     from corpus_kb.domain.application import get_app
     from corpus_kb.projections.event_reader import EventReader
 
-    app = get_app(research_dsn)
-    pool = await __import__("asyncpg").create_pool(research_dsn)
+    dsn = fresh_research_app
+    app = get_app(dsn)
+    pool = await __import__("asyncpg").create_pool(dsn)
     try:
         yield EventReader(pool, app.mapper, app.recorder.events_table_name), app
     finally:
@@ -197,9 +238,83 @@ async def reader_and_app(research_dsn):
 
 
 @pytest.fixture
-async def pool(research_dsn):
+async def pool(fresh_research_app: str):
     import asyncpg
 
-    pool = await asyncpg.create_pool(research_dsn, min_size=1, max_size=4)
+    pool = await asyncpg.create_pool(fresh_research_app, min_size=1, max_size=4)
     yield pool
     await pool.close()
+
+
+# ---------------------------------------------------------------------------
+# DuckDB gateway fixtures (storage portability program, rules 21 and 23).
+# The backend-parametrized fixture takes its file PATH as a fixture argument,
+# never the env var (research_dsn mutates CORPUS_KB_DATABASE_URL). Teardown
+# order is rule 21: close apps, then gateways, then delete files — Windows
+# raises PermissionError when an open database file is removed, so fixtures
+# always close().
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def duckdb_path(tmp_path: Path) -> Path:
+    """A fresh DuckDB database file path for one test."""
+    return tmp_path / "gateway.duckdb"
+
+
+@pytest.fixture
+async def duckdb_gateway(duckdb_path: Path):
+    from corpus_kb.storage.gateway import DuckDbGateway
+
+    gateway = await DuckDbGateway.connect(str(duckdb_path))
+    try:
+        yield gateway
+    finally:
+        await gateway.close()
+
+
+@pytest.fixture(scope="session")
+def duckdb_session_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Session-long DuckDB file path (rule 23: passed as a fixture argument)."""
+    return tmp_path_factory.mktemp("duckdb-session") / "session.duckdb"
+
+
+@pytest.fixture(scope="session")
+async def duckdb_session_gateway(duckdb_session_path: Path):
+    from corpus_kb.storage.gateway import DuckDbGateway
+
+    gateway = await DuckDbGateway.connect(str(duckdb_session_path))
+    try:
+        yield gateway
+    finally:
+        await gateway.close()
+        # Delete only after close; duckdb writes a `<file>.wal` sidecar.
+        for suffix in ("", ".wal"):
+            Path(f"{duckdb_session_path}{suffix}").unlink(missing_ok=True)
+
+
+#: Storage backends the suite can exercise today. The postgres leg joins when
+#: the full-parity harness lands (the PG service is live on the ubuntu CI leg
+#: since phase B); without Postgres the pg_pool fixture skips that leg.
+STORAGE_BACKENDS = ("duckdb",)
+
+
+@pytest.fixture(params=STORAGE_BACKENDS)
+def backend(request: pytest.FixtureRequest) -> str:
+    return request.param
+
+
+@pytest.fixture
+async def any_gateway(backend: str, request: pytest.FixtureRequest, duckdb_path: Path):
+    """Backend-parametrized SqlGateway: a DuckDB file gateway or the PG pool."""
+    from corpus_kb.storage.gateway import DuckDbGateway, PostgresGateway
+
+    if backend == "duckdb":
+        gateway = await DuckDbGateway.connect(str(duckdb_path))
+        try:
+            yield gateway
+        finally:
+            await gateway.close()
+        return
+    pool = await request.getfixturevalue("pg_pool")
+    yield PostgresGateway(pool)
