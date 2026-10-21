@@ -1,9 +1,12 @@
-"""Postgres write layer for the ingest pipeline.
+"""Ingest write layer over the SqlGateway (storage portability WP).
 
 Every document/chunk/vector/entity/relation write and the ``ingest_runs``
 integrity ledger live here; ``ingest_common`` keeps only orchestration
 (partition -> chunk -> embed -> extract -> store) and calls into
-:class:`PostgresIngestStore`.
+:class:`PostgresIngestStore`. One pipeline, two backends: the store takes
+an asyncpg pool (wrapped in :class:`~corpus_kb.storage.gateway.PostgresGateway`)
+or any ``SqlGateway`` (e.g. ``DuckDbGateway``); backend SQL deltas live in
+``ingest_sql.py`` and the Postgres SQL text stays byte-identical.
 
 Ledger semantics (migration 022):
 
@@ -15,20 +18,19 @@ Ledger semantics (migration 022):
   only content whose last run COMPLETED with an empty error list, so a
   crashed or partial ingest can never be enshrined as unchanged.
 
-Every method — ledger and the inherited v1 ``store_chunks``/
-``store_vectors``/``store_entities``/``store_relations`` alike — runs inside
-an explicit ``conn.transaction()`` with the tenant GUC (``set_config``
-is_local) issued FIRST inside it, before any other statement: a LOCAL GUC
-issued on an asyncpg autocommit connection evaporates with its statement,
-which would leave every later write GUC-less and rejected on FORCE-RLS
-tables (migration 011+).
+Every method runs inside ``gateway.transaction(tenant_id)`` — on Postgres
+that is the held-connection scope with the tenant GUC (``set_config``
+is_local) issued FIRST, before any other statement: a LOCAL GUC issued on
+an asyncpg autocommit connection evaporates with its statement, which
+would leave every later write GUC-less and rejected on FORCE-RLS tables
+(migration 011+). On DuckDB the scope is BEGIN..COMMIT and tenancy rides
+on the explicit ``tenant_id`` predicate every statement already carries.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import datetime
 from typing import Any, cast
 
@@ -36,91 +38,75 @@ import asyncpg
 
 from ..analysis.dates import parse_date_value
 from ..errors import ConfigError
+from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
 from ..utils.models import Chunk, Document, Entity, Relation
+from .ingest_sql import (
+    duckdb_vector_width_probe,
+    ingest_sql_for,
+    pg_vector_type_mod_probe,
+    vector_width_config_error,
+    vector_write_params,
+)
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
-# pgvector enforces the EXACT typmod width of the target column (verified on
-# pgvector 0.8.3 / Postgres 16.14: a 768-dim insert into halfvec(2560) fails
-# with SQLSTATE 22000 "expected 2560 dimensions, not 768" — no padding, no
-# truncation). atttypmod for a vector(N)/halfvec(N) column is exactly N
-# (-1 un-typmodded).
-_VECTOR_TYPEMOD_SQL = (
-    "SELECT a.atttypmod AS width, format_type(a.atttypid, a.atttypmod) AS typ "
-    "FROM pg_attribute a "
-    "WHERE a.attrelid = 'public.chunks_vectors'::regclass AND a.attname = 'embedding'"
+_CHUNK_TOMBSTONE_SQL = (
+    "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "
+    "AND chunk_index >= $3 AND tombstoned_at IS NULL"
 )
-_DIMENSION_MISMATCH_RE = re.compile(r"expected (\d+) dimensions, not (\d+)")
+_CHUNK_DEGRADED_SQL = "UPDATE chunks SET degraded = $3 WHERE chunk_id = $1 AND tenant_id = $2"
+
+# DuckDB: a chunks row referenced by ANY child row (vectors, relations,
+# topics, labels, predictions) cannot be rewritten (an UPDATE rewrites the
+# row), so a changed or tombstoned chunk's dependents go first. Every one of
+# these child rows is derived/replaceable per the migrations that add them.
+_DUCKDB_DEPENDENT_TABLES = (
+    "chunks_vectors",
+    "relations",
+    "chunk_topics",
+    "chunk_labels",
+    "chunk_predictions",
+)
+
+
+def gateway_backend(gateway: SqlGateway) -> str:
+    """The backend a gateway drives: ``duckdb`` for DuckDbGateway, else postgres.
+
+    The gateway IS the backend choice — one object, one truth — so statement
+    variants key off the driver type, not a parallel config read.
+    """
+    return "duckdb" if isinstance(gateway, DuckDbGateway) else "postgres"
+
+
+def as_gateway(source: asyncpg.Pool | SqlGateway) -> SqlGateway:
+    """The one pool/gateway coercion: gateways pass through, pools wrap.
+
+    The Postgres driver is a thin asyncpg wrapper, so a test double with an
+    ``acquire()`` flows through it unchanged — historical fake-pool tests
+    keep working.
+    """
+    if isinstance(source, (PostgresGateway, DuckDbGateway)):
+        return source
+    return PostgresGateway(cast("asyncpg.Pool", source))
 
 
 async def assert_vector_column_width(
-    conn: asyncpg.Connection,
+    gw: SqlGateway,
     dimensions: int,
     embedding_model: str,
 ) -> None:
     """Fail fast when ``dimensions`` cannot enter ``chunks_vectors.embedding``.
 
-    The shipped schema fixes the column at ``halfvec(2560)`` (the native
-    width of the default qwen3-embedding:4b; storage/schema.sql), so a
-    model emitting any other width CANNOT ingest until the config or the
-    schema migrates. Probe the catalog once and raise a typed ConfigError
-    naming the schema reality and the two config keys, BEFORE the per-chunk
-    inserts fail mid-transaction. The probe is advisory: an unreadable
-    catalog or a missing table defers to the INSERT's own error.
+    The shipped Postgres schema fixes the column at ``halfvec(2560)`` (the
+    native width of the default qwen3-embedding:4b), so a model emitting any
+    other width CANNOT ingest. Probe the catalog once and raise a typed
+    ConfigError naming the schema reality and the two config keys, BEFORE
+    the per-chunk inserts fail mid-transaction. The probe is advisory: an
+    unreadable catalog or a missing table defers to the INSERT's own error.
     """
-    try:
-        row = await conn.fetchrow(_VECTOR_TYPEMOD_SQL)
-    except Exception:
-        return
-    if row is None:
-        return
-    width = int(row["width"])
-    if width < 0 or width == dimensions:
-        return
-    raise ConfigError(
-        f"Embedding width {dimensions} does not fit the embedding column {row['typ']}. "
-        "pgvector needs an exact match. Every vector insert will fail.",
-        remediation=(
-            f"chunks_vectors.embedding stores exactly {width} dimensions. Set "
-            f"embedding.model to a model that emits {width} dimensions (example: "
-            "qwen3-embedding:4b), set embedding.dimensions to "
-            f"{width}, then re-ingest. Any other width needs a column "
-            "migration (migration 025 is the current regime)."
-        ),
-    )
-
-
-def _width_config_error(exc: asyncpg.DataError, embedding_model: str) -> ConfigError:
-    """Translate a pgvector width DataError into the typed ConfigError."""
-    match = _DIMENSION_MISMATCH_RE.search(str(exc))
-    if match is None:
-        raise exc
-    expected, actual = int(match.group(1)), int(match.group(2))
-    return ConfigError(
-        f"Embedding width {actual} does not fit the embedding column halfvec({expected}) "
-        f"(model {embedding_model!r}). pgvector needs an exact match.",
-        remediation=(
-            f"chunks_vectors.embedding stores exactly {expected} dimensions. Set "
-            f"embedding.model to a model that emits {expected} dimensions (example: "
-            "qwen3-embedding:4b), set embedding.dimensions to "
-            f"{expected}, then re-ingest. Any other width needs a column "
-            "migration (migration 025 is the current regime)."
-        ),
-    )
-
-
-_DOCUMENT_UPSERT_SQL = """
-    INSERT INTO documents (doc_id, tenant_id, source, source_type,
-        chunk_count, file_size, file_hash, metadata, document_date)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    ON CONFLICT (tenant_id, source) DO UPDATE
-    SET chunk_count = $5, file_size = $6, file_hash = $7,
-        document_date = COALESCE(EXCLUDED.document_date, documents.document_date),
-        updated_at = NOW()
-    RETURNING doc_id::text
-"""
+    await pg_vector_type_mod_probe(gw, dimensions, embedding_model)
 
 
 def _document_date_param(document: Document) -> datetime | None:
@@ -129,24 +115,23 @@ def _document_date_param(document: Document) -> datetime | None:
     The date rides in ``document.metadata`` (``document_date``, ISO text)
     so the Document model stays schema-stable. The COALESCE rule in the
     SQL decides the merge: a newly resolved date fills the column, a NULL
-    never clears a stored date.
+    never clears a stored date — on BOTH backends (per-upsert, not only
+    on first insert).
     """
     return parse_date_value(document.metadata.get("document_date"))
 
 
 class PostgresIngestStore:
-    """Wraps all Postgres write operations for the ingest pipeline.
-
-    All methods use the same asyncpg.Pool and set tenant context via SET LOCAL.
-    """
+    """All ingest pipeline writes over one SqlGateway (Postgres or DuckDB)."""
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: asyncpg.Pool | SqlGateway,
         tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        self._pool = pool
+        self._gateway = as_gateway(pool)
         self._tenant_id = tenant_id
+        self._sql = ingest_sql_for(gateway_backend(self._gateway))
 
     async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
         """Return the doc_id when this exact content was already ingested cleanly.
@@ -158,24 +143,9 @@ class PostgresIngestStore:
         errored-stages past run does NOT count as unchanged — re-ingest heals
         it instead of silently skipping.
         """
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            row = await conn.fetchrow(
-                """
-                SELECT d.doc_id::text AS doc_id
-                FROM documents d
-                WHERE d.tenant_id = $1 AND d.source = $2 AND d.file_hash = $3
-                  AND EXISTS (
-                      SELECT 1 FROM ingest_runs r
-                      WHERE r.tenant_id = d.tenant_id
-                        AND r.start_hash = d.file_hash
-                        AND r.status = 'completed'
-                        AND r.stages->'errors' = '[]'::jsonb
-                  )
-                """,
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            row = await tx.fetchrow(
+                self._sql.unchanged_doc_sql,
                 self._tenant_id,
                 source,
                 file_hash,
@@ -188,14 +158,15 @@ class PostgresIngestStore:
         Runs FIRST in the pipeline, before any chunk/vector/extraction work:
         the ledger row is the promise that ``finish_run`` (or ``fail_run``)
         will close it. Returns (doc_id, run_id).
+
+        Postgres upserts the document row (chunk_count/file_hash refresh).
+        DuckDB only INSERTS: the row is FK-referenced by child tables and
+        DuckDB cannot rewrite a referenced row, so the existing doc_id is
+        fetched and run freshness moves to the ledger (migration 030).
         """
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            row = await conn.fetchrow(
-                _DOCUMENT_UPSERT_SQL,
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            row = await tx.fetchrow(
+                self._sql.document_insert_sql,
                 document.document_id,
                 self._tenant_id,
                 document.path,
@@ -206,28 +177,37 @@ class PostgresIngestStore:
                 json.dumps(document.metadata),
                 _document_date_param(document),
             )
-            doc_id: str = row["doc_id"]
-            run_id = await conn.fetchval(
-                """
-                INSERT INTO ingest_runs (tenant_id, source_type, start_hash, status)
-                VALUES ($1, $2, $3, 'running')
-                RETURNING run_id::text
-                """,
+            if row is None:
+                doc_id = await tx.fetchval(
+                    self._sql.document_fetch_sql, self._tenant_id, document.path
+                )
+            else:
+                doc_id = row["doc_id"]
+            run_id = await tx.fetchval(
+                self._sql.run_insert_sql,
                 self._tenant_id,
-                document.source_type,
-                file_hash,
+                *(
+                    (document.path, document.source_type, file_hash)
+                    if self._sql.is_duckdb
+                    else (document.source_type, file_hash)
+                ),
             )
         return doc_id, run_id
 
     async def update_document(self, document: Document, file_hash: str) -> None:
-        """Re-upsert the document row (chunk_count/file_size refresh at run end)."""
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            await conn.execute(
-                _DOCUMENT_UPSERT_SQL,
+        """Refresh the document row at run end (Postgres only).
+
+        On DuckDB the documents row is immutable once child rows reference
+        it (the engine rewrites rows on UPDATE), so this is a no-op there:
+        run freshness lives in the ``ingest_runs`` ledger (migration 030)
+        and the dedupe probe reads it from there.
+        """
+        if self._sql.is_duckdb:
+            logger.debug("update_document skipped: DuckDB documents rows are immutable")
+            return
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            await tx.execute(
+                self._sql.document_insert_sql,
                 document.document_id,
                 self._tenant_id,
                 document.path,
@@ -252,21 +232,9 @@ class PostgresIngestStore:
         any error -> failed with the joined error text and no finish_hash.
         """
         completed = not errors
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            await conn.execute(
-                """
-                UPDATE ingest_runs SET
-                    status = $2,
-                    finished_at = NOW(),
-                    finish_hash = $3,
-                    stages = $4::jsonb,
-                    error = $5
-                WHERE run_id = $1::uuid AND tenant_id = $6
-                """,
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            await tx.execute(
+                self._sql.finish_run_sql,
                 run_id,
                 "completed" if completed else "failed",
                 file_hash if completed else None,
@@ -278,16 +246,9 @@ class PostgresIngestStore:
     async def fail_run(self, run_id: str, error: str) -> None:
         """Mark the run failed from an exception path. Best effort: never raises."""
         try:
-            async with self._pool.acquire() as conn, conn.transaction():
-                await conn.execute(
-                    "SELECT set_config('app.current_tenant_id', $1, true)",
-                    self._tenant_id,
-                )
-                await conn.execute(
-                    """
-                    UPDATE ingest_runs SET status = 'failed', finished_at = NOW(), error = $2
-                    WHERE run_id = $1::uuid AND tenant_id = $3
-                    """,
+            async with self._gateway.transaction(self._tenant_id) as tx:
+                await tx.execute(
+                    self._sql.fail_run_sql,
                     run_id,
                     error,
                     self._tenant_id,
@@ -296,18 +257,46 @@ class PostgresIngestStore:
             logger.warning("Could not mark ingest run %s failed: %s", run_id, exc)
 
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
-        """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding."""
+        """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding.
+
+        DuckDB pre-pass: the engine's FK checks consult the last COMMITTED
+        state (same-transaction deletes are invisible to them), so the
+        derived dependents of every rewritten chunk are deleted AND
+        committed in their own scope BEFORE the rewrites land. All deleted
+        rows are derived/replaceable (vectors, relations, topics, labels,
+        predictions), and a changed chunk is re-embedded right after.
+        """
         if not chunks:
             return set()
         needs_embedding: set[str] = set()
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        if self._sql.is_duckdb:
+            doc_id = chunks[0].document_id
+            async with self._gateway.transaction(self._tenant_id) as tx:
+                for count, chunk in enumerate(chunks):
+                    chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
+                    row = await tx.fetchrow(
+                        "SELECT chunk_id, chunk_hash FROM chunks "
+                        "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
+                        self._tenant_id,
+                        chunk.document_id,
+                        chunk_index,
+                    )
+                    if row is not None and row["chunk_hash"] != chunk.chunk_hash:
+                        await self._delete_chunk_dependents(
+                            tx, "WHERE chunk_id = $1", row["chunk_id"]
+                        )
+                await self._delete_chunk_dependents(
+                    tx,
+                    "WHERE tenant_id = $1 AND chunk_id IN (SELECT chunk_id FROM chunks "
+                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index >= $3)",
+                    self._tenant_id,
+                    doc_id,
+                    len(chunks),
+                )
+        async with self._gateway.transaction(self._tenant_id) as tx:
             for count, chunk in enumerate(chunks):
                 chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
-                existing = await conn.fetchrow(
+                existing = await tx.fetchrow(
                     "SELECT chunk_id, chunk_hash FROM chunks "
                     "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
                     self._tenant_id,
@@ -315,7 +304,7 @@ class PostgresIngestStore:
                     chunk_index,
                 )
                 if existing is None:
-                    row = await conn.fetchrow(
+                    row = await tx.fetchrow(
                         """
                         INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
                             text, source_type, entity_name, heading_path, file_path,
@@ -344,7 +333,7 @@ class PostgresIngestStore:
                     if row is not None:
                         needs_embedding.add(str(row["chunk_id"]))
                 elif existing["chunk_hash"] != chunk.chunk_hash:
-                    await conn.execute(
+                    await tx.execute(
                         """
                         UPDATE chunks SET text = $1, chunk_hash = $2, source_timestamp = $3,
                             context_blurb = $4, metadata = $5, superseded_at = NULL,
@@ -358,16 +347,29 @@ class PostgresIngestStore:
                         json.dumps(chunk.metadata),
                         existing["chunk_id"],
                     )
+                    if self._sql.is_duckdb:
+                        chunk.chunk_id = str(existing["chunk_id"])
                     needs_embedding.add(str(existing["chunk_id"]))
-                # else: hash unchanged, no-op -- neither inserted nor re-embedded
-            await conn.execute(
-                "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "
-                "AND chunk_index >= $3 AND tombstoned_at IS NULL",
+                else:
+                    # Hash unchanged, no-op -- neither inserted nor
+                    # re-embedded. DuckDB: relations built later in this run
+                    # carry the in-memory chunk_id, so it is re-pointed at
+                    # the stored row (extractors key relations on
+                    # chunk.chunk_id); Postgres keeps its exact flow.
+                    if self._sql.is_duckdb:
+                        chunk.chunk_id = str(existing["chunk_id"])
+            await tx.execute(
+                _CHUNK_TOMBSTONE_SQL,
                 self._tenant_id,
                 chunks[0].document_id if chunks else None,
                 len(chunks),
             )
         return needs_embedding
+
+    async def _delete_chunk_dependents(self, tx: SqlGateway, where: str, *args: Any) -> None:
+        """Drop a chunk's derived child rows (DuckDB pre-rewrite step)."""
+        for table in _DUCKDB_DEPENDENT_TABLES:
+            await tx.execute(f"DELETE FROM {table} {where}", *args)
 
     async def store_vectors(
         self,
@@ -384,59 +386,67 @@ class PostgresIngestStore:
         flag honestly (all-zero vectors are the embedder-failure marker) and
         mirrors it onto the owning chunks row.
 
-        Width guard: the embedding column typmod is probed ONCE up front
-        (:func:`assert_vector_column_width`) and any pgvector width DataError
+        Width guard: the embedding column is probed ONCE up front (Postgres
+        catalog typmod, DuckDB ``PRAGMA table_info``) and any width error
         inside the loop is re-raised as the same typed ConfigError — a
         model/dimension mismatch is a config problem, not a write failure.
         """
         if not chunks:
             return 0
         count = 0
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
-            await assert_vector_column_width(
-                cast("asyncpg.Connection", conn), dimensions, embedding_model
-            )
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            await self._probe_vector_width(tx, dimensions, embedding_model)
             try:
                 for chunk in chunks:
                     if chunk.embedding is None:
                         continue
-                    vector_str = "[" + ",".join(str(v) for v in chunk.embedding) + "]"
-                    v1024 = (vectors_1024 or {}).get(str(chunk.chunk_id))
-                    v1024_str = "[" + ",".join(str(v) for v in v1024) + "]" if v1024 else None
-                    degraded = all(v == 0.0 for v in chunk.embedding)
-                    await conn.execute(
-                        """
-                        INSERT INTO chunks_vectors (chunk_id, tenant_id, embedding, vector_1024,
-                            embedding_model, dimensions, degraded)
-                        VALUES ($1, $2, $3::halfvec, $4::vector, $5, $6, $7)
-                        ON CONFLICT (chunk_id) DO UPDATE
-                        SET embedding = $3::halfvec,
-                            vector_1024 = $4::vector,
-                            embedding_model = $5, dimensions = $6, embedded_at = NOW(),
-                            degraded = $7
-                        """,
-                        chunk.chunk_id,
-                        self._tenant_id,
-                        vector_str,
-                        v1024_str,
-                        embedding_model,
-                        dimensions,
-                        degraded,
+                    count += await self._store_one_vector(
+                        tx, chunk, embedding_model, dimensions, vectors_1024 or {}
                     )
-                    await conn.execute(
-                        "UPDATE chunks SET degraded = $3 WHERE chunk_id = $1 AND tenant_id = $2",
-                        chunk.chunk_id,
-                        self._tenant_id,
-                        degraded,
-                    )
-                    count += 1
-            except asyncpg.DataError as exc:
-                raise _width_config_error(exc, embedding_model) from exc
+            except ConfigError:
+                raise
+            except Exception as exc:
+                raise vector_width_config_error(exc, embedding_model) from exc
         return count
+
+    async def _probe_vector_width(
+        self, tx: SqlGateway, dimensions: int, embedding_model: str
+    ) -> None:
+        if self._sql.is_duckdb:
+            await duckdb_vector_width_probe(tx, dimensions, embedding_model)
+        else:
+            await pg_vector_type_mod_probe(tx, dimensions, embedding_model)
+
+    async def _store_one_vector(
+        self,
+        tx: SqlGateway,
+        chunk: Chunk,
+        embedding_model: str,
+        dimensions: int,
+        vectors_1024: dict[str, list[float]],
+    ) -> int:
+        """One chunk's vector upsert + degraded mirror. Returns 1 (wrote)."""
+        v1024 = vectors_1024.get(str(chunk.chunk_id))
+        degraded = all(v == 0.0 for v in chunk.embedding) if chunk.embedding else True
+        assert chunk.embedding is not None
+        embedding_param, v1024_param = vector_write_params(chunk.embedding, v1024)
+        await tx.execute(
+            self._sql.vector_insert_sql,
+            chunk.chunk_id,
+            self._tenant_id,
+            embedding_param,
+            v1024_param,
+            embedding_model,
+            dimensions,
+            degraded,
+        )
+        await tx.execute(
+            _CHUNK_DEGRADED_SQL,
+            chunk.chunk_id,
+            self._tenant_id,
+            degraded,
+        )
+        return 1
 
     async def store_entities(self, entities: list[Entity]) -> dict[str, str]:
         """Insert entities into the entities table.
@@ -455,21 +465,10 @@ class PostgresIngestStore:
         id_map: dict[str, str] = {}
         if not entities:
             return id_map
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with self._gateway.transaction(self._tenant_id) as tx:
             for entity in entities:
-                row = await conn.fetchrow(
-                    """
-                    INSERT INTO entities (entity_id, tenant_id, name, entity_type,
-                        source_document_id, metadata)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    ON CONFLICT (tenant_id, name, entity_type) DO UPDATE
-                        SET entity_id = entities.entity_id
-                    RETURNING entity_id
-                    """,
+                row = await tx.fetchrow(
+                    self._sql.entity_insert_sql,
                     entity.entity_id,
                     self._tenant_id,
                     entity.name,
@@ -477,6 +476,16 @@ class PostgresIngestStore:
                     entity.source_document_id,
                     _entity_persisted_metadata(entity),
                 )
+                if row is None:
+                    # DuckDB dedupe: relations reference entities, so the
+                    # known row is FETCHED, never rewritten. Same contract
+                    # as the Postgres no-op update: the canonical id wins.
+                    row = await tx.fetchrow(
+                        self._sql.entity_fetch_sql,
+                        self._tenant_id,
+                        entity.name,
+                        entity.entity_type,
+                    )
                 if row is not None:
                     id_map[entity.entity_id] = str(row["entity_id"])
         return id_map
@@ -498,13 +507,9 @@ class PostgresIngestStore:
         if not relations:
             return 0
         count = 0
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with self._gateway.transaction(self._tenant_id) as tx:
             for relation in relations:
-                row = await conn.fetchrow(
+                row = await tx.fetchrow(
                     """
                     INSERT INTO relations (relation_id, tenant_id, source_entity_id,
                         target_entity_id, relation_type, weight, metadata,
