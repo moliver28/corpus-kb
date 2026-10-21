@@ -186,14 +186,14 @@ async def test_missing_project_and_version_hash_keys_fall_back_to_defaults():
     await projector.handle(
         _notification(
             "CodebookReleaseRequested",
-                tenant_id=str(TENANT),
-                release_id=str(RELEASE_ID),
-                codebook_id=str(PARENT_ID),
-                profile="team-codebook",
-                creator="alice",
-                manifest_json=MANIFEST,
-                manifest_sha256="a" * 64,
-                requested_at="2026-10-09T00:00:00+00:00",
+            tenant_id=str(TENANT),
+            release_id=str(RELEASE_ID),
+            codebook_id=str(PARENT_ID),
+            profile="team-codebook",
+            creator="alice",
+            manifest_json=MANIFEST,
+            manifest_sha256="a" * 64,
+            requested_at="2026-10-09T00:00:00+00:00",
             parent_release_id=None,
         )
     )
