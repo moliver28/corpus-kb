@@ -3,7 +3,8 @@
 Covers the DuckDB-port event-store row (program doc section 3.3):
   * env shapes: postgres byte-identical to the pre-port snapshot;
     duckdb -> eventsourcing.sqlite with SQLITE_DBNAME.
-  * the sqlite path helper (duckdb DSN -> OS path, bare paths too).
+  * the sqlite sidecar path helper (duckdb DSN or bare path -> the
+    ``<file>.events.db`` store beside the analytics file; :memory: kept).
   * get_app keyed on (backend, conn_str) and close_app releasing the app.
   * a real sqlite round-trip, WAL journal mode, and two-writer saves.
 No Postgres is needed anywhere in this file.
@@ -84,14 +85,14 @@ def test_postgres_env_is_byte_identical_to_snapshot():
         assert _eventsourcing_env("postgres", dsn) == expected
 
 
-def test_duckdb_env_uses_sqlite_module_and_file_path(tmp_path):
+def test_duckdb_env_uses_sqlite_module_and_sidecar_path(tmp_path):
     from corpus_kb.domain.application import _eventsourcing_env
 
     target = tmp_path / "kb.duckdb"
     env = _eventsourcing_env("duckdb", f"duckdb:///{target.as_posix()}")
     assert env == {
         "PERSISTENCE_MODULE": "eventsourcing.sqlite",
-        "SQLITE_DBNAME": os.path.normpath(str(target)),
+        "SQLITE_DBNAME": os.path.normpath(str(target)) + ".events.db",
         "CREATE_TABLE": "y",
     }
 
@@ -109,18 +110,22 @@ def test_unknown_backend_raises_config_error():
 @pytest.mark.parametrize(
     ("conn_str", "expected"),
     [
-        ("duckdb:///C:/data/kb.duckdb", os.path.normpath("C:/data/kb.duckdb")),
-        ("duckdb:///data/kb.duckdb", os.path.normpath("data/kb.duckdb")),
-        ("C:\\data\\kb.duckdb", os.path.normpath("C:\\data\\kb.duckdb")),
-        ("C:/data/kb.duckdb", os.path.normpath("C:/data/kb.duckdb")),
-        ("kb.duckdb", "kb.duckdb"),
+        ("duckdb:///C:/data/kb.duckdb", os.path.normpath("C:/data/kb.duckdb") + ".events.db"),
+        # The gateway DSN convention owns the shape: a 3-slash relative
+        # form keeps its leading slash exactly as the analytics file would.
+        ("duckdb:///data/kb.duckdb", os.path.normpath("/data/kb.duckdb") + ".events.db"),
+        ("C:\\data\\kb.duckdb", os.path.normpath("C:\\data\\kb.duckdb") + ".events.db"),
+        ("C:/data/kb.duckdb", os.path.normpath("C:/data/kb.duckdb") + ".events.db"),
+        ("kb.duckdb", "kb.duckdb.events.db"),
         ("duckdb:///:memory:", ":memory:"),
     ],
 )
 def test_sqlite_path_from_conn_str(conn_str, expected):
-    from corpus_kb.domain.application import _sqlite_path_from_conn_str
+    """Every input form lands on the sidecar beside the analytics file."""
+    from corpus_kb.domain.application import _eventsourcing_env
 
-    assert _sqlite_path_from_conn_str(conn_str) == expected
+    env = _eventsourcing_env("duckdb", conn_str)
+    assert env["SQLITE_DBNAME"] == expected
 
 
 def test_get_app_default_backend_is_postgres():
@@ -175,11 +180,12 @@ def test_close_app_releases_the_sqlite_file(tmp_path, isolated_apps):
     from corpus_kb.domain.application import close_app, get_app
 
     db = tmp_path / "kb.duckdb"
+    store = tmp_path / "kb.duckdb.events.db"
     dsn = f"duckdb:///{db.as_posix()}"
     get_app(dsn, backend="duckdb")
     close_app(("duckdb", dsn))
-    sidecars = [Path(f"{db}-wal"), Path(f"{db}-shm")]
-    leftovers = [p for p in [db, *sidecars] if p.exists() and not _unlink(p)]
+    sidecars = [Path(f"{store}-wal"), Path(f"{store}-shm")]
+    leftovers = [p for p in [store, *sidecars] if p.exists() and not _unlink(p)]
     assert not leftovers, f"files still locked after close_app: {leftovers}"
 
 
@@ -227,7 +233,7 @@ def test_sqlite_journal_mode_is_wal(tmp_path, isolated_apps):
 
     db = tmp_path / "kb.duckdb"
     get_app(f"duckdb:///{db.as_posix()}", backend="duckdb")
-    with sqlite3.connect(str(db)) as conn:
+    with sqlite3.connect(str(db) + ".events.db") as conn:
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
     assert mode == "wal"
 

@@ -11,6 +11,7 @@ rule 7).
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Sequence
 from pathlib import Path
@@ -19,19 +20,28 @@ from urllib.parse import unquote, urlparse
 
 import asyncpg
 
-from corpus_kb.errors import ConflictError, DatabaseUnavailableError, ValidationError
+from corpus_kb.errors import (
+    ConfigError,
+    ConflictError,
+    DatabaseUnavailableError,
+    ValidationError,
+)
 
 if TYPE_CHECKING:  # function-local at runtime (program rule 9: deptry-visible)
     import duckdb
 
 #: The module's cross-module surface. The names below are consumed by
-#: ``duckdb_gateway.py`` (driver) and re-exported by ``gateway.py``; the
-#: declaration is what marks them public rather than dead.
+#: ``duckdb_gateway.py`` (driver), ``domain.application`` (event-store
+#: sidecar), ``cli_migrate`` (lock classifier), and re-exported by
+#: ``gateway.py``; the declaration is what marks them public rather than dead.
 __all__ = [
+    "EVENT_STORE_SUFFIX",
     "MAX_TRANSACTION_ATTEMPTS",
     "_BACKOFF_SECONDS",
     "_MAX_PLACEHOLDERS",
     "Row",
+    "events_sidecar_path",
+    "is_duckdb_lock_error",
     "vector_literal",
 ]
 
@@ -107,6 +117,72 @@ def duckdb_conn_string_to_path(conn_string: str) -> str:
     return path
 
 
+#: Suffix naming the event-store SQLite file beside the analytics .duckdb
+#: (program doc §2). SQLite cannot open a DuckDB file, so the eventsourcing
+#: store always lives in the sidecar, never in the .duckdb itself.
+EVENT_STORE_SUFFIX = ".events.db"
+
+
+def events_sidecar_path(conn_str: str) -> str:
+    """The event-store SQLite sidecar for one analytics DuckDB DSN or path.
+
+    ONE derivation for the runtime app, the server wiring, and the
+    migrate-data legs: 'duckdb:///C:/x.duckdb' and the bare path
+    'C:/x.duckdb' both map to 'C:/x.duckdb.events.db' (OS separators).
+    ':memory:' stays the library's in-memory mode. The guard refuses a
+    connection string that already names the sidecar: that file IS the
+    event store, so opening it as the analytics database would clobber
+    the store (and the reverse order bricks the gateway).
+    """
+    base = duckdb_conn_string_to_path(conn_str)
+    if base == ":memory:":
+        return base
+    if base.endswith(EVENT_STORE_SUFFIX):
+        raise ConfigError(
+            f"Connection string {conn_str!r} names the event-store sidecar file.",
+            remediation=(
+                "Point the connection string at the analytics .duckdb file."
+                " The event store sits beside it as <file>.events.db."
+            ),
+        )
+    return os.path.normpath(base) + EVENT_STORE_SUFFIX
+
+
+#: Driver-text markers for the DuckDB file-lock conflict. Banked here so
+#: every caller classifies locks through ONE list (the migrate CLI used to
+#: keep its own substrings and drift).
+_LOCK_TEXT_MARKERS = (
+    "being used by another process",
+    "File is already open in",
+    "Conflicting lock",
+    "Could not set lock",
+    "different configuration",
+)
+
+
+def _lock_failure_text(text: str) -> bool:
+    """True when driver text names the file-lock conflict."""
+    return any(marker in text for marker in _LOCK_TEXT_MARKERS) or (
+        "Cannot open database" in text and "read-only mode" in text
+    )
+
+
+def is_duckdb_lock_error(exc: BaseException) -> bool:
+    """One DuckDB file-lock classifier for every caller.
+
+    True for the raw driver errors ``map_connect_error`` maps, and for the
+    typed ``DatabaseUnavailableError`` it produces with the lock
+    remediation — so surfaces never re-derive the substrings.
+    """
+    import duckdb
+
+    if isinstance(exc, DatabaseUnavailableError):
+        return exc.remediation == _LOCKED_REMEDIATION
+    return isinstance(exc, (duckdb.IOException, duckdb.ConnectionException)) and (
+        _lock_failure_text(str(exc))
+    )
+
+
 def map_connect_error(exc: Exception) -> Exception:
     """Map DuckDB connect failures onto the corpus error taxonomy.
 
@@ -115,16 +191,9 @@ def map_connect_error(exc: Exception) -> Exception:
     """
     import duckdb
 
-    text = str(exc)
     concrete = isinstance(exc, (duckdb.IOException, duckdb.ConnectionException))
-    locked = concrete and (
-        "being used by another process" in text
-        or "File is already open in" in text
-        or ("Cannot open database" in text and "read-only mode" in text)
-        or "different configuration" in text
-    )
-    if locked:
-        return DatabaseUnavailableError(text, remediation=_LOCKED_REMEDIATION)
+    if concrete and _lock_failure_text(str(exc)):
+        return DatabaseUnavailableError(str(exc), remediation=_LOCKED_REMEDIATION)
     return exc
 
 

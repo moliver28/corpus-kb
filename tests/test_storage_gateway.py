@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import os
 import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -86,6 +87,39 @@ def test_dsn_inverse_strips_the_leading_slash_before_memory() -> None:
 def test_dsn_inverse_rejects_foreign_schemes() -> None:
     with pytest.raises(ValueError, match="scheme"):
         duckdb_conn_string_to_path("postgresql://corpus_user@localhost/corpus_kb")
+
+
+# ---------------------------------------------------------------------------
+# Event-store sidecar (the ONE path derivation: runtime app + migrate legs).
+# ---------------------------------------------------------------------------
+
+
+def test_events_sidecar_path_maps_every_input_form_to_the_sidecar() -> None:
+    from corpus_kb.storage.duckdb_support import EVENT_STORE_SUFFIX, events_sidecar_path
+
+    assert EVENT_STORE_SUFFIX == ".events.db"
+    assert (
+        events_sidecar_path("duckdb:///C:/data/kb.duckdb")
+        == os.path.normpath("C:/data/kb.duckdb") + ".events.db"
+    )
+    assert (
+        events_sidecar_path("C:/data/kb.duckdb")
+        == os.path.normpath("C:/data/kb.duckdb") + ".events.db"
+    )
+    assert events_sidecar_path("kb.duckdb") == "kb.duckdb.events.db"
+    assert events_sidecar_path("duckdb:///:memory:") == ":memory:"
+
+
+def test_events_sidecar_path_refuses_a_sidecar_shaped_connection_string() -> None:
+    """The sidecar IS the event store: pointing the analytics DSN at it
+    would clobber the store (SQLite creates it) or brick the gateway."""
+    from corpus_kb.errors import ConfigError
+    from corpus_kb.storage.duckdb_support import events_sidecar_path
+
+    with pytest.raises(ConfigError, match="sidecar"):
+        events_sidecar_path("duckdb:///C:/data/kb.duckdb.events.db")
+    with pytest.raises(ConfigError, match="sidecar"):
+        events_sidecar_path("C:/data/kb.duckdb.events.db")
 
 
 async def test_connect_accepts_a_duckdb_dsn(tmp_path: Path) -> None:
@@ -348,6 +382,10 @@ async def test_config_mismatch_second_connection_maps_to_database_unavailable(
         ),
         (
             duckdb.IOException,
+            'IO Error: Could not set lock on file "x.duckdb": Conflicting lock is held',
+        ),
+        (
+            duckdb.IOException,
             'IO Error: Cannot open file "x.duckdb". File is already open in\nx (PID 1)',
         ),
         (
@@ -370,6 +408,31 @@ def test_map_connect_error_bank_strings(exc_type: type[Exception], message: str)
 def test_map_connect_error_passes_other_errors_through() -> None:
     plain = duckdb.ParserException("Parser Error: nope")
     assert map_connect_error(plain) is plain
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected"),
+    [
+        (duckdb.IOException("IO Error: Could not set lock on file"), True),
+        (duckdb.IOException("IO Error: Conflicting lock is held"), True),
+        (duckdb.IOException("IO Error: file is being used by another process"), True),
+        (duckdb.ParserException("Parser Error: nope"), False),
+    ],
+)
+def test_is_duckdb_lock_error_classifies_raw_driver_errors(exc: Exception, expected: bool) -> None:
+    from corpus_kb.storage.duckdb_support import is_duckdb_lock_error
+
+    assert is_duckdb_lock_error(exc) is expected
+
+
+def test_is_duckdb_lock_error_accepts_the_typed_lock_error() -> None:
+    from corpus_kb.storage.duckdb_support import is_duckdb_lock_error
+
+    mapped = map_connect_error(duckdb.IOException("IO Error: Could not set lock on file"))
+    assert isinstance(mapped, DatabaseUnavailableError)
+    assert is_duckdb_lock_error(mapped) is True
+    plain_unavailable = DatabaseUnavailableError("The Postgres database is not reachable.")
+    assert is_duckdb_lock_error(plain_unavailable) is False
 
 
 # ---------------------------------------------------------------------------

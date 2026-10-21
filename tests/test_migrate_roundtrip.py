@@ -70,8 +70,8 @@ class TestEventStore:
         from corpus_kb.domain.aggregates import Document
         from corpus_kb.domain.application import CorpusApplication, reset_app
 
-        path = str(tmp_path / "events-a.db")
-        app = CorpusApplication(connection_string=path, backend="duckdb")
+        analytics = str(tmp_path / "events-a.duckdb")
+        app = CorpusApplication(connection_string=analytics, backend="duckdb")
         try:
             doc = Document(
                 tenant_id=TENANT,
@@ -83,7 +83,9 @@ class TestEventStore:
             app.save(doc)
         finally:
             reset_app()
-        return path
+        # The app derives the sidecar name beside the analytics file — the
+        # same convention the copy legs read and write.
+        return analytics + ".events.db"
 
     def test_copy_round_trip_digest_equal(self, tmp_path, seeded_store) -> None:
         events, snapshots = collect_sqlite_events(seeded_store)

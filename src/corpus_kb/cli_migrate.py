@@ -15,6 +15,7 @@ import typer
 
 from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
 from corpus_kb.errors import ConfigError, CorpusError
+from corpus_kb.storage.duckdb_support import is_duckdb_lock_error
 
 _PG_SCHEMES = ("postgresql://", "postgres://")
 
@@ -74,8 +75,9 @@ def register(app: typer.Typer) -> None:
             typer.echo(f"ERROR: {exc}")
             return 1
         except Exception as exc:
-            message = str(exc)
-            if "Conflicting lock" in message or "Could not set lock" in message:
+            # The shared classifier owns the lock detection: raw driver
+            # errors and gateway-typed ones classify the same way.
+            if is_duckdb_lock_error(exc):
                 typer.echo(
                     "ERROR: Another program is using this database file. Close it, then try again."
                 )

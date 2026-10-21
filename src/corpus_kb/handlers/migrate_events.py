@@ -52,13 +52,14 @@ def sqlite_path_for_duckdb_dsn(dsn: str) -> str:
     """The event-store SQLite path for a duckdb:/// DSN.
 
     Program doc §2: the store is the file BESIDE the .duckdb — the duckdb
-    path plus an ``.events.db`` suffix. (The phase-A DSN helper maps a
-    duckdb DSN to the SAME path; SQLite cannot share the file with DuckDB,
-    so the sidecar name is the migrate-data convention.)
+    path plus an ``.events.db`` suffix. The shared helper in
+    ``storage.duckdb_support`` owns the name (the runtime app derives
+    SQLITE_DBNAME through it too), so the migrate leg and the runtime can
+    never disagree again.
     """
-    from corpus_kb._setup.migrate import duckdb_dsn_to_path
+    from corpus_kb.storage.duckdb_support import events_sidecar_path
 
-    return duckdb_dsn_to_path(dsn) + ".events.db"
+    return events_sidecar_path(dsn)
 
 
 # ---------------------------------------------------------------------------

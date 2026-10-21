@@ -30,14 +30,15 @@ async def startup_duckdb(cfg: dict[str, Any], conn_str: str) -> dict[str, Any]:
     """Start the research ecosystem on one DuckDB file behind the gateway."""
     from corpus_kb.domain.application import events_table_name, get_app
     from corpus_kb.rag.embedder import create_embedder
-    from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path
     from corpus_kb.storage.gateway import DuckDbGateway
 
     gateway = await DuckDbGateway.connect(conn_str)
     # The event store is the SQLite recorder file BESIDE the .duckdb file —
-    # never the analytics file itself (SQLite cannot open it).
-    events_dsn = f"{duckdb_conn_string_to_path(conn_str)}.events.db"
-    app = get_app(events_dsn, backend="duckdb")
+    # never the analytics file itself (SQLite cannot open it). The shared
+    # sidecar helper owns the name: get_app derives it through the same
+    # path the migrate-data legs write to, so a verified migrate plus a
+    # backend flip reopens the SAME store.
+    app = get_app(conn_str, backend="duckdb")
 
     checkpoint_mgr = CheckpointManager(gateway=gateway)
     dlq_handler = DLQHandler(gateway=gateway)
