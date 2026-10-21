@@ -20,12 +20,21 @@ from typing import Any, Protocol, TypeAlias, runtime_checkable
 
 import asyncpg
 
+from corpus_kb.errors import ConfigError
 from corpus_kb.storage.dialect import DUCKDB, POSTGRES, Dialect
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
-from corpus_kb.storage.gateway import SqlGateway, is_gateway
+from corpus_kb.storage.gateway import PostgresGateway, SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
-__all__ = ["SqlConn", "Store", "dialect_of", "json_cast", "json_value", "tenant_scope"]
+__all__ = [
+    "SqlConn",
+    "Store",
+    "dialect_of",
+    "json_cast",
+    "json_value",
+    "resolve_store",
+    "tenant_scope",
+]
 
 #: The store argument every research entry point accepts: today's asyncpg
 #: pool (Postgres path, unchanged callers) or an injected SqlGateway
@@ -59,15 +68,31 @@ def dialect_of(store: Store) -> Dialect:
     return DUCKDB if isinstance(store, DuckDbGateway) else POSTGRES
 
 
+def resolve_store(store: Store | None, gateway: SqlGateway | None = None) -> SqlGateway:
+    """The injected gateway, else the driver over the pool.
+
+    The projections-port constructor shape, typed for the research union:
+    ``resolve_store(pool)`` wraps Postgres, ``resolve_store(None, gw)``
+    passes a gateway through, and neither given raises typed.
+    """
+    if gateway is not None:
+        return gateway
+    if store is None:
+        raise ConfigError("Research components need a SqlGateway or an asyncpg pool.")
+    if isinstance(store, asyncpg.Pool):
+        return PostgresGateway(store)
+    return store
+
+
 @asynccontextmanager
 async def tenant_scope(store: Store, tenant_id: Any) -> AsyncIterator[SqlConn]:
     """Open one tenant-scoped session: RLS GUC on Postgres, tx on DuckDB."""
-    if is_gateway(store):
-        async with store.transaction(str(tenant_id)) as tx:
-            yield tx
-    else:
+    if isinstance(store, asyncpg.Pool):
         async with tenant_connection(store, tenant_id) as conn:
             yield conn
+    else:
+        async with store.transaction(str(tenant_id)) as tx:
+            yield tx
 
 
 def json_cast(dialect: Dialect, idx: str) -> str:

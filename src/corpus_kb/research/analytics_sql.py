@@ -330,7 +330,7 @@ async def uncoded_units_ranking(
 
 
 async def explain_plan(
-    conn: SqlConn,
+    conn: _PlannerConn,
     sql: str,
     params: list[object],
     force_index: bool = True,

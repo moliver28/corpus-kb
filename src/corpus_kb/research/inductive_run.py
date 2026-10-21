@@ -35,6 +35,8 @@ from collections import Counter
 from typing import Any, Protocol
 from uuid import UUID
 
+import asyncpg
+
 from corpus_kb.coding.inductive_cluster import (
     NOISE_LABEL,
     centroid_drift,
@@ -53,7 +55,7 @@ from corpus_kb.coding.saturation import isr
 from corpus_kb.domain.application import dsn_from_config
 from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research import guide_copy
-from corpus_kb.research.conn import Store, tenant_scope
+from corpus_kb.research.conn import tenant_scope
 from corpus_kb.research.inductive_store import (
     find_observation,
     latest_baseline_dbcv,
@@ -163,7 +165,7 @@ def all_noise_note(n_clusters: int, noise_units: int) -> str | None:
 
 
 async def run_inductive(
-    pool: Store,
+    pool: asyncpg.Pool,
     tenant_id: UUID,
     project_id: UUID | None = None,
     llm: SummaryChatClient | None = None,
@@ -196,7 +198,7 @@ async def run_inductive(
 
 
 async def _execute(
-    pool: Store,
+    pool: asyncpg.Pool,
     handler: ResearchHandler,
     tenant_id: UUID,
     run_id: UUID,
@@ -383,7 +385,7 @@ async def _observe(
 
 
 async def _grow(
-    pool: Store,
+    pool: asyncpg.Pool,
     handler: ResearchHandler,
     tenant_id: UUID,
     run_id: UUID,

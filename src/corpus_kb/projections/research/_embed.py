@@ -20,9 +20,8 @@ import logging
 import math
 from typing import Any
 
-from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch, assert_unit_or_zero
-from corpus_kb.research.conn import dialect_of, tenant_scope
+from corpus_kb.research.conn import Store, dialect_of, resolve_store, tenant_scope
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +33,12 @@ class ResearchEmbedder:
 
     def __init__(
         self,
-        pool: Any,
+        pool: Store | None,
         embedder: OllamaEmbedder | PgmlEmbedder | Any,
         model_revision: str = "1024",
         gateway: Any = None,
     ) -> None:
-        self._store = resolve_gateway(pool, gateway)
+        self._store = resolve_store(pool, gateway)
         self._duck = dialect_of(self._store).is_duckdb
         self._embedder = embedder
         self.model = str(getattr(embedder, "model", "unknown"))

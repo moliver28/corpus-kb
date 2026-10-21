@@ -12,9 +12,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.research._common import event_payload, require_tenant
-from corpus_kb.research.conn import Store
+from corpus_kb.research.conn import Store, resolve_store
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +21,8 @@ logger = logging.getLogger(__name__)
 class AssignmentProjector:
     """Projects per-unit CodingAssignment aggregate events."""
 
-    def __init__(self, pool: Store, gateway: Any = None) -> None:
-        self._store = resolve_gateway(pool, gateway)
+    def __init__(self, pool: Store | None = None, gateway: Any = None) -> None:
+        self._store = resolve_store(pool, gateway)
 
     async def on_recorded(self, notification: Any) -> None:
         payload = event_payload(notification)

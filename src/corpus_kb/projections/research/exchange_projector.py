@@ -13,7 +13,6 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.research._common import (
     event_payload,
     lookup_turn_texts,
@@ -31,7 +30,7 @@ from corpus_kb.projections.research._embed_writes import (
     turn_prefixes,
 )
 from corpus_kb.research.chunking import build_context_prefix
-from corpus_kb.research.conn import Store, dialect_of, json_cast
+from corpus_kb.research.conn import Store, dialect_of, json_cast, resolve_store
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +38,8 @@ logger = logging.getLogger(__name__)
 class ExchangeProjector:
     """Projects Document transcript events into the exchange read models."""
 
-    def __init__(self, pool: Store, embedder: ResearchEmbedder, gateway: Any = None) -> None:
-        self._store = resolve_gateway(pool, gateway)
+    def __init__(self, pool: Store | None, embedder: ResearchEmbedder, gateway: Any = None) -> None:
+        self._store = resolve_store(pool, gateway)
         self._duck = dialect_of(self._store).is_duckdb
         self._embedder = embedder
 

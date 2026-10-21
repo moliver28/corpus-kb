@@ -21,9 +21,10 @@ Every ordering repeats the total order fscore/score DESC, id ASC
 
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, cast
 
-from corpus_kb.handlers.query_fusion import rrf_fuse
+from corpus_kb.handlers.query_fusion import RowLike, rrf_fuse
 from corpus_kb.research.retrieval import (
     _exchange_filters,
     _exchange_payload,
@@ -165,7 +166,9 @@ def rrf_pure(
         return []
     by_uuid = {str(row["chunk_id"]): row for row in dense + lexical}
     fused: list[dict[str, Any]] = []
-    for row in rrf_fuse(lexical, dense, k=depth, rrf_k=rrf_k):
+    lex_rows: Sequence[RowLike] = cast("Sequence[RowLike]", lexical)
+    dense_rows: Sequence[RowLike] = cast("Sequence[RowLike]", dense)
+    for row in rrf_fuse(lex_rows, dense_rows, k=depth, rrf_k=rrf_k):
         item: dict[str, Any] = {
             "chunk_id": str(row.chunk_id),
             "text": row.text,

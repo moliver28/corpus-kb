@@ -24,7 +24,6 @@ import logging
 from typing import Any
 from uuid import UUID
 
-from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.event_reader import EventReader, event_timestamp_dt
@@ -41,7 +40,7 @@ from corpus_kb.projections.research.assignment_projector import AssignmentProjec
 from corpus_kb.projections.research.code_projector import CodeProjector
 from corpus_kb.projections.research.exchange_projector import ExchangeProjector
 from corpus_kb.projections.research.project_projector import ProjectProjector
-from corpus_kb.research.conn import Store
+from corpus_kb.research.conn import Store, resolve_store
 
 logger = logging.getLogger(__name__)
 
@@ -80,14 +79,14 @@ class ResearchProjection:
         embedder: ResearchEmbedder,
         gateway: Any = None,
     ) -> None:
-        self._store = resolve_gateway(pool, gateway)
+        self._store = resolve_store(pool, gateway)
         self._checkpoint = checkpoint
         self._dlq = dlq
-        self._project = ProjectProjector(None, gateway=self._store)
+        self._project = ProjectProjector(gateway=self._store)
         self._exchange = ExchangeProjector(None, embedder, gateway=self._store)
-        self._code = CodeProjector(None, gateway=self._store)
-        self._assignment = AssignmentProjector(None, gateway=self._store)
-        self._analytics = AnalyticsProjector(None, gateway=self._store)
+        self._code = CodeProjector(gateway=self._store)
+        self._assignment = AssignmentProjector(gateway=self._store)
+        self._analytics = AnalyticsProjector(gateway=self._store)
         self._running = False
 
     async def process_notification(self, notification: Any) -> None:
