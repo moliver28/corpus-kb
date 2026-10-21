@@ -67,7 +67,7 @@ def _observations(n: int) -> list[dict[str, Any]]:
 async def test_grow_mid_loop_recluster_keeps_assigned_aligned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(inductive_run, "tenant_connection", _fake_tenant_connection)
+    monkeypatch.setattr(inductive_run, "tenant_scope", _fake_tenant_connection)
     monkeypatch.setattr(inductive_run, "record_signal", _record_signal)
     monkeypatch.setattr(inductive_run, "cluster_embeddings", _stub_cluster_embeddings)
 

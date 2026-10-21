@@ -1,6 +1,6 @@
 """Shared helpers for the research projectors (todo-11 (c)).
 
-Every session opens through the storage seam: ``resolve_gateway`` in the
+Every session opens through the storage seam: ``resolve_store`` in the
 projector constructors, :func:`tenant_scope` in the module functions —
 tenant GUC + one transaction on Postgres, the gateway's BEGIN..COMMIT
 scope on DuckDB. SQL that diverges per engine is declared inline (the
@@ -14,7 +14,7 @@ from typing import Any
 from uuid import UUID
 
 from corpus_kb.projections.event_reader import DomainNotification
-from corpus_kb.research.conn import dialect_of, tenant_scope
+from corpus_kb.research.conn import Store, dialect_of, tenant_scope
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ def require_tenant(payload: dict[str, Any], notification: DomainNotification) ->
 
 
 async def store_turn_texts(
-    store: Any,
+    store: Store,
     tenant_id: UUID,
     texts_by_sha: dict[str, str],
     media_type: str = "text",
@@ -85,7 +85,7 @@ _LOOKUP_SHA_LIST_SQL = """
             """
 
 
-async def lookup_turn_texts(store: Any, tenant_id: UUID, shas: list[str]) -> dict[str, str]:
+async def lookup_turn_texts(store: Store, tenant_id: UUID, shas: list[str]) -> dict[str, str]:
     """Resolve text_sha256 -> text for projection-side caching (read-only)."""
     if not shas:
         return {}
