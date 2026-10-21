@@ -18,23 +18,32 @@ from uuid import UUID
 from eventsourcing.application import AggregateNotFoundError
 
 from corpus_kb.domain.aggregates import Document
-from corpus_kb.domain.application import get_app
+from corpus_kb.domain.application import get_app_for_config
 
 logger = logging.getLogger(__name__)
 
 
-def attach_delete_event(result: dict[str, Any], doc_id: str) -> dict[str, Any]:
+def attach_delete_event(
+    result: dict[str, Any],
+    doc_id: str,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Attach the Deleted audit event to a SUCCESSFUL delete envelope.
 
     Adds the additive keys ``aggregate_id``/``aggregate_version`` when the
     event saved, or ``event_sourcing_error`` when the audit failed after the
     successful delete. Non-success envelopes pass through unchanged.
+
+    The app resolves from the CONFIG TRUTH
+    (:func:`domain.application.get_app_for_config`, the command-handler
+    switch), so a DuckDB deployment audits into its own event store —
+    a bare ``get_app()`` here would silently land the event on Postgres.
     """
     if result.get("status") != "success":
         return result
 
     try:
-        app = get_app()
+        app = get_app_for_config(config)
         # eventsourcing 9.x: Repository.get returns the RECONSTRUCTED aggregate
         # (or raises AggregateNotFoundError when the document has no events).
         doc = cast("Document", app.repository.get(UUID(doc_id)))

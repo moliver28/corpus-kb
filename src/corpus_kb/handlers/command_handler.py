@@ -24,7 +24,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.domain.aggregates import Document, Entity, Relation
-from corpus_kb.domain.application import dsn_from_config, get_app
+from corpus_kb.domain.application import get_app_for_config
 from corpus_kb.domain.models import (
     AddEntityCommand,
     AddRelationCommand,
@@ -34,6 +34,7 @@ from corpus_kb.domain.models import (
     IngestTextCommand,
 )
 from corpus_kb.handlers.delete_audit import attach_delete_event
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.tools.ingest_common import ingest_text as ingest_text_tool
 from corpus_kb.tools.ingest_common import load_config_or_pass
 from corpus_kb.tools.ingest_tools import delete_document as delete_document_tool
@@ -52,27 +53,23 @@ class CommandHandler:
         self,
         config: dict[str, Any] | None = None,
         pool: asyncpg.Pool | None = None,
+        gateway: SqlGateway | None = None,
     ) -> None:
         self._config = load_config_or_pass(config)
         self._pool = pool
+        self._gateway = gateway
         self._app = None  # lazy init — only needed when Postgres is up
 
     @property
     def app(self):
         """Lazy-load the eventsourcing app (Postgres pool or sqlite file).
 
-        ``database.backend`` is the switch: the default keeps the bare
-        ``get_app()`` resolution; ``duckdb`` keys the app cache on the
-        config DSN with the ``eventsourcing.sqlite`` store, which must
-        NOT be the analytics ``.duckdb`` (SQLite cannot open it).
+        The backend switch is the bank text in
+        :func:`domain.application.get_app_for_config` — the one
+        resolution every event-store caller shares.
         """
         if self._app is None:
-            db_cfg = (self._config or {}).get("database", {})
-            dsn = dsn_from_config(self._config)
-            if str(db_cfg.get("backend") or "postgres") == "duckdb":
-                self._app = get_app(dsn or "", backend="duckdb")
-            else:
-                self._app = get_app()
+            self._app = get_app_for_config(self._config)
         return self._app
 
     def _require_pool(self) -> asyncpg.Pool:
@@ -177,14 +174,19 @@ class CommandHandler:
         ``tools.ingest_tools.delete_document`` owns the real row delete
         (tenant-honored, idempotent); this wrapper then attaches the
         Deleted audit event — the ingest-audit additive pattern again.
+        The row store is the pool on Postgres; on DuckDB there is no
+        asyncpg pool, so the constructor's analytics gateway serves it.
         """
+        store = self._pool if self._pool is not None else self._gateway
+        if store is None:
+            raise RuntimeError("CommandHandler needs an asyncpg pool or a gateway for deletes.")
         result = await delete_document_tool(
             str(cmd.doc_id),
-            self._require_pool(),
+            store,
             self._config,
             tenant_id=str(cmd.tenant_id),
         )
-        return attach_delete_event(result, str(cmd.doc_id))
+        return attach_delete_event(result, str(cmd.doc_id), config=self._config)
 
     def _attach_events(
         self,
@@ -230,6 +232,7 @@ _command_handler: CommandHandler | None = None
 def get_command_handler(
     config: dict[str, Any] | None = None,
     pool: asyncpg.Pool | None = None,
+    gateway: SqlGateway | None = None,
 ) -> CommandHandler:
     """Get or create the singleton CommandHandler.
 
@@ -238,7 +241,7 @@ def get_command_handler(
     """
     global _command_handler
     if _command_handler is None:
-        _command_handler = CommandHandler(config, pool)
+        _command_handler = CommandHandler(config, pool, gateway)
     elif pool is not None:
         _command_handler._pool = pool
     return _command_handler

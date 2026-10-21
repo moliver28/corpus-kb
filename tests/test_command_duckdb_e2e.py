@@ -49,11 +49,16 @@ def event_store_path(tmp_path: Path) -> str:
 
 
 @pytest.fixture
-def command_handler(event_store_path: str) -> CommandHandler:
-    """CommandHandler wired for the duckdb event store (config-truth switch)."""
+async def command_handler(gateway: DuckDbGateway, event_store_path: str) -> CommandHandler:
+    """CommandHandler wired for the duckdb event store (config-truth switch).
+
+    The analytics gateway rides the constructor: the delete leg's row
+    store on DuckDB (no asyncpg pool exists there).
+    """
     return CommandHandler(
         {"database": {"backend": "duckdb", "connection_string": event_store_path}},
         pool=None,
+        gateway=gateway,
     )
 
 
@@ -139,19 +144,26 @@ async def test_command_e2e_legs_on_duckdb(
         == 1
     )
 
-    # 6 DELETE: children first (DuckDB FKs have no cascade), then the row.
+    # 6 DELETE: children first (DuckDB FKs have no cascade), then the
+    # command leg — the shared tool over the analytics gateway, audited
+    # into the duckdb event store.
+    from corpus_kb.domain.models import DeleteDocumentCommand
+
     await gateway.execute("DELETE FROM document_tags WHERE doc_id = ?", str(doc.id))
-    assert (
-        await gateway.execute(
-            "DELETE FROM documents WHERE doc_id = ? AND tenant_id = ?",
-            str(doc.id),
-            str(TENANT),
-        )
-        == "DELETE 1"
+    deleted = await command_handler.handle_delete_document(
+        DeleteDocumentCommand(doc_id=doc.id, tenant_id=TENANT)
     )
+    assert deleted["status"] == "success"
+    assert deleted["aggregate_id"] == str(doc.id)  # the audit event saved
+    assert deleted["aggregate_version"] > version_after_create
     assert (
-        await gateway.execute("DELETE FROM documents WHERE doc_id = ?", str(uuid4())) == "DELETE 0"
-    )  # unknown id stays idempotent
+        await gateway.fetchval("SELECT COUNT(*) FROM documents WHERE doc_id = ?", str(doc.id)) == 0
+    )
+    unknown = await command_handler.handle_delete_document(
+        DeleteDocumentCommand(doc_id=uuid4(), tenant_id=TENANT)
+    )
+    assert unknown["status"] == "success"  # unknown id stays idempotent
+    assert "aggregate_id" not in unknown  # no stored history: no audit keys
     assert await tags.handle_get_document_tags(TENANT, doc.id) == []
 
 
