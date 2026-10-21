@@ -221,7 +221,11 @@ class TestVerify:
         def _drop(source_conn: object, target_conn: object, entry: object) -> int:
             return 0
 
-        monkeypatch.setattr(migrate_data, "_copy_table", _drop)
+        # duckdb_swap (the migrate() body, split to migrate_roundtrip) reads
+        # _copy_table from its own module namespace.
+        from corpus_kb.handlers import migrate_roundtrip
+
+        monkeypatch.setattr(migrate_roundtrip, "_copy_table", _drop)
         with pytest.raises(ConflictError) as excinfo:
             migrate_data.migrate(source, target, "postgres_to_duckdb")
         assert str(excinfo.value) == BANK_MISMATCH

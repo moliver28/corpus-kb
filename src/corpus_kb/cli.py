@@ -119,6 +119,12 @@ from corpus_kb.cli_demo_kb import register as register_demo_kb  # noqa: E402
 
 register_demo_kb(app)
 
+# Storage-portability migration front door (issue #127): cli_migrate
+# imports corpus_kb.cli nowhere, so this import stays acyclic.
+from corpus_kb.cli_migrate import register as register_migrate_data  # noqa: E402
+
+register_migrate_data(app)
+
 
 def _version_callback(value: bool) -> None:
     if value:
