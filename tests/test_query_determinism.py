@@ -271,7 +271,9 @@ def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
     # keeps the fusion pin region and contributes zero clauses.
     # query_fusion.py is scanned too — it carries no SQL ORDER BY (the
     # fusion is a Python sort, pinned by tests/test_query_fusion.py and
-    # the total-order unit above).
+    # the total-order unit above). query_stages.py, query_pipeline.py and
+    # query_crud_reads.py complete the split's module set (reads there
+    # order by name ASC or nothing at all — no score clause to pin).
     clauses: list[str] = []
     for rel in (
         "src/corpus_kb/handlers/query_vector_arms.py",
@@ -279,6 +281,9 @@ def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
         "src/corpus_kb/handlers/query_handler.py",
         "src/corpus_kb/handlers/query_crud.py",
         "src/corpus_kb/handlers/query_fusion.py",
+        "src/corpus_kb/handlers/query_stages.py",
+        "src/corpus_kb/handlers/query_pipeline.py",
+        "src/corpus_kb/handlers/query_crud_reads.py",
     ):
         clauses.extend(_desc_order_by_clauses(ROOT / rel))
     # Wave-D integration adds one RECENCY clause (not a score order): the
