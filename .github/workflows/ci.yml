@@ -515,8 +515,10 @@ jobs:
           }
 
       - name: Run tests
-        # timeout-minutes: 10 prevents hung Ollama connection attempts
-        # from blocking CI indefinitely (Windows TCP timeout can be 21s+
-        # per attempt × multiple embed calls).
-        timeout-minutes: 10
+        # timeout-minutes prevents hung Ollama connection attempts from
+        # blocking CI indefinitely (Windows TCP timeout can be 21s+ per
+        # attempt × multiple embed calls). 15 min: the phase D DuckDB legs
+        # pushed the windows run past the old 10-minute line while the
+        # anti-hang guard stays in force.
+        timeout-minutes: 15
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing
