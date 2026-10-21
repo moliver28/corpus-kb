@@ -35,10 +35,15 @@ _ENTITY_COLUMNS = (
     "entity_id agtype, name agtype, entity_type agtype, metadata agtype, source_document_id agtype"
 )
 
+# AGE cannot parse "ON CREATE SET" (apache/age#1619; unsupported at the pinned
+# 1.7.0 release candidate). The create-only fill is expressed as SET plus
+# coalesce: a fresh MERGE vertex has no stored value, so coalesce writes the
+# parameter; a matched vertex keeps its stored value.
 _ADD_ENTITY = """
 MERGE (e:Entity {tenant_id: $tenant_id, name: $name, entity_type: $entity_type})
-ON CREATE SET e.entity_id = $entity_id, e.metadata = $metadata,
-              e.source_document_id = $source_document_id
+SET e.entity_id = coalesce(e.entity_id, $entity_id),
+    e.metadata = coalesce(e.metadata, $metadata),
+    e.source_document_id = coalesce(e.source_document_id, $source_document_id)
 RETURN e.entity_id AS entity_id
 """
 
@@ -47,9 +52,11 @@ MATCH (s:Entity), (t:Entity)
 WHERE s.entity_id = $source_entity_id AND s.tenant_id = $tenant_id
   AND t.entity_id = $target_entity_id AND t.tenant_id = $tenant_id
 MERGE (s)-[r:REL {tenant_id: $tenant_id, relation_type: $relation_type}]->(t)
-ON CREATE SET r.relation_id = $relation_id, r.weight = $weight,
-              r.source_entity_id = $source_entity_id,
-              r.target_entity_id = $target_entity_id, r.metadata = $metadata
+SET r.relation_id = coalesce(r.relation_id, $relation_id),
+    r.weight = coalesce(r.weight, $weight),
+    r.source_entity_id = coalesce(r.source_entity_id, $source_entity_id),
+    r.target_entity_id = coalesce(r.target_entity_id, $target_entity_id),
+    r.metadata = coalesce(r.metadata, $metadata)
 RETURN r.relation_id AS relation_id
 """
 

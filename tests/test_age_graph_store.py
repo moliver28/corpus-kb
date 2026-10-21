@@ -229,7 +229,9 @@ async def test_add_entity_merges_and_returns_id(conn: FakeConnection, store: Age
     assert result == entity.entity_id
     sql, args = cypher_calls(conn)[-1]
     assert "MERGE (e:Entity" in sql
-    assert "ON CREATE SET" in sql
+    # Create-only fill via coalesce: AGE cannot parse "ON CREATE SET"
+    # (apache/age#1619), so a matched vertex must keep its stored id.
+    assert "coalesce(e.entity_id" in sql
     params = json.loads(args[0])
     assert params["name"] == "Widget"
     assert params["entity_type"] == "CLASS"

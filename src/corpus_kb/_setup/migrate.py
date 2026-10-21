@@ -130,6 +130,24 @@ def run_duckdb_migrations(dsn: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+async def prepare_age_session(conn: asyncpg.Connection) -> bool:
+    """Put a live connection into the session state AGE DDL needs.
+
+    Apache AGE resolves its graphid_ops operator class through the caller's
+    search_path (apache/age#2504), so migration 004 fails without this
+    ritual even when the extension is installed. The same two statements
+    run in AgeGraphStore session setup and in the CI bootstrap. Callers
+    that never touch AGE pay one LOAD round trip. Returns False when the
+    AGE shared library is absent, leaving the connection untouched.
+    """
+    try:
+        await conn.execute("LOAD 'age'")
+    except asyncpg.UndefinedFileError:
+        return False
+    await conn.execute('SET search_path = ag_catalog, "$user", public')
+    return True
+
+
 async def ensure_migrations_table(conn: asyncpg.Connection) -> None:
     """Create the schema_migrations tracking table if it does not exist."""
     await conn.execute(
@@ -171,6 +189,7 @@ async def run_migrations(connection_string: str) -> None:
 
         conn = await asyncpg.connect(connection_string)
         try:
+            await prepare_age_session(conn)
             await ensure_migrations_table(conn)
             done = await applied_migrations(conn)
 
