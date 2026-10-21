@@ -33,6 +33,7 @@ from ..chunking.hierarchy_tree import (
     HierarchyTree,
 )
 from ..ingest.hierarchy_settings import HierarchySettings
+from ..storage.gateway import SqlGateway
 from ..utils.models import Chunk
 from .shadow_adapters import (
     ADAPTER_HEADING,
@@ -93,7 +94,7 @@ def _v1_link_metadata(
 
 
 async def write_shadow_hierarchy(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: str,
     document_id: str,
     text: str,
@@ -113,6 +114,7 @@ async def write_shadow_hierarchy(
     and appended to any shadow note. Returns (chunk_count, vector_count,
     note).
     """
+    embed_pool = pool if isinstance(pool, asyncpg.Pool) else None
     if embed_chunks_fn is None:
         from .ingest_common import embed_chunks as embed_chunks_fn_default
 
@@ -140,7 +142,7 @@ async def write_shadow_hierarchy(
     vectors_1024: dict[str, list[float]] = {}
     note: str | None = None
     if shadow_models:
-        degraded, embed_err = await embed_chunks_fn(shadow_models, config, pool=pool)
+        degraded, embed_err = await embed_chunks_fn(shadow_models, config, pool=embed_pool)
         first_vector = next((m.embedding for m in shadow_models if m.embedding is not None), None)
         dims = len(first_vector) if first_vector is not None else 0
         if dims < SHADOW_VECTOR_DIM:

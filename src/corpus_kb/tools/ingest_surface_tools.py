@@ -5,11 +5,12 @@ One handler per operation, shared by every surface (MCP name, CLI
 ``GET /api/ingest/status`` / ``POST /api/ingest/reembed``):
 
   * :func:`ingest_status` reads the ``ingest_runs`` ledger (migration 022)
-    plus the degraded-chunk counts, through a tenant-GUC transaction —
-    ``FORCE RLS`` makes GUC-less reads return zero rows silently, so the
-    GUC is set INSIDE the same transaction as the reads (doctor pattern).
-    The table probe is ``to_regclass``-guarded: a pre-migration database
-    reports ``status: "unavailable"`` instead of crashing.
+    plus the degraded-chunk counts, through a ``gateway.transaction`` scope —
+    on Postgres the tenant GUC is set INSIDE the same transaction as the
+    reads (``FORCE RLS`` makes GUC-less reads return zero rows silently);
+    on DuckDB tenancy rides on the explicit ``tenant_id`` predicate. The
+    table probe is guarded: a pre-migration database reports
+    ``status: "unavailable"`` instead of crashing.
   * :func:`ingest_reembed` is the thin wrapper over
     ``tools.ingest_common.reembed_degraded`` (the Stage-3 handler); it adds
     argument validation only.
@@ -26,16 +27,27 @@ from uuid import UUID
 
 import asyncpg
 
+from ..storage.gateway import Row, SqlGateway
 from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass, reembed_degraded
+from .ingest_store import as_gateway, gateway_backend
 
 __all__ = ["ingest_reembed", "ingest_status"]
 
 # Runs listed per status call (honest recency window, not the whole ledger).
 DEFAULT_RUN_LIMIT = 20
 
+_RUNS_SELECT = """
+    SELECT run_id, source_type, started_at, finished_at, status,
+           start_hash, finish_hash, stages, error
+    FROM ingest_runs
+    WHERE {tenant_pred}
+    ORDER BY {order}
+    LIMIT $2
+"""
+
 
 def _parse_stages(raw: object) -> object:
-    """asyncpg hands jsonb back as a string; parse it, keep raw on failure."""
+    """The drivers hand JSON back as a string; parse it, keep raw on failure."""
     if not isinstance(raw, str):
         return raw
     try:
@@ -44,7 +56,7 @@ def _parse_stages(raw: object) -> object:
         return raw
 
 
-def _serialize_run(row: asyncpg.Record) -> dict[str, object]:
+def _serialize_run(row: Row) -> dict[str, object]:
     """One ledger row -> JSON-safe dict (timestamps ISO, stages as parsed)."""
     return {
         "run_id": str(row["run_id"]),
@@ -59,8 +71,56 @@ def _serialize_run(row: asyncpg.Record) -> dict[str, object]:
     }
 
 
+def _status_sql(is_duckdb: bool) -> dict[str, str]:
+    """The backend statement variants for the status read.
+
+    Postgres keeps the pre-port SQL byte-identical (``to_regclass`` probe,
+    ``$1::uuid`` casts, the ``information_schema`` degraded probe). DuckDB
+    probes ``duckdb_tables``/``duckdb_columns`` and takes plain varchar
+    comparisons; ``run_id DESC`` is the deterministic tiebreaker.
+    """
+    if is_duckdb:
+        return {
+            "ledger": "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'ingest_runs'",
+            "runs": _RUNS_SELECT.format(
+                tenant_pred="tenant_id = $1", order="started_at DESC, run_id DESC"
+            ),
+            "incomplete": (
+                "SELECT count(*) FROM ingest_runs WHERE tenant_id = $1 AND status = 'running'"
+            ),
+            "degraded_present": (
+                "SELECT count(*) FROM duckdb_columns() WHERE table_name IN "
+                "('chunks', 'chunks_vectors') AND column_name = 'degraded'"
+            ),
+            "degraded_chunks": (
+                "SELECT count(*) FROM chunks WHERE tenant_id = $1 AND degraded = TRUE"
+            ),
+            "degraded_vectors": (
+                "SELECT count(*) FROM chunks_vectors WHERE tenant_id = $1 AND degraded = TRUE"
+            ),
+        }
+    return {
+        "ledger": "SELECT to_regclass('public.ingest_runs')",
+        "runs": _RUNS_SELECT.format(tenant_pred="tenant_id = $1::uuid", order="started_at DESC"),
+        "incomplete": (
+            "SELECT count(*) FROM ingest_runs WHERE tenant_id = $1::uuid AND status = 'running'"
+        ),
+        "degraded_present": (
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = ANY($1::text[]) "
+            "AND column_name = 'degraded'"
+        ),
+        "degraded_chunks": (
+            "SELECT count(*) FROM chunks WHERE tenant_id = $1::uuid AND degraded = TRUE"
+        ),
+        "degraded_vectors": (
+            "SELECT count(*) FROM chunks_vectors WHERE tenant_id = $1::uuid AND degraded = TRUE"
+        ),
+    }
+
+
 async def ingest_status(
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     limit: int = DEFAULT_RUN_LIMIT,
@@ -72,12 +132,10 @@ async def ingest_status(
     ``status`` is ``"success"`` when the ledger is readable, else
     ``"unavailable"`` (migration 022 not applied) with the setup remedy.
     """
-    del config  # accepted for MCP-tool signature symmetry; status is config-free
+    sql = _status_sql(gateway_backend(as_gateway(pg_pool)) == "duckdb")
     bounded_limit = max(1, min(int(limit), 200))
-    async with pg_pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
-        rel = await conn.fetchval("SELECT to_regclass('public.ingest_runs')")
-        if rel is None:
+    async with as_gateway(pg_pool).transaction(tenant_id) as tx:
+        if await tx.fetchval(sql["ledger"]) is None:
             return {
                 "status": "unavailable",
                 "reason": "ingest_runs table absent (migration 022 not applied)",
@@ -87,46 +145,14 @@ async def ingest_status(
                 "incomplete_runs": 0,
                 "degraded": {"chunks": 0, "chunk_vectors": 0},
             }
-        rows = await conn.fetch(
-            """
-            SELECT run_id, source_type, started_at, finished_at, status,
-                   start_hash, finish_hash, stages, error
-            FROM ingest_runs
-            WHERE tenant_id = $1::uuid
-            ORDER BY started_at DESC
-            LIMIT $2
-            """,
-            tenant_id,
-            bounded_limit,
-        )
-        incomplete = await conn.fetchval(
-            "SELECT count(*) FROM ingest_runs WHERE tenant_id = $1::uuid AND status = 'running'",
-            tenant_id,
-        )
-        degraded_present = await conn.fetchval(
-            """
-            SELECT count(*) FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = ANY($1::text[])
-              AND column_name = 'degraded'
-            """,
-            ["chunks", "chunks_vectors"],
-        )
+        rows = await tx.fetch(sql["runs"], tenant_id, bounded_limit)
+        incomplete = await tx.fetchval(sql["incomplete"], tenant_id)
+        degraded_present = await tx.fetchval(sql["degraded_present"], ["chunks", "chunks_vectors"])
         degraded = {"chunks": 0, "chunk_vectors": 0}
         if degraded_present == 2:
-            degraded["chunks"] = int(
-                await conn.fetchval(
-                    "SELECT count(*) FROM chunks WHERE tenant_id = $1::uuid AND degraded = TRUE",
-                    tenant_id,
-                )
-            )
+            degraded["chunks"] = int(await tx.fetchval(sql["degraded_chunks"], tenant_id) or 0)
             degraded["chunk_vectors"] = int(
-                await conn.fetchval(
-                    """
-                    SELECT count(*) FROM chunks_vectors
-                    WHERE tenant_id = $1::uuid AND degraded = TRUE
-                    """,
-                    tenant_id,
-                )
+                await tx.fetchval(sql["degraded_vectors"], tenant_id) or 0
             )
     return {
         "status": "success",
@@ -138,7 +164,7 @@ async def ingest_status(
 
 
 async def ingest_reembed(
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     limit: int | None = None,

@@ -16,8 +16,11 @@ keep working unchanged.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
@@ -39,6 +42,7 @@ from ..ingestion.base import (
 from ..ingestion.registry import resolve_strategy
 from ..ontology import Ontology, load_ontology
 from ..rag.embedder_selection import POOLED_MODE
+from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
 from ..storage.rag_backend import RagBackend
 from ..utils.models import Chunk, Document, Entity, Relation
 from ..utils.tracing import (
@@ -62,7 +66,12 @@ from ..utils.tracing import (
     SPAN_STORE,
     span,
 )
-from .ingest_cfg import _nested_dict, contextual_apply_to, matryoshka_slice, vector_write_config
+from .ingest_cfg import (
+    _nested_dict,
+    contextual_apply_to,
+    matryoshka_slice,
+    vector_write_config,
+)
 from .ingest_embed import (
     _all_zero,
     _assign_embeddings,
@@ -101,6 +110,7 @@ __all__ = [
     "_nested_dict",
     "_run_locked_stages",
     "_sha256",
+    "advisory_lock_ctx",
     "build_document",
     "build_embedding_input",
     "embed_chunks",
@@ -117,6 +127,70 @@ __all__ = [
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# The advisory-lock SQL stays owned (and pinned) by the orchestrator: the
+# session-scoped pair runs on one held pooled connection, byte-identical to
+# the pre-port inline SQL. Gateways without a server-side advisory lock use
+# the in-process lock in advisory_lock_ctx below.
+_ADVISORY_LOCK_SQL = "SELECT pg_try_advisory_lock(hashtextextended($1 || ':' || $2, 0))"
+_ADVISORY_UNLOCK_SQL = "SELECT pg_advisory_unlock(hashtextextended($1 || ':' || $2, 0))"
+
+# In-process content locks for gateways with no server-side advisory lock
+# (DuckDB allows one writer; the file lock covers cross-process safety).
+_CONTENT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
+
+
+def _raw_pool(source: asyncpg.Pool | SqlGateway | None) -> asyncpg.Pool | None:
+    """The underlying asyncpg pool, or None when a gateway was handed over.
+
+    Same duck-typing as ``ingest_store.as_gateway``: only real gateway
+    drivers divert; anything else is pool-shaped (pool doubles included).
+    """
+    if source is None or isinstance(source, (PostgresGateway, DuckDbGateway)):
+        return None
+    return cast("asyncpg.Pool", source)
+
+
+@asynccontextmanager
+async def advisory_lock_ctx(
+    *,
+    pool: asyncpg.Pool | None,
+    tenant_id: str,
+    key: str,
+) -> AsyncIterator[bool]:
+    """Serialize concurrent ingests of one content hash, per tenant.
+
+    One seam, two drivers. Postgres keeps the session-scoped
+    ``pg_try_advisory_lock`` pair on one held pooled connection (a crashed
+    process releases it server-side). Gateways without a server-side lock
+    (DuckDB) use an in-process ``asyncio.Lock`` keyed by
+    ``(tenant_id, key)``. Yields True when the lock was taken, False when
+    another run of the same content is in flight (the caller reports
+    ``skipped/concurrent-run`` — never success).
+    """
+    if pool is not None:
+        async with pool.acquire() as lock_conn:
+            acquired = await lock_conn.fetchval(_ADVISORY_LOCK_SQL, tenant_id, key)
+            if not acquired:
+                yield False
+                return
+            try:
+                yield True
+            finally:
+                await lock_conn.execute(_ADVISORY_UNLOCK_SQL, tenant_id, key)
+        return
+    lock_key = (tenant_id, key)
+    lock = _CONTENT_LOCKS.setdefault(lock_key, asyncio.Lock())
+    if lock.locked():
+        yield False
+        return
+    async with lock:
+        try:
+            yield True
+        finally:
+            if _CONTENT_LOCKS.get(lock_key) is lock:
+                del _CONTENT_LOCKS[lock_key]
 
 
 def load_config_or_pass(config: dict[str, Any] | None) -> dict[str, Any]:
@@ -165,7 +239,7 @@ async def run_pipeline(
     source_type: str,
     path: str,
     config: dict[str, Any],
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     tenant_id: str = DEFAULT_TENANT_ID,
     rag_backend: RagBackend | None = None,
     is_file: bool = False,
@@ -180,11 +254,17 @@ async def run_pipeline(
     replaces the partition+chunk step. Everything downstream (embed ->
     extract -> store) is strategy-agnostic.
 
+    ``pg_pool`` is the storage seam: an asyncpg pool (Postgres) or any
+    ``SqlGateway`` (e.g. ``DuckDbGateway``) — ONE pipeline, both backends;
+    ``database.backend`` in the config picks the statement variants.
+
     Integrity semantics (migration 022):
 
-    - A per-(tenant, content-hash) Postgres advisory lock serializes
-      concurrent ingests of the same content; contention returns an honest
-      ``{"status": "skipped", "reason": "concurrent-run"}`` — never success.
+    - A per-(tenant, content-hash) advisory lock (``advisory_lock_ctx``:
+      pg_try_advisory_lock on Postgres, an in-process lock on DuckDB)
+      serializes concurrent ingests of the same content; contention returns
+      an honest ``{"status": "skipped", "reason": "concurrent-run"}`` —
+      never success.
     - Every run opens an ``ingest_runs`` ledger row (status 'running') before
       any stage writes and closes it after the last one. The unchanged
       short-circuit only fires for content whose last run COMPLETED with an
@@ -197,7 +277,7 @@ async def run_pipeline(
             "transcript", ...) — also the config-mapping and detection hint.
         path: Source path or a custom source identifier.
         config: Pipeline config dict.
-        pg_pool: asyncpg connection pool for Postgres writes.
+        pg_pool: asyncpg pool (Postgres) or SqlGateway (either backend).
         tenant_id: Tenant ID for RLS.
         is_file: True if path points to a file; False if path is raw text source ID.
         strategy_name: Optional explicit ingestion-strategy override (a
@@ -264,15 +344,13 @@ async def run_pipeline(
             chunk_span.set_attribute(ATTR_CHUNK_COUNT, len(chunks))
         file_hash = _sha256(text)
 
-        # Serialize concurrent ingests of the same content per tenant. The lock is
-        # session-scoped on its own pooled connection, so a crashed process
-        # releases it server-side automatically.
-        async with pg_pool.acquire() as lock_conn:
-            acquired = await lock_conn.fetchval(
-                "SELECT pg_try_advisory_lock(hashtextextended($1 || ':' || $2, 0))",
-                tenant_id,
-                file_hash,
-            )
+        # Serialize concurrent ingests of the same content per tenant. The
+        # Postgres lock is session-scoped on its own pooled connection, so a
+        # crashed process releases it server-side automatically; the DuckDB
+        # lock is in-process (the file lock covers cross-process).
+        async with advisory_lock_ctx(
+            pool=_raw_pool(pg_pool), tenant_id=tenant_id, key=file_hash
+        ) as acquired:
             if not acquired:
                 return {
                     "status": "skipped",
@@ -281,40 +359,33 @@ async def run_pipeline(
                     "source_type": source_type,
                     "errors": [],
                 }
-            try:
-                result = await _run_locked_stages(
-                    document=document,
-                    chunks=chunks,
-                    file_hash=file_hash,
-                    text=text,
-                    source_type=source_type,
-                    path=path,
-                    config=config,
-                    pg_pool=pg_pool,
-                    tenant_id=tenant_id,
-                    rag_backend=rag_backend,
-                    is_file=is_file,
-                    empty_reason=plan.empty_reason,
-                    strategy=resolution.strategy.name,
-                )
-                # Strategy provenance (plan Section 0): which seam produced the
-                # chunks. Attached here because resolution/plan live in this scope.
-                result["strategy"] = resolution.strategy.name
-                result["strategy_basis"] = resolution.basis
-                if resolution.detection is not None:
-                    result["detection_confidence"] = round(resolution.detection.confidence, 4)
-                    result["detection_reason"] = resolution.detection.reason
-                if resolution.detected is not None:
-                    result["detected_strategy"] = resolution.detected
-                if plan.warnings:
-                    result["warnings"] = list(plan.warnings)
-                return result
-            finally:
-                await lock_conn.execute(
-                    "SELECT pg_advisory_unlock(hashtextextended($1 || ':' || $2, 0))",
-                    tenant_id,
-                    file_hash,
-                )
+            result = await _run_locked_stages(
+                document=document,
+                chunks=chunks,
+                file_hash=file_hash,
+                text=text,
+                source_type=source_type,
+                path=path,
+                config=config,
+                pg_pool=pg_pool,
+                tenant_id=tenant_id,
+                rag_backend=rag_backend,
+                is_file=is_file,
+                empty_reason=plan.empty_reason,
+                strategy=resolution.strategy.name,
+            )
+            # Strategy provenance (plan Section 0): which seam produced the
+            # chunks. Attached here because resolution/plan live in this scope.
+            result["strategy"] = resolution.strategy.name
+            result["strategy_basis"] = resolution.basis
+            if resolution.detection is not None:
+                result["detection_confidence"] = round(resolution.detection.confidence, 4)
+                result["detection_reason"] = resolution.detection.reason
+            if resolution.detected is not None:
+                result["detected_strategy"] = resolution.detected
+            if plan.warnings:
+                result["warnings"] = list(plan.warnings)
+            return result
 
 
 async def _run_locked_stages(
@@ -325,7 +396,7 @@ async def _run_locked_stages(
     source_type: str,
     path: str,
     config: dict[str, Any],
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     tenant_id: str,
     rag_backend: RagBackend | None,
     is_file: bool,
@@ -345,6 +416,7 @@ async def _run_locked_stages(
     adapter choice.
     """
     ingest_store = PostgresIngestStore(pg_pool, tenant_id)
+    pool = _raw_pool(pg_pool)
 
     unchanged_doc = await ingest_store.unchanged_doc_id(document.path, file_hash)
     if unchanged_doc is not None:
@@ -379,7 +451,7 @@ async def _run_locked_stages(
             degraded,
             embed_note,
             embed_meta,
-        ) = await _stage_store_and_embed(ingest_store, chunks, config, text, pg_pool, errors)
+        ) = await _stage_store_and_embed(ingest_store, chunks, config, text, pool, errors)
 
         (
             hierarchy_settings,
@@ -392,7 +464,7 @@ async def _run_locked_stages(
 
         with span(SPAN_EXTRACT) as extract_span:
             entities, relations, extractor_id, stats = await _stage_extract_entities(
-                ingest_store, chunks, document_id, config, pg_pool, errors
+                ingest_store, chunks, document_id, config, pool, errors
             )
             extract_span.set_attribute(ATTR_EXTRACT_BACKEND, extractor_id)
             extract_span.set_attribute(ATTR_ENTITY_COUNT, len(entities))
@@ -511,7 +583,7 @@ async def _stage_store_and_embed(
     chunks: list[Chunk],
     config: dict[str, Any],
     text: str,
-    pg_pool: asyncpg.Pool,
+    pool: asyncpg.Pool | None,
     errors: list[str],
 ) -> tuple[int, int, bool, str | None, dict[str, Any]]:
     """Stage 2: store chunks, embed the new ones, store their vectors.
@@ -569,7 +641,7 @@ async def _stage_store_and_embed(
         degraded, embed_err = await embed_chunks(
             new_chunks,
             config,
-            pool=pg_pool,
+            pool=pool,
             text_override=embed_texts_override,
             document_text=text,
             meta=embed_meta,
@@ -619,7 +691,7 @@ async def _stage_shadow_hierarchy(
     document: Document,
     text: str,
     chunks: list[Chunk],
-    pg_pool: asyncpg.Pool,
+    source: asyncpg.Pool | SqlGateway,
     tenant_id: str,
     errors: list[str],
     strategy: str | None = None,
@@ -641,7 +713,7 @@ async def _stage_shadow_hierarchy(
             from ..tools.shadow_ingest import write_shadow_hierarchy
 
             shadow_chunk_count, shadow_vector_count, shadow_note = await write_shadow_hierarchy(
-                pool=pg_pool,
+                pool=source,
                 tenant_id=tenant_id,
                 document_id=document.document_id,
                 text=text,
@@ -661,7 +733,7 @@ async def _stage_extract_entities(
     chunks: list[Chunk],
     document_id: str,
     config: dict[str, Any],
-    pg_pool: asyncpg.Pool,
+    pool: asyncpg.Pool | None,
     errors: list[str],
 ) -> tuple[list[Entity], list[Relation], str, ExtractStats]:
     """Stage 4: extract entities/relations and persist them.
@@ -677,7 +749,7 @@ async def _stage_extract_entities(
         return entities, relations, extractor_id, stats
     try:
         entities, relations, extractor_id, stats = await extract_with_fallback(
-            chunks, ontology(config), document_id, config, pool=pg_pool
+            chunks, ontology(config), document_id, config, pool=pool
         )
         if entities:
             entity_id_map = await ingest_store.store_entities(entities)
@@ -793,7 +865,7 @@ def _stage_result_dict(
 
 async def ingest_text(
     text: str,
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway,
     source_type: str = "text",
     config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
