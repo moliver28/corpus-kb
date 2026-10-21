@@ -43,7 +43,8 @@ async def _fetch_vectors(
     if not chunk_ids:
         return {}
     sql = _VECTORS_SQL_DUCKDB if portable else _VECTORS_SQL
-    ids: list[Any] = [str(c) for c in chunk_ids] if portable else list(chunk_ids)
+    # The gateway arm binds VARCHAR ids; the Postgres arm binds raw UUIDs.
+    ids: list[str] | list[UUID] = [str(c) for c in chunk_ids] if portable else list(chunk_ids)
     rows = await conn.fetch(sql, tenant_id, ids)
     return {row["chunk_id"]: row["embedding"] for row in rows}
 
