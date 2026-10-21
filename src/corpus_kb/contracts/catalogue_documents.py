@@ -1,9 +1,11 @@
 """The operation catalogue: documents and graph families.
 
-``list_documents``/``delete_document`` (documents) and
-``add_entity``/``add_relation`` (graph) live here. The delete row pins the
-Wave 3A unification: the tool's row delete is the ONE implementation; the
-HTTP command handler adds the audit aggregate (``AGGREGATE_EXTRA``).
+``list_documents``/``delete_document`` (documents) and the graph rows
+(``add_entity``/``add_relation`` plus the §5.1 read births
+``search_graph``/``get_entity_relations``/``graph_neighbors``/
+``graph_traverse``) live here. The delete row pins the Wave 3A unification:
+the tool's row delete is the ONE implementation; the HTTP command handler
+adds the audit aggregate (``AGGREGATE_EXTRA``).
 Registry-first rule: change the row first, then the surfaces, then the
 gates. All strings are plain English (ASD-STE100).
 """
@@ -98,6 +100,90 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(CLI, "add-relation"),
             SurfaceSpec(HTTP, "/api/relations", "POST"),
             SurfaceSpec(SOCKET, "add_relation"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="search_graph",
+        family="graph",
+        description="Search graph entities by name. Rows carry name and type.",
+        handler="corpus_kb.tools.graph_read_tools:search_graph",
+        params=(
+            ParamSpec("query", required=True),
+            ParamSpec("entity_type"),
+            ParamSpec("limit", default=100),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "search_graph"),
+            SurfaceSpec(CLI, "search-graph"),
+            SurfaceSpec(HTTP, "/api/graph/search", "POST"),
+            SurfaceSpec(SOCKET, "search_graph"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="get_entity_relations",
+        family="graph",
+        description="List one entity's relations. Rows carry both endpoint names.",
+        handler="corpus_kb.tools.graph_read_tools:get_entity_relations",
+        params=(
+            ParamSpec("entity_id", required=True),
+            ParamSpec("limit"),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "get_entity_relations"),
+            SurfaceSpec(CLI, "get-entity-relations"),
+            SurfaceSpec(HTTP, "/api/graph/relations/{entity_id}", "GET"),
+            SurfaceSpec(SOCKET, "get_entity_relations"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="graph_neighbors",
+        family="graph",
+        description="List entities within 1 to 3 hops. Rows carry their depth.",
+        handler="corpus_kb.tools.graph_read_tools:graph_neighbors",
+        params=(
+            ParamSpec("entity_id", required=True),
+            ParamSpec("hops", default=1),
+            ParamSpec("direction", default="both"),
+            ParamSpec("relation_types"),
+            ParamSpec("entity_types"),
+            ParamSpec("limit", default=100),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "graph_neighbors"),
+            SurfaceSpec(CLI, "graph-neighbors"),
+            SurfaceSpec(HTTP, "/api/graph/neighbors", "POST"),
+            SurfaceSpec(SOCKET, "graph_neighbors"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="graph_traverse",
+        family="graph",
+        description="Walk the graph from one entity. Rows carry their depth.",
+        handler="corpus_kb.tools.graph_read_tools:graph_traverse",
+        params=(
+            ParamSpec("entity_id", required=True),
+            ParamSpec("max_depth"),
+            ParamSpec("relation_types"),
+            ParamSpec("entity_types"),
+            ParamSpec("limit", default=100),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result", "truncated"),
+        surfaces=(
+            SurfaceSpec(MCP, "graph_traverse"),
+            SurfaceSpec(CLI, "graph-traverse"),
+            SurfaceSpec(HTTP, "/api/graph/traverse", "POST"),
+            SurfaceSpec(SOCKET, "graph_traverse"),
         ),
         exit_codes=(0, 1, 3),
     ),

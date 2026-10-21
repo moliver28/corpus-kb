@@ -70,6 +70,8 @@ from corpus_kb.api.routes_graph import (
     bfs_traversal,
     delete_document,
     get_entity_relations,
+    graph_neighbors,
+    graph_traverse,
     search_graph,
 )
 from corpus_kb.api.routes_ingest import (
@@ -168,6 +170,8 @@ def create_http_app() -> FastAPI:
         Route("/api/documents/{doc_id}", delete_document, methods=["DELETE"]),
         Route("/api/graph/search", search_graph, methods=["POST"]),
         Route("/api/graph/bfs", bfs_traversal, methods=["POST"]),
+        Route("/api/graph/neighbors", graph_neighbors, methods=["POST"]),
+        Route("/api/graph/traverse", graph_traverse, methods=["POST"]),
         Route("/api/graph/relations/{entity_id}", get_entity_relations, methods=["GET"]),
         Route("/api/tags", add_tag_route, methods=["POST"]),
         Route("/api/documents/{doc_id}/tags", tag_document_route, methods=["POST"]),

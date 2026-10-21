@@ -9,12 +9,14 @@ Two layers are pinned here:
   equivalent input. research/retrieval still calls the SQL function; its
   stub keeps the same contract.
 * SQL shape: every score-ordered ORDER BY across the query-handler modules
-  (query_vector_arms.py + query_handler.py + query_crud.py — the Wave-3
-  split of the pre-2026-10 single query_handler.py; query_fusion.py carries
-  no SQL, its Python sort is pinned by tests/test_query_fusion.py and by
-  the total-order unit below) and research/retrieval.py carries the
-  chunk-id tiebreaker, and migration 024 pins the same order inside
-  corpus.rrf_fusion.
+  (query_vector_arms.py + query_search_pg.py + query_handler.py +
+  query_crud.py — the Wave-3 split of the pre-2026-10 single
+  query_handler.py, plus the storage-portability §3.3 pure move of the PG
+  arms into query_search_pg.py; query_fusion.py carries no SQL, its Python
+  sort is pinned by tests/test_query_fusion.py and by the total-order unit
+  below; query_handler.py keeps the fusion pin region and must stay at zero
+  score-DESC clauses) and research/retrieval.py carries the chunk-id
+  tiebreaker, and migration 024 pins the same order inside corpus.rrf_fusion.
 
 All offline: no Postgres, no Ollama.
 """
@@ -261,14 +263,19 @@ def _desc_order_by_clauses(path: Path) -> list[str]:
 
 
 def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
-    # Wave-3 split: the single pre-split query_handler.py is now several
-    # modules; the audit covers ALL of them so the invariant set is
-    # unchanged (same 7 clauses, same tiebreaker regex). query_fusion.py is
-    # scanned too — it carries no SQL ORDER BY (the fusion is a Python sort,
-    # pinned by tests/test_query_fusion.py and the total-order unit above).
+    # Wave-3 split + storage-portability §3.3 pure move: the single
+    # pre-split query_handler.py is now several modules; the audit covers
+    # ALL of them so the invariant set is unchanged (same 7 clauses, same
+    # tiebreaker regex). query_search_pg.py is the PG arms' new home (the
+    # lexical FTS clause moved there byte-identical); query_handler.py
+    # keeps the fusion pin region and contributes zero clauses.
+    # query_fusion.py is scanned too — it carries no SQL ORDER BY (the
+    # fusion is a Python sort, pinned by tests/test_query_fusion.py and
+    # the total-order unit above).
     clauses: list[str] = []
     for rel in (
         "src/corpus_kb/handlers/query_vector_arms.py",
+        "src/corpus_kb/handlers/query_search_pg.py",
         "src/corpus_kb/handlers/query_handler.py",
         "src/corpus_kb/handlers/query_crud.py",
         "src/corpus_kb/handlers/query_fusion.py",

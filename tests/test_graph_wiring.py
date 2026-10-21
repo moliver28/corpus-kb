@@ -1,11 +1,18 @@
 """Tests for graph store wiring and GraphHandler delegation.
 
-Covers the seams defined by todo 2b:
+Covers the seams defined by todo 2b, plus the storage-portability wiring
+(program §3.4, sp-duckdb-store):
   - server_wiring.create_graph_store selects the backend by config.
   - backend="age" with AGE unavailable falls back to PostgresGraphStore
     and logs a warning.
   - backend="postgres" selects PostgresGraphStore directly.
   - unknown backend raises a clear error at wiring time.
+  - database.backend="duckdb" selects DuckDbGraphStore over the
+    configured file; an age+duckdb engine mix is refused with the banked
+    remediation (the Wave A mix gate, surfaced at wiring).
+  - startup() reads database.backend once: the pool exists only on the
+    Postgres path, the event store is keyed on the backend, and a duckdb
+    selection is refused with a typed error until the stack ports.
   - GraphHandler delegates entity/relation queries to the injected GraphStore
     while preserving public method signatures and return shapes.
 """
@@ -14,12 +21,14 @@ from __future__ import annotations
 
 import inspect
 import logging
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 import asyncpg
 import pytest
 
+from corpus_kb.server_wiring import create_graph_store
 from corpus_kb.storage.age_graph_store import AgeUnavailableError
 from corpus_kb.storage.graph_store import DEFAULT_TENANT_ID, GraphStore
 from corpus_kb.utils.models import Entity, Relation
@@ -89,6 +98,8 @@ class FakeGraphStore(GraphStore):
         self.search_calls: list[tuple[str, str | None]] = []
         self.bfs_calls: list[tuple[str, int]] = []
         self.relation_calls: list[str] = []
+        self.neighbor_calls: list[tuple[str, int, str, int]] = []
+        self.traverse_calls: list[tuple[str, int, int]] = []
         self.closed = False
 
     async def add_entity(self, entity: Entity) -> str:
@@ -133,6 +144,45 @@ class FakeGraphStore(GraphStore):
             "max_depth": max_depth,
             "visited": {start_entity_id: 0, "ent-2": 1, "ent-3": 2},
         }
+
+    async def neighbors(
+        self,
+        entity_id: str,
+        hops: int = 1,
+        direction: str = "both",
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, object]]:
+        self.neighbor_calls.append((entity_id, hops, direction, limit))
+        return [
+            {
+                "entity_id": "ent-2",
+                "name": "EntityTwo",
+                "entity_type": "CLASS",
+                "metadata": {},
+                "depth": 1,
+            }
+        ]
+
+    async def traverse(
+        self,
+        entity_id: str,
+        max_depth: int = 5,
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, object]]:
+        self.traverse_calls.append((entity_id, max_depth, limit))
+        return [
+            {
+                "entity_id": "ent-2",
+                "name": "EntityTwo",
+                "entity_type": "CLASS",
+                "metadata": {},
+                "depth": 1,
+            }
+        ]
 
     async def close(self) -> None:
         self.closed = True
@@ -198,6 +248,27 @@ class TestCreateGraphStore:
             async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, object]:
                 return {}
 
+            async def neighbors(
+                self,
+                entity_id: str,
+                hops: int = 1,
+                direction: str = "both",
+                relation_types: list[str] | None = None,
+                entity_types: list[str] | None = None,
+                limit: int = 100,
+            ) -> list[dict[str, object]]:
+                return []
+
+            async def traverse(
+                self,
+                entity_id: str,
+                max_depth: int = 5,
+                relation_types: list[str] | None = None,
+                entity_types: list[str] | None = None,
+                limit: int = 100,
+            ) -> list[dict[str, object]]:
+                return []
+
             async def close(self) -> None:
                 pass
 
@@ -260,6 +331,130 @@ class TestCreateGraphStore:
         pg_store = await create_graph_store(pg_cfg, postgres_pool)
         assert isinstance(age_store, AgeGraphStore)
         assert isinstance(pg_store, PostgresGraphStore)
+
+
+# ============================================================================
+# DuckDB wiring (storage portability program, sp-duckdb-store)
+# ============================================================================
+
+
+class TestCreateGraphStoreDuckDb:
+    """database.backend="duckdb" wires DuckDbGraphStore; mixes are refused."""
+
+    @pytest.mark.asyncio
+    async def test_duckdb_backend_wires_store_over_tmp_file(self, tmp_path: Path) -> None:
+        """Given the duckdb backend and a migrated tmp file, return DuckDbGraphStore."""
+        duckdb = pytest.importorskip("duckdb")
+        from corpus_kb._setup.migrate import run_migrations
+        from corpus_kb.storage.duckdb_store import DuckDbGraphStore
+        from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
+
+        path = tmp_path / "wiring.duckdb"
+        await run_migrations(duckdb_path_to_conn_string(path))
+        conn = duckdb.connect(str(path))
+        try:
+            cfg: dict[str, object] = {"database": {"backend": "duckdb"}}
+            store = await create_graph_store(cfg, conn)
+            assert isinstance(store, DuckDbGraphStore)
+            # The wired store serves the read ops, not just the type.
+            entity = Entity(
+                entity_id="00000000-0000-0000-0000-00000000a1e1",
+                name="Wired",
+                entity_type="CLASS",
+                source_type="code",
+            )
+            await store.add_entity(entity)
+            found = await store.search_entities("Wired")
+            assert [item.name for item in found] == ["Wired"]
+        finally:
+            # Rule 13: close before anything could remove the file.
+            conn.close()
+
+    @pytest.mark.asyncio
+    async def test_duckdb_backend_opens_the_configured_file(self) -> None:
+        """Given no connection, the factory opens database.connection_string."""
+        from corpus_kb.storage.duckdb_store import DuckDbGraphStore
+
+        cfg: dict[str, object] = {
+            "database": {"backend": "duckdb", "connection_string": "duckdb:///:memory:"}
+        }
+        store = await create_graph_store(cfg)
+        assert isinstance(store, DuckDbGraphStore)
+        # In-memory: no file to close; the connection dies with the store.
+
+    @pytest.mark.asyncio
+    async def test_age_on_duckdb_mix_is_refused_with_banked_remediation(self) -> None:
+        """The Wave A mix gate surfaces at wiring, not deep in the store."""
+        from corpus_kb.config import AGE_ON_DUCKDB_ERROR
+        from corpus_kb.errors import ConfigError
+
+        cfg: dict[str, object] = {
+            "database": {"backend": "duckdb"},
+            "graph": {"backend": "age"},
+        }
+        with pytest.raises(ConfigError) as excinfo:
+            await create_graph_store(cfg)
+        assert str(excinfo.value) == AGE_ON_DUCKDB_ERROR
+
+    @pytest.mark.asyncio
+    async def test_pgml_on_duckdb_mix_is_refused(self) -> None:
+        """Any Postgres-only engine selection dies at the factory, too."""
+        from corpus_kb.errors import ConfigError
+
+        cfg: dict[str, object] = {
+            "database": {"backend": "duckdb"},
+            "embedding": {"provider": "pgml"},
+        }
+        with pytest.raises(ConfigError, match="Ollama embedder"):
+            await create_graph_store(cfg)
+
+    @pytest.mark.asyncio
+    async def test_unknown_database_backend_raises(self) -> None:
+        """An unknown database.backend fails loudly at wiring time."""
+        cfg: dict[str, object] = {"database": {"backend": "nope"}}
+        with pytest.raises(ValueError, match=r"nope"):
+            await create_graph_store(cfg, object())
+
+    @pytest.mark.asyncio
+    async def test_database_backend_defaults_to_postgres(self) -> None:
+        """No database.backend key: the postgres path (age probe) applies."""
+        from corpus_kb.storage.age_graph_store import AgeGraphStore
+
+        pool = FakePool(age_present=True)
+        store = await create_graph_store({}, pool)
+        assert isinstance(store, AgeGraphStore)
+
+    def test_server_wiring_composes_backend_once(self) -> None:
+        """The wiring reads the backend once and closes the max_hops gap.
+
+        sp-hops noted the wired server still constructed GraphHandler
+        without config (the traversal ceiling stayed at the default 5).
+        The composer must pass the config down and key the event store on
+        the backend — pinned here as source, since booting the full stack
+        in a unit test needs a live Postgres.
+        """
+        import inspect
+
+        from corpus_kb import server_wiring
+
+        source = inspect.getsource(server_wiring)
+        assert 'backend = str(db_cfg.get("backend") or "postgres")' in source
+        assert "get_app(conn_str, backend=backend)" in source
+        assert "GraphHandler(graph_store, config=cfg)" in source
+        # The pool exists only on the Postgres path.
+        assert 'if backend != "postgres":' in source
+
+    @pytest.mark.asyncio
+    async def test_startup_refuses_duckdb_until_the_stack_ports(self) -> None:
+        """A duckdb startup is a typed refusal, never a half-wired server."""
+        from corpus_kb.errors import ConfigError
+        from corpus_kb.server_wiring import startup
+
+        cfg: dict[str, object] = {
+            "database": {"backend": "duckdb", "connection_string": "duckdb:///x.duckdb"}
+        }
+        with pytest.raises(ConfigError, match="Postgres"):
+            await startup(config=cfg)
 
 
 # ============================================================================
@@ -392,8 +587,118 @@ class TestGraphHandlerDelegation:
         assert pool.acquire_count == 0
         assert pool.release_count == 0
 
+    @pytest.mark.asyncio
+    async def test_handle_graph_neighbors_delegates(self) -> None:
+        """handle_graph_neighbors validates and routes to store.neighbors."""
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake)
+        entity_id = UUID("00000000-0000-0000-0000-0000000000e1")
+        envelope = await handler.handle_graph_neighbors(
+            TENANT_ID, entity_id, hops=2, direction="out", limit=10
+        )
+        assert fake.neighbor_calls == [(str(entity_id), 2, "out", 10)]
+        assert envelope == {
+            "status": "success",
+            "result": [
+                {
+                    "entity_id": "ent-2",
+                    "name": "EntityTwo",
+                    "entity_type": "CLASS",
+                    "metadata": {},
+                    "depth": 1,
+                }
+            ],
+        }
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_neighbors_rejects_bad_input(self) -> None:
+        """hops past the fast path and unknown directions are input errors."""
+        from corpus_kb.errors import ValidationError
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake)
+        entity_id = UUID(int=3)
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_neighbors(TENANT_ID, entity_id, hops=4)
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_neighbors(TENANT_ID, entity_id, direction="up")
+        assert fake.neighbor_calls == []
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_traverse_fast_path_under_three_hops(self) -> None:
+        """Depths 1..3 route to store.neighbors and fetch one extra row."""
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake)
+        entity_id = UUID(int=4)
+        envelope = await handler.handle_graph_traverse(TENANT_ID, entity_id, max_depth=3)
+        assert fake.traverse_calls == []
+        assert fake.neighbor_calls == [(str(entity_id), 3, "both", 101)]
+        assert envelope["status"] == "success"
+        assert envelope["truncated"] is False
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_traverse_deep_walks_and_reports_truncation(self) -> None:
+        """Depths past 3 route to store.traverse; an extra row pins truncated."""
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        fake = FakeGraphStore()
+        handler = GraphHandler(fake, config={"graph": {"max_hops": 5}})
+        entity_id = UUID(int=5)
+        envelope = await handler.handle_graph_traverse(TENANT_ID, entity_id, max_depth=5)
+        assert fake.neighbor_calls == []
+        assert fake.traverse_calls == [(str(entity_id), 5, 101)]
+        assert envelope["truncated"] is False
+
+        class _DeepStore(FakeGraphStore):
+            async def traverse(
+                self,
+                entity_id: str,
+                max_depth: int = 5,
+                relation_types: list[str] | None = None,
+                entity_types: list[str] | None = None,
+                limit: int = 100,
+            ) -> list[dict[str, object]]:
+                self.traverse_calls.append((entity_id, max_depth, limit))
+                return [
+                    {"entity_id": "x", "depth": d, "name": "", "entity_type": "", "metadata": {}}
+                    for d in range(limit)
+                ]
+
+        deep = GraphHandler(_DeepStore(), config={"graph": {"max_hops": 5}})
+        filled = await deep.handle_graph_traverse(TENANT_ID, entity_id, max_depth=5, limit=100)
+        assert filled["truncated"] is True
+        assert len(filled["result"]) == 100
+
+    @pytest.mark.asyncio
+    async def test_handle_graph_traverse_rejects_depth_past_ceiling(self) -> None:
+        """max_depth above graph.max_hops is an input error, not a walk."""
+        from corpus_kb.errors import ValidationError
+        from corpus_kb.handlers.graph_handler import GraphHandler
+
+        handler = GraphHandler(FakeGraphStore(), config={"graph": {"max_hops": 5}})
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_traverse(TENANT_ID, UUID(int=6), max_depth=6)
+        with pytest.raises(ValidationError):
+            await handler.handle_graph_traverse(TENANT_ID, UUID(int=6), max_depth=1)
+
+    def test_configured_max_hops_clamps(self) -> None:
+        """graph.max_hops resolves, defaults, and clamps to 1..25."""
+        from corpus_kb.handlers.graph_handler import configured_max_hops
+
+        assert configured_max_hops(None) == 5
+        assert configured_max_hops({}) == 5
+        assert configured_max_hops({"graph": {"max_hops": 12}}) == 12
+        assert configured_max_hops({"graph": {"max_hops": 99}}) == 25
+        assert configured_max_hops({"graph": {"max_hops": 0}}) == 1
+        assert configured_max_hops({"graph": {"max_hops": "nonsense"}}) == 5
+
     def test_public_method_signatures_unchanged(self) -> None:
-        """The three public handler methods keep their original signatures."""
+        """The public handler methods keep their catalogue-facing signatures."""
         from corpus_kb.handlers.graph_handler import GraphHandler
 
         search_sig = inspect.signature(GraphHandler.handle_search_graph)
@@ -413,4 +718,5 @@ class TestGraphHandlerDelegation:
             "start_entity_id",
             "max_depth",
         ]
-        assert list(rel_sig.parameters) == ["self", "tenant_id", "entity_id"]
+        # The §5.1 birth adds the optional limit; None keeps the uncapped read.
+        assert list(rel_sig.parameters) == ["self", "tenant_id", "entity_id", "limit"]

@@ -18,6 +18,7 @@ from typing import Any, cast
 import asyncpg
 
 from ..utils.models import Chunk, Document, Entity, Relation
+from .graph_sql import neighbors_sql, traversal_row, traverse_sql
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +108,39 @@ class GraphStore(ABC):
     @abstractmethod
     async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
         """Breadth-first search from a starting entity."""
+        pass
+
+    @abstractmethod
+    async def neighbors(
+        self,
+        entity_id: str,
+        hops: int = 1,
+        direction: str = "both",
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Fixed-chain neighbor lookup for hops 1..3.
+
+        Rows carry the pinned keys (entity_id, name, entity_type, metadata,
+        depth) and the total order (depth ASC, name ASC, entity_id ASC).
+        """
+        pass
+
+    @abstractmethod
+    async def traverse(
+        self,
+        entity_id: str,
+        max_depth: int = 5,
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Recursive walk past the fast path, with a path-array cycle guard.
+
+        Same row shape and total order as ``neighbors``; the start node is
+        never a row.
+        """
         pass
 
     @abstractmethod
@@ -302,7 +336,7 @@ class PostgresGraphStore(GraphStore):
                            source_document_id::text
                     FROM entities
                     WHERE tenant_id = $1 AND name ILIKE $2 AND entity_type = $3
-                    ORDER BY name ASC
+                    ORDER BY name ASC, entity_id ASC
                     """,
                     self._tenant_id,
                     pattern,
@@ -315,7 +349,7 @@ class PostgresGraphStore(GraphStore):
                            source_document_id::text
                     FROM entities
                     WHERE tenant_id = $1 AND name ILIKE $2
-                    ORDER BY name ASC
+                    ORDER BY name ASC, entity_id ASC
                     """,
                     self._tenant_id,
                     pattern,
@@ -412,6 +446,56 @@ class PostgresGraphStore(GraphStore):
             }
         finally:
             await self._release_conn(conn)
+
+    async def neighbors(
+        self,
+        entity_id: str,
+        hops: int = 1,
+        direction: str = "both",
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Fixed self-join chain over relations (shared graph_sql shape)."""
+        sql, args = neighbors_sql(
+            hops,
+            direction,
+            self._tenant_id,
+            entity_id,
+            relation_types,
+            entity_types,
+            limit,
+        )
+        conn = await self._get_conn()
+        try:
+            rows = await conn.fetch(sql, *args)
+        finally:
+            await self._release_conn(conn)
+        return [traversal_row(row) for row in rows]
+
+    async def traverse(
+        self,
+        entity_id: str,
+        max_depth: int = 5,
+        relation_types: list[str] | None = None,
+        entity_types: list[str] | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """WITH RECURSIVE walk with path-array cycle guard (shared shape)."""
+        sql, args = traverse_sql(
+            max_depth,
+            self._tenant_id,
+            entity_id,
+            relation_types,
+            entity_types,
+            limit,
+        )
+        conn = await self._get_conn()
+        try:
+            rows = await conn.fetch(sql, *args)
+        finally:
+            await self._release_conn(conn)
+        return [traversal_row(row) for row in rows]
 
     async def add_document(self, document: Document) -> str:
         """Insert a document into the documents table."""

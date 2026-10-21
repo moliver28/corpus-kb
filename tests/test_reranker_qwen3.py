@@ -333,7 +333,13 @@ def test_envelope_note_rides_existing_reasons_field() -> None:
         degraded_excluded=DegradedExcluded(count=0, reasons=["rerank-mode-generative-binary"]),
     )
     payload = envelope_to_payload(envelope)
-    assert set(payload) == {"status", "result", "degraded_excluded"}
+    assert set(payload) == {
+        "status",
+        "result",
+        "degraded_excluded",
+        "vector_index_mode",
+        "lexical_index_mode",
+    }
     assert payload["degraded_excluded"]["reasons"] == ["rerank-mode-generative-binary"]
 
 
