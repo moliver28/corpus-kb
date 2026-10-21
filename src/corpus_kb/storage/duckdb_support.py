@@ -24,6 +24,16 @@ from corpus_kb.errors import ConflictError, DatabaseUnavailableError, Validation
 if TYPE_CHECKING:  # function-local at runtime (program rule 9: deptry-visible)
     import duckdb
 
+#: The module's cross-module surface. The names below are consumed by
+#: ``duckdb_gateway.py`` (driver) and re-exported by ``gateway.py``; the
+#: declaration is what marks them public rather than dead.
+__all__ = [
+    "MAX_TRANSACTION_ATTEMPTS",
+    "_BACKOFF_SECONDS",
+    "_MAX_PLACEHOLDERS",
+    "Row",
+]
+
 #: The gateway row type: asyncpg's Record on Postgres, key-and-position
 #: dicts on DuckDB. Lives here so both drivers and the re-exports in
 #: ``gateway.py`` share one definition without an import cycle.

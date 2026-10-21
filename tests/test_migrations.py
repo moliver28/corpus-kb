@@ -9,7 +9,7 @@ from pathlib import Path
 import asyncpg
 import pytest
 
-from corpus_kb._setup.migrate import run_migrations
+from corpus_kb._setup.migrate import prepare_age_session, run_migrations
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "migrations"
 AGE_MIGRATION = MIGRATIONS_DIR / "004_enable_age.sql"
@@ -56,10 +56,14 @@ def _dsn() -> str:
 
 async def _connect_or_skip() -> asyncpg.Connection:
     try:
-        return await asyncpg.connect(_dsn())
+        conn = await asyncpg.connect(_dsn())
     except Exception:
         pytest.skip("Postgres not available")
         raise  # never reached: pytest.skip raises, but keeps the return type honest
+    # The AGE session ritual (apache/age#2504): direct 004 execution calls
+    # create_graph, which resolves graphid_ops through the search_path.
+    await prepare_age_session(conn)
+    return conn
 
 
 async def _apply_coding_migrations(conn: asyncpg.Connection) -> None:

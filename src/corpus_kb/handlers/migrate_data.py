@@ -53,11 +53,25 @@ class TablePlan:
 class StreamConn(Protocol):
     """DBAPI-shaped connection the core copies through (duckdb today)."""
 
-    def execute(self, sql: str, params: Sequence[object] | None = None) -> StreamConn: ...
-    def fetchmany(self, size: int) -> Sequence[Sequence[object]]: ...
-    def fetchall(self) -> Sequence[Sequence[object]]: ...
-    def fetchone(self) -> Sequence[object] | None: ...
-    def executemany(self, sql: str, seq: Sequence[Sequence[object]]) -> StreamConn: ...
+    def execute(self, sql: str, params: Sequence[object] | None = None) -> StreamConn:
+        """Run one statement and return the connection for chaining."""
+        raise NotImplementedError
+
+    def fetchmany(self, size: int) -> Sequence[Sequence[object]]:
+        """Return the next batch of result rows."""
+        raise NotImplementedError
+
+    def fetchall(self) -> Sequence[Sequence[object]]:
+        """Return every remaining result row."""
+        raise NotImplementedError
+
+    def fetchone(self) -> Sequence[object] | None:
+        """Return the next result row, or None when exhausted."""
+        raise NotImplementedError
+
+    def executemany(self, sql: str, seq: Sequence[Sequence[object]]) -> StreamConn:
+        """Run one statement once per parameter tuple."""
+        raise NotImplementedError
 
 
 # Tenant-exemption manifest — frozen from the W0 tenancy audit

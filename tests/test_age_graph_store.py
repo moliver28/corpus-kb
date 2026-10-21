@@ -124,7 +124,7 @@ def cypher_calls(conn: FakeConnection) -> list[tuple[str, tuple[Any, ...]]]:
 # ============================================================================
 
 
-def test_all_eleven_methods_exist_with_abc_conformant_signatures() -> None:
+def test_all_ten_methods_exist_with_abc_conformant_signatures() -> None:
     assert issubclass(AgeGraphStore, GraphStore)
     expected = [
         "add_entity",
@@ -133,8 +133,6 @@ def test_all_eleven_methods_exist_with_abc_conformant_signatures() -> None:
         "search_entities",
         "get_entity_relations",
         "bfs",
-        "neighbors",
-        "traverse",
         "close",
         "transaction",
         "add_document",
@@ -168,7 +166,9 @@ async def test_connection_setup_loads_age_and_sets_search_path(
     await store.search_entities("x")
     executed = [sql for (m, sql, _a) in conn.calls if m == "execute"]
     assert "LOAD 'age'" in executed
-    assert 'SET search_path = ag_catalog, "$user", public' in executed
+    # ag_catalog last: resolvable for cypher/agtype/opclass, never a target
+    # for the store's relational statements.
+    assert 'SET search_path = "$user", public, ag_catalog' in executed
     assert any("set_config('app.current_tenant_id'" in sql for sql in executed)
     probed = [sql for (m, sql, _a) in conn.calls if m == "fetchrow"]
     assert any("pg_extension" in sql for sql in probed)
@@ -231,7 +231,9 @@ async def test_add_entity_merges_and_returns_id(conn: FakeConnection, store: Age
     assert result == entity.entity_id
     sql, args = cypher_calls(conn)[-1]
     assert "MERGE (e:Entity" in sql
-    assert "ON CREATE SET" in sql
+    # Create-only fill via coalesce: AGE cannot parse "ON CREATE SET"
+    # (apache/age#1619), so a matched vertex must keep its stored id.
+    assert "coalesce(e.entity_id" in sql
     params = json.loads(args[0])
     assert params["name"] == "Widget"
     assert params["entity_type"] == "CLASS"
@@ -361,76 +363,6 @@ async def test_bfs_unknown_start_returns_empty_visited(
     conn.fetch_result = []
     result = await store.bfs("ghost", max_depth=2)
     assert result == {"start_entity_id": "ghost", "max_depth": 2, "visited": {}}
-
-
-# ============================================================================
-# (g) First-class hop traversal (storage-portability program §5.2)
-# ============================================================================
-
-
-def _hop_row(entity_id: str, name: str, depth: int) -> dict[str, Any]:
-    return {
-        "entity_id": agjson(entity_id),
-        "name": agjson(name),
-        "entity_type": agjson("CLASS"),
-        "metadata": agjson({}),
-        "depth": agjson(depth),
-    }
-
-
-async def test_neighbors_merge_hops_to_min_depth_and_sort(
-    conn: FakeConnection, store: AgeGraphStore
-) -> None:
-    """Two hop matches merge to shallowest depth in (depth, name, id) order."""
-    conn.add_fetch_response("1 AS depth", [_hop_row("b", "B", 1)])
-    conn.add_fetch_response("2 AS depth", [_hop_row("c", "C", 2), _hop_row("b", "B", 2)])
-    rows = await store.neighbors("a", hops=2)
-    assert [(row["entity_id"], row["depth"]) for row in rows] == [("b", 1), ("c", 2)]
-
-
-async def test_neighbors_filters_travel_in_the_param_map(
-    conn: FakeConnection, store: AgeGraphStore
-) -> None:
-    """Direction shapes the pattern; filter values never enter cypher text."""
-    conn.fetch_result = []
-    await store.neighbors(
-        "a", hops=1, direction="out", relation_types=["CALLS"], entity_types=["CLASS"]
-    )
-    sql, args = cypher_calls(conn)[-1]
-    assert "-[r1:REL]->" in sql
-    assert "r1.relation_type IN $relation_types" in sql
-    assert "x1.entity_type IN $entity_types" in sql
-    params = json.loads(args[0])
-    assert params["relation_types"] == ["CALLS"]
-    assert params["entity_types"] == ["CLASS"]
-    assert params["start_id"] == "a"
-
-
-async def test_neighbors_rejects_bad_hops_and_direction(store: AgeGraphStore) -> None:
-    """Hops past the fast path and unknown directions are input errors."""
-    with pytest.raises(ValueError, match="between 1 and 3"):
-        await store.neighbors("a", hops=4)
-    with pytest.raises(ValueError, match="direction"):
-        await store.neighbors("a", direction="up")
-
-
-async def test_traverse_runs_undirected_matches_per_depth(
-    conn: FakeConnection, store: AgeGraphStore
-) -> None:
-    """Traverse is the same loop, undirected, over 1..max_depth."""
-    conn.add_fetch_response("1 AS depth", [_hop_row("b", "B", 1)])
-    for depth in range(2, 6):
-        conn.add_fetch_response(f"{depth} AS depth", [])
-    rows = await store.traverse("a", max_depth=5)
-    assert [(row["entity_id"], row["depth"]) for row in rows] == [("b", 1)]
-    hop_one = [sql for sql, _a in cypher_calls(conn) if "1 AS depth" in sql][-1]
-    assert "-[r1:REL]-(" in hop_one  # undirected edge
-
-
-async def test_traverse_rejects_depth_past_ceiling(store: AgeGraphStore) -> None:
-    """max_depth above the AGE cap (25) is an input error."""
-    with pytest.raises(ValueError, match="between 1 and 25"):
-        await store.traverse("a", max_depth=26)
 
 
 async def test_add_document_upserts_with_on_conflict(

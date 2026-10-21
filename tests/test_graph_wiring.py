@@ -480,6 +480,7 @@ class TestGraphWiringLiveFallback:
             )
         except Exception:
             pytest.skip("Postgres not available")
+            raise  # never reached: pytest.skip raises, keeps the binding total
         try:
             # The premise is "this server has no AGE". The bundled CI image
             # ships the extension (and the bootstrap creates the graph), so

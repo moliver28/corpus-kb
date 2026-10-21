@@ -32,7 +32,9 @@ _SUPERUSER = os.environ.get("POSTGRES_SUPERUSER", "postgres")
 _SUPERUSER_PASSWORD = os.environ.get("POSTGRES_SUPERUSER_PASSWORD", "postgres")
 
 BASE_DSN = f"postgresql://{_PG_USER}:{_PG_PASSWORD}@{_PG_HOST}:{_PG_PORT}"
-DB_NAME = "corpus_kb_t11_test"
+# Overridable so two sessions running live tests at once stop force-dropping
+# each other's throwaway database (set CORPUS_KB_TEST_DB per session).
+DB_NAME = os.environ.get("CORPUS_KB_TEST_DB", "corpus_kb_t11_test")
 DSN = f"{BASE_DSN}/{DB_NAME}"
 TEST_TENANT = "00000000-0000-0000-0000-000000000002"
 

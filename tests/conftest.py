@@ -176,16 +176,33 @@ async def fresh_research_app(research_dsn: str) -> str:
     distance into the session — observed on the CI leg and in long local
     sessions alike. Each research test instead resets the singletons,
     points the env at the throwaway database (no-arg ``get_app()`` calls
-    resolve it), and builds a fresh app on the current loop.
+    resolve it), and builds a fresh app on the current loop. The env is
+    restored on teardown so later pg_pool-based tests keep their own DSN.
     """
+    import os
+
     import research_db
 
+    saved_url = os.environ.get("CORPUS_KB_DATABASE_URL")
+    saved_snapshot = os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD")
     research_db.set_env(research_dsn)
     await research_db.reset_singletons()
     from corpus_kb.domain.application import get_app
 
     get_app(research_dsn)
     yield research_dsn
+    # Close THIS test's app (its pool is pinned to this test's loop) before
+    # the loop goes away, then restore the env exactly like the session
+    # fixture does.
+    await research_db.reset_singletons()
+    if saved_url is None:
+        os.environ.pop("CORPUS_KB_DATABASE_URL", None)
+    else:
+        os.environ["CORPUS_KB_DATABASE_URL"] = saved_url
+    if saved_snapshot is None:
+        os.environ.pop("CORPUS_KB_SNAPSHOT_PERIOD", None)
+    else:
+        os.environ["CORPUS_KB_SNAPSHOT_PERIOD"] = saved_snapshot
 
 
 @pytest.fixture

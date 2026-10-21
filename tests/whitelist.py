@@ -396,8 +396,14 @@ resolved_bins
 # this wave. write_batch is the batched DuckDB insert path (ingest ports
 # adopt it in phase D); run_transaction is the conflict-replay driver for
 # the same adopters. Exercise in tests/test_storage_gateway.py.
-write_batch
-run_transaction
+#
+# The Phase-B blocks bind their names into one tuple instead of listing
+# bare names: the binding is a real statement for CodeQL, and vulture
+# still counts each name as used. The module is never imported.
+_WAVE_B_SURFACE = (
+    write_batch,
+    run_transaction,
+)
 
 # Storage portability Phase B interfaces (issue #127, sp-dialect +
 # sp-migrate-data): the frozen Dialect SQL shims are adopted by the search
@@ -412,17 +418,19 @@ run_transaction
 # migrate is the handler one operation (Wave E CLI adapter). All are pinned
 # contract-by-contract in tests/test_storage_dialect.py and
 # tests/test_migrate_data.py.
-sanitize_fts_query
-vector_distance
-vector_cast
-matryoshka_probe
-fts_match
-fts_rank
-jsonb_set_shim
-advisory_lock
-advisory_unlock
-planner_flags
-uuid_new
-zero_vector_guard
-dialect_for
-migrate
+_WAVE_B_SURFACE += (
+    sanitize_fts_query,
+    vector_distance,
+    vector_cast,
+    matryoshka_probe,
+    fts_match,
+    fts_rank,
+    jsonb_set_shim,
+    advisory_lock,
+    advisory_unlock,
+    planner_flags,
+    uuid_new,
+    zero_vector_guard,
+    dialect_for,
+    migrate,
+)

@@ -44,15 +44,25 @@ __all__ = [
 class SqlGateway(Protocol):
     """The storage seam: every SQL-speaking module takes one of these."""
 
-    async def fetch(self, sql: str, *args: Any) -> list[Row]: ...
+    async def fetch(self, sql: str, *args: Any) -> list[Row]:
+        """Run one read and return every matching row."""
+        raise NotImplementedError
 
-    async def fetchrow(self, sql: str, *args: Any) -> Row | None: ...
+    async def fetchrow(self, sql: str, *args: Any) -> Row | None:
+        """Run one read and return the first row, or None."""
+        raise NotImplementedError
 
-    async def fetchval(self, sql: str, *args: Any) -> Any: ...
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        """Run one read and return the first column of the first row."""
+        raise NotImplementedError
 
-    async def execute(self, sql: str, *args: Any) -> str: ...
+    async def execute(self, sql: str, *args: Any) -> str:
+        """Run one write and return the driver status tag."""
+        raise NotImplementedError
 
-    def transaction(self, tenant_id: str) -> AbstractAsyncContextManager[SqlGateway]: ...
+    def transaction(self, tenant_id: str) -> AbstractAsyncContextManager[SqlGateway]:
+        """Open a tenant-scoped transaction scope on this gateway."""
+        raise NotImplementedError
 
 
 class PostgresGateway:
