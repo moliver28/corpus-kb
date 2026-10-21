@@ -186,10 +186,17 @@ async def startup(
             "configure database.connection_string in config.yaml."
         )
     backend = str(db_cfg.get("backend") or "postgres")
+    if backend == "duckdb":
+        # Research ecosystem on the gateway (phase E sp-research-port):
+        # SQLite event store + gateway-built projections; handlers whose
+        # port has not landed stay unwired and fail typed per route.
+        from corpus_kb.server_wiring_duckdb import startup_duckdb
+
+        return await startup_duckdb(cfg, conn_str)
     if backend != "postgres":
         raise ConfigError(
-            "The server stack runs on Postgres today.",
-            remediation="Set database.backend to postgres. Then start the server.",
+            "The server backend must be postgres or duckdb.",
+            remediation="Set database.backend to postgres or duckdb.",
         )
 
     pool = await initialize_postgres_pool(conn_str)
