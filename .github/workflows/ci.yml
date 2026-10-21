@@ -268,6 +268,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev,duckdb]"
 
+      - name: Warm the DuckDB extension cache (fts, vss, postgres)
+        # The gateway loads DuckDB extensions with autoinstall off, so the
+        # per-platform cache under ~/.duckdb/extensions must be warmed
+        # before any test LOADs fts or vss. The installed duckdb wheel pins
+        # the version, so the cache key always matches.
+        run: python -c "import duckdb; con = duckdb.connect(); [con.execute('INSTALL ' + name) for name in ('fts', 'vss', 'postgres')]; con.close()"
+
       - name: Bootstrap service database (extensions + schema)
         # Workflow note: this job was single-owner (sp-gateway); the storage
         # portability integrator touched it in Phase B to add this step.
@@ -398,6 +405,12 @@ jobs:
           pip install -e ".[dev,duckdb]"
           if [ "$RUNNER_OS" = "Windows" ]; then pip install python-magic-bin; fi
         shell: bash
+
+      - name: Warm the DuckDB extension cache (fts, vss, postgres)
+        # Same rationale as the ubuntu leg: the gateway loads extensions
+        # with autoinstall off, so each runner platform needs its own
+        # pre-warmed cache before a test LOADs fts or vss.
+        run: python -c "import duckdb; con = duckdb.connect(); [con.execute('INSTALL ' + name) for name in ('fts', 'vss', 'postgres')]; con.close()"
 
       - name: Install libmagic (macOS)
         # Binary-safe ingest detects unknown file formats through libmagic.
