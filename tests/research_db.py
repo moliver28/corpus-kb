@@ -16,7 +16,9 @@ import re
 import asyncpg
 
 BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
-DB_NAME = "corpus_kb_t11_test"
+# Overridable so two sessions running live tests at once stop force-dropping
+# each other's throwaway database (set CORPUS_KB_TEST_DB per session).
+DB_NAME = os.environ.get("CORPUS_KB_TEST_DB", "corpus_kb_t11_test")
 DSN = f"{BASE_DSN}/{DB_NAME}"
 SUPER_DSN = f"{BASE_DSN}/postgres"
 TEST_TENANT = "00000000-0000-0000-0000-000000000002"

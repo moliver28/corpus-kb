@@ -232,9 +232,9 @@
   },
   {
     "name": "fsspec",
-    "version": "2026.9.0",
+    "version": "2026.6.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/fsspec/2026.9.0/",
+    "homepage": "https://pypi.org/project/fsspec/2026.6.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
