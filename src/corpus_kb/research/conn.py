@@ -86,13 +86,13 @@ def resolve_store(store: Store | None, gateway: SqlGateway | None = None) -> Sql
 
 @asynccontextmanager
 async def tenant_scope(store: Store, tenant_id: Any) -> AsyncIterator[SqlConn]:
-    """Open one tenant-scoped session: RLS GUC on Postgres, tx on DuckDB."""
-    if isinstance(store, asyncpg.Pool):
-        async with tenant_connection(store, tenant_id) as conn:
-            yield conn
-    else:
-        async with store.transaction(str(tenant_id)) as tx:
-            yield tx
+    """Open one tenant-scoped session: RLS GUC on Postgres, tx on DuckDB.
+
+    ``storage.tenant_conn.tenant_connection`` is THE seam; this wrapper
+    retypes the session view for the research domain.
+    """
+    async with tenant_connection(store, tenant_id) as conn:
+        yield conn
 
 
 def json_cast(dialect: Dialect, idx: str) -> str:

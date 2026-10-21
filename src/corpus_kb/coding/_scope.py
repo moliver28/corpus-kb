@@ -14,7 +14,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
 from uuid import UUID
 
 import asyncpg
@@ -36,15 +35,9 @@ ScopedConn = asyncpg.Connection | SqlGateway
 async def tenant_scope(store: CodingStore, tenant_id: UUID | str) -> AsyncIterator[ScopedConn]:
     """One tenant-scoped unit over either store kind.
 
-    Postgres keeps today's shape exactly: a held pooled connection with the
-    RLS ``app.current_tenant_id`` GUC set inside one transaction. A gateway
-    yields its own transaction scope, which carries the same role.
+    ``storage.tenant_conn.tenant_connection`` is THE seam: this wrapper
+    only retypes the union for the coding domain, so the two arms can
+    never drift.
     """
-    if is_gateway(store):
-        gateway = cast("SqlGateway", store)
-        async with gateway.transaction(str(tenant_id)) as scoped:
-            yield scoped
-        return
-    pool = cast("asyncpg.Pool", store)
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_connection(store, tenant_id) as conn:
         yield conn
