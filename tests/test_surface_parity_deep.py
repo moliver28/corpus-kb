@@ -1208,8 +1208,8 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     )
     pool = _FakePool()
     saved = _SavedAggregate()
-    monkeypatch.setattr(command_handler_module, "get_app", lambda: saved)
-    monkeypatch.setattr(delete_audit_module, "get_app", lambda: saved)
+    monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: saved)
+    monkeypatch.setattr(delete_audit_module, "get_app_for_config", lambda _cfg: saved)
     command_handler_module.reset_command_handler()
     command_handler_module.get_command_handler(config=_offline_config(), pool=pool)
 

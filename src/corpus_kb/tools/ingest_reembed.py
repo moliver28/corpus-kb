@@ -75,9 +75,11 @@ async def reembed_degraded(
     pool = pg_pool if isinstance(pg_pool, asyncpg.Pool) else None
     is_duckdb = gateway_backend(gateway) == "duckdb"
     async with gateway.transaction(tenant_id) as tx:
+        # The DuckDB probe hardcodes the table names (duckdb_columns()); the
+        # engine rejects unused bound parameters, so only the PG probe binds.
         present = await tx.fetchval(
             COLUMNS_PROBE_DUCKDB if is_duckdb else COLUMNS_PROBE_PG,
-            ["chunks", "chunks_vectors"],
+            *(() if is_duckdb else (["chunks", "chunks_vectors"],)),
         )
         if present != 2:
             return {

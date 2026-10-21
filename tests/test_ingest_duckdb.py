@@ -30,7 +30,7 @@ pytest.importorskip("duckdb")
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.extraction import ExtractStats
-from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
+from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string, vector_literal
 from corpus_kb.storage.gateway import DuckDbGateway
 from corpus_kb.tools import ingest_common
 from corpus_kb.tools.ingest_common import advisory_lock_ctx
@@ -413,3 +413,77 @@ async def test_ingest_duckdb_concurrent_run_skips(
     assert second["errors"] == []
     # No ledger row, no rows: the skip fired BEFORE begin_run.
     assert (await gw.fetchval("SELECT count(*) FROM ingest_runs WHERE tenant_id = $1", TENANT)) == 1
+
+
+async def test_reembed_repairs_degraded_chunk_on_duckdb(
+    duckdb_ingest_gateway: DuckDbGateway, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """REPAIR + DEGRADED_CLEAR on DuckDB, end to end.
+
+    The degraded chunk leaves the scan, gets a fresh vector, and BOTH
+    degraded flags clear — including the UPDATE on a chunks row that an
+    already-committed chunks_vectors row references (the DuckDB FK-hazard
+    path the Postgres CI covers implicitly).
+    """
+    from corpus_kb.tools import ingest_reembed
+
+    gw = duckdb_ingest_gateway
+    doc = "d0000000-0000-0000-0000-000000000009"
+    bad = "c0000000-0000-0000-0000-000000000011"
+    good = "c0000000-0000-0000-0000-000000000012"
+    await gw.execute(
+        "INSERT INTO documents (doc_id, tenant_id, source, source_type) VALUES (?, ?, ?, ?)",
+        doc,
+        TENANT,
+        "reembed.md",
+        "text",
+    )
+    for index, (cid, text) in enumerate(((bad, "degraded body"), (good, "healthy body"))):
+        await gw.execute(
+            "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text)"
+            " VALUES (?, ?, ?, ?, ?)",
+            cid,
+            TENANT,
+            doc,
+            index,
+            text,
+        )
+        embedding = (
+            vector_literal([0.0] * STUB_DIMS) if cid == bad else vector_literal(_stub_vector(text))
+        )
+        await gw.execute(
+            "INSERT INTO chunks_vectors (chunk_id, tenant_id, embedding_model, embedding, degraded)"
+            " VALUES (?, ?, ?, CAST(? AS FLOAT[2560]), ?)",
+            cid,
+            TENANT,
+            "stale-model",
+            embedding,
+            cid == bad,
+        )
+    await gw.execute("UPDATE chunks SET degraded = TRUE WHERE chunk_id = ?", bad)
+
+    async def fake_repair_embed(chunks, config, pool=None, text_override=None, **_kw):
+        for chunk in chunks:
+            chunk.embedding = _stub_vector(str(text_override[chunk.chunk_id]))
+        return False, None
+
+    monkeypatch.setattr(ingest_reembed, "embed_chunks", fake_repair_embed)
+
+    summary = await ingest_reembed.reembed_degraded(gw, _pipeline_config(), tenant_id=TENANT)
+    assert summary == {"status": "success", "scanned": 1, "fixed": 1, "failed": 0}
+    repaired = await gw.fetchrow(
+        "SELECT degraded, embedding_model, dimensions FROM chunks_vectors WHERE chunk_id = ?",
+        bad,
+    )
+    assert dict(repaired) == {
+        "degraded": False,
+        "embedding_model": "stub-embed",
+        "dimensions": 2560,
+    }
+    assert (
+        await gw.fetchval("SELECT degraded FROM chunks WHERE chunk_id = ?", bad)
+    ) is False  # the referenced chunks row took the flag-clear UPDATE
+    healthy = await gw.fetchrow(
+        "SELECT degraded, embedding_model FROM chunks_vectors WHERE chunk_id = ?", good
+    )
+    assert dict(healthy) == {"degraded": False, "embedding_model": "stale-model"}

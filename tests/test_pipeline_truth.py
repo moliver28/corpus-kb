@@ -166,8 +166,8 @@ def offline_env(monkeypatch: pytest.MonkeyPatch) -> Any:
     """Stub the ingest store and the eventsourcing app; hand back the app."""
     monkeypatch.setattr(ingest_common_module, "PostgresIngestStore", _StubStore)
     app = _FakeApp(history=[])
-    monkeypatch.setattr(delete_audit_module, "get_app", lambda: app)
-    monkeypatch.setattr(command_handler_module, "get_app", lambda: app)
+    monkeypatch.setattr(delete_audit_module, "get_app_for_config", lambda _cfg: app)
+    monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: app)
     command_handler_module.reset_command_handler()
     command_handler_module.get_command_handler(config=dict(_OFFLINE_CONFIG), pool=_NoopPool())
     yield app
@@ -295,10 +295,10 @@ async def test_delete_handler_without_history_stays_clean(offline_env: _FakeApp)
 async def test_delete_audit_failure_is_recorded_not_raised(
     monkeypatch: pytest.MonkeyPatch, offline_env: _FakeApp
 ) -> None:
-    def broken_app() -> Any:
+    def broken_app(_cfg: Any) -> Any:
         raise RuntimeError("event store down")
 
-    monkeypatch.setattr(delete_audit_module, "get_app", broken_app)
+    monkeypatch.setattr(delete_audit_module, "get_app_for_config", broken_app)
     handler = command_handler_module.get_command_handler()
 
     result = await handler.handle_delete_document(DeleteDocumentCommand(doc_id=uuid4()))

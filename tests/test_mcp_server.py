@@ -400,7 +400,7 @@ async def test_round_trip_add_entity(monkeypatch: pytest.MonkeyPatch) -> None:
         def save(self, aggregate: Any) -> None:
             return None
 
-    monkeypatch.setattr(command_handler_module, "get_app", lambda: _Saved())
+    monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: _Saved())
     payload = await _call(_make_server(), "add_entity", {"name": "probe", "entity_type": "concept"})
     assert payload["status"] == "success"
     assert payload["name"] == "probe"
