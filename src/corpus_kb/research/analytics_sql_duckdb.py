@@ -17,9 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from corpus_kb.research.retrieval import _ids_any
-
-FETCH_CHUNK = 500
+from corpus_kb.research.conn import ids_any
 
 RETRIEVAL_UNITS_SQL_DUCK = """
 WITH candidate AS MATERIALIZED (
@@ -83,22 +81,22 @@ LIMIT $2
 """
 
 UNIT_VECTORS_SQL_DUCK = f"""
-SELECT unit_id, embedding FROM research_units WHERE {_ids_any("$1", "unit_id", True, "bigint")}
+SELECT unit_id, embedding FROM research_units WHERE {ids_any("$1", "unit_id", True, "bigint")}
 """
 
 UNIT_TEXT_VECTORS_SQL_DUCK = f"""
 SELECT unit_id, text, embedding FROM research_units
-WHERE {_ids_any("$1", "unit_id", True, "bigint")}
+WHERE {ids_any("$1", "unit_id", True, "bigint")}
 """
 
 EXCHANGE_VECTORS_SQL_DUCK = f"""
 SELECT exchange_id, embedding FROM research_exchanges
-WHERE {_ids_any("$1", "exchange_id", True, "bigint")}
+WHERE {ids_any("$1", "exchange_id", True, "bigint")}
 """
 
 EXCHANGE_ANSWER_UNITS_SQL_DUCK = f"""
 SELECT unit_id, exchange_id FROM research_units
-WHERE {_ids_any("$1", "exchange_id", True, "bigint")}
+WHERE {ids_any("$1", "exchange_id", True, "bigint")}
   AND role_in_exchange = 'answer' AND is_codable
 """
 
@@ -107,19 +105,3 @@ async def retrieve_ids(conn: Any, sql: str, params: list[object]) -> list[int]:
     """DuckDB ``_retrieve_ids``: no planner flags exist, so one plain fetch."""
     rows = await conn.fetch(sql, *params)
     return [int(row[0]) for row in rows]
-
-
-async def fetch_in_chunks(conn: Any, sql: str, ids: list[int]) -> list[Any]:
-    """DuckDB ``_fetch_in_chunks`` (same chunk bound as the Postgres form)."""
-    rows: list[Any] = []
-    for start in range(0, len(ids), FETCH_CHUNK):
-        rows.extend(await conn.fetch(sql, ids[start : start + FETCH_CHUNK]))
-    return rows
-
-
-def parse_vector(raw: Any) -> list[float]:
-    """DuckDB vectors read back as Python lists; text forms parse as before."""
-    if isinstance(raw, (list, tuple)):
-        return [float(v) for v in raw]
-    text = str(raw).strip().strip("[]")
-    return [float(x) for x in text.split(",")] if text and text != "None" else []

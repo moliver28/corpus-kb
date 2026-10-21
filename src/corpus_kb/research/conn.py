@@ -114,3 +114,18 @@ def json_value(raw: object) -> Any:
     if isinstance(raw, str):
         return json.loads(raw)
     return raw
+
+
+_DUCK_LIST_CAST = {"uuid": "VARCHAR", "bigint": "BIGINT"}
+
+
+def ids_any(placeholder: str, column: str, duck: bool, kind: str) -> str:
+    """List membership over an id column: asyncpg ``ANY`` vs ``list_contains``.
+
+    Postgres keeps its byte-identical ``= ANY($n::<kind>[])`` form; DuckDB
+    has no ``= ANY``, so the twin casts the bound list and uses the engine's
+    ``list_contains`` (id columns are VARCHAR/BIGINT there — no UUID lists).
+    """
+    if duck:
+        return f"list_contains({placeholder}::{_DUCK_LIST_CAST[kind]}[], {column})"
+    return f"{column} = ANY({placeholder}::{kind}[])"
