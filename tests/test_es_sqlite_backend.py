@@ -114,7 +114,9 @@ def test_unknown_backend_raises_config_error():
         # The gateway DSN convention owns the shape: a 3-slash relative
         # form keeps its leading slash exactly as the analytics file would.
         ("duckdb:///data/kb.duckdb", os.path.normpath("/data/kb.duckdb") + ".events.db"),
-        ("C:\\data\\kb.duckdb", os.path.normpath("C:\\data\\kb.duckdb") + ".events.db"),
+        # The sidecar canonicalizes backslashes before the OS normpath, so
+        # the expectation is written with forward slashes on every OS.
+        ("C:\\data\\kb.duckdb", os.path.normpath("C:/data/kb.duckdb") + ".events.db"),
         ("C:/data/kb.duckdb", os.path.normpath("C:/data/kb.duckdb") + ".events.db"),
         ("kb.duckdb", "kb.duckdb.events.db"),
         ("duckdb:///:memory:", ":memory:"),

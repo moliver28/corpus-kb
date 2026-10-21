@@ -68,6 +68,9 @@ def _duckdb_config_env(tmp_path: Path, event_store_path: str, monkeypatch: pytes
         encoding="utf-8",
     )
     monkeypatch.setenv("CORPUS_KB_CONFIG", str(cfg))
+    # CI exports CORPUS_KB_DATABASE_URL (postgres) on every leg; the env
+    # override beats the config file, so drop it for a hermetic duckdb run.
+    monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
 
 
 @pytest.fixture(autouse=True)
