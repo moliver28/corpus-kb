@@ -15,7 +15,7 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.gateway import SqlGateway, is_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -39,15 +39,6 @@ _SET_METADATA_SQL = """INSERT INTO metadata (key, value, doc_id, tenant_id)
    ON CONFLICT (key, tenant_id, doc_id) DO UPDATE SET value = $2"""
 
 
-def _is_gateway(store: asyncpg.Pool | SqlGateway) -> bool:
-    """True for SqlGateway stores: a transaction scope, no pool acquire.
-
-    Anything else (asyncpg pools, MagicMock pools, fetch-only test fakes)
-    stays on the shipped tenant_connection path.
-    """
-    return not hasattr(store, "acquire") and hasattr(store, "transaction")
-
-
 class TagHandler:
     """Handles tags and metadata for documents."""
 
@@ -62,7 +53,7 @@ class TagHandler:
         description: str | None = None,
     ) -> dict[str, Any]:
         args = (str(tenant_id), name, color, description)
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 row = await gw.fetchrow(_ADD_TAG_SQL, *args)
                 return dict(row) if row else {"name": name, "status": "already_exists"}
@@ -75,7 +66,7 @@ class TagHandler:
 
     async def handle_tag_document(self, tenant_id: UUID, doc_id: UUID, tag: str) -> dict[str, Any]:
         args = (str(tenant_id), tag)
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 tag_id = await self._tag_id(gw, args)
                 await gw.execute(_TAG_DOCUMENT_SQL, str(doc_id), str(tenant_id), tag_id)
@@ -98,7 +89,7 @@ class TagHandler:
     async def handle_untag_document(
         self, tenant_id: UUID, doc_id: UUID, tag: str
     ) -> dict[str, Any]:
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 await gw.execute(_UNTAG_SQL, str(doc_id), str(tenant_id), tag)
             return {"status": "success", "doc_id": str(doc_id), "tag": tag}
@@ -111,7 +102,7 @@ class TagHandler:
 
     async def handle_get_document_tags(self, tenant_id: UUID, doc_id: UUID) -> list[dict[str, Any]]:
         args = (str(doc_id), str(tenant_id))
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 rows = await gw.fetch(_DOC_TAGS_ORDERED_SQL, *args)
             return [dict(r) for r in rows]
@@ -126,7 +117,7 @@ class TagHandler:
         self, tenant_id: UUID, key: str, value: str, doc_id: UUID | None = None
     ) -> dict[str, Any]:
         args = (key, value, str(doc_id) if doc_id else None, str(tenant_id))
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 await gw.execute(_SET_METADATA_SQL, *args)
             return {"status": "success", "key": key, "value": value}
@@ -141,7 +132,7 @@ class TagHandler:
         self, tenant_id: UUID, key: str | None = None, doc_id: UUID | None = None
     ) -> list[dict[str, Any]]:
         sql, args = _metadata_select(tenant_id, key, doc_id)
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 rows = await gw.fetch(sql, *args)
             return [dict(r) for r in rows]

@@ -49,7 +49,7 @@ from corpus_kb.handlers.query_integrity import degraded_candidate_predicate
 from corpus_kb.rag.judge import OllamaJudge
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_similar import similar_rows
-from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.gateway import SqlGateway, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.utils.json_safe import json_safe
 
@@ -59,18 +59,9 @@ _VERIFY_CHUNKS_SQL_GATEWAY = (
 )
 
 
-def _is_gateway(store: asyncpg.Pool | SqlGateway) -> bool:
-    """True for SqlGateway stores: a transaction scope, no pool acquire.
-
-    Anything else (asyncpg pools, MagicMock pools, fetch-only test fakes)
-    stays on the shipped tenant_connection path.
-    """
-    return not hasattr(store, "acquire") and hasattr(store, "transaction")
-
-
 async def sql_query(pool: asyncpg.Pool | SqlGateway, query: SQLQuery) -> list[dict[str, Any]]:
     """Execute a read-only SQL query."""
-    if _is_gateway(pool):
+    if is_gateway(pool):
         async with pool.transaction(str(query.tenant_id)) as reader:
             rows = await reader.fetch(query.sql, *query.params.values())
         return [json_safe(dict(row)) for row in rows]
@@ -84,7 +75,7 @@ async def list_documents(
 ) -> list[DocumentResult]:
     """List documents with pagination."""
     args = (str(query.tenant_id), query.limit, query.offset)
-    if _is_gateway(pool):
+    if is_gateway(pool):
         # created_at crosses as an ISO string on the gateway arm: DuckDB
         # needs the optional pytz wheel for TIMESTAMPTZ -> Python.
         # chunk_count is COMPUTED from chunks: the DuckDB write path
@@ -150,7 +141,7 @@ async def list_entities(
             LIMIT $2
             """
         args = (str(query.tenant_id), query.limit)
-    if _is_gateway(pool):
+    if is_gateway(pool):
         async with pool.transaction(str(query.tenant_id)) as reader:
             rows = await reader.fetch(sql, *args)
         return _entities(rows)
@@ -262,7 +253,7 @@ async def search_context(
             k=query.k,
         )
     )
-    if _is_gateway(pool):
+    if is_gateway(pool):
         async with pool.transaction(str(query.tenant_id)) as reader:
             return await _expand_context(reader, base_results, query)
     async with tenant_connection(pool, str(query.tenant_id)) as conn:
@@ -327,7 +318,7 @@ async def verify_answer(
     if not query.chunk_ids or judge is None:
         return VerifyAnswerResult(verdicts=[], groundedness=0.0, abstained=True)
     args = (str(query.tenant_id), [str(cid) for cid in query.chunk_ids])
-    if _is_gateway(pool):
+    if is_gateway(pool):
         # The gateway arm carries the explicit array cast (DuckDB binds a
         # bare untyped ANY list loosely); Postgres keeps its shipped SQL.
         async with pool.transaction(str(query.tenant_id)) as reader:

@@ -362,7 +362,7 @@ SCAN_SQL_DUCKDB = """
     WHERE cv.tenant_id = $1
       AND (cv.degraded = TRUE OR c.degraded = TRUE OR cv.embedding IS NULL)
       AND ($2::VARCHAR IS NULL OR c.doc_id = $2::VARCHAR)
-    ORDER BY cv.embedded_at NULLS LAST
+    ORDER BY cv.embedded_at NULLS LAST, cv.chunk_id ASC
     LIMIT $3
 """
 

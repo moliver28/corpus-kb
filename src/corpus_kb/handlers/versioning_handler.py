@@ -21,7 +21,7 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.gateway import SqlGateway, is_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -43,15 +43,6 @@ _STATS_TABLES = [
 ]
 
 
-def _is_gateway(store: asyncpg.Pool | SqlGateway) -> bool:
-    """True for SqlGateway stores: a transaction scope, no pool acquire.
-
-    Anything else (asyncpg pools, MagicMock pools, fetch-only test fakes)
-    stays on the shipped tenant_connection path.
-    """
-    return not hasattr(store, "acquire") and hasattr(store, "transaction")
-
-
 class VersioningHandler:
     """Handles versioning, tagging, branching via event store."""
 
@@ -60,7 +51,7 @@ class VersioningHandler:
 
     async def handle_list_versions(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all aggregate versions from the event store."""
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 try:
                     rows = await gw.fetch(_VERSIONS_SQL)
@@ -79,7 +70,7 @@ class VersioningHandler:
 
     async def handle_get_stats(self, tenant_id: UUID) -> dict[str, Any]:
         """Get database statistics."""
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 stats = {
                     table: await gw.fetchval(f"SELECT COUNT(*) FROM {table}")
@@ -105,7 +96,7 @@ class VersioningHandler:
 
     async def handle_sql_tables(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all tables in the schema."""
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 rows = await gw.fetch(_DUCKDB_TABLES_SQL)
                 return [dict(r) for r in rows]
@@ -125,7 +116,7 @@ class VersioningHandler:
             "total_entities": "entities",
             "total_relations": "relations",
         }
-        if _is_gateway(self._pool):
+        if is_gateway(self._pool):
             async with self._pool.transaction(str(tenant_id)) as gw:
                 stats = {
                     name: await gw.fetchval(f"SELECT COUNT(*) FROM {t}")

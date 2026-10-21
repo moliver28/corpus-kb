@@ -29,7 +29,7 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.gateway import SqlGateway, is_gateway
 
 logger = logging.getLogger(__name__)
 
@@ -54,15 +54,6 @@ _RECORD_SQL = """
 """
 
 
-def _is_gateway(store: asyncpg.Pool | SqlGateway) -> bool:
-    """True for SqlGateway stores: a transaction scope, no pool acquire.
-
-    Anything else (asyncpg pools, MagicMock pools, fetch-only test fakes)
-    stays on the shipped tenant_connection path.
-    """
-    return not hasattr(store, "acquire") and hasattr(store, "transaction")
-
-
 class IdempotencyChecker:
     """Checks and records idempotency keys for command deduplication."""
 
@@ -78,7 +69,7 @@ class IdempotencyChecker:
         autocommit read after a bare set_config sees an empty value and
         fails the cast (live e2e round, W5C).
         """
-        if _is_gateway(self._store):
+        if is_gateway(self._store):
             async with self._store.transaction(str(tenant_id)) as gw:
                 row = await gw.fetchrow(_CHECK_SQL_GATEWAY, str(command_id))
                 if row:
@@ -113,7 +104,7 @@ class IdempotencyChecker:
         """
         encoded_payload = json.dumps(command_payload, default=str)
         encoded_result = json.dumps(result, default=str) if result else None
-        if _is_gateway(self._store):
+        if is_gateway(self._store):
             async with self._store.transaction(str(tenant_id)) as gw:
                 await gw.execute(
                     _RECORD_SQL,
