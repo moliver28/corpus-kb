@@ -448,3 +448,12 @@ _WAVE_D_SURFACE = (
     total_chunks,
     total_relations,
 )
+
+# Wave E of the storage portability program (issue #127): migrate_data is the
+# Typer callback that registers `corpus-kb migrate-data`, and _corpus_digest
+# is the handler digest helper its tests call directly, so vulture's static
+# reach cannot see either use.
+_WAVE_E_SURFACE = (
+    migrate_data,
+    _corpus_digest,
+)
