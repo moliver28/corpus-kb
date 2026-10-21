@@ -196,6 +196,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_INSTALL_POSTGRES_IMAGE` | `installer.postgres_image` | `corpus-kb setup` image pull/verify (`_setup.install`) |
 | `CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE` | `installer.verify_image_signature` | `corpus-kb setup` image verify (`_setup.install`) |
 | `CORPUS_KB_SNAPSHOT_PERIOD` | (no config key; aggregate snapshot interval, default 100) | `domain.application` |
+| `CORPUS_KB_TEST_DB` | (no config key; throwaway test DB name, default `corpus_kb_t11_test`) | `tests/research_db.py` |
 
 ### Embedding dimensions and the vector schema
 
