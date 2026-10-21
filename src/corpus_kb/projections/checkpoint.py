@@ -35,16 +35,23 @@ class CheckpointManager:
         self._pool = pool
 
     async def get_checkpoint(self, projection_name: str, tenant_id: UUID) -> dict[str, Any] | None:
-        """Get the last processed position for a projection."""
+        """Get the last processed position for a projection.
+
+        The tenant_id predicate is explicit, not RLS-only: a superuser or
+        BYPASSRLS app role (the CI bootstrap image runs this way) skips row
+        level security entirely, so an RLS-only scope would return some
+        other tenant's checkpoint row for the same projection name.
+        """
         async with tenant_connection(self._pool, tenant_id) as conn:
             row = await conn.fetchrow(
                 """
                 SELECT last_event_id, last_event_timestamp, checkpoint_timestamp,
                        last_sequence
                 FROM projection_checkpoints
-                WHERE projection_name = $1
+                WHERE projection_name = $1 AND tenant_id = $2
                 """,
                 projection_name,
+                str(tenant_id),
             )
             return dict(row) if row else None
 
