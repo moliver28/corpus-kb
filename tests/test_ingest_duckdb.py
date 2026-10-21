@@ -209,7 +209,8 @@ async def test_ingest_duckdb_e2e_rows_and_envelope(
     stored_hash: str = docs[0]["file_hash"]
     assert len(stored_hash) == 64 and all(c in "0123456789abcdef" for c in stored_hash)
     # DuckDB delta: the documents row is written once (chunk_count stays at
-    # its begin_run value); run freshness lives in the ledger.
+    # its begin_run value); run freshness lives in the ledger. The READ
+    # path computes the real number from chunks (list_documents test below).
     assert docs[0]["chunk_count"] == 0
     # The pipeline-carried date rides the FIRST insert on DuckDB.
     assert docs[0]["document_date"] is not None
@@ -262,6 +263,31 @@ async def test_ingest_duckdb_e2e_rows_and_envelope(
     assert [dict(row) for row in again] == [
         {"chunk_index": row["chunk_index"], "text": row["text"]} for row in chunks
     ]
+
+
+async def test_list_documents_reports_real_chunk_count_on_duckdb(
+    duckdb_ingest_gateway: DuckDbGateway, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stored documents.chunk_count stays at its begin-run zero on
+    DuckDB (the row is written once), but the READ path answers the real
+    number: list_documents computes it from chunks over the gateway."""
+    from corpus_kb.tools.ingest_tools import list_documents
+
+    _stub_stages(monkeypatch)
+    result = await _run(duckdb_ingest_gateway, DOC_TEXT)
+    assert result["status"] == "success"
+
+    envelope = await list_documents(
+        duckdb_ingest_gateway,
+        _pipeline_config(),
+        tenant_id=TENANT,
+        limit=10,
+        offset=0,
+    )
+    assert envelope["status"] == "success"
+    docs = envelope["result"]
+    assert len(docs) == 1
+    assert docs[0]["chunk_count"] == 2
 
 
 async def test_ingest_duckdb_reingest_unchanged_skips(

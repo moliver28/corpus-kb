@@ -87,12 +87,17 @@ async def list_documents(
     if _is_gateway(pool):
         # created_at crosses as an ISO string on the gateway arm: DuckDB
         # needs the optional pytz wheel for TIMESTAMPTZ -> Python.
+        # chunk_count is COMPUTED from chunks: the DuckDB write path
+        # leaves the documents column at its begin-run zero (the row is
+        # written once), so the stored value would read 0 forever.
         sql = """
-            SELECT doc_id, source, source_type, chunk_count,
+            SELECT doc_id, source, source_type,
+                   (SELECT count(*) FROM chunks
+                     WHERE chunks.doc_id = documents.doc_id) AS chunk_count,
                    created_at::VARCHAR AS created_at
             FROM documents
             WHERE tenant_id = $1
-            ORDER BY created_at DESC
+            ORDER BY created_at DESC, doc_id ASC
             LIMIT $2 OFFSET $3
             """
         async with pool.transaction(str(query.tenant_id)) as reader:

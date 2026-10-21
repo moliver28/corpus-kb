@@ -66,6 +66,7 @@ from corpus_kb.research.search_settings import (
 )
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_search import DuckDbSearchBackend
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.search_backend import SearchBackend, SearchOutcome, SearchRequest
 from corpus_kb.utils.tracing import (
     ATTR_CANDIDATES_IN,
@@ -93,7 +94,7 @@ class QueryHandler:
 
     def __init__(
         self,
-        pool: asyncpg.Pool | DuckDbGateway,
+        pool: asyncpg.Pool | SqlGateway,
         embedder: OllamaEmbedder | PgmlEmbedder | None = None,
         reranker: object | None = None,
         self_query_parser: object | None = None,
@@ -191,7 +192,10 @@ class QueryHandler:
                     reasons,
                 )
             else:
-                async with self._pool.acquire() as acquired, acquired.transaction():
+                # The gateway kind is decided above; what remains is the
+                # shipped asyncpg pool (test fakes included).
+                pg_pool = cast("asyncpg.Pool", self._pool)
+                async with pg_pool.acquire() as acquired, acquired.transaction():
                     conn = cast("asyncpg.Connection", acquired)
                     await conn.execute(
                         "SELECT set_config('app.current_tenant_id', $1, true)",
@@ -513,25 +517,25 @@ class QueryHandler:
 
     # -- Small CRUD-ish handlers (moved to handlers/query_crud.py; the
     #    delegating methods keep the public surface byte-identical). The
-    #    casts re-narrow the engine-union pool: these CRUD reads are the
-    #    Postgres path today (query_crud is sp-command-port's WP).
+    #    widened union is type-truth: query_crud dispatches the engine at
+    #    runtime (_is_gateway), so no cast may hide the gateway arm.
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a read-only SQL query."""
-        return await query_crud.sql_query(cast("asyncpg.Pool", self._pool), query)
+        return await query_crud.sql_query(cast("asyncpg.Pool | SqlGateway", self._pool), query)
 
     async def handle_list_documents(self, query: ListDocumentsQuery) -> list[DocumentResult]:
         """List documents with pagination."""
-        return await query_crud.list_documents(cast("asyncpg.Pool", self._pool), query)
+        return await query_crud.list_documents(cast("asyncpg.Pool | SqlGateway", self._pool), query)
 
     async def handle_list_entities(self, query: ListEntitiesQuery) -> list[EntityResult]:
         """List entities, optionally filtered by type."""
-        return await query_crud.list_entities(cast("asyncpg.Pool", self._pool), query)
+        return await query_crud.list_entities(cast("asyncpg.Pool | SqlGateway", self._pool), query)
 
     async def handle_search_similar(self, query: SearchSimilarQuery) -> list[SearchResult]:
         """Find chunks similar to a given chunk via vector distance."""
         return await query_crud.search_similar(
-            cast("asyncpg.Pool", self._pool),
+            cast("asyncpg.Pool | SqlGateway", self._pool),
             exclude_degraded=self._exclude_degraded,
             query=query,
         )
@@ -539,13 +543,13 @@ class QueryHandler:
     async def handle_search_context(self, query: SearchContextQuery) -> list[SearchResult]:
         """Search with surrounding context chunks."""
         return await query_crud.search_context(
-            cast("asyncpg.Pool", self._pool), self.handle_search, query
+            cast("asyncpg.Pool | SqlGateway", self._pool), self.handle_search, query
         )
 
     async def handle_verify_answer(self, query: VerifyAnswerQuery) -> VerifyAnswerResult:
         """Verify an LLM-generated answer's claims against cited chunks."""
         return await query_crud.verify_answer(
-            cast("asyncpg.Pool", self._pool), judge=self._judge, query=query
+            cast("asyncpg.Pool | SqlGateway", self._pool), judge=self._judge, query=query
         )
 
 
@@ -556,7 +560,7 @@ class QueryHandler:
 _query_handler: QueryHandler | None = None
 
 
-def get_query_handler(pool: asyncpg.Pool | None = None) -> QueryHandler:
+def get_query_handler(pool: asyncpg.Pool | SqlGateway | None = None) -> QueryHandler:
     """Get or create the singleton QueryHandler."""
     global _query_handler
     if _query_handler is None:

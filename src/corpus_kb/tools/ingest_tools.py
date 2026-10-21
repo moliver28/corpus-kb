@@ -15,7 +15,6 @@ registration helper there is private plumbing) and is re-exported here so the
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 from uuid import UUID
 
 import asyncpg
@@ -174,9 +173,9 @@ async def list_documents(
     query = ListDocumentsQuery(tenant_id=UUID(tenant_id), limit=limit, offset=offset)
     # Built over the caller's storage seam (not the get_query_handler singleton):
     # the singleton pins the first pool it sees, and this tool is handed a
-    # pool or gateway explicitly. The cast holds until the query handler's
-    # own storage-port wave widens its parameter.
-    handler = QueryHandler(cast("asyncpg.Pool", pg_pool), config=load_config_or_pass(config))
+    # pool or gateway explicitly. The query handler takes the engine union,
+    # so a DuckDB gateway serves the read the same way a pool does.
+    handler = QueryHandler(pg_pool, config=load_config_or_pass(config))
     results = await handler.handle_list_documents(query)
     return {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
 
