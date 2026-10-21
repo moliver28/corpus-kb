@@ -311,6 +311,11 @@ DEP002 = [
     # visible — so this entry self-retires once that import lands. DEP004 is
     # ignored separately below.
     "duckdb",
+    # pytz (storage portability, phase D): duckdb's own runtime imports it
+    # when it materializes TIMESTAMPTZ values; our source never imports it.
+    # It ships in the [duckdb] extra so the backend works without system
+    # packages.
+    "pytz",
     # Dev/tooling deps: consumed by tests/ and the gate commands, never
     # imported by src/.
     "pytest",
