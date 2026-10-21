@@ -296,6 +296,24 @@ To add real multi-tenancy, create tenants in the `tenants` table and route each 
 
 ---
 
+## DuckDB engine notes
+
+DuckDB is the opt-in local engine (`database.backend: duckdb`). While an
+ingest runs, a few read-time behaviors differ from Postgres. All of them
+settle when the ingest commit lands.
+
+- Chunk vectors and relations write in a second pass. A read during an
+  ingest can see live chunks with no vectors yet, or relations that are
+  one event behind. One transaction cannot span both write passes.
+- A shrunken document updates its surviving chunks and tombstones the
+  rest. The tombstones become visible at the commit, not one by one.
+- A pipeline-carried document date lands on the first insert only. A
+  changed date on a re-ingest updates Postgres; DuckDB keeps the first.
+- `documents.chunk_count` stays 0 in the DuckDB table (one insert, no
+  later update). Document reads compute the real count from `chunks`.
+
+---
+
 ## Backup and restore
 
 Use standard Postgres tools.
