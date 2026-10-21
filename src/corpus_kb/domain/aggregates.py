@@ -27,7 +27,7 @@ class Document(Aggregate):
 
     Events:
         Ingested: fired on creation (source, source_type, metadata)
-        ChunksAdded: fired when chunks are added (chunk_count, chunk_texts)
+        ChunksAdded: fired when chunks are added (tenant_id, chunk_count, chunk_texts)
         Deleted: fired when document is deleted
     """
 
@@ -63,10 +63,19 @@ class Document(Aggregate):
     @event("ChunksAdded")
     def add_chunks(
         self,
+        tenant_id: UUID,
         chunk_count: int,
         chunk_texts: list[str],
     ) -> None:
-        """Add chunks to the document. Projection handles embedding."""
+        """Add chunks to the document. Projection handles embedding.
+
+        ``tenant_id`` is stamped into the event payload (issue #143, the
+        same serialization the turn/exchange batches use): frozen events
+        never lose tenancy, so a foreign tenant's chunk event is skipped
+        by the projection drain instead of failing its FK 20 times.
+        Events persisted before this stamp have no ``tenant_id``; the
+        drain treats those as the draining tenant's (the old behavior).
+        """
         self.chunk_count += chunk_count
 
     @event("TurnsParsed")

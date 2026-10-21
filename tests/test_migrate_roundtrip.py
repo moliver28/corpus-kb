@@ -80,7 +80,7 @@ class TestEventStore:
                 source_type="code",
                 file_hash=uuid.uuid4().hex,
             )
-            doc.add_chunks(chunk_count=2, chunk_texts=["alpha", "beta"])
+            doc.add_chunks(TENANT, chunk_count=2, chunk_texts=["alpha", "beta"])
             app.save(doc)
         finally:
             reset_app()
@@ -467,7 +467,7 @@ class TestLiveRoundTrip:
                 source_type="code",
                 file_hash=uuid.uuid4().hex,
             )
-            doc.add_chunks(chunk_count=1, chunk_texts=["round trip"])
+            doc.add_chunks(TENANT, chunk_count=1, chunk_texts=["round trip"])
             app.save(doc)
             reset_app()
 

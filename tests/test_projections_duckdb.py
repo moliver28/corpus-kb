@@ -73,7 +73,7 @@ def _save_document(app: CorpusApplication, tenant: UUID, source: str, chunks: li
         source_type="transcript",
         file_hash=uuid.uuid4().hex,
     )
-    doc.add_chunks(chunk_count=len(chunks), chunk_texts=chunks)
+    doc.add_chunks(tenant, chunk_count=len(chunks), chunk_texts=chunks)
     app.save(doc)
     return UUID(str(doc.id))
 
@@ -211,6 +211,52 @@ async def test_checkpoint_conflict_replays_the_whole_unit(tmp_path: Path) -> Non
         assert final == 2, "the replayed unit must overwrite the rival value"
     finally:
         rival.close()
+        await gateway.close()
+
+
+async def test_foreign_chunksadded_converges_in_one_pass(tmp_path: Path) -> None:
+    """Issue #143: a foreign tenant's ChunksAdded must not burn the drain.
+
+    Pre-fix the frozen ChunksAdded event carried no tenant_id, so the drain
+    replayed it under the draining tenant, hit the chunks FK, and retried
+    the same notification on every one of the 20 passes (a DLQ row each
+    time). Post-fix the event carries tenant_id, the foreign check advances
+    the shared checkpoint in one pass: zero DLQ rows, no foreign chunks.
+    """
+    gateway, _ = await _migrated_gateway(tmp_path, "foreign-chunks.duckdb")
+    app = _app(tmp_path)
+    try:
+        own_doc = _save_document(app, TENANT, "issue143://own", ["P: own text."])
+        foreign_doc = _save_document(app, OTHER, "issue143://foreign", ["P: foreign text."])
+        head = app.recorder.max_notification_id()
+
+        docs, embeds, checkpoint = await _catch_up(gateway, app, TENANT)
+
+        dlq_rows = await gateway.fetch("SELECT event_id FROM projection_dlq ORDER BY 1")
+        assert dlq_rows == [], "no event may poison-loop the drain"
+
+        assert await _last_sequence(checkpoint, "DocumentsProjection", TENANT) == head, (
+            "the drain must converge past the foreign event in one pass"
+        )
+        assert await _last_sequence(checkpoint, "EmbedChunksProjection", TENANT) == head
+
+        foreign_chunks = await gateway.fetchval(
+            "SELECT COUNT(*) FROM chunks WHERE tenant_id = $1 AND doc_id = $2",
+            str(TENANT),
+            str(foreign_doc),
+        )
+        assert foreign_chunks == 0, "foreign chunks must not materialize"
+        own_chunks = await gateway.fetchval(
+            "SELECT COUNT(*) FROM chunks WHERE tenant_id = $1 AND doc_id = $2",
+            str(TENANT),
+            str(own_doc),
+        )
+        assert own_chunks == 1, "the own tenant's chunk still materializes"
+
+        # A second drain is quiet: nothing is revisited.
+        assert await docs.catch_up(_reader(app), TENANT) == 0
+        assert await embeds.catch_up(_reader(app), TENANT) == 0
+    finally:
         await gateway.close()
 
 

@@ -10,7 +10,9 @@ generated from the catalogue rows that name these functions.
 Same house pattern as ``tools/search_tools.py``: built over the CALLER'S
 pool. When the server has wired the graph-handler singleton every surface
 resolves it; standalone callers (CLI, MCP stdio, tests) get the same
-handler built over their pool via ``server_wiring.create_graph_store``.
+handler built over their pool via ``storage.graph_factory.create_graph_store``
+(the composition root the server wiring itself calls — this module never
+imports ``server_wiring``, which would drag the api adapters in).
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ async def _resolve_graph_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> 
         pass
 
     from corpus_kb.handlers.graph_handler import GraphHandler
-    from corpus_kb.server_wiring import create_graph_store
+    from corpus_kb.storage.graph_factory import create_graph_store
 
     graph_store = await create_graph_store(cfg, pool)
     return GraphHandler(graph_store, cfg)

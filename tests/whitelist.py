@@ -92,7 +92,13 @@ end_to_end
 nr_bins
 evolution_tuning
 
-# dynamically-dispatched or test-patched names (verified by repo-wide grep): 149 name(s)
+# dynamically-dispatched or test-patched names (verified by repo-wide grep): 152 name(s)
+# sp-suite-hardening: QueryHandler keeps these delegating methods so the
+# tested private call shapes survive the query_pipeline/query_stages split
+# (tests/test_reranker_qwen3.py, tests/test_parent_expand.py call them).
+_resolve_default_k
+_post_fuse
+_maybe_expand_to_parent
 aggregate_signals
 class_priors
 evaluate_agreement

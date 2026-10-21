@@ -2,18 +2,21 @@
 
 The per-agent window contract, its rendering, the per-code output type and its
 validator all live in coder_window.py; the live model call lives in
-coder_client.py.
+coder_client.py. The helper steps live in coder_steps.py and the cell
+writer in coder_cell.py (pure moves for the 250-line rule); this module
+keeps the ``dispatch_chunk`` orchestrator.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import asdict
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
-from corpus_kb.coding._scope import CodingStore, ScopedConn, tenant_scope
+from corpus_kb.coding._scope import CodingStore, tenant_scope
+from corpus_kb.coding.coder_cell import _write_cell
 from corpus_kb.coding.coder_client import call_ollama
+from corpus_kb.coding.coder_steps import _judgment_means, _read_window, _unresolved_error
 from corpus_kb.coding.coder_window import (
     CODER_WINDOW_CONTRACT,
     MAX_CANDIDATE_CODES,
@@ -22,16 +25,8 @@ from corpus_kb.coding.coder_window import (
     parse_decisions,
     validate_coder_output,
 )
-from corpus_kb.coding.confidence_routing import Bands, route_cell
-from corpus_kb.coding.judgment_sampling import (
-    JudgmentMeanResult,
-    judgment_mean_enabled,
-    sample_judgments,
-)
-from corpus_kb.coding.qa_chaining import chain_context
-from corpus_kb.coding.quote_verification import classify_quote
+from corpus_kb.coding.confidence_routing import Bands
 from corpus_kb.coding.uncertainty.tier1_logprob import logprob_entropy
-from corpus_kb.coding.uncertainty.types import assemble_tier_signals
 
 __all__ = [
     "CODER_WINDOW_CONTRACT",
@@ -39,302 +34,6 @@ __all__ = [
     "dispatch_chunk",
     "validate_coder_output",
 ]
-
-
-# Every route_cell output must have an explicit entry here (fail loud on an
-# unmapped route rather than silently defaulting it into manual_review).
-_ROUTE_STATUS = {
-    "high-conf-accept": "accepted",
-    "high-conf-reject": "rejected",
-    "manual_review": "manual_review",
-    "provisional-hold": "manual_review",
-    "mid-band": "manual_review",
-    "escalate": "manual_review",
-    "low-conf-escalate": "manual_review",
-}
-
-
-def _final_status(route: str) -> str:
-    """Map a route to a final_codes.status (accepted|rejected|manual_review)."""
-    try:
-        return _ROUTE_STATUS[route]
-    except KeyError:
-        raise ValueError(f"Unmapped route for final_codes.status: {route!r}") from None
-
-
-async def _fetch_qa_context(conn: ScopedConn, tenant_id: UUID, chunk_id: UUID) -> str | None:
-    """The moderator-chained context for this chunk, or None when inapplicable.
-
-    Inert unless: (a) this chunk has a speaker_role in chunk_status (written
-    by speaker_role_projection.classify_speaker_roles off chunk metadata --
-    corpora with no speaker metadata never get one), (b) that role is NOT
-    "moderator" itself, and (c) the immediately preceding chunk in the same
-    document IS classified "moderator". When all three hold, this is a
-    participant turn answering a moderator's question (contract item 3), and
-    `qa_chaining.chain_context` produces the chained text.
-    """
-    row = await conn.fetchrow(
-        """SELECT c.doc_id, c.chunk_index, cs.speaker_role
-           FROM chunks c LEFT JOIN chunk_status cs
-             ON cs.chunk_id = c.chunk_id AND cs.tenant_id = c.tenant_id
-           WHERE c.chunk_id=$1 AND c.tenant_id=$2""",
-        chunk_id,
-        tenant_id,
-    )
-    if row is None or not row["speaker_role"] or row["speaker_role"] == "moderator":
-        return None
-
-    prior = await conn.fetchrow(
-        """SELECT c.text, cs.speaker_role
-           FROM chunks c LEFT JOIN chunk_status cs
-             ON cs.chunk_id = c.chunk_id AND cs.tenant_id = c.tenant_id
-           WHERE c.tenant_id=$1 AND c.doc_id=$2 AND c.chunk_index=$3""",
-        tenant_id,
-        row["doc_id"],
-        row["chunk_index"] - 1,
-    )
-    if prior is None or prior["speaker_role"] != "moderator":
-        return None
-
-    chunk_text = await conn.fetchval(
-        "SELECT text FROM chunks WHERE chunk_id=$1 AND tenant_id=$2", chunk_id, tenant_id
-    )
-    return chain_context(role="participant", moderator_q=prior["text"], answer=chunk_text or "")
-
-
-def _as_decision(decision: str) -> Literal["assign", "reject"]:
-    """Narrow a validated decision string to the literal route_cell accepts.
-
-    parse_decisions has already rejected anything outside the pair, so the
-    ValueError is unreachable in practice; it exists so the narrowing is proven
-    to the type checker rather than asserted by a cast.
-    """
-    if decision == "assign":
-        return "assign"
-    if decision == "reject":
-        return "reject"
-    raise ValueError(f"Invalid decision reached routing: {decision!r}")
-
-
-async def _read_window(
-    pool: CodingStore, tenant_id: UUID, chunk_id: UUID, code_ids: list[str]
-) -> tuple[str | None, list[dict[str, Any]], str | None]:
-    """Phase 1 (read): fetch the window inputs and close the transaction, so
-    the pooled connection is not held (idle-in-transaction) across the model
-    call. Returns (chunk_text, code_rows, qa_context); chunk_text is None when
-    the chunk does not exist.
-    """
-    async with tenant_scope(pool, tenant_id) as conn:
-        chunk_text = await conn.fetchval(
-            "SELECT text FROM chunks WHERE chunk_id=$1 AND tenant_id=$2", chunk_id, tenant_id
-        )
-        if chunk_text is None:
-            return None, [], None
-
-        rows = await conn.fetch(
-            """SELECT DISTINCT ON (code_id) code_id, brief_definition, inclusion_criteria,
-                      exclusion_criteria, is_provisional
-               FROM code_registry WHERE tenant_id=$1 AND code_id = ANY($2::text[])
-               ORDER BY code_id, created_at DESC""",
-            tenant_id,
-            code_ids,
-        )
-        qa_context = await _fetch_qa_context(conn, tenant_id, chunk_id)
-    return chunk_text, [dict(r) for r in rows], qa_context
-
-
-def _unresolved_error(
-    code_ids: list[str], code_rows: list[dict[str, Any]]
-) -> dict[str, Any] | None:
-    """Error envelope for a partial code resolution, or None when all resolved.
-
-    Every requested code_id must resolve. A partial resolution (e.g. a
-    stale/retired code_id) must fail loud rather than silently proceed on the
-    resolved subset while still reporting the full requested code_ids in the
-    envelope: that combination is exactly what breaks the caller invariant
-    `cells_routed == sum(len(code_ids) for cell in batch)`.
-    """
-    resolved_ids = {r["code_id"] for r in code_rows}
-    unresolved_ids = [cid for cid in code_ids if cid not in resolved_ids]
-    if not unresolved_ids:
-        return None
-    return {
-        "status": "error",
-        "chunk_id": None,  # patched by the caller, which owns the chunk id
-        "code_ids": code_ids,
-        "error": f"unresolved code_ids: {unresolved_ids}",
-        "unresolved_code_ids": unresolved_ids,
-        "written": 0,
-    }
-
-
-async def _judgment_means(
-    window: str,
-    code_ids: list[str],
-    raw: dict[str, Any],
-    call_fn: Callable[[str], Awaitable[dict[str, Any]]] | None,
-    model: str,
-    use_judgment_mean: bool | None,
-) -> dict[str, JudgmentMeanResult] | None:
-    """U35: resolve the mean-path flag and sample when it is on.
-
-    Explicit argument wins; None resolves
-    research.judgment_distribution.use_mean from the config (default off ->
-    no sampling at all). The sampling mechanics (extra temperature draws,
-    parse-skip honesty) live in coding/judgment_sampling.py; this is the
-    wiring only.
-    """
-    if use_judgment_mean is None:
-        use_judgment_mean = judgment_mean_enabled()
-    if not use_judgment_mean:
-        return None
-    return await sample_judgments(window, code_ids, raw, call_fn, model)
-
-
-def _routed_confidence(
-    output: CoderWindowOutput, judgment: JudgmentMeanResult | None
-) -> tuple[float, dict[str, object] | None]:
-    """U35: the routed confidence is the judgment-distribution mean when the
-    mean path ran and produced one; otherwise the greedy confidence,
-    unchanged. Also returns the per-row judgment summary block (None when the
-    mean path did not run — with use_mean off the rows are byte-identical to
-    before).
-    """
-    effective_confidence = output.confidence
-    judgment_block: dict[str, object] | None = None
-    if judgment is not None:
-        if judgment.used_mean and judgment.mean_value is not None:
-            effective_confidence = judgment.mean_value
-        judgment_block = asdict(judgment)
-    return effective_confidence, judgment_block
-
-
-def _quote_gate(output: CoderWindowOutput, chunk_text: str) -> tuple[str, bool, str | None]:
-    """Verbatim-quote gate (assign only; a reject carries no quote to verify).
-
-    Returns (quote_status, quote_ok, stored_quote); a normalized match stores
-    the repaired quote.
-    """
-    quote_status, quote_ok, stored_quote = "n/a", True, output.evidence_quote
-    if output.decision == "assign":
-        quote_status, repaired = classify_quote(output.evidence_quote or "", chunk_text)
-        quote_ok = quote_status != "not_found"
-        if quote_status == "normalized_match":
-            stored_quote = repaired
-    return quote_status, quote_ok, stored_quote
-
-
-async def _write_cell(
-    conn: ScopedConn,
-    *,
-    chunk_id: UUID,
-    tenant_id: UUID,
-    coding_pass: int,
-    batch_id: str | None,
-    coder: str,
-    model: str,
-    row: dict[str, Any],
-    output: CoderWindowOutput,
-    entropy: float | None,
-    chunk_text: str,
-    qa_used: bool,
-    judgment: JudgmentMeanResult | None,
-    bands: Bands,
-) -> dict[str, Any]:
-    """Gate, route and persist ONE (chunk, code) cell; return its result row.
-
-    chunk_signals is keyed (chunk_id, code_id, signal, tenant_id) as
-    of migrations/015_chunk_signals_upsert.sql, so at most one
-    "vector" row exists per (chunk, code) here. ORDER BY created_at
-    DESC (not score DESC) is defensive: it takes the most recently
-    computed score rather than "the highest score this pair ever
-    had" if any pre-migration duplicate ever slips through.
-    """
-    code_id = row["code_id"]
-    effective_confidence, judgment_block = _routed_confidence(output, judgment)
-    quote_status, quote_ok, stored_quote = _quote_gate(output, chunk_text)
-
-    tier0 = await conn.fetchval(
-        """SELECT score FROM chunk_signals
-           WHERE chunk_id=$1 AND code_id=$2 AND tenant_id=$3 AND signal='vector'
-           ORDER BY created_at DESC LIMIT 1""",
-        chunk_id,
-        code_id,
-        tenant_id,
-    )
-    signals = assemble_tier_signals(tier0, entropy, output.rationale, quote_status)
-
-    routed = route_cell(
-        decision=_as_decision(output.decision),
-        confidence=effective_confidence,
-        is_provisional=bool(row["is_provisional"]),
-        quote_ok=quote_ok,
-        bands=bands,
-    )
-    # chunk_codes keeps the routed-effective confidence (the U35 mean
-    # when the mean path ran, else the coder's raw confidence);
-    # final_codes keeps the routed one (route_cell caps provisional
-    # assigns at the mid band).
-    inserted = await conn.fetchval(
-        """INSERT INTO chunk_codes
-             (chunk_id, code_id, tenant_id, pass, batch_id, coder, model, decision,
-              confidence, tier_signals, rationale, evidence_quote, route, qa_context_used)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-           ON CONFLICT DO NOTHING
-           RETURNING chunk_id""",
-        chunk_id,
-        code_id,
-        tenant_id,
-        coding_pass,
-        batch_id,
-        coder,
-        model,
-        output.decision,
-        effective_confidence,
-        signals.to_json(),
-        output.rationale,
-        stored_quote,
-        routed.route,
-        qa_used,
-    )
-    status = _final_status(routed.route)
-    # No new audit row means this (chunk, code, coder, pass) was already
-    # decided; chunk_codes is append-only, so the re-dispatch is a clean
-    # no-op and final_codes must NOT be updated off evidence that was
-    # never persisted. The two tables can therefore never diverge.
-    if inserted is not None:
-        await conn.execute(
-            """INSERT INTO final_codes
-                 (chunk_id, code_id, tenant_id, status, route, confidence)
-               VALUES ($1,$2,$3,$4,$5,$6)
-               ON CONFLICT (chunk_id, code_id, tenant_id) DO UPDATE
-                 SET status=EXCLUDED.status, route=EXCLUDED.route,
-                     confidence=EXCLUDED.confidence, decided_at=now()""",
-            chunk_id,
-            code_id,
-            tenant_id,
-            status,
-            routed.route,
-            routed.confidence,
-        )
-    result_row: dict[str, Any] = {
-        "code_id": code_id,
-        "decision": output.decision,
-        "route": routed.route,
-        "status": status,
-        "confidence": effective_confidence,
-        "routed_confidence": routed.confidence,
-        "evidence_quote": stored_quote,
-        "quote_status": quote_status,
-        "rationale": output.rationale,
-        "tier_signals": asdict(signals),
-        "written": inserted is not None,
-        "duplicate": inserted is None,
-        "qa_context_used": qa_used,
-    }
-    if judgment_block is not None:
-        result_row["judgment"] = judgment_block
-    return result_row
 
 
 async def dispatch_chunk(

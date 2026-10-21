@@ -68,6 +68,11 @@ jobs:
       - name: Dead code (vulture)
         run: vulture src/ tests/whitelist.py
 
+      # Import layering contracts (Wave 2, zero-drift rule 5). Needs the
+      # project env: grimp resolves corpus_kb through the editable install.
+      - name: Import layering (lint-imports)
+        run: lint-imports
+
       - name: Dependency hygiene (deptry)
         run: deptry src/
 
