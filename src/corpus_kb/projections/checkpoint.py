@@ -3,15 +3,14 @@
 Each projection maintains checkpoint rows in projection_checkpoints (which
 migration 011 FORCE-puts under RLS and migration 016 extends with a
 ``last_sequence BIGINT`` column). Positions are the eventsourcing library's
-monotonic ``notification_id`` bigserial over its ``stored_events`` table —
-never wall-clock timestamps, which cannot order same-timestamp events.
+monotonic ``notification_id`` over the event store — never wall-clock
+timestamps, which cannot order same-timestamp events.
 
-RLS note (todo-11 STEP 0, item (e)): migration 011 FORCEs row-level security
-on projection_checkpoints, and asyncpg auto-commits every unwrapped
-statement. A separate ``SELECT set_config(...)`` statement is committed and
-gone before the write runs, so the write violates the WITH CHECK policy.
-Every method here therefore wraps set_config AND its statements in ONE
-transaction via ``tenant_connection()``.
+Storage portability (program §3.1): every statement runs inside ONE
+``SqlGateway`` transaction scope. On Postgres that scope sets the tenant GUC
+(RLS stays defense-in-depth, byte-identical to the pre-port
+``tenant_connection`` path); on DuckDB the scope is BEGIN..COMMIT and the
+write unit replays on a write-write conflict (``run_write_unit``).
 """
 
 from __future__ import annotations
@@ -23,7 +22,8 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.projections._gateway import resolve_gateway, run_write_unit
+from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 class CheckpointManager:
     """Manages projection_checkpoints table for catch-up subscriptions."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self._pool = pool
+    def __init__(self, pool: asyncpg.Pool | None = None, gateway: SqlGateway | None = None) -> None:
+        self._gateway = resolve_gateway(pool, gateway)
 
     async def get_checkpoint(self, projection_name: str, tenant_id: UUID) -> dict[str, Any] | None:
         """Get the last processed position for a projection.
@@ -42,8 +42,8 @@ class CheckpointManager:
         level security entirely, so an RLS-only scope would return some
         other tenant's checkpoint row for the same projection name.
         """
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            row = await conn.fetchrow(
+        async with self._gateway.transaction(str(tenant_id)) as tx:
+            row = await tx.fetchrow(
                 """
                 SELECT last_event_id, last_event_timestamp, checkpoint_timestamp,
                        last_sequence
@@ -70,8 +70,9 @@ class CheckpointManager:
         position is preserved. ``last_event_timestamp`` must be an aware
         datetime (the column is TIMESTAMPTZ).
         """
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            await conn.execute(
+
+        async def body(tx: SqlGateway) -> None:
+            await tx.execute(
                 """
                 INSERT INTO projection_checkpoints
                 (projection_name, tenant_id, last_event_id, last_event_timestamp,
@@ -90,6 +91,8 @@ class CheckpointManager:
                 last_event_timestamp,
                 last_sequence,
             )
+
+        await run_write_unit(self._gateway, tenant_id, body)
         logger.debug(
             "Checkpoint updated: %s tenant=%s sequence=%s",
             projection_name,
