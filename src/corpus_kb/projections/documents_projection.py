@@ -1,16 +1,11 @@
 """DocumentsProjection — projects events into documents, chunks, entities, relations tables.
 
-Subscribes to:
-  - Document.Ingested → upsert into documents
-  - Document.ChunksAdded → insert into chunks (text only, no vectors)
-  - Entity.Created → insert into entities
-  - Relation.Created → insert into relations
-
-All writes run inside one transaction per event with the tenant GUC set
-(tenant_connection), because these tables are FORCE-put under row-level
-security. Chunk rows get deterministic ids (uuid5 of document id + position)
-so replays are idempotent — the pre-spike code wrote UUID(int=0) for every
-chunk (todo-11 STEP 0, item (c) defect, fixed).
+Document.Ingested → upsert into documents; Document.ChunksAdded → insert
+into chunks (text only, no vectors); Entity.Created → entities;
+Relation.Created → relations. All writes run inside one transaction per
+event with the tenant context set (the ``SqlGateway`` scope: tenant GUC on
+Postgres, BEGIN..COMMIT on DuckDB). Chunk rows get deterministic ids
+(uuid5 of document id + position) so replays are idempotent.
 """
 
 from __future__ import annotations
@@ -25,10 +20,11 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.projections._drain import dispatch_notification, drain_sequence
+from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.ids import deterministic_chunk_id
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +36,12 @@ class DocumentsProjection:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: asyncpg.Pool | None,
         checkpoint: CheckpointManager,
         dlq: DLQHandler,
+        gateway: SqlGateway | None = None,
     ) -> None:
-        self._pool = pool
+        self._gateway = resolve_gateway(pool, gateway)
         self._checkpoint = checkpoint
         self._dlq = dlq
 
@@ -57,11 +54,7 @@ class DocumentsProjection:
         event_timestamp: datetime,
         last_sequence: int | None = None,
     ) -> None:
-        """Dispatch event to the appropriate projection method.
-
-        ``last_sequence`` (when given) records the global notification_id
-        position in the same checkpoint write.
-        """
+        """Dispatch one event; ``last_sequence`` lands in the same checkpoint write."""
         try:
             if event_type == "Ingested":
                 await self._project_document(tenant_id, payload)
@@ -94,11 +87,9 @@ class DocumentsProjection:
     async def run(self, tenant_id: UUID, reader: Any) -> None:
         """Catch-up loop over the global notification_id sequence.
 
-        ``reader`` is an EventReader bound to the eventsourcing Mapper (the
-        lib's events table is topic/state + notification_id bigserial).
         Events for OTHER tenants advance the shared sequence but are skipped
-        for projection — the checkpoint records the global position either way,
-        so no event is ever revisited or skipped.
+        for projection — the checkpoint records the global position either
+        way, so no event is ever revisited or skipped.
         """
         logger.info("DocumentsProjection started for tenant %s", tenant_id)
         while True:
@@ -115,8 +106,8 @@ class DocumentsProjection:
 
     async def _project_document(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """Upsert into the documents table."""
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            await conn.execute(
+        async with self._gateway.transaction(str(tenant_id)) as tx:
+            await tx.execute(
                 """
                 INSERT INTO documents
                 (doc_id, tenant_id, source, source_type, file_size, file_hash,
@@ -153,9 +144,9 @@ class DocumentsProjection:
             logger.error("ChunksAdded for non-UUID aggregate_id %r; skipping", doc_id)
             return
 
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._gateway.transaction(str(tenant_id)) as tx:
             for i, text in enumerate(chunk_texts):
-                await conn.execute(
+                await tx.execute(
                     """
                     INSERT INTO chunks
                     (chunk_id, tenant_id, doc_id, chunk_index, text)
@@ -171,8 +162,8 @@ class DocumentsProjection:
 
     async def _project_entity(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
         """Insert into the entities table."""
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            await conn.execute(
+        async with self._gateway.transaction(str(tenant_id)) as tx:
+            await tx.execute(
                 """
                 INSERT INTO entities
                 (entity_id, tenant_id, name, entity_type, metadata)
@@ -187,25 +178,47 @@ class DocumentsProjection:
             )
 
     async def _project_relation(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """Insert into the relations table."""
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            await conn.execute(
+        """Insert into the relations table, deduped on the narrow triple key.
+
+        Migration 008 widened the unique key with chunk_id and dropped the
+        narrow constraint the old upsert targeted, so that statement failed
+        on every Relation.Created event (the row landed in the DLQ on both
+        engines). Delete-then-insert in one scope restores the narrow-key
+        dedupe portably; the delete only touches chunkless rows, so
+        provenance relations are never rewritten.
+        """
+        args = (
+            str(payload.get("aggregate_id", "")),
+            str(tenant_id),
+            str(payload.get("source_entity_id", "")),
+            str(payload.get("target_entity_id", "")),
+            payload.get("relation_type", "related_to"),
+            payload.get("weight", 1.0),
+            json.dumps(payload.get("metadata", {})),
+        )
+        async with self._gateway.transaction(str(tenant_id)) as tx:
+            # DuckDB rejects unused prepared parameters, so the delete binds
+            # only the four key columns.
+            await tx.execute(
+                """
+                DELETE FROM relations
+                WHERE tenant_id = $1 AND source_entity_id = $2
+                  AND target_entity_id = $3 AND relation_type = $4
+                  AND chunk_id IS NULL
+                """,
+                args[1],
+                args[2],
+                args[3],
+                args[4],
+            )
+            await tx.execute(
                 """
                 INSERT INTO relations
                 (relation_id, tenant_id, source_entity_id, target_entity_id,
                  relation_type, weight, metadata)
                 VALUES ($1, $2, $3, $4, $5, $6, $7)
-                ON CONFLICT
-                (tenant_id, source_entity_id, target_entity_id, relation_type)
-                DO NOTHING
                 """,
-                str(payload.get("aggregate_id", "")),
-                str(tenant_id),
-                str(payload.get("source_entity_id", "")),
-                str(payload.get("target_entity_id", "")),
-                payload.get("relation_type", "related_to"),
-                payload.get("weight", 1.0),
-                json.dumps(payload.get("metadata", {})),
+                *args,
             )
 
 

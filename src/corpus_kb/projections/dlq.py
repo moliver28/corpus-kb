@@ -2,6 +2,11 @@
 
 Failed projections are recorded in projection_dlq. This handler
 provides methods to list, retry, and clear failures.
+
+Storage portability (program §3.1): all statements run through the
+``SqlGateway`` — one transaction scope per call (tenant GUC on Postgres,
+BEGIN..COMMIT on DuckDB), and the write units replay on a write-write
+conflict via ``run_write_unit``.
 """
 
 from __future__ import annotations
@@ -12,7 +17,8 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.projections._gateway import resolve_gateway, run_write_unit
+from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +29,11 @@ class DLQHandler:
     """Manages the projection_dlq table for failed projection recovery.
 
     projection_dlq is FORCE-put under RLS by migration 011, so set_config and
-    the statements that need it run in ONE transaction (tenant_connection).
+    the statements that need it run in ONE transaction (the gateway scope).
     """
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self._pool = pool
+    def __init__(self, pool: asyncpg.Pool | None = None, gateway: SqlGateway | None = None) -> None:
+        self._gateway = resolve_gateway(pool, gateway)
 
     async def record_failure(
         self,
@@ -39,8 +45,17 @@ class DLQHandler:
         error_stacktrace: str | None = None,
     ) -> None:
         """Record a failed projection to the DLQ."""
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            await conn.execute(
+        args = (
+            projection_name,
+            str(tenant_id),
+            str(event_id),
+            event_type,
+            error_message,
+            error_stacktrace,
+        )
+
+        async def body(tx: SqlGateway) -> None:
+            await tx.execute(
                 """
                 INSERT INTO projection_dlq
                 (projection_name, tenant_id, event_id, event_type,
@@ -52,13 +67,10 @@ class DLQHandler:
                     error_message = $5,
                     error_stacktrace = $6
                 """,
-                projection_name,
-                str(tenant_id),
-                str(event_id),
-                event_type,
-                error_message,
-                error_stacktrace,
+                *args,
             )
+
+        await run_write_unit(self._gateway, tenant_id, body)
         logger.warning(
             "DLQ entry: projection=%s event=%s error=%s",
             projection_name,
@@ -68,14 +80,14 @@ class DLQHandler:
 
     async def list_failures(self, projection_name: str, tenant_id: UUID) -> list[dict[str, Any]]:
         """List unresolved DLQ entries for a projection."""
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            rows = await conn.fetch(
+        async with self._gateway.transaction(str(tenant_id)) as tx:
+            rows = await tx.fetch(
                 """
                 SELECT dlq_id, projection_name, event_id, event_type,
                        error_message, retry_count, created_at, resolved
                 FROM projection_dlq
                 WHERE projection_name = $1 AND resolved = FALSE
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, dlq_id
                 """,
                 projection_name,
             )
@@ -83,17 +95,20 @@ class DLQHandler:
 
     async def mark_resolved(self, dlq_id: UUID, tenant_id: UUID) -> None:
         """Mark a DLQ entry as resolved after successful retry."""
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            await conn.execute(
+
+        async def body(tx: SqlGateway) -> None:
+            await tx.execute(
                 "UPDATE projection_dlq SET resolved = TRUE WHERE dlq_id = $1",
                 str(dlq_id),
             )
+
+        await run_write_unit(self._gateway, tenant_id, body)
         logger.info("DLQ entry %s resolved", dlq_id)
 
     async def is_permanent_failure(self, dlq_id: UUID, tenant_id: UUID) -> bool:
         """Check if a DLQ entry has exceeded max retries."""
-        async with tenant_connection(self._pool, tenant_id) as conn:
-            count = await conn.fetchval(
+        async with self._gateway.transaction(str(tenant_id)) as tx:
+            count = await tx.fetchval(
                 "SELECT retry_count FROM projection_dlq WHERE dlq_id = $1",
                 str(dlq_id),
             )

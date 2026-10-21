@@ -15,9 +15,21 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.storage.gateway import SqlGateway
 
-async def advance_all_projections(pool: asyncpg.Pool, tenant_id: UUID) -> None:
-    """Advance research + documents + embeds projections to the event head."""
+
+async def advance_all_projections(
+    pool: asyncpg.Pool, tenant_id: UUID, gateway: SqlGateway | None = None
+) -> None:
+    """Advance research + documents + embeds projections to the event head.
+
+    Reads go through the recorder API (program §7: the event store is
+    lib-owned — a SQLite file on the duckdb backend), so the same reader
+    serves both backends. ``gateway`` swaps the projection write side; the
+    research leg still takes the pool until its own port lands (§13 owns
+    that seam), so ``gateway`` stays optional and Postgres keeps its
+    resolved ``PostgresGateway`` default.
+    """
     from corpus_kb.config import load_config
     from corpus_kb.domain.application import events_table_name
     from corpus_kb.handlers.research_handler import get_research_handler
@@ -32,12 +44,12 @@ async def advance_all_projections(pool: asyncpg.Pool, tenant_id: UUID) -> None:
 
     cfg = load_config()
     app = get_research_handler(pool).app
-    reader = EventReader(pool, app.mapper, events_table_name(app))
-    checkpoint = CheckpointManager(pool)
-    dlq = DLQHandler(pool)
+    reader = EventReader(pool, app.mapper, events_table_name(app), recorder=app.recorder)
+    checkpoint = CheckpointManager(pool, gateway=gateway)
+    dlq = DLQHandler(pool, gateway=gateway)
     embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
     await ResearchProjection(pool, checkpoint, dlq, embedder).catch_up(reader)
-    await DocumentsProjection(pool, checkpoint, dlq).catch_up(reader, tenant_id)
-    await EmbedChunksProjection(pool, create_embedder(cfg, pool), checkpoint, dlq).catch_up(
-        reader, tenant_id
-    )
+    await DocumentsProjection(pool, checkpoint, dlq, gateway=gateway).catch_up(reader, tenant_id)
+    await EmbedChunksProjection(
+        pool, create_embedder(cfg, pool), checkpoint, dlq, gateway=gateway
+    ).catch_up(reader, tenant_id)
