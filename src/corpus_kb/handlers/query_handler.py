@@ -42,6 +42,7 @@ from corpus_kb.domain.models import (
     VerifyAnswerQuery,
     VerifyAnswerResult,
 )
+from corpus_kb.errors import DependencyMissingError
 from corpus_kb.handlers import query_crud
 from corpus_kb.handlers.query_fusion import FusedRow, RowLike, rrf_fuse
 from corpus_kb.handlers.query_integrity import (
@@ -565,7 +566,13 @@ def get_query_handler(pool: asyncpg.Pool | SqlGateway | None = None) -> QueryHan
     global _query_handler
     if _query_handler is None:
         if pool is None:
-            raise RuntimeError("QueryHandler requires an asyncpg pool")
+            # Typed refusal (zero-drift rule 4): server_wiring_duckdb leaves
+            # the handler unset, so the query routes fail with the taxonomy
+            # class, never a bare RuntimeError -> 500.
+            raise DependencyMissingError(
+                "The query handler is not ported to the DuckDB backend.",
+                remediation="Run the server on the Postgres backend for query routes.",
+            )
         _query_handler = QueryHandler(pool)
     return _query_handler
 

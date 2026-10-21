@@ -49,10 +49,16 @@ async def wired_store(
     ``embedder=True`` builds a ``ResearchEmbedder`` on the Postgres path
     (the ask/uncoded wiring); on DuckDB it stays None — the embedder is a
     Postgres-typed component today.
+
+    Bootstrap failures go through the taxonomy (zero-drift rule 4): an
+    unparseable DSN raises ConfigError, an unreachable database raises
+    DatabaseUnavailableError, and the gateway's typed lock error passes
+    through unchanged.
     """
     import asyncpg
 
     from corpus_kb.config import load_config
+    from corpus_kb.errors import ConfigError, CorpusError, DatabaseUnavailableError
 
     if cfg is None:
         cfg = load_config()
@@ -62,9 +68,40 @@ async def wired_store(
     if conn_str.startswith(DUCKDB_DSN_PREFIX):
         from corpus_kb.storage.gateway import DuckDbGateway
 
-        store: asyncpg.Pool | SqlGateway = await DuckDbGateway.connect(conn_str)
+        if len(conn_str) <= len(DUCKDB_DSN_PREFIX):
+            raise ConfigError(
+                "The DuckDB DSN names no file. Use the form duckdb:///C:/data/x.duckdb."
+            )
+        try:
+            store: asyncpg.Pool | SqlGateway = await DuckDbGateway.connect(conn_str)
+        except ValueError as exc:
+            raise ConfigError(
+                f"Connection string {conn_str!r} is not a usable duckdb:/// DSN."
+                " Use the form duckdb:///C:/data/x.duckdb."
+            ) from exc
+        except CorpusError:
+            raise  # the gateway already typed lock (and other) failures
+        except Exception as exc:
+            raise DatabaseUnavailableError(
+                "The DuckDB database file did not open.",
+                remediation="Check the file path in database.connection_string. Then try again.",
+            ) from exc
     else:
-        pool = await asyncpg.create_pool(conn_str)
+        if not conn_str:
+            raise ConfigError(
+                "No database connection string is set."
+                " Set CORPUS_KB_DATABASE_URL or database.connection_string."
+            )
+        try:
+            pool = await asyncpg.create_pool(conn_str)
+        except ValueError as exc:  # asyncpg's DSN parse failures are ValueErrors
+            raise ConfigError(
+                f"Connection string {conn_str!r} is not a usable postgresql:// DSN."
+            ) from exc
+        except Exception as exc:
+            raise DatabaseUnavailableError(
+                "The Postgres database did not accept a connection."
+            ) from exc
         store = pool
         if embedder:
             from corpus_kb.projections.research._embed import ResearchEmbedder
