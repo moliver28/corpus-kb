@@ -210,6 +210,7 @@ class CommandHandler:
                 file_size=result.get("size_bytes"),
             )
             doc.add_chunks(
+                tenant_id=tenant_id,
                 chunk_count=result.get("chunk_count", 0),
                 chunk_texts=[],  # text stored in projection, not in event
             )

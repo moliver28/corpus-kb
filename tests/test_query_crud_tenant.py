@@ -16,14 +16,24 @@ import os
 import pytest
 
 import corpus_kb.handlers.query_crud as query_crud
+import corpus_kb.handlers.query_crud_reads as query_crud_reads
 
-_TEST_DOCS = ["sql_query", "list_documents", "list_entities", "search_context", "verify_answer"]
+# name -> home module. sql_query/list_entities/verify_answer live in
+# query_crud_reads (the sp-suite-hardening 250-line split); the pin must
+# keep covering all five operations wherever they reside.
+_TEST_DOCS = [
+    ("sql_query", query_crud_reads),
+    ("list_documents", query_crud),
+    ("list_entities", query_crud_reads),
+    ("search_context", query_crud),
+    ("verify_answer", query_crud_reads),
+]
 
 
 def test_every_crud_handler_reads_inside_tenant_connection() -> None:
     """Structural: each handler uses the transactional tenant helper."""
-    for name in _TEST_DOCS:
-        source = inspect.getsource(getattr(query_crud, name))
+    for name, module in _TEST_DOCS:
+        source = inspect.getsource(getattr(module, name))
         assert "tenant_connection" in source, f"{name} bypasses tenant_connection"
         assert "pool.acquire() as conn" not in source.replace("tenant_connection(pool,", ""), (
             f"{name} acquires outside the tenant transaction"

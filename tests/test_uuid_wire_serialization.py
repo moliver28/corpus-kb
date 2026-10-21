@@ -19,7 +19,7 @@ import pytest
 from starlette.testclient import TestClient
 
 import corpus_kb.api.socket_ops as socket_ops
-import corpus_kb.handlers.query_crud as query_crud
+import corpus_kb.handlers.query_crud_reads as query_crud
 import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.query_integrity as query_integrity_module
 import corpus_kb.tools.ingest_tools as ingest_tools

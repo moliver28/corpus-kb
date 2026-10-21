@@ -100,11 +100,12 @@ async def test_rrf_k_config_flows_into_fusion_call(
     (U45 finding: a typed reader existed but the call site never read it).
 
     sp-query-fusion moved fusion from the corpus.rrf_fusion SQL function to
-    the pure-Python rrf_fuse (handlers/query_fusion.py, an exact port). The
-    handler binds it at import time, so the recorded call here is the real
+    the pure-Python rrf_fuse (handlers/query_fusion.py, an exact port).
+    query_stages (the fusion call site since the sp-suite-hardening split)
+    binds it at import time, so the recorded call here is the real
     invocation the pipeline makes — config value, legs, and all.
     """
-    import corpus_kb.handlers.query_handler as qh
+    import corpus_kb.handlers.query_stages as qh
 
     cid = UUID("00000000-0000-0000-0000-000000000001")
     did = UUID("00000000-0000-0000-0000-000000000002")

@@ -72,14 +72,14 @@ async def _save_two_documents() -> tuple[UUID, UUID]:
         source_type="transcript",
         file_hash="c" * 64,
     )
-    doc.add_chunks(chunk_count=2, chunk_texts=["Moderator: How?", "P: Fine, mostly."])
+    doc.add_chunks(TENANT, chunk_count=2, chunk_texts=["Moderator: How?", "P: Fine, mostly."])
     doc2 = Document(
         tenant_id=TENANT,
         source=f"spike://{uuid.uuid4()}",
         source_type="transcript",
         file_hash="d" * 64,
     )
-    doc2.add_chunks(chunk_count=1, chunk_texts=["P2: Same experience here."])
+    doc2.add_chunks(TENANT, chunk_count=1, chunk_texts=["P2: Same experience here."])
     app = get_app(research_db.DSN)
     app.save(doc)
     app.save(doc2)
@@ -380,7 +380,7 @@ async def test_legacy_events_do_not_dlq(pool, research_pool, reader_and_app):
 
     _, app, _, _ = await _projections(pool, reader_and_app)
     doc = Document(tenant_id=TENANT, source=f"spike://{uuid4()}")
-    doc.add_chunks(chunk_count=1, chunk_texts=["legacy chunk text"])
+    doc.add_chunks(TENANT, chunk_count=1, chunk_texts=["legacy chunk text"])
     app.save(doc)
 
     dlq = DLQHandler(research_pool)

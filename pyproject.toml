@@ -391,6 +391,10 @@ filterwarnings = [
 cmd = "ruff check src/ tests/"
 help = "Ruff lint over the package and tests"
 
+[tool.poe.tasks.lint-imports]
+cmd = "lint-imports"
+help = "Import layering contracts (Wave 2; contracts in [tool.importlinter])"
+
 [tool.poe.tasks.format-check]
 cmd = "ruff format --check src/ tests/"
 help = "Ruff format check (no rewrites)"
@@ -450,8 +454,8 @@ cmd = "python -m pytest tests/test_plain_language.py -m ste -q --tb=short"
 help = "ASD-STE100 plain-language gate: docs grade, error strings, tool docstrings"
 
 [tool.poe.tasks.verify]
-sequence = ["lint", "format-check", "types", "dead-code", "deps", "complexity", "test"]
-help = "All quality gates: lint + format-check + types + dead-code + deps + complexity + test"
+sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps", "complexity", "test"]
+help = "All quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + test"
 
 [tool.poe.tasks.gen]
 cmd = "python scripts/gen_harness_pack.py --check"
