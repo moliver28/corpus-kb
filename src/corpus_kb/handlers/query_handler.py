@@ -64,6 +64,8 @@ from corpus_kb.research.search_settings import (
     pgvector_version,
     supports_iterative_scan,
 )
+from corpus_kb.storage.duckdb_gateway import DuckDbGateway
+from corpus_kb.storage.duckdb_search import DuckDbSearchBackend
 from corpus_kb.storage.search_backend import SearchBackend, SearchOutcome, SearchRequest
 from corpus_kb.utils.tracing import (
     ATTR_CANDIDATES_IN,
@@ -91,7 +93,7 @@ class QueryHandler:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: asyncpg.Pool | DuckDbGateway,
         embedder: OllamaEmbedder | PgmlEmbedder | None = None,
         reranker: object | None = None,
         self_query_parser: object | None = None,
@@ -106,21 +108,32 @@ class QueryHandler:
         self._config = config or load_config()
         # Storage-portability §3.3: the engine split of the search arms sits
         # behind the SearchBackend protocol. No façade — the default is the
-        # PG impl built from this handler's own config and embedder, so
-        # every existing constructor (and test) keeps working.
-        self._search_backend: SearchBackend = (
-            search_backend
-            if search_backend is not None
-            else PostgresSearchBackend(embedder=embedder, config=self._config)
-        )
+        # engine impl for the pool kind (§13 sp-duckdb-search: a
+        # DuckDbGateway pool dispatches to the DuckDB arms; asyncpg pools
+        # keep the PG arms), built from this handler's own config and
+        # embedder, so every existing constructor (and test) keeps working.
+        if search_backend is not None:
+            self._search_backend: SearchBackend = search_backend
+        elif isinstance(pool, DuckDbGateway):
+            self._search_backend = DuckDbSearchBackend(embedder=embedder, config=self._config)
+        else:
+            self._search_backend = PostgresSearchBackend(embedder=embedder, config=self._config)
         # U30 production wiring: ``search.rerank.enabled`` (top-N rerank of
         # the fused results with the qwen3 logprob scorer) takes precedence;
         # when the block is absent/disabled, fall back to the legacy
         # ``search.reranker`` selection so existing configs keep behaving.
+        # Only the DuckDB gateway pool skips the pool-driven factory (§13:
+        # a gateway builds no pool-backed reranker); every other pool kind
+        # keeps the pre-existing behavior, test fakes included.
         self._reranker = (
             reranker
             if reranker is not None
-            else (build_reranker(self._config) or create_reranker(self._config, pool))
+            else (
+                build_reranker(self._config)
+                or (
+                    None if isinstance(pool, DuckDbGateway) else create_reranker(self._config, pool)
+                )
+            )
         )
         # Config v2: the retrieval knobs live under ``retrieval.*`` and the
         # rerank knobs under ``reranking.*`` (legacy namespaces are aliases
@@ -167,33 +180,43 @@ class QueryHandler:
             semantic_query, dynamic_predicates = self._resolve_predicates(query)
             over_retrieve_n = self._over_retrieve_n()
 
-            async with self._pool.acquire() as acquired, acquired.transaction():
-                conn = cast("asyncpg.Connection", acquired)
-                await conn.execute(
-                    "SELECT set_config('app.current_tenant_id', $1, true)",
-                    str(query.tenant_id),
+            degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
+            if isinstance(self._pool, DuckDbGateway):
+                outcome = await self._search_on_duckdb(
+                    query,
+                    semantic_query,
+                    dynamic_predicates,
+                    degraded_pred,
+                    over_retrieve_n,
+                    reasons,
                 )
-                # U20: transaction-local HNSW settings (SET LOCAL dies with this
-                # transaction — a pooled connection never leaks them). Gated on
-                # the installed pgvector version: emitting `SET LOCAL hnsw.*`
-                # below 0.8 aborts the query, so unknown/old versions keep the
-                # pre-iterative-scan behavior (fail closed).
-                extversion = await pgvector_version(cast("VersionReader", conn))
-                if supports_iterative_scan(extversion):
-                    await apply_hnsw_settings(cast("SqlExecutor", conn), self._hnsw_settings)
-
-                degraded_pred = degraded_candidate_predicate(self._exclude_degraded)
-                outcome = await self._search_backend.search(
-                    SearchRequest(
-                        conn=conn,
-                        query=query,
-                        semantic_query=semantic_query,
-                        dynamic_predicates=dynamic_predicates,
-                        degraded_pred=degraded_pred,
-                        over_retrieve_n=over_retrieve_n,
-                        reasons=reasons,
+            else:
+                async with self._pool.acquire() as acquired, acquired.transaction():
+                    conn = cast("asyncpg.Connection", acquired)
+                    await conn.execute(
+                        "SELECT set_config('app.current_tenant_id', $1, true)",
+                        str(query.tenant_id),
                     )
-                )
+                    # U20: transaction-local HNSW settings (SET LOCAL dies with this
+                    # transaction — a pooled connection never leaks them). Gated on
+                    # the installed pgvector version: emitting `SET LOCAL hnsw.*`
+                    # below 0.8 aborts the query, so unknown/old versions keep the
+                    # pre-iterative-scan behavior (fail closed).
+                    extversion = await pgvector_version(cast("VersionReader", conn))
+                    if supports_iterative_scan(extversion):
+                        await apply_hnsw_settings(cast("SqlExecutor", conn), self._hnsw_settings)
+
+                    outcome = await self._search_backend.search(
+                        SearchRequest(
+                            conn=conn,
+                            query=query,
+                            semantic_query=semantic_query,
+                            dynamic_predicates=dynamic_predicates,
+                            degraded_pred=degraded_pred,
+                            over_retrieve_n=over_retrieve_n,
+                            reasons=reasons,
+                        )
+                    )
 
             # 3. RRF fusion in Python (handlers/query_fusion.py) — an exact port
             #    of corpus.rrf_fusion (migration 024): same rank constant, same
@@ -225,6 +248,35 @@ class QueryHandler:
                 lexical_index_mode=outcome.lexical_index_mode,
                 vector_index_note=outcome.vector_index_note,
                 lexical_index_note=outcome.lexical_index_note,
+            )
+
+    async def _search_on_duckdb(
+        self,
+        query: SearchQuery,
+        semantic_query: str,
+        dynamic_predicates: list,
+        degraded_pred: str,
+        over_retrieve_n: int,
+        reasons: list[str],
+    ) -> SearchOutcome:
+        """Storage-portability §13 (sp-duckdb-search): the arms on DuckDB.
+
+        One gateway transaction wraps both arms. No tenant GUC (DuckDB has
+        no RLS — the arms carry explicit ``tenant_id`` predicates) and no
+        pgvector/HNSW preamble (DuckDB exact-scans the vector column).
+        """
+        gateway = cast("DuckDbGateway", self._pool)
+        async with gateway.transaction(str(query.tenant_id)):
+            return await self._search_backend.search(
+                SearchRequest(
+                    conn=cast("asyncpg.Connection", gateway),
+                    query=query,
+                    semantic_query=semantic_query,
+                    dynamic_predicates=dynamic_predicates,
+                    degraded_pred=degraded_pred,
+                    over_retrieve_n=over_retrieve_n,
+                    reasons=reasons,
+                )
             )
 
     def _resolve_default_k(self, query: SearchQuery) -> SearchQuery:
@@ -437,6 +489,13 @@ class QueryHandler:
         """
         if not self._retrieval_settings.expand_to_parent or not results:
             return results
+        if isinstance(self._pool, DuckDbGateway):
+            # §13 sp-duckdb-search: the shadow-parent probe SQL is
+            # Postgres-only (`metadata->>'…'`, `ANY($n::text[])`). The
+            # DuckDB port skips it at dispatch instead of tripping the
+            # fail-open warning on every query; expansion parity is a
+            # Wave-E follow-up.
+            return results
         from corpus_kb.rag.parent_expand import ParentPool, expand_to_parent
 
         try:
@@ -453,33 +512,41 @@ class QueryHandler:
             return results
 
     # -- Small CRUD-ish handlers (moved to handlers/query_crud.py; the
-    #    delegating methods keep the public surface byte-identical). --
+    #    delegating methods keep the public surface byte-identical). The
+    #    casts re-narrow the engine-union pool: these CRUD reads are the
+    #    Postgres path today (query_crud is sp-command-port's WP).
 
     async def handle_sql_query(self, query: SQLQuery) -> list[dict[str, Any]]:
         """Execute a read-only SQL query."""
-        return await query_crud.sql_query(self._pool, query)
+        return await query_crud.sql_query(cast("asyncpg.Pool", self._pool), query)
 
     async def handle_list_documents(self, query: ListDocumentsQuery) -> list[DocumentResult]:
         """List documents with pagination."""
-        return await query_crud.list_documents(self._pool, query)
+        return await query_crud.list_documents(cast("asyncpg.Pool", self._pool), query)
 
     async def handle_list_entities(self, query: ListEntitiesQuery) -> list[EntityResult]:
         """List entities, optionally filtered by type."""
-        return await query_crud.list_entities(self._pool, query)
+        return await query_crud.list_entities(cast("asyncpg.Pool", self._pool), query)
 
     async def handle_search_similar(self, query: SearchSimilarQuery) -> list[SearchResult]:
         """Find chunks similar to a given chunk via vector distance."""
         return await query_crud.search_similar(
-            self._pool, exclude_degraded=self._exclude_degraded, query=query
+            cast("asyncpg.Pool", self._pool),
+            exclude_degraded=self._exclude_degraded,
+            query=query,
         )
 
     async def handle_search_context(self, query: SearchContextQuery) -> list[SearchResult]:
         """Search with surrounding context chunks."""
-        return await query_crud.search_context(self._pool, self.handle_search, query)
+        return await query_crud.search_context(
+            cast("asyncpg.Pool", self._pool), self.handle_search, query
+        )
 
     async def handle_verify_answer(self, query: VerifyAnswerQuery) -> VerifyAnswerResult:
         """Verify an LLM-generated answer's claims against cited chunks."""
-        return await query_crud.verify_answer(self._pool, judge=self._judge, query=query)
+        return await query_crud.verify_answer(
+            cast("asyncpg.Pool", self._pool), judge=self._judge, query=query
+        )
 
 
 # ============================================================================
