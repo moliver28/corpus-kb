@@ -1,4 +1,8 @@
-"""Analytics projector — CodingRun checkpoints + per-unit signals (todo-11 (c))."""
+"""Analytics projector — CodingRun checkpoints + per-unit signals (todo-11 (c)).
+
+JSON writes diverge per engine and are declared: Postgres keeps its
+byte-identical ``::jsonb`` casts; DuckDB casts ``::JSON``.
+"""
 
 from __future__ import annotations
 
@@ -6,10 +10,8 @@ import json
 import logging
 from typing import Any
 
-import asyncpg
-
 from corpus_kb.projections.research._common import event_payload, require_tenant
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.research.conn import Store, dialect_of, json_cast, resolve_store
 
 logger = logging.getLogger(__name__)
 
@@ -17,19 +19,24 @@ logger = logging.getLogger(__name__)
 class AnalyticsProjector:
     """Projects CodingRun and CodingAssignment signal events."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self._pool = pool
+    def __init__(self, pool: Store | None = None, gateway: Any = None) -> None:
+        self._store = resolve_store(pool, gateway)
+        self._dialect = dialect_of(self._store)
+
+    def _json(self, idx: str) -> str:
+        """The JSON parameter cast for this engine (``::jsonb`` / ``::JSON``)."""
+        return json_cast(self._dialect, idx)
 
     async def on_run_started(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
-                """
+                f"""
                 INSERT INTO research_runs
                 (run_id, tenant_id, llm_name, llm_version, embed_model,
                  model_revision, params, state)
-                VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'started')
+                VALUES ($1, $2, $3, $4, $5, $6, {self._json("$7")}, 'started')
                 ON CONFLICT (run_id) DO NOTHING
                 """,
                 str(payload["aggregate_id"]),
@@ -48,11 +55,11 @@ class AnalyticsProjector:
         # the checkpoint body rides the event under that key — never the
         # whole event dict (its auto timestamp is not JSON-serializable).
         checkpoint_body = payload.get("payload", {})
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
-                """
+                f"""
                 UPDATE research_runs SET state = 'checkpoint',
-                    checkpoint = $3::jsonb
+                    checkpoint = {self._json("$3")}
                 WHERE run_id = $1 AND tenant_id = $2
                 """,
                 str(payload["aggregate_id"]),
@@ -63,7 +70,7 @@ class AnalyticsProjector:
     async def on_run_stopped(self, notification: Any) -> None:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
                 """
                 UPDATE research_runs SET state = 'stopped', stopped_at = NOW()
@@ -77,14 +84,14 @@ class AnalyticsProjector:
         payload = event_payload(notification)
         tenant_id = require_tenant(payload, notification)
         signals = payload.get("signals", [])
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             for signal in signals:
                 await conn.execute(
-                    """
+                    f"""
                     INSERT INTO research_signals
                     (tenant_id, unit_id, run_id, tier, token_entropy, hedge_flag,
                      soft_cluster_entropy, semantic_entropy, n_clusters, link_score, extra)
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, {self._json("$11")})
                     ON CONFLICT (tenant_id, unit_id, run_id, tier) DO UPDATE SET
                         token_entropy = EXCLUDED.token_entropy,
                         hedge_flag = EXCLUDED.hedge_flag,

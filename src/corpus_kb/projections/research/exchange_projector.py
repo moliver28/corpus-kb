@@ -13,22 +13,24 @@ import logging
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
 from corpus_kb.projections.research._common import (
     event_payload,
     lookup_turn_texts,
+    opt_str,
     require_tenant,
+    unit_ids_by_seqs,
+    unit_texts_by_ids,
     upsert_speaker,
     upsert_unit,
 )
-from corpus_kb.projections.research._embed import (
-    ResearchEmbedder,
+from corpus_kb.projections.research._embed import ResearchEmbedder
+from corpus_kb.projections.research._embed_writes import (
     apply_unit_embeddings,
     embed_exchange_texts,
+    turn_prefixes,
 )
-from corpus_kb.research.chunking import build_context_prefix, speaker_label
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.research.chunking import build_context_prefix
+from corpus_kb.research.conn import Store, dialect_of, json_cast, resolve_store
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +38,9 @@ logger = logging.getLogger(__name__)
 class ExchangeProjector:
     """Projects Document transcript events into the exchange read models."""
 
-    def __init__(self, pool: asyncpg.Pool, embedder: ResearchEmbedder) -> None:
-        self._pool = pool
+    def __init__(self, pool: Store | None, embedder: ResearchEmbedder, gateway: Any = None) -> None:
+        self._store = resolve_store(pool, gateway)
+        self._duck = dialect_of(self._store).is_duckdb
         self._embedder = embedder
 
     async def on_ingested(self, notification: Any) -> None:
@@ -47,14 +50,15 @@ class ExchangeProjector:
         # The document leg runs INSIDE this façade (before speaker/unit/
         # exchange stages) so the FK chain documents -> speakers -> units
         # never races the legacy DocumentsProjection loop.
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        metadata_cast = json_cast(dialect_of(self._store), "$8")
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
-                """
+                f"""
                 INSERT INTO documents
                 (doc_id, tenant_id, source, source_type, file_size, file_hash,
                  language, metadata, project_id, title, source_path, source_hash,
                  parser_name, parser_version, doc_version)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $10, $13, $14, $11, $12, 1)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, {metadata_cast}, $9, $10, $13, $14, $11, $12, 1)
                 ON CONFLICT (tenant_id, source) DO UPDATE SET
                     source_type = EXCLUDED.source_type,
                     file_hash = COALESCE(EXCLUDED.file_hash, documents.file_hash),
@@ -71,15 +75,15 @@ class ExchangeProjector:
                 str(payload.get("source", "")),
                 str(payload.get("source_type", "text")),
                 payload.get("file_size"),
-                _opt_str(payload.get("file_hash")),
-                _opt_str(payload.get("language")),
+                opt_str(payload.get("file_hash")),
+                opt_str(payload.get("language")),
                 json.dumps(metadata),
-                _opt_str(metadata.get("project_id")),
-                _opt_str(metadata.get("title")),
-                _opt_str(metadata.get("parser_name")),
-                _opt_str(metadata.get("parser_version")),
+                opt_str(metadata.get("project_id")),
+                opt_str(metadata.get("title")),
+                opt_str(metadata.get("parser_name")),
+                opt_str(metadata.get("parser_version")),
                 str(payload.get("source", "")),
-                _opt_str(payload.get("file_hash")),
+                opt_str(payload.get("file_hash")),
             )
 
     async def on_turns_parsed(self, notification: Any) -> None:
@@ -89,9 +93,9 @@ class ExchangeProjector:
         turns = payload.get("turns", [])
 
         shas = [str(t["text_sha256"]) for t in turns]
-        texts = await lookup_turn_texts(self._pool, tenant_id, shas)
+        texts = await lookup_turn_texts(self._store, tenant_id, shas)
 
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             # The Ingested stage stored project_id on the documents row;
             # TurnsParsed carries no metadata, so resolve it there — together
             # with the deterministic-prefix context (todo-12, v5 5.2).
@@ -113,7 +117,7 @@ class ExchangeProjector:
                     str(doc_id),
                 )
             }
-            project_id = _opt_str(doc["project_id"]) if doc else None
+            project_id = opt_str(doc["project_id"]) if doc else None
             for turn in turns:
                 await upsert_speaker(conn, tenant_id, doc_id, turn)
                 if str(turn["text_sha256"]) not in texts:
@@ -126,8 +130,8 @@ class ExchangeProjector:
                     )
                     continue
                 await upsert_unit(conn, tenant_id, doc_id, project_id, turn, texts)
-        prefixes = _turn_prefixes(doc, turns, pseudonyms)
-        await apply_unit_embeddings(self._pool, self._embedder, tenant_id, doc_id, texts, prefixes)
+        prefixes = turn_prefixes(doc, turns, pseudonyms)
+        await apply_unit_embeddings(self._store, self._embedder, tenant_id, doc_id, texts, prefixes)
 
     async def on_exchanges_linked(self, notification: Any) -> None:
         payload = event_payload(notification)
@@ -136,7 +140,20 @@ class ExchangeProjector:
         exchanges = payload.get("exchanges", [])
 
         embed_texts: dict[int, str] = {}
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        unit_update_sql = (
+            """
+                        UPDATE research_units SET exchange_id = $4
+                        WHERE tenant_id = $1 AND doc_id = $2
+                          AND list_contains($3::BIGINT[], unit_id)
+                        """
+            if self._duck
+            else """
+                        UPDATE research_units SET exchange_id = $4
+                        WHERE tenant_id = $1 AND doc_id = $2
+                          AND unit_id = ANY($3::bigint[])
+                        """
+        )
+        async with self._store.transaction(str(tenant_id)) as conn:
             doc = await conn.fetchrow(
                 """
                 SELECT d.title, d.source_type, p.name AS project_name
@@ -147,17 +164,17 @@ class ExchangeProjector:
                 str(doc_id),
             )
             prefix = build_context_prefix(
-                project=_opt_str(doc["project_name"]) if doc else None,
-                doc_title=_opt_str(doc["title"]) if doc else None,
-                source_type=_opt_str(doc["source_type"]) if doc else None,
+                project=opt_str(doc["project_name"]) if doc else None,
+                doc_title=opt_str(doc["title"]) if doc else None,
+                source_type=opt_str(doc["source_type"]) if doc else None,
             )
             for exchange in exchanges:
                 seq = int(exchange["seq"])
-                q_ids = await self._unit_ids(
-                    conn, tenant_id, doc_id, exchange.get("q_unit_seqs", [])
+                q_ids = await unit_ids_by_seqs(
+                    conn, tenant_id, doc_id, exchange.get("q_unit_seqs", []), self._duck
                 )
-                a_ids = await self._unit_ids(
-                    conn, tenant_id, doc_id, exchange.get("a_unit_seqs", [])
+                a_ids = await unit_ids_by_seqs(
+                    conn, tenant_id, doc_id, exchange.get("a_unit_seqs", []), self._duck
                 )
                 question_text, qa_text = await self._cached_texts(
                     conn, tenant_id, doc_id, q_ids, a_ids
@@ -189,12 +206,12 @@ class ExchangeProjector:
                     a_ids,
                     exchange.get("topic_id"),
                     str(exchange.get("link_method", "adjacency")),
-                    _opt_str(exchange.get("link_confidence")),
+                    opt_str(exchange.get("link_confidence")),
                     exchange.get("link_score"),
                     question_text,
                     qa_text,
-                    _opt_str(exchange.get("stance")),
-                    _opt_str(exchange.get("term_origin")),
+                    opt_str(exchange.get("stance")),
+                    opt_str(exchange.get("term_origin")),
                 )
                 exchange_id: int | None = None
                 if row is not None:
@@ -202,11 +219,7 @@ class ExchangeProjector:
                     # Small-to-big parent link: children resolve to this
                     # exchange directly at query time.
                     await conn.execute(
-                        """
-                        UPDATE research_units SET exchange_id = $4
-                        WHERE tenant_id = $1 AND doc_id = $2
-                          AND unit_id = ANY($3::bigint[])
-                        """,
+                        unit_update_sql,
                         str(tenant_id),
                         str(doc_id),
                         q_ids + a_ids,
@@ -215,26 +228,11 @@ class ExchangeProjector:
                 if qa_text and exchange_id is not None:
                     embed_texts[exchange_id] = prefix + "\n" + qa_text
         if embed_texts:
-            await embed_exchange_texts(self._pool, self._embedder, tenant_id, doc_id, embed_texts)
-
-    async def _unit_ids(
-        self, conn: asyncpg.Connection, tenant_id: UUID, doc_id: UUID, seqs: Any
-    ) -> list[int]:
-        rows = await conn.fetch(
-            """
-            SELECT unit_id FROM research_units
-            WHERE tenant_id = $1 AND doc_id = $2 AND seq = ANY($3)
-            ORDER BY seq
-            """,
-            str(tenant_id),
-            str(doc_id),
-            [int(s) for s in seqs],
-        )
-        return [int(r["unit_id"]) for r in rows]
+            await embed_exchange_texts(self._store, self._embedder, tenant_id, doc_id, embed_texts)
 
     async def _cached_texts(
         self,
-        conn: asyncpg.Connection,
+        conn: Any,
         tenant_id: UUID,
         doc_id: UUID,
         q_ids: list[int],
@@ -242,48 +240,8 @@ class ExchangeProjector:
     ) -> tuple[str | None, str | None]:
         if not q_ids and not a_ids:
             return None, None
-        rows = await conn.fetch(
-            """
-            SELECT unit_id, text, role_in_exchange FROM research_units
-            WHERE tenant_id = $1 AND doc_id = $2 AND unit_id = ANY($3)
-            """,
-            str(tenant_id),
-            str(doc_id),
-            q_ids + a_ids,
-        )
-        by_id = {int(r["unit_id"]): r["text"] for r in rows}
-        question = " ".join(by_id[i] for i in q_ids if by_id.get(i))
-        answers = " ".join(by_id[i] for i in a_ids if by_id.get(i))
+        by_id = await unit_texts_by_ids(conn, tenant_id, doc_id, q_ids + a_ids, self._duck)
+        question = " ".join(str(by_id[i]) for i in q_ids if by_id.get(i))
+        answers = " ".join(str(by_id[i]) for i in a_ids if by_id.get(i))
         qa = f"Q: {question} A: {answers}" if question or answers else None
         return question or None, qa
-
-
-def _opt_str(value: Any) -> str | None:
-    return None if value is None else str(value)
-
-
-def _turn_prefixes(
-    doc: Any, turns: list[dict[str, Any]], pseudonyms: dict[str, str | None]
-) -> dict[str, str]:
-    """Deterministic per-turn embed prefixes (todo-12, v5 5.2)."""
-    if doc is None:
-        return {}
-    project = _opt_str(doc["project_name"])
-    title = _opt_str(doc["title"])
-    source_type = _opt_str(doc["source_type"])
-    prefixes: dict[str, str] = {}
-    for turn in turns:
-        label = str(turn.get("speaker", "unknown"))
-        prefixes[str(turn["text_sha256"])] = build_context_prefix(
-            project=project,
-            doc_title=title,
-            source_type=source_type,
-            speaker=speaker_label(label, _opt_str(turn.get("role")), pseudonyms.get(label)),
-            timestamp=_turn_timestamp(turn),
-        )
-    return prefixes
-
-
-def _turn_timestamp(turn: dict[str, Any]) -> str | None:
-    t_start = turn.get("t_start")
-    return f"{float(t_start):g}s" if t_start is not None else None

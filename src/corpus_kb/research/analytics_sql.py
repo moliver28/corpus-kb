@@ -39,10 +39,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any
 
-import asyncpg
 import numpy as np
-
-from corpus_kb.research.exhaustiveness import max_cos_by_id
 
 RETRIEVAL_UNITS_SQL = """
 WITH candidate AS MATERIALIZED (
@@ -160,136 +157,25 @@ def probe_256(vector: Sequence[float]) -> str:
     return "[" + ",".join(f"{x:.9g}" for x in mrl_256(vector)) + "]"
 
 
-async def _retrieve_ids(
-    conn: asyncpg.Connection, sql: str, params: list[object], force_index: bool
-) -> list[int]:
-    if force_index:
-        async with conn.transaction():
-            await conn.execute("SET LOCAL enable_seqscan = off")
-            await conn.execute("SET LOCAL enable_sort = off")
-            rows = await conn.fetch(sql, *params)
-    else:
-        rows = await conn.fetch(sql, *params)
-    return [int(row[0]) for row in rows]
-
-
-async def _fetch_in_chunks(conn: asyncpg.Connection, sql: str, ids: list[int]) -> list[Any]:
-    rows: list[Any] = []
-    for start in range(0, len(ids), _FETCH_CHUNK):
-        rows.extend(await conn.fetch(sql, ids[start : start + _FETCH_CHUNK]))
-    return rows
-
-
-async def residual_scan(
-    conn: asyncpg.Connection,
-    prototype_vectors: list[list[float]],
-    k: int,
-    source_type: str | None = None,
-    force_index: bool = False,
-) -> dict[int, float]:
-    """Per-unit residual: max over prototypes of the FULL 1024-d cosine.
-
-    Candidates are retrieved by the 256-d HNSW scan (one ordered read per
-    prototype); the cross-prototype max is computed at full dimension over
-    the retrieved rows (the MRL re-rank; k >= unit count gives exactness).
-    """
-    sql = RETRIEVAL_UNITS_TYPED_SQL if source_type is not None else RETRIEVAL_UNITS_SQL
-    candidate_ids: set[int] = set()
-    for proto in prototype_vectors:
-        literal = probe_256(proto)
-        params = [literal, source_type, k] if source_type is not None else [literal, k]
-        candidate_ids.update(await _retrieve_ids(conn, sql, params, force_index))
-    if not candidate_ids or not prototype_vectors:
-        return {}
-    rows = await _fetch_in_chunks(conn, UNIT_VECTORS_SQL, sorted(candidate_ids))
-    vectors_by_id: dict[int, list[float]] = {
-        int(row["unit_id"]): _parse_vector(row["embedding"]) for row in rows
-    }
-    return max_cos_by_id(vectors_by_id, prototype_vectors)
-
-
-async def residual_scan_exchanges(
-    conn: asyncpg.Connection,
-    qa_prototypes: list[list[float]],
-    k: int,
-    force_index: bool = False,
-) -> dict[int, float]:
-    """QA-view residual leg: exchange-embedding probes mapped to answer units."""
-    candidate_ids: set[int] = set()
-    for proto in qa_prototypes:
-        candidate_ids.update(
-            await _retrieve_ids(conn, RETRIEVAL_EXCHANGES_SQL, [probe_256(proto), k], force_index)
-        )
-    if not candidate_ids or not qa_prototypes:
-        return {}
-    ordered = sorted(candidate_ids)
-    xrows = await _fetch_in_chunks(conn, EXCHANGE_VECTORS_SQL, ordered)
-    urows = await _fetch_in_chunks(conn, EXCHANGE_ANSWER_UNITS_SQL, ordered)
-    vectors = {
-        int(row["exchange_id"]): _parse_vector(row["embedding"])
-        for row in xrows
-        if row["embedding"]
-    }
-    sims = max_cos_by_id(vectors, qa_prototypes)
-    best: dict[int, float] = {}
-    for row in urows:
-        sim = sims.get(int(row["exchange_id"]))
-        if sim is not None:
-            unit_id = int(row["unit_id"])
-            best[unit_id] = max(best.get(unit_id, -2.0), sim)
-    return best
-
-
-async def uncoded_units_ranking(
-    conn: asyncpg.Connection,
-    prototype_vectors: list[list[float]],
-    k: int,
-    force_index: bool = False,
-) -> list[dict[str, Any]]:
-    """Units with NO assignment, ascending residual (the missing-code radar).
-
-    Same MRL pattern as residual_scan: 256-d HNSW candidate retrieval, full
-    1024-d re-rank. k >= codable-unit count gives the exact ranking.
-    """
-    candidate_ids: set[int] = set()
-    for proto in prototype_vectors:
-        candidate_ids.update(
-            await _retrieve_ids(conn, RETRIEVAL_UNCODED_SQL, [probe_256(proto), k], force_index)
-        )
-    if not candidate_ids:
-        return []
-    rows = await _fetch_in_chunks(conn, UNIT_TEXT_VECTORS_SQL, sorted(candidate_ids))
-    vectors_by_id = {
-        int(row["unit_id"]): _parse_vector(row["embedding"]) for row in rows if row["embedding"]
-    }
-    residuals = max_cos_by_id(vectors_by_id, prototype_vectors)
-    texts = {int(row["unit_id"]): str(row["text"] or "") for row in rows}
-    ranked = sorted(
-        ({"unit_id": uid, "text": texts.get(uid, ""), "r": r} for uid, r in residuals.items()),
-        key=lambda r: float(r["r"]),
-    )
-    return ranked[:k]
-
-
-async def explain_plan(
-    conn: asyncpg.Connection,
-    sql: str,
-    params: list[object],
-    force_index: bool = True,
-) -> str:
-    """EXPLAIN text for one analytics query (the fixture's index-usage proof)."""
-    literal_params = [f"'{p}'" if isinstance(p, str) else str(p) for p in params]
-    explained = sql
-    for i, lit in enumerate(literal_params, start=1):
-        explained = explained.replace(f"${i}", lit)
-    async with conn.transaction():
-        if force_index:
-            await conn.execute("SET LOCAL enable_seqscan = off")
-            await conn.execute("SET LOCAL enable_sort = off")
-        rows = await conn.fetch(f"EXPLAIN (FORMAT TEXT) {explained}")
-    return "\n".join(str(row["QUERY PLAN"]) for row in rows)
-
-
 def _parse_vector(raw: Any) -> list[float]:
+    """PG vector text form ('[a,b,...]'); DuckDB list reads pass through."""
+    if isinstance(raw, (list, tuple)):
+        return [float(v) for v in raw]
     text = str(raw).strip().strip("[]")
     return [float(x) for x in text.split(",")] if text and text != "None" else []
+
+
+# The public runners live in analytics_aggregates.py (the split keeps this
+# file the pinned-SQL home); the names re-export lazily (PEP 562) so every
+# caller import (notebook_views, calibration, the fixtures) stays as-is.
+_PUBLIC_RUNNERS = frozenset(
+    {"residual_scan", "residual_scan_exchanges", "uncoded_units_ranking", "explain_plan"}
+)
+
+
+def __getattr__(name: str) -> Any:
+    if name in _PUBLIC_RUNNERS:
+        from corpus_kb.research import analytics_runners
+
+        return getattr(analytics_runners, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

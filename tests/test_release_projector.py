@@ -11,7 +11,6 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Protocol
-from unittest.mock import MagicMock
 from uuid import UUID
 
 import pytest
@@ -50,13 +49,16 @@ class FakeConn:
         return self._results.pop(0) if self._results else "UPDATE 1"
 
 
-def _conn_patch(fake: FakeConn):
-    @asynccontextmanager
-    async def fake_tenant_connection(pool: object, tenant_id: UUID) -> AsyncIterator[RecordingConn]:
-        assert str(tenant_id) == str(TENANT)
-        yield fake
+class _FakeGateway:
+    """SqlGateway stand-in: transaction() yields the recording conn."""
 
-    return fake_tenant_connection
+    def __init__(self, fake: FakeConn) -> None:
+        self._fake = fake
+
+    @asynccontextmanager
+    async def transaction(self, tenant_id: str) -> AsyncIterator[RecordingConn]:
+        assert tenant_id == str(TENANT)
+        yield self._fake
 
 
 def _notification(name: str, **attrs: object) -> SimpleNamespace:
@@ -142,14 +144,9 @@ def _lifecycle_notifications() -> list[SimpleNamespace]:
 
 async def _project(calls_out: list[tuple[str, tuple[object, ...]]]) -> None:
     fake = FakeConn(results=["UPDATE 1", "UPDATE 1", "UPDATE 1"])
-    projector = ReleaseProjector(MagicMock())
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            "corpus_kb.projections.research.release_projector.tenant_connection",
-            _conn_patch(fake),
-        )
-        for notification in _lifecycle_notifications():
-            await projector.handle(notification)
+    projector = ReleaseProjector(None, gateway=_FakeGateway(fake))
+    for notification in _lifecycle_notifications():
+        await projector.handle(notification)
     calls_out.extend(fake.calls)
 
 
@@ -185,26 +182,21 @@ async def test_replay_rebuilds_identical_rows_and_manifest_hash():
 async def test_missing_project_and_version_hash_keys_fall_back_to_defaults():
     """Old payloads without the Finding 8 keys still project (NULL / '')."""
     fake = FakeConn()
-    projector = ReleaseProjector(MagicMock())
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            "corpus_kb.projections.research.release_projector.tenant_connection",
-            _conn_patch(fake),
+    projector = ReleaseProjector(None, gateway=_FakeGateway(fake))
+    await projector.handle(
+        _notification(
+            "CodebookReleaseRequested",
+            tenant_id=str(TENANT),
+            release_id=str(RELEASE_ID),
+            codebook_id=str(PARENT_ID),
+            profile="team-codebook",
+            creator="alice",
+            manifest_json=MANIFEST,
+            manifest_sha256="a" * 64,
+            requested_at="2026-10-09T00:00:00+00:00",
+            parent_release_id=None,
         )
-        await projector.handle(
-            _notification(
-                "CodebookReleaseRequested",
-                tenant_id=str(TENANT),
-                release_id=str(RELEASE_ID),
-                codebook_id=str(PARENT_ID),
-                profile="team-codebook",
-                creator="alice",
-                manifest_json=MANIFEST,
-                manifest_sha256="a" * 64,
-                requested_at="2026-10-09T00:00:00+00:00",
-                parent_release_id=None,
-            )
-        )
+    )
     (args,) = [args for sql, args in fake.calls if sql == SQL_INSERT_RELEASE]
     assert args[2] is None
     assert args[5] == ""
@@ -213,16 +205,11 @@ async def test_missing_project_and_version_hash_keys_fall_back_to_defaults():
 @pytest.mark.asyncio
 async def test_non_release_topics_are_ignored():
     fake = FakeConn()
-    projector = ReleaseProjector(MagicMock())
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            "corpus_kb.projections.research.release_projector.tenant_connection",
-            _conn_patch(fake),
-        )
-        await projector.handle(_notification("CodeAdded", tenant_id=str(TENANT), codes=[]))
-        await projector.handle(
-            _notification("ReviewerRubricRecorded", tenant_id=str(TENANT), proposal_id="p")
-        )
+    projector = ReleaseProjector(None, gateway=_FakeGateway(fake))
+    await projector.handle(_notification("CodeAdded", tenant_id=str(TENANT), codes=[]))
+    await projector.handle(
+        _notification("ReviewerRubricRecorded", tenant_id=str(TENANT), proposal_id="p")
+    )
     assert fake.calls == []
 
 

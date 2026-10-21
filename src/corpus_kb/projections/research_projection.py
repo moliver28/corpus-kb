@@ -11,9 +11,10 @@ code/assignment/signal/run/review stages (a single event batch is processed
 strictly in notification_id order, which the ingest-then-code chronology
 already satisfies; within one event, stage order is explicit below).
 
-RLS: every write runs through tenant_connection (set_config AND the writes
-in ONE transaction) — the separate-statement set_config the legacy
-projections used is defeated by FORCE RLS and is never copied here.
+RLS: every write runs through a tenant-scoped session (set_config AND the
+writes in ONE transaction on Postgres; the gateway's BEGIN..COMMIT scope on
+DuckDB) — the separate-statement set_config the legacy projections used is
+defeated by FORCE RLS and is never copied here.
 """
 
 from __future__ import annotations
@@ -22,8 +23,6 @@ import asyncio
 import logging
 from typing import Any
 from uuid import UUID
-
-import asyncpg
 
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
@@ -41,6 +40,7 @@ from corpus_kb.projections.research.assignment_projector import AssignmentProjec
 from corpus_kb.projections.research.code_projector import CodeProjector
 from corpus_kb.projections.research.exchange_projector import ExchangeProjector
 from corpus_kb.projections.research.project_projector import ProjectProjector
+from corpus_kb.research.conn import Store, resolve_store
 
 logger = logging.getLogger(__name__)
 
@@ -73,19 +73,20 @@ class ResearchProjection:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: Store | None,
         checkpoint: CheckpointManager,
         dlq: DLQHandler,
         embedder: ResearchEmbedder,
+        gateway: Any = None,
     ) -> None:
-        self._pool = pool
+        self._store = resolve_store(pool, gateway)
         self._checkpoint = checkpoint
         self._dlq = dlq
-        self._project = ProjectProjector(pool)
-        self._exchange = ExchangeProjector(pool, embedder)
-        self._code = CodeProjector(pool)
-        self._assignment = AssignmentProjector(pool)
-        self._analytics = AnalyticsProjector(pool)
+        self._project = ProjectProjector(gateway=self._store)
+        self._exchange = ExchangeProjector(None, embedder, gateway=self._store)
+        self._code = CodeProjector(gateway=self._store)
+        self._assignment = AssignmentProjector(gateway=self._store)
+        self._analytics = AnalyticsProjector(gateway=self._store)
         self._running = False
 
     async def process_notification(self, notification: Any) -> None:
