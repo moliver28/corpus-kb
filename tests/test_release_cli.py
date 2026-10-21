@@ -12,6 +12,7 @@ never fails on not_evaluable; a blocked release exits 1).
 from __future__ import annotations
 
 import json
+from contextlib import asynccontextmanager
 from uuid import UUID, uuid4
 
 import pytest
@@ -19,6 +20,7 @@ from typer.testing import CliRunner
 
 from corpus_kb import cli
 from corpus_kb.cli_release import _waiver_pairs
+from corpus_kb.cli_store import StoreWired
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.handlers import release_handlers as rh
 from corpus_kb.research import guide_copy
@@ -429,10 +431,11 @@ def test_compare_missing_release_raises(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def _invoke(monkeypatch: pytest.MonkeyPatch, args: list[str]):
-    async def fake_pool() -> FakePool:
-        return FakePool()
+    @asynccontextmanager
+    async def fake_wired():
+        yield StoreWired(store=FakePool(), cfg={}, conn_str="", embedder=None)
 
-    monkeypatch.setattr("corpus_kb.cli_release._pool_conn", fake_pool)
+    monkeypatch.setattr("corpus_kb.cli_store.wired_store", fake_wired)
     return CliRunner().invoke(cli.app, args)
 
 

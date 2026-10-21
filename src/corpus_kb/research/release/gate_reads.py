@@ -22,6 +22,7 @@ import asyncpg
 
 from corpus_kb.coding.uncertainty.cross_run_agreement import cross_run_agreement_batch
 from corpus_kb.research.release.gate_types import GateInputs
+from corpus_kb.storage.gateway import Row, SqlGateway
 
 _CODEBOOK_SELECT = """
 SELECT code_id, name, brief_definition, inclusion_criteria, exclusion_criteria,
@@ -32,7 +33,9 @@ ORDER BY code_id
 """
 
 
-async def audit_rows(pool: asyncpg.Pool, tenant_id: UUID, scope: str) -> list[dict[str, object]]:
+async def audit_rows(
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, scope: str
+) -> list[dict[str, object]]:
     """audit_partitions rows for one scope (U9 assignments, U17 design)."""
     from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -46,7 +49,7 @@ async def audit_rows(pool: asyncpg.Pool, tenant_id: UUID, scope: str) -> list[di
     return [_audit_row_dict(row) for row in rows]
 
 
-def _audit_row_dict(row: asyncpg.Record) -> dict[str, object]:
+def _audit_row_dict(row: Row) -> dict[str, object]:
     inclusion = row["inclusion_probability"]
     seed = row["seed"]
     sampled_at = row["sampled_at"]
@@ -62,7 +65,7 @@ def _audit_row_dict(row: asyncpg.Record) -> dict[str, object]:
 
 
 async def codebook_categories(
-    pool: asyncpg.Pool, tenant_id: UUID, version_id: UUID
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, version_id: UUID
 ) -> dict[str, object]:
     """The codebook document for U7: {"categories": [code dicts]}.
 
@@ -93,7 +96,7 @@ async def codebook_categories(
 
 
 async def latest_release_payload(
-    pool: asyncpg.Pool, tenant_id: UUID, codebook_id: UUID
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, codebook_id: UUID
 ) -> dict[str, object]:
     """The newest draft/released manifest payload for one codebook (U10)."""
     from corpus_kb.storage.tenant_conn import tenant_connection
@@ -111,7 +114,7 @@ async def latest_release_payload(
 
 
 async def run_metric_block(
-    pool: asyncpg.Pool, tenant_id: UUID, run_id: UUID, key: str
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, run_id: UUID, key: str
 ) -> dict[str, object]:
     """One checkpoint metric block (reliability/heldout/stability/saturation/...)."""
     from corpus_kb.research.cycle_reads import run_checkpoint

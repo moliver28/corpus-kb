@@ -31,7 +31,7 @@ projections may lag; nothing here reads them for lifecycle truth.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, cast
+from typing import Any, TypeAlias, cast
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -52,6 +52,12 @@ from corpus_kb.research.release.gates import ALL_RELEASE_GATES
 from corpus_kb.research.release.manifest import ReleaseManifest
 from corpus_kb.research.release.profiles import resolve_profile
 from corpus_kb.research.release.service import EventSink, ReleaseService
+from corpus_kb.storage.gateway import SqlGateway
+
+#: The store a release handler reads gate evidence through: the legacy
+#: asyncpg pool on Postgres, or a SqlGateway (the DuckDB file driver) on
+#: the ported legs. Both reach the same fetch surface via tenant_conn.
+GateStore: TypeAlias = asyncpg.Pool | SqlGateway
 
 # Lifecycle stages (derived, honest; labels rendered via guide_copy).
 STAGE_PRE_DRAFT = "pre_draft"
@@ -281,7 +287,7 @@ _AUDIT_ALL_SQL = (
 )
 
 
-async def _audit_rows_all(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict[str, Any]]:
+async def _audit_rows_all(pool: GateStore, tenant_id: UUID) -> list[dict[str, Any]]:
     """Every audit_partitions row for the tenant (no scope filter: the U9
     partition evidence and the U17 audit sample split off the same rows)."""
     from corpus_kb.storage.tenant_conn import tenant_connection
@@ -308,7 +314,7 @@ async def _audit_rows_all(pool: asyncpg.Pool, tenant_id: UUID) -> list[dict[str,
 
 
 async def gate_inputs_for_version(
-    pool: asyncpg.Pool,
+    pool: GateStore,
     tenant_id: UUID,
     codebook_version_id: UUID,
     run_id: UUID | None = None,
@@ -351,10 +357,22 @@ def _conn_str() -> str:
     return str(db.get("connection_string", ""))
 
 
-def _load_aggregate(conn_str: str, codebook_version_id: UUID) -> CodebookVersion:
-    from corpus_kb.domain.application import get_app
+def _config_app() -> CorpusApplication:
+    """The aggregate store through the config-truth resolution.
 
-    return get_app(conn_str).repository.get(codebook_version_id)
+    ``get_app_for_config`` is the shared event-store seam (the
+    CommandHandler pattern): ``database.backend: duckdb`` keys the sqlite
+    event store; the default keeps the historical bare resolution.
+    """
+    from corpus_kb.config import load_config
+    from corpus_kb.domain.application import get_app_for_config
+
+    return get_app_for_config(load_config())
+
+
+def _load_aggregate(conn_str: str, codebook_version_id: UUID) -> CodebookVersion:
+    """Load the aggregate. ``conn_str`` stays the monkeypatch seam argument."""
+    return _config_app().repository.get(codebook_version_id)
 
 
 def _now_iso() -> str:
@@ -442,7 +460,7 @@ def _manifest_for_version(
 
 
 async def assess_release(
-    pool: asyncpg.Pool,
+    pool: GateStore,
     tenant_id: UUID,
     codebook_version_id: UUID,
     profile_name: str | None = None,
@@ -469,7 +487,7 @@ async def assess_release(
 
 
 async def request_release(
-    pool: asyncpg.Pool,  # transport-signature symmetry; requests do no pool reads
+    pool: GateStore,  # transport-signature symmetry; requests do no pool reads
     tenant_id: UUID,
     codebook_version_id: UUID,
     creator: str,
@@ -503,13 +521,11 @@ async def request_release(
 
 def _app_sink() -> CorpusApplication:
     """The eventsourcing Application as the ReleaseService EventSink."""
-    from corpus_kb.domain.application import get_app
-
-    return get_app(_conn_str())
+    return _config_app()
 
 
 async def review_release(
-    pool: asyncpg.Pool,  # transport-signature symmetry; packets read aggregates
+    pool: GateStore,  # transport-signature symmetry; packets read aggregates
     tenant_id: UUID,
     codebook_version_id: UUID,
     release_id: UUID,
@@ -574,7 +590,7 @@ async def review_release(
 
 
 async def execute_release(
-    pool: asyncpg.Pool,
+    pool: GateStore,
     tenant_id: UUID,
     codebook_version_id: UUID,
     release_id: UUID,
@@ -646,7 +662,7 @@ async def execute_release(
 
 
 async def status_report(
-    pool: asyncpg.Pool,
+    pool: GateStore,
     tenant_id: UUID,
     codebook_version_id: UUID,
 ) -> StatusReport:
