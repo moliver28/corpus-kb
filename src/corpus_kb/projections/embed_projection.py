@@ -31,7 +31,11 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.projections._drain import dispatch_notification, drain_sequence
+from corpus_kb.projections._drain import (
+    dispatch_notification,
+    drain_sequence,
+    legacy_owner_resolver,
+)
 from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
@@ -164,7 +168,12 @@ class EmbedChunksProjection:
 
         async def handle(notification: Any) -> None:
             await dispatch_notification(
-                notification, tenant_id, self._checkpoint, PROJECTION_NAME, self.process_event
+                notification,
+                tenant_id,
+                self._checkpoint,
+                PROJECTION_NAME,
+                self.process_event,
+                resolve_owner=legacy_owner_resolver(reader),
             )
 
         return await drain_sequence(reader, tenant_id, self._checkpoint, PROJECTION_NAME, handle)
@@ -196,6 +205,7 @@ class EmbedChunksProjection:
                         self._checkpoint,
                         PROJECTION_NAME,
                         self.process_event,
+                        resolve_owner=legacy_owner_resolver(reader),
                     )
             except Exception as exc:
                 logger.error("Projection loop error: %s", exc)

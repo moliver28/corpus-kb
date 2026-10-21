@@ -21,6 +21,7 @@ from uuid import UUID, uuid4
 
 import duckdb
 import pytest
+from eventsourcing.persistence import StoredEvent
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.domain.aggregates import Document, Entity, Relation
@@ -32,6 +33,7 @@ from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.documents_projection import DocumentsProjection
 from corpus_kb.projections.embed_projection import EmbedChunksProjection
 from corpus_kb.projections.event_reader import EventReader
+from corpus_kb.projections.ids import deterministic_chunk_id
 from corpus_kb.rag.embedder import FakeEmbedder
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
@@ -75,6 +77,40 @@ def _save_document(app: CorpusApplication, tenant: UUID, source: str, chunks: li
     )
     doc.add_chunks(tenant, chunk_count=len(chunks), chunk_texts=chunks)
     app.save(doc)
+    return UUID(str(doc.id))
+
+
+def _save_legacy_document(
+    app: CorpusApplication, tenant: UUID, source: str, chunks: list[str]
+) -> UUID:
+    """Persist Ingested + ChunksAdded with the PRE-stamp payload shape.
+
+    The recorder API writes the stored events directly, and the
+    ChunksAdded state loses its ``tenant_id`` key — the exact shape the
+    event store holds for documents written before the issue-143 stamp.
+    """
+    doc = Document(
+        tenant_id=tenant,
+        source=source,
+        source_type="transcript",
+        file_hash=uuid.uuid4().hex,
+    )
+    doc.add_chunks(tenant, chunk_count=len(chunks), chunk_texts=chunks)
+    stored: list[StoredEvent] = []
+    for event in doc.collect_events():
+        record = app.mapper.to_stored_event(event)
+        state = app.mapper.transcoder.decode(record.state)
+        if event.__class__.__name__ == "ChunksAdded":
+            state.pop("tenant_id", None)
+        stored.append(
+            StoredEvent(
+                originator_id=record.originator_id,
+                originator_version=record.originator_version,
+                topic=record.topic,
+                state=app.mapper.transcoder.encode(state),
+            )
+        )
+    app.recorder.insert_events(stored)
     return UUID(str(doc.id))
 
 
@@ -252,6 +288,65 @@ async def test_foreign_chunksadded_converges_in_one_pass(tmp_path: Path) -> None
             str(own_doc),
         )
         assert own_chunks == 1, "the own tenant's chunk still materializes"
+
+        # A second drain is quiet: nothing is revisited.
+        assert await docs.catch_up(_reader(app), TENANT) == 0
+        assert await embeds.catch_up(_reader(app), TENANT) == 0
+    finally:
+        await gateway.close()
+
+
+async def test_legacy_tenantless_chunksadded_converges_without_foreign_insert(
+    tmp_path: Path,
+) -> None:
+    """Issue #143, the legacy population: a tenant-less ChunksAdded event.
+
+    Events persisted before the tenant stamp carry no ``tenant_id``, so
+    the foreign-tenant skip never fires. The old drain replayed such an
+    event under the draining tenant, hit the chunks FK (doc_id points at
+    the aggregate, which is foreign), and burned the 20-pass loop on it.
+    The drain must resolve the owner from the aggregate's Ingested event
+    (the store is append-only; history is never rewritten) and skip the
+    foreign text in one pass: no DLQ rows, no foreign rows, quiet second
+    drain.
+    """
+    gateway, _ = await _migrated_gateway(tmp_path, "legacy-chunks.duckdb")
+    app = _app(tmp_path)
+    try:
+        own_doc = _save_document(app, TENANT, "legacy143://own", ["P: own text."])
+        foreign_doc = _save_legacy_document(
+            app, OTHER, "legacy143://foreign", ["P: legacy foreign text."]
+        )
+        head = app.recorder.max_notification_id()
+
+        docs, embeds, checkpoint = await _catch_up(gateway, app, TENANT)
+
+        dlq_rows = await gateway.fetch("SELECT event_id FROM projection_dlq ORDER BY 1")
+        assert dlq_rows == [], "the legacy event must not poison-loop the drain"
+
+        assert await _last_sequence(checkpoint, "DocumentsProjection", TENANT) == head, (
+            "the drain must resolve past the legacy event in one pass"
+        )
+        assert await _last_sequence(checkpoint, "EmbedChunksProjection", TENANT) == head
+
+        foreign_chunks = await gateway.fetchval(
+            "SELECT COUNT(*) FROM chunks WHERE tenant_id = $1 AND doc_id = $2",
+            str(TENANT),
+            str(foreign_doc),
+        )
+        assert foreign_chunks == 0, "legacy foreign chunks must not materialize"
+        own_chunks = await gateway.fetchval(
+            "SELECT COUNT(*) FROM chunks WHERE tenant_id = $1 AND doc_id = $2",
+            str(TENANT),
+            str(own_doc),
+        )
+        assert own_chunks == 1, "the own tenant's chunk still materializes"
+
+        foreign_vectors = await gateway.fetchval(
+            "SELECT COUNT(*) FROM chunks_vectors WHERE chunk_id = $1",
+            str(deterministic_chunk_id(foreign_doc, 0)),
+        )
+        assert foreign_vectors == 0, "the embed projection must skip the legacy event too"
 
         # A second drain is quiet: nothing is revisited.
         assert await docs.catch_up(_reader(app), TENANT) == 0

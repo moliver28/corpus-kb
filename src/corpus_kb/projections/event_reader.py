@@ -34,6 +34,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from uuid import UUID
 
 import asyncpg
 from eventsourcing.persistence import StoredEvent
@@ -150,6 +151,62 @@ class EventReader:
             )
             for row in rows
         ]
+
+    async def owner_tenant(self, originator_id: str) -> UUID | None:
+        """The tenant that owns this aggregate, read from its first event.
+
+        Drain-side resolution for legacy events persisted before the
+        ``ChunksAdded`` tenant stamp (issue #143). The event store is
+        append-only, so history is never rewritten: the owner comes from
+        the aggregate's creation event, which always carried ``tenant_id``.
+        None means unresolvable; the drain then applies its declared
+        default.
+        """
+        try:
+            stored = await self._first_stored_event(originator_id)
+            if stored is None:
+                return None
+            owner = getattr(self._mapper.to_domain_event(stored), "tenant_id", None)
+        except Exception as exc:
+            logger.warning("Owner lookup failed for aggregate %s: %s", originator_id, exc)
+            return None
+        if owner is None:
+            return None
+        try:
+            return UUID(str(owner))
+        except ValueError:
+            logger.warning("Aggregate %s carries a bad tenant_id %r", originator_id, owner)
+            return None
+
+    async def _first_stored_event(self, originator_id: str) -> StoredEvent | None:
+        """The aggregate's first stored event (the creation event).
+
+        The id normalizes to ``UUID`` first: the SQLite recorder stores
+        ``originator_id.hex``, so a dashed string never matches.
+        """
+        aggregate = originator_id if isinstance(originator_id, UUID) else UUID(str(originator_id))
+        if self._recorder is not None:
+            rows = await asyncio.to_thread(lambda: self._recorder.select_events(aggregate, limit=1))
+            return rows[0] if rows else None
+        assert self._pool is not None
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT originator_id, originator_version, topic, state
+            FROM public.{self._events_table}
+            WHERE originator_id = $1
+            ORDER BY originator_version
+            LIMIT 1
+            """,
+            aggregate,
+        )
+        if row is None:
+            return None
+        return StoredEvent(
+            originator_id=row["originator_id"],
+            originator_version=row["originator_version"],
+            topic=row["topic"],
+            state=bytes(row["state"]),
+        )
 
     def _decode(
         self,
