@@ -13,6 +13,7 @@ from uuid import uuid4
 
 import pytest
 
+from corpus_kb.errors import InternalError
 from corpus_kb.handlers.query_fusion import rrf_fuse
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_rag import DuckDbRagBackend
@@ -149,9 +150,9 @@ async def test_uninitialized_backend_fails_honest(tmp_path: Path) -> None:
     gw = await DuckDbGateway.connect(duckdb_path_to_conn_string(str(tmp_path / "fresh.duckdb")))
     try:
         fresh = DuckDbRagBackend(gw, StubEmbedder(), dimensions=DIM)
-        with pytest.raises(RuntimeError, match="not initialized"):
+        with pytest.raises(InternalError, match="initialize"):
             await fresh.retrieve("alpha", top_k=5)
-        with pytest.raises(RuntimeError, match="not initialized"):
+        with pytest.raises(InternalError, match="initialize"):
             await fresh.delete_source("src1")
     finally:
         await gw.close()

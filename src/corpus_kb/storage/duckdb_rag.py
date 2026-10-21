@@ -10,7 +10,10 @@ DuckDB 1.4 semantics (W0 findings + probes against the pinned wheel):
 - ``array_cosine_similarity(FLOAT[k], FLOAT[k])`` exists; ``array_norm``
   does NOT, so the zero guard is ``sqrt(array_inner_product(v, v)) > 0``.
   Zero-vector rows take the sentinel ``-2.0`` and sort LAST — the PG
-  NaN-last parity (DuckDB answers -1.0 for undefined cosine).
+  NaN-last parity (DuckDB answers -1.0 for undefined cosine). A zero
+  QUERY embedding lands every row on the sentinel too (deterministic,
+  fusion-ready order): unlike the user-facing query arm it does not
+  abstain, because the RAG caller fuses both arms and needs rows.
 - Fixed-size array binds go through
   :func:`corpus_kb.storage.duckdb_support.vector_literal` (a compact
   varchar) plus an explicit ``::FLOAT[k]`` cast: a Python list bind
@@ -31,7 +34,7 @@ import json
 import logging
 from typing import Any, Protocol
 
-from corpus_kb.errors import ValidationError
+from corpus_kb.errors import InternalError, ValidationError
 from corpus_kb.storage.duckdb_support import vector_literal
 from corpus_kb.storage.gateway import Row, SqlGateway
 from corpus_kb.storage.rag_backend import RetrievalResult
@@ -212,7 +215,10 @@ class DuckDbRagBackend:
 
     def _require_ready(self) -> None:
         if not self._ready:
-            raise RuntimeError("Backend not initialized. Call initialize() first.")
+            raise InternalError(
+                "The DuckDB RAG backend was used before initialize().",
+                remediation="Call initialize() once after connect. Then retry the read.",
+            )
 
     def _to_result(self, row: Row) -> RetrievalResult:
         metadata = row["metadata"]

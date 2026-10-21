@@ -111,7 +111,9 @@ pynvml = ["pynvml"]
 # first-import commit onward (§11 rule 1); until that commit lands, the
 # extras-less jobs stay green (unlike latechunk/inductive/ner/topics, whose
 # imports stay lazy behind config gates).
-duckdb = ["duckdb>=1.4,<1.5"]
+# pytz: DuckDB TIMESTAMPTZ fetches and binds need it at runtime (three
+# independent WPs hit the missing wheel on the phase C/D ports).
+duckdb = ["duckdb>=1.4,<1.5", "pytz"]
 # Late chunking (todo 13, v5 5.3): token-level hidden states need the local
 # transformers stack, never Ollama's pooled endpoint. License-reviewed
 # permissive set: sentence-transformers Apache-2.0, transformers Apache-2.0,

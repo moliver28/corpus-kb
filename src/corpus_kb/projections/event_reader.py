@@ -38,6 +38,8 @@ from typing import Any
 import asyncpg
 from eventsourcing.persistence import StoredEvent
 
+from corpus_kb.errors import InternalError
+
 logger = logging.getLogger(__name__)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -157,6 +159,17 @@ class EventReader:
         topic: str,
         state: Any,
     ) -> DomainNotification:
+        """One stored row -> DomainNotification via the app's Mapper.
+
+        ``state`` is the lib's compressed JSON. A None state means a
+        corrupt store row; that fails typed here rather than tripping a
+        raw ``TypeError`` inside ``bytes(state)``.
+        """
+        if state is None:
+            raise InternalError(
+                f"Event store row {notification_id} carries no state.",
+                remediation="Check the event store table for damage. Restore it, then retry.",
+            )
         stored = StoredEvent(
             originator_id=originator_id,
             originator_version=originator_version,
