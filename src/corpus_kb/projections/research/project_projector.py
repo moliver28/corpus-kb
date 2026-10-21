@@ -12,10 +12,9 @@ import logging
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.projections.research._common import event_payload, require_tenant
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.research.conn import Store
 
 logger = logging.getLogger(__name__)
 
@@ -23,8 +22,8 @@ logger = logging.getLogger(__name__)
 class ProjectProjector:
     """Maintains research_projects from events that reference a project."""
 
-    def __init__(self, pool: asyncpg.Pool) -> None:
-        self._pool = pool
+    def __init__(self, pool: Store, gateway: Any = None) -> None:
+        self._store = resolve_gateway(pool, gateway)
 
     async def on_ingested(self, notification: Any) -> None:
         payload = event_payload(notification)
@@ -37,7 +36,7 @@ class ProjectProjector:
         await self.upsert(tenant_id, project_id, name)
 
     async def upsert(self, tenant_id: UUID, project_id: UUID, name: str) -> None:
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with self._store.transaction(str(tenant_id)) as conn:
             await conn.execute(
                 """
                 INSERT INTO research_projects (project_id, tenant_id, name)

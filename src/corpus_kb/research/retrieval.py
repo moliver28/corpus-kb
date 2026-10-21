@@ -32,6 +32,8 @@ import asyncpg
 from corpus_kb.config import load_config
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.research.chunking import CHILD_QA, meeting_windows, unit_kind
+from corpus_kb.research.conn import SqlConn, Store, dialect_of, tenant_scope
+from corpus_kb.research.fts_duckdb import ensure_research_fts
 from corpus_kb.research.retrieval_settings import (
     DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
     RetrievalSettings,
@@ -49,7 +51,6 @@ from corpus_kb.research.search_settings import (
     missing_rrf_fusion_error,
     supports_iterative_scan,
 )
-from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +160,7 @@ def _child_uuid(key: str) -> str:
 
 
 async def research_search(
-    pool: asyncpg.Pool,
+    store: Store,
     embedder: ResearchEmbedder,
     q: ResearchQuery,
     reranker: object | None = None,
@@ -173,7 +174,9 @@ async def research_search(
     ``SET LOCAL`` statements are applied inside this search's transaction
     (never session-wide, so pooled connections cannot leak them).
     ``retrieval_settings`` (U45/U21) defaults to the ``search.*`` block and
-    drives the exact-scan fallback threshold below.
+    drives the exact-scan fallback threshold below. DuckDB runs the
+    exact-scan twins in ``research/retrieval_duckdb.py`` (no pgvector, no
+    SQL fusion; the pure rrf_fuse port fuses instead).
     """
     from corpus_kb.rag.embedder import instruct
 
@@ -184,30 +187,34 @@ async def research_search(
     depth = max(q.k * CANDIDATE_MULTIPLIER, RERANK_MIN_CANDIDATES)
     query_vector: list[float] | None = await embedder.embed_cached(q.tenant_id, instruct(q.query))
     settings = hnsw_settings if hnsw_settings is not None else load_hnsw_settings(config)
+    duck = dialect_of(store).is_duckdb
 
-    async with tenant_connection(pool, q.tenant_id) as conn:
-        version_row = await conn.fetchrow(PGVECTOR_VERSION_SQL)
-        extversion = None if version_row is None else str(version_row["extversion"])
-        if supports_iterative_scan(extversion):
-            await apply_hnsw_settings(cast("SqlExecutor", conn), settings)
+    async with tenant_scope(store, q.tenant_id) as conn:
+        if not duck:
+            version_row = await conn.fetchrow(PGVECTOR_VERSION_SQL)
+            extversion = None if version_row is None else str(version_row["extversion"])
+            if supports_iterative_scan(extversion):
+                await apply_hnsw_settings(cast("SqlExecutor", conn), settings)
+        else:
+            await ensure_research_fts(conn)
         dense_units, fts_units = await _unit_arms(
-            conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold
+            conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold, duck
         )
         dense_ex: list[dict[str, Any]] = []
         fts_ex: list[dict[str, Any]] = []
         if q.include_exchange_children:
             dense_ex, fts_ex = await _exchange_arms(
-                conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold
+                conn, query_vector, q, depth, r_settings.exact_filter_selectivity_threshold, duck
             )
 
-        units_fused = await _rrf(conn, dense_units, fts_units, depth, r_settings.rrf_k)
-        exch_fused = await _rrf(conn, dense_ex, fts_ex, depth, r_settings.rrf_k)
-        fused = await _rrf(conn, units_fused, exch_fused, depth, r_settings.rrf_k)
+        units_fused = await _rrf(conn, dense_units, fts_units, depth, r_settings.rrf_k, duck)
+        exch_fused = await _rrf(conn, dense_ex, fts_ex, depth, r_settings.rrf_k, duck)
+        fused = await _rrf(conn, units_fused, exch_fused, depth, r_settings.rrf_k, duck)
 
         children = _children_from_fused(fused)
-        windows = await _meeting_windows(conn, children)
+        windows = await _meeting_windows(conn, children, duck)
         parents = _to_parents(children, windows)
-        citations = await _citations(conn, parents, windows)
+        citations = await _citations(conn, parents, windows, duck)
 
     if reranker is not None and q.rerank and citations:
         citations = await _rerank(q.query, citations, reranker)
@@ -228,14 +235,21 @@ def _assignment_predicate(sql: _Sql, q: ResearchQuery) -> list[str]:
     return conditions
 
 
-def _unit_filters(sql: _Sql, q: ResearchQuery) -> str:
+def _unit_filters(sql: _Sql, q: ResearchQuery, duck: bool = False) -> str:
     frag = ""
     if q.source_type:
         frag += f" AND d.source_type = {sql.p(q.source_type)}"
     if q.speaker_role:
         frag += f" AND s.role = {sql.p(q.speaker_role)}"
     if q.doc_ids:
-        frag += f" AND u.doc_id = ANY({sql.p([str(d) for d in q.doc_ids])}::uuid[])"
+        ids = sql.p([str(d) for d in q.doc_ids])
+        # List membership: asyncpg's ANY on Postgres (byte-identical), the
+        # engine's list_contains on DuckDB (no ``= ANY`` there).
+        frag += (
+            f" AND list_contains({ids}::VARCHAR[], u.doc_id)"
+            if duck
+            else f" AND u.doc_id = ANY({ids}::uuid[])"
+        )
     if q.topic_id is not None:
         frag += (
             " AND u.exchange_id IN (SELECT exchange_id FROM research_exchanges "
@@ -250,37 +264,53 @@ def _unit_filters(sql: _Sql, q: ResearchQuery) -> str:
     return frag
 
 
-def _exchange_filters(sql: _Sql, q: ResearchQuery) -> str:
+def _exchange_filters(sql: _Sql, q: ResearchQuery, duck: bool = False) -> str:
     frag = ""
     if q.source_type:
         frag += f" AND d.source_type = {sql.p(q.source_type)}"
     if q.speaker_role:
+        member = (
+            "list_contains(e.a_unit_ids, u2.unit_id)" if duck else "u2.unit_id = ANY(e.a_unit_ids)"
+        )
         frag += (
             " AND EXISTS (SELECT 1 FROM research_units u2 "
             "JOIN research_speakers s2 ON s2.speaker_id = u2.speaker_id "
-            f"WHERE u2.unit_id = ANY(e.a_unit_ids) AND s2.role = {sql.p(q.speaker_role)})"
+            f"WHERE {member} AND s2.role = {sql.p(q.speaker_role)})"
         )
     if q.doc_ids:
-        frag += f" AND e.doc_id = ANY({sql.p([str(d) for d in q.doc_ids])}::uuid[])"
+        ids = sql.p([str(d) for d in q.doc_ids])
+        frag += (
+            f" AND list_contains({ids}::VARCHAR[], e.doc_id)"
+            if duck
+            else f" AND e.doc_id = ANY({ids}::uuid[])"
+        )
     if q.topic_id is not None:
         frag += f" AND e.topic_id = {sql.p(int(q.topic_id))}"
     assignment = _assignment_predicate(sql, q)
     if assignment:
+        member = (
+            "list_contains(e.a_unit_ids, ra.unit_id)" if duck else "ra.unit_id = ANY(e.a_unit_ids)"
+        )
         frag += (
             " AND EXISTS (SELECT 1 FROM research_assignments ra "
-            "WHERE ra.tenant_id = e.tenant_id AND ra.unit_id = ANY(e.a_unit_ids) "
+            f"WHERE ra.tenant_id = e.tenant_id AND {member} "
             f"AND {' AND '.join(assignment)})"
         )
     return frag
 
 
 async def _unit_arms(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     query_vector: list[float] | None,
     q: ResearchQuery,
     depth: int,
     exact_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
+    duck: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if duck:
+        from corpus_kb.research.retrieval_duckdb import unit_arms_duck
+
+        return await unit_arms_duck(conn, query_vector, q, depth)
     dense_sql = _Sql(str(q.tenant_id), str(q.project_id))
     filters = _unit_filters(dense_sql, q)
     dense: list[dict[str, Any]] = []
@@ -373,12 +403,17 @@ async def _unit_arms(
 
 
 async def _exchange_arms(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     query_vector: list[float] | None,
     q: ResearchQuery,
     depth: int,
     exact_threshold: float = DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD,
+    duck: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if duck:
+        from corpus_kb.research.retrieval_duckdb import exchange_arms_duck
+
+        return await exchange_arms_duck(conn, query_vector, q, depth)
     dense_sql = _Sql(str(q.tenant_id), str(q.project_id))
     filters = _exchange_filters(dense_sql, q)
     dense: list[dict[str, Any]] = []
@@ -459,7 +494,7 @@ async def _exchange_arms(
     return dense, [_exchange_payload(r) for r in rows]
 
 
-def _unit_payload(row: asyncpg.Record) -> dict[str, Any]:
+def _unit_payload(row: Any) -> dict[str, Any]:
     unit_id = int(row["unit_id"])
     exchange_id = row["exchange_id"]
     payload: dict[str, Any] = {
@@ -478,7 +513,7 @@ def _unit_payload(row: asyncpg.Record) -> dict[str, Any]:
     return payload
 
 
-def _exchange_payload(row: asyncpg.Record) -> dict[str, Any]:
+def _exchange_payload(row: Any) -> dict[str, Any]:
     exchange_id = int(row["exchange_id"])
     payload: dict[str, Any] = {
         "chunk_id": _child_uuid(f"exchange:{exchange_id}"),
@@ -497,14 +532,19 @@ def _exchange_payload(row: asyncpg.Record) -> dict[str, Any]:
 
 
 async def _rrf(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     dense: list[dict[str, Any]],
     lexical: list[dict[str, Any]],
     depth: int,
     rrf_k: int,
+    duck: bool = False,
 ) -> list[dict[str, Any]]:
     if not dense and not lexical:
         return []
+    if duck:
+        from corpus_kb.research.retrieval_duckdb import rrf_pure
+
+        return rrf_pure(dense, lexical, depth, rrf_k)
     try:
         rows = await conn.fetch(
             "SELECT chunk_id, text, source, doc_id, score "
@@ -559,17 +599,29 @@ def _children_from_fused(fused: list[dict[str, Any]]) -> list[_Child]:
     return children
 
 
+def _ids_any(placeholder: str, column: str, duck: bool, kind: str) -> str:
+    """List membership over an id column: asyncpg ``ANY`` vs ``list_contains``.
+
+    Postgres keeps its byte-identical ``= ANY($n::<kind>[])`` form; DuckDB
+    has no ``= ANY``, so the twin casts the bound list and uses the engine's
+    ``list_contains`` (doc ids bind as VARCHAR there, numeric ids as BIGINT).
+    """
+    if duck:
+        return f"list_contains({placeholder}::{kind.upper()}[], {column})"
+    return f"{column} = ANY({placeholder}::{kind}[])"
+
+
 async def _meeting_windows(
-    conn: asyncpg.Connection, children: list[_Child]
+    conn: SqlConn, children: list[_Child], duck: bool = False
 ) -> dict[str, dict[int, str]]:
     """Window parents for exchange-less candidate units: window key -> {seq: text}."""
     doc_ids = sorted({c.doc_id for c in children if c.exchange_id is None})
     if not doc_ids:
         return {}
     rows = await conn.fetch(
-        """
+        f"""
         SELECT u.doc_id, u.seq, u.text FROM research_units u
-        WHERE u.doc_id = ANY($1::uuid[])
+        WHERE {_ids_any("$1", "u.doc_id", duck, "uuid")}
         ORDER BY u.doc_id, u.seq
         """,
         doc_ids,
@@ -609,41 +661,42 @@ def _parent_key(child: _Child, windows: dict[str, dict[int, str]]) -> str | None
 
 
 async def _citation_lookup_rows(
-    conn: asyncpg.Connection, parents: list[tuple[str, _Child, float]]
+    conn: SqlConn, parents: list[tuple[str, _Child, float]], duck: bool = False
 ) -> tuple[
     dict[str, tuple[str, object]],
-    dict[int, asyncpg.Record],
-    dict[int, asyncpg.Record],
+    dict[int, Any],
+    dict[int, Any],
 ]:
     """Fetch the doc/exchange/answer-unit rows the citations render from."""
     doc_ids = sorted({child.doc_id for _, child, _ in parents})
     doc_rows = await conn.fetch(
-        """
+        f"""
         SELECT d.doc_id, d.title, p.name AS project_name
         FROM documents d LEFT JOIN research_projects p ON p.project_id = d.project_id
-        WHERE d.doc_id = ANY($1::uuid[])
+        WHERE {_ids_any("$1", "d.doc_id", duck, "uuid")}
         """,
         doc_ids,
     )
     docs = {str(r["doc_id"]): (str(r["title"] or ""), r["project_name"]) for r in doc_rows}
 
     exchange_ids = [int(key.split(":")[1]) for key, _, _ in parents if key.startswith("exchange:")]
-    exchange_rows: dict[int, asyncpg.Record] = {}
+    exchange_rows: dict[int, Any] = {}
     unit_ids: list[int] = []
     if exchange_ids:
         for row in await conn.fetch(
-            """
+            f"""
             SELECT exchange_id, doc_id, seq, question_text, q_unit_ids, a_unit_ids
-            FROM research_exchanges WHERE exchange_id = ANY($1::bigint[])
+            FROM research_exchanges WHERE {_ids_any("$1", "exchange_id", duck, "bigint")}
             """,
             exchange_ids,
         ):
             exchange_rows[int(row["exchange_id"])] = row
             unit_ids.extend(int(u) for u in list(row["a_unit_ids"]))
-    unit_rows: dict[int, asyncpg.Record] = {}
+    unit_rows: dict[int, Any] = {}
     if unit_ids:
         for row in await conn.fetch(
-            "SELECT unit_id, seq, text FROM research_units WHERE unit_id = ANY($1::bigint[])",
+            "SELECT unit_id, seq, text FROM research_units "
+            f"WHERE {_ids_any('$1', 'unit_id', duck, 'bigint')}",
             unit_ids,
         ):
             unit_rows[int(row["unit_id"])] = row
@@ -654,8 +707,8 @@ def _exchange_citation(
     parent_key: str,
     matched: _Child,
     score: float,
-    row: asyncpg.Record,
-    unit_rows: dict[int, asyncpg.Record],
+    row: Any,
+    unit_rows: dict[int, Any],
     title: str,
     project_name: object,
 ) -> Citation:
@@ -709,14 +762,15 @@ def _window_citation(
 
 
 async def _citations(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     parents: list[tuple[str, _Child, float]],
     windows: dict[str, dict[int, str]],
+    duck: bool = False,
 ) -> list[Citation]:
     doc_ids = sorted({child.doc_id for _, child, _ in parents})
     if not doc_ids:
         return []
-    docs, exchange_rows, unit_rows = await _citation_lookup_rows(conn, parents)
+    docs, exchange_rows, unit_rows = await _citation_lookup_rows(conn, parents, duck)
 
     citations: list[Citation] = []
     for parent_key, matched, score in parents:

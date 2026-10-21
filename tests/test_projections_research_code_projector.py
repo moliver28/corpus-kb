@@ -7,7 +7,6 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, patch
 from uuid import UUID
 
 import pytest
@@ -29,20 +28,33 @@ def _notification(payload_attrs: dict[str, Any]) -> SimpleNamespace:
     )
 
 
+class _FakeSession:
+    """The four-call session surface the projector's SQL runs against."""
+
+    def __init__(self, calls: list[tuple[str, tuple[Any, ...]]]) -> None:
+        self._calls = calls
+
+    async def execute(self, sql: str, *args: Any) -> str:
+        self._calls.append((sql, args))
+        return "UPDATE 1"
+
+
+class _FakeGateway:
+    """SqlGateway stand-in: transaction() yields one recording session."""
+
+    def __init__(self, calls: list[tuple[str, tuple[Any, ...]]]) -> None:
+        self._calls = calls
+
+    @asynccontextmanager
+    async def transaction(self, tenant_id: str) -> AsyncIterator[_FakeSession]:
+        yield _FakeSession(self._calls)
+
+
 @pytest.mark.asyncio
 async def test_on_prototypes_updated_stores_exemplar_refs_in_theory():
     calls: list[tuple[str, tuple[Any, ...]]] = []
 
-    class FakeConn:
-        async def execute(self, sql: str, *args: Any) -> None:
-            calls.append((sql, args))
-
-    @asynccontextmanager
-    async def fake_tenant_connection(pool: Any, tenant_id: UUID) -> AsyncIterator[FakeConn]:
-        yield FakeConn()
-
-    pool = MagicMock()
-    projector = CodeProjector(pool)
+    projector = CodeProjector(None, gateway=_FakeGateway(calls))
 
     payload = {
         "tenant_id": str(TENANT_ID),
@@ -50,11 +62,7 @@ async def test_on_prototypes_updated_stores_exemplar_refs_in_theory():
         "exemplar_text_sha256": ["a" * 64, "b" * 64],
     }
 
-    with patch(
-        "corpus_kb.projections.research.code_projector.tenant_connection",
-        fake_tenant_connection,
-    ):
-        await projector.on_prototypes_updated(_notification(payload))
+    await projector.on_prototypes_updated(_notification(payload))
 
     assert len(calls) == 1
     sql, args = calls[0]

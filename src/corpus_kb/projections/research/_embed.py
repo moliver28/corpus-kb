@@ -9,6 +9,9 @@ Contract (todo-11 (c) vector strategy, decision D6):
     ZERO embedder calls (rebuild asserts this with a call counter).
   * zero/non-unit vectors are REJECTED — a degraded embed call must never
     poison the write-once cache (r8 CACHE INTEGRITY).
+
+The vector WRITE legs (unit + exchange embedding updates, with their
+per-engine 256-d slice twins) live in ``_embed_writes.py``.
 """
 
 from __future__ import annotations
@@ -17,10 +20,9 @@ import logging
 import math
 from typing import Any
 
-import asyncpg
-
+from corpus_kb.projections._gateway import resolve_gateway
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch, assert_unit_or_zero
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.research.conn import dialect_of, tenant_scope
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +34,13 @@ class ResearchEmbedder:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: Any,
         embedder: OllamaEmbedder | PgmlEmbedder | Any,
         model_revision: str = "1024",
+        gateway: Any = None,
     ) -> None:
-        self._pool = pool
+        self._store = resolve_gateway(pool, gateway)
+        self._duck = dialect_of(self._store).is_duckdb
         self._embedder = embedder
         self.model = str(getattr(embedder, "model", "unknown"))
         self.model_revision = model_revision
@@ -62,7 +66,7 @@ class ResearchEmbedder:
         return vector
 
     async def _cache_get(self, tenant_id: Any, content_sha: str) -> list[float] | None:
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        async with tenant_scope(self._store, tenant_id) as conn:
             row = await conn.fetchrow(
                 """
                 SELECT embedding FROM embedding_cache
@@ -79,12 +83,15 @@ class ResearchEmbedder:
         return _parse_pg_vector(row["embedding"])
 
     async def _cache_put(self, tenant_id: Any, content_sha: str, vector: list[float]) -> None:
-        async with tenant_connection(self._pool, tenant_id) as conn:
+        # Postgres keeps its byte-identical ::vector text bind; DuckDB casts
+        # the same compact literal to the fixed FLOAT[1024] column type.
+        cast = "$6::FLOAT[1024]" if self._duck else "$6::vector"
+        async with tenant_scope(self._store, tenant_id) as conn:
             await conn.execute(
-                """
+                f"""
                 INSERT INTO embedding_cache
                 (tenant_id, content_sha256, model, model_revision, dim, embedding)
-                VALUES ($1, $2, $3, $4, $5, $6::vector)
+                VALUES ($1, $2, $3, $4, $5, {cast})
                 ON CONFLICT (tenant_id, content_sha256, model, model_revision) DO NOTHING
                 """,
                 str(tenant_id),
@@ -134,84 +141,3 @@ def _slice_normalize(vec: list[float], dim: int) -> list[float]:
 
 def _to_pg_vector(vec: list[float]) -> str:
     return "[" + ",".join(f"{float(v):.9g}" for v in vec) + "]"
-
-
-async def apply_unit_embeddings(
-    pool: asyncpg.Pool,
-    embedder: ResearchEmbedder,
-    tenant_id: Any,
-    doc_id: Any,
-    texts_by_sha: dict[str, str],
-    prefixes_by_sha: dict[str, str] | None = None,
-) -> None:
-    """Embed unit texts through the cache and maintain embedding_256.
-
-    The embedded string is the DETERMINISTIC context prefix + clean text
-    (todo-12, v5 5.2 contextual retrieval); the stored text column stays
-    clean for generation and citation. The prefix is a pure function of
-    row context, so rebuilds hit the same cache entries and make zero
-    embedder calls beyond misses.
-    """
-    prefixes = prefixes_by_sha or {}
-    for text_sha, text in texts_by_sha.items():
-        embed_text = f"{prefixes[text_sha]}\n{text}" if prefixes.get(text_sha) else text
-        vector = await embedder.embed_cached(tenant_id, embed_text)
-        if vector is None:
-            continue
-        async with tenant_connection(pool, tenant_id) as conn:
-            await conn.execute(
-                """
-                UPDATE research_units SET
-                    embedding = $3::vector,
-                    embedding_256 = l2_normalize(subvector($3::vector, 1, 256)),
-                    embedding_model = $4, model_revision = $5, dimensions = $6
-                WHERE tenant_id = $1 AND doc_id = $2 AND text_sha256 = $7
-                """,
-                str(tenant_id),
-                str(doc_id),
-                "[" + ",".join(f"{v:.9g}" for v in vector) + "]",
-                embedder.model,
-                embedder.model_revision,
-                1024,
-                text_sha,
-            )
-
-
-async def embed_exchange_texts(
-    pool: asyncpg.Pool,
-    embedder: ResearchEmbedder,
-    tenant_id: Any,
-    doc_id: Any,
-    texts_by_exchange_id: dict[int, str],
-) -> int:
-    """Embed exchange qa texts (prefix + qa_text) into research_exchanges.
-
-    The exchange is the interview RETRIEVAL parent and the qa CHILD source:
-    its embedding indexes the combined "Q: ... A: ..." text so queries
-    matching either side of the exchange retrieve it. Cache-backed like the
-    unit path; returns the number of exchange vectors written.
-    """
-    written = 0
-    for exchange_id, embed_text in texts_by_exchange_id.items():
-        vector = await embedder.embed_cached(tenant_id, embed_text)
-        if vector is None:
-            continue
-        async with tenant_connection(pool, tenant_id) as conn:
-            result = await conn.execute(
-                """
-                UPDATE research_exchanges SET
-                    embedding = $3::vector,
-                    embedding_256 = l2_normalize(subvector($3::vector, 1, 256)),
-                    embedding_model = $4, model_revision = $5, dimensions = $6
-                WHERE tenant_id = $1 AND doc_id = $2 AND exchange_id = $7
-                """,
-                str(tenant_id),
-                str(doc_id),
-                "[" + ",".join(f"{v:.9g}" for v in vector) + "]",
-                embedder.model,
-                embedder.model_revision,
-                1024,
-                int(exchange_id),
-            )
-        written += 0 if result.endswith("0") else 1
-    return written
