@@ -24,7 +24,13 @@ import pytest
 
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.research.analytics_sql import explain_plan, residual_scan, uncoded_units_ranking
-from corpus_kb.research.batching import RunMarker, mark_item_completed, run_resumable
+from corpus_kb.research.batching import (
+    RunMarker,
+    gather_bounded,
+    load_completed_items,
+    mark_item_completed,
+    run_resumable,
+)
 from corpus_kb.research.exact_cache import CacheKeyComponents
 from corpus_kb.research.exact_cache import get as cache_get
 from corpus_kb.research.exact_cache import put as cache_put
@@ -139,6 +145,33 @@ async def test_batching_marks_idempotently_and_resumes(tmp_path: Path) -> None:
             gateway, marker, ["item-1", "item-2"], lambda item: item, _work, duck=True
         )
         assert results == ["done:item-2"]  # item-1 already marked, skipped
+    finally:
+        await gateway.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_marks_cannot_drop_each_other(tmp_path: Path) -> None:
+    """The DuckDB mark is ONE atomic statement: markers running under
+    run_resumable's bounded concurrency all land (a read-merge-write draft
+    lost the second writer's item)."""
+    gateway = await _migrated_gateway(tmp_path, "marks.duckdb")
+    try:
+        await gateway.execute(
+            "INSERT INTO research_runs (run_id, tenant_id, llm_name, embed_model, state)"
+            " VALUES ($1, $2, 'test', 'test', 'started')",
+            RUN_ID,
+            TENANT,
+        )
+        marker = RunMarker(tenant_id=str(TENANT), run_id=str(RUN_ID))
+        items = [f"item-{n}" for n in range(8)]
+        marks = await gather_bounded(
+            items,
+            lambda item: mark_item_completed(gateway, marker, item, duck=True),
+            concurrency=4,
+        )
+        assert all(marks)
+        done = await load_completed_items(gateway, marker)
+        assert done == set(items)
     finally:
         await gateway.close()
 
