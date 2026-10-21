@@ -17,14 +17,39 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
+from corpus_kb.coding._scope import CodingStore, is_gateway, tenant_scope
 from corpus_kb.coding.speaker_roles import classify_role
-from corpus_kb.storage.tenant_conn import tenant_connection
+
+_SPEAKER_SQL = """
+    SELECT chunk_id, metadata->>'speaker' AS speaker
+    FROM chunks
+    WHERE tenant_id=$1 AND metadata->>'speaker' IS NOT NULL
+"""
+_DOC_COUNTS_SQL = """
+    SELECT metadata->>'speaker' AS speaker, COUNT(DISTINCT doc_id) AS doc_count
+    FROM chunks
+    WHERE tenant_id=$1 AND metadata->>'speaker' IS NOT NULL
+    GROUP BY metadata->>'speaker'
+"""
+# The gateway arm extracts by function: under DuckDB's prepared statements
+# the `->>` arrow mis-resolves when the statement also binds a parameter
+# (duckdb#14162) and tries to cast the whole JSON value to numeric.
+_SPEAKER_SQL_DUCKDB = """
+    SELECT chunk_id, json_extract_string(metadata, '$.speaker') AS speaker
+    FROM chunks
+    WHERE tenant_id=$1 AND json_extract_string(metadata, '$.speaker') IS NOT NULL
+"""
+_DOC_COUNTS_SQL_DUCKDB = """
+    SELECT json_extract_string(metadata, '$.speaker') AS speaker,
+           COUNT(DISTINCT doc_id) AS doc_count
+    FROM chunks
+    WHERE tenant_id=$1 AND json_extract_string(metadata, '$.speaker') IS NOT NULL
+    GROUP BY 1
+"""
 
 
 async def classify_speaker_roles(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
     roster: set[str] | None = None,
     vendor_threshold: int = 8,
@@ -44,26 +69,15 @@ async def classify_speaker_roles(
     """
     roster = roster or set()
 
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
+        portable = is_gateway(pool)
         doc_counts = await conn.fetch(
-            """
-            SELECT metadata->>'speaker' AS speaker, COUNT(DISTINCT doc_id) AS doc_count
-            FROM chunks
-            WHERE tenant_id=$1 AND metadata->>'speaker' IS NOT NULL
-            GROUP BY metadata->>'speaker'
-            """,
+            _DOC_COUNTS_SQL_DUCKDB if portable else _DOC_COUNTS_SQL,
             tenant_id,
         )
         doc_count_by_speaker = {row["speaker"]: row["doc_count"] for row in doc_counts}
 
-        chunk_rows = await conn.fetch(
-            """
-            SELECT chunk_id, metadata->>'speaker' AS speaker
-            FROM chunks
-            WHERE tenant_id=$1 AND metadata->>'speaker' IS NOT NULL
-            """,
-            tenant_id,
-        )
+        chunk_rows = await conn.fetch(_SPEAKER_SQL_DUCKDB if portable else _SPEAKER_SQL, tenant_id)
 
         role_counts: dict[str, int] = {"moderator": 0, "participant": 0, "unknown": 0}
         for row in chunk_rows:

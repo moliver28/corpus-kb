@@ -7,10 +7,9 @@ import re
 from typing import Any
 from uuid import UUID
 
-import asyncpg
 import numpy as np
 
-from corpus_kb.storage.tenant_conn import tenant_connection
+from corpus_kb.coding._scope import CodingStore, is_gateway, tenant_scope
 
 
 def _as_array(vector: np.ndarray | list[float] | str) -> np.ndarray:
@@ -49,7 +48,7 @@ def cosine_similarity(
 
 
 async def materialize_chunk_keyword_hits(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
     codebook_version_id: UUID,
 ) -> dict[str, Any]:
@@ -59,14 +58,14 @@ async def materialize_chunk_keyword_hits(
     as whole words (word-boundary match), write to chunk_keyword_hits table.
 
     Args:
-        pool: asyncpg connection pool
+        pool: asyncpg pool or SqlGateway store
         tenant_id: Tenant UUID
         codebook_version_id: Codebook version UUID
 
     Returns:
         Summary dict with counts of keywords matched, chunks touched, etc.
     """
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         # Get all keywords per code
         keywords_per_code = await conn.fetch(
             """
@@ -123,7 +122,7 @@ async def materialize_chunk_keyword_hits(
 
 
 async def run_similarity_pooling(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
     codebook_version_id: UUID,
 ) -> dict[str, Any]:
@@ -135,15 +134,21 @@ async def run_similarity_pooling(
     - Filter by pool_floor threshold
 
     Args:
-        pool: asyncpg connection pool
+        pool: asyncpg pool or SqlGateway store
         tenant_id: Tenant UUID
         codebook_version_id: Codebook version UUID
 
     Returns:
         Summary dict with similarity scores computed, chunk_signals written
     """
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         signals_written = 0
+        # The gateway cannot DELETE chunk_signals rows (its append-only
+        # guard stands in for the dropped PG trigger), so the demoted-pair
+        # path parks the stale row at score NULL through the sanctioned
+        # upsert instead; reconcile_coverage reads NULL as "not pooled"
+        # below. Postgres keeps the delete exactly as shipped.
+        portable = is_gateway(pool)
 
         # Get all codes with probe vectors
         codes = await conn.fetch(
@@ -212,6 +217,27 @@ async def run_similarity_pooling(
                     # keys off "does a chunk_signals row currently exist")
                     # correctly drops this chunk out of the pool rather than
                     # leaving it permanently flagged as pooled.
+                    if portable:
+                        # Gateway arm: park the row at score NULL through the
+                        # sanctioned upsert; the guard forbids DELETE here.
+                        await conn.execute(
+                            """
+                            INSERT INTO chunk_signals
+                              (chunk_id, code_id, tenant_id, signal, score, detail)
+                            VALUES ($1, $2, $3, $4, $5, $6)
+                            ON CONFLICT (chunk_id, code_id, signal, tenant_id)
+                            DO UPDATE SET score = EXCLUDED.score,
+                                          detail = EXCLUDED.detail,
+                                          created_at = EXCLUDED.created_at
+                            """,
+                            chunk_id,
+                            code_id,
+                            tenant_id,
+                            "vector",
+                            None,
+                            "below_pool_floor",
+                        )
+                        continue
                     await conn.execute(
                         """
                         DELETE FROM chunk_signals
@@ -227,7 +253,7 @@ async def run_similarity_pooling(
 
 
 async def reconcile_coverage(
-    pool: asyncpg.Pool,
+    pool: CodingStore,
     tenant_id: UUID,
 ) -> dict[str, Any]:
     """Reconcile coverage identity: (pooled + never_pooled = corpus_count).
@@ -246,13 +272,13 @@ async def reconcile_coverage(
     next reconcile rather than staying permanently marked as pooled.
 
     Args:
-        pool: asyncpg connection pool
+        pool: asyncpg pool or SqlGateway store
         tenant_id: Tenant UUID
 
     Returns:
         Summary with total corpus chunks, pooled, and never-pooled counts
     """
-    async with tenant_connection(pool, tenant_id) as conn:
+    async with tenant_scope(pool, tenant_id) as conn:
         # Backfill chunk_status for any chunk that was never explicitly
         # seeded into it (the normal case against a real ingested corpus).
         await conn.execute(
@@ -268,12 +294,16 @@ async def reconcile_coverage(
         # Recompute in_any_pool from scratch: true iff this chunk currently
         # has at least one chunk_signals row, false otherwise. This resets
         # chunks that fell out of every pool, not just marks new pooled ones.
+        # The gateway arm ignores parked rows (score NULL — see
+        # run_similarity_pooling); Postgres counts every row as shipped.
+        parked = "AND csig.score IS NOT NULL" if is_gateway(pool) else ""
         await conn.execute(
-            """
+            f"""
             UPDATE chunk_status cs
             SET in_any_pool = EXISTS (
                 SELECT 1 FROM chunk_signals csig
                 WHERE csig.chunk_id = cs.chunk_id AND csig.tenant_id = cs.tenant_id
+                {parked}
             )
             WHERE cs.tenant_id = $1
             """,
