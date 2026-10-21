@@ -6,7 +6,9 @@ SHARED migrate runner (``_setup.migrate.run_migrations``), provision the
 SQLite event-store sidecar through the ONE path helper
 (``storage.duckdb_support.events_sidecar_path``), pre-install the ``fts``
 extension, and write the config pair (``database.backend`` + DSN) into
-the local ``config.yaml``. The Postgres path in ``install.setup_cmd`` is
+the local ``config.yaml``. The config write runs LAST and only when every
+prior step succeeded — a failed run never flips a working config. The
+Postgres path in ``install.setup_cmd`` is
 untouched; ``--dry-run`` previews every step without touching disk.
 
 One confirmation covers the run (the steps are local files plus one
@@ -199,6 +201,11 @@ async def setup_duckdb_cmd(config: dict[str, Any], dry_run: bool, dsn_arg: str =
     exit_code |= await provision_analytics(dsn)
     exit_code |= provision_sidecar(dsn)
     exit_code |= preinstall_extensions()
+    if exit_code:
+        # The config write is the ONE destructive step: it flips a working
+        # database block to this file. A failed step must never do that.
+        print("Setup failed. The config was not changed.")
+        return exit_code
     exit_code |= write_config_pair(config_path, dsn)
 
     print("\nNext steps:")

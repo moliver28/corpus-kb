@@ -164,6 +164,41 @@ async def test_declined_confirm_mutates_nothing(
     assert not (tmp_path / "config.yaml").exists()
 
 
+@pytest.mark.asyncio
+async def test_failed_provisioning_leaves_config_byte_identical(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A failed step must never overwrite a working config file.
+
+    A Postgres deployment points ``database:`` at a working server. When a
+    provisioning step fails (say the migrations), the run must end without
+    flipping that block to a DSN at an unmigrated file.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("CORPUS_KB_CONFIG", raising=False)
+    config = tmp_path / "config.yaml"
+    original = (
+        b"database:\n  backend: postgres\n  connection_string: postgresql://prod:5432/corpus_kb\n"
+    )
+    config.write_bytes(original)
+    db = tmp_path / "kb.duckdb"
+
+    async def broken_analytics(_dsn: str) -> int:
+        return 1
+
+    monkeypatch.setattr("corpus_kb._setup.setup_duckdb.provision_analytics", broken_analytics)
+    out = StringIO()
+    with (
+        patch("sys.stdout", out),
+        patch("corpus_kb._setup.install.confirm", return_value=True),
+    ):
+        rc = await setup_duckdb_cmd({}, dry_run=False, dsn_arg=str(db))
+
+    assert rc == 1
+    assert config.read_bytes() == original, "the config must be untouched"
+    assert "config was not changed" in out.getvalue()
+
+
 # --- wiring (install.setup_cmd + argparse) -----------------------------------------
 
 
