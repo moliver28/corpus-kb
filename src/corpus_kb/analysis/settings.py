@@ -45,6 +45,12 @@ Keys and their contracts:
   build. ``None`` means the engine default applies (20000). The engine
   fits the sample and assigns the rest by transform, never by a second
   fit.
+- ``analysis.method_register_path``: path to the analysis method
+  register (YAML). The default ships in the repo and in the package.
+- ``analysis.eecs.enabled``: the error-analysis report section flag
+  (``analyze_run``). Off by default.
+- ``analysis.sentiment.*``: the lexicon preset screen (``enabled``,
+  ``lexicon_path``). The path points at the bundled lexicon file.
 
 Determinism pins stay CODE CONSTANTS in the engines that follow (the
 ``research/inductive`` convention): only governance knobs live here.
@@ -65,6 +71,10 @@ DEFAULT_OVER_TIME_ENABLED = False
 DEFAULT_OVER_TIME_BINS: str | int = "auto"
 DEFAULT_OVER_TIME_UNDATED = "drop"
 DEFAULT_TOPICS_MAX_EMBEDDINGS: int | None = None
+DEFAULT_METHOD_REGISTER_PATH = "config/analysis_methods.yaml"
+DEFAULT_EECS_ENABLED = False
+DEFAULT_SENTIMENT_ENABLED = False
+DEFAULT_SENTIMENT_LEXICON = "config/sentiment_lexicon.yaml"
 
 SUPPORTED_CLASSIFICATION_TIERS = frozenset({"head", "setfit"})
 SUPPORTED_UNDATED_POLICIES = frozenset({"drop", "report"})
@@ -91,6 +101,15 @@ OVER_TIME_CONFIG_DEFAULTS: dict[str, object] = {
     "undated": DEFAULT_OVER_TIME_UNDATED,
 }
 
+EECS_CONFIG_DEFAULTS: dict[str, object] = {
+    "enabled": DEFAULT_EECS_ENABLED,
+}
+
+SENTIMENT_CONFIG_DEFAULTS: dict[str, object] = {
+    "enabled": DEFAULT_SENTIMENT_ENABLED,
+    "lexicon_path": DEFAULT_SENTIMENT_LEXICON,
+}
+
 ANALYSIS_CONFIG_DEFAULTS: dict[str, object] = {
     "labeling": dict(LABELING_CONFIG_DEFAULTS),
     "classification": dict(CLASSIFICATION_CONFIG_DEFAULTS),
@@ -98,6 +117,9 @@ ANALYSIS_CONFIG_DEFAULTS: dict[str, object] = {
         "over_time": dict(OVER_TIME_CONFIG_DEFAULTS),
         "max_embeddings": DEFAULT_TOPICS_MAX_EMBEDDINGS,
     },
+    "method_register_path": DEFAULT_METHOD_REGISTER_PATH,
+    "eecs": dict(EECS_CONFIG_DEFAULTS),
+    "sentiment": dict(SENTIMENT_CONFIG_DEFAULTS),
 }
 
 
@@ -135,6 +157,21 @@ class OverTimeSettings:
 
 
 @dataclass(frozen=True)
+class EECSSettings:
+    """Typed ``analysis.eecs.*`` reads (the method-register program)."""
+
+    enabled: bool = DEFAULT_EECS_ENABLED
+
+
+@dataclass(frozen=True)
+class SentimentSettings:
+    """Typed ``analysis.sentiment.*`` reads (the method-register program)."""
+
+    enabled: bool = DEFAULT_SENTIMENT_ENABLED
+    lexicon_path: str | None = DEFAULT_SENTIMENT_LEXICON
+
+
+@dataclass(frozen=True)
 class AnalysisSettings:
     """Typed ``analysis.*`` reads (the analysis program)."""
 
@@ -142,6 +179,9 @@ class AnalysisSettings:
     classification: ClassificationSettings = field(default_factory=ClassificationSettings)
     over_time: OverTimeSettings = field(default_factory=OverTimeSettings)
     topics_max_embeddings: int | None = DEFAULT_TOPICS_MAX_EMBEDDINGS
+    method_register_path: str = DEFAULT_METHOD_REGISTER_PATH
+    eecs: EECSSettings = field(default_factory=EECSSettings)
+    sentiment: SentimentSettings = field(default_factory=SentimentSettings)
 
 
 def _positive_int_error(dotted: str, value: object) -> str | None:
@@ -226,6 +266,21 @@ def analysis_settings_error(config: dict[str, object]) -> str | None:
         max_error = _positive_int_error("analysis.topics.max_embeddings", max_embeddings)
         if max_error is not None:
             return max_error
+
+    analysis = _analysis_block(config)
+    register_path = analysis.get("method_register_path", DEFAULT_METHOD_REGISTER_PATH)
+    if not isinstance(register_path, str):
+        return (
+            "analysis.method_register_path: must be a path string; got "
+            f"{register_path!r}"
+        )
+    sentiment = _child_block(analysis, "sentiment")
+    lexicon = sentiment.get("lexicon_path", DEFAULT_SENTIMENT_LEXICON)
+    if lexicon is not None and not isinstance(lexicon, str):
+        return (
+            "analysis.sentiment.lexicon_path: must be a path string or null; got "
+            f"{lexicon!r}"
+        )
     return None
 
 
@@ -269,6 +324,31 @@ def load_analysis_settings(config: dict[str, object]) -> AnalysisSettings:
             "int | None",
             _child_block(_analysis_block(config), "topics").get(
                 "max_embeddings", DEFAULT_TOPICS_MAX_EMBEDDINGS
+            ),
+        ),
+        method_register_path=_as_str(
+            _analysis_block(config).get(
+                "method_register_path", DEFAULT_METHOD_REGISTER_PATH
+            )
+        ),
+        eecs=EECSSettings(
+            enabled=bool(
+                _child_block(_analysis_block(config), "eecs").get(
+                    "enabled", DEFAULT_EECS_ENABLED
+                )
+            )
+        ),
+        sentiment=SentimentSettings(
+            enabled=bool(
+                _child_block(_analysis_block(config), "sentiment").get(
+                    "enabled", DEFAULT_SENTIMENT_ENABLED
+                )
+            ),
+            lexicon_path=cast(
+                "str | None",
+                _child_block(_analysis_block(config), "sentiment").get(
+                    "lexicon_path", DEFAULT_SENTIMENT_LEXICON
+                ),
             ),
         ),
     )
