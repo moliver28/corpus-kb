@@ -104,14 +104,15 @@ def migration_files(root: Path) -> tuple[list[tuple[Path, str]], list[tuple[Path
     """(path, display) pairs for both sets, in application order.
 
     Forward Postgres truth is storage/schema.sql plus the numbered
-    migrations (glob ``0*.sql`` skips the rollback files). The DuckDB
-    set runs 000..030 in name order.
+    migrations (glob ``[0-9]*.sql`` skips the rollback files and keeps
+    working past migration 099). The DuckDB set runs 000..030 in name
+    order.
     """
     pg: list[tuple[Path, str]] = []
     base = root / PG_BASE
     if base.exists():
         pg.append((base, PG_BASE.as_posix()))
-    for path in sorted((root / PG_MIGRATIONS).glob("0*.sql")):
+    for path in sorted((root / PG_MIGRATIONS).glob("[0-9]*.sql")):
         rel = path.relative_to(root)
         pg.append((path, rel.as_posix()))
     duck: list[tuple[Path, str]] = []
