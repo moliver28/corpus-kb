@@ -59,7 +59,7 @@ async def _resolve_router_handler(cfg: dict[str, Any], pool: asyncpg.Pool) -> Ro
     from corpus_kb.handlers.router_handler import RouterHandler
     from corpus_kb.handlers.versioning_handler import VersioningHandler
     from corpus_kb.rag import create_embedder
-    from corpus_kb.server_wiring import create_graph_store
+    from corpus_kb.storage.graph_factory import create_graph_store
 
     embedder = create_embedder(cfg, pool)
     query_handler = QueryHandler(pool, embedder, config=cfg)

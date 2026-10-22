@@ -21,6 +21,37 @@ Pick one before you start. Ports differ, and the port tells you which path is li
 The full contract (ports, exit codes, vocabularies) lives in
 [OPERATIONS.md](OPERATIONS.md).
 
+## No Docker? The DuckDB path
+
+One command, no containers, no Postgres. Corpus-KB lives in one local
+file, and the event store sits beside it:
+
+```bash
+corpus-kb setup --backend duckdb
+```
+
+The run does five things: installs the `duckdb` extra if it is missing,
+creates the analytics file and applies its migrations, creates the
+SQLite event store (`<file>.events.db`), pre-installs the `fts`
+extension, and writes the config pair into `config.yaml`. One
+confirmation covers the run. Re-running is safe.
+
+Pick the file location with `--dsn` (a bare path or a `duckdb:///` DSN):
+
+```bash
+corpus-kb setup --backend duckdb --dsn C:/data/kb.duckdb
+corpus-kb setup --backend duckdb --dry-run   # preview every step
+```
+
+Then check the install with `corpus-kb doctor` and start the server
+with `corpus-kb start`. Exact-scan search stays fast to about 100k
+chunks; above that, the Postgres path fits better. The doctor prints
+this size hint for your corpus. See [ADMIN.md](ADMIN.md), "DuckDB
+backend: setup and doctor", for the full check list.
+
+Ollama is still the embedder: install it and pull your embedding model
+as in Step 5.
+
 ---
 
 ## Prerequisites

@@ -221,7 +221,7 @@ def test_sqlite_round_trip_across_two_apps(tmp_path, isolated_apps):
     assert app1 is not app2
 
     doc = _make_doc()
-    doc.add_chunks(chunk_count=1, chunk_texts=["One chunk."])
+    doc.add_chunks(uuid.UUID(TEST_TENANT), chunk_count=1, chunk_texts=["One chunk."])
     app1.save(doc)
 
     loaded = app2.repository.get(doc.id)

@@ -19,9 +19,13 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.projections._drain import dispatch_notification, drain_sequence
+from corpus_kb.projections import documents_rows
+from corpus_kb.projections._drain import (
+    dispatch_notification,
+    drain_sequence,
+    legacy_owner_resolver,
+)
 from corpus_kb.projections._gateway import resolve_gateway
-from corpus_kb.projections._locks import tenant_write_lock
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.ids import deterministic_chunk_id
@@ -32,9 +36,6 @@ from corpus_kb.storage.gateway import SqlGateway
 logger = logging.getLogger(__name__)
 
 PROJECTION_NAME = "DocumentsProjection"
-
-#: Serializes the chunkless-relations delete+insert across writers.
-_RELATIONS_LOCK_KEY = "documents-projection:relations"
 
 
 class DocumentsProjection:
@@ -86,7 +87,12 @@ class DocumentsProjection:
 
         async def handle(notification: Any) -> None:
             await dispatch_notification(
-                notification, tenant_id, self._checkpoint, PROJECTION_NAME, self.process_event
+                notification,
+                tenant_id,
+                self._checkpoint,
+                PROJECTION_NAME,
+                self.process_event,
+                resolve_owner=legacy_owner_resolver(reader),
             )
 
         return await drain_sequence(reader, tenant_id, self._checkpoint, PROJECTION_NAME, handle)
@@ -107,7 +113,12 @@ class DocumentsProjection:
                 continue
             for notification in notifications:
                 await dispatch_notification(
-                    notification, tenant_id, self._checkpoint, PROJECTION_NAME, self.process_event
+                    notification,
+                    tenant_id,
+                    self._checkpoint,
+                    PROJECTION_NAME,
+                    self.process_event,
+                    resolve_owner=legacy_owner_resolver(reader),
                 )
 
     async def _project_document(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
@@ -167,68 +178,12 @@ class DocumentsProjection:
                 )
 
     async def _project_entity(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """Insert into the entities table."""
-        async with self._gateway.transaction(str(tenant_id)) as tx:
-            await tx.execute(
-                """
-                INSERT INTO entities
-                (entity_id, tenant_id, name, entity_type, metadata)
-                VALUES ($1, $2, $3, $4, $5)
-                ON CONFLICT (tenant_id, name, entity_type) DO NOTHING
-                """,
-                str(payload.get("aggregate_id", "")),
-                str(tenant_id),
-                payload.get("name", ""),
-                payload.get("entity_type", "concept"),
-                json.dumps(payload.get("metadata", {})),
-            )
+        """Insert into the entities table (body in documents_rows)."""
+        await documents_rows.project_entity(self._gateway, tenant_id, payload)
 
     async def _project_relation(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """Insert into the relations table, deduped on the narrow triple key.
-
-        Migration 008 dropped the constraint the old upsert targeted, so
-        delete-then-insert in one scope restores the dedupe portably (the
-        delete touches chunkless rows only, so provenance relations are
-        never rewritten). The tenant advisory lock closes the READ
-        COMMITTED duplicate window; ``projections/_locks.py`` has the
-        mechanics and the engine split.
-        """
-        args = (
-            str(payload.get("aggregate_id", "")),
-            str(tenant_id),
-            str(payload.get("source_entity_id", "")),
-            str(payload.get("target_entity_id", "")),
-            payload.get("relation_type", "related_to"),
-            payload.get("weight", 1.0),
-            json.dumps(payload.get("metadata", {})),
-        )
-        async with (
-            self._gateway.transaction(str(tenant_id)) as tx,
-            # The lock enters inside the tx scope; the delete binds only the
-            # four key columns because DuckDB rejects unused parameters.
-            tenant_write_lock(tx, self._dialect, str(tenant_id), _RELATIONS_LOCK_KEY),
-        ):
-            await tx.execute(
-                """
-                DELETE FROM relations
-                WHERE tenant_id = $1 AND source_entity_id = $2
-                  AND target_entity_id = $3 AND relation_type = $4
-                  AND chunk_id IS NULL
-                """,
-                args[1],
-                args[2],
-                args[3],
-                args[4],
-            )
-            await tx.execute(
-                """
-                INSERT INTO relations
-                (relation_id, tenant_id, source_entity_id, target_entity_id,
-                 relation_type, weight, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
-                """,
-                *args,
-            )
+        """Insert into the relations table (body in documents_rows)."""
+        await documents_rows.project_relation(self._gateway, self._dialect, tenant_id, payload)
 
 
 # Singleton

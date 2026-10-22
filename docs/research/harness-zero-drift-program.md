@@ -193,7 +193,7 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | OpenAPI spec freshness | CI regenerates `corpus-kb operations --openapi` and runs `git diff --exit-code` | ci.yml / contract | 2 |
 | Breaking API changes | `oasdiff breaking` of PR spec vs master spec; failure blocks merge | ci.yml / contract | 2 |
 | HTTP conformance | `schemathesis run` against the app with a fixed hypothesis seed | ci.yml / contract | 2 |
-| Layering | `lint-imports` (import-linter contracts in `pyproject.toml`) | ci.yml / lint | 2 |
+| Layering | `poe lint-imports` (`lint-imports`, contracts in `pyproject.toml`). TRUTHFUL AS OF 2026-10-20 (sp-suite-hardening): before that date this row was aspirational — no poe target and no CI step ran the contracts. Wave F added both and fixed the two violations the first run exposed (lazy `tools → server_wiring → api` chains in `tools/graph_read_tools.py` and `tools/query_tools.py`, now importing `storage.graph_factory` directly) | ci.yml / lint | F (wired; first declared Wave 2) |
 | Gate commands | all CI jobs call `poe lint`, `poe types`, `poe verify`, `poe gen` — not raw commands | ci.yml (all jobs) | 2 |
 | Dead code | `vulture src/` with `tests/whitelist.py`; new hits fail | ci.yml / lint | 3 |
 | Unused / missing deps | `deptry src/` | ci.yml / lint | 3 |

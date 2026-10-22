@@ -97,10 +97,10 @@ async def test_command_e2e_legs_on_duckdb(
     # 2 UPDATE + 3 VERSION BUMP: the second ChunksAdded save bumps version.
     app = command_handler.app
     doc = Document(tenant_id=TENANT, source="e2e.md", source_type="markdown")
-    doc.add_chunks(2, [])
+    doc.add_chunks(TENANT, 2, [])
     app.save(doc)
     version_after_create = doc.version
-    doc.add_chunks(3, [])
+    doc.add_chunks(TENANT, 3, [])
     app.save(doc)
     assert doc.version > version_after_create
     reloaded = app.repository.get(doc.id)

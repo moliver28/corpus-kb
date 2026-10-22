@@ -1,50 +1,30 @@
-"""Pooling module: keyword hits, vector similarity, chunk_signals materialization."""
+"""Pooling module: keyword hits, vector similarity, chunk_signals materialization.
+
+The vector math lives in :mod:`pooling_math` and the similarity-pooling
+body in :mod:`pooling_similarity` (pure moves for the 250-line rule); this
+module keeps the tenant-scope entry points and re-exports
+``cosine_similarity`` so the import surface is unchanged. The three public
+functions all resolve ``tenant_scope`` through THIS module's globals —
+tests patch it here (tests/test_wave1_contracts.py) — and the similarity
+wrapper passes the (possibly patched) callable through to the body.
+"""
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 from uuid import UUID
 
-import numpy as np
+from corpus_kb.coding._scope import CodingStore, tenant_scope
+from corpus_kb.coding.pooling_math import cosine_similarity
+from corpus_kb.coding.pooling_similarity import run_similarity_pooling as _run_body
 
-from corpus_kb.coding._scope import CodingStore, is_gateway, tenant_scope
-
-
-def _as_array(vector: np.ndarray | list[float] | str) -> np.ndarray:
-    """Coerce a vector to float32 ndarray.
-
-    asyncpg has no pgvector codec registered here, so a `vector` column comes
-    back as its text literal ("[0.1,0.2,...]"); parse that shape too.
-    """
-    if isinstance(vector, str):
-        return np.array(json.loads(vector), dtype=np.float32)
-    if isinstance(vector, np.ndarray):
-        return vector.astype(np.float32, copy=False)
-    return np.array(vector, dtype=np.float32)
-
-
-def cosine_similarity(
-    v1: np.ndarray | list[float] | str, v2: np.ndarray | list[float] | str
-) -> float:
-    """Compute cosine similarity between two vectors.
-
-    Args:
-        v1: First vector (numpy array, list, or pgvector text literal)
-        v2: Second vector (numpy array, list, or pgvector text literal)
-
-    Returns:
-        Cosine similarity value between -1.0 and 1.0 (higher is more similar)
-    """
-    v1 = _as_array(v1)
-    v2 = _as_array(v2)
-
-    dot = np.dot(v1, v2)
-    norm = np.linalg.norm(v1) * np.linalg.norm(v2)
-    if norm < 1e-9:
-        return 0.0
-    return float(np.clip(dot / norm, -1.0, 1.0))
+__all__ = [
+    "cosine_similarity",
+    "materialize_chunk_keyword_hits",
+    "reconcile_coverage",
+    "run_similarity_pooling",
+]
 
 
 async def materialize_chunk_keyword_hits(
@@ -128,128 +108,11 @@ async def run_similarity_pooling(
 ) -> dict[str, Any]:
     """Run NxK probe-similarity pooling against code_registry.probe_vector.
 
-    For each code with a valid probe_vector:
-    - Find chunks whose definition_vectors have cosine similarity >= pool_floor
-    - Write chunk_signals with "vector" signal type
-    - Filter by pool_floor threshold
-
-    Args:
-        pool: asyncpg pool or SqlGateway store
-        tenant_id: Tenant UUID
-        codebook_version_id: Codebook version UUID
-
-    Returns:
-        Summary dict with similarity scores computed, chunk_signals written
+    The body lives in :mod:`pooling_similarity`; the tenant scope resolves
+    HERE (module global, so the tests' ``pooling.tenant_scope`` patch is
+    the callable the body actually uses) and is injected as a parameter.
     """
-    async with tenant_scope(pool, tenant_id) as conn:
-        signals_written = 0
-        # The gateway cannot DELETE chunk_signals rows (its append-only
-        # guard stands in for the dropped PG trigger), so the demoted-pair
-        # path parks the stale row at score NULL through the sanctioned
-        # upsert instead; reconcile_coverage reads NULL as "not pooled"
-        # below. Postgres keeps the delete exactly as shipped.
-        portable = is_gateway(pool)
-
-        # Get all codes with probe vectors
-        codes = await conn.fetch(
-            """
-            SELECT code_id, probe_vector, pool_floor FROM code_registry
-            WHERE tenant_id = $1 AND codebook_version_id = $2 AND probe_vector IS NOT NULL
-            """,
-            tenant_id,
-            codebook_version_id,
-        )
-
-        for code_row in codes:
-            code_id = code_row["code_id"]
-            probe_vector = code_row["probe_vector"]
-            pool_floor = code_row["pool_floor"] or 0.3
-
-            # Get all chunks with vectors
-            chunks = await conn.fetch(
-                """
-                SELECT c.chunk_id, cv.embedding FROM chunks c
-                JOIN chunks_vectors cv ON c.chunk_id = cv.chunk_id
-                WHERE c.tenant_id = $1
-                """,
-                tenant_id,
-            )
-
-            for chunk in chunks:
-                chunk_id = chunk["chunk_id"]
-                chunk_vector = chunk["embedding"]
-
-                # Compute cosine similarity between probe_vector and chunk_vector
-                similarity = cosine_similarity(probe_vector, chunk_vector)
-
-                if similarity >= pool_floor:
-                    # chunk_signals' natural key is (chunk_id, code_id, signal,
-                    # tenant_id): one current row per chunk/code/signal-type.
-                    # `detail` (the formatted score string) is mutable payload,
-                    # not part of the key, so a shifted similarity (re-embed,
-                    # re-ingest, dimension migration) corrects the existing row
-                    # in place instead of accumulating a stale duplicate that
-                    # coder_dispatch would then have to pick between. See
-                    # migrations/014_chunk_signals_upsert.sql.
-                    await conn.execute(
-                        """
-                        INSERT INTO chunk_signals
-                          (chunk_id, code_id, tenant_id, signal, score, detail)
-                        VALUES ($1, $2, $3, $4, $5, $6)
-                        ON CONFLICT (chunk_id, code_id, signal, tenant_id)
-                        DO UPDATE SET score = EXCLUDED.score,
-                                      detail = EXCLUDED.detail,
-                                      created_at = EXCLUDED.created_at
-                        """,
-                        chunk_id,
-                        code_id,
-                        tenant_id,
-                        "vector",
-                        similarity,
-                        f"sim={similarity:.4f}",
-                    )
-                    signals_written += 1
-                else:
-                    # This pair no longer qualifies (pool_floor raised, or the
-                    # re-embedded vector drifted below it). A stale "vector"
-                    # row from a prior run must be removed, not left behind,
-                    # so reconcile_coverage's in_any_pool recompute (which
-                    # keys off "does a chunk_signals row currently exist")
-                    # correctly drops this chunk out of the pool rather than
-                    # leaving it permanently flagged as pooled.
-                    if portable:
-                        # Gateway arm: park the row at score NULL through the
-                        # sanctioned upsert; the guard forbids DELETE here.
-                        await conn.execute(
-                            """
-                            INSERT INTO chunk_signals
-                              (chunk_id, code_id, tenant_id, signal, score, detail)
-                            VALUES ($1, $2, $3, $4, $5, $6)
-                            ON CONFLICT (chunk_id, code_id, signal, tenant_id)
-                            DO UPDATE SET score = EXCLUDED.score,
-                                          detail = EXCLUDED.detail,
-                                          created_at = EXCLUDED.created_at
-                            """,
-                            chunk_id,
-                            code_id,
-                            tenant_id,
-                            "vector",
-                            None,
-                            "below_pool_floor",
-                        )
-                        continue
-                    await conn.execute(
-                        """
-                        DELETE FROM chunk_signals
-                        WHERE chunk_id = $1 AND code_id = $2 AND tenant_id = $3 AND signal = $4
-                        """,
-                        chunk_id,
-                        code_id,
-                        tenant_id,
-                        "vector",
-                    )
-
-    return {"chunk_signals_written": signals_written, "status": "success"}
+    return await _run_body(pool, tenant_id, codebook_version_id, scope=tenant_scope)
 
 
 async def reconcile_coverage(
@@ -278,6 +141,8 @@ async def reconcile_coverage(
     Returns:
         Summary with total corpus chunks, pooled, and never-pooled counts
     """
+    from corpus_kb.coding._scope import is_gateway
+
     async with tenant_scope(pool, tenant_id) as conn:
         # Backfill chunk_status for any chunk that was never explicitly
         # seeded into it (the normal case against a real ingested corpus).

@@ -96,6 +96,7 @@ def print_doctor_report(
     info: dict[str, Any],
     research: list[Any] | None = None,
     env_check: Any | None = None,
+    storage: list[Any] | None = None,
 ) -> None:
     """Print read-only diagnostic report."""
     print("\n=== Corpus-KB Doctor ===")
@@ -136,6 +137,10 @@ def print_doctor_report(
         from corpus_kb._setup.doctor_research import print_research_checks
 
         print_research_checks(research)
+    if storage:
+        from corpus_kb._setup.doctor_storage import print_storage_checks
+
+        print_storage_checks(storage)
     print("\nRecommended commands (drop --dry-run to execute setup):")
     print("  1. pip install -e .[dev]")
     print("  2. corpus-kb setup")
@@ -183,7 +188,13 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
             conn_str, config, info.get("extensions"), ollama_ok=info["ollama_ok"]
         )
 
-    print_doctor_report(info, research, env_check=env_check)
+    # Storage-portability section (program §9): the engine line plus the
+    # DuckDB health checks. Read-only; never flips the exit code.
+    from corpus_kb._setup.doctor_storage import storage_checks
+
+    storage = await storage_checks(config, conn_str, bool(info["postgres_ok"]))
+
+    print_doctor_report(info, research, env_check=env_check, storage=storage)
     return 0
 
 
@@ -297,6 +308,8 @@ async def setup_cmd(
     fresh: bool,
     build_local: bool = False,
     skip_image_verify: bool = False,
+    backend: str = "postgres",
+    dsn: str = "",
 ) -> int:
     """One-flow guided setup for the docker-compose stack.
 
@@ -311,7 +324,19 @@ async def setup_cmd(
 
     Completed phases are persisted so interrupted runs can resume with
     ``corpus-kb setup``. Use ``--fresh`` to reset the checkpoint.
+
+    ``backend="duckdb"`` routes the whole run to the no-Docker DuckDB
+    path (setup_duckdb.setup_duckdb_cmd): one file, the SQLite event
+    sidecar, the fts extension, and the config pair. No checkpoint.
     """
+    if backend == "duckdb":
+        from corpus_kb._setup.setup_duckdb import setup_duckdb_cmd
+
+        return await setup_duckdb_cmd(config, dry_run=dry_run, dsn_arg=dsn)
+    if backend != "postgres":
+        print(f"\nERROR: unknown backend {backend!r}. Use postgres or duckdb.")
+        return 2
+
     info = detect_profile()
     profiles = load_installer_profiles(config)
     profile = info["profile"]
@@ -478,6 +503,21 @@ def main(argv: list[str] | None = None) -> int:
         help="One-line docker-compose + database + migrations + models setup",
     )
     setup_parser.add_argument(
+        "--backend",
+        choices=("postgres", "duckdb"),
+        default="postgres",
+        help=(
+            "Storage backend. duckdb = one local file, no Docker: "
+            "creates the database file, migrations, event sidecar, and "
+            "writes the config pair"
+        ),
+    )
+    setup_parser.add_argument(
+        "--dsn",
+        default="",
+        help="DuckDB file path or duckdb:/// DSN (used with --backend duckdb)",
+    )
+    setup_parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print each setup step without executing",
@@ -516,6 +556,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.fresh,
                 args.build_local,
                 args.skip_image_verify,
+                args.backend,
+                args.dsn,
             )
         )
     return 1
