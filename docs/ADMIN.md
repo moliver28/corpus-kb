@@ -302,7 +302,8 @@ To add real multi-tenancy, create tenants in the `tenants` table and route each 
 
 DuckDB is the opt-in local engine (`database.backend: duckdb`). While an
 ingest runs, a few read-time behaviors differ from Postgres. All of them
-settle when the ingest commit lands.
+settle when the ingest commit lands. Engine selection, ops tuning, and
+the full swap guide live in [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 - Chunk vectors and relations write in a second pass. A read during an
   ingest can see live chunks with no vectors yet, or relations that are
@@ -354,11 +355,24 @@ On `postgres` the section prints the engine line and the same size
 suggestion. `CORPUS_KB_DATABASE_BACKEND` overrides `database.backend`
 for the doctor probe, matching the runtime.
 
+### Swap engines with migrate-data
+
+`corpus-kb migrate-data` copies the corpus between Postgres and DuckDB.
+It is CLI-only: the swap runs while the stack is down, because the
+DuckDB file allows one writer. The command copies every table in
+foreign-key order plus the event store, verifies per-table counts, and
+checks a SHA-256 digest. The Postgres role needs `BYPASSRLS` (or
+superuser); row-level security would filter the copy. See
+[STORAGE-BACKENDS.md](STORAGE-BACKENDS.md), "Move a corpus with
+`migrate-data`".
+
 ---
 
 ## Backup and restore
 
-Use standard Postgres tools.
+Back up the engine you run.
+
+Postgres: use standard tools.
 
 ```bash
 # Backup everything (schema + data). Port 5432 = native Postgres;
@@ -372,6 +386,10 @@ pg_restore -d postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_new 
 ```
 
 The event store is included in the backup, so you can replay projections on restore.
+
+DuckDB: stop the server, then copy the `.duckdb` file and the
+`<file>.events.db` sidecar together. A clean shutdown has folded the
+write-ahead log into the file. See [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 ---
 

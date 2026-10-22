@@ -123,7 +123,7 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Install Postgres 17 with pgvector and AGE, create the database, and run migrations (`python src/corpus_kb/_setup/migrate.py`). See [INSTALL.md](INSTALL.md) for platform details. Or use the installer: `corpus-kb setup`.
+Install Postgres 17 with pgvector and AGE, create the database, and run migrations (`python src/corpus_kb/_setup/migrate.py`). See [INSTALL.md](INSTALL.md) for platform details. Or use the installer: `corpus-kb setup`. The DuckDB engine skips Docker entirely; see [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 ---
 

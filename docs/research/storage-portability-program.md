@@ -1,6 +1,8 @@
 # Storage Portability Program — Postgres ⇄ DuckDB
 
-- **Status:** Approved (v3.1, 2026-10-17). Pre-mortem, re-lens review, goal stress test, and repo-delta re-base (master fa02dd7) complete. **Execution started 2026-10-19 (Wave 0 spikes) per the approved execution plan; master re-verified 4cb35eb.**
+- **Status:** EXECUTED (2026-10-20). All eight phases merged and CI-green: #138 (phase 0), #140 (A), #141 (B), #144 (C), #145 (D), #146 (E), #147 (F), and this PR (G, closeout).
+
+  PR ledger: Phase 0 (W0 spikes) #138 · Phase A (config truth, extra, graph catalogue prep, query fusion) #140 · Phase B (gateway, dialect, DuckDB migrations) #141 · Phase C (graph ops, search seam, DuckDB store) #144 · Phase D (core ports) #145 · Phase E (domain ports) #146 · Phase F (setup/doctor UX, full-parity harness, hardening) #147 · Phase G (schema-parity gate, benchmark, docs) this PR.
 - **Goal:** A Corpus-KB end user switches the storage engine between the Postgres ecosystem and the DuckDB ecosystem with a config change and one data-migration command. **V1 scope is full feature parity across all UX areas**: every user-facing operation behaves identically on both engines. The graph model (documents → chunks → entities → relations) stays the canonical data map. Neighbor traversal at 1–3 hops is first-class on every surface, with a clean extension path past 3 hops.
 - **Binding rules:** This program follows the zero-drift program ([harness-zero-drift-program.md](harness-zero-drift-program.md)). No rule is routed around.
 - **Program goals (user-set):** (1) every CI pass green on first attempt, (2) the end state is more elegant and easier to maintain than today, (3) implementation uses the maximum number of effectively parallel subagents.
