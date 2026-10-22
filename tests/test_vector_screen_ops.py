@@ -8,6 +8,7 @@ repeated runs (the program's numpy-exact rule).
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import numpy as np
@@ -199,9 +200,11 @@ async def test_outliers_rank_orders_by_distance(monkeypatch: pytest.MonkeyPatch)
 
 
 async def test_outliers_rank_ties_break_by_chunk_id(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Symmetric square: every point has the same kNN distance at k=1...
-    # except exact geometry: use 3 collinear-equidistant points instead.
-    space = _space(["p2", "p1", "p3"], [[0.0], [1.0], [2.0]])
+    # Collinear nonzero vectors: unit rows are identical, every pairwise
+    # similarity is 1, every kNN distance is 0 — pure tie, so order must
+    # be chunk_id ascending. (A zero vector here would be unrealistic:
+    # the real loader excludes zero vectors before this op runs.)
+    space = _space(["p2", "p1", "p3"], [[0.5], [1.0], [2.0]])
     _patch_screen_vectors(monkeypatch, space)
     out = await vector_screen_tools.outliers_rank(None, None, "t", k=1, limit=10)
     assert [row["chunk_id"] for row in out["outliers"]] == ["p1", "p2", "p3"]
@@ -238,3 +241,29 @@ async def test_outliers_rank_is_byte_deterministic(monkeypatch: pytest.MonkeyPat
     first = await vector_screen_tools.outliers_rank(None, None, "t", k=2)
     second = await vector_screen_tools.outliers_rank(None, None, "t", k=2)
     assert first == second
+
+
+async def test_outliers_rank_k_at_corpus_minus_one_stays_json_finite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # k = total - 1 must never leak the self-exclusion marker into the
+    # envelope (a non-JSON inf on tiny corpora).
+    space = _space(["a", "b"], [[1.0, 0.0], [0.6, 0.8]])
+    _patch_screen_vectors(monkeypatch, space)
+    out = await vector_screen_tools.outliers_rank(None, None, "t", k=1)
+    assert out["status"] == "success"
+    for row in out["outliers"]:
+        assert row["knn_distance"] == pytest.approx(row["knn_distance"], abs=1e-9)
+        assert row["knn_distance"] == json.loads(json.dumps(row["knn_distance"]))
+
+
+async def test_outliers_rank_k_above_corpus_shrinks_and_stays_finite(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space = _space(["a", "b", "c"], [[1.0, 0.0], [0.0, 1.0], [0.9, 0.1]])
+    _patch_screen_vectors(monkeypatch, space)
+    out = await vector_screen_tools.outliers_rank(None, None, "t", k=99)
+    assert out["status"] == "success"
+    assert len(out["outliers"]) == 3
+    for row in out["outliers"]:
+        assert -1.0 <= row["knn_distance"] <= 2.0

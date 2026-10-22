@@ -37,6 +37,13 @@ Route families (the Route order below is the original single-file order):
                                GET  /api/labeling/lfs
   api/routes_classification.py POST /api/classification/build  GET /api/classification
   api/routes_analysis.py       POST /api/analysis/backfill-dates  POST /api/analyze
+  api/routes_analysis_methods.py  POST /api/analysis/{select-method,
+                               keyphrases-extract, lexical-classify,
+                               neighbors-classify, centroids-classify,
+                               clusters-inspect, duplicates-screen,
+                               outliers-rank, nli-classify,
+                               contradictions-screen, sentiment-screen,
+                               active-learn-next}  (AMR program)
   api/routes_v1.py             OpenAI-compatible /v1/* (gate: server.openai_compat)
 """
 
@@ -50,6 +57,20 @@ from corpus_kb.api.research_http import research_routes
 from corpus_kb.api.routes_analysis import (
     analysis_backfill_dates_route,
     analyze_run_route,
+)
+from corpus_kb.api.routes_analysis_methods import (
+    active_learn_next_route,
+    analysis_select_method_route,
+    centroids_classify_route,
+    clusters_inspect_route,
+    contradictions_screen_route,
+    duplicates_screen_route,
+    keyphrases_extract_route,
+    lexical_classify_route,
+    neighbors_classify_route,
+    nli_classify_route,
+    outliers_rank_route,
+    sentiment_screen_route,
 )
 from corpus_kb.api.routes_ask import ask
 from corpus_kb.api.routes_classification import (
@@ -148,6 +169,19 @@ def create_http_app() -> FastAPI:
         Route("/api/classification", classification_list_route, methods=["GET"]),
         Route("/api/analysis/backfill-dates", analysis_backfill_dates_route, methods=["POST"]),
         Route("/api/analyze", analyze_run_route, methods=["POST"]),
+        # Analysis method register program (wave 2): the method ops.
+        Route("/api/analysis/select-method", analysis_select_method_route, methods=["POST"]),
+        Route("/api/analysis/keyphrases-extract", keyphrases_extract_route, methods=["POST"]),
+        Route("/api/analysis/lexical-classify", lexical_classify_route, methods=["POST"]),
+        Route("/api/analysis/neighbors-classify", neighbors_classify_route, methods=["POST"]),
+        Route("/api/analysis/centroids-classify", centroids_classify_route, methods=["POST"]),
+        Route("/api/analysis/clusters-inspect", clusters_inspect_route, methods=["POST"]),
+        Route("/api/analysis/duplicates-screen", duplicates_screen_route, methods=["POST"]),
+        Route("/api/analysis/outliers-rank", outliers_rank_route, methods=["POST"]),
+        Route("/api/analysis/nli-classify", nli_classify_route, methods=["POST"]),
+        Route("/api/analysis/contradictions-screen", contradictions_screen_route, methods=["POST"]),
+        Route("/api/analysis/sentiment-screen", sentiment_screen_route, methods=["POST"]),
+        Route("/api/analysis/active-learn-next", active_learn_next_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),

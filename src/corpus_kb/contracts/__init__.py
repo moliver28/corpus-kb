@@ -9,7 +9,8 @@ Row types live in ``contracts.model``, the shared envelope tuples in
 program's trends op), ``contracts.catalogue_ask`` (the UX Wave 1 ask
 family), and the analysis program families
 ``contracts.catalogue_labeling`` / ``contracts.catalogue_classification``
-/ ``contracts.catalogue_analysis`` (Wave 0 registry skeleton). This
+/ ``contracts.catalogue_analysis`` (the Wave 0 registry skeleton plus
+the analysis method register program's twelve method ops). This
 package assembles the FINAL catalogue: ``OPERATIONS`` is
 the tuple every consumer (the parity gate, ``corpus-kb operations``)
 iterates, so the test and the inventory can never diverge.

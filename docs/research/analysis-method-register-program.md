@@ -400,3 +400,10 @@ ruff + pyright clean.
   adjacent_candidates (Top2Vec/KeyLLM/MMR) remain note rows (KeyLLM
   is covered by the keyphrases llm variant); 01/21 human_led and 08
   not_planned unchanged (recorded verdicts).
+- 2026-10-22 wave 1 SNAPSHOT: committed 7b973ca (57 files, +8291;
+  stackdump artifact removed, *.stackdump gitignored). C verified:
+  221 passed/1 pre-existing skip across owned files; zero-shot default
+  0.7 verified against installed bertopic 0.17.4; venv repaired with
+  python-magic-bin (documented fix). Wave 2 integrator dispatched
+  (hephaestus) with the full wave-1 inventory + amendments; bertopic
+  extra installed into the worktree venv for gate smokes.

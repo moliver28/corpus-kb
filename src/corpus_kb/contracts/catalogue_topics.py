@@ -29,8 +29,18 @@ _TENANT = ParamSpec("tenant_id", default=DEFAULT_TENANT_ID)
 
 # Guaranteed-on-success keys only: the disabled/unavailable reasons and
 # the build's counts/params are outcome-specific and stay off the tuple
-# (the envelopes.py rule).
+# (the envelopes.py rule). The AMR wave added ``unassigned_count`` and
+# the guided/zero-shot ``notes`` to every topics_build outcome (the
+# honest no-op envelopes carry them at zero/empty), so they are
+# guaranteed keys of the build row; topics_list stays on the base tuple.
 TOPICS_ENVELOPE = ("status", "topic_count", "topics")
+TOPICS_BUILD_ENVELOPE = (
+    "status",
+    "topic_count",
+    "topics",
+    "unassigned_count",
+    "notes",
+)
 TOPICS_TRENDS_ENVELOPE = ("status", "topic_count", "trends")
 
 TOPICS_OPERATIONS: tuple[Operation, ...] = (
@@ -43,7 +53,7 @@ TOPICS_OPERATIONS: tuple[Operation, ...] = (
         ),
         handler="corpus_kb.tools.topics_tools:topics_build",
         params=(_TENANT,),
-        envelope_keys=TOPICS_ENVELOPE,
+        envelope_keys=TOPICS_BUILD_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "topics_build"),
             SurfaceSpec(CLI, "topics-build"),

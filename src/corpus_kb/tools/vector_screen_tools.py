@@ -136,7 +136,10 @@ async def outliers_rank(
             sims = units[start : start + _BLOCK] @ units.T
             for row_index, row in enumerate(sims):
                 i = start + row_index
-                row[i] = -np.inf  # a chunk is never its own neighbor
+                # +inf pins the self cell at the top so the k-th largest
+                # never selects it, even at k = total - 1 (an -inf marker
+                # leaks a non-JSON inf into the envelope on tiny corpora).
+                row[i] = np.inf
                 kth_largest = float(
                     np.partition(row, total - 1 - effective_k)[total - 1 - effective_k]
                 )

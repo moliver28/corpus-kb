@@ -231,9 +231,7 @@ async def test_llm_success_parses_the_json_list(monkeypatch: pytest.MonkeyPatch)
 async def test_llm_parse_failure_answers_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     chunks = [_FakeChunk(cid, text) for cid, text in EMBED_TEXTS.items()]
     _patch_chunks(monkeypatch, chunks)
-    monkeypatch.setattr(
-        keyphrase_llm, "_generate", lambda prompt, model, base_url: "no json here"
-    )
+    monkeypatch.setattr(keyphrase_llm, "_generate", lambda prompt, model, base_url: "no json here")
     result = await keyphrase_tools.keyphrases_extract(None, tenant_id=TENANT, variant="llm")
     assert result["status"] == "empty"
     assert "json" in str(result["reason"]).lower()

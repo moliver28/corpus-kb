@@ -89,6 +89,19 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "classification_list",
         "analysis_backfill_dates",
         "analyze_run",
+        # -- analysis method register program (wave 2, tools/*_tools.py) -----
+        "analysis_select_method",
+        "keyphrases_extract",
+        "lexical_classify",
+        "neighbors_classify",
+        "centroids_classify",
+        "clusters_inspect",
+        "duplicates_screen",
+        "outliers_rank",
+        "nli_classify",
+        "contradictions_screen",
+        "sentiment_screen",
+        "active_learn_next",
     }
 )
 

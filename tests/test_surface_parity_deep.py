@@ -44,9 +44,11 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
 
+import numpy as np
 import pytest
 from starlette.testclient import TestClient
 
+import corpus_kb.analysis.nli_contract as nli_contract_module
 import corpus_kb.api.research_http as research_http_module
 import corpus_kb.config as config_module
 import corpus_kb.handlers.command_handler as command_handler_module
@@ -56,6 +58,8 @@ import corpus_kb.handlers.llm_handler as llm_handler_module
 import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
+import corpus_kb.labeling.engine as labeling_engine_module
+import corpus_kb.labeling.writer as labeling_writer_module
 import corpus_kb.projections.research._embed as research_embed_module
 import corpus_kb.rag as rag_module
 import corpus_kb.research.cycle as research_cycle_module
@@ -67,17 +71,27 @@ import corpus_kb.research.inductive_run as inductive_run_module
 import corpus_kb.research.promote_code as promote_code_module
 import corpus_kb.research.report_runner as report_runner_module
 import corpus_kb.research.review_surface as review_surface_module
+import corpus_kb.tools.active_learn_tools as active_learn_tools_module
 import corpus_kb.tools.analysis_tools as analysis_tools_module
+import corpus_kb.tools.centroid_tools as centroid_tools_module
 import corpus_kb.tools.classification_tools as classification_tools_module
+import corpus_kb.tools.cluster_tools as cluster_tools_module
 import corpus_kb.tools.ingest_common as ingest_common_module
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools_module
 import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
+import corpus_kb.tools.keyphrase_tools as keyphrase_tools_module
 import corpus_kb.tools.labeling_tools as labeling_tools_module
+import corpus_kb.tools.lexical_tools as lexical_tools_module
+import corpus_kb.tools.method_select_tools as method_select_tools_module
+import corpus_kb.tools.neighbor_tools as neighbor_tools_module
+import corpus_kb.tools.nli_tools as nli_tools_module
 import corpus_kb.tools.notebook_tools as notebook_tools_module
 import corpus_kb.tools.release_tools as release_tools_module
 import corpus_kb.tools.research_tools as research_tools_module
 import corpus_kb.tools.search_tools as search_tools_module
+import corpus_kb.tools.sentiment_tools as sentiment_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
+import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.contracts import OPERATIONS, SKIPPED_OPERATIONS
@@ -353,6 +367,69 @@ async def _shared_analysis_backfill_dates(ctx: dict[str, Any]) -> dict[str, Any]
 
 async def _shared_analyze_run(ctx: dict[str, Any]) -> dict[str, Any]:
     return await analysis_tools_module.analyze_run(ctx["pool"], config=ctx["config"])
+
+
+# -- AMR program wave 2 (real handlers; the stubbed world answers on each
+#    op's honest guard path, or through the module's own test seams) ------
+
+
+async def _shared_analysis_select_method(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await method_select_tools_module.analysis_select_method(
+        ctx["pool"],
+        config=ctx["config"],
+        task_description="Rank methods for labeling interview themes.",
+        output_family="labels",
+        inputs_available=["embeddings", "labels"],
+        max_complexity_tier="standard",
+    )
+
+
+async def _shared_keyphrases_extract(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await keyphrase_tools_module.keyphrases_extract(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_lexical_classify(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await lexical_tools_module.lexical_classify(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_neighbors_classify(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await neighbor_tools_module.neighbors_classify(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_centroids_classify(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await centroid_tools_module.centroids_classify(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_clusters_inspect(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await cluster_tools_module.clusters_inspect(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_duplicates_screen(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await vector_screen_tools_module.duplicates_screen(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_outliers_rank(ctx: dict[str, Any]) -> dict[str, Any]:
+    # k stays at or below the canned corpus minus two: the canned world is
+    # tiny, and the k-th-nearest scan must never meet the self marker.
+    return await vector_screen_tools_module.outliers_rank(ctx["pool"], config=ctx["config"], k=2)
+
+
+async def _shared_nli_classify(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await nli_tools_module.nli_classify(
+        ctx["pool"], config=ctx["config"], labels=["reports", "meetings"]
+    )
+
+
+async def _shared_contradictions_screen(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await nli_tools_module.contradictions_screen(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_sentiment_screen(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await sentiment_tools_module.sentiment_screen(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_active_learn_next(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await active_learn_tools_module.active_learn_next(ctx["pool"], config=ctx["config"])
 
 
 async def _shared_search(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -672,6 +749,102 @@ LEGS: dict[str, _Leg] = {
         _shared_analyze_run,
         _post("/api/analyze", {}),
         _sock("analyze_run", {}),
+        _mcp({}),
+    ),
+    # -- AMR program wave 2 (method ops over the same stubbed world) ---------
+    "analysis_select_method": _Leg(
+        _shared_analysis_select_method,
+        _post(
+            "/api/analysis/select-method",
+            {
+                "task_description": "Rank methods for labeling interview themes.",
+                "output_family": "labels",
+                "inputs_available": ["embeddings", "labels"],
+                "max_complexity_tier": "standard",
+            },
+        ),
+        _sock(
+            "analysis_select_method",
+            {
+                "task_description": "Rank methods for labeling interview themes.",
+                "output_family": "labels",
+                "inputs_available": ["embeddings", "labels"],
+                "max_complexity_tier": "standard",
+            },
+        ),
+        _mcp(
+            {
+                "task_description": "Rank methods for labeling interview themes.",
+                "output_family": "labels",
+                "inputs_available": ["embeddings", "labels"],
+                "max_complexity_tier": "standard",
+            }
+        ),
+    ),
+    "keyphrases_extract": _Leg(
+        _shared_keyphrases_extract,
+        _post("/api/analysis/keyphrases-extract", {}),
+        _sock("keyphrases_extract", {}),
+        _mcp({}),
+    ),
+    "lexical_classify": _Leg(
+        _shared_lexical_classify,
+        _post("/api/analysis/lexical-classify", {}),
+        _sock("lexical_classify", {}),
+        _mcp({}),
+    ),
+    "neighbors_classify": _Leg(
+        _shared_neighbors_classify,
+        _post("/api/analysis/neighbors-classify", {}),
+        _sock("neighbors_classify", {}),
+        _mcp({}),
+    ),
+    "centroids_classify": _Leg(
+        _shared_centroids_classify,
+        _post("/api/analysis/centroids-classify", {}),
+        _sock("centroids_classify", {}),
+        _mcp({}),
+    ),
+    "clusters_inspect": _Leg(
+        _shared_clusters_inspect,
+        _post("/api/analysis/clusters-inspect", {}),
+        _sock("clusters_inspect", {}),
+        _mcp({}),
+    ),
+    "duplicates_screen": _Leg(
+        _shared_duplicates_screen,
+        _post("/api/analysis/duplicates-screen", {}),
+        _sock("duplicates_screen", {}),
+        _mcp({}),
+    ),
+    "outliers_rank": _Leg(
+        _shared_outliers_rank,
+        _post("/api/analysis/outliers-rank", {"k": 2}),
+        _sock("outliers_rank", {"k": 2}),
+        _mcp({"k": 2}),
+    ),
+    "nli_classify": _Leg(
+        _shared_nli_classify,
+        _post("/api/analysis/nli-classify", {"labels": ["reports", "meetings"]}),
+        _sock("nli_classify", {"labels": ["reports", "meetings"]}),
+        _mcp({"labels": ["reports", "meetings"]}),
+    ),
+    "contradictions_screen": _Leg(
+        _shared_contradictions_screen,
+        _post("/api/analysis/contradictions-screen", {}),
+        _sock("contradictions_screen", {}),
+        _mcp({}),
+    ),
+    "sentiment_screen": _Leg(
+        _shared_sentiment_screen,
+        _post("/api/analysis/sentiment-screen", {}),
+        _sock("sentiment_screen", {}),
+        _mcp({}),
+    ),
+    "active_learn_next": _Leg(
+        _shared_active_learn_next,
+        _post("/api/analysis/active-learn-next", {}),
+        _sock("active_learn_next", {}),
         _mcp({}),
     ),
     "search": _Leg(
@@ -1355,6 +1528,120 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     monkeypatch.setattr(ingest_url_tools_module, "fetch_page", fake_fetch_page)
     monkeypatch.setattr(ingest_url_tools_module, "run_pipeline", fake_run_pipeline)
 
+    # -- AMR method ops: one canned vector space + the family's own test
+    #    seams. The vector math itself (numpy) runs for real; the optional
+    #    extras (sklearn/umap) never load in this world — CI has none. ----
+    from corpus_kb.analysis.vectors import VectorSpace
+    from corpus_kb.labeling.engine import StoredChunk
+
+    def _canned_space() -> VectorSpace:
+        matrix = np.array(
+            [
+                [1.0, 0.0],
+                [0.9, 0.1],
+                [0.0, 1.0],
+                [1.0, 1.0],
+                [0.2, 0.8],
+                [0.8, 0.2],
+            ],
+            dtype=np.float64,
+        )
+        return VectorSpace(
+            ids=[f"chunk-{index}" for index in range(matrix.shape[0])],
+            matrix=matrix,
+            excluded_zero_count=0,
+        )
+
+    async def _canned_vectors(
+        pool: Any, tenant_id: str, config: dict[str, Any] | None
+    ) -> VectorSpace:
+        return _canned_space()
+
+    async def _canned_space_texts(
+        pool: Any, tenant_id: str, config: dict[str, Any] | None
+    ) -> tuple[VectorSpace, dict[str, str]]:
+        space = _canned_space()
+        return space, {chunk_id: f"parity text {chunk_id}" for chunk_id in space.ids}
+
+    async def _canned_labels(
+        pool: Any, tenant_id: str, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        rows = []
+        for index in range(4):
+            rows.append(
+                {
+                    "chunk_id": f"chunk-{index}",
+                    "label": "reports" if index < 2 else "meetings",
+                    "probability": 0.9,
+                }
+            )
+        return rows
+
+    for vector_module in (
+        vector_screen_tools_module,
+        neighbor_tools_module,
+        centroid_tools_module,
+        cluster_tools_module,
+    ):
+        monkeypatch.setattr(vector_module, "_load_vectors", _canned_vectors)
+    monkeypatch.setattr(neighbor_tools_module, "_load_labels", _canned_labels)
+    monkeypatch.setattr(centroid_tools_module, "_load_labels", _canned_labels)
+
+    def _stub_reduce(matrix: np.ndarray) -> tuple[np.ndarray, str]:
+        return matrix[:, :2], "stub"
+
+    def _stub_cluster(reduced: np.ndarray, min_cluster_size: int) -> np.ndarray:
+        return np.array([0, 0, 1, 1, -1, 0])
+
+    monkeypatch.setattr(cluster_tools_module, "_reduce", _stub_reduce)
+    monkeypatch.setattr(cluster_tools_module, "_cluster", _stub_cluster)
+
+    # nli: canned space + canned verdicts keep the transport offline.
+    monkeypatch.setattr(nli_tools_module, "_load_space", _canned_space_texts)
+
+    async def _canned_verdict(prompt: str, model: str, base_url: str) -> str:
+        return "ENTAIL"
+
+    monkeypatch.setattr(nli_contract_module, "judge_verdict", _canned_verdict)
+
+    # keyphrases: canned candidates keep the tfidf arm sklearn-free.
+    def _canned_candidates(_texts: list[str]) -> dict[str, float]:
+        return {"parity phrase": 0.7, "alpha term": 0.4}
+
+    monkeypatch.setattr(keyphrase_tools_module, "_candidate_phrases", _canned_candidates)
+
+    # lexical: skip the [classify] extra and pin the three read seams.
+    async def _tables_present(pool: Any) -> bool:
+        return True
+
+    async def _canned_chunks(
+        pool: Any, tenant_id: str, limit: int | None = None
+    ) -> list[StoredChunk]:
+        return [
+            StoredChunk(chunk_id=f"chunk-{index}", text=f"parity text {index}", metadata={})
+            for index in range(6)
+        ]
+
+    def _stub_fit_and_score(
+        labeled: list[tuple[str, str, str]],
+        classes: list[str],
+        corpus: list[tuple[str, str]],
+    ) -> list[dict[str, Any]]:
+        return [
+            {"chunk_id": chunk_id, "label": classes[index % len(classes)], "probability": 0.9}
+            for index, (chunk_id, _text) in enumerate(corpus)
+        ]
+
+    monkeypatch.setattr(lexical_tools_module, "ensure_sklearn", lambda: None)
+    monkeypatch.setattr(lexical_tools_module, "_fit_and_score", _stub_fit_and_score)
+    monkeypatch.setattr(labeling_writer_module, "labeling_tables_present", _tables_present)
+    monkeypatch.setattr(labeling_writer_module, "read_labels", _canned_labels)
+    monkeypatch.setattr(labeling_engine_module, "read_chunks", _canned_chunks)
+
+    # sentiment + active-learning + the selector answer their honest
+    # default paths on this world (disabled flag, empty store, real
+    # register) — no stubs beyond the shared offline config.
+
     # The pool the research/release/ingest-front-door HTTP routes resolve.
     research_http_module.set_research_pool(pool)
 
@@ -1440,6 +1727,19 @@ def test_catalogue_matches_surface_registry() -> None:
         "classification_list",
         "analysis_backfill_dates",
         "analyze_run",
+        # Analysis method register program (wave 2 method rows).
+        "analysis_select_method",
+        "keyphrases_extract",
+        "lexical_classify",
+        "neighbors_classify",
+        "centroids_classify",
+        "clusters_inspect",
+        "duplicates_screen",
+        "outliers_rank",
+        "nli_classify",
+        "contradictions_screen",
+        "sentiment_screen",
+        "active_learn_next",
         "research_ingest_transcript",
         "notebook_ask",
         "research_ingest",

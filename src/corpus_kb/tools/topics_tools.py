@@ -43,13 +43,19 @@ MIN_BUILD_DOCUMENTS = 2
 
 
 def _disabled() -> dict[str, object]:
-    """The honest no-op envelope for ``topics.enabled: false``."""
+    """The honest no-op envelope for ``topics.enabled: false``.
+
+    The build contract keys ride every outcome: nothing is unassigned
+    because nothing ran, and there are no guided/zero-shot notes.
+    """
     return {
         "status": "disabled",
         "reason": "topics.enabled is false in the loaded config.",
         "remedy": "Set topics.enabled: true (and install the [topics] extra), then retry.",
         "topic_count": 0,
         "topics": [],
+        "unassigned_count": 0,
+        "notes": [],
     }
 
 
@@ -61,6 +67,8 @@ def _unavailable() -> dict[str, object]:
         "remedy": "run corpus-kb setup",
         "topic_count": 0,
         "topics": [],
+        "unassigned_count": 0,
+        "notes": [],
     }
 
 
@@ -72,6 +80,8 @@ def _insufficient(found: int, needed: int) -> dict[str, object]:
         "remedy": "Ingest more documents, or lower topics.min_topic_size.",
         "topic_count": 0,
         "topics": [],
+        "unassigned_count": 0,
+        "notes": [],
     }
 
 

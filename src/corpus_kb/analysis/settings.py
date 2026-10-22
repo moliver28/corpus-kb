@@ -270,17 +270,11 @@ def analysis_settings_error(config: dict[str, object]) -> str | None:
     analysis = _analysis_block(config)
     register_path = analysis.get("method_register_path", DEFAULT_METHOD_REGISTER_PATH)
     if not isinstance(register_path, str):
-        return (
-            "analysis.method_register_path: must be a path string; got "
-            f"{register_path!r}"
-        )
+        return f"analysis.method_register_path: must be a path string; got {register_path!r}"
     sentiment = _child_block(analysis, "sentiment")
     lexicon = sentiment.get("lexicon_path", DEFAULT_SENTIMENT_LEXICON)
     if lexicon is not None and not isinstance(lexicon, str):
-        return (
-            "analysis.sentiment.lexicon_path: must be a path string or null; got "
-            f"{lexicon!r}"
-        )
+        return f"analysis.sentiment.lexicon_path: must be a path string or null; got {lexicon!r}"
     return None
 
 
@@ -327,15 +321,11 @@ def load_analysis_settings(config: dict[str, object]) -> AnalysisSettings:
             ),
         ),
         method_register_path=_as_str(
-            _analysis_block(config).get(
-                "method_register_path", DEFAULT_METHOD_REGISTER_PATH
-            )
+            _analysis_block(config).get("method_register_path", DEFAULT_METHOD_REGISTER_PATH)
         ),
         eecs=EECSSettings(
             enabled=bool(
-                _child_block(_analysis_block(config), "eecs").get(
-                    "enabled", DEFAULT_EECS_ENABLED
-                )
+                _child_block(_analysis_block(config), "eecs").get("enabled", DEFAULT_EECS_ENABLED)
             )
         ),
         sentiment=SentimentSettings(
