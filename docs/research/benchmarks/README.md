@@ -16,6 +16,10 @@ Producing scripts:
 - `scripts/bench_pg_textsearch.py` — pg_textsearch BM25 comparison
   (`--enable-pg-textsearch` gate; PostgreSQL License verified; native FTS
   stays the default) (U23).
+- `scripts/bench_storage.py` — Postgres (HNSW) vs DuckDB (exact scan)
+  storage benchmark at 1k/10k/50k chunks (storage portability program §10
+  gate); results in
+  [benchmarks/storage-backends-2026-10-21.md](storage-backends-2026-10-21.md).
 - `research/retrieval_eval.py` — recall@k / MRR / nDCG@10 / p95 harness over
   human-reviewed labels (U45); reports `insufficient_data` until a frozen
   labeled set exists.
