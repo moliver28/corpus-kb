@@ -18,17 +18,17 @@ the binary entropy of the same probability. The note rides every
 success envelope so a reader never mistakes the proxy for the gap.
 
 Determinism: ties break on ``chunk_id`` ascending; the random strategy
-draws from one ``random.Random(42)`` stream in the stored row order, so
+draws from one numpy generator seeded at 42 in the stored row order, so
 the same stored rows give the same ranked batch on every call.
 """
 
 from __future__ import annotations
 
 import math
-import random
 from typing import cast
 
 import asyncpg
+import numpy as np
 
 from ..classification import store
 from ..errors import ValidationError
@@ -89,7 +89,7 @@ def _entropy_score(probability: float) -> float:
 
 def _scored_rows(rows: list[dict[str, object]], strategy: str) -> list[dict[str, object]]:
     """Attach the strategy score to every stored prediction row."""
-    rng = random.Random(RANDOM_SEED)
+    rng = np.random.default_rng(RANDOM_SEED)
     scored: list[dict[str, object]] = []
     for row in rows:
         probability = min(max(float(cast("float", row["probability"])), 0.0), 1.0)
@@ -98,7 +98,7 @@ def _scored_rows(rows: list[dict[str, object]], strategy: str) -> list[dict[str,
         elif strategy == "entropy":
             score = _entropy_score(probability)
         else:
-            score = round(rng.random(), _ROUND)
+            score = round(float(rng.random()), _ROUND)
         scored.append(
             {
                 "chunk_id": str(row["chunk_id"]),

@@ -134,3 +134,25 @@ adds the classification tables (`label_sets`, `chunk_predictions`).
 Each build replaces its tenant's derived rows. The seed sets and the
 LF registry survive rebuilds. Delete the derived rows and nothing
 breaks; one command rebuilds them.
+
+## Method register and selector
+
+The analysis method register lists 30 NLP analysis methods. Each row
+carries the selection axes from the research source: output family,
+required inputs, calibration effort, autonomy, complexity tier, and
+priority. Each row also carries the guidance axes: robustness and bias
+cautions, workload, usage guidance, required validation, and the
+claims the method permits.
+
+`analysis-select-method` ranks methods for a stated task. It runs no
+model. The rubric is fixed: match the output family, then check the
+inputs you have, then prefer the lower complexity tier, then the lower
+calibration effort, then the recorded priority, then the id. Each
+recommendation names the rank reason, the missing inputs, the required
+validation, and the permitted claims.
+
+The register lives at `config/analysis_methods.yaml`. The generated
+table in `docs/ANALYSIS-METHODS.md` is built from it (`poe gen`). To
+add a method, add a row. To wire an implementation, follow the
+op-addition recipe in the zero-drift program, then extend the row's
+status and op fields.
