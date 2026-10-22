@@ -79,6 +79,12 @@ jobs:
       - name: Complexity ratchet (xenon)
         run: xenon src/ --max-absolute C --max-average B
 
+      # Schema parity across both migration sets (storage portability
+      # program, issue #127, zero-drift rule 10). sqlglot is static-only;
+      # undeclared column/PK/unique/FK/sequence/index drift fails the PR.
+      - name: Schema parity gate (sqlglot)
+        run: python scripts/schema_parity_gate.py
+
   # ─────────────────────────────────────────────────────────────────────
   # Type-check: pyright in basic mode (warnings downgraded, see
   # pyrightconfig.json for which rules are warnings vs errors)

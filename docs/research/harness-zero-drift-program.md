@@ -203,6 +203,7 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | ASD-STE100 prose | Vale GitHub Action with `.vale.ini` + `styles/CorpusSTE`; `SentenceLength` is `level: error` (ratchet closed 2026-10-13: 163 warnings rewritten to 0) and blocks the PR | docs-quality.yml | 5 (error: w6a ratchet) |
 | Grade level + string rules | `pytest -m ste` walks docs, tool docstrings, and error-message tables (Flesch-Kincaid ≤ 9, sentence ≤ 20 words) | ci.yml / test | 5 |
 | Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
+| Schema parity (DuckDB port) | `poe schema-parity` (`scripts/schema_parity_gate.py`, sqlglot 30.x static-only) folds `storage/schema.sql` + forward `migrations/` and `migrations_duckdb/` into final CREATE TABLE/SEQUENCE/INDEX states and diffs columns, PKs, uniques, FKs, sequences, and plain indexes. Undeclared drift fails the PR, and a STALE allowlist row (declared but no longer real) fails too. It does NOT cover dynamic EXECUTE-format DDL (declared in the gate allowlist), RLS/policies (PG-only by design), or runtime index managers (FTS/vss) | ci.yml / lint | G (issue #127) |
 
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate

@@ -227,6 +227,10 @@ dev = [
     # tests/test_plain_language.py (`pytest -m ste`). Dev-only on purpose —
     # no runtime dependency.
     "textstat>=0.7",
+    # Schema-parity gate (storage portability, issue #127 wave G): static
+    # diff of the CREATE TABLE state of both migration sets. Dev-only and
+    # pinned to the version the gate was written against (30.x).
+    "sqlglot>=30.24,<31",
 ]
 
 [build-system]
@@ -460,6 +464,10 @@ help = "All quality gates: lint + lint-imports + format-check + types + dead-cod
 [tool.poe.tasks.gen]
 cmd = "python scripts/gen_harness_pack.py --check"
 help = "Regenerate/diff-check the harness command pack"
+
+[tool.poe.tasks.schema-parity]
+cmd = "python scripts/schema_parity_gate.py"
+help = "sqlglot schema parity across both migration sets (issue #127, rule 10)"
 
 [tool.poe.tasks.license-lock]
 cmd = "uv run --frozen python scripts/generate_license_lock.py"
