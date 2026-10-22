@@ -148,10 +148,22 @@ only if none fits.
 | `clusters_inspect` (`cluster_tools.py`) | `min_cluster_size: int \| None`, `sample_cap: int \| None` | `status, clusters, noise_count, screened_count` |
 | `duplicates_screen` (`vector_screen_tools.py`) | `threshold: float = 0.98`, `limit: int = 100` | `status, pairs, threshold, screened_count` |
 | `outliers_rank` (`vector_screen_tools.py`) | `k: int = 10`, `limit: int = 20` | `status, outliers, screened_count` |
-| `nli_classify` (`nli_tools.py`) | `labels: list[str]`, `chunk_ids: list[str] \| None`, `limit: int = 50` | `status, predictions, model, screened_count` |
-| `contradictions_screen` (`nli_tools.py`) | `candidate_k: int = 5`, `limit: int = 50` | `status, pairs, screened_count` |
+| `nli_classify` (`nli_tools.py`) | `labels: list[str]`, `chunk_ids: list[str] \| None`, `limit: int = 50`, `model: str \| None = None` (amendment 1: None → client default; bare `qwen3` is not a pulled tag on the dev machine, so tests pass `qwen3:4b` against recorded fixtures) | `status, predictions, model, screened_count` |
+| `contradictions_screen` (`nli_tools.py`) | `candidate_k: int = 5`, `limit: int = 50`, `model: str \| None = None` (amendment 1) | `status, pairs, screened_count` |
 | `sentiment_screen` (`sentiment_tools.py`) | `chunk_ids: list[str] \| None`, `limit: int \| None` | `status, predictions, screened_count` |
 | `active_learn_next` (`active_learn_tools.py`) | `strategy: str = "margin"` (margin\|entropy\|random_incumbent), `batch: int = 10` | `status, ranked, strategy, requested_batch` |
+
+Amendments locked by the coordinator after wave 1 (wave 2 must honor):
+(a) `clusters_inspect` also returns a `params` key (reduction used,
+`random_state`, resolved `min_cluster_size` — honesty about which
+reduction ran; PCA fallback is honest when umap is absent). The
+catalogue row must set `http_extra=("params",)` and `socket_extra=
+("params",)` so the parity ALLOWED_EXTRA accepts it. (b) The NLI ops
+take an optional `model` override param (see table). (c) Candidate-pair
+ties under exact cosine equality in `contradictions_screen` are
+deterministic same-machine only (argpartition); full-sort ops
+(duplicates, outliers, kNN, centroids) are byte-deterministic. Same
+scope bar as the topics engine.
 
 Recommendation rows (inside `recommendations`) carry: `id`, `name`,
 `rank`, `rank_reason`, `missing_inputs`, `validation_required`,
@@ -323,6 +335,13 @@ One pass, in this order:
    optional imports in any handler chain.
 9. `poe verify` + `poe gen` + targeted pytest; fix everything red.
 
+## 7b. (Revoked 2026-10-22) — the owner clarified "no deferment" meant
+"ship 100% of scope, punt nothing", NOT more agents. The adversarial
+verifier wave is withdrawn; the 4-agent shape (3 wave-1 + 1
+integrator + coordinator) stands. The coordinator itself runs the
+full-diff review duties inline at gates (envelope honesty, registry
+lockstep, lazy-import coverage, register spot-checks) — no agent.
+
 ## 8. Failure paths baked into the design
 
 1. BERTopic guided vs zero-shot: seed words bias c-TF-IDF
@@ -348,15 +367,36 @@ One pass, in this order:
 
 ## 9. Definition of done
 
+Scope-completeness check: every deliverable in §6/§7 landed — nothing
+moved to a follow-up issue ("no deferment" directive, 2026-10-22).
+Mimosa full security scan (re-run — the W0 advisory scan did not
+complete) returns a real verdict, not the compatibility fallback.
 `poe check` green (verify + gen drift), full
 `python -m pytest tests/ -q` green locally, PR opened, all required
 CI workflows green (poll to completion; a red CI blocks done). Docs:
 `docs/ANALYSIS-METHODS.md` (generated table + selection guide +
 "Adding a method" ladder) and a `docs/ANALYSIS.md` append. STE100 on
-all new user-facing strings; ruff + pyright clean.
+all new user-facing strings (including the register yaml — the
+coordinator runs the STE gate over the yaml prose, not deferred);
+ruff + pyright clean.
 
 ## Execution log
 
 - 2026-10-22 W0: branch + worktree created @ 28d8631; venv built;
   `analysis/settings.py` seam pre-seeded and import-verified; this
   doc committed. Wave 1 dispatched (A, B, C).
+- 2026-10-22 wave 1: A complete + verified (register yaml ×2,
+  method_register.py + method_register_rubric.py split per 250-line
+  rule, 37 tests; 66/66 with settings regression). B complete +
+  verified (vectors.py + nli_contract.py split, 5 ops files, 62
+  passed/1 skipped, 16 recorded NLI fixtures via live qwen3:4b probe);
+  amendments: clusters_inspect `params` key (parity extra), NLI
+  `model` override param (B adding), same-machine tie scope noted.
+  Owner directive "all upgrades, no deferment": after clarification
+  this means SHIP 100% OF SCOPE, punt nothing — the verifier wave was
+  added then REVOKED (§7b); the coordinator runs the review duties
+  inline at gates; mimosa full scan + STE-over-yaml are hard gates in
+  §9. Register scope stays the verified 30 methods;
+  adjacent_candidates (Top2Vec/KeyLLM/MMR) remain note rows (KeyLLM
+  is covered by the keyphrases llm variant); 01/21 human_led and 08
+  not_planned unchanged (recorded verdicts).

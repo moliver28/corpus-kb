@@ -13,6 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+from corpus_kb.ui.advisor_vm import advisor_markdown, method_advisor, split_csv
 from corpus_kb.ui.demo_kb_vm import demo_kb_view
 from corpus_kb.ui.health import check_line, overview_checks
 from corpus_kb.ui.render import (
@@ -125,6 +126,30 @@ def register_pages(ui: UiNamespace) -> None:
 
         ui.button("Ask", on_click=run_ask)
 
+        # The method-advisor panel (the AMR program): one rank call,
+        # strings shaped in advisor_vm, claims rendered verbatim.
+        ui.label("Method advisor")
+        ui.markdown("Rank the analysis methods for one task. Blank boxes are skipped.")
+        task_box = ui.input("Analysis task")
+        family_box = ui.input("Output family")
+        inputs_box = ui.input("Inputs you have")
+        tier_box = ui.input("Hardest tier")
+        advisor_results = ui.column()
+
+        async def run_advisor() -> None:
+            view = await method_advisor(
+                task_box.value,
+                ctx.config,
+                output_family=_optional(family_box.value),
+                inputs_available=split_csv(inputs_box.value),
+                max_complexity_tier=_optional(tier_box.value),
+            )
+            advisor_results.clear()
+            with advisor_results:
+                ui.markdown(advisor_markdown(view))
+
+        ui.button("Rank methods", on_click=run_advisor)
+
     async def page_library() -> None:
         """Documents and discovered topics, read through the standard tools."""
         ctx = get_ui_context()
@@ -148,6 +173,12 @@ def register_pages(ui: UiNamespace) -> None:
     ui.page("/add")(page_add)
     ui.page("/ask")(page_ask)
     ui.page("/library")(page_library)
+
+
+def _optional(raw: str) -> str | None:
+    """A box value that means "no filter" when blank."""
+    value = raw.strip()
+    return value or None
 
 
 async def ingest_upload(upload: UploadEvent, ctx: UiContext) -> dict[str, object]:

@@ -63,6 +63,15 @@ OUTLIER_TOPIC = -1
 # Keywords recorded per topic (the head of the c-TF-IDF ranking).
 KEYWORDS_PER_TOPIC = 10
 
+# The guided/zero-shot honesty notes (the researched failure path): seed
+# words bias the c-TF-IDF representation, they never force discovery;
+# docs below the zero-shot floor fall back to clustering.
+GUIDED_NOTE = "Seed words bias the c-TF-IDF representation. They never force topic discovery."
+ZEROSHOT_NOTE = (
+    "Docs below zeroshot_min_similarity match no listed topic. Those docs fall back "
+    "to clustering; the unassigned docs carry topic -1."
+)
+
 # Keyset-paginated read (WP-0): one bounded batch per fetch, ordered by
 # the chunk-id text so the pagination cursor cannot loop or skip. The
 # documents join carries the date provenance the temporal build needs.
@@ -129,6 +138,9 @@ class BertopicModule(Protocol):
         umap_model: object,
         calculate_probabilities: bool,
         verbose: bool,
+        seed_topic_list: list[list[str]] | None = None,
+        zeroshot_topic_list: list[str] | None = None,
+        zeroshot_min_similarity: float | None = None,
     ) -> BERTopicModel: ...
 
 
@@ -263,14 +275,21 @@ def build_topics(
     chunks: list[StoredChunk],
     settings: TopicsSettings,
     max_embeddings: int | None = None,
+    seed_terms: list[str] | None = None,
+    topic_descriptions: list[str] | None = None,
 ) -> EngineResult:
     """Fit BERTopic over the stored vectors; deterministic, params recorded.
 
     Raises ``TopicDependencyError`` when the ``[topics]`` extra is absent.
     Fewer documents than the resolved ``min_topic_size`` is an honest
     empty result (the caller owns the status), never a crash.
+    ``seed_terms`` guides (never forces) the representation;
+    ``topic_descriptions`` arms zero-shot matching against the
+    ``zeroshot_min_similarity`` floor.
     """
-    result, _model = build_topics_with_model(chunks, settings, max_embeddings)
+    result, _model = build_topics_with_model(
+        chunks, settings, max_embeddings, seed_terms, topic_descriptions
+    )
     return result
 
 
@@ -278,6 +297,8 @@ def build_topics_with_model(
     chunks: list[StoredChunk],
     settings: TopicsSettings,
     max_embeddings: int | None = None,
+    seed_terms: list[str] | None = None,
+    topic_descriptions: list[str] | None = None,
 ) -> tuple[EngineResult, BERTopicModel]:
     """Fit once and return the result AND the fitted model (the WP-4 seam).
 
@@ -293,6 +314,8 @@ def build_topics_with_model(
     sample_cap = max_embeddings if max_embeddings is not None else MAX_EMBEDDINGS_PER_BUILD
     sample_index = _sample_index(len(chunks), sample_cap)
     rest_index = [i for i in range(len(chunks)) if i not in set(sample_index)]
+    guided = [str(term) for term in seed_terms] if seed_terms else []
+    zeroshot = [str(text) for text in topic_descriptions] if topic_descriptions else []
     params: dict[str, object] = {
         "method": settings.method,
         "min_topic_size_requested": settings.min_topic_size,
@@ -306,12 +329,26 @@ def build_topics_with_model(
         "fit_seed": FIT_SAMPLE_SEED,
         "assignment_mode": "fit+transform" if rest_index else "fit",
         "total_chunks": len(chunks),
+        "guided": bool(guided),
+        "zeroshot": bool(zeroshot),
     }
+    if guided:
+        params["seed_terms_count"] = len(guided)
+        params["guided_note"] = GUIDED_NOTE
+    if zeroshot:
+        params["zeroshot_topic_count"] = len(zeroshot)
+        params["zeroshot_min_similarity"] = settings.zeroshot_min_similarity
+        params["zeroshot_note"] = ZEROSHOT_NOTE
+    # Absent guided/zero-shot params pass the library defaults (None) —
+    # byte-identical behavior to the pre-AMR build path.
     model = bertopic_module.BERTopic(
         min_topic_size=min_topic_size,
         umap_model=_make_umap(umap_module),
         calculate_probabilities=False,
         verbose=False,
+        seed_topic_list=[guided] if guided else None,
+        zeroshot_topic_list=zeroshot if zeroshot else None,
+        zeroshot_min_similarity=settings.zeroshot_min_similarity if zeroshot else None,
     )
     sample = [chunks[i] for i in sample_index]
     fit_docs = [chunk.text for chunk in sample]
