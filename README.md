@@ -2,7 +2,7 @@
 
 **A local NLP engine for files, transcripts, and code. Ingest, search, ask, extract, and code. No cloud.**
 
-Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coders get a CLI with a guided quickstart. Expert researchers get a qualitative-coding pipeline, an OpenAI-compatible API, and MCP tools for coding agents. Everything runs on your machine. Postgres stores the data. Ollama or PostgresML generates embeddings. One server exposes the catalogue over MCP stdio, HTTP REST, and a JSON-RPC socket. An OpenAI-compatible adapter serves `/v1` chat and embeddings. See [Editor integration](#editor-integration).
+Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coders get a CLI with a guided quickstart. Expert researchers get a qualitative-coding pipeline, an OpenAI-compatible API, and MCP tools for coding agents. Everything runs on your machine. Postgres stores the data by default; DuckDB is the single-file local engine ([Storage backends](docs/STORAGE-BACKENDS.md)). Ollama or PostgresML generates embeddings. One server exposes the catalogue over MCP stdio, HTTP REST, and a JSON-RPC socket. An OpenAI-compatible adapter serves `/v1` chat and embeddings. See [Editor integration](#editor-integration).
 
 ---
 
@@ -94,6 +94,7 @@ graph TB
     Domain --> ES[Event Store<br/>append-only]
     ES --> Projections[Async Projections]
     Projections --> PG[PostgreSQL 17]
+    Projections --> DUCK[DuckDB<br/>local single-user engine]
     PG --> VEC[pgvector<br/>vector search]
     PG --> FTS[Postgres FTS<br/>to_tsvector]
     PG --> AGE[Apache AGE<br/>Cypher graphs]
@@ -103,7 +104,7 @@ graph TB
 
 1. **Ingest** a file, directory, or raw text.
 2. The pipeline partitions it into chunks and embeds each chunk through Ollama or PostgresML. It extracts entities and relations, then stores the result.
-3. Commands append events to the event store; async projections write the read models into Postgres.
+3. Commands append events to the event store; async projections write the read models into Postgres or DuckDB.
 4. Your editor queries the read models through search, SQL, or graph traversal.
 
 ---
@@ -145,6 +146,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Browser UI](docs/UI.md) | The four pages: Add, Ask, Library, Overview |
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
+| [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, ops tuning |
 | [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
 | [API](docs/API.md) | HTTP routes, the `/v1` OpenAI adapter, curl examples, MCP tool reference |
 | [Observability](docs/OBSERVABILITY.md) | OpenTelemetry spans, exporters, zero-cost when off |

@@ -418,6 +418,10 @@ curl "http://localhost:8010/api/metadata?key=priority&doc_id=..."
 
 ## Admin
 
+Engine selection and the engine swap have no HTTP route. Set
+`database.backend` in `config.yaml`, or run `corpus-kb migrate-data`
+while the stack is down. See [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
+
 ### GET /api/versions
 
 List event store versions.

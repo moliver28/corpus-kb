@@ -1,6 +1,6 @@
 # Install Corpus-KB
 
-This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **PostgreSQL 17** with **pgvector** and **Apache AGE**, **Python 3.11 or newer**, and **Ollama** for local embeddings.
+This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **PostgreSQL 17** with **pgvector** and **Apache AGE**, **Python 3.11 or newer**, and **Ollama** for local embeddings. This page installs the Postgres engine. The no-Docker DuckDB path is shorter; see [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 All commands assume you are at the repo root.
 

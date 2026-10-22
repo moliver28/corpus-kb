@@ -13,8 +13,10 @@ embedding service (Ollama) is unavailable, the pipeline stores zero-vector
 fallbacks and flags the affected chunks as **degraded**. It reports the
 failure in structured error output.
 
-The storage backend is the **unified PostgreSQL 17 ecosystem** (pgvector +
-Apache AGE, with PostgresML optional). Embeddings come from the configured
+The default storage backend is the **PostgreSQL 17 ecosystem** (pgvector +
+Apache AGE, with PostgresML optional). A single-user **DuckDB file engine**
+is the no-Docker alternative ([STORAGE-BACKENDS.md](STORAGE-BACKENDS.md)).
+Embeddings come from the configured
 provider: **Ollama by default**, or **PostgresML** for in-database
 embeddings. The local LLM (question answering, judging, blurbs) runs on
 Ollama. All heavy operations can also run inside Postgres when the `pgml`
