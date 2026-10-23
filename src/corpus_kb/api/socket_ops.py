@@ -316,6 +316,38 @@ async def _statements_timeline(params: dict[str, Any], tenant_id: str) -> dict[s
     )
 
 
+async def _conflicts_scan(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.conflicts_tools import conflicts_scan
+
+    return await conflicts_scan(await research_pool(), tenant_id=tenant_id)
+
+
+async def _conflicts_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.conflicts_tools import conflicts_list
+
+    return await conflicts_list(
+        await research_pool(),
+        tenant_id=tenant_id,
+        verdict=_opt_str(params, "verdict"),
+        limit=int(params.get("limit") or 50),
+    )
+
+
+async def _conflicts_resolve(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.conflicts_tools import conflicts_resolve
+
+    return await conflicts_resolve(
+        await research_pool(),
+        tenant_id=tenant_id,
+        conflict_id=str(params.get("conflict_id", "")),
+        resolved_verdict=str(params.get("resolved_verdict", "")),
+        resolved_by=str(params.get("resolved_by", "")),
+    )
+
+
 async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.method_select_tools import analysis_select_method
@@ -655,6 +687,10 @@ _CORE_ARMS: dict[str, Arm] = {
     # Living Corpus W2: the statement-atom read ops.
     "statements_list": _statements_list,
     "statements_timeline": _statements_timeline,
+    # Living Corpus W3: the conflict ops.
+    "conflicts_scan": _conflicts_scan,
+    "conflicts_list": _conflicts_list,
+    "conflicts_resolve": _conflicts_resolve,
     "search": _search,
     "ask": _ask,
     "query": _query,

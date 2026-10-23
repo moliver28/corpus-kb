@@ -211,6 +211,19 @@ and `attribution`, plus a built-in `statement` fallback. A new claim
 shape is a new YAML file — no code. The read ops (`statements-list`,
 `statements-timeline`) are on all four surfaces.
 
+## Conflicts
+
+The cascade (`conflicts-scan`) pairs live statements on shared anchors
+and runs three gates, cheapest first. Gate A is temporal: statements
+whose truth windows do not overlap are a revision, not a clash. Gate B
+checks structured swaps: opposite stance on the same anchor, or the
+same template with a changed object. Gate C is one zero-shot NLI
+judgment over the locked prompt; a judge outage degrades to
+`uncertain`. Every verdict writes a flag row (migration 032) — nothing
+is ever deleted. `conflicts-resolve` finalizes a flag; a confirmed
+revision supersedes the older statement through
+`statements.superseded_by`.
+
 Every relation stores provenance metadata: the source chunk, confidence,
 extractor id, model version, and prompt version. The unique key includes
 `chunk_id` so the same triple asserted in two different chunks keeps both

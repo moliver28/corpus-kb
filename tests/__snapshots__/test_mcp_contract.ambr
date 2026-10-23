@@ -64,6 +64,28 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.conflicts_tools': dict({
+      'conflicts_list': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'verdict': 'KEYWORD_ONLY',
+      }),
+      'conflicts_resolve': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'conflict_id': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'resolved_by': 'KEYWORD_ONLY',
+        'resolved_verdict': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'conflicts_scan': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.cycle_tools': dict({
       'research_cycle': dict({
         'approve': 'POSITIONAL_OR_KEYWORD',
