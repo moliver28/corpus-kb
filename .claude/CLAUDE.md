@@ -296,4 +296,16 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-classification` | `corpus-kb classification-list` | `classification_list` | List the built chunk predictions, bounded by limit. |
 | `corpus-analysis` | `corpus-kb analysis-backfill-dates` | `analysis_backfill_dates` | Backfill documents.document_date from chunk metadata (idempotent). |
 | `corpus-analysis` | `corpus-kb analyze-run` | `analyze_run` | Run the composed corpus analysis and write the report. |
+| `corpus-analysis-select-method` | `corpus-kb analysis-select-method` | `analysis_select_method` | Rank the register's methods for a stated task (pure registry logic). |
+| `corpus-keyphrases-extract` | `corpus-kb keyphrases-extract` | `keyphrases_extract` | Rank keyphrase candidates (tfidf, embedding, or llm variant). |
+| `corpus-lexical-classify` | `corpus-kb lexical-classify` | `lexical_classify` | TF-IDF + logistic labels trained on the stored weak labels. |
+| `corpus-neighbors-classify` | `corpus-kb neighbors-classify` | `neighbors_classify` | kNN vote labels over the labeled chunks, neighbors listed. |
+| `corpus-centroids-classify` | `corpus-kb centroids-classify` | `centroids_classify` | Nearest-centroid labels with recorded abstentions. |
+| `corpus-clusters-inspect` | `corpus-kb clusters-inspect` | `clusters_inspect` | Cluster structure report: sizes, noise, exemplar chunk ids. |
+| `corpus-duplicates-screen` | `corpus-kb duplicates-screen` | `duplicates_screen` | Near-duplicate candidate pairs at a cosine threshold. |
+| `corpus-outliers-rank` | `corpus-kb outliers-rank` | `outliers_rank` | Chunks ranked by distance to the k-th nearest neighbor. |
+| `corpus-nli-classify` | `corpus-kb nli-classify` | `nli_classify` | Zero-shot labels via entailment judgments per hypothesis. |
+| `corpus-contradictions-screen` | `corpus-kb contradictions-screen` | `contradictions_screen` | Candidate pairs the NLI model marks CONTRADICT, for human review. |
+| `corpus-sentiment-screen` | `corpus-kb sentiment-screen` | `sentiment_screen` | Preset lexicon sentiment screen (vote aggregation, honest note). |
+| `corpus-active-learn-next` | `corpus-kb active-learn-next` | `active_learn_next` | Rank stored predictions for the next human-labeling batch. |
 <!-- corpus-harness:research-commands:end -->

@@ -272,6 +272,91 @@ SURFACES: tuple[Surface, ...] = (
         description="Run the composed corpus analysis and write the report.",
         http_route="/api/analyze",
     ),
+    # -- analysis method register program (wave 2): full cli+mcp+http --------
+    Surface(
+        name="analysis-select-method",
+        cli_path="analysis-select-method",
+        mcp_tool="analysis_select_method",
+        description="Rank the register's methods for a stated task (pure registry logic).",
+        http_route="/api/analysis/select-method",
+    ),
+    Surface(
+        name="keyphrases-extract",
+        cli_path="keyphrases-extract",
+        mcp_tool="keyphrases_extract",
+        description="Rank keyphrase candidates (tfidf, embedding, or llm variant).",
+        http_route="/api/analysis/keyphrases-extract",
+    ),
+    Surface(
+        name="lexical-classify",
+        cli_path="lexical-classify",
+        mcp_tool="lexical_classify",
+        description="TF-IDF + logistic labels trained on the stored weak labels.",
+        http_route="/api/analysis/lexical-classify",
+    ),
+    Surface(
+        name="neighbors-classify",
+        cli_path="neighbors-classify",
+        mcp_tool="neighbors_classify",
+        description="kNN vote labels over the labeled chunks, neighbors listed.",
+        http_route="/api/analysis/neighbors-classify",
+    ),
+    Surface(
+        name="centroids-classify",
+        cli_path="centroids-classify",
+        mcp_tool="centroids_classify",
+        description="Nearest-centroid labels with recorded abstentions.",
+        http_route="/api/analysis/centroids-classify",
+    ),
+    Surface(
+        name="clusters-inspect",
+        cli_path="clusters-inspect",
+        mcp_tool="clusters_inspect",
+        description="Cluster structure report: sizes, noise, exemplar chunk ids.",
+        http_route="/api/analysis/clusters-inspect",
+    ),
+    Surface(
+        name="duplicates-screen",
+        cli_path="duplicates-screen",
+        mcp_tool="duplicates_screen",
+        description="Near-duplicate candidate pairs at a cosine threshold.",
+        http_route="/api/analysis/duplicates-screen",
+    ),
+    Surface(
+        name="outliers-rank",
+        cli_path="outliers-rank",
+        mcp_tool="outliers_rank",
+        description="Chunks ranked by distance to the k-th nearest neighbor.",
+        http_route="/api/analysis/outliers-rank",
+    ),
+    Surface(
+        name="nli-classify",
+        cli_path="nli-classify",
+        mcp_tool="nli_classify",
+        description="Zero-shot labels via entailment judgments per hypothesis.",
+        http_route="/api/analysis/nli-classify",
+    ),
+    Surface(
+        name="contradictions-screen",
+        cli_path="contradictions-screen",
+        mcp_tool="contradictions_screen",
+        description="Candidate pairs the NLI model marks CONTRADICT, for human review.",
+        http_route="/api/analysis/contradictions-screen",
+    ),
+    Surface(
+        name="sentiment-screen",
+        cli_path="sentiment-screen",
+        mcp_tool="sentiment_screen",
+        description="Preset lexicon sentiment screen (vote aggregation, honest note).",
+        http_route="/api/analysis/sentiment-screen",
+    ),
+    Surface(
+        name="active-learn-next",
+        cli_path="active-learn-next",
+        mcp_tool="active_learn_next",
+        description="Rank stored predictions for the next human-labeling batch.",
+        http_route="/api/analysis/active-learn-next",
+    ),
     # -- core search op (the last surface it was missing): full cli+mcp+http --
     Surface(
         name="search",
@@ -631,6 +716,211 @@ dormant until you enable the analysis flags it needs.
 - All flags: `corpus-kb analyze-run --help`
 """
 
+# -- AMR program (wave 2): the register-backed method cards -----------------
+# Each card teaches the axis walk (the register's selection rules): state
+# the question, match the output family, check the inputs, budget
+# calibration and autonomy, read the cautions, run, then attach the
+# validation and the permitted claims. Axis facts come from
+# config/analysis_methods.yaml (the register rows for the op), verbatim
+# in meaning; the docs table is docs/ANALYSIS-METHODS.md.
+
+_AMR_WALK = """## The axis walk (before you run)
+
+1. State the research question in one sentence.
+2. Match the output family this op serves: {family}.
+3. Check the inputs it needs: {inputs}.
+4. Budget the calibration effort ({calibration}) and autonomy ({autonomy}).
+5. Read the cautions. Run. Then do the validation step.
+
+"""
+
+_AMR_FOOT = """- Cautions: {cautions}
+- Validation: {validation}
+- Claim only: {claims}
+- A guard path (disabled, empty, unavailable) returns a reason and a
+  remedy, never a guessed result. Exit codes: 0 answered, 1 failed,
+  3 unavailable.
+- All flags: `corpus-kb {cli} --help`
+- Method rows: docs/ANALYSIS-METHODS.md (the register is the source).
+"""
+
+
+def _amr_body(
+    name: str,
+    family: str,
+    inputs: str,
+    calibration: str,
+    autonomy: str,
+    run: str,
+    cautions: str,
+    validation: str,
+    claims: str,
+) -> str:
+    """One method card: axis walk + run + cautions (all plain English)."""
+    return (
+        f"# corpus-{name} — analysis method card\n\n"
+        + _AMR_WALK.format(family=family, inputs=inputs, calibration=calibration, autonomy=autonomy)
+        + f"## Run\n\n  ```\n  corpus-kb {run}\n  ```\n\n"
+        + _AMR_FOOT.format(cautions=cautions, validation=validation, claims=claims, cli=name)
+    )
+
+
+_SELECT_BODY = _amr_body(
+    "analysis-select-method",
+    family="any (you name it)",
+    inputs="none (the selector reads the register, not the corpus)",
+    calibration="none",
+    autonomy="automated_with_audit",
+    run='analysis-select-method "<task>" [--output-family <family>] '
+    "[--input <kind>] [--max-complexity-tier <tier>]",
+    cautions="the rank is registry order, not evidence quality. The rubric "
+    "cannot see your question's meaning.",
+    validation="read the top rows' validation_required and permitted_claims before you pick one.",
+    claims="a ranked shortlist with the register version recorded.",
+)
+_KEYPHRASES_BODY = _amr_body(
+    "keyphrases-extract",
+    family="themes (methods 05, 06, 07)",
+    inputs="raw_text (the embedding variant also uses embeddings; the llm variant uses an LLM)",
+    calibration="low to moderate",
+    autonomy="automated_with_audit",
+    run="keyphrases-extract [--variant tfidf|embedding|llm] [--limit N]",
+    cautions="rare wording can rank high without research importance. The "
+    "tfidf arm is sensitive to boilerplate; the embedding arm favors "
+    "model training language.",
+    validation="review tokenization, common words, phrase lengths, and the "
+    "top-ranked terms by hand.",
+    claims="descriptions of distinctive wording in the corpus.",
+)
+_LEXICAL_BODY = _amr_body(
+    "lexical-classify",
+    family="labels (method 15)",
+    inputs="raw_text, labels (a labeling build)",
+    calibration="moderate",
+    autonomy="automated_with_audit",
+    run="lexical-classify [--chunk-id <id> ...]",
+    cautions="shortcut words can carry the fit. Labels can attach to names, "
+    "groups, or formatting instead of the concept.",
+    validation="treat this as the baseline. Inspect errors. Tune features "
+    "without the final test set.",
+    claims="baseline performance on independent test records.",
+)
+_NEIGHBORS_BODY = _amr_body(
+    "neighbors-classify",
+    family="labels (method 14)",
+    inputs="embeddings, labels",
+    calibration="low",
+    autonomy="automated_with_audit",
+    run="neighbors-classify [--k N] [--chunk-id <id> ...]",
+    cautions="local label errors travel. Overrepresented examples can dominate nearby votes.",
+    validation="review example coverage. Tune the neighbor count and the rejection rules.",
+    claims="category assignments backed by the listed neighbor examples.",
+)
+_CENTROIDS_BODY = _amr_body(
+    "centroids-classify",
+    family="labels (method 13)",
+    inputs="embeddings, labels",
+    calibration="low",
+    autonomy="automated_with_audit",
+    run="centroids-classify [--abstain-margin F] [--chunk-id <id> ...]",
+    cautions="one mean can hide subgroups inside a category. Example "
+    "selection defines the prototype.",
+    validation="inspect the examples. Measure precision, recall, and "
+    "abstention. Tune the margin on separate data.",
+    claims="category assignments with similarities and recorded abstentions.",
+)
+_CLUSTERS_BODY = _amr_body(
+    "clusters-inspect",
+    family="structures (method 12)",
+    inputs="raw_text, embeddings",
+    calibration="moderate",
+    autonomy="human_in_loop",
+    run="clusters-inspect [--min-cluster-size N] [--sample-cap N]",
+    cautions="a stable-looking group can reflect topic, style, speaker, or "
+    "document format. The params record names the reduction that ran.",
+    validation="compare representations and grouping settings. Review boundary cases by hand.",
+    claims="exploratory groups with examples and distances.",
+)
+_DUPLICATES_BODY = _amr_body(
+    "duplicates-screen",
+    family="errors (method 29)",
+    inputs="raw_text, embeddings",
+    calibration="moderate",
+    autonomy="automated_with_audit",
+    run="duplicates-screen [--threshold F] [--limit N]",
+    cautions="similar meaning does not make two chunks interchangeable "
+    "evidence. Merging can erase independent speakers or minority wording.",
+    validation="label candidate pairs by hand. Measure pairwise precision "
+    "and recall at the action threshold.",
+    claims="duplicate candidates at a recorded threshold, for human approval.",
+)
+_OUTLIERS_BODY = _amr_body(
+    "outliers-rank",
+    family="errors (method 30)",
+    inputs="raw_text, embeddings",
+    calibration="moderate",
+    autonomy="human_in_loop",
+    run="outliers-rank [--k N] [--limit N]",
+    cautions="results depend on the representation and the definition of "
+    "normality. Minority language can look anomalous.",
+    validation="define the reference group. Inspect the flagged records. "
+    "Compare detectors when the stakes are high.",
+    claims="a ranked review list with the detector and reference recorded.",
+)
+_NLI_BODY = _amr_body(
+    "nli-classify",
+    family="labels (method 18)",
+    inputs="raw_text, llm (an Ollama NLI model)",
+    calibration="moderate",
+    autonomy="automated_with_audit",
+    run="nli-classify --label <label> ... [--chunk-id <id> ...] [--model <tag>]",
+    cautions="wording, lexical overlap, and syntax can swing the support "
+    "judgment. Label descriptions shape the results.",
+    validation="test paraphrased labels, negation, and overlapping labels. "
+    "Tune thresholds on labeled data.",
+    claims="pilot label proposals with support scores.",
+)
+_CONTRADICTIONS_BODY = _amr_body(
+    "contradictions-screen",
+    family="errors (method 28)",
+    inputs="raw_text, llm, timestamps",
+    calibration="moderate",
+    autonomy="human_in_loop",
+    run="contradictions-screen [--candidate-k N] [--limit N] [--model <tag>]",
+    cautions="different times or conditions can make an apparent "
+    "contradiction compatible. Candidate selection favors disagreement.",
+    validation="test negation, entity identity, time, and conditions. "
+    "Adjudicate the pairs by hand.",
+    claims="candidate contradictions for human adjudication.",
+)
+_SENTIMENT_BODY = _amr_body(
+    "sentiment-screen",
+    family="scores (method 26) and labels (method 27)",
+    inputs="raw_text (method 27 also names labels)",
+    calibration="moderate to high",
+    autonomy="automated_with_audit to human_in_loop",
+    run="sentiment-screen [--chunk-id <id> ...] [--limit N]",
+    cautions="this is a preset lexicon vote, not a trained sentiment "
+    "model. Expression style can be mistaken for an emotional state. "
+    "Ties route to review.",
+    validation="define the construct. Label and test each category, "
+    "including neutral and uncertain cases. Check a sample by hand.",
+    claims="screening flags for evaluative language under the defined construct.",
+)
+_ACTIVE_LEARN_BODY = _amr_body(
+    "active-learn-next",
+    family="recommendations (method 20)",
+    inputs="labels, predictions",
+    calibration="high",
+    autonomy="human_in_loop",
+    run="active-learn-next [--strategy margin|entropy|random_incumbent] [--batch N]",
+    cautions="uncertainty sampling can chase difficult or noisy cases "
+    "instead of representative ones. The random_incumbent strategy "
+    "guards against that bias.",
+    validation="assess the improvement per annotation effort. Compare against random sampling.",
+    claims="annotation-order recommendations with the strategy recorded.",
+)
+
 WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-ingest",
@@ -742,6 +1032,103 @@ WRAPPERS: tuple[Wrapper, ...] = (
         argument_hint="[--output <path>]",
         body=_ANALYSIS_BODY,
         covers=("analysis-backfill-dates", "analyze-run"),
+    ),
+    # -- AMR program (wave 2): one card per register-backed method -----------
+    Wrapper(
+        name="corpus-analysis-select-method",
+        title="corpus-analysis-select-method",
+        description="Rank the register's methods for a stated task (the axis walk)",
+        argument_hint="<task> [--output-family <fam>] [--input <kind>] [--max-tier <tier>]",
+        body=_SELECT_BODY,
+        covers=("analysis-select-method",),
+    ),
+    Wrapper(
+        name="corpus-keyphrases-extract",
+        title="corpus-keyphrases-extract",
+        description="Keyphrase candidates ranked three ways (tfidf, embedding, llm)",
+        argument_hint="[--variant tfidf|embedding|llm] [--limit N]",
+        body=_KEYPHRASES_BODY,
+        covers=("keyphrases-extract",),
+    ),
+    Wrapper(
+        name="corpus-lexical-classify",
+        title="corpus-lexical-classify",
+        description="TF-IDF + logistic labels trained on the stored weak labels",
+        argument_hint="[--chunk-id <id> ...]",
+        body=_LEXICAL_BODY,
+        covers=("lexical-classify",),
+    ),
+    Wrapper(
+        name="corpus-neighbors-classify",
+        title="corpus-neighbors-classify",
+        description="kNN vote labels with the neighbor evidence listed",
+        argument_hint="[--k N] [--chunk-id <id> ...]",
+        body=_NEIGHBORS_BODY,
+        covers=("neighbors-classify",),
+    ),
+    Wrapper(
+        name="corpus-centroids-classify",
+        title="corpus-centroids-classify",
+        description="Nearest-centroid labels with recorded abstentions",
+        argument_hint="[--abstain-margin F] [--chunk-id <id> ...]",
+        body=_CENTROIDS_BODY,
+        covers=("centroids-classify",),
+    ),
+    Wrapper(
+        name="corpus-clusters-inspect",
+        title="corpus-clusters-inspect",
+        description="Cluster structure report: sizes, noise, exemplars, reduction",
+        argument_hint="[--min-cluster-size N] [--sample-cap N]",
+        body=_CLUSTERS_BODY,
+        covers=("clusters-inspect",),
+    ),
+    Wrapper(
+        name="corpus-duplicates-screen",
+        title="corpus-duplicates-screen",
+        description="Near-duplicate candidate pairs at a cosine threshold",
+        argument_hint="[--threshold F] [--limit N]",
+        body=_DUPLICATES_BODY,
+        covers=("duplicates-screen",),
+    ),
+    Wrapper(
+        name="corpus-outliers-rank",
+        title="corpus-outliers-rank",
+        description="Chunks ranked by k-th-nearest-neighbor distance",
+        argument_hint="[--k N] [--limit N]",
+        body=_OUTLIERS_BODY,
+        covers=("outliers-rank",),
+    ),
+    Wrapper(
+        name="corpus-nli-classify",
+        title="corpus-nli-classify",
+        description="Zero-shot labels via entailment judgments",
+        argument_hint="--label <label> ... [--limit N] [--model <tag>]",
+        body=_NLI_BODY,
+        covers=("nli-classify",),
+    ),
+    Wrapper(
+        name="corpus-contradictions-screen",
+        title="corpus-contradictions-screen",
+        description="NLI contradiction candidates for human adjudication",
+        argument_hint="[--candidate-k N] [--limit N] [--model <tag>]",
+        body=_CONTRADICTIONS_BODY,
+        covers=("contradictions-screen",),
+    ),
+    Wrapper(
+        name="corpus-sentiment-screen",
+        title="corpus-sentiment-screen",
+        description="Preset lexicon sentiment screen with the honest evidence note",
+        argument_hint="[--chunk-id <id> ...] [--limit N]",
+        body=_SENTIMENT_BODY,
+        covers=("sentiment-screen",),
+    ),
+    Wrapper(
+        name="corpus-active-learn-next",
+        title="corpus-active-learn-next",
+        description="Next human-labeling batch ranked from stored predictions",
+        argument_hint="[--strategy margin|entropy|random_incumbent] [--batch N]",
+        body=_ACTIVE_LEARN_BODY,
+        covers=("active-learn-next",),
     ),
 )
 

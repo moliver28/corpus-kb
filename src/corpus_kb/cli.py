@@ -80,6 +80,15 @@ register_labeling_commands(app)
 register_classification_commands(app)
 register_analysis_commands(app)
 
+# Analysis method register program (wave 2) front doors: cli_analysis_methods
+# mirrors cli_analysis (it reuses the cli_ingest plumbing and imports
+# corpus_kb.cli nowhere), so this import stays acyclic.
+from corpus_kb.cli_analysis_methods import (  # noqa: E402
+    register as register_analysis_method_commands,
+)
+
+register_analysis_method_commands(app)
+
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.

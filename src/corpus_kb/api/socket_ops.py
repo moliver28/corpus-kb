@@ -277,6 +277,171 @@ async def _analyze_run(params: dict[str, Any], tenant_id: str) -> dict[str, Any]
     )
 
 
+# -- AMR program wave 2: the method ops (one arm per catalogue row; same
+#    lazy-import + pool shape as the analysis arms above) ------------------
+
+
+def _opt_int(params: dict[str, Any], key: str) -> int | None:
+    raw = params.get(key)
+    return int(raw) if raw is not None else None
+
+
+def _opt_str(params: dict[str, Any], key: str) -> str | None:
+    raw = params.get(key)
+    return str(raw) if raw is not None else None
+
+
+async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.method_select_tools import analysis_select_method
+
+    task = params.get("task_description")
+    return await analysis_select_method(
+        await research_pool(),
+        tenant_id=tenant_id,
+        task_description="" if task is None else str(task),
+        output_family=_opt_str(params, "output_family"),
+        inputs_available=params.get("inputs_available"),
+        max_complexity_tier=_opt_str(params, "max_complexity_tier"),
+    )
+
+
+async def _keyphrases_extract(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.keyphrase_tools import keyphrases_extract
+
+    return await keyphrases_extract(
+        await research_pool(),
+        tenant_id=tenant_id,
+        variant=str(params.get("variant", "tfidf")),
+        limit=int(params.get("limit", 20)),
+        chunk_ids=params.get("chunk_ids"),
+    )
+
+
+async def _lexical_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.lexical_tools import lexical_classify
+
+    return await lexical_classify(
+        await research_pool(),
+        tenant_id=tenant_id,
+        chunk_ids=params.get("chunk_ids"),
+    )
+
+
+async def _neighbors_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.neighbor_tools import neighbors_classify
+
+    return await neighbors_classify(
+        await research_pool(),
+        tenant_id=tenant_id,
+        k=int(params.get("k", 5)),
+        chunk_ids=params.get("chunk_ids"),
+    )
+
+
+async def _centroids_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.centroid_tools import centroids_classify
+
+    return await centroids_classify(
+        await research_pool(),
+        tenant_id=tenant_id,
+        abstain_margin=float(params.get("abstain_margin", 0.05)),
+        chunk_ids=params.get("chunk_ids"),
+    )
+
+
+async def _clusters_inspect(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.cluster_tools import clusters_inspect
+
+    return await clusters_inspect(
+        await research_pool(),
+        tenant_id=tenant_id,
+        min_cluster_size=_opt_int(params, "min_cluster_size"),
+        sample_cap=_opt_int(params, "sample_cap"),
+    )
+
+
+async def _duplicates_screen(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.vector_screen_tools import duplicates_screen
+
+    return await duplicates_screen(
+        await research_pool(),
+        tenant_id=tenant_id,
+        threshold=float(params.get("threshold", 0.98)),
+        limit=int(params.get("limit", 100)),
+    )
+
+
+async def _outliers_rank(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.vector_screen_tools import outliers_rank
+
+    return await outliers_rank(
+        await research_pool(),
+        tenant_id=tenant_id,
+        k=int(params.get("k", 10)),
+        limit=int(params.get("limit", 20)),
+    )
+
+
+async def _nli_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.nli_tools import nli_classify
+
+    labels = params.get("labels")
+    return await nli_classify(
+        await research_pool(),
+        tenant_id=tenant_id,
+        labels=[str(label) for label in labels] if labels is not None else [],
+        chunk_ids=params.get("chunk_ids"),
+        limit=int(params.get("limit", 50)),
+        model=_opt_str(params, "model"),
+    )
+
+
+async def _contradictions_screen(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.nli_tools import contradictions_screen
+
+    return await contradictions_screen(
+        await research_pool(),
+        tenant_id=tenant_id,
+        candidate_k=int(params.get("candidate_k", 5)),
+        limit=int(params.get("limit", 50)),
+        model=_opt_str(params, "model"),
+    )
+
+
+async def _sentiment_screen(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.sentiment_tools import sentiment_screen
+
+    return await sentiment_screen(
+        await research_pool(),
+        tenant_id=tenant_id,
+        chunk_ids=params.get("chunk_ids"),
+        limit=_opt_int(params, "limit"),
+    )
+
+
+async def _active_learn_next(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.active_learn_tools import active_learn_next
+
+    return await active_learn_next(
+        await research_pool(),
+        tenant_id=tenant_id,
+        strategy=str(params.get("strategy", "margin")),
+        batch=int(params.get("batch", 10)),
+    )
+
+
 async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import SearchQuery
     from corpus_kb.handlers.query_handler import get_query_handler
@@ -449,6 +614,19 @@ _CORE_ARMS: dict[str, Arm] = {
     "classification_list": _classification_list,
     "analysis_backfill_dates": _analysis_backfill_dates,
     "analyze_run": _analyze_run,
+    # AMR program wave 2: the method ops.
+    "analysis_select_method": _analysis_select_method,
+    "keyphrases_extract": _keyphrases_extract,
+    "lexical_classify": _lexical_classify,
+    "neighbors_classify": _neighbors_classify,
+    "centroids_classify": _centroids_classify,
+    "clusters_inspect": _clusters_inspect,
+    "duplicates_screen": _duplicates_screen,
+    "outliers_rank": _outliers_rank,
+    "nli_classify": _nli_classify,
+    "contradictions_screen": _contradictions_screen,
+    "sentiment_screen": _sentiment_screen,
+    "active_learn_next": _active_learn_next,
     "search": _search,
     "ask": _ask,
     "query": _query,

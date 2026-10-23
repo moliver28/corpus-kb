@@ -56,6 +56,16 @@ UMAP_RANDOM_STATE = 42
 # resolved value is reported (the honest-defaults convention).
 AUTO_MIN_TOPIC_SIZE = 10
 
+# The zero-shot match floor, settable via ``topics.zeroshot_min_similarity``.
+# The default IS the installed BERTopic default (bertopic 0.17.4,
+# ``BERTopic.__init__``: ``zeroshot_min_similarity = 0.7``), so the key
+# stays OUT of TOPICS_CONFIG_DEFAULTS — the shipped YAML files cannot
+# carry a key without breaking the three-ways lockstep, and the module
+# default equals the library default anyway. Documents whose similarity
+# to every listed zero-shot topic sits below this floor fall back to
+# clustering; the envelope reports the resulting unassigned count.
+DEFAULT_ZEROSHOT_MIN_SIMILARITY = 0.7
+
 TOPICS_CONFIG_DEFAULTS: dict[str, object] = {
     "enabled": DEFAULT_TOPICS_ENABLED,
     "method": DEFAULT_TOPICS_METHOD,
@@ -80,6 +90,7 @@ class TopicsSettings:
     llm_base_url: str = DEFAULT_TOPICS_LLM_BASE_URL
     fixture_dir: str | None = DEFAULT_TOPICS_FIXTURE_DIR
     live_fallback: bool = DEFAULT_TOPICS_LIVE_FALLBACK
+    zeroshot_min_similarity: float = DEFAULT_ZEROSHOT_MIN_SIMILARITY
 
     def resolved_min_topic_size(self) -> int:
         """The int BERTopic actually receives ("auto" resolves here)."""
@@ -107,6 +118,21 @@ def _min_topic_size_error(value: object) -> str | None:
     )
 
 
+def _zeroshot_min_similarity_error(value: object) -> str | None:
+    """A number in (0, 1]: the zero-shot match floor (bools are not numbers)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return (
+            "topics.zeroshot_min_similarity: must be a number greater than 0 and at most 1 "
+            f"(booleans are not numbers); got {value!r}"
+        )
+    if 0.0 < float(value) <= 1.0:
+        return None
+    return (
+        "topics.zeroshot_min_similarity: must be greater than 0 and at most 1 (the "
+        f"zero-shot similarity floor); got {value!r}"
+    )
+
+
 def topics_settings_error(config: dict[str, object]) -> str | None:
     """Remediation text for invalid topics values, or None when valid.
 
@@ -129,7 +155,9 @@ def topics_settings_error(config: dict[str, object]) -> str | None:
         value = block.get(key, DEFAULT_TOPICS_LLM if key == "llm" else DEFAULT_TOPICS_LLM_BASE_URL)
         if not isinstance(value, str) or not value:
             return f"topics.{key}: must be a non-empty string; got {value!r}"
-    return None
+    return _zeroshot_min_similarity_error(
+        block.get("zeroshot_min_similarity", DEFAULT_ZEROSHOT_MIN_SIMILARITY)
+    )
 
 
 def load_topics_settings(config: dict[str, object]) -> TopicsSettings:
@@ -158,6 +186,9 @@ def load_topics_settings(config: dict[str, object]) -> TopicsSettings:
         llm_base_url=str(block.get("llm_base_url", DEFAULT_TOPICS_LLM_BASE_URL)),
         fixture_dir=str(fixture) if fixture else None,
         live_fallback=bool(block.get("live_fallback", DEFAULT_TOPICS_LIVE_FALLBACK)),
+        zeroshot_min_similarity=float(
+            block.get("zeroshot_min_similarity", DEFAULT_ZEROSHOT_MIN_SIMILARITY)
+        ),
     )
 
 

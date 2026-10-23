@@ -55,3 +55,4 @@ build/
 
 # Local tooling state
 .zcodeignore
+*.stackdump

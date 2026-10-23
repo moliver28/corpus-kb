@@ -1,6 +1,15 @@
 # serializer version: 1
 # name: test_mcp_tool_contract
   dict({
+    'corpus_kb.tools.active_learn_tools': dict({
+      'active_learn_next': dict({
+        'batch': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'strategy': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.analysis_tools': dict({
       'analysis_backfill_dates': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -23,6 +32,15 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.centroid_tools': dict({
+      'centroids_classify': dict({
+        'abstain_margin': 'POSITIONAL_OR_KEYWORD',
+        'chunk_ids': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.classification_tools': dict({
       'classification_build': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -34,6 +52,15 @@
         'config': 'POSITIONAL_OR_KEYWORD',
         'limit': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.cluster_tools': dict({
+      'clusters_inspect': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'min_cluster_size': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'sample_cap': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
@@ -170,6 +197,16 @@
         'url': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.keyphrase_tools': dict({
+      'keyphrases_extract': dict({
+        'chunk_ids': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'variant': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.labeling_tools': dict({
       'labeling_build': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -185,6 +222,80 @@
       'labeling_list': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
         'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.lexical_tools': dict({
+      'lexical_classify': dict({
+        'chunk_ids': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.matrix_tools': dict({
+      'confusion_matrix': dict({
+        'labels': 'POSITIONAL_OR_KEYWORD',
+        'y_pred': 'POSITIONAL_OR_KEYWORD',
+        'y_true': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'eecs_section': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'settings': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'evaluate': dict({
+        'y_pred': 'POSITIONAL_OR_KEYWORD',
+        'y_true': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'per_class_precision_recall': dict({
+        'labels': 'POSITIONAL_OR_KEYWORD',
+        'y_pred': 'POSITIONAL_OR_KEYWORD',
+        'y_true': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'read_paired_rows': dict({
+        'cap': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.method_select_tools': dict({
+      'analysis_select_method': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'inputs_available': 'KEYWORD_ONLY',
+        'max_complexity_tier': 'KEYWORD_ONLY',
+        'output_family': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'task_description': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.neighbor_tools': dict({
+      'neighbors_classify': dict({
+        'chunk_ids': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'k': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.nli_tools': dict({
+      'contradictions_screen': dict({
+        'candidate_k': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'model': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'nli_classify': dict({
+        'chunk_ids': 'KEYWORD_ONLY',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'labels': 'KEYWORD_ONLY',
+        'limit': 'KEYWORD_ONLY',
+        'model': 'KEYWORD_ONLY',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
@@ -356,11 +467,25 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.sentiment_tools': dict({
+      'load_lexicon': dict({
+        'path': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'sentiment_screen': dict({
+        'chunk_ids': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.topics_tools': dict({
       'topics_build': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'seed_terms': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'topic_descriptions': 'POSITIONAL_OR_KEYWORD',
       }),
       'topics_list': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -371,6 +496,22 @@
       'topics_trends': dict({
         'bins': 'POSITIONAL_OR_KEYWORD',
         'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.vector_screen_tools': dict({
+      'duplicates_screen': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'threshold': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'outliers_rank': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'k': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),

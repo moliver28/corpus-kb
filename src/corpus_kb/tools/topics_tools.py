@@ -43,13 +43,19 @@ MIN_BUILD_DOCUMENTS = 2
 
 
 def _disabled() -> dict[str, object]:
-    """The honest no-op envelope for ``topics.enabled: false``."""
+    """The honest no-op envelope for ``topics.enabled: false``.
+
+    The build contract keys ride every outcome: nothing is unassigned
+    because nothing ran, and there are no guided/zero-shot notes.
+    """
     return {
         "status": "disabled",
         "reason": "topics.enabled is false in the loaded config.",
         "remedy": "Set topics.enabled: true (and install the [topics] extra), then retry.",
         "topic_count": 0,
         "topics": [],
+        "unassigned_count": 0,
+        "notes": [],
     }
 
 
@@ -61,6 +67,8 @@ def _unavailable() -> dict[str, object]:
         "remedy": "run corpus-kb setup",
         "topic_count": 0,
         "topics": [],
+        "unassigned_count": 0,
+        "notes": [],
     }
 
 
@@ -72,6 +80,8 @@ def _insufficient(found: int, needed: int) -> dict[str, object]:
         "remedy": "Ingest more documents, or lower topics.min_topic_size.",
         "topic_count": 0,
         "topics": [],
+        "unassigned_count": 0,
+        "notes": [],
     }
 
 
@@ -79,11 +89,19 @@ async def topics_build(
     pg_pool: asyncpg.Pool,
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
+    seed_terms: list[str] | None = None,
+    topic_descriptions: list[str] | None = None,
 ) -> dict[str, object]:
     """Cluster stored embeddings into topics; write the build (one replace).
 
     Returns ``{status, topic_count, topics}`` plus, on the success path,
-    the counts, the recorded model params and the reduction outcome.
+    the counts, the recorded model params, the reduction outcome, the
+    ``unassigned_count`` (docs assigned topic -1) and the guided/
+    zero-shot notes. ``seed_terms`` guides the representation (it never
+    forces discovery); ``topic_descriptions`` arms zero-shot matching
+    against ``topics.zeroshot_min_similarity``. Empty lists count as
+    absent, and absent params leave the build byte-identical to the
+    pre-AMR path.
     """
     settings = load_topics_settings(load_config_or_pass(config))
     if not settings.enabled:
@@ -95,7 +113,15 @@ async def topics_build(
     if len(chunks) < floor:
         return _insufficient(len(chunks), floor)
 
-    engine_result = engine.build_topics(chunks, settings)
+    guided = [str(term) for term in seed_terms] if seed_terms else []
+    zeroshot = [str(text) for text in topic_descriptions] if topic_descriptions else []
+    if guided or zeroshot:
+        engine_result = engine.build_topics(
+            chunks, settings, seed_terms=guided or None, topic_descriptions=zeroshot or None
+        )
+    else:
+        # The exact pre-AMR call: absent params change nothing downstream.
+        engine_result = engine.build_topics(chunks, settings)
     reduction: reduction_mod.ReductionResult | None = None
     if settings.llm_reduction:
         reducer = reduction_mod.TopicReducer(settings)
@@ -122,9 +148,26 @@ async def topics_build(
         "topics": topics_out,
         "chunk_count": len(engine_result.assignments),
         "outlier_count": engine_result.outlier_count,
+        "unassigned_count": _unassigned_count(engine_result),
         "reduction": reduction.status if reduction is not None else "off",
         "params": engine_result.params,
+        "notes": _guided_notes(guided, zeroshot),
     }
+
+
+def _unassigned_count(engine_result: engine.EngineResult) -> int:
+    """Docs assigned topic -1 across the fit sample and the transform half."""
+    return sum(1 for topic in engine_result.doc_topics if int(topic) == engine.OUTLIER_TOPIC)
+
+
+def _guided_notes(guided: list[str], zeroshot: list[str]) -> list[str]:
+    """The honest guided/zero-shot notes; empty when neither arm is on."""
+    notes: list[str] = []
+    if guided:
+        notes.append(engine.GUIDED_NOTE)
+    if zeroshot:
+        notes.append(engine.ZEROSHOT_NOTE)
+    return notes
 
 
 def _topic_rows(

@@ -32,7 +32,7 @@ from ..analysis.dates import (
 )
 from ..analysis.settings import AnalysisSettings, load_analysis_settings
 from ..classification import store as classification_store
-from . import classification_tools, labeling_tools, topics_tools
+from . import classification_tools, labeling_tools, matrix_tools, topics_tools
 from .ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
 __all__ = ["analysis_backfill_dates", "analyze_run"]
@@ -125,15 +125,25 @@ async def analyze_run(
     """
     settings = load_analysis_settings(load_config_or_pass(config))
     if not any(
-        (settings.labeling.enabled, settings.classification.enabled, settings.over_time.enabled)
+        (
+            settings.labeling.enabled,
+            settings.classification.enabled,
+            settings.over_time.enabled,
+            settings.eecs.enabled,
+        )
     ):
         return _disabled_run()
     sections = [
         await _dates_section(pg_pool, config, tenant_id, settings),
         await _labeling_section(pg_pool, config, tenant_id, settings),
         await _classification_section(pg_pool, config, tenant_id, settings),
-        await _trends_section(pg_pool, config, tenant_id, settings),
     ]
+    if settings.eecs.enabled:
+        # The eecs section (the method-register program) sits between
+        # classification and trends; the flag-off envelope keeps the
+        # legacy four-section contract (no row, no drift).
+        sections.append(await matrix_tools.eecs_section(pg_pool, config, tenant_id))
+    sections.append(await _trends_section(pg_pool, config, tenant_id, settings))
     composed = report_mod.compose_report(sections)
     status = str(composed["status"])
     envelope = dict(composed)
