@@ -37,9 +37,11 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
         print(json.dumps(result, indent=2, default=str))
         return
     print(f"statements: {result.get('status', 'error')}")
-    for row in result.get("statements", [])[:10]:
-        if isinstance(row, dict):
-            print(f"  [{row.get('template_id')}] {row.get('text')}")
+    rows = result.get("statements", [])
+    if isinstance(rows, list):
+        for row in rows[:10]:
+            if isinstance(row, dict):
+                print(f"  [{row.get('template_id')}] {row.get('text')}")
 
 
 async def _flow(module_name: str, op_name: str, kwargs: dict[str, Any], json_output: bool) -> int:
