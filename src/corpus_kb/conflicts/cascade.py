@@ -21,6 +21,7 @@ Flag-don't-delete: every verdict writes a ``statement_conflicts`` row.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True)
@@ -31,8 +32,8 @@ class StatementRow:
     text: str
     template_id: str
     entity_names: tuple[str, ...]
-    valid_at: object | None
-    observed_at: object | None
+    valid_at: datetime | None
+    observed_at: datetime | None
     superseded_by: str | None
 
 
