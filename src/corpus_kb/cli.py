@@ -97,6 +97,13 @@ from corpus_kb.cli_statements import (  # noqa: E402
 
 register_statement_commands(app)
 
+# Living Corpus W3 conflict front doors: cli_conflicts mirrors cli_statements.
+from corpus_kb.cli_conflicts import (  # noqa: E402
+    register as register_conflict_commands,
+)
+
+register_conflict_commands(app)
+
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.

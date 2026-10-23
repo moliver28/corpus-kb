@@ -85,6 +85,11 @@ from corpus_kb.api.routes_coding import (
     coding_reliability,
     coding_saturation,
 )
+from corpus_kb.api.routes_conflicts import (
+    conflicts_list_route,
+    conflicts_resolve_route,
+    conflicts_scan_route,
+)
 from corpus_kb.api.routes_graph import (
     add_entity,
     add_relation,
@@ -189,6 +194,10 @@ def create_http_app() -> FastAPI:
         # Living Corpus W2: the statement-atom read ops.
         Route("/api/statements/list", statements_list_route, methods=["POST"]),
         Route("/api/statements/timeline", statements_timeline_route, methods=["POST"]),
+        # Living Corpus W3: the conflict ops.
+        Route("/api/conflicts/scan", conflicts_scan_route, methods=["POST"]),
+        Route("/api/conflicts/list", conflicts_list_route, methods=["POST"]),
+        Route("/api/conflicts/resolve", conflicts_resolve_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),

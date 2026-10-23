@@ -37,6 +37,7 @@ release/research handlers are stubbed at the handler seam.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -76,6 +77,7 @@ import corpus_kb.tools.analysis_tools as analysis_tools_module
 import corpus_kb.tools.centroid_tools as centroid_tools_module
 import corpus_kb.tools.classification_tools as classification_tools_module
 import corpus_kb.tools.cluster_tools as cluster_tools_module
+import corpus_kb.tools.conflicts_tools as conflicts_tools_module
 import corpus_kb.tools.ingest_common as ingest_common_module
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools_module
 import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
@@ -395,6 +397,102 @@ async def _shared_statements_list(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_statements_timeline(ctx: dict[str, Any]) -> dict[str, Any]:
     return await statements_tools_module.statements_timeline(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_conflicts_scan(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await conflicts_tools_module.conflicts_scan(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_conflicts_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await conflicts_tools_module.conflicts_list(ctx["pool"], config=ctx["config"])
+
+
+_SEED_TENANT = "00000000-0000-0000-0000-000000000001"
+
+
+async def _seed_one_conflict(ctx: dict[str, Any]) -> str:
+    """Seed doc + chunk + two statements + one flag; return the flag id.
+
+    Idempotent on the deterministic hashes: re-runs reuse the rows.
+    """
+    pool = ctx["pool"]
+    async with pool.acquire() as conn:
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", _SEED_TENANT)
+        await conn.execute(
+            "INSERT INTO documents (tenant_id, source, source_type)"
+            " VALUES ($1, 'parity-conflicts-seed', 'text')"
+            " ON CONFLICT (tenant_id, source) DO NOTHING",
+            _SEED_TENANT,
+        )
+        doc_id = await conn.fetchval(
+            "SELECT doc_id::text FROM documents"
+            " WHERE tenant_id = $1 AND source = 'parity-conflicts-seed'",
+            _SEED_TENANT,
+        )
+        await conn.execute(
+            "INSERT INTO chunks (tenant_id, doc_id, chunk_index, text, source_type)"
+            " VALUES ($1, $2, 0, 'I like ice cream. I dislike ice cream now.', 'text')"
+            " ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING",
+            _SEED_TENANT,
+            doc_id,
+        )
+        chunk_id = await conn.fetchval(
+            "SELECT chunk_id::text FROM chunks"
+            " WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = 0",
+            _SEED_TENANT,
+            doc_id,
+        )
+        for seed_text in ("I like ice cream.", "I dislike ice cream now."):
+            seed_hash = hashlib.sha256(seed_text.encode("utf-8")).hexdigest()
+            await conn.execute(
+                "INSERT INTO statements (tenant_id, chunk_id, document_id, statement_hash,"
+                " text, template_id, template_version, entities)"
+                " VALUES ($1, $2, $3, $4, $5, 'preference', 'v1', '[]'::jsonb)"
+                " ON CONFLICT (tenant_id, statement_hash, chunk_id) DO NOTHING",
+                _SEED_TENANT,
+                chunk_id,
+                doc_id,
+                seed_hash,
+                seed_text,
+            )
+        stmt_a = await conn.fetchval(
+            "SELECT statement_id::text FROM statements"
+            " WHERE tenant_id = $1 AND text = 'I like ice cream.' LIMIT 1",
+            _SEED_TENANT,
+        )
+        stmt_b = await conn.fetchval(
+            "SELECT statement_id::text FROM statements"
+            " WHERE tenant_id = $1 AND text = 'I dislike ice cream now.' LIMIT 1",
+            _SEED_TENANT,
+        )
+        await conn.execute(
+            "INSERT INTO statement_conflicts (tenant_id, statement_a_id, statement_b_id,"
+            " anchor_name, kind, gate_reached, verdict)"
+            " VALUES ($1, $2::uuid, $3::uuid, 'ice cream', 'relation_swap', 'B', 'conflict')"
+            " ON CONFLICT (tenant_id, statement_a_id, statement_b_id, kind) DO NOTHING",
+            _SEED_TENANT,
+            stmt_a,
+            stmt_b,
+        )
+        conflict_id = await conn.fetchval(
+            "SELECT conflict_id::text FROM statement_conflicts"
+            " WHERE tenant_id = $1 AND anchor_name = 'ice cream'"
+            " ORDER BY created_at DESC LIMIT 1",
+            _SEED_TENANT,
+        )
+    ctx["parity_conflict_id"] = str(conflict_id)
+    return str(conflict_id)
+
+
+async def _shared_conflicts_resolve(ctx: dict[str, Any]) -> dict[str, Any]:
+    conflict_id = await _seed_one_conflict(ctx)
+    return await conflicts_tools_module.conflicts_resolve(
+        ctx["pool"],
+        config=ctx["config"],
+        conflict_id=conflict_id,
+        resolved_verdict="dismissed",
+        resolved_by="parity-leg",
+    )
 
 
 async def _shared_lexical_classify(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -809,6 +907,45 @@ LEGS: dict[str, _Leg] = {
         _sock("statements_timeline", {}),
         _mcp({}),
     ),
+    # -- Living Corpus W3: the conflict ops. The resolve leg seeds its own
+    #    minimal flag world and resolves it as dismissed (idempotent).
+    "conflicts_scan": _Leg(
+        _shared_conflicts_scan,
+        _post("/api/conflicts/scan", {}),
+        _sock("conflicts_scan", {}),
+        _mcp({}),
+    ),
+    "conflicts_list": _Leg(
+        _shared_conflicts_list,
+        _post("/api/conflicts/list", {}),
+        _sock("conflicts_list", {}),
+        _mcp({}),
+    ),
+    "conflicts_resolve": _Leg(
+        _shared_conflicts_resolve,
+        lambda ctx: {
+            "method": "post",
+            "path": "/api/conflicts/resolve",
+            "json": {
+                "conflict_id": ctx.get("parity_conflict_id", ""),
+                "resolved_verdict": "dismissed",
+                "resolved_by": "parity-leg",
+            },
+        },
+        lambda ctx: (
+            "conflicts_resolve",
+            {
+                "conflict_id": ctx.get("parity_conflict_id", ""),
+                "resolved_verdict": "dismissed",
+                "resolved_by": "parity-leg",
+            },
+        ),
+        lambda ctx: {
+            "conflict_id": ctx.get("parity_conflict_id", ""),
+            "resolved_verdict": "dismissed",
+            "resolved_by": "parity-leg",
+        },
+    ),
     "lexical_classify": _Leg(
         _shared_lexical_classify,
         _post("/api/analysis/lexical-classify", {}),
@@ -1165,6 +1302,14 @@ class _LockConn:
         return "OK"
 
     async def fetch(self, sql: str, *args: Any) -> list[Any]:
+        if "SET resolved_verdict" in sql:
+            # The canned resolve: one flag row with fixed endpoint ids.
+            return [
+                {
+                    "statement_a_id": "00000000-0000-0000-0000-00000000000a",
+                    "statement_b_id": "00000000-0000-0000-0000-00000000000b",
+                }
+            ]
         return []
 
     def transaction(self) -> _LockConn:

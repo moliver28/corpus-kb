@@ -22,6 +22,7 @@ from corpus_kb.contracts.catalogue import CORE_OPERATIONS
 from corpus_kb.contracts.catalogue_analysis import ANALYSIS_OPERATIONS
 from corpus_kb.contracts.catalogue_ask import ASK_OPERATIONS
 from corpus_kb.contracts.catalogue_classification import CLASSIFICATION_OPERATIONS
+from corpus_kb.contracts.catalogue_conflicts import CONFLICTS_OPERATIONS
 from corpus_kb.contracts.catalogue_documents import DOCUMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_labeling import LABELING_OPERATIONS
 from corpus_kb.contracts.catalogue_release import RELEASE_OPERATIONS
@@ -53,6 +54,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *ANALYSIS_OPERATIONS,
     *ASK_OPERATIONS,
     *STATEMENTS_OPERATIONS,
+    *CONFLICTS_OPERATIONS,
 )
 
 __all__ = [
