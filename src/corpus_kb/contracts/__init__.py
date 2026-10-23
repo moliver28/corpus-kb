@@ -29,6 +29,7 @@ from corpus_kb.contracts.catalogue_research import (
     RESEARCH_OPERATIONS,
     SKIPPED_OPERATIONS,
 )
+from corpus_kb.contracts.catalogue_statements import STATEMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_topics import TOPICS_OPERATIONS
 from corpus_kb.contracts.model import (
     DEFAULT_TENANT_ID,
@@ -51,6 +52,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *CLASSIFICATION_OPERATIONS,
     *ANALYSIS_OPERATIONS,
     *ASK_OPERATIONS,
+    *STATEMENTS_OPERATIONS,
 )
 
 __all__ = [

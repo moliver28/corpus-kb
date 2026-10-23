@@ -138,6 +138,11 @@ class PostgresIngestStore:
         """The tenant all store operations scope to (RLS GUC value)."""
         return self._tenant_id
 
+    @property
+    def gateway(self) -> SqlGateway:
+        """The underlying SQL gateway (statement writes reuse it)."""
+        return self._gateway
+
     async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
         """Return the doc_id when this exact content was already ingested cleanly.
 

@@ -1,0 +1,10 @@
+id: opinion
+description: >
+  A held view or belief about a topic, stated as what someone thinks,
+  believes, or feels. Weaker than a preference: it reports a stance.
+signals:
+  - "\\b(i|we|she|he|they)\\s+(think|believe|feel|reckon|guess|suppose)\\b"
+  - "\\bin my opinion\\b"
+  - "\\bit seems (to me|like)\\b"
+min_entities: 0
+roles: [subject, topic]

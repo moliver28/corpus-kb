@@ -471,6 +471,10 @@ async def _run_locked_stages(
             extract_span.set_attribute(ATTR_ENTITY_COUNT, len(entities))
             extract_span.set_attribute(ATTR_RELATION_COUNT, len(relations))
 
+        statements_summary = await _stage_atomize(
+            ingest_store, chunks, entities, config, tenant_id, errors
+        )
+
         # Mirror chunks into LlamaIndex RAG backend (additive path)
         if rag_backend is not None:
             try:
@@ -528,6 +532,7 @@ async def _run_locked_stages(
             pg_vector_count=pg_vector_count,
             errors=errors,
             run_id=run_id,
+            statements=statements_summary,
         )
     except BaseException as exc:
         # BaseException, not Exception: asyncio.CancelledError (watch-mode
@@ -815,6 +820,44 @@ def _stat_with_note(stats: ExtractStats, note: str) -> ExtractStats:
     return replace(stats, notes=(*stats.notes, note))
 
 
+async def _stage_atomize(
+    ingest_store: PostgresIngestStore,
+    chunks: list[Chunk],
+    entities: list[Entity],
+    config: dict[str, Any],
+    tenant_id: str,
+    errors: list[str],
+) -> dict[str, Any]:
+    """Stage 5: atomize chunks into classified statement atoms (additive).
+
+    Config-gated (``statements.enabled``) and failure-isolated: any error
+    lands in ``errors`` and the summary reports zero stored — the ingest
+    result never pretends atoms exist when the stage did not run.
+    """
+    cfg = cast(dict[str, Any], config.get("statements") or {})
+    if cfg.get("enabled") is not True:
+        return {"status": "disabled", "stored": 0}
+    try:
+        from ..statements import (
+            StatementStore,
+            atomize_chunk,
+            load_templates,
+            template_histogram,
+        )
+
+        catalogue = load_templates(
+            cast("str", cfg.get("templates_dir") or "config/claim_templates")
+        )
+        atoms = [atom for chunk in chunks for atom in atomize_chunk(chunk, entities, catalogue)]
+        store = StatementStore(ingest_store.gateway, tenant_id)
+        stored = await store.store_statements(atoms)
+        return {"status": "success", "stored": stored, "templates": template_histogram(atoms)}
+    except Exception as exc:
+        logger.warning("Statement atomization failed: %s", exc)
+        errors.append(f"AtomizeError: {exc}")
+        return {"status": "failed", "stored": 0}
+
+
 def _cache_versions(config: dict[str, Any]) -> tuple[str, str, str]:
     """(backend, model_version, prompt_version) — the cache key suffix."""
     graph_cfg = cast(dict[str, Any], config.get("graph") or {})
@@ -897,6 +940,7 @@ def _stage_result_dict(
     pg_vector_count: int,
     errors: list[str],
     run_id: str,
+    statements: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Stage 5: the run result dict (nothing reports success on a partial).
 
@@ -934,6 +978,7 @@ def _stage_result_dict(
         "entities": {entity.name: entity.entity_id for entity in entities},
         "errors": errors,
         "run_id": run_id,
+        "statements": statements or {"status": "disabled", "stored": 0},
     }
     if embed_note is not None:
         result["embed_note"] = embed_note

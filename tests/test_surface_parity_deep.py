@@ -90,6 +90,7 @@ import corpus_kb.tools.release_tools as release_tools_module
 import corpus_kb.tools.research_tools as research_tools_module
 import corpus_kb.tools.search_tools as search_tools_module
 import corpus_kb.tools.sentiment_tools as sentiment_tools_module
+import corpus_kb.tools.statements_tools as statements_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
 from corpus_kb.api.http import create_http_app
@@ -386,6 +387,14 @@ async def _shared_analysis_select_method(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_keyphrases_extract(ctx: dict[str, Any]) -> dict[str, Any]:
     return await keyphrase_tools_module.keyphrases_extract(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_statements_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await statements_tools_module.statements_list(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_statements_timeline(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await statements_tools_module.statements_timeline(ctx["pool"], config=ctx["config"])
 
 
 async def _shared_lexical_classify(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -785,6 +794,19 @@ LEGS: dict[str, _Leg] = {
         _shared_keyphrases_extract,
         _post("/api/analysis/keyphrases-extract", {}),
         _sock("keyphrases_extract", {}),
+        _mcp({}),
+    ),
+    # Living Corpus W2: the statement-atom read ops.
+    "statements_list": _Leg(
+        _shared_statements_list,
+        _post("/api/statements/list", {}),
+        _sock("statements_list", {}),
+        _mcp({}),
+    ),
+    "statements_timeline": _Leg(
+        _shared_statements_timeline,
+        _post("/api/statements/timeline", {}),
+        _sock("statements_timeline", {}),
         _mcp({}),
     ),
     "lexical_classify": _Leg(

@@ -1,0 +1,10 @@
+id: preference
+description: >
+  A person likes, loves, prefers, or dislikes a thing. The canonical
+  belief atom: person A likes ice cream.
+signals:
+  - "\\b(i|we|she|he|they)\\s+(really\\s+)?(like|love|prefer|enjoy|adore|hate|dislike|cannot stand)\\b"
+  - "\\bmy favorite\\b"
+  - "\\bno longer (like|love|prefer|enjoy)\\b"
+min_entities: 1
+roles: [subject, object]

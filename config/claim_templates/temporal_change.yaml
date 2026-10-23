@@ -1,0 +1,11 @@
+id: temporal_change
+description: >
+  A change of state over time: used to, no longer, stopped, switched,
+  got tired of. This is the atom that lets beliefs evolve while keeping
+  the history (the ice-cream arc ends here).
+signals:
+  - "\\bused to\\b"
+  - "\\bno longer\\b"
+  - "\\b(stopped|quit|switched|moved|changed|got tired of|gave up)\\b"
+min_entities: 0
+roles: [subject, from_state, to_state]
