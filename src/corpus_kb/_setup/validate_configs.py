@@ -21,11 +21,17 @@ from typing import Any
 
 import yaml
 
-# Absolute import: this module is also loaded by file path (no package
-# context) in tests, where a relative import would fail.
-from corpus_kb._setup.validate_extraction_ml import (
-    validate_extraction_ml as _validate_extraction_ml,
-)
+try:
+    # Package context (installed checkout, tests).
+    from corpus_kb._setup.validate_extraction_ml import (
+        validate_extraction_ml as _validate_extraction_ml,
+    )
+except ImportError:  # pragma: no cover - script context (CI validate job)
+    import importlib as _importlib
+
+    _validate_extraction_ml = (
+        _importlib.import_module("validate_extraction_ml").validate_extraction_ml
+    )
 
 # ---------------------------------------------------------------------------
 # Constants

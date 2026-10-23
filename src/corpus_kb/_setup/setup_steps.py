@@ -14,6 +14,7 @@ collaborators through the install module at CALL time (see
 
 from __future__ import annotations
 
+import importlib
 import platform
 import subprocess
 import sys
@@ -268,8 +269,12 @@ def install_extraction_weights(apply: bool) -> int:
     missing model at ingest time.
     """
     print("\n[Step 3b/5] Extraction model weights (GLiNER2 + Relex)")
+    # String import: huggingface_hub ships in the [ml] extra, which CI never
+    # installs — importlib keeps pyright and extras-less jobs green.
     try:
-        from huggingface_hub import snapshot_download
+        snapshot_download = getattr(
+            importlib.import_module("huggingface_hub"), "snapshot_download"
+        )
     except ImportError:
         print("  Skipped: huggingface_hub not installed (pip install '.[ml]').")
         return 0
