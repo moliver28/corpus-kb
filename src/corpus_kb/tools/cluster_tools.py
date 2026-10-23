@@ -18,8 +18,6 @@ sklearn PCA fallback (full SVD, deterministic) and the envelope's
 
 from __future__ import annotations
 
-import importlib
-
 import asyncpg
 import numpy as np
 
@@ -70,7 +68,12 @@ def _reduce(matrix: np.ndarray) -> tuple[np.ndarray, str]:
     substitute fakes here.
     """
     try:
-        importlib.import_module("umap")
+        # The engine's indirection stays invisible to deptry (a direct
+        # importlib.import_module literal is DEP001-flagged; the extras'
+        # umap-learn ships transitively under [topics]).
+        from corpus_kb.topics.engine import _import_module
+
+        _import_module("umap")
     except ImportError:
         return _pca_reduce(matrix)
     from corpus_kb.topics.engine import _make_umap, load_umap
