@@ -89,6 +89,14 @@ from corpus_kb.cli_analysis_methods import (  # noqa: E402
 
 register_analysis_method_commands(app)
 
+# Living Corpus W2 statement-atom front doors: cli_statements mirrors
+# cli_analysis_methods (same cli_ingest plumbing, no corpus_kb.cli import).
+from corpus_kb.cli_statements import (  # noqa: E402
+    register as register_statement_commands,
+)
+
+register_statement_commands(app)
+
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.

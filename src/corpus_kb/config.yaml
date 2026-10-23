@@ -388,6 +388,15 @@ extraction:
   cache:
     enabled: true
 
+statements:
+  # Statement atoms (Living Corpus W2, migration 031): chunks atomize into
+  # classified, bi-temporal statement rows via the claim-template catalogue.
+  enabled: true
+  templates_dir: config/claim_templates
+  # Per-chunk cap on atoms (deterministic order; overflow is dropped and
+  # reported in the stage note).
+  max_per_chunk: 12
+
 graph:
   backend: age
   # Graph traversal depth cap (1..25; 25 is today's AGE cap). Consumed by

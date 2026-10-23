@@ -1,0 +1,8 @@
+id: fact_triple
+description: >
+  A factual subject-relation-object assertion, usually anchored by two
+  extracted entities (X works at Y, X lives in Z).
+signals:
+  - "\\b(work(s|ed)? (at|for)|live(s|d)? in|born in|founded|part of|member of|based in)\\b"
+min_entities: 2
+roles: [subject, relation, object]

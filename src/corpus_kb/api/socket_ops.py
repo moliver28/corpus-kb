@@ -291,6 +291,31 @@ def _opt_str(params: dict[str, Any], key: str) -> str | None:
     return str(raw) if raw is not None else None
 
 
+async def _statements_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.statements_tools import statements_list
+
+    return await statements_list(
+        await research_pool(),
+        tenant_id=tenant_id,
+        template_id=_opt_str(params, "template_id"),
+        document_id=_opt_str(params, "document_id"),
+        limit=int(params.get("limit") or 50),
+    )
+
+
+async def _statements_timeline(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.statements_tools import statements_timeline
+
+    return await statements_timeline(
+        await research_pool(),
+        tenant_id=tenant_id,
+        text_query=_opt_str(params, "text_query"),
+        limit=int(params.get("limit") or 200),
+    )
+
+
 async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.method_select_tools import analysis_select_method
@@ -627,6 +652,9 @@ _CORE_ARMS: dict[str, Arm] = {
     "contradictions_screen": _contradictions_screen,
     "sentiment_screen": _sentiment_screen,
     "active_learn_next": _active_learn_next,
+    # Living Corpus W2: the statement-atom read ops.
+    "statements_list": _statements_list,
+    "statements_timeline": _statements_timeline,
     "search": _search,
     "ask": _ask,
     "query": _query,

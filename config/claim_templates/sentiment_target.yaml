@@ -1,0 +1,8 @@
+id: sentiment_target
+description: >
+  An affective judgment aimed at a named target: the thing is great,
+  terrible, disappointing, or wonderful. The target must be present.
+signals:
+  - "\\b(is|was|are|were)\\s+(really\\s+|very\\s+|so\\s+)?(great|terrible|awful|amazing|wonderful|disappointing|frustrating|excellent|horrible|good|bad)\\b"
+min_entities: 1
+roles: [target, polarity]

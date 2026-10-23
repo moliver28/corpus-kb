@@ -125,6 +125,10 @@ from corpus_kb.api.routes_search import (
     search_similar,
     verify,
 )
+from corpus_kb.api.routes_statements import (
+    statements_list_route,
+    statements_timeline_route,
+)
 from corpus_kb.api.routes_tags_metadata import (
     add_tag_route,
     get_document_tags_route,
@@ -182,6 +186,9 @@ def create_http_app() -> FastAPI:
         Route("/api/analysis/contradictions-screen", contradictions_screen_route, methods=["POST"]),
         Route("/api/analysis/sentiment-screen", sentiment_screen_route, methods=["POST"]),
         Route("/api/analysis/active-learn-next", active_learn_next_route, methods=["POST"]),
+        # Living Corpus W2: the statement-atom read ops.
+        Route("/api/statements/list", statements_list_route, methods=["POST"]),
+        Route("/api/statements/timeline", statements_timeline_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),

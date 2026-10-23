@@ -479,6 +479,23 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.statements_tools': dict({
+      'statements_list': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'document_id': 'KEYWORD_ONLY',
+        'limit': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'template_id': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'statements_timeline': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'text_query': 'KEYWORD_ONLY',
+      }),
+    }),
     'corpus_kb.tools.topics_tools': dict({
       'topics_build': dict({
         'config': 'POSITIONAL_OR_KEYWORD',

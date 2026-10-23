@@ -454,6 +454,26 @@ GLINER_MENTION_TYPES: frozenset[str] = frozenset(
 )
 
 
+def validate_statements_block(config: dict[str, Any]) -> list[str]:
+    """Validate the ``statements`` block (Living Corpus W2 atomization)."""
+    errors: list[str] = []
+    statements = config.get("statements")
+    if statements is None:
+        return errors
+    if not isinstance(statements, dict):
+        return [f"statements: must be a mapping, got {type(statements).__name__}"]
+    enabled = statements.get("enabled")
+    if not isinstance(enabled, bool):
+        errors.append(f"statements.enabled: must be a boolean, got {type(enabled).__name__}")
+    templates_dir = statements.get("templates_dir")
+    if templates_dir is not None and not isinstance(templates_dir, str):
+        errors.append("statements.templates_dir: must be a string path")
+    max_per_chunk = statements.get("max_per_chunk")
+    if max_per_chunk is not None and (not isinstance(max_per_chunk, int) or max_per_chunk < 1):
+        errors.append("statements.max_per_chunk: must be an integer >= 1")
+    return errors
+
+
 def load_yaml(path: Path) -> dict[str, Any]:
     """Load a YAML file, returning {} for empty or non-mapping documents."""
     with path.open(encoding="utf-8") as f:
@@ -1031,6 +1051,7 @@ def _validate_runtime_yaml(project_root: Path) -> list[str]:
         runtime_cfg = load_yaml(config_path)
         errs = validate_extraction_gliner(runtime_cfg)
         errs += validate_extraction_ml(runtime_cfg)
+        errs += validate_statements_block(runtime_cfg)
         errs += validate_ingestion_block(runtime_cfg)
         errs += validate_runtime_config(runtime_cfg)
         errors.extend(f"{display}: {e}" for e in errs)

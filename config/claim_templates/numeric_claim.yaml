@@ -1,0 +1,9 @@
+id: numeric_claim
+description: >
+  A claim whose content is a number: a count, a share, a score, a
+  duration, or money. Anchored by a digit pattern.
+signals:
+  - "\\b\\d+([.,]\\d+)?\\s*(%|percent|dollars|euros|hours|days|weeks|months|years|times|points)\\b"
+  - "\\b(about|around|over|under|nearly|almost|exactly)\\s+\\d+\\b"
+min_entities: 0
+roles: [quantity, subject]

@@ -193,6 +193,24 @@ and >= baseline + 0.02. The former BERT backend was dead code: the
 extractor factory never routed to it, so it has been removed. Issue #31
 is the GLiNER2 follow-up.
 
+## Statement atoms
+
+After extraction, each chunk atomizes into statement rows (migration
+031). The atomizer splits sentences, classifies each one against the
+claim-template catalogue, and anchors the entities whose spans fall
+inside it. Rows are write-once per `(tenant, statement_hash, chunk)`.
+Atomization is deterministic and token-free: no LLM call. The ingest
+result reports it under the `statements` key with the stored count and
+the template histogram. A transcript chunk carries its
+`qa_context.exchange_id` onto every statement, so moderator questions
+stay linked to participant answers at the atom level.
+
+The templates are the paved claim shapes: `preference`, `opinion`,
+`sentiment_target`, `fact_triple`, `numeric_claim`, `temporal_change`,
+and `attribution`, plus a built-in `statement` fallback. A new claim
+shape is a new YAML file — no code. The read ops (`statements-list`,
+`statements-timeline`) are on all four surfaces.
+
 Every relation stores provenance metadata: the source chunk, confidence,
 extractor id, model version, and prompt version. The unique key includes
 `chunk_id` so the same triple asserted in two different chunks keeps both
