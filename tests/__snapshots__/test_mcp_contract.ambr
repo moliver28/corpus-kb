@@ -32,6 +32,38 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.beliefs_tools': dict({
+      'beliefs_compare': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'subject': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'beliefs_current': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'rebuild': 'KEYWORD_ONLY',
+        'subject': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'beliefs_predict': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'object': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'relation': 'KEYWORD_ONLY',
+        'subject': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'beliefs_timeline': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'object': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'relation': 'KEYWORD_ONLY',
+        'subject': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.centroid_tools': dict({
       'centroids_classify': dict({
         'abstain_margin': 'POSITIONAL_OR_KEYWORD',

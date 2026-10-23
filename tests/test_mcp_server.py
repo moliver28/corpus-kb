@@ -124,9 +124,9 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # The historical lie (declared names with no function) stays dead.
     # The §5.1 graph births (+4), the analysis program's tools (+4), and
     # the method register program's twelve method ops (+12), the Living
-    # Corpus statement ops (+2) and conflict ops (+3) all extended the
-    # catalogue; the pin covers the union.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 64
+    # Corpus statement (+2), conflict (+3) and belief (+4) ops all extended
+    # the catalogue; the pin covers the union.
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 68
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

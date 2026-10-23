@@ -348,6 +348,52 @@ async def _conflicts_resolve(params: dict[str, Any], tenant_id: str) -> dict[str
     )
 
 
+async def _beliefs_current(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.beliefs_tools import beliefs_current
+
+    return await beliefs_current(
+        await research_pool(),
+        tenant_id=tenant_id,
+        subject=_opt_str(params, "subject"),
+        limit=int(params.get("limit") or 50),
+        rebuild=bool(params.get("rebuild", True)),
+    )
+
+
+async def _beliefs_triple(params: dict[str, Any], tenant_id: str, op_name: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools import beliefs_tools
+
+    handler = getattr(beliefs_tools, op_name)
+    return await handler(
+        await research_pool(),
+        tenant_id=tenant_id,
+        subject=_opt_str(params, "subject"),
+        relation=_opt_str(params, "relation"),
+        object=_opt_str(params, "object"),
+    )
+
+
+async def _beliefs_timeline(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    return await _beliefs_triple(params, tenant_id, "beliefs_timeline")
+
+
+async def _beliefs_predict(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    return await _beliefs_triple(params, tenant_id, "beliefs_predict")
+
+
+async def _beliefs_compare(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.beliefs_tools import beliefs_compare
+
+    return await beliefs_compare(
+        await research_pool(),
+        tenant_id=tenant_id,
+        subject=_opt_str(params, "subject"),
+    )
+
+
 async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.method_select_tools import analysis_select_method
@@ -691,6 +737,11 @@ _CORE_ARMS: dict[str, Arm] = {
     "conflicts_scan": _conflicts_scan,
     "conflicts_list": _conflicts_list,
     "conflicts_resolve": _conflicts_resolve,
+    # Living Corpus W4: the belief ops.
+    "beliefs_current": _beliefs_current,
+    "beliefs_timeline": _beliefs_timeline,
+    "beliefs_predict": _beliefs_predict,
+    "beliefs_compare": _beliefs_compare,
     "search": _search,
     "ask": _ask,
     "query": _query,
