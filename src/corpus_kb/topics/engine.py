@@ -293,6 +293,42 @@ def build_topics(
     return result
 
 
+def _guided_zeroshot_params(
+    settings: TopicsSettings, guided: list[str], zeroshot: list[str], params: dict[str, object]
+) -> None:
+    """Decorate the build params with the guided/zero-shot notes (AMR)."""
+    if guided:
+        params["seed_terms_count"] = len(guided)
+        params["guided_note"] = GUIDED_NOTE
+    if zeroshot:
+        params["zeroshot_topic_count"] = len(zeroshot)
+        params["zeroshot_min_similarity"] = settings.zeroshot_min_similarity
+        params["zeroshot_note"] = ZEROSHOT_NOTE
+
+
+def _make_bertopic(
+    bertopic_module: BertopicModule,
+    umap_module: UmapModule,
+    settings: TopicsSettings,
+    min_topic_size: int,
+    guided: list[str],
+    zeroshot: list[str],
+) -> BERTopicModel:
+    """Construct the model; absent params pass the library defaults (None).
+
+    Byte-identical behavior to the pre-AMR build path.
+    """
+    return bertopic_module.BERTopic(
+        min_topic_size=min_topic_size,
+        umap_model=_make_umap(umap_module),
+        calculate_probabilities=False,
+        verbose=False,
+        seed_topic_list=[guided] if guided else None,
+        zeroshot_topic_list=zeroshot if zeroshot else None,
+        zeroshot_min_similarity=settings.zeroshot_min_similarity if zeroshot else None,
+    )
+
+
 def build_topics_with_model(
     chunks: list[StoredChunk],
     settings: TopicsSettings,
@@ -332,24 +368,8 @@ def build_topics_with_model(
         "guided": bool(guided),
         "zeroshot": bool(zeroshot),
     }
-    if guided:
-        params["seed_terms_count"] = len(guided)
-        params["guided_note"] = GUIDED_NOTE
-    if zeroshot:
-        params["zeroshot_topic_count"] = len(zeroshot)
-        params["zeroshot_min_similarity"] = settings.zeroshot_min_similarity
-        params["zeroshot_note"] = ZEROSHOT_NOTE
-    # Absent guided/zero-shot params pass the library defaults (None) —
-    # byte-identical behavior to the pre-AMR build path.
-    model = bertopic_module.BERTopic(
-        min_topic_size=min_topic_size,
-        umap_model=_make_umap(umap_module),
-        calculate_probabilities=False,
-        verbose=False,
-        seed_topic_list=[guided] if guided else None,
-        zeroshot_topic_list=zeroshot if zeroshot else None,
-        zeroshot_min_similarity=settings.zeroshot_min_similarity if zeroshot else None,
-    )
+    _guided_zeroshot_params(settings, guided, zeroshot, params)
+    model = _make_bertopic(bertopic_module, umap_module, settings, min_topic_size, guided, zeroshot)
     sample = [chunks[i] for i in sample_index]
     fit_docs = [chunk.text for chunk in sample]
     fit_vectors = np.array([chunk.vector for chunk in sample], dtype=np.float32)
