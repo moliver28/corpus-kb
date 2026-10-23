@@ -29,9 +29,9 @@ try:
 except ImportError:  # pragma: no cover - script context (CI validate job)
     import importlib as _importlib
 
-    _validate_extraction_ml = (
-        _importlib.import_module("validate_extraction_ml").validate_extraction_ml
-    )
+    _validate_extraction_ml = _importlib.import_module(
+        "validate_extraction_ml"
+    ).validate_extraction_ml
 
 # ---------------------------------------------------------------------------
 # Constants

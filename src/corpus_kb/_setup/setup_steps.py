@@ -272,9 +272,7 @@ def install_extraction_weights(apply: bool) -> int:
     # String import: huggingface_hub ships in the [ml] extra, which CI never
     # installs — importlib keeps pyright and extras-less jobs green.
     try:
-        snapshot_download = getattr(
-            importlib.import_module("huggingface_hub"), "snapshot_download"
-        )
+        snapshot_download = importlib.import_module("huggingface_hub").snapshot_download
     except ImportError:
         print("  Skipped: huggingface_hub not installed (pip install '.[ml]').")
         return 0
