@@ -20,6 +20,45 @@ from ._langextract_types import (
 )
 from .protocol import ExtractStats, OntologyViolationError, Timer
 
+logger = logging.getLogger(__name__)
+
+
+def _convert_extra(lx: LangExtractModule, extras: list[dict[str, object]]) -> list[object]:
+    """Convert plain-dict project exemplars into LangExtract example data.
+
+    A malformed exemplar is skipped with a warning — it must never take
+    down the whole extraction pass.
+    """
+    examples: list[object] = []
+    for extra in extras:
+        text = extra.get("text")
+        raw = extra.get("extractions")
+        if not isinstance(text, str) or not isinstance(raw, list):
+            logger.warning("Skipping project exemplar with missing text/extractions")
+            continue
+        extractions: list[object] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            start, end = item.get("start_pos"), item.get("end_pos")
+            interval = (
+                lx.data.CharInterval(start_pos=int(start), end_pos=int(end))
+                if isinstance(start, int) and isinstance(end, int)
+                else None
+            )
+            attrs = item.get("attributes")
+            extractions.append(
+                lx.data.Extraction(
+                    extraction_class=str(item.get("extraction_class", "")),
+                    extraction_text=str(item.get("extraction_text", "")),
+                    char_interval=interval,
+                    attributes=attrs if isinstance(attrs, dict) else {},
+                )
+            )
+        if extractions:
+            examples.append(lx.data.ExampleData(text=text, extractions=extractions))
+    return examples
+
 
 class LangExtractExtractor:
     """Extractor using LangExtract with optional recorded fixtures.
@@ -35,6 +74,7 @@ class LangExtractExtractor:
         self,
         fixture_dir: str | Path | None = None,
         live_fallback: bool = True,
+        extra_examples: list[dict[str, object]] | None = None,
     ) -> None:
         """Initialize the extractor.
 
@@ -45,9 +85,14 @@ class LangExtractExtractor:
             live_fallback: If ``True`` and no fixture matches a chunk, call
                 the live ``langextract`` API. If ``False``, a missing fixture
                 raises ``FileNotFoundError``.
+            extra_examples: Project exemplars (``customized`` mode) appended
+                to the ontology-derived examples. Each is ``{"text": str,
+                "extractions": [{"extraction_class", "extraction_text",
+                "start_pos", "end_pos", "attributes"?}, ...]}``.
         """
         self.fixture_dir = Path(fixture_dir) if fixture_dir else None
         self.live_fallback = live_fallback
+        self._extra_examples = extra_examples or []
         self._lx: LangExtractModule | None = None
 
     def extract(
@@ -191,7 +236,8 @@ class LangExtractExtractor:
         result = self._lx.extract(
             text_or_documents=text,
             prompt_description=build_prompt_description(ontology),
-            examples=build_examples(self._lx, ontology),
+            examples=build_examples(self._lx, ontology)
+            + _convert_extra(self._lx, self._extra_examples),
         )
         docs = result if isinstance(result, list) else [result]
         return [_normalize_extraction(extraction) for doc in docs for extraction in doc.extractions]

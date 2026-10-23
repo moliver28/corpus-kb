@@ -272,7 +272,15 @@ async def test_setup_fresh_resets_state_and_runs_all_phases(tmp_path: Path) -> N
     assert install_module._install_state_path(config).exists()
     loaded = install_module.load_install_state(config)
     assert loaded["completed"] == list(install_module.INSTALL_PHASES)
-    assert calls == ["compose", "python", "database", "extensions", "models", "config"]
+    assert calls == [
+        "compose",
+        "python",
+        "database",
+        "extensions",
+        "models",
+        "weights",
+        "config",
+    ]
 
 
 @pytest.mark.asyncio
@@ -288,7 +296,7 @@ async def test_setup_resume_skips_completed_phases(tmp_path: Path) -> None:
         result = await install_module.setup_cmd(config, dry_run=False, fresh=False)
 
     assert result == 0
-    assert calls == ["models", "config"]
+    assert calls == ["models", "weights", "config"]
     loaded = install_module.load_install_state(config)
     assert loaded["completed"] == list(install_module.INSTALL_PHASES)
 
@@ -311,7 +319,7 @@ async def test_setup_dry_run_shows_resume_status(tmp_path: Path) -> None:
         assert result == 0
 
     output = stdout_capture.getvalue()
-    assert "Checkpoint: 2/6 phases completed" in output
+    assert "Checkpoint: 2/7 phases completed" in output
     assert "Completed: compose, python" in output
 
 
@@ -373,6 +381,13 @@ def _phase_mocks(calls: list[str], *, patch_verify: bool = True) -> Iterator[Non
                 install_module,
                 "setup_pull_models",
                 side_effect=lambda *_args, **_kw: (_record(calls, "models"), 0)[1],
+            )
+        )
+        stack.enter_context(
+            patch.object(
+                install_module,
+                "setup_pull_weights",
+                side_effect=lambda *_args, **_kw: (_record(calls, "weights"), 0)[1],
             )
         )
         stack.enter_context(

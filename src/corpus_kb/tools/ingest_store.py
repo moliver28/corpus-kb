@@ -133,6 +133,11 @@ class PostgresIngestStore:
         self._tenant_id = tenant_id
         self._sql = ingest_sql_for(gateway_backend(self._gateway))
 
+    @property
+    def tenant_id(self) -> str:
+        """The tenant all store operations scope to (RLS GUC value)."""
+        return self._tenant_id
+
     async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
         """Return the doc_id when this exact content was already ingested cleanly.
 

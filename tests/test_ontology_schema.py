@@ -73,4 +73,4 @@ class TestConfig:
         assert embedding.get("model") == "qwen3-embedding:4b"
         assert embedding.get("dimensions") == 2560
         assert database.get("connection_string") is not None
-        assert graph.get("extractor") == "pgml"
+        assert graph.get("extractor") == "ml"

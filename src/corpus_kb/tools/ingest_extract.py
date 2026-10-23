@@ -44,6 +44,7 @@ async def extract_with_fallback(
     - ``pgml``: PostgresML NER -> LangExtract -> RegexExtractor
     - ``langextract``: LangExtract -> RegexExtractor
     - ``gliner``: GLiNER2 NER -> RegexExtractor
+    - ``ml``: GLiNER2 + GLiNER-Relex (mode-gated) -> LangExtract -> RegexExtractor
     - ``regex``: RegexExtractor only
 
     The returned ``extractor_id`` always names the extractor that actually
@@ -58,8 +59,30 @@ async def extract_with_fallback(
 
     # Reject unknown extractor names explicitly so we never silently fall back
     # to regex when the user configured something unsupported.
-    if extractor_name not in {"pgml", "langextract", "regex", "gliner"}:
+    if extractor_name not in {"pgml", "langextract", "regex", "gliner", "ml"}:
         create_extractor(config, pool=pool)
+
+    if extractor_name == "ml":
+        try:
+            ml_extractor = create_extractor(config, pool=pool)
+            entities, relations, stats = ml_extractor.extract(chunks, ontology, source_document_id)
+            if entities or relations:
+                return (
+                    entities,
+                    relations,
+                    _actual_extractor_id(entities, ml_extractor.extractor_id),
+                    stats,
+                )
+            failures.append("ml returned no candidates")
+            logger.warning("ML extraction returned no candidates; falling back to langextract.")
+        except ValueError:
+            # Configuration error (unknown mode, bad threshold): propagate
+            # loudly instead of silently downgrading the user's explicit
+            # extractor choice to regex.
+            raise
+        except Exception as exc:
+            failures.append(f"ml: {type(exc).__name__}: {exc}")
+            logger.warning("ML extraction failed: %s; falling back to langextract.", exc)
 
     if extractor_name == "gliner":
         try:
@@ -111,7 +134,7 @@ async def extract_with_fallback(
             failures.append(f"pgml: {type(exc).__name__}: {exc}")
             logger.warning("PostgresML extraction failed: %s; falling back to langextract.", exc)
 
-    if extractor_name in ("pgml", "langextract"):
+    if extractor_name in ("pgml", "langextract", "ml"):
         try:
             lang_extractor = create_extractor(
                 {

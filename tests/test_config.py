@@ -167,8 +167,8 @@ def test_extractor_alias_applied_by_load_config(no_env_overrides: None) -> None:
     cfg = load_config()
     graph = cast(dict[str, object], cfg["graph"])
     extraction = cast(dict[str, object], cfg["extraction"])
-    assert extraction["backend"] == "pgml"
-    assert graph["extractor"] == "pgml"
+    assert extraction["backend"] == "ml"
+    assert graph["extractor"] == "ml"
 
 
 def test_research_defaults_are_not_aliased_across_loads() -> None:

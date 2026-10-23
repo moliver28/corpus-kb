@@ -30,7 +30,8 @@ import asyncpg
 from ..analysis.dates import plan_document_date
 from ..config import load_config
 from ..errors import ConfigError
-from ..extraction import ExtractStats
+from ..extraction import ExtractStats, extraction_backend_name
+from ..extraction.cache import ExtractionCache
 from ..ingest.hierarchy_settings import HierarchySettings, load_hierarchy_settings
 from ..ingestion.base import (
     DETECT_HEAD_CHARS,
@@ -748,9 +749,32 @@ async def _stage_extract_entities(
     if not _extract_entities_flag(config):
         return entities, relations, extractor_id, stats
     try:
-        entities, relations, extractor_id, stats = await extract_with_fallback(
-            chunks, ontology(config), document_id, config, pool=pool
+        cached_hits, pending, cache, cache_key = await _cache_lookup(
+            ingest_store, chunks, config, pool
         )
+        if pending:
+            entities, relations, extractor_id, stats = await extract_with_fallback(
+                pending, ontology(config), document_id, config, pool=pool
+            )
+        else:
+            extractor_id = cache_key[0]
+            stats = ExtractStats(
+                backend=extractor_id,
+                notes=("all chunks served from extraction cache",),
+            )
+        if cache is not None and pending:
+            try:
+                await _cache_store(cache, pending, entities, relations, cache_key)
+            except Exception as exc:
+                logger.warning("Extraction cache write skipped: %s", exc)
+            stats = _stat_with_note(
+                stats,
+                f"extraction_cache: {len(cached_hits)} of {len(chunks)} chunks served from cache",
+            )
+        if cached_hits:
+            for hit_entities, hit_relations in cached_hits.values():
+                entities = hit_entities + entities
+                relations = hit_relations + relations
         if entities:
             entity_id_map = await ingest_store.store_entities(entities)
             # The dedup keeps the canonical entity row; re-point the
@@ -783,6 +807,72 @@ async def _stage_extract_entities(
             notes=(f"extraction failed: {type(exc).__name__}: {exc}",),
         )
     return entities, relations, extractor_id, stats
+
+
+def _stat_with_note(stats: ExtractStats, note: str) -> ExtractStats:
+    from dataclasses import replace
+
+    return replace(stats, notes=(*stats.notes, note))
+
+
+def _cache_versions(config: dict[str, Any]) -> tuple[str, str, str]:
+    """(backend, model_version, prompt_version) — the cache key suffix."""
+    graph_cfg = cast(dict[str, Any], config.get("graph") or {})
+    return (
+        extraction_backend_name(config),
+        str(graph_cfg.get("model_version") or "unset"),
+        str(graph_cfg.get("prompt_version") or "unset"),
+    )
+
+
+async def _cache_lookup(
+    ingest_store: PostgresIngestStore,
+    chunks: list[Chunk],
+    config: dict[str, Any],
+    pool: asyncpg.Pool | None,
+) -> tuple[
+    dict[str, tuple[list[Entity], list[Relation]]],
+    list[Chunk],
+    ExtractionCache | None,
+    tuple[str, str, str],
+]:
+    """Read the extraction cache; return (hits, pending chunks, cache, key)."""
+    cache_cfg = cast(dict[str, Any], config.get("extraction") or {}).get("cache")
+    enabled = cache_cfg.get("enabled", True) if isinstance(cache_cfg, dict) else True
+    key = _cache_versions(config)
+    if not enabled or pool is None or not chunks:
+        return {}, list(chunks), None, key
+    cache = ExtractionCache(pool, ingest_store.tenant_id)
+    hashes = [c.chunk_hash for c in chunks if c.chunk_hash]
+    try:
+        hits = await cache.get(hashes, backend=key[0], model_version=key[1], prompt_version=key[2])
+    except Exception as exc:
+        # A missing or unreadable cache table must never fail ingestion:
+        # record the degradation and run uncached.
+        logger.warning("Extraction cache unavailable; running uncached: %s", exc)
+        return {}, list(chunks), None, key
+    pending = [c for c in chunks if c.chunk_hash not in hits]
+    return hits, pending, cache, key
+
+
+async def _cache_store(
+    cache: ExtractionCache,
+    pending: list[Chunk],
+    entities: list[Entity],
+    relations: list[Relation],
+    key: tuple[str, str, str],
+) -> None:
+    """Write this run's per-chunk results under the cache key suffix."""
+    fresh: dict[str, tuple[list[Entity], list[Relation]]] = {}
+    for chunk in pending:
+        if not chunk.chunk_hash:
+            continue
+        fresh[chunk.chunk_hash] = (
+            [e for e in entities if e.chunk_id == chunk.chunk_id],
+            [r for r in relations if r.chunk_id == chunk.chunk_id],
+        )
+    if fresh:
+        await cache.put(fresh, backend=key[0], model_version=key[1], prompt_version=key[2])
 
 
 def _stage_result_dict(

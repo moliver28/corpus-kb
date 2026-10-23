@@ -133,11 +133,18 @@ inductive = [
     "umap-learn>=0.5",
     "hdbscan>=0.8.36",
 ]
-# Opt-in GLiNER2 schema-conditioned NER (extraction/gliner_backend.py,
-# gated by extraction.gliner.enabled). CI NEVER installs this extra; every
-# gliner2 import is lazy (extraction/_gliner2_types.py) so the extras-less
-# jobs stay green (same contract as latechunk/inductive).
-ner = ["gliner2>=2.1.0"]
+# ML extraction engine (Living Corpus W1): GLiNER2 schema-conditioned NER
+# (extraction/gliner_backend.py) + GLiNER-Relex zero-shot relations
+# (extraction/relex_backend.py), composed by extraction.backend: ml
+# (extraction/ml_backend.py, extraction.mode: zero_shot|few_shot|customized).
+# Both packages import lazily (extraction/_gliner2_types.py,
+# extraction/_gliner_types.py) so extras-less jobs stay green and tests fake
+# the models. The installer's `ml` extra makes the paved path real for setup
+# users; a bare install degrades honestly through the extraction fallback
+# chain (recorded in ExtractStats.notes, never silently).
+# License-reviewed permissive set: gliner2 Apache-2.0, gliner Apache-2.0
+# (torch BSD-3-Clause transitive).
+ml = ["gliner2>=2.1.0", "gliner>=0.2.13", "huggingface_hub>=0.30"]
 # Topic modeling over stored chunk embeddings (topics/engine.py, Wave 4;
 # gated by topics.enabled + the [topics] extra). BERTopic 0.16 is the
 # first line with the pinned-UMAP + precomputed-embeddings fit used here
@@ -291,6 +298,10 @@ DEP002 = [
     "umap-learn",
     "hdbscan",
     "gliner2",
+    "gliner",
+    # setup weight pre-pull imports huggingface_hub via importlib (CI never
+    # installs the [ml] extra), so deptry cannot see the import edge.
+    "huggingface_hub",
     # topics/engine.py imports bertopic lazily behind topics.enabled and CI
     # never installs the extra, so deptry cannot see the import edge.
     "bertopic",

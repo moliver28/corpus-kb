@@ -23,6 +23,7 @@ INSTALL_PHASES: tuple[str, ...] = (
     "database",
     "extensions",
     "models",
+    "weights",
     "config",
 )
 INSTALL_STATE_VERSION = 1
