@@ -299,6 +299,9 @@ DEP002 = [
     "hdbscan",
     "gliner2",
     "gliner",
+    # setup weight pre-pull imports huggingface_hub via importlib (CI never
+    # installs the [ml] extra), so deptry cannot see the import edge.
+    "huggingface_hub",
     # topics/engine.py imports bertopic lazily behind topics.enabled and CI
     # never installs the extra, so deptry cannot see the import edge.
     "bertopic",

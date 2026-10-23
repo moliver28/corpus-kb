@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS extraction_cache (
     backend TEXT NOT NULL,
     model_version TEXT NOT NULL,
     prompt_version TEXT NOT NULL,
-    entities JSONB NOT NULL DEFAULT '[]'::jsonb,
-    relations JSONB NOT NULL DEFAULT '[]'::jsonb,
+    entities JSONB NOT NULL,
+    relations JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (tenant_id, chunk_hash, backend, model_version, prompt_version)
 );
