@@ -463,3 +463,32 @@ _WAVE_E_SURFACE = (
     migrate_data,
     _corpus_digest,
 )
+
+# Analysis method register (AMR program): the Pydantic validator methods are
+# bound by their decorators, the register header fields are the data surface
+# the loader reads, the vector-space field is asserted by tests, and the
+# remaining names are Protocol method parameters passed by keyword at the
+# real call sites (the bertopic and sklearn surfaces).
+_input_kinds
+_sources_floor
+_vocabularies_and_op
+_semver
+_rules_present
+_ids_unique
+_id_shape
+_summary_cap
+path_note
+source_document
+selection_rules
+adjacent_candidates
+evidence_label
+selection_notes
+robustness_caveat
+bias_risk
+efficiency_workload
+output_shape
+usage_guidance
+excluded_zero_count
+axis
+seed_topic_list
+zeroshot_topic_list
