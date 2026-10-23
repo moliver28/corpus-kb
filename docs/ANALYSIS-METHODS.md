@@ -3,9 +3,8 @@
 Corpus-KB ships a register of 30 NLP analysis methods. The register
 (`config/analysis_methods.yaml`) is the single source. It drives the
 selector (`analysis_select_method`), the generated table below, and the
-harness method cards. This file is part of that contract: the block
-between the markers is GENERATED — run `poe gen` after any register
-edit, never hand-edit the block.
+harness method cards. The block between the markers is GENERATED. Run
+`poe gen` after any register edit. Never hand-edit the block.
 
 ## How to pick a method
 
@@ -17,16 +16,17 @@ question within your budget.
    structures, text, errors, or recommendations.
 3. List the inputs you actually have: raw text, embeddings, labels,
    seed labels, predictions, timestamps, an ontology, or an LLM.
-4. Budget the calibration effort (none, low, moderate, high) and the
-   autonomy level (automated with audit, human in the loop, human led).
+4. Budget the calibration effort: none, low, moderate, or high. Then
+   budget the autonomy: automated with audit, human in the loop, or
+   human led.
 5. Read the robustness caveat and the bias risk for the candidate.
 6. Run the op. Then do the validation step it names. Claim only what
    its `permitted_claims` line allows.
 
 `analysis_select_method` applies this walk for you. It ranks the
-register with a fixed rubric: output family match, input coverage,
-complexity tier, calibration effort, selection priority, then id. The
-rubric is deterministic and never calls a model.
+register with a fixed rubric. The order: output family match, input
+coverage, complexity tier, calibration effort, selection priority,
+then id. The rubric is deterministic and never calls a model.
 
 The four selection rules behind the register:
 
@@ -46,50 +46,51 @@ footnotes. They have no register rows and no ops.
    ledger 01-30, and the status/op consistency.
 2. Give it an `op` name only when it is implemented. `human_led` and
    `not_planned` rows carry `op: null`.
-3. To implement an op: add the handler under `src/corpus_kb/tools/`
-   (the house shape: pool, config, tenant, typed errors, honest
-   envelopes), then the catalogue row in
-   `src/corpus_kb/contracts/catalogue_analysis.py`, the parity leg in
-   `tests/test_surface_parity_deep.py`, the registry row and card in
-   `src/corpus_kb/surface_registry.py`, and the thin CLI, HTTP, and
-   socket adapters. Run `poe gen`. The gates refuse a partial wiring.
+3. To implement an op, add the handler under `src/corpus_kb/tools/`.
+   Use the house shape: pool, config, tenant, typed errors, honest
+   envelopes. Then add the catalogue row in
+   `src/corpus_kb/contracts/catalogue_analysis.py`. Add the parity leg
+   in `tests/test_surface_parity_deep.py`. Add the registry row and
+   card in `src/corpus_kb/surface_registry.py`. Finish with the thin
+   CLI, HTTP, and socket adapters. Run `poe gen`. The gates refuse a
+   partial wiring.
 4. Run `poe gen` again; this page's table updates from the YAML.
 
 <!-- amr-register:generated:start -->
-Register version: 1.0.0. Source: I want to understand the NLP Analysis landscape so that I can ensure a team of non-NLP researchers are selected methods appropriately when using an NLP harness around a claude code like tool.
+Register version: 1.0.0. Source: the research document named in `config/analysis_methods.yaml`.
 
 | Id | Method | Output family | Inputs | Calibration | Autonomy | Complexity | Status | Op |
 |----|--------|---------------|--------|-------------|----------|------------|--------|----|
-| 01 | Full manual codebook analysis (baseline) | themes | raw_text | high | human_led | advanced | human-led | (none) |
-| 02 | Rapid Qualitative Analysis (RQA) matrix | structures | raw_text | moderate | human_in_loop | baseline | existing op | analyze_run |
-| 03 | Framework Method | structures | raw_text | high | human_in_loop | advanced | existing op | analyze_run |
-| 04 | Dictionary or rule-based classification | labels | raw_text | low | automated_with_audit | baseline | existing op | labeling_build |
-| 05 | TF-IDF keyphrase scan | themes | raw_text | low | automated_with_audit | baseline | new op | keyphrases_extract |
-| 06 | Embedding-based keyphrase extraction (KeyBERT) | themes | raw_text, embeddings | moderate | automated_with_audit | standard | new op | keyphrases_extract |
-| 07 | Statistical keyphrase extraction (YAKE) | themes | raw_text | low | automated_with_audit | baseline | new op | keyphrases_extract |
-| 08 | Classical topic modeling (NMF or LDA) | themes | raw_text | moderate | automated_with_audit | standard | not planned | (none) |
-| 09 | Unsupervised BERTopic | themes | raw_text, embeddings | moderate | automated_with_audit | standard | existing op | topics_build |
-| 10 | Guided BERTopic | themes | raw_text, embeddings, seed_labels | moderate | human_in_loop | standard | new op | topics_build |
-| 11 | Zero-shot BERTopic | themes | raw_text, embeddings, labels | moderate | human_in_loop | standard | new op | topics_build |
-| 12 | Embedding clustering (including interactive clustering) | structures | raw_text, embeddings | moderate | human_in_loop | standard | new op | clusters_inspect |
-| 13 | Embedding-centroid classification | labels | embeddings, labels | low | automated_with_audit | baseline | new op | centroids_classify |
-| 14 | Nearest-neighbor classification | labels | embeddings, labels | low | automated_with_audit | baseline | new op | neighbors_classify |
-| 15 | TF-IDF with logistic regression or linear SVM | labels | raw_text, labels | moderate | automated_with_audit | baseline | new op | lexical_classify |
-| 16 | Frozen embeddings with a linear classifier | labels | embeddings, labels | moderate | automated_with_audit | standard | existing op | classification_build |
-| 17 | SetFit few-shot classification | labels | raw_text, labels | moderate | automated_with_audit | advanced | existing op | classification_build |
-| 18 | Zero-shot NLI classification | labels | raw_text, llm | moderate | automated_with_audit | standard | new op | nli_classify |
-| 19 | Programmatic weak supervision (Snorkel) | labels | raw_text, predictions | high | human_in_loop | advanced | existing op | labeling_build |
-| 20 | Active learning loop | recommendations | labels, predictions | high | human_in_loop | advanced | new op | active_learn_next |
-| 21 | Human-in-the-loop computational grounded theory | themes | raw_text | high | human_led | advanced | human-led | (none) |
-| 22 | Extract, embed, cluster, summarize (EECS) | text | raw_text, embeddings | high | human_in_loop | advanced | new op | analyze_run |
-| 23 | Hybrid retrieval with reranking | text | raw_text, embeddings, llm | moderate | automated_with_audit | standard | existing op | search |
-| 24 | Extractive question answering | text | raw_text, llm | moderate | automated_with_audit | standard | existing op | ask |
-| 25 | Named entity recognition (including GLiNER) | structures | raw_text, llm | moderate | automated_with_audit | standard | existing op | ingest_text |
-| 26 | Sentiment or emotion classification | scores | raw_text | moderate | automated_with_audit | baseline | new op | sentiment_screen |
-| 27 | Aspect-based sentiment analysis | labels | raw_text, labels | high | human_in_loop | standard | new op | sentiment_screen |
-| 28 | NLI-based contradiction screening | errors | raw_text, llm, timestamps | moderate | human_in_loop | standard | new op | contradictions_screen |
-| 29 | Near-duplicate and paraphrase detection | errors | raw_text, embeddings | moderate | automated_with_audit | baseline | new op | duplicates_screen |
-| 30 | Outlier or novelty detection | errors | raw_text, embeddings | moderate | human_in_loop | baseline | new op | outliers_rank |
+| 01 | Full manual codebook analysis (baseline) | `themes` | `raw_text` | `high` | `human_led` | `advanced` | human-led | (none) |
+| 02 | Rapid Qualitative Analysis (RQA) matrix | `structures` | `raw_text` | `moderate` | `human_in_loop` | `baseline` | existing op | `analyze_run` |
+| 03 | Framework Method | `structures` | `raw_text` | `high` | `human_in_loop` | `advanced` | existing op | `analyze_run` |
+| 04 | Dictionary or rule-based classification | `labels` | `raw_text` | `low` | `automated_with_audit` | `baseline` | existing op | `labeling_build` |
+| 05 | TF-IDF keyphrase scan | `themes` | `raw_text` | `low` | `automated_with_audit` | `baseline` | new op | `keyphrases_extract` |
+| 06 | Embedding-based keyphrase extraction (KeyBERT) | `themes` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `standard` | new op | `keyphrases_extract` |
+| 07 | Statistical keyphrase extraction (YAKE) | `themes` | `raw_text` | `low` | `automated_with_audit` | `baseline` | new op | `keyphrases_extract` |
+| 08 | Classical topic modeling (NMF or LDA) | `themes` | `raw_text` | `moderate` | `automated_with_audit` | `standard` | not planned | (none) |
+| 09 | Unsupervised BERTopic | `themes` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `standard` | existing op | `topics_build` |
+| 10 | Guided BERTopic | `themes` | `raw_text`, `embeddings`, `seed_labels` | `moderate` | `human_in_loop` | `standard` | new op | `topics_build` |
+| 11 | Zero-shot BERTopic | `themes` | `raw_text`, `embeddings`, `labels` | `moderate` | `human_in_loop` | `standard` | new op | `topics_build` |
+| 12 | Embedding clustering (including interactive clustering) | `structures` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `standard` | new op | `clusters_inspect` |
+| 13 | Embedding-centroid classification | `labels` | `embeddings`, `labels` | `low` | `automated_with_audit` | `baseline` | new op | `centroids_classify` |
+| 14 | Nearest-neighbor classification | `labels` | `embeddings`, `labels` | `low` | `automated_with_audit` | `baseline` | new op | `neighbors_classify` |
+| 15 | TF-IDF with logistic regression or linear SVM | `labels` | `raw_text`, `labels` | `moderate` | `automated_with_audit` | `baseline` | new op | `lexical_classify` |
+| 16 | Frozen embeddings with a linear classifier | `labels` | `embeddings`, `labels` | `moderate` | `automated_with_audit` | `standard` | existing op | `classification_build` |
+| 17 | SetFit few-shot classification | `labels` | `raw_text`, `labels` | `moderate` | `automated_with_audit` | `advanced` | existing op | `classification_build` |
+| 18 | Zero-shot NLI classification | `labels` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | new op | `nli_classify` |
+| 19 | Programmatic weak supervision (Snorkel) | `labels` | `raw_text`, `predictions` | `high` | `human_in_loop` | `advanced` | existing op | `labeling_build` |
+| 20 | Active learning loop | `recommendations` | `labels`, `predictions` | `high` | `human_in_loop` | `advanced` | new op | `active_learn_next` |
+| 21 | Human-in-the-loop computational grounded theory | `themes` | `raw_text` | `high` | `human_led` | `advanced` | human-led | (none) |
+| 22 | Extract, embed, cluster, summarize (EECS) | `text` | `raw_text`, `embeddings` | `high` | `human_in_loop` | `advanced` | new op | `analyze_run` |
+| 23 | Hybrid retrieval with reranking | `text` | `raw_text`, `embeddings`, LLM | `moderate` | `automated_with_audit` | `standard` | existing op | `search` |
+| 24 | Extractive question answering | `text` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | existing op | `ask` |
+| 25 | Named entity recognition (including GLiNER) | `structures` | `raw_text`, LLM | `moderate` | `automated_with_audit` | `standard` | existing op | `ingest_text` |
+| 26 | Sentiment or emotion classification | `scores` | `raw_text` | `moderate` | `automated_with_audit` | `baseline` | new op | `sentiment_screen` |
+| 27 | Aspect-based sentiment analysis | `labels` | `raw_text`, `labels` | `high` | `human_in_loop` | `standard` | new op | `sentiment_screen` |
+| 28 | NLI-based contradiction screening | `errors` | `raw_text`, LLM, `timestamps` | `moderate` | `human_in_loop` | `standard` | new op | `contradictions_screen` |
+| 29 | Near-duplicate and paraphrase detection | `errors` | `raw_text`, `embeddings` | `moderate` | `automated_with_audit` | `baseline` | new op | `duplicates_screen` |
+| 30 | Outlier or novelty detection | `errors` | `raw_text`, `embeddings` | `moderate` | `human_in_loop` | `baseline` | new op | `outliers_rank` |
 
 ## Method guidance
 

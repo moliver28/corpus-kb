@@ -138,16 +138,17 @@ breaks; one command rebuilds them.
 ## Method register and selector
 
 The analysis method register lists 30 NLP analysis methods. Each row
-carries the selection axes from the research source: output family,
-required inputs, calibration effort, autonomy, complexity tier, and
-priority. Each row also carries the guidance axes: robustness and bias
-cautions, workload, usage guidance, required validation, and the
-claims the method permits.
+carries the selection axes from the research source. These are the
+output family, the required inputs, the calibration effort, the
+autonomy, the complexity tier, and the priority. Each row also carries
+the guidance axes. These are the robustness and bias cautions, the
+workload, and the usage guidance. They also name the required
+validation and the claims the method permits.
 
 `analysis-select-method` ranks methods for a stated task. It runs no
-model. The rubric is fixed: match the output family, then check the
-inputs you have, then prefer the lower complexity tier, then the lower
-calibration effort, then the recorded priority, then the id. Each
+model. The rubric is fixed. Match the output family, then check the
+inputs you have. Then prefer the lower complexity tier, then the lower
+calibration effort. Then the recorded priority, then the id. Each
 recommendation names the rank reason, the missing inputs, the required
 validation, and the permitted claims.
 
