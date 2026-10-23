@@ -228,13 +228,13 @@ revision supersedes the older statement through
 
 A belief is a Beta posterior over one subject-relation-object stance
 (migration 033). `beliefs-current` recomputes every belief from the
-statements: each stance sentence is one evidence item, weighted by its
-extraction confidence, discounted by exponential forgetting, and shrunk
-toward the tenant's overall stance ratio when evidence is sparse. The
-posterior is exact conjugate math — no sampling, no drift — and every
-answer carries a credible interval.
+statements. Each stance sentence is one evidence item. Its weight is
+the extraction confidence, discounted by exponential forgetting, and
+shrunk toward the tenant's stance ratio when evidence is sparse. The
+posterior is exact conjugate math: no sampling, no drift. Every answer
+carries a credible interval.
 
-`beliefs-timeline` segments one belief's history into eras with
+`beliefs-timeline` segments one belief's history into eras. It uses
 Beta-Bernoulli change-point detection, so "likes ice cream, then got
 tired of it" reads as two dated eras over the same evidence log.
 `beliefs-predict` answers with the probability the next stance is
