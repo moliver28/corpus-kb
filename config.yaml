@@ -356,15 +356,37 @@ routing:
 # Product, the rest fall back to Concept). No relation extraction.
 # backend: gliner refuses to construct while gliner.enabled is false.
 extraction:
-  # PREFERRED extraction-backend key (regex | langextract | pgml | gliner).
-  # The legacy key graph.extractor keeps working forever as an alias; when
-  # both are set, extraction.backend wins (config.apply_extraction_backend_alias).
-  backend: pgml
+  # PREFERRED extraction-backend key (ml | regex | langextract | pgml | gliner).
+  # "ml" is the default paved path: GLiNER2 NER + GLiNER-Relex zero-shot
+  # relations under extraction.mode. Install the `ml` extra (setup does) so
+  # the models load; a bare install degrades honestly through the extraction
+  # fallback chain. The legacy key graph.extractor keeps working forever as
+  # an alias; when both are set, extraction.backend wins
+  # (config.apply_extraction_backend_alias).
+  backend: ml
+  # zero_shot: GLiNER2 + GLiNER-Relex, ontology-conditioned, no examples.
+  # few_shot: LangExtract with examples self-prompted from the ontology.
+  # customized: few_shot + project exemplars mined from this tenant's stored
+  # high-confidence relations.
+  mode: zero_shot
   gliner:
     enabled: false
     model: fastino/gliner2-large-v1
     revision: main
     types: [person, organization, location, date, money, product]
+  relex:
+    model: knowledgator/gliner-relex-large-v1.0
+    threshold: 0.5
+    max_label_pairs: 40
+  # Optional voting across extractors (issue #133). Members run the primary
+  # plus the named extra backends; candidates survive on majority agreement.
+  ensemble:
+    enabled: false
+    members: [langextract]
+  # Chunk-hash result cache (migration 030): re-ingesting unchanged content
+  # skips the extraction pass entirely. Hits are reported in ExtractStats.
+  cache:
+    enabled: true
 
 graph:
   backend: age
@@ -373,7 +395,7 @@ graph:
   max_hops: 5
   # Legacy alias for extraction.backend (accepted forever; extraction.backend
   # wins when both are set).
-  extractor: pgml
+  extractor: ml
   fixture_dir: tests/fixtures/langextract_recorded
   live_fallback: false
   ontology_path: config/ontology.yaml

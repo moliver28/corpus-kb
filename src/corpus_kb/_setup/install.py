@@ -62,6 +62,7 @@ from corpus_kb._setup.setup_stack import (
     _run_cmd,
     _verify_postgres_image,
     setup_pull_models,
+    setup_pull_weights,
     setup_start_compose,
     setup_verify_extensions,
 )
@@ -427,6 +428,14 @@ async def setup_cmd(
         "models",
         "\n[Step 5/6] Ollama models already pulled; skipping.",
         lambda: setup_pull_models(apply=True),
+    )
+    exit_code |= await _run_phase(
+        state,
+        config,
+        completed,
+        "weights",
+        "\n[Step 5b/6] Extraction weights already present; skipping.",
+        lambda: setup_pull_weights(apply=True),
     )
     exit_code |= await _run_phase(
         state,

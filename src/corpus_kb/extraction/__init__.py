@@ -6,15 +6,18 @@ from typing import Any, cast
 
 import asyncpg
 
+from .ensemble import EnsembleExtractor
 from .gliner_backend import GlinerExtractor
 from .langextract_backend import LangExtractExtractor
+from .ml_backend import MLExtractor
 from .pgml_backend import PgmlExtractor
 from .protocol import Extractor, ExtractStats, OntologyViolationError
 from .regex_backend import RegexExtractor
 
 # The extractor names create_extractor (and the ingest fallback chain in
-# tools/ingest_extract.py) resolve. "llamaindex" is named but deferred.
-EXTRACTION_BACKENDS: frozenset[str] = frozenset({"regex", "langextract", "pgml", "gliner"})
+# tools/ingest_extract.py) resolve. "ml" is the composite GLiNER2 +
+# GLiNER-Relex + LangExtract engine. "llamaindex" is named but deferred.
+EXTRACTION_BACKENDS: frozenset[str] = frozenset({"regex", "langextract", "pgml", "gliner", "ml"})
 
 
 def extraction_backend_name(config: dict[str, Any]) -> str:
@@ -83,10 +86,46 @@ def create_extractor(config: dict[str, Any], pool: asyncpg.Pool | None = None) -
             return PgmlExtractor(pool=pool)
         case "gliner":
             return _create_gliner(config)
+        case "ml":
+            return _create_ml(config)
         case "llamaindex":
             raise NotImplementedError("llamaindex extractor is deferred to a later phase")
         case _ as unreachable:
             raise ValueError(f"Unsupported graph extractor: {unreachable}")
+
+
+def _create_ml(config: dict[str, Any]) -> Extractor:
+    """Build the ``ml`` extractor, wrapping it in the ensemble when enabled.
+
+    Ensemble members are extra extractors named in
+    ``extraction.ensemble.members`` (e.g. ``langextract``); the primary
+    ``ml`` extractor is always the first member and never duplicated.
+    """
+    extractor: Extractor = MLExtractor(config)
+    extraction_config = config.get("extraction", {})
+    ensemble: dict[str, Any] = {}
+    if isinstance(extraction_config, dict):
+        raw = cast(dict[str, Any], extraction_config).get("ensemble", {})
+        if isinstance(raw, dict):
+            ensemble = cast(dict[str, Any], raw)
+    if ensemble.get("enabled") is not True:
+        return extractor
+    members_raw = ensemble.get("members")
+    members = (
+        [m for m in members_raw if isinstance(m, str)] if isinstance(members_raw, list) else []
+    )
+    extras: list[Extractor] = []
+    for member in members:
+        if member == "ml":
+            continue
+        merged = dict(config)
+        extraction_block = dict(cast(dict[str, Any], extraction_config or {}))
+        extraction_block["backend"] = member
+        merged["extraction"] = extraction_block
+        extras.append(create_extractor(merged))
+    if extras:
+        return EnsembleExtractor([extractor, *extras])
+    return extractor
 
 
 def _create_gliner(config: dict[str, Any]) -> GlinerExtractor:
@@ -125,6 +164,7 @@ __all__ = [
     "Extractor",
     "GlinerExtractor",
     "LangExtractExtractor",
+    "MLExtractor",
     "OntologyViolationError",
     "PgmlExtractor",
     "RegexExtractor",

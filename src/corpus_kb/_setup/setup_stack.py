@@ -187,3 +187,14 @@ def setup_pull_models(apply: bool) -> int:
             continue
         exit_code |= _run_cmd(["ollama", "pull", model], timeout=600)
     return exit_code
+
+
+def setup_pull_weights(apply: bool) -> int:
+    """Pre-pull extraction model weights for the default ``ml`` backend.
+
+    A declined prompt or a failed download only prints a note — the
+    extraction fallback chain covers a missing model at ingest time.
+    """
+    from .setup_steps import install_extraction_weights
+
+    return install_extraction_weights(apply)

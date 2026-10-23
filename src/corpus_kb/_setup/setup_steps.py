@@ -251,6 +251,46 @@ def install_ollama_model(model: str, apply: bool) -> int:
     return result.returncode
 
 
+# HuggingFace weight ids pre-pulled by setup so the first `ml`-backend
+# ingest never blocks on a download mid-pipeline (plan: Living Corpus W1).
+# Weights ship through huggingface_hub snapshot_download.
+_EXTRACTION_WEIGHTS: tuple[str, ...] = (
+    "fastino/gliner2-large-v1",
+    "knowledgator/gliner-relex-large-v1.0",
+)
+
+
+def install_extraction_weights(apply: bool) -> int:
+    """Pre-pull GLiNER2 + GLiNER-Relex weights if confirmed.
+
+    Degrades honestly: no huggingface_hub, no network, or a declined
+    prompt only prints a note. The extraction fallback chain covers a
+    missing model at ingest time.
+    """
+    print("\n[Step 3b/5] Extraction model weights (GLiNER2 + Relex)")
+    try:
+        from huggingface_hub import snapshot_download
+    except ImportError:
+        print("  Skipped: huggingface_hub not installed (pip install '.[ml]').")
+        return 0
+    if not apply or not _confirm_fn()(
+        f"Download {len(_EXTRACTION_WEIGHTS)} extraction model weight sets."
+    ):
+        print("  Skipped.")
+        return 0
+    failed = 0
+    for weight_id in _EXTRACTION_WEIGHTS:
+        try:
+            snapshot_download(weight_id)
+            print(f"  OK: {weight_id}")
+        except Exception as exc:
+            failed += 1
+            print(f"  Failed: {weight_id}: {exc}")
+    if failed:
+        print(f"  {failed} weight download(s) failed; ingest will fall back honestly.")
+    return 0
+
+
 def write_config(profile: str, config: dict[str, Any], force: bool) -> int:
     """Write ~/.corpus-kb/config.yaml from detected profile if confirmed."""
     print("\n[Step 4/5] Writing user config file...")

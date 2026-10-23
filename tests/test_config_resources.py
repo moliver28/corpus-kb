@@ -31,7 +31,7 @@ def test_load_config_resolves_from_cwd_in_dev_mode() -> None:
     installer_cfg = cast(dict[str, object], cfg["installer"])
     assert installer_cfg["postgres_image"] == "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17"
     extraction_cfg = cast(dict[str, object], cfg["extraction"])
-    assert extraction_cfg["backend"] == "pgml"
+    assert extraction_cfg["backend"] == "ml"
 
 
 def test_default_config_promotes_g1_winner() -> None:

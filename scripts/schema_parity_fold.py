@@ -27,7 +27,7 @@ from schema_parity_model import (
 )
 from schema_parity_sql import SchemaParityError, split_statements
 from sqlglot import exp
-from sqlglot.errors import ParseError
+from sqlglot.errors import ParseError, TokenError
 
 logging.getLogger("sqlglot").setLevel(logging.CRITICAL)
 
@@ -197,7 +197,11 @@ def _fold_do_body(text: str, dialect: str, state: SchemaState, at: Origin) -> No
     for match in _INNER_ALTER.finditer(text):
         try:
             inner = sqlglot.parse_one(match.group(0), read=dialect)
-        except ParseError:
+        except (ParseError, TokenError):
+            # Best-effort by contract: EXECUTE-format bodies never parse
+            # statically (their effect lives in the gate allowlist). The
+            # tokenizer raises TokenError on the %I placeholders — same
+            # skip, not a gate failure.
             continue
         if isinstance(inner, exp.Alter):
             _fold_alter(inner, state, at)

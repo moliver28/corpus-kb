@@ -21,6 +21,12 @@ from typing import Any
 
 import yaml
 
+# Absolute import: this module is also loaded by file path (no package
+# context) in tests, where a relative import would fail.
+from corpus_kb._setup.validate_extraction_ml import (
+    validate_extraction_ml as _validate_extraction_ml,
+)
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -496,6 +502,16 @@ def validate_extraction_gliner(config: dict[str, Any]) -> list[str]:
                 )
 
     return errors
+
+
+def validate_extraction_ml(config: dict[str, Any]) -> list[str]:
+    """Validate the ``extraction.mode``/``relex``/``ensemble``/``cache`` keys.
+
+    Thin re-export: the checks live in ``validate_extraction_ml.py`` (the
+    block outgrew this module's complexity gate). Kept importable from here
+    for the historical ``validate_configs.<name>`` surface.
+    """
+    return _validate_extraction_ml(config)
 
 
 def validate_ingestion_block(config: dict[str, Any]) -> list[str]:
@@ -1008,6 +1024,7 @@ def _validate_runtime_yaml(project_root: Path) -> list[str]:
             continue
         runtime_cfg = load_yaml(config_path)
         errs = validate_extraction_gliner(runtime_cfg)
+        errs += validate_extraction_ml(runtime_cfg)
         errs += validate_ingestion_block(runtime_cfg)
         errs += validate_runtime_config(runtime_cfg)
         errors.extend(f"{display}: {e}" for e in errs)

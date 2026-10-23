@@ -84,6 +84,15 @@ ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     ("sequence", "", "sources_id_seq"): (
         "Orphan: DuckDB 001 mirrors the pg serial name; sources.id uses gen_random_uuid()."
     ),
+    # -- pg-only extraction cache (pg 030, Living Corpus W1): a performance
+    # -- cache for the asyncpg extraction stage; DuckDB runs pass pool=None
+    # -- and never touch it, so the table is not ported.
+    ("table", "extraction_cache", ""): (
+        "pg-only extraction cache (030): DuckDB ingest passes pool=None and skips caching."
+    ),
+    ("index", "extraction_cache", "backend,model_version,prompt_version,tenant_id"): (
+        "pg-only extraction cache lookup index (030); no DuckDB twin needed."
+    ),
 }
 
 

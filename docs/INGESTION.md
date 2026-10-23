@@ -168,19 +168,30 @@ pipeline result carries those counts instead of inflated totals. Every
 entity stores provenance metadata (`extractor`, `model`, `revision`,
 `confidence`), matching the relation provenance below.
 
-An **opt-in GLiNER2 backend** (`graph.extractor: gliner`) adds
-schema-conditioned NER via `fastino/gliner2-large-v1`. It covers six
-mention-level types (person, organization, location, date, money, product).
-The model revision is pinned from config. It produces entity spans only —
-**no relation extraction**. It is disabled by default
-(`extraction.gliner.enabled: false`) and requires the optional `ner`
-dependency extra (`pip install "corpus-kb[ner]"`). Promote it over the
-default only with eval numbers. The span-eval harness
-(`src/corpus_kb/extraction/eval.py`) scores per-type P/R/F1 with bootstrap
-confidence intervals. The promotion gate is micro F1 >= 0.80 and >=
-baseline + 0.02. The former BERT backend was dead code: the extractor
-factory never routed to it, so it has been removed. Issue #31 is the
-GLiNER2 follow-up.
+The **default `ml` backend** (`extraction.backend: ml`) composes the ML
+extraction engine. `extraction.mode` picks the ladder:
+
+- `zero_shot` (default): GLiNER2 schema-conditioned NER
+  (`fastino/gliner2-large-v1`, six mention-level types: person,
+  organization, location, date, money, product) plus GLiNER-Relex
+  zero-shot relations (`knowledgator/gliner-relex-large-v1.0`). Both
+  models are ontology-conditioned at inference. No examples, no
+  fine-tuning, no regex anywhere.
+- `few_shot`: LangExtract with examples self-prompted from the ontology.
+- `customized`: few-shot plus project exemplars mined from the stored
+  high-confidence relations of this tenant.
+
+The optional `ml` dependency extra (`pip install "corpus-kb[ml]"`)
+installs both model stacks; `corpus-kb setup` pre-pulls the weights. A
+bare install degrades honestly through the extraction fallback chain
+(every fallback lands in `ExtractStats.notes`). The extraction cache
+(keyed by chunk hash, backend, model version, prompt version) makes
+re-ingest of unchanged content free. The span-eval harness
+(`src/corpus_kb/extraction/eval.py`) scores per-type P/R/F1 with
+bootstrap confidence intervals. The promotion gate is micro F1 >= 0.80
+and >= baseline + 0.02. The former BERT backend was dead code: the
+extractor factory never routed to it, so it has been removed. Issue #31
+is the GLiNER2 follow-up.
 
 Every relation stores provenance metadata: the source chunk, confidence,
 extractor id, model version, and prompt version. The unique key includes
