@@ -104,6 +104,13 @@ from corpus_kb.cli_conflicts import (  # noqa: E402
 
 register_conflict_commands(app)
 
+# Living Corpus W4 belief front doors: cli_beliefs mirrors cli_conflicts.
+from corpus_kb.cli_beliefs import (  # noqa: E402
+    register as register_belief_commands,
+)
+
+register_belief_commands(app)
+
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.

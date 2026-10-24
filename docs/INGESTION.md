@@ -224,6 +224,24 @@ is ever deleted. `conflicts-resolve` finalizes a flag; a confirmed
 revision supersedes the older statement through
 `statements.superseded_by`.
 
+## Beliefs
+
+A belief is a Beta posterior over one subject-relation-object stance
+(migration 033). `beliefs-current` recomputes every belief from the
+statements. Each stance sentence is one evidence item. Its weight starts
+at the extraction confidence. Forgetting discounts old items. Sparse
+beliefs shrink toward the tenant's stance ratio. The posterior is exact
+conjugate math: no sampling, no drift. Every answer carries a credible
+interval.
+
+`beliefs-timeline` segments one belief's history into eras. It runs
+Beta-Bernoulli change-point detection. "Likes ice cream, then got tired
+of it" reads as two dated eras over the same evidence log.
+`beliefs-predict` answers with the probability the next stance is
+positive. `beliefs-compare` puts one subject's objects side by side.
+Conflicted statements count half; superseded ones count a quarter —
+the history stays, discounted.
+
 Every relation stores provenance metadata: the source chunk, confidence,
 extractor id, model version, and prompt version. The unique key includes
 `chunk_id` so the same triple asserted in two different chunks keeps both

@@ -73,6 +73,12 @@ from corpus_kb.api.routes_analysis_methods import (
     sentiment_screen_route,
 )
 from corpus_kb.api.routes_ask import ask
+from corpus_kb.api.routes_beliefs import (
+    beliefs_compare_route,
+    beliefs_current_route,
+    beliefs_predict_route,
+    beliefs_timeline_route,
+)
 from corpus_kb.api.routes_classification import (
     classification_build_route,
     classification_list_route,
@@ -198,6 +204,11 @@ def create_http_app() -> FastAPI:
         Route("/api/conflicts/scan", conflicts_scan_route, methods=["POST"]),
         Route("/api/conflicts/list", conflicts_list_route, methods=["POST"]),
         Route("/api/conflicts/resolve", conflicts_resolve_route, methods=["POST"]),
+        # Living Corpus W4: the belief ops.
+        Route("/api/beliefs/current", beliefs_current_route, methods=["POST"]),
+        Route("/api/beliefs/timeline", beliefs_timeline_route, methods=["POST"]),
+        Route("/api/beliefs/predict", beliefs_predict_route, methods=["POST"]),
+        Route("/api/beliefs/compare", beliefs_compare_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),
         Route("/api/search/context", search_context, methods=["POST"]),

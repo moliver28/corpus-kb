@@ -21,6 +21,7 @@ from __future__ import annotations
 from corpus_kb.contracts.catalogue import CORE_OPERATIONS
 from corpus_kb.contracts.catalogue_analysis import ANALYSIS_OPERATIONS
 from corpus_kb.contracts.catalogue_ask import ASK_OPERATIONS
+from corpus_kb.contracts.catalogue_beliefs import BELIEFS_OPERATIONS
 from corpus_kb.contracts.catalogue_classification import CLASSIFICATION_OPERATIONS
 from corpus_kb.contracts.catalogue_conflicts import CONFLICTS_OPERATIONS
 from corpus_kb.contracts.catalogue_documents import DOCUMENTS_OPERATIONS
@@ -55,6 +56,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *ASK_OPERATIONS,
     *STATEMENTS_OPERATIONS,
     *CONFLICTS_OPERATIONS,
+    *BELIEFS_OPERATIONS,
 )
 
 __all__ = [

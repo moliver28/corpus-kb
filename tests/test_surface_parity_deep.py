@@ -74,6 +74,7 @@ import corpus_kb.research.report_runner as report_runner_module
 import corpus_kb.research.review_surface as review_surface_module
 import corpus_kb.tools.active_learn_tools as active_learn_tools_module
 import corpus_kb.tools.analysis_tools as analysis_tools_module
+import corpus_kb.tools.beliefs_tools as beliefs_tools_module
 import corpus_kb.tools.centroid_tools as centroid_tools_module
 import corpus_kb.tools.classification_tools as classification_tools_module
 import corpus_kb.tools.cluster_tools as cluster_tools_module
@@ -492,6 +493,100 @@ async def _shared_conflicts_resolve(ctx: dict[str, Any]) -> dict[str, Any]:
         conflict_id=conflict_id,
         resolved_verdict="dismissed",
         resolved_by="parity-leg",
+    )
+
+
+_SEED_BELIEF = {"subject": "speaker:777", "relation": "preference", "object": "ice cream"}
+
+
+async def _seed_one_belief(ctx: dict[str, Any]) -> dict[str, str]:
+    """Seed two same-speaker statements (like at T-10y, tired at T-0) and
+    rebuild beliefs; returns the belief triple for the surface legs."""
+    from datetime import UTC, datetime, timedelta
+
+    from corpus_kb.beliefs.store import BeliefStore
+
+    pool = ctx["pool"]
+    async with pool.acquire() as conn:
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", _SEED_TENANT)
+        await conn.execute(
+            "INSERT INTO documents (tenant_id, source, source_type)"
+            " VALUES ($1, 'parity-beliefs-seed', 'text')"
+            " ON CONFLICT (tenant_id, source) DO NOTHING",
+            _SEED_TENANT,
+        )
+        doc_id = await conn.fetchval(
+            "SELECT doc_id::text FROM documents"
+            " WHERE tenant_id = $1 AND source = 'parity-beliefs-seed'",
+            _SEED_TENANT,
+        )
+        await conn.execute(
+            "INSERT INTO chunks (tenant_id, doc_id, chunk_index, text, source_type)"
+            " VALUES ($1, $2, 0, 'Belief seed chunk.', 'text')"
+            " ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING",
+            _SEED_TENANT,
+            doc_id,
+        )
+        chunk_id = await conn.fetchval(
+            "SELECT chunk_id::text FROM chunks"
+            " WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = 0",
+            _SEED_TENANT,
+            doc_id,
+        )
+        now = datetime.now(UTC)
+        rows = [
+            (
+                hashlib.sha256(b"belief-seed-old").hexdigest(),
+                "I like ice cream.",
+                0.9,
+                now - timedelta(days=3650),
+            ),
+            (
+                hashlib.sha256(b"belief-seed-new").hexdigest(),
+                "I dislike ice cream now.",
+                0.9,
+                now,
+            ),
+        ]
+        for seed_hash, seed_text, confidence, observed in rows:
+            await conn.execute(
+                "INSERT INTO statements (tenant_id, chunk_id, document_id, statement_hash,"
+                " text, template_id, template_version, entities, exchange_id, confidence,"
+                " observed_at)"
+                " VALUES ($1, $2, $3, $4, $5, 'preference', 'v1', $6::jsonb, 777, $7, $8)"
+                " ON CONFLICT (tenant_id, statement_hash, chunk_id) DO NOTHING",
+                _SEED_TENANT,
+                chunk_id,
+                doc_id,
+                seed_hash,
+                seed_text,
+                '[{"name": "ice cream", "entity_type": "CONCEPT"}]',
+                confidence,
+                observed,
+            )
+    store = BeliefStore(pool, _SEED_TENANT)
+    await store.rebuild()
+    return dict(_SEED_BELIEF)
+
+
+async def _shared_beliefs_current(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await beliefs_tools_module.beliefs_current(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_beliefs_timeline(ctx: dict[str, Any]) -> dict[str, Any]:
+    triple = await _seed_one_belief(ctx)
+    return await beliefs_tools_module.beliefs_timeline(ctx["pool"], config=ctx["config"], **triple)
+
+
+async def _shared_beliefs_predict(ctx: dict[str, Any]) -> dict[str, Any]:
+    triple = await _seed_one_belief(ctx)
+    return await beliefs_tools_module.beliefs_predict(ctx["pool"], config=ctx["config"], **triple)
+
+
+async def _shared_beliefs_compare(ctx: dict[str, Any]) -> dict[str, Any]:
+    triple = await _seed_one_belief(ctx)
+    return await beliefs_tools_module.beliefs_compare(
+        ctx["pool"], config=ctx["config"], subject=triple["subject"]
     )
 
 
@@ -945,6 +1040,44 @@ LEGS: dict[str, _Leg] = {
             "resolved_verdict": "dismissed",
             "resolved_by": "parity-leg",
         },
+    ),
+    # -- Living Corpus W4: the belief ops. The timeline/predict/compare
+    #    legs seed one like->dislike arc and rebuild before reading.
+    "beliefs_current": _Leg(
+        _shared_beliefs_current,
+        _post("/api/beliefs/current", {}),
+        _sock("beliefs_current", {}),
+        _mcp({}),
+    ),
+    "beliefs_timeline": _Leg(
+        _shared_beliefs_timeline,
+        lambda ctx: {
+            "method": "post",
+            "path": "/api/beliefs/timeline",
+            "json": dict(ctx.get("parity_belief_seed", _SEED_BELIEF)),
+        },
+        lambda ctx: ("beliefs_timeline", dict(ctx.get("parity_belief_seed", _SEED_BELIEF))),
+        lambda ctx: dict(ctx.get("parity_belief_seed", _SEED_BELIEF)),
+    ),
+    "beliefs_predict": _Leg(
+        _shared_beliefs_predict,
+        lambda ctx: {
+            "method": "post",
+            "path": "/api/beliefs/predict",
+            "json": dict(ctx.get("parity_belief_seed", _SEED_BELIEF)),
+        },
+        lambda ctx: ("beliefs_predict", dict(ctx.get("parity_belief_seed", _SEED_BELIEF))),
+        lambda ctx: dict(ctx.get("parity_belief_seed", _SEED_BELIEF)),
+    ),
+    "beliefs_compare": _Leg(
+        _shared_beliefs_compare,
+        lambda ctx: {
+            "method": "post",
+            "path": "/api/beliefs/compare",
+            "json": {"subject": _SEED_BELIEF["subject"]},
+        },
+        lambda ctx: ("beliefs_compare", {"subject": _SEED_BELIEF["subject"]}),
+        lambda ctx: {"subject": _SEED_BELIEF["subject"]},
     ),
     "lexical_classify": _Leg(
         _shared_lexical_classify,
