@@ -1,9 +1,9 @@
 # Harness playbooks
 
 This doc is the operating script for the AI harness. End users are not
-experts; the harness is. The harness reads the sample data, asks at
-most six questions, drafts a profile, validates it, and runs the
-paved pipeline. No user code anywhere.
+experts; the harness is. The harness reads the sample data first. Then
+it asks at most six questions. It drafts a profile, validates it, and
+runs the paved pipeline. No user code anywhere.
 
 ## The one decision flow
 
@@ -20,11 +20,11 @@ paved pipeline. No user code anywhere.
 
 | Data type | Ingestion strategy | Extraction mode | Templates to list |
 | --- | --- | --- | --- |
-| Interview transcripts | `transcript` | `few_shot` or `customized` | preference, opinion, sentiment_target, temporal_change |
-| Focus groups | `transcript` | `few_shot` | preference, opinion, sentiment_target |
-| Surveys | `text` or `default` | `zero_shot` | sentiment_target, numeric_claim |
-| News or reports | `markdown` or `default` | `zero_shot` | fact_triple, attribution, numeric_claim |
-| Mixed corpora | detection-driven | `zero_shot` first, tune later | preference, opinion, fact_triple |
+| Interview transcripts | `transcript` | `few_shot` or `customized` | `preference`, `opinion`, `sentiment_target`, `temporal_change` |
+| Focus groups | `transcript` | `few_shot` | `preference`, `opinion`, `sentiment_target` |
+| Surveys | `text` or `default` | `zero_shot` | `sentiment_target`, `numeric_claim` |
+| News or reports | `markdown` or `default` | `zero_shot` | `fact_triple`, `attribution`, `numeric_claim` |
+| Mixed corpora | detection-driven | `zero_shot` first, tune later | `preference`, `opinion`, `fact_triple` |
 
 Rules of thumb:
 
@@ -87,7 +87,7 @@ profile wins next. The `ingestion.strategies` config map wins next.
 Content detection wins next. The default wins last. The result reports
 which layer decided in `strategy_basis`.
 
-## Tuning: the extraction-tune op
+## Tuning with the tune op
 
 Run it after review decisions accumulate. It mines confirmed evidence
 into artifacts.

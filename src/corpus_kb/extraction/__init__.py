@@ -84,19 +84,20 @@ def create_extractor(
 
     match extractor_name:
         case "regex":
-            return RegexExtractor()
+            extractor: Extractor = RegexExtractor()
         case "langextract":
-            return LangExtractExtractor(fixture_dir=fixture_dir, live_fallback=live_fallback)
+            extractor = LangExtractExtractor(fixture_dir=fixture_dir, live_fallback=live_fallback)
         case "pgml":
-            return PgmlExtractor(pool=pool)
+            extractor = PgmlExtractor(pool=pool)
         case "gliner":
-            return _create_gliner(config)
+            extractor = _create_gliner(config)
         case "ml":
-            return _create_ml(config, extra_examples)
+            extractor = _create_ml(config, extra_examples)
         case "llamaindex":
             raise NotImplementedError("llamaindex extractor is deferred to a later phase")
         case _ as unreachable:
             raise ValueError(f"Unsupported graph extractor: {unreachable}")
+    return extractor
 
 
 def _create_ml(

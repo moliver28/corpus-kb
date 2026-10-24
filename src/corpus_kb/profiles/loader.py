@@ -56,7 +56,7 @@ def safe_profile_path(base_dir: str, leaf: str) -> str:
             f"Path {leaf!r} escapes the profiles directory.",
             remediation="Keep profile artifacts inside the profiles directory.",
         )
-    return joined
+    return str(joined)
 
 
 @dataclass(frozen=True)

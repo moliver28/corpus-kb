@@ -150,7 +150,7 @@ class _FakeStrategy:
 
 
 def _patch_registry(monkeypatch: pytest.MonkeyPatch) -> None:
-    import corpus_kb.ingestion.registry as registry
+    from corpus_kb.ingestion import registry
 
     monkeypatch.setattr(registry, "_REGISTRY", {"transcript": _FakeStrategy()})
     monkeypatch.setattr(registry, "_ready", True)
