@@ -100,7 +100,10 @@ class ConflictStore:
 
     async def fetch_scan_rows(self) -> list[dict[str, Any]]:
         """Live statements with entity names unfolded for the cascade."""
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
+            )
             rows = await conn.fetch(SCAN_SQL, self._tenant_id)
         out: list[dict[str, Any]] = []
         for row in rows:
@@ -117,7 +120,10 @@ class ConflictStore:
     async def list_conflicts(
         self, *, verdict: str | None = None, limit: int = 50
     ) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
+            )
             rows = await conn.fetch(LIST_SQL, self._tenant_id, verdict, limit)
         return [dict(row) for row in rows]
 

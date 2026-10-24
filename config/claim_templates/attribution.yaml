@@ -3,7 +3,7 @@ description: >
   A claim attributed to a source: according to, said, reported. Keeps
   provenance inside the statement instead of only in the chunk.
 signals:
-  - "\\baccording to\b"
-  - "\\b(said|stated|reported|mentioned|noted|claimed)\b"
+  - "\\baccording to\\b"
+  - "\\b(said|stated|reported|mentioned|noted|claimed)\\b"
 min_entities: 0
 roles: [source, claim]

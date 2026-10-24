@@ -110,8 +110,16 @@ class StatementStore:
         document_id: str | None = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """Deterministic newest-first page of statement rows."""
-        async with pool.acquire() as conn:
+        """Deterministic newest-first page of statement rows.
+
+        The tenant GUC rides the read: RLS on statements filters on the
+        ``app.current_tenant_id`` setting, so the WHERE predicate alone
+        hides every row when the setting is absent.
+        """
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
+            )
             rows = await conn.fetch(LIST_SQL, self._tenant_id, template_id, document_id, limit)
         return [_row_to_dict(row) for row in rows]
 
@@ -123,6 +131,9 @@ class StatementStore:
         limit: int = 200,
     ) -> list[dict[str, Any]]:
         """Chronological view (valid_at first) — the belief history view."""
-        async with pool.acquire() as conn:
+        async with pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
+            )
             rows = await conn.fetch(TIMELINE_SQL, self._tenant_id, text_query, limit)
         return [_row_to_dict(row) for row in rows]
