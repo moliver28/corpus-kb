@@ -88,6 +88,7 @@ def test_envelope_has_no_trace_id_when_tracing_off() -> None:
         "degraded_excluded",
         "vector_index_mode",
         "lexical_index_mode",
+        "meta_hits",
     }
     degraded = envelope_to_payload(finalize_envelope([], [REASON_ZERO_QUERY], excluded_count=4))
     assert set(degraded) == {
@@ -97,6 +98,7 @@ def test_envelope_has_no_trace_id_when_tracing_off() -> None:
         "remedy",
         "vector_index_mode",
         "lexical_index_mode",
+        "meta_hits",
     }
 
 

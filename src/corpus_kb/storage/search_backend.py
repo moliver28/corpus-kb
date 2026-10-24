@@ -70,6 +70,10 @@ class SearchOutcome:
     lexical_index_mode: str
     vector_index_note: str | None = None
     lexical_index_note: str | None = None
+    # Living Corpus W6: the coarse aggregate arm (meta_embeddings cosine
+    # top-k). Empty when the table is missing, empty, or the arm failed —
+    # a meta impairment never degrades the chunk-level search.
+    meta_rows: Sequence[SearchRow] = ()
 
 
 @runtime_checkable

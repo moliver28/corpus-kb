@@ -140,6 +140,7 @@ def test_request_and_outcome_carry_the_arm_contract() -> None:
         "lexical_index_mode",
         "vector_index_note",
         "lexical_index_note",
+        "meta_rows",
     } == outcome_fields
 
 
@@ -267,6 +268,7 @@ def test_note_conditional_shape_follows_embedding_note_contract() -> None:
         "degraded_excluded",
         "vector_index_mode",
         "lexical_index_mode",
+        "meta_hits",
     }
     healthy = finalize_envelope([], [])
     assert set(envelope_to_payload(healthy)) == base_keys

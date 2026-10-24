@@ -233,4 +233,5 @@ async def search_with_meta(
             lexical_index_mode=outcome.lexical_index_mode,
             vector_index_note=outcome.vector_index_note,
             lexical_index_note=outcome.lexical_index_note,
+            meta_hits=[dict(row) for row in outcome.meta_rows],
         )

@@ -124,9 +124,10 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # The historical lie (declared names with no function) stays dead.
     # The §5.1 graph births (+4), the analysis program's tools (+4), and
     # the method register program's twelve method ops (+12), the Living
-    # Corpus statement (+2), conflict (+3), belief (+4) and tune (+1) ops
-    # all extended the catalogue; the pin covers the union.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 69
+    # Corpus statement (+2), conflict (+3), belief (+4), tune (+1) and
+    # meta-embed (+1) ops all extended the catalogue; the pin covers the
+    # union.
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 70
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:
@@ -241,6 +242,7 @@ async def test_round_trip_search(monkeypatch: pytest.MonkeyPatch) -> None:
         "degraded_excluded",
         "vector_index_mode",
         "lexical_index_mode",
+        "meta_hits",
     }
     assert payload["status"] == "success"
 

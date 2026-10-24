@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import inspect
 import logging
+import math
 from collections.abc import Awaitable
 from typing import Any, Protocol, cast
 
@@ -53,6 +54,9 @@ REASON_ZERO_QUERY = "zero-query-embedding"
 REASON_VECTOR_ARM_ERROR = "vector-arm-error"
 REASON_NO_EMBEDDER = "no-embedder"
 REASON_FILTER_EMPTY = "degraded-filter-active"
+
+# Living Corpus W6 meta arm: how many coarse routing hits ride the search.
+META_ARM_K = 5
 
 # Mirrors of handlers.query_vector_arms fragments (pinned by tests).
 SELECT_LIST = (
@@ -152,13 +156,67 @@ class DuckDbSearchBackend:
             request.reasons.append(vector_reason)
         excluded_count = await self._degraded_probe(gateway, request, tenant_id, vector_rows)
         lexical_rows = await self._lexical_rows(request, gateway, tenant_id, k)
+        meta_rows = await self._meta_rows(request, gateway, tenant_id)
         return SearchOutcome(
             vector_rows=vector_rows,
             lexical_rows=lexical_rows,
             excluded_count=excluded_count,
             vector_index_mode=DUCKDB_VECTOR_INDEX_MODE,
             lexical_index_mode=DUCKDB_LEXICAL_INDEX_MODE,
+            meta_rows=meta_rows,
         )
+
+    async def _meta_rows(self, request: SearchRequest, gateway: Any, tenant_id: str) -> list[Any]:
+        """Cosine top-k over meta_embeddings (empty on any impairment).
+
+        The twin column is FLOAT[2560]; the scan is a plain SELECT plus
+        Python cosine (the table holds aggregates — hundreds at most).
+        No embedder or a zero query vector skips the arm; a missing table
+        (un-migrated file) logs and returns empty — never degrades search.
+        """
+        if self._embedder is None:
+            return []
+        try:
+            embedded = self._embedder.embed(request.semantic_query)
+            query_vector = await embedded if inspect.isawaitable(embedded) else embedded
+            if _all_zero(query_vector):
+                return []
+            rows = await gateway.fetch(
+                "SELECT meta_kind, meta_key, label, source_count, embedding"
+                " FROM meta_embeddings WHERE tenant_id = $1",
+                tenant_id,
+            )
+            norm_q = math.sqrt(sum(v * v for v in query_vector)) or 1.0
+            scored: list[tuple[float, str, str, str, int]] = []
+            for row in rows:
+                emb = list(row["embedding"])
+                norm_m = math.sqrt(sum(v * v for v in emb)) or 1.0
+                cosine = sum(a * b for a, b in zip(query_vector, emb, strict=False)) / (
+                    norm_q * norm_m
+                )
+                scored.append(
+                    (
+                        1.0 - cosine,
+                        str(row["meta_key"]),
+                        str(row["meta_kind"]),
+                        str(row["label"] or ""),
+                        int(row["source_count"]),
+                    )
+                )
+            scored.sort(key=lambda item: (item[0], item[2], item[1]))
+            return [
+                {
+                    "meta_kind": kind,
+                    "meta_key": key,
+                    "label": label,
+                    "source_count": count,
+                    "distance": distance,
+                }
+                for distance, key, kind, label, count in scored[:META_ARM_K]
+            ]
+        except Exception as exc:
+            logger.warning("DuckDB meta arm skipped: %s", exc)
+            return []
 
     async def _vector_rows(
         self, request: SearchRequest, gateway: Any, tenant_id: str, k: int

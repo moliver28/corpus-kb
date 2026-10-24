@@ -565,6 +565,18 @@ async def _active_learn_next(params: dict[str, Any], tenant_id: str) -> dict[str
     )
 
 
+async def _analysis_embed_meta(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.meta_embed_tools import analysis_embed_meta
+
+    raw_kinds = params.get("kinds")
+    return await analysis_embed_meta(
+        await research_pool(),
+        tenant_id=tenant_id,
+        kinds=str(raw_kinds) if raw_kinds is not None else None,
+    )
+
+
 async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import SearchQuery
     from corpus_kb.handlers.query_handler import get_query_handler
@@ -750,6 +762,8 @@ _CORE_ARMS: dict[str, Arm] = {
     "contradictions_screen": _contradictions_screen,
     "sentiment_screen": _sentiment_screen,
     "active_learn_next": _active_learn_next,
+    # Living Corpus W6: the meta-embedding build op.
+    "analysis_embed_meta": _analysis_embed_meta,
     # Living Corpus W2: the statement-atom read ops.
     "statements_list": _statements_list,
     "statements_timeline": _statements_timeline,

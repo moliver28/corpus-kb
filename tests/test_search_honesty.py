@@ -259,6 +259,7 @@ def test_envelope_to_payload_shape() -> None:
         "remedy",
         "vector_index_mode",
         "lexical_index_mode",
+        "meta_hits",
     }
     assert payload["status"] == STATUS_DEGRADED_EMPTY
     assert payload["degraded_excluded"] == {"count": 4, "reasons": [REASON_ZERO_QUERY]}
@@ -269,6 +270,7 @@ def test_envelope_to_payload_shape() -> None:
         "degraded_excluded",
         "vector_index_mode",
         "lexical_index_mode",
+        "meta_hits",
     }
     assert healthy["degraded_excluded"] == {"count": 0, "reasons": []}
     # Postgres defaults on the legacy constructor path; the conditional

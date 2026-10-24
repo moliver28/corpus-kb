@@ -48,6 +48,7 @@ DUPLICATES_ENVELOPE = ("status", "pairs", "threshold", "screened_count")
 OUTLIERS_ENVELOPE = ("status", "outliers", "screened_count")
 CONTRADICTIONS_ENVELOPE = ("status", "pairs", "screened_count")
 RANKED_ENVELOPE = ("status", "ranked", "strategy", "requested_batch")
+META_EMBED_ENVELOPE = ("status", "kinds", "built", "per_kind", "notes")
 
 ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
     Operation(
@@ -347,6 +348,26 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(CLI, "active-learn-next"),
             SurfaceSpec(HTTP, "/api/analysis/active-learn-next", "POST"),
             SurfaceSpec(SOCKET, "active_learn_next"),
+        ),
+        exit_codes=(0, 1, 2, 3),
+    ),
+    Operation(
+        name="analysis_embed_meta",
+        family="analysis",
+        description=(
+            "Build and upsert the coarse corpus aggregates (document, "
+            "topic, belief_summary, profile) as halfvec(2560) rows in "
+            "meta_embeddings — the search meta arm's index. kinds is a "
+            "comma list or 'all'."
+        ),
+        handler="corpus_kb.tools.meta_embed_tools:analysis_embed_meta",
+        params=(ParamSpec("kinds"), _TENANT),
+        envelope_keys=META_EMBED_ENVELOPE,
+        surfaces=(
+            SurfaceSpec(MCP, "analysis_embed_meta"),
+            SurfaceSpec(CLI, "analysis-embed-meta"),
+            SurfaceSpec(HTTP, "/api/analysis/embed-meta", "POST"),
+            SurfaceSpec(SOCKET, "analysis_embed_meta"),
         ),
         exit_codes=(0, 1, 2, 3),
     ),

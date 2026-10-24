@@ -41,6 +41,7 @@ SEARCH_ENVELOPE = (
     "degraded_excluded",
     "vector_index_mode",
     "lexical_index_mode",
+    "meta_hits",
 )
 
 # Declared additive HTTP/socket wrapper over the shared envelope: the
