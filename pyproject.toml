@@ -50,14 +50,20 @@ dependencies = [
     "python-pptx>=1.0",
     "asyncpg>=0.29.0",
     "pgvector>=0.3.0",
-    # numpy <2.4: the 2.4.x Unix wheels regress spaCy's tokenizer
-    # deserialization ("OverflowError: Python int too large to convert to
-    # C ssize_t" from en_core_web_sm from_disk), which crashes every
+    "numpy>=1.26",
+    # The spaCy C-stack caps below pin the trio to the last CI-proven
+    # versions (2026-10-24 morning run): three same-day patch releases
+    # (cymem 2.0.16, murmurhash 1.0.16, preshed 3.0.14) broke spaCy's
+    # tokenizer deserialization on Unix — "OverflowError: Python int too
+    # large to convert to C ssize_t" from Tokenizer._flush_specials (a
+    # PreshMap iteration) while loading en_core_web_sm — crashing every
     # unstructured partition on Linux/macOS CI. Windows wheels are
-    # unaffected, so local runs pass while CI burns. Lift the cap when
-    # numpy ships a fixed 2.4.x patch (verify with partition + duckdb
-    # tests on ubuntu).
-    "numpy>=1.26,<2.4",
+    # unaffected, so local runs pass while CI burns. They are declared
+    # directly so BOTH pip (CI) and uv respect the caps; lift each one
+    # after verifying the partition + DuckDB ingest legs on ubuntu.
+    "cymem<2.0.14",
+    "murmurhash<1.0.16",
+    "preshed<3.0.14",
     "eventsourcing[postgres]>=9.0",
     # Deliberate "no new REQUIRED deps" deviation (review F-4): fresh installs
     # bind the system libpq via wheel-less psycopg and crash at the first
@@ -320,6 +326,11 @@ DEP002 = [
     # sys_platform marker); the `magic` module it serves comes from
     # python-magic itself, so nothing ever imports this distribution.
     "python-magic-bin",
+    # The spaCy C-stack caps (see dependencies: cymem/murmurhash/preshed)
+    # are never imported by corpus_kb code — spaCy consumes them.
+    "cymem",
+    "murmurhash",
+    "preshed",
     # LoRA tuning (Living Corpus W5, extraction/lora_tune.py) imports
     # peft lazily behind extraction_tune(method="lora"); CI never installs
     # the [tune] extra, so deptry cannot see the import edge.

@@ -463,9 +463,9 @@
   },
   {
     "name": "multidict",
-    "version": "7.1.0",
+    "version": "7.2.1",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/multidict/7.1.0/",
+    "homepage": "https://pypi.org/project/multidict/7.2.1/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
@@ -519,10 +519,10 @@
   },
   {
     "name": "numpy",
-    "version": "2.3.5",
-    "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/numpy/2.3.5/",
-    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
+    "version": "2.4.6",
+    "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
+    "homepage": "https://pypi.org/project/numpy/2.4.6/",
+    "licenseTextUrl": null
   },
   {
     "name": "olefile",
@@ -848,9 +848,9 @@
   },
   {
     "name": "starlette",
-    "version": "1.9.0",
+    "version": "1.10.0",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/starlette/1.9.0/",
+    "homepage": "https://pypi.org/project/starlette/1.10.0/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
