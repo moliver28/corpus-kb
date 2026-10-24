@@ -50,7 +50,14 @@ dependencies = [
     "python-pptx>=1.0",
     "asyncpg>=0.29.0",
     "pgvector>=0.3.0",
-    "numpy>=1.26",
+    # numpy <2.4: the 2.4.x Unix wheels regress spaCy's tokenizer
+    # deserialization ("OverflowError: Python int too large to convert to
+    # C ssize_t" from en_core_web_sm from_disk), which crashes every
+    # unstructured partition on Linux/macOS CI. Windows wheels are
+    # unaffected, so local runs pass while CI burns. Lift the cap when
+    # numpy ships a fixed 2.4.x patch (verify with partition + duckdb
+    # tests on ubuntu).
+    "numpy>=1.26,<2.4",
     "eventsourcing[postgres]>=9.0",
     # Deliberate "no new REQUIRED deps" deviation (review F-4): fresh installs
     # bind the system libpq via wheel-less psycopg and crash at the first

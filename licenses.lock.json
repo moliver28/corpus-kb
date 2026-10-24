@@ -519,10 +519,10 @@
   },
   {
     "name": "numpy",
-    "version": "2.4.6",
-    "license": "BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0",
-    "homepage": "https://pypi.org/project/numpy/2.4.6/",
-    "licenseTextUrl": null
+    "version": "2.3.5",
+    "license": "BSD-3-Clause",
+    "homepage": "https://pypi.org/project/numpy/2.3.5/",
+    "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {
     "name": "olefile",
