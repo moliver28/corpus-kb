@@ -124,6 +124,13 @@ jobs:
         #   reportArgumentType, reportReturnType → "warning"
         run: pyright src/
 
+      # Profile truth gate (Living Corpus W5, rule 10): every shipped
+      # profile must name live strategies, real template ids, and an
+      # existing seeds file. Needs the package importable, so it rides
+      # the type-check job (project deps are already installed).
+      - name: Validate profiles
+        run: python src/corpus_kb/_setup/validate_profiles.py
+
   # ─────────────────────────────────────────────────────────────────────
   # Validate-configs: checks MCP config JSON files for format correctness
   # and cross-config consistency. Fast, no deps needed beyond stdlib.

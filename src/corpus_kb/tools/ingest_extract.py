@@ -24,6 +24,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _customized_seeds(config: dict[str, object]) -> list[dict[str, object]] | None:
+    """Profile seed exemplars for ``customized`` mode (None when none).
+
+    The active profile was already validated by the pipeline entry, so a
+    ValidationError here means a direct call with a broken profile — it
+    propagates loudly, never a silent fallback.
+    """
+    from ..profiles import load_profile, load_seeds
+
+    profile = load_profile(dict(config))
+    if profile is None or profile.seeds_file is None:
+        return None
+    return load_seeds(dict(config), profile)
+
+
 def _extractor_name(config: dict[str, object]) -> str:
     """The effective extraction backend (extraction.backend > graph.extractor)."""
     return extraction_backend_name(config)
@@ -64,7 +79,9 @@ async def extract_with_fallback(
 
     if extractor_name == "ml":
         try:
-            ml_extractor = create_extractor(config, pool=pool)
+            ml_extractor = create_extractor(
+                config, pool=pool, extra_examples=_customized_seeds(config)
+            )
             entities, relations, stats = ml_extractor.extract(chunks, ontology, source_document_id)
             if entities or relations:
                 return (

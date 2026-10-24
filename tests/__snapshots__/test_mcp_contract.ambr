@@ -137,6 +137,18 @@
         'config': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.extraction_tune_tools': dict({
+      'extraction_tune': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'dry_run': 'KEYWORD_ONLY',
+        'limit': 'KEYWORD_ONLY',
+        'method': 'KEYWORD_ONLY',
+        'min_confidence': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'profile': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.graph_read_tools': dict({
       'get_entity_relations': dict({
         'config': 'POSITIONAL_OR_KEYWORD',

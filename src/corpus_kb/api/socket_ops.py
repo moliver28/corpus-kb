@@ -323,6 +323,26 @@ async def _conflicts_scan(params: dict[str, Any], tenant_id: str) -> dict[str, A
     return await conflicts_scan(await research_pool(), tenant_id=tenant_id)
 
 
+async def _extraction_tune(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.extraction_tune_tools import extraction_tune
+
+    raw = params.get("min_confidence")
+    try:
+        min_confidence = float(raw) if raw is not None else 0.8
+    except (TypeError, ValueError):
+        min_confidence = 0.8
+    return await extraction_tune(
+        await research_pool(),
+        tenant_id=tenant_id,
+        method=str(params.get("method") or "exemplar"),
+        profile=_opt_str(params, "profile"),
+        min_confidence=min_confidence,
+        limit=int(params.get("limit") or 8),
+        dry_run=bool(params.get("dry_run", False)),
+    )
+
+
 async def _conflicts_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.conflicts_tools import conflicts_list
@@ -742,6 +762,8 @@ _CORE_ARMS: dict[str, Arm] = {
     "beliefs_timeline": _beliefs_timeline,
     "beliefs_predict": _beliefs_predict,
     "beliefs_compare": _beliefs_compare,
+    # Living Corpus W5: the tune op.
+    "extraction_tune": _extraction_tune,
     "search": _search,
     "ask": _ask,
     "query": _query,

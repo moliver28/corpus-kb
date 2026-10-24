@@ -494,3 +494,7 @@ seed_topic_list
 zeroshot_topic_list
 RelexTriplet
 mine_exemplars
+# Living Corpus W5 (extraction_tune): the LoRA candidate scorer. Its
+# consumer is the W7 eval promotion gate, which loads the saved adapter
+# and scores it against the baseline before any live extraction use.
+apply_lora_adapter

@@ -79,6 +79,7 @@ import corpus_kb.tools.centroid_tools as centroid_tools_module
 import corpus_kb.tools.classification_tools as classification_tools_module
 import corpus_kb.tools.cluster_tools as cluster_tools_module
 import corpus_kb.tools.conflicts_tools as conflicts_tools_module
+import corpus_kb.tools.extraction_tune_tools as extraction_tune_tools_module
 import corpus_kb.tools.ingest_common as ingest_common_module
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools_module
 import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
@@ -200,6 +201,7 @@ _INGEST_PATH = {
     "skipped": 0,
     "errors": 0,
     "results": [],
+    "profile": None,
 }
 _CODING = {
     "status": "success",
@@ -587,6 +589,14 @@ async def _shared_beliefs_compare(ctx: dict[str, Any]) -> dict[str, Any]:
     triple = await _seed_one_belief(ctx)
     return await beliefs_tools_module.beliefs_compare(
         ctx["pool"], config=ctx["config"], subject=triple["subject"]
+    )
+
+
+async def _shared_extraction_tune(ctx: dict[str, Any]) -> dict[str, Any]:
+    # dry_run: the parity world has no filesystem contract; the envelope
+    # shape (and the canned mine row) are what the legs pin.
+    return await extraction_tune_tools_module.extraction_tune(
+        ctx["pool"], config=ctx["config"], dry_run=True
     )
 
 
@@ -1049,6 +1059,14 @@ LEGS: dict[str, _Leg] = {
         _sock("beliefs_current", {}),
         _mcp({}),
     ),
+    # -- Living Corpus W5: the tune op (dry-run legs; no filesystem side
+    #    effects in the parity world).
+    "extraction_tune": _Leg(
+        _shared_extraction_tune,
+        _post("/api/extraction-tune", {"dry_run": True}),
+        _sock("extraction_tune", {"dry_run": True}),
+        _mcp({"dry_run": True}),
+    ),
     "beliefs_timeline": _Leg(
         _shared_beliefs_timeline,
         lambda ctx: {
@@ -1441,6 +1459,16 @@ class _LockConn:
                 {
                     "statement_a_id": "00000000-0000-0000-0000-00000000000a",
                     "statement_b_id": "00000000-0000-0000-0000-00000000000b",
+                }
+            ]
+        if "sc.resolved_verdict = 'revision'" in sql:
+            # The canned tune mine: one resolved statement with anchored
+            # entities (the JSONB shape statement_row writes).
+            return [
+                {
+                    "statement_id": "00000000-0000-0000-0000-00000000000a",
+                    "statement_text": "I like ice cream.",
+                    "entities": '[{"name": "ice cream", "entity_type": "CONCEPT"}]',
                 }
             ]
         return []

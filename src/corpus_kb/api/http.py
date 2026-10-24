@@ -152,6 +152,7 @@ from corpus_kb.api.routes_topics import (
     topics_list_route,
     topics_trends_route,
 )
+from corpus_kb.api.routes_tune import extraction_tune_route
 from corpus_kb.api.routes_v1 import v1_routes
 
 
@@ -208,6 +209,8 @@ def create_http_app() -> FastAPI:
         Route("/api/beliefs/current", beliefs_current_route, methods=["POST"]),
         Route("/api/beliefs/timeline", beliefs_timeline_route, methods=["POST"]),
         Route("/api/beliefs/predict", beliefs_predict_route, methods=["POST"]),
+        # Living Corpus W5: the tune op.
+        Route("/api/extraction-tune", extraction_tune_route, methods=["POST"]),
         Route("/api/beliefs/compare", beliefs_compare_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),

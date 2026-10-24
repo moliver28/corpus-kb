@@ -175,7 +175,9 @@ async def test_ml_fallback_chain_notes_empty_ml(monkeypatch: pytest.MonkeyPatch)
         ) -> tuple[list[Entity], list[Relation], ExtractStats]:
             return [], [], ExtractStats(backend="ml")
 
-    monkeypatch.setattr(ingest_extract, "create_extractor", lambda config, pool=None: _EmptyML())
+    monkeypatch.setattr(
+        ingest_extract, "create_extractor", lambda config, pool=None, **_kwargs: _EmptyML()
+    )
     _entities, _relations, extractor_id, stats = await ingest_extract.extract_with_fallback(
         [_chunk()], build_ontology(), "doc-1", _ml_config()
     )

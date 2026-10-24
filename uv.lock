@@ -950,6 +950,10 @@ setfit = [
 topics = [
     { name = "bertopic" },
 ]
+tune = [
+    { name = "gliner", extra = ["training"] },
+    { name = "peft" },
+]
 ui = [
     { name = "nicegui" },
     { name = "uvicorn", extra = ["standard"] },
@@ -966,6 +970,7 @@ requires-dist = [
     { name = "eventsourcing", extras = ["postgres"], specifier = ">=9.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "gliner", marker = "extra == 'ml'", specifier = ">=0.2.13" },
+    { name = "gliner", extras = ["training"], marker = "extra == 'tune'", specifier = ">=0.2.13" },
     { name = "gliner2", marker = "extra == 'ml'", specifier = ">=2.1.0" },
     { name = "graphqlite", marker = "extra == 'graphqlite'", specifier = ">=0.4" },
     { name = "hdbscan", marker = "extra == 'inductive'", specifier = ">=0.8.36" },
@@ -988,6 +993,7 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.45" },
     { name = "opentelemetry-exporter-otlp-proto-http", marker = "extra == 'otel'", specifier = ">=1.45" },
     { name = "opentelemetry-sdk", marker = "extra == 'otel'", specifier = ">=1.45" },
+    { name = "peft", marker = "extra == 'tune'", specifier = ">=0.11" },
     { name = "pgvector", specifier = ">=0.3.0" },
     { name = "poethepoet", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=4.0" },
@@ -1028,7 +1034,7 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.10" },
     { name = "xenon", marker = "extra == 'dev'", specifier = ">=0.9" },
 ]
-provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "topics", "ui", "otel", "eval", "notebook", "classify", "setfit", "dev"]
+provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "notebook", "classify", "setfit", "dev"]
 
 [[package]]
 name = "coverage"
@@ -1850,6 +1856,11 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/93/02/ab43b9ad919d3cc1bcbb35485b2cdf7508ede0cddcebf72e765711795c30/gliner-0.2.29.tar.gz", hash = "sha256:39fa8f33c027627e1d6724bff972ab197bf37cea27e401cd3d40f2f95909b0a4", size = 299687, upload-time = "2026-09-08T12:50:50.113Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/78/76/74ec5493e2167350c53a51c0f1db8e6a096c1b99f7110e2d9fc7daaf5cdc/gliner-0.2.29-py3-none-any.whl", hash = "sha256:0c8cfb9f5c2daf7aff329ebb5ab1609052d7ad0aca0ef26049b9476b018b3fde", size = 261988, upload-time = "2026-09-08T12:50:48.514Z" },
+]
+
+[package.optional-dependencies]
+training = [
+    { name = "accelerate" },
 ]
 
 [[package]]
@@ -4666,6 +4677,28 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/30/4b/90c937815137d43ce71ba043cd3566221e9df6b9c805f24b5d138c9d40a7/parso-0.8.7.tar.gz", hash = "sha256:eaaac4c9fdd5e9e8852dc778d2d7405897ec510f2a298071453e5e3a07914bb1", size = 401824, upload-time = "2026-05-01T23:13:02.138Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/99/5d/8268b644392ee874ee82a635cd0df1773de230bde356c38de28e298392cc/parso-0.8.7-py2.py3-none-any.whl", hash = "sha256:a8926eb2a1b915486941fdbd31e86a4baf88fe8c210f25f2f35ecec5b574ca1c", size = 107025, upload-time = "2026-05-01T23:12:58.867Z" },
+]
+
+[[package]]
+name = "peft"
+version = "0.21.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "accelerate" },
+    { name = "huggingface-hub" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "packaging" },
+    { name = "psutil" },
+    { name = "pyyaml" },
+    { name = "safetensors" },
+    { name = "torch" },
+    { name = "tqdm" },
+    { name = "transformers" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/80/af/2e08abf1cd3b8792a02f5116808f2398c2f77ecdff801ced2ce16007a6f9/peft-0.21.2.tar.gz", hash = "sha256:b803ccfb3f3f316004d850284306687833a2235ea278fb56abc856203456142e", size = 983614, upload-time = "2026-10-01T10:26:36.129Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/0b/59441cdbfdd342ed03c08af90a2fe16173f0cd48ab219f523b39ca059a79/peft-0.21.2-py3-none-any.whl", hash = "sha256:106ab6077ff72c54d21577f9af5970e34bac7582cb14209f7b2b511e322a4eae", size = 835427, upload-time = "2026-10-01T10:26:34.085Z" },
 ]
 
 [[package]]

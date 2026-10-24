@@ -147,6 +147,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
 | [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, ops tuning |
+| [Harness playbooks](docs/HARNESS-PLAYBOOKS.md) | Per-project profiles: the decision table, the six-question wizard, tuning |
 | [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
 | [API](docs/API.md) | HTTP routes, the `/v1` OpenAI adapter, curl examples, MCP tool reference |
 | [Observability](docs/OBSERVABILITY.md) | OpenTelemetry spans, exporters, zero-cost when off |
