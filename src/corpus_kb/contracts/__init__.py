@@ -33,6 +33,7 @@ from corpus_kb.contracts.catalogue_research import (
 )
 from corpus_kb.contracts.catalogue_statements import STATEMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_topics import TOPICS_OPERATIONS
+from corpus_kb.contracts.catalogue_tune import EXTRACTION_TUNE_OPERATIONS
 from corpus_kb.contracts.model import (
     DEFAULT_TENANT_ID,
     ERROR_MAP,
@@ -57,6 +58,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *STATEMENTS_OPERATIONS,
     *CONFLICTS_OPERATIONS,
     *BELIEFS_OPERATIONS,
+    *EXTRACTION_TUNE_OPERATIONS,
 )
 
 __all__ = [

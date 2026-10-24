@@ -27,6 +27,7 @@ INGEST_ENVELOPE = (
     "run_id",
     "embedding_mode",
     "statements",
+    "profile",
 )
 
 # Shared search family (QueryHandler.handle_search_with_meta serialized by

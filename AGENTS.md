@@ -36,6 +36,9 @@ python src/corpus_kb/_setup/validate_configs.py
 # Schema parity across both migration sets (sqlglot, static-only; poe schema-parity)
 python scripts/schema_parity_gate.py
 
+# Profile validation gate (schema + strategy/template/seeds cross-refs; poe validate-profiles)
+python src/corpus_kb/_setup/validate_profiles.py
+
 # Tests (Ollama must be running with nomic-embed-text pulled)
 python -m pytest tests/ -v --tb=short --durations=10
 

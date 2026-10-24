@@ -1,0 +1,16 @@
+name: starter-interview
+description: >
+  Paved starting profile for interview corpora. One interview session
+  becomes one transcript document; opinions and preferences are
+  extracted with a few curated examples; statements, conflicts, and
+  beliefs light up downstream. Edit freely, or copy it and rename.
+data_type: interview
+ingestion:
+  default: transcript
+extraction:
+  mode: few_shot
+templates:
+  - preference
+  - opinion
+  - sentiment_target
+  - temporal_change

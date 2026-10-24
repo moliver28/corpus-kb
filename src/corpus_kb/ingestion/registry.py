@@ -123,7 +123,7 @@ class StrategyResolution:
     """
 
     strategy: IngestionStrategy
-    basis: str  # "explicit" | "config" | "detection" | "default"
+    basis: str  # "explicit" | "profile" | "config" | "detection" | "default"
     detection: DetectResult | None = None
     detected: str | None = None
     mapped_source_type: str | None = None
@@ -135,8 +135,15 @@ def resolve_strategy(
     raw_head: str,
     config: dict[str, object],
     strategy_override: str | None = None,
+    profile: object | None = None,
 ) -> StrategyResolution:
     """Resolve ONE strategy for one document (precedence pinned in Section 0).
+
+    Precedence: explicit override > profile mapping > config mapping >
+    content detection > default (the profile's default wins over the
+    config's when a profile is active). ``profile`` is a
+    :class:`corpus_kb.profiles.IngestionProfile` (typed loosely so the
+    registry never imports the profiles package).
 
     Raises :class:`UnknownStrategyError` for an unknown explicit override or
     an unknown config-mapped strategy name (loud, never a silent fallback —
@@ -148,6 +155,11 @@ def resolve_strategy(
     if strategy_override is not None:
         return StrategyResolution(
             get_strategy(strategy_override), "explicit", detection, detected_name
+        )
+    mapped_name = _profile_strategy_name(source_type, profile)
+    if mapped_name is not None:
+        return StrategyResolution(
+            get_strategy(mapped_name), "profile", detection, detected_name, source_type
         )
     mapped_name = _config_strategy_name(source_type, config)
     if mapped_name is not None:
@@ -161,8 +173,19 @@ def resolve_strategy(
     ):
         return StrategyResolution(detected_strategy, "detection", detection, detected_name)
     return StrategyResolution(
-        get_strategy(_default_strategy_name(config)), "default", detection, detected_name
+        get_strategy(_default_strategy_name(config, profile)), "default", detection, detected_name
     )
+
+
+def _profile_strategy_name(source_type: str, profile: object | None) -> str | None:
+    """The strategy name the active profile maps for this source type."""
+    if profile is None:
+        return None
+    raw = getattr(profile, "strategies", None)
+    if not isinstance(raw, dict):
+        return None
+    value = raw.get(source_type)
+    return value if isinstance(value, str) and value else None
 
 
 def _detect_best(
@@ -207,6 +230,10 @@ def _config_strategy_name(source_type: str, config: dict[str, object]) -> str | 
     return raw
 
 
-def _default_strategy_name(config: dict[str, object]) -> str:
+def _default_strategy_name(config: dict[str, object], profile: object | None = None) -> str:
+    if profile is not None:
+        raw = getattr(profile, "default_strategy", None)
+        if isinstance(raw, str) and raw:
+            return raw
     raw = _ingestion_config(config).get("default")
     return raw if isinstance(raw, str) and raw else DEFAULT_STRATEGY_NAME

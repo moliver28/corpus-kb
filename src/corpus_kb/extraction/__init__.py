@@ -43,7 +43,12 @@ def extraction_backend_name(config: dict[str, Any]) -> str:
     return "pgml"
 
 
-def create_extractor(config: dict[str, Any], pool: asyncpg.Pool | None = None) -> Extractor:
+def create_extractor(
+    config: dict[str, Any],
+    pool: asyncpg.Pool | None = None,
+    *,
+    extra_examples: list[dict[str, Any]] | None = None,
+) -> Extractor:
     """Create an extractor from the configuration dictionary.
 
     Args:
@@ -87,21 +92,25 @@ def create_extractor(config: dict[str, Any], pool: asyncpg.Pool | None = None) -
         case "gliner":
             return _create_gliner(config)
         case "ml":
-            return _create_ml(config)
+            return _create_ml(config, extra_examples)
         case "llamaindex":
             raise NotImplementedError("llamaindex extractor is deferred to a later phase")
         case _ as unreachable:
             raise ValueError(f"Unsupported graph extractor: {unreachable}")
 
 
-def _create_ml(config: dict[str, Any]) -> Extractor:
+def _create_ml(
+    config: dict[str, Any], extra_examples: list[dict[str, Any]] | None = None
+) -> Extractor:
     """Build the ``ml`` extractor, wrapping it in the ensemble when enabled.
 
     Ensemble members are extra extractors named in
     ``extraction.ensemble.members`` (e.g. ``langextract``); the primary
     ``ml`` extractor is always the first member and never duplicated.
+    ``extra_examples`` (profile seeds for ``customized`` mode) go to the
+    primary member only.
     """
-    extractor: Extractor = MLExtractor(config)
+    extractor: Extractor = MLExtractor(config, extra_examples)
     extraction_config = config.get("extraction", {})
     ensemble: dict[str, Any] = {}
     if isinstance(extraction_config, dict):

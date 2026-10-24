@@ -42,6 +42,7 @@ from ..ingestion.base import (
 )
 from ..ingestion.registry import resolve_strategy
 from ..ontology import Ontology, load_ontology
+from ..profiles import load_profile, with_profile_overrides
 from ..rag.embedder_selection import POOLED_MODE
 from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
 from ..storage.rag_backend import RagBackend
@@ -296,6 +297,12 @@ async def run_pipeline(
         (and ``warnings`` when non-empty).
     """
     with span(SPAN_INGEST, **{ATTR_SOURCE_TYPE: source_type}):
+        # Profile layer (Living Corpus W5): one authored YAML drives the
+        # paved pipeline. Loaded once here; strategy precedence lives in
+        # the registry (explicit > profile > config map > detection >
+        # default) and extraction overrides merge into a config copy.
+        ingestion_profile = load_profile(config)
+        config = with_profile_overrides(config, ingestion_profile)
         # `partition` covers strategy resolution + the strategy's parse (the
         # registry fused partition+chunk into one strategy call, so the plan's
         # chunk count doubles as the element count here). `chunk` covers the
@@ -307,6 +314,7 @@ async def run_pipeline(
                 text[:DETECT_HEAD_CHARS],
                 config,
                 strategy_override=strategy_name,
+                profile=ingestion_profile,
             )
             profile = SourceProfile(source_type=source_type, is_file=is_file, path=path)
             plan = resolution.strategy.build_chunks(text, Path(path).name, profile)
@@ -379,6 +387,7 @@ async def run_pipeline(
             # chunks. Attached here because resolution/plan live in this scope.
             result["strategy"] = resolution.strategy.name
             result["strategy_basis"] = resolution.basis
+            result["profile"] = ingestion_profile.name if ingestion_profile is not None else None
             if resolution.detection is not None:
                 result["detection_confidence"] = round(resolution.detection.confidence, 4)
                 result["detection_reason"] = resolution.detection.reason

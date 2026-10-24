@@ -204,6 +204,7 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Grade level + string rules | `pytest -m ste` walks docs, tool docstrings, and error-message tables (Flesch-Kincaid ≤ 9, sentence ≤ 20 words) | ci.yml / test | 5 |
 | Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
 | Schema parity (DuckDB port) | `poe schema-parity` (`scripts/schema_parity_gate.py`, sqlglot 30.x static-only) folds `storage/schema.sql` + forward `migrations/` and `migrations_duckdb/` into final CREATE TABLE/SEQUENCE/INDEX states and diffs columns, PKs, uniques, FKs, sequences, and plain indexes. Undeclared drift fails the PR, and a STALE allowlist row (declared but no longer real) fails too. It does NOT cover dynamic EXECUTE-format DDL (declared in the gate allowlist), RLS/policies (PG-only by design), or runtime index managers (FTS/vss) | ci.yml / lint | G (issue #127) |
+| Profile truth | `poe validate-profiles` (`src/corpus_kb/_setup/validate_profiles.py`): every `profiles/*.yaml` must parse against the loader schema, name only live ingestion strategies, reference only catalogue claim-template ids, and point `seeds_file` at an existing file. A profile that references a missing seam fails the PR (Living Corpus W5) | ci.yml / type-check step | W5 |
 
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate

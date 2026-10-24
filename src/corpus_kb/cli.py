@@ -111,6 +111,13 @@ from corpus_kb.cli_beliefs import (  # noqa: E402
 
 register_belief_commands(app)
 
+# Living Corpus W5 tune front door: cli_tune mirrors cli_beliefs.
+from corpus_kb.cli_tune import (  # noqa: E402
+    register as register_tune_commands,
+)
+
+register_tune_commands(app)
+
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.

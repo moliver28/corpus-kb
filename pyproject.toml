@@ -145,6 +145,10 @@ inductive = [
 # License-reviewed permissive set: gliner2 Apache-2.0, gliner Apache-2.0
 # (torch BSD-3-Clause transitive).
 ml = ["gliner2>=2.1.0", "gliner>=0.2.13", "huggingface_hub>=0.30"]
+# LoRA adapter tuning (Living Corpus W5, extraction_tune method=lora):
+# peft injects the low-rank adapter; gliner[training] ships the
+# train_model loop. Same license family as [ml] (Apache-2.0 + BSD torch).
+tune = ["peft>=0.11", "gliner[training]>=0.2.13"]
 # Topic modeling over stored chunk embeddings (topics/engine.py, Wave 4;
 # gated by topics.enabled + the [topics] extra). BERTopic 0.16 is the
 # first line with the pinned-UMAP + precomputed-embeddings fit used here
@@ -299,6 +303,10 @@ DEP002 = [
     "hdbscan",
     "gliner2",
     "gliner",
+    # LoRA tuning (Living Corpus W5, extraction/lora_tune.py) imports
+    # peft lazily behind extraction_tune(method="lora"); CI never installs
+    # the [tune] extra, so deptry cannot see the import edge.
+    "peft",
     # setup weight pre-pull imports huggingface_hub via importlib (CI never
     # installs the [ml] extra), so deptry cannot see the import edge.
     "huggingface_hub",
@@ -494,6 +502,10 @@ help = "Diff-check docs/ANALYSIS-METHODS.md against config/analysis_methods.yaml
 [tool.poe.tasks.schema-parity]
 cmd = "python scripts/schema_parity_gate.py"
 help = "sqlglot schema parity across both migration sets (issue #127, rule 10)"
+
+[tool.poe.tasks.validate-profiles]
+cmd = "python src/corpus_kb/_setup/validate_profiles.py"
+help = "Profile schema + cross-reference gate (Living Corpus W5, rule 10)"
 
 [tool.poe.tasks.license-lock]
 cmd = "uv run --frozen python scripts/generate_license_lock.py"

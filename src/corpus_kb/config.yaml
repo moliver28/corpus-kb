@@ -378,6 +378,17 @@ extraction:
     model: knowledgator/gliner-relex-large-v1.0
     threshold: 0.5
     max_label_pairs: 40
+  # LoRA adapter tuning (extraction-tune method=lora; needs the `tune`
+  # extra). The adapter is a candidate artifact — the eval promotion gate
+  # decides whether extraction ever uses it.
+  tune:
+    model: knowledgator/gliner-multitask-large-v0.5
+    steps: 200
+    learning_rate: 5.0e-5
+    batch_size: 2
+    lora_r: 8
+    lora_alpha: 16
+    lora_dropout: 0.05
   # Optional voting across extractors (issue #133). Members run the primary
   # plus the named extra backends; candidates survive on majority agreement.
   ensemble:
