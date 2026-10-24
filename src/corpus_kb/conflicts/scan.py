@@ -60,6 +60,11 @@ async def scan_statements(
     for anchor, group in by_anchor.items():
         if len(group) < 2:
             continue
+        # Oldest-first pairing: statement_a is the EARLIER claim, so a
+        # revision resolve supersedes the outdated statement (the read
+        # feeds rows newest-first; the pair direction is a semantic
+        # contract, not an accident of the SELECT order).
+        group.sort(key=lambda r: (r.observed_at, r.statement_id))
         for i, a in enumerate(group):
             for b in group[i + 1 :]:
                 if len(verdicts) >= MAX_PAIRS:

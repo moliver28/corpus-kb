@@ -1,0 +1,8 @@
+{"template_id": "preference", "text": "I really like ice cream after dinner.", "min_entities": 1}
+{"template_id": "opinion", "text": "I think the pacing of that film felt tedious.", "min_entities": 0}
+{"template_id": "sentiment_target", "text": "The quarterly numbers were terrible.", "min_entities": 1}
+{"template_id": "fact_triple", "text": "Morgan works at the harbor lab.", "min_entities": 2}
+{"template_id": "numeric_claim", "text": "The event ran for 3 hours.", "min_entities": 0}
+{"template_id": "temporal_change", "text": "I used to like pistachio, but not anymore.", "min_entities": 0}
+{"template_id": "attribution", "text": "According to Dr. Chen, the trial succeeded.", "min_entities": 0}
+{"template_id": "statement", "text": "A quiet sentence about nothing in particular.", "min_entities": 0}

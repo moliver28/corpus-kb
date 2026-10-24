@@ -121,7 +121,7 @@ class BeliefStore:
         return {"status": "success", "beliefs": written, "tenant_ratio": ratio}
 
     async def _scan_statements(self) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
             )
@@ -169,7 +169,7 @@ class BeliefStore:
                 )
 
     async def current(self, *, subject: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
             )
@@ -188,7 +188,7 @@ class BeliefStore:
         belief_id = await self._belief_id(subject, relation, object_name)
         if belief_id is None:
             return None
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
             )
@@ -219,7 +219,10 @@ class BeliefStore:
         }
 
     async def _belief_id(self, subject: str, relation: str, object_name: str) -> str | None:
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
+            await conn.execute(
+                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
+            )
             return await conn.fetchval(
                 "SELECT belief_id::text FROM beliefs"
                 " WHERE tenant_id = $1 AND subject = $2 AND relation = $3 AND object = $4",

@@ -45,7 +45,15 @@ def eras(
     if not evidence:
         return []
     ordered = sorted(evidence, key=lambda e: e.observed_at)
-    splits = _map_splits([1.0 if e.stance == "positive" else 0.0 for e in ordered])
+    values = [1.0 if e.stance == "positive" else 0.0 for e in ordered]
+    # A stance FLIP is structural history ("liked it ... got tired of
+    # it"), never statistical noise — every flip is a split. BOCPD adds
+    # within-stream splits for longer histories; short streams (below
+    # the run-length model's floor) still segment on their flips.
+    splits = sorted(
+        {i for i in range(1, len(values)) if values[i] != values[i - 1]}
+        | set(_map_splits(values) if len(values) >= 4 else [])
+    )
     bounds = [0, *splits, len(ordered)]
     out: list[Era] = []
     for i in range(len(bounds) - 1):
@@ -91,12 +99,22 @@ def _map_splits(values: list[float]) -> list[int]:
 
 
 def _drop_small_moves(segments: list[Era], threshold: float) -> list[Era]:
-    """Merge adjacent eras whose means barely move (noise, not change)."""
+    """Merge adjacent eras whose means barely move within one stance.
+
+    A majority-stance flip between neighbours is a structural revision
+    and always survives, whatever the mean delta — the ice-cream arc
+    (one faint positive, then a negative) must keep both eras.
+    """
     if len(segments) < 2:
         return segments
+
+    def majority(segment: Era) -> bool:
+        return segment.positives >= segment.negatives
+
     out = [segments[0]]
     for segment in segments[1:]:
-        if abs(segment.mean - out[-1].mean) < threshold:
+        same_stance = majority(segment) == majority(out[-1])
+        if same_stance and abs(segment.mean - out[-1].mean) < threshold:
             merged_pos = out[-1].positives + segment.positives
             merged_neg = out[-1].negatives + segment.negatives
             total = merged_pos + merged_neg
