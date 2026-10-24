@@ -298,18 +298,30 @@ async def test_pgml_arm_savepoint_sits_inside_handler_transaction() -> None:
 
     A failed block rolls back TO the savepoint (no release — the block
     failed); the outer transaction then commits with the lexical results.
+    The W6 meta arm rides its own savepoint after the arms.
     """
     fts = _fts_row()
     conn = _IsolationConn(fail_on="pgml.embed", fts_rows=[fts], fused_rows=[dict(fts)])
     await _handler(conn, dict(_PGML_CONFIG)).handle_search_with_meta(
         SearchQuery(query="housing", tenant_id=DEFAULT_TENANT_ID, k=5)
     )
-    assert conn.tx_events == ["begin", "savepoint", "rollback_to", "commit"]
+    assert conn.tx_events == [
+        "begin",
+        "savepoint",
+        "rollback_to",
+        "savepoint",
+        "rollback_to",
+        "commit",
+    ]
 
 
 @pytest.mark.asyncio
 async def test_clean_arm_block_releases_its_savepoint() -> None:
-    """The healthy path only pays savepoint + release inside the BEGIN."""
+    """Each healthy arm block pays one savepoint + release inside the BEGIN.
+
+    The vector arm's savepoint, then the W6 meta arm's own savepoint, then
+    the outer commit.
+    """
     vec = _fts_row()  # any row shape works; the arm just hands it to fusion
     fts = _fts_row()
     conn = _IsolationConn(
@@ -318,7 +330,14 @@ async def test_clean_arm_block_releases_its_savepoint() -> None:
     envelope = await _handler(conn, dict(_PGML_CONFIG)).handle_search_with_meta(
         SearchQuery(query="housing", tenant_id=DEFAULT_TENANT_ID, k=5)
     )
-    assert conn.tx_events == ["begin", "savepoint", "release", "commit"]
+    assert conn.tx_events == [
+        "begin",
+        "savepoint",
+        "release",
+        "savepoint",
+        "release",
+        "commit",
+    ]
     assert envelope.status == "success"
 
 

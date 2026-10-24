@@ -12,6 +12,7 @@ engine defaults here, so no conditional ``*_index_note`` is emitted.
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any, cast
 
@@ -55,6 +56,28 @@ JOIN chunks ON cv.chunk_id = chunks.chunk_id
 JOIN documents ON chunks.doc_id = documents.doc_id
 WHERE cv.tenant_id = $1 {dedup} {frag}
 """
+
+# Living Corpus W6 meta arm: coarse aggregate routing hits. Small table,
+# plain scan; deterministic order (distance, kind, key) per rule 9.
+_META_ARM_SQL = """
+SELECT meta_kind, meta_key, label, source_count,
+       (embedding <=> $1::halfvec) AS distance
+FROM meta_embeddings
+WHERE tenant_id = $2
+ORDER BY distance ASC, meta_kind ASC, meta_key ASC
+LIMIT $3
+"""
+
+_META_ARM_PGML_SQL = """
+SELECT meta_kind, meta_key, label, source_count,
+       (embedding <=> pgml.embed($2, $1)) AS distance
+FROM meta_embeddings
+WHERE tenant_id = $3
+ORDER BY distance ASC, meta_kind ASC, meta_key ASC
+LIMIT $4
+"""
+
+META_ARM_K = 5
 
 
 class PostgresSearchBackend:
@@ -141,13 +164,58 @@ class PostgresSearchBackend:
             )
             current.set_attribute(ATTR_ROW_COUNT, len(fts_results))
 
+        # 3. Meta arm (Living Corpus W6): coarse aggregate routing hits.
+        #    Savepoint-isolated like every arm — a missing meta_embeddings
+        #    table (un-migrated DB) or a failed embed must never degrade
+        #    the chunk-level search.
+        meta_results = await self._meta_arm_rows(conn, query, semantic_query)
+
         return SearchOutcome(
             vector_rows=vector_results,
             lexical_rows=fts_results,
             excluded_count=excluded_count,
             vector_index_mode=PG_VECTOR_INDEX_MODE,
             lexical_index_mode=PG_LEXICAL_INDEX_MODE,
+            meta_rows=meta_results,
         )
+
+    async def _meta_arm_rows(
+        self,
+        conn: asyncpg.Connection,
+        query: SearchQuery,
+        semantic_query: str,
+    ) -> list[asyncpg.Record]:
+        """Cosine top-k over meta_embeddings (empty on any impairment).
+
+        The query vector comes from the same embedding config as the
+        vector arm: pgml embeds SQL-side, ollama rides the wired embedder
+        (an in-memory cache hit for the already-embedded query). A zero
+        vector (degraded embedder) skips the arm — distance is undefined.
+        """
+        embedding_cfg = self._config.get("embedding", {}) or {}
+        provider = str(embedding_cfg.get("provider", "ollama"))
+        try:
+            async with conn.transaction():
+                if provider == "pgml":
+                    model = str(embedding_cfg.get("model", "qwen3-embedding:4b"))
+                    return await conn.fetch(
+                        _META_ARM_PGML_SQL,
+                        semantic_query,
+                        model,
+                        str(query.tenant_id),
+                        META_ARM_K,
+                    )
+                if self._embedder is None:
+                    return []
+                embedded = self._embedder.embed(semantic_query)
+                vector = await embedded if inspect.isawaitable(embedded) else embedded
+                if not vector or all(abs(v) < 1e-9 for v in vector):
+                    return []
+                literal = "[" + ",".join(repr(float(v)) for v in vector) + "]"
+                return await conn.fetch(_META_ARM_SQL, literal, str(query.tenant_id), META_ARM_K)
+        except Exception as exc:
+            logger.warning("Meta arm skipped: %s", exc)
+            return []
 
     async def _vector_arm_rows(
         self,

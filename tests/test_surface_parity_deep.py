@@ -86,6 +86,7 @@ import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
 import corpus_kb.tools.keyphrase_tools as keyphrase_tools_module
 import corpus_kb.tools.labeling_tools as labeling_tools_module
 import corpus_kb.tools.lexical_tools as lexical_tools_module
+import corpus_kb.tools.meta_embed_tools as meta_embed_tools_module
 import corpus_kb.tools.method_select_tools as method_select_tools_module
 import corpus_kb.tools.neighbor_tools as neighbor_tools_module
 import corpus_kb.tools.nli_tools as nli_tools_module
@@ -600,6 +601,14 @@ async def _shared_extraction_tune(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+async def _shared_analysis_embed_meta(ctx: dict[str, Any]) -> dict[str, Any]:
+    # document kind only: the profile kind would call the real embedder
+    # (env-dependent); the canned conn answers the mapping reads empty.
+    return await meta_embed_tools_module.analysis_embed_meta(
+        ctx["pool"], config=ctx["config"], kinds="document"
+    )
+
+
 async def _shared_lexical_classify(ctx: dict[str, Any]) -> dict[str, Any]:
     return await lexical_tools_module.lexical_classify(ctx["pool"], config=ctx["config"])
 
@@ -1066,6 +1075,14 @@ LEGS: dict[str, _Leg] = {
         _post("/api/extraction-tune", {"dry_run": True}),
         _sock("extraction_tune", {"dry_run": True}),
         _mcp({"dry_run": True}),
+    ),
+    # -- Living Corpus W6: the meta-embed build (document kind only; the
+    #    profile kind would call the real embedder — env-dependent).
+    "analysis_embed_meta": _Leg(
+        _shared_analysis_embed_meta,
+        _post("/api/analysis/embed-meta", {"kinds": "document"}),
+        _sock("analysis_embed_meta", {"kinds": "document"}),
+        _mcp({"kinds": "document"}),
     ),
     "beliefs_timeline": _Leg(
         _shared_beliefs_timeline,

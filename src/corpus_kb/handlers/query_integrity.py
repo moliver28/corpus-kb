@@ -103,6 +103,10 @@ class SearchEnvelope:
     lexical_index_mode: str = PG_LEXICAL_INDEX_MODE
     vector_index_note: str | None = None
     lexical_index_note: str | None = None
+    # Living Corpus W6: coarse aggregate routing hits (meta_embeddings
+    # cosine top-k). Guaranteed envelope key; empty until the
+    # analysis-embed-meta op has built aggregates.
+    meta_hits: list[dict[str, object]] = field(default_factory=list)
 
 
 def is_all_zero(vector: list[float] | None) -> bool:
@@ -131,6 +135,7 @@ def finalize_envelope(
     lexical_index_mode: str = PG_LEXICAL_INDEX_MODE,
     vector_index_note: str | None = None,
     lexical_index_note: str | None = None,
+    meta_hits: list[dict[str, object]] | None = None,
 ) -> SearchEnvelope:
     """Build the final envelope: degraded_empty iff empty results + reasons.
 
@@ -148,6 +153,7 @@ def finalize_envelope(
     """
     trace_id = current_trace_id()
     reasons_out = list(reasons)
+    meta_out = list(meta_hits) if meta_hits else []
     if not results and reasons_out:
         return SearchEnvelope(
             status=STATUS_DEGRADED_EMPTY,
@@ -159,6 +165,7 @@ def finalize_envelope(
             lexical_index_mode=lexical_index_mode,
             vector_index_note=vector_index_note,
             lexical_index_note=lexical_index_note,
+            meta_hits=meta_out,
         )
     return SearchEnvelope(
         status=STATUS_SUCCESS,
@@ -169,6 +176,7 @@ def finalize_envelope(
         lexical_index_mode=lexical_index_mode,
         vector_index_note=vector_index_note,
         lexical_index_note=lexical_index_note,
+        meta_hits=meta_out,
     )
 
 
@@ -188,6 +196,7 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
         "degraded_excluded": envelope.degraded_excluded.to_dict(),
         "vector_index_mode": envelope.vector_index_mode,
         "lexical_index_mode": envelope.lexical_index_mode,
+        "meta_hits": [dict(hit) for hit in envelope.meta_hits],
     }
     if envelope.remedy is not None:
         payload["remedy"] = envelope.remedy

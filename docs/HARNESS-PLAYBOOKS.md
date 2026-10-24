@@ -117,3 +117,11 @@ Both methods accept `--dry-run`: same envelope, zero writes.
 - `beliefs-current`, `beliefs-timeline`, `beliefs-predict`, and
   `beliefs-compare` read the Bayesian layer. Every belief response
   carries a credible interval.
+
+## Coarse routing: the meta layer
+
+`corpus-kb analysis-embed-meta` builds one aggregate embedding per
+document, topic, belief, and the active profile. Every search response
+then carries `meta_hits`: the closest aggregates with their distances.
+Run the op after ingests and after `conflicts-resolve` decisions. The
+search stays chunk-level; `meta_hits` only routes.

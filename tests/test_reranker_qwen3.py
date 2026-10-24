@@ -339,6 +339,7 @@ def test_envelope_note_rides_existing_reasons_field() -> None:
         "degraded_excluded",
         "vector_index_mode",
         "lexical_index_mode",
+        "meta_hits",
     }
     assert payload["degraded_excluded"]["reasons"] == ["rerank-mode-generative-binary"]
 

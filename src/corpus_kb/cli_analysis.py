@@ -31,9 +31,10 @@ EXIT_CONFIG = 3
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the two analysis commands to the main Typer app."""
+    """Attach the analysis commands to the main Typer app."""
     app.command("analysis-backfill-dates")(analysis_backfill_dates)
     app.command("analyze-run")(analyze_run)
+    app.command("analysis-embed-meta")(analysis_embed_meta)
 
 
 def _exit_for(result: dict[str, object]) -> int:
@@ -113,3 +114,31 @@ def analyze_run(
     built), 1 the run failed, 3 database down.
     """
     return _run_sync(lambda: _run_flow(output, json_output))
+
+
+async def _meta_embed_flow(kinds: str | None, json_output: bool) -> int:
+    from corpus_kb.tools.meta_embed_tools import analysis_embed_meta
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await analysis_embed_meta(pool, cfg, kinds=kinds)
+    finally:
+        await pool.close()
+    _emit(result, json_output)
+    return _exit_for(result)
+
+
+def analysis_embed_meta(
+    kinds: str | None = typer.Option(
+        None,
+        "--kinds",
+        help="Comma list: document,topic,belief_summary,profile (default all)",
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Build the coarse corpus meta embeddings (the search meta arm).
+
+    Exit codes: 0 done, 1 the build failed, 3 database down.
+    """
+    return _run_sync(lambda: _meta_embed_flow(kinds, json_output))

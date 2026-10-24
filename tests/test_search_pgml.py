@@ -126,7 +126,11 @@ async def test_ollama_path_uses_python_embedder() -> None:
     )
     results = await handler.handle_search(SearchQuery(query="hello", k=2))
 
-    embedder.embed.assert_called_once_with("hello")
+    # Two embed calls, same query text: the vector arm and the W6 meta
+    # arm both embed "hello". The real OllamaEmbedder serves the second
+    # call from its in-memory SHA256 cache (zero extra network).
+    assert embedder.embed.call_count == 2
+    assert {call.args[0] for call in embedder.embed.call_args_list} == {"hello"}
     vector_call = mock_pool.acquire.return_value.__aenter__.return_value.fetch.call_args_list[0]
     assert "pgml.embed" not in vector_call.args[0]
     assert vector_call.args[1] == str([0.1] * 768)

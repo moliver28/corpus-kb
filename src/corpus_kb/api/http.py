@@ -127,6 +127,7 @@ from corpus_kb.api.routes_meta import (
     list_versions,
     sql_tables,
 )
+from corpus_kb.api.routes_meta_embed import analysis_embed_meta_route
 from corpus_kb.api.routes_search import (
     embed_text,
     query_sql,
@@ -198,6 +199,8 @@ def create_http_app() -> FastAPI:
         Route("/api/analysis/contradictions-screen", contradictions_screen_route, methods=["POST"]),
         Route("/api/analysis/sentiment-screen", sentiment_screen_route, methods=["POST"]),
         Route("/api/analysis/active-learn-next", active_learn_next_route, methods=["POST"]),
+        # Living Corpus W6: the meta-embedding build op.
+        Route("/api/analysis/embed-meta", analysis_embed_meta_route, methods=["POST"]),
         # Living Corpus W2: the statement-atom read ops.
         Route("/api/statements/list", statements_list_route, methods=["POST"]),
         Route("/api/statements/timeline", statements_timeline_route, methods=["POST"]),

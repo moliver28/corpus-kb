@@ -147,7 +147,7 @@ def test_migrations_apply_twice_cleanly(tmp_path: Path) -> None:
     con = _connect_read_only(dsn)
     try:
         assert _applied_names(con) == {p.name for p in _DUCKDB_MIGRATIONS}
-        assert len(_table_names(con)) == 62  # 61 mirrored + schema_migrations
+        assert len(_table_names(con)) == 63  # 62 mirrored + schema_migrations
     finally:
         con.close()
 
