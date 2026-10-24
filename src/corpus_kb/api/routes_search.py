@@ -16,7 +16,7 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_bool, parse_body, route_errors
 from corpus_kb.domain.models import (
     RoutedQuery,
     SearchContextQuery,
@@ -138,7 +138,7 @@ async def embed_text(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     text = str(body.get("text", ""))
-    requested_instructed = bool(body.get("instructed", False))
+    requested_instructed = opt_bool(body.get("instructed"), False)
 
     if not text:
         return JSONResponse({"error": "text is required"}, status_code=400)

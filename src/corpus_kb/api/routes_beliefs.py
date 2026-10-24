@@ -13,7 +13,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_bool, parse_body, route_errors
 
 _TENANT_DEFAULT = "00000000-0000-0000-0000-000000000001"
 
@@ -37,11 +37,6 @@ def _opt_int(body: dict[str, Any], key: str, default: int) -> int:
         return default
 
 
-def _opt_bool(body: dict[str, Any], key: str, default: bool) -> bool:
-    raw = body.get(key)
-    return default if raw is None else bool(raw)
-
-
 @route_errors
 async def beliefs_current_route(request: Request) -> JSONResponse:
     """POST /api/beliefs/current — current posteriors."""
@@ -53,7 +48,7 @@ async def beliefs_current_route(request: Request) -> JSONResponse:
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         subject=_opt_str(body, "subject"),
         limit=_opt_int(body, "limit", 50),
-        rebuild=_opt_bool(body, "rebuild", True),
+        rebuild=opt_bool(body.get("rebuild"), True),
     )
     return JSONResponse(result)
 

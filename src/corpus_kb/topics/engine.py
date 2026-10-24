@@ -148,7 +148,13 @@ class UmapModule(Protocol):
     """The lazy ``umap`` module surface."""
 
     def UMAP(  # noqa: N802 - mirrors the real library's class name
-        self, *, random_state: int, n_components: int, min_dist: float, metric: str
+        self,
+        *,
+        random_state: int,
+        n_components: int,
+        min_dist: float,
+        metric: str,
+        n_neighbors: int = ...,
     ) -> object: ...
 
 
@@ -426,10 +432,23 @@ def _merge_values(
     return merged
 
 
-def _make_umap(umap_module: UmapModule) -> object:
-    """The deterministic UMAP instance (random state pinned at 42)."""
+def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> object:
+    """The deterministic UMAP instance (random state pinned at 42).
+
+    ``n_neighbors`` stays at the library default for the topics fit (large
+    corpora); the cluster-inspect path passes a clamped value so tiny
+    samples never trip umap's truncation warning.
+    """
+    if n_neighbors is None:
+        return umap_module.UMAP(
+            random_state=UMAP_RANDOM_STATE,
+            n_components=5,
+            min_dist=0.0,
+            metric="cosine",
+        )
     return umap_module.UMAP(
         random_state=UMAP_RANDOM_STATE,
+        n_neighbors=n_neighbors,
         n_components=5,
         min_dist=0.0,
         metric="cosine",

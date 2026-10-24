@@ -190,8 +190,19 @@ class DuckDbSearchBackend:
             scored: list[tuple[float, str, str, str, int]] = []
             for row in rows:
                 emb = list(row["embedding"])
+                if len(emb) != len(query_vector):
+                    # A dimension mismatch (model switch without a rebuild)
+                    # would truncate silently in zip and ship garbage
+                    # cosine distances — skip the row instead.
+                    logger.warning(
+                        "DuckDB meta arm skips %s: dim %d != query %d",
+                        row["meta_key"],
+                        len(emb),
+                        len(query_vector),
+                    )
+                    continue
                 norm_m = math.sqrt(sum(v * v for v in emb)) or 1.0
-                cosine = sum(a * b for a, b in zip(query_vector, emb, strict=False)) / (
+                cosine = sum(a * b for a, b in zip(query_vector, emb, strict=True)) / (
                     norm_q * norm_m
                 )
                 scored.append(

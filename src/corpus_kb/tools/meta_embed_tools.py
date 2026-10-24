@@ -54,7 +54,8 @@ async def analysis_embed_meta(
     requested = _parse_kinds(kinds)
     cfg = dict(config) if isinstance(config, dict) else {}
     rows, notes = await build_meta_rows(pg_pool, tenant_id, requested, cfg)
-    written = await upsert_meta_rows(pg_pool, tenant_id, rows)
+    is_duckdb = str((cfg.get("database") or {}).get("backend") or "postgres") == "duckdb"
+    written = await upsert_meta_rows(pg_pool, tenant_id, rows, is_duckdb=is_duckdb)
     per_kind: dict[str, int] = dict.fromkeys(requested, 0)
     for row in rows:
         per_kind[row.meta_kind] = per_kind.get(row.meta_kind, 0) + 1

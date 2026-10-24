@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from .eras import eras as segment_eras
-from .math_core import Evidence, Posterior
+from .math_core import Evidence, Posterior, beta_interval
 from .math_core import posterior as exact_posterior
 from .rebuild import BeliefEvidence, build_evidence
 
@@ -30,7 +30,7 @@ SELECT s.statement_id::text, s.text, s.template_id, s.confidence,
        ) AS conflicted
 FROM statements s
 WHERE s.tenant_id = $1
-ORDER BY s.observed_at ASC
+ORDER BY s.observed_at ASC, s.statement_id
 LIMIT 2000
 """
 
@@ -182,9 +182,12 @@ class BeliefStore:
         subject: str,
         relation: str,
         object_name: str,
-        half_life_days: float = 365.0,
     ) -> dict[str, Any] | None:
-        """The eras view for one belief (the ice-cream history)."""
+        """The eras view for one belief (the ice-cream history).
+
+        The reported posterior is the STORED one (pooled at rebuild), so
+        timeline and current always agree on alpha/beta.
+        """
         belief_id = await self._belief_id(subject, relation, object_name)
         if belief_id is None:
             return None
@@ -193,6 +196,10 @@ class BeliefStore:
                 "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
             )
             rows = await conn.fetch(TIMELINE_SQL, self._tenant_id, belief_id)
+            stored = await conn.fetchrow(
+                "SELECT alpha, beta, evidence_count, era_count FROM beliefs WHERE belief_id = $1",
+                belief_id,
+            )
         items = [
             Evidence(
                 stance=row["stance"],
@@ -202,7 +209,19 @@ class BeliefStore:
             for row in rows
         ]
         segments = segment_eras(items)
-        post = exact_posterior(items, half_life_days=half_life_days)
+        # The STORED alpha/beta (pooled at rebuild) — recomputing here
+        # without the tenant prior would disagree with beliefs_current.
+        total = float(stored["alpha"]) + float(stored["beta"])
+        low, high = beta_interval(float(stored["alpha"]), float(stored["beta"]))
+        post = Posterior(
+            alpha=float(stored["alpha"]),
+            beta=float(stored["beta"]),
+            mean=round(float(stored["alpha"]) / total, 6) if total else 0.5,
+            interval_low=low,
+            interval_high=high,
+            evidence_count=int(stored["evidence_count"]),
+            era_count=int(stored["era_count"]),
+        )
         return {
             "belief_id": belief_id,
             "eras": [

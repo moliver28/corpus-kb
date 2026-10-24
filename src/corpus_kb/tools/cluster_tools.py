@@ -78,7 +78,11 @@ def _reduce(matrix: np.ndarray) -> tuple[np.ndarray, str]:
         return _pca_reduce(matrix)
     from corpus_kb.topics.engine import _make_umap, load_umap
 
-    reducer = _make_umap(load_umap())
+    # The inspect sample can be tiny; umap truncates n_neighbors to n-1
+    # with a UserWarning on small corpora — clamp here, same contract as
+    # the inductive engine, so the inspect path stays silent.
+    n_neighbors = min(15, max(matrix.shape[0] - 1, 2))
+    reducer = _make_umap(load_umap(), n_neighbors=n_neighbors)
     return np.asarray(reducer.fit_transform(matrix), dtype=np.float64), "umap"
 
 

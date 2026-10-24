@@ -41,6 +41,32 @@ async def parse_body(request: Request) -> dict[str, Any]:
         return {}
 
 
+def opt_int(raw: object, default: int) -> int:
+    """Coerce one JSON count. Absent or junk answers the default."""
+    try:
+        return int(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        return default
+
+
+def opt_bool(raw: object, default: bool) -> bool:
+    """Coerce one JSON flag. Real bools pass; strings parse; junk defaults."""
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        lowered = raw.strip().lower()
+        if lowered in ("true", "1", "yes", "on"):
+            return True
+        if lowered in ("false", "0", "no", "off", ""):
+            return False
+        return default
+    if isinstance(raw, (int, float)):
+        return bool(raw)
+    return default
+
+
 def error_response(
     exc_or_type: BaseException | str,
     message: str | None = None,

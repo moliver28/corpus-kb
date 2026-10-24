@@ -221,6 +221,12 @@ dev = [
     # never declared - a locked-environment sync dropped it silently.
     # Pinned to the exact ci.yml version so local lint == CI lint.
     "ruff==0.15.18",
+    # python-magic-bin: the libmagic DLL that unstructured's binary format
+    # detection needs on Windows (see ci.yml: `pip install python-magic-bin`
+    # on the Windows test job). Declared with a platform marker so a local
+    # `uv sync` on Windows restores what CI installs by hand; Linux keeps
+    # the system libmagic package and macOS brew-installs it.
+    "python-magic-bin>=0.4.14; sys_platform == 'win32'",
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-cov>=5.0",
@@ -303,6 +309,10 @@ DEP002 = [
     "hdbscan",
     "gliner2",
     "gliner",
+    # python-magic-bin ships the libmagic DLL on Windows (dev group,
+    # sys_platform marker); the `magic` module it serves comes from
+    # python-magic itself, so nothing ever imports this distribution.
+    "python-magic-bin",
     # LoRA tuning (Living Corpus W5, extraction/lora_tune.py) imports
     # peft lazily behind extraction_tune(method="lora"); CI never installs
     # the [tune] extra, so deptry cannot see the import edge.
@@ -402,9 +412,14 @@ asyncio_mode = "auto"
 #   (inductive engine, r7) sets random_state on purpose.
 # - pynvml deprecation: pypi.org/project/pynvml tells maintainers to move to
 #   nvidia-ml-py; we consume it transitively and must not add the replacement.
+# - sklearn 1.9.1's HDBSCAN emits the copy-deprecation notice from its own
+#   internals (its copy default flips to True in 1.10) and its copy= value
+#   crashes cosine_distances — an upstream bug (sklearn#33219), fixed when
+#   1.10 lands. We pass no copy; the notice is third-party noise.
 filterwarnings = [
     'ignore:n_jobs value 1 overridden to 1 by setting random_state:UserWarning',
     'ignore:The pynvml package is deprecated:FutureWarning',
+    'ignore:The default value of `copy` will change from False to True:FutureWarning',
 ]
 
 # ---------------------------------------------------------------------------

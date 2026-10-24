@@ -63,13 +63,40 @@ class StatementAtom:
         self.end_char = end_char
         self.entities = entities
         self.exchange_id = exchange_id
-        names = "|".join(sorted(e.name.lower() for e in entities))
-        words = " ".join(text.lower().split())
-        key = f"{template_id}|{names}|{words}"
-        self.statement_hash = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        # Collision-free preimage: JSON serialization, so entity names or
+        # sentence text containing the separator can never alias another
+        # (template, entity-set, text) triple.
+        preimage = json.dumps(
+            {
+                "template": template_id,
+                "entities": sorted(e.name.lower() for e in entities),
+                "text": " ".join(text.lower().split()),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        self.statement_hash = hashlib.sha256(preimage.encode("utf-8")).hexdigest()
         # Confidence: the weakest anchored entity, damped by entity count
         # uncertainty. Deterministic; no model score of its own.
         self.confidence = min((e.confidence or 0.5 for e in entities), default=0.5)
+
+
+def _exchange_number(raw: object) -> int | None:
+    """The QA exchange number, from an int or the producer's string form.
+
+    The transcript strategy writes ``exchange-0007`` (optionally
+    ``-partN`` for budget-split chunks); both carry the same exchange
+    sequence number, and that number is what statements store.
+    """
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, str):
+        match = re.search(r"exchange-(\d+)", raw)
+        if match:
+            return int(match.group(1))
+    return None
 
 
 def atomize_chunk(
@@ -83,9 +110,7 @@ def atomize_chunk(
     exchange_id = None
     qa_context = chunk.metadata.get("qa_context")
     if isinstance(qa_context, dict):
-        raw_exchange = qa_context.get("exchange_id")
-        if isinstance(raw_exchange, int):
-            exchange_id = raw_exchange
+        exchange_id = _exchange_number(qa_context.get("exchange_id"))
     atoms: list[StatementAtom] = []
     for match in _SENTENCE_RE.finditer(text):
         if len(atoms) >= MAX_STATEMENTS_PER_CHUNK:

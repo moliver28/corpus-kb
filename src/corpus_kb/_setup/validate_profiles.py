@@ -29,12 +29,24 @@ def validate_profiles(
     profiles_dir: Path = DEFAULT_PROFILES_DIR,
     templates_dir: Path = DEFAULT_TEMPLATES_DIR,
 ) -> list[str]:
-    """Validate every ``*.yaml`` profile; returns the error lines."""
+    """Validate every ``*.yaml`` profile; returns the error lines.
+
+    Seeds files (``*.seeds.yaml``, the extraction-tune output) are NOT
+    profiles and are skipped. A missing claim-template catalogue is a
+    gate error: template cross-references must stay checkable.
+    """
     errors: list[str] = []
     if not profiles_dir.is_dir():
         return errors
+    if not templates_dir.is_dir():
+        errors.append(
+            f"claim template catalogue not found at {templates_dir};"
+            " template cross-references cannot be checked."
+        )
     template_ids = _template_ids(templates_dir, errors)
     for path in sorted(profiles_dir.glob("*.yaml")):
+        if path.name.endswith(".seeds.yaml"):
+            continue
         errors.extend(_validate_one(path, profiles_dir, template_ids))
     return errors
 

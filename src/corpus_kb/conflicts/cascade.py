@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+from ..utils.stance import stance_words
+
 
 @dataclass(frozen=True)
 class StatementRow:
@@ -50,11 +52,30 @@ class CascadeVerdict:
     nli_verdict: str | None = None
 
 
+def _claim_instant(row: StatementRow) -> datetime | None:
+    """When the claim was asserted: the exchange time, else ingest time."""
+    return row.valid_at or row.observed_at
+
+
+# Two claim instants within this window are SIMULTANEOUS: the atoms of
+# one ingest get separate datetime.now() calls (microseconds apart), and
+# they must read as one moment so a same-document stance clash reaches
+# Gate B/C as a contradiction. Cross-ingest gaps are larger by far, so
+# they read as revision candidates. Symmetric by construction.
+CLOCK_SKEW_SECONDS = 1.0
+
+
 def _overlap(a: StatementRow, b: StatementRow) -> bool:
-    """True when the two truth windows overlap (Gate A)."""
-    a_end = a.valid_at or a.observed_at
-    b_start = b.valid_at or b.observed_at
-    return a_end is not None and b_start is not None and a_end >= b_start
+    """True when the two claims assert at the same moment (Gate A).
+
+    Symmetric point-in-time overlap: |t_a - t_b| <= CLOCK_SKEW_SECONDS.
+    Claims asserted at different times do NOT overlap — the anchor's
+    stance moved, which is a REVISION, not a contradiction.
+    """
+    ta, tb = _claim_instant(a), _claim_instant(b)
+    if ta is None or tb is None:
+        return False
+    return abs((ta - tb).total_seconds()) <= CLOCK_SKEW_SECONDS
 
 
 def gate_a(a: StatementRow, b: StatementRow, anchor: str) -> CascadeVerdict | None:
@@ -77,30 +98,15 @@ def relation_swap(a: StatementRow, b: StatementRow) -> bool:
     Text-level stance check (the statements carry their full sentence
     text): one text likes/loves/supports/prefers the anchor while the
     other dislikes/hates/opposes/avoids it. Template ids alone are too
-    coarse (both may classify as ``preference``).
+    coarse (both may classify as ``preference``). The vocabulary is the
+    shared stance module (utils.stance) — the same list the belief
+    rebuild reads.
     """
 
     def stance(text: str) -> set[str]:
-        words = _stance_words(text)
-        return words
+        return stance_words(text)
 
     return bool(stance(a.text) and stance(b.text) and not (stance(a.text) & stance(b.text)))
-
-
-_POSITIVE = ("like", "love", "prefer", "enjoy", "support", "adore")
-_NEGATIVE = ("dislike", "hate", "avoid", "oppose", "cannot stand", "can't stand")
-
-
-def _stance_words(text: str) -> set[str]:
-    low = " ".join(text.lower().split())
-    found: set[str] = set()
-    for word in _POSITIVE:
-        if f" {word} " in f" {low} ":
-            found.add("pos")
-    for word in _NEGATIVE:
-        if f" {word} " in f" {low} ":
-            found.add("neg")
-    return found
 
 
 def entity_swap(a: StatementRow, b: StatementRow) -> bool:

@@ -87,6 +87,7 @@ def extraction_tune(
             "extraction_tune_tools",
             "extraction_tune",
             {
+                "tenant_id": tenant_id,
                 "method": method,
                 "profile": profile,
                 "min_confidence": min_confidence,

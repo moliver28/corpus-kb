@@ -15,6 +15,7 @@ INSERT INTO statement_conflicts (
     gate_reached, verdict, nli_verdict, metadata
 ) VALUES ($1, $2::uuid, $3::uuid, $4, $5, $6, $7, $8, $9::jsonb)
 ON CONFLICT (tenant_id, statement_a_id, statement_b_id, kind) DO NOTHING
+RETURNING conflict_id
 """
 
 LIST_SQL = """
@@ -46,7 +47,7 @@ SELECT statement_id::text, text, template_id, entities, valid_at, observed_at,
        superseded_by::text
 FROM statements
 WHERE tenant_id = $1 AND superseded_by IS NULL
-ORDER BY observed_at DESC
+ORDER BY observed_at DESC, statement_id
 LIMIT 500
 """
 
@@ -74,7 +75,7 @@ class ConflictStore:
         self._tenant_id = tenant_id
 
     async def record(self, verdicts: list[Any]) -> int:
-        """Insert flags write-once; returns rows written."""
+        """Insert flags write-once; returns rows actually inserted."""
         written = 0
         async with self._pool.acquire() as conn, conn.transaction():
             await conn.execute(
@@ -83,7 +84,7 @@ class ConflictStore:
             )
             for verdict in verdicts:
                 row = conflict_row(verdict, self._tenant_id)
-                await conn.execute(
+                inserted = await conn.fetchval(
                     INSERT_SQL,
                     row[0],
                     row[1],
@@ -95,7 +96,8 @@ class ConflictStore:
                     row[7],
                     row[8],
                 )
-                written += 1
+                if inserted is not None:
+                    written += 1
         return written
 
     async def fetch_scan_rows(self) -> list[dict[str, Any]]:

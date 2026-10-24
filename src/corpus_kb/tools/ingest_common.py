@@ -868,11 +868,24 @@ async def _stage_atomize(
 
 
 def _cache_versions(config: dict[str, Any]) -> tuple[str, str, str]:
-    """(backend, model_version, prompt_version) — the cache key suffix."""
+    """(backend, model_version, prompt_version) — the cache key suffix.
+
+    The suffix folds in everything that changes extraction output for
+    one chunk: backend name, extraction mode, and the GLiNER2/Relex
+    model ids, so a config flip (customized → zero_shot, a model swap)
+    can never replay stale cached extractions.
+    """
     graph_cfg = cast(dict[str, Any], config.get("graph") or {})
+    extraction_cfg = cast(dict[str, Any], config.get("extraction") or {})
+    mode = str(extraction_cfg.get("mode") or "zero_shot")
+    gliner_model = str((extraction_cfg.get("gliner") or {}).get("model") or "unset")
+    relex_model = str((extraction_cfg.get("relex") or {}).get("model") or "unset")
+    model_version = "|".join(
+        [str(graph_cfg.get("model_version") or "unset"), mode, gliner_model, relex_model]
+    )
     return (
         extraction_backend_name(config),
-        str(graph_cfg.get("model_version") or "unset"),
+        model_version,
         str(graph_cfg.get("prompt_version") or "unset"),
     )
 

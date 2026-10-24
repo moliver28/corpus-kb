@@ -18,7 +18,7 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_bool, parse_body, route_errors
 from corpus_kb.domain.models import (
     IngestDirectoryCommand,
     IngestFileCommand,
@@ -87,7 +87,7 @@ async def ingest_url_route(request: Request) -> JSONResponse:
         str(body["url"]),
         await research_pool(),
         tenant_id=body.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
-        crawl=bool(body.get("crawl", False)),
+        crawl=opt_bool(body.get("crawl"), False),
         source_type=body.get("source_type"),
     )
     return JSONResponse(result)

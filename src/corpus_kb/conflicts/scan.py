@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Any
 
 from .cascade import CascadeVerdict, StatementRow, gate_a, gate_b
@@ -60,15 +61,22 @@ async def scan_statements(
     for anchor, group in by_anchor.items():
         if len(group) < 2:
             continue
-        # Oldest-first pairing: statement_a is the EARLIER claim, so a
-        # revision resolve supersedes the outdated statement (the read
-        # feeds rows newest-first; the pair direction is a semantic
-        # contract, not an accident of the SELECT order).
-        group.sort(key=lambda r: (r.observed_at, r.statement_id))
+        # Oldest-first pairing keyed on the SAME instant Gate A compares
+        # (exchange time, else ingest time): statement_a is the EARLIER
+        # claim, so a revision resolve supersedes the outdated statement.
+        # statement_id breaks timestamp ties deterministically (rule 9).
+        group.sort(
+            key=lambda r: (
+                r.valid_at or r.observed_at or datetime.max.replace(tzinfo=UTC),
+                r.statement_id,
+            )
+        )
         for i, a in enumerate(group):
             for b in group[i + 1 :]:
-                if len(verdicts) >= MAX_PAIRS:
-                    return verdicts
+                if len(verdicts) + len(pending_c) >= MAX_PAIRS:
+                    # Budget spent: stop pairing. Gate C candidates still
+                    # flush below (within the same budget) — never dropped.
+                    break
                 verdict = gate_a(a, b, anchor)
                 if verdict is None:
                     verdict = gate_b(a, b, anchor)
@@ -78,9 +86,11 @@ async def scan_statements(
                         verdicts.append(verdict)
                 else:
                     verdicts.append(verdict)
+            if len(verdicts) + len(pending_c) >= MAX_PAIRS:
+                break
 
-    if pending_c:
-        verdicts.extend(await _gate_c(pending_c, nli))
+    budget = max(MAX_PAIRS - len(verdicts), 0)
+    verdicts.extend(await _gate_c(pending_c[:budget], nli))
     return verdicts
 
 
@@ -89,7 +99,7 @@ async def _gate_c(
     nli: Any,
 ) -> list[CascadeVerdict]:
     out: list[CascadeVerdict] = []
-    for a, b, anchor in pending[:MAX_PAIRS]:
+    for a, b, anchor in pending:
         verdict = await nli(a.text, b.text)
         out.append(
             CascadeVerdict(

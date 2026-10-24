@@ -23,6 +23,8 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
+from corpus_kb.api._body import opt_bool, opt_int
+
 Arm = Callable[[dict[str, Any], str], Awaitable[dict[str, Any]]]
 
 DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
@@ -119,7 +121,7 @@ async def _ingest_directory(params: dict[str, Any], tenant_id: str) -> dict[str,
         await research_pool(),
         tenant_id=tenant_id,
         source_type=params.get("source_type"),
-        recursive=bool(params.get("recursive", True)),
+        recursive=opt_bool(params.get("recursive"), True),
     )
 
 
@@ -131,7 +133,7 @@ async def _ingest_url(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         str(params["url"]),
         await research_pool(),
         tenant_id=tenant_id,
-        crawl=bool(params.get("crawl", False)),
+        crawl=opt_bool(params.get("crawl"), False),
         source_type=params.get("source_type"),
     )
 
@@ -300,7 +302,7 @@ async def _statements_list(params: dict[str, Any], tenant_id: str) -> dict[str, 
         tenant_id=tenant_id,
         template_id=_opt_str(params, "template_id"),
         document_id=_opt_str(params, "document_id"),
-        limit=int(params.get("limit") or 50),
+        limit=opt_int(params.get("limit"), 50),
     )
 
 
@@ -312,7 +314,7 @@ async def _statements_timeline(params: dict[str, Any], tenant_id: str) -> dict[s
         await research_pool(),
         tenant_id=tenant_id,
         text_query=_opt_str(params, "text_query"),
-        limit=int(params.get("limit") or 200),
+        limit=opt_int(params.get("limit"), 200),
     )
 
 
@@ -338,8 +340,8 @@ async def _extraction_tune(params: dict[str, Any], tenant_id: str) -> dict[str, 
         method=str(params.get("method") or "exemplar"),
         profile=_opt_str(params, "profile"),
         min_confidence=min_confidence,
-        limit=int(params.get("limit") or 8),
-        dry_run=bool(params.get("dry_run", False)),
+        limit=opt_int(params.get("limit"), 8),
+        dry_run=opt_bool(params.get("dry_run"), False),
     )
 
 
@@ -351,7 +353,7 @@ async def _conflicts_list(params: dict[str, Any], tenant_id: str) -> dict[str, A
         await research_pool(),
         tenant_id=tenant_id,
         verdict=_opt_str(params, "verdict"),
-        limit=int(params.get("limit") or 50),
+        limit=opt_int(params.get("limit"), 50),
     )
 
 
@@ -376,8 +378,8 @@ async def _beliefs_current(params: dict[str, Any], tenant_id: str) -> dict[str, 
         await research_pool(),
         tenant_id=tenant_id,
         subject=_opt_str(params, "subject"),
-        limit=int(params.get("limit") or 50),
-        rebuild=bool(params.get("rebuild", True)),
+        limit=opt_int(params.get("limit"), 50),
+        rebuild=opt_bool(params.get("rebuild"), True),
     )
 
 

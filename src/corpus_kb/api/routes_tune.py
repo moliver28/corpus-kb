@@ -12,7 +12,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_bool, parse_body, route_errors
 
 _TENANT_DEFAULT = "00000000-0000-0000-0000-000000000001"
 
@@ -57,6 +57,6 @@ async def extraction_tune_route(request: Request) -> JSONResponse:
         profile=_opt_str(body, "profile"),
         min_confidence=_opt_float(body, "min_confidence", 0.8),
         limit=_opt_int(body, "limit", 8),
-        dry_run=bool(body.get("dry_run", False)),
+        dry_run=opt_bool(body.get("dry_run"), False),
     )
     return JSONResponse(result)

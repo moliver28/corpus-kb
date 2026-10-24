@@ -76,7 +76,7 @@ class RelexExtractor:
         """Extract relations; link endpoints to ``entities`` when supplied."""
         timer = Timer(self.extractor_id)
         model = self._load_model()
-        pairs, capped_note = self._label_pairs(ontology)
+        pairs, capped_note, label_map = self._label_pairs(ontology)
         known = [e for e in (entities or []) if e.chunk_id]
         by_chunk: dict[str, list[Entity]] = {}
         for entity in known:
@@ -103,7 +103,8 @@ class RelexExtractor:
                 if head is None or tail is None:
                     dropped_by_other += 1
                     continue
-                rel_type = str(_field(triplet, "label")).upper().replace(" ", "_")
+                raw_label = str(_field(triplet, "label")).upper().replace(" ", "_")
+                rel_type = label_map.get(raw_label, raw_label)
                 if rel_type not in ontology.relation_types:
                     dropped_by_other += 1
                     continue
@@ -150,14 +151,21 @@ class RelexExtractor:
         )
         return emitted_entities, relations, stats
 
-    def _label_pairs(self, ontology: Ontology) -> tuple[list[tuple[str, str]], str]:
-        """(mention type, natural-language relation) pairs plus a cap note."""
+    def _label_pairs(self, ontology: Ontology) -> tuple[list[tuple[str, str]], str, dict[str, str]]:
+        """(mention type, natural-language relation) pairs plus a cap note.
+
+        The third value maps the NORMALIZED natural label back to the
+        ontology type: the model echoes the label text it was given, so
+        descriptions must translate home before the relation_types
+        membership check.
+        """
         natural: dict[str, str] = {}
         for rel_type in ontology.relation_types:
             text = ontology.relation_descriptions.get(rel_type, "")
             natural[rel_type] = (
                 text.strip() if text and text.strip() else rel_type.lower().replace("_", " ")
             )
+        label_map = {text.upper().replace(" ", "_"): rel_type for rel_type, text in natural.items()}
         pairs = [
             (mention, natural[rel_type])
             for rel_type in ontology.relation_types
@@ -167,7 +175,7 @@ class RelexExtractor:
         if len(pairs) > self._max_label_pairs:
             note = f"relex label pairs capped at {self._max_label_pairs} of {len(pairs)}"
             pairs = pairs[: self._max_label_pairs]
-        return pairs, note
+        return pairs, note, label_map
 
 
 def _predict(
