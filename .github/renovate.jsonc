@@ -1,0 +1,32 @@
+{
+  // Renovate configuration for corpus-kb.
+  // Options reference: https://docs.renovatebot.com/configuration-options/
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  // One weekly batch window: the 3-OS test matrix is too heavy for daily runs.
+  "schedule": ["before 5am on Monday"],
+  "prConcurrentLimit": 5,
+  // Refresh lockfiles weekly without human review.
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true
+  },
+  "packageRules": [
+    {
+      // Stable (non-0.x) minor/patch/pin/digest updates: one grouped PR, automerged
+      // only after CI is green. 0.x deps are excluded because their minor bumps
+      // may carry breaking changes.
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest"],
+      "matchCurrentVersion": "!/^0/",
+      "groupName": "non-major updates",
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      // Major updates change constraint ranges (duckdb<2.0, spaCy caps are deliberate),
+      // so they get a label and wait for human review.
+      "matchUpdateTypes": ["major"],
+      "labels": ["review-required"]
+    }
+  ]
+}
