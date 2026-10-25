@@ -21,7 +21,7 @@ member that produced them.
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
@@ -77,7 +77,8 @@ class MLExtractor:
         source_document_id: str,
     ) -> tuple[list[Entity], list[Relation], ExtractStats]:
         if self._mode == "zero_shot":
-            gliner, relex = self._members[0], self._members[1]
+            gliner = self._members[0]
+            relex = cast("RelexExtractor", self._members[1])
             entities, _, stats = gliner.extract(chunks, ontology, source_document_id)
             emitted, relations, relex_stats = relex.extract(
                 chunks, ontology, source_document_id, entities=entities

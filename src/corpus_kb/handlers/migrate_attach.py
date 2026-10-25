@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import re
 from collections.abc import Sequence
+from typing import cast
 from urllib.parse import urlparse
 
 from corpus_kb.errors import ConflictError
@@ -187,11 +188,11 @@ def clear_seed_tenant(con: StreamConn, ref: str) -> None:
 
 def attach_copy(
     con: StreamConn, entries: Sequence[TablePlan], order: Sequence[str]
-) -> list[dict[str, object]]:
+) -> list[dict[str, str | int]]:
     """INSERT ... SELECT per table in FK order: pushdown read over the
     attachment into the DDL-mirrored target (constraints survive)."""
     by_bare = {entry.name.split(".")[-1]: entry for entry in entries}
-    report: list[dict[str, object]] = []
+    report: list[dict[str, str | int]] = []
     for ref in order:
         bare = ref.rsplit(".", 1)[-1]
         entry = by_bare[bare]
@@ -204,7 +205,8 @@ def attach_copy(
         target_ref = f"main.{bare}"
         con.execute(f"INSERT INTO {target_ref} ({names}) SELECT {parts} FROM {entry.name}")
         count = con.execute(f"SELECT count(*) FROM {target_ref}").fetchone()
-        report.append({"name": bare, "rows": int(count[0]) if count else 0})
+        rows_written = cast("int", count[0]) if count else 0
+        report.append({"name": bare, "rows": rows_written})
     return report
 
 

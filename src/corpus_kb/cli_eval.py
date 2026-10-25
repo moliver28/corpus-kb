@@ -132,7 +132,7 @@ async def _build_from_assignments(out: Path, project: str | None) -> int:
             rows = await conn.fetch(ASSIGNMENTS_SQL, str(_tenant()), project)
     finally:
         await pool.close()
-    records = build_golden_from_assignments(rows)
+    records = build_golden_from_assignments([dict(row) for row in rows])
     count = _write_golden(records, out)
     print(f"built {count} golden record(s) from reviewed assignments")
     _print_summary(records, out)

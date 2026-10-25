@@ -16,7 +16,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.projections.research._embed import _parse_pg_vector
-from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.gateway import SqlConn, SqlGateway
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ WHERE u.tenant_id = $1 AND u.text_sha256::text = ANY($2::text[])
 
 
 async def load_unit_views(
-    conn: asyncpg.Connection, tenant_id: UUID, project_id: UUID | None
+    conn: SqlConn, tenant_id: UUID, project_id: UUID | None
 ) -> list[UnitViews]:
     rows = await conn.fetch(_UNIT_VIEW_SQL, str(tenant_id), str(project_id) if project_id else None)
     return [
@@ -113,7 +113,7 @@ async def load_codes(
 
 
 async def load_gold_views(
-    conn: asyncpg.Connection, tenant_id: UUID, refs: list[str]
+    conn: SqlConn, tenant_id: UUID, refs: list[str]
 ) -> list[tuple[list[float], list[float], list[float], str]]:
     """Gold exemplar (answer, qa, question) views + their document source type."""
     if not refs:

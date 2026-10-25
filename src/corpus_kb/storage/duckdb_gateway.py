@@ -27,7 +27,7 @@ from __future__ import annotations
 import asyncio
 import random
 import threading
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -111,6 +111,22 @@ class DuckDbGateway:
         _reject_corpus_qualified(sql)
         async with self._statement_gate():
             return await self._run_sync(lambda conn: self._tag(conn, sql, args))
+
+    def executemany(self, query: str, args: Sequence[Sequence[Any]]) -> Coroutine[Any, Any, None]:
+        """Bulk write with execute's guards: one statement, many tuples."""
+        _check_append_only(query)
+        _reject_corpus_qualified(query)
+
+        async def run() -> None:
+            async with self._statement_gate():
+                await self._run_sync(
+                    lambda conn: conn.executemany(
+                        query,
+                        [tuple(row) for row in args],
+                    )
+                )
+
+        return run()
 
     async def write_batch(
         self, table: str, rows: Sequence[Mapping[str, Any]], *, chunk_rows: int | None = None

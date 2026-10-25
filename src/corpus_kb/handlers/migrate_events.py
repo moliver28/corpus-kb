@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING
 from corpus_kb.errors import ConflictError, InternalError
 from corpus_kb.handlers.migrate_attach import TARGET_NOT_EMPTY
 from corpus_kb.handlers.migrate_digest import EventRecord
+from corpus_kb.handlers.migrate_pg import PgCursor
 
 if TYPE_CHECKING:
     from eventsourcing.application import Application
@@ -182,7 +183,7 @@ def _collect_postgres_snapshots(conn_str: str, table: str) -> list[EventRecord]:
     import psycopg
 
     snapshots: list[EventRecord] = []
-    with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
+    with psycopg.connect(conn_str) as conn, PgCursor(conn.cursor()) as cur:
         cur.execute(
             "SELECT EXISTS (SELECT 1 FROM information_schema.tables"
             " WHERE table_schema = 'public' AND table_name = %s)",
@@ -214,7 +215,7 @@ def assert_postgres_events_empty(conn_str: str) -> None:
     from corpus_kb.domain.application import CorpusApplication, events_table_name
 
     app = CorpusApplication(conn_str, backend="postgres")
-    with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
+    with psycopg.connect(conn_str) as conn, PgCursor(conn.cursor()) as cur:
         for table in (_snapshot_table(app), events_table_name(app)):
             cur.execute(f"SELECT count(*) FROM {table}")  # lib-owned + _table_guard names
             row = cur.fetchone()
@@ -246,7 +247,7 @@ def write_postgres_events(
     if not snapshots:
         return
     table = _snapshot_table(app)
-    with psycopg.connect(conn_str) as conn, conn.cursor() as cur:
+    with psycopg.connect(conn_str) as conn, PgCursor(conn.cursor()) as cur:
         cur.executemany(
             f"INSERT INTO {table} (originator_id, originator_version, topic, state)"
             " VALUES (%s, %s, %s, %s)"

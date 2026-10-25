@@ -32,6 +32,7 @@ from corpus_kb.eval.report import (
     empty_report,
     summary_from_rows,
 )
+from corpus_kb.storage.gateway import SqlConn
 
 __all__ = ["run_eval"]
 
@@ -120,7 +121,7 @@ async def _retrieval_section(
 
 
 async def _ranked_chunks(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     embedder: CachedEmbedder,
     query: str,
     tenant_id: str,

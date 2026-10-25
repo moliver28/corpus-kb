@@ -34,6 +34,8 @@ from dataclasses import dataclass
 import asyncpg
 import numpy as np
 
+from corpus_kb.utils.config_sections import mapping_section
+
 logger = logging.getLogger(__name__)
 
 MIN_CENTROID_NORM = 1e-6
@@ -237,11 +239,11 @@ async def _embed_text(
     config: dict[str, object], pool: asyncpg.Pool, tenant_id: str, text: str
 ) -> list[float] | None:
     """One text embedding via the configured provider (None when down)."""
-    provider = str((config.get("embedding") or {}).get("provider") or "ollama")
+    provider = str(mapping_section(config, "embedding").get("provider") or "ollama")
     if provider == "pgml":
         from corpus_kb.classification.engine import tenant_connection
 
-        model = str((config.get("embedding") or {}).get("model") or "qwen3-embedding:4b")
+        model = str(mapping_section(config, "embedding").get("model") or "qwen3-embedding:4b")
         try:
             async with tenant_connection(pool, tenant_id) as conn:
                 value = await conn.fetchval("SELECT pgml.embed($1, $2)", model, text)

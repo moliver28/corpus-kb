@@ -13,7 +13,7 @@ adopt it instead of hand-rolled ``_ScriptedConn``-style fakes.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -86,6 +86,9 @@ class FakeSqlGateway:
         if isinstance(canned, str):
             return canned
         return _default_status_tag(sql)
+
+    async def executemany(self, query: str, args: Sequence[Sequence[Any]]) -> None:
+        self.calls.append((query, tuple(args)))
 
     @asynccontextmanager
     async def transaction(self, tenant_id: str) -> AsyncIterator[FakeSqlGateway]:

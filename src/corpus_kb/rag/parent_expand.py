@@ -89,7 +89,8 @@ async def _fetch_rows(
     acquire shape.
     """
     if hasattr(store, "acquire"):
-        async with store.acquire() as conn:
+        pool_store = cast("ParentPool", store)
+        async with pool_store.acquire() as conn:
             return list(await conn.fetch(sql, *args))
     reader = cast("ParentReader", store)
     return list(await reader.fetch(sql, *args))

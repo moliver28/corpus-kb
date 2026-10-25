@@ -177,6 +177,7 @@ def load_topics_settings(config: dict[str, object]) -> TopicsSettings:
         # Unreachable behind topics_settings_error, but keep the type honest.
         raise ValueError(_min_topic_size_error(size) or "invalid topics.min_topic_size")
     typed_size = size if isinstance(size, int) else str(size)
+    raw_similarity = block.get("zeroshot_min_similarity", DEFAULT_ZEROSHOT_MIN_SIMILARITY)
     return TopicsSettings(
         enabled=bool(block.get("enabled", DEFAULT_TOPICS_ENABLED)),
         method=str(block.get("method", DEFAULT_TOPICS_METHOD)),
@@ -186,10 +187,22 @@ def load_topics_settings(config: dict[str, object]) -> TopicsSettings:
         llm_base_url=str(block.get("llm_base_url", DEFAULT_TOPICS_LLM_BASE_URL)),
         fixture_dir=str(fixture) if fixture else None,
         live_fallback=bool(block.get("live_fallback", DEFAULT_TOPICS_LIVE_FALLBACK)),
-        zeroshot_min_similarity=float(
-            block.get("zeroshot_min_similarity", DEFAULT_ZEROSHOT_MIN_SIMILARITY)
-        ),
+        zeroshot_min_similarity=_opt_float(raw_similarity, DEFAULT_ZEROSHOT_MIN_SIMILARITY),
     )
+
+
+def _opt_float(raw: object, default: float) -> float:
+    """One float config value; junk answers the default."""
+    if isinstance(raw, bool):
+        return default
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    if isinstance(raw, str):
+        try:
+            return float(raw)
+        except ValueError:
+            return default
+    return default
 
 
 def _topics_block(config: dict[str, object]) -> dict[str, object]:

@@ -215,7 +215,11 @@ class CodingHandler:
                 tenant_id,
             )
         return await coding_ops.build_reliability_report(
-            rows, final_rows, per_code_min, seed, code_universe
+            [dict(row) for row in rows],
+            [dict(row) for row in final_rows],
+            per_code_min,
+            seed,
+            code_universe,
         )
 
 

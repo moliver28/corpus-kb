@@ -46,11 +46,12 @@ from corpus_kb.research.report_sections import (
     candidate_missing_codes,
     residual_full_section,
 )
+from corpus_kb.storage.gateway import SqlConn
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
 async def _load_models(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     tenant_id: UUID,
     version_id: UUID,
     codes: list[dict[str, Any]],
@@ -89,7 +90,7 @@ async def _load_models(
 
 
 async def _analyze_candidates(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     tenant_id: UUID,
     models: dict[str, Any],
     gold_by_code: dict[str, list[dict[str, Any]]],
@@ -202,9 +203,7 @@ async def build_report(
     return with_level(report, level)
 
 
-async def _load_codes(
-    conn: asyncpg.Connection, tenant_id: UUID, version_id: UUID
-) -> list[dict[str, Any]]:
+async def _load_codes(conn: SqlConn, tenant_id: UUID, version_id: UUID) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         "SELECT code_id, theory FROM code_registry "
         "WHERE tenant_id = $1 AND codebook_version_id = $2",
