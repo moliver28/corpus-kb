@@ -940,6 +940,7 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "reranking.llamacpp_url": str,
         "ingestion.default": str,
         "ingestion.strategies": dict,
+        "ingestion.concurrency": int,
         "web.user_agent": str,
         "web.timeout_seconds": int,
         "web.max_bytes": int,

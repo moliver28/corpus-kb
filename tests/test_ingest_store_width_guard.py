@@ -57,6 +57,13 @@ class _WidthProbeConn:
             raise self.insert_error
         return "OK"
 
+    async def executemany(self, sql: str, args: object) -> None:
+        if "INSERT INTO chunks_vectors" in sql and self.insert_error is not None:
+            raise self.insert_error
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+        return []
+
     async def fetchrow(self, sql: str, *args: object) -> dict[str, object] | None:
         if "atttypmod" in sql:
             return self.typmod_row

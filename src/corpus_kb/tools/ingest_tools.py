@@ -21,8 +21,15 @@ import asyncpg
 
 from ..ingest_watch import WATCH_SUFFIXES
 from ..ingestion.registry import strategy_names
+from ..research.batching import gather_bounded
 from ..storage.gateway import SqlGateway
-from .ingest_common import DEFAULT_TENANT_ID, ingest_text, load_config_or_pass, run_pipeline
+from .ingest_common import (
+    DEFAULT_TENANT_ID,
+    file_ingest_concurrency,
+    ingest_text,
+    load_config_or_pass,
+    run_pipeline,
+)
 from .ingest_store import as_gateway, gateway_backend
 from .ingest_surface_tools import ingest_reembed, ingest_status
 from .ingest_url_tools import ingest_url
@@ -132,11 +139,18 @@ async def ingest_directory(
     total_entities = 0
 
     pattern = "**/*" if recursive else "*"
-    for file_path in sorted(directory.glob(pattern)):
-        if not (file_path.is_file() and file_path.suffix.lower() in WATCH_SUFFIXES):
-            continue
-        result = await ingest_file(str(file_path), pg_pool, config, tenant_id, source_type)
-        results.append(result)
+    files = [
+        file_path
+        for file_path in sorted(directory.glob(pattern))
+        if file_path.is_file() and file_path.suffix.lower() in WATCH_SUFFIXES
+    ]
+    concurrency = file_ingest_concurrency(config, pg_pool)
+    results = await gather_bounded(
+        files,
+        lambda path: ingest_file(str(path), pg_pool, config, tenant_id, source_type),
+        concurrency,
+    )
+    for result in results:
         if result.get("status") == "success":
             total_documents += 1
             raw_count = result.get("entity_count", 0)

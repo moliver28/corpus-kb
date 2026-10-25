@@ -40,6 +40,8 @@ from ..analysis.dates import parse_date_value
 from ..errors import ConfigError
 from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
 from ..utils.models import Chunk, Document, Entity, Relation
+from . import ingest_batch
+from .ingest_batch import entity_persisted_metadata
 from .ingest_sql import (
     duckdb_vector_width_probe,
     ingest_sql_for,
@@ -269,6 +271,10 @@ class PostgresIngestStore:
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
         """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding.
 
+        Postgres writes set-based (one statement per partition of work,
+        ``ingest_batch``); DuckDB keeps the per-row loop (single-writer
+        local engine, plus the pre-rewrite dependent deletes below).
+
         DuckDB pre-pass: the engine's FK checks consult the last COMMITTED
         state (same-transaction deletes are invisible to them), so the
         derived dependents of every rewritten chunk are deleted AND
@@ -278,31 +284,57 @@ class PostgresIngestStore:
         """
         if not chunks:
             return set()
-        needs_embedding: set[str] = set()
         if self._sql.is_duckdb:
-            doc_id = chunks[0].document_id
-            async with self._gateway.transaction(self._tenant_id) as tx:
-                for count, chunk in enumerate(chunks):
-                    chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
-                    row = await tx.fetchrow(
-                        "SELECT chunk_id, chunk_hash FROM chunks "
-                        "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
-                        self._tenant_id,
-                        chunk.document_id,
-                        chunk_index,
-                    )
-                    if row is not None and row["chunk_hash"] != chunk.chunk_hash:
-                        await self._delete_chunk_dependents(
-                            tx, "WHERE chunk_id = $1", row["chunk_id"]
-                        )
-                await self._delete_chunk_dependents(
-                    tx,
-                    "WHERE tenant_id = $1 AND chunk_id IN (SELECT chunk_id FROM chunks "
-                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index >= $3)",
+            return await self._store_chunks_duckdb(chunks)
+        return await self._store_chunks_pg(chunks)
+
+    async def _store_chunks_pg(self, chunks: list[Chunk]) -> set[str]:
+        """Set-based chunk write path (Postgres): probe once, then batch."""
+        needs_embedding: set[str] = set()
+        doc_id = chunks[0].document_id
+        indexed = [
+            (chunk, chunk.sibling_order if chunk.sibling_order is not None else count)
+            for count, chunk in enumerate(chunks)
+        ]
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            existing = await ingest_batch.fetch_chunk_state(tx, self._tenant_id, doc_id)
+            inserts = [pair for pair in indexed if pair[1] not in existing]
+            updates = [
+                (chunk, existing[index][0])
+                for chunk, index in indexed
+                if index in existing and existing[index][1] != chunk.chunk_hash
+            ]
+            needs_embedding |= await ingest_batch.insert_chunks(
+                tx, self._tenant_id, doc_id, inserts
+            )
+            needs_embedding |= await ingest_batch.update_chunks(tx, updates)
+            await tx.execute(_CHUNK_TOMBSTONE_SQL, self._tenant_id, doc_id, len(chunks))
+        return needs_embedding
+
+    async def _store_chunks_duckdb(self, chunks: list[Chunk]) -> set[str]:
+        """Per-row chunk write path (DuckDB): FK commit-visibility pre-pass."""
+        needs_embedding: set[str] = set()
+        doc_id = chunks[0].document_id
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            for count, chunk in enumerate(chunks):
+                chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
+                row = await tx.fetchrow(
+                    "SELECT chunk_id, chunk_hash FROM chunks "
+                    "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index = $3",
                     self._tenant_id,
-                    doc_id,
-                    len(chunks),
+                    chunk.document_id,
+                    chunk_index,
                 )
+                if row is not None and row["chunk_hash"] != chunk.chunk_hash:
+                    await self._delete_chunk_dependents(tx, "WHERE chunk_id = $1", row["chunk_id"])
+            await self._delete_chunk_dependents(
+                tx,
+                "WHERE tenant_id = $1 AND chunk_id IN (SELECT chunk_id FROM chunks "
+                "WHERE tenant_id = $1 AND doc_id = $2 AND chunk_index >= $3)",
+                self._tenant_id,
+                doc_id,
+                len(chunks),
+            )
         async with self._gateway.transaction(self._tenant_id) as tx:
             for count, chunk in enumerate(chunks):
                 chunk_index = chunk.sibling_order if chunk.sibling_order is not None else count
@@ -357,17 +389,14 @@ class PostgresIngestStore:
                         json.dumps(chunk.metadata),
                         existing["chunk_id"],
                     )
-                    if self._sql.is_duckdb:
-                        chunk.chunk_id = str(existing["chunk_id"])
+                    chunk.chunk_id = str(existing["chunk_id"])
                     needs_embedding.add(str(existing["chunk_id"]))
                 else:
-                    # Hash unchanged, no-op -- neither inserted nor
-                    # re-embedded. DuckDB: relations built later in this run
-                    # carry the in-memory chunk_id, so it is re-pointed at
-                    # the stored row (extractors key relations on
-                    # chunk.chunk_id); Postgres keeps its exact flow.
-                    if self._sql.is_duckdb:
-                        chunk.chunk_id = str(existing["chunk_id"])
+                    # Hash unchanged, no-op. DuckDB: relations built later in
+                    # this run carry the in-memory chunk_id, so it is
+                    # re-pointed at the stored row (extractors key
+                    # relations on chunk.chunk_id).
+                    chunk.chunk_id = str(existing["chunk_id"])
             await tx.execute(
                 _CHUNK_TOMBSTONE_SQL,
                 self._tenant_id,
@@ -403,21 +432,34 @@ class PostgresIngestStore:
         """
         if not chunks:
             return 0
-        count = 0
+        active = [chunk for chunk in chunks if chunk.embedding is not None]
+        params, degraded_flags = [], []
+        for chunk in active:
+            row, degraded = self._vector_row(chunk, embedding_model, dimensions, vectors_1024 or {})
+            params.append(row)
+            degraded_flags.append(degraded)
         async with self._gateway.transaction(self._tenant_id) as tx:
             await self._probe_vector_width(tx, dimensions, embedding_model)
             try:
-                for chunk in chunks:
-                    if chunk.embedding is None:
-                        continue
-                    count += await self._store_one_vector(
-                        tx, chunk, embedding_model, dimensions, vectors_1024 or {}
-                    )
+                if active:
+                    await tx.executemany(self._sql.vector_insert_sql, params)
+                    if self._sql.is_duckdb:
+                        await tx.executemany(
+                            _CHUNK_DEGRADED_SQL,
+                            [
+                                (chunk.chunk_id, self._tenant_id, degraded)
+                                for chunk, degraded in zip(active, degraded_flags, strict=False)
+                            ],
+                        )
+                    else:
+                        await ingest_batch.mirror_degraded(
+                            tx, [chunk.chunk_id for chunk in active], degraded_flags
+                        )
             except ConfigError:
                 raise
             except Exception as exc:
                 raise vector_width_config_error(exc, embedding_model) from exc
-        return count
+        return len(active)
 
     async def _probe_vector_width(
         self, tx: SqlGateway, dimensions: int, embedding_model: str
@@ -427,21 +469,19 @@ class PostgresIngestStore:
         else:
             await pg_vector_type_mod_probe(tx, dimensions, embedding_model)
 
-    async def _store_one_vector(
+    def _vector_row(
         self,
-        tx: SqlGateway,
         chunk: Chunk,
         embedding_model: str,
         dimensions: int,
         vectors_1024: dict[str, list[float]],
-    ) -> int:
-        """One chunk's vector upsert + degraded mirror. Returns 1 (wrote)."""
+    ) -> tuple[tuple[object, ...], bool]:
+        """One chunk's vector bind row: (params, degraded flag)."""
         v1024 = vectors_1024.get(str(chunk.chunk_id))
         degraded = all(v == 0.0 for v in chunk.embedding) if chunk.embedding else True
         assert chunk.embedding is not None
         embedding_param, v1024_param = vector_write_params(chunk.embedding, v1024)
-        await tx.execute(
-            self._sql.vector_insert_sql,
+        params = (
             chunk.chunk_id,
             self._tenant_id,
             embedding_param,
@@ -450,13 +490,7 @@ class PostgresIngestStore:
             dimensions,
             degraded,
         )
-        await tx.execute(
-            _CHUNK_DEGRADED_SQL,
-            chunk.chunk_id,
-            self._tenant_id,
-            degraded,
-        )
-        return 1
+        return params, degraded
 
     async def store_entities(self, entities: list[Entity]) -> dict[str, str]:
         """Insert entities into the entities table.
@@ -475,6 +509,9 @@ class PostgresIngestStore:
         id_map: dict[str, str] = {}
         if not entities:
             return id_map
+        if not self._sql.is_duckdb:
+            async with self._gateway.transaction(self._tenant_id) as tx:
+                return await ingest_batch.upsert_entities(tx, self._tenant_id, entities)
         async with self._gateway.transaction(self._tenant_id) as tx:
             for entity in entities:
                 row = await tx.fetchrow(
@@ -484,7 +521,7 @@ class PostgresIngestStore:
                     entity.name,
                     entity.entity_type,
                     entity.source_document_id,
-                    _entity_persisted_metadata(entity),
+                    entity_persisted_metadata(entity),
                 )
                 if row is None:
                     # DuckDB dedupe: relations reference entities, so the
@@ -516,6 +553,11 @@ class PostgresIngestStore:
         """
         if not relations:
             return 0
+        if not self._sql.is_duckdb:
+            async with self._gateway.transaction(self._tenant_id) as tx:
+                return await ingest_batch.insert_relations(
+                    tx, self._tenant_id, relations, model_version, prompt_version
+                )
         count = 0
         async with self._gateway.transaction(self._tenant_id) as tx:
             for relation in relations:
@@ -546,19 +588,3 @@ class PostgresIngestStore:
                 if row is not None:
                     count += 1
         return count
-
-
-def _entity_persisted_metadata(entity: Entity) -> str:
-    """Serialize entity metadata with provenance merged in.
-
-    ``extractor`` and ``confidence`` live on the Entity model but have no
-    dedicated columns in the entities table; without this merge they would
-    be silently dropped at the write boundary even when the extractor
-    measured them.
-    """
-    persisted: dict[str, Any] = dict(entity.metadata)
-    if entity.extractor_id and "extractor" not in persisted:
-        persisted["extractor"] = entity.extractor_id
-    if entity.confidence is not None and "confidence" not in persisted:
-        persisted["confidence"] = entity.confidence
-    return json.dumps(persisted)

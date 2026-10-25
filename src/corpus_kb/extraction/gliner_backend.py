@@ -24,11 +24,11 @@ installed in CI; all imports are lazy (see ``_gliner2_types.py``).
 from __future__ import annotations
 
 import logging
-from typing import cast
 
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
-from ._gliner2_types import GlinerModel, GlinerSpan, import_gliner2
+from ._gliner2_types import GlinerModel, import_gliner2
+from .gliner_predict import GlinerPredictor
 from .protocol import ExtractStats, OntologyViolationError, Timer
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,7 @@ class GlinerExtractor:
         self._types = selected
         self._schema: dict[str, str] = {t: TYPE_DEFINITIONS[t] for t in selected}
         self._model: GlinerModel | None = None
+        self._predictor: GlinerPredictor | None = None
 
     def _load_model(self) -> GlinerModel:
         """Lazily import gliner2 and load the pinned HF model (once)."""
@@ -115,11 +116,13 @@ class GlinerExtractor:
         requested = 0
         dropped_by_confidence = 0
         dropped_by_other = 0
-        for chunk in chunks:
+        active = [chunk for chunk in chunks if chunk.text and chunk.text.strip()]
+        if self._predictor is None:
+            self._predictor = GlinerPredictor(model, self._schema)
+        span_sets = self._predictor.predict([chunk.text for chunk in active])
+        for chunk, spans in zip(active, span_sets, strict=False):
             text = chunk.text
-            if not text or not text.strip():
-                continue
-            for span in _predict(model, text, self._schema):
+            for span in spans:
                 requested += 1
                 confidence = span.score
                 if confidence < MIN_SPAN_CONFIDENCE:
@@ -173,55 +176,6 @@ class GlinerExtractor:
             ),
         )
         return entities, [], stats
-
-
-def _predict(
-    model: GlinerModel,
-    text: str,
-    schema: dict[str, str],
-) -> list[GlinerSpan]:
-    """Call extract_entities and normalize spans defensively.
-
-    gliner2 span payloads have been observed as both plain dicts
-    (``{"text", "start", "end", "score", "label"}``) and small objects
-    with those attributes; both are handled here.
-    """
-    raw = model.extract_entities(text, schema)
-    spans: list[GlinerSpan] = []
-    for bucket in raw.values():
-        for item in bucket:
-            if isinstance(item, dict):
-                spans.append(_DictSpan(cast(dict[str, object], item)))
-            else:
-                spans.append(cast(GlinerSpan, item))
-    return spans
-
-
-class _DictSpan:
-    """Attribute-view over a dict-shaped gliner span payload."""
-
-    __slots__ = ("end", "label", "score", "start", "text")
-
-    def __init__(self, data: dict[str, object]) -> None:
-        self.text = str(data.get("text", ""))
-        self.start = _as_int(data.get("start"))
-        self.end = _as_int(data.get("end"))
-        self.score = _as_float(data.get("score"))
-        self.label = str(data.get("label", data.get("entity_group", "")))
-
-
-def _as_int(value: object) -> int:
-    """Coerce a JSON-ish object to int, 0 when not numeric."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return 0
-    return int(value)
-
-
-def _as_float(value: object) -> float:
-    """Coerce a JSON-ish object to float, 0.0 when not numeric."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return 0.0
-    return float(value)
 
 
 def _map_mention_type(mention_type: str, ontology: Ontology) -> str:

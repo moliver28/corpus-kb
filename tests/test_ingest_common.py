@@ -687,3 +687,38 @@ async def test_apply_to_lexical_only_embeds_raw_text(monkeypatch) -> None:
     assert store.stored_chunks[0].context_blurb == "the blurb"
     (override,) = capture.text_overrides
     assert list(override.values()) == ["chunk body"]
+
+
+# ---------------------------------------------------------------------------
+# Bounded file-ingest concurrency (Wave 1 throughput)
+# ---------------------------------------------------------------------------
+
+
+def test_file_ingest_concurrency_defaults_and_caps() -> None:
+    from types import SimpleNamespace
+
+    from corpus_kb.tools.ingest_common import (
+        DEFAULT_INGEST_CONCURRENCY,
+        file_ingest_concurrency,
+    )
+
+    pool = SimpleNamespace(_maxsize=6)
+    assert file_ingest_concurrency({}, pool) == DEFAULT_INGEST_CONCURRENCY
+    assert file_ingest_concurrency({"ingestion": {}}, pool) == DEFAULT_INGEST_CONCURRENCY
+    # Capped at pool_max - 2, never below 1.
+    assert file_ingest_concurrency({"ingestion": {"concurrency": 9}}, pool) == 4
+    tiny = SimpleNamespace(_maxsize=2)
+    assert file_ingest_concurrency({"ingestion": {"concurrency": 4}}, tiny) == 1
+    assert file_ingest_concurrency({"ingestion": {"concurrency": 0}}, pool) == 1
+    assert file_ingest_concurrency({"ingestion": {"concurrency": "x"}}, pool) == 4
+
+
+def test_file_ingest_concurrency_serial_on_duckdb() -> None:
+    duckdb = pytest.importorskip("duckdb")
+
+    from corpus_kb.storage.gateway import DuckDbGateway
+    from corpus_kb.tools.ingest_common import file_ingest_concurrency
+
+    gw = DuckDbGateway(duckdb.connect(":memory:"))
+    limit = file_ingest_concurrency({"ingestion": {"concurrency": 8}}, gw)
+    assert limit == 1

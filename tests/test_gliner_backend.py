@@ -193,3 +193,60 @@ def test_extract_passes_one_line_definitions_as_schema() -> None:
     assert model.seen_schema is not None
     assert set(model.seen_schema) == set(TYPE_DEFINITIONS)
     assert all(isinstance(desc, str) and desc for desc in model.seen_schema.values())
+
+
+# ---------------------------------------------------------------------------
+# Batch fast path + equivalence gate (Wave 1 throughput)
+# ---------------------------------------------------------------------------
+
+
+class _BatchingGlinerModel:
+    """Answers per-text and batch calls; can drift on purpose."""
+
+    def __init__(self, spans: list[dict[str, object]], drift: bool = False) -> None:
+        self._spans = spans
+        self._drift = drift
+        self.batch_calls = 0
+
+    def extract_entities(self, text: str, schema: dict[str, str]) -> dict[str, list[object]]:
+        return {"person": [dict(self._spans[hash(text) % len(self._spans)])]}
+
+    def batch_extract_entities(
+        self, texts: list[str], schema: dict[str, str]
+    ) -> list[dict[str, list[object]]]:
+        self.batch_calls += 1
+        results = [self.extract_entities(t, schema) for t in texts]
+        if self._drift:
+            results[0]["person"][0]["score"] = 0.99  # drifted confidence
+        return results
+
+
+def test_batch_fast_path_used_when_output_matches_per_text() -> None:
+    spans = [
+        {"text": "Alice", "start": 0, "end": 5, "score": 0.9, "label": "person"},
+        {"text": "Bob", "start": 0, "end": 3, "score": 0.8, "label": "person"},
+    ]
+    model = _BatchingGlinerModel(spans)
+    extractor = GlinerExtractor()
+    extractor._model = model
+    ontology = load_ontology(_ONTOLOGY_PATH)
+
+    extractor.extract([_chunk("Bob visited Alice.")], ontology, "doc-b1")
+    assert model.batch_calls == 1  # verified on the first batch
+    entities, _rels, stats = extractor.extract([_chunk("Alice met Bob.")], ontology, "doc-b2")
+    assert model.batch_calls == 2  # promoted: batched without re-verification
+    assert stats.requested_entities == stats.kept_entities == 1
+    assert entities[0].name in {"Alice", "Bob"}
+
+
+def test_drifting_batch_output_locks_back_to_per_text() -> None:
+    spans = [{"text": "Alice", "start": 0, "end": 5, "score": 0.9, "label": "person"}]
+    model = _BatchingGlinerModel(spans, drift=True)
+    extractor = GlinerExtractor()
+    extractor._model = model
+    ontology = load_ontology(_ONTOLOGY_PATH)
+
+    extractor.extract([_chunk(_TEXT)], ontology, "doc-d1")
+    extractor.extract([_chunk(_TEXT)], ontology, "doc-d2")
+
+    assert model.batch_calls == 1  # tried once, rejected, never again

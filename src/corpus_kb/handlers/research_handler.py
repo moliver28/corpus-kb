@@ -26,11 +26,13 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.config import load_config
 from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
 from corpus_kb.projections.research._common import store_turn_texts
+from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
     ledger_record,
     plan_file,
@@ -39,6 +41,7 @@ from corpus_kb.research.dynamic_ingest import (
 from corpus_kb.research.linking import link_exchanges
 from corpus_kb.research.roles import map_roles, speaker_role_basis
 from corpus_kb.research.transcript_parser import parse_transcript
+from corpus_kb.tools.ingest_common import file_ingest_concurrency
 
 logger = logging.getLogger(__name__)
 
@@ -186,15 +189,18 @@ class ResearchHandler:
     ) -> dict[str, Any]:
         """Dynamic ingestion: file, directory, or glob (per-file auto-detect)."""
         files = await scan_path(Path(path))
-        results: list[dict[str, Any]] = []
-        for file_path in files:
+        concurrency = file_ingest_concurrency(load_config(), self._pool)
+
+        async def _ingest_one(file_path: Path) -> dict[str, Any]:
             try:
-                results.append(
-                    await self.ingest_transcript(tenant_id, str(file_path), project_id, force=force)
+                return await self.ingest_transcript(
+                    tenant_id, str(file_path), project_id, force=force
                 )
             except Exception as exc:
                 logger.warning("ingest failed for %s: %s", file_path, exc)
-                results.append({"status": "error", "path": str(file_path), "error": str(exc)})
+                return {"status": "error", "path": str(file_path), "error": str(exc)}
+
+        results = await gather_bounded(files, _ingest_one, concurrency)
         return {
             "status": "success",
             "files_found": len(files),

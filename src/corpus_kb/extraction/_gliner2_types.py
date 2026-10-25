@@ -42,6 +42,20 @@ class GlinerModel(Protocol):
     def extract_entities(self, text: str, schema: dict[str, str]) -> dict[str, list[object]]: ...
 
 
+@runtime_checkable
+class GlinerBatchModel(Protocol):
+    """Batched twin of ``extract_entities`` (gliner2 >= 2.1).
+
+    Existence is probed at runtime (``isinstance``); the returned per-text
+    payloads go through the same span normalization and an equivalence
+    gate before the batch path is ever trusted (``gliner_predict.py``).
+    """
+
+    def batch_extract_entities(
+        self, texts: list[str], schema: dict[str, str]
+    ) -> list[dict[str, list[object]]]: ...
+
+
 class Gliner2Factory(Protocol):
     """``gliner2.GLiNER2`` class shape (classmethod entry point)."""
 
