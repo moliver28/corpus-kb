@@ -8,7 +8,7 @@ This page is for operators: configuration, schema, maintenance, and troubleshoot
 
 All tunable values live in `config.yaml` at the project root. Environment variables override some values in the file (see the table below). Every key listed here has a live consumer; dead keys are removed on sight.
 
-### server
+### `server`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -16,14 +16,14 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `host` | `localhost` | HTTP server host |
 | `port` | `8010` | HTTP server port |
 
-### database
+### `database`
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `backend` | `postgres` | Storage engine: `postgres` or `duckdb`. The loader refuses Postgres-only engines while `duckdb` is set |
 | `connection_string` | `postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb` | Postgres URL |
 
-### embedding
+### `embedding`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -37,13 +37,13 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `query_instruction` | `true` | Gates the query-side instruction prefix at `instruct()` |
 | `late_chunking` | `true` | Late chunking for document ingest when the model supports it |
 
-### storage
+### `storage`
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `vector_type` | `halfvec` | `chunks_vectors.embedding` column type. halfvec is required at 2560 dims: HNSW caps `vector` at 2000 dims, `halfvec` at 4000 |
 
-### retrieval
+### `retrieval`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -63,7 +63,7 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `self_query.*` | (block) | Predicate parser sub-settings |
 | `hnsw.*` | (block) | `m`/`ef_construction` (index DDL, mirrored by migration 025) plus the scan trio |
 
-### reranking
+### `reranking`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -97,7 +97,7 @@ Legacy namespaces: `search.*`, `ingest.hierarchy.*`, and `contextual.*`
 still work as aliases. Canonical keys win; alias use logs a deprecation
 warning.
 
-### topics
+### `topics`
 
 The Wave 4 topic layer (`src/corpus_kb/topics/`, docs/TOPICS.md). Ships
 dormant; the BERTopic import needs the `[topics]` extra.
@@ -113,7 +113,7 @@ dormant; the BERTopic import needs the `[topics]` extra.
 | `fixture_dir` | `tests/fixtures/topics_recorded` | Recorded reduction answers (SHA256-keyed) |
 | `live_fallback` | `false` | Allow live reduction calls when no fixture exists |
 
-### graph
+### `graph`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -127,7 +127,7 @@ dormant; the BERTopic import needs the `[topics]` extra.
 | `model_version` | `langextract-default` | Extraction provenance tag stored on relations |
 | `prompt_version` | `v1` | Extraction prompt provenance tag |
 
-### extraction
+### `extraction`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -137,13 +137,13 @@ dormant; the BERTopic import needs the `[topics]` extra.
 | `gliner.revision` | `main` | Model revision |
 | `gliner.types` | `[person, organization, location, date, money, product]` | Mention-level types |
 
-### research
+### `research`
 
 Research-domain blocks (transcript ingestion, inductive engine, embedder
 promotion guard). Determinism pins (UMAP seeds, scoring batch size) are CODE
 CONSTANTS on purpose — only governance knobs live here.
 
-#### research.embedder
+#### `research.embedder`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -152,13 +152,13 @@ CONSTANTS on purpose — only governance knobs live here.
 The embedding strategy (G1 winner: naive-prefix) and the `"1024"` row
 revision tag are fixed in code — deliberately not configuration.
 
-#### research.ingest
+#### `research.ingest`
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `watch_interval_s` | `10` | `corpus-kb research ingest --watch` poll interval (seconds) |
 
-#### research.inductive
+#### `research.inductive`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -167,7 +167,7 @@ revision tag are fixed in code — deliberately not configuration.
 | `centroid_drift_threshold` | `0.15` | Mean cosine drift between snapshots triggering early refresh |
 | `tau_dup` | `0.85` | Promote-time duplicate gate (calibrated from gold when available) |
 
-### installer
+### `installer`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -210,7 +210,7 @@ The vector column `chunks_vectors.embedding` is a FIXED `halfvec(2560)` typmod (
 
 halfvec is required at this width: pgvector HNSW caps `vector` at 2000
 dimensions and `halfvec` at 4000. The 2560-dim column carries a real HNSW
-index (`halfvec_cosine_ops`, m = 16, ef_construction = 128). The doctor
+index (`halfvec_cosine_ops`, m = 16, `ef_construction` = 128). The doctor
 warns when `retrieval.hnsw.m`/`ef_construction` drift from the live index
 options.
 
@@ -326,12 +326,17 @@ corpus-kb setup --backend duckdb --dsn C:/data/kb.duckdb   # bare path or duckdb
 corpus-kb setup --backend duckdb --dry-run              # preview the steps
 ```
 
-The run installs the `duckdb` extra when it is missing, applies
-`migrations_duckdb` (tracked in the file's own `schema_migrations`
-table), creates the SQLite event store beside the file
-(`<file>.events.db`), pre-installs the `fts` extension, and writes the
-config pair (`database.backend` + `database.connection_string`) into
-`config.yaml`. One confirmation covers the run. Re-running is safe.
+The run:
+
+- Installs the `duckdb` extra when it is missing.
+- Applies `migrations_duckdb` (tracked in the file's own
+  `schema_migrations` table).
+- Creates the SQLite event store beside the file (`<file>.events.db`).
+- Pre-installs the `fts` extension.
+- Writes the config pair (`database.backend` +
+  `database.connection_string`) into `config.yaml`.
+
+One confirmation covers the run. Re-running is safe.
 
 `corpus-kb doctor` prints a `Storage backend` section. On `duckdb` it
 reports:
@@ -347,9 +352,9 @@ reports:
 - **SQLite event store** — the sidecar opens, holds the library schema,
   and its event count is readable. A FAIL names the config hazard where
   the configured path IS the sidecar file.
-- **engine fit** — the engine in use plus a hedged size suggestion:
-  exact-scan search suits roughly 100k chunks; Postgres with HNSW suits
-  more. A suggestion, never a warning.
+- **engine fit** — the engine in use, plus a size suggestion.
+  Exact-scan search suits roughly 100k chunks. Postgres with HNSW
+  suits more. A suggestion, never a warning.
 
 On `postgres` the section prints the engine line and the same size
 suggestion. `CORPUS_KB_DATABASE_BACKEND` overrides `database.backend`

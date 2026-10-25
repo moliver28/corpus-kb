@@ -34,7 +34,9 @@ GitHub
 Guassora
 Guo
 Gwet
+Gwet's
 HDBSCAN
+HDBSCAN's
 HTTP
 HTTPS
 Hennink
@@ -45,6 +47,7 @@ JSON-RPC
 Jaccard
 Joffe
 Krippendorff
+Krippendorff's
 Kusupati
 LIMITs
 Langfuse

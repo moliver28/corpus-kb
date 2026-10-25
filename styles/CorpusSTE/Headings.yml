@@ -1,8 +1,7 @@
-# Headings use sentence case: capitalize the first word and proper nouns only.
-extends: capitalization
+extends: existence
 level: warning
 scope: heading
-message: "'%s' should use sentence case."
-match: $sentence
-indicators:
-  - ":"
+nonword: true
+raw:
+  - '^[a-z]'
+message: "Start the heading with a capital letter."

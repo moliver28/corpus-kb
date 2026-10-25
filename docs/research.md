@@ -60,11 +60,11 @@ change, never a config edit.
 | `research.inductive.recluster_every_batches` | `8` | Full re-cluster cadence during incremental inductive growth (v5 §9.5: every 5-10 batches). |
 | `research.inductive.centroid_drift_threshold` | `0.15` | Mean cosine drift between centroid snapshots that triggers an early cluster refresh. |
 | `research.inductive.tau_dup` | `0.85` | Promote-time duplicate gate: max prototype cosine vs existing codes above which a promotion blocks with a merge suggestion. |
-| `research.cycle.halt_on` | 7-gate list | Human-critical gates for `research cycle --mode out` (interpretive_code_review, gray_zone_escalation, drift_alarm, overlap_conflict, threshold_unreliable, human_parity_breach, unreleased_draft). May only ADD gates: `codebook_promotion` is hard-floored and never removable; unknown names are rejected. |
+| `research.cycle.halt_on` | 7-gate list | Human-critical gates for `research cycle --mode out` (`interpretive_code_review`, `gray_zone_escalation`, `drift_alarm`, `overlap_conflict`, `threshold_unreliable`, `human_parity_breach`, `unreleased_draft`). May only ADD gates: `codebook_promotion` is hard-floored and never removable; unknown names are rejected. |
 | `research.alt_test.margin` | see `config.yaml` | One-sided Alternative Annotator Test margin (epsilon): how much model agreement may trail human agreement and still pass (U13). |
 | `research.alt_test.fdr_q` | see `config.yaml` | Benjamini-Yekutieli FDR level for the alt-test hypothesis family (U13). |
 | `research.alt_test.passing_fraction` | see `config.yaml` | Fraction of held-out annotators the model must beat for the alt-test to pass (U13). |
-| `research.alt_test.method` | see `config.yaml` | Alt-test p-value method: exact_binomial (default) or shifted bootstrap; numpy-only (U13). |
+| `research.alt_test.method` | see `config.yaml` | Alt-test p-value method: `exact_binomial` (default) or shifted bootstrap; numpy-only (U13). |
 | `research.alt_test.n_bootstrap` | see `config.yaml` | Bootstrap resample count when alt_test.method is bootstrap (U13). |
 | `research.audit.sample_rate` | see `config.yaml` | Fraction of auto-accepted units drawn for human audit after risk-coverage routing (U41). |
 | `research.audit.seed` | see `config.yaml` | Seed for the stratified audit draw; recorded with the sample for reproducibility (U17). |
@@ -77,7 +77,7 @@ change, never a config edit.
 | `research.labeling.cv_folds` | see `config.yaml` | Cross-validation folds for out-of-sample label-error triage (U39). |
 | `research.labeling.flag_threshold` | see `config.yaml` | Out-of-sample probability below which an assigned label is flagged to the review queue (U39). |
 | `research.prompt_stability.alpha_threshold` | see `config.yaml` | Minimum agreement (krippendorff alpha) across hashed prompt variants over calibration units (U12). |
-| `research.prompt_stability.min_variants` | see `config.yaml` | Prompt variants required before stability is evaluable; fewer reports not_evaluable (U12). |
+| `research.prompt_stability.min_variants` | see `config.yaml` | Prompt variants required before stability is evaluable; fewer reports `not_evaluable` (U12). |
 | `research.release.default_profile` | see `config.yaml` | Release profile applied when none is named: exploratory | team-codebook | high-assurance (U3). |
 | `research.release.enforcement` | `warn` | LIVE (U24): off \| warn \| enforce, read from config by the deduction guard (`research/deduction_guard.py`). `warn` records the active release hash or an `unreleased_draft` warning on every deductive run. `enforce` blocks unreleased codebook versions unless `--allow-draft` (bypass runs are labeled `sandbox`). `off` leaves run behavior unchanged. |
 | `research.review.batch_size` | see `config.yaml` | Units per active human-review batch (U37). |
@@ -194,7 +194,7 @@ The lifecycle: `request` opens a `draft_candidate` release pinned to the
 current codebook content hash. `assess` composes EVERY registered gate
 over the evidence the read models can supply, and WRITES NOTHING.
 `review` renders the packet (per-gate evidence, failing +
-not_evaluable gates, waivers, the exact next commands). `release`
+`not_evaluable` gates, waivers, the exact next commands). `release`
 re-evaluates and records the gate results on the draft. It applies any
 explicit `--waive GATE=justification` and executes the transition with a
 REQUIRED `--approver`. `status` and `compare` read the trail.

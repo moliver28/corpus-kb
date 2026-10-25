@@ -466,18 +466,18 @@ placeholder.
 
 | Route | Method | Delegates to | Body (required in bold) |
 |-------|--------|--------------|--------------------------|
-| `/api/research/ingest-transcript` | POST | `research_ingest_transcript` | **file_path**, project_id, title, force, source_type, tenant_id |
-| `/api/research/ingest` | POST | `research_ingest` | **path**, project_id, force, source_type, tenant_id |
-| `/api/coding/run` | POST | `coding_run` | **codebook_version_id**, project_id, cal_alpha, tenant_id |
-| `/api/coding/inductive` | POST | `inductive_run` | project_id, tenant_id |
-| `/api/codebook/promote` | POST | `codebook_promote` | **proposed_id, name, definition**, inclusion, exclusion, label, tau_dup, tenant_id |
-| `/api/research/report` | POST | `research_report` | codebook_version_id, level, project_id, tenant_id |
-| `/api/review/execute` | POST | `review_execute` | **assignment_id, decision, reviewer**, note, tenant_id |
-| `/api/notebook/ask` | POST | `notebook_ask` | **question, project_id**, k, retrieval_only, filters..., tenant_id |
-| `/api/notebook/evidence` | POST | `notebook_evidence` | **code**, project_id, version_id, limit, tenant_id |
-| `/api/notebook/uncoded` | POST | `notebook_uncoded` | project_id, version_id, k, tenant_id |
-| `/api/notebook/overlap` | POST | `notebook_overlap` | project_id, version_id, tenant_id |
-| `/api/research/cycle` | POST | `research_cycle` | mode, project_id, ingest_dir, question, codebook_version_id, guide, approve, halt_on, tenant_id |
+| `/api/research/ingest-transcript` | POST | `research_ingest_transcript` | **`file_path`**, `project_id`, title, force, `source_type`, `tenant_id` |
+| `/api/research/ingest` | POST | `research_ingest` | **path**, `project_id`, force, `source_type`, `tenant_id` |
+| `/api/coding/run` | POST | `coding_run` | **`codebook_version_id`**, `project_id`, `cal_alpha`, `tenant_id` |
+| `/api/coding/inductive` | POST | `inductive_run` | `project_id`, `tenant_id` |
+| `/api/codebook/promote` | POST | `codebook_promote` | **`proposed_id`, name, definition**, inclusion, exclusion, label, `tau_dup`, `tenant_id` |
+| `/api/research/report` | POST | `research_report` | `codebook_version_id`, level, `project_id`, `tenant_id` |
+| `/api/review/execute` | POST | `review_execute` | **`assignment_id`, decision, reviewer**, note, `tenant_id` |
+| `/api/notebook/ask` | POST | `notebook_ask` | **question, `project_id`**, k, `retrieval_only`, filters..., `tenant_id` |
+| `/api/notebook/evidence` | POST | `notebook_evidence` | **code**, `project_id`, `version_id`, limit, `tenant_id` |
+| `/api/notebook/uncoded` | POST | `notebook_uncoded` | `project_id`, `version_id`, k, `tenant_id` |
+| `/api/notebook/overlap` | POST | `notebook_overlap` | `project_id`, `version_id`, `tenant_id` |
+| `/api/research/cycle` | POST | `research_cycle` | mode, `project_id`, `ingest_dir`, question, `codebook_version_id`, guide, approve, `halt_on`, `tenant_id` |
 | `/api/research/demo` | POST | `research_demo` | (no body) |
 
 The cycle and the demo are long-running and synchronous. One POST runs the
@@ -499,12 +499,12 @@ routes. One handler per operation (`handlers/release_handlers.py`).
 
 | Route | Method | Body (required in bold) |
 |-------|--------|--------------------------|
-| `/api/release/assess` | POST | **codebook_version_id**, profile, run_id, tenant_id |
-| `/api/release/request` | POST | **codebook_version_id, creator**, codebook_id, profile, release_id, tenant_id |
-| `/api/release/review` | POST | **codebook_version_id, release_id**, tenant_id |
-| `/api/release/release` | POST | **codebook_version_id, release_id, approver**, waivers ([[gate_id, justification]...]), run_id, tenant_id |
-| `/api/release/status` | GET | query: **codebook_version_id**, tenant_id |
-| `/api/release/compare` | POST | **codebook_version_id, old_release_id, new_release_id**, tenant_id |
+| `/api/release/assess` | POST | **`codebook_version_id`**, profile, `run_id`, `tenant_id` |
+| `/api/release/request` | POST | **`codebook_version_id`, creator**, `codebook_id`, profile, `release_id`, `tenant_id` |
+| `/api/release/review` | POST | **`codebook_version_id`, `release_id`**, `tenant_id` |
+| `/api/release/release` | POST | **`codebook_version_id`, `release_id`, approver**, waivers ([[`gate_id`, justification]...]), `run_id`, `tenant_id` |
+| `/api/release/status` | GET | query: **`codebook_version_id`**, `tenant_id` |
+| `/api/release/compare` | POST | **`codebook_version_id`, `old_release_id`, `new_release_id`**, `tenant_id` |
 
 Honest status codes: `assess` reports `not_evaluable` gates as 200 data
 (it writes nothing). A refused release (enforcement=enforce, unmet

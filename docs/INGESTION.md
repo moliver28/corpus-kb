@@ -532,7 +532,7 @@ default; GLiNER2 is opt-in):
    or empty extraction.
 
 3. **RegexExtractor** (`graph.extractor: regex`): Rule-based extraction
-   using heading patterns and camelCase splitting. Ontology-agnostic;
+   using heading patterns and `camelCase` splitting. Ontology-agnostic;
    produces `CONCEPT` and `CLASS` types regardless of ontology config.
 
 4. **GLiNER2** (`graph.extractor: gliner`, opt-in): schema-conditioned
@@ -590,7 +590,7 @@ cleanly.
 | `extraction.gliner.model` | `fastino/gliner2-large-v1` | GLiNER2 model id |
 | `extraction.gliner.revision` | `main` | Model revision pin for reproducible GLiNER2 loads (pin a specific HF revision hash in production) |
 | `extraction.gliner.types` | 6 mention types | Mention types GLiNER2 extracts (person, organization, location, date, money, product) |
-| `ingestion.strategies` | `{transcript: transcript}` | source_type → strategy-name map (extension ladder 1; see INGESTION-STRATEGIES.md) |
+| `ingestion.strategies` | `{transcript: transcript}` | `source_type` → strategy-name map (extension ladder 1; see INGESTION-STRATEGIES.md) |
 | `ingestion.default` | `default` | Strategy used when no override, mapping, or detection matches |
 | `embedding.provider` | `ollama` | Embedding provider (`ollama` or `pgml`) |
 | `embedding.fallback_provider` | `ollama` | Fallback embedding provider |
@@ -614,10 +614,10 @@ cleanly.
 | `retrieval.self_query.base_url` | `http://localhost:11434` | Ollama API URL for self-query |
 | `retrieval.self_query.timeout_seconds` | `8` | Timeout for self-query LLM calls |
 | `retrieval.hnsw.m` | `16` | HNSW index m (migration 025 DDL; doctor warns on drift) |
-| `retrieval.hnsw.ef_construction` | `128` | HNSW index ef_construction (same) |
+| `retrieval.hnsw.ef_construction` | `128` | HNSW index `ef_construction` (same) |
 | `retrieval.hnsw.iterative_scan` | `strict_order` | Transaction-local pgvector iterative scan mode (off/relaxed_order/strict_order; needs pgvector >= 0.8) |
-| `retrieval.hnsw.ef_search` | `200` | Transaction-local HNSW ef_search (SET LOCAL per retrieval transaction) |
-| `retrieval.hnsw.max_scan_tuples` | `20000` | Transaction-local HNSW max_scan_tuples cap |
+| `retrieval.hnsw.ef_search` | `200` | Transaction-local HNSW `ef_search` (SET LOCAL per retrieval transaction) |
+| `retrieval.hnsw.max_scan_tuples` | `20000` | Transaction-local HNSW `max_scan_tuples` cap |
 | `reranking.enabled` | `true` | Enable the score-based reranker pipeline |
 | `reranking.backend` | (none) | Score-based backend; `fake` for CI |
 | `reranking.model` | `qwen3-reranker:4b` | Ollama reranker model |
@@ -628,7 +628,7 @@ cleanly.
 | `reranking.score_floor` | `0.15` | Minimum normalized rerank score to keep |
 | `reranking.calibration` | `minmax` | Score calibration method |
 
-#### ingest.contextualize
+#### `ingest.contextualize`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -658,7 +658,7 @@ Legacy namespaces still load as aliases: `search.*`, `ingest.hierarchy.*`,
 and `contextual.*`. Canonical keys win. Alias use logs a deprecation
 warning.
 
-#### judge + routing
+#### Judge and routing
 
 | Key | Default | Description |
 |-----|---------|-------------|

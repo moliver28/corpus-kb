@@ -40,7 +40,7 @@ Every PR that registers an MCP tool must, in the SAME PR:
 
 1. extend `VALID_TOOL_NAMES` in
    `src/corpus_kb/_setup/validate_configs.py` (else the validate-configs CI
-   job errors on unknown autoApprove entries), and
+   job errors on unknown `autoApprove` entries), and
 2. regenerate the harness pack (`python scripts/gen_harness_pack.py`) and
    commit the diff.
 

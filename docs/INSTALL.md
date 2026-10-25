@@ -30,11 +30,15 @@ file, and the event store sits beside it:
 corpus-kb setup --backend duckdb
 ```
 
-The run does five things: installs the `duckdb` extra if it is missing,
-creates the analytics file and applies its migrations, creates the
-SQLite event store (`<file>.events.db`), pre-installs the `fts`
-extension, and writes the config pair into `config.yaml`. One
-confirmation covers the run. Re-running is safe.
+The run does five things:
+
+- Installs the `duckdb` extra if it is missing.
+- Creates the analytics file and applies its migrations.
+- Creates the SQLite event store (`<file>.events.db`).
+- Pre-installs the `fts` extension.
+- Writes the config pair into `config.yaml`.
+
+One confirmation covers the run. Re-running is safe.
 
 Pick the file location with `--dsn` (a bare path or a `duckdb:///` DSN):
 
@@ -64,7 +68,7 @@ as in Step 5.
 
 ## Step 1: Install PostgreSQL 17
 
-### macOS
+### Installing on macOS
 
 ```bash
 brew install postgresql@17
@@ -351,7 +355,7 @@ GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO corpus_user;
 The setup and research commands print this exact remediation when they hit
 the permission wall.
 
-### pgvector or AGE extension missing
+### `pgvector` or AGE extension missing
 
 Re-run `CREATE EXTENSION` as a superuser on the `corpus_kb` database.
 

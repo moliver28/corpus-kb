@@ -26,9 +26,9 @@ gets close to. A high R means the codebook is missing something. The report
 also lists candidate missing codes: clusters of far-from-every-code units
 that sit calmly together - a theme with no code.
 
-## tau_res per source type
+## `tau_res` per source type
 
-tau_res is calibrated from your gold data PER source type. It is the low
+`tau_res` is calibrated from your gold data PER source type. It is the low
 edge of how similar two units of the same code look. Interviews and meetings
 differ, so the threshold differs too. If one source type's R is much worse,
 add gold exemplars for that type and recalibrate.
