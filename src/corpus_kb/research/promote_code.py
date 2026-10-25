@@ -30,6 +30,7 @@ import asyncpg
 import numpy as np
 
 from corpus_kb.research.prototypes import build_view_prototypes
+from corpus_kb.storage.gateway import SqlConn
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 TAU_DUP_DEFAULT = 0.85
@@ -272,9 +273,7 @@ async def _member_text_sha256s(
     return [str(row["sha"]) for row in rows]
 
 
-async def _load_proposal(
-    conn: asyncpg.Connection, tenant_id: UUID, proposed_id: int
-) -> dict[str, Any]:
+async def _load_proposal(conn: SqlConn, tenant_id: UUID, proposed_id: int) -> dict[str, Any]:
     row = await conn.fetchrow(
         """
         SELECT proposed_id, cluster_id, run_id, batch_no, suggested_label,
@@ -300,9 +299,7 @@ async def _load_proposal(
     }
 
 
-async def _existing_prototypes(
-    conn: asyncpg.Connection, tenant_id: UUID
-) -> dict[str, list[list[float]]]:
+async def _existing_prototypes(conn: SqlConn, tenant_id: UUID) -> dict[str, list[list[float]]]:
     """Existing codes' answer-view prototypes rebuilt from gold exemplar refs."""
     from corpus_kb.research.run_inputs import load_gold_views
 
@@ -335,7 +332,7 @@ async def _existing_prototypes(
 
 
 async def _mark_proposal(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     tenant_id: UUID,
     proposed_id: int,
     *,

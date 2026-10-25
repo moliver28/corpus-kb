@@ -41,6 +41,8 @@ dependencies = [
     "tree-sitter-go>=0.23",
     "tree-sitter-java>=0.23",
     "pydantic>=2.0",
+    # TypeIs (gateway seam narrowing) is 3.13+ stdlib; the repo floor is 3.11.
+    "typing-extensions>=4.10",
     "rich>=13.0",
     # unstructured[md]: the md extra ships the `markdown` package that
     # partition_md() needs. Plain `unstructured` cannot ingest markdown —
@@ -117,16 +119,20 @@ graphqlite = ["graphqlite>=0.4"]
 langextract = ["langextract"]
 pynvml = ["pynvml"]
 # DuckDB storage backend (storage portability program, issue #127, rule 9):
-# opt-in engine behind graph.backend: duckdb. MIT license. Pinned to the
-# 1.4 LTS line only (decision log 2026-10-19): 1.4.0 is the LTS release with
-# one-year support; 1.5+ is not yet vetted. NEVER move this into base
-# dependencies (rule 9: license-lock churn). CI installs this extra from the
-# first-import commit onward (§11 rule 1); until that commit lands, the
+# opt-in engine behind graph.backend: duckdb. MIT license. The 1.4 LTS pin
+# (decision log 2026-10-19) was lifted to the vetted 1.5 line on 2026-10-24
+# (partition + DuckDB ingest legs verified locally; CI re-verifies on
+# ubuntu). 2.0.0 was probed the same day and FAILS the migration runner:
+# its binder rejects the attach-qualified DDL with "Ambiguous reference to
+# catalog or schema \"corpus\"" (17 leg failures) — lifting to 2.x is a
+# port of the qualification scheme, not a bump. NEVER move this into base
+# dependencies (rule 9: license-lock churn). CI installs this extra from
+# the first-import commit onward (§11 rule 1); until that commit lands, the
 # extras-less jobs stay green (unlike latechunk/inductive/ner/topics, whose
 # imports stay lazy behind config gates).
 # pytz: DuckDB TIMESTAMPTZ fetches and binds need it at runtime (three
 # independent WPs hit the missing wheel on the phase C/D ports).
-duckdb = ["duckdb>=1.4,<1.5", "pytz"]
+duckdb = ["duckdb>=1.5,<2.0", "pytz"]
 # Late chunking (todo 13, v5 5.3): token-level hidden states need the local
 # transformers stack, never Ollama's pooled endpoint. License-reviewed
 # permissive set: sentence-transformers Apache-2.0, transformers Apache-2.0,

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from corpus_kb.errors import ConflictError
 from corpus_kb.handlers import migrate_events as events_leg
@@ -31,6 +31,7 @@ from corpus_kb.handlers.migrate_data import (
     discover_tables,
 )
 from corpus_kb.handlers.migrate_digest import compose_digest, corpus_digest
+from corpus_kb.handlers.migrate_pg import PgCursor
 from corpus_kb.handlers.migrate_roundtrip import (
     _entry_pair,
     _mismatch,
@@ -40,6 +41,7 @@ from corpus_kb.handlers.migrate_roundtrip import (
 
 if TYPE_CHECKING:
     import psycopg
+    from psycopg.abc import QueryNoTemplate
 
 
 class _PgStream:
@@ -55,11 +57,17 @@ class _PgStream:
         self._cur = conn.cursor()
 
     def execute(self, sql: str, params: Sequence[object] | None = None) -> _PgStream:
-        self._cur.execute(sql.replace("?", "%s"), params)
+        self._cur.execute(
+            cast("QueryNoTemplate", sql.replace("?", "%s")),
+            params,
+        )
         return self
 
     def executemany(self, sql: str, seq: Sequence[Sequence[object]]) -> _PgStream:
-        self._cur.executemany(sql.replace("?", "%s"), seq)
+        self._cur.executemany(
+            cast("QueryNoTemplate", sql.replace("?", "%s")),
+            seq,
+        )
         return self
 
     def fetchmany(self, size: int) -> Sequence[Sequence[object]]:
@@ -100,7 +108,7 @@ def _pg_refs(pg_dsn: str, bares: Sequence[str]) -> dict[str, str]:
     import psycopg
 
     refs: dict[str, str] = {}
-    with psycopg.connect(pg_dsn) as conn, conn.cursor() as cur:
+    with psycopg.connect(pg_dsn) as conn, PgCursor(conn.cursor()) as cur:
         for bare in bares:
             for candidate in (f"public.{bare}", f"corpus.{bare}"):
                 # to_regclass output omits the search_path schema — keep
@@ -135,7 +143,7 @@ async def _prepare_pg_target(pg_dsn: str, copies: Sequence[TablePlan]) -> dict[s
     refs = _pg_refs(pg_dsn, [entry.name.split(".")[-1] for entry in copies])
     import psycopg
 
-    with psycopg.connect(pg_dsn) as conn, conn.cursor() as cur:
+    with psycopg.connect(pg_dsn) as conn, PgCursor(conn.cursor()) as cur:
         for bare in sorted(refs):
             predicate = ""
             if bare == "tenants":
@@ -176,7 +184,7 @@ async def to_postgres(duckdb_dsn: str, pg_dsn: str) -> dict:
         events_digest = _verify_event_digest(sl_events, sl_snaps, pg_events, pg_snaps)
         order = fk_insert_order(con, [entry.name for entry in copies])
         by_bare = {entry.name.split(".")[-1]: entry for entry in copies}
-        tables: list[dict[str, object]] = []
+        tables: list[dict[str, str | int]] = []
         with psycopg.connect(pg_dsn) as pgconn:
             stream = _PgStream(pgconn)
             if "tenants" in refs:  # the schema seed; the copy re-inserts it

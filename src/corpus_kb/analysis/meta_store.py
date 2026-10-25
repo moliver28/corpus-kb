@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any
 
 from corpus_kb.analysis.meta_build import MetaRow
+from corpus_kb.storage.gateway import SqlConn, is_gateway
 
 UPSERT_SQL = (
     "INSERT INTO meta_embeddings"
@@ -53,16 +54,27 @@ async def upsert_meta_rows(
     if not rows:
         return 0
     sql = UPSERT_SQL_DUCK if is_duckdb else UPSERT_SQL
-    async with tenant_connection(pool, tenant_id) as conn, conn.transaction():
-        for row in rows:
-            embedding: Any = list(row.vector) if is_duckdb else _halfvec_literal(row.vector)
-            await conn.execute(
-                sql,
-                tenant_id,
-                row.meta_kind,
-                row.meta_key,
-                row.label,
-                embedding,
-                row.source_count,
-            )
+    async with tenant_connection(pool, tenant_id) as conn:
+        if is_gateway(conn):
+            async with conn.transaction(tenant_id):
+                await _write_rows(conn, sql, tenant_id, rows, is_duckdb=is_duckdb)
+        else:
+            async with conn.transaction():
+                await _write_rows(conn, sql, tenant_id, rows, is_duckdb=is_duckdb)
     return len(rows)
+
+
+async def _write_rows(
+    conn: SqlConn, sql: str, tenant_id: str, rows: list[MetaRow], *, is_duckdb: bool
+) -> None:
+    for row in rows:
+        embedding: Any = list(row.vector) if is_duckdb else _halfvec_literal(row.vector)
+        await conn.execute(
+            sql,
+            tenant_id,
+            row.meta_kind,
+            row.meta_key,
+            row.label,
+            embedding,
+            row.source_count,
+        )

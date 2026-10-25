@@ -11,8 +11,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
 from corpus_kb.research import guide_copy
 from corpus_kb.research.governance_report import SCHEMA_VERSION, ResearchReport
 from corpus_kb.research.inductive_store import queue_noise
@@ -30,10 +28,11 @@ from corpus_kb.research.report_sections import (
     irr_section,
     stability_section,
 )
+from corpus_kb.storage.gateway import SqlConn
 
 
 async def queue_candidates(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     tenant_id: UUID,
     candidates: list[dict[str, Any]],
     runs: list[dict[str, Any]],

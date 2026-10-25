@@ -30,6 +30,7 @@ from corpus_kb.research.keyword_synthesis import (
     synthesize_exclusion_keywords,
     synthesize_keywords,
 )
+from corpus_kb.storage.gateway import SqlConn
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 UNIT_TEXTS_SQL = """
@@ -151,7 +152,7 @@ async def run_keyword_synthesis(
     }
 
 
-async def _member_unit_ids(conn: asyncpg.Connection, version_id: UUID) -> dict[str, list[int]]:
+async def _member_unit_ids(conn: SqlConn, version_id: UUID) -> dict[str, list[int]]:
     rows = await conn.fetch(
         """
         SELECT code_id, array_agg(ra.unit_id ORDER BY ra.unit_id) AS unit_ids
@@ -164,9 +165,7 @@ async def _member_unit_ids(conn: asyncpg.Connection, version_id: UUID) -> dict[s
     return {str(row["code_id"]): [int(x) for x in row["unit_ids"]] for row in rows}
 
 
-async def _unit_texts(
-    conn: asyncpg.Connection, tenant_id: UUID, unit_ids: list[int]
-) -> list[dict[str, Any]]:
+async def _unit_texts(conn: SqlConn, tenant_id: UUID, unit_ids: list[int]) -> list[dict[str, Any]]:
     if not unit_ids:
         return []
     rows = await conn.fetch(UNIT_TEXTS_SQL, unit_ids, str(tenant_id))
@@ -237,7 +236,7 @@ def _locate(kw: SynthesizedKeyword, row: dict[str, Any]) -> str | None:
 
 
 async def _insert_hit(
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     tenant_id: UUID,
     version_id: UUID,
     code_id: str,

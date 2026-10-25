@@ -15,7 +15,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.projections.research._embed import _parse_pg_vector
-from corpus_kb.storage.gateway import SqlGateway
+from corpus_kb.storage.gateway import SqlConn, SqlGateway
 
 ASSIGNMENT_SUMMARY_SQL = """
 SELECT ra.unit_id, ra.code_id, ra.status, ra.evidence_basis, ra.rationale,
@@ -118,7 +118,7 @@ async def load_assignment_rows(
     ]
 
 
-async def load_codable_vectors(conn: asyncpg.Connection) -> list[dict[str, Any]]:
+async def load_codable_vectors(conn: SqlConn) -> list[dict[str, Any]]:
     rows = await conn.fetch(CODABLE_VECTORS_SQL)
     return [
         {
@@ -148,7 +148,7 @@ async def load_gold_views_typed(
     ]
 
 
-async def load_runs_history(conn: asyncpg.Connection, tenant_id: UUID) -> list[dict[str, Any]]:
+async def load_runs_history(conn: SqlConn, tenant_id: UUID) -> list[dict[str, Any]]:
     return [
         {
             "run_id": str(row["run_id"]),
@@ -160,7 +160,7 @@ async def load_runs_history(conn: asyncpg.Connection, tenant_id: UUID) -> list[d
     ]
 
 
-async def load_link_stats(conn: asyncpg.Connection) -> dict[str, Any]:
+async def load_link_stats(conn: SqlConn) -> dict[str, Any]:
     row = await conn.fetchrow(LINK_STATS_SQL)
     assert row is not None
     return {
@@ -171,7 +171,7 @@ async def load_link_stats(conn: asyncpg.Connection) -> dict[str, Any]:
     }
 
 
-async def load_signal_rows(conn: asyncpg.Connection) -> list[dict[str, Any]]:
+async def load_signal_rows(conn: SqlConn) -> list[dict[str, Any]]:
     return [
         {
             "tier": int(row["tier"]),
@@ -184,7 +184,7 @@ async def load_signal_rows(conn: asyncpg.Connection) -> list[dict[str, Any]]:
 
 
 async def load_keyword_hit_populations(
-    conn: asyncpg.Connection, version_id: UUID
+    conn: SqlConn, version_id: UUID
 ) -> dict[str, dict[str, dict[str, int]]]:
     rows = await conn.fetch(KEYWORD_HITS_SQL, str(version_id))
     out: dict[str, dict[str, dict[str, int]]] = {}
@@ -209,9 +209,7 @@ async def load_versions(
     ]
 
 
-async def load_duplicate_gate_blocks(
-    conn: asyncpg.Connection, tenant_id: UUID
-) -> list[dict[str, Any]]:
+async def load_duplicate_gate_blocks(conn: SqlConn, tenant_id: UUID) -> list[dict[str, Any]]:
     """Promote-time tau_dup blocks (todo-15) surfaced for codebook review."""
     return [
         {
@@ -224,7 +222,7 @@ async def load_duplicate_gate_blocks(
 
 
 async def load_code_definitions(
-    conn: asyncpg.Connection, tenant_id: UUID, version_id: UUID
+    conn: SqlConn, tenant_id: UUID, version_id: UUID
 ) -> dict[str, dict[str, Any]]:
     rows = await conn.fetch(
         """

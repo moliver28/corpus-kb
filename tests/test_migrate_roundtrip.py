@@ -133,6 +133,9 @@ class _FakeGateCursor:
     def execute(self, sql: str, params: object = None) -> None:
         self.tables.append(sql.split("FROM ", 1)[1].strip())
 
+    def close(self) -> None:
+        return None
+
     def fetchone(self) -> tuple[int, ...]:
         count = self._counts[self._index]
         self._index += 1

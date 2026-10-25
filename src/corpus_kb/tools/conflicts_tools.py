@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncpg
 
 from ..errors import ValidationError
+from ..utils.config_sections import mapping_section
 from .ingest_common import DEFAULT_TENANT_ID
 
 __all__ = ["conflicts_list", "conflicts_resolve", "conflicts_scan"]
@@ -38,14 +39,9 @@ async def conflicts_scan(
 
     store = ConflictStore(pg_pool, tenant_id)
     raw = await store.fetch_scan_rows()
-    model = str(
-        ((config or {}).get("coding", {}) or {}).get("uncertainty", {}).get("model", "qwen3:4b")
-    )
-    base_url = str(
-        ((config or {}).get("coding", {}) or {})
-        .get("uncertainty", {})
-        .get("base_url", "http://localhost:11434")
-    )
+    uncertainty = mapping_section(mapping_section(config, "coding"), "uncertainty")
+    model = str(uncertainty.get("model") or "qwen3:4b")
+    base_url = str(uncertainty.get("base_url") or "http://localhost:11434")
 
     async def nli(a_text: str, b_text: str) -> str | None:
         return await nli_judge(a_text, b_text, model, base_url)
@@ -94,16 +90,18 @@ async def conflicts_resolve(
     from ..conflicts import ConflictStore
 
     _check_verdict(resolved_verdict or "")
-    if not (conflict_id or "").strip() or not (resolved_by or "").strip():
+    flag_id = (conflict_id or "").strip()
+    reviewer = (resolved_by or "").strip()
+    if not flag_id or not reviewer:
         raise ValidationError(
             "conflict_id and resolved_by are both required.",
             remediation="Pass the conflict flag id and the reviewer name, then retry.",
         )
     store = ConflictStore(pg_pool, tenant_id)
-    row = await store.resolve(conflict_id, resolved_verdict or "", resolved_by)
+    row = await store.resolve(flag_id, resolved_verdict or "", reviewer)
     if row is None:
         raise ValidationError(
-            f"Conflict {conflict_id} not found for this tenant.",
+            f"Conflict {flag_id} not found for this tenant.",
             remediation="Run conflicts-scan first, then resolve a listed conflict id.",
         )
-    return {"status": "success", "conflict_id": conflict_id, "resolved_verdict": resolved_verdict}
+    return {"status": "success", "conflict_id": flag_id, "resolved_verdict": resolved_verdict}

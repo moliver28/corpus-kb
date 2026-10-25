@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 
 import asyncpg
 
+from corpus_kb.storage.gateway import Row
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
@@ -105,7 +106,7 @@ async def read_topics(
     return [_row_to_dict(row) for row in rows]
 
 
-def _row_to_dict(row: asyncpg.Record) -> dict[str, object]:
+def _row_to_dict(row: Row) -> dict[str, object]:
     """One topics row -> JSON-safe dict (jsonb parsed, timestamp ISO)."""
     return {
         "topic_id": str(row["topic_id"]),

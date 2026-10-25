@@ -13,11 +13,12 @@ point.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Coroutine, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
-from typing import Any, Protocol, cast, runtime_checkable
+from typing import Any, Protocol, TypeAlias, cast, runtime_checkable
 
 import asyncpg
+from typing_extensions import TypeIs
 
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import (
@@ -33,6 +34,7 @@ __all__ = [
     "DuckDbGateway",
     "PostgresGateway",
     "Row",
+    "SqlConn",
     "SqlGateway",
     "duckdb_conn_string_to_path",
     "duckdb_path_to_conn_string",
@@ -64,14 +66,28 @@ class SqlGateway(Protocol):
         """Open a tenant-scoped transaction scope on this gateway."""
         raise NotImplementedError
 
+    def executemany(self, query: str, args: Sequence[Sequence[Any]]) -> Coroutine[Any, Any, None]:
+        """Run one write for many parameter tuples."""
+        raise NotImplementedError
 
-def is_gateway(store: asyncpg.Pool | SqlGateway) -> bool:
-    """True for SqlGateway stores: a transaction scope, no pool acquire.
+
+#: One SQL-speaking connection: the asyncpg transaction scope (pool path)
+#: or a gateway. The tenant_connection yield type; every helper that runs
+#: raw fetch/execute against either engine takes this.
+SqlConn: TypeAlias = asyncpg.Connection | SqlGateway
+
+
+def is_gateway(
+    store: asyncpg.Pool | asyncpg.Connection | SqlGateway,
+) -> TypeIs[SqlGateway]:
+    """Narrow a store to :class:`SqlGateway` for the type checker too.
 
     The handlers' engine dispatch duck-types on purpose: anything else
-    (asyncpg pools, MagicMock pools, fetch-only test fakes) stays on the
-    shipped pool path. ``isinstance(x, SqlGateway)`` cannot do this — the
-    protocol is runtime-checkable, so a MagicMock pool passes it.
+    (asyncpg pools, connections, MagicMock pools, fetch-only test fakes)
+    stays on the shipped pool path. ``isinstance(x, SqlGateway)`` cannot
+    do this — the protocol is runtime-checkable, so a MagicMock pool
+    passes it. The attribute probe below is the runtime check; ``TypeIs``
+    gives the true/false branches their pool and gateway types.
     """
     return not hasattr(store, "acquire") and hasattr(store, "transaction")
 
@@ -97,6 +113,16 @@ class PostgresGateway:
     async def execute(self, sql: str, *args: Any) -> str:
         async with self._pool.acquire() as conn:
             return await conn.execute(sql, *args)
+
+    def executemany(self, query: str, args: Sequence[Sequence[Any]]) -> Coroutine[Any, Any, None]:
+        async def run() -> None:
+            async with self._pool.acquire() as conn:
+                await conn.executemany(
+                    query,
+                    args,
+                )
+
+        return run()
 
     @asynccontextmanager
     async def transaction(self, tenant_id: str) -> AsyncIterator[_PgConnGateway]:
@@ -129,6 +155,12 @@ class _PgConnGateway:
 
     def transaction(self, tenant_id: str) -> AbstractAsyncContextManager[_PgConnGateway]:
         return _pg_savepoint(self._conn)
+
+    def executemany(self, query: str, args: Sequence[Sequence[Any]]) -> Coroutine[Any, Any, None]:
+        return self._conn.executemany(
+            query,
+            args,
+        )
 
 
 @asynccontextmanager

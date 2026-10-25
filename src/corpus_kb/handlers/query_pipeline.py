@@ -65,9 +65,10 @@ def resolve_reranker(config: dict[str, object], pool: asyncpg.Pool | SqlGateway)
     selection. Only the DuckDB gateway pool skips the pool-driven factory
     (§13: a gateway builds no pool-backed reranker).
     """
-    return build_reranker(config) or (
-        None if isinstance(pool, DuckDbGateway) else create_reranker(config, pool)
-    )
+    built = build_reranker(config)
+    if built is not None or isinstance(pool, DuckDbGateway):
+        return built
+    return create_reranker(config, cast("asyncpg.Pool", pool))
 
 
 def resolve_default_k(query: SearchQuery, rerank_settings: RerankSettings) -> SearchQuery:

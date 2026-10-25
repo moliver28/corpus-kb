@@ -26,9 +26,10 @@ import hashlib
 import json
 import struct
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from typing import cast
 
 from corpus_kb.handlers.migrate_data import (
     STREAM_BATCH,
@@ -107,7 +108,10 @@ def _post_steps(
             def _vector(v: object) -> object:
                 if v is None:
                     return None
-                values = _parse_vector_text(v) if isinstance(v, str) else list(v)
+                if isinstance(v, str):
+                    values = _parse_vector_text(v)
+                else:
+                    values = list(cast("Iterable[float]", v))
                 return _half_quantize(values)
 
             steps.append(_vector)

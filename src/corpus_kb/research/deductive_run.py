@@ -33,6 +33,7 @@ from corpus_kb.research.exhaustiveness import exhaustiveness_block
 from corpus_kb.research.prototypes import build_view_prototypes
 from corpus_kb.research.run_inputs import UnitViews, load_codes, load_gold_views, load_unit_views
 from corpus_kb.research.scoring import SCORING_BATCH_ROWS, stream_scores
+from corpus_kb.storage.gateway import SqlConn
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
@@ -115,7 +116,7 @@ def _coverage_of(
 
 
 async def _load_gold_by_code(
-    tconn: asyncpg.Connection,
+    tconn: SqlConn,
     tenant_id: UUID,
     codes_all: list[dict[str, Any]],
 ) -> dict[str, list[tuple[list[float], list[float], list[float], str]]]:

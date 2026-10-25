@@ -33,6 +33,7 @@ from corpus_kb.research.retrieval import (
     _unit_arms,
 )
 from corpus_kb.research.retrieval_settings import RetrievalSettings
+from corpus_kb.storage.gateway import SqlConn
 
 ARMS = ("vector", "fts", "rrf", "rrf_rerank")
 INSUFFICIENT_DATA = "insufficient_data"
@@ -139,7 +140,7 @@ def _ranked_unit_ids(payloads: list[dict[str, Any]]) -> list[int]:
 
 async def _run_arm(
     arm: str,
-    conn: asyncpg.Connection,
+    conn: SqlConn,
     query_vector: list[float] | None,
     q: ResearchQuery,
     depth: int,

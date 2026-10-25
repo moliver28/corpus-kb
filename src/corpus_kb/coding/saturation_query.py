@@ -61,8 +61,9 @@ async def compute_saturation(
                 batch_id,
             )
             if window and window["start"] is not None:
-                new_codes = await conn.fetchval(
-                    """
+                new_count = int(
+                    await conn.fetchval(
+                        """
                     SELECT COUNT(*) FROM (
                         SELECT code_id, MIN(decided_at) AS first_accept
                         FROM final_codes
@@ -71,18 +72,21 @@ async def compute_saturation(
                     ) accepted
                     WHERE first_accept BETWEEN $2 AND $3
                     """,
-                    tenant_id,
-                    window["start"],
-                    window["stop"],
+                        tenant_id,
+                        window["start"],
+                        window["stop"],
+                    )
+                    or 0
                 )
-                new_codes = new_codes or 0
-                base_unique = max(unique_codes - new_codes, 0)
+                base_count = max(int(unique_codes) - new_count, 0)
                 should_stop = run_stop(
-                    new_codes=new_codes,
-                    base_unique=base_unique,
+                    new_codes=new_count,
+                    base_unique=base_count,
                     threshold=threshold,
                     min_samples=min_samples,
                 )
+                new_codes = new_count
+                base_unique = base_count
             else:
                 new_codes = 0
                 base_unique = unique_codes

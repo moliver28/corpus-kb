@@ -33,12 +33,13 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from types import ModuleType
-from typing import Protocol, cast
+from typing import Any, Protocol, cast
 
 import asyncpg
 import numpy as np
 
 from corpus_kb.errors import DependencyMissingError
+from corpus_kb.storage.gateway import Row
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 from .settings import AUTO_MIN_TOPIC_SIZE, UMAP_RANDOM_STATE, TopicsSettings
@@ -155,7 +156,13 @@ class UmapModule(Protocol):
         min_dist: float,
         metric: str,
         n_neighbors: int = ...,
-    ) -> object: ...
+    ) -> UmapInstance: ...
+
+
+class UmapInstance(Protocol):
+    """The reducer surface the engine and cluster tools drive."""
+
+    def fit_transform(self, x: Any, **kwargs: Any) -> Any: ...
 
 
 def _import_module(name: str) -> ModuleType:
@@ -173,10 +180,10 @@ def load_bertopic() -> ModuleType:
         ) from exc
 
 
-def load_umap() -> ModuleType:
+def load_umap() -> UmapModule:
     """Import umap lazily (a bertopic dependency, loaded through the same seam)."""
     try:
-        return _import_module("umap")
+        return cast("UmapModule", _import_module("umap"))
     except ModuleNotFoundError as exc:
         raise TopicDependencyError(
             "The topics feature needs the umap-learn package (with bertopic)."
@@ -252,7 +259,7 @@ async def read_stored_embeddings(
     return chunks
 
 
-def _stored_chunk(row: asyncpg.Record) -> StoredChunk:
+def _stored_chunk(row: Row) -> StoredChunk:
     """One row -> the frozen view (uuid -> text, timestamps kept)."""
     return StoredChunk(
         chunk_id=str(row["chunk_id"]),
@@ -432,7 +439,7 @@ def _merge_values(
     return merged
 
 
-def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> object:
+def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapInstance:
     """The deterministic UMAP instance (random state pinned at 42).
 
     ``n_neighbors`` stays at the library default for the topics fit (large

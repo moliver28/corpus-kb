@@ -10,10 +10,9 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
-import asyncpg
-
 from corpus_kb.coding.reliability import computeReliability
 from corpus_kb.research.report_inputs import load_assignment_rows
+from corpus_kb.storage.gateway import SqlConn
 
 REVIEW_SHEET_SQL = """
 SELECT ra.unit_id, ra.code_id, rv.decision
@@ -24,7 +23,7 @@ WHERE ra.tenant_id = $1 AND ra.cb_version_id = $2
 
 
 async def load_irr_sheets(
-    conn: asyncpg.Connection, tenant_id: UUID, version_id: UUID, code_universe: list[str]
+    conn: SqlConn, tenant_id: UUID, version_id: UUID, code_universe: list[str]
 ) -> tuple[dict[str, Any], dict[str, list[tuple[int, int, int]]]]:
     """Two-rater (model vs human) sheets from the review trail + AC1 triples.
 

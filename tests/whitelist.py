@@ -498,3 +498,10 @@ mine_exemplars
 # consumer is the W7 eval promotion gate, which loads the saved adapter
 # and scores it against the baseline before any live extraction use.
 apply_lora_adapter
+
+# Storage-portability warning sweep 2026-10-24: the psycopg Query type is
+# referenced only inside cast("...", ...) string forms (migrate_pg,
+# migrate_stream), and PgCursor.__exit__ carries the with-statement's
+# exception triple it never reads.
+QueryNoTemplate
+exc_info

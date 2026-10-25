@@ -40,12 +40,10 @@ async def tenant_connection(
             await conn.fetch("SELECT * FROM documents")
     """
     if is_gateway(pool):
-        gateway = cast(SqlGateway, pool)
-        async with gateway.transaction(str(tenant_id)) as scoped:
+        async with pool.transaction(str(tenant_id)) as scoped:
             yield scoped
         return
-    acquired_pool = cast("asyncpg.Pool", pool)
-    async with acquired_pool.acquire() as acquired, acquired.transaction():
+    async with pool.acquire() as acquired, acquired.transaction():
         conn = cast("asyncpg.Connection", acquired)
         await conn.execute(
             "SELECT set_config('app.current_tenant_id', $1, true)",
