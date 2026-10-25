@@ -147,11 +147,11 @@ byte-stable for identical seeds.
   in the CodingRun checkpoint payloads.
 - **Proposed-code governance** (v5 §9.6): every non-noise final cluster
   lands in `research_proposed_codes`. The row carries cluster id, centroid
-  snapshot, member unit_ids, proposing batch, and run DBCV. The centroid
+  snapshot, member `unit_ids`, proposing batch, and run DBCV. The centroid
   snapshot is PROVENANCE ONLY (summary space; never a scoring prototype,
   r7). Human promotion happens ONLY via
   the named surface: `corpus-kb codebook promote` (CLI) or
-  `codebook_promote` (MCP). The pipeline: member unit_ids → A/QA/Q view
+  `codebook_promote` (MCP). The pipeline: member `unit_ids` → A/QA/Q view
   embeddings → k-medoids (`build_view_prototypes`) → `PrototypeUpdated`
   exemplar refs on a NEW `codebook_version` aggregate. Prototypes live in
   the DEDUCTIVE unit-embedding space, rebuilt from the new version's gold
@@ -178,7 +178,7 @@ byte-stable for identical seeds.
   `embedding_256 <=> $1::vector(256)`. Prototypes are sliced to 256 dims
   and re-normalized. Surfaced candidates are then RE-RANKED at the FULL
   1024-d vectors by exact cosine (ids fetched by PK). Final values are
-  full-dim exact, consistent with the 1024-d tau_res calibration. The
+  full-dim exact, consistent with the 1024-d `tau_res` calibration. The
   QA-view leg probes `research_exchanges.embedding_256` the same way and
   maps back to answer units. The RETRIEVAL access pattern uses the
   halfvec(1024) cast index with the pinned probe
@@ -204,7 +204,7 @@ byte-stable for identical seeds.
   defined on the §8 deductive coverage — that is threshold-driven, not a
   completeness measure; it is reported separately (r8). Prior `R` values
   come from deductive runs' final checkpoints (`exhaustiveness` block,
-  written by deductive_run). The live report appends the current `R`.
+  written by `deductive_run`). The live report appends the current `R`.
 - **Candidate missing codes**: units with `r_i < τ_res[type]` AND
   `soft_cluster_entropy < 0.85` are clustered (spherical k-means,
   k ∈ {1, 2}). Entropy-unknown units qualify too — never fabricate
@@ -234,7 +234,7 @@ byte-stable for identical seeds.
   over each code's assigned units. The k×k product is trivially small — not
   a kNN scan — so no index requirement applies.
 - **τ_overlap calibration**: `max inter-code gold prototype cosine +
-  0.05`, clamped [0.70, 0.95]. Same policy as promote_code's τ_dup: with
+  0.05`, clamped [0.70, 0.95]. Same policy as `promote_code`'s τ_dup: with
   gold codes, run-time centroid pairs closer than the WORST gold
   between-code separation are overlap. Pairs with `M[i,j] > τ_overlap` are flagged for
   codebook review.
@@ -245,7 +245,7 @@ byte-stable for identical seeds.
 - **Per-code silhouette**: mean silhouette (cosine distance) over each
   code's assigned units. Singletons score 0. This cross-checks the overlap
   flags from the geometry side.
-- **Duplicate-gate surfacing**: the todo-15 promote-time tau_dup blocks
+- **Duplicate-gate surfacing**: the todo-15 promote-time `tau_dup` blocks
   (`research_proposed_codes.block_reason`) are listed in the SAME
   `overlap` section. Both they and the flagged centroid pairs route to
   codebook review.
@@ -284,7 +284,7 @@ byte-stable for identical seeds.
   overridden texts against the coded corpus. The list is widened
   periodically by a seeded random sample of uncoded units (v5 §13
   contrast-widening).
-- **hit_location**: each keyword hit on a member unit records
+- **`hit_location`**: each keyword hit on a member unit records
   `answer` | `question` | `both` (migration 018 `research_keyword_hits`).
   ONLY `answer` hits count as explicit evidence; question hits are candidate
   generators gated downstream by stance + information gain (v5 §13).

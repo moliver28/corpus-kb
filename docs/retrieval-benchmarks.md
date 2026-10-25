@@ -128,7 +128,7 @@ order with a logged warning. The scoring path itself was live-verified with
 probe pairs). But the general instruct model is NOT a reranker: pull a
 real qwen3-reranker build before judging quality.
 
-## U23 — pg_textsearch (NOT adopted)
+## U23 — `pg_textsearch` (NOT adopted)
 
 - License: PostgreSQL License (per execution spec v6 §8). Re-verify against
   the upstream repo before any run — `scripts/bench_pg_textsearch.py`
@@ -146,7 +146,7 @@ real qwen3-reranker build before judging quality.
 
 - `research/retrieval_settings.py` → `RETRIEVAL_CONFIG_DEFAULTS` (4 keys above)
 - `rag/rerank_settings.py` → `RERANK_CONFIG_DEFAULTS` (`enabled` False,
-  model `qwen3-reranker:4b`, base_url, `candidates` 100,
+  model `qwen3-reranker:4b`, `base_url`, `candidates` 100,
   `max_pair_tokens` 768, `score_floor` 0.15, `calibration` minmax,
   `timeout_seconds` 120)
 - `research/exact_cache.py` → `CACHE_CONFIG_DEFAULTS` (`cache.enabled` True

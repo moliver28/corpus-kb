@@ -12,9 +12,11 @@ jobs:
       - name: Validate branch name (GitFlow)
         run: |
           BRANCH_NAME="${{ github.head_ref || github.ref_name }}"
-          if [[ ! $BRANCH_NAME =~ ^([Ff]eature|[Bb]ugfix|[Hh]otfix|[Dd]ocs|[Cc]hore|[Rr]elease)/[-a-zA-Z0-9]+$ ]]; then
+          # renovate/* branches come from the Renovate dependency bot (.github/renovate.jsonc);
+          # their slugs contain dots and nested slashes, so prefix-match them separately.
+          if [[ ! $BRANCH_NAME =~ ^([Ff]eature|[Bb]ugfix|[Hh]otfix|[Dd]ocs|[Cc]hore|[Rr]elease)/[-a-zA-Z0-9]+$ ]] && [[ ! $BRANCH_NAME =~ ^renovate/ ]]; then
             echo "FAIL: Branch name '$BRANCH_NAME' does not match GitFlow pattern"
-            echo "   Expected: feature/*, bugfix/*, hotfix/*, docs/*, chore/*, release/*"
+            echo "   Expected: feature/*, bugfix/*, hotfix/*, docs/*, chore/*, release/*, renovate/*"
             exit 1
           fi
           echo "PASS: Branch name '$BRANCH_NAME' is valid"

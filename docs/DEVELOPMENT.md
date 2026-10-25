@@ -140,7 +140,7 @@ pytest tests/test_ingest.py -v --tb=short
 pytest --cov=corpus_kb --cov-report=term-missing
 ```
 
-Tests that need Ollama are marked with `@pytest.mark.requires_ollama`. Tests that need Unstructured hi_res mode are skipped on Windows because detectron2 is unavailable.
+Tests that need Ollama are marked with `@pytest.mark.requires_ollama`. Tests that need Unstructured `hi_res` mode are skipped on Windows because detectron2 is unavailable.
 
 ---
 

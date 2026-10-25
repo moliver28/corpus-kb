@@ -63,6 +63,6 @@ Two expert options also accept OTLP spans:
 
 Both document their own OTLP ingest endpoints. Point `otlp_endpoint` at the collector each one runs.
 
-## The trace_id envelope field
+## The `trace_id` envelope field
 
 With tracing on, the search envelope adds a `trace_id` key. Paste it into the Jaeger search box to find the exact trace. The key is absent when tracing is off.
