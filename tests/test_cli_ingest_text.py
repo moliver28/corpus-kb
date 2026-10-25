@@ -84,8 +84,8 @@ def _patch_world(
     def _cfg() -> dict[str, object]:
         return dict(_CFG)
 
-    monkeypatch.setattr("corpus_kb.cli_ingest_text._open_pool", _open)
-    monkeypatch.setattr("corpus_kb.cli_ingest_text._load_config", _cfg)
+    monkeypatch.setattr("corpus_kb.cli.cli_ingest_text._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_ingest_text._load_config", _cfg)
     monkeypatch.setattr("corpus_kb.tools.ingest_common.ingest_text", fake)
     return pool
 

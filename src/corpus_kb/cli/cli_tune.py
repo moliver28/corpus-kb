@@ -13,7 +13,7 @@ from typing import Any
 
 import typer
 
-from corpus_kb.cli_ingest import _load_config, _open_pool, _run_sync
+from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
 
 EXIT_OK = 0
 EXIT_FAILED = 1

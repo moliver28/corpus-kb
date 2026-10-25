@@ -600,10 +600,6 @@ forbidden_modules = [
     "corpus_kb.handlers",
     "corpus_kb.storage",
     "corpus_kb.cli",
-    "corpus_kb.cli_ingest",
-    "corpus_kb.cli_ingest_views",
-    "corpus_kb.cli_release",
-    "corpus_kb.cli_operations",
 ]
 
 [project.scripts]

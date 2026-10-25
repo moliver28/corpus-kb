@@ -83,8 +83,8 @@ def _patch_world(monkeypatch: pytest.MonkeyPatch, fake_search: _RecordingSearch)
     def _cfg() -> dict[str, object]:
         return dict(_CFG)
 
-    monkeypatch.setattr("corpus_kb.cli_search._open_pool", _open)
-    monkeypatch.setattr("corpus_kb.cli_search._load_config", _cfg)
+    monkeypatch.setattr("corpus_kb.cli.cli_search._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_search._load_config", _cfg)
     monkeypatch.setattr("corpus_kb.tools.search_tools.search", fake_search)
     return pool
 

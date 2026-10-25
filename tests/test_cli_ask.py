@@ -85,8 +85,8 @@ def _patch_world(monkeypatch: pytest.MonkeyPatch, fake: _RecordingTool) -> _Fake
     def _cfg() -> dict[str, object]:
         return dict(_CFG)
 
-    monkeypatch.setattr("corpus_kb.cli_ask._open_pool", _open)
-    monkeypatch.setattr("corpus_kb.cli_ask._load_config", _cfg)
+    monkeypatch.setattr("corpus_kb.cli.cli_ask._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_ask._load_config", _cfg)
     monkeypatch.setattr("corpus_kb.tools.ask_tools.ask", fake)
     return pool
 

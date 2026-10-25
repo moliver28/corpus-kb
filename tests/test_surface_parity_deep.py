@@ -2196,7 +2196,7 @@ async def _call_mcp_tool(
 
 def test_inventory_covers_catalogue() -> None:
     """`corpus-kb operations` is generated from the same catalogue rows."""
-    from corpus_kb.cli_operations import build_inventory
+    from corpus_kb.cli.cli_operations import build_inventory
 
     inventory = build_inventory()
     rows = {row["name"]: row for row in inventory["operations"]}

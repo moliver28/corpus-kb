@@ -16,11 +16,11 @@ from typing import Any
 
 import typer
 
-from corpus_kb.cli_research_ask import register as register_ask
-from corpus_kb.cli_research_ingest import register as register_ingest
-from corpus_kb.cli_research_report import register as register_report
-from corpus_kb.cli_research_views import register as register_views
-from corpus_kb.cli_support import (
+from corpus_kb.cli.cli_research_ask import register as register_ask
+from corpus_kb.cli.cli_research_ingest import register as register_ingest
+from corpus_kb.cli.cli_research_report import register as register_report
+from corpus_kb.cli.cli_research_views import register as register_views
+from corpus_kb.cli.cli_support import (
     _cli_approve,
     _cli_approve_no,
     _cli_approve_yes,

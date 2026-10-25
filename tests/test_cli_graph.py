@@ -88,8 +88,8 @@ def _patch_world(
     def _cfg() -> dict[str, object]:
         return dict(_CFG)
 
-    monkeypatch.setattr("corpus_kb.cli_graph._open_pool", _open)
-    monkeypatch.setattr("corpus_kb.cli_graph._load_config", _cfg)
+    monkeypatch.setattr("corpus_kb.cli.cli_graph._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_graph._load_config", _cfg)
     monkeypatch.setattr(f"{module}.{fn_name}", fake)
     return pool
 
@@ -226,8 +226,8 @@ def _patch_hops_world(
     def _cfg() -> dict[str, object]:
         return dict(_CFG)
 
-    monkeypatch.setattr("corpus_kb.cli_graph_hops._open_pool", _open)
-    monkeypatch.setattr("corpus_kb.cli_graph_hops._load_config", _cfg)
+    monkeypatch.setattr("corpus_kb.cli.cli_graph_hops._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_graph_hops._load_config", _cfg)
     monkeypatch.setattr(f"corpus_kb.tools.graph_read_tools.{fn_name}", fake)
     return pool
 

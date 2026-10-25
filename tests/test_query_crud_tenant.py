@@ -57,7 +57,7 @@ async def test_list_documents_on_strict_database_returns_empty_not_error(
     dsn = await research_db.create_research_db()
     try:
         os.environ["CORPUS_KB_DATABASE_URL"] = dsn
-        from corpus_kb.cli_ingest import _load_config, _open_pool
+        from corpus_kb.cli.cli_ingest import _load_config, _open_pool
         from corpus_kb.tools.ingest_tools import list_documents
 
         cfg = _load_config()

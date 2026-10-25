@@ -81,8 +81,8 @@ def _patch_world(
             raise error
         return report if report is not None else _report()
 
-    monkeypatch.setattr("corpus_kb.cli_eval._load_config", _cfg)
-    monkeypatch.setattr("corpus_kb.cli_eval._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_eval._load_config", _cfg)
+    monkeypatch.setattr("corpus_kb.cli.cli_eval._open_pool", _open)
     monkeypatch.setattr("corpus_kb.eval.runner.run_eval", _fake_run_eval)
     return pool, captured
 
@@ -264,12 +264,12 @@ def test_build_golden_from_assignments_writes_the_file(
         async def close(self) -> None:
             return None
 
-    monkeypatch.setattr("corpus_kb.cli_eval._load_config", lambda: dict(_CFG))
+    monkeypatch.setattr("corpus_kb.cli.cli_eval._load_config", lambda: dict(_CFG))
 
     async def _open(_cfg: dict[str, object]) -> _Pool:
         return _Pool()
 
-    monkeypatch.setattr("corpus_kb.cli_eval._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_eval._open_pool", _open)
     out = tmp_path / "built.jsonl"
     result = runner.invoke(
         app,

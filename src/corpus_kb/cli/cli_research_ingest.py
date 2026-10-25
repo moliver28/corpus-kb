@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
-from corpus_kb.cli_support import DEFAULT_TENANT, _run_async, _tenant, wired_pool
+from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, _tenant, wired_pool
 
 if TYPE_CHECKING:
     from pathlib import Path

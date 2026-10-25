@@ -54,7 +54,7 @@ Windows fixes: `python-magic-bin` (libmagic DLL for unstructured's `magic`; fixe
 
 All active code under `src/corpus_kb/`:
 
-- `cli.py` — Typer CLI (commands above).
+- `cli/` — Typer CLI package (`cli/__init__.py` holds the app; `cli_*.py` command modules).
 - `server_wiring.py` — async startup: HTTP, socket, MCP, projections.
 - `config.py` — config loader, env overrides, packaged-default fallback.
 - `ontology.py` — ontology loader + Pydantic model.

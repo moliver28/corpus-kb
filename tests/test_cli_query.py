@@ -84,8 +84,8 @@ def _patch_world(
     def _cfg() -> dict[str, object]:
         return dict(_CFG)
 
-    monkeypatch.setattr("corpus_kb.cli_query._open_pool", _open)
-    monkeypatch.setattr("corpus_kb.cli_query._load_config", _cfg)
+    monkeypatch.setattr("corpus_kb.cli.cli_query._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_query._load_config", _cfg)
     monkeypatch.setattr(f"corpus_kb.tools.query_tools.{fn_name}", fake)
     return pool
 
