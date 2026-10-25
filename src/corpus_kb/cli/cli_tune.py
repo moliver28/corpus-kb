@@ -8,20 +8,16 @@ the import in cli.py stays acyclic.
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import typer
 
-from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
+from corpus_kb.cli._plumbing import _JSON_OPT, _TENANT_OPT, flow
+from corpus_kb.cli.cli_ingest import _run_sync
 
-EXIT_OK = 0
-EXIT_FAILED = 1
-
-_OK_STATUSES = ("success",)
-
-_JSON_OPT = typer.Option(False, "--json", help="Machine-readable JSON output")
-_TENANT_OPT = typer.Option("00000000-0000-0000-0000-000000000001", "--tenant-id", help="Tenant id")
+# The tune op has no honest no-op statuses: anything but "success" is a
+# failure worth an exit 1 (the shared flow's default set is wider).
+_TUNE_OK = ("success",)
 
 
 def register(app: typer.Typer) -> None:
@@ -50,26 +46,6 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
             print(f"  note: {note}")
 
 
-async def _flow(module_name: str, op_name: str, kwargs: dict[str, Any], json_output: bool) -> int:
-    """One command flow: load config, open the pool, call, emit, map."""
-    from corpus_kb.errors import CorpusError
-
-    module = __import__(f"corpus_kb.tools.{module_name}", fromlist=[op_name])
-    handler: Callable[..., Awaitable[dict[str, object]]] = getattr(module, op_name)
-    cfg = _load_config()
-    pool = await _open_pool(cfg)
-    try:
-        result = await handler(pool, cfg, **kwargs)
-    except CorpusError as exc:
-        print(f"ERROR: {exc}")
-        remediation = getattr(exc, "remediation", None)
-        if remediation:
-            print(f"  {remediation}")
-        return EXIT_FAILED
-    _emit(result, json_output)
-    return EXIT_OK if result.get("status") in _OK_STATUSES else EXIT_FAILED
-
-
 def extraction_tune(
     method: str = typer.Option(
         "exemplar", help="exemplar (profile seeds) or lora (adapter training)"
@@ -82,18 +58,21 @@ def extraction_tune(
     tenant_id: str = _TENANT_OPT,
 ) -> int:
     """Mine confirmed corpus decisions into tuning artifacts."""
+    kwargs: dict[str, Any] = {
+        "tenant_id": tenant_id,
+        "method": method,
+        "profile": profile,
+        "min_confidence": min_confidence,
+        "limit": limit,
+        "dry_run": dry_run,
+    }
     return _run_sync(
-        lambda: _flow(
+        lambda: flow(
             "extraction_tune_tools",
             "extraction_tune",
-            {
-                "tenant_id": tenant_id,
-                "method": method,
-                "profile": profile,
-                "min_confidence": min_confidence,
-                "limit": limit,
-                "dry_run": dry_run,
-            },
+            kwargs,
             json_output,
+            _emit,
+            ok_statuses=_TUNE_OK,
         )
     )

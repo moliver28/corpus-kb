@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 
 from corpus_kb.cli import app
 from corpus_kb.errors import CorpusError
+from tests.cli_fakes import FakePool
 
 runner = CliRunner()
 
@@ -55,14 +56,6 @@ _ASK = {
 }
 
 
-class _FakePool:
-    def __init__(self) -> None:
-        self.closed = False
-
-    async def close(self) -> None:
-        self.closed = True
-
-
 class _RecordingTool:
     def __init__(self, envelope: dict[str, object], error: Exception | None = None) -> None:
         self.envelope = envelope
@@ -76,10 +69,10 @@ class _RecordingTool:
         return self.envelope
 
 
-def _patch_world(monkeypatch: pytest.MonkeyPatch, fake: _RecordingTool) -> _FakePool:
-    pool = _FakePool()
+def _patch_world(monkeypatch: pytest.MonkeyPatch, fake: _RecordingTool) -> FakePool:
+    pool = FakePool()
 
-    async def _open(_cfg: dict[str, object]) -> _FakePool:
+    async def _open(_cfg: dict[str, object]) -> FakePool:
         return pool
 
     def _cfg() -> dict[str, object]:
