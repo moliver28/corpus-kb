@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import typer
 
-from corpus_kb.cli_support import DEFAULT_TENANT, _run_async, wired_pool
+from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, wired_pool
 
 coding_app = typer.Typer(help="Coding subsystem: deductive coding runs")
 codebook_app = typer.Typer(help="Codebook governance: human-gated promotion")

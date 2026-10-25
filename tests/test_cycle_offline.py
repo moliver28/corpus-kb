@@ -499,7 +499,7 @@ def test_inventory_row_carries_the_cycle_exit_codes() -> None:
     to read its exit contract from the inventory. The tuple must agree
     with cycle_gates — the ONE exit-code table — plus the universal 0.
     """
-    from corpus_kb.cli_operations import build_inventory
+    from corpus_kb.cli.cli_operations import build_inventory
     from corpus_kb.contracts import get_operation
 
     row = get_operation("research_cycle")

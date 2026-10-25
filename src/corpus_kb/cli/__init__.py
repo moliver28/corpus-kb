@@ -14,30 +14,30 @@ import typer
 # the canonical tenant id from contracts.model). None of them imports
 # corpus_kb.cli, so these imports stay acyclic. cli.py re-exports the moved
 # helper names so tests and cli_release keep their import paths.
-from corpus_kb.cli_coding import codebook_app, coding_app
+from corpus_kb.cli.cli_coding import codebook_app, coding_app
 
 # Stage-5 ingest front door (top-level corpus-kb ingest / ingest-status /
 # ingest-reembed): the commands live in cli_ingest.py, which imports
 # corpus_kb.cli only lazily (inside functions), so this import is acyclic.
-from corpus_kb.cli_ingest import register as register_ingest_commands
+from corpus_kb.cli.cli_ingest import register as register_ingest_commands
 
 # Operation inventory (Wave 2 zero-drift): `corpus-kb operations` emits the
 # machine-readable catalogue (contracts/) — surfaces, params, envelope keys,
 # error map — plus, with --openapi, the generated HTTP spec. cli_operations
 # never imports corpus_kb.cli (it registers via the function below), so this
 # import is acyclic.
-from corpus_kb.cli_operations import register as register_operations
+from corpus_kb.cli.cli_operations import register as register_operations
 
 # Release lifecycle group (U5, P7): the commands live in cli_release.py (the
 # 250-line soft limit; cli.py is already the largest surface file) and share
 # the handlers/release_handlers.py layer with the MCP + HTTP surfaces.
 # cli_release imports corpus_kb.cli only lazily (inside functions), so this
 # top-level import is acyclic.
-from corpus_kb.cli_release import release_app
-from corpus_kb.cli_research import research_app
-from corpus_kb.cli_research_ingest import _print_detection_summary, _print_override_notice
-from corpus_kb.cli_research_report import _print_report
-from corpus_kb.cli_support import (
+from corpus_kb.cli.cli_release import release_app
+from corpus_kb.cli.cli_research import research_app
+from corpus_kb.cli.cli_research_ingest import _print_detection_summary, _print_override_notice
+from corpus_kb.cli.cli_research_report import _print_report
+from corpus_kb.cli.cli_support import (
     DEFAULT_TENANT,
     _cli_approve,
     _cli_approve_no,
@@ -62,7 +62,7 @@ register_operations(app)
 
 # Wave 4 topics front door: cli_topics imports corpus_kb.cli nowhere (it
 # reuses the cli_ingest plumbing), so this import stays acyclic.
-from corpus_kb.cli_topics import register as register_topics_commands  # noqa: E402
+from corpus_kb.cli.cli_topics import register as register_topics_commands  # noqa: E402
 
 register_topics_commands(app)
 
@@ -70,11 +70,11 @@ register_topics_commands(app)
 # cli_classification / cli_analysis mirror cli_topics (they reuse the
 # cli_ingest plumbing and import corpus_kb.cli nowhere), so these imports
 # stay acyclic.
-from corpus_kb.cli_analysis import register as register_analysis_commands  # noqa: E402
-from corpus_kb.cli_classification import (  # noqa: E402
+from corpus_kb.cli.cli_analysis import register as register_analysis_commands  # noqa: E402
+from corpus_kb.cli.cli_classification import (  # noqa: E402
     register as register_classification_commands,
 )
-from corpus_kb.cli_labeling import register as register_labeling_commands  # noqa: E402
+from corpus_kb.cli.cli_labeling import register as register_labeling_commands  # noqa: E402
 
 register_labeling_commands(app)
 register_classification_commands(app)
@@ -83,7 +83,7 @@ register_analysis_commands(app)
 # Analysis method register program (wave 2) front doors: cli_analysis_methods
 # mirrors cli_analysis (it reuses the cli_ingest plumbing and imports
 # corpus_kb.cli nowhere), so this import stays acyclic.
-from corpus_kb.cli_analysis_methods import (  # noqa: E402
+from corpus_kb.cli.cli_analysis_methods import (  # noqa: E402
     register as register_analysis_method_commands,
 )
 
@@ -91,28 +91,28 @@ register_analysis_method_commands(app)
 
 # Living Corpus W2 statement-atom front doors: cli_statements mirrors
 # cli_analysis_methods (same cli_ingest plumbing, no corpus_kb.cli import).
-from corpus_kb.cli_statements import (  # noqa: E402
+from corpus_kb.cli.cli_statements import (  # noqa: E402
     register as register_statement_commands,
 )
 
 register_statement_commands(app)
 
 # Living Corpus W3 conflict front doors: cli_conflicts mirrors cli_statements.
-from corpus_kb.cli_conflicts import (  # noqa: E402
+from corpus_kb.cli.cli_conflicts import (  # noqa: E402
     register as register_conflict_commands,
 )
 
 register_conflict_commands(app)
 
 # Living Corpus W4 belief front doors: cli_beliefs mirrors cli_conflicts.
-from corpus_kb.cli_beliefs import (  # noqa: E402
+from corpus_kb.cli.cli_beliefs import (  # noqa: E402
     register as register_belief_commands,
 )
 
 register_belief_commands(app)
 
 # Living Corpus W5 tune front door: cli_tune mirrors cli_beliefs.
-from corpus_kb.cli_tune import (  # noqa: E402
+from corpus_kb.cli.cli_tune import (  # noqa: E402
     register as register_tune_commands,
 )
 
@@ -121,14 +121,14 @@ register_tune_commands(app)
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.
-from corpus_kb.cli_search import register as register_search_commands  # noqa: E402
+from corpus_kb.cli.cli_search import register as register_search_commands  # noqa: E402
 
 register_search_commands(app)
 
 # UX Wave 1 ask front door: cli_ask mirrors cli_search (it reuses the
 # cli_ingest plumbing and imports corpus_kb.cli nowhere), so this import
 # stays acyclic.
-from corpus_kb.cli_ask import register as register_ask_command  # noqa: E402
+from corpus_kb.cli.cli_ask import register as register_ask_command  # noqa: E402
 
 register_ask_command(app)
 
@@ -136,11 +136,11 @@ register_ask_command(app)
 # query/verify commands, and the raw-text ingest command. Each module
 # reuses the cli_ingest plumbing and imports corpus_kb.cli nowhere, so
 # these imports stay acyclic.
-from corpus_kb.cli_graph import register as register_graph_commands  # noqa: E402
-from corpus_kb.cli_graph_hops import register as register_graph_hops_commands  # noqa: E402
-from corpus_kb.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
-from corpus_kb.cli_query import register as register_query_commands  # noqa: E402
-from corpus_kb.cli_quickstart import register as register_quickstart  # noqa: E402
+from corpus_kb.cli.cli_graph import register as register_graph_commands  # noqa: E402
+from corpus_kb.cli.cli_graph_hops import register as register_graph_hops_commands  # noqa: E402
+from corpus_kb.cli.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
+from corpus_kb.cli.cli_query import register as register_query_commands  # noqa: E402
+from corpus_kb.cli.cli_quickstart import register as register_quickstart  # noqa: E402
 
 register_graph_commands(app)
 register_graph_hops_commands(app)
@@ -153,13 +153,13 @@ register_quickstart(app)
 
 # Sample-corpus lifecycle command (UX program Wave 6, quickstart family):
 # cli_demo_kb imports corpus_kb.cli nowhere, so this import stays acyclic.
-from corpus_kb.cli_demo_kb import register as register_demo_kb  # noqa: E402
+from corpus_kb.cli.cli_demo_kb import register as register_demo_kb  # noqa: E402
 
 register_demo_kb(app)
 
 # Storage-portability migration front door (issue #127): cli_migrate
 # imports corpus_kb.cli nowhere, so this import stays acyclic.
-from corpus_kb.cli_migrate import register as register_migrate_data  # noqa: E402
+from corpus_kb.cli.cli_migrate import register as register_migrate_data  # noqa: E402
 
 register_migrate_data(app)
 
@@ -308,7 +308,7 @@ app.add_typer(release_app, name="release")
 # UX Wave 5 offline eval (a lifecycle command family, NOT a catalogue
 # operation): cli_eval imports corpus_kb.cli nowhere, so this import
 # stays acyclic.
-from corpus_kb.cli_eval import eval_app  # noqa: E402
+from corpus_kb.cli.cli_eval import eval_app  # noqa: E402
 
 app.add_typer(eval_app, name="eval")
 

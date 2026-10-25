@@ -12,7 +12,7 @@ from uuid import UUID
 
 import typer
 
-from corpus_kb.cli_support import _pid, _run_async, _tenant, wired_pool
+from corpus_kb.cli.cli_support import _pid, _run_async, _tenant, wired_pool
 
 if TYPE_CHECKING:
     from corpus_kb.projections.research._embed import ResearchEmbedder

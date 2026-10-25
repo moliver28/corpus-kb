@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
-from corpus_kb.cli_ingest_views import (
+from corpus_kb.cli.cli_ingest_views import (
     print_ingest_result,
     print_reembed_summary,
     print_status_report,

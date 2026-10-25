@@ -187,7 +187,7 @@ def _forbid_input(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _capture_cycle_coroutine(monkeypatch: pytest.MonkeyPatch) -> list[tuple[object, ...]]:
     """Stub cli_research._cycle_coroutine; record each call's positional args."""
-    import corpus_kb.cli_research
+    import corpus_kb.cli.cli_research
 
     calls: list[tuple[object, ...]] = []
 
@@ -199,7 +199,7 @@ def _capture_cycle_coroutine(monkeypatch: pytest.MonkeyPatch) -> list[tuple[obje
 
         return _run()
 
-    monkeypatch.setattr(corpus_kb.cli_research, "_cycle_coroutine", _factory)
+    monkeypatch.setattr(corpus_kb.cli.cli_research, "_cycle_coroutine", _factory)
     return calls
 
 

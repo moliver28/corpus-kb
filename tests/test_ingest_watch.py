@@ -24,7 +24,7 @@ import pytest
 from typer.testing import CliRunner
 
 from corpus_kb.cli import app
-from corpus_kb.cli_ingest import _resolve_files
+from corpus_kb.cli.cli_ingest import _resolve_files
 from corpus_kb.ingest_watch import (
     WatchOptions,
     scan_watch_dir,
@@ -251,7 +251,7 @@ def test_watch_postgres_error_at_startup_exits_3(
     async def _open(_cfg: dict[str, object]) -> object:
         raise asyncpg.PostgresError("password authentication failed for user")
 
-    monkeypatch.setattr("corpus_kb.cli_ingest._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_ingest._open_pool", _open)
     result = runner.invoke(app, ["ingest", str(note), "--watch"])
     assert result.exit_code == 3, result.output
     assert "cannot reach the database" in result.output

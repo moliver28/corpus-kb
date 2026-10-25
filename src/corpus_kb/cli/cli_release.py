@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import typer
 
-from corpus_kb.cli_release_support import (
+from corpus_kb.cli.cli_release_support import (
     _finish,
     _print_assess,
     _print_review_packet,
@@ -68,7 +68,7 @@ def release_assess_cmd(
     async def _run() -> int:
         import json
 
-        from corpus_kb.cli_store import wired_store
+        from corpus_kb.cli.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
 
         async with wired_store() as wired:
@@ -107,7 +107,7 @@ def release_request_cmd(
     async def _run() -> int:
         import json
 
-        from corpus_kb.cli_store import wired_store
+        from corpus_kb.cli.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
         from corpus_kb.research import guide_copy
 
@@ -152,7 +152,7 @@ def release_review_cmd(
     async def _run() -> int:
         import json
 
-        from corpus_kb.cli_store import wired_store
+        from corpus_kb.cli.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
 
         async with wired_store() as wired:
@@ -209,7 +209,7 @@ def release_status_cmd(
     async def _run() -> int:
         import json
 
-        from corpus_kb.cli_store import wired_store
+        from corpus_kb.cli.cli_store import wired_store
         from corpus_kb.handlers import release_handlers
 
         async with wired_store() as wired:

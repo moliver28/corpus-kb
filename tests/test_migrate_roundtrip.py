@@ -347,7 +347,7 @@ class TestDigestForms:
 
 class TestResolveDsns:
     def test_duckdb_target_uses_configured_postgres(self) -> None:
-        from corpus_kb.cli_migrate import _resolve_dsns
+        from corpus_kb.cli.cli_migrate import _resolve_dsns
 
         direction, src, dst = _resolve_dsns(
             "", "duckdb:///C:/data/x.duckdb", "postgresql://u:p@h:5432/corpus_kb"
@@ -359,7 +359,7 @@ class TestResolveDsns:
         )
 
     def test_postgres_target_requires_duckdb_source(self) -> None:
-        from corpus_kb.cli_migrate import _resolve_dsns
+        from corpus_kb.cli.cli_migrate import _resolve_dsns
 
         with pytest.raises(ConfigError, match="--from"):
             _resolve_dsns("", "postgresql://u:p@h/corpus_kb", "")
@@ -373,13 +373,13 @@ class TestResolveDsns:
         )
 
     def test_unknown_target_rejected(self) -> None:
-        from corpus_kb.cli_migrate import _resolve_dsns
+        from corpus_kb.cli.cli_migrate import _resolve_dsns
 
         with pytest.raises(ConfigError, match="--to"):
             _resolve_dsns("", "mysql://nope", "")
 
     def test_duckdb_source_rejected_for_duckdb_target(self) -> None:
-        from corpus_kb.cli_migrate import _resolve_dsns
+        from corpus_kb.cli.cli_migrate import _resolve_dsns
 
         with pytest.raises(ConfigError, match="Postgres"):
             _resolve_dsns("duckdb:///C:/src.duckdb", "duckdb:///C:/dst.duckdb", "pg://x")

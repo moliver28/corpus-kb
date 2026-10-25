@@ -13,7 +13,7 @@ from typing import cast
 
 import typer
 
-from corpus_kb.cli_support import _pid, _run_async, _tenant, cast_dict, cast_list, wired_pool
+from corpus_kb.cli.cli_support import _pid, _run_async, _tenant, cast_dict, cast_list, wired_pool
 
 
 def research_report(

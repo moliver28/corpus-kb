@@ -379,7 +379,7 @@ def _write_cli_config(tmp_path: Path, dsn: str) -> Path:
 
 def _use(monkeypatch: pytest.MonkeyPatch, stack: FakeStack) -> None:
     """Swap build_deps for fakes, but keep the REAL config write-back."""
-    import corpus_kb.cli_quickstart as cli_qs
+    import corpus_kb.cli.cli_quickstart as cli_qs
     from corpus_kb._setup.config_writeback import config_write_target, write_connection_string
 
     def factory(config: dict[str, object]) -> QuickstartDeps:
@@ -489,7 +489,7 @@ def test_cli_quickstart_registered_in_help() -> None:
 def test_real_build_deps_wires_shared_modules() -> None:
     """The real factory wires the shared db_provision/schema_apply paths."""
     from corpus_kb._setup.db_provision import ensure_role_and_database
-    from corpus_kb.cli_quickstart import build_deps
+    from corpus_kb.cli.cli_quickstart import build_deps
 
     deps = build_deps(dict(CONFIG))
     assert deps.provision is ensure_role_and_database

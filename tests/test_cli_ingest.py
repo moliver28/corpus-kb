@@ -63,7 +63,7 @@ def _patch_pool(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
     async def _open(_cfg: dict[str, object]) -> _FakePool:
         return pool
 
-    monkeypatch.setattr("corpus_kb.cli_ingest._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_ingest._open_pool", _open)
     return pool
 
 
@@ -378,7 +378,7 @@ def test_cli_ingest_exit_3_on_postgres_error(
     async def _open(_cfg: dict[str, object]) -> object:
         raise _FakePostgresError("password authentication failed for user")
 
-    monkeypatch.setattr("corpus_kb.cli_ingest._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_ingest._open_pool", _open)
     result = runner.invoke(app, ["ingest", str(file)])
     assert result.exit_code == 3, result.output
     assert "cannot reach the database" in result.output

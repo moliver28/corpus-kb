@@ -191,7 +191,7 @@ async def execute_run(
     """The release transition's body (pure move from cli_release.execute)."""
     import json
 
-    from corpus_kb.cli_store import wired_store
+    from corpus_kb.cli.cli_store import wired_store
     from corpus_kb.handlers import release_handlers
 
     pairs = _waiver_pairs(list(waive or []))

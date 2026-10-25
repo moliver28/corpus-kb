@@ -210,7 +210,7 @@ def test_demo_kb_command_missing_corpus_exits_one(
 ) -> None:
     import typer
 
-    from corpus_kb import cli_demo_kb
+    from corpus_kb.cli import cli_demo_kb
 
     original = demo_kb.DEMO_KB_ROOT
     demo_kb.DEMO_KB_ROOT = tmp_path / "absent"

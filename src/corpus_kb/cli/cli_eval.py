@@ -27,7 +27,7 @@ import typer
 
 # Reuse the ingest front door's shared plumbing (same honest-sync rule);
 # cli_ingest imports corpus_kb.cli only lazily, so this import is acyclic.
-from corpus_kb.cli_ingest import _load_config, _open_pool, _run_sync
+from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
 from corpus_kb.eval.golden import GoldenRecord, golden_summary
 
 EXIT_OK = 0
@@ -118,7 +118,7 @@ GROUP BY cr.code_id, cr.name, cr.brief_definition
 
 
 async def _build_from_assignments(out: Path, project: str | None) -> int:
-    from corpus_kb.cli_support import _tenant
+    from corpus_kb.cli.cli_support import _tenant
     from corpus_kb.eval.golden import build_golden_from_assignments
     from corpus_kb.storage.tenant_conn import tenant_connection
 
