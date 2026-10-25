@@ -106,9 +106,13 @@ async def test_ice_cream_belief_arc(pg_pool: Any, span_extractor: None) -> None:
     assert early["profile"] is None
     assert early["strategy_basis"] in {"profile", "config", "detection", "default"}
 
-    # The arc is about TIME: the revision must read as strictly later,
-    # so the two ingests never share a clock tick (Windows tick ~15 ms).
-    await asyncio.sleep(0.05)
+    # The arc is about TIME: the revision must read as strictly later.
+    # Gate A calls two claims within CLOCK_SKEW_SECONDS (1.0 s) of each
+    # other simultaneous, which would send the pair to Gate B as a
+    # conflict. A gap past the skew window makes the revision verdict a
+    # property of the cascade rules, not of how fast the second embed
+    # happens to run.
+    await asyncio.sleep(1.1)
     import os as _os
 
     if _os.environ.get("ARC_DEBUG"):
