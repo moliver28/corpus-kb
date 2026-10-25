@@ -10,6 +10,8 @@ Single source tree; **all new code goes in `src/corpus_kb/`**. Commands below ru
 - `src/corpus_kb/migrations/` — idempotent SQL migrations
 - `scripts/` — backward-compat shims
 - `src/corpus_kb/_setup/` — installer, migration runner, config validator
+- `ui_src/` — TypeScript SPA source (React 19 + `antd` 6, `pnpm`)
+- `src/corpus_kb/ui_dist/` — built SPA assets served at `/app/`
 
 ## Quick Reference
 
@@ -46,9 +48,9 @@ Build: setuptools (not hatch/poetry), packages in `src/`. Lint/type-check tools:
 
 Gate order: lint (`ruff check src/ tests/`, no deps) → type-check (`pyright src/`, project deps installed) → validate-configs (command above) → test (ubuntu/windows/macos: Ollama + `python -m pytest tests/` from repo root).
 
-Ollama install per OS (exact commands + rationale in ci.yml comments): Ubuntu official install script (reliable); macOS `brew install ollama` (install script fails on runners); Windows `OllamaSetup.exe /S` + 120s timeout + `continue-on-error: true` (installer often hangs → degraded zero-vector mode).
+Ollama install per OS (exact commands + rationale in ci.yml comments). Ubuntu: official install script (reliable). macOS: `brew install ollama` (install script fails on runners). Windows: `OllamaSetup.exe /S` + 120s timeout + `continue-on-error: true` (installer often hangs → degraded zero-vector mode).
 
-Windows fixes: `python-magic-bin` (libmagic DLL for unstructured's `magic`; fixes access-violation crash); `continue-on-error` on Ollama install/pull/verify; `timeout-minutes: 10` on tests (hung Ollama connects).
+Windows fixes: `python-magic-bin` (libmagic DLL for the `magic` module in unstructured; fixes access-violation crash). `continue-on-error` on Ollama install/pull/verify. `timeout-minutes: 10` on tests (hung Ollama connects).
 
 ## Repo Structure & Ownership
 
@@ -80,6 +82,7 @@ Absolute package imports everywhere under `src/corpus_kb/` (e.g. `from corpus_kb
 - Internal models are `@dataclass`, not `pydantic.BaseModel` (`utils/models.py`); exception: `Ontology` (`ontology.py`, Pydantic validation).
 - Every file: `from __future__ import annotations`. **No `type: ignore`. No `Any` where a real type works.** Python 3.11+ only.
 - 250-line soft limit on source files — split past it.
+- TypeScript (`ui_src/`) mirrors these rules: 250-line soft limit, no `any`, no `@ts-ignore`. Plain English strings live in `ui_src/src/strings/en.json`; `pytest -m ste` checks them.
 
 ## Test Conventions
 
@@ -109,11 +112,11 @@ Definitive 13-variable table: `docs/ADMIN.md`; code truth: `corpus_kb.config.KNO
 
 Contract: abstract `GraphStore` in `storage/graph_store.py`; subclass it and implement all `@abstractmethod` methods (all async). Reference implementations: `PostgresGraphStore` (asyncpg + RLS, recursive CTE BFS), `AgeGraphStore` (Apache AGE openCypher `MATCH` when `graph.backend: age`). **Do not modify MCP graph tools** — they call the interface, not the implementation.
 
-`PostgresGraphStore`: transactional writes via `@asynccontextmanager transaction()` (all graph writes atomic); provenance tables (documents, chunks) with FK enforcement; batch ops (`batch_add_entities`, `batch_add_relations`) with application-level validation; relation cap `MAX_RELATIONS_PER_CHUNK = 10`.
+`PostgresGraphStore`: transactional writes via `@asynccontextmanager transaction()` (all graph writes atomic). Provenance tables (documents, chunks) with FK enforcement. Batch ops (`batch_add_entities`, `batch_add_relations`) with application-level validation. Relation cap `MAX_RELATIONS_PER_CHUNK = 10`.
 
 ## Branch & Commit Conventions
 
-- Branches (gitflow, enforced on PRs by `.github/workflows/branch-validate.yml`): `(feature|bugfix|hotfix|docs|chore|release)/<slug>`, slug = alphanumerics + hyphens (`[-a-zA-Z0-9]+`; no dots, no underscores); `renovate/*` (dependency bot, `.github/renovate.jsonc`) allowed with any slug. Protected: `main`, `master`, `develop`.
+- Branches (gitflow, enforced on PRs by `.github/workflows/branch-validate.yml`): `(feature|bugfix|hotfix|docs|chore|release)/<slug>`. Slug = alphanumeric characters + hyphens (`[-a-zA-Z0-9]+`; no dots, no underscores). `renovate/*` (dependency bot, `.github/renovate.jsonc`) allowed with any slug. Protected: `main`, `master`, `develop`.
 - Commits: conventional prefixes (`feat:`, `fix:`, `chore:`, `docs:`, …), capitalized, 10–500 chars. `commit-validate.yml` checks each line individually — use single-line messages, or prefix every body line.
 - Safe prefixes: `feat|fix|docs|chore|test|refactor|perf`. Avoid `build:`, `ci:`, `style:`.
 
@@ -131,6 +134,7 @@ Defined in [docs/research/harness-zero-drift-program.md](docs/research/harness-z
 8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen`. CI runs the same targets — local bypasses get caught.
 9. **Deterministic output.** Query/search results stably ordered with tiebreakers; harnesses must be able to snapshot them.
 10. **Every new gate needs three things:** a `poe` target, a CI job calling it, and a map row (+ a line here). A local-only gate is not a gate.
+11. **UI SPA gates (D17).** `ui-lint`, `ui-test`, `ui-build` (includes the bundle budget), `ui-licenses`, `ui-manifest` (wired into `poe gen`). Each needs a `poe` target, a CI job, and a map row per rule 10.
 
 ## Known Issues (check open GitHub issues before fixing)
 
