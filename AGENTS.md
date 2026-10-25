@@ -1,152 +1,100 @@
 # Corpus-KB Agent Instructions
 
-## Repository Layout (CRITICAL — read first)
+## Repository Layout (read first)
 
-These instructions apply at the repository root (the directory containing this file — the canonical checkout location is machine-specific).
-Corpus-KB now uses a **single source tree**:
+Single source tree; **all new code goes in `src/corpus_kb/`**. Commands below run from the repo root.
 
-- **`src/corpus_kb/`** — active Python package. **All new code goes here.**
-- **`tests/`** — root-level pytest suite.
-- **`config.yaml`** — root runtime config.
-- **`src/corpus_kb/config.yaml`** — packaged default config.
-- **`src/corpus_kb/migrations/`** — idempotent SQL migrations.
-- **`scripts/`** — root-level shims for backward compatibility.
-- **`src/corpus_kb/_setup/`** — installer, migration runner, and config validator.
-
-All commands below assume you are at the **repo root** unless noted otherwise.
+- `src/corpus_kb/` — active Python package (packaged default config at `src/corpus_kb/config.yaml`)
+- `tests/` — root-level pytest suite
+- `config.yaml` — root runtime config
+- `src/corpus_kb/migrations/` — idempotent SQL migrations
+- `scripts/` — backward-compat shims
+- `src/corpus_kb/_setup/` — installer, migration runner, config validator
 
 ## Quick Reference
 
 ```bash
-# Install (editable)
-pip install -e .
-pip install -e ".[dev]"
-
-# Lint
-ruff check src/ tests/
+pip install -e ".[dev]"                          # install (editable)
+ruff check src/ tests/                           # lint (ruff — NOT flake8/black)
 ruff format --check src/ tests/
-
-# Type-check (pyright — NOT mypy)
-# Uses pyrightconfig.json in the repo root (basic mode, not strict)
-pyright src/
-
-# Validate MCP configs before pushing
-python src/corpus_kb/_setup/validate_configs.py
-
-# Schema parity across both migration sets (sqlglot, static-only; poe schema-parity)
-python scripts/schema_parity_gate.py
-
-# Profile validation gate (schema + strategy/template/seeds cross-refs; poe validate-profiles)
-python src/corpus_kb/_setup/validate_profiles.py
-
-# Tests (Ollama must be running with nomic-embed-text pulled)
-python -m pytest tests/ -v --tb=short --durations=10
-
-# Coverage
-pytest --cov=corpus_kb --cov-report=term-missing
+pyright src/                                     # type-check (pyright — NOT mypy; basic mode per pyrightconfig.json)
+python src/corpus_kb/_setup/validate_configs.py  # validate MCP configs pre-push
+python scripts/schema_parity_gate.py             # schema parity, both migration sets (sqlglot, static; poe schema-parity)
+python src/corpus_kb/_setup/validate_profiles.py # profile gate: schema + strategy/template/seeds cross-refs (poe validate-profiles)
+python -m pytest tests/ -v --tb=short --durations=10   # tests (Ollama up, nomic-embed-text pulled)
+pytest --cov=corpus_kb --cov-report=term-missing      # coverage
 ```
 
-## CLI Commands
+## CLI
 
-The `corpus-kb` entry point now routes through `corpus_kb.cli:app`:
+`corpus-kb` → `corpus_kb.cli:app`:
 
 ```bash
-# One-line setup: docker compose, database, migrations, models
-corpus-kb setup --dry-run   # preview
+corpus-kb setup --dry-run   # preview (docker compose, database, migrations, models)
 corpus-kb setup             # apply
-
-# Read-only diagnostics
-corpus-kb doctor
-
-# Start the server
+corpus-kb doctor            # read-only diagnostics
 corpus-kb start --transport http --port 8010
 ```
 
-The old root `scripts/install.py` is a deprecation shim. It warns and delegates to `corpus_kb._setup.install`.
+Old `scripts/install.py` is a deprecation shim delegating to `corpus_kb._setup.install`.
 
-## Toolchain (non-standard choices)
+## Toolchain
 
-- **Linter/formatter**: `ruff` (not flake8, not black). Commands above.
-- **Type checker**: `pyright` (not mypy). Basic mode with specific warnings downgraded (see `pyrightconfig.json`). Previously strict mode but 147 pre-existing type errors blocked CI; switched to basic in PR #28.
-- **Build backend**: setuptools (not hatch/poetry). Packages found in `src/`.
-- **Entry point**: `corpus-kb` maps to `corpus_kb.cli:app`.
+Build: setuptools (not hatch/poetry), packages in `src/`. Lint/type-check tools: see Quick Reference.
 
-## CI Pipeline
+## CI (`.github/workflows/ci.yml`)
 
-**Workflow file**: `.github/workflows/ci.yml` (at repo root)
+Gate order: lint (`ruff check src/ tests/`, no deps) → type-check (`pyright src/`, project deps installed) → validate-configs (command above) → test (ubuntu/windows/macos: Ollama + `python -m pytest tests/` from repo root).
 
-**Gate order**: `lint → type-check → validate-configs → test (3 OSes)`
+Ollama install per OS (exact commands + rationale in ci.yml comments): Ubuntu official install script (reliable); macOS `brew install ollama` (install script fails on runners); Windows `OllamaSetup.exe /S` + 120s timeout + `continue-on-error: true` (installer often hangs → degraded zero-vector mode).
 
-| Job | Runner | Key Details |
-|-----|--------|-------------|
-| lint | ubuntu-latest | `ruff check src/ tests/` — fast, no deps |
-| type-check | ubuntu-latest | `pyright src/` from repo root, project deps installed |
-| validate-configs | ubuntu-latest | `python src/corpus_kb/_setup/validate_configs.py` |
-| test | ubuntu/windows/macos | Ollama + `python -m pytest tests/` from repo root |
-
-**Ollama install strategy per OS** (see ci.yml comments for full rationale):
-- **Ubuntu**: `curl -fsSL https://ollama.com/install.sh | sh` (works reliably)
-- **macOS**: `brew install ollama` (curl\|sh fails on macOS runners — exit code 1)
-- **Windows**: `OllamaSetup.exe /S` with 120s timeout + `continue-on-error: true`. The silent installer often hangs on GitHub Actions Windows runners. Tests then fall back to degraded mode with zero-vector embeddings.
-
-**Windows-specific fixes** (documented in ci.yml comments):
-- `python-magic-bin` installed to fix "Windows fatal exception: access violation" from the `magic` library (unstructured dependency needs libmagic DLL)
-- `continue-on-error: true` on Ollama install/pull/verify steps so tests run in degraded mode when Ollama is unavailable
-- `timeout-minutes: 10` on test step prevents hung Ollama connection attempts
+Windows fixes: `python-magic-bin` (libmagic DLL for unstructured's `magic`; fixes access-violation crash); `continue-on-error` on Ollama install/pull/verify; `timeout-minutes: 10` on tests (hung Ollama connects).
 
 ## Repo Structure & Ownership
 
-All active code is under `src/corpus_kb/`:
+All active code under `src/corpus_kb/`:
 
-- `src/corpus_kb/cli.py` — Typer CLI (`setup`, `doctor`, `start`).
-- `src/corpus_kb/server_wiring.py` — Async startup: HTTP, socket, MCP, projections.
-- `src/corpus_kb/config.py` — Config loader with env overrides and packaged default fallback.
-- `src/corpus_kb/ontology.py` — Ontology loader and Pydantic model.
-- `src/corpus_kb/partitioning.py` — Unstructured partition wrapper.
-- `src/corpus_kb/chunking/` — File type detection → chunker dispatch. Strategy pattern: CodeChunker (tree-sitter AST), MarkdownChunker (heading boundaries), TextChunker (semantic gap detection).
-- `src/corpus_kb/storage/` — The `SqlGateway` seam (`gateway.py`: `PostgresGateway` thin wrapper, `DuckDbGateway` single-writer file driver) plus graph stores `PostgresGraphStore` (asyncpg + RLS), `AgeGraphStore`, `DuckDbGraphStore`, `LlamaIndexPostgresBackend`, and `RagBackend` Protocol. Engine choice is `database.backend` (`postgres` default, `duckdb` local single-user); guide at `docs/STORAGE-BACKENDS.md`, schema mirrors in `migrations_duckdb/`.
-- `src/corpus_kb/rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `Reranker`. Hybrid lexical+vector search is SQL-side: `corpus.rrf_fusion` (migration 006), orchestrated by `handlers/query_handler.py` (`QueryHandler`) and `research/retrieval.py`. There is no `HybridSearcher` class. `embedders/late_chunk.py` + `late_chunk_core.py` implement late chunking (one full-document forward pass, chunk-span pooling). `embedder_selection.py` gates it (`embedding.late_chunking` + `latechunk` extra + `qwen3-embedding*` model) with an honest pooled fallback. The fallback is recorded as `embedding_mode`/`embedding_note` in the ingest result.
-- `src/corpus_kb/ingestion/` — Pluggable ingestion strategy registry: the ONE pipeline seam. `base.py` holds `ChunkPlan` and `validate_plan` conformance. `registry.py` resolves explicit > config map > detection > default. `strategies/`: `default`, `transcript`, `pptx_structure` (slide-level deck chunks), `web_structure` (heading-section page chunks).
-- `src/corpus_kb/web/` — Website ingestion front end: `fetch.py` (httpx + robots.txt + size/content-type caps + same-domain BFS crawl), `metadata.py` (OG/Twitter/JSON-LD/canonical extraction), `sections.py` (element→section chunking), `settings.py` (`web:` config → `WebFetchConfig`). Entry: `tools/ingest_url_tools.py` (`ingest_url`, surfaces: MCP/HTTP/socket/CLI `ingest-url`).
-- `src/corpus_kb/tools/` — MCP tools. `ingest_common.py` is the pipeline orchestrator (partition → chunk → embed → extract → store). `ingest_tools.py` is the thin MCP tool wrapper.
-- `src/corpus_kb/extraction/` — Pluggable ontology extractor: `protocol.py`, `regex_backend.py`, `langextract_backend.py`, `pgml_backend.py`, `bert_backend.py`.
-- `src/corpus_kb/_setup/` — `install.py` (full-stack installer), `migrate.py`, `validate_configs.py`, `check_ci.py`.
-- `src/corpus_kb/migrations/` — SQL migration files (`001_corpus_schema.sql` through `006_rrf_fusion.sql`).
-- `src/corpus_kb/config.yaml` — Packaged default config.
-- `config.yaml` — Root runtime config.
-- `config/ontology.yaml` — Entity/relation type vocabulary.
-- `mcp-configs/` — Per-editor MCP config files (`claude-code.json`, `cursor.json`, `codex.json`, all using the `"mcpServers"` legacy key). The OpenCode editor config is the root `opencode.json`, which uses the `"mcp"` key (new format). **Do not** use `mcpServers` in OpenCode format. These configs launch the MCP stdio server (`src/corpus_kb/mcp_server.py`, `corpus-kb --transport stdio`); `validate_configs.py` checks their internal consistency.
+- `cli.py` — Typer CLI (commands above).
+- `server_wiring.py` — async startup: HTTP, socket, MCP, projections.
+- `config.py` — config loader, env overrides, packaged-default fallback.
+- `ontology.py` — ontology loader + Pydantic model.
+- `partitioning.py` — unstructured partition wrapper.
+- `chunking/` — file-type detection → chunker dispatch (strategy pattern): CodeChunker (tree-sitter AST), MarkdownChunker (heading boundaries), TextChunker (semantic gap detection).
+- `storage/` — `SqlGateway` seam (`gateway.py`: `PostgresGateway` thin wrapper, `DuckDbGateway` single-writer file driver); graph stores `PostgresGraphStore` (asyncpg + RLS), `AgeGraphStore`, `DuckDbGraphStore`, `LlamaIndexPostgresBackend`, `RagBackend` Protocol. Engine = `database.backend` (`postgres` default, `duckdb` local single-user); guide `docs/STORAGE-BACKENDS.md`, DuckDB mirrors in `migrations_duckdb/`.
+- `rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `Reranker`. Hybrid lexical+vector search is SQL-side (`corpus.rrf_fusion`, migration 006) via `handlers/query_handler.py` (`QueryHandler`) + `research/retrieval.py`; no `HybridSearcher` class. Late chunking: `embedders/late_chunk.py` + `late_chunk_core.py` (full-doc forward pass, chunk-span pooling), gated by `embedder_selection.py` (`embedding.late_chunking` + `latechunk` extra + `qwen3-embedding*` model); pooled fallback recorded as `embedding_mode`/`embedding_note` in the ingest result.
+- `ingestion/` — pluggable strategy registry, the ONE pipeline seam: `base.py` (`ChunkPlan`, `validate_plan`), `registry.py` (explicit > config map > detection > default), `strategies/` (`default`, `transcript`, `pptx_structure` slide-level, `web_structure` heading-section).
+- `web/` — website ingestion: `fetch.py` (httpx + robots.txt + size/content-type caps + same-domain BFS crawl), `metadata.py` (OG/Twitter/JSON-LD/canonical), `sections.py` (element→section chunking), `settings.py` (`web:` config → `WebFetchConfig`). Entry: `tools/ingest_url_tools.py` (`ingest_url`; MCP/HTTP/socket/CLI `ingest-url`).
+- `tools/` — MCP tools; `ingest_common.py` = pipeline orchestrator (partition → chunk → embed → extract → store); `ingest_tools.py` = thin MCP wrapper.
+- `extraction/` — pluggable ontology extractor: `protocol.py`, `regex_backend.py`, `langextract_backend.py`, `pgml_backend.py`, `bert_backend.py`.
+- `_setup/` — `install.py` (full-stack installer), `migrate.py`, `validate_configs.py`, `check_ci.py`.
+- `migrations/` — `001_corpus_schema.sql` … `006_rrf_fusion.sql`.
+- `config/ontology.yaml` — entity/relation type vocabulary.
+- `mcp-configs/` — per-editor MCP configs (`claude-code.json`, `cursor.json`, `codex.json`, all legacy `"mcpServers"` key). Root `opencode.json` (OpenCode) uses the `"mcp"` key — **never `mcpServers` in OpenCode format**. Configs launch the MCP stdio server (`mcp_server.py`, `corpus-kb --transport stdio`); `validate_configs.py` checks their consistency.
 
 ## Import Convention (IMPORTANT)
 
-All modules under `src/corpus_kb/` use **absolute package imports** (e.g., `from corpus_kb.config import load_config`, `from corpus_kb.storage.graph_store import PostgresGraphStore`).
-
-**Tests** under `tests/` use absolute `from corpus_kb.xxx` imports because pytest top-level test modules cannot use relative imports. This is intentional and correct.
-
-**No `from src.` imports remain.** The old dual-tree special cases were removed when the package was consolidated under `src/corpus_kb/`. Everything is imported as `corpus_kb.*`.
+Absolute package imports everywhere under `src/corpus_kb/` (e.g. `from corpus_kb.config import load_config`). Tests use absolute `from corpus_kb.xxx` (pytest top-level modules cannot use relative imports — intentional). No `from src.` imports — everything is `corpus_kb.*`.
 
 ## Data Model Conventions
 
-- Internal models are `@dataclass`, not `pydantic.BaseModel` (see `src/corpus_kb/utils/models.py`). Exception: `Ontology` in `src/corpus_kb/ontology.py` uses Pydantic for validation.
-- Every file uses `from __future__ import annotations`.
-- **No `type: ignore`.** **No `Any` where a real type works.** Python 3.11+ only.
-- 250-line soft limit on source files. If a module grows past it, split it.
+- Internal models are `@dataclass`, not `pydantic.BaseModel` (`utils/models.py`); exception: `Ontology` (`ontology.py`, Pydantic validation).
+- Every file: `from __future__ import annotations`. **No `type: ignore`. No `Any` where a real type works.** Python 3.11+ only.
+- 250-line soft limit on source files — split past it.
 
 ## Test Conventions
 
-- TDD for new features. Tests go in `tests/` mirroring `src/corpus_kb/` structure.
-- Integration tests mock Ollama (zero-vector fallback via `OllamaEmbedder` catching `ConnectionError`). Tests degrade gracefully when Ollama is unavailable.
-- Tests need `pip install -e .` (editable install) to resolve imports without `sys.path` hacks.
-- `pytest-asyncio` is a dev dependency. `asyncio_mode = "auto"` is set in `pyproject.toml`.
-- Config validation tests live in `tests/test_validate_configs.py` and import from `src/corpus_kb/_setup.validate_configs` directly.
-- LangExtract fixtures are SHA256-keyed JSONL files in `tests/fixtures/langextract_recorded/` for deterministic CI runs without live LLM calls.
-- `conftest.py` provides `pg_pool` fixture (asyncpg pool for Postgres tests) and `graph_store` fixture. Tests requiring Postgres are marked `@pytest.mark.asyncio`.
+- TDD for new features; `tests/` mirrors `src/corpus_kb/`.
+- Integration tests mock Ollama (`OllamaEmbedder` catching `ConnectionError` → zero-vector fallback); suite degrades gracefully without Ollama.
+- Needs `pip install -e .` (no `sys.path` hacks). `pytest-asyncio` dev dep; `asyncio_mode = "auto"` in `pyproject.toml`.
+- Config-validation tests: `tests/test_validate_configs.py`, importing `src/corpus_kb/_setup.validate_configs` directly.
+- LangExtract fixtures: SHA256-keyed JSONL in `tests/fixtures/langextract_recorded/` (deterministic CI, no live LLM calls).
+- `conftest.py`: `pg_pool` (asyncpg pool) + `graph_store` fixtures; Postgres tests marked `@pytest.mark.asyncio`.
 
-## Environment Variable Overrides
+## Env Var Overrides
 
-These override `config.yaml` values at runtime. Use `corpus_kb.config.load_config()` to get them auto-merged (priority: env var > CLI flag > config.yaml):
+Runtime overrides of `config.yaml`, auto-merged by `corpus_kb.config.load_config()` (priority: env var > CLI flag > config.yaml):
 
-| Variable | Config Key |
+| Variable | Config key |
 |---|---|
 | `CORPUS_KB_DATABASE_URL` | `database.connection_string` |
 | `CORPUS_KB_EMBEDDING_MODEL` | `embedding.model` |
@@ -155,60 +103,43 @@ These override `config.yaml` values at runtime. Use `corpus_kb.config.load_confi
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
-The DEFINITIVE env-var table (13 variables, each with consumed-by) lives in `docs/ADMIN.md`; `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS` is the code truth and `corpus-kb doctor` warns about set-but-unread `CORPUS_KB_*` variables. Dead mappings were removed in the zero-drift W4C config-truth pass (`CORPUS_KB_STORAGE_PATH` used to KeyError the config loader).
+Definitive 13-variable table: `docs/ADMIN.md`; code truth: `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS`; `corpus-kb doctor` warns on set-but-unread `CORPUS_KB_*` vars. Every `CORPUS_KB_*` var must be consumed — no dead mappings. Ingestion/extraction config is `config.yaml` only: `ingestion.strategies`, `ingestion.default`, `extraction.backend`, `extraction.gliner.*`, `search.exclude_degraded`, `search.qa_context_in_fts` — no env override; guide `docs/INGESTION-STRATEGIES.md`.
 
-No new environment variables were introduced by the ingestion-rigor program. Ingestion-strategy and extraction config lives in `config.yaml` only — `ingestion.strategies`, `ingestion.default`, `extraction.backend`, `extraction.gliner.*`, `search.exclude_degraded`, `search.qa_context_in_fts` — with no env override; authoring guide at `docs/INGESTION-STRATEGIES.md`.
+## GraphStore Pattern (new backends)
 
-## GraphStore Pattern (for new backends)
+Contract: abstract `GraphStore` in `storage/graph_store.py`; subclass it and implement all `@abstractmethod` methods (all async). Reference implementations: `PostgresGraphStore` (asyncpg + RLS, recursive CTE BFS), `AgeGraphStore` (Apache AGE openCypher `MATCH` when `graph.backend: age`). **Do not modify MCP graph tools** — they call the interface, not the implementation.
 
-The abstract `GraphStore` class in `src/corpus_kb/storage/graph_store.py` is the contract for all graph backends. To add a new backend:
-
-1. Subclass `GraphStore` and implement all `@abstractmethod` methods (all async).
-2. The `PostgresGraphStore` implementation uses asyncpg with RLS and recursive CTE BFS.
-3. `AgeGraphStore` uses Apache AGE openCypher `MATCH` when `graph.backend: age` is set.
-4. **Do not** modify MCP graph tools — they call the interface, not the implementation.
-
-The `PostgresGraphStore` implementation includes:
-- Transactional writes via `@asynccontextmanager transaction()` — all graph writes (document, chunks, entities, relations) are atomic
-- Provenance tables (documents, chunks) with FK enforcement
-- Batch operations (`batch_add_entities`, `batch_add_relations`) with application-level validation
-- Relation cap (`MAX_RELATIONS_PER_CHUNK = 10`) to prevent combinatorial explosion
+`PostgresGraphStore`: transactional writes via `@asynccontextmanager transaction()` (all graph writes atomic); provenance tables (documents, chunks) with FK enforcement; batch ops (`batch_add_entities`, `batch_add_relations`) with application-level validation; relation cap `MAX_RELATIONS_PER_CHUNK = 10`.
 
 ## Branch & Commit Conventions
 
-- Branches: `feature/*`, `bugfix/*`, `hotfix/*` (gitflow). Protected branches: `main`, `master`, `develop`.
-- Commit messages: conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, etc.), must start with a capital letter, 10–500 chars.
-- **Commit message validator** (`.github/workflows/commit-validate.yml`) checks each line individually. Use single-line commit messages. Or make every body line start with a conventional commit prefix.
-- Safe prefixes: `feat|fix|docs|chore|test|refactor|perf`. Avoid `build:`, `ci:`, and `style:`.
+- Branches (gitflow, enforced on PRs by `.github/workflows/branch-validate.yml`): `(feature|bugfix|hotfix|docs|chore|release)/<slug>`, slug = alphanumerics + hyphens (`[-a-zA-Z0-9]+`; no dots, no underscores); `renovate/*` (dependency bot, `.github/renovate.jsonc`) allowed with any slug. Protected: `main`, `master`, `develop`.
+- Commits: conventional prefixes (`feat:`, `fix:`, `chore:`, `docs:`, …), capitalized, 10–500 chars. `commit-validate.yml` checks each line individually — use single-line messages, or prefix every body line.
+- Safe prefixes: `feat|fix|docs|chore|test|refactor|perf`. Avoid `build:`, `ci:`, `style:`.
 
 ## Zero-Drift Program Standards (BINDING for all future work)
 
-The zero-drift program ([docs/research/harness-zero-drift-program.md](docs/research/harness-zero-drift-program.md)) defines binding rules. Any plan, by any agent or human, MUST follow them. CI enforces each rule; the enforcement map is in that document.
+Defined in [docs/research/harness-zero-drift-program.md](docs/research/harness-zero-drift-program.md) (CI enforcement map there). Any plan, by any agent or human, MUST follow them; violating plans are amended before implementation. If a rule blocks legitimate work, change the rule in the program document first — never route around it silently.
 
-1. **One operation, one handler, many surfaces.** Implement the shared handler in `src/corpus_kb/tools/`. Wire CLI, HTTP, socket (and MCP, once Wave 4 lands) as thin adapters to it. Never write a second pipeline for the same operation (the `command_handler` ingest split is the cautionary tale).
-2. **Registry-first updates.** To add or change an operation: update the parity catalogue (`tests/test_surface_parity_deep.py`) and/or `surface_registry.py` FIRST, then the handler, then regenerate (`gen_harness_pack.py`, `cog`). CI regenerates and diffs; a stale artifact fails the PR.
-3. **One envelope per operation family.** Surfaces may only add keys listed in the parity test's explicit `ALLOWED_EXTRA` map. Undeclared envelope keys on one surface fail CI.
-4. **Errors go through the taxonomy.** Raise typed errors from `corpus_kb/errors.py` (Wave 2). One failure class maps to one HTTP status + socket code + CLI exit code. Never add a catch-all `except Exception → 400` route handler.
-5. **Layering is law.** Import direction: `api → tools → handlers → storage`. Enforced by import-linter (Wave 2). No surface module may contain pipeline logic.
-6. **Plain English (ASD-STE100) everywhere user-facing.** Short active sentences, 20 words or fewer. Simple words. No idioms. Applies to error messages, help text, doctor output, docstrings, and docs. Enforced from Wave 5 by Vale (docs) and `pytest -m ste` (Python strings, Flesch-Kincaid grade ≤ 9).
-7. **Size and hygiene gates.** Keep source files at or under the 250-line soft limit (already a repo rule). Gate function complexity with xenon (Wave 3). Keep dead code out with vulture (Wave 3). Keep unused dependencies out with deptry (Wave 3).
-8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen` (Wave 2+). CI runs the same targets. If you bypass them locally, CI will catch it.
-9. **Deterministic output.** Query and search results must be stably ordered. Use tiebreakers (Wave 2). A harness must be able to snapshot results.
-10. **Every new gate needs three things:** a `poe` target, a CI job that calls it, and a map row. Add a line here too. A gate that exists only locally is not a gate.
-
-Plans that violate these rules must be amended before implementation. If a rule blocks legitimate work, change the rule in the program document first. Never route around it silently.
+1. **One operation, one handler, many surfaces.** Shared handler in `src/corpus_kb/tools/`; CLI/HTTP/socket/MCP are thin adapters. Never a second pipeline for the same operation.
+2. **Registry-first updates.** Update the parity catalogue (`tests/test_surface_parity_deep.py`) and/or `surface_registry.py` FIRST, then the handler, then regenerate (`gen_harness_pack.py`, `cog`). CI regenerates and diffs; a stale artifact fails the PR.
+3. **One envelope per operation family.** Surfaces may add only keys in the parity test's explicit `ALLOWED_EXTRA` map; undeclared keys on one surface fail CI.
+4. **Errors go through the taxonomy.** Typed errors from `corpus_kb/errors.py`; one failure class = one HTTP status + socket code + CLI exit code. No catch-all `except Exception → 400` handlers.
+5. **Layering is law.** Import direction `api → tools → handlers → storage`, enforced by import-linter. No pipeline logic in surface modules.
+6. **Plain English (ASD-STE100) everywhere user-facing.** Short active sentences ≤ 20 words, simple words, no idioms — error messages, help text, doctor output, docstrings, docs. Enforced by Vale (docs) + `pytest -m ste` (Python strings, Flesch-Kincaid grade ≤ 9).
+7. **Size and hygiene gates.** Source files ≤ 250-line soft limit; xenon complexity gates, vulture dead-code, deptry unused deps.
+8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen`. CI runs the same targets — local bypasses get caught.
+9. **Deterministic output.** Query/search results stably ordered with tiebreakers; harnesses must be able to snapshot them.
+10. **Every new gate needs three things:** a `poe` target, a CI job calling it, and a map row (+ a line here). A local-only gate is not a gate.
 
 ## Known Issues (check open GitHub issues before fixing)
 
-- **#13 (HIGH BUG)**: ✅ Resolved — ontology pipeline adapted to Postgres. Entity/relation extraction works via `src/corpus_kb/extraction/` with regex, langextract, pgml, and bert backends.
-- **#15/#16 (HIGH/MEDIUM BUG)**: ✅ Resolved — Native bash installer retired. Use the full-stack Python installer at `src/corpus_kb/_setup/install.py`, or the `corpus-kb setup` CLI command (container-first default).
-- **#17 (HIGH FEATURE)**: Zero-data-loss shutdown/restart with transactional ingest. Not yet implemented.
-- **#29 (MEDIUM TASK)**: ✅ Resolved — single-tree layout completed. Package now lives at `src/corpus_kb/` with `corpus_kb.*` absolute imports.
-- **#31 (MEDIUM FEATURE)**: Upgrade NER extraction to BERT/transformer models. Partially implemented via `src/corpus_kb/extraction/bert_backend.py`.
-- **#2 (MEDIUM TASK)**: PyPI publish. Not yet implemented.
+- #17 (HIGH FEATURE) — zero-data-loss shutdown/restart with transactional ingest. Not implemented.
+- #31 (MEDIUM FEATURE) — BERT/transformer NER. Partial via `extraction/bert_backend.py`.
+- #2 (MEDIUM TASK) — PyPI publish. Not implemented.
 
 ## Repository Map
 
-There is no root `codemap.md` today. Per-folder codemaps under `src/corpus_kb/**/codemap.md` have been removed. Use the structure section above and `docs/DEVELOPMENT.md` for orientation.
+No `codemap.md` — orient via the structure section above + `docs/DEVELOPMENT.md`.
 
-Default embedding model: `nomic-embed-text` (768d). Upgradeable to `qwen3-embedding:8b-q8_0` (4096d). PostgresML (`pgml`) also supported for in-database embeddings.
+Default embedding model `nomic-embed-text` (768d); upgradeable to `qwen3-embedding:8b-q8_0` (4096d); PostgresML (`pgml`) for in-database embeddings.
