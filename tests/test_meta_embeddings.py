@@ -101,7 +101,9 @@ async def test_analysis_embed_meta_envelope(monkeypatch: pytest.MonkeyPatch) -> 
             engine.StoredVector("c2", "two", np.array([0.0, 1.0], dtype=np.float32)),
         ]
 
-    async def fake_upsert(pool: Any, tenant: str, rows: list[MetaRow]) -> int:
+    async def fake_upsert(
+        pool: Any, tenant: str, rows: list[MetaRow], *, is_duckdb: bool = False
+    ) -> int:
         return len(rows)
 
     @asynccontextmanager

@@ -91,6 +91,11 @@ class MLExtractor:
             member_entities, member_relations, stats = self._members[0].extract(
                 chunks, ontology, source_document_id
             )
+        except ImportError:
+            # A missing dependency is a typed-error condition, not an
+            # empty success: re-raise so the fallback chain records the
+            # real failure instead of "no candidates".
+            raise
         except Exception as exc:
             merged = _with_notes(
                 merged,

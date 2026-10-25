@@ -98,8 +98,10 @@ def cluster_embeddings(
     min_cluster_size = min_cluster_size_for(n)
 
     umap_mod = import_umap()
+    # n_neighbors must not exceed n-1 (umap truncates with a UserWarning
+    # on small-N corpora; clamping here is the same behavior, silent).
     reducer = umap_mod.UMAP(
-        n_neighbors=UMAP_N_NEIGHBORS,
+        n_neighbors=min(UMAP_N_NEIGHBORS, max(n - 1, 2)),
         n_components=n_components,
         metric=METRIC,
         random_state=random_state,

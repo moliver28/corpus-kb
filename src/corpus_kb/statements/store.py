@@ -24,6 +24,7 @@ INSERT INTO statements (
     valid_at, observed_at, confidence, metadata
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, $12, $13, $14, $15::jsonb)
 ON CONFLICT (tenant_id, statement_hash, chunk_id) DO NOTHING
+RETURNING statement_id
 """
 
 LIST_SQL = """
@@ -71,9 +72,10 @@ class StatementStore:
         model_version: str | None = None,
         prompt_version: str | None = None,
     ) -> int:
-        """Insert atoms write-once; returns rows written (honest count)."""
+        """Insert atoms write-once; returns rows actually inserted."""
         if not atoms:
             return 0
+        written = 0
         async with self._gateway.transaction(self._tenant_id) as tx:
             for atom in atoms:
                 row = statement_row(
@@ -82,7 +84,7 @@ class StatementStore:
                     model_version=model_version,
                     prompt_version=prompt_version,
                 )
-                await tx.execute(
+                inserted = await tx.fetchval(
                     INSERT_SQL,
                     row[0],
                     row[1],
@@ -100,7 +102,9 @@ class StatementStore:
                     row[13],
                     row[14],
                 )
-        return len(atoms)
+                if inserted is not None:
+                    written += 1
+        return written
 
     async def list_statements(
         self,

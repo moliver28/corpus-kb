@@ -145,11 +145,17 @@ class _FakeTx:
     def __getattr__(self, name: str) -> Callable[..., object]:
         if name == "execute":
             return self._run
+        if name == "fetchval":
+            return self._insert
         raise AttributeError(name)
 
     async def _run(self, *args: object) -> str:
         self._store.setdefault("inserts", []).append(args)
         return "INSERT 0 1"
+
+    async def _insert(self, *args: object) -> str:
+        self._store.setdefault("inserts", []).append(args)
+        return f"insert-{len(self._store['inserts'])}"
 
     async def __aenter__(self) -> _FakeTx:
         return self

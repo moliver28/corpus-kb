@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS belief_revisions (
     tenant_id VARCHAR NOT NULL,
     belief_id VARCHAR NOT NULL REFERENCES beliefs(belief_id),
     statement_id VARCHAR,
-    stance TEXT NOT NULL,
+    stance TEXT NOT NULL CHECK (stance IN ('positive','negative')),
     weight DOUBLE NOT NULL,
     observed_at TIMESTAMPTZ NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

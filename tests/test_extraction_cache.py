@@ -134,7 +134,19 @@ class _FakeMineConn:
     def __getattr__(self, name: str) -> Callable[..., object]:
         if name == "fetch":
             return self._fetch
+        if name == "transaction":
+            # The tenant-GUC mining path wraps its read in a transaction;
+            # this fake is already an async context manager, so it serves.
+            return self._transaction
+        if name == "execute":
+            return self._execute
         raise AttributeError(name)
+
+    def _transaction(self) -> _FakeMineConn:
+        return self
+
+    async def _execute(self, *args: object) -> str:
+        return "OK"
 
     async def _fetch(self, *args: object) -> object:
         return self._rows

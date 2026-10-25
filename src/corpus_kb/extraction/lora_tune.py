@@ -85,8 +85,8 @@ def _check_examples(examples: list[dict[str, Any]]) -> None:
     if len(examples) < MIN_TRAIN_EXAMPLES:
         raise ValidationError(
             f"LoRA tuning needs at least {MIN_TRAIN_EXAMPLES} examples, got {len(examples)}.",
-            remediation="Ingest more confirmed content, lower min_confidence,"
-            " or use method=exemplar.",
+            remediation="Ingest more confirmed content or raise the limit"
+            " (min_confidence filters statement confidence).",
         )
     for example in examples:
         if (

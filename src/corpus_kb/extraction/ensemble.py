@@ -87,16 +87,20 @@ class EnsembleExtractor:
 def _dedupe_entities(
     votes: dict[tuple[str, str], list[Entity]], entities: list[Entity]
 ) -> dict[str, str]:
-    """Add one member's entities to the vote pool; return id -> name."""
-    seen: set[tuple[str | None, str | None, str]] = set()
+    """Add ONE member's entities to the vote pool; return id -> name.
+
+    One vote per member per ``(name, type)`` key: a member repeating the
+    same mention at several spans is one agreement, not several (the
+    contract is member agreement, and intra-member repeats must never
+    elect a candidate alone).
+    """
+    seen_keys: set[tuple[str, str]] = set()
     names: dict[str, str] = {}
     for entity in entities:
-        span = (entity.chunk_id, entity.source_start_char, entity.source_end_char)
         key = (entity.name.strip().lower(), entity.entity_type)
-        if key in votes and span in seen:
-            continue
-        seen.add(span)
-        votes[key].append(entity)
+        if key not in seen_keys:
+            seen_keys.add(key)
+            votes[key].append(entity)
         if entity.entity_id:
             names[entity.entity_id] = entity.name
     return names
@@ -107,12 +111,15 @@ def _collect_relations(
     relations: list[Relation],
     names: dict[str, str],
 ) -> None:
+    seen_keys: set[tuple[str, str, str]] = set()
     for relation in relations:
         source = names.get(relation.source_entity_id, relation.source_entity_id)
         target = names.get(relation.target_entity_id, relation.target_entity_id)
-        votes[(source.strip().lower(), relation.relation_type, target.strip().lower())].append(
-            relation
-        )
+        key = (source.strip().lower(), relation.relation_type, target.strip().lower())
+        if key in seen_keys:
+            continue
+        seen_keys.add(key)
+        votes[key].append(relation)
 
 
 def _elect_entities(

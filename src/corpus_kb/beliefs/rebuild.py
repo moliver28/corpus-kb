@@ -4,9 +4,10 @@ One belief per (subject, relation, object). The subject of a one-entity
 statement is its speaker when the QA chain provides one
 (``speaker:<exchange_id>``), else ``corpus`` — so interview
 participants get their own beliefs. Stance comes from the statement
-text (the same word lists the cascade uses); stance-free sentences do
-not inform a stance belief. Conflicted statements count half; superseded
-ones count a quarter — the history stays, discounted.
+text via the shared stance vocabulary (``utils.stance`` — the same list
+the cascade uses); stance-free sentences do not inform a stance belief.
+Conflicted statements count half; superseded ones count a quarter — the
+history stays, discounted.
 """
 
 from __future__ import annotations
@@ -15,21 +16,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 
+from ..utils.stance import stance_of
 from .math_core import Evidence
-
-_POSITIVE = ("like", "love", "prefer", "enjoy", "support", "adore")
-_NEGATIVE = ("dislike", "hate", "avoid", "oppose")
-
-
-def stance_of(text: str) -> str | None:
-    low = " ".join(text.lower().split())
-    has_pos = any(f" {w} " in f" {low} " or f" {w}s " in f" {low} " for w in _POSITIVE)
-    has_neg = any(f" {w} " in f" {low} " or f" {w}s " in f" {low} " for w in _NEGATIVE)
-    if has_pos and not has_neg:
-        return "positive"
-    if has_neg and not has_pos:
-        return "negative"
-    return None
 
 
 @dataclass(frozen=True)

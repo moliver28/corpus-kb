@@ -417,11 +417,16 @@ jobs:
         # defaults to powershell which has different if-syntax)
         # python-magic-bin provides the libmagic DLL that the `unstructured`
         # package needs on Windows. Without it, Python crashes with
-        # "Windows fatal exception: access violation" in magic.compat.py
+        # "Windows fatal exception: access violation" in magic.compat.py.
+        # --force-reinstall --no-deps keeps its `magic` module winning the
+        # file race against the pure python-magic package: both ship a
+        # `magic/` package, and the dev-group dependency can unpack
+        # python-magic-bin BEFORE pip unpacks python-magic, leaving the
+        # DLL-less loader in place (observed 2026-10-25).
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,duckdb]"
-          if [ "$RUNNER_OS" = "Windows" ]; then pip install python-magic-bin; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then pip install --force-reinstall --no-deps python-magic-bin==0.4.14; fi
         shell: bash
 
       - name: Warm the DuckDB extension cache (fts, vss, postgres)
@@ -535,8 +540,13 @@ jobs:
       - name: Run tests
         # timeout-minutes prevents hung Ollama connection attempts from
         # blocking CI indefinitely (Windows TCP timeout can be 21s+ per
-        # attempt × multiple embed calls). 15 min: the phase D DuckDB legs
-        # pushed the windows run past the old 10-minute line while the
-        # anti-hang guard stays in force.
-        timeout-minutes: 15
+        # attempt × multiple embed calls). 40 min: the hardening round's
+        # suite outgrew the old 15-minute line on windows (ubuntu needs
+        # 24 min with the same tests), and PYTHONUNBUFFERED keeps the
+        # per-test progress visible instead of trapped in the pipe buffer
+        # until the process dies — without it a slow leg looks identical
+        # to a hang.
+        timeout-minutes: 40
+        env:
+          PYTHONUNBUFFERED: "1"
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing

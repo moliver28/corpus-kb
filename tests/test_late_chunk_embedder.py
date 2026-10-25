@@ -75,16 +75,24 @@ def test_import_guard_raises_informative_error():
         LateChunkEmbedder()
 
 
-@pytest.mark.skipif(is_latechunk_installed(), reason="latechunk installed; guard unreachable")
-def test_shim_imports_raise_informatively():
-    from corpus_kb.rag.embedders._latechunk_types import (
-        import_sentence_transformers,
-        import_torch,
-        import_transformers,
-    )
+def test_shim_imports_raise_informatively(monkeypatch):
+    """The shim turns ModuleNotFoundError into the typed dependency error.
 
-    for import_fn in (import_transformers, import_sentence_transformers, import_torch):
-        with pytest.raises(LateChunkDependencyError):
+    Monkeypatched import so the contract holds in every environment
+    (extra installed or not), not only in the extras-less CI job.
+    """
+    from corpus_kb.rag.embedders import _latechunk_types as shim
+
+    def _absent(name: str) -> object:
+        raise ModuleNotFoundError(f"No module named {name!r}")
+
+    monkeypatch.setattr(shim.importlib, "import_module", _absent)
+    for import_fn in (
+        shim.import_transformers,
+        shim.import_sentence_transformers,
+        shim.import_torch,
+    ):
+        with pytest.raises(LateChunkDependencyError, match="latechunk"):
             import_fn()
 
 

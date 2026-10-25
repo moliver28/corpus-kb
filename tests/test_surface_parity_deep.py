@@ -1466,8 +1466,23 @@ class _LockConn:
             return 2
         return 0
 
-    async def execute(self, sql: str, *args: Any) -> str:
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        # House fake pattern (attribute routing, as in test_extraction_tune):
+        # execute is the tenant-GUC write (always OK); fetchrow is the
+        # single-row beliefs posterior probe (the only one on this stub).
+        if name == "execute":
+            return self._ok
+        if name == "fetchrow":
+            return self._belief_row
+        raise AttributeError(name)
+
+    async def _ok(self, *args: Any) -> str:
         return "OK"
+
+    async def _belief_row(self, *args: Any) -> dict[str, Any]:
+        # The stored alpha/beta a rebuild pooled — beliefs_timeline and
+        # beliefs_predict return the real success envelope against it.
+        return {"alpha": 3.0, "beta": 1.0, "evidence_count": 4, "era_count": 1}
 
     async def fetch(self, sql: str, *args: Any) -> list[Any]:
         if "SET resolved_verdict" in sql:

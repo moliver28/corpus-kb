@@ -30,8 +30,9 @@ KNOWN_EXTRACTION_KEYS: frozenset[str] = frozenset({"mode"})
 DEFAULT_PROFILES_DIR = "profiles"
 
 # Profile and seed names are plain file names: letters/digits first, then
-# letters, digits, dots, dashes, underscores. Directory separators and any
-# leading-dot part are refused, which also refuses parent-directory walks.
+# letters, digits, dots, dashes, underscores. Every path part must match,
+# and the joined path is containment-checked, so nothing escapes the
+# profiles directory. Multi-part leaves (a seeds/ subfolder) are fine.
 _SAFE_LEAF_PART = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
@@ -249,13 +250,22 @@ def profile_seeds_path(config: dict[str, Any], profile: IngestionProfile) -> str
 
 
 def load_seeds(config: dict[str, Any], profile: IngestionProfile) -> list[dict[str, Any]]:
-    """Load the profile's LangExtract seed exemplars (empty when none)."""
+    """Load the profile's LangExtract seed exemplars.
+
+    A declared-but-missing seeds file is a ValidationError (a profile is
+    a contract, not a preference — validate_profiles reports the same
+    condition); a profile WITHOUT a seeds_file simply has no seeds.
+    """
     path = profile_seeds_path(config, profile)
     if not path:
         return []
     seeds_file = Path(path)
     if not seeds_file.exists():
-        return []
+        raise ValidationError(
+            f"Profile {profile.name!r} declares seeds_file"
+            f" {profile.seeds_file!r} but it is missing.",
+            remediation="Run extraction-tune to write the seeds, or remove the seeds_file key.",
+        )
     raw = yaml.safe_load(seeds_file.read_text(encoding="utf-8"))
     exemplars = raw.get("exemplars") if isinstance(raw, dict) else None
     if not isinstance(exemplars, list):

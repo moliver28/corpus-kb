@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,22 @@ from corpus_kb.tools.extraction_tune_tools import extraction_tune
 
 
 class _FakeConn:
-    """Answers the two mine queries; nothing else is touched."""
+    """Answers the two mine queries; nothing else is touched.
+
+    Attribute access routes through __getattr__ (the house fake pattern):
+    the store calls transaction() + execute() (tenant GUC) + fetch().
+    """
+
+    def transaction(self) -> _FakeConn:
+        return self
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        if name == "execute":
+            return self._guc
+        raise AttributeError(name)
+
+    async def _guc(self, *args: Any) -> str:
+        return "OK"
 
     async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
         if "sc.resolved_verdict = 'revision'" in sql:

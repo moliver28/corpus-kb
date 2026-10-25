@@ -74,7 +74,12 @@ def eras(
 
 
 def _map_splits(values: list[float]) -> list[int]:
-    """BOCPD run-length MAP over a Bernoulli stream; returns split indexes."""
+    """BOCPD run-length MAP over a Bernoulli stream; returns split indexes.
+
+    The Beta learner is PER RUN (Adams & MacKay): a detected change point
+    restarts the accumulators, so the predictive reflects the current run
+    instead of freezing as the global history accrues.
+    """
     if len(values) < 4:
         return []
     log_runs = [0.0]
@@ -95,6 +100,8 @@ def _map_splits(values: list[float]) -> list[int]:
         run_map = max(range(len(log_runs)), key=lambda i: log_runs[i])
         if run_map == 0 and t >= 2:
             splits.append(t)
+            # A new run starts here: reset the learner.
+            alpha, beta = 1.0, 1.0
     return splits
 
 

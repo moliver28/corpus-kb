@@ -19,6 +19,7 @@ from .icl import _locate
 
 # Statements that survived a human resolve: revision-resolved pairs keep
 # statement_b (the accepted correction); dismissed pairs keep both.
+# min_confidence filters on the statement's own extraction confidence.
 _CONFIRMED_SQL = """
 SELECT s.statement_id::text AS statement_id,
        s.text AS statement_text,
@@ -27,17 +28,22 @@ FROM statement_conflicts sc
 JOIN statements s ON s.statement_id = sc.statement_b_id
    AND s.tenant_id = sc.tenant_id
 WHERE sc.tenant_id = $1::uuid AND sc.resolved_verdict = 'revision'
+  AND s.confidence >= $2::float
 ORDER BY s.statement_id
-LIMIT $2
+LIMIT $3
 """
 
 
 async def mine_confirmed_statements(
-    pool: asyncpg.Pool, tenant_id: str, limit: int = 24
+    pool: asyncpg.Pool,
+    tenant_id: str,
+    limit: int = 24,
+    min_confidence: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Statement texts plus their anchored entities from resolved reviews."""
-    async with pool.acquire() as conn:
-        rows = await conn.fetch(_CONFIRMED_SQL, tenant_id, limit)
+    async with pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
+        rows = await conn.fetch(_CONFIRMED_SQL, tenant_id, float(min_confidence), limit)
     out: list[dict[str, Any]] = []
     for row in rows:
         raw = row["entities"]

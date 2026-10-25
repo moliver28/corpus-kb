@@ -95,8 +95,11 @@ class ExtractionCache:
     ) -> int:
         """Store per-chunk results; returns rows written.
 
-        Existing rows are pre-checked and skipped, so a concurrent writer
-        can never trip the primary key: the cache is write-once per key.
+        Existing rows are pre-checked and skipped. The check-then-copy is
+        not atomic under READ COMMITTED: two concurrent writers can both
+        see the key absent, and the loser's unique_violation propagates —
+        the caller isolates that stage, so a lost cache write costs a
+        future re-extraction, never data correctness.
         """
         if not entries:
             return 0

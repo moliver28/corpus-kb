@@ -86,7 +86,9 @@ async def _exemplar_arm(
     from ..profiles.seeds import point_profile_at_seeds, write_seeds
 
     dir_path = _profiles_dir(config)
-    confirmed = await mine_confirmed_statements(pg_pool, tenant_id, limit=limit)
+    confirmed = await mine_confirmed_statements(
+        pg_pool, tenant_id, limit=limit, min_confidence=min_confidence
+    )
     mined = list(statements_to_exemplars(confirmed))
     if len(mined) < limit:
         mined.extend(
@@ -105,6 +107,20 @@ async def _exemplar_arm(
             profile=profile,
             dry_run=True,
             examples_used=len(exemplars),
+            exemplars_written=0,
+            seeds_path=seeds_path,
+            notes=notes,
+        )
+    if not exemplars:
+        # Nothing mined: write nothing. An empty seeds file would orphan
+        # any prior seeds and degrade customized mode for no reason.
+        notes.append("no confirmed evidence mined; nothing written")
+        return _envelope(
+            status="empty",
+            method="exemplar",
+            profile=profile,
+            dry_run=False,
+            examples_used=0,
             exemplars_written=0,
             seeds_path=seeds_path,
             notes=notes,
@@ -157,7 +173,9 @@ async def _lora_arm(
     from ..extraction.lora_tune import run_lora_tune
     from ..extraction.tune_data import mine_confirmed_statements
 
-    confirmed = await mine_confirmed_statements(pg_pool, tenant_id, limit=max(limit, 24))
+    confirmed = await mine_confirmed_statements(
+        pg_pool, tenant_id, limit=max(limit, 24), min_confidence=min_confidence
+    )
     rows = _gliner_rows(confirmed, limit)
     if dry_run:
         return _envelope(
