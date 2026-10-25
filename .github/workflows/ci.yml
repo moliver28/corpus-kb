@@ -535,9 +535,13 @@ jobs:
       - name: Run tests
         # timeout-minutes prevents hung Ollama connection attempts from
         # blocking CI indefinitely (Windows TCP timeout can be 21s+ per
-        # attempt × multiple embed calls). 25 min: the hardening round
-        # pushed the windows run past the old 15-minute line (master was
-        # already finishing inside 15m6s) while the anti-hang guard stays
-        # in force.
-        timeout-minutes: 25
+        # attempt × multiple embed calls). 40 min: the hardening round's
+        # suite outgrew the old 15-minute line on windows (ubuntu needs
+        # 24 min with the same tests), and PYTHONUNBUFFERED keeps the
+        # per-test progress visible instead of trapped in the pipe buffer
+        # until the process dies — without it a slow leg looks identical
+        # to a hang.
+        timeout-minutes: 40
+        env:
+          PYTHONUNBUFFERED: "1"
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing
