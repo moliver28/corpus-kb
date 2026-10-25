@@ -417,11 +417,16 @@ jobs:
         # defaults to powershell which has different if-syntax)
         # python-magic-bin provides the libmagic DLL that the `unstructured`
         # package needs on Windows. Without it, Python crashes with
-        # "Windows fatal exception: access violation" in magic.compat.py
+        # "Windows fatal exception: access violation" in magic.compat.py.
+        # --force-reinstall --no-deps keeps its `magic` module winning the
+        # file race against the pure python-magic package: both ship a
+        # `magic/` package, and the dev-group dependency can unpack
+        # python-magic-bin BEFORE pip unpacks python-magic, leaving the
+        # DLL-less loader in place (observed 2026-10-25).
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev,duckdb]"
-          if [ "$RUNNER_OS" = "Windows" ]; then pip install python-magic-bin; fi
+          if [ "$RUNNER_OS" = "Windows" ]; then pip install --force-reinstall --no-deps python-magic-bin==0.4.14; fi
         shell: bash
 
       - name: Warm the DuckDB extension cache (fts, vss, postgres)
