@@ -122,12 +122,11 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     registry_mcp = {s.mcp_tool for s in SURFACES if s.mcp_tool}
     assert registered == catalogue_mcp | registry_mcp
     # The historical lie (declared names with no function) stays dead.
-    # The §5.1 graph births (+4), the analysis program's tools (+4), and
-    # the method register program's twelve method ops (+12), the Living
-    # Corpus statement (+2), conflict (+3), belief (+4), tune (+1) and
-    # meta-embed (+1) ops all extended the catalogue; the UI SPA Task 5b
-    # registry rows added doctor + demo_load (issue #176) and the four
-    # lifecycle read lists (spec B2). The pin covers the union.
+    # Derivation of the pinned total: 70 registered before UI SPA Task 5b,
+    # +2 for the #176 lifecycle UI ops (doctor, demo_load), +4 for the
+    # spec B2 read lists (projects, codebooks, proposals, assignments)
+    # == 76. The set under the pin is the catalogue/registry UNION, so a
+    # tool added without a row (or dropped without one) fails here too.
     assert len(registered) == len(catalogue_mcp | registry_mcp) == 76
 
 

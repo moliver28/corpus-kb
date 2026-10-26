@@ -13,27 +13,29 @@ socket arm) through the usual registry rows:
     newest first, with ``review_status`` / ``code`` filters and offset
     pagination.
 
-House rules carried over from the ingest front door reads
-(``ingest_surface_tools``): every read runs inside a tenant-scoped gateway
-transaction (the Postgres tenant GUC is set INSIDE the same transaction,
-which ``FORCE RLS`` requires), the backend picks its own statement variant
-(``$1::uuid`` casts on Postgres, plain varchar predicates on DuckDB), and
-a pre-migration database answers ``status: "unavailable"`` with the setup
-remedy instead of crashing. Ordering is deterministic with unique-column
-tiebreakers, so harnesses can snapshot every list.
+The shared plumbing (page window, deterministic ordering with unique
+tiebreakers, backend-aware SELECT builder, tenant-scoped probe) lives in
+``lifecycle_read_sql`` — one place per listing rule. Deterministic
+ordering keeps every list snapshot-safe for harnesses.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from datetime import datetime
-
 import asyncpg
 
 from corpus_kb.errors import ValidationError
-from corpus_kb.storage.gateway import Row, SqlGateway
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID
 from corpus_kb.tools.ingest_store import as_gateway, gateway_backend
+from corpus_kb.tools.lifecycle_read_sql import (
+    DEFAULT_LIST_LIMIT,
+    envelope,
+    fetch_page,
+    iso_text,
+    page_size,
+    select_page,
+    uuid_text,
+)
 
 __all__ = [
     "codebook_proposals",
@@ -42,98 +44,6 @@ __all__ = [
     "projects_list",
 ]
 
-# Listing window per call (recency page, never the whole table).
-DEFAULT_LIST_LIMIT = 100
-MAX_LIST_LIMIT = 500
-
-_TABLES: dict[str, str] = {
-    "projects": "research_projects",
-    "codebooks": "codebook_versions",
-    "proposals": "research_proposed_codes",
-    "assignments": "research_assignments",
-}
-
-# The tiebreaker column is always the table's unique key, so equal
-# timestamps cannot permute rows.
-_ORDER: dict[str, str] = {
-    "projects": "ORDER BY created_at DESC, project_id LIMIT {limit} OFFSET {offset}",
-    "codebooks": "ORDER BY created_at DESC, version_id LIMIT {limit} OFFSET {offset}",
-    "proposals": "ORDER BY created_at DESC, proposed_id LIMIT {limit} OFFSET {offset}",
-    "assignments": "ORDER BY assignment_id DESC LIMIT {limit} OFFSET {offset}",
-}
-
-
-def _iso(value: object) -> str | None:
-    """One timestamp cell -> ISO text (None passes through)."""
-    return value.isoformat() if isinstance(value, datetime) else None
-
-
-def _uuid(value: object) -> str | None:
-    """One UUID cell -> text (None passes through)."""
-    return str(value) if value is not None else None
-
-
-def _page_size(limit: int) -> int:
-    """Clamp the page size into the honest 1..MAX window.
-
-    Junk is a typed validation error on EVERY surface (GET query value,
-    socket JSON, CLI flag): one failure class, never a silent clamp.
-    """
-    try:
-        value = int(limit)
-    except (TypeError, ValueError):
-        raise ValidationError("limit must be an integer") from None
-    return max(1, min(value, MAX_LIST_LIMIT))
-
-
-def _select(kind: str, is_duckdb: bool, columns: str, where: list[str], args: list[object]) -> str:
-    """One page select: tenant predicate first, dynamic predicates after.
-
-    ``where`` carries the already-numbered dynamic predicates; the caller
-    appends the limit/offset values last, so their placeholders are the
-    two highest parameter numbers.
-    """
-    cast = "" if is_duckdb else "::uuid"
-    predicates = [f"tenant_id = $1{cast}", *where]
-    order = _ORDER[kind].format(limit=f"${len(args) - 1}", offset=f"${len(args)}")
-    return f"SELECT {columns} FROM {_TABLES[kind]} WHERE " + " AND ".join(predicates) + " " + order
-
-
-async def _fetch_page(
-    pg_pool: asyncpg.Pool | SqlGateway,
-    tenant_id: str,
-    kind: str,
-    select: str,
-    args: list[object],
-) -> list[Row] | dict[str, object]:
-    """Probe the table, run the page select, share the unavailable envelope.
-
-    Returns the row list on success, or the unavailable envelope when the
-    migration has not run on this database.
-    """
-    gw = as_gateway(pg_pool)
-    table = _TABLES[kind]
-    if gateway_backend(gw) == "duckdb":
-        probe = "SELECT count(*) FROM duckdb_tables() WHERE table_name = $1"
-        probe_args: tuple[object, ...] = (table,)
-    else:
-        probe = "SELECT to_regclass($1)"
-        probe_args = (f"public.{table}",)
-    async with gw.transaction(tenant_id) as tx:
-        if await tx.fetchval(probe, *probe_args) in (None, 0):
-            return {
-                "status": "unavailable",
-                "reason": f"{table} table absent (run corpus-kb setup)",
-                "remedy": "run corpus-kb setup",
-                "result": [],
-            }
-        return await tx.fetch(select, *args)
-
-
-def _envelope(rows: list[Row], render: Callable[[Row], dict[str, object]]) -> dict[str, object]:
-    """The house listing envelope: {status, result} with JSON-safe rows."""
-    return {"status": "success", "result": [render(row) for row in rows]}
-
 
 async def projects_list(
     pg_pool: asyncpg.Pool | SqlGateway,
@@ -141,23 +51,23 @@ async def projects_list(
     limit: int = DEFAULT_LIST_LIMIT,
 ) -> dict[str, object]:
     """List research projects, newest first; read-only projection."""
-    args: list[object] = [tenant_id, _page_size(limit), 0]
-    select = _select(
+    args: list[object] = [tenant_id, page_size(limit), 0]
+    select = select_page(
         "projects",
         gateway_backend(as_gateway(pg_pool)) == "duckdb",
         "project_id, name, created_at",
         [],
         args,
     )
-    rows = await _fetch_page(pg_pool, tenant_id, "projects", select, args)
+    rows = await fetch_page(pg_pool, tenant_id, "projects", select, args)
     if isinstance(rows, dict):
         return rows
-    return _envelope(
+    return envelope(
         rows,
         lambda row: {
-            "project_id": _uuid(row["project_id"]),
+            "project_id": uuid_text(row["project_id"]),
             "name": row["name"],
-            "created_at": _iso(row["created_at"]),
+            "created_at": iso_text(row["created_at"]),
         },
     )
 
@@ -168,25 +78,25 @@ async def codebooks_list(
     limit: int = DEFAULT_LIST_LIMIT,
 ) -> dict[str, object]:
     """List codebook versions (the immutable codebooks), newest first."""
-    args: list[object] = [tenant_id, _page_size(limit), 0]
-    select = _select(
+    args: list[object] = [tenant_id, page_size(limit), 0]
+    select = select_page(
         "codebooks",
         gateway_backend(as_gateway(pg_pool)) == "duckdb",
         "version_id, label, sha256, paradigm, created_at",
         [],
         args,
     )
-    rows = await _fetch_page(pg_pool, tenant_id, "codebooks", select, args)
+    rows = await fetch_page(pg_pool, tenant_id, "codebooks", select, args)
     if isinstance(rows, dict):
         return rows
-    return _envelope(
+    return envelope(
         rows,
         lambda row: {
-            "version_id": _uuid(row["version_id"]),
+            "version_id": uuid_text(row["version_id"]),
             "label": row["label"],
             "sha256": row["sha256"],
             "paradigm": row["paradigm"],
-            "created_at": _iso(row["created_at"]),
+            "created_at": iso_text(row["created_at"]),
         },
     )
 
@@ -202,8 +112,8 @@ async def codebook_proposals(
     ``status`` accepts the migration's own states: proposed, promoted,
     rejected, duplicate_blocked.
     """
-    args: list[object] = [tenant_id, str(status), _page_size(limit), 0]
-    select = _select(
+    args: list[object] = [tenant_id, str(status), page_size(limit), 0]
+    select = select_page(
         "proposals",
         gateway_backend(as_gateway(pg_pool)) == "duckdb",
         "proposed_id, cluster_id, run_id, suggested_label, n_members, status, "
@@ -211,20 +121,20 @@ async def codebook_proposals(
         ["status = $2"],
         args,
     )
-    rows = await _fetch_page(pg_pool, tenant_id, "proposals", select, args)
+    rows = await fetch_page(pg_pool, tenant_id, "proposals", select, args)
     if isinstance(rows, dict):
         return rows
-    return _envelope(
+    return envelope(
         rows,
         lambda row: {
             "proposed_id": int(row["proposed_id"]),
             "cluster_id": row["cluster_id"],
-            "run_id": _uuid(row["run_id"]),
+            "run_id": uuid_text(row["run_id"]),
             "suggested_label": row["suggested_label"],
             "n_members": int(row["n_members"]),
             "status": row["status"],
             "block_reason": row["block_reason"],
-            "created_at": _iso(row["created_at"]),
+            "created_at": iso_text(row["created_at"]),
         },
     )
 
@@ -254,8 +164,8 @@ async def coding_assignments(
         page_offset = int(offset)
     except (TypeError, ValueError):
         raise ValidationError("offset must be an integer") from None
-    args.extend([_page_size(limit), max(0, page_offset)])
-    select = _select(
+    args.extend([page_size(limit), max(0, page_offset)])
+    select = select_page(
         "assignments",
         gateway_backend(as_gateway(pg_pool)) == "duckdb",
         "assignment_id, assignment_aggregate_id, unit_id, code_id, cb_version_id, "
@@ -264,18 +174,18 @@ async def coding_assignments(
         where,
         args,
     )
-    rows = await _fetch_page(pg_pool, tenant_id, "assignments", select, args)
+    rows = await fetch_page(pg_pool, tenant_id, "assignments", select, args)
     if isinstance(rows, dict):
         return rows
-    return _envelope(
+    return envelope(
         rows,
         lambda row: {
             "assignment_id": int(row["assignment_id"]),
-            "assignment_aggregate_id": _uuid(row["assignment_aggregate_id"]),
+            "assignment_aggregate_id": uuid_text(row["assignment_aggregate_id"]),
             "unit_id": int(row["unit_id"]),
             "code_id": row["code_id"],
-            "cb_version_id": _uuid(row["cb_version_id"]),
-            "run_id": _uuid(row["run_id"]),
+            "cb_version_id": uuid_text(row["cb_version_id"]),
+            "run_id": uuid_text(row["run_id"]),
             "status": row["status"],
             "confidence": row["confidence"],
             "stance": row["stance"],
@@ -283,6 +193,6 @@ async def coding_assignments(
             "sim_answer": None if row["sim_answer"] is None else float(row["sim_answer"]),
             "sim_qa": None if row["sim_qa"] is None else float(row["sim_qa"]),
             "sim_q": None if row["sim_q"] is None else float(row["sim_q"]),
-            "created_at": _iso(row["created_at"]),
+            "created_at": iso_text(row["created_at"]),
         },
     )

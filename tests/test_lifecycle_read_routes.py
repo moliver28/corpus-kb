@@ -132,9 +132,7 @@ def test_pool_refusal_is_the_taxonomy_503(monkeypatch: pytest.MonkeyPatch) -> No
     assert get_response.status_code == 503
     assert get_response.json()["error_type"] == "dependency_missing"
 
-    post_response = client.post(
-        "/api/release/assess", json={"codebook_version_id": str(uuid4())}
-    )
+    post_response = client.post("/api/release/assess", json={"codebook_version_id": str(uuid4())})
     assert post_response.status_code == 503
     body = post_response.json()
     assert body["status"] == "error" and body["error_type"] == "dependency_missing"
