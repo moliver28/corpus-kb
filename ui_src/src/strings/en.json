@@ -35,6 +35,7 @@
   "runnerCheckStatus": "Check status",
   "runnerRunningElapsed": "Running for {sec} seconds.",
   "runnerUnknownOutcome": "The connection dropped. The server may still be working.",
+  "runnerCancelled": "You stopped waiting. The op may still run on the server.",
   "runnerStatusLine": "Latest status: {message}",
   "runnerStatusEmpty": "The server sent no status message.",
   "runnerParamsHint": "The request fields go here as JSON.",

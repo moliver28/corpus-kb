@@ -75,6 +75,14 @@ export default function DemoLoadCard() {
           <Button onClick={() => long.cancel()}>{strings.runnerCancelLabel}</Button>
         </div>
       )}
+      {long.cancelled && (
+        <div className="ui-actions">
+          {/* The user stopped waiting; the server may still be working.
+              No error panel, no retry — status polling stays available. */}
+          <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>
+          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
+        </div>
+      )}
       {long.unknownOutcome && (
         <div className="ui-actions">
           <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>

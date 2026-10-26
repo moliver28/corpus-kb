@@ -40,6 +40,7 @@ export interface Strings {
   runnerCheckStatus: string;
   runnerRunningElapsed: string;
   runnerUnknownOutcome: string;
+  runnerCancelled: string;
   runnerStatusLine: string;
   runnerStatusEmpty: string;
   runnerParamsHint: string;

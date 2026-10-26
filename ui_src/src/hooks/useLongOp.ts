@@ -10,8 +10,10 @@ import type { OpResult } from "../api/types";
 export interface LongOpState {
   running: boolean;
   elapsedSec: number;
-  /** The wait ended without an answer (network drop or cancel). */
+  /** The wait ended without an answer (network drop). */
   unknownOutcome: boolean;
+  /** The USER stopped waiting; the server may still be working. */
+  cancelled: boolean;
   result: OpResult<unknown> | null;
   /** The last status-poll ledger answer, kept beside the receipt. */
   statusResult: OpResult<unknown> | null;
@@ -26,6 +28,7 @@ export interface LongOp {
   running: boolean;
   elapsedSec: number;
   unknownOutcome: boolean;
+  cancelled: boolean;
   result: OpResult<unknown> | null;
   statusResult: OpResult<unknown> | null;
 }
@@ -43,6 +46,7 @@ export function useLongOp(
     running: false,
     elapsedSec: 0,
     unknownOutcome: false,
+    cancelled: false,
     result: null,
     statusResult: null,
   });
@@ -63,15 +67,30 @@ export function useLongOp(
 
   const settle = useCallback(
     (res: OpResult<unknown>): OpResult<unknown> => {
+      // An aborted signal means the USER stopped waiting: the answer
+      // must never surface as a server claim (error, receipt, or
+      // unknown-outcome). The receipt slot stays empty instead.
+      const cancelled = ctrlRef.current?.signal.aborted === true;
       stopWait();
       ctrlRef.current = null;
       flightRef.current = null;
-      setState((prev) => ({
-        ...prev,
-        running: false,
-        unknownOutcome: res.kind === "network",
-        result: res,
-      }));
+      setState((prev) =>
+        cancelled
+          ? {
+              ...prev,
+              running: false,
+              unknownOutcome: false,
+              cancelled: true,
+              result: null,
+            }
+          : {
+              ...prev,
+              running: false,
+              unknownOutcome: res.kind === "network",
+              cancelled: false,
+              result: res,
+            },
+      );
       return res;
     },
     [stopWait],
@@ -93,6 +112,7 @@ export function useLongOp(
       running: true,
       elapsedSec: 0,
       unknownOutcome: false,
+      cancelled: false,
       result: null,
       statusResult: null,
     });
