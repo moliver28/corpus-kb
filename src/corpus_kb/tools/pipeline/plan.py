@@ -23,6 +23,7 @@ from ...ingestion.base import (
     chunks_from_plan,
     validate_plan,
 )
+from ...ingestion.dedup import dedup_chunks, dedup_config
 from ...ingestion.registry import resolve_strategy
 from ...profiles import load_profile, with_profile_overrides
 from ...storage.gateway import SqlGateway
@@ -39,7 +40,9 @@ from ...utils.tracing import (
 )
 from ..ingest_store import DEFAULT_TENANT_ID
 from ._facade import _ic
+from .document import IngestDocument
 from .stages import _run_locked_stages
+from .validate import resolve_mode, validate_document
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +57,7 @@ async def run_pipeline(
     rag_backend: RagBackend | None = None,
     is_file: bool = False,
     strategy_name: str | None = None,
+    validate_mode: str = "off",
 ) -> dict[str, Any]:
     """Run the full ingest pipeline: resolve strategy, build chunks, embed,
     extract, store.
@@ -92,6 +96,12 @@ async def run_pipeline(
         is_file: True if path points to a file; False if path is raw text source ID.
         strategy_name: Optional explicit ingestion-strategy override (a
             registered strategy name). Unknown names raise UnknownStrategyError.
+        validate_mode: Optional validation gate (unified-ingestion Wave 4):
+            ``off`` (default — validators do not run, the envelope is
+            byte-identical), ``advisory`` (attach the ``validation`` summary
+            to the envelope), ``enforce`` (raise the typed ValidationError
+            when a validator fails), ``calibrate`` (record the summary in
+            the ingest_runs ledger stages without blocking).
 
     Returns:
         Result dict with keys: status ("success" when every stage was clean,
@@ -124,7 +134,9 @@ async def run_pipeline(
                 strategy_override=strategy_name,
                 profile=ingestion_profile,
             )
-            profile = SourceProfile(source_type=source_type, is_file=is_file, path=path)
+            profile = SourceProfile(
+                source_type=source_type, is_file=is_file, path=path, config=config
+            )
             plan = resolution.strategy.build_chunks(text, Path(path).name, profile)
             partition_span.set_attribute(ATTR_STRATEGY, resolution.strategy.name)
             partition_span.set_attribute(ATTR_ELEMENT_COUNT, len(plan.chunks))
@@ -161,6 +173,34 @@ async def run_pipeline(
             chunk_span.set_attribute(ATTR_CHUNK_COUNT, len(chunks))
         file_hash = _ic()._sha256(text)
 
+        # Near-duplicate dedup (Wave 4): strictly opt-in via
+        # ``ingestion.dedup: minhash``. Off (or the extra missing) leaves the
+        # chunk list untouched. Runs before validation so the validators see
+        # exactly what would be stored.
+        dedup_dropped: list[str] = []
+        dedup_settings = dedup_config(config)
+        if dedup_settings is not None and len(chunks) > 1:
+            chunks, dedup_dropped = dedup_chunks(chunks, threshold=dedup_settings["threshold"])
+
+        # Validation gate (Wave 4): read-only, pre-ledger — a failure in
+        # enforce mode raises before the advisory lock, so nothing is written
+        # (the PlanConformanceError pattern). ``off`` never builds the report.
+        validation_report: dict[str, Any] | None = None
+        mode = resolve_mode(validate_mode)
+        if mode != "off":
+            probe = IngestDocument(
+                document=document,
+                text=text,
+                file_hash=file_hash,
+                source_type=source_type,
+                path=path,
+                is_file=is_file,
+                chunks=chunks,
+                empty_reason=plan.empty_reason,
+                strategy=resolution.strategy.name,
+            )
+            validation_report = validate_document(probe, mode)
+
         # Serialize concurrent ingests of the same content per tenant. The
         # Postgres lock is session-scoped on its own pooled connection, so a
         # crashed process releases it server-side automatically; the DuckDB
@@ -190,6 +230,8 @@ async def run_pipeline(
                 is_file=is_file,
                 empty_reason=plan.empty_reason,
                 strategy=resolution.strategy.name,
+                validation_report=validation_report,
+                validation_mode=mode,
             )
             # Strategy provenance (plan Section 0): which seam produced the
             # chunks. Attached here because resolution/plan live in this scope.
@@ -203,4 +245,12 @@ async def run_pipeline(
                 result["detected_strategy"] = resolution.detected
             if plan.warnings:
                 result["warnings"] = list(plan.warnings)
+            # Wave 4 additive keys: only the modes that ran validation (and
+            # only on a non-skipped run) add them — the ``off`` envelope is
+            # byte-identical to the pre-Wave-4 shape.
+            if result.get("status") in ("success", "partial"):
+                if mode == "advisory" and validation_report is not None:
+                    result["validation"] = validation_report
+                if dedup_dropped:
+                    result["dedup_dropped"] = dedup_dropped
             return result

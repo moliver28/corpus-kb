@@ -266,6 +266,10 @@ class TestValidateConfigsKeys:
         assert keys["graph.max_hops"] is int
         assert keys["retrieval.vector_index"] is str
         assert keys["retrieval.fts_rebuild_debounce_s"] is float
+        # Wave 4 opt-in gates stay OPTIONAL: absent is the shipped
+        # default, so they are checked when-present (validate_ingestion_block).
+        assert "ingestion.tokenizer" not in keys
+        assert "ingestion.dedup" not in keys
 
     @pytest.mark.parametrize("name", ["config.yaml", "src/corpus_kb/config.yaml"])
     def test_shipped_yamls_pass_runtime_validation(self, name: str):

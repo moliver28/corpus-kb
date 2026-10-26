@@ -49,3 +49,14 @@ SEARCH_ENVELOPE = (
 # deletes. ``event_sourcing_error`` appears only when the audit write
 # failed after a successful pipeline.
 AGGREGATE_EXTRA = frozenset({"aggregate_id", "aggregate_version", "event_sourcing_error"})
+
+# Wave 4 validation modes (tools/pipeline/validate.py): the ``validation``
+# summary key appears ONLY when a caller passes validate="advisory" (the
+# default "off" keeps the envelope byte-identical). Calibrate records the
+# same report in the ingest_runs.stages ledger, not the envelope.
+VALIDATION_KEYS = frozenset({"validation"})
+
+# Wave 4 MinHash near-duplicate dedup (ingestion/dedup.py, opt-in via
+# ``ingestion.dedup: minhash``): the dropped chunk ids appear ONLY when the
+# config gate is on, so the default envelope stays byte-identical.
+DEDUP_KEYS = frozenset({"dedup_dropped"})

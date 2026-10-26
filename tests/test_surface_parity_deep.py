@@ -1691,6 +1691,7 @@ class _StubResearchHandler:
         project_id: UUID | None = None,
         title: str | None = None,
         force: bool = False,
+        validate_mode: str = "off",
     ) -> dict[str, Any]:
         return dict(_TRANSCRIPT)
 
@@ -1700,6 +1701,7 @@ class _StubResearchHandler:
         path: str,
         project_id: UUID | None = None,
         force: bool = False,
+        validate_mode: str = "off",
     ) -> dict[str, Any]:
         return dict(_INGEST_PATH)
 

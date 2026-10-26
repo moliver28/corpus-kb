@@ -37,8 +37,13 @@ async def research_ingest_transcript(
     title: str | None = None,
     tenant_id: str = DEFAULT_TENANT,
     force: bool = False,
+    validate: str = "off",
 ) -> dict[str, object]:
-    """Ingest ONE transcript file (turns -> roles -> exchanges -> events)."""
+    """Ingest ONE transcript file (turns -> roles -> exchanges -> events).
+
+    ``validate`` is the optional validation gate over the canonical
+    document (off | advisory | enforce | calibrate); default ``off``.
+    """
     handler = get_research_handler(pg_pool)
     result = await handler.ingest_transcript(
         UUID(tenant_id),
@@ -46,6 +51,7 @@ async def research_ingest_transcript(
         project_id=UUID(project_id) if project_id else None,
         title=title,
         force=force,
+        validate_mode=validate,
     )
     await advance_all_projections(pg_pool, UUID(tenant_id))
     return result
@@ -57,14 +63,20 @@ async def research_ingest(
     project_id: str | None = None,
     tenant_id: str = DEFAULT_TENANT,
     force: bool = False,
+    validate: str = "off",
 ) -> dict[str, object]:
-    """Dynamic ingestion: file, directory, or glob with ledger dedup."""
+    """Dynamic ingestion: file, directory, or glob with ledger dedup.
+
+    ``validate`` rides into every per-file transcript ingest (off |
+    advisory | enforce | calibrate); default ``off``.
+    """
     handler = get_research_handler(pg_pool)
     result = await handler.ingest_path(
         UUID(tenant_id),
         path,
         project_id=UUID(project_id) if project_id else None,
         force=force,
+        validate_mode=validate,
     )
     await advance_all_projections(pg_pool, UUID(tenant_id))
     return result

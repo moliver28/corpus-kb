@@ -14,7 +14,16 @@ async def test_tool_signatures_unchanged() -> None:
     """Ingest tool names and parameter names match a frozen fixture."""
     expected = {
         # S4: source_type = optional ingestion-strategy override (registry-validated).
-        "ingest_file": {"file_path", "pg_pool", "config", "tenant_id", "source_type"},
+        # Wave 4: validate (off | advisory | enforce | calibrate) joins the
+        # ingest surfaces.
+        "ingest_file": {
+            "file_path",
+            "pg_pool",
+            "config",
+            "tenant_id",
+            "source_type",
+            "validate",
+        },
         "ingest_text": {
             "text",
             "pg_pool",
@@ -22,6 +31,7 @@ async def test_tool_signatures_unchanged() -> None:
             "config",
             "tenant_id",
             "source",
+            "validate",
         },
         # W3A unification: recursive joined the signature (default True) so
         # the HTTP recursive flag rides the ONE shared directory walk.
@@ -32,6 +42,8 @@ async def test_tool_signatures_unchanged() -> None:
             "tenant_id",
             "source_type",
             "recursive",
+            # Wave 4: the optional validation gate (off | advisory | enforce | calibrate).
+            "validate",
         },
         # W1B honesty wave: list_documents delegates to QueryHandler, so it
         # takes the same pagination + tenant arguments as the HTTP/socket

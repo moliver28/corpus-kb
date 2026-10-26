@@ -85,6 +85,7 @@ class CommandHandler:
             self._config,
             tenant_id=str(cmd.tenant_id),
             source_type=cmd.source_type,
+            validate=cmd.validate_mode,
         )
         return self._attach_events(result, source=cmd.file_path, tenant_id=cmd.tenant_id)
 
@@ -97,6 +98,7 @@ class CommandHandler:
             config=self._config,
             tenant_id=str(cmd.tenant_id),
             source=cmd.source,
+            validate=cmd.validate_mode,
         )
         return self._attach_events(result, source=cmd.source, tenant_id=cmd.tenant_id)
 
@@ -113,6 +115,7 @@ class CommandHandler:
             self._config,
             tenant_id=str(cmd.tenant_id),
             recursive=cmd.recursive,
+            validate=cmd.validate_mode,
         )
         if result.get("status") != "success":
             return result

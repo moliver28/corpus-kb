@@ -8,10 +8,13 @@ for facilitator-less leftovers (no invented questions), all split at the
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from ...domain.transcript import TurnSpec
 from ...research.chunking import meeting_windows
 from ...research.linking import ExchangeSpec
 from ..base import QA_CONTEXT_KEY, TOKEN_BUDGET_CHARS, TRANSCRIPT_STRATEGY_NAME, PlannedChunk
+from ..tokenizer import hard_split_text
 
 
 def positioned_chunks(
@@ -19,11 +22,12 @@ def positioned_chunks(
     exchanges: list[ExchangeSpec],
     starts: list[int],
     warnings: list[str],
+    config: Mapping[str, object] | None = None,
 ) -> list[tuple[int, list[PlannedChunk]]]:
     """Chunk groups keyed by their first turn's position (document order)."""
     groups, order = _exchange_groups(turns, exchanges)
-    out = _qa_chunk_groups(groups, order, exchanges, starts, warnings)
-    out.extend(_window_chunk_groups(turns, groups, starts, warnings))
+    out = _qa_chunk_groups(groups, order, exchanges, starts, warnings, config)
+    out.extend(_window_chunk_groups(turns, groups, starts, warnings, config))
     return out
 
 
@@ -59,6 +63,7 @@ def _qa_chunk_groups(
     exchanges: list[ExchangeSpec],
     starts: list[int],
     warnings: list[str],
+    config: Mapping[str, object] | None = None,
 ) -> list[tuple[int, list[PlannedChunk]]]:
     """One budget-bounded chunk group per exchange, each part carrying qa_context."""
     by_seq = {exchange.seq: exchange for exchange in exchanges}
@@ -67,7 +72,7 @@ def _qa_chunk_groups(
         subset = groups[exchange_seq]
         exchange = by_seq[exchange_seq]
         question = " ".join(turn.text for turn in subset if turn.seq in set(exchange.q_unit_seqs))
-        parts = split_to_budget(subset, warnings)
+        parts = split_to_budget(subset, warnings, config)
         chunks: list[PlannedChunk] = []
         for k, part in enumerate(parts):
             exchange_id = f"exchange-{exchange_seq:04d}"
@@ -99,6 +104,7 @@ def _window_chunk_groups(
     groups: dict[int, list[TurnSpec]],
     starts: list[int],
     warnings: list[str],
+    config: Mapping[str, object] | None = None,
 ) -> list[tuple[int, list[PlannedChunk]]]:
     """Facilitator-less leftovers -> meeting windows WITHOUT qa_context."""
     claimed = {turn.seq for subset in groups.values() for turn in subset}
@@ -111,7 +117,7 @@ def _window_chunk_groups(
             "grouping": "turns",
             "turn_seqs": list(window.seqs),
         }
-        parts = split_to_budget(subset, warnings)
+        parts = split_to_budget(subset, warnings, config)
         out.append((window.start_seq, [_planned(part, starts, dict(metadata)) for part in parts]))
     return out
 
@@ -138,7 +144,11 @@ def _planned(part: list[TurnSpec], starts: list[int], metadata: dict[str, object
     )
 
 
-def split_to_budget(subset: list[TurnSpec], warnings: list[str]) -> list[list[TurnSpec]]:
+def split_to_budget(
+    subset: list[TurnSpec],
+    warnings: list[str],
+    config: Mapping[str, object] | None = None,
+) -> list[list[TurnSpec]]:
     """Greedy turn-boundary split at the token budget; oversized turns hard-split."""
     parts: list[list[TurnSpec]] = []
     current: list[TurnSpec] = []
@@ -150,7 +160,7 @@ def split_to_budget(subset: list[TurnSpec], warnings: list[str]) -> list[list[Tu
                 parts.append(current)
                 current, current_len = [], 0
             warnings.append(f"turn seq={turn.seq} exceeds token budget; hard-split")
-            parts.extend([piece] for piece in _hard_split_turn(turn))
+            parts.extend([piece] for piece in _hard_split_turn(turn, config, warnings))
             continue
         if current and current_len + turn_len > TOKEN_BUDGET_CHARS:
             parts.append(current)
@@ -162,11 +172,18 @@ def split_to_budget(subset: list[TurnSpec], warnings: list[str]) -> list[list[Tu
     return parts or [[]]
 
 
-def _hard_split_turn(turn: TurnSpec) -> list[TurnSpec]:
+def _hard_split_turn(
+    turn: TurnSpec,
+    config: Mapping[str, object] | None = None,
+    warnings: list[str] | None = None,
+) -> list[TurnSpec]:
     # Budget accounts for the render overhead ("Speaker: " + newline) so each
-    # piece's rendered line stays within the token budget.
+    # piece's rendered line stays within the token budget. With
+    # ``ingestion.tokenizer: semchunk`` the split lands on sentence or word
+    # boundaries with native offsets (tokenizer.hard_split_text); the
+    # default stays the historical fixed char slices, byte for byte.
     budget = max(TOKEN_BUDGET_CHARS - len(turn.speaker) - 2, 1)
-    pieces = [turn.text[offset : offset + budget] for offset in range(0, len(turn.text), budget)]
+    pieces = hard_split_text(turn.text, budget_chars=budget, config=config, warnings=warnings)
     return [
         TurnSpec(seq=turn.seq, speaker=turn.speaker, text=piece, role=turn.role) for piece in pieces
     ]

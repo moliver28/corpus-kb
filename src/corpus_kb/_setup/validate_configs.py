@@ -581,6 +581,27 @@ def validate_ingestion_block(config: dict[str, Any]) -> list[str]:
     if not isinstance(default, str) or not default:
         errors.append("ingestion.default: must be a non-empty string")
 
+    tokenizer = ingestion.get("tokenizer")
+    if tokenizer is not None and tokenizer != "semchunk":
+        errors.append(
+            f"ingestion.tokenizer: unknown value {tokenizer!r} — must be 'semchunk' "
+            "(the key stays absent for the default chars/4 split)"
+        )
+
+    dedup = ingestion.get("dedup")
+    if dedup is not None and dedup != "minhash":
+        errors.append(
+            f"ingestion.dedup: unknown value {dedup!r} — must be 'minhash' "
+            "(the key stays absent when dedup is off)"
+        )
+
+    threshold = ingestion.get("dedup_threshold")
+    if threshold is not None:
+        if not isinstance(threshold, (int, float)) or isinstance(threshold, bool):
+            errors.append("ingestion.dedup_threshold: must be a number")
+        elif not 0.0 < float(threshold) <= 1.0:
+            errors.append("ingestion.dedup_threshold: must be in (0, 1]")
+
     return errors
 
 
@@ -602,6 +623,10 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "ingestion.default": str,
     "ingestion.strategies": dict,
     "ingestion.concurrency": int,
+    # ingestion.tokenizer / ingestion.dedup / ingestion.dedup_threshold are
+    # NOT here: absent is the shipped default (opt-in gates), so the
+    # when-present enum + range checks live in validate_ingestion_block
+    # (the reranking.backend pattern).
     # -- ingest.chunking (canonical home of the hierarchy knobs) -----------
     "ingest.chunking.enabled": bool,
     "ingest.chunking.child_tokens": int,

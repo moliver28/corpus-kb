@@ -302,6 +302,7 @@ async def test_round_trip_research_transcript(monkeypatch: pytest.MonkeyPatch) -
             project_id: UUID | None = None,
             title: str | None = None,
             force: bool = False,
+            validate_mode: str = "off",
         ) -> dict[str, Any]:
             return {"status": "success", "doc_id": "doc-1", "n_turns": 2}
 
@@ -414,7 +415,12 @@ async def test_round_trip_add_entity(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_round_trip_research_ingest(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Handler:
         async def ingest_path(
-            self, tenant_id: UUID, path: str, project_id: Any = None, force: bool = False
+            self,
+            tenant_id: UUID,
+            path: str,
+            project_id: Any = None,
+            force: bool = False,
+            validate_mode: str = "off",
         ) -> dict[str, Any]:
             return {"status": "success", "files_found": 1, "ingested": 1}
 

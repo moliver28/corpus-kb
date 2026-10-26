@@ -58,6 +58,20 @@ ingestion:
   # Bounded parallel file ingestion (ingest_directory / ingest_path).
   # Capped at two below the pool size; DuckDB stays serial.
   concurrency: 4
+  # Token-budget chunking gate (Wave 4). 'semchunk' splits oversized text
+  # on sentence/word boundaries with native char offsets via the lazy
+  # [semchunk] extra (pip install 'corpus-kb[semchunk]'). Absent key = the
+  # default chars/4 split; configured but not installed = the default
+  # split plus a warning in the ingest result.
+  # tokenizer: semchunk
+  # Near-duplicate dedup gate (Wave 4). 'minhash' drops near-duplicate
+  # chunks before embedding via the lazy [dedup] extra (pip install
+  # 'corpus-kb[dedup]'); dropped chunk ids land in the result's
+  # dedup_dropped key. Absent key = off.
+  # dedup: minhash
+  # Jaccard decision threshold for dedup (0 < x <= 1). LSH proposes below
+  # it; the exact check decides.
+  # dedup_threshold: 0.9
   strategies:
     transcript: transcript
     # Structure-aware first-class paths (default ON): decks chunk per slide

@@ -550,6 +550,7 @@ async def test_ingest_file_forwards_known_strategy(
         rag_backend=None,
         is_file=False,
         strategy_name=None,
+        validate_mode="off",
     ):
         captured["strategy_name"] = strategy_name
         captured["source_type"] = source_type
@@ -590,6 +591,7 @@ async def test_ingest_text_accepts_transcript_source_type(
         rag_backend=None,
         is_file=False,
         strategy_name=None,
+        validate_mode="off",
     ):
         captured["source_type"] = source_type
         return {"status": "success"}

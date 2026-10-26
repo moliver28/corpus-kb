@@ -154,14 +154,14 @@ def _tool_routes() -> tuple[ToolRoute, ...]:
             research_tools.research_ingest_transcript,
             "pg_pool",
             ("file_path",),
-            ("project_id", "tenant_id", "title", "force"),
+            ("project_id", "tenant_id", "title", "force", "validate"),
         ),
         ToolRoute(
             "/api/research/ingest",
             research_tools.research_ingest,
             "pg_pool",
             ("path",),
-            ("project_id", "tenant_id", "force"),
+            ("project_id", "tenant_id", "force", "validate"),
         ),
         ToolRoute(
             "/api/coding/run",
