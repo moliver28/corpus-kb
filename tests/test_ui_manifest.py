@@ -41,6 +41,21 @@ def test_fresh_generation_matches_committed_artifacts() -> None:
         assert committed == text, f"{rel.as_posix()} is stale — run poe gen"
 
 
+def test_ui_src_manifest_copy_matches_the_generated_source() -> None:
+    """The SPA's importable copy byte-matches the generated manifest.
+
+    The pnpm pre-hooks copy the file, but they are not a guarantee: a
+    stale copy must fail here. On drift run ``poe gen`` (or
+    ``pnpm -C ui_src run copy-manifest``).
+    """
+    source = (REPO / "src/corpus_kb/ui_manifest.json").read_bytes()
+    copy = (REPO / "ui_src/src/api/manifest.json").read_bytes()
+    assert copy == source, (
+        "ui_src/src/api/manifest.json is stale — run: poe gen "
+        "(or: pnpm -C ui_src run copy-manifest)"
+    )
+
+
 def test_manifest_json_is_sorted_and_complete() -> None:
     """The committed JSON parses, sorts by path then method, and covers every
     registry surface that declares an http_route."""
