@@ -1,6 +1,7 @@
 import { Button, Input, Typography } from "antd";
 import { useRef, useState } from "react";
 import { callOp } from "../api/client";
+import { unknownOpResult } from "../api/errors";
 import { getEntry } from "../api/manifest";
 import type { OpResult } from "../api/types";
 import { strings } from "../strings";
@@ -11,19 +12,6 @@ import ErrorPanel from "./ErrorPanel";
 import ReceiptCard from "./ReceiptCard";
 import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
-
-function unknownOp(): OpResult {
-  return {
-    ok: false,
-    kind: "error",
-    httpStatus: 0,
-    status: "",
-    message: strings.unknownOperation,
-    remediation: "",
-    errorType: "unknown_op",
-    data: null,
-  };
-}
 
 /** Dispatch one settled result to the right panel. */
 function ResultView({ result, onRetry }: { result: OpResult; onRetry: () => void }) {
@@ -64,7 +52,7 @@ export default function OpRunner({
   });
 
   if (!op) {
-    return <ErrorPanel result={unknownOp()} />;
+    return <ErrorPanel result={unknownOpResult()} />;
   }
 
   /** Parse and validate the JSON editor content against the manifest row. */
@@ -147,7 +135,12 @@ export default function OpRunner({
       )}
       {settled !== null && (
         <div style={{ marginTop: 12 }}>
-          <ResultView result={settled} onRetry={() => void runSimple()} />
+          {/* A longRunning op retries through the long path too — the
+              simple path would cap the wait at the default timeout. */}
+          <ResultView
+            result={settled}
+            onRetry={op.longRunning ? () => void runLong() : () => void runSimple()}
+          />
         </div>
       )}
     </div>
