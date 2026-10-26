@@ -17,7 +17,8 @@
     "prebuild": "pnpm run sync-manifest",
     "lint": "tsc --noEmit && eslint src",
     "test": "vitest run",
-    "build": "tsc --noEmit && vite build"
+    "build": "tsc --noEmit && vite build && node scripts/check-bundle.mjs",
+    "check-bundle": "node scripts/check-bundle.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.104.5",
