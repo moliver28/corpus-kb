@@ -1,6 +1,7 @@
 """Ingest route family (zero-drift split of api/http.py).
 
 POST /api/ingest/file, /api/ingest/text, /api/ingest/directory, /api/ingest/url
+POST /api/ingest/upload                       (UI SPA Task 5a, multipart)
 GET  /api/ingest/status
 POST /api/ingest/reembed
 
@@ -18,12 +19,13 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import opt_bool, parse_body, route_errors
+from corpus_kb.api._body import DEFAULT_TENANT_ID, opt_bool, parse_body, route_errors
 from corpus_kb.domain.models import (
     IngestDirectoryCommand,
     IngestFileCommand,
     IngestTextCommand,
 )
+from corpus_kb.errors import ValidationError
 
 
 @route_errors
@@ -89,6 +91,42 @@ async def ingest_url_route(request: Request) -> JSONResponse:
         tenant_id=body.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
         crawl=opt_bool(body.get("crawl"), False),
         source_type=body.get("source_type"),
+    )
+    return JSONResponse(result)
+
+
+@route_errors
+async def ingest_upload_route(request: Request) -> JSONResponse:
+    """POST /api/ingest/upload — one multipart file through the standard pipeline."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.ingest_upload_tools import (
+        enforce_request_caps,
+        ingest_upload,
+        require_multipart_support,
+        upload_cap_mb,
+    )
+
+    require_multipart_support()
+    max_mb = upload_cap_mb(None)
+    # The cap check runs BEFORE the body is read: a lying or missing header
+    # is still caught chunk-by-chunk inside ingest_upload.
+    raw_length = request.headers.get("content-length")
+    enforce_request_caps(
+        request.headers.get("content-type"),
+        int(raw_length) if raw_length is not None else None,
+        max_mb,
+    )
+    form = await request.form()
+    upload = form.get("file")
+    if not hasattr(upload, "read"):
+        raise ValidationError("The upload needs a multipart file field named file.")
+    source_type = form.get("source_type")
+    result = await ingest_upload(
+        upload,
+        await research_pool(),
+        tenant_id=str(form.get("tenant_id", DEFAULT_TENANT_ID)),
+        source_type=str(source_type) if source_type is not None else None,
+        max_upload_mb=max_mb,
     )
     return JSONResponse(result)
 

@@ -179,9 +179,13 @@ topics = ["bertopic>=0.16"]
 # (ui_src/, Node build-time only) into src/corpus_kb/ui_dist/ and served
 # as static files at /app — no Python runtime UI dependency anymore.
 # uvicorn[standard] stays for the websocket-capable server layer.
+# python-multipart (UI SPA Task 5a, B3): the multipart parser starlette's
+# request.form() needs for POST /api/ingest/upload. Apache-2.0. The route
+# answers a typed 503 dependency_missing when the extra is absent.
 # CI NEVER installs this extra; the extras-less jobs stay green.
 ui = [
     "uvicorn[standard]>=0.24",
+    "python-multipart>=0.0.20",
 ]
 # Tracing (UX program W4): opentelemetry-api is already a core dep (it is
 # a no-op without this extra). The extra adds the SDK, the pure-Python
@@ -246,6 +250,10 @@ dev = [
     "syrupy>=4.0",
     "lxml>=5.0",
     "mapie>=1.0",
+    # python-multipart (UI SPA Task 5a): the CI test jobs install [dev] but
+    # never [ui]; the upload-route tests exercise the REAL multipart parse,
+    # so the parser must exist there too (a local-only gate is not a gate).
+    "python-multipart>=0.0.20",
     "poethepoet>=0.24",
     "import-linter>=2.0",
     "vulture>=2.10",
