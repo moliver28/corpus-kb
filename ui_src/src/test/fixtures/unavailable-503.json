@@ -1,0 +1,13 @@
+{
+  "name": "unavailable-503",
+  "source": "recorded",
+  "request": { "method": "GET", "path": "/api/documents" },
+  "response": {
+    "httpStatus": 503,
+    "body": {
+      "status": "error",
+      "error": "The query handler is not ported to the DuckDB backend.",
+      "error_type": "dependency_missing"
+    }
+  }
+}

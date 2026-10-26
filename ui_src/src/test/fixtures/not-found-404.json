@@ -1,0 +1,9 @@
+{
+  "name": "not-found-404",
+  "source": "recorded",
+  "request": { "method": "POST", "path": "/api/nope" },
+  "response": {
+    "httpStatus": 404,
+    "body": { "detail": "Not Found" }
+  }
+}

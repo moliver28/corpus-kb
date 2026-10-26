@@ -1,0 +1,13 @@
+{
+  "name": "degraded-200",
+  "source": "canonical",
+  "note": "Neutral status on HTTP 200 stays ok:true; re-record against a running server when a DB-backed route can produce it.",
+  "request": { "method": "POST", "path": "/api/search" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "degraded",
+      "message": "The answer is incomplete because the embedding provider is down."
+    }
+  }
+}

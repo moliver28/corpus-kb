@@ -1,0 +1,10 @@
+{
+  "name": "ok-200",
+  "source": "canonical",
+  "note": "Success envelopes need a provisioned database; re-record against a running server (ui_src/scripts/record-fixtures.ts) when the demo routes land.",
+  "request": { "method": "POST", "path": "/api/search" },
+  "response": {
+    "httpStatus": 200,
+    "body": { "status": "ok", "results": [], "total": 0 }
+  }
+}
