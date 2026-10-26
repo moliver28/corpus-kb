@@ -19,6 +19,17 @@ export interface Strings {
   serverNotAnswering: string;
   remediationRunDoctor: string;
   unknownOperation: string;
+  bannerKindInfo: string;
+  bannerKindOk: string;
+  bannerKindWarn: string;
+  bannerKindError: string;
+  errorTitle: string;
+  blockedTitle: string;
+  remediationLabel: string;
+  retryLabel: string;
+  unavailableTitle: string;
+  unavailableBody: string;
+  receiptRaw: string;
 }
 
 export const strings: Strings = en;

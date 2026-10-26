@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider } from "antd";
 import App from "./App";
+import "./ui.css";
 
 const queryClient = new QueryClient();
 

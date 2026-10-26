@@ -13,5 +13,16 @@
   "unreadableResponse": "The server sent an answer the app cannot read.",
   "serverNotAnswering": "The server did not answer. Check that corpus-kb is running.",
   "remediationRunDoctor": "Run: corpus-kb doctor",
-  "unknownOperation": "That operation is not in the manifest."
+  "unknownOperation": "That operation is not in the manifest.",
+  "bannerKindInfo": "Info",
+  "bannerKindOk": "Done",
+  "bannerKindWarn": "Warning",
+  "bannerKindError": "Error",
+  "errorTitle": "That did not work",
+  "blockedTitle": "Not allowed",
+  "remediationLabel": "How to fix it",
+  "retryLabel": "Try again",
+  "unavailableTitle": "Not available right now",
+  "unavailableBody": "The server cannot run this yet. You can retry in a moment.",
+  "receiptRaw": "Show the raw answer"
 }
