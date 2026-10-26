@@ -41,6 +41,12 @@ research_app = typer.Typer(help="Research domain: transcript ingestion")
 # The ingest commands register first (they are the first two in help).
 register_ingest(research_app)
 
+# Lifecycle read list (UI SPA Task 5b): `research projects` joins the
+# group here; the codebook/coding reads attach from cli_coding.
+from corpus_kb.cli.cli_lifecycle_reads import register_research as register_reads  # noqa: E402
+
+register_reads(research_app)
+
 
 def _cycle_epilog() -> str:
     """Build the help epilog from cycle_gates (the ONE exit-code table).

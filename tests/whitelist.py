@@ -35,10 +35,12 @@ reset_documents_projection
 get_embed_projection
 reset_embed_projection
 
-# Typer CLI commands (registered via decorator, dispatched by name): 15 name(s)
+# Typer CLI commands (registered via decorator, dispatched by name): 17 name(s)
 _root
+codebook_list
 coding_inductive
 doctor
+projects
 research_ask
 research_demo
 research_evidence

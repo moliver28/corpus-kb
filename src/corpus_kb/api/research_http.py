@@ -25,13 +25,13 @@ from __future__ import annotations
 import inspect
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, get_type_hints
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from corpus_kb.api._body import DEFAULT_TENANT_ID, error_response, parse_body
+from corpus_kb.api._body import DEFAULT_TENANT_ID, error_response, opt_int, parse_body
 from corpus_kb.errors import error_status
 
 # ---------------------------------------------------------------------------
@@ -79,12 +79,14 @@ async def research_pool() -> Any:
 
 @dataclass(frozen=True)
 class ToolRoute:
-    """One POST route: a tool function plus its body-key mapping.
+    """One tool route: a tool function plus its parameter-key mapping.
 
     ``pool_kw`` is the tool function's pool parameter name (``None`` for
-    pool-free operations such as ``release_compare``); ``required`` body
-    keys must be present, ``optional`` keys pass through when present. The
+    pool-free operations such as ``release_compare``); ``required`` keys
+    must be present, ``optional`` keys pass through when present. The
     tenant id always comes from the body (shared placeholder default).
+    ``method`` is ``POST`` (JSON body) or ``GET`` (query parameters); the
+    lifecycle read routes (UI SPA Task 5b) are the GET rows.
     """
 
     path: str
@@ -92,10 +94,12 @@ class ToolRoute:
     pool_kw: str | None
     required: tuple[str, ...]
     optional: tuple[str, ...] = ()
+    method: str = "POST"
 
 
 def _tool_routes() -> tuple[ToolRoute, ...]:
     """The route table (tool modules imported lazily, api/http.py style)."""
+    from corpus_kb.api.routes_lifecycle import lifecycle_routes
     from corpus_kb.tools import (
         cycle_tools,
         demo_tools,
@@ -140,6 +144,7 @@ def _tool_routes() -> tuple[ToolRoute, ...]:
             "pg_pool",
             ("codebook_version_id",),
             ("tenant_id",),
+            "GET",
         ),
         ToolRoute(
             "/api/release/compare",
@@ -265,6 +270,8 @@ def _tool_routes() -> tuple[ToolRoute, ...]:
             (),
             (),
         ),
+        # -- lifecycle read routes (UI SPA Task 5b, spec B2): the GET rows --
+        *lifecycle_routes(),
     )
 
 
@@ -339,15 +346,47 @@ async def release_status_get(request: Request) -> JSONResponse:
     )
 
 
+def _get_handler(route: ToolRoute) -> Callable[[Request], Awaitable[JSONResponse]]:
+    """One GET route adapter: query parameters in, house envelope out.
+
+    Values coerce by the tool function's own annotations (ints for counts),
+    so the browser, the socket arm, and the MCP schema agree on types.
+    """
+
+    async def handler(request: Request) -> JSONResponse:
+        params = dict(request.query_params)
+        missing = [key for key in route.required if key not in params]
+        if missing:
+            return error_response("validation_error", f"missing required fields: {missing}")
+        annotations = get_type_hints(route.fn)
+        kwargs: dict[str, Any] = {}
+        for key in (*route.required, *route.optional):
+            if key not in params:
+                continue
+            raw: object = params[key]
+            if annotations.get(key) is int:
+                raw = opt_int(raw, 0)
+            kwargs[key] = raw
+        if route.pool_kw is not None:
+            kwargs[route.pool_kw] = await research_pool()
+        if "tenant_id" in inspect.signature(route.fn).parameters:
+            kwargs.setdefault("tenant_id", DEFAULT_TENANT_ID)
+        return await _respond(route.fn, kwargs)
+
+    return handler
+
+
 def research_routes() -> list[Route]:
     """The research + release routes for the main Starlette app."""
     table = _route_by_path()
     routes: list[Route] = []
     for route in _tool_routes():
-        methods = ["GET"] if route.path == "/api/release/status" else ["POST"]
-        handler = (
-            release_status_get if route.path == "/api/release/status" else _post_handler(route)
-        )
-        routes.append(Route(route.path, handler, methods=methods))
+        if route.method == "GET":
+            handler = (
+                release_status_get if route.path == "/api/release/status" else _get_handler(route)
+            )
+            routes.append(Route(route.path, handler, methods=["GET"]))
+            continue
+        routes.append(Route(route.path, _post_handler(route), methods=["POST"]))
     assert len(table) == len(routes), "route table collision"
     return routes

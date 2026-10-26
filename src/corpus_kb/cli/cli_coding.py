@@ -22,6 +22,13 @@ from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, wired_pool
 coding_app = typer.Typer(help="Coding subsystem: deductive coding runs")
 codebook_app = typer.Typer(help="Codebook governance: human-gated promotion")
 
+# Lifecycle read lists (UI SPA Task 5b): `codebook list`, `codebook
+# proposals`, and `coding assignments` — read-only, same tool functions
+# the HTTP GET routes serve.
+from corpus_kb.cli.cli_lifecycle_reads import register_coding as register_reads  # noqa: E402
+
+register_reads(coding_app, codebook_app)
+
 
 @coding_app.command("run")
 def coding_run(

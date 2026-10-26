@@ -190,6 +190,49 @@
     ]
   },
   {
+    "description": "List proposed codes for the promote gate (read-only).",
+    "id": "codebook-proposals",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [
+      "status",
+      "limit",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/codebook/proposals",
+    "required": []
+  },
+  {
+    "description": "List codebook versions with labels, hashes, and dates (read-only).",
+    "id": "codebooks-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [
+      "limit",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/codebooks",
+    "required": []
+  },
+  {
+    "description": "List coding assignments for the review queue, with filters (read-only).",
+    "id": "coding-assignments",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [
+      "review_status",
+      "code",
+      "limit",
+      "offset",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/coding/assignments",
+    "required": []
+  },
+  {
     "description": "Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
     "id": "coding-inductive",
     "longRunning": true,
@@ -376,6 +419,19 @@
     ],
     "paramsKnown": false,
     "path": "/api/notebook/uncoded",
+    "required": []
+  },
+  {
+    "description": "List research projects, newest first (read-only).",
+    "id": "projects-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [
+      "limit",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/projects",
     "required": []
   },
   {

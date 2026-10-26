@@ -230,6 +230,35 @@ SURFACES: tuple[Surface, ...] = (
         description="Read-only diagnostics: profile, Postgres, Ollama, env vars, checks.",
         http_route="/api/doctor",
     ),
+    # -- lifecycle read lists (UI SPA Task 5b, spec B2): the GET rows -------
+    Surface(
+        name="projects-list",
+        cli_path="research projects",
+        mcp_tool="projects_list",
+        description="List research projects, newest first (read-only).",
+        http_route="/api/projects",
+    ),
+    Surface(
+        name="codebooks-list",
+        cli_path="codebook list",
+        mcp_tool="codebooks_list",
+        description="List codebook versions with labels, hashes, and dates (read-only).",
+        http_route="/api/codebooks",
+    ),
+    Surface(
+        name="codebook-proposals",
+        cli_path="codebook proposals",
+        mcp_tool="codebook_proposals",
+        description="List proposed codes for the promote gate (read-only).",
+        http_route="/api/codebook/proposals",
+    ),
+    Surface(
+        name="coding-assignments",
+        cli_path="coding assignments",
+        mcp_tool="coding_assignments",
+        description="List coding assignments for the review queue, with filters (read-only).",
+        http_route="/api/coding/assignments",
+    ),
     # -- topics layer (Wave 4): full cli+mcp+http parity ----------------------
     Surface(
         name="topics-build",
