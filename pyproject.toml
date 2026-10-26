@@ -628,6 +628,12 @@ help = "UI unit tests (vitest)"
 cmd = "pnpm -C ui_src build"
 help = "Build the SPA into src/corpus_kb/ui_dist/ (Vite, base /app/)"
 
+[tool.poe.tasks.ui-bundle]
+# Fails when any initial-route gzip chunk or the total passes 350 kB
+# (ui_src/scripts/check-bundle.mjs; also runs inside ui-build).
+cmd = "pnpm -C ui_src run check-bundle"
+help = "UI initial-route bundle budget gate (350 kB gzip)"
+
 [tool.poe.tasks.ui-licenses]
 # Real gate (Task 4): production deps stay on the MIT / Apache-2.0 / BSD /
 # ISC / 0BSD allowlist; the lock records the production tree only (dev
