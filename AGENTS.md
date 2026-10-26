@@ -131,7 +131,7 @@ Defined in [docs/research/harness-zero-drift-program.md](docs/research/harness-z
 5. **Layering is law.** Import direction `api → tools → handlers → storage`, enforced by import-linter. No pipeline logic in surface modules.
 6. **Plain English (ASD-STE100) everywhere user-facing.** Short active sentences ≤ 20 words, simple words, no idioms — error messages, help text, doctor output, docstrings, docs. Enforced by Vale (docs) + `pytest -m ste` (Python strings, Flesch-Kincaid grade ≤ 9).
 7. **Size and hygiene gates.** Source files ≤ 250-line soft limit; xenon complexity gates, vulture dead-code, deptry unused deps.
-8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen`. CI runs the same targets — local bypasses get caught.
+8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen`. CI runs the same targets — local bypasses get caught. Wave 4 adds `poe validation-gate` (ingest validators + mode semantics + determinism; ci.yml / validation-gate).
 9. **Deterministic output.** Query/search results stably ordered with tiebreakers; harnesses must be able to snapshot them.
 10. **Every new gate needs three things:** a `poe` target, a CI job calling it, and a map row (+ a line here). A local-only gate is not a gate.
 11. **UI SPA gates (D17).** `ui-lint`, `ui-test`, `ui-build` (includes the bundle budget), `ui-licenses`, `ui-manifest` (wired into `poe gen`). Each needs a `poe` target, a CI job, and a map row per rule 10.

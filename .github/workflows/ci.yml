@@ -132,6 +132,35 @@ jobs:
         run: python src/corpus_kb/_setup/validate_profiles.py
 
   # ─────────────────────────────────────────────────────────────────────
+  # Validation gate (unified-ingestion Wave 4, zero-drift rule 10): the
+  # ingest validators, the off/advisory/enforce/calibrate mode semantics,
+  # and the semchunk/dedup lazy seams. Runs through poe (rule 8). The
+  # extras stay UNINSTALLED: the extras-less contract is itself under
+  # test here.
+  # ─────────────────────────────────────────────────────────────────────
+  validation-gate:
+    name: "validation-gate"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install poethepoet and project deps (extras NOT installed)
+        run: |
+          pip install poethepoet
+          pip install -e ".[dev]"
+
+      - name: Validation gate
+        run: poe validation-gate
+
+  # ─────────────────────────────────────────────────────────────────────
   # Validate-configs: checks MCP config JSON files for format correctness
   # and cross-config consistency. Fast, no deps needed beyond stdlib.
   # ─────────────────────────────────────────────────────────────────────
