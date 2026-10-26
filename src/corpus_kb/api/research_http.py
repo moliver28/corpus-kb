@@ -284,9 +284,20 @@ def _route_by_path() -> dict[str, ToolRoute]:
     return {route.path: route for route in _tool_routes()}
 
 
-async def _respond(fn: Callable[..., object], kwargs: dict[str, Any]) -> JSONResponse:
-    """Call the shared tool function and map outcome -> honest status code."""
+async def _respond(
+    fn: Callable[..., object],
+    kwargs: dict[str, Any],
+    pool_kw: str | None = None,
+) -> JSONResponse:
+    """Call the shared tool function and map outcome -> honest status code.
+
+    The pool is acquired INSIDE the try: a pool refusal (the DuckDB
+    backend, a dead Postgres) is a ``CorpusError`` and must answer as the
+    taxonomy envelope, never as a plain-text 500.
+    """
     try:
+        if pool_kw is not None:
+            kwargs[pool_kw] = await research_pool()
         result = fn(**kwargs)
         payload = await result if inspect.isawaitable(result) else result
     except Exception as exc:
@@ -319,9 +330,7 @@ def _post_handler(route: ToolRoute) -> Callable[[Request], Awaitable[JSONRespons
         for key in route.optional:
             if key in body:
                 kwargs[key] = body[key]
-        if route.pool_kw is not None:
-            kwargs[route.pool_kw] = await research_pool()
-        return await _respond(route.fn, kwargs)
+        return await _respond(route.fn, kwargs, route.pool_kw)
 
     return handler
 
@@ -339,10 +348,10 @@ async def release_status_get(request: Request) -> JSONResponse:
     return await _respond(
         release_tools.release_status,
         {
-            "pg_pool": await research_pool(),
             "codebook_version_id": codebook_version_id,
             "tenant_id": request.query_params.get("tenant_id") or DEFAULT_TENANT_ID,
         },
+        "pg_pool",
     )
 
 
@@ -367,11 +376,9 @@ def _get_handler(route: ToolRoute) -> Callable[[Request], Awaitable[JSONResponse
             if annotations.get(key) is int:
                 raw = opt_int(raw, 0)
             kwargs[key] = raw
-        if route.pool_kw is not None:
-            kwargs[route.pool_kw] = await research_pool()
         if "tenant_id" in inspect.signature(route.fn).parameters:
             kwargs.setdefault("tenant_id", DEFAULT_TENANT_ID)
-        return await _respond(route.fn, kwargs)
+        return await _respond(route.fn, kwargs, route.pool_kw)
 
     return handler
 

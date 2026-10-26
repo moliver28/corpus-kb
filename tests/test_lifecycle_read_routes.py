@@ -111,6 +111,35 @@ def test_assignment_filters_reach_the_tool(monkeypatch: pytest.MonkeyPatch) -> N
     assert "limit" not in kwargs
 
 
+def test_pool_refusal_is_the_taxonomy_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A refusing pool seam answers the error envelope (503), never a 500.
+
+    Covers both adapter shapes: the GET read rows and a POST tool route.
+    """
+    from corpus_kb.api import research_http
+    from corpus_kb.errors import DependencyMissingError
+
+    async def refusing_pool() -> object:
+        raise DependencyMissingError(
+            "The research routes need the Postgres pool.",
+            remediation="Run the server on the Postgres backend.",
+        )
+
+    monkeypatch.setattr(research_http, "research_pool", refusing_pool)
+    client = TestClient(create_http_app())
+
+    get_response = client.get("/api/projects")
+    assert get_response.status_code == 503
+    assert get_response.json()["error_type"] == "dependency_missing"
+
+    post_response = client.post(
+        "/api/release/assess", json={"codebook_version_id": str(uuid4())}
+    )
+    assert post_response.status_code == 503
+    body = post_response.json()
+    assert body["status"] == "error" and body["error_type"] == "dependency_missing"
+
+
 def test_get_reads_refuse_post(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_stub(monkeypatch, "projects_list")
     client = TestClient(create_http_app())
