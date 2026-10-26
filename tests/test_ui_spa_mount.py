@@ -292,3 +292,58 @@ def test_validate_runtime_config_accepts_the_shipped_block() -> None:
     from corpus_kb._setup.validate_configs import validate_runtime_config
 
     assert validate_runtime_config(_shipped_yaml()) == []
+
+
+# ---------------------------------------------------------------------------
+# DuckDB parity (issue #172): the single-user backend mounts the same SPA
+# through the same mount_spa seam — one UI, one registration order.
+# ---------------------------------------------------------------------------
+
+
+class _FakeDuckDbGateway:
+    """Connect-shaped gateway stub: startup never touches real files."""
+
+    @classmethod
+    async def connect(cls, conn_str: str) -> _FakeDuckDbGateway:
+        del conn_str
+        return cls()
+
+
+async def test_duckdb_startup_mounts_the_spa_through_the_same_seam(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """startup_duckdb reaches mount_spa exactly like the Postgres path."""
+    from types import SimpleNamespace
+
+    import corpus_kb.domain.application as domain_app
+    import corpus_kb.rag.embedder as embedder_module
+    import corpus_kb.storage.gateway as gateway_module
+    import corpus_kb.ui.spa as spa_module
+    from corpus_kb.server_wiring_duckdb import startup_duckdb
+
+    calls: list[tuple[object, object]] = []
+
+    def fake_mount_spa(app: FastAPI, config: dict[str, Any], dist: Path = DIST_DIR) -> bool:
+        del dist
+        calls.append((app, config))
+        return True
+
+    monkeypatch.setattr(gateway_module, "DuckDbGateway", _FakeDuckDbGateway)
+    monkeypatch.setattr(
+        domain_app,
+        "get_app",
+        lambda _conn_str, backend: SimpleNamespace(mapper=object(), recorder=object()),
+    )
+    monkeypatch.setattr(domain_app, "events_table_name", lambda _app: "events")
+    monkeypatch.setattr(embedder_module, "create_embedder", lambda _cfg, _pool: object())
+    monkeypatch.setattr(spa_module, "mount_spa", fake_mount_spa)
+
+    cfg: dict[str, Any] = {"database": {"backend": "duckdb"}}
+    services = await startup_duckdb(cfg, str(tmp_path / "single.duckdb"))
+
+    assert len(calls) == 1, "the DuckDB path must route through mount_spa"
+    mounted_app, mounted_cfg = calls[0]
+    assert mounted_app is services["http_app"]
+    assert mounted_cfg is cfg
+    assert services["ui_mounted"] is True
+    assert services["pool"] is None  # the DuckDB contract stays pool-free
