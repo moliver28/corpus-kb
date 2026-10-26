@@ -1,4 +1,6 @@
 // Outcome classification (spec D.3): one envelope + HTTP status -> one Kind.
+// User-facing words come from strings/en.json like every other surface.
+import { strings } from "../strings";
 import type { OpResult } from "./types";
 
 const FAILED: ReadonlySet<string> = new Set(["error", "failed"]);
@@ -44,7 +46,7 @@ export function unreadableResult(httpStatus: number): OpResult<never> {
     kind: "unknown",
     httpStatus,
     status: "unknown",
-    message: "The server sent an answer the app cannot read.",
+    message: strings.unreadableResponse,
     remediation: "",
     errorType: "",
     data: null,
@@ -58,9 +60,23 @@ export function networkResult(): OpResult<never> {
     kind: "network",
     httpStatus: 0,
     status: "network",
-    message: "The server did not answer. Check that corpus-kb is running.",
-    remediation: "Run: corpus-kb doctor",
+    message: strings.serverNotAnswering,
+    remediation: strings.remediationRunDoctor,
     errorType: "",
+    data: null,
+  };
+}
+
+/** The op id is not in the manifest — a wiring bug, surfaced honestly. */
+export function unknownOpResult(): OpResult<never> {
+  return {
+    ok: false,
+    kind: "error",
+    httpStatus: 0,
+    status: "",
+    message: strings.unknownOperation,
+    remediation: "",
+    errorType: "unknown_op",
     data: null,
   };
 }

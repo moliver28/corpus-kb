@@ -9,5 +9,9 @@
   "stageCodebook": "Codebook",
   "stageRelease": "Release",
   "setupTitle": "Set up your system",
-  "setupBody": "System checks and settings will appear here."
+  "setupBody": "System checks and settings will appear here.",
+  "unreadableResponse": "The server sent an answer the app cannot read.",
+  "serverNotAnswering": "The server did not answer. Check that corpus-kb is running.",
+  "remediationRunDoctor": "Run: corpus-kb doctor",
+  "unknownOperation": "That operation is not in the manifest."
 }

@@ -15,6 +15,10 @@ export interface Strings {
   stageRelease: string;
   setupTitle: string;
   setupBody: string;
+  unreadableResponse: string;
+  serverNotAnswering: string;
+  remediationRunDoctor: string;
+  unknownOperation: string;
 }
 
 export const strings: Strings = en;
