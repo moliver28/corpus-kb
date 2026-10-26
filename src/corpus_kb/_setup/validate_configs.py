@@ -93,6 +93,10 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         #    tools that gained surface_registry rows (manifest longRunning) --
         "ingest_directory",
         "ingest_url",
+        # -- lifecycle UI ops (UI SPA Task 5b, issue #176): registry rows over
+        #    the demo loader and the doctor probes ---------------------------
+        "demo_load",
+        "doctor",
         # -- topics layer (Wave 4, tools/topics_tools.py) ---------------------
         "topics_build",
         "topics_list",

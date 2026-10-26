@@ -52,6 +52,7 @@ GET_SURFACE_NAMES = frozenset(
     {
         "release-status",
         "ingest-status",
+        "doctor",
         "topics-list",
         "labeling-list",
         "labeling-lfs",
@@ -75,6 +76,9 @@ LONG_RUNNING_OP_IDS = frozenset(
         "research-ingest",
         "ingest-directory",
         "ingest-url",
+        # UI SPA Task 5b (issue #176): the sample-corpus load embeds every
+        # file on a cold host, so the SPA shows the elapsed-time state.
+        "demo-load",
     }
 )
 

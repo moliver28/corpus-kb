@@ -125,9 +125,10 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # The §5.1 graph births (+4), the analysis program's tools (+4), and
     # the method register program's twelve method ops (+12), the Living
     # Corpus statement (+2), conflict (+3), belief (+4), tune (+1) and
-    # meta-embed (+1) ops all extended the catalogue; the pin covers the
-    # union.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 70
+    # meta-embed (+1) ops all extended the catalogue; the UI SPA Task 5b
+    # registry rows (issue #176) added doctor + demo_load. The pin covers
+    # the union.
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 72
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

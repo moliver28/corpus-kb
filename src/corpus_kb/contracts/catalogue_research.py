@@ -373,7 +373,7 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
 
 # Full surface parity: nothing is skipped. The tuple stays as the
 # inventory's schema (empty list) so consumers never special-case absence.
-# cli+http-only operations (demo-kb, doctor) stay lifecycle commands
-# outside the registry until Task 5b lands their MCP legs and rows in one
-# registry-first change — every registry row must carry all four surfaces.
+# The demo-kb and doctor lifecycle commands gained their MCP legs and
+# surface_registry rows in Task 5b (issue #176); they are registry rows,
+# not catalogue rows — the catalogue stays the research/coding inventory.
 SKIPPED_OPERATIONS: tuple[SkippedOperation, ...] = ()

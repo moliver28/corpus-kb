@@ -215,6 +215,21 @@ SURFACES: tuple[Surface, ...] = (
         description="Fetch (or crawl) a website and ingest its HTML pages.",
         http_route="/api/ingest/url",
     ),
+    # -- lifecycle UI ops (UI SPA Task 5b, issue #176): demo load + doctor ---
+    Surface(
+        name="demo-load",
+        cli_path="demo-kb",
+        mcp_tool="demo_load",
+        description="Load the bundled sample corpus through the standard ingest pipeline.",
+        http_route="/api/demo/load",
+    ),
+    Surface(
+        name="doctor",
+        cli_path="doctor",
+        mcp_tool="doctor",
+        description="Read-only diagnostics: profile, Postgres, Ollama, env vars, checks.",
+        http_route="/api/doctor",
+    ),
     # -- topics layer (Wave 4): full cli+mcp+http parity ----------------------
     Surface(
         name="topics-build",

@@ -219,6 +219,26 @@
     ]
   },
   {
+    "description": "Load the bundled sample corpus through the standard ingest pipeline.",
+    "id": "demo-load",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/demo/load",
+    "required": []
+  },
+  {
+    "description": "Read-only diagnostics: profile, Postgres, Ollama, env vars, checks.",
+    "id": "doctor",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/doctor",
+    "required": []
+  },
+  {
     "description": "Ingest the supported files under one directory in one walk.",
     "id": "ingest-directory",
     "longRunning": true,
