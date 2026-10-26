@@ -2,9 +2,10 @@
 
 Every research/coding operation lives here as a full row: MCP, CLI, HTTP,
 and socket surfaces, the shared tool layer that serves them all, and the
-guaranteed-on-success envelope keys. The old SKIP set is gone: the parity
-gate runs every row (the offline stubs live in the gate's harness), and
-the inventory prints zero skipped operations.
+guaranteed-on-success envelope keys. The parity gate runs every tested row
+(the offline stubs live in the gate's harness). The few multi-surface
+operations with NO MCP/socket leg (demo_load, doctor) live in the SKIP
+set with an honest reason, so the inventory stays complete.
 
 Guaranteed keys only (the envelopes.py rule): outcome-specific keys (the
 cycle's gate payload, the report's dynamic sections, promote's block
@@ -364,6 +365,34 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
     ),
 )
 
-# Full surface parity: nothing is skipped anymore. The tuple stays as the
-# inventory's schema (empty list) so consumers never special-case absence.
-SKIPPED_OPERATIONS: tuple[SkippedOperation, ...] = ()
+# Multi-surface operations the deep parity gate does not run: these two
+# have CLI + HTTP legs only (UI SPA Task 5a); no MCP tool or socket method
+# exists, so a full four-surface row would be a false claim. Each row
+# declares its REAL surfaces; the surface registry byte-matches them
+# (test_catalogue_matches_surface_registry pins both rows).
+SKIPPED_OPERATIONS: tuple[SkippedOperation, ...] = (
+    SkippedOperation(
+        name="demo_load",
+        family="demo",
+        reason=(
+            "Runs on the command line and over HTTP. The MCP tool and the "
+            "socket method do not exist. The route tests pin the receipt."
+        ),
+        surfaces=(
+            SurfaceSpec(CLI, "demo-kb"),
+            SurfaceSpec(HTTP, "/api/demo/load", "POST"),
+        ),
+    ),
+    SkippedOperation(
+        name="doctor",
+        family="doctor",
+        reason=(
+            "Runs on the command line and over HTTP. The probes need a live "
+            "stack, so the route tests stub them at the source seams."
+        ),
+        surfaces=(
+            SurfaceSpec(CLI, "doctor"),
+            SurfaceSpec(HTTP, "/api/doctor", "GET"),
+        ),
+    ),
+)

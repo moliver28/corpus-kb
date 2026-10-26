@@ -103,9 +103,11 @@ async def test_loader_reports_unchanged_files_as_skipped(
     assert envelope["status"] == "success"
 
 
-async def test_loader_flips_to_partial_with_a_message_on_failures(
+async def test_loader_flips_to_partial_with_failures_in_the_result(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Partial runs keep the top-level shape: failures live in result."""
+
     async def fake_ingest(path: str, pool: object, config: object) -> dict[str, object]:
         if Path(path).name == "glossary.md":
             return {"status": "error", "message": "database unreachable"}
@@ -114,7 +116,12 @@ async def test_loader_flips_to_partial_with_a_message_on_failures(
     monkeypatch.setattr(demo_kb, "ingest_file", fake_ingest)
     envelope = await load_demo_kb({}, pool=object())
     assert envelope["status"] == "partial"
-    assert "glossary.md" in str(envelope["message"])
+    # The declared envelope: exactly status + result on every run.
+    assert set(envelope) == {"status", "result"}
+    result = cast(dict[str, object], envelope["result"])
+    assert set(result) == {"ingested", "skipped", "chunk_counts", "failures"}
+    failures = cast(dict[str, str], result["failures"])
+    assert failures == {"glossary.md": "database unreachable"}
 
 
 async def test_loader_uses_the_callers_pool_without_closing_it(

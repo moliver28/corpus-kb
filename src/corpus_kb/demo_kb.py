@@ -12,7 +12,8 @@ An installed wheel has no repository, so the loader raises a typed
 ``DemoCorpusMissingError`` whose remediation names the folder — an
 honest miss, never a silent no-op.
 
-Receipt envelope (the house shape, one meaning per key):
+Receipt envelope (the house shape, one meaning per key; the top-level
+keys stay exactly ``status`` and ``result`` on every run):
 
 - ``status``: ``success`` when every file ingested or skipped unchanged,
   ``partial`` when any file failed.
@@ -20,6 +21,8 @@ Receipt envelope (the house shape, one meaning per key):
 - ``result.skipped``: files the ingest short-circuit reported unchanged.
 - ``result.chunk_counts``: chunk count per ingested file (skipped files
   were not re-chunked, so they carry no count).
+- ``result.failures``: per-file failure messages, sorted by file name
+  (partial runs only; no extra top-level key).
 """
 
 from __future__ import annotations
@@ -61,8 +64,8 @@ async def load_demo_kb(
     When ``pool`` is None the loader opens one from the configured DSN
     and closes it before returning (the CLI path). The UI passes the
     server's pool, which stays open. Per-file failures flip the status
-    to ``partial`` and land in the message — the loader never raises
-    for a bad file, only for a missing corpus folder.
+    to ``partial`` and land in ``result.failures`` — the loader never
+    raises for a bad file, only for a missing corpus folder.
     """
     files = _demo_files()
     cfg = load_config_or_pass(config)
@@ -119,20 +122,20 @@ def _envelope(
     chunk_counts: dict[str, int],
     failures: dict[str, str],
 ) -> dict[str, Any]:
-    """The house receipt: status, result, and an honest failure message."""
+    """The house receipt: status plus one result object (fixed shape).
+
+    Failure detail lives in ``result.failures``, never on the top level,
+    so the envelope's key set is the same on success and partial runs.
+    """
     status = "success" if not failures else "partial"
-    envelope: dict[str, Any] = {
-        "status": status,
-        "result": {
-            "ingested": ingested,
-            "skipped": skipped,
-            "chunk_counts": chunk_counts,
-        },
+    result: dict[str, Any] = {
+        "ingested": ingested,
+        "skipped": skipped,
+        "chunk_counts": chunk_counts,
     }
     if failures:
-        details = "; ".join(f"{name}: {message}" for name, message in failures.items())
-        envelope["message"] = f"Some sample files failed to ingest. {details}"
-    return envelope
+        result["failures"] = {name: failures[name] for name in sorted(failures)}
+    return {"status": status, "result": result}
 
 
 __all__ = ["DEMO_KB_FOLDER_HINT", "DEMO_KB_ROOT", "DemoCorpusMissingError", "load_demo_kb"]

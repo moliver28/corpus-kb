@@ -4,9 +4,9 @@ One command loads the bundled general-RAG sample corpus
 (``docs/demo-kb``) through the standard ingest tool layer, so a fresh
 database has something to search before any real files arrive.
 
-A lifecycle command in the quickstart/eval family — NOT a catalogue
-operation, so ``surface_registry`` and the parity gates are untouched
-(the ``cli_quickstart`` precedent).
+A lifecycle command in the quickstart/eval family, and a registered
+surface since UI SPA Task 5a: the ``demo-load`` registry row and the
+catalogue SKIP row declare its CLI + HTTP legs.
 
 HONEST EXIT CODES: ``0`` every sample file ingested or skipped unchanged,
 ``1`` the corpus is missing or some file failed (the receipt says which).
@@ -47,6 +47,16 @@ def _print_receipt(envelope: dict[str, object]) -> None:
     print(f"ingested {len(ingested_list)}, skipped {len(skipped_list)}")
 
 
+def _failures_line(envelope: dict[str, object]) -> str:
+    """One 'name: message' entry per failed file, from result.failures."""
+    result = envelope.get("result")
+    result_dict = result if isinstance(result, dict) else {}
+    failures = result_dict.get("failures")
+    if not isinstance(failures, dict):
+        return ""
+    return "; ".join(f"{name}: {failures[name]}" for name in sorted(failures))
+
+
 def demo_kb(
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
 ) -> int:
@@ -68,9 +78,9 @@ def demo_kb(
         print(json.dumps(envelope, indent=2))
     else:
         _print_receipt(envelope)
-        message = str(envelope.get("message", ""))
-        if message:
-            print(f"PARTIAL: {message}")
+        failures = _failures_line(envelope)
+        if failures:
+            print(f"PARTIAL: {failures}")
     status = str(envelope.get("status", "error"))
     if status != "success":
         raise typer.Exit(code=EXIT_FAILED)
