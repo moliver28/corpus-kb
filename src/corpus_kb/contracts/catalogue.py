@@ -93,7 +93,10 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         ),
         surfaces=(
             SurfaceSpec(MCP, "ingest_directory"),
-            SurfaceSpec(CLI, "ingest <dir>"),
+            # UI SPA Task 5a: the CLI route names the registered top-level
+            # command (lockstep with surface_registry.cli_path, which the
+            # command resolver test checks against the live Typer app).
+            SurfaceSpec(CLI, "ingest"),
             SurfaceSpec(HTTP, "/api/ingest/directory", "POST"),
             SurfaceSpec(SOCKET, "ingest_directory"),
         ),
@@ -113,7 +116,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         envelope_keys=("status", "pages", "total_documents"),
         surfaces=(
             SurfaceSpec(MCP, "ingest_url"),
-            SurfaceSpec(CLI, "ingest-url <url>"),
+            SurfaceSpec(CLI, "ingest-url"),
             SurfaceSpec(HTTP, "/api/ingest/url", "POST"),
             SurfaceSpec(SOCKET, "ingest_url"),
         ),

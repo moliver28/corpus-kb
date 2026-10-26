@@ -114,8 +114,9 @@ def test_long_running_flags_match_the_spec() -> None:
     """Exactly these D.2 op ids are flagged longRunning.
 
     The expectation is pinned as string literals (not the generator's
-    constant) so a silent generator change fails loudly. Task 5a adds the
-    ingest/upload and doctor rows and MUST revisit these flags then.
+    constant) so a silent generator change fails loudly. Task 5a added the
+    ingest-directory and ingest-url registry rows, so the spec list is
+    complete here; Task 5b revisits the flag set if it adds long ops.
     """
     expected = frozenset(
         {
@@ -128,6 +129,8 @@ def test_long_running_flags_match_the_spec() -> None:
             "labeling-build",
             "classification-build",
             "research-ingest",
+            "ingest-directory",
+            "ingest-url",
         }
     )
     flagged = {str(e["id"]) for e in build_manifest(REPO) if e["longRunning"]}
