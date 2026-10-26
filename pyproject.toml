@@ -80,9 +80,8 @@ dependencies = [
     "typer>=0.15",
     "uvicorn>=0.24",
     # fastapi: the HTTP composition root returns FastAPI (a Starlette
-    # subclass) so NiceGUI's documented ui.run_with mount serves from the
-    # same app and port. Pure-Python MIT; routes/TestClient/uvicorn all
-    # unchanged by the swap.
+    # subclass) and its router/TestClient surface serves every route.
+    # Pure-Python MIT.
     "fastapi>=0.115",
     # opentelemetry-api ONLY: no-op tracers when the [otel] extra is absent
     # (Apache-2.0, one transitive). SDK + OTLP exporter live in the extra.
@@ -176,17 +175,12 @@ tune = ["peft>=0.11", "gliner[training]>=0.2.13"]
 # import is lazy inside the engine entry, so the extras-less jobs stay
 # green (same contract as latechunk/inductive/ner).
 topics = ["bertopic>=0.16"]
-# Browser UI (UX program W3): NiceGUI is MIT, FastAPI-native (ui.run_with
-# shares the running server and port), typed, and ships prebuilt assets —
-# no Node toolchain anywhere. uvicorn[standard] adds the websockets layer
-# Socket.IO needs; the base uvicorn pin cannot serve NiceGUI.
-# CI NEVER installs this extra; the import is lazy behind ui.enabled, so
-# the extras-less jobs stay green (same contract as latechunk/inductive/
-# ner/topics).
+# Browser UI (UI SPA program Task 3): the lifecycle SPA is built by Vite
+# (ui_src/, Node build-time only) into src/corpus_kb/ui_dist/ and served
+# as static files at /app — no Python runtime UI dependency anymore.
+# uvicorn[standard] stays for the websocket-capable server layer.
+# CI NEVER installs this extra; the extras-less jobs stay green.
 ui = [
-    # Floor 3.18: ui.chat_message renamed sent_by_user to sent there; the
-    # Ask page uses the new kwarg.
-    "nicegui>=3.18",
     "uvicorn[standard]>=0.24",
 ]
 # Tracing (UX program W4): opentelemetry-api is already a core dep (it is
@@ -282,7 +276,16 @@ include = ["corpus_kb*"]
 [tool.setuptools.package-data]
 # migrations_duckdb/*.sql (rule 12): the glob ships BEFORE the first DuckDB
 # migration file so the migrations WP cannot land a broken wheel.
-corpus_kb = ["*.yaml", "config/*.yaml", "migrations/*.sql", "migrations_duckdb/*.sql"]
+# ui_dist/**/* (UI SPA program Task 3, spec D.7): the built SPA ships as
+# package data; a source checkout without a build degrades honestly
+# (mount_spa logs one line, the API keeps serving).
+corpus_kb = [
+    "*.yaml",
+    "config/*.yaml",
+    "migrations/*.sql",
+    "migrations_duckdb/*.sql",
+    "ui_dist/**/*",
+]
 
 [tool.ruff]
 line-length = 100
@@ -355,7 +358,6 @@ DEP002 = [
     # UX program extras (W0): every consumer imports these lazily behind
     # runtime gates and CI never installs them, so deptry cannot see the
     # import edges.
-    "nicegui",
     "opentelemetry-sdk",
     "opentelemetry-exporter-otlp-proto-http",
     "openinference-semantic-conventions",
@@ -553,6 +555,35 @@ help = "Regenerate licenses.lock.json from the pinned uv.lock environment (match
 [tool.poe.tasks.check]
 sequence = ["verify", "gen"]
 help = "verify + gen: everything a PR must pass locally"
+
+# ---------------------------------------------------------------------------
+# UI SPA gates (UI SPA program Task 3, zero-drift rule 8: poe target +
+# CI job + map row). Node is build-time only; every target shells into
+# ui_src/ through pnpm. The CI `ui` job calls the SAME targets.
+# ---------------------------------------------------------------------------
+
+[tool.poe.tasks.ui-install]
+cmd = "pnpm -C ui_src install --frozen-lockfile"
+help = "Install ui_src/ Node dependencies from the committed lockfile"
+
+[tool.poe.tasks.ui-lint]
+cmd = "pnpm -C ui_src lint"
+help = "UI lint + types: ESLint and tsc --noEmit (strict, no any)"
+
+[tool.poe.tasks.ui-test]
+cmd = "pnpm -C ui_src test"
+help = "UI unit tests (vitest)"
+
+[tool.poe.tasks.ui-build]
+cmd = "pnpm -C ui_src build"
+help = "Build the SPA into src/corpus_kb/ui_dist/ (Vite, base /app/)"
+
+[tool.poe.tasks.ui-licenses]
+# Stub gate (Task 4 replaces it with the real allowlist check that
+# writes ui_licenses.lock.json): present now so CI and the enforcement
+# map have the target from the first SPA PR (rule 10).
+cmd = "python -c \"print('[ui-licenses] placeholder: the real license gate lands with the manifest PR')\""
+help = "UI production-license gate (stub; real check lands with Task 4)"
 
 # ---------------------------------------------------------------------------
 # Import layering (Wave 2, program standard 5). The ASPIRATIONAL ladder is

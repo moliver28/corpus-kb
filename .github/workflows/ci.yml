@@ -205,6 +205,65 @@ jobs:
         run: docker rm -f corpus-kb-postgres
 
   # ─────────────────────────────────────────────────────────────────────
+  # UI: the lifecycle SPA (ui_src/) — React 19 + Vite, Node build-time
+  # only. pnpm is installed DIRECTLY (pnpm/action-setup standalone
+  # installer), never via corepack (corepack is leaving Node
+  # distributions; it must not be a load-bearing step). The gates run
+  # through poe (rule 8: one source of gate commands) — only poethepoet
+  # is needed because the ui-* targets shell into pnpm, not the project.
+  # The built ui_dist/ ships as an artifact; the Python package includes
+  # it via package-data.
+  # ─────────────────────────────────────────────────────────────────────
+  ui:
+    name: "ui (spa build gates)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install poethepoet
+        # The ui-* poe targets call pnpm only; no project deps needed.
+        run: pip install poethepoet
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ui_src/.nvmrc
+          cache: pnpm
+          cache-dependency-path: ui_src/pnpm-lock.yaml
+
+      - name: UI install (frozen lockfile)
+        run: poe ui-install
+
+      - name: UI lint
+        run: poe ui-lint
+
+      - name: UI test
+        run: poe ui-test
+
+      - name: UI build
+        run: poe ui-build
+
+      - name: UI licenses (stub)
+        run: poe ui-licenses
+
+      - name: Upload ui_dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui_dist
+          path: src/corpus_kb/ui_dist
+
+  # ─────────────────────────────────────────────────────────────────────
   # Test: Postgres service leg (ubuntu) + cross-OS matrix (windows, macos)
   #
   # Split into two jobs because GitHub service containers are Linux-only

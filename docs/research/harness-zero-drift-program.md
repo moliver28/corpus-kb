@@ -60,6 +60,48 @@ Confirmed defects, worst first. Evidence is `file:line` on master `2632368`.
 - **Behavior-preserving splits** in Wave 3: pure moves. SQL moves byte-identical.
   Tests may change only where they pinned a defect.
 
+## UI SPA program amendments (D17, 2026-10-25)
+
+The UI SPA program amends four rules of this document. The program
+plan lives at `docs/research/ui-spa-program-plan.md`. The amendments
+land in this document first, before any implementation.
+
+1. **Code budget rule, program-scoped.** The "1% net-new code" target
+   is suspended for this program. A hard budget replaces it: 8,000
+   net-new lines or fewer (Python + TypeScript + strings; tests
+   excluded). The per-area table in spec §16 of
+   `docs/research/ui-spa-desk-research.md` (minus all agent rows) is
+   the working estimate. Each PR reports its cumulative burn against
+   the §16 areas. The SPA must not contain business logic; that rule
+   is added alongside the budget. Overrun rule: 50% consumed before
+   Task 6 opens → stop and re-scope with the owner. The same applies
+   at 70% before Task 7 opens. Cut screens, never tests or gates.
+   Test and fixture LOC appear in each PR report. They are visible,
+   but ungated. Honesty clause: net LOC grows ~7×. A 1,046-line
+   NiceGUI surface is replaced by a budgeted SPA. The end-state
+   scorecard in the Definition of done carries the maintainability
+   claim, not the line count.
+2. **Hygiene rules extend to TypeScript.** The 250-line file limit
+   and the ASD-STE100 plain English rule now apply to both languages.
+   The ban on `any` and `@ts-ignore` mirrors the Python
+   `type: ignore` ban. A new `pytest -m ste` file checks
+   `ui_src/src/strings/en.json`.
+3. **Five new gate rows.** Each gate gets a `poe` target, a CI job, a
+   map row, and an `AGENTS.md` line per rule 10. The rows below follow
+   the CI enforcement map format. `ui-build` includes the bundle
+   budget. `ui-manifest` is wired into `poe gen`.
+4. **Renovate.** The npm manager is enabled for `ui_src/`. Updates
+   are grouped as `ui-deps` and run monthly. The solo owner keeps
+   the churn low. Security updates run immediately.
+
+| Gate | CI enforcement | Workflow / job | Lands |
+|------|----------------|----------------|-------|
+| UI lint | `poe ui-lint` | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI test | `poe ui-test` | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI build | `poe ui-build`; the bundle budget lands with Task 9 | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI licenses | `poe ui-licenses` (stub in PR-1; real check in PR-2) | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI manifest | `poe ui-manifest`; also runs in `poe gen` | ci.yml / ui | UI SPA Task 4 (PR-2) |
+
 ## The zero-drift gate
 
 `tests/test_surface_parity_deep.py` (Wave 1 seed, Wave 2 full):
@@ -205,6 +247,10 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
 | Schema parity (DuckDB port) | `poe schema-parity` (`scripts/schema_parity_gate.py`, sqlglot 30.x static-only) folds `storage/schema.sql` + forward `migrations/` and `migrations_duckdb/` into final CREATE TABLE/SEQUENCE/INDEX states and diffs columns, PKs, uniques, FKs, sequences, and plain indexes. Undeclared drift fails the PR, and a STALE allowlist row (declared but no longer real) fails too. It does NOT cover dynamic EXECUTE-format DDL (declared in the gate allowlist), RLS/policies (PG-only by design), or runtime index managers (FTS/vss) | ci.yml / lint | G (issue #127) |
 | Profile truth | `poe validate-profiles` (`src/corpus_kb/_setup/validate_profiles.py`): every `profiles/*.yaml` must parse against the loader schema, name only live ingestion strategies, reference only catalogue claim-template ids, and point `seeds_file` at an existing file. A profile that references a missing seam fails the PR (Living Corpus W5) | ci.yml / type-check step | W5 |
+| UI lint and types | `poe ui-lint`: ESLint plus `tsc --noEmit` over `ui_src/`. TypeScript strict; `any` and `@ts-ignore` are hard errors (the mirror of the Python `type: ignore` ban) | ci.yml / ui | UI SPA Task 3 |
+| UI unit tests | `poe ui-test`: vitest over `ui_src/` (jsdom; antd stubs in `src/test/setup.ts`) | ci.yml / ui | UI SPA Task 3 |
+| UI build | `poe ui-build`: Vite 8 build into `src/corpus_kb/ui_dist/` (base `/app/`). The gzip budget cap is 350 kB per initial route, set from the Task 3 probe data (shell 191.7 kB + probe screen 131.4 kB = 323 kB). Task 9's `check-bundle.mjs` enforces the cap inside this target | ci.yml / ui | UI SPA Task 3 |
+| UI licenses | `poe ui-licenses`: stub in PR-1 (prints a placeholder line). Task 4 replaces it with the allowlist check (MIT, Apache-2.0, ISC, BSD, 0BSD) that writes `ui_licenses.lock.json` | ci.yml / ui | UI SPA Task 3 (stub) → Task 4 (real) |
 
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate

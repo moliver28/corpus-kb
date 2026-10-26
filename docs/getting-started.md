@@ -6,28 +6,28 @@ everyone else. Pick one; you can switch at any time.
 
 ## The browser path
 
-The browser pages need one extra. Install it, then run two commands:
+The browser app is built once from `ui_src/`. Install the package, then
+build the app (Node 24 and pnpm are build-time tools only), then run two
+commands:
 
 ```bash
-pip install 'corpus-kb[ui]'
+pip install -e .
+pnpm -C ui_src install
+pnpm -C ui_src build
 corpus-kb setup
 corpus-kb start
 ```
 
 `corpus-kb setup` starts the bundled Postgres container and loads the
 schema. `corpus-kb start` starts the server and opens your browser at
-`http://localhost:8010`. Set `CORPUS_KB_UI_OPEN=0` to keep the tab
+`http://localhost:8010/app/`. Set `CORPUS_KB_UI_OPEN=0` to keep the tab
 closed.
 
-The **Add** page takes drag-dropped files and web addresses. It also
-has a **Load sample knowledge** button: five short sample files that
-exercise the pipeline without your data. The **Ask** page answers with
-citations and a verification badge. The **Library** page lists your
-documents and discovered topics. The **Overview** page shows the
-doctor's health checks in plain language.
-
-The pages ride the running server. There is no new daemon and no new
-port. Details: [UI.md](UI.md).
+The **Setup** stage shows the system's health in plain language. More
+stages — Ingest, Ask, Review, and the rest — land through the UI SPA
+program ([build plan](ui-spa-program-plan.md)). Until then, the API and
+the CLI cover every operation (see the terminal path below). Details:
+[UI.md](UI.md).
 
 ## The terminal quickstart
 

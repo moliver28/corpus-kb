@@ -956,8 +956,10 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "topics.llm_reduction": bool,
         "topics.llm": str,
         "topics.llm_base_url": str,
-        # UX Wave 3 browser UI (the [ui] extra's feature flag).
-        "ui.enabled": bool,
+        # UI SPA program Task 3 (the lifecycle SPA's runtime-tunable block).
+        "ui.spa.poll_ms": int,
+        "ui.spa.request_timeout_s": float,
+        "ui.spa.max_upload_mb": int,
         # UX Wave 6 notebooks console (the [notebook] extra's flag + folder).
         "notebooks.enabled": bool,
         "notebooks.directory": str,

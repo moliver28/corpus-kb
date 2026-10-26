@@ -12,11 +12,18 @@ Pick the path that fits you. Both end at the same working system.
 
 ### The novice path: the browser
 
-No terminal work beyond two commands. First install the package with the
-browser UI extra:
+No terminal work beyond a few commands. First install the package:
 
 ```bash
-pip install 'corpus-kb[ui]'
+pip install -e .
+```
+
+Then build the browser app once. You need Node 24 and pnpm for this
+step. Node is a build tool only. The running server stays pure Python:
+
+```bash
+pnpm -C ui_src install
+pnpm -C ui_src build
 ```
 
 Then start the stack. `corpus-kb setup` starts Postgres and loads the
@@ -27,14 +34,12 @@ corpus-kb setup
 corpus-kb start
 ```
 
-The browser shows four pages at `http://localhost:8010`:
+The browser opens the lifecycle app at `http://localhost:8010/app/`.
+The Setup stage shows the system's health in plain language. More
+stages land task by task. See the
+[build plan](docs/research/ui-spa-program-plan.md).
 
-- **Add** — drag files in, add a web page, or click **Load sample knowledge** for five short demo files.
-- **Ask** — answers built from your files. Each answer cites its sources and shows a verification badge.
-- **Library** — your documents, chunk counts, and discovered topics.
-- **Overview** — the doctor's health checks in plain language.
-
-Details and screenshots of the flow: [docs/UI.md](docs/UI.md).
+Details: [docs/UI.md](docs/UI.md).
 
 ### The expert path: terminals and APIs
 

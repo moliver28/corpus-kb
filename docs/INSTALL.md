@@ -301,8 +301,8 @@ them over stdin/stdout. The config files in `mcp-configs/` and the root
 `opencode.json` launch exactly this command. HTTP stays available side
 by side (see [API.md](API.md)).
 
-With the `[ui]` extra installed, the same command serves the browser
-pages at `http://localhost:8010` (see [UI.md](UI.md)). With `[notebook]`,
+A built browser SPA is served at `http://localhost:8010/app/` (build
+steps in [UI.md](UI.md)). With `[notebook]`,
 marimo notebooks appear at `/notebooks` (see [NOTEBOOKS.md](NOTEBOOKS.md)).
 
 ---

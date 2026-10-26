@@ -170,12 +170,19 @@ topics:
   fixture_dir: tests/fixtures/topics_recorded
   live_fallback: false
 
-# Browser UI (UX program Wave 3, src/corpus_kb/ui/): four NiceGUI pages
-# served by the running HTTP server (no new daemon, no new port). The
-# pages are lazy behind the [ui] extra; without it the server logs one
-# line and runs on. Set enabled: false to skip the mount entirely.
+# Browser UI (UI SPA program Task 3, src/corpus_kb/ui/spa.py): the
+# lifecycle SPA (React, built by Vite into src/corpus_kb/ui_dist/) is
+# served at /app/ by the running HTTP server. Without a build the server
+# logs one line and keeps the API working. The spa block is
+# runtime-tunable and reaches the app via /app/runtime-config.json.
 ui:
-  enabled: true
+  spa:
+    # Milliseconds between status polls on the Ingest and Scale pages.
+    poll_ms: 2000
+    # How long one app API call waits before giving up (seconds).
+    request_timeout_s: 60
+    # Largest file the upload page accepts (megabytes per file).
+    max_upload_mb: 50
 
 # marimo notebooks console (UX program Wave 6, src/corpus_kb/notebooks/):
 # serves a folder of marimo .py notebooks at /notebooks on the SAME HTTP

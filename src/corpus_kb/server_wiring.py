@@ -25,7 +25,6 @@ import logging
 import os
 import sys
 import webbrowser
-from dataclasses import dataclass
 from typing import Any, cast
 
 import asyncpg
@@ -35,51 +34,18 @@ from corpus_kb.storage.graph_factory import create_graph_store
 
 logger = logging.getLogger(__name__)
 
-# Browser auto-open (UX program Wave 3): set to "0" to keep the server
+# Browser auto-open (UI SPA program): set to "0" to keep the server
 # from opening a browser tab (tests, headless hosts). Anything else —
-# including unset — follows the ui.enabled mount outcome.
+# including unset — follows the /app/ SPA mount outcome.
 UI_OPEN_ENV_VAR = "CORPUS_KB_UI_OPEN"
 
 UI_OPEN_DELAY_SECONDS = 1.5
 
 
-@dataclass(frozen=True)
-class UiMountResult:
-    """The startup UI gate's outcome: mounted, or the honest reason not.
-
-    ``remediation`` names the fix (the ``[ui]`` extra install command);
-    an empty remediation means the failure is logged, not user-fixable
-    by an install.
-    """
-
-    mounted: bool
-    remediation: str = ""
-
-
-def mount_ui(http_app: object) -> UiMountResult:
-    """Try to mount the browser UI. NEVER raises into startup.
-
-    A missing ``[ui]`` extra logs one honest line and returns its
-    remediation; any other mount failure logs and continues too — a
-    broken UI must not kill the server.
-    """
-    from corpus_kb.ui.app import UI_EXTRA_REMEDIATION, UiDependencyError, build_ui
-
-    try:
-        build_ui(http_app)
-    except UiDependencyError:
-        logger.info("[ui] extra not installed — browser UI disabled. pip install 'corpus-kb[ui]'")
-        return UiMountResult(mounted=False, remediation=UI_EXTRA_REMEDIATION)
-    except Exception as exc:
-        logger.warning("Browser UI failed to mount (%s); continuing without it.", exc)
-        return UiMountResult(mounted=False)
-    return UiMountResult(mounted=True)
-
-
 def wire_notebooks(http_app: object, cfg: dict[str, Any]) -> bool:
     """Mount the notebooks console when the config gate is on. NEVER raises.
 
-    UX program Wave 6: the gate mirrors ``mount_ui`` — behind
+    UX program Wave 6: the gate mirrors ``mount_spa`` — behind
     ``notebooks.enabled``, the lazy ``[notebook]`` extra, one honest log
     line on absence, and the server continues either way.
     """
@@ -111,8 +77,9 @@ def schedule_browser_open(
 ) -> asyncio.Task[None] | None:
     """Schedule the delayed auto-open, or return None when it must not fire.
 
-    Fires ONLY when the ``[ui]`` extra actually mounted (``ui_mounted``
-    in the services dict) AND the env guard allows it.
+    Fires ONLY when the ``/app/`` SPA actually mounted (``ui_mounted``
+    in the services dict) AND the env guard allows it. The browser opens
+    the server root, which 307s to ``/app/``.
     """
     if not services.get("ui_mounted", False):
         return None
@@ -314,15 +281,12 @@ async def startup(
 
     http_app = create_http_app()
 
-    # 5b. Browser UI (UX program Wave 3): the lazy [ui] extra behind
-    # ui.enabled. A missing or broken UI logs and continues — never raise.
-    from corpus_kb.ui.settings import load_ui_settings
-    from corpus_kb.ui.types import UiContext, set_ui_context
+    # 5b. Browser UI (UI SPA program): the lifecycle SPA mounts at /app.
+    # A missing build logs ONE honest line inside mount_spa; the server
+    # continues — a broken UI must not kill the API.
+    from corpus_kb.ui.spa import mount_spa
 
-    ui_mounted = False
-    if load_ui_settings(cfg).enabled:
-        set_ui_context(UiContext(config=cfg, pool=pool))
-        ui_mounted = mount_ui(http_app).mounted
+    ui_mounted = mount_spa(http_app, cfg)
 
     # 5c. marimo notebooks console (UX program Wave 6): the lazy [notebook]
     #     extra behind notebooks.enabled, mounted at /notebooks on the SAME

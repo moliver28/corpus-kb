@@ -359,14 +359,6 @@ native_dimensions
 EmbeddingModelProfile
 EMBEDDING_MODEL_PROFILES
 
-# UX Wave 3 NiceGUI Protocols (the lazy nicegui seam in ui/app.py): the
-# keyword-argument parameters of the pinned element surface. Vulture sees
-# them as unused because NiceGUI's library code calls the handlers the
-# pages pass in (on_click -> the real Button.on_click wiring; sent_by_user
-# -> the ChatMessage constructor), never this Protocol.
-on_click
-sent_by_user
-
 # UX Wave 5 eval harness (the lazy deepeval seam): the OllamaJudgeLLM
 # methods exist for deepeval's DeepEvalBaseLLM contract (the library calls
 # them, never our code), and the _TestCaseModule Protocol parameters mirror
@@ -397,6 +389,18 @@ MountableApp
 # pin both contracts today.
 min_labels_per_class
 resolved_bins
+
+# UI SPA program Task 3: VERIFY_FULL_GROUNDEDNESS (config.py) is the
+# codegen source for Task 4's thresholds.generated.ts; no src/ reader
+# exists until that generator lands. The five field names below lost
+# their only reader when the NiceGUI advisor was deleted; the SPA's
+# Analyze screen consumes them over HTTP in Task 6.
+VERIFY_FULL_GROUNDEDNESS
+validation_required
+permitted_claims
+do_not_claim
+rank_reason
+missing_inputs
 
 # Storage portability gateway (issue #127, sp-gateway): test-only consumers
 # this wave. write_batch is the batched DuckDB insert path (ingest ports
