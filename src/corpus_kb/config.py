@@ -386,6 +386,11 @@ def get_default_config() -> dict[str, object]:
             # token-level support).
             "late_chunking": True,
         },
+        "ingestion": {
+            # Bounded parallel file ingestion (Wave 1 throughput); the
+            # runtime helper caps it at two below the pool size.
+            "concurrency": 4,
+        },
         "storage": {
             # chunks_vectors.embedding column type. halfvec is REQUIRED at
             # 2560 dims: pgvector HNSW caps plain vector at 2000, halfvec

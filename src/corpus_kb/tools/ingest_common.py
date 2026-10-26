@@ -200,6 +200,31 @@ def load_config_or_pass(config: dict[str, Any] | None) -> dict[str, Any]:
     return config if config is not None else load_config()
 
 
+DEFAULT_INGEST_CONCURRENCY = 4
+
+
+def file_ingest_concurrency(config: dict[str, Any], pool: asyncpg.Pool | SqlGateway) -> int:
+    """Bounded file-level ingest concurrency from ``ingestion.concurrency``.
+
+    The value is capped at two below the pool size so parallel files cannot
+    take every connection. DuckDB is a single-writer engine, so it stays
+    serial. Never below 1.
+    """
+    ingestion = config.get("ingestion")
+    raw = ingestion.get("concurrency", DEFAULT_INGEST_CONCURRENCY) if ingestion else None
+    try:
+        limit = int(raw) if raw is not None else DEFAULT_INGEST_CONCURRENCY
+    except (TypeError, ValueError):
+        limit = DEFAULT_INGEST_CONCURRENCY
+    limit = max(1, limit)
+    if isinstance(pool, DuckDbGateway):
+        return 1
+    maxsize = getattr(pool, "_maxsize", None)
+    if isinstance(maxsize, int):
+        limit = min(limit, max(1, maxsize - 2))
+    return max(1, limit)
+
+
 def _contextual_enabled(config: dict[str, Any], source_type: str) -> bool:
     """Return True if contextual retrieval should run for this source_type.
 

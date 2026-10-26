@@ -143,9 +143,9 @@ class _StoreTx:
 
 
 class _StoreConn:
-    """Fake asyncpg connection: fetchrow returns scripted results."""
+    """Fake asyncpg connection: fetch returns scripted batch results."""
 
-    def __init__(self, results: list[dict[str, str] | None]) -> None:
+    def __init__(self, results: list[list[dict[str, str]]]) -> None:
         self._results = results
         self.calls: list[tuple[object, ...]] = []
 
@@ -153,9 +153,20 @@ class _StoreConn:
         return ""
 
     async def fetchrow(self, sql: str, *args: object) -> dict[str, str] | None:
+        return None
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
         self.calls.append(args)
         index = len(self.calls) - 1
-        return self._results[index] if index < len(self._results) else None
+        scripted = self._results[index] if index < len(self._results) else []
+        if "INSERT INTO entities" in sql:
+            names = args[2]
+            types = args[3]
+            return [
+                {"entity_id": row["entity_id"], "name": names[i], "entity_type": types[i]}
+                for i, row in enumerate(scripted)
+            ]
+        return list(scripted)
 
     def transaction(self) -> _StoreTx:
         return _StoreTx()
@@ -194,33 +205,32 @@ def _entity(
 
 async def test_store_entities_merges_provenance_and_counts_only_inserts() -> None:
     # The upsert RETURNS the canonical id on conflict too: both entities map.
-    conn = _StoreConn([{"entity_id": "e1"}, {"entity_id": "e2"}])
+    conn = _StoreConn([[{"entity_id": "e1"}, {"entity_id": "e2"}]])
     store = PostgresIngestStore(_StorePool(conn), "tenant")
 
     alpha, beta = _entity("Alpha"), _entity("Beta")
     id_map = await store.store_entities([alpha, beta])
 
     assert id_map == {alpha.entity_id: "e1", beta.entity_id: "e2"}
-    assert len(conn.calls) == 2
-    assert len(conn.calls) == 2
-    persisted = json.loads(str(conn.calls[0][5]))
+    assert len(conn.calls) == 1  # one batched statement, not one per entity
+    persisted = json.loads(str(conn.calls[0][5][0]))
     assert persisted["extractor"] == "gliner"
     assert persisted["confidence"] == 0.75
 
 
 async def test_store_entities_preserves_existing_metadata_keys() -> None:
-    conn = _StoreConn([{"entity_id": "e1"}])
+    conn = _StoreConn([[{"entity_id": "e1"}]])
     store = PostgresIngestStore(_StorePool(conn), "tenant")
     entity = _entity("Alpha", metadata={"model": "fastino/gliner2-large-v1"})
 
     await store.store_entities([entity])
 
-    persisted = json.loads(str(conn.calls[0][5]))
+    persisted = json.loads(str(conn.calls[0][5][0]))
     assert persisted["model"] == "fastino/gliner2-large-v1"
 
 
 async def test_store_relations_counts_only_inserts() -> None:
-    conn = _StoreConn([{"relation_id": "r1"}, None])
+    conn = _StoreConn([[{"relation_id": "r1"}]])
     store = PostgresIngestStore(_StorePool(conn), "tenant")
     entity_a = _entity("Alpha")
     entity_b = _entity("Beta")
@@ -240,4 +250,4 @@ async def test_store_relations_counts_only_inserts() -> None:
     count = await store.store_relations(relations)
 
     assert count == 1
-    assert len(conn.calls) == 2
+    assert len(conn.calls) == 1  # one batched statement; conflicts land server-side

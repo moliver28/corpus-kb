@@ -10,6 +10,7 @@ so callers can continue operating in degraded mode.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import math
@@ -449,7 +450,8 @@ async def aembed_batch(
 
     The ``Embedder`` protocol arm (todo 13) lets structural backends such as
     the late-chunking embedder flow through the same research boundary.
+    Sync embedders run in a worker thread so the event loop stays live.
     """
     if isinstance(embedder, PgmlEmbedder):
         return await embedder.embed_batch(texts)
-    return embedder.embed_batch(texts)
+    return await asyncio.to_thread(embedder.embed_batch, texts)

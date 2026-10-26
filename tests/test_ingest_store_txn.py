@@ -67,6 +67,29 @@ class _RecordingConn:
         self.bound_args[sql] = args
         return "OK"
 
+    async def executemany(self, sql: str, args: list[tuple[object, ...]]) -> None:
+        self.sql.append(sql)
+        self.bound_args[sql] = tuple(args)
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+        self.sql.append(sql)
+        self.bound_args[sql] = args
+        if "RETURNING" not in sql:
+            return []
+        # Batch echo: the first bound array carries one id per input row.
+        first = args[0] if args else []
+        if "INSERT INTO entities" in sql:
+            names = args[2] if len(args) > 2 else []
+            types = args[3] if len(args) > 3 else []
+            return [
+                {"entity_id": e, "name": n, "entity_type": t}
+                for e, n, t in zip(first, names, types, strict=False)
+            ]
+        for column in ("chunk_id", "relation_id"):
+            if column in sql:
+                return [{column: value} for value in first]
+        return []
+
     async def fetchrow(self, sql: str, *args: object) -> dict[str, object] | None:
         self.sql.append(sql)
         self.bound_args[sql] = args
@@ -151,7 +174,7 @@ async def test_store_vectors_sets_tenant_guc_inside_transaction() -> None:
     _assert_guc_first_inside_transaction(conn)
     tail = conn.sql[2:-1]
     assert any("INSERT INTO chunks_vectors" in sql for sql in tail)
-    assert any("UPDATE chunks SET degraded" in sql for sql in tail)
+    assert any("SET degraded" in sql for sql in tail)
 
 
 async def test_store_entities_sets_tenant_guc_inside_transaction() -> None:

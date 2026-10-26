@@ -55,6 +55,9 @@ web:
 # entry-point group; every registered strategy must pass the conformance
 # suite (corpus_kb.ingestion.validate_plan).
 ingestion:
+  # Bounded parallel file ingestion (ingest_directory / ingest_path).
+  # Capped at two below the pool size; DuckDB stays serial.
+  concurrency: 4
   strategies:
     transcript: transcript
     # Structure-aware first-class paths (default ON): decks chunk per slide

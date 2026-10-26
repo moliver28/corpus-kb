@@ -601,6 +601,7 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "storage.vector_type": str,
     "ingestion.default": str,
     "ingestion.strategies": dict,
+    "ingestion.concurrency": int,
     # -- ingest.chunking (canonical home of the hierarchy knobs) -----------
     "ingest.chunking.enabled": bool,
     "ingest.chunking.child_tokens": int,
