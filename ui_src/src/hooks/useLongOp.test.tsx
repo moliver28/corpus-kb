@@ -126,6 +126,7 @@ describe("useLongOp", () => {
   });
 
   it("ticks elapsedSec once per second while running", async () => {
+    vi.useFakeTimers();
     const flightData = deferred();
     const { result } = renderHook(() => useLongOp("op", () => flightData.promise), {
       wrapper: makeWrapper(),
@@ -134,12 +135,13 @@ describe("useLongOp", () => {
       result.current.start();
     });
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1100));
+      await vi.advanceTimersByTimeAsync(1000);
     });
-    expect(result.current.elapsedSec).toBeGreaterThanOrEqual(1);
+    expect(result.current.elapsedSec).toBe(1);
     await act(async () => {
       flightData.resolve(OK);
-      await result.current.result;
+      await vi.advanceTimersByTimeAsync(0);
     });
+    expect(result.current.running).toBe(false);
   });
 });
