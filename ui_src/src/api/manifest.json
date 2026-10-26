@@ -473,7 +473,8 @@
     "optional": [
       "project_id",
       "tenant_id",
-      "force"
+      "force",
+      "validate"
     ],
     "paramsKnown": false,
     "path": "/api/research/ingest",
@@ -490,7 +491,8 @@
       "project_id",
       "tenant_id",
       "title",
-      "force"
+      "force",
+      "validate"
     ],
     "paramsKnown": false,
     "path": "/api/research/ingest-transcript",
