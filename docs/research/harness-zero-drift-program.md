@@ -99,8 +99,8 @@ land in this document first, before any implementation.
 | UI lint | `poe ui-lint` | ci.yml / ui | UI SPA Task 3 (PR-1) |
 | UI test | `poe ui-test` | ci.yml / ui | UI SPA Task 3 (PR-1) |
 | UI build | `poe ui-build`; the bundle budget lands with Task 9 | ci.yml / ui | UI SPA Task 3 (PR-1) |
-| UI licenses | `poe ui-licenses` (stub in PR-1; real check in PR-2) | ci.yml / ui | UI SPA Task 3 (PR-1) |
-| UI manifest | `poe ui-manifest`; also runs in `poe gen` | ci.yml / ui | UI SPA Task 4 (PR-2) |
+| UI licenses | `poe ui-licenses`: production allowlist (MIT, Apache-2.0, BSD, ISC, 0BSD) writing the committed `ui_licenses.lock.json` (production tree only; dev trees are platform-specific) | ci.yml / ui | UI SPA Task 4 (PR-2) |
+| UI manifest | `poe ui-manifest` (drift check); also runs in `poe gen` | ci.yml / ui | UI SPA Task 4 (PR-2) |
 
 ## The zero-drift gate
 
@@ -250,7 +250,8 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | UI lint and types | `poe ui-lint`: ESLint plus `tsc --noEmit` over `ui_src/`. TypeScript strict; `any` and `@ts-ignore` are hard errors (the mirror of the Python `type: ignore` ban) | ci.yml / ui | UI SPA Task 3 |
 | UI unit tests | `poe ui-test`: vitest over `ui_src/` (jsdom; antd stubs in `src/test/setup.ts`) | ci.yml / ui | UI SPA Task 3 |
 | UI build | `poe ui-build`: Vite 8 build into `src/corpus_kb/ui_dist/` (base `/app/`). The gzip budget cap is 350 kB per initial route, set from the Task 3 probe data (shell 191.7 kB + probe screen 131.4 kB = 323 kB). Task 9's `check-bundle.mjs` enforces the cap inside this target | ci.yml / ui | UI SPA Task 3 |
-| UI licenses | `poe ui-licenses`: stub in PR-1 (prints a placeholder line). Task 4 replaces it with the allowlist check (MIT, Apache-2.0, ISC, BSD, 0BSD) that writes `ui_licenses.lock.json` | ci.yml / ui | UI SPA Task 3 (stub) → Task 4 (real) |
+| UI licenses | `poe ui-licenses`: `scripts/ui_licenses.py` runs `pnpm licenses list --prod --json`, enforces the allowlist (MIT, Apache-2.0, BSD, ISC, 0BSD, plus CC0-1.0/MIT-0), and writes the committed `ui_licenses.lock.json`; the lock records the production tree only (dev trees carry OS-specific native packages) | ci.yml / ui | UI SPA Task 4 |
+| UI manifest | `poe ui-manifest`: `src/corpus_kb/_setup/gen_ui_manifest.py` merges `surface_registry.SURFACES` with `research_http.tool_routes()`, diffs `src/corpus_kb/ui_manifest.json` plus `ui_src/src/api/ops.generated.ts` and `thresholds.generated.ts`, and exits 1 on drift. Also wired into `poe gen` | ci.yml / ui | UI SPA Task 4 |
 
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate

@@ -1,0 +1,101 @@
+/* The ONE static CSS layer (no CSS-in-JS): signature treatments only.
+   Everything else comes from antd components and design tokens. */
+
+.ui-banner {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 8px 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.ui-banner--ok {
+  border-color: #b7eb8f;
+  background: #f6ffed;
+}
+
+.ui-banner--warn {
+  border-color: #ffe58f;
+  background: #fffbe6;
+}
+
+.ui-banner--error {
+  border-color: #ffa39e;
+  background: #fff1f0;
+}
+
+.ui-banner--info {
+  border-color: #91caff;
+  background: #e6f4ff;
+}
+
+.ui-banner__kind {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.ui-json summary {
+  cursor: pointer;
+  margin: 8px 0;
+}
+
+.ui-json pre {
+  max-height: 320px;
+  overflow: auto;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  padding: 8px;
+  font-size: 12px;
+}
+
+/* App shell (App.tsx): layout-only classes. */
+.ui-shell {
+  min-height: 100vh;
+}
+
+.ui-header {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.ui-header__title {
+  color: #fff;
+  font-size: 18px;
+}
+
+.ui-header__menu {
+  flex: 1;
+  min-width: 0;
+}
+
+.ui-content {
+  padding: 24px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* CitedAnswer: the answer text and the evidence list. Cited sentences
+   carry the serif documentary voice (the signature treatment). */
+.ui-answer {
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.ui-citations {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
+.ui-citation-text {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 14px;
+}
+
+.ui-citation-source {
+  color: #8c8c8c;
+  font-size: 12px;
+}

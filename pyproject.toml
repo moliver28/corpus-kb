@@ -526,11 +526,11 @@ sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps"
 help = "All quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + test"
 
 [tool.poe.tasks.gen]
-# Both generators run in --check mode: exit 1 on drift, write nothing.
+# All three generators run in --check mode: exit 1 on drift, write nothing.
 # To rewrite the artifacts after an edit, run the underlying scripts
-# without --check (see the two sub-targets below).
-sequence = ["gen-harness-pack", "gen-method-docs"]
-help = "Regenerate/diff-check the harness command pack + the method docs table"
+# without --check (see the sub-targets below).
+sequence = ["gen-harness-pack", "gen-method-docs", "ui-manifest"]
+help = "Regenerate/diff-check the harness pack + method docs + UI op manifest"
 
 [tool.poe.tasks.gen-harness-pack]
 cmd = "python scripts/gen_harness_pack.py --check"
@@ -539,6 +539,17 @@ help = "Diff-check the harness command pack against surface_registry"
 [tool.poe.tasks.gen-method-docs]
 cmd = "python scripts/gen_method_register_docs.py --check"
 help = "Diff-check docs/ANALYSIS-METHODS.md against config/analysis_methods.yaml"
+
+[tool.poe.tasks.ui-manifest]
+# The UI op manifest drift gate (UI SPA Task 4, zero-drift rule 10: poe
+# target + ci.yml ui job + enforcement-map row). Needs the project deps
+# (the merge reads api.research_http.tool_routes).
+cmd = "python scripts/gen_ui_manifest.py --check"
+help = "Diff-check the UI op manifest and generated TS artifacts"
+
+[tool.poe.tasks.ui-manifest-write]
+cmd = "python scripts/gen_ui_manifest.py"
+help = "Rewrite the UI op manifest artifacts after a registry change"
 
 [tool.poe.tasks.schema-parity]
 cmd = "python scripts/schema_parity_gate.py"
@@ -579,11 +590,15 @@ cmd = "pnpm -C ui_src build"
 help = "Build the SPA into src/corpus_kb/ui_dist/ (Vite, base /app/)"
 
 [tool.poe.tasks.ui-licenses]
-# Stub gate (Task 4 replaces it with the real allowlist check that
-# writes ui_licenses.lock.json): present now so CI and the enforcement
-# map have the target from the first SPA PR (rule 10).
-cmd = "python -c \"print('[ui-licenses] placeholder: the real license gate lands with the manifest PR')\""
-help = "UI production-license gate (stub; real check lands with Task 4)"
+# Real gate (Task 4): production deps stay on the MIT / Apache-2.0 / BSD /
+# ISC / 0BSD allowlist; the lock records the production tree only (dev
+# trees are platform-specific). --check exits 1 on drift.
+cmd = "python scripts/ui_licenses.py --check"
+help = "UI production-license allowlist gate (writes ui_licenses.lock.json)"
+
+[tool.poe.tasks.ui-licenses-write]
+cmd = "python scripts/ui_licenses.py"
+help = "Rewrite ui_licenses.lock.json after a dependency change"
 
 # ---------------------------------------------------------------------------
 # Import layering (Wave 2, program standard 5). The ASPIRATIONAL ladder is

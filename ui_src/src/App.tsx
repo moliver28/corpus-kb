@@ -20,21 +20,21 @@ function StageShell() {
   const navigate = useNavigate();
   const selected = STAGES.find((stage) => `/${stage.key}` === location.pathname)?.key;
   return (
-    <Layout style={{ minHeight: "100vh" }}>
-      <Layout.Header style={{ display: "flex", alignItems: "center", gap: 24 }}>
-        <strong style={{ color: "#fff", fontSize: 18 }}>{strings.appTitle}</strong>
+    <Layout className="ui-shell">
+      <Layout.Header className="ui-header">
+        <strong className="ui-header__title">{strings.appTitle}</strong>
         <Menu
           theme="dark"
           mode="horizontal"
+          className="ui-header__menu"
           selectedKeys={selected ? [selected] : []}
           items={STAGES.map((stage) => ({ key: stage.key, label: stage.label }))}
           onClick={({ key }) => {
             navigate(`/${key}`);
           }}
-          style={{ flex: 1, minWidth: 0 }}
         />
       </Layout.Header>
-      <Layout.Content style={{ padding: 24, maxWidth: 1200, width: "100%", margin: "0 auto" }}>
+      <Layout.Content className="ui-content">
         <Routes>
           <Route path="/" element={<Navigate to="/setup" replace />} />
           <Route path="/setup" element={<Setup />} />

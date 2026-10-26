@@ -1,0 +1,13 @@
+{
+  "name": "server-error-500",
+  "source": "recorded",
+  "request": { "method": "GET", "path": "/api/stats" },
+  "response": {
+    "httpStatus": 500,
+    "body": {
+      "status": "error",
+      "error": "VersioningHandler not initialized. Call set_versioning_handler() during startup.",
+      "error_type": "internal_error"
+    }
+  }
+}

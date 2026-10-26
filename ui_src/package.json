@@ -10,6 +10,11 @@
   },
   "scripts": {
     "dev": "vite",
+    "sync-manifest": "node scripts/copy-manifest.mjs",
+    "record-fixtures": "node scripts/record-fixtures.ts",
+    "prelint": "pnpm run sync-manifest",
+    "pretest": "pnpm run sync-manifest",
+    "prebuild": "pnpm run sync-manifest",
     "lint": "tsc --noEmit && eslint src",
     "test": "vitest run",
     "build": "tsc --noEmit && vite build"

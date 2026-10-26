@@ -1,0 +1,13 @@
+{
+  "name": "validation-error-400",
+  "source": "recorded",
+  "request": { "method": "GET", "path": "/api/release/status" },
+  "response": {
+    "httpStatus": 400,
+    "body": {
+      "status": "error",
+      "error": "missing required field: codebook_version_id",
+      "error_type": "validation_error"
+    }
+  }
+}

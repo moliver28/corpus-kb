@@ -1,0 +1,14 @@
+{
+  "name": "blocked-409",
+  "source": "canonical",
+  "note": "A refused release maps to HTTP 409; re-record against a provisioned server (ui_src/scripts/record-fixtures.ts).",
+  "request": { "method": "POST", "path": "/api/release/execute" },
+  "response": {
+    "httpStatus": 409,
+    "body": {
+      "status": "blocked",
+      "message": "The release is refused until the failing gates are cleared.",
+      "error_type": "conflict"
+    }
+  }
+}
