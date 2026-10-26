@@ -29,6 +29,9 @@ export default function ConfirmGate({
       >
         {confirmLabel ?? strings.runnerRunLabel}
       </Button>
+      {/* antd 6's declarative Modal has no autoFocusButton: the OK button
+          is not auto-focused, so a stray Enter cannot confirm the gate.
+          ConfirmGate.test pins that behavior. */}
       <Modal
         title={title}
         open={open}

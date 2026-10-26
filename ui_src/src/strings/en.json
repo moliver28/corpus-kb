@@ -9,7 +9,7 @@
   "stageCodebook": "Codebook",
   "stageRelease": "Release",
   "setupTitle": "Set up your system",
-  "setupBody": "System checks and settings will appear here.",
+  "setupBody": "This page checks the server, then loads data from files or the web.",
   "unreadableResponse": "The server sent an answer the app cannot read.",
   "serverNotAnswering": "The server did not answer. Check that corpus-kb is running.",
   "remediationRunDoctor": "Run: corpus-kb doctor",

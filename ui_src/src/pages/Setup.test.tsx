@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 import { strings } from "../strings";
 import demoLoaded from "../test/fixtures/demo-loaded-200.json";
+import demoPartial from "../test/fixtures/demo-partial-200.json";
 import doctorOk from "../test/fixtures/doctor-ok.json";
 import Setup from "./Setup";
 
@@ -87,6 +88,18 @@ describe("Setup page", () => {
     fireEvent.click(await screen.findByRole("button", { name: strings.confirmConfirm }));
     expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
     expect(screen.queryByText(strings.receiptDone)).toBeNull();
+  });
+
+  it("keeps the viewer on a partial receipt with no next-stage jump", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) },
+      { method: "POST", path: "/api/demo/load", reply: respond(200, demoPartial.response.body) },
+    ]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.setupDemoAction }));
+    fireEvent.click(await screen.findByRole("button", { name: strings.confirmConfirm }));
+    expect(await screen.findByText(strings.receiptPartial)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: strings.setupDemoNext })).toBeNull();
   });
 
   it("shows the upload cap and the upload action before any upload", async () => {

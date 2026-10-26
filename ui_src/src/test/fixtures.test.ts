@@ -3,6 +3,7 @@ import { normalize } from "../api/errors";
 import blocked409 from "./fixtures/blocked-409.json";
 import degraded200 from "./fixtures/degraded-200.json";
 import demoLoaded200 from "./fixtures/demo-loaded-200.json";
+import demoPartial200 from "./fixtures/demo-partial-200.json";
 import doctorOk200 from "./fixtures/doctor-ok.json";
 import empty200 from "./fixtures/empty-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
@@ -70,6 +71,7 @@ const FIXTURES = [
   blocked409,
   doctorOk200,
   demoLoaded200,
+  demoPartial200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -84,6 +86,7 @@ const EXPECTED_KINDS: Record<string, string> = {
   "blocked-409": "blocked",
   "doctor-ok-200": "ok",
   "demo-loaded-200": "ok",
+  "demo-partial-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -103,7 +106,8 @@ describe("committed envelope fixtures", () => {
         f.name === "empty-200" ||
         f.name === "degraded-200" ||
         f.name === "doctor-ok-200" ||
-        f.name === "demo-loaded-200"
+        f.name === "demo-loaded-200" ||
+        f.name === "demo-partial-200"
       ) {
         expect(result.ok).toBe(true);
       } else {
