@@ -45,6 +45,7 @@ Route families (the Route order below is the original single-file order):
                                contradictions-screen, sentiment-screen,
                                active-learn-next}  (AMR program)
   api/routes_v1.py             OpenAI-compatible /v1/* (gate: server.openai_compat)
+  api/routes_demo.py           POST /api/demo/load (UI SPA Task 5a)
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import BaseRoute, Route
 
+from corpus_kb.api.routes_demo import demo_load
 from corpus_kb.api.research_http import research_routes
 from corpus_kb.api.routes_analysis import (
     analysis_backfill_dates_route,
@@ -112,6 +114,7 @@ from corpus_kb.api.routes_ingest import (
     ingest_reembed_route,
     ingest_status_route,
     ingest_text,
+    ingest_upload_route,
     ingest_url_route,
 )
 from corpus_kb.api.routes_labeling import (
@@ -120,6 +123,7 @@ from corpus_kb.api.routes_labeling import (
     labeling_list_route,
 )
 from corpus_kb.api.routes_meta import (
+    doctor_route,
     document_stats,
     get_stats,
     list_documents,
@@ -170,6 +174,8 @@ def create_http_app() -> FastAPI:
         Route("/api/ingest/text", ingest_text, methods=["POST"]),
         Route("/api/ingest/directory", ingest_directory, methods=["POST"]),
         Route("/api/ingest/url", ingest_url_route, methods=["POST"]),
+        # UI SPA Task 5a (B3): the browser upload front door (multipart).
+        Route("/api/ingest/upload", ingest_upload_route, methods=["POST"]),
         # Stage-5 ingest front door: status + reembed surfaces.
         Route("/api/ingest/status", ingest_status_route, methods=["GET"]),
         Route("/api/ingest/reembed", ingest_reembed_route, methods=["POST"]),
@@ -224,6 +230,8 @@ def create_http_app() -> FastAPI:
         Route("/api/embed", embed_text, methods=["POST"]),
         # UX Wave 1 ask operation: the grounded answer front door.
         Route("/api/ask", ask, methods=["POST"]),
+        # UI SPA Task 5a: the demo slice — sample corpus load for investors.
+        Route("/api/demo/load", demo_load, methods=["POST"]),
         Route("/api/coding/embed-codebook", coding_embed_codebook, methods=["POST"]),
         Route("/api/coding/pool", coding_pool, methods=["POST"]),
         Route("/api/coding/code-batch", coding_code_batch, methods=["POST"]),
@@ -247,6 +255,8 @@ def create_http_app() -> FastAPI:
         Route("/api/metadata", get_metadata_route, methods=["GET"]),
         Route("/api/versions", list_versions, methods=["GET"]),
         Route("/api/stats", get_stats, methods=["GET"]),
+        # UI SPA Task 5a (B4): the Setup screen's System-ready strip.
+        Route("/api/doctor", doctor_route, methods=["GET"]),
         Route("/api/tables", sql_tables, methods=["GET"]),
         Route("/api/document-stats", document_stats, methods=["GET"]),
         # Research + release surfaces (U5/P7) — routes defined in
