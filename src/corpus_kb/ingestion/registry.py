@@ -76,15 +76,23 @@ def _ensure_ready() -> None:
     if _ready:
         return
     _ready = True
+    from .strategies.code import CodeStrategy
     from .strategies.default import DefaultStrategy
+    from .strategies.markdown_sections import MarkdownSectionsStrategy
     from .strategies.pptx import PptxStructureStrategy
+    from .strategies.survey import SurveyStrategy
     from .strategies.transcript import TranscriptStrategy
     from .strategies.web import WebStructureStrategy
 
+    # Registration order is detection tie-breaking order (first wins a tie
+    # in _detect_best): specific claimants before the generic fallbacks.
     register_strategy(DefaultStrategy())
     register_strategy(PptxStructureStrategy())
     register_strategy(TranscriptStrategy())
     register_strategy(WebStructureStrategy())
+    register_strategy(CodeStrategy())
+    register_strategy(MarkdownSectionsStrategy())
+    register_strategy(SurveyStrategy())
     _discover_entry_points()
 
 

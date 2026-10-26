@@ -28,6 +28,7 @@ def test_ingestion_strategy_config_block_loads() -> None:
         "transcript": "transcript",
         "pptx": "pptx_structure",
         "web": "web_structure",
+        "survey": "survey",
     }
     assert ingestion["default"] == "default"
 

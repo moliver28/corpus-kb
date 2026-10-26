@@ -43,10 +43,13 @@ entry-point discovery for packaged plugins.
 
 | Strategy | What it does |
 |----------|--------------|
-| `default` | `unstructured` partition + the existing chunker dispatch (tree-sitter AST for code, headings for markdown, semantic gaps for text). Behavior is verbatim identical to the pre-strategy pipeline. |
+| `default` | `unstructured` partition + the element-to-chunk mapper: one chunk per element with heading paths, line numbers, and exact char offsets; oversized elements split on exact slices. Behavior is verbatim identical to the pre-strategy pipeline. |
 | `transcript` | Turn-aligned question+answer chunks from speaker-turn transcripts. Each chunk carries `qa_context` ({question, participants, exchange_id}) and the same token guard as everything else. |
 | `pptx_structure` | One chunk per slide: title breadcrumbs, tables as GitHub markdown, and speaker notes as their own chunks. Core/extended-properties metadata (author, created/modified, company, subject, slide numbers) rides on every chunk. Oversized slides split at paragraph boundaries. |
 | `web_structure` | Heading-section chunks from fetched HTML (`corpus-kb ingest-url` does the fetching: robots.txt, size/content-type caps, optional same-domain crawl). Every chunk carries page metadata (OG/Twitter/JSON-LD/canonical, language) plus its heading breadcrumb; nav/header/footer chrome is excluded. |
+| `survey` | CSV question/answer exports (Wave 5): one chunk per answer, and the question text rides in chunk metadata (`question`, `row`, `answer_column`) so a retrieved answer always carries its question. Detection claims a `.csv` whose header has a question-like and an answer-like column; other CSVs keep the default strategy. |
+| `markdown_sections` | Raw markdown text segmented at ATX/setext heading boundaries (Wave 5). Every chunk is an exact char-span slice of the canonical text and carries the heading breadcrumb. Markdown FILES keep the default partition — detection never claims them — so only the degenerate raw-text path changes. |
+| `code` (optional) | Tree-sitter AST chunking for source files (Wave 5): one chunk per top-level definition, adjacent small siblings packed up to the token budget, exact char spans. Needs `pip install 'corpus-kb[code]'`; without the extra, code files fall back to the default plan with a warnings entry in the ingest result. |
 
 ## Three extension ladders
 
@@ -63,6 +66,7 @@ ingestion:
   strategies:
     transcript: transcript      # built-in
     call-recording: transcript  # any source_type can reuse any strategy
+    survey: survey              # shipped default (Wave 5)
 ```
 
 ### Ladder 2 — in-process registration (scripts, power users)
