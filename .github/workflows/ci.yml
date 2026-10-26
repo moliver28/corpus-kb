@@ -227,8 +227,12 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install poethepoet
-        # The ui-* poe targets call pnpm only; no project deps needed.
+        # The ui-* poe targets call pnpm; the manifest gate additionally
+        # reads the Python api layer, so the project installs below.
         run: pip install poethepoet
+
+      - name: Install project (manifest gate reads the api layer)
+        run: pip install -e .
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -254,7 +258,10 @@ jobs:
       - name: UI build
         run: poe ui-build
 
-      - name: UI licenses (stub)
+      - name: UI manifest drift check
+        run: poe ui-manifest
+
+      - name: UI licenses allowlist
         run: poe ui-licenses
 
       - name: Upload ui_dist artifact
