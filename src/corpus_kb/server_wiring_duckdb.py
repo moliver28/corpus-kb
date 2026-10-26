@@ -59,6 +59,15 @@ async def startup_duckdb(cfg: dict[str, Any], conn_str: str) -> dict[str, Any]:
     from corpus_kb.api.http import create_http_app
     from corpus_kb.api.socket import get_socket_server
 
+    http_app = create_http_app()
+
+    # Browser UI (issue #172): the SAME mount_spa seam the Postgres path
+    # uses — one UI, one registration order, both backends. A missing
+    # build logs ONE honest line inside mount_spa; the API continues.
+    from corpus_kb.ui.spa import mount_spa
+
+    ui_mounted = mount_spa(http_app, cfg)
+
     logger.info("DuckDB research ecosystem initialized (handlers pending their port)")
 
     return {
@@ -68,11 +77,11 @@ async def startup_duckdb(cfg: dict[str, Any], conn_str: str) -> dict[str, Any]:
         "embed_projection": embed_projection,
         "docs_projection": docs_projection,
         "event_reader": event_reader,
-        "http_app": create_http_app(),
+        "http_app": http_app,
         "socket_server": get_socket_server(),
         "config": cfg,
         "rag_backend": None,
         "router_handler": None,
-        "ui_mounted": False,
+        "ui_mounted": ui_mounted,
         "notebooks_mounted": False,
     }

@@ -116,7 +116,8 @@ def test_long_running_flags_match_the_spec() -> None:
     The expectation is pinned as string literals (not the generator's
     constant) so a silent generator change fails loudly. Task 5a added the
     ingest-directory and ingest-url registry rows, so the spec list is
-    complete here; Task 5b revisits the flag set if it adds long ops.
+    complete here; Task 5b added demo-load (the sample-corpus load embeds
+    every file on a cold host) and the read-only GET rows.
     """
     expected = frozenset(
         {
@@ -131,6 +132,7 @@ def test_long_running_flags_match_the_spec() -> None:
             "research-ingest",
             "ingest-directory",
             "ingest-url",
+            "demo-load",
         }
     )
     flagged = {str(e["id"]) for e in build_manifest(REPO) if e["longRunning"]}

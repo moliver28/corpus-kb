@@ -264,7 +264,7 @@ def setup(
     return install_main(argv)
 
 
-@app.command()
+@app.command("doctor")
 def doctor() -> int:
     """Read-only system diagnostics."""
     from corpus_kb._setup.install import main as install_main

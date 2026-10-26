@@ -98,7 +98,7 @@ def test_tool_route_returns_live_json(route: ToolRoute, monkeypatch: Any) -> Non
     monkeypatch.setattr(research_http, "_pool", pool)
 
     client = TestClient(create_http_app())
-    if route.path == "/api/release/status":
+    if route.method == "GET":
         response = client.get(route.path, params={key: _body_value(key) for key in route.required})
     else:
         response = client.post(route.path, json={key: _body_value(key) for key in route.required})
@@ -120,7 +120,7 @@ def test_every_tool_route_is_registered_with_expected_method() -> None:
     }
     for route in _tool_routes():
         registered = by_path[route.path]
-        want = {"GET"} if route.path == "/api/release/status" else {"POST"}
+        want = {"GET"} if route.method == "GET" else {"POST"}
         assert want <= set(registered.methods), route.path
 
 
