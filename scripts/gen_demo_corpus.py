@@ -204,7 +204,11 @@ def build_document(index: int, seed: int, count: int) -> tuple[str, str]:
     builder = _BUILDERS[index % len(_BUILDERS)]
     text = builder(rng, index, count)
     heading = text.splitlines()[0].removeprefix("# ")
-    slug = f"synthetic-{index:04d}-{heading.replace(' ', '-')}.md"
+    kind = builder.__name__.removeprefix("_").removesuffix("_doc")
+    chars = []
+    for char in f"{kind}-{heading}".lower():
+        chars.append(char if char.isalnum() else "-")
+    slug = f"synthetic-{index:04d}-{''.join(chars)}.md"
     return slug, text
 
 
