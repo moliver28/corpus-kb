@@ -140,6 +140,28 @@ def test_pool_refusal_is_the_taxonomy_503(monkeypatch: pytest.MonkeyPatch) -> No
     assert body["status"] == "error" and body["error_type"] == "dependency_missing"
 
 
+def test_junk_int_is_the_same_validation_error_on_get(monkeypatch: pytest.MonkeyPatch) -> None:
+    """GET ?limit=abc is a typed 400, matching the socket and CLI paths."""
+    monkeypatch.setattr("corpus_kb.api.research_http._pool", _FakePool())
+
+    client = TestClient(create_http_app())
+    response = client.get("/api/projects", params={"limit": "abc"})
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["status"] == "error" and body["error_type"] == "validation_error"
+
+
+async def test_junk_int_raises_at_the_tool_layer() -> None:
+    """The tool raises ValidationError before any database access (socket path)."""
+    from corpus_kb.errors import ValidationError
+
+    with pytest.raises(ValidationError):
+        await lifecycle_read_tools.projects_list(None, limit="abc")
+    with pytest.raises(ValidationError):
+        await lifecycle_read_tools.coding_assignments(None, offset="abc")
+
+
 def test_get_reads_refuse_post(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_stub(monkeypatch, "projects_list")
     client = TestClient(create_http_app())

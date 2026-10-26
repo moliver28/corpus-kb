@@ -31,7 +31,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from corpus_kb.api._body import DEFAULT_TENANT_ID, error_response, opt_int, parse_body
+from corpus_kb.api._body import DEFAULT_TENANT_ID, error_response, parse_body
 from corpus_kb.errors import error_status
 
 # ---------------------------------------------------------------------------
@@ -355,11 +355,24 @@ async def release_status_get(request: Request) -> JSONResponse:
     )
 
 
+def _query_int(raw: object) -> object:
+    """Coerce one clean integer query value; junk passes through untouched.
+
+    The tool layer raises the typed validation error for junk, so a bad
+    count answers the SAME failure class on GET, POST, and the socket
+    (zero-drift rule 4) — never a silent clamp on one surface only.
+    """
+    if isinstance(raw, str) and raw.lstrip("-").isdigit():
+        return int(raw)
+    return raw
+
+
 def _get_handler(route: ToolRoute) -> Callable[[Request], Awaitable[JSONResponse]]:
     """One GET route adapter: query parameters in, house envelope out.
 
-    Values coerce by the tool function's own annotations (ints for counts),
-    so the browser, the socket arm, and the MCP schema agree on types.
+    Clean integers coerce by the tool function's own annotations, so the
+    browser, the socket arm, and the MCP schema agree on types. Junk stays
+    a string; the shared tool turns it into the typed validation error.
     """
 
     async def handler(request: Request) -> JSONResponse:
@@ -374,7 +387,7 @@ def _get_handler(route: ToolRoute) -> Callable[[Request], Awaitable[JSONResponse
                 continue
             raw: object = params[key]
             if annotations.get(key) is int:
-                raw = opt_int(raw, 0)
+                raw = _query_int(raw)
             kwargs[key] = raw
         if "tenant_id" in inspect.signature(route.fn).parameters:
             kwargs.setdefault("tenant_id", DEFAULT_TENANT_ID)

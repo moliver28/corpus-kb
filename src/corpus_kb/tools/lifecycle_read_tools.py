@@ -30,6 +30,7 @@ from datetime import datetime
 
 import asyncpg
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.storage.gateway import Row, SqlGateway
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID
 from corpus_kb.tools.ingest_store import as_gateway, gateway_backend
@@ -73,8 +74,16 @@ def _uuid(value: object) -> str | None:
 
 
 def _page_size(limit: int) -> int:
-    """Clamp the page size into the honest 1..MAX window."""
-    return max(1, min(int(limit), MAX_LIST_LIMIT))
+    """Clamp the page size into the honest 1..MAX window.
+
+    Junk is a typed validation error on EVERY surface (GET query value,
+    socket JSON, CLI flag): one failure class, never a silent clamp.
+    """
+    try:
+        value = int(limit)
+    except (TypeError, ValueError):
+        raise ValidationError("limit must be an integer") from None
+    return max(1, min(value, MAX_LIST_LIMIT))
 
 
 def _select(kind: str, is_duckdb: bool, columns: str, where: list[str], args: list[object]) -> str:
@@ -241,7 +250,11 @@ async def coding_assignments(
     if code is not None:
         args.append(str(code))
         where.append(f"code_id = ${len(args)}")
-    args.extend([_page_size(limit), max(0, int(offset))])
+    try:
+        page_offset = int(offset)
+    except (TypeError, ValueError):
+        raise ValidationError("offset must be an integer") from None
+    args.extend([_page_size(limit), max(0, page_offset)])
     select = _select(
         "assignments",
         gateway_backend(as_gateway(pg_pool)) == "duckdb",
