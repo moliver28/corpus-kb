@@ -208,13 +208,17 @@ def run(project_root: Path, check: bool) -> int:
         try:
             committed = path.read_text(encoding="utf-8")
         except FileNotFoundError:
-            print(f"drift: {rel.as_posix()} is missing — run the generator without --check",
-                  file=sys.stderr)
+            print(
+                f"drift: {rel.as_posix()} is missing — run the generator without --check",
+                file=sys.stderr,
+            )
             drift.append(rel.as_posix())
             continue
         if committed != text:
-            print(f"drift: {rel.as_posix()} is stale — run the generator without --check",
-                  file=sys.stderr)
+            print(
+                f"drift: {rel.as_posix()} is stale — run the generator without --check",
+                file=sys.stderr,
+            )
             drift.append(rel.as_posix())
     if drift:
         return 1
