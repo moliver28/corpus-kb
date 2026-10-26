@@ -99,3 +99,37 @@
   color: #8c8c8c;
   font-size: 12px;
 }
+
+/* Screen layout helpers (pages/Setup and its cards): a vertical stack
+   of cards and a wrapping row for buttons. No inline style objects. */
+.ui-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ui-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+/* Stage placeholder (App.tsx): plain markup, card-like without antd. */
+.ui-placeholder {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 24px;
+  background: #fff;
+}
+
+.ui-placeholder h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.ui-placeholder p {
+  margin: 0;
+  color: #595959;
+}

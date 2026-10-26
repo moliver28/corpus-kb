@@ -1,7 +1,21 @@
+import { Suspense, lazy } from "react";
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
-import { Layout, Menu } from "antd";
-import Setup from "./pages/Setup";
+import { Layout, Menu, Spin } from "antd";
 import { strings } from "./strings";
+
+// One lazy chunk per stage, so one stage never loads another's code.
+const Setup = lazy(() => import("./pages/Setup"));
+
+/** A stage whose screen has not landed yet — one honest placeholder.
+    Plain markup keeps antd's Card out of the shell chunk. */
+function StagePlaceholder() {
+  return (
+    <section className="ui-placeholder">
+      <h2>{strings.stagePlaceholderTitle}</h2>
+      <p>{strings.stagePlaceholderBody}</p>
+    </section>
+  );
+}
 
 /** The eight lifecycle stages, in order. Routes are hash-based (`#/setup`). */
 const STAGES = [
@@ -35,12 +49,15 @@ function StageShell() {
         />
       </Layout.Header>
       <Layout.Content className="ui-content">
-        <Routes>
-          <Route path="/" element={<Navigate to="/setup" replace />} />
-          <Route path="/setup" element={<Setup />} />
-          {/* The remaining stages land with their screens (Tasks 6-7), each
-              lazy-loaded so one stage never loads another's code. */}
-        </Routes>
+        <Suspense fallback={<Spin />}>
+          <Routes>
+            <Route path="/" element={<Navigate to="/setup" replace />} />
+            <Route path="/setup" element={<Setup />} />
+            {/* Stages without screens yet (Tasks 6-7) land above this
+                catch-all; until then each shows the same placeholder. */}
+            <Route path="*" element={<StagePlaceholder />} />
+          </Routes>
+        </Suspense>
       </Layout.Content>
     </Layout>
   );
