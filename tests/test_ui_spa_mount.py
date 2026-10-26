@@ -97,6 +97,18 @@ def test_runtime_config_carries_only_tunable_keys(tmp_path: Path) -> None:
     assert "verify_full_groundedness" not in payload
 
 
+def test_runtime_config_drops_unknown_spa_keys(tmp_path: Path) -> None:
+    """The payload key list is closed: junk under ui.spa never ships."""
+    config = get_default_config()
+    config["ui"]["spa"]["injected"] = "value"
+    payload = runtime_config_payload(config)
+    assert "injected" not in payload
+    app = _app_with_api()
+    mount_spa(app, config, dist=_fake_dist(tmp_path))
+    response = _client(app).get("/app/runtime-config.json")
+    assert "injected" not in response.json()
+
+
 def test_spa_settings_reads_the_ui_spa_block() -> None:
     config = get_default_config()
     settings = spa_settings(config)
@@ -183,7 +195,9 @@ def test_missing_index_but_present_dir_is_still_missing(tmp_path: Path) -> None:
 
 def test_verify_threshold_hoisted_into_config_defaults() -> None:
     config = get_default_config()
-    assert config["ui"]["verify_full_groundedness"] == VERIFY_FULL_GROUNDEDNESS
+    # The policy constant lives as a module constant (codegen source for
+    # Task 4), never as a config-tree key.
+    assert "verify_full_groundedness" not in config["ui"]
     assert VERIFY_FULL_GROUNDEDNESS == 0.99
 
 
@@ -193,8 +207,12 @@ def test_verify_threshold_hoisted_into_config_defaults() -> None:
         ("poll_ms", 0),
         ("poll_ms", 10),
         ("poll_ms", "fast"),
+        ("poll_ms", True),
+        ("poll_ms", 60001),
         ("request_timeout_s", 0),
         ("request_timeout_s", -1),
+        ("request_timeout_s", 601),
+        ("request_timeout_s", True),
         ("max_upload_mb", 0),
         ("max_upload_mb", 4096),
     ],

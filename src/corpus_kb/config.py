@@ -66,28 +66,25 @@ def ui_spa_settings_error(config: dict[str, object]) -> str | None:
     if not isinstance(spa, dict):
         return f"ui.spa: must be a settings block; got {spa!r}"
     poll = spa.get("poll_ms", SPA_POLL_MS_DEFAULT)
-    if not isinstance(poll, int) or isinstance(poll, bool) or poll < 100:
+    if not isinstance(poll, int) or isinstance(poll, bool) or not 100 <= poll <= 60000:
         return (
-            "ui.spa.poll_ms: must be a whole number, 100 or more "
+            "ui.spa.poll_ms: must be a whole number from 100 to 60000 "
             "(milliseconds between status polls)."
         )
     timeout = spa.get("request_timeout_s", SPA_REQUEST_TIMEOUT_S_DEFAULT)
-    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
-        return "ui.spa.request_timeout_s: must be a positive number of seconds."
+    if (
+        not isinstance(timeout, (int, float))
+        or isinstance(timeout, bool)
+        or not 0.1 <= timeout <= 600
+    ):
+        return (
+            "ui.spa.request_timeout_s: must be a number from 0.1 to 600 "
+            "(seconds one API call waits)."
+        )
     upload = spa.get("max_upload_mb", SPA_MAX_UPLOAD_MB_DEFAULT)
     if not isinstance(upload, int) or isinstance(upload, bool) or not 1 <= upload <= 2048:
         return "ui.spa.max_upload_mb: must be a whole number from 1 to 2048 (megabytes per file)."
     return None
-
-
-def _ui_gate_error(config: dict[str, object]) -> str | None:
-    """The first ``ui.spa`` settings error, or None when the block is valid.
-
-    Only VALUES are rejected — a missing block fills from the defaults.
-    Called from ``load_config`` so a bad value fails AT LOAD, never
-    mid-startup.
-    """
-    return ui_spa_settings_error(config)
 
 
 # The config tree is schemaless YAML; Any is the honest leaf type. It lets
@@ -214,10 +211,9 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     if analysis_error is not None:
         raise ValueError(analysis_error)
 
-    # Browser UI gates AT LOAD (one branch, two rules): ui.enabled must
-    # be a real bool (ui/settings.py) and ui.spa.* must be sane
-    # (ui_spa_settings_error above). Each owns its remediation text.
-    ui_error = _ui_gate_error(config)
+    # Browser UI gates AT LOAD: ui.spa.* values must be sane
+    # (ui_spa_settings_error owns the rules and the remediation text).
+    ui_error = ui_spa_settings_error(config)
     if ui_error is not None:
         raise ValueError(ui_error)
 
@@ -649,16 +645,15 @@ def get_default_config() -> dict[str, object]:
         },
         # Lifecycle SPA (UI SPA program Task 3; ui/spa.py mounts it at
         # /app). The spa block is runtime-tunable and travels over the
-        # wire in /app/runtime-config.json; verify_full_groundedness is a
-        # policy constant (codegen source for Task 4's thresholds — it
-        # NEVER travels over the wire).
+        # wire in /app/runtime-config.json. VERIFY_FULL_GROUNDEDNESS is
+        # a module constant only: it is the codegen source for Task 4's
+        # thresholds and NEVER enters the config tree or the wire.
         "ui": {
             "spa": {
                 "poll_ms": SPA_POLL_MS_DEFAULT,
                 "request_timeout_s": SPA_REQUEST_TIMEOUT_S_DEFAULT,
                 "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
             },
-            "verify_full_groundedness": VERIFY_FULL_GROUNDEDNESS,
         },
     }
     _apply_typed_module_defaults(config)

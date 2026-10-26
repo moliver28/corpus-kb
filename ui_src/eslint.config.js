@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 // `any` and no `@ts-ignore` — the mirror of the Python no-`type: ignore`
 // rule. Both are hard errors here so `poe ui-lint` fails on them.
 export default tseslint.config(
-  { ignores: ["node_modules", "../src/corpus_kb/ui_dist"] },
+  { ignores: ["node_modules"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

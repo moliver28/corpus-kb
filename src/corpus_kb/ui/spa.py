@@ -36,16 +36,27 @@ def spa_settings(config: dict[str, object]) -> dict[str, object]:
 
 
 def runtime_config_payload(config: dict[str, object]) -> dict[str, object]:
-    """/app/runtime-config.json: the spa block plus the server version.
+    """/app/runtime-config.json: the three spa keys plus the server version.
 
     The version handshake lets a stale SPA show its refresh banner
-    (stale-SPA defense). Policy constants stay out by design.
+    (stale-SPA defense). The key list is closed: unknown ``ui.spa``
+    entries never travel to the browser, and policy constants stay out
+    by design.
     """
     from corpus_kb import __version__
+    from corpus_kb.config import (
+        SPA_MAX_UPLOAD_MB_DEFAULT,
+        SPA_POLL_MS_DEFAULT,
+        SPA_REQUEST_TIMEOUT_S_DEFAULT,
+    )
 
-    payload: dict[str, object] = dict(spa_settings(config))
-    payload["server_version"] = __version__
-    return payload
+    spa = spa_settings(config)
+    return {
+        "poll_ms": spa.get("poll_ms", SPA_POLL_MS_DEFAULT),
+        "request_timeout_s": spa.get("request_timeout_s", SPA_REQUEST_TIMEOUT_S_DEFAULT),
+        "max_upload_mb": spa.get("max_upload_mb", SPA_MAX_UPLOAD_MB_DEFAULT),
+        "server_version": __version__,
+    }
 
 
 def mount_spa(app: FastAPI, config: dict[str, object], dist: Path = DIST_DIR) -> bool:

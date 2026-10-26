@@ -254,7 +254,7 @@ jobs:
       - name: UI build
         run: poe ui-build
 
-      - name: UI licenses
+      - name: UI licenses (stub)
         run: poe ui-licenses
 
       - name: Upload ui_dist artifact

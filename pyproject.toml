@@ -80,9 +80,8 @@ dependencies = [
     "typer>=0.15",
     "uvicorn>=0.24",
     # fastapi: the HTTP composition root returns FastAPI (a Starlette
-    # subclass) so NiceGUI's documented ui.run_with mount serves from the
-    # same app and port. Pure-Python MIT; routes/TestClient/uvicorn all
-    # unchanged by the swap.
+    # subclass) and its router/TestClient surface serves every route.
+    # Pure-Python MIT.
     "fastapi>=0.115",
     # opentelemetry-api ONLY: no-op tracers when the [otel] extra is absent
     # (Apache-2.0, one transitive). SDK + OTLP exporter live in the extra.

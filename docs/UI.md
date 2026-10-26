@@ -1,19 +1,22 @@
 # Browser UI
 
-The browser UI is a small web front end for first-time users. It ships
-four pages: Overview, Add, Ask, and Library. The pages ride the running
-HTTP server. There is no new daemon and no new port.
+The browser UI is a React single-page app. The server serves it at
+`/app/` on the usual HTTP port. There is no new daemon and no new port.
 
-## Install
+## Build
 
-NiceGUI lives behind the optional `[ui]` extra:
+The SPA is built from `ui_src/` by Vite into `src/corpus_kb/ui_dist/`.
+Node 24 and pnpm are build-time tools only. The runtime stays pure
+Python, and no Node output runs on the server.
 
 ```bash
-pip install 'corpus-kb[ui]'
+poe ui-install
+poe ui-build
 ```
 
-CI never installs this extra. The server imports it lazily, so the core
-package stays small without it.
+CI runs the same targets in its `ui` job. The build gates cover lint,
+types, unit tests, and the bundle budget (350 kB gzip per initial
+route).
 
 ## Start
 
@@ -21,55 +24,34 @@ package stays small without it.
 corpus-kb start
 ```
 
-The server mounts the pages and opens your browser at
-`http://localhost:8010`. The auto-open waits about one second, then
-calls your browser. Set `CORPUS_KB_UI_OPEN=0` to keep the tab closed.
+Open `http://localhost:8010/app/`. The server opens your browser at
+startup unless `CORPUS_KB_UI_OPEN=0` is set.
 
-The flag `--ui` forces the pages on. The flag `--no-ui` forces them
-off. With neither flag, the `ui.enabled` config key decides.
+## Honest degradation
 
-## The four pages
+Without a build the server logs one line and keeps the API working:
 
-- **Overview** shows the doctor's health checks in plain language. Each
-  row names one part: configuration, database, models. A failed row
-  shows the fix.
-- **Add** ingests your files. Drag files onto the page, or paste a page
-  address (URL). A progress bar tracks each file. Each row reports
-  chunks, connections, or the error with its fix. The demo button runs
-  the narrated demo pipeline and shows its steps. The **Load sample
-  knowledge** button ingests five short sample files in one click
-  (see [FEATURES.md](FEATURES.md)).
-- **Ask** answers one question from your documents. Each sentence cites
-  its sources. A badge states the verdict: `verified`, `partial`, or
-  `not verified`. The badge never claims a pass on an abstention.
-- **Library** lists your documents and the discovered topics. Each read
-  uses the same tools the API uses.
+```text
+[ui] SPA build not found - run: poe ui-build
+```
+
+## Stages
+
+The app walks through eight lifecycle stages: Setup, Ingest, Review,
+Scale, Ask, Analyze, Codebook, and Release. The app shell and the
+Setup stage are live now. The remaining screens land task by task
+([build plan](ui-spa-program-plan.md)).
 
 ## Config
 
 ```yaml
 ui:
-  enabled: true
+  spa:
+    poll_ms: 2000
+    request_timeout_s: 60
+    max_upload_mb: 50
 ```
 
-The `ui.enabled` key must be a boolean. A bad value refuses to load.
-
-## Honest degradation
-
-Without the `[ui]` extra, the server logs one line and runs on:
-
-```text
-[ui] extra not installed — browser UI disabled. pip install 'corpus-kb[ui]'
-```
-
-The MCP tools, the HTTP API, and the CLI keep working. A broken UI
-mount never stops the server either. The log line names the reason.
-
-## How it mounts
-
-`corpus-kb start` builds the HTTP app with FastAPI. The UI attaches to
-that app with NiceGUI's `ui.run_with`. Your pages, the REST API, and
-the socket all share one process and one port. The page logic lives in
-`src/corpus_kb/ui/view_models.py`; it calls the same tool layer the
-MCP and HTTP surfaces call. The results can differ only when your data
-changes between calls.
+Each key has a plain-English rule, and a bad value refuses to load the
+config. The block reaches the app as `/app/runtime-config.json`. The
+key list is closed: unknown keys never travel to the browser.
