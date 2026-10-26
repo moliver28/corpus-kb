@@ -1,5 +1,6 @@
 // The one HTTP client every surface calls through (spec D.3).
 import { networkResult, normalize, unreadableResult } from "./errors";
+import { requestTimeoutMs } from "./runtimeConfig";
 import type { OpResult } from "./types";
 
 export interface CallOpOptions {
@@ -10,17 +11,18 @@ export interface CallOpOptions {
   timeoutMs?: number | "none";
 }
 
-const DEFAULT_TIMEOUT_MS = 60_000;
-
 /**
  * Call one op and resolve to a typed OpResult. Never throws, never retries
  * a POST automatically. An external `signal` aborts the same request.
+ * The default wait cap comes from /app/runtime-config.json through
+ * api/runtimeConfig.ts (the one config source); it is 60 s when the
+ * config is absent or invalid.
  */
 export async function callOp<T>(
   path: string,
   opts: CallOpOptions = {},
 ): Promise<OpResult<T>> {
-  const { method = "POST", body, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
+  const { method = "POST", body, signal, timeoutMs = requestTimeoutMs() } = opts;
   const ctrl = new AbortController();
   const timer = timeoutMs === "none" ? null : setTimeout(() => ctrl.abort(), timeoutMs);
   signal?.addEventListener("abort", () => ctrl.abort());
