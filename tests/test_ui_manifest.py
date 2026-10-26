@@ -17,7 +17,6 @@ import json
 from pathlib import Path
 
 from corpus_kb._setup.gen_ui_manifest import (
-    LONG_RUNNING_OP_IDS,
     artifacts,
     build_manifest,
 )
@@ -98,10 +97,27 @@ def test_manifest_entry_shape() -> None:
 
 
 def test_long_running_flags_match_the_spec() -> None:
-    """Exactly the D.2 longRunning ids are flagged (ingest dir/url await the
-    Task 5a registry rows)."""
+    """Exactly these D.2 op ids are flagged longRunning.
+
+    The expectation is pinned as string literals (not the generator's
+    constant) so a silent generator change fails loudly. Task 5a adds the
+    ingest/upload and doctor rows and MUST revisit these flags then.
+    """
+    expected = frozenset(
+        {
+            "research-cycle",
+            "research-demo",
+            "coding-run",
+            "coding-inductive",
+            "topics-build",
+            "analyze-run",
+            "labeling-build",
+            "classification-build",
+            "research-ingest",
+        }
+    )
     flagged = {str(e["id"]) for e in build_manifest(REPO) if e["longRunning"]}
-    assert flagged == LONG_RUNNING_OP_IDS
+    assert flagged == expected
 
 
 def test_tool_route_bodies_are_merged() -> None:
