@@ -27,15 +27,23 @@ def text_sha256(normalized_text: str) -> str:
 
 
 class TurnSpec:
-    """One speaker turn as parsed at ingest time (pre-hash)."""
+    """One speaker turn as parsed at ingest time (pre-hash).
+
+    ``start_char`` / ``end_char`` are the turn's span on the canonical
+    transcript text (the pipeline's offset invariant:
+    ``canonical_text[start_char:end_char] == normalized turn text``). They
+    are optional; events recorded before the span wave carry none.
+    """
 
     __slots__ = (
+        "end_char",
         "is_codable",
         "media_type",
         "role",
         "role_in_exchange",
         "seq",
         "speaker",
+        "start_char",
         "t_end",
         "t_start",
         "text",
@@ -54,6 +62,8 @@ class TurnSpec:
         media_type: str = "text",
         is_codable: bool = True,
         turn_type: str = "answer",
+        start_char: int | None = None,
+        end_char: int | None = None,
     ) -> None:
         self.seq = seq
         self.speaker = speaker
@@ -65,6 +75,8 @@ class TurnSpec:
         self.media_type = media_type
         self.is_codable = is_codable
         self.turn_type = turn_type
+        self.start_char = start_char
+        self.end_char = end_char
 
     def to_payload(self) -> dict[str, object]:
         normalized = normalize_turn_text(self.text)
@@ -82,6 +94,9 @@ class TurnSpec:
             payload["t_start"] = self.t_start
         if self.t_end is not None:
             payload["t_end"] = self.t_end
+        if self.start_char is not None and self.end_char is not None:
+            payload["start_char"] = self.start_char
+            payload["end_char"] = self.end_char
         return payload
 
 

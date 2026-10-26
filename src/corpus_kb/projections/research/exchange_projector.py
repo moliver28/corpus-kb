@@ -9,7 +9,6 @@ NEW ExchangesLinked events projected as updates, never rewrites of history.
 from __future__ import annotations
 
 import json
-import logging
 from typing import Any
 from uuid import UUID
 
@@ -20,8 +19,6 @@ from corpus_kb.projections.research._common import (
     require_tenant,
     unit_ids_by_seqs,
     unit_texts_by_ids,
-    upsert_speaker,
-    upsert_unit,
 )
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.projections.research._embed_writes import (
@@ -31,8 +28,7 @@ from corpus_kb.projections.research._embed_writes import (
 )
 from corpus_kb.research.chunking import build_context_prefix
 from corpus_kb.research.conn import Store, dialect_of, json_cast, resolve_store
-
-logger = logging.getLogger(__name__)
+from corpus_kb.tools.pipeline.sinks import UnitSink
 
 
 class ExchangeProjector:
@@ -118,18 +114,11 @@ class ExchangeProjector:
                 )
             }
             project_id = opt_str(doc["project_id"]) if doc else None
-            for turn in turns:
-                await upsert_speaker(conn, tenant_id, doc_id, turn)
-                if str(turn["text_sha256"]) not in texts:
-                    logger.warning(
-                        "TurnsParsed references unknown text_sha256 %s (doc %s seq %s); "
-                        "skipping unit — the content-addressed store is ingest-owned",
-                        turn["text_sha256"],
-                        doc_id,
-                        turn.get("seq"),
-                    )
-                    continue
-                await upsert_unit(conn, tenant_id, doc_id, project_id, turn, texts)
+            # One unit write port (unified-ingestion Wave 3): the sink loop
+            # makes the same speaker+unit upserts on THIS transaction, in
+            # seq order, spans included when the event payload carries them.
+            sink = UnitSink(self._store, tenant_id)
+            await sink.store_units(conn, doc_id, project_id, turns, texts)
         prefixes = turn_prefixes(doc, turns, pseudonyms)
         await apply_unit_embeddings(self._store, self._embedder, tenant_id, doc_id, texts, prefixes)
 
