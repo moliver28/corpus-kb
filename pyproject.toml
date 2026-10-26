@@ -591,8 +591,8 @@ help = "Build the SPA into src/corpus_kb/ui_dist/ (Vite, base /app/)"
 
 [tool.poe.tasks.ui-licenses]
 # Real gate (Task 4): production deps stay on the MIT / Apache-2.0 / BSD /
-# ISC / 0BSD allowlist; devDependencies are exempt but recorded. Writes
-# ui_licenses.lock.json (committed; --check exits 1 on drift).
+# ISC / 0BSD allowlist; the lock records the production tree only (dev
+# trees are platform-specific). --check exits 1 on drift.
 cmd = "python scripts/ui_licenses.py --check"
 help = "UI production-license allowlist gate (writes ui_licenses.lock.json)"
 

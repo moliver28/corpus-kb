@@ -54,8 +54,6 @@ build/
 # output ships as package data but is rebuilt, never committed.
 ui_src/node_modules/
 src/corpus_kb/ui_dist/
-# Copied from src/corpus_kb/ui_manifest.json by ui_src/scripts/copy-manifest.mjs
-ui_src/src/api/manifest.json
 
 # Program worktrees (storage-portability parallel agents)
 .worktrees/

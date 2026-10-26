@@ -1,0 +1,590 @@
+[
+  {
+    "description": "Rank stored predictions for the next human-labeling batch.",
+    "id": "active-learn-next",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/active-learn-next",
+    "required": []
+  },
+  {
+    "description": "Backfill documents.document_date from chunk metadata (idempotent).",
+    "id": "analysis-backfill-dates",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/backfill-dates",
+    "required": []
+  },
+  {
+    "description": "Nearest-centroid labels with recorded abstentions.",
+    "id": "centroids-classify",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/centroids-classify",
+    "required": []
+  },
+  {
+    "description": "Cluster structure report: sizes, noise, exemplar chunk ids.",
+    "id": "clusters-inspect",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/clusters-inspect",
+    "required": []
+  },
+  {
+    "description": "Candidate pairs the NLI model marks CONTRADICT, for human review.",
+    "id": "contradictions-screen",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/contradictions-screen",
+    "required": []
+  },
+  {
+    "description": "Near-duplicate candidate pairs at a cosine threshold.",
+    "id": "duplicates-screen",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/duplicates-screen",
+    "required": []
+  },
+  {
+    "description": "Rank keyphrase candidates (tfidf, embedding, or llm variant).",
+    "id": "keyphrases-extract",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/keyphrases-extract",
+    "required": []
+  },
+  {
+    "description": "TF-IDF + logistic labels trained on the stored weak labels.",
+    "id": "lexical-classify",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/lexical-classify",
+    "required": []
+  },
+  {
+    "description": "kNN vote labels over the labeled chunks, neighbors listed.",
+    "id": "neighbors-classify",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/neighbors-classify",
+    "required": []
+  },
+  {
+    "description": "Zero-shot labels via entailment judgments per hypothesis.",
+    "id": "nli-classify",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/nli-classify",
+    "required": []
+  },
+  {
+    "description": "Chunks ranked by distance to the k-th nearest neighbor.",
+    "id": "outliers-rank",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/outliers-rank",
+    "required": []
+  },
+  {
+    "description": "Rank the register's methods for a stated task (pure registry logic).",
+    "id": "analysis-select-method",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/select-method",
+    "required": []
+  },
+  {
+    "description": "Preset lexicon sentiment screen (vote aggregation, honest note).",
+    "id": "sentiment-screen",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/sentiment-screen",
+    "required": []
+  },
+  {
+    "description": "Run the composed corpus analysis and write the report.",
+    "id": "analyze-run",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analyze",
+    "required": []
+  },
+  {
+    "description": "Answer a question from retrieved evidence with cited sentences.",
+    "id": "ask",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ask",
+    "required": []
+  },
+  {
+    "description": "List the built chunk predictions, bounded by limit.",
+    "id": "classification-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/classification",
+    "required": []
+  },
+  {
+    "description": "Fit the few-shot classifier against a seed set; write predictions.",
+    "id": "classification-build",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/classification/build",
+    "required": []
+  },
+  {
+    "description": "Promote a proposed code into a NEW codebook version (human gate).",
+    "id": "codebook-promote",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "exclusion",
+      "inclusion",
+      "label",
+      "tau_dup",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/codebook/promote",
+    "required": [
+      "proposed_id",
+      "name",
+      "definition"
+    ]
+  },
+  {
+    "description": "Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
+    "id": "coding-inductive",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [
+      "project_id",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/coding/inductive",
+    "required": []
+  },
+  {
+    "description": "Deductive run (v5 §8): three-view scoring, calibrated tau, conformal.",
+    "id": "coding-run",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [
+      "project_id",
+      "tenant_id",
+      "cal_alpha"
+    ],
+    "paramsKnown": false,
+    "path": "/api/coding/run",
+    "required": [
+      "codebook_version_id"
+    ]
+  },
+  {
+    "description": "Re-embed degraded (zero-vector) chunks once the provider is back.",
+    "id": "ingest-reembed",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/reembed",
+    "required": []
+  },
+  {
+    "description": "Recent ingest_runs ledger entries + degraded-chunk counts (honest history).",
+    "id": "ingest-status",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/status",
+    "required": []
+  },
+  {
+    "description": "List the built chunk labels with probabilities.",
+    "id": "labeling-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/labeling",
+    "required": []
+  },
+  {
+    "description": "Score the labeling functions and write the aggregated chunk labels.",
+    "id": "labeling-build",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/labeling/build",
+    "required": []
+  },
+  {
+    "description": "List the registered labeling functions with kinds and coverage.",
+    "id": "labeling-lfs",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/labeling/lfs",
+    "required": []
+  },
+  {
+    "description": "Grounded Q&A: cited sentences; retrieval-only mode = zero LLM calls.",
+    "id": "notebook-ask",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "code",
+      "doc_ids",
+      "k",
+      "min_confidence",
+      "retrieval_only",
+      "review_status",
+      "source_type",
+      "speaker_role",
+      "tenant_id",
+      "topic_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/notebook/ask",
+    "required": [
+      "project_id",
+      "question"
+    ]
+  },
+  {
+    "description": "Evidence for one code: ranked units with flags + conformal sizes.",
+    "id": "notebook-evidence",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "limit",
+      "project_id",
+      "tenant_id",
+      "version_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/notebook/evidence",
+    "required": [
+      "code"
+    ]
+  },
+  {
+    "description": "Code overlap: flagged pairs, confusion, borderline-margin units.",
+    "id": "notebook-overlap",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "project_id",
+      "tenant_id",
+      "version_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/notebook/overlap",
+    "required": []
+  },
+  {
+    "description": "Uncoded units ranked by nearest-code margin (the no-missing-clusters radar).",
+    "id": "notebook-uncoded",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "k",
+      "project_id",
+      "tenant_id",
+      "version_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/notebook/uncoded",
+    "required": []
+  },
+  {
+    "description": "Compose every release gate over current evidence; WRITES NO RELEASE.",
+    "id": "release-assess",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "profile",
+      "run_id",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/release/assess",
+    "required": [
+      "codebook_version_id"
+    ]
+  },
+  {
+    "description": "Diff two releases' manifests (codes, definitions, methods, metrics).",
+    "id": "release-compare",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/release/compare",
+    "required": [
+      "codebook_version_id",
+      "old_release_id",
+      "new_release_id"
+    ]
+  },
+  {
+    "description": "Evaluate + record gates, apply waivers, execute the release (approver).",
+    "id": "release-execute",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "run_id",
+      "tenant_id",
+      "waivers"
+    ],
+    "paramsKnown": false,
+    "path": "/api/release/release",
+    "required": [
+      "codebook_version_id",
+      "release_id",
+      "approver"
+    ]
+  },
+  {
+    "description": "Open a draft release pinned to the current codebook content hash.",
+    "id": "release-request",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "codebook_id",
+      "profile",
+      "release_id",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/release/request",
+    "required": [
+      "codebook_version_id",
+      "creator"
+    ]
+  },
+  {
+    "description": "Review packet: evidence, failing/not_evaluable gates, waivers, next actions.",
+    "id": "release-review",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/release/review",
+    "required": [
+      "codebook_version_id",
+      "release_id"
+    ]
+  },
+  {
+    "description": "Stage, release state, blockers, sufficiency flags, the next command.",
+    "id": "release-status",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/release/status",
+    "required": [
+      "codebook_version_id"
+    ]
+  },
+  {
+    "description": "Research cycle: full pipeline with halt gates; long-running, synchronous on every surface (promotion is human-gated).",
+    "id": "research-cycle",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [
+      "approve",
+      "codebook_version_id",
+      "guide",
+      "halt_on",
+      "ingest_dir",
+      "mode",
+      "project_id",
+      "question",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/research/cycle",
+    "required": []
+  },
+  {
+    "description": "Narrated demo pipeline on the bundled demo corpus; long-running.",
+    "id": "research-demo",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/research/demo",
+    "required": []
+  },
+  {
+    "description": "Dynamic ingest of file/dir/glob with dedup; --watch tails a drop dir.",
+    "id": "research-ingest",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [
+      "project_id",
+      "tenant_id",
+      "force"
+    ],
+    "paramsKnown": false,
+    "path": "/api/research/ingest",
+    "required": [
+      "path"
+    ]
+  },
+  {
+    "description": "Ingest ONE transcript (txt/vtt/srt/csv/docx): turns, roles, exchanges.",
+    "id": "research-ingest-transcript",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "project_id",
+      "tenant_id",
+      "title",
+      "force"
+    ],
+    "paramsKnown": false,
+    "path": "/api/research/ingest-transcript",
+    "required": [
+      "file_path"
+    ]
+  },
+  {
+    "description": "Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3.",
+    "id": "research-report",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "codebook_version_id",
+      "level",
+      "project_id",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/research/report",
+    "required": []
+  },
+  {
+    "description": "Confirm the model's assignment for one CodingAssignment (human review).",
+    "id": "review-accept",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "note",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/review/execute",
+    "required": [
+      "assignment_id",
+      "decision",
+      "reviewer"
+    ]
+  },
+  {
+    "description": "Overrule the model's assignment for one CodingAssignment.",
+    "id": "review-override",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "note",
+      "tenant_id"
+    ],
+    "paramsKnown": false,
+    "path": "/api/review/execute",
+    "required": [
+      "assignment_id",
+      "decision",
+      "reviewer"
+    ]
+  },
+  {
+    "description": "Hybrid vector + full-text search with the degraded envelope.",
+    "id": "search",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/search",
+    "required": []
+  },
+  {
+    "description": "List the built topics with sizes, labels, and keywords.",
+    "id": "topics-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/topics",
+    "required": []
+  },
+  {
+    "description": "Cluster stored chunk embeddings into topics (offline BERTopic).",
+    "id": "topics-build",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/topics/build",
+    "required": []
+  },
+  {
+    "description": "Per-topic frequency series over binned document dates.",
+    "id": "topics-trends",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/topics/trends",
+    "required": []
+  }
+]

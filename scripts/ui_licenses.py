@@ -3,14 +3,15 @@
 
 Runs ``pnpm licenses list`` over ``ui_src/`` and enforces the production
 allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0).
-devDependencies are exempt from the gate but recorded in the committed
-lockfile.
+The lockfile records the production tree only: dev trees contain
+platform-specific native packages (rolldown/esbuild bindings), so a
+dev snapshot would differ per OS and never stay in sync.
 
 Outputs (COMMITTED — ``--check`` regenerates in memory and exits 1 on
 drift, ``gen_harness_pack`` precedent):
 
-  * ``ui_licenses.lock.json`` — name -> license for production AND dev
-    dependency trees, so a license change shows up in review.
+  * ``ui_licenses.lock.json`` — name -> license for the production
+    dependency tree, so a license change shows up in review.
 
 Usage:
     python scripts/ui_licenses.py [--check] [--project-root PATH]
@@ -73,26 +74,20 @@ def _pnpm_licenses(project_root: Path, prod_only: bool) -> dict[str, str]:
     return dict(sorted(flat.items()))
 
 
-def build_lock(project_root: Path) -> tuple[dict[str, str], dict[str, str], str]:
-    """(production, dev, rendered-lock) — prod gated, dev recorded, sorted."""
+def build_lock(project_root: Path) -> tuple[dict[str, str], str]:
+    """(production, rendered-lock) — prod gated and recorded, sorted."""
     production = _pnpm_licenses(project_root, prod_only=True)
-    everything = _pnpm_licenses(project_root, prod_only=False)
-    dev = {name: lic for name, lic in everything.items() if name not in production}
     lock = {
-        "devDependencies": dict(sorted(dev.items())),
-        "gate": (
-            "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD "
-            "(plus CC0-1.0, MIT-0); devDependencies exempt but recorded"
-        ),
+        "gate": "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0)",
         "production": production,
     }
     rendered = json.dumps(lock, indent=2, sort_keys=True) + "\n"
-    return production, dict(sorted(dev.items())), rendered
+    return production, rendered
 
 
 def run(project_root: Path, check: bool) -> int:
     """Write ui_licenses.lock.json, or (with --check) verify lock + gate."""
-    production, dev, rendered = build_lock(project_root)
+    production, rendered = build_lock(project_root)
     offenders = sorted(name for name, lic in production.items() if not _license_allowed(lic))
     if offenders:
         for name in offenders:
@@ -113,7 +108,7 @@ def run(project_root: Path, check: bool) -> int:
         print(f"ui licenses within the allowlist ({len(production)} production deps)")
         return 0
     lock_path.write_text(rendered, encoding="utf-8", newline="\n")
-    print(f"wrote {LOCK_REL.as_posix()} ({len(production)} production, {len(dev)} dev)")
+    print(f"wrote {LOCK_REL.as_posix()} ({len(production)} production deps)")
     return 0
 
 
