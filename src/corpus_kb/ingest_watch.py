@@ -46,7 +46,8 @@ import asyncpg
 HEALABLE_MARKERS = ("EmbeddingError", "Connection failed")
 
 # The front-door modality table (v1: text/code/markdown, pptx via suffix
-# detection; transcript formats arrive via --source-type strategies). ONE
+# detection, survey CSV via detection (unified-ingestion Wave 5);
+# transcript formats arrive via --source-type strategies). ONE
 # source of truth: the one-shot directory ingest
 # (tools/ingest_tools.ingest_directory) walks this set too.
 WATCH_SUFFIXES = {
@@ -73,6 +74,7 @@ WATCH_SUFFIXES = {
     ".rst",
     ".pptx",
     ".txt",
+    ".csv",
 }
 
 # Cap on the exponential heal backoff so a long outage does not sleep days.

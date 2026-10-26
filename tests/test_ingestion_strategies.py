@@ -102,7 +102,10 @@ def test_precedence_detection_without_mapping() -> None:
 
 
 def test_precedence_default_fallback() -> None:
-    resolution = resolve_strategy("text", "notes.txt", PLAIN_TEXT, CFG_EMPTY)
+    # Heading-free prose: raw text WITH heading structure is the markdown
+    # sectioner's detection claim since Wave 5, so the fallback case needs
+    # content nothing claims.
+    resolution = resolve_strategy("text", "notes.txt", "Plain prose, no headings.", CFG_EMPTY)
     assert resolution.strategy.name == "default"
     assert resolution.basis == "default"
 
@@ -627,8 +630,9 @@ def test_cli_rejects_unknown_source_type() -> None:
     # (test_cli's helper), drop the panel's box-drawing characters, and
     # collapse whitespace before matching.
     text = re.sub(r"[│╭─╮╰╯├┤]", " ", _strip_ansi(result.output))
-    assert "Valid strategies: default, pptx_structure, transcript, web_structure" in " ".join(
-        text.split()
+    assert (
+        "Valid strategies: code, default, markdown_sections, pptx_structure, "
+        "survey, transcript, web_structure" in " ".join(text.split())
     )
 
 
@@ -656,17 +660,18 @@ def test_detection_summary_hint_is_extension_derived_not_hardcoded(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The hint comes from the file's extension (the pipeline's derivation),
-    never a hardcoded 'transcript' — a code file earns no source-type boost."""
+    never a hardcoded 'transcript' — and a code file names its own claim."""
     from corpus_kb.cli import _print_detection_summary
 
     target = tmp_path / "script.py"
     target.write_text("def main():\n    pass\n", encoding="utf-8")
     _print_detection_summary(target, CFG_EMPTY)
     out = capsys.readouterr().out.strip()
-    # No transcript signal in a .py file: confidence reports an honest 0.00
-    # (the hardcoded 'transcript' hint would have inflated it by +0.2).
+    # Wave 5: the code strategy claims .py files (code-suffix; the 'code'
+    # hint adds its boost). The transcript hint still inflates nothing.
     assert out.startswith("detected: ")
-    assert "(0.00, " in out
+    assert "code-suffix" in out
+    assert "-> strategy code (via detection)" in out
 
 
 def test_source_type_override_notice_is_honest(capsys: pytest.CaptureFixture[str]) -> None:

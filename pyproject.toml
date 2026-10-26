@@ -33,13 +33,9 @@ dependencies = [
     "httpx>=0.27",
     "ollama>=0.4",
     "pyyaml>=6.0",
-    "tree-sitter>=0.23",
-    "tree-sitter-python>=0.23",
-    "tree-sitter-javascript>=0.23",
-    "tree-sitter-typescript>=0.23",
-    "tree-sitter-rust>=0.23",
-    "tree-sitter-go>=0.23",
-    "tree-sitter-java>=0.23",
+    # tree-sitter + the grammars live in the [code] extra (unified-ingestion
+    # Wave 5): the AST code chunker imports them lazily behind the file-type
+    # gate, so base installs no longer carry them (deptry ratchet closed).
     "pydantic>=2.0",
     # TypeIs (gateway seam narrowing) is 3.13+ stdlib; the repo floor is 3.11.
     "typing-extensions>=4.10",
@@ -217,6 +213,21 @@ semchunk = ["semchunk>=4.1,<5"]
 # across versions — we never persist them. CI NEVER installs this extra;
 # the import is lazy behind the config gate (same contract as latechunk).
 dedup = ["datasketch>=2.0,<3"]
+# Tree-sitter AST code chunking (unified-ingestion Wave 5): the [code]
+# extra restores grammar-aware chunking for source files
+# (ingestion/strategies/code.py). MIT. The import is lazy behind the
+# file-type gate; without the extra, code files fall back to the default
+# strategy's plan with a warnings entry. CI NEVER installs this extra; the
+# extras-less jobs stay green (same contract as semchunk/dedup).
+code = [
+    "tree-sitter>=0.23",
+    "tree-sitter-python>=0.23",
+    "tree-sitter-javascript>=0.23",
+    "tree-sitter-typescript>=0.23",
+    "tree-sitter-rust>=0.23",
+    "tree-sitter-go>=0.23",
+    "tree-sitter-java>=0.23",
+]
 # Researcher console (UX program W6): marimo notebooks are reproducible
 # .py files served by the running server via create_asgi_app. Apache-2.0.
 # CI NEVER installs this extra (same lazy contract).
@@ -434,11 +445,10 @@ DEP002 = [
     # an import edge; rich may be a typer extra).
     "rich",
     "pgvector",
-    # Declared for surfaces with no import edge: the tree-sitter grammars
-    # belong to a code chunker that no longer exists in the tree. Ratchet
-    # follow-up: drop the dependency (with licenses.lock.json regenerated)
-    # in a dependency-scoped PR. (The `mcp` entry left this list in Wave 4A:
-    # mcp_server.py imports the SDK, so deptry sees the edge.)
+    # Wave 5 [code] extra: strategies/code.py + strategies/ast_chunks.py
+    # import the grammars via importlib (the semchunk pattern), so deptry
+    # cannot see the edges. The rows stay: the deps ARE used, the import
+    # is dynamic by design (extras-less CI must stay green).
     "tree-sitter",
     "tree-sitter-python",
     "tree-sitter-javascript",

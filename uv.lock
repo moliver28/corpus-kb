@@ -862,13 +862,6 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
     { name = "starlette" },
-    { name = "tree-sitter" },
-    { name = "tree-sitter-go" },
-    { name = "tree-sitter-java" },
-    { name = "tree-sitter-javascript" },
-    { name = "tree-sitter-python" },
-    { name = "tree-sitter-rust" },
-    { name = "tree-sitter-typescript" },
     { name = "typer" },
     { name = "typing-extensions" },
     { name = "unstructured", extra = ["md"] },
@@ -879,6 +872,15 @@ dependencies = [
 classify = [
     { name = "scikit-learn" },
     { name = "threadpoolctl" },
+]
+code = [
+    { name = "tree-sitter" },
+    { name = "tree-sitter-go" },
+    { name = "tree-sitter-java" },
+    { name = "tree-sitter-javascript" },
+    { name = "tree-sitter-python" },
+    { name = "tree-sitter-rust" },
+    { name = "tree-sitter-typescript" },
 ]
 dedup = [
     { name = "datasketch" },
@@ -1026,13 +1028,13 @@ requires-dist = [
     { name = "threadpoolctl", marker = "extra == 'classify'", specifier = ">=3.5" },
     { name = "torch", marker = "extra == 'latechunk'", specifier = ">=2.2" },
     { name = "transformers", marker = "extra == 'latechunk'", specifier = ">=4.51.0" },
-    { name = "tree-sitter", specifier = ">=0.23" },
-    { name = "tree-sitter-go", specifier = ">=0.23" },
-    { name = "tree-sitter-java", specifier = ">=0.23" },
-    { name = "tree-sitter-javascript", specifier = ">=0.23" },
-    { name = "tree-sitter-python", specifier = ">=0.23" },
-    { name = "tree-sitter-rust", specifier = ">=0.23" },
-    { name = "tree-sitter-typescript", specifier = ">=0.23" },
+    { name = "tree-sitter", marker = "extra == 'code'", specifier = ">=0.23" },
+    { name = "tree-sitter-go", marker = "extra == 'code'", specifier = ">=0.23" },
+    { name = "tree-sitter-java", marker = "extra == 'code'", specifier = ">=0.23" },
+    { name = "tree-sitter-javascript", marker = "extra == 'code'", specifier = ">=0.23" },
+    { name = "tree-sitter-python", marker = "extra == 'code'", specifier = ">=0.23" },
+    { name = "tree-sitter-rust", marker = "extra == 'code'", specifier = ">=0.23" },
+    { name = "tree-sitter-typescript", marker = "extra == 'code'", specifier = ">=0.23" },
     { name = "typer", specifier = ">=0.15" },
     { name = "typing-extensions", specifier = ">=4.10" },
     { name = "umap-learn", marker = "extra == 'inductive'", specifier = ">=0.5" },
@@ -1042,7 +1044,7 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.10" },
     { name = "xenon", marker = "extra == 'dev'", specifier = ">=0.9" },
 ]
-provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "semchunk", "dedup", "notebook", "classify", "setfit", "dev"]
+provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "semchunk", "dedup", "code", "notebook", "classify", "setfit", "dev"]
 
 [[package]]
 name = "coverage"

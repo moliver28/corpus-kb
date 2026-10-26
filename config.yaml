@@ -80,6 +80,10 @@ ingestion:
     # ingest_url).
     pptx: pptx_structure
     web: web_structure
+    # Survey Q/A exports (unified-ingestion Wave 5): detection claims a
+    # .csv whose header carries question and answer columns; this row pins
+    # the source_type "survey" for callers that label it explicitly.
+    survey: survey
   default: default
 
 retrieval:
