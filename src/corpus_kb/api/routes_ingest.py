@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 from uuid import UUID
 
+from starlette.datastructures import UploadFile
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -118,7 +119,7 @@ async def ingest_upload_route(request: Request) -> JSONResponse:
     )
     form = await request.form()
     upload = form.get("file")
-    if not hasattr(upload, "read"):
+    if not isinstance(upload, UploadFile):
         raise ValidationError("The upload needs a multipart file field named file.")
     source_type = form.get("source_type")
     result = await ingest_upload(

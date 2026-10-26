@@ -59,9 +59,14 @@ _BYTES_PER_MB = 1024 * 1024
 class UploadSource(Protocol):
     """The read side of one uploaded file (the starlette UploadFile shape)."""
 
-    filename: str | None
-    content_type: str | None
-    size: int | None
+    @property
+    def filename(self) -> str | None: ...
+
+    @property
+    def content_type(self) -> str | None: ...
+
+    @property
+    def size(self) -> int | None: ...
 
     async def read(self, size: int = -1) -> bytes: ...
 
@@ -90,23 +95,16 @@ def require_multipart_support() -> None:
     if importlib.util.find_spec("python_multipart") is None:
         raise DependencyMissingError(
             "The upload route needs the multipart form parser.",
-            remediation=(
-                "Install the ui extra: pip install '.[ui]'. "
-                "Then restart the server."
-            ),
+            remediation=("Install the ui extra: pip install '.[ui]'. Then restart the server."),
         )
 
 
-def enforce_request_caps(
-    content_type: str | None, content_length: int | None, max_mb: int
-) -> None:
+def enforce_request_caps(content_type: str | None, content_length: int | None, max_mb: int) -> None:
     """Reject a wrong request type or an oversized body BEFORE any read."""
     if not content_type or not content_type.lower().startswith("multipart/form-data"):
         raise UnsupportedMediaTypeError("The upload must be a multipart form request.")
     if content_length is not None and content_length > max_mb * _BYTES_PER_MB:
-        raise PayloadTooLargeError(
-            f"The request body is over the {max_mb} MB upload cap."
-        )
+        raise PayloadTooLargeError(f"The request body is over the {max_mb} MB upload cap.")
 
 
 async def ingest_upload(
@@ -140,9 +138,7 @@ async def ingest_upload(
                     break
                 received += len(chunk)
                 if received > cap_bytes:
-                    raise PayloadTooLargeError(
-                        f"{name} is over the {cap_mb} MB upload cap."
-                    )
+                    raise PayloadTooLargeError(f"{name} is over the {cap_mb} MB upload cap.")
                 sink.write(chunk)
         return await ingest_file(
             str(temp_path),

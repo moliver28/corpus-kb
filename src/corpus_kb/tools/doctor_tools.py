@@ -33,9 +33,7 @@ def _check_dicts(checks: list[ResearchCheck]) -> list[dict[str, object]]:
 def _connection_string(cfg: dict[str, Any]) -> str:
     """The DSN the research commands use: env override wins (review F-1)."""
     db_cfg = cfg.get("database") or {}
-    return os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(
-        db_cfg.get("connection_string", "")
-    )
+    return os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(db_cfg.get("connection_string", ""))
 
 
 async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -44,15 +42,15 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
     Probes are the CLI doctor's own functions, so the SPA's System-ready
     strip can never disagree with ``corpus-kb doctor`` on the same host.
     """
-    from corpus_kb._setup.setup_steps import (
-        check_extensions,
-        check_ollama,
-        check_postgres,
-    )
     from corpus_kb._setup.install import (
         DEFAULT_OLLAMA_URL,
         detect_profile,
         load_installer_profiles,
+    )
+    from corpus_kb._setup.setup_steps import (
+        check_extensions,
+        check_ollama,
+        check_postgres,
     )
 
     cfg = load_config_or_pass(config)
@@ -73,9 +71,7 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
 
     research: list[ResearchCheck] | None = None
     if postgres_ok:
-        research = await research_checks(
-            conn_str, cfg, extensions, ollama_ok=ollama_ok
-        )
+        research = await research_checks(conn_str, cfg, extensions, ollama_ok=ollama_ok)
     storage = await storage_checks(cfg, conn_str, postgres_ok)
     env = env_var_check()
 

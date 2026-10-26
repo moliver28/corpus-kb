@@ -54,7 +54,6 @@ from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
 from starlette.routing import BaseRoute, Route
 
-from corpus_kb.api.routes_demo import demo_load
 from corpus_kb.api.research_http import research_routes
 from corpus_kb.api.routes_analysis import (
     analysis_backfill_dates_route,
@@ -98,6 +97,7 @@ from corpus_kb.api.routes_conflicts import (
     conflicts_resolve_route,
     conflicts_scan_route,
 )
+from corpus_kb.api.routes_demo import demo_load
 from corpus_kb.api.routes_graph import (
     add_entity,
     add_relation,
