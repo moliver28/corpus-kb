@@ -31,10 +31,8 @@ from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
-from corpus_kb.projections.research._common import store_turn_texts
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
-    ledger_record,
     plan_file,
     scan_path,
 )
@@ -42,6 +40,8 @@ from corpus_kb.research.linking import link_exchanges
 from corpus_kb.research.roles import map_roles, speaker_role_basis
 from corpus_kb.research.transcript_parser import parse_transcript
 from corpus_kb.tools.ingest_common import file_ingest_concurrency
+from corpus_kb.tools.pipeline.research_units import research_document
+from corpus_kb.tools.pipeline.sinks import UnitSink
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,14 @@ class ResearchHandler:
         title: str | None = None,
         force: bool = False,
     ) -> dict[str, Any]:
-        """One transcript file -> turn store + Document aggregate + events."""
+        """One transcript file -> canonical document + turn store + events.
+
+        The front stages follow the pipeline contract (unified-ingestion
+        Wave 3): parse (research segmentation unchanged), canonical
+        IngestDocument with one span per turn, then the store stage through
+        the UnitSink write port. Unit rows still land through the events
+        (the projector upserts them, spans included).
+        """
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(path)
@@ -124,17 +131,15 @@ class ResearchHandler:
             }
 
         parsed = parse_transcript(file_path)
+        canonical = research_document(str(file_path), parsed.source_type, parsed.turns)
         role_mapping = map_roles(parsed.turns)
         exchanges = link_exchanges(parsed.turns, embed=self._link_embed())
 
-        texts_by_sha: dict[str, str] = {}
-        for turn in parsed.turns:
-            from corpus_kb.domain.transcript import normalize_turn_text, text_sha256
-
-            texts_by_sha[text_sha256(normalize_turn_text(turn.text))] = normalize_turn_text(
-                turn.text
-            )
-        await store_turn_texts(self._pool, tenant_id, texts_by_sha, media_type=parsed.source_type)
+        texts_by_sha: dict[str, str] = {
+            str(chunk.chunk_id): chunk.text for chunk in canonical.chunks
+        }
+        sink = UnitSink(self._pool, tenant_id)
+        await sink.store_turn_texts(texts_by_sha, media_type=parsed.source_type)
 
         doc = Document(
             tenant_id=tenant_id,
@@ -161,9 +166,7 @@ class ResearchHandler:
             doc.add_exchange_batch(tenant_id=tenant_id, exchanges=[e.to_payload() for e in batch])
         self.app.save(doc)
 
-        await ledger_record(
-            self._pool,
-            tenant_id,
+        await sink.record_ledger(
             file_path,
             decision.file_sha256,
             decision.source_type,
