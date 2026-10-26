@@ -1,10 +1,9 @@
-"""The first-party browser UI (UX program Wave 3).
+"""The lifecycle browser UI (UI SPA program).
 
-Four NiceGUI pages — Overview, Add, Ask, Library — mounted into the
-running HTTP server by :func:`corpus_kb.ui.app.build_ui` (``ui.run_with``;
-no new daemon, no new port). NiceGUI itself is the ``[ui]`` optional
-extra and is imported lazily in ``app.py`` only; every other module in
-this package stays stdlib-plus-core so extras-less CI never touches it.
+The React SPA in ``ui_src/`` builds into ``ui_dist/`` and mounts at
+``/app/`` through :func:`corpus_kb.ui.spa.mount_spa`. A missing build
+logs one honest line; the API keeps working. This package holds only
+the mount — the SPA holds no Python-importable logic.
 """
 
 from __future__ import annotations

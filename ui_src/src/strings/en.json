@@ -1,0 +1,13 @@
+{
+  "appTitle": "Corpus-KB",
+  "stageSetup": "Setup",
+  "stageIngest": "Ingest",
+  "stageReview": "Review",
+  "stageScale": "Scale",
+  "stageAsk": "Ask",
+  "stageAnalyze": "Analyze",
+  "stageCodebook": "Codebook",
+  "stageRelease": "Release",
+  "setupTitle": "Set up your system",
+  "setupBody": "System checks and settings will appear here."
+}

@@ -35,6 +35,61 @@ def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
             base[key] = value
 
 
+# The verify badge's "verified" bar (UI SPA program Task 3): at or above
+# this groundedness the judge entailed every claim it checked; below it
+# the answer is "partial". Hoisted from ui/view_models.py BEFORE that
+# file's deletion so the policy keeps one source. Task 4's manifest
+# generator codegens the SPA's thresholds.generated.ts from this default
+# (compile-time types; the value never travels over the wire).
+VERIFY_FULL_GROUNDEDNESS = 0.99
+
+# ui.spa.* defaults (the lifecycle SPA at /app; ui/spa.py is the mount).
+# poll_ms: interval between status polls on the Ingest and Scale pages.
+SPA_POLL_MS_DEFAULT = 2000
+# request_timeout_s: how long one SPA API call waits before giving up.
+SPA_REQUEST_TIMEOUT_S_DEFAULT = 60
+# max_upload_mb: the per-file upload cap (taxonomy 413 above it).
+SPA_MAX_UPLOAD_MB_DEFAULT = 50
+
+
+def ui_spa_settings_error(config: dict[str, object]) -> str | None:
+    """Remediation text for invalid ``ui.spa`` values, or None when valid.
+
+    Only VALUES are rejected — a partial block fills from the defaults.
+    Called from ``load_config`` so a bad value fails AT LOAD, never
+    mid-startup. Messages are plain English (STE).
+    """
+    ui = _section_dict(config, "ui")
+    spa = ui.get("spa")
+    if spa is None:
+        return None
+    if not isinstance(spa, dict):
+        return f"ui.spa: must be a settings block; got {spa!r}"
+    poll = spa.get("poll_ms", SPA_POLL_MS_DEFAULT)
+    if not isinstance(poll, int) or isinstance(poll, bool) or poll < 100:
+        return (
+            "ui.spa.poll_ms: must be a whole number, 100 or more "
+            "(milliseconds between status polls)."
+        )
+    timeout = spa.get("request_timeout_s", SPA_REQUEST_TIMEOUT_S_DEFAULT)
+    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
+        return "ui.spa.request_timeout_s: must be a positive number of seconds."
+    upload = spa.get("max_upload_mb", SPA_MAX_UPLOAD_MB_DEFAULT)
+    if not isinstance(upload, int) or isinstance(upload, bool) or not 1 <= upload <= 2048:
+        return "ui.spa.max_upload_mb: must be a whole number from 1 to 2048 (megabytes per file)."
+    return None
+
+
+def _ui_gate_error(config: dict[str, object]) -> str | None:
+    """The first ``ui.spa`` settings error, or None when the block is valid.
+
+    Only VALUES are rejected — a missing block fills from the defaults.
+    Called from ``load_config`` so a bad value fails AT LOAD, never
+    mid-startup.
+    """
+    return ui_spa_settings_error(config)
+
+
 # The config tree is schemaless YAML; Any is the honest leaf type. It lets
 # callers index nested sections without casting every hop.
 def load_config(path: str | None = None) -> dict[str, Any]:
@@ -159,11 +214,10 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     if analysis_error is not None:
         raise ValueError(analysis_error)
 
-    # UX Wave 3 browser UI: ui.enabled must be a real bool AT LOAD
-    # (ui/settings.py owns the rule and the remediation text).
-    from corpus_kb.ui.settings import ui_settings_error
-
-    ui_error = ui_settings_error(config)
+    # Browser UI gates AT LOAD (one branch, two rules): ui.enabled must
+    # be a real bool (ui/settings.py) and ui.spa.* must be sane
+    # (ui_spa_settings_error above). Each owns its remediation text.
+    ui_error = _ui_gate_error(config)
     if ui_error is not None:
         raise ValueError(ui_error)
 
@@ -593,6 +647,19 @@ def get_default_config() -> dict[str, object]:
                 },
             },
         },
+        # Lifecycle SPA (UI SPA program Task 3; ui/spa.py mounts it at
+        # /app). The spa block is runtime-tunable and travels over the
+        # wire in /app/runtime-config.json; verify_full_groundedness is a
+        # policy constant (codegen source for Task 4's thresholds — it
+        # NEVER travels over the wire).
+        "ui": {
+            "spa": {
+                "poll_ms": SPA_POLL_MS_DEFAULT,
+                "request_timeout_s": SPA_REQUEST_TIMEOUT_S_DEFAULT,
+                "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
+            },
+            "verify_full_groundedness": VERIFY_FULL_GROUNDEDNESS,
+        },
     }
     _apply_typed_module_defaults(config)
     return config
@@ -639,12 +706,22 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     # Wave 4 topics layer (topics/settings.py is the typed reader): the
     # opt-in BERTopic block, dormant behind topics.enabled: false.
     config.setdefault("topics", _detached_defaults(TOPICS_CONFIG_DEFAULTS))
-    # UX Wave 3 browser UI (ui/settings.py is the typed reader): the block
-    # MUST exist here or the setup write-back would silently drop ui.*
-    # keys from user configs (the same passthrough rule as research above).
-    from corpus_kb.ui.settings import UI_CONFIG_DEFAULTS
-
-    config.setdefault("ui", _detached_defaults(UI_CONFIG_DEFAULTS))
+    # UI SPA browser UI (ui/spa.py reads ui.spa.* with defaults): the
+    # block MUST exist here or the setup write-back would silently drop
+    # ui.spa.* keys from user configs (the same passthrough rule as
+    # research above).
+    config.setdefault(
+        "ui",
+        _detached_defaults(
+            {
+                "spa": {
+                    "poll_ms": SPA_POLL_MS_DEFAULT,
+                    "request_timeout_s": SPA_REQUEST_TIMEOUT_S_DEFAULT,
+                    "max_upload_mb": SPA_MAX_UPLOAD_MB_DEFAULT,
+                }
+            }
+        ),
+    )
     # UX Wave 6 notebooks console (notebooks/settings.py is the typed
     # reader): the marimo console block, mounted at /notebooks behind the
     # [notebook] extra. Same passthrough rule as ui above.

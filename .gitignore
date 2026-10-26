@@ -50,6 +50,11 @@ scripts/_*.ps1
 # Build artifacts
 build/
 
+# UI SPA (UI SPA program Task 3): Node is build-time only; the Vite
+# output ships as package data but is rebuilt, never committed.
+ui_src/node_modules/
+src/corpus_kb/ui_dist/
+
 # Program worktrees (storage-portability parallel agents)
 .worktrees/
 

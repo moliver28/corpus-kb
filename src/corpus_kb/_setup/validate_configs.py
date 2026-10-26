@@ -658,8 +658,10 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "database.backend": str,
     # -- graph traversal ------------------------------------------------------
     "graph.max_hops": int,
-    # -- ui (UX program Wave 3, src/corpus_kb/ui/) ---------------------------
-    "ui.enabled": bool,
+    # -- ui (UI SPA program Task 3, src/corpus_kb/ui/spa.py) ----------------
+    "ui.spa.poll_ms": int,
+    "ui.spa.request_timeout_s": float,
+    "ui.spa.max_upload_mb": int,
     # -- notebooks (UX program Wave 6, src/corpus_kb/notebooks/) -------------
     "notebooks.enabled": bool,
     "notebooks.directory": str,

@@ -96,11 +96,11 @@ land in this document first, before any implementation.
 
 | Gate | CI enforcement | Workflow / job | Lands |
 |------|----------------|----------------|-------|
-| UI lint | `poe ui-lint` | ci.yml / ui-lint | UI SPA (D17) |
-| UI test | `poe ui-test` | ci.yml / ui-test | UI SPA (D17) |
-| UI build | `poe ui-build`; includes the bundle budget | ci.yml / ui-build | UI SPA (D17) |
-| UI licenses | `poe ui-licenses` | ci.yml / ui-licenses | UI SPA (D17) |
-| UI manifest | `poe ui-manifest`; also runs in `poe gen` | ci.yml / ui-manifest | UI SPA (D17) |
+| UI lint | `poe ui-lint` | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI test | `poe ui-test` | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI build | `poe ui-build`; the bundle budget lands with Task 9 | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI licenses | `poe ui-licenses` (stub in PR-1; real check in PR-2) | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI manifest | `poe ui-manifest`; also runs in `poe gen` | ci.yml / ui | UI SPA Task 4 (PR-2) |
 
 ## The zero-drift gate
 
@@ -247,6 +247,10 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
 | Schema parity (DuckDB port) | `poe schema-parity` (`scripts/schema_parity_gate.py`, sqlglot 30.x static-only) folds `storage/schema.sql` + forward `migrations/` and `migrations_duckdb/` into final CREATE TABLE/SEQUENCE/INDEX states and diffs columns, PKs, uniques, FKs, sequences, and plain indexes. Undeclared drift fails the PR, and a STALE allowlist row (declared but no longer real) fails too. It does NOT cover dynamic EXECUTE-format DDL (declared in the gate allowlist), RLS/policies (PG-only by design), or runtime index managers (FTS/vss) | ci.yml / lint | G (issue #127) |
 | Profile truth | `poe validate-profiles` (`src/corpus_kb/_setup/validate_profiles.py`): every `profiles/*.yaml` must parse against the loader schema, name only live ingestion strategies, reference only catalogue claim-template ids, and point `seeds_file` at an existing file. A profile that references a missing seam fails the PR (Living Corpus W5) | ci.yml / type-check step | W5 |
+| UI lint and types | `poe ui-lint`: ESLint plus `tsc --noEmit` over `ui_src/`. TypeScript strict; `any` and `@ts-ignore` are hard errors (the mirror of the Python `type: ignore` ban) | ci.yml / ui | UI SPA Task 3 |
+| UI unit tests | `poe ui-test`: vitest over `ui_src/` (jsdom; antd stubs in `src/test/setup.ts`) | ci.yml / ui | UI SPA Task 3 |
+| UI build | `poe ui-build`: Vite 8 build into `src/corpus_kb/ui_dist/` (base `/app/`). The gzip budget cap is 350 kB per initial route, set from the Task 3 probe data (shell 191.7 kB + probe screen 131.4 kB = 323 kB). Task 9's `check-bundle.mjs` enforces the cap inside this target | ci.yml / ui | UI SPA Task 3 |
+| UI licenses | `poe ui-licenses`: stub in PR-1 (prints a placeholder line). Task 4 replaces it with the allowlist check (MIT, Apache-2.0, ISC, BSD, 0BSD) that writes `ui_licenses.lock.json` | ci.yml / ui | UI SPA Task 3 (stub) → Task 4 (real) |
 
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate
