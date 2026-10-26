@@ -90,6 +90,9 @@ describe("Setup page", () => {
     expect(screen.getAllByText(/connection refused/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/postgres is up/).length).toBeGreaterThan(0);
     expect(screen.getByText("database backend")).toBeTruthy();
+    // Probe enum words never render raw; "ok" shows its plain word.
+    expect(screen.getAllByText(strings.setupStateOk).length).toBeGreaterThan(0);
+    expect(screen.queryByText("ok")).toBeNull();
   });
 
   it("runs the demo load behind the confirm gate and shows the receipt", async () => {

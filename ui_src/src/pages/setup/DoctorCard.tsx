@@ -8,7 +8,7 @@ import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
-import { allChecks, envelopeResult, isDoctorResult } from "./doctor";
+import { allChecks, envelopeResult, isDoctorResult, stateWord } from "./doctor";
 import type { CheckRow, DoctorResult } from "./doctor";
 
 /** The doctor table itself: reachability banners plus the check rows. */
@@ -19,7 +19,7 @@ function DoctorView({ result }: { result: DoctorResult }) {
     {
       title: strings.setupColumnState,
       dataIndex: ["check", "status"],
-      render: (value: unknown) => <Tag>{String(value)}</Tag>,
+      render: (value: unknown) => <Tag>{stateWord(String(value))}</Tag>,
     },
     { title: strings.setupColumnDetail, dataIndex: ["check", "detail"] },
     { title: strings.setupColumnFix, dataIndex: ["check", "fix"] },

@@ -2,6 +2,7 @@
 // SPA reads only these fields; anything else stays in the JsonViewer.
 // The typeguard keeps a drifted or unknown payload on the honest
 // fallback path (review focus 5) instead of crashing the screen.
+import { strings } from "../../strings";
 
 /** One doctor probe row, exactly as the server sends it. */
 export interface DoctorCheck {
@@ -93,4 +94,18 @@ export function allChecks(result: DoctorResult): CheckRow[] {
   return [result.env, ...result.research_checks, ...result.storage_checks].map(
     (check, index) => ({ key: String(index), check }),
   );
+}
+
+// The server's probe enum words (ok/warn/fail/...) never render raw:
+// each maps to one plain word; anything unknown reads as not checked.
+const STATE_WORDS: Record<string, string> = {
+  ok: strings.setupStateOk,
+  warn: strings.setupStateWarn,
+  fail: strings.setupStateFail,
+  info: strings.setupStateInfo,
+};
+
+/** One plain word for a server probe status. */
+export function stateWord(status: string): string {
+  return STATE_WORDS[status] ?? strings.setupStateNotChecked;
 }

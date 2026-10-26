@@ -80,6 +80,11 @@ export interface Strings {
   setupColumnState: string;
   setupColumnDetail: string;
   setupColumnFix: string;
+  setupStateOk: string;
+  setupStateWarn: string;
+  setupStateFail: string;
+  setupStateInfo: string;
+  setupStateNotChecked: string;
   setupDemoTitle: string;
   setupDemoBody: string;
   setupDemoAction: string;
