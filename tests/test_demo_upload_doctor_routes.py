@@ -374,6 +374,55 @@ def test_upload_tool_helpers_are_strict() -> None:
     assert upload_tools.upload_cap_mb({}) >= 1
 
 
+async def test_upload_suffix_is_clamped_to_safe_characters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NUL bytes or colons in the filename cannot crash mkstemp."""
+
+    class _OnceUpload:
+        """An UploadSource that yields its payload one read, then ends."""
+
+        filename: str
+        content_type = "text/markdown"
+        size = 5
+
+        def __init__(self, filename: str, payload: bytes) -> None:
+            self.filename = filename
+            self._payload = payload
+            self._spent = False
+
+        async def read(self, size: int = -1) -> bytes:
+            del size
+            if self._spent:
+                return b""
+            self._spent = True
+            return self._payload
+
+    import corpus_kb.tools.ingest_upload_tools as upload_tools
+
+    seen: dict[str, object] = {}
+
+    async def stub_ingest_file(
+        file_path: str, pool: object, config: object, **kwargs: object
+    ) -> dict[str, Any]:
+        seen["suffix"] = Path(file_path).suffix
+        seen["path"] = file_path
+        return {"status": "success", "chunk_count": 1}
+
+    monkeypatch.setattr(upload_tools, "ingest_file", stub_ingest_file)
+
+    hostile = _OnceUpload("x.a:b\x00c", b"# hi")
+    result = await upload_tools.ingest_upload(hostile, _FakePool(), max_upload_mb=1)
+    assert result == {"status": "success", "chunk_count": 1}
+    assert seen["suffix"] == ".abc"
+    assert not Path(str(seen["path"])).exists()
+
+    long_name = _OnceUpload("report." + "b" * 40, b"# hi")
+    await upload_tools.ingest_upload(long_name, _FakePool(), max_upload_mb=1)
+    assert len(str(seen["suffix"])) == 16
+    assert str(seen["suffix"]) == "." + "b" * 15
+
+
 # ---------------------------------------------------------------------------
 # GET /api/doctor
 # ---------------------------------------------------------------------------

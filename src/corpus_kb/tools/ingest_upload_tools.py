@@ -91,6 +91,18 @@ def sanitize_filename(raw: str | None) -> str:
     return name
 
 
+def _safe_suffix(name: str) -> str:
+    """The client extension clamped to ASCII letters, digits, and dots.
+
+    A raw suffix can carry NUL bytes or colons (``x.a:b``); ``mkstemp``
+    would raise on those and turn a client filename into a 500. Junk
+    characters are dropped, and the suffix is capped at 16 characters.
+    """
+    raw = Path(name).suffix
+    clamped = "".join(ch for ch in raw if ch.isascii() and (ch.isalnum() or ch == "."))
+    return clamped[:16]
+
+
 def require_multipart_support() -> None:
     """Name the missing extra instead of letting the parser crash."""
     if importlib.util.find_spec("python_multipart") is None:
@@ -118,17 +130,18 @@ async def ingest_upload(
 ) -> dict[str, Any]:
     """Spool one upload past the cap, then run the standard file ingest.
 
-    The temp file keeps the client's extension, so ``ingest_file`` still
-    auto-detects the document type. The temp file is always removed; the
-    caller sees the ``ingest_file`` envelope unchanged. A body over the
-    cap aborts with the typed 413 before any database write.
+    The temp file keeps the client's extension, clamped to safe
+    characters, so ``ingest_file`` still auto-detects the document type.
+    The temp file is always removed; the caller sees the ``ingest_file``
+    envelope unchanged. A body over the cap aborts with the typed 413
+    before any database write.
     """
     cap_mb = max_upload_mb if max_upload_mb is not None else upload_cap_mb(config)
     cap_bytes = cap_mb * BYTES_PER_MB
     name = sanitize_filename(source.filename)
     if source.size is not None and source.size > cap_bytes:
         raise PayloadTooLargeError(f"{name} is over the {cap_mb} MB upload cap.")
-    fd, temp_name = tempfile.mkstemp(prefix="corpus-upload-", suffix=Path(name).suffix)
+    fd, temp_name = tempfile.mkstemp(prefix="corpus-upload-", suffix=_safe_suffix(name))
     temp_path = Path(temp_name)
     try:
         received = 0
