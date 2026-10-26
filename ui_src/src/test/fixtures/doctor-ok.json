@@ -1,0 +1,49 @@
+{
+  "name": "doctor-ok-200",
+  "source": "canonical",
+  "request": { "method": "GET", "path": "/api/doctor" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": {
+        "profile": {
+          "os": "test-os",
+          "python": "3.11",
+          "cpu_cores": 8,
+          "ram_gb": 32,
+          "vram_detected": false,
+          "vram_gb": null,
+          "profile": "cpu",
+          "recommended_model": "nomic-embed-text"
+        },
+        "postgres": {
+          "reachable": true,
+          "message": "postgres is up",
+          "extensions": null
+        },
+        "ollama": {
+          "reachable": false,
+          "message": "connection refused"
+        },
+        "env": {
+          "name": "CORPUS_KB env vars",
+          "status": "ok",
+          "detail": "none",
+          "fix": "",
+          "doc": ""
+        },
+        "research_checks": [],
+        "storage_checks": [
+          {
+            "name": "database backend",
+            "status": "ok",
+            "detail": "postgres fits",
+            "fix": "",
+            "doc": ""
+          }
+        ]
+      }
+    }
+  }
+}

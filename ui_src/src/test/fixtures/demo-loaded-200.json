@@ -1,0 +1,16 @@
+{
+  "name": "demo-loaded-200",
+  "source": "canonical",
+  "request": { "method": "POST", "path": "/api/demo/load" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": {
+        "ingested": ["welcome.md"],
+        "skipped": [],
+        "chunk_counts": { "welcome.md": 2 }
+      }
+    }
+  }
+}

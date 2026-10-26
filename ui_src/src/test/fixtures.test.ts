@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { normalize } from "../api/errors";
 import blocked409 from "./fixtures/blocked-409.json";
 import degraded200 from "./fixtures/degraded-200.json";
+import demoLoaded200 from "./fixtures/demo-loaded-200.json";
+import doctorOk200 from "./fixtures/doctor-ok.json";
 import empty200 from "./fixtures/empty-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
 import ok200 from "./fixtures/ok-200.json";
@@ -66,6 +68,8 @@ const FIXTURES = [
   empty200,
   degraded200,
   blocked409,
+  doctorOk200,
+  demoLoaded200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -78,6 +82,8 @@ const EXPECTED_KINDS: Record<string, string> = {
   "empty-200": "ok",
   "degraded-200": "ok",
   "blocked-409": "blocked",
+  "doctor-ok-200": "ok",
+  "demo-loaded-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -92,7 +98,13 @@ describe("committed envelope fixtures", () => {
       const f = fixture as FixtureFile;
       const result = normalize(f.response.httpStatus, f.response.body);
       expect(result.kind).toBe(EXPECTED_KINDS[f.name]);
-      if (f.name === "ok-200" || f.name === "empty-200" || f.name === "degraded-200") {
+      if (
+        f.name === "ok-200" ||
+        f.name === "empty-200" ||
+        f.name === "degraded-200" ||
+        f.name === "doctor-ok-200" ||
+        f.name === "demo-loaded-200"
+      ) {
         expect(result.ok).toBe(true);
       } else {
         expect(result.ok).toBe(false);
