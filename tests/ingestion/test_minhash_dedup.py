@@ -9,9 +9,38 @@ from __future__ import annotations
 
 import pytest
 
+import corpus_kb.ingestion.dedup as dedup_module
 from corpus_kb.errors import ConfigError
 from corpus_kb.ingestion.dedup import dedup_chunks, dedup_config
 from corpus_kb.utils.models import Chunk
+
+
+class _FakeMinHash:
+    """Set-accumulating stand-in: enough for candidate proposal semantics."""
+
+    def __init__(self, num_perm: int = 128) -> None:
+        self.items: set[bytes] = set()
+
+    def update(self, word: bytes) -> None:
+        self.items.add(word)
+
+
+class _FakeLSH:
+    """Proposes every inserted pair whose sketches share any token."""
+
+    def __init__(self, threshold: float, num_perm: int) -> None:
+        self.table: dict[str, _FakeMinHash] = {}
+
+    def insert(self, key: str, signature: _FakeMinHash) -> None:
+        self.table[key] = signature
+
+    def query(self, signature: _FakeMinHash) -> list[str]:
+        return [key for key, other in self.table.items() if other.items & signature.items]
+
+
+@pytest.fixture
+def fake_datasketch(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(dedup_module, "_load_datasketch", lambda: (_FakeMinHash, _FakeLSH))
 
 
 def _chunk(text: str, doc_id: str = "doc-1", start: int | None = None, cid: str = "c") -> Chunk:
@@ -35,14 +64,14 @@ def test_dedup_config_gating() -> None:
         dedup_config({"ingestion": {"dedup": "bloom"}})
 
 
-def test_no_duplicates_keeps_everything() -> None:
+def test_no_duplicates_keeps_everything(fake_datasketch: None) -> None:
     chunks = [_chunk("unique body one", cid="c1"), _chunk("different body two", cid="c2")]
     kept, dropped = dedup_chunks(chunks)
     assert len(kept) == 2
     assert dropped == []
 
 
-def test_near_duplicate_drops_loser_with_survivor_rule() -> None:
+def test_near_duplicate_drops_loser_with_survivor_rule(fake_datasketch: None) -> None:
     # 26 unique words: one word edit keeps the word-set Jaccard above 0.9.
     base = (
         "alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo "
@@ -59,7 +88,7 @@ def test_near_duplicate_drops_loser_with_survivor_rule() -> None:
     assert dropped == ["c-late"]
 
 
-def test_survivor_rule_uses_document_id_then_start_char() -> None:
+def test_survivor_rule_uses_document_id_then_start_char(fake_datasketch: None) -> None:
     base = "shared body text for the duplicate probe " * 3
     chunks = [
         _chunk(base, doc_id="doc-2", start=0, cid="c-b"),
@@ -71,7 +100,7 @@ def test_survivor_rule_uses_document_id_then_start_char() -> None:
     assert dropped == ["c-a2", "c-b"]
 
 
-def test_exact_duplicates_are_deterministic_across_runs() -> None:
+def test_exact_duplicates_are_deterministic_across_runs(fake_datasketch: None) -> None:
     text = "repeat me exactly " * 20
     runs = [
         dedup_chunks([_chunk(text, start=0, cid="c1"), _chunk(text, start=18, cid="c2")])

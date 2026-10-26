@@ -64,13 +64,15 @@ def test_unknown_tokenizer_value_is_config_error() -> None:
         tokenizer_name({"ingestion": {"tokenizer": "chonkie"}})
 
 
-def test_semchunk_config_without_package_degrades_with_note(fake_semchunk: None) -> None:
+def test_semchunk_config_without_package_degrades_with_note(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import corpus_kb.ingestion.tokenizer as tokenizer_module
 
     def _missing() -> Any:
         raise ImportError("semchunk not installed")
 
-    tokenizer_module._load_semchunk = _missing  # type: ignore[assignment]
+    monkeypatch.setattr(tokenizer_module, "_load_semchunk", _missing)
     warnings: list[str] = []
     text = "word " * 4000
     pieces = hard_split_text(
