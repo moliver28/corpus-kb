@@ -104,6 +104,18 @@ describe("Setup page", () => {
     expect(screen.getByRole("button", { name: strings.setupDemoNext })).toBeTruthy();
   });
 
+  it("routes a status-less envelope to the unreadable panel, never Done", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/doctor", reply: respond(200, DOCTOR_OK) },
+      { method: "POST", path: "/api/demo/load", reply: respond(200, {}) },
+    ]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.setupDemoAction }));
+    fireEvent.click(await screen.findByRole("button", { name: strings.confirmConfirm }));
+    expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
+    expect(screen.queryByText(strings.receiptDone)).toBeNull();
+  });
+
   it("shows the upload cap and the upload action before any upload", async () => {
     stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, DOCTOR_OK) }]);
     render(<Setup />, { wrapper: makeWrapper() });

@@ -2,6 +2,7 @@ import { Button, Card, Typography, Upload } from "antd";
 import type { RcFile } from "antd/es/upload/interface";
 import { useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
+import JsonViewer from "../../components/JsonViewer";
 import ReceiptCard from "../../components/ReceiptCard";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
@@ -86,6 +87,15 @@ export default function UploadCard() {
   if (result !== null) {
     if (result.kind === "unavailable") {
       resultView = <UnavailablePanel result={result} onRetry={() => void send()} />;
+    } else if (result.kind === "unknown") {
+      // An envelope without a status word is not a receipt: show the
+      // honest unreadable panel, never a "Done" headline.
+      resultView = (
+        <div>
+          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
+          <JsonViewer value={result.data} />
+        </div>
+      );
     } else if (result.ok && result.kind !== "network") {
       resultView = <ReceiptCard result={result} />;
     } else {

@@ -1,6 +1,7 @@
 import { Button, Card, Typography } from "antd";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../../components/ErrorPanel";
+import JsonViewer from "../../components/JsonViewer";
 import ReceiptCard from "../../components/ReceiptCard";
 import StatusBanner from "../../components/StatusBanner";
 import ConfirmGate from "../../components/ConfirmGate";
@@ -37,6 +38,15 @@ export default function DemoLoadCard() {
   if (settled !== null) {
     if (settled.kind === "unavailable") {
       resultView = <UnavailablePanel result={settled} onRetry={() => void run()} />;
+    } else if (settled.kind === "unknown") {
+      // An envelope without a status word is not a receipt: show the
+      // honest unreadable panel, never a "Done" headline.
+      resultView = (
+        <div>
+          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
+          <JsonViewer value={settled.data} />
+        </div>
+      );
     } else if (settled.ok && settled.kind !== "network") {
       resultView = (
         <div className="ui-stack">
