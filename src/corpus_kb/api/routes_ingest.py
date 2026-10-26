@@ -17,6 +17,7 @@ from typing import Any
 from uuid import UUID
 
 from starlette.datastructures import UploadFile
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import Message, Receive
@@ -51,6 +52,23 @@ def _counting_receive(receive: Receive, max_mb: int) -> Receive:
         return message
 
     return wrapped
+
+
+def _declared_content_length(request: Request) -> int | None:
+    """The declared body size; junk or duplicated headers are a typed 400.
+
+    A missing header is fine (chunked upload). Anything unparsable is a
+    client fault, so it maps to validation_error — never a bare 500.
+    """
+    values = request.headers.getlist("content-length")
+    if not values:
+        return None
+    if len(values) > 1:
+        raise ValidationError("The request has more than one Content-Length header.")
+    try:
+        return int(values[0])
+    except ValueError:
+        raise ValidationError("The Content-Length header is not a number.") from None
 
 
 @route_errors
@@ -136,17 +154,24 @@ async def ingest_upload_route(request: Request) -> JSONResponse:
     # The Content-Length check is only the fast path. The wrapped receive
     # below counts every byte DURING form parsing, so a chunked or lying
     # header cannot spool an unbounded body to disk before the 413.
-    raw_length = request.headers.get("content-length")
+    raw_length = _declared_content_length(request)
     enforce_request_caps(
         request.headers.get("content-type"),
-        int(raw_length) if raw_length is not None else None,
+        raw_length,
         max_mb,
     )
     counting = Request(
         request.scope,
         receive=_counting_receive(request.receive, max_mb),
     )
-    form = await counting.form()
+    try:
+        form = await counting.form()
+    except StarletteHTTPException as exc:
+        # starlette wraps malformed or truncated multipart in a bare 400.
+        # That is a client fault: the taxonomy answers validation_error.
+        if exc.status_code != 400:
+            raise
+        raise ValidationError("The multipart form body is malformed or cut short.") from exc
     upload = form.get("file")
     if not isinstance(upload, UploadFile):
         raise ValidationError("The upload needs a multipart file field named file.")

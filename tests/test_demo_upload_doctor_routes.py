@@ -284,6 +284,67 @@ async def test_upload_chunked_body_aborts_during_parse(
     assert set(tempdir.glob("corpus-upload-*")) == before, "no temp file may survive"
 
 
+def _raw_request_with_headers(header_pairs: list[tuple[bytes, bytes]]) -> Request:
+    """A POST /api/ingest/upload with hand-built headers and an empty body."""
+    scope: dict[str, Any] = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "method": "POST",
+        "path": "/api/ingest/upload",
+        "query_string": b"",
+        "headers": header_pairs,
+    }
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.disconnect"}
+
+    return Request(scope, receive=receive)
+
+
+async def test_upload_junk_content_length_is_a_typed_400() -> None:
+    """An unparsable Content-Length is validation_error, never a 500."""
+    from corpus_kb.api.routes_ingest import ingest_upload_route
+
+    request = _raw_request_with_headers(
+        [
+            (b"content-type", b"multipart/form-data; boundary=parityboundary"),
+            (b"content-length", b"not-a-number"),
+        ]
+    )
+    response = await ingest_upload_route(request)
+    assert response.status_code == 400
+    assert json.loads(response.body)["error_type"] == "validation_error"
+
+
+async def test_upload_duplicated_content_length_is_a_typed_400() -> None:
+    """Two disagreeing Content-Length headers are validation_error."""
+    from corpus_kb.api.routes_ingest import ingest_upload_route
+
+    request = _raw_request_with_headers(
+        [
+            (b"content-type", b"multipart/form-data; boundary=parityboundary"),
+            (b"content-length", b"12"),
+            (b"content-length", b"34"),
+        ]
+    )
+    response = await ingest_upload_route(request)
+    assert response.status_code == 400
+    assert json.loads(response.body)["error_type"] == "validation_error"
+
+
+def test_upload_malformed_multipart_is_a_typed_400() -> None:
+    """A truncated multipart body is validation_error, never a 500."""
+    pytest.importorskip("python_multipart")
+    client = TestClient(create_http_app())
+    response = client.post(
+        "/api/ingest/upload",
+        content=b"--parityboundary\r\nbroken",
+        headers={"content-type": "multipart/form-data; boundary=parityboundary"},
+    )
+    assert response.status_code == 400
+    assert response.json()["error_type"] == "validation_error"
+
+
 async def test_upload_declared_size_cap_answers_413(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
