@@ -9,8 +9,11 @@ Modules:
 * ``stages`` — ``_run_locked_stages``: the locked stage sequence.
   One small module per stage: ``prepare``, ``shadow``, ``extract``,
   ``atomize``, ``result``.
-* ``sinks`` — the :class:`IngestSink` write port and :class:`ChunkSink`,
-  a verbatim wrapper over ``tools/ingest_store.py``.
+* ``sinks`` — the :class:`IngestSink` write port, :class:`ChunkSink`
+  (a verbatim wrapper over ``tools/ingest_store.py``) and
+  :class:`UnitSink` (the research twin, Wave 3).
+* ``research_units`` — the research front-end adapter: the parse becomes
+  the canonical :class:`IngestDocument`, one span per turn.
 
 ``tools/ingest_common.py`` stays the public facade: it re-exports every
 moved public name, so importers and the tests' monkeypatch seams
@@ -22,12 +25,13 @@ from __future__ import annotations
 
 from .document import ArtifactSpan, IngestDocument
 from .plan import run_pipeline
-from .sinks import ChunkSink, IngestSink
+from .sinks import ChunkSink, IngestSink, UnitSink
 
 __all__ = [
     "ArtifactSpan",
     "ChunkSink",
     "IngestDocument",
     "IngestSink",
+    "UnitSink",
     "run_pipeline",
 ]

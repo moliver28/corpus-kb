@@ -421,10 +421,14 @@ async def test_migration_016_rollback_and_reapply(research_pool, research_dsn):
         await conn.close()
 
     # Re-apply as corpus_user (the migration runner's role): tables must be
-    # owned by corpus_user or the projections lose access.
+    # owned by corpus_user or the projections lose access. Every LATER
+    # migration that shapes a 016-owned table must replay too — 035 adds the
+    # nullable unit char spans; its ADD COLUMN IF NOT EXISTS makes the
+    # replay idempotent.
     conn = await asyncpg.connect(research_dsn)
     try:
         await conn.execute((migrations / "016_research_domain.sql").read_text(encoding="utf-8"))
+        await conn.execute((migrations / "035_research_unit_spans.sql").read_text(encoding="utf-8"))
     finally:
         await conn.close()
 
@@ -440,6 +444,13 @@ async def test_migration_016_rollback_and_reapply(research_pool, research_dsn):
         )
         assert unguarded == [], (
             f"re-apply left research tables WITHOUT row-level security: {[r[0] for r in unguarded]}"
+        )
+        span_columns = await conn.fetch(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_name='research_units' AND column_name IN ('start_char','end_char')"
+        )
+        assert len(span_columns) == 2, (
+            "re-apply did not restore the research unit char spans (migration 035)"
         )
     finally:
         await conn.close()

@@ -8,8 +8,10 @@ rewritten here. ``PostgresIngestStore`` itself satisfies the protocol
 structurally, so the store can be handed to a stage with or without the
 wrapper.
 
-Wave 3 note: research units will flow through the same stages via a
-``UnitSink`` implementing this protocol.
+``UnitSink`` (Wave 3) is the research twin: the same port over the
+research store, delegating VERBATIM to the research storage seams. It
+lives in ``unit_sink.py`` (one sink family per module) and is re-exported
+here so importers keep one path.
 """
 
 from __future__ import annotations
@@ -19,6 +21,9 @@ from typing import Protocol
 from ...storage.gateway import SqlGateway
 from ...utils.models import Chunk, Document, Entity, Relation
 from ..ingest_store import PostgresIngestStore
+from .unit_sink import UnitSink
+
+__all__ = ["ChunkSink", "IngestSink", "UnitSink"]
 
 
 class IngestSink(Protocol):

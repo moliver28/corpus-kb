@@ -125,11 +125,12 @@ async def upsert_unit(
         """
         INSERT INTO research_units
         (tenant_id, doc_id, project_id, speaker_id, seq, t_start, t_end,
-         text, text_sha256, role_in_exchange, is_codable, turn_type)
+         text, text_sha256, role_in_exchange, is_codable, turn_type,
+         start_char, end_char)
         VALUES ($1, $2, $3,
                 (SELECT speaker_id FROM research_speakers
                  WHERE tenant_id = $1 AND doc_id = $2 AND raw_label = $4),
-                $5, $6, $7, $8, $9, $10, $11, $12)
+                $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT (tenant_id, doc_id, seq) DO NOTHING
         """,
         str(tenant_id),
@@ -144,6 +145,8 @@ async def upsert_unit(
         str(turn.get("role_in_exchange", "other")),
         bool(turn.get("is_codable", True)),
         turn.get("turn_type"),
+        turn.get("start_char"),
+        turn.get("end_char"),
     )
 
 
