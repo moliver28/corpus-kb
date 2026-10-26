@@ -383,6 +383,10 @@ DEP002 = [
     # It ships in the [duckdb] extra so the backend works without system
     # packages.
     "pytz",
+    # python-multipart (UI SPA Task 5a, B3): starlette's request.form()
+    # imports it at runtime to parse POST /api/ingest/upload bodies; our
+    # source never imports it directly (the route checks find_spec first).
+    "python-multipart",
     # sqlglot (storage portability, phase G): the schema-parity gate imports
     # it from scripts/, which deptry does not scan (deptry src/). Static
     # analysis only, per the program doc §17.
