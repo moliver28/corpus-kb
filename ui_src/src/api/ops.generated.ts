@@ -29,8 +29,6 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "codebook-promote": { path: "/api/codebook/promote", method: "POST", longRunning: false },
   "coding-inductive": { path: "/api/coding/inductive", method: "POST", longRunning: true },
   "coding-run": { path: "/api/coding/run", method: "POST", longRunning: true },
-  "demo-load": { path: "/api/demo/load", method: "POST", longRunning: false },
-  "doctor": { path: "/api/doctor", method: "GET", longRunning: false },
   "ingest-directory": { path: "/api/ingest/directory", method: "POST", longRunning: true },
   "ingest-reembed": { path: "/api/ingest/reembed", method: "POST", longRunning: false },
   "ingest-status": { path: "/api/ingest/status", method: "GET", longRunning: false },

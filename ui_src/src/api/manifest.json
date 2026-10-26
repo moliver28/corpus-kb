@@ -219,26 +219,6 @@
     ]
   },
   {
-    "description": "Ingest the bundled sample knowledge folder (house receipt).",
-    "id": "demo-load",
-    "longRunning": false,
-    "method": "POST",
-    "optional": [],
-    "paramsKnown": false,
-    "path": "/api/demo/load",
-    "required": []
-  },
-  {
-    "description": "Read-only diagnostics: profile, Postgres, Ollama, research probes.",
-    "id": "doctor",
-    "longRunning": false,
-    "method": "GET",
-    "optional": [],
-    "paramsKnown": false,
-    "path": "/api/doctor",
-    "required": []
-  },
-  {
     "description": "Ingest the supported files under one directory in one walk.",
     "id": "ingest-directory",
     "longRunning": true,

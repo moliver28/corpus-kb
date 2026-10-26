@@ -137,6 +137,11 @@
         'config': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.doctor_tools': dict({
+      'doctor_snapshot': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.extraction_tune_tools': dict({
       'extraction_tune': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -250,6 +255,33 @@
         'offset': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.ingest_upload_tools': dict({
+      'UploadSource': dict({
+        'args': 'VAR_POSITIONAL',
+        'kwargs': 'VAR_KEYWORD',
+      }),
+      'enforce_request_caps': dict({
+        'content_length': 'POSITIONAL_OR_KEYWORD',
+        'content_type': 'POSITIONAL_OR_KEYWORD',
+        'max_mb': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'ingest_upload': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'max_upload_mb': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'source': 'POSITIONAL_OR_KEYWORD',
+        'source_type': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'require_multipart_support': dict({
+      }),
+      'sanitize_filename': dict({
+        'raw': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'upload_cap_mb': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
     'corpus_kb.tools.ingest_url_tools': dict({

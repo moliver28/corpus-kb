@@ -215,25 +215,6 @@ SURFACES: tuple[Surface, ...] = (
         description="Fetch (or crawl) a website and ingest its HTML pages.",
         http_route="/api/ingest/url",
     ),
-    # -- UI SPA Task 5a: demo-load + doctor (CLI + HTTP only) ----------------
-    # No MCP tool or socket method exists for these two, so mcp_tool stays
-    # empty and no Wrapper fronts them; the contracts SKIP set declares the
-    # same real surfaces (byte-matched by test_catalogue_matches_surface_
-    # registry).
-    Surface(
-        name="demo-load",
-        cli_path="demo-kb",
-        mcp_tool="",
-        description="Ingest the bundled sample knowledge folder (house receipt).",
-        http_route="/api/demo/load",
-    ),
-    Surface(
-        name="doctor",
-        cli_path="doctor",
-        mcp_tool="",
-        description="Read-only diagnostics: profile, Postgres, Ollama, research probes.",
-        http_route="/api/doctor",
-    ),
     # -- topics layer (Wave 4): full cli+mcp+http parity ----------------------
     Surface(
         name="topics-build",

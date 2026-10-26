@@ -56,8 +56,6 @@ GET_SURFACE_NAMES = frozenset(
         "labeling-list",
         "labeling-lfs",
         "classification-list",
-        # UI SPA Task 5a: the read-only doctor probes answer GET.
-        "doctor",
     }
 )
 

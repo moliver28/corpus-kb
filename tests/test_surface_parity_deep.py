@@ -101,7 +101,7 @@ import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.contracts import OPERATIONS, SKIPPED_OPERATIONS
-from corpus_kb.contracts.model import CLI, HTTP, MCP, Operation, surfaces_of
+from corpus_kb.contracts.model import HTTP, Operation, surfaces_of
 from corpus_kb.contracts.openapi import build_openapi
 from corpus_kb.domain.models import RouteDecision, RoutedQuery, RoutedResult, VerifyAnswerResult
 from corpus_kb.handlers.query_handler import QueryHandler
@@ -2111,22 +2111,6 @@ def test_catalogue_matches_surface_registry() -> None:
         "research_cycle",
         "research_demo",
     } <= set(checked)
-    # Skip rows follow the same rule: every declared surface byte-matches
-    # the registry row (demo_load and doctor: CLI + HTTP, no MCP/socket).
-    checked_skips: list[str] = []
-    for skip in SKIPPED_OPERATIONS:
-        surface = registry.get(skip.name)
-        if surface is None:
-            continue
-        for spec in skip.surfaces:
-            if spec.kind == MCP:
-                assert spec.route == surface.mcp_tool, skip.name
-            elif spec.kind == CLI:
-                assert spec.route == surface.cli_path, skip.name
-            elif spec.kind == HTTP:
-                assert spec.route == surface.http_route, skip.name
-        checked_skips.append(skip.name)
-    assert {"demo_load", "doctor"} <= set(checked_skips)
 
 
 def _assert_parity(op: str, keys: dict[str, set[str]], allowed: dict[str, set[str]]) -> None:
