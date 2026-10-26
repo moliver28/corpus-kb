@@ -40,6 +40,20 @@ def test_fresh_generation_matches_committed_artifacts() -> None:
         assert committed == text, f"{rel.as_posix()} is stale — run poe gen"
 
 
+def test_check_mode_reports_a_missing_artifact_cleanly(monkeypatch, capsys) -> None:
+    """--check exits 1 with a plain message when an artifact file is gone
+    (it must not crash with a raw FileNotFoundError)."""
+    import corpus_kb._setup.gen_ui_manifest as gen
+
+    generated = artifacts(REPO)
+    missing = Path("ui_src/src/api/not-there.generated.ts")
+    monkeypatch.setattr(gen, "artifacts", lambda _root: {**generated, missing: "x"})
+    assert gen.run(REPO, check=True) == 1
+    err = capsys.readouterr().err
+    assert "missing" in err
+    assert "not-there.generated.ts" in err
+
+
 def test_ui_src_manifest_copy_matches_the_generated_source() -> None:
     """The SPA's importable copy byte-matches the generated manifest.
 

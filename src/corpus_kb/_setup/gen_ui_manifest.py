@@ -202,14 +202,21 @@ def run(project_root: Path, check: bool) -> int:
             path.write_text(text, encoding="utf-8", newline="\n")
             print(f"wrote {rel.as_posix()}")
         return 0
-    drift = [
-        rel.as_posix()
-        for rel, text in generated.items()
-        if (project_root / rel).read_text(encoding="utf-8") != text
-    ]
+    drift = []
+    for rel, text in generated.items():
+        path = project_root / rel
+        try:
+            committed = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            print(f"drift: {rel.as_posix()} is missing — run the generator without --check",
+                  file=sys.stderr)
+            drift.append(rel.as_posix())
+            continue
+        if committed != text:
+            print(f"drift: {rel.as_posix()} is stale — run the generator without --check",
+                  file=sys.stderr)
+            drift.append(rel.as_posix())
     if drift:
-        for name in drift:
-            print(f"drift: {name} is stale — run the generator without --check", file=sys.stderr)
         return 1
     print("ui manifest artifacts in sync")
     return 0
