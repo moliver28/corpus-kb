@@ -880,6 +880,9 @@ classify = [
     { name = "scikit-learn" },
     { name = "threadpoolctl" },
 ]
+dedup = [
+    { name = "datasketch" },
+]
 dev = [
     { name = "deptry" },
     { name = "diff-cover" },
@@ -937,6 +940,9 @@ otel = [
 pynvml = [
     { name = "pynvml" },
 ]
+semchunk = [
+    { name = "semchunk" },
+]
 setfit = [
     { name = "setfit" },
 ]
@@ -956,6 +962,7 @@ requires-dist = [
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "bertopic", marker = "extra == 'topics'", specifier = ">=0.16" },
     { name = "cymem", specifier = "<2.0.14" },
+    { name = "datasketch", marker = "extra == 'dedup'", specifier = ">=2.0,<3" },
     { name = "deepeval", marker = "extra == 'eval'", specifier = ">=4.3" },
     { name = "deptry", marker = "extra == 'dev'", specifier = ">=0.20" },
     { name = "diff-cover", marker = "extra == 'dev'", specifier = ">=9.0" },
@@ -1005,6 +1012,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = "==0.15.18" },
     { name = "scikit-learn", marker = "extra == 'classify'", specifier = ">=1.5" },
+    { name = "semchunk", marker = "extra == 'semchunk'", specifier = ">=4.1,<5" },
     { name = "sentence-transformers", marker = "extra == 'latechunk'", specifier = ">=2.7" },
     { name = "setfit", marker = "extra == 'setfit'", specifier = ">=1.2" },
     { name = "sqlglot", marker = "extra == 'dev'", specifier = ">=30.24,<31" },
@@ -1030,7 +1038,7 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.10" },
     { name = "xenon", marker = "extra == 'dev'", specifier = ">=0.9" },
 ]
-provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "notebook", "classify", "setfit", "dev"]
+provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "semchunk", "dedup", "notebook", "classify", "setfit", "dev"]
 
 [[package]]
 name = "coverage"
@@ -1401,6 +1409,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0a/5b/836516269d4f618efe621661cfb6f9acc57e6f95265db3efaee48a5ffe04/datasets-5.0.1.tar.gz", hash = "sha256:ce22bb851efd7494f08aad33b940803784434f6e77763d00679a0dc45fcf686a", size = 641498, upload-time = "2026-07-28T11:09:12.016Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/44/0b/98fc6eb83333508ca5f44c52b3e287ea8137a0ad582714e2cbc67a02154b/datasets-5.0.1-py3-none-any.whl", hash = "sha256:9fbf73688f8c18f7529b4fe592abd04015f81d1e58001e4bac73ffb2b39d7cc4", size = 559079, upload-time = "2026-07-28T11:09:10.266Z" },
+]
+
+[[package]]
+name = "datasketch"
+version = "2.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/ae/bbcdeab67ebfe27747896618bca0f8113e79d534c5af2b06ce6693c981de/datasketch-2.0.0.tar.gz", hash = "sha256:e0570e170f7e64b8d6fb1cc2e4ce36a9f7036c5100167e50a0770addc50558c2", size = 98666, upload-time = "2026-07-05T06:36:30.681Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/54/df/9e79bf1fb2f660507dbd00d24730d107595a2f599f2524a96344149c95f1/datasketch-2.0.0-py3-none-any.whl", hash = "sha256:aea5ffafcce776e03d085740e78b874e778d779b07ee11ca636ca51b3fef09ed", size = 107247, upload-time = "2026-07-05T06:36:29.222Z" },
 ]
 
 [[package]]
@@ -6582,6 +6605,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/cf/d9/135be205d9de8783193aff9cc3bf483a03a38e4b29432c954e8cb66ac14e/scipy-1.18.1-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:179ce34a8d0fe273d8883ba59e17e052247d08973dfcb743ca52bb1cce2d60b0", size = 37521946, upload-time = "2026-08-21T23:28:35.245Z" },
     { url = "https://files.pythonhosted.org/packages/5c/a2/5b7d5270621ab7cfa3f7766067bf95dc360b5efb6394694e8143b4156e2b/scipy-1.18.1-cp315-cp315t-win_amd64.whl", hash = "sha256:5632e3ae3d09197c446310cd5187de63e28448ce22f0f67b2b93d97503c0c230", size = 37408295, upload-time = "2026-08-21T23:28:40.724Z" },
     { url = "https://files.pythonhosted.org/packages/63/ad/741c19fcb66755ff953daf9243af8480e4bf3d7fbe57583c178c7d2b6b51/scipy-1.18.1-cp315-cp315t-win_arm64.whl", hash = "sha256:eda632a7981f69730d6281f451db9c1c370993a2c0d7ddb43e2a809a2862b83a", size = 25319710, upload-time = "2026-08-21T23:28:45.713Z" },
+]
+
+[[package]]
+name = "semchunk"
+version = "4.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "dill", marker = "sys_platform == 'win32'" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b4/ab/74030fb91d965e3feecaad2bea1fbc5adeef8836cc5f15aab492d6bc0319/semchunk-4.1.1.tar.gz", hash = "sha256:f27dc85716a0e9509a3f99c78b961cc476b3120efe711ee9a9a950ed1bd0f8ba", size = 24910, upload-time = "2026-06-13T00:45:02.446Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/67/892571d1a035a146c8f3cad38306b90cb6a7cd4e042aa8e5554144757d9e/semchunk-4.1.1-py3-none-any.whl", hash = "sha256:acbc535e89824dce954a554e297438b2ee3506b71505f1472eb2bf8057fcba3c", size = 18706, upload-time = "2026-06-13T00:45:00.974Z" },
 ]
 
 [[package]]

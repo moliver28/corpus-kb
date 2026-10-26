@@ -95,6 +95,7 @@ async def _ingest_file(params: dict[str, Any], tenant_id: str) -> dict[str, Any]
         file_path=params["file_path"],
         content=params.get("content"),
         source_type=params.get("source_type"),
+        validate_mode=str(params.get("validate", "off")),
     )
     return await get_command_handler().handle_ingest_file(cmd)
 
@@ -108,6 +109,7 @@ async def _ingest_text(params: dict[str, Any], tenant_id: str) -> dict[str, Any]
         text=params["text"],
         source=params.get("source", "raw_text"),
         source_type=params.get("source_type", "text"),
+        validate_mode=str(params.get("validate", "off")),
     )
     return await get_command_handler().handle_ingest_text(cmd)
 
@@ -122,6 +124,7 @@ async def _ingest_directory(params: dict[str, Any], tenant_id: str) -> dict[str,
         tenant_id=tenant_id,
         source_type=params.get("source_type"),
         recursive=opt_bool(params.get("recursive"), True),
+        validate=str(params.get("validate", "off")),
     )
 
 
@@ -135,6 +138,7 @@ async def _ingest_url(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         tenant_id=tenant_id,
         crawl=opt_bool(params.get("crawl"), False),
         source_type=params.get("source_type"),
+        validate=str(params.get("validate", "off")),
     )
 
 

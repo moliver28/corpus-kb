@@ -89,7 +89,7 @@ class TranscriptStrategy:
             warnings.append(f"parse_quality={parsed.parse_quality}")
         map_roles(parsed.turns)
         exchanges = link_exchanges(parsed.turns)
-        positioned = positioned_chunks(parsed.turns, exchanges, starts, warnings)
+        positioned = positioned_chunks(parsed.turns, exchanges, starts, warnings, profile.config)
         positioned.sort(key=lambda item: item[0])
         chunks: list[PlannedChunk] = []
         for _, group in positioned:

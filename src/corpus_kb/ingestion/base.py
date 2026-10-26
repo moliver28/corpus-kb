@@ -11,6 +11,7 @@ plugins (entry-point group ``corpus_kb.ingestion_strategies``) all implement
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -58,11 +59,18 @@ class DetectResult:
 
 @dataclass(frozen=True)
 class SourceProfile:
-    """Read-only context a strategy may use to build chunks."""
+    """Read-only context a strategy may use to build chunks.
+
+    ``config`` is the resolved pipeline config (optional so existing
+    constructor calls keep working); a strategy that honors a config key
+    (e.g. ``ingestion.tokenizer``) reads it through here, never from a
+    global.
+    """
 
     source_type: str
     is_file: bool
     path: str
+    config: Mapping[str, object] | None = None
 
 
 @dataclass

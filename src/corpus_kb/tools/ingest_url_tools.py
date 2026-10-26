@@ -40,6 +40,7 @@ async def ingest_url(
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
     crawl: bool = False,
     source_type: str | None = None,
+    validate: str = "off",
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, object]:
     """Fetch (or crawl) a website and run the ingest pipeline per page.
@@ -55,6 +56,8 @@ async def ingest_url(
     The fetch config comes from the ``web:`` config section (code defaults
     only when keys are absent). ``transport`` injects an httpx transport
     (tests use httpx.MockTransport; production leaves it None).
+    ``validate`` is the optional validation gate handed to every page's
+    pipeline run (off | advisory | enforce | calibrate); default ``off``.
 
     Returns ``{"status": "success", "pages": [...], "total_documents": N}``
     where ``pages`` holds one run_pipeline result dict (or a structured
@@ -90,6 +93,7 @@ async def ingest_url(
                     tenant_id,
                     is_file=False,
                     strategy_name=source_type,
+                    validate_mode=validate,
                 )
             )
         except Exception as exc:

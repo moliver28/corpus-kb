@@ -236,6 +236,7 @@
         'recursive': 'POSITIONAL_OR_KEYWORD',
         'source_type': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'validate': 'POSITIONAL_OR_KEYWORD',
       }),
       'ingest_file': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -243,6 +244,7 @@
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'source_type': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'validate': 'POSITIONAL_OR_KEYWORD',
       }),
       'list_documents': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -261,6 +263,7 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
         'transport': 'POSITIONAL_OR_KEYWORD',
         'url': 'POSITIONAL_OR_KEYWORD',
+        'validate': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
     'corpus_kb.tools.keyphrase_tools': dict({
@@ -503,6 +506,7 @@
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'project_id': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'validate': 'POSITIONAL_OR_KEYWORD',
       }),
       'research_ingest_transcript': dict({
         'file_path': 'POSITIONAL_OR_KEYWORD',
@@ -511,6 +515,7 @@
         'project_id': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
         'title': 'POSITIONAL_OR_KEYWORD',
+        'validate': 'POSITIONAL_OR_KEYWORD',
       }),
       'research_report': dict({
         'codebook_version_id': 'POSITIONAL_OR_KEYWORD',

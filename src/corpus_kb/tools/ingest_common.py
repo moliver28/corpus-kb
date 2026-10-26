@@ -361,6 +361,7 @@ async def ingest_text(
     config: dict[str, Any] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     source: str = "raw_text",
+    validate: str = "off",
 ) -> dict[str, Any]:
     """Ingest raw text with optional type hint and source identifier.
 
@@ -371,8 +372,19 @@ async def ingest_text(
     ``source_type`` is the DOCUMENT source type (it feeds the
     ``ingestion.strategies`` config mapping and content detection); use the
     explicit ``run_pipeline(strategy_name=...)`` override to pin a strategy.
+    ``validate`` is the optional validation gate (off | advisory | enforce |
+    calibrate); the default ``off`` keeps the envelope byte-identical.
     """
     if source_type not in {"code", "markdown", "text", "transcript"}:
         return {"status": "error", "message": f"Invalid source_type: {source_type}"}
     config = load_config_or_pass(config)
-    return await run_pipeline(text, source_type, source, config, pg_pool, tenant_id, is_file=False)
+    return await run_pipeline(
+        text,
+        source_type,
+        source,
+        config,
+        pg_pool,
+        tenant_id,
+        is_file=False,
+        validate_mode=validate,
+    )

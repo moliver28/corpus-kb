@@ -42,6 +42,7 @@ from corpus_kb.research.transcript_parser import parse_transcript
 from corpus_kb.tools.ingest_common import file_ingest_concurrency
 from corpus_kb.tools.pipeline.research_units import research_document
 from corpus_kb.tools.pipeline.sinks import UnitSink
+from corpus_kb.tools.pipeline.validate import resolve_mode, validate_document
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class ResearchHandler:
         project_id: UUID | None = None,
         title: str | None = None,
         force: bool = False,
+        validate_mode: str = "off",
     ) -> dict[str, Any]:
         """One transcript file -> canonical document + turn store + events.
 
@@ -117,6 +119,11 @@ class ResearchHandler:
         IngestDocument with one span per turn, then the store stage through
         the UnitSink write port. Unit rows still land through the events
         (the projector upserts them, spans included).
+
+        ``validate_mode`` is the Wave 4 validation gate (off | advisory |
+        enforce | calibrate). Validators are read-only and run BEFORE the
+        first write; ``enforce`` fails closed, ``advisory``/``calibrate``
+        attach the summary to the result (the research path's run metadata).
         """
         file_path = Path(path)
         if not file_path.exists():
@@ -132,6 +139,12 @@ class ResearchHandler:
 
         parsed = parse_transcript(file_path)
         canonical = research_document(str(file_path), parsed.source_type, parsed.turns)
+        # Wave 4 validation gate: read-only, pre-write. resolve_mode raises
+        # the typed ValidationError for an unknown mode before anything runs.
+        validation_report: dict[str, Any] | None = None
+        mode = resolve_mode(validate_mode)
+        if mode != "off":
+            validation_report = validate_document(canonical, mode)
         role_mapping = map_roles(parsed.turns)
         exchanges = link_exchanges(parsed.turns, embed=self._link_embed())
 
@@ -172,7 +185,7 @@ class ResearchHandler:
             decision.source_type,
             UUID(str(doc.id)),
         )
-        return {
+        result: dict[str, Any] = {
             "status": "success",
             "doc_id": str(doc.id),
             "path": path,
@@ -182,6 +195,11 @@ class ResearchHandler:
             "parse_quality": parsed.parse_quality,
             "file_sha256": decision.file_sha256,
         }
+        # Advisory and calibrate both attach here (no stages ledger on the
+        # research path): the result dict IS the run metadata Wave 7 reads.
+        if validation_report is not None:
+            result["validation"] = validation_report
+        return result
 
     async def ingest_path(
         self,
@@ -189,6 +207,7 @@ class ResearchHandler:
         path: str,
         project_id: UUID | None = None,
         force: bool = False,
+        validate_mode: str = "off",
     ) -> dict[str, Any]:
         """Dynamic ingestion: file, directory, or glob (per-file auto-detect)."""
         files = await scan_path(Path(path))
@@ -197,7 +216,7 @@ class ResearchHandler:
         async def _ingest_one(file_path: Path) -> dict[str, Any]:
             try:
                 return await self.ingest_transcript(
-                    tenant_id, str(file_path), project_id, force=force
+                    tenant_id, str(file_path), project_id, force=force, validate_mode=validate_mode
                 )
             except Exception as exc:
                 logger.warning("ingest failed for %s: %s", file_path, exc)

@@ -198,6 +198,21 @@ otel = [
 # hard-depends on the openai SDK — offline-safe because the judge is only
 # ever pointed at local Ollama. CI NEVER installs this extra.
 eval = ["deepeval>=4.3"]
+# Token-budget chunking (unified-ingestion Wave 4): semchunk splits
+# oversized text on sentence or word boundaries and returns native char
+# offsets, replacing the fixed chars/4 slices behind
+# ingestion.tokenizer: semchunk (ingestion/tokenizer.py). MIT. The token
+# counter stays the sanctioned chars/4 basis; semchunk owns the
+# boundaries. CI NEVER installs this extra; the import is lazy behind the
+# config gate, so the extras-less jobs stay green (same contract as
+# latechunk/inductive/ner/topics).
+semchunk = ["semchunk>=4.1,<5"]
+# Near-duplicate dedup (unified-ingestion Wave 4): MinHash LSH over word
+# sets behind ingestion.dedup: minhash (ingestion/dedup.py). MIT. 2.0.0
+# changed the default MinHash permutation scheme, so never reuse sketches
+# across versions — we never persist them. CI NEVER installs this extra;
+# the import is lazy behind the config gate (same contract as latechunk).
+dedup = ["datasketch>=2.0,<3"]
 # Researcher console (UX program W6): marimo notebooks are reproducible
 # .py files served by the running server via create_asgi_app. Apache-2.0.
 # CI NEVER installs this extra (same lazy contract).
@@ -355,6 +370,11 @@ DEP002 = [
     # installs them, so deptry cannot see the import edges.
     "scikit-learn",
     "setfit",
+    # Wave 4 extras (semchunk/dedup): imported lazily behind the
+    # ingestion.tokenizer / ingestion.dedup config gates; CI never installs
+    # them, so deptry cannot see the import edges.
+    "semchunk",
+    "datasketch",
     # UX program extras (W0): every consumer imports these lazily behind
     # runtime gates and CI never installs them, so deptry cannot see the
     # import edges.
@@ -554,6 +574,13 @@ help = "Rewrite the UI op manifest artifacts after a registry change"
 [tool.poe.tasks.schema-parity]
 cmd = "python scripts/schema_parity_gate.py"
 help = "sqlglot schema parity across both migration sets (issue #127, rule 10)"
+
+[tool.poe.tasks.validation-gate]
+# Wave 4 validators + mode semantics + determinism (zero-drift rule 10:
+# the full test pair runs here; the determinism pin lives in
+# test_validate_modes). Extras stay optional — CI never installs them.
+cmd = "python -m pytest tests/pipeline/ tests/ingestion/ -q --tb=short"
+help = "Wave 4 ingest validator gate: validators, modes, semchunk, dedup"
 
 [tool.poe.tasks.validate-profiles]
 cmd = "python src/corpus_kb/_setup/validate_profiles.py"

@@ -36,6 +36,9 @@ class IngestFileCommand(DomainCommand):
     file_path: str
     content: str | None = None
     source_type: str | None = None
+    # Wire name is ``validate`` (the surface param); the field carries the
+    # same value. Named validate_mode here: BaseModel already uses `validate`.
+    validate_mode: str = "off"
 
 
 class IngestTextCommand(DomainCommand):
@@ -44,6 +47,7 @@ class IngestTextCommand(DomainCommand):
     text: str
     source: str
     source_type: str = "text"
+    validate_mode: str = "off"
 
 
 class IngestDirectoryCommand(DomainCommand):
@@ -51,6 +55,7 @@ class IngestDirectoryCommand(DomainCommand):
 
     directory_path: str
     recursive: bool = True
+    validate_mode: str = "off"
 
 
 class AddEntityCommand(DomainCommand):

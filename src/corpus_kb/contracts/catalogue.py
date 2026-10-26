@@ -15,7 +15,13 @@ are plain English (ASD-STE100).
 
 from __future__ import annotations
 
-from corpus_kb.contracts.envelopes import AGGREGATE_EXTRA, INGEST_ENVELOPE, SEARCH_ENVELOPE
+from corpus_kb.contracts.envelopes import (
+    AGGREGATE_EXTRA,
+    DEDUP_KEYS,
+    INGEST_ENVELOPE,
+    SEARCH_ENVELOPE,
+    VALIDATION_KEYS,
+)
 from corpus_kb.contracts.model import (
     CLI,
     DEFAULT_TENANT_ID,
@@ -39,6 +45,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("text", required=True),
             ParamSpec("source", default="raw_text"),
             ParamSpec("source_type", default="text"),
+            ParamSpec("validate", default="off"),
             _TENANT,
         ),
         envelope_keys=INGEST_ENVELOPE,
@@ -48,8 +55,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/text", "POST"),
             SurfaceSpec(SOCKET, "ingest_text"),
         ),
-        http_extra=AGGREGATE_EXTRA,
-        socket_extra=AGGREGATE_EXTRA,
+        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
+        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
         exit_codes=(0, 1, 3),
     ),
     Operation(
@@ -57,7 +64,12 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         family="ingest",
         description="Ingest one file from disk; the document type is auto-detected.",
         handler="corpus_kb.tools.ingest_tools:ingest_file",
-        params=(ParamSpec("file_path", required=True), ParamSpec("source_type"), _TENANT),
+        params=(
+            ParamSpec("file_path", required=True),
+            ParamSpec("source_type"),
+            ParamSpec("validate", default="off"),
+            _TENANT,
+        ),
         envelope_keys=INGEST_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "ingest_file"),
@@ -65,8 +77,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/file", "POST"),
             SurfaceSpec(SOCKET, "ingest_file"),
         ),
-        http_extra=AGGREGATE_EXTRA,
-        socket_extra=AGGREGATE_EXTRA,
+        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
+        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(
@@ -81,6 +93,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("directory_path", required=True),
             ParamSpec("recursive", default=True),
             ParamSpec("source_type"),
+            ParamSpec("validate", default="off"),
             _TENANT,
         ),
         envelope_keys=(
@@ -97,6 +110,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/directory", "POST"),
             SurfaceSpec(SOCKET, "ingest_directory"),
         ),
+        http_extra=VALIDATION_KEYS | DEDUP_KEYS,
+        socket_extra=VALIDATION_KEYS | DEDUP_KEYS,
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(
@@ -108,9 +123,12 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("url", required=True),
             ParamSpec("crawl", default=False),
             ParamSpec("source_type"),
+            ParamSpec("validate", default="off"),
             _TENANT,
         ),
         envelope_keys=("status", "pages", "total_documents"),
+        http_extra=VALIDATION_KEYS,
+        socket_extra=VALIDATION_KEYS,
         surfaces=(
             SurfaceSpec(MCP, "ingest_url"),
             SurfaceSpec(CLI, "ingest-url <url>"),

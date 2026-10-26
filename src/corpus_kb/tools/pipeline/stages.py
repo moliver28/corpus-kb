@@ -63,6 +63,8 @@ async def _run_locked_stages(
     is_file: bool,
     empty_reason: str | None = None,
     strategy: str | None = None,
+    validation_report: dict[str, Any] | None = None,
+    validation_mode: str = "off",
 ) -> dict[str, Any]:
     """Pipeline stages under the advisory lock: open the ledger, store, close.
 
@@ -173,6 +175,11 @@ async def _run_locked_stages(
         if hierarchy_settings.enabled:
             stages["shadow_chunk_count"] = shadow_chunk_count
             stages["shadow_vector_count"] = shadow_vector_count
+        # Wave 4 calibrate mode: the validation report rides the ledger
+        # stages JSONB (the Wave 7 calibration feed) without blocking and
+        # without touching the envelope.
+        if validation_mode == "calibrate" and validation_report is not None:
+            stages["validation"] = validation_report
 
         # Close the ledger LAST — completed only when no stage recorded an
         # error; failed with the error text otherwise.

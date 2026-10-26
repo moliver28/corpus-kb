@@ -600,7 +600,8 @@ def test_ingest_url_route_supplies_pool(monkeypatch: Any) -> None:
     assert _assert_live_response(response) == _CANNED
     assert captured.get("args") == ("https://example.com", pool)
     kwargs = cast("dict[str, object]", captured.get("kwargs", {}))
-    assert set(kwargs) <= {"tenant_id", "crawl", "source_type"}
+    # Wave 4: the route always names the validate mode (default "off").
+    assert set(kwargs) <= {"tenant_id", "crawl", "source_type", "validate"}
     assert kwargs.get("tenant_id") == DEFAULT_TENANT
 
 
