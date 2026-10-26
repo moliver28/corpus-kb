@@ -30,6 +30,23 @@ export interface Strings {
   unavailableTitle: string;
   unavailableBody: string;
   receiptRaw: string;
+  receiptDone: string;
+  receiptEmpty: string;
+  receiptDegraded: string;
+  receiptPartial: string;
+  receiptAbstained: string;
+  runnerRunLabel: string;
+  runnerCancelLabel: string;
+  runnerCheckStatus: string;
+  runnerRunningElapsed: string;
+  runnerUnknownOutcome: string;
+  runnerParamsHint: string;
+  runnerInvalidJson: string;
+  runnerMissingKeys: string;
+  confirmLongTitle: string;
+  confirmLongBody: string;
+  confirmConfirm: string;
+  confirmCancel: string;
 }
 
 export const strings: Strings = en;

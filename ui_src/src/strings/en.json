@@ -24,5 +24,22 @@
   "retryLabel": "Try again",
   "unavailableTitle": "Not available right now",
   "unavailableBody": "The server cannot run this yet. You can retry in a moment.",
-  "receiptRaw": "Show the raw answer"
+  "receiptRaw": "Show the raw answer",
+  "receiptDone": "Done",
+  "receiptEmpty": "Nothing to show",
+  "receiptDegraded": "Finished, with gaps",
+  "receiptPartial": "Partly done",
+  "receiptAbstained": "No answer given",
+  "runnerRunLabel": "Run",
+  "runnerCancelLabel": "Cancel waiting",
+  "runnerCheckStatus": "Check status",
+  "runnerRunningElapsed": "Running for {sec} seconds.",
+  "runnerUnknownOutcome": "The connection dropped. The server may still be working.",
+  "runnerParamsHint": "The request fields go here as JSON.",
+  "runnerInvalidJson": "Enter valid JSON.",
+  "runnerMissingKeys": "Missing required fields: {keys}",
+  "confirmLongTitle": "Run this operation?",
+  "confirmLongBody": "This can take minutes. You can stop waiting at any time.",
+  "confirmConfirm": "Run it",
+  "confirmCancel": "Cancel"
 }
