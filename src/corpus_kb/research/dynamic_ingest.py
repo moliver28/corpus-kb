@@ -26,6 +26,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.domain.transcript import normalize_turn_text, text_sha256
+from corpus_kb.research.conn import Store
 from corpus_kb.research.transcript_parser import (
     infer_source_type,
     parse_transcript,
@@ -82,7 +83,7 @@ async def ledger_state(
 
 
 async def ledger_record(
-    pool: asyncpg.Pool,
+    pool: Store,
     tenant_id: UUID,
     path: Path,
     sha: str,
@@ -109,6 +110,25 @@ async def ledger_record(
             source_type,
             str(doc_id) if doc_id else None,
         )
+
+
+async def ledger_doc_id(pool: Store, tenant_id: UUID, path: Path, sha: str) -> UUID | None:
+    """The document id recorded for this exact file content, or None.
+
+    Read-only sink-port probe (``UnitSink.unchanged_doc_id``): same ledger,
+    same keys, one column. None means this path never ingested this content.
+    """
+    async with tenant_connection(pool, tenant_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT doc_id FROM ingested_files "
+            "WHERE tenant_id = $1 AND path = $2 AND file_sha256 = $3",
+            str(tenant_id),
+            str(path),
+            sha,
+        )
+    if row is None or row["doc_id"] is None:
+        return None
+    return UUID(str(row["doc_id"]))
 
 
 def turn_text_shas(turns_text: list[str]) -> list[str]:
