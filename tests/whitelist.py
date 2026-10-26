@@ -505,3 +505,10 @@ apply_lora_adapter
 # exception triple it never reads.
 QueryNoTemplate
 exc_info
+
+# Unified-ingestion Wave 2 (pipeline document.py): the canonical span API.
+# anchored_span and offset_invariant_problems are declared surface for the
+# Wave 3 validation stage (validators consume spans read-only); covered by
+# tests/test_pipeline_document.py, and vulture only scans src.
+anchored_span
+offset_invariant_problems

@@ -1,0 +1,33 @@
+"""Stage-contract pipeline package (unified-ingestion Wave 2).
+
+Modules:
+
+* ``document`` — the canonical :class:`IngestDocument` and the char-span
+  coordinate system (offset invariant:
+  ``text[start_char:end_char] == artifact_text``).
+* ``plan`` — ``run_pipeline``: strategy resolution and the ChunkPlan.
+* ``stages`` — ``_run_locked_stages``: the locked stage sequence.
+  One small module per stage: ``prepare``, ``shadow``, ``extract``,
+  ``atomize``, ``result``.
+* ``sinks`` — the :class:`IngestSink` write port and :class:`ChunkSink`,
+  a verbatim wrapper over ``tools/ingest_store.py``.
+
+``tools/ingest_common.py`` stays the public facade: it re-exports every
+moved public name, so importers and the tests' monkeypatch seams
+(``ingest_common.embed_chunks``, ``ingest_common.PostgresIngestStore``,
+``ingest_common.run_pipeline``) keep working unchanged.
+"""
+
+from __future__ import annotations
+
+from .document import ArtifactSpan, IngestDocument
+from .plan import run_pipeline
+from .sinks import ChunkSink, IngestSink
+
+__all__ = [
+    "ArtifactSpan",
+    "ChunkSink",
+    "IngestDocument",
+    "IngestSink",
+    "run_pipeline",
+]
