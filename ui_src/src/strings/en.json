@@ -41,5 +41,20 @@
   "confirmLongTitle": "Run this operation?",
   "confirmLongBody": "This can take minutes. You can stop waiting at any time.",
   "confirmConfirm": "Run it",
-  "confirmCancel": "Cancel"
+  "confirmCancel": "Cancel",
+  "citedAnswerTitle": "Answer",
+  "citationsHeading": "Cited sentences",
+  "claimSupportLabel": "Claim support: {pct}%",
+  "badgeDegradeNote": "Thresholds were missing, so the answer is not verified.",
+  "verifyLabelVerified": "verified",
+  "verifyLabelPartial": "partial",
+  "verifyLabelNotVerified": "not verified",
+  "docsColumnTitle": "Title",
+  "docsColumnAdded": "Added",
+  "docsColumnStatus": "Status",
+  "docsEmpty": "No documents yet.",
+  "topicsColumnLabel": "Topic",
+  "topicsColumnSize": "Chunks",
+  "topicsColumnKeywords": "Keywords",
+  "topicsEmpty": "No topics yet."
 }

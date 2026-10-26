@@ -47,6 +47,21 @@ export interface Strings {
   confirmLongBody: string;
   confirmConfirm: string;
   confirmCancel: string;
+  citedAnswerTitle: string;
+  citationsHeading: string;
+  claimSupportLabel: string;
+  badgeDegradeNote: string;
+  verifyLabelVerified: string;
+  verifyLabelPartial: string;
+  verifyLabelNotVerified: string;
+  docsColumnTitle: string;
+  docsColumnAdded: string;
+  docsColumnStatus: string;
+  docsEmpty: string;
+  topicsColumnLabel: string;
+  topicsColumnSize: string;
+  topicsColumnKeywords: string;
+  topicsEmpty: string;
 }
 
 export const strings: Strings = en;
