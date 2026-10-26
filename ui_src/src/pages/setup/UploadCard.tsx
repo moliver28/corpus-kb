@@ -7,7 +7,7 @@ import ReceiptCard from "../../components/ReceiptCard";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { networkResult, normalize, unreadableResult } from "../../api/errors";
-import { runtimeConfig } from "../../api/runtimeConfig";
+import { requestTimeoutMs, runtimeConfig } from "../../api/runtimeConfig";
 import type { OpResult } from "../../api/types";
 import { strings } from "../../strings";
 
@@ -21,12 +21,16 @@ function capBytes(): number {
   return runtimeConfig().maxUploadMb * 1024 * 1024;
 }
 
-/** One multipart POST through fetch, normalized to the house result. */
+/** One multipart POST through fetch, normalized to the house result.
+    The wait is capped by the runtime request timeout, so a hung server
+    cannot spin the button forever; an expired wait reads as network. */
 async function sendUpload(file: File): Promise<OpResult> {
   const form = new FormData();
   form.append("file", file, file.name);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), requestTimeoutMs());
   try {
-    const res = await fetch(UPLOAD_PATH, { method: "POST", body: form });
+    const res = await fetch(UPLOAD_PATH, { method: "POST", body: form, signal: ctrl.signal });
     const text = await res.text();
     let parsed: unknown = null;
     try {
@@ -40,6 +44,8 @@ async function sendUpload(file: File): Promise<OpResult> {
     return normalize(res.status, parsed);
   } catch {
     return networkResult();
+  } finally {
+    clearTimeout(timer);
   }
 }
 
