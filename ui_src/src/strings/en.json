@@ -35,6 +35,8 @@
   "runnerCheckStatus": "Check status",
   "runnerRunningElapsed": "Running for {sec} seconds.",
   "runnerUnknownOutcome": "The connection dropped. The server may still be working.",
+  "runnerStatusLine": "Latest status: {message}",
+  "runnerStatusEmpty": "The server sent no status message.",
   "runnerParamsHint": "The request fields go here as JSON.",
   "runnerInvalidJson": "Enter valid JSON.",
   "runnerMissingKeys": "Missing required fields: {keys}",

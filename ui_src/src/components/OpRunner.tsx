@@ -133,6 +133,17 @@ export default function OpRunner({
           <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
         </div>
       )}
+      {long.statusResult !== null && (
+        <div style={{ marginTop: 8 }}>
+          {/* The status-poll ledger answer renders as a plain status line —
+              never as the receipt (that stays the op's own response). */}
+          <StatusBanner kind="info">
+            {long.statusResult.message !== ""
+              ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
+              : strings.runnerStatusEmpty}
+          </StatusBanner>
+        </div>
+      )}
       {settled !== null && (
         <div style={{ marginTop: 12 }}>
           {/* A longRunning op retries through the long path too — the

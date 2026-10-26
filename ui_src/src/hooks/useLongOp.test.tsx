@@ -9,7 +9,8 @@ import { useLongOp } from "./useLongOp";
 /**
  * useLongOp rows (spec D.5): double-start refused (same promise),
  * beforeunload guard while running, cancel -> unknown-outcome, network
- * result -> unknown-outcome, elapsed timer ticks each second.
+ * result -> unknown-outcome, elapsed timer ticks each second, and a
+ * status poll never clobbers the settled receipt.
  */
 
 function makeWrapper() {
@@ -34,6 +35,7 @@ const OK: OpResult = {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("useLongOp", () => {
@@ -123,6 +125,37 @@ describe("useLongOp", () => {
     });
     expect(result.current.unknownOutcome).toBe(true);
     expect(result.current.running).toBe(false);
+  });
+
+  it("keeps the receipt when a status poll returns the ledger shape", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (() =>
+        Promise.resolve({
+          status: 200,
+          text: async () => JSON.stringify({ status: "running", message: "still working" }),
+        })) as unknown as typeof fetch,
+    );
+    const receipt: OpResult = { ...OK, message: "the receipt" };
+    const flightData = deferred();
+    const { result } = renderHook(() => useLongOp("op", () => flightData.promise), {
+      wrapper: makeWrapper(),
+    });
+    let flight!: Promise<OpResult>;
+    await act(async () => {
+      flight = result.current.start();
+      flightData.resolve(receipt);
+      await flight;
+    });
+    expect(result.current.result?.message).toBe("the receipt");
+
+    await act(async () => {
+      await result.current.checkStatus();
+    });
+    // The ledger answer lands in statusResult — the receipt is intact.
+    expect(result.current.result?.message).toBe("the receipt");
+    expect(result.current.statusResult?.status).toBe("running");
+    expect(result.current.statusResult?.message).toBe("still working");
   });
 
   it("ticks elapsedSec once per second while running", async () => {

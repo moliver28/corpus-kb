@@ -13,6 +13,8 @@ export interface LongOpState {
   /** The wait ended without an answer (network drop or cancel). */
   unknownOutcome: boolean;
   result: OpResult<unknown> | null;
+  /** The last status-poll ledger answer, kept beside the receipt. */
+  statusResult: OpResult<unknown> | null;
 }
 
 export interface LongOp {
@@ -25,6 +27,7 @@ export interface LongOp {
   elapsedSec: number;
   unknownOutcome: boolean;
   result: OpResult<unknown> | null;
+  statusResult: OpResult<unknown> | null;
 }
 
 function warnBeforeUnload(event: BeforeUnloadEvent): void {
@@ -41,6 +44,7 @@ export function useLongOp(
     elapsedSec: 0,
     unknownOutcome: false,
     result: null,
+    statusResult: null,
   });
   const flightRef = useRef<Promise<OpResult<unknown>> | null>(null);
   const ctrlRef = useRef<AbortController | null>(null);
@@ -85,7 +89,13 @@ export function useLongOp(
     }
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
-    setState({ running: true, elapsedSec: 0, unknownOutcome: false, result: null });
+    setState({
+      running: true,
+      elapsedSec: 0,
+      unknownOutcome: false,
+      result: null,
+      statusResult: null,
+    });
     timerRef.current = window.setInterval(() => {
       setState((prev) => ({ ...prev, elapsedSec: prev.elapsedSec + 1 }));
     }, 1000);
@@ -107,8 +117,10 @@ export function useLongOp(
     if (!status) {
       return Promise.resolve(unknownOpResult());
     }
+    // The ledger answer lands BESIDE the receipt, never on it: the final
+    // op response stays the receipt this hook reports.
     return callOp<unknown>(status.path, { method: "GET" }).then((res) => {
-      setState((prev) => ({ ...prev, result: res }));
+      setState((prev) => ({ ...prev, statusResult: res }));
       return res;
     });
   }, []);
