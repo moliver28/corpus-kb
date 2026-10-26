@@ -390,12 +390,11 @@ MountableApp
 min_labels_per_class
 resolved_bins
 
-# UI SPA program Task 3: VERIFY_FULL_GROUNDEDNESS (config.py) is the
-# codegen source for Task 4's thresholds.generated.ts; no src/ reader
-# exists until that generator lands. The five field names below lost
+# UI SPA program: VERIFY_FULL_GROUNDEDNESS (config.py) left this list in
+# Task 4 — _setup/gen_ui_manifest.py reads it to codegen the SPA's
+# thresholds.generated.ts. The five field names below lost
 # their only reader when the NiceGUI advisor was deleted; the SPA's
 # Analyze screen consumes them over HTTP in Task 6.
-VERIFY_FULL_GROUNDEDNESS
 validation_required
 permitted_claims
 do_not_claim
