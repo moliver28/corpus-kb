@@ -100,6 +100,22 @@ describe("callOp", () => {
     expect(res.ok).toBe(false);
   });
 
+  it("aborts immediately when the caller signal is already aborted", async () => {
+    let abortedAtCall = false;
+    stubFetch((_url, init) => new Promise((_resolve, reject) => {
+      if (init?.signal?.aborted) {
+        abortedAtCall = true;
+        reject(new Error("aborted"));
+      }
+    }));
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const res = await callOp("/api/x", { signal: ctrl.signal, timeoutMs: "none" });
+    expect(abortedAtCall).toBe(true);
+    expect(res.kind).toBe("network");
+    expect(res.ok).toBe(false);
+  });
+
   it("sends a POST body with the JSON content type", async () => {
     const calls: Array<{ url: string; init: RequestInit }> = [];
     stubFetch((url, init) => {

@@ -8,7 +8,7 @@
     "body": {
       "status": "blocked",
       "message": "The release is refused until the failing gates are cleared.",
-      "error_type": "release_blocked"
+      "error_type": "conflict"
     }
   }
 }

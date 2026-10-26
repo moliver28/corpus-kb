@@ -25,7 +25,12 @@ export async function callOp<T>(
   const { method = "POST", body, signal, timeoutMs = requestTimeoutMs() } = opts;
   const ctrl = new AbortController();
   const timer = timeoutMs === "none" ? null : setTimeout(() => ctrl.abort(), timeoutMs);
-  signal?.addEventListener("abort", () => ctrl.abort());
+  if (signal?.aborted) {
+    // A pre-aborted caller signal never fires its abort event.
+    ctrl.abort();
+  } else {
+    signal?.addEventListener("abort", () => ctrl.abort());
+  }
   try {
     const res = await fetch(path, {
       method,

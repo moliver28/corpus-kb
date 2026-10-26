@@ -35,11 +35,15 @@ export function verifyBadge(
   thresholds?: BadgeThresholds | null,
 ): Badge {
   const rec: VerifySummary = verify ?? {};
-  const g = typeof rec.groundedness === "number" ? rec.groundedness : 0;
+  const raw = rec.groundedness;
+  const hasGroundedness = typeof raw === "number" && Number.isFinite(raw);
+  const g = hasGroundedness ? raw : 0;
   if (!verify || Object.keys(verify).length === 0 || rec.abstained === true) {
     return { label: "not verified", groundedness: g, degraded: false };
   }
-  if (!validThresholds(thresholds)) {
+  // A present but non-numeric groundedness is unreadable evidence: the
+  // badge degrades to "not verified" instead of a silent 0-based "partial".
+  if (!hasGroundedness || !validThresholds(thresholds)) {
     return { label: "not verified", groundedness: g, degraded: true };
   }
   const full = thresholds?.verifyFullGroundedness ?? BADGE_THRESHOLDS.verifyFullGroundedness;

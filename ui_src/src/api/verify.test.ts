@@ -40,6 +40,14 @@ describe("verifyBadge", () => {
     expect(badge.degraded).toBe(true);
   });
 
+  it("non-numeric groundedness -> not verified, degraded (never a fake partial)", () => {
+    const text = verifyBadge({ groundedness: "high" }, BADGE_THRESHOLDS);
+    expect(text.label).toBe("not verified");
+    expect(text.degraded).toBe(true);
+    const nan = verifyBadge({ groundedness: Number.NaN }, BADGE_THRESHOLDS);
+    expect(nan.degraded).toBe(true);
+  });
+
   it("invalid thresholds (NaN, null) -> not verified, degraded", () => {
     expect(verifyBadge({ groundedness: 1 }, { verifyFullGroundedness: Number.NaN }).degraded).toBe(true);
     expect(verifyBadge({ groundedness: 1 }, null).degraded).toBe(true);
