@@ -18,8 +18,8 @@ No terminal work beyond a few commands. First install the package:
 pip install -e .
 ```
 
-Then build the browser app once. This needs Node 24 and pnpm; Node is a
-build tool only, and the running server stays pure Python:
+Then build the browser app once. You need Node 24 and pnpm for this
+step. Node is a build tool only. The running server stays pure Python:
 
 ```bash
 pnpm -C ui_src install
@@ -36,8 +36,8 @@ corpus-kb start
 
 The browser opens the lifecycle app at `http://localhost:8010/app/`.
 The Setup stage shows the system's health in plain language. More
-stages — Ingest, Ask, and the rest — land through the UI SPA program
-([build plan](docs/research/ui-spa-program-plan.md)).
+stages land task by task. See the
+[build plan](docs/research/ui-spa-program-plan.md).
 
 Details: [docs/UI.md](docs/UI.md).
 
