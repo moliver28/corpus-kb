@@ -526,11 +526,11 @@ sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps"
 help = "All quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + test"
 
 [tool.poe.tasks.gen]
-# Both generators run in --check mode: exit 1 on drift, write nothing.
+# All three generators run in --check mode: exit 1 on drift, write nothing.
 # To rewrite the artifacts after an edit, run the underlying scripts
-# without --check (see the two sub-targets below).
-sequence = ["gen-harness-pack", "gen-method-docs"]
-help = "Regenerate/diff-check the harness command pack + the method docs table"
+# without --check (see the sub-targets below).
+sequence = ["gen-harness-pack", "gen-method-docs", "ui-manifest"]
+help = "Regenerate/diff-check the harness pack + method docs + UI op manifest"
 
 [tool.poe.tasks.gen-harness-pack]
 cmd = "python scripts/gen_harness_pack.py --check"
@@ -539,6 +539,17 @@ help = "Diff-check the harness command pack against surface_registry"
 [tool.poe.tasks.gen-method-docs]
 cmd = "python scripts/gen_method_register_docs.py --check"
 help = "Diff-check docs/ANALYSIS-METHODS.md against config/analysis_methods.yaml"
+
+[tool.poe.tasks.ui-manifest]
+# The UI op manifest drift gate (UI SPA Task 4, zero-drift rule 10: poe
+# target + ci.yml ui job + enforcement-map row). Needs the project deps
+# (the merge reads api.research_http.tool_routes).
+cmd = "python scripts/gen_ui_manifest.py --check"
+help = "Diff-check the UI op manifest and generated TS artifacts"
+
+[tool.poe.tasks.ui-manifest-write]
+cmd = "python scripts/gen_ui_manifest.py"
+help = "Rewrite the UI op manifest artifacts after a registry change"
 
 [tool.poe.tasks.schema-parity]
 cmd = "python scripts/schema_parity_gate.py"
