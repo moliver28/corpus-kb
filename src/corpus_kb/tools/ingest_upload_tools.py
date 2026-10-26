@@ -8,9 +8,10 @@ The HTTP result is the ``ingest_file`` envelope, unchanged.
 Caps (plain numbers, one policy source):
 
 - ``ui.spa.max_upload_mb`` (config default ``SPA_MAX_UPLOAD_MB_DEFAULT``)
-  bounds every upload. The route enforces it against the ``Content-Length``
-  header BEFORE the body is read; the stream loop here re-checks every
-  chunk, so a missing or lying header cannot sneak bytes past the cap.
+  bounds every upload. The route checks the ``Content-Length`` header
+  BEFORE the body is read and counts bytes DURING form parsing, so a
+  chunked or lying-header client hits the typed 413 before the body
+  spools to disk. The stream loop here re-checks every chunk too.
 - The request must be ``multipart/form-data``; anything else is a typed
   415 through the taxonomy (``errors.py``), never a bare 400.
 
@@ -53,7 +54,7 @@ __all__ = [
 # to be, and cap checks every step of the stream.
 CHUNK_BYTES = 1024 * 1024
 
-_BYTES_PER_MB = 1024 * 1024
+BYTES_PER_MB = 1024 * 1024
 
 
 class UploadSource(Protocol):
@@ -103,7 +104,7 @@ def enforce_request_caps(content_type: str | None, content_length: int | None, m
     """Reject a wrong request type or an oversized body BEFORE any read."""
     if not content_type or not content_type.lower().startswith("multipart/form-data"):
         raise UnsupportedMediaTypeError("The upload must be a multipart form request.")
-    if content_length is not None and content_length > max_mb * _BYTES_PER_MB:
+    if content_length is not None and content_length > max_mb * BYTES_PER_MB:
         raise PayloadTooLargeError(f"The request body is over the {max_mb} MB upload cap.")
 
 
@@ -123,7 +124,7 @@ async def ingest_upload(
     cap aborts with the typed 413 before any database write.
     """
     cap_mb = max_upload_mb if max_upload_mb is not None else upload_cap_mb(config)
-    cap_bytes = cap_mb * _BYTES_PER_MB
+    cap_bytes = cap_mb * BYTES_PER_MB
     name = sanitize_filename(source.filename)
     if source.size is not None and source.size > cap_bytes:
         raise PayloadTooLargeError(f"{name} is over the {cap_mb} MB upload cap.")

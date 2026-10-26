@@ -19,6 +19,7 @@ from uuid import UUID
 from starlette.datastructures import UploadFile
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.types import Message, Receive
 
 from corpus_kb.api._body import DEFAULT_TENANT_ID, opt_bool, parse_body, route_errors
 from corpus_kb.domain.models import (
@@ -26,7 +27,30 @@ from corpus_kb.domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
-from corpus_kb.errors import ValidationError
+from corpus_kb.errors import PayloadTooLargeError, ValidationError
+from corpus_kb.tools.ingest_upload_tools import BYTES_PER_MB
+
+
+def _counting_receive(receive: Receive, max_mb: int) -> Receive:
+    """Wrap one receive channel; abort the body read past the size cap.
+
+    Every body chunk is counted as it arrives, so a chunked or
+    lying-header client hits the typed 413 DURING form parsing — before
+    the parser can spool an unbounded body to a temp file.
+    """
+    cap_bytes = max_mb * BYTES_PER_MB
+    received = 0
+
+    async def wrapped() -> Message:
+        nonlocal received
+        message = await receive()
+        if message["type"] == "http.request":
+            received += len(message.get("body", b""))
+            if received > cap_bytes:
+                raise PayloadTooLargeError(f"The request body is over the {max_mb} MB upload cap.")
+        return message
+
+    return wrapped
 
 
 @route_errors
@@ -109,15 +133,20 @@ async def ingest_upload_route(request: Request) -> JSONResponse:
 
     require_multipart_support()
     max_mb = upload_cap_mb(None)
-    # The cap check runs BEFORE the body is read: a lying or missing header
-    # is still caught chunk-by-chunk inside ingest_upload.
+    # The Content-Length check is only the fast path. The wrapped receive
+    # below counts every byte DURING form parsing, so a chunked or lying
+    # header cannot spool an unbounded body to disk before the 413.
     raw_length = request.headers.get("content-length")
     enforce_request_caps(
         request.headers.get("content-type"),
         int(raw_length) if raw_length is not None else None,
         max_mb,
     )
-    form = await request.form()
+    counting = Request(
+        request.scope,
+        receive=_counting_receive(request.receive, max_mb),
+    )
+    form = await counting.form()
     upload = form.get("file")
     if not isinstance(upload, UploadFile):
         raise ValidationError("The upload needs a multipart file field named file.")

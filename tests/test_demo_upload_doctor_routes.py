@@ -16,11 +16,14 @@ same degrade contract as the rest of the suite.
 from __future__ import annotations
 
 import importlib.util
+import json
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pytest
+from starlette.requests import Request
 from starlette.testclient import TestClient
 
 from corpus_kb.api.http import create_http_app
@@ -210,6 +213,75 @@ def test_upload_stream_cap_answers_413(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert response.status_code == 413
     assert response.json()["error_type"] == "payload_too_large"
+
+
+def _multipart_chunks(total_body: int, chunk_size: int = 64 * 1024) -> list[bytes]:
+    """One oversized file part, pre-split into streamed body chunks."""
+    boundary = "parityboundary"
+    head = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="big.md"\r\n'
+        "Content-Type: text/markdown\r\n\r\n"
+    ).encode()
+    tail = f"\r\n--{boundary}--\r\n".encode()
+    body = head + b"x" * total_body + tail
+    return [body[start : start + chunk_size] for start in range(0, len(body), chunk_size)]
+
+
+def _chunked_upload_request(chunks: list[bytes]) -> tuple[Request, list[bool]]:
+    """A POST with NO Content-Length: a raw receive streams the chunks.
+
+    The second return value records, per receive call, whether the stream
+    end was still pending — proof the parse aborted mid-stream.
+    """
+    scope: dict[str, Any] = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "method": "POST",
+        "path": "/api/ingest/upload",
+        "query_string": b"",
+        # No content-length header: a chunked, honest-looking small start.
+        "headers": [(b"content-type", b"multipart/form-data; boundary=parityboundary")],
+    }
+    pending = list(chunks)
+    saw_pending: list[bool] = []
+
+    async def receive() -> dict[str, Any]:
+        saw_pending.append(bool(pending))
+        if pending:
+            body = pending.pop(0)
+            return {"type": "http.request", "body": body, "more_body": bool(pending)}
+        return {"type": "http.disconnect"}
+
+    return Request(scope, receive=receive), saw_pending
+
+
+async def test_upload_chunked_body_aborts_during_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A chunked body with no Content-Length hits the 413 mid-stream."""
+    import corpus_kb.tools.ingest_upload_tools as upload_tools
+    from corpus_kb.api.routes_ingest import ingest_upload_route
+
+    monkeypatch.setattr(upload_tools, "upload_cap_mb", lambda config: 1)
+
+    async def stub_ingest_file(*args: object, **kwargs: object) -> dict[str, Any]:
+        raise AssertionError("ingest_file must not run for an oversized upload")
+
+    monkeypatch.setattr(upload_tools, "ingest_file", stub_ingest_file)
+
+    chunks = _multipart_chunks(3 * 1024 * 1024)
+    request, saw_pending = _chunked_upload_request(chunks)
+    tempdir = Path(tempfile.gettempdir())
+    before = set(tempdir.glob("corpus-upload-*"))
+
+    response = await ingest_upload_route(request)
+
+    assert response.status_code == 413
+    assert json.loads(response.body)["error_type"] == "payload_too_large"
+    # Mid-stream proof: the parser never saw the end of the body.
+    assert len(saw_pending) < len(chunks)
+    assert set(tempdir.glob("corpus-upload-*")) == before, "no temp file may survive"
 
 
 async def test_upload_declared_size_cap_answers_413(
