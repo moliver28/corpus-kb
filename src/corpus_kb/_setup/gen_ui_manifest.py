@@ -59,10 +59,9 @@ GET_SURFACE_NAMES = frozenset(
     }
 )
 
-# D.2 longRunning list: ops whose receipt can take minutes. "ingest
-# directory" and "ingest url" are named in the program spec but have NO
-# registry rows yet (they arrive with the Task 5a upload/doctor wave) —
-# they cannot be flagged until the registry carries them.
+# D.2 longRunning list: ops whose receipt can take minutes. UI SPA Task 5a
+# added the ingest-directory and ingest-url registry rows, so the full spec
+# list is flaggable (tests/test_ui_manifest.py pins the same ids).
 LONG_RUNNING_OP_IDS = frozenset(
     {
         "research-cycle",
@@ -74,6 +73,8 @@ LONG_RUNNING_OP_IDS = frozenset(
         "labeling-build",
         "classification-build",
         "research-ingest",
+        "ingest-directory",
+        "ingest-url",
     }
 )
 

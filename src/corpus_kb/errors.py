@@ -41,6 +41,8 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     # Taxonomy names.
     "config_error": (400, -32602, 3),
     "validation_error": (400, -32602, 1),
+    "payload_too_large": (413, -32602, 1),
+    "unsupported_media_type": (415, -32602, 1),
     "not_found": (404, -32001, 1),
     "conflict": (409, -32002, 3),
     "database_unavailable": (503, -32003, 3),
@@ -127,6 +129,22 @@ class ValidationError(CorpusError):
     error_type = "validation_error"
     http_status, socket_code, cli_exit = ERROR_MAP["validation_error"]
     remediation = "Fix the request fields. Then send the request again."
+
+
+class PayloadTooLargeError(CorpusError):
+    """The uploaded file is over the configured size cap."""
+
+    error_type = "payload_too_large"
+    http_status, socket_code, cli_exit = ERROR_MAP["payload_too_large"]
+    remediation = "Upload a smaller file, or raise ui.spa.max_upload_mb in config.yaml."
+
+
+class UnsupportedMediaTypeError(CorpusError):
+    """The request body is not a multipart form upload."""
+
+    error_type = "unsupported_media_type"
+    http_status, socket_code, cli_exit = ERROR_MAP["unsupported_media_type"]
+    remediation = "Send the file as a multipart form field named file."
 
 
 class NotFoundError(CorpusError):

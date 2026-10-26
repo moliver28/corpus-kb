@@ -3,6 +3,7 @@
 GET /api/documents, /api/entities            (query-handler listing reads)
 GET /api/versions, /api/stats, /api/tables, /api/document-stats
                                              (versioning-handler diagnostics)
+GET /api/doctor                              (read-only probes; UI SPA Task 5a)
 
 Thin adapters: parse query params, call the shared handler layer, return
 JSONResponse. Every route runs through ``@route_errors`` (api._body) —
@@ -104,4 +105,13 @@ async def document_stats(request: Request) -> JSONResponse:
     result = await handler.handle_query_document_stats(
         UUID("00000000-0000-0000-0000-000000000001"),
     )
+    return JSONResponse(result)
+
+
+@route_errors
+async def doctor_route(request: Request) -> JSONResponse:
+    """GET /api/doctor — read-only diagnostics from the CLI doctor probes."""
+    from corpus_kb.tools.doctor_tools import doctor_snapshot
+
+    result = await doctor_snapshot(None)
     return JSONResponse(result)

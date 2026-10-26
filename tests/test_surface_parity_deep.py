@@ -2078,6 +2078,8 @@ def test_catalogue_matches_surface_registry() -> None:
         "release_assess",
         "release_status",
         "ingest_status",
+        "ingest_directory",
+        "ingest_url",
         "topics_build",
         "topics_list",
         # Analysis program Wave 0 (the registry skeleton rows).

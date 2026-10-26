@@ -219,6 +219,16 @@
     ]
   },
   {
+    "description": "Ingest the supported files under one directory in one walk.",
+    "id": "ingest-directory",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/directory",
+    "required": []
+  },
+  {
     "description": "Re-embed degraded (zero-vector) chunks once the provider is back.",
     "id": "ingest-reembed",
     "longRunning": false,
@@ -236,6 +246,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/ingest/status",
+    "required": []
+  },
+  {
+    "description": "Fetch (or crawl) a website and ingest its HTML pages.",
+    "id": "ingest-url",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/url",
     "required": []
   },
   {

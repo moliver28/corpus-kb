@@ -200,6 +200,21 @@ SURFACES: tuple[Surface, ...] = (
         description="Re-embed degraded (zero-vector) chunks once the provider is back.",
         http_route="/api/ingest/reembed",
     ),
+    # -- pipeline ingest ops (UI SPA Task 5a): the manifest gap closed -------
+    Surface(
+        name="ingest-directory",
+        cli_path="ingest",
+        mcp_tool="ingest_directory",
+        description="Ingest the supported files under one directory in one walk.",
+        http_route="/api/ingest/directory",
+    ),
+    Surface(
+        name="ingest-url",
+        cli_path="ingest-url",
+        mcp_tool="ingest_url",
+        description="Fetch (or crawl) a website and ingest its HTML pages.",
+        http_route="/api/ingest/url",
+    ),
     # -- topics layer (Wave 4): full cli+mcp+http parity ----------------------
     Surface(
         name="topics-build",

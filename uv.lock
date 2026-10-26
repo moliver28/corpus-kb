@@ -895,6 +895,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "python-magic-bin", marker = "sys_platform == 'win32'" },
+    { name = "python-multipart" },
     { name = "ruff" },
     { name = "sqlglot" },
     { name = "syrupy" },
@@ -954,6 +955,7 @@ tune = [
     { name = "peft" },
 ]
 ui = [
+    { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1006,6 +1008,8 @@ requires-dist = [
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
     { name = "python-magic-bin", marker = "sys_platform == 'win32' and extra == 'dev'", specifier = ">=0.4.14" },
+    { name = "python-multipart", marker = "extra == 'dev'", specifier = ">=0.0.20" },
+    { name = "python-multipart", marker = "extra == 'ui'", specifier = ">=0.0.20" },
     { name = "python-pptx", specifier = ">=1.0" },
     { name = "pytz", marker = "extra == 'duckdb'" },
     { name = "pyyaml", specifier = ">=6.0" },
