@@ -1,7 +1,7 @@
 {
   "name": "ingest-status-ok-200",
   "source": "canonical",
-  "note": "GET /api/ingest/status shape with degraded counts (tools/ingest_surface_tools.py ingest_status). Re-record against a running server after an ingest.",
+  "note": "GET /api/ingest/status shape with degraded counts (tools/ingest_surface_tools.py ingest_status; run rows are _serialize_run's keys). Re-record against a running server after an ingest.",
   "request": { "method": "GET", "path": "/api/ingest/status" },
   "response": {
     "httpStatus": 200,
@@ -11,12 +11,14 @@
       "runs": [
         {
           "run_id": "dddd4444-5555-4e66-8f77-88889999aaaa",
-          "status": "success",
+          "source_type": "upload",
           "started_at": "2026-01-05T10:05:00Z",
           "finished_at": "2026-01-05T10:06:30Z",
-          "files_seen": 5,
-          "chunks_made": 38,
-          "entities_made": 12
+          "status": "success",
+          "start_hash": "9f2a1c",
+          "finish_hash": "9f2a1c",
+          "stages": { "partition": "ok", "embed": "ok", "extract": "ok" },
+          "error": null
         }
       ],
       "incomplete_runs": 0,

@@ -1,0 +1,30 @@
+{
+  "name": "research-ingest-ok-200",
+  "source": "canonical",
+  "note": "POST /api/research/ingest success (handlers/research_handler.py ingest_path: {status, files_found, ingested, skipped, errors, results}); rows trimmed to the stable keys. Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/research/ingest" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "files_found": 2,
+      "ingested": 1,
+      "skipped": 1,
+      "errors": 0,
+      "results": [
+        {
+          "status": "success",
+          "path": "/data/corpus/interview-01.docx",
+          "chunk_count": 6,
+          "entity_count": 4
+        },
+        {
+          "status": "skipped",
+          "path": "/data/corpus/interview-02.docx",
+          "reason": "unchanged",
+          "errors": []
+        }
+      ]
+    }
+  }
+}

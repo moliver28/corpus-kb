@@ -1,0 +1,28 @@
+{
+  "name": "ingest-url-ok-200",
+  "source": "canonical",
+  "note": "POST /api/ingest/url success (tools/ingest_url_tools.py: {status, pages, total_documents}); the page row is the trimmed run_pipeline result (tools/pipeline/result.py). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/ingest/url" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "pages": [
+        {
+          "status": "success",
+          "document_id": "5555eeee-6666-4fff-8aaa-4444bbbb5555",
+          "path": "https://example.com/notes",
+          "source_type": "web",
+          "size_bytes": 4821,
+          "chunk_count": 3,
+          "entity_count": 2,
+          "relation_count": 1,
+          "degraded": false,
+          "errors": [],
+          "run_id": "dddd4444-5555-4e66-8f77-88889999aaaa"
+        }
+      ],
+      "total_documents": 1
+    }
+  }
+}

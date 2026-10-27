@@ -1,10 +1,10 @@
 {
   "name": "ok-200",
   "source": "canonical",
-  "note": "Success envelopes need a provisioned database; re-record against a running server (ui_src/scripts/record-fixtures.ts) when the demo routes land.",
-  "request": { "method": "POST", "path": "/api/search" },
+  "note": "Minimal status-true success envelope (the house vocabulary never says 'ok'); used where a screen renders only the receipt headline. Per-op shapes live in their own fixtures. Re-record against a running server (ui_src/scripts/record-fixtures.ts).",
+  "request": { "method": "POST", "path": "/api/topics/build" },
   "response": {
     "httpStatus": 200,
-    "body": { "status": "ok", "results": [], "total": 0 }
+    "body": { "status": "success" }
   }
 }

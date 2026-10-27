@@ -11,10 +11,13 @@ import demoPartial200 from "./fixtures/demo-partial-200.json";
 import doctorOk200 from "./fixtures/doctor-ok.json";
 import empty200 from "./fixtures/empty-200.json";
 import ingestStatusOk200 from "./fixtures/ingest-status-ok-200.json";
+import ingestDirectoryOk200 from "./fixtures/ingest-directory-ok-200.json";
+import ingestUrlOk200 from "./fixtures/ingest-url-ok-200.json";
 import notebookAnswer200 from "./fixtures/notebook-answer-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
 import ok200 from "./fixtures/ok-200.json";
 import reembedOk200 from "./fixtures/reembed-ok-200.json";
+import researchIngestOk200 from "./fixtures/research-ingest-ok-200.json";
 import reviewExecuteOk200 from "./fixtures/review-execute-ok-200.json";
 import searchOk200 from "./fixtures/search-ok-200.json";
 import serverError500 from "./fixtures/server-error-500.json";
@@ -96,6 +99,9 @@ const FIXTURES = [
   reviewExecuteOk200,
   selectMethodOk200,
   topicsTrendsDisabled200,
+  ingestUrlOk200,
+  ingestDirectoryOk200,
+  researchIngestOk200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -123,6 +129,9 @@ const EXPECTED_KINDS: Record<string, string> = {
   "review-execute-ok-200": "ok",
   "select-method-ok-200": "ok",
   "topics-trends-disabled-200": "ok",
+  "ingest-url-ok-200": "ok",
+  "ingest-directory-ok-200": "ok",
+  "research-ingest-ok-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -155,7 +164,10 @@ describe("committed envelope fixtures", () => {
         f.name === "notebook-answer-200" ||
         f.name === "review-execute-ok-200" ||
         f.name === "select-method-ok-200" ||
-        f.name === "topics-trends-disabled-200"
+        f.name === "topics-trends-disabled-200" ||
+        f.name === "ingest-url-ok-200" ||
+        f.name === "ingest-directory-ok-200" ||
+        f.name === "research-ingest-ok-200"
       ) {
         expect(result.ok).toBe(true);
       } else {
