@@ -45,7 +45,10 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("text", required=True),
             ParamSpec("source", default="raw_text"),
             ParamSpec("source_type", default="text"),
-            ParamSpec("validate", default="off"),
+            # default None (Wave 6): an omitted validate rides the active
+            # profile's value, then off. MCP injects only non-None catalogue
+            # defaults, so a literal "off" here would defeat that fallback.
+            ParamSpec("validate"),
             _TENANT,
         ),
         envelope_keys=INGEST_ENVELOPE,
@@ -67,7 +70,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("file_path", required=True),
             ParamSpec("source_type"),
-            ParamSpec("validate", default="off"),
+            ParamSpec("validate"),
             _TENANT,
         ),
         envelope_keys=INGEST_ENVELOPE,
@@ -93,7 +96,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("directory_path", required=True),
             ParamSpec("recursive", default=True),
             ParamSpec("source_type"),
-            ParamSpec("validate", default="off"),
+            ParamSpec("validate"),
             _TENANT,
         ),
         envelope_keys=(
@@ -126,7 +129,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("url", required=True),
             ParamSpec("crawl", default=False),
             ParamSpec("source_type"),
-            ParamSpec("validate", default="off"),
+            ParamSpec("validate"),
             _TENANT,
         ),
         envelope_keys=("status", "pages", "total_documents"),

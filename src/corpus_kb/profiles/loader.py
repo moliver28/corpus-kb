@@ -4,6 +4,12 @@ A profile file (``profiles/<name>.yaml``) is strict: unknown keys,
 unknown enums, and a mismatched ``name`` all fail loudly (the house
 pattern — never a silent fallback). Relative seed paths resolve against
 the profiles directory, so a profile is portable with its corpus.
+
+Data types are corpus labels, not pipelines. ``product``, ``engineering``,
+and ``design`` (Wave 6) label the shipped starter profiles for those
+audiences. There is no ``research`` type on purpose: research transcripts
+stay on ``interview``/``focus_group``, which the research ingest path
+already serves turn by turn.
 """
 
 from __future__ import annotations
@@ -17,12 +23,39 @@ import yaml
 
 from ..errors import ValidationError
 
-DATA_TYPES: frozenset[str] = frozenset({"interview", "focus_group", "survey", "news", "mixed"})
+DATA_TYPES: frozenset[str] = frozenset(
+    {
+        "interview",
+        "focus_group",
+        "survey",
+        "news",
+        "mixed",
+        # Audience types (unified-ingestion Wave 6): labels for the shipped
+        # starter profiles. Research transcripts keep `interview` and
+        # `focus_group` — the research path already ingests them turn by
+        # turn, so no separate research data type exists.
+        "product",
+        "engineering",
+        "design",
+    }
+)
 # Mirrors extraction.ml_backend.EXTRACTION_MODES (kept literal so profiles
 # never imports extraction; test_profiles pins the two in lockstep).
 PROFILE_EXTRACTION_MODES: frozenset[str] = frozenset({"zero_shot", "few_shot", "customized"})
+# Mirrors tools.pipeline.validate.MODES (kept literal so profiles never
+# imports the tools layer; test_profiles pins the two in lockstep).
+PROFILE_VALIDATE_MODES: frozenset[str] = frozenset({"off", "advisory", "enforce", "calibrate"})
 KNOWN_TOP_KEYS: frozenset[str] = frozenset(
-    {"name", "description", "data_type", "ingestion", "extraction", "templates", "seeds_file"}
+    {
+        "name",
+        "description",
+        "data_type",
+        "ingestion",
+        "extraction",
+        "templates",
+        "seeds_file",
+        "validate",
+    }
 )
 KNOWN_INGESTION_KEYS: frozenset[str] = frozenset({"strategies", "default"})
 KNOWN_EXTRACTION_KEYS: frozenset[str] = frozenset({"mode"})
@@ -70,6 +103,7 @@ class IngestionProfile:
     strategies: dict[str, str] = field(default_factory=dict)
     default_strategy: str | None = None
     extraction_mode: str | None = None
+    validate_mode: str = "off"
     seeds_file: str | None = None
     templates: tuple[str, ...] = ()
 
@@ -145,6 +179,15 @@ def parse_profile(raw: Any, name: str, path: str) -> IngestionProfile:
         )
     strategies, default_strategy = _parse_ingestion(raw.get("ingestion"), name)
     mode = _parse_extraction(raw.get("extraction"), name)
+    validate_mode = raw.get("validate", "off")
+    if isinstance(validate_mode, bool) or validate_mode not in PROFILE_VALIDATE_MODES:
+        raise ValidationError(
+            f"Profile {name!r} has unknown validate mode {validate_mode!r}.",
+            remediation=(
+                "Use one of: off, advisory, enforce, calibrate. YAML reads a bare"
+                " off/on as true/false, so quote it: validate: 'off'."
+            ),
+        )
     templates = raw.get("templates", [])
     if not isinstance(templates, list) or not all(isinstance(t, str) for t in templates):
         raise ValidationError(
@@ -165,6 +208,7 @@ def parse_profile(raw: Any, name: str, path: str) -> IngestionProfile:
         strategies=strategies,
         default_strategy=default_strategy,
         extraction_mode=mode,
+        validate_mode=validate_mode,
         seeds_file=seeds_file,
         templates=tuple(templates),
     )

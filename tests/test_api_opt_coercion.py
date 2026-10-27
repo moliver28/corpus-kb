@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from corpus_kb.api._body import opt_bool, opt_int
+from corpus_kb.api._body import opt_bool, opt_int, opt_str
 
 
 @pytest.mark.parametrize(
@@ -53,3 +53,19 @@ def test_opt_bool(raw: object, default: bool, expected: bool) -> None:
 )
 def test_opt_int(raw: object, default: int, expected: int) -> None:
     assert opt_int(raw, default) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, None),
+        ("advisory", "advisory"),
+        ("off", "off"),
+        # Junk keeps the old str() behavior: the gate answers with a typed
+        # error instead of a silent default.
+        (3, "3"),
+        (True, "True"),
+    ],
+)
+def test_opt_str(raw: object, expected: str | None) -> None:
+    assert opt_str(raw) == expected

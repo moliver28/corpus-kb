@@ -255,3 +255,129 @@ async def test_domain_command_threads_validate_to_pipeline(
         assert result["validation"]["mode"] == "advisory"
     finally:
         command_handler_module.reset_command_handler()
+
+
+# -- Profile validate default (unified-ingestion Wave 6): an unset caller
+# -- mode falls back to the profile's ``validate`` value; an explicit mode wins.
+
+
+def _profile_config(tmp_path: Any, validate: str) -> dict[str, Any]:
+    profiles = tmp_path / "profiles"
+    profiles.mkdir(exist_ok=True)
+    (profiles / "aud.yaml").write_text(
+        f'name: aud\ndata_type: product\nvalidate: "{validate}"\n', encoding="utf-8"
+    )
+    config = dict(CONFIG)
+    config["profiles"] = {"dir": str(profiles)}
+    config["ingestion"] = {"profile": "aud"}
+    return config
+
+
+async def test_profile_validate_applies_when_caller_omits_mode(
+    pipeline_env: None, tmp_path: Any
+) -> None:
+    result = await run_pipeline(TEXT, "text", "s", _profile_config(tmp_path, "advisory"), _Pool())
+    assert result["validation"]["mode"] == "advisory"
+
+
+async def test_explicit_mode_beats_profile(pipeline_env: None, tmp_path: Any) -> None:
+    config = _profile_config(tmp_path, "advisory")
+    result = await run_pipeline(TEXT, "text", "s", config, _Pool(), validate_mode="off")
+    assert "validation" not in result
+
+
+async def test_profile_off_keeps_envelope_clean(pipeline_env: None, tmp_path: Any) -> None:
+    result = await run_pipeline(TEXT, "text", "s", _profile_config(tmp_path, "off"), _Pool())
+    assert "validation" not in result
+
+
+def _command_env(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """A CommandHandler whose aggregate seam is stubbed (no DB writes)."""
+    import corpus_kb.handlers.command_handler as command_handler_module
+    import corpus_kb.handlers.delete_audit as delete_audit_module
+
+    class _FakeApp:
+        def save(self, aggregate: Any) -> None:
+            return None
+
+    monkeypatch.setattr(delete_audit_module, "get_app_for_config", lambda _cfg: _FakeApp())
+    monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: _FakeApp())
+    command_handler_module.reset_command_handler()
+    return command_handler_module
+
+
+async def test_command_omitted_validate_uses_profile_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """An omitted validate on the command rides the profile default (Wave 6)."""
+    from uuid import UUID
+
+    from corpus_kb.domain.models import IngestTextCommand
+
+    module = _command_env(monkeypatch)
+    try:
+        handler = module.get_command_handler(
+            config=_profile_config(tmp_path, "advisory"), pool=_Pool()
+        )
+        result = await handler.handle_ingest_text(
+            IngestTextCommand(
+                tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+                text=TEXT,
+                source="s",
+                source_type="text",
+            )
+        )
+        assert result["validation"]["mode"] == "advisory"
+    finally:
+        module.reset_command_handler()
+
+
+async def test_command_explicit_off_beats_profile(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    """An explicit off on the command wins over the profile default."""
+    from uuid import UUID
+
+    from corpus_kb.domain.models import IngestTextCommand
+
+    module = _command_env(monkeypatch)
+    try:
+        handler = module.get_command_handler(
+            config=_profile_config(tmp_path, "advisory"), pool=_Pool()
+        )
+        result = await handler.handle_ingest_text(
+            IngestTextCommand(
+                tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+                text=TEXT,
+                source="s",
+                source_type="text",
+                validate_mode="off",
+            )
+        )
+        assert "validation" not in result
+    finally:
+        module.reset_command_handler()
+
+
+async def test_command_omitted_without_profile_stays_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No profile plus an omitted validate keeps the envelope clean."""
+    from uuid import UUID
+
+    from corpus_kb.domain.models import IngestTextCommand
+
+    module = _command_env(monkeypatch)
+    try:
+        handler = module.get_command_handler(config=dict(CONFIG), pool=_Pool())
+        result = await handler.handle_ingest_text(
+            IngestTextCommand(
+                tenant_id=UUID("00000000-0000-0000-0000-000000000001"),
+                text=TEXT,
+                source="s",
+                source_type="text",
+            )
+        )
+        assert "validation" not in result
+    finally:
+        module.reset_command_handler()

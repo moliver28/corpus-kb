@@ -42,7 +42,7 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
             ParamSpec("file_path", required=True),
             ParamSpec("project_id"),
             ParamSpec("title"),
-            ParamSpec("validate", default="off"),
+            ParamSpec("validate"),
             _TENANT,
             ParamSpec("force", default=False),
         ),
@@ -73,7 +73,7 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
         params=(
             ParamSpec("path", required=True),
             ParamSpec("project_id"),
-            ParamSpec("validate", default="off"),
+            ParamSpec("validate"),
             _TENANT,
             ParamSpec("force", default=False),
         ),

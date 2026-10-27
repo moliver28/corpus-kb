@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from corpus_kb.errors import ValidationError
 from corpus_kb.extraction.ml_backend import EXTRACTION_MODES
@@ -17,7 +18,11 @@ from corpus_kb.profiles import (
     safe_profile_path,
     with_profile_overrides,
 )
-from corpus_kb.profiles.loader import PROFILE_EXTRACTION_MODES
+from corpus_kb.profiles.loader import (
+    PROFILE_EXTRACTION_MODES,
+    PROFILE_VALIDATE_MODES,
+    parse_profile,
+)
 
 VALID = """
 name: interviews
@@ -180,3 +185,63 @@ def test_profile_default_beats_config_default(monkeypatch: pytest.MonkeyPatch) -
     resolution = resolve_strategy("text", "f.txt", "head", config, profile=profile)
     assert resolution.basis == "default"
     assert resolution.strategy.name == "transcript"
+
+
+# -- Audience data types + the validate key (unified-ingestion Wave 6)
+
+
+@pytest.mark.parametrize("data_type", ["product", "engineering", "design"])
+def test_audience_data_types_accepted(profiles_dir: Path, data_type: str) -> None:
+    (profiles_dir / "aud.yaml").write_text(f"name: aud\ndata_type: {data_type}\n", encoding="utf-8")
+    config = _config(profiles_dir, ingestion={"profile": "aud"})
+    profile = load_profile(config)
+    assert profile is not None
+    assert profile.data_type == data_type
+
+
+def test_validate_modes_stay_in_lockstep() -> None:
+    """profiles never imports the tools layer; this test pins the two sets."""
+    from corpus_kb.tools.pipeline.validate import MODES
+
+    assert frozenset(MODES) == PROFILE_VALIDATE_MODES
+
+
+def test_validate_key_defaults_to_off() -> None:
+    profile = parse_profile(yaml.safe_load("name: p\n"), "p", "profiles/p.yaml")
+    assert profile.validate_mode == "off"
+
+
+def test_validate_key_parsed() -> None:
+    raw = yaml.safe_load("name: p\nvalidate: advisory\n")
+    profile = parse_profile(raw, "p", "profiles/p.yaml")
+    assert profile.validate_mode == "advisory"
+
+
+def test_bad_validate_mode_rejected() -> None:
+    raw = yaml.safe_load("name: p\nvalidate: strict\n")
+    with pytest.raises(ValidationError, match="validate mode"):
+        parse_profile(raw, "p", "profiles/p.yaml")
+
+
+def test_bare_off_reads_as_boolean_and_is_rejected() -> None:
+    """YAML 1.1 reads a bare ``off`` as false; the loader refuses it."""
+    raw = yaml.safe_load("name: p\nvalidate: off\n")
+    with pytest.raises(ValidationError, match="validate mode"):
+        parse_profile(raw, "p", "profiles/p.yaml")
+
+
+def test_shipped_starter_profiles_parse() -> None:
+    """The shipped starters stay valid: names, data types, validate modes."""
+    repo_profiles = Path(__file__).resolve().parents[1] / "profiles"
+    expected = {
+        "starter-interview": ("interview", "off"),
+        "starter-product": ("product", "advisory"),
+        "starter-engineering": ("engineering", "advisory"),
+        "starter-design": ("design", "advisory"),
+    }
+    for name, (data_type, validate_mode) in expected.items():
+        path = repo_profiles / f"{name}.yaml"
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        profile = parse_profile(raw, name, str(path))
+        assert profile.data_type == data_type
+        assert profile.validate_mode == validate_mode

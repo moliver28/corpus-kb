@@ -22,7 +22,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import Message, Receive
 
-from corpus_kb.api._body import DEFAULT_TENANT_ID, opt_bool, parse_body, route_errors
+from corpus_kb.api._body import DEFAULT_TENANT_ID, opt_bool, opt_str, parse_body, route_errors
 from corpus_kb.domain.models import (
     IngestDirectoryCommand,
     IngestFileCommand,
@@ -82,7 +82,7 @@ async def ingest_file(request: Request) -> JSONResponse:
         file_path=body["file_path"],
         content=body.get("content"),
         source_type=body.get("source_type"),
-        validate_mode=str(body.get("validate", "off")),
+        validate_mode=opt_str(body.get("validate")),
     )
     handler = get_command_handler()
     result = await handler.handle_ingest_file(cmd)
@@ -100,7 +100,7 @@ async def ingest_text(request: Request) -> JSONResponse:
         text=body["text"],
         source=body.get("source", "raw_text"),
         source_type=body.get("source_type", "text"),
-        validate_mode=str(body.get("validate", "off")),
+        validate_mode=opt_str(body.get("validate")),
     )
     handler = get_command_handler()
     result = await handler.handle_ingest_text(cmd)
@@ -117,7 +117,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
         tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
         directory_path=body["directory_path"],
         recursive=body.get("recursive", True),
-        validate_mode=str(body.get("validate", "off")),
+        validate_mode=opt_str(body.get("validate")),
     )
     handler = get_command_handler()
     result = await handler.handle_ingest_directory(cmd)
@@ -137,7 +137,7 @@ async def ingest_url_route(request: Request) -> JSONResponse:
         tenant_id=body.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
         crawl=opt_bool(body.get("crawl"), False),
         source_type=body.get("source_type"),
-        validate=str(body.get("validate", "off")),
+        validate=opt_str(body.get("validate")),
     )
     return JSONResponse(result)
 

@@ -2,9 +2,9 @@
 
 A profile is one authored YAML file under ``profiles/`` that turns a
 project corpus into a paved pipeline: ingestion strategy mapping,
-extraction mode, claim templates, and tuning seeds — zero code for the
-end user. The harness authors profiles; ``validate_profiles`` gates
-them; ``run_pipeline`` resolves them.
+extraction mode, validation mode, claim templates, and tuning seeds —
+zero code for the end user. The harness authors profiles;
+``validate_profiles`` gates them; ``run_pipeline`` resolves them.
 """
 
 from __future__ import annotations

@@ -1,0 +1,15 @@
+name: starter-design
+description: >-
+  Paved starting profile for design corpora. Slide decks chunk per slide
+  with title breadcrumbs. Web pages chunk per heading section. Markdown
+  files chunk at heading boundaries. Validation runs in advisory mode.
+  Findings ride the ingest result. They never block a write. Edit
+  freely, or copy it and rename.
+data_type: design
+ingestion:
+  strategies:
+    pptx: pptx_structure
+    web: web_structure
+    markdown: markdown_sections
+  default: default
+validate: advisory
