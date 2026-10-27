@@ -223,5 +223,19 @@
   "ingestRecursiveToggle": "Include subfolders",
   "ingestTranscriptPathLabel": "Transcript file path on the server",
   "ingestTranscriptNameLabel": "Title (optional)",
-  "ingestTranscriptPathRequired": "Enter the transcript's server path first."
+  "ingestTranscriptPathRequired": "Enter the transcript's server path first.",
+  "scaleTitle": "Scale up the ingest",
+  "scaleBody": "Watch the run ledger, bulk-load folders, and re-embed degraded chunks.",
+  "scaleLedgerTitle": "Run ledger",
+  "scaleLedgerBody": "The ledger checks on its own while this browser tab is open.",
+  "scaleLedgerPolling": "Checking every {sec} seconds.",
+  "scaleLedgerPaused": "Polling pauses while this browser tab is hidden.",
+  "scaleLedgerBackoff": "The server did not answer. Retrying every 10 seconds.",
+  "scaleBulkTitle": "Bulk folder ingest",
+  "scaleResearchTitle": "Research ingest",
+  "scaleResearchBody": "Ingest one file, folder, or glob. The ledger skips files it already has.",
+  "scaleResearchPathLabel": "Path (file, folder, or glob)",
+  "scaleResearchPathRequired": "Enter a path first.",
+  "scaleForceToggle": "Reprocess unchanged files",
+  "scaleForceWarning": "Force re-ingests files the ledger already has. This can take a long time."
 }

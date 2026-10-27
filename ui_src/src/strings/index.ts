@@ -229,6 +229,20 @@ export interface Strings {
   ingestTranscriptPathLabel: string;
   ingestTranscriptNameLabel: string;
   ingestTranscriptPathRequired: string;
+  scaleTitle: string;
+  scaleBody: string;
+  scaleLedgerTitle: string;
+  scaleLedgerBody: string;
+  scaleLedgerPolling: string;
+  scaleLedgerPaused: string;
+  scaleLedgerBackoff: string;
+  scaleBulkTitle: string;
+  scaleResearchTitle: string;
+  scaleResearchBody: string;
+  scaleResearchPathLabel: string;
+  scaleResearchPathRequired: string;
+  scaleForceToggle: string;
+  scaleForceWarning: string;
 }
 
 export const strings: Strings = en;
