@@ -418,13 +418,15 @@ jobs:
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
 
-      - name: Pull embedding model
-        # The committed config embeds with qwen3-embedding:4b (2560 dims);
-        # pull THAT model so the demo load makes real vectors and the ask
-        # renders real citations. If the pull fails, the load falls back
-        # to zero-vectors and the smoke fails at the ask step, which is
-        # the honest signal.
-        run: ollama pull qwen3-embedding:4b
+      - name: Pull models for the smoke
+        # The committed config embeds with qwen3-embedding:4b and the ask
+        # pipeline generates with qwen3:4b; pull BOTH so the demo load
+        # makes real vectors and the ask renders real citations. If a
+        # pull fails, the ask degrades to the evidence list and this
+        # REQUIRED job fails — the honest signal.
+        run: |
+          ollama pull qwen3-embedding:4b
+          ollama pull qwen3:4b
 
       - name: SPA e2e smoke + axe (live throwaway server)
         run: poe ui-e2e
