@@ -325,8 +325,9 @@ jobs:
   #     in degraded mode (zero-vector fallback) when Ollama is unavailable
   #
   # Test steps:
-  #   - ubuntu timeout-minutes: 20 (rule 20: the live Postgres marks need
-  #     the higher ceiling) — cross-OS legs keep 10 (hang protection)
+  #   - ubuntu timeout-minutes: 30 (rule 20 floor is 20; the covered suite
+  #     measured 19:57 of pytest alone and hit the old 20-min cap after
+  #     every test had passed) — cross-OS legs keep 10 (hang protection)
   # ─────────────────────────────────────────────────────────────────────
   test-ubuntu:
     name: "test (ubuntu, postgres service)"
@@ -481,9 +482,11 @@ jobs:
           done
 
       - name: Run tests
-        # timeout-minutes: 20 — rule 20 requires >= 20 min on the ubuntu leg
-        # now that the live Postgres marks execute here. Still caps any hang.
-        timeout-minutes: 20
+        # timeout-minutes: 30 — rule 20 requires >= 20 min on the ubuntu leg.
+        # The covered suite ran 19:57 of pytest here and hit the old 20-min
+        # cap after every test had passed (run 40471314193); 30 keeps the
+        # hang protection with headroom.
+        timeout-minutes: 30
         run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing
 
   test-cross:
