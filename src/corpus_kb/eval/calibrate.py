@@ -28,7 +28,6 @@ from typing import Protocol
 from corpus_kb.errors import ValidationError
 from corpus_kb.eval.golden import GoldenRecord
 from corpus_kb.eval.labels import LabelIndex, overlap_rule, resolve_relevance
-from corpus_kb.eval.lockfile import build_lock
 from corpus_kb.profiles.loader import CalibrateSpec
 
 __all__ = [
@@ -169,6 +168,10 @@ async def run_calibration(
         )
     ranked_rows = sorted(scored, key=lambda row: (-row.ndcg_at_10, -row.recall_at_k, row.candidate))
     chosen = ranked_rows[0].candidate
+    # Imported here, not at module level: lockfile imports calibrate types
+    # under TYPE_CHECKING, and a module-level edge back would form a cycle.
+    from corpus_kb.eval.lockfile import build_lock
+
     lock = build_lock(
         spec=spec,
         rows=scored,
