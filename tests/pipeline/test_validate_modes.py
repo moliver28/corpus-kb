@@ -381,3 +381,68 @@ async def test_command_omitted_without_profile_stays_off(
         assert "validation" not in result
     finally:
         module.reset_command_handler()
+
+
+# -- Calibration sweep wiring (unified-ingestion Wave 7)
+
+
+def _calib_sweep_config(tmp_path: Any) -> dict[str, Any]:
+    """A profile with a calibrate block plus its golden and sample files."""
+    profiles = tmp_path / "profiles"
+    profiles.mkdir(exist_ok=True)
+    (profiles / "aud.yaml").write_text(
+        "name: aud\ndata_type: product\n"
+        "calibrate:\n  candidates: [default]\n  sample: sample.txt\n  golden: golden.jsonl\n",
+        encoding="utf-8",
+    )
+    (profiles / "golden.jsonl").write_text(
+        '{"query": "q", "relevant_units": [1]}\n', encoding="utf-8"
+    )
+    (profiles / "sample.txt").write_text("sample transcript text\n", encoding="utf-8")
+    config = dict(CONFIG)
+    config["profiles"] = {"dir": str(profiles)}
+    config["ingestion"] = {"profile": "aud"}
+    return config
+
+
+async def test_calibrate_sweep_rides_the_ledger_not_the_envelope(
+    monkeypatch: pytest.MonkeyPatch, pipeline_env: None, tmp_path: Any
+) -> None:
+    from corpus_kb.eval.calibrate import CalibrationResult
+
+    calls: list[str] = []
+
+    async def fake_maybe(profile: Any, config: Any) -> CalibrationResult:
+        calls.append(profile.name)
+        return CalibrationResult(
+            status="success",
+            reason=None,
+            rule="rule",
+            candidates=(),
+            chosen="default",
+            summary={"chosen": "default"},
+        )
+
+    monkeypatch.setattr("corpus_kb.tools.pipeline.calibrate_engine.maybe_calibrate", fake_maybe)
+    result = await run_pipeline(
+        TEXT, "text", "s", _calib_sweep_config(tmp_path), _Pool(), validate_mode="calibrate"
+    )
+    assert calls == ["aud"]
+    # Calibrate mode keeps the envelope byte-clean: the sweep rides stages.
+    assert "validation" not in result
+    assert "calibration" not in result
+
+
+async def test_enforce_fails_on_drifted_profile_lock(
+    pipeline_env: None,
+    tmp_path: Any,
+) -> None:
+    import json as json_module
+
+    config = _calib_sweep_config(tmp_path)
+    profiles = tmp_path / "profiles"
+    (profiles / "aud.lock.json").write_text(
+        json_module.dumps({"profile_sha256": "stale"}), encoding="utf-8"
+    )
+    with pytest.raises(ValidationError, match="calibration lock"):
+        await run_pipeline(TEXT, "text", "s", config, _Pool(), validate_mode="enforce")

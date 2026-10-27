@@ -79,6 +79,7 @@ def _validate_one(path: Path, profiles_dir: Path, template_ids: set[str]) -> lis
         return [f"{path.name}: unreadable YAML: {exc}"]
     errors: list[str] = []
     errors.extend(_check_strategies(path.name, profile))
+    errors.extend(_check_calibrate(path.name, profile, profiles_dir))
     for template_id in profile.templates:
         if template_ids and template_id not in template_ids:
             errors.append(
@@ -90,7 +91,45 @@ def _validate_one(path: Path, profiles_dir: Path, template_ids: set[str]) -> lis
             errors.append(
                 f"{path.name}: seeds file {profile.seeds_file!r} not found under {profiles_dir}."
             )
+    errors.extend(_check_lock(path, profiles_dir))
     return errors
+
+
+def _check_calibrate(name: str, profile: object, profiles_dir: Path) -> list[str]:
+    """The calibrate block's candidates, sample, and golden must all exist."""
+    from corpus_kb.ingestion.registry import UnknownStrategyError, get_strategy
+
+    spec = getattr(profile, "calibrate", None)
+    if spec is None:
+        return []
+    errors: list[str] = []
+    for candidate in spec.candidates:
+        try:
+            get_strategy(candidate)
+        except UnknownStrategyError:
+            errors.append(f"{name}: calibrate.candidates names unknown strategy {candidate!r}.")
+    golden = profiles_dir / spec.golden
+    if not golden.is_file():
+        errors.append(f"{name}: calibrate.golden {spec.golden!r} not found under {profiles_dir}.")
+    sample = profiles_dir / spec.sample
+    if not sample.exists():
+        errors.append(f"{name}: calibrate.sample {spec.sample!r} not found under {profiles_dir}.")
+    return errors
+
+
+def _check_lock(path: Path, profiles_dir: Path) -> list[str]:
+    """A stale calibration lock fails the gate (Wave 7: enforce parity)."""
+    from corpus_kb.errors import ValidationError
+    from corpus_kb.eval.lockfile import check_profile_lock
+
+    lock = profiles_dir / f"{path.stem}.lock.json"
+    if not lock.is_file():
+        return []
+    try:
+        check_profile_lock(path, lock)
+    except ValidationError as exc:
+        return [f"{path.name}: {exc}"]
+    return []
 
 
 def _check_strategies(name: str, profile: object) -> list[str]:

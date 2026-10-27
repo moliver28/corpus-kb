@@ -23,6 +23,25 @@ that have one and skip records that do not.
 Get chunk ids from `corpus-kb search "question" --json` output. Copy the
 `chunk_id` values of the hits you judge relevant.
 
+## Span and unit labels
+
+Chunk ids change when a chunker changes, so chunk-id labels cannot
+compare chunkers fairly. Two more label kinds solve this. A line
+carries exactly one kind:
+
+```jsonl
+{"query": "grid plan", "relevant_spans": [{"doc": "sym://a", "start": 0, "end": 120}]}
+{"query": "grid plan", "relevant_units": [3, 17]}
+```
+
+A span names a document plus a char range. The `doc` value is the
+document source label. A chunk is relevant when the label covers at
+least `min_overlap` of it (default 0.5). A unit label names a research
+unit id directly.
+
+The calibration sweep uses these labels; see the profiles playbook.
+`eval build-golden --validate` accepts all three label kinds.
+
 ## Build a golden set from reviewed codings
 
 Coding corpora get labels from human review, never from raw model

@@ -245,3 +245,87 @@ def test_shipped_starter_profiles_parse() -> None:
         profile = parse_profile(raw, name, str(path))
         assert profile.data_type == data_type
         assert profile.validate_mode == validate_mode
+
+
+# -- The calibrate block (unified-ingestion Wave 7)
+
+
+def _calib_profile(profiles_dir: Path, block: str) -> object:
+    (profiles_dir / "cal.yaml").write_text(
+        f"name: cal\ndata_type: mixed\n{block}", encoding="utf-8"
+    )
+    return load_profile(_config(profiles_dir, ingestion={"profile": "cal"}))
+
+
+def test_calibrate_block_parsed(profiles_dir: Path) -> None:
+    profile = _calib_profile(
+        profiles_dir,
+        "calibrate:\n  candidates: [default, markdown_sections]\n"
+        "  sample: sample/\n  golden: golden.jsonl\n  k: 7\n  min_overlap: 0.6\n",
+    )
+    assert profile is not None
+    spec = profile.calibrate
+    assert spec is not None
+    assert spec.candidates == ("default", "markdown_sections")
+    assert spec.sample == "sample/"
+    assert spec.golden == "golden.jsonl"
+    assert spec.k == 7
+    assert spec.min_overlap == 0.6
+
+
+def test_calibrate_block_defaults(profiles_dir: Path) -> None:
+    profile = _calib_profile(
+        profiles_dir,
+        "calibrate:\n  candidates: [default]\n  sample: s.txt\n  golden: g.jsonl\n",
+    )
+    assert profile is not None and profile.calibrate is not None
+    assert profile.calibrate.k == 10
+    assert profile.calibrate.min_overlap == 0.5
+
+
+def test_no_calibrate_block_is_none(profiles_dir: Path) -> None:
+    profile = _calib_profile(profiles_dir, "extraction:\n  mode: zero_shot\n")
+    assert profile is not None and profile.calibrate is None
+
+
+def test_calibrate_empty_candidates_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="candidates"):
+        _calib_profile(profiles_dir, "calibrate:\n  candidates: []\n  sample: s\n  golden: g\n")
+
+
+def test_calibrate_bad_k_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="k"):
+        _calib_profile(
+            profiles_dir, "calibrate:\n  candidates: [default]\n  sample: s\n  golden: g\n  k: 0\n"
+        )
+
+
+def test_calibrate_min_overlap_out_of_range_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="min_overlap"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates: [default]\n  sample: s\n  golden: g\n  min_overlap: 1.5\n",
+        )
+
+
+def test_calibrate_sample_must_be_a_string(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="sample"):
+        _calib_profile(
+            profiles_dir, "calibrate:\n  candidates: [default]\n  sample: 5\n  golden: g\n"
+        )
+
+
+def test_calibrate_unknown_key_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match=r"unknown keys.*bogus"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates: [default]\n  sample: s\n  golden: g\n  bogus: 1\n",
+        )
+
+
+def test_calibrate_duplicate_candidates_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="repeats: default"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates: [default, default]\n  sample: s\n  golden: g\n",
+        )

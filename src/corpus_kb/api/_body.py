@@ -76,10 +76,10 @@ def opt_bool(raw: object, default: bool) -> bool:
 def opt_str(raw: object) -> str | None:
     """One optional JSON string. Absent or null answers None.
 
-    A real string passes through; any other value stringifies, so the
-    downstream gate answers with its typed error instead of a silent
-    default. ``None`` means "the caller did not say", which lets the
-    active profile's ``validate`` value decide (Wave 6).
+    A real string passes through. Any other value stringifies, so the
+    downstream gate answers with its typed error, not a silent default.
+    ``None`` means "the caller did not say"; the active profile's
+    ``validate`` value then decides (Wave 6).
     """
     if raw is None:
         return None

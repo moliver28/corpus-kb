@@ -87,6 +87,7 @@ Field reference:
 - `templates`: claim-template ids from `config/claim_templates/`.
 - `seeds_file`: a seeds file in the profiles directory (the
   `extraction-tune` op writes and points to it for you).
+- `calibrate`: an optional sweep block. See "Calibrate then lock".
 
 Precedence is fixed. An explicit per-call strategy override wins. The
 profile wins next. The `ingestion.strategies` config map wins next.
@@ -109,6 +110,40 @@ block a write.
 The `code` strategy needs the optional `code` extra. Without it, code
 files still ingest. The strategy falls back to the default plan and
 records a warning.
+
+## Calibrate then lock
+
+A profile can name a calibration sweep. Add a `calibrate:` block:
+
+```yaml
+calibrate:
+  candidates: [default, markdown_sections]
+  sample: calib-sample/
+  golden: calib-golden.jsonl
+  k: 10
+  min_overlap: 0.5
+```
+
+The paths resolve against the profiles directory. `sample` is one
+transcript file or a folder of them. `golden` is a JSONL file with
+span or unit labels. `poe validate-profiles` checks that every path
+exists and every candidate is a registered strategy.
+
+The sweep runs when an ingest uses `validate: calibrate` with that
+profile. Each candidate ingests the sample into its own scratch DuckDB
+file. The sweep scores the golden queries and writes
+`<profile>.lock.json` next to the profile. The scratch directory is
+always deleted. Two sweeps on the same inputs write the same lock,
+except the date.
+
+The sweep refuses to score when embeddings are degraded. Fake vectors
+would give fake numbers, so it answers `insufficient_data` instead.
+The optional `calibrate` extra adds paired statistics through ranx.
+Without the extra, reports use a sign test and say so.
+
+`enforce` mode compares the profile file to the lock. An edit after
+calibration fails with both hashes, so a locked profile cannot drift
+silently. Re-run the sweep to accept the edit.
 
 ## Tuning with the tune op
 

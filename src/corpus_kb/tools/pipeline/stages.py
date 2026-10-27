@@ -65,6 +65,7 @@ async def _run_locked_stages(
     strategy: str | None = None,
     validation_report: dict[str, Any] | None = None,
     validation_mode: str = "off",
+    calibration_summary: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pipeline stages under the advisory lock: open the ledger, store, close.
 
@@ -180,6 +181,10 @@ async def _run_locked_stages(
         # without touching the envelope.
         if validation_mode == "calibrate" and validation_report is not None:
             stages["validation"] = validation_report
+        # Wave 7: the calibration sweep summary rides the ledger the same
+        # way. A refused sweep writes nothing (its reason went to the log).
+        if calibration_summary:
+            stages["calibration"] = calibration_summary
 
         # Close the ledger LAST — completed only when no stage recorded an
         # error; failed with the error text otherwise.

@@ -517,3 +517,8 @@ exc_info
 # tests/test_pipeline_document.py, and vulture only scans src.
 anchored_span
 offset_invariant_problems
+
+# Unified-ingestion Wave 7 (eval/_ranx.py): the _RanxModule Protocol names
+# the lazy ranx surface. compare() carries stat_test only as keyword
+# signature surface; vulture sees no body reference.
+stat_test
