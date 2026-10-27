@@ -4,9 +4,9 @@ import { runtimeConfig } from "../api/runtimeConfig";
 import DegradedCard from "../components/DegradedCard";
 import DirectoryCard from "../components/DirectoryCard";
 import JsonViewer from "../components/JsonViewer";
+import ResearchIngestCard from "../components/ResearchIngestCard";
 import StatusBanner from "../components/StatusBanner";
 import { strings } from "../strings";
-import ResearchIngestCard from "./scale/ResearchIngestCard";
 import { useLedgerPoll } from "./scale/useLedgerPoll";
 
 /** The self-polling run ledger (spec F6): poll_ms, hidden pause, backoff. */
@@ -25,7 +25,12 @@ function LedgerCard() {
       {poll.paused ? (
         <StatusBanner kind="info">{strings.scaleLedgerPaused}</StatusBanner>
       ) : poll.backingOff ? (
-        <StatusBanner kind="warn">{strings.scaleLedgerBackoff}</StatusBanner>
+        <div className="ui-stack">
+          <StatusBanner kind="warn">{strings.scaleLedgerBackoff}</StatusBanner>
+          {poll.result !== null && poll.result.message !== "" && (
+            <StatusBanner kind="info">{poll.result.message}</StatusBanner>
+          )}
+        </div>
       ) : (
         <StatusBanner kind="info">
           {strings.scaleLedgerPolling.replace("{sec}", String(pollSec))}

@@ -3,6 +3,7 @@ import { useState } from "react";
 import { strings } from "../strings";
 import DemoLoadCard from "../components/DemoLoadCard";
 import DirectoryCard from "../components/DirectoryCard";
+import ResearchIngestCard from "../components/ResearchIngestCard";
 import PasteCard from "./ingest/PasteCard";
 import TranscriptCard from "./ingest/TranscriptCard";
 import UploadCard from "./ingest/UploadCard";
@@ -47,7 +48,14 @@ export default function Ingest() {
       {tab === "files" && <UploadCard />}
       {tab === "website" && <WebsiteCard />}
       {tab === "paste" && <PasteCard />}
-      {tab === "server" && <DirectoryCard title={strings.ingestTabServerPath} />}
+      {tab === "server" && (
+        <div className="ui-stack">
+          <DirectoryCard title={strings.ingestTabServerPath} />
+          {/* Spec F6 puts research/ingest on this tab too (the Scale
+              card is the same component over the same op). */}
+          <ResearchIngestCard />
+        </div>
+      )}
       {tab === "transcripts" && <TranscriptCard />}
       {tab === "sample" && <DemoLoadCard />}
     </div>

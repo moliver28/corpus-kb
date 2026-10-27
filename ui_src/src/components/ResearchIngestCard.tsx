@@ -1,12 +1,13 @@
 import { Button } from "antd";
 import { useState } from "react";
-import PathCard from "../../components/PathCard";
-import StatusBanner from "../../components/StatusBanner";
-import { strings } from "../../strings";
+import PathCard from "./PathCard";
+import StatusBanner from "./StatusBanner";
+import { strings } from "../strings";
 
 /**
  * The research ingest (spec F6, bulk start): one file, folder, or glob
- * with ledger dedup — and the force toggle behind its honest warning.
+ * with ledger dedup. The force toggle rides its honest warning, and the
+ * confirm dialog repeats it (spec F10: force re-ingest is a gated run).
  */
 export default function ResearchIngestCard() {
   const [force, setForce] = useState(false);
@@ -19,6 +20,7 @@ export default function ResearchIngestCard() {
       pathKey="path"
       extraBody={{ force }}
       opId="research-ingest"
+      gateDescription={force ? strings.scaleForceWarning : undefined}
     >
       <div className="ui-actions">
         <Button
