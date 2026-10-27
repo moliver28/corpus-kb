@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { normalize } from "../api/errors";
+import assignmentsOk200 from "./fixtures/assignments-ok-200.json";
 import blocked409 from "./fixtures/blocked-409.json";
 import degraded200 from "./fixtures/degraded-200.json";
 import demoLoaded200 from "./fixtures/demo-loaded-200.json";
 import demoPartial200 from "./fixtures/demo-partial-200.json";
 import doctorOk200 from "./fixtures/doctor-ok.json";
 import empty200 from "./fixtures/empty-200.json";
+import ingestStatusOk200 from "./fixtures/ingest-status-ok-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
 import ok200 from "./fixtures/ok-200.json";
+import reembedOk200 from "./fixtures/reembed-ok-200.json";
 import serverError500 from "./fixtures/server-error-500.json";
+import topicsOk200 from "./fixtures/topics-ok-200.json";
 import unavailable503 from "./fixtures/unavailable-503.json";
 import validationError400 from "./fixtures/validation-error-400.json";
 
@@ -72,6 +76,10 @@ const FIXTURES = [
   doctorOk200,
   demoLoaded200,
   demoPartial200,
+  assignmentsOk200,
+  topicsOk200,
+  ingestStatusOk200,
+  reembedOk200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -87,6 +95,10 @@ const EXPECTED_KINDS: Record<string, string> = {
   "doctor-ok-200": "ok",
   "demo-loaded-200": "ok",
   "demo-partial-200": "ok",
+  "assignments-ok-200": "ok",
+  "topics-ok-200": "ok",
+  "ingest-status-ok-200": "ok",
+  "reembed-ok-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -107,7 +119,11 @@ describe("committed envelope fixtures", () => {
         f.name === "degraded-200" ||
         f.name === "doctor-ok-200" ||
         f.name === "demo-loaded-200" ||
-        f.name === "demo-partial-200"
+        f.name === "demo-partial-200" ||
+        f.name === "assignments-ok-200" ||
+        f.name === "topics-ok-200" ||
+        f.name === "ingest-status-ok-200" ||
+        f.name === "reembed-ok-200"
       ) {
         expect(result.ok).toBe(true);
       } else {

@@ -1,0 +1,46 @@
+{
+  "name": "assignments-ok-200",
+  "source": "canonical",
+  "note": "GET /api/coding/assignments listing shape (tools/lifecycle_read_tools.py). Re-record against a running server when a coded corpus exists.",
+  "request": { "method": "GET", "path": "/api/coding/assignments" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": [
+        {
+          "assignment_id": 41,
+          "assignment_aggregate_id": "3f6d2c9a-1111-4c4c-8d8d-222222222222",
+          "unit_id": 7,
+          "code_id": "energy_policy",
+          "cb_version_id": "aaaa1111-2222-4333-8444-555566667777",
+          "run_id": "bbbb2222-3333-4c44-8d55-666677778888",
+          "status": "review",
+          "confidence": 0.62,
+          "stance": "support",
+          "evidence_basis": "semantic",
+          "sim_answer": 0.71,
+          "sim_qa": 0.66,
+          "sim_q": 0.59,
+          "created_at": "2026-01-05T10:12:00Z"
+        },
+        {
+          "assignment_id": 40,
+          "assignment_aggregate_id": "cccc3333-4444-4d55-8e66-777788889999",
+          "unit_id": 6,
+          "code_id": "grid_reliability",
+          "cb_version_id": "aaaa1111-2222-4333-8444-555566667777",
+          "run_id": "bbbb2222-3333-4c44-8d55-666677778888",
+          "status": "auto",
+          "confidence": 0.94,
+          "stance": "neutral",
+          "evidence_basis": "literal",
+          "sim_answer": 0.88,
+          "sim_qa": 0.9,
+          "sim_q": 0.85,
+          "created_at": "2026-01-05T10:12:00Z"
+        }
+      ]
+    }
+  }
+}

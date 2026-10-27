@@ -1,0 +1,33 @@
+{
+  "name": "topics-ok-200",
+  "source": "canonical",
+  "note": "GET /api/topics listing shape (tools/topics_tools.py topics_list + topics/writer.py read_topics). Re-record against a running server after a topics build.",
+  "request": { "method": "GET", "path": "/api/topics" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "topic_count": 2,
+      "topics": [
+        {
+          "topic_id": "1",
+          "label": "Renewable energy policy",
+          "reduced_label": "Energy policy",
+          "size": 12,
+          "keywords": ["energy", "grid", "solar", "policy"],
+          "params": { "min_cluster_size": 5 },
+          "created_at": "2026-01-05T10:00:00Z"
+        },
+        {
+          "topic_id": "2",
+          "label": "Grid reliability outages",
+          "reduced_label": "Reliability",
+          "size": 8,
+          "keywords": ["outage", "reliability", "storm"],
+          "params": { "min_cluster_size": 5 },
+          "created_at": "2026-01-05T10:00:00Z"
+        }
+      ]
+    }
+  }
+}
