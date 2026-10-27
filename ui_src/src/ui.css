@@ -90,6 +90,28 @@
   padding-left: 20px;
 }
 
+/* Hover-citation link: the hovered sentence raises itself (blue) and
+   every sentence citing the same source (green); the source label of
+   the hovered sentence is emphasized. Color never carries the signal
+   alone — the source label also gains weight. */
+.ui-citations li {
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.ui-citation--active {
+  background: #e6f4ff;
+}
+
+.ui-citation--linked {
+  background: #f6ffed;
+}
+
+.ui-citation-source--active {
+  color: #1677ff;
+  font-weight: 600;
+}
+
 .ui-citation-text {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 14px;

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -15,7 +15,7 @@ import Ask from "./Ask";
  * The Ask page from canonical fixtures: the cited answer with its
  * verified badge, the exact program strings for the empty and degraded
  * states, the search tab with the degraded-excluded count, the notebook
- * tab with its retrieval-only switch, and the honest verify gap.
+ * tab with its retrieval-only toggle, and the honest verify gap.
  */
 
 type MinimalResponse = { status: number; text: () => Promise<string> };
@@ -70,7 +70,7 @@ async function askQuestion(question: string): Promise<void> {
 describe("Ask page", () => {
   it("answers with cited sentences, the badge, and the session history", async () => {
     stubFetch(askRoutes(respond(200, askSuccess.response.body)));
-    render(<Ask />, { wrapper: makeWrapper() });
+    const { container } = render(<Ask />, { wrapper: makeWrapper() });
     await askQuestion("what does the grid plan do?");
     expect(
       await screen.findByText(
@@ -83,6 +83,49 @@ describe("Ask page", () => {
     expect(window.sessionStorage.getItem("corpus-kb:ask-history")).toContain(
       "what does the grid plan do?",
     );
+    // The hover-citation link: hovering sentence 1 raises it (active)
+    // and marks sentence 2, which cites the same source, as linked.
+    const sentences = container.querySelectorAll("ol.ui-citations > li");
+    expect(sentences.length).toBe(2);
+    fireEvent.mouseEnter(sentences[0]);
+    expect(sentences[0].className).toContain("ui-citation--active");
+    expect(sentences[1].className).toContain("ui-citation--linked");
+    fireEvent.mouseLeave(container.querySelector("ol.ui-citations")!);
+    expect(sentences[1].className).not.toContain("ui-citation--linked");
+  });
+
+  it("stops waiting on cancel: elapsed ticks, the result never lands", async () => {
+    vi.useFakeTimers();
+    try {
+      // The server answer waits on a gate, so the flight stays running
+      // until the user cancels — then the late reply must be discarded.
+      let release!: (reply: MinimalResponse) => void;
+      const gate = new Promise<MinimalResponse>((resolve) => {
+        release = resolve;
+      });
+      vi.stubGlobal("fetch", (() => gate) as unknown as typeof fetch);
+      render(<Ask />, { wrapper: makeWrapper() });
+      fireEvent.change(screen.getByPlaceholderText(strings.askQueryLabel), {
+        target: { value: "slow question" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: strings.askAction }));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(
+        screen.getByText(strings.runnerRunningElapsed.replace("{sec}", "1")),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: strings.runnerCancelLabel }));
+      release({ status: 200, text: async () => JSON.stringify(askSuccess.response.body) });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(20);
+      });
+      expect(screen.getByText(strings.runnerCancelled)).toBeTruthy();
+      expect(screen.queryAllByText("The grid plan adds storage.").length).toBe(0);
+      expect(window.sessionStorage.getItem("corpus-kb:ask-history")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows the exact empty-state words when no evidence matched", async () => {
@@ -135,7 +178,7 @@ describe("Ask page", () => {
     expect(sent?.body).toContain('"query":"storage"');
   });
 
-  it("asks the notebook with the retrieval-only switch on", async () => {
+  it("asks the notebook with the retrieval-only toggle on", async () => {
     stubFetch([
       { method: "POST", path: "/api/notebook/ask", reply: respond(200, notebookAnswer.response.body) },
     ]);

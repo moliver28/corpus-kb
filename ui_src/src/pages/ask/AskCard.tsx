@@ -44,15 +44,25 @@ export default function AskCard() {
     });
   });
 
+  // The USER's cancel intent: the settled long-op result still carries
+  // the server envelope, so the history guard reads the intent ref, not
+  // a possibly stale hook state.
+  const cancelRequestedRef = useRef(false);
+
   async function run(): Promise<void> {
+    if (ask.running) {
+      // One flight at a time: a second submit must not duplicate history.
+      return;
+    }
     if (query.trim() === "") {
       setHint(strings.askQueryRequired);
       return;
     }
     setHint("");
     queryRef.current = query.trim();
+    cancelRequestedRef.current = false;
     const res = await ask.start();
-    if (res.ok) {
+    if (res.ok && !cancelRequestedRef.current) {
       const next = [
         { question: queryRef.current, at: new Date().toISOString() },
         ...history,
@@ -60,6 +70,11 @@ export default function AskCard() {
       setHistory(next);
       saveHistory(next);
     }
+  }
+
+  function stopWaiting(): void {
+    cancelRequestedRef.current = true;
+    ask.cancel();
   }
 
   function retry(): void {
@@ -95,12 +110,26 @@ export default function AskCard() {
           </div>
         );
       } else if (env.status === "empty") {
-        resultView = <StatusBanner kind="warn">{strings.askEmptyState}</StatusBanner>;
+        resultView = (
+          <div className="ui-stack">
+            <StatusBanner kind="warn">{strings.askEmptyState}</StatusBanner>
+            {noteOf(env) !== "" && (
+              <StatusBanner kind="info">
+                {strings.askNoteLabel}: {noteOf(env)}
+              </StatusBanner>
+            )}
+          </div>
+        );
       } else if (env.status === "degraded") {
         resultView = (
           <div className="ui-stack">
             <StatusBanner kind="warn">{strings.askDegradedState}</StatusBanner>
             <EvidenceList items={askEvidence(env)} />
+            {noteOf(env) !== "" && (
+              <StatusBanner kind="info">
+                {strings.askNoteLabel}: {noteOf(env)}
+              </StatusBanner>
+            )}
             {excluded > 0 && (
               <StatusBanner kind="warn">
                 {strings.askDegradedExcluded.replace("{count}", String(excluded))}
@@ -125,7 +154,7 @@ export default function AskCard() {
         </div>
       );
     } else {
-      resultView = <ErrorPanel result={settled} onRetry={retry} />;
+      resultView = <ErrorPanel result={settled} onRetry={retry} opId="ask" />;
     }
   }
 
@@ -152,7 +181,7 @@ export default function AskCard() {
             <StatusBanner kind="info">
               {strings.runnerRunningElapsed.replace("{sec}", String(ask.elapsedSec))}
             </StatusBanner>
-            <Button onClick={() => ask.cancel()}>{strings.runnerCancelLabel}</Button>
+            <Button onClick={stopWaiting}>{strings.runnerCancelLabel}</Button>
           </div>
         </div>
       )}

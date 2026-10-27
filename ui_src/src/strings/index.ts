@@ -130,6 +130,7 @@ export interface Strings {
   reviewOverrideBody: string;
   reviewNoteLabel: string;
   reviewNoteRequired: string;
+  reviewOverrideSubmit: string;
   reviewDecisionDone: string;
   reviewStateAuto: string;
   reviewStateNeedsReview: string;

@@ -5,6 +5,7 @@
 import type { Citation } from "../../components/CitedAnswer";
 import type { VerifySummary } from "../../api/verify";
 import type { EvidenceItem } from "./EvidenceList";
+import { strings } from "../../strings";
 
 /** One cited answer sentence (research/notebook.py cite_sentences). */
 export interface Sentence {
@@ -86,13 +87,16 @@ export function excludedCount(block: { count: unknown } | null | undefined): num
 /** Map the answer sentences onto CitedAnswer citations (source labels). */
 export function toCitations(env: AskEnvelope): Citation[] {
   const sources = env.result.sources;
-  return env.result.sentences.map((sentence) => ({
-    text: sentence.text,
-    source: sentence.citations
-      .map((n) => sources[n - 1]?.source ?? "")
-      .filter((label) => label !== "")
-      .join(", "),
-  }));
+  return env.result.sentences.map((sentence) => {
+    const labels = [
+      ...new Set(
+        sentence.citations
+          .map((n) => sources[n - 1]?.source ?? "")
+          .filter((label) => label !== ""),
+      ),
+    ];
+    return { text: sentence.text, source: labels.join(", "), sources: labels };
+  });
 }
 
 /** The evidence list under an honest empty or degraded answer. */
@@ -168,17 +172,26 @@ function notebookRows(env: NotebookEnvelope): NotebookEvidenceRow[] {
 /** One evidence row's locator: title, speaker, and a time or nothing. */
 function locator(row: NotebookEvidenceRow): string {
   const parts = [
-    typeof row.title === "string" && row.title !== "" ? row.title : "untitled",
+    typeof row.title === "string" && row.title !== ""
+      ? row.title
+      : strings.askEvidenceUntitled,
   ];
   if (typeof row.speaker === "string" && row.speaker !== "") parts.push(row.speaker);
-  if (typeof row.timestamp_s === "number") parts.push(`at ${Math.round(row.timestamp_s)}s`);
+  if (typeof row.timestamp_s === "number") {
+    parts.push(strings.askEvidenceAt.replace("{sec}", String(Math.round(row.timestamp_s))));
+  }
   return parts.join(" - ");
 }
 
 /** The ranked evidence list (answer text, else the question text). */
 export function notebookEvidence(env: NotebookEnvelope): EvidenceItem[] {
   return notebookRows(env).map((row) => ({
-    text: typeof row.answer === "string" && row.answer !== "" ? row.answer : String(row.question ?? ""),
+    text:
+      typeof row.answer === "string" && row.answer !== ""
+        ? row.answer
+        : typeof row.question === "string"
+          ? row.question
+          : "",
     source: locator(row),
   }));
 }

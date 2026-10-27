@@ -1,4 +1,5 @@
 import { Card, Tag } from "antd";
+import { useState } from "react";
 import { verifyBadge, type VerifySummary } from "../api/verify";
 import { BADGE_THRESHOLDS } from "../api/thresholds.generated";
 import { strings } from "../strings";
@@ -6,6 +7,8 @@ import { strings } from "../strings";
 export interface Citation {
   text: string;
   source: string;
+  /** The distinct source labels this sentence cites (hover-citation link). */
+  sources?: string[];
 }
 
 const LABELS: Record<"verified" | "partial" | "not verified", string> = {
@@ -14,7 +17,12 @@ const LABELS: Record<"verified" | "partial" | "not verified", string> = {
   "not verified": strings.verifyLabelNotVerified,
 };
 
-/** A grounded answer: the text, the verify badge, and the cited sentences. */
+/**
+ * A grounded answer: the text, the verify badge, and the cited sentences.
+ * The hover-citation link is the signature interaction: hovering (or
+ * focusing) one sentence raises it and marks every sentence that cites
+ * the same source, with its source label emphasized.
+ */
 export default function CitedAnswer({
   answer,
   citations,
@@ -28,6 +36,9 @@ export default function CitedAnswer({
   // source); a missing or invalid threshold still degrades the badge.
   const badge = verifyBadge(verify, BADGE_THRESHOLDS);
   const pct = Math.round(badge.groundedness * 100);
+  const [hovered, setHovered] = useState<number | null>(null);
+  const activeSources =
+    hovered === null ? null : new Set(citations[hovered]?.sources ?? []);
   return (
     <Card title={strings.citedAnswerTitle}>
       <p className="ui-answer">{answer}</p>
@@ -39,13 +50,38 @@ export default function CitedAnswer({
         <p className="ui-banner ui-banner--warn">{strings.badgeDegradeNote}</p>
       )}
       <h4>{strings.citationsHeading}</h4>
-      <ol className="ui-citations">
-        {citations.map((citation, index) => (
-          <li key={`${index}-${citation.source}`}>
-            <span className="ui-citation-text">{citation.text}</span>{" "}
-            <span className="ui-citation-source">({citation.source})</span>
-          </li>
-        ))}
+      <ol className="ui-citations" onMouseLeave={() => setHovered(null)}>
+        {citations.map((citation, index) => {
+          const cited = citation.sources ?? [citation.source];
+          const active = hovered === index;
+          const linked =
+            hovered !== null &&
+            !active &&
+            cited.some((label) => activeSources?.has(label) ?? false);
+          const className =
+            "ui-citation" +
+            (active ? " ui-citation--active" : "") +
+            (linked ? " ui-citation--linked" : "");
+          return (
+            <li
+              key={`${index}-${citation.source}`}
+              className={className}
+              tabIndex={0}
+              onMouseEnter={() => setHovered(index)}
+              onFocus={() => setHovered(index)}
+              onBlur={() => setHovered(null)}
+            >
+              <span className="ui-citation-text">{citation.text}</span>{" "}
+              <span
+                className={
+                  active ? "ui-citation-source ui-citation-source--active" : "ui-citation-source"
+                }
+              >
+                ({citation.source})
+              </span>
+            </li>
+          );
+        })}
       </ol>
     </Card>
   );

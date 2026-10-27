@@ -125,6 +125,7 @@
   "reviewOverrideBody": "Your decision and note replace the model assignment. The model answer stays on record.",
   "reviewNoteLabel": "Note",
   "reviewNoteRequired": "A note is required to override.",
+  "reviewOverrideSubmit": "Record override",
   "reviewDecisionDone": "Decision recorded.",
   "reviewStateAuto": "Automatic",
   "reviewStateNeedsReview": "Needs review",
