@@ -157,7 +157,17 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
       )}
       {long.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
       {long.unknownOutcome && (
-        <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
+        <div className="ui-actions">
+          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
+          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
+        </div>
+      )}
+      {long.statusResult !== null && (
+        <StatusBanner kind="info">
+          {long.statusResult.message !== ""
+            ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
+            : strings.runnerStatusEmpty}
+        </StatusBanner>
       )}
       {resultView}
     </Card>

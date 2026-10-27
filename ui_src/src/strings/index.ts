@@ -177,13 +177,16 @@ export interface Strings {
   analyzeAdvisorTaskLabel: string;
   analyzeAdvisorAction: string;
   analyzeAdvisorTaskRequired: string;
-  analyzeAdvisorHeading: string;
   analyzeAdvisorEmpty: string;
   analyzeRankColumn: string;
   analyzeMethodColumn: string;
   analyzeWhyColumn: string;
   analyzeRunMethod: string;
   analyzeHumanOnly: string;
+  analyzeMethodNotWired: string;
+  analyzeValidationLabel: string;
+  analyzeClaimsLabel: string;
+  analyzeDoNotClaimLabel: string;
   analyzeRunnerTitle: string;
   analyzeRunnerBody: string;
   analyzeNotWiredTitle: string;

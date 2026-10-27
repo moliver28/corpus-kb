@@ -1,6 +1,7 @@
 import { Button, Card, Typography } from "antd";
 import { useState } from "react";
 import { strings } from "../strings";
+import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";
 import ActionCard from "./analyze/ActionCard";
@@ -44,20 +45,15 @@ const GUIDED = [
   },
 ] as const;
 
-/** The manifest's generic analysis methods, one picker button each. */
-const METHODS = [
-  "keyphrases-extract",
-  "lexical-classify",
-  "neighbors-classify",
-  "centroids-classify",
-  "clusters-inspect",
-  "duplicates-screen",
-  "outliers-rank",
-  "nli-classify",
-  "contradictions-screen",
-  "sentiment-screen",
-  "active-learn-next",
-] as const;
+/**
+ * The manifest's generic analysis methods: every /api/analysis/* op
+ * except the advisor itself (spec F8's eleven methods). Derived, so a
+ * manifest change updates the picker without a code edit.
+ */
+const METHODS: string[] = Object.entries(OPS)
+  .filter(([id, op]) => op.path.startsWith("/api/analysis/") && id !== "analysis-select-method")
+  .map(([id]) => id)
+  .sort();
 
 /**
  * The Analyze stage — the method advisor, the manifest-driven runner,
@@ -94,7 +90,9 @@ export default function Analyze() {
             </Button>
           ))}
         </div>
-        <OpRunner opId={method} initialBody={seed} />
+        {/* key remounts the runner on a method switch: no receipt or
+            loading state from the previous op can leak into it. */}
+        <OpRunner key={method} opId={method} initialBody={seed} />
       </Card>
       {GUIDED.map((card) => (
         <ActionCard key={card.opId} {...card} />

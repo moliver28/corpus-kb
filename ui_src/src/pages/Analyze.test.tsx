@@ -76,6 +76,21 @@ describe("Analyze page", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: strings.analyzeAdvisorAction }));
     expect(await screen.findByText("TF-IDF keyphrase scan")).toBeTruthy();
+    // Spec F8: the row carries its summary plus the register's own
+    // validation and permitted-claims guidance (expanded by default).
+    expect(
+      screen.getByText(
+        "Rank words and word sequences by document frequency and corpus rarity to find distinctive wording.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "Review tokenization, common words, phrase lengths, and the top-ranked terms.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Descriptions of distinctive wording in the corpus."),
+    ).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/analysis/select-method"));
     expect(sent?.body).toContain('"task_description":"find the recurring themes in the interviews"');
     // "Run this method" pre-fills the runner with the row's manifest op.

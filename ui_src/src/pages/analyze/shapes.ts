@@ -12,11 +12,18 @@ export interface AdvisorRow {
   rank_reason: string;
   /** The manifest op that runs this method, snake_case; null = human-only. */
   op: string | null;
+  validation_required: unknown;
+  permitted_claims: unknown;
+  do_not_claim: unknown;
 }
 
 export interface AdvisorEnvelope {
   status: string;
   recommendations: AdvisorRow[];
+}
+
+function optionalText(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
 }
 
 export function isAdvisorEnvelope(value: unknown): value is AdvisorEnvelope {
@@ -32,9 +39,17 @@ export function isAdvisorEnvelope(value: unknown): value is AdvisorEnvelope {
       typeof r.name === "string" &&
       typeof r.summary === "string" &&
       typeof r.rank === "number" &&
-      (r.op === null || typeof r.op === "string")
+      (r.op === null || typeof r.op === "string") &&
+      optionalText(r.validation_required) &&
+      optionalText(r.permitted_claims) &&
+      optionalText(r.do_not_claim)
     );
   });
+}
+
+/** One guidance cell -> "" when absent or unreadable (never [object Object]). */
+export function textOf(value: unknown): string {
+  return typeof value === "string" ? value : "";
 }
 
 /**

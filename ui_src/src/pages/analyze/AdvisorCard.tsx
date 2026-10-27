@@ -9,7 +9,12 @@ import UnavailablePanel from "../../components/UnavailablePanel";
 import { getOp } from "../../api/ops";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
-import { isAdvisorEnvelope, manifestOpId, type AdvisorRow } from "./shapes";
+import {
+  isAdvisorEnvelope,
+  manifestOpId,
+  textOf,
+  type AdvisorRow,
+} from "./shapes";
 
 interface Row {
   key: string;
@@ -17,18 +22,23 @@ interface Row {
   runnable: boolean;
 }
 
-const COLUMNS: ColumnsType<Row> = [
-  { title: strings.analyzeRankColumn, dataIndex: ["row", "rank"], key: "rank", width: 60 },
-  { title: strings.analyzeMethodColumn, dataIndex: ["row", "name"], key: "name" },
-  { title: strings.analyzeWhyColumn, dataIndex: ["row", "rank_reason"], key: "why" },
-];
+/** The method cell: the name with its summary right under it. */
+function methodCell(record: Row): ReactNode {
+  return (
+    <div>
+      <div>{record.row.name}</div>
+      <Typography.Text type="secondary">{record.row.summary}</Typography.Text>
+    </div>
+  );
+}
 
 /** One row's action cell: hand the method to the runner, or say why not. */
 function runCell(record: Row, onRunMethod: (opId: string) => void): ReactNode {
-  if (record.row.op === null || !record.runnable) {
-    return (
-      <Typography.Text type="secondary">{strings.analyzeHumanOnly}</Typography.Text>
-    );
+  if (record.row.op === null) {
+    return <Typography.Text type="secondary">{strings.analyzeHumanOnly}</Typography.Text>;
+  }
+  if (!record.runnable) {
+    return <Typography.Text type="secondary">{strings.analyzeMethodNotWired}</Typography.Text>;
   }
   return (
     <Button
@@ -41,10 +51,31 @@ function runCell(record: Row, onRunMethod: (opId: string) => void): ReactNode {
   );
 }
 
+/** The expanded row: the register's own validation and claims guidance. */
+function guidanceRow(record: Row): ReactNode {
+  return (
+    <div className="ui-stack">
+      <Typography.Paragraph style={{ marginBottom: 0 }}>
+        <strong>{strings.analyzeValidationLabel}: </strong>
+        {textOf(record.row.validation_required)}
+      </Typography.Paragraph>
+      <Typography.Paragraph style={{ marginBottom: 0 }}>
+        <strong>{strings.analyzeClaimsLabel}: </strong>
+        {textOf(record.row.permitted_claims)}
+      </Typography.Paragraph>
+      <Typography.Paragraph style={{ marginBottom: 0 }} type="secondary">
+        <strong>{strings.analyzeDoNotClaimLabel}: </strong>
+        {textOf(record.row.do_not_claim)}
+      </Typography.Paragraph>
+    </div>
+  );
+}
+
 /**
- * The method advisor: one select-method call, the register's ranking,
- * and a per-row action that hands the method to the op runner. The SPA
- * never re-ranks; the rows render in the server's order.
+ * The method advisor: one select-method call, the register's ranking
+ * with validation and permitted claims, and a per-row action that hands
+ * the method to the op runner. The SPA never re-ranks; the rows render
+ * in the server's order.
  */
 export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: string) => void }) {
   const [task, setTask] = useState("");
@@ -72,6 +103,12 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
         row,
         runnable: row.op !== null && getOp(manifestOpId(row.op)) !== undefined,
       }));
+      const columns: ColumnsType<Row> = [
+        { title: strings.analyzeRankColumn, dataIndex: ["row", "rank"], key: "rank", width: 60 },
+        { title: strings.analyzeMethodColumn, key: "name", render: (_v, r) => methodCell(r) },
+        { title: strings.analyzeWhyColumn, dataIndex: ["row", "rank_reason"], key: "why" },
+        { title: "", key: "run", render: (_v, r) => runCell(r, onRunMethod) },
+      ];
       body = (
         <div className="ui-stack">
           {rows.length === 0 && (
@@ -82,14 +119,12 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
             rowKey="key"
             pagination={false}
             dataSource={rows}
-            columns={[
-              ...COLUMNS,
-              {
-                title: "",
-                key: "run",
-                render: (_value: unknown, record: Row) => runCell(record, onRunMethod),
-              },
-            ]}
+            columns={columns}
+            expandable={{
+              defaultExpandAllRows: true,
+              expandedRowRender: guidanceRow,
+              expandRowByClick: false,
+            }}
           />
         </div>
       );
