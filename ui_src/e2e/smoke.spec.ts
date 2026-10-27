@@ -67,7 +67,8 @@ test.describe("accessibility (axe-core)", () => {
   for (const stage of ["#/ingest", "#/analyze", "#/release"]) {
     test(`no critical or serious violations on ${stage}`, async ({ page }) => {
       await page.goto(`/app/${stage}`);
-      await page.waitForTimeout(500);
+      // Wait for the stage's first card, not a fixed sleep.
+      await page.locator(".ant-card-head-title").first().waitFor();
       const results = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa"])
         .analyze();

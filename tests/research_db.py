@@ -19,6 +19,7 @@ preserved for local runs. In the CI service image the bootstrap role
 
 from __future__ import annotations
 
+import asyncio
 import os
 import re
 
@@ -152,3 +153,9 @@ async def reset_singletons() -> None:
 
     reset_app()
     reset_research_handler()
+
+
+if __name__ == "__main__":
+    # One-line bootstrap for the demo/e2e recipes (docs/UI-DEMO.md):
+    # create the scratch database and print its application DSN.
+    print(asyncio.run(create_research_db()))

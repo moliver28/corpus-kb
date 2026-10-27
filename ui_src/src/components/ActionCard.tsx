@@ -66,7 +66,10 @@ function SettledView({
     // server's own reason and remedy as a plain-English note.
     if (typeof data.status === "string" && data.status !== "success") {
       const reason = typeof data.reason === "string" ? data.reason : result.message;
-      const remedy = typeof data.remedy === "string" ? data.remedy : "";
+      const remedy =
+        typeof data.remedy === "string" && data.remedy !== ""
+          ? data.remedy
+          : result.remediation;
       return (
         <div className="ui-stack">
           <StatusBanner kind="warn">

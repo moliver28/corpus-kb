@@ -64,9 +64,6 @@ A duplicate block names the merge suggestion. The notebook views
 show evidence, uncoded units, and overlap. The governance report
 renders its traffic lights and next actions. The cycle wizard runs
 one stage per click and never approves for you.
-notebook views show evidence, uncoded units, and overlap. The
-governance report renders its traffic lights and next actions. The
-cycle wizard runs one stage per click and never approves for you.
 
 ## Release
 
@@ -85,13 +82,11 @@ docs/ADMIN.md for the values and bounds.
 
 ## Gates
 
-CI runs these gates, and poe runs them locally. The list: lint,
-types, unit tests, the build, the bundle budget, the license
-allowlist, and the manifest drift check. The Playwright smoke with
-the axe scan runs on a live throwaway server. Rule 11 in
-docs/research/harness-zero-drift-program.md holds the map.
-docs/research/harness-zero-drift-program.md holds the map.
-docs/research/harness-zero-drift-program.md holds the map.
+CI runs these gates, and poe runs them locally: lint, types, unit
+tests, the build, the bundle budget, the license allowlist, the
+manifest drift check, and the Playwright smoke with the axe scan.
+The CI enforcement map in
+docs/research/harness-zero-drift-program.md (rule 10) holds the pairings.
 
 ## Maintainability scorecard (re-measured 2026-10-27, Task 9)
 

@@ -84,8 +84,12 @@ def main() -> int:
         # seconds on Windows; retry the start instead of failing the run.
         server_log = REPO / "ui_src" / "test-results" / "server.log"
         server_log.parent.mkdir(parents=True, exist_ok=True)
+        # Open once in append mode: failed attempts keep their output for
+        # the artifact upload instead of truncating each retry.
+        log_handle = server_log.open("a")
         for attempt in range(1, 4):
-            log_handle = server_log.open("w")
+            log_handle.write(f"--- ui_e2e server start (attempt {attempt}) ---\n")
+            log_handle.flush()
             server = subprocess.Popen(
                 [exe, "start", "--transport", "http", "--port", str(PORT)],
                 env=env,
