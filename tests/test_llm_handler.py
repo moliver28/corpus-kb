@@ -63,6 +63,47 @@ class TestLlmHandlerConfig:
         assert LlmHandler is DirectLlmHandler
 
 
+class TestLlmHandlerTimeout:
+    def test_default_timeout_unchanged(self) -> None:
+        handler = LlmHandler(_CONFIG)
+
+        assert handler._timeout == 120.0
+
+    def test_config_timeout_s_is_honored(self) -> None:
+        handler = LlmHandler({"llm": {"timeout_s": 900}})
+
+        assert handler._timeout == 900.0
+
+    def test_config_timeout_s_float_is_honored(self) -> None:
+        handler = LlmHandler({"llm": {"timeout_s": 0.5}})
+
+        assert handler._timeout == 0.5
+
+    def test_invalid_timeout_s_falls_back_to_default(self) -> None:
+        handler = LlmHandler({"llm": {"timeout_s": "not-a-number"}})
+
+        assert handler._timeout == 120.0
+
+    def test_explicit_timeout_argument_wins(self) -> None:
+        handler = LlmHandler({"llm": {"timeout_s": 900}}, timeout=2.0)
+
+        assert handler._timeout == 2.0
+
+    async def test_timeout_is_used_by_http_client(self) -> None:
+        handler = LlmHandler({"llm": {"timeout_s": 300}})
+
+        with patch("corpus_kb.handlers.llm_handler.httpx.AsyncClient") as client_cls:
+            client_cls.return_value.__aenter__ = AsyncMock(return_value=client_cls.return_value)
+            client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+            client_cls.return_value.post = AsyncMock(
+                return_value=httpx.Response(200, json=_CHAT_PAYLOAD)
+            )
+            result = await handler.generate("Say hi")
+
+        assert result == _CHAT_PAYLOAD
+        client_cls.assert_called_once_with(timeout=300.0)
+
+
 class TestLlmHandlerChat:
     async def test_chat_returns_parsed_response_on_success(self) -> None:
         handler = LlmHandler(_CONFIG)

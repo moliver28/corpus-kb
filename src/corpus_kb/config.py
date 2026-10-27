@@ -153,6 +153,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
         ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
         ("observability", "otlp_endpoint"): "CORPUS_KB_OTLP_ENDPOINT",
+        ("llm", "timeout_s"): "CORPUS_KB_LLM_TIMEOUT_S",
         ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
         ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
         ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
@@ -160,6 +161,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 
     bool_keys = {"verify_image_signature", "openai_compat"}
     int_keys = {"dimensions", "port"}
+    float_keys = {"timeout_s"}
 
     for (section, key), env_var in env_overrides.items():
         value = os.environ.get(env_var)
@@ -167,6 +169,8 @@ def load_config(path: str | None = None) -> dict[str, Any]:
             section_dict = cast(dict[str, object], config[section])
             if key in int_keys:
                 section_dict[key] = int(value)
+            elif key in float_keys:
+                section_dict[key] = float(value)
             elif key in bool_keys:
                 section_dict[key] = value.lower() in {"1", "true", "yes", "on"}
             else:
@@ -274,6 +278,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_TRANSPORT",
         "CORPUS_KB_PORT",
         "CORPUS_KB_OPENAI_COMPAT",
+        "CORPUS_KB_LLM_TIMEOUT_S",
         "CORPUS_KB_OTLP_ENDPOINT",
         "CORPUS_KB_INSTALL_DATA_DIR",
         "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
