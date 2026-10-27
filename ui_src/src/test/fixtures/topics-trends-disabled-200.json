@@ -1,0 +1,16 @@
+{
+  "name": "topics-trends-disabled-200",
+  "source": "canonical",
+  "note": "POST /api/topics/trends dormant envelope (tools/topics_tools.py _trends_disabled). The flag is the documented off default; re-record when enabled.",
+  "request": { "method": "POST", "path": "/api/topics/trends" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "disabled",
+      "reason": "analysis.topics.over_time.enabled is false in the loaded config.",
+      "remedy": "Set analysis.topics.over_time.enabled: true, then retry.",
+      "topic_count": 0,
+      "trends": []
+    }
+  }
+}

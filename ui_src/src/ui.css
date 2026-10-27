@@ -50,6 +50,16 @@
   font-size: 12px;
 }
 
+/* Analyze: the dormant-feature YAML snippet. */
+.ui-json-yaml {
+  margin: 0;
+  background: #fafafa;
+  border: 1px solid #f0f0f0;
+  padding: 8px;
+  font-size: 12px;
+  overflow: auto;
+}
+
 /* App shell (App.tsx): layout-only classes. */
 .ui-shell {
   min-height: 100vh;
