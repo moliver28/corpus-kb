@@ -30,6 +30,7 @@
   "receiptDegraded": "Finished, with gaps",
   "receiptPartial": "Partly done",
   "receiptAbstained": "No answer given",
+  "receiptNotSuccess": "The server finished without success. Read its note:",
   "runnerRunLabel": "Run",
   "runnerCancelLabel": "Cancel waiting",
   "runnerCheckStatus": "Check status",

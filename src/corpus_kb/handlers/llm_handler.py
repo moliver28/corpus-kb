@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 # Local models load from disk on first use; a cold 4B load plus inference
 # routinely passes 30 s. The claim judge already allows 120 s (rag/judge.py).
+# Set llm.timeout_s (or CORPUS_KB_LLM_TIMEOUT_S) higher for slow hosts.
 DEFAULT_TIMEOUT_S = 120.0
 
 
@@ -35,14 +36,14 @@ class LlmHandler:
     def __init__(
         self,
         config: dict[str, object] | None = None,
-        timeout: float = DEFAULT_TIMEOUT_S,
+        timeout: float | None = None,
     ) -> None:
         self._config = config or load_config()
         llm = cast(dict[str, object], self._config.get("llm", {}))
 
         self.model = _str_or_default(llm, "model", "qwen3:4b")
         self.base_url = _str_or_default(llm, "base_url", "http://localhost:11434")
-        self._timeout = timeout
+        self._timeout = timeout if timeout is not None else _timeout_or_default(llm)
 
     async def chat(
         self,
@@ -124,3 +125,14 @@ def _validate_messages(messages: list[dict[str, str]]) -> str | None:
 def _str_or_default(config: dict[str, object], key: str, default: str) -> str:
     value = config.get(key, default)
     return str(value) if value is not None else default
+
+
+def _timeout_or_default(config: dict[str, object]) -> float:
+    """The configured ``llm.timeout_s`` in seconds, or the default.
+
+    Accepts int or float; any other value (or none) keeps the default.
+    """
+    value = config.get("timeout_s")
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return DEFAULT_TIMEOUT_S
+    return float(value)

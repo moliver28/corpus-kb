@@ -26,10 +26,14 @@ def _config(base_url: str, dimensions: int) -> dict:
 
 
 @pytest.mark.asyncio
-async def test_initialize_ollama_unreachable_raises() -> None:
-    """Pointing the backend at a dead Ollama port raises RuntimeError."""
+async def test_initialize_ollama_unreachable_degrades() -> None:
+    """A dead Ollama port logs one warning; the store still boots degraded."""
     backend = LlamaIndexPostgresBackend(_config("http://localhost:65535", 768))
-    with pytest.raises(RuntimeError):
+    fake_store = type("FakeStore", (), {"embed_dim": 768})()
+    with patch(
+        "corpus_kb.storage.llamaindex_backend.PGVectorStore.from_params",
+        return_value=fake_store,
+    ):
         await backend.initialize()
 
 

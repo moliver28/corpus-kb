@@ -35,6 +35,7 @@ import searchOk200 from "./fixtures/search-ok-200.json";
 import selectMethodOk200 from "./fixtures/select-method-ok-200.json";
 import serverError500 from "./fixtures/server-error-500.json";
 import topicsOk200 from "./fixtures/topics-ok-200.json";
+import topicsBuildDisabled200 from "./fixtures/topics-build-disabled-200.json";
 import topicsTrendsDisabled200 from "./fixtures/topics-trends-disabled-200.json";
 import unavailable503 from "./fixtures/unavailable-503.json";
 import validationError400 from "./fixtures/validation-error-400.json";
@@ -110,6 +111,7 @@ const FIXTURES = [
   notebookAnswer200,
   reviewExecuteOk200,
   selectMethodOk200,
+  topicsBuildDisabled200,
   topicsTrendsDisabled200,
   ingestUrlOk200,
   ingestDirectoryOk200,
@@ -152,6 +154,7 @@ const EXPECTED_KINDS: Record<string, string> = {
   "notebook-answer-200": "ok",
   "review-execute-ok-200": "ok",
   "select-method-ok-200": "ok",
+  "topics-build-disabled-200": "ok",
   "topics-trends-disabled-200": "ok",
   "ingest-url-ok-200": "ok",
   "ingest-directory-ok-200": "ok",
@@ -200,6 +203,7 @@ describe("committed envelope fixtures", () => {
         f.name === "notebook-answer-200" ||
         f.name === "review-execute-ok-200" ||
         f.name === "select-method-ok-200" ||
+        f.name === "topics-build-disabled-200" ||
         f.name === "topics-trends-disabled-200" ||
         f.name === "ingest-url-ok-200" ||
         f.name === "ingest-directory-ok-200" ||

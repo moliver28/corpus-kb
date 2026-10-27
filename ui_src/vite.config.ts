@@ -1,4 +1,4 @@
-import { defineConfig } from "vitest/config";
+import { defaultExclude, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
 // Spec D.6 (UI SPA program): the SPA builds into the Python package as
@@ -28,5 +28,7 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // The Playwright smoke (e2e/) runs in its own runner, not vitest.
+    exclude: ["e2e/**", ...defaultExclude],
   },
 });

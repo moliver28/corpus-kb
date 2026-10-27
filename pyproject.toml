@@ -652,6 +652,16 @@ help = "Build the SPA into src/corpus_kb/ui_dist/ (Vite, base /app/)"
 cmd = "pnpm -C ui_src run check-bundle"
 help = "UI initial-route bundle budget gate (350 kB gzip)"
 
+[tool.poe.tasks.ui-e2e]
+# SPA Playwright smoke + axe scan against a REAL throwaway server
+# (Task 9): scripts/ui_e2e.py boots corpus-kb on a scratch database
+# (tests/research_db.py recipe), preloads the demo corpus, runs
+# ui_src/e2e, and tears both down. Needs: Postgres, the venv console
+# script, pnpm, and the chromium browser (pnpm -C ui_src exec playwright
+# install chromium).
+cmd = "python scripts/ui_e2e.py"
+help = "SPA e2e smoke + a11y scan on a live throwaway server"
+
 [tool.poe.tasks.ui-licenses]
 # Real gate (Task 4): production deps stay on the MIT / Apache-2.0 / BSD /
 # ISC / 0BSD allowlist; the lock records the production tree only (dev

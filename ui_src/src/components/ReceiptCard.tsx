@@ -4,6 +4,9 @@ import type { OpResult } from "../api/types";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 
+// Honest-envelope statuses that must never read as a completed run.
+const NOT_SUCCESS: ReadonlySet<string> = new Set(["disabled", "skipped"]);
+
 /** Map the envelope status word to one plain headline (jargon defense). */
 function headline(status: string): string {
   switch (status) {
@@ -20,6 +23,9 @@ function headline(status: string): string {
     case "abstained":
       return strings.receiptAbstained;
     default:
+      if (NOT_SUCCESS.has(status)) {
+        return strings.receiptNotSuccess;
+      }
       return strings.receiptDone;
   }
 }
@@ -27,12 +33,38 @@ function headline(status: string): string {
 /** The receipt for a finished op: plain headline, notes, raw answer hidden. */
 export default function ReceiptCard({ result }: { result: OpResult }) {
   const message = result.message;
+  const data =
+    typeof result.data === "object" && result.data !== null
+      ? (result.data as Record<string, unknown>)
+      : {};
+  const note = NOT_SUCCESS.has(result.status);
+  const reason =
+    typeof data.reason === "string" && data.reason !== ""
+      ? data.reason
+      : message;
+  const remedy =
+    typeof data.remedy === "string" && data.remedy !== ""
+      ? data.remedy
+      : result.remediation;
   return (
     <Card title={headline(result.status)} size="small">
       {result.status === "degraded" && (
         <StatusBanner kind="warn">{strings.receiptDegraded}</StatusBanner>
       )}
-      {message !== "" && <p>{message}</p>}
+      {note && (
+        <>
+          <StatusBanner kind="warn">
+            {reason !== "" ? reason : strings.receiptNotSuccess}
+          </StatusBanner>
+          {remedy !== "" && (
+            <StatusBanner kind="info">
+              <strong>{strings.remediationLabel}: </strong>
+              {remedy}
+            </StatusBanner>
+          )}
+        </>
+      )}
+      {message !== "" && !note && <p>{message}</p>}
       <JsonViewer value={result.data} />
     </Card>
   );

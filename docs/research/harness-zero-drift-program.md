@@ -101,6 +101,7 @@ land in this document first, before any implementation.
 | UI build | `poe ui-build` (includes the bundle check); `poe ui-bundle` calls it directly | ci.yml / ui | UI SPA Task 3 (PR-1); budget gate Task 6a (PR-5a) |
 | UI licenses | `poe ui-licenses`: production allowlist (MIT, Apache-2.0, BSD, ISC, 0BSD) writing the committed `ui_licenses.lock.json` (production tree only; dev trees are platform-specific) | ci.yml / ui | UI SPA Task 4 (PR-2) |
 | UI manifest | `poe ui-manifest` (drift check); also runs in `poe gen` | ci.yml / ui | UI SPA Task 4 (PR-2) |
+| UI e2e + a11y | `poe ui-e2e`: Playwright smoke + axe scan on a REAL throwaway server (scripts/ui_e2e.py boots corpus-kb, preloads the demo corpus); REQUIRED job — it degrades without Ollama exactly like the pytest suite | ci.yml / ui-e2e | UI SPA Task 9 (PR-6) |
 
 ## The zero-drift gate
 

@@ -113,6 +113,18 @@ dormant; the BERTopic import needs the `[topics]` extra.
 | `fixture_dir` | `tests/fixtures/topics_recorded` | Recorded reduction answers (SHA256-keyed) |
 | `live_fallback` | `false` | Allow live reduction calls when no fixture exists |
 
+### `ui.spa`
+
+The browser UI runtime keys (the SPA reads them from
+/app/runtime-config.json at boot; docs/UI-SPA.md). They tune the
+running app without a rebuild.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `poll_ms` | `2000` | Milliseconds between status polls on the Scale page. Whole number, 100 to 60000 |
+| `request_timeout_s` | `60` | Seconds one app API call waits before giving up. Number, 0.1 to 600 |
+| `max_upload_mb` | `50` | Largest file the upload page accepts, in megabytes. Whole number, 1 to 2048 |
+
 ### `graph`
 
 | Key | Default | Description |
@@ -192,6 +204,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_PORT` | `server.port` | `load_config` |
 | `CORPUS_KB_OPENAI_COMPAT` | `server.openai_compat` | `load_config` |
 | `CORPUS_KB_OTLP_ENDPOINT` | `observability.otlp_endpoint` | `load_config` |
+| `CORPUS_KB_LLM_TIMEOUT_S` | `llm.timeout_s` (seconds per chat/generate call, default 120) | `load_config`, `handlers.llm_handler` |
 | `CORPUS_KB_INSTALL_DATA_DIR` | `installer.data_dir` | installer checkpoint state (`_setup.install_state`) |
 | `CORPUS_KB_INSTALL_POSTGRES_IMAGE` | `installer.postgres_image` | `corpus-kb setup` image pull/verify (`_setup.install`) |
 | `CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE` | `installer.verify_image_signature` | `corpus-kb setup` image verify (`_setup.install`) |

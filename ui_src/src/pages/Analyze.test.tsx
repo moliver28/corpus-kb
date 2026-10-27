@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { strings } from "../strings";
 import ok200 from "../test/fixtures/ok-200.json";
 import selectMethodOk from "../test/fixtures/select-method-ok-200.json";
+import topicsBuildDisabled from "../test/fixtures/topics-build-disabled-200.json";
 import topicsTrendsDisabled from "../test/fixtures/topics-trends-disabled-200.json";
 import Analyze from "./Analyze";
 
@@ -171,6 +172,32 @@ describe("Analyze page", () => {
     expect(
       within(trendsCard).getByRole("button", { name: strings.analyzeCopyYaml }),
     ).toBeTruthy();
+  });
+
+  it("never claims Done for a non-success envelope (live walkthrough finding)", async () => {
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/topics/build",
+        reply: respond(200, topicsBuildDisabled.response.body),
+      },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    const topicsCard = cardOf(strings.analyzeTopicsBuildTitle);
+    fireEvent.click(within(topicsCard).getByRole("button", { name: strings.runnerRunLabel }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.confirmConfirm }));
+    expect(
+      await within(topicsCard).findByText(
+        "topics.enabled is false in the loaded config.",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(topicsCard).getByText(
+        "Set topics.enabled: true (and install the [topics] extra), then retry.",
+      ),
+    ).toBeTruthy();
+    expect(within(topicsCard).queryByText(strings.receiptDone)).toBeNull();
   });
 
   it("marks the unwired analysis families honestly", async () => {

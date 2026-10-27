@@ -116,6 +116,7 @@ export default function OpRunner({
       <Typography.Paragraph type="secondary">{strings.runnerParamsHint}</Typography.Paragraph>
       <Input.TextArea
         rows={6}
+        aria-label={strings.runnerParamsHint}
         value={bodyText}
         onChange={(e) => setBodyText(e.target.value)}
         disabled={running}

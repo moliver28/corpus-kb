@@ -61,3 +61,7 @@ src/corpus_kb/ui_dist/
 # Local tooling state
 .zcodeignore
 *.stackdump
+
+# Playwright local artifacts (ui-e2e)
+ui_src/test-results/
+ui_src/playwright-report/

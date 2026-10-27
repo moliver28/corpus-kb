@@ -2,7 +2,10 @@
   "name": "ask-degraded-200",
   "source": "canonical",
   "note": "POST /api/ask degraded envelope: evidence only, no generation (ask/composer.py STATUS_DEGRADED). Re-record against a running server with the model server down.",
-  "request": { "method": "POST", "path": "/api/ask" },
+  "request": {
+    "method": "POST",
+    "path": "/api/ask"
+  },
   "response": {
     "httpStatus": 200,
     "body": {
@@ -15,18 +18,29 @@
             "n": 1,
             "chunk_id": "1111aaaa-2222-4bbb-8ccc-3333dddd4444",
             "doc_id": "5555eeee-6666-4fff-8aaa-4444bbbb5555",
-            "source": "samples/grid-brief.md",
+            "source": "F:\\corpus\\demo-kb\\grid-brief.md",
             "text": "The plan installs battery storage at two substations.",
             "score": 0.4,
-            "file_path": "samples/grid-brief.md",
-            "heading_path": ["Storage"]
+            "file_path": "F:\\corpus\\demo-kb\\grid-brief.md",
+            "heading_path": [
+              "Storage"
+            ]
           }
         ],
-        "verify": { "groundedness": 0.0, "verdicts": [], "abstained": true },
+        "verify": {
+          "groundedness": 0,
+          "verdicts": [],
+          "abstained": true
+        },
         "model": "test-model",
         "note": "generation unavailable; returning evidence only"
       },
-      "degraded_excluded": { "count": 2, "reasons": ["zero-query-embedding"] }
+      "degraded_excluded": {
+        "count": 2,
+        "reasons": [
+          "zero-query-embedding"
+        ]
+      }
     }
   }
 }

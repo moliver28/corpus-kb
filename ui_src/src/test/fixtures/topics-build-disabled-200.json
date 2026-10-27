@@ -1,0 +1,18 @@
+{
+  "name": "topics-build-disabled-200",
+  "source": "canonical",
+  "note": "POST /api/topics/build dormant envelope with the topics extra off (tools/topics_tools.py _disabled). Live walkthrough proof: the card must show the reason + remedy, never 'Done'. Re-record when enabled.",
+  "request": { "method": "POST", "path": "/api/topics/build" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "disabled",
+      "reason": "topics.enabled is false in the loaded config.",
+      "remedy": "Set topics.enabled: true (and install the [topics] extra), then retry.",
+      "topic_count": 0,
+      "topics": [],
+      "unassigned_count": 0,
+      "notes": []
+    }
+  }
+}

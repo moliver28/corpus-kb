@@ -48,11 +48,17 @@ class LlamaIndexPostgresBackend:
         if not self._connection_string:
             raise RuntimeError("LlamaIndexPostgresBackend requires database.connection_string")
 
-        # Verify Ollama embedding endpoint is reachable before building store.
+        # Probe the embedding endpoint, but do not refuse to boot: the
+        # embedder's zero-vector fallback keeps the server usable, and the
+        # doctor reports the degraded state. Boot must survive a model
+        # that is not pulled yet (CI pulls a different default model).
         try:
             await self._ollama_embedding.aget_text_embedding("ping")
         except Exception as exc:
-            raise RuntimeError(f"Ollama embedding check failed: {exc}") from exc
+            logger.warning(
+                "Ollama embedding check failed (%s); continuing in degraded zero-vector mode",
+                exc,
+            )
 
         vector_store = PGVectorStore.from_params(
             connection_string=self._connection_string,

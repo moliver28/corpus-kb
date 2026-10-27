@@ -87,6 +87,48 @@ def ui_spa_settings_error(config: dict[str, object]) -> str | None:
     return None
 
 
+def apply_env_overrides(config: dict[str, Any]) -> None:
+    """Apply CORPUS_KB_* environment variable overrides to ``config``.
+
+    Every mapped variable is live: the config key it writes has a real
+    consumer (install.py, install_state.py, server_wiring.py). Doctor reports
+    any set-but-unmapped CORPUS_KB_* variable (see KNOWN_CORPUS_KB_ENV_VARS
+    and _setup/doctor_env.py).
+    """
+    env_overrides: dict[tuple[str, str], str] = {
+        ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
+        ("embedding", "dimensions"): "CORPUS_KB_EMBEDDING_DIMENSIONS",
+        ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
+        ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
+        ("server", "transport"): "CORPUS_KB_TRANSPORT",
+        ("server", "port"): "CORPUS_KB_PORT",
+        ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
+        ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
+        ("observability", "otlp_endpoint"): "CORPUS_KB_OTLP_ENDPOINT",
+        ("llm", "timeout_s"): "CORPUS_KB_LLM_TIMEOUT_S",
+        ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
+        ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
+        ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
+    }
+
+    bool_keys = {"verify_image_signature", "openai_compat"}
+    int_keys = {"dimensions", "port"}
+    float_keys = {"timeout_s"}
+
+    for (section, key), env_var in env_overrides.items():
+        value = os.environ.get(env_var)
+        if value is not None:
+            section_dict = cast(dict[str, object], config[section])
+            if key in int_keys:
+                section_dict[key] = int(value)
+            elif key in float_keys:
+                section_dict[key] = float(value)
+            elif key in bool_keys:
+                section_dict[key] = value.lower() in {"1", "true", "yes", "on"}
+            else:
+                section_dict[key] = value
+
+
 # The config tree is schemaless YAML; Any is the honest leaf type. It lets
 # callers index nested sections without casting every hop.
 def load_config(path: str | None = None) -> dict[str, Any]:
@@ -138,39 +180,7 @@ def load_config(path: str | None = None) -> dict[str, Any]:
     # so every consumer only ever sees canonical keys.
     apply_legacy_aliases(config)
 
-    # Environment variable overrides. Every mapped variable is live: the
-    # config key it writes has a real consumer (install.py, install_state.py,
-    # server_wiring.py). Removed keys and their variables are gone for good —
-    # doctor reports any set-but-unmapped CORPUS_KB_* variable (see
-    # KNOWN_CORPUS_KB_ENV_VARS and _setup/doctor_env.py).
-    env_overrides: dict[tuple[str, str], str] = {
-        ("embedding", "model"): "CORPUS_KB_EMBEDDING_MODEL",
-        ("embedding", "dimensions"): "CORPUS_KB_EMBEDDING_DIMENSIONS",
-        ("graph", "backend"): "CORPUS_KB_GRAPH_BACKEND",
-        ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
-        ("server", "transport"): "CORPUS_KB_TRANSPORT",
-        ("server", "port"): "CORPUS_KB_PORT",
-        ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
-        ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
-        ("observability", "otlp_endpoint"): "CORPUS_KB_OTLP_ENDPOINT",
-        ("installer", "data_dir"): "CORPUS_KB_INSTALL_DATA_DIR",
-        ("installer", "postgres_image"): "CORPUS_KB_INSTALL_POSTGRES_IMAGE",
-        ("installer", "verify_image_signature"): "CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE",
-    }
-
-    bool_keys = {"verify_image_signature", "openai_compat"}
-    int_keys = {"dimensions", "port"}
-
-    for (section, key), env_var in env_overrides.items():
-        value = os.environ.get(env_var)
-        if value is not None:
-            section_dict = cast(dict[str, object], config[section])
-            if key in int_keys:
-                section_dict[key] = int(value)
-            elif key in bool_keys:
-                section_dict[key] = value.lower() in {"1", "true", "yes", "on"}
-            else:
-                section_dict[key] = value
+    apply_env_overrides(config)
 
     apply_extraction_backend_alias(config)
 
@@ -274,6 +284,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_TRANSPORT",
         "CORPUS_KB_PORT",
         "CORPUS_KB_OPENAI_COMPAT",
+        "CORPUS_KB_LLM_TIMEOUT_S",
         "CORPUS_KB_OTLP_ENDPOINT",
         "CORPUS_KB_INSTALL_DATA_DIR",
         "CORPUS_KB_INSTALL_POSTGRES_IMAGE",

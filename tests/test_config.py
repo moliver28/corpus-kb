@@ -90,6 +90,24 @@ def test_int_env_overrides_parse_as_int(no_env_overrides: None) -> None:
     assert isinstance(server["port"], int)
 
 
+def test_llm_timeout_env_override_parses_as_float(no_env_overrides: None) -> None:
+    """CORPUS_KB_LLM_TIMEOUT_S parses as a float and lands in llm.timeout_s."""
+    with patch.dict("os.environ", {"CORPUS_KB_LLM_TIMEOUT_S": "900.5"}, clear=False):
+        cfg = load_config()
+
+    llm = cast(dict[str, object], cfg["llm"])
+    assert llm["timeout_s"] == 900.5
+    assert isinstance(llm["timeout_s"], float)
+
+
+def test_llm_timeout_default_absent(no_env_overrides: None) -> None:
+    """Without the env var, llm.timeout_s keeps whatever the config files set."""
+    cfg = load_config()
+
+    llm = cast(dict[str, object], cfg["llm"])
+    assert "timeout_s" not in llm or isinstance(llm["timeout_s"], (int, float))
+
+
 def test_dead_env_mappings_are_ignored(no_env_overrides: None) -> None:
     """Removed mappings neither crash config load nor invent config keys.
 
