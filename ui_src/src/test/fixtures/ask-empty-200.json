@@ -1,0 +1,21 @@
+{
+  "name": "ask-empty-200",
+  "source": "canonical",
+  "note": "POST /api/ask honest empty envelope (ask/composer.py STATUS_EMPTY). Re-record against a running server with an empty corpus.",
+  "request": { "method": "POST", "path": "/api/ask" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "empty",
+      "result": {
+        "answer": "",
+        "sentences": [],
+        "sources": [],
+        "verify": { "groundedness": 0.0, "verdicts": [], "abstained": true },
+        "model": "test-model",
+        "note": "no evidence matched the question"
+      },
+      "degraded_excluded": { "count": 0, "reasons": [] }
+    }
+  }
+}

@@ -133,3 +133,23 @@
   margin: 0;
   color: #595959;
 }
+
+/* AskCard: the client-only question history. A history entry is a
+   plain button styled as a link, so it stays keyboard accessible. */
+.ui-history {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.ui-history__item {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #1677ff;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.ui-history__item:hover {
+  text-decoration: underline;
+}

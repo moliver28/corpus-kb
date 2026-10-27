@@ -139,6 +139,32 @@ export interface Strings {
   reviewTopicsTitle: string;
   errorCopyDiagnostic: string;
   errorCopied: string;
+  askTitle: string;
+  askBody: string;
+  askQueryLabel: string;
+  askAction: string;
+  askQueryRequired: string;
+  askEmptyState: string;
+  askDegradedState: string;
+  askDegradedExcluded: string;
+  askNoteLabel: string;
+  askEvidenceHeading: string;
+  askHistoryTitle: string;
+  askHistoryEmpty: string;
+  askTabSearch: string;
+  askTabVerify: string;
+  askTabNotebook: string;
+  askSearchAction: string;
+  askSearchQueryLabel: string;
+  askSearchEmpty: string;
+  askVerifyNotWired: string;
+  askNotebookProjectLabel: string;
+  askNotebookAction: string;
+  askNotebookProjectRequired: string;
+  askNotebookRetrievalOnly: string;
+  askColumnSource: string;
+  askColumnText: string;
+  askColumnScore: string;
 }
 
 export const strings: Strings = en;

@@ -1,0 +1,36 @@
+{
+  "name": "notebook-answer-200",
+  "source": "canonical",
+  "note": "POST /api/notebook/ask answer envelope (research/notebook.py notebook_ask). Re-record against a running server with a coded project.",
+  "request": { "method": "POST", "path": "/api/notebook/ask" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "answer",
+      "sentences": [
+        {
+          "text": "Residents blamed storm damage for the outage [1].",
+          "citations": [1]
+        }
+      ],
+      "evidence": [
+        {
+          "n": 1,
+          "doc_id": "8888dddd-9999-4eee-9fff-6666aaaa7777",
+          "title": "Outage interview 1",
+          "project": "Grid Interviews",
+          "speaker": "R1",
+          "timestamp_s": 42.0,
+          "turn_range": [3, 3],
+          "exchange_seq": 2,
+          "question": "What caused the delay?",
+          "answer": "The storm took the line down on Tuesday night.",
+          "highlighted_answer": "The storm took the line down",
+          "matched_kind": "answer",
+          "score": 0.77
+        }
+      ],
+      "llm_calls": 1
+    }
+  }
+}

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { normalize } from "../api/errors";
+import askDegraded200 from "./fixtures/ask-degraded-200.json";
+import askEmpty200 from "./fixtures/ask-empty-200.json";
+import askSuccess200 from "./fixtures/ask-success-200.json";
 import assignmentsOk200 from "./fixtures/assignments-ok-200.json";
 import blocked409 from "./fixtures/blocked-409.json";
 import degraded200 from "./fixtures/degraded-200.json";
@@ -8,9 +11,11 @@ import demoPartial200 from "./fixtures/demo-partial-200.json";
 import doctorOk200 from "./fixtures/doctor-ok.json";
 import empty200 from "./fixtures/empty-200.json";
 import ingestStatusOk200 from "./fixtures/ingest-status-ok-200.json";
+import notebookAnswer200 from "./fixtures/notebook-answer-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
 import ok200 from "./fixtures/ok-200.json";
 import reembedOk200 from "./fixtures/reembed-ok-200.json";
+import searchOk200 from "./fixtures/search-ok-200.json";
 import serverError500 from "./fixtures/server-error-500.json";
 import topicsOk200 from "./fixtures/topics-ok-200.json";
 import unavailable503 from "./fixtures/unavailable-503.json";
@@ -80,6 +85,11 @@ const FIXTURES = [
   topicsOk200,
   ingestStatusOk200,
   reembedOk200,
+  askSuccess200,
+  askEmpty200,
+  askDegraded200,
+  searchOk200,
+  notebookAnswer200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -99,6 +109,11 @@ const EXPECTED_KINDS: Record<string, string> = {
   "topics-ok-200": "ok",
   "ingest-status-ok-200": "ok",
   "reembed-ok-200": "ok",
+  "ask-success-200": "ok",
+  "ask-empty-200": "ok",
+  "ask-degraded-200": "ok",
+  "search-ok-200": "ok",
+  "notebook-answer-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -123,7 +138,12 @@ describe("committed envelope fixtures", () => {
         f.name === "assignments-ok-200" ||
         f.name === "topics-ok-200" ||
         f.name === "ingest-status-ok-200" ||
-        f.name === "reembed-ok-200"
+        f.name === "reembed-ok-200" ||
+        f.name === "ask-success-200" ||
+        f.name === "ask-empty-200" ||
+        f.name === "ask-degraded-200" ||
+        f.name === "search-ok-200" ||
+        f.name === "notebook-answer-200"
       ) {
         expect(result.ok).toBe(true);
       } else {

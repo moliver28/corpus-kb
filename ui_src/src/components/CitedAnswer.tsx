@@ -1,5 +1,6 @@
 import { Card, Tag } from "antd";
 import { verifyBadge, type VerifySummary } from "../api/verify";
+import { BADGE_THRESHOLDS } from "../api/thresholds.generated";
 import { strings } from "../strings";
 
 export interface Citation {
@@ -23,7 +24,9 @@ export default function CitedAnswer({
   citations: Citation[];
   verify: VerifySummary | null;
 }) {
-  const badge = verifyBadge(verify);
+  // The generated policy thresholds ride in (the one numeric-policy
+  // source); a missing or invalid threshold still degrades the badge.
+  const badge = verifyBadge(verify, BADGE_THRESHOLDS);
   const pct = Math.round(badge.groundedness * 100);
   return (
     <Card title={strings.citedAnswerTitle}>

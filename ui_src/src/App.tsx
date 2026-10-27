@@ -6,6 +6,7 @@ import { strings } from "./strings";
 // One lazy chunk per stage, so one stage never loads another's code.
 const Setup = lazy(() => import("./pages/Setup"));
 const Review = lazy(() => import("./pages/Review"));
+const Ask = lazy(() => import("./pages/Ask"));
 
 /** A stage whose screen has not landed yet — one honest placeholder.
     Plain markup keeps antd's Card out of the shell chunk. */
@@ -55,6 +56,7 @@ function StageShell() {
             <Route path="/" element={<Navigate to="/setup" replace />} />
             <Route path="/setup" element={<Setup />} />
             <Route path="/review" element={<Review />} />
+            <Route path="/ask" element={<Ask />} />
             {/* Stages without screens yet (Tasks 6-7) land above this
                 catch-all; until then each shows the same placeholder. */}
             <Route path="*" element={<StagePlaceholder />} />
