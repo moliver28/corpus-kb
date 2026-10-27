@@ -56,8 +56,7 @@ class LlamaIndexPostgresBackend:
             await self._ollama_embedding.aget_text_embedding("ping")
         except Exception as exc:
             logger.warning(
-                "Ollama embedding check failed (%s); continuing in "
-                "degraded zero-vector mode",
+                "Ollama embedding check failed (%s); continuing in degraded zero-vector mode",
                 exc,
             )
 
