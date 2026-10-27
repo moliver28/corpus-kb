@@ -1,5 +1,5 @@
 import { Button, Input, Typography } from "antd";
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { callOp } from "../api/client";
 import { unknownOpResult } from "../api/errors";
 import { getEntry } from "../api/manifest";
@@ -27,18 +27,34 @@ function ResultView({ result, onRetry }: { result: OpResult; onRetry: () => void
 /**
  * The generic, manifest-driven op runner. Every op runs through this or a
  * typed form; `paramsKnown: false` gives a validated JSON editor (spec D.2).
+ * `initialBody` seeds the editor (the advisor pre-fills it); the JSON
+ * stays editable, and a new opId or seed re-seeds it.
  */
 export default function OpRunner({
   opId,
   onDone,
+  initialBody,
 }: {
   opId: string;
   onDone?: (result: OpResult) => void;
+  initialBody?: unknown;
 }) {
   const op = getEntry(opId);
-  const [bodyText, setBodyText] = useState("{}");
+  const seed = useMemo(() => JSON.stringify(initialBody ?? {}, null, 2), [initialBody]);
+  const [bodyText, setBodyText] = useState(seed);
   const [parseError, setParseError] = useState("");
+  const [seeded, setSeeded] = useState([opId, seed]);
   const bodyRef = useRef<unknown>({});
+
+  // A caller that swaps the op (or the seed) gets a fresh editor; an
+  // unchanged seed leaves the user's edits alone. The reset happens
+  // during render (the documented derived-state adjustment), so no
+  // effect ever fights the user's typing.
+  if (seeded[0] !== opId || seeded[1] !== seed) {
+    setSeeded([opId, seed]);
+    setBodyText(seed);
+    setParseError("");
+  }
 
   const simple = useOp(opId);
   const long = useLongOp(opId, (signal) => {

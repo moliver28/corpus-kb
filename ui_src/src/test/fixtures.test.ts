@@ -18,7 +18,9 @@ import reembedOk200 from "./fixtures/reembed-ok-200.json";
 import reviewExecuteOk200 from "./fixtures/review-execute-ok-200.json";
 import searchOk200 from "./fixtures/search-ok-200.json";
 import serverError500 from "./fixtures/server-error-500.json";
+import selectMethodOk200 from "./fixtures/select-method-ok-200.json";
 import topicsOk200 from "./fixtures/topics-ok-200.json";
+import topicsTrendsDisabled200 from "./fixtures/topics-trends-disabled-200.json";
 import unavailable503 from "./fixtures/unavailable-503.json";
 import validationError400 from "./fixtures/validation-error-400.json";
 
@@ -92,6 +94,8 @@ const FIXTURES = [
   searchOk200,
   notebookAnswer200,
   reviewExecuteOk200,
+  selectMethodOk200,
+  topicsTrendsDisabled200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -117,6 +121,8 @@ const EXPECTED_KINDS: Record<string, string> = {
   "search-ok-200": "ok",
   "notebook-answer-200": "ok",
   "review-execute-ok-200": "ok",
+  "select-method-ok-200": "ok",
+  "topics-trends-disabled-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -147,7 +153,9 @@ describe("committed envelope fixtures", () => {
         f.name === "ask-degraded-200" ||
         f.name === "search-ok-200" ||
         f.name === "notebook-answer-200" ||
-        f.name === "review-execute-ok-200"
+        f.name === "review-execute-ok-200" ||
+        f.name === "select-method-ok-200" ||
+        f.name === "topics-trends-disabled-200"
       ) {
         expect(result.ok).toBe(true);
       } else {
