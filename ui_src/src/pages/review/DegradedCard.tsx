@@ -52,7 +52,7 @@ export default function DegradedCard() {
   if (status.result === null) {
     body = <Skeleton active title={false} paragraph={{ rows: 2 }} />;
   } else if (status.result.kind === "network") {
-    body = <ErrorPanel result={status.result} onRetry={refresh} />;
+    body = <ErrorPanel result={status.result} onRetry={refresh} opId="ingest-status" />;
   } else if (status.result.kind === "unavailable") {
     body = <UnavailablePanel result={status.result} onRetry={refresh} />;
   } else if (!isDegradedEnvelope(status.result.data)) {
@@ -93,7 +93,7 @@ export default function DegradedCard() {
             </StatusBanner>
           )}
           {reembed.result !== null && !reembed.result.ok && (
-            <ErrorPanel result={reembed.result} onRetry={() => void reembedNow()} />
+            <ErrorPanel result={reembed.result} onRetry={() => void reembedNow()} opId="ingest-reembed" />
           )}
         </div>
       );

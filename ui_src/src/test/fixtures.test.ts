@@ -15,6 +15,7 @@ import notebookAnswer200 from "./fixtures/notebook-answer-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
 import ok200 from "./fixtures/ok-200.json";
 import reembedOk200 from "./fixtures/reembed-ok-200.json";
+import reviewExecuteOk200 from "./fixtures/review-execute-ok-200.json";
 import searchOk200 from "./fixtures/search-ok-200.json";
 import serverError500 from "./fixtures/server-error-500.json";
 import topicsOk200 from "./fixtures/topics-ok-200.json";
@@ -90,6 +91,7 @@ const FIXTURES = [
   askDegraded200,
   searchOk200,
   notebookAnswer200,
+  reviewExecuteOk200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -114,6 +116,7 @@ const EXPECTED_KINDS: Record<string, string> = {
   "ask-degraded-200": "ok",
   "search-ok-200": "ok",
   "notebook-answer-200": "ok",
+  "review-execute-ok-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -143,7 +146,8 @@ describe("committed envelope fixtures", () => {
         f.name === "ask-empty-200" ||
         f.name === "ask-degraded-200" ||
         f.name === "search-ok-200" ||
-        f.name === "notebook-answer-200"
+        f.name === "notebook-answer-200" ||
+        f.name === "review-execute-ok-200"
       ) {
         expect(result.ok).toBe(true);
       } else {

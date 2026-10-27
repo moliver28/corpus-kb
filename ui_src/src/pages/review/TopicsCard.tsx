@@ -33,7 +33,7 @@ export default function TopicsCard() {
   if (result === null) {
     body = <Skeleton active title={false} paragraph={{ rows: 3 }} />;
   } else if (result.kind === "network") {
-    body = <ErrorPanel result={result} onRetry={refresh} />;
+    body = <ErrorPanel result={result} onRetry={refresh} opId="topics-list" />;
   } else if (result.kind === "unavailable") {
     body = <UnavailablePanel result={result} onRetry={refresh} />;
   } else if (!isTopicsEnvelope(result.data)) {

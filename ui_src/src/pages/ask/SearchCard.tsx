@@ -6,6 +6,7 @@ import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { getOp } from "../../api/ops";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
 import { isSearchEnvelope, excludedCount, scoreText, type SearchRow } from "./shapes";
@@ -75,12 +76,21 @@ export default function SearchCard() {
         </div>
       );
     } else {
-      body = <ErrorPanel result={result} onRetry={() => void run()} />;
+      body = <ErrorPanel result={result} onRetry={() => void run()} opId="search" />;
     }
   }
 
   return (
     <Card title={strings.askTabSearch}>
+      {/* F7 puts similar and context search on this tab too; both routes
+          exist server-side but have no manifest rows yet — the honest
+          banners stand until the rows land (VerifyCard pattern). */}
+      {getOp("search-similar") === undefined && (
+        <StatusBanner kind="warn">{strings.askSearchSimilarNotWired}</StatusBanner>
+      )}
+      {getOp("search-context") === undefined && (
+        <StatusBanner kind="warn">{strings.askSearchContextNotWired}</StatusBanner>
+      )}
       <Typography.Paragraph type="secondary">
         {strings.askSearchQueryLabel}:
       </Typography.Paragraph>

@@ -1,14 +1,19 @@
 import { Button } from "antd";
 import { useEffect, useRef, useState } from "react";
+import pkg from "../../package.json";
 import { strings } from "../strings";
 import type { OpResult } from "../api/types";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 
 /** The diagnostic blob: one JSON string with everything a bug report needs. */
-function diagnostic(result: OpResult): string {
+function diagnostic(result: OpResult, opId: string): string {
   return JSON.stringify(
     {
+      spa: "corpus-kb-ui",
+      version: pkg.version,
+      opId,
+      at: new Date().toISOString(),
       httpStatus: result.httpStatus,
       status: result.status,
       errorType: result.errorType,
@@ -25,9 +30,11 @@ function diagnostic(result: OpResult): string {
 export default function ErrorPanel({
   result,
   onRetry,
+  opId = "",
 }: {
   result: OpResult;
   onRetry?: () => void;
+  opId?: string;
 }) {
   const blocked = result.kind === "blocked";
   const [copied, setCopied] = useState(false);
@@ -47,7 +54,7 @@ export default function ErrorPanel({
     // jsdom and hardened browsers expose no clipboard: the button stays
     // honest (never promises what it cannot do) and never throws.
     navigator.clipboard
-      ?.writeText(diagnostic(result))
+      ?.writeText(diagnostic(result, opId))
       .then(() => {
         setCopied(true);
         timerRef.current = window.setTimeout(() => setCopied(false), 2000);
@@ -67,7 +74,9 @@ export default function ErrorPanel({
       )}
       <JsonViewer value={result.data} />
       <div className="ui-actions">
-        <Button onClick={copy}>{copied ? strings.errorCopied : strings.errorCopyDiagnostic}</Button>
+        <Button onClick={copy}>
+          {copied ? strings.errorCopied : strings.errorCopyDiagnostic}
+        </Button>
         {onRetry && <Button onClick={onRetry}>{strings.retryLabel}</Button>}
       </div>
     </div>

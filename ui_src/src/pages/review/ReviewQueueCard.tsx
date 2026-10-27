@@ -52,7 +52,10 @@ export default function ReviewQueueCard() {
   const [decided, setDecided] = useState(false);
 
   const assignments = useOp("coding-assignments");
-  const decision = useOp("review-accept");
+  // One manifest row per decision kind (both post /api/review/execute);
+  // the body's decision value stays the server's contract either way.
+  const accept = useOp("review-accept");
+  const overrideOp = useOp("review-override");
 
   // One GET on mount through a ref (useOp's run is not stable).
   const runRef = useRef<() => Promise<unknown>>(assignments.run);
@@ -76,10 +79,13 @@ export default function ReviewQueueCard() {
       setNoteWarning(strings.reviewReviewerRequired);
       return;
     }
-    decision.reset();
+    // The server reviews the AGGREGATE (a UUID), not the int row id
+    // (research/review_surface.py execute_review).
+    const hook = kind === "accept" ? accept : overrideOp;
+    hook.reset();
     setNoteWarning("");
-    const res = await decision.run({
-      assignment_id: String(row.assignment_id),
+    const res = await hook.run({
+      assignment_id: row.assignment_aggregate_id,
       decision: kind,
       reviewer: reviewer.trim(),
       note: noteText,
@@ -142,7 +148,7 @@ export default function ReviewQueueCard() {
   if (result === null) {
     body = <Skeleton active title={false} paragraph={{ rows: 4 }} />;
   } else if (result.kind === "network") {
-    body = <ErrorPanel result={result} onRetry={refresh} />;
+    body = <ErrorPanel result={result} onRetry={refresh} opId="coding-assignments" />;
   } else if (result.kind === "unavailable") {
     body = <UnavailablePanel result={result} onRetry={refresh} />;
   } else if (!isAssignmentsEnvelope(result.data)) {
@@ -175,8 +181,11 @@ export default function ReviewQueueCard() {
           />
         )}
         {decided && <StatusBanner kind="ok">{strings.reviewDecisionDone}</StatusBanner>}
-        {decision.result !== null && !decision.result.ok && (
-          <ErrorPanel result={decision.result} onRetry={refresh} />
+        {accept.result !== null && !accept.result.ok && (
+          <ErrorPanel result={accept.result} onRetry={refresh} opId="review-accept" />
+        )}
+        {overrideOp.result !== null && !overrideOp.result.ok && (
+          <ErrorPanel result={overrideOp.result} onRetry={refresh} opId="review-override" />
         )}
       </div>
     );

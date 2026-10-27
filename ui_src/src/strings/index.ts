@@ -165,6 +165,10 @@ export interface Strings {
   askColumnSource: string;
   askColumnText: string;
   askColumnScore: string;
+  askSearchSimilarNotWired: string;
+  askSearchContextNotWired: string;
+  askEvidenceUntitled: string;
+  askEvidenceAt: string;
 }
 
 export const strings: Strings = en;

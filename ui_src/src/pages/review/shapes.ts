@@ -8,6 +8,7 @@ import { strings } from "../../strings";
 /** One coding assignment row (tools/lifecycle_read_tools.py). */
 export interface AssignmentRow {
   assignment_id: number;
+  assignment_aggregate_id: string;
   unit_id: number;
   code_id: string;
   status: string;
@@ -30,6 +31,7 @@ export function isAssignmentsEnvelope(value: unknown): value is AssignmentsEnvel
       const r = row as Record<string, unknown>;
       return (
         typeof r.assignment_id === "number" &&
+        typeof r.assignment_aggregate_id === "string" &&
         typeof r.unit_id === "number" &&
         typeof r.code_id === "string" &&
         typeof r.status === "string"

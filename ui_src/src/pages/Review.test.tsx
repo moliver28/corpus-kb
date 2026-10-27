@@ -7,6 +7,7 @@ import { strings } from "../strings";
 import assignmentsOk from "../test/fixtures/assignments-ok-200.json";
 import ingestStatusOk from "../test/fixtures/ingest-status-ok-200.json";
 import reembedOk from "../test/fixtures/reembed-ok-200.json";
+import reviewExecuteOk from "../test/fixtures/review-execute-ok-200.json";
 import topicsOk from "../test/fixtures/topics-ok-200.json";
 import Review from "./Review";
 
@@ -101,7 +102,7 @@ describe("Review page", () => {
       {
         method: "POST",
         path: "/api/review/execute",
-        reply: respond(200, { status: "success", assignment_id: 41, decision: "accept" }),
+        reply: respond(200, reviewExecuteOk.response.body),
       },
     ]);
     render(<Review />, { wrapper: makeWrapper() });
@@ -113,6 +114,10 @@ describe("Review page", () => {
     expect(sent).toBeTruthy();
     expect(sent?.body).toContain('"decision":"accept"');
     expect(sent?.body).toContain('"reviewer":"Alex"');
+    // The server reviews the aggregate UUID, never the int row id.
+    expect(sent?.body).toContain(
+      '"assignment_id":"3f6d2c9a-1111-4c4c-8d8d-222222222222"',
+    );
   });
 
   it("blocks an override until the note is written", async () => {
@@ -122,7 +127,7 @@ describe("Review page", () => {
       {
         method: "POST",
         path: "/api/review/execute",
-        reply: respond(200, { status: "success", assignment_id: 41, decision: "override" }),
+        reply: respond(200, reviewExecuteOk.response.body),
       },
     ]);
     render(<Review />, { wrapper: makeWrapper() });
@@ -143,6 +148,9 @@ describe("Review page", () => {
     const sent = calls.find((c) => c.url.includes("/api/review/execute"));
     expect(sent?.body).toContain('"decision":"override"');
     expect(sent?.body).toContain("pricing");
+    expect(sent?.body).toContain(
+      '"assignment_id":"3f6d2c9a-1111-4c4c-8d8d-222222222222"',
+    );
   });
 
   it("asks for a reviewer name before any decision", async () => {

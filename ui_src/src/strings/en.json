@@ -159,5 +159,9 @@
   "askNotebookRetrievalOnly": "Retrieval only (no LLM)",
   "askColumnSource": "Source",
   "askColumnText": "Text",
-  "askColumnScore": "Score"
+  "askColumnScore": "Score",
+  "askSearchSimilarNotWired": "Find-similar is not wired yet. The server manifest has no similar-search operation.",
+  "askSearchContextNotWired": "Context search is not wired yet. The server manifest has no context-search operation.",
+  "askEvidenceUntitled": "Untitled",
+  "askEvidenceAt": "at {sec}s"
 }
