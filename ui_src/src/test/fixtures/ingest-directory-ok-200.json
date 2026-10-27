@@ -1,0 +1,30 @@
+{
+  "name": "ingest-directory-ok-200",
+  "source": "canonical",
+  "note": "POST /api/ingest/directory success (tools/ingest_tools.py ingest_directory: {status, directory, files_processed, total_documents, total_entities, results}); rows trimmed to the stable keys. Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/ingest/directory" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "directory": "/data/corpus",
+      "files_processed": 2,
+      "total_documents": 2,
+      "total_entities": 5,
+      "results": [
+        {
+          "status": "success",
+          "path": "/data/corpus/grid-brief.md",
+          "chunk_count": 3,
+          "entity_count": 2
+        },
+        {
+          "status": "success",
+          "path": "/data/corpus/outage-notes.txt",
+          "chunk_count": 2,
+          "entity_count": 3
+        }
+      ]
+    }
+  }
+}

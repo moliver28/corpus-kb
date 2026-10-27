@@ -1,16 +1,16 @@
 import { Button, Card, Typography } from "antd";
 import { useNavigate } from "react-router";
-import ErrorPanel from "../../components/ErrorPanel";
-import JsonViewer from "../../components/JsonViewer";
-import ReceiptCard from "../../components/ReceiptCard";
-import StatusBanner from "../../components/StatusBanner";
-import ConfirmGate from "../../components/ConfirmGate";
-import UnavailablePanel from "../../components/UnavailablePanel";
-import { callOp } from "../../api/client";
-import { getOp } from "../../api/ops";
-import type { OpResult } from "../../api/types";
-import { useLongOp } from "../../hooks/useLongOp";
-import { strings } from "../../strings";
+import ErrorPanel from "../components/ErrorPanel";
+import JsonViewer from "../components/JsonViewer";
+import ReceiptCard from "../components/ReceiptCard";
+import StatusBanner from "../components/StatusBanner";
+import ConfirmGate from "../components/ConfirmGate";
+import UnavailablePanel from "../components/UnavailablePanel";
+import { callOp } from "../api/client";
+import { getOp } from "../api/ops";
+import type { OpResult } from "../api/types";
+import { useLongOp } from "../hooks/useLongOp";
+import { strings } from "../strings";
 
 /**
  * The sample-knowledge action: the demo-load op behind a confirm gate.

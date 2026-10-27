@@ -1,13 +1,12 @@
 import { Card } from "antd";
 import { strings } from "../strings";
+import DemoLoadCard from "../components/DemoLoadCard";
 import DoctorCard from "./setup/DoctorCard";
-import DemoLoadCard from "./setup/DemoLoadCard";
-import IngestRunnerCard from "./setup/IngestRunnerCard";
-import UploadCard from "./setup/UploadCard";
 
 /**
- * The Setup stage — the demo walk in order: system status, sample
- * knowledge, own files, then server-folder and web ingest.
+ * The Setup stage — the demo walk in order: system status, then the
+ * sample-knowledge quick start. The ingest surfaces live on the Ingest
+ * stage; this page never duplicates them.
  */
 export default function Setup() {
   return (
@@ -17,8 +16,6 @@ export default function Setup() {
       </Card>
       <DoctorCard />
       <DemoLoadCard />
-      <UploadCard />
-      <IngestRunnerCard />
     </div>
   );
 }
