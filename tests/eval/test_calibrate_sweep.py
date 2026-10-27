@@ -8,10 +8,11 @@ from pathlib import Path
 import pytest
 
 from corpus_kb.errors import ValidationError
-from corpus_kb.eval.calibrate import IngestedDoc, run_calibration
+from corpus_kb.eval.calibrate import run_calibration
 from corpus_kb.eval.golden import GoldenRecord
 from corpus_kb.eval.labels import ChunkEntry, LabelIndex
-from corpus_kb.profiles.loader import CalibrateSpec
+from corpus_kb.eval.scoring import IngestedDoc
+from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 from corpus_kb.research.retrieval import _child_uuid
 
 _SPEC = CalibrateSpec(candidates=("baseline",), sample="s.txt", golden="g.jsonl", k=2)

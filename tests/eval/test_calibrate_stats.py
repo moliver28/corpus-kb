@@ -9,9 +9,9 @@ import pytest
 
 from corpus_kb.errors import ValidationError
 from corpus_kb.eval._ranx import ranx_available
-from corpus_kb.eval.calibrate import QueryScore
 from corpus_kb.eval.golden import GoldenRecord
 from corpus_kb.eval.labels import ChunkEntry, LabelIndex
+from corpus_kb.eval.scoring import QueryScore
 from corpus_kb.eval.stats import (
     paired_comparison,
     query_id_map,

@@ -21,9 +21,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from corpus_kb.errors import ValidationError
-from corpus_kb.eval.calibrate import QueryScore
 from corpus_kb.eval.golden import GoldenRecord
 from corpus_kb.eval.labels import LabelIndex, resolve_relevance
+from corpus_kb.eval.scoring import QueryScore
 
 __all__ = [
     "PairOutcome",

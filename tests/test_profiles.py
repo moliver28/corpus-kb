@@ -18,11 +18,8 @@ from corpus_kb.profiles import (
     safe_profile_path,
     with_profile_overrides,
 )
-from corpus_kb.profiles.loader import (
-    PROFILE_EXTRACTION_MODES,
-    PROFILE_VALIDATE_MODES,
-    parse_profile,
-)
+from corpus_kb.profiles.blocks import PROFILE_EXTRACTION_MODES
+from corpus_kb.profiles.loader import PROFILE_VALIDATE_MODES, parse_profile
 
 VALID = """
 name: interviews

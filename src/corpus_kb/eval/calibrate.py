@@ -12,86 +12,29 @@ in the follow-up issue.
 Refusals are honest: degraded embeddings (zero-vector fallback) or labels
 that match nothing answer ``insufficient_data`` and write no lock, because
 numbers built on degraded vectors would be fake. This module owns the
-ORCHESTRATION only; the engine (scratch storage + retrieval) is injected,
-so tests run hermetically and the production engine lives in the tools
-layer next to the pipeline it drives.
+ORCHESTRATION only — scoring lives in ``scoring``, and the engine
+(scratch storage + retrieval) is injected, so tests run hermetically and
+the production engine lives in the tools layer next to the pipeline it
+drives.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 from corpus_kb.errors import ValidationError
 from corpus_kb.eval.golden import GoldenRecord
-from corpus_kb.eval.labels import LabelIndex, overlap_rule, resolve_relevance
-from corpus_kb.profiles.loader import CalibrateSpec
+from corpus_kb.eval.labels import overlap_rule
+from corpus_kb.eval.scoring import CandidateScore, EngineFactory, QueryScore, score_candidate
+from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 
 __all__ = [
     "CalibrationResult",
-    "CandidateScore",
-    "IngestedDoc",
-    "QueryScore",
-    "SweepEngine",
     "run_calibration",
 ]
-
-METRIC_DECIMALS = 6
-
-
-@dataclass(frozen=True)
-class IngestedDoc:
-    """One ingested sample file: its doc id and the honest degraded flag."""
-
-    doc_id: str
-    degraded: bool
-
-
-class SweepEngine(Protocol):
-    """One candidate's scratch world: ingest, index, rank, discard."""
-
-    async def ingest(self, path: Path, strategy: str) -> IngestedDoc: ...
-
-    async def label_index(self) -> LabelIndex: ...
-
-    async def rank(self, query: str, k: int) -> list[str]: ...
-
-    async def close(self) -> None: ...
-
-
-EngineFactory = Callable[[str], Awaitable[SweepEngine]]
-
-
-@dataclass(frozen=True)
-class CandidateScore:
-    """One candidate's mean metrics over the scored golden queries."""
-
-    candidate: str
-    queries: int
-    skipped: int
-    recall_at_k: float
-    mrr: float
-    ndcg_at_10: float
-
-
-@dataclass(frozen=True)
-class QueryScore:
-    """One query's outcome under one candidate: scalars plus the raw run.
-
-    ``relevant`` and ``ranked`` feed the paired statistics (ranx needs the
-    ranked lists, not the means); they never serialize into the lock.
-    """
-
-    candidate: str
-    query: str
-    recall_at_k: float
-    mrr: float
-    ndcg_at_10: float
-    relevant: frozenset[str]
-    ranked: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -151,7 +94,7 @@ async def run_calibration(
     for candidate in spec.candidates:
         engine = await engine_factory(candidate)
         try:
-            score, rows, refusal = await _score_candidate(
+            score, rows, refusal = await score_candidate(
                 engine, candidate, sample_paths, golden, spec
             )
         finally:
@@ -198,68 +141,6 @@ async def run_calibration(
         summary=summary,
         query_scores=tuple(query_rows),
     )
-
-
-async def _score_candidate(
-    engine: SweepEngine,
-    candidate: str,
-    sample_paths: Sequence[Path],
-    golden: Sequence[GoldenRecord],
-    spec: CalibrateSpec,
-) -> tuple[CandidateScore | None, list[QueryScore], str | None]:
-    """Score one candidate; a refusal comes back as (None, [], reason)."""
-    from corpus_kb.research.retrieval_eval import _mrr, _ndcg, _recall_k
-
-    for path in sample_paths:
-        doc = await engine.ingest(path, candidate)
-        if doc.degraded:
-            return (
-                None,
-                [],
-                (
-                    "embedding degraded: the zero-vector fallback ran, so calibration "
-                    "numbers would be fake. Bring the embedder up and retry."
-                ),
-            )
-    index = await engine.label_index()
-    recalls: list[float] = []
-    mrrs: list[float] = []
-    ndcgs: list[float] = []
-    rows: list[QueryScore] = []
-    skipped = 0
-    for record in golden:
-        relevant = resolve_relevance(record, index)
-        if not relevant:
-            skipped += 1
-            continue
-        ranked = await engine.rank(record.query, spec.k)
-        recall = _recall_k(ranked, relevant, spec.k)
-        mrr = _mrr(ranked, relevant)
-        ndcg = _ndcg(ranked, relevant)
-        recalls.append(recall)
-        mrrs.append(mrr)
-        ndcgs.append(ndcg)
-        rows.append(
-            QueryScore(
-                candidate=candidate,
-                query=record.query,
-                recall_at_k=recall,
-                mrr=mrr,
-                ndcg_at_10=ndcg,
-                relevant=relevant,
-                ranked=tuple(ranked),
-            )
-        )
-    queries = len(recalls)
-    score = CandidateScore(
-        candidate=candidate,
-        queries=queries,
-        skipped=skipped,
-        recall_at_k=round(sum(recalls) / queries, METRIC_DECIMALS) if queries else 0.0,
-        mrr=round(sum(mrrs) / queries, METRIC_DECIMALS) if queries else 0.0,
-        ndcg_at_10=round(sum(ndcgs) / queries, METRIC_DECIMALS) if queries else 0.0,
-    )
-    return score, rows, None
 
 
 def _insufficient(reason: str, min_overlap: float) -> CalibrationResult:

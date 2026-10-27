@@ -50,7 +50,7 @@ Gate order: lint (`ruff check src/ tests/`, no deps) → type-check (`pyright sr
 
 Ollama install per OS (exact commands + rationale in ci.yml comments). Ubuntu: official install script (reliable). macOS: `brew install ollama` (install script fails on runners). Windows: `OllamaSetup.exe /S` + 120s timeout + `continue-on-error: true` (installer often hangs → degraded zero-vector mode).
 
-Windows fixes: `python-magic-bin` (libmagic DLL for the `magic` module in unstructured; fixes access-violation crash). `continue-on-error` on Ollama install/pull/verify. `timeout-minutes: 10` on tests (hung Ollama connects).
+Windows fixes: `python-magic-bin` (libmagic DLL for the `magic` module in unstructured; fixes access-violation crash). `continue-on-error` on Ollama install/pull/verify. `timeout-minutes: 30` on the ubuntu test leg, `40` on windows/macos (hung Ollama connects; PR #189 raised the ubuntu cap with suite-run rationale).
 
 ## Repo Structure & Ownership
 
@@ -61,10 +61,11 @@ All active code under `src/corpus_kb/`:
 - `config.py` — config loader, env overrides, packaged-default fallback.
 - `ontology.py` — ontology loader + Pydantic model.
 - `partitioning.py` — unstructured partition wrapper.
-- `chunking/` — file-type detection → chunker dispatch (strategy pattern): CodeChunker (tree-sitter AST), MarkdownChunker (heading boundaries), TextChunker (semantic gap detection).
+- `chunking/` — shared chunk primitives (`unstructured_chunker.py`, `hierarchy*.py`); strategy chunking lives in `ingestion/strategies/`: `code.py` + `ast_chunks.py` (tree-sitter AST behind the optional `[code]` extra), `markdown_sections.py` (heading boundaries), `default.py` (unstructured partition + `chunk_elements`).
 - `storage/` — `SqlGateway` seam (`gateway.py`: `PostgresGateway` thin wrapper, `DuckDbGateway` single-writer file driver); graph stores `PostgresGraphStore` (asyncpg + RLS), `AgeGraphStore`, `DuckDbGraphStore`, `LlamaIndexPostgresBackend`, `RagBackend` Protocol. Engine = `database.backend` (`postgres` default, `duckdb` local single-user); guide `docs/STORAGE-BACKENDS.md`, DuckDB mirrors in `migrations_duckdb/`.
 - `rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `Reranker`. Hybrid lexical+vector search is SQL-side (`corpus.rrf_fusion`, migration 006) via `handlers/query_handler.py` (`QueryHandler`) + `research/retrieval.py`; no `HybridSearcher` class. Late chunking: `embedders/late_chunk.py` + `late_chunk_core.py` (full-doc forward pass, chunk-span pooling), gated by `embedder_selection.py` (`embedding.late_chunking` + `latechunk` extra + `qwen3-embedding*` model); pooled fallback recorded as `embedding_mode`/`embedding_note` in the ingest result.
 - `ingestion/` — pluggable strategy registry, the ONE pipeline seam: `base.py` (`ChunkPlan`, `validate_plan`), `registry.py` (explicit > config map > detection > default), `strategies/` (`default`, `transcript`, `pptx_structure` slide-level, `web_structure` heading-section).
+- `profiles/` — one authored YAML per corpus; blocks support `validate:` and `calibrate:` (guide `docs/HARNESS-PLAYBOOKS.md`). The calibration sweep baselines ONE candidate (multi-candidate refused, issue #187).
 - `web/` — website ingestion: `fetch.py` (httpx + robots.txt + size/content-type caps + same-domain BFS crawl), `metadata.py` (OG/Twitter/JSON-LD/canonical), `sections.py` (element→section chunking), `settings.py` (`web:` config → `WebFetchConfig`). Entry: `tools/ingest_url_tools.py` (`ingest_url`; MCP/HTTP/socket/CLI `ingest-url`).
 - `tools/` — MCP tools; `ingest_common.py` = pipeline orchestrator (partition → chunk → embed → extract → store); `ingest_tools.py` = thin MCP wrapper.
 - `extraction/` — pluggable ontology extractor: `protocol.py`, `regex_backend.py`, `langextract_backend.py`, `pgml_backend.py`, `bert_backend.py`.
@@ -125,7 +126,7 @@ Contract: abstract `GraphStore` in `storage/graph_store.py`; subclass it and imp
 Defined in [docs/research/harness-zero-drift-program.md](docs/research/harness-zero-drift-program.md) (CI enforcement map there). Any plan, by any agent or human, MUST follow them; violating plans are amended before implementation. If a rule blocks legitimate work, change the rule in the program document first — never route around it silently.
 
 1. **One operation, one handler, many surfaces.** Shared handler in `src/corpus_kb/tools/`; CLI/HTTP/socket/MCP are thin adapters. Never a second pipeline for the same operation.
-2. **Registry-first updates.** Update the parity catalogue (`tests/test_surface_parity_deep.py`) and/or `surface_registry.py` FIRST, then the handler, then regenerate (`gen_harness_pack.py`, `cog`). CI regenerates and diffs; a stale artifact fails the PR.
+2. **Registry-first updates.** Update the parity catalogue (`tests/test_surface_parity_deep.py`) and/or `surface_registry.py` FIRST, then the handler, then regenerate via `poe gen` (`gen_harness_pack.py`, method docs, UI manifest). CI regenerates and diffs; a stale artifact fails the PR.
 3. **One envelope per operation family.** Surfaces may add only keys in the parity test's explicit `ALLOWED_EXTRA` map; undeclared keys on one surface fail CI.
 4. **Errors go through the taxonomy.** Typed errors from `corpus_kb/errors.py`; one failure class = one HTTP status + socket code + CLI exit code. No catch-all `except Exception → 400` handlers.
 5. **Layering is law.** Import direction `api → tools → handlers → storage`, enforced by import-linter. No pipeline logic in surface modules.

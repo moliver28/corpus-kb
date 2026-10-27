@@ -1,4 +1,4 @@
-"""Seeds-file and profile-file writes for the tune op.
+"""Seeds-file reads and writes, plus the profile-file point-in.
 
 The exemplar arm of ``extraction_tune`` mines confirmed corpus
 decisions and lands them as LangExtract seed exemplars next to the
@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 
 from ..errors import ValidationError
-from .loader import safe_profile_path
+from .loader import IngestionProfile, profiles_dir, safe_profile_path
 
 MINIMAL_PROFILE: dict[str, Any] = {
     "name": "",
@@ -61,3 +61,37 @@ def point_profile_at_seeds(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(raw, sort_keys=False, allow_unicode=True), encoding="utf-8")
     return str(path), created
+
+
+def profile_seeds_path(config: dict[str, Any], profile: IngestionProfile) -> str:
+    """Absolute path of the profile's seeds file, if it declares one."""
+    if profile.seeds_file is None:
+        return ""
+    return safe_profile_path(profiles_dir(config), profile.seeds_file)
+
+
+def load_seeds(config: dict[str, Any], profile: IngestionProfile) -> list[dict[str, Any]]:
+    """Load the profile's LangExtract seed exemplars.
+
+    A declared-but-missing seeds file is a ValidationError (a profile is
+    a contract, not a preference — validate_profiles reports the same
+    condition); a profile WITHOUT a seeds_file simply has no seeds.
+    """
+    path = profile_seeds_path(config, profile)
+    if not path:
+        return []
+    seeds_file = Path(path)
+    if not seeds_file.exists():
+        raise ValidationError(
+            f"Profile {profile.name!r} declares seeds_file"
+            f" {profile.seeds_file!r} but it is missing.",
+            remediation="Run extraction-tune to write the seeds, or remove the seeds_file key.",
+        )
+    raw = yaml.safe_load(seeds_file.read_text(encoding="utf-8"))
+    exemplars = raw.get("exemplars") if isinstance(raw, dict) else None
+    if not isinstance(exemplars, list):
+        raise ValidationError(
+            f"Seeds file {path} must hold an 'exemplars' list.",
+            remediation="Write extraction_tune output, or remove the seeds_file key.",
+        )
+    return [e for e in exemplars if isinstance(e, dict)]
