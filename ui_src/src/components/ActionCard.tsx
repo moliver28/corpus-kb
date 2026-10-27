@@ -57,9 +57,30 @@ function SettledView({
     return <UnavailablePanel result={result} onRetry={onRetry} />;
   }
   if (result.ok && typeof result.data === "object" && result.data !== null) {
-    const status = (result.data as Record<string, unknown>).status;
-    if (status === "disabled" && dormant !== undefined) {
+    const data = result.data as Record<string, unknown>;
+    if (data.status === "disabled" && dormant !== undefined) {
       return <DormantNote hint={dormant} />;
+    }
+    // Honesty first: only a success envelope earns the Done receipt.
+    // Anything else (disabled, partial, skipped, error) renders the
+    // server's own reason and remedy as a plain-English note.
+    if (typeof data.status === "string" && data.status !== "success") {
+      const reason = typeof data.reason === "string" ? data.reason : result.message;
+      const remedy = typeof data.remedy === "string" ? data.remedy : "";
+      return (
+        <div className="ui-stack">
+          <StatusBanner kind="warn">
+            {reason !== "" ? reason : strings.receiptNotSuccess}
+          </StatusBanner>
+          {remedy !== "" && (
+            <StatusBanner kind="info">
+              <strong>{strings.remediationLabel}: </strong>
+              {remedy}
+            </StatusBanner>
+          )}
+          <JsonViewer value={result.data} />
+        </div>
+      );
     }
   }
   if (result.ok && result.kind !== "network") {

@@ -78,7 +78,10 @@ describe("Ask page", () => {
       ),
     ).toBeTruthy();
     expect(screen.getByText(strings.verifyLabelVerified)).toBeTruthy();
-    expect(screen.getAllByText(/samples\/grid-brief\.md/).length).toBeGreaterThan(0);
+    // Citations show the basename; the full local path rides the title
+    // attribute (and the raw JSON view), never the visible line.
+    expect(screen.getAllByText(/grid-brief\.md/).length).toBeGreaterThan(0);
+    expect(screen.getAllByTitle(/corpus/).length).toBeGreaterThan(0);
     expect(screen.getByText("what does the grid plan do?")).toBeTruthy();
     expect(window.sessionStorage.getItem("corpus-kb:ask-history")).toContain(
       "what does the grid plan do?",

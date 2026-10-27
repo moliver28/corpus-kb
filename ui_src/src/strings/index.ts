@@ -35,6 +35,7 @@ export interface Strings {
   receiptDegraded: string;
   receiptPartial: string;
   receiptAbstained: string;
+  receiptNotSuccess: string;
   runnerRunLabel: string;
   runnerCancelLabel: string;
   runnerCheckStatus: string;

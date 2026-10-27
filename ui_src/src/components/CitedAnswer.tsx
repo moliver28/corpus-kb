@@ -17,6 +17,20 @@ const LABELS: Record<"verified" | "partial" | "not verified", string> = {
   "not verified": strings.verifyLabelNotVerified,
 };
 
+/** One source label -> its basename (full paths never render on screen). */
+function basename(label: string): string {
+  const last = label.split(/[\\/]/).pop();
+  return last === undefined || last === "" ? label : last;
+}
+
+/** One joined label list -> basenames for display, full paths for title. */
+function displaySources(cited: string[]): { text: string; full: string } {
+  return {
+    text: cited.map(basename).join(", "),
+    full: cited.join(", "),
+  };
+}
+
 /**
  * A grounded answer: the text, the verify badge, and the cited sentences.
  * The hover-citation link is the signature interaction: hovering (or
@@ -62,6 +76,7 @@ export default function CitedAnswer({
             "ui-citation" +
             (active ? " ui-citation--active" : "") +
             (linked ? " ui-citation--linked" : "");
+          const shown = displaySources(cited);
           return (
             <li
               key={`${index}-${citation.source}`}
@@ -73,11 +88,12 @@ export default function CitedAnswer({
             >
               <span className="ui-citation-text">{citation.text}</span>{" "}
               <span
+                title={shown.full}
                 className={
                   active ? "ui-citation-source ui-citation-source--active" : "ui-citation-source"
                 }
               >
-                ({citation.source})
+                ({shown.text})
               </span>
             </li>
           );
