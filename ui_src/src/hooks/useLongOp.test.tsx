@@ -102,7 +102,7 @@ describe("useLongOp", () => {
     expect(result.current.result?.kind).toBe("network");
   });
 
-  it("cancel stops the wait and lands in unknown-outcome", async () => {
+  it("cancel stops the wait and lands in the honest cancelled state", async () => {
     const { result } = renderHook(
       () =>
         useLongOp("op", (signal) => new Promise<OpResult>((_resolve, reject) => {
@@ -123,7 +123,11 @@ describe("useLongOp", () => {
     await act(async () => {
       await flight;
     });
-    expect(result.current.unknownOutcome).toBe(true);
+    // A user cancel is NOT a network drop and NOT a server answer: no
+    // unknown-outcome flag, no receipt (which would render as an error).
+    expect(result.current.cancelled).toBe(true);
+    expect(result.current.unknownOutcome).toBe(false);
+    expect(result.current.result).toBe(null);
     expect(result.current.running).toBe(false);
   });
 

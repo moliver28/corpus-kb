@@ -1,0 +1,17 @@
+{
+  "name": "demo-partial-200",
+  "source": "canonical",
+  "request": { "method": "POST", "path": "/api/demo/load" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "partial",
+      "result": {
+        "ingested": ["welcome.md"],
+        "skipped": [],
+        "chunk_counts": { "welcome.md": 2 },
+        "failures": { "faq.md": "embedding failed" }
+      }
+    }
+  }
+}

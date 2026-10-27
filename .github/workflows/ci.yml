@@ -290,6 +290,8 @@ jobs:
       - name: UI manifest drift check
         run: poe ui-manifest
 
+      - name: UI bundle size gate
+        run: poe ui-bundle
       - name: UI licenses allowlist
         run: poe ui-licenses
 

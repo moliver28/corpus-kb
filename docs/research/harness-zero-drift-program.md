@@ -98,7 +98,7 @@ land in this document first, before any implementation.
 |------|----------------|----------------|-------|
 | UI lint | `poe ui-lint` | ci.yml / ui | UI SPA Task 3 (PR-1) |
 | UI test | `poe ui-test` | ci.yml / ui | UI SPA Task 3 (PR-1) |
-| UI build | `poe ui-build`; the bundle budget lands with Task 9 | ci.yml / ui | UI SPA Task 3 (PR-1) |
+| UI build | `poe ui-build` (includes the bundle check); `poe ui-bundle` calls it directly | ci.yml / ui | UI SPA Task 3 (PR-1); budget gate Task 6a (PR-5a) |
 | UI licenses | `poe ui-licenses`: production allowlist (MIT, Apache-2.0, BSD, ISC, 0BSD) writing the committed `ui_licenses.lock.json` (production tree only; dev trees are platform-specific) | ci.yml / ui | UI SPA Task 4 (PR-2) |
 | UI manifest | `poe ui-manifest` (drift check); also runs in `poe gen` | ci.yml / ui | UI SPA Task 4 (PR-2) |
 
@@ -249,7 +249,7 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Profile truth | `poe validate-profiles` (`src/corpus_kb/_setup/validate_profiles.py`): every `profiles/*.yaml` must parse against the loader schema, name only live ingestion strategies, reference only catalogue claim-template ids, and point `seeds_file` at an existing file. A profile that references a missing seam fails the PR (Living Corpus W5) | ci.yml / type-check step | W5 |
 | UI lint and types | `poe ui-lint`: ESLint plus `tsc --noEmit` over `ui_src/`. TypeScript strict; `any` and `@ts-ignore` are hard errors (the mirror of the Python `type: ignore` ban) | ci.yml / ui | UI SPA Task 3 |
 | UI unit tests | `poe ui-test`: vitest over `ui_src/` (jsdom; antd stubs in `src/test/setup.ts`) | ci.yml / ui | UI SPA Task 3 |
-| UI build | `poe ui-build`: Vite 8 build into `src/corpus_kb/ui_dist/` (base `/app/`). The gzip budget cap is 350 kB per initial route, set from the Task 3 probe data (shell 191.7 kB + probe screen 131.4 kB = 323 kB). Task 9's `check-bundle.mjs` enforces the cap inside this target | ci.yml / ui | UI SPA Task 3 |
+| UI build | `poe ui-build`: Vite 8 build into `src/corpus_kb/ui_dist/` (base `/app/`). The gzip budget cap is 350 kB per initial route, set from the Task 3 probe data (shell 191.7 kB + probe screen 131.4 kB = 323 kB). `ui_src/scripts/check-bundle.mjs` enforces the cap inside this target and as `poe ui-bundle` (landed Task 6a, PR-5a) | ci.yml / ui | UI SPA Task 3; gate Task 6a |
 | Ingest validation gate | `poe validation-gate`: the Wave 4 ingest validators (offset invariant, coverage, budget), the off/advisory/enforce/calibrate mode semantics, the off-mode byte-identity pin, and the semchunk/dedup lazy seams (`tests/pipeline/`, `tests/ingestion/`). Extras stay uninstalled, so the extras-less contract is under test | ci.yml / validation-gate | unified-ingestion Wave 4 |
 | UI licenses | `poe ui-licenses`: `scripts/ui_licenses.py` runs `pnpm licenses list --prod --json`, enforces the allowlist (MIT, Apache-2.0, BSD, ISC, 0BSD, plus CC0-1.0/MIT-0), and writes the committed `ui_licenses.lock.json`; the lock records the production tree only (dev trees carry OS-specific native packages) | ci.yml / ui | UI SPA Task 4 |
 | UI manifest | `poe ui-manifest`: `src/corpus_kb/_setup/gen_ui_manifest.py` merges `surface_registry.SURFACES` with `research_http.tool_routes()`, diffs `src/corpus_kb/ui_manifest.json` plus `ui_src/src/api/ops.generated.ts` and `thresholds.generated.ts`, and exits 1 on drift. Also wired into `poe gen` | ci.yml / ui | UI SPA Task 4 |
