@@ -1,16 +1,16 @@
 // Bundle gate (zero-drift amendment 3, ui-build row): the gzip size of
 // what the initial route loads stays under the 350 kB per-route budget
 // set from the Task 3 probe data (ui-spa-program-plan.md: "per initial
-// route"). Wired into `pnpm build`; the poe target and CI wiring land
-// with the integrator (map rule 10: a gate needs poe + CI + map row).
+// route"). Wired into `pnpm build` and CI (poe ui-build, since c7856ff).
 //
 // Two checks:
 //   1. EVERY js/css asset stays under the per-chunk cap (lazy stages
 //      included — no chunk may grow past the budget on its own).
 //   2. The INITIAL ROUTE total stays under the budget. The route set is
-//      what a first visit downloads: index.html, the entry chunk with
-//      its static-import closure, and the LANDING stage chunk (Setup —
-//      App.tsx redirects / there) with its own static closure, so the
+//      what a first visit downloads: the entry chunk named in
+//      index.html with its static-import closure, and the LANDING stage
+//      chunk (Setup — App.tsx redirects / there) with its own static
+//      closure, so the
 //      measure matches the plan's probe arithmetic (shell + landing
 //      screen + shared deps). Other stage chunks load on navigation,
 //      not on landing; each stays capped by check 1.
@@ -20,6 +20,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const LIMIT_KB = 350;
+// The landing stage assumption: App.tsx redirects / to /setup. A Home-*
+// chunk means that changed — fail loudly instead of measuring the wrong
+// route.
 const LANDING_STAGE_PREFIX = "Setup-";
 
 const uiRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -56,6 +59,10 @@ if (entry === null || !assets.includes(entry)) {
   console.error(`check-bundle: entry chunk from index.html not found among the assets.`);
   process.exit(1);
 }
+if (routeCss !== null && !assets.includes(routeCss)) {
+  console.error(`check-bundle: stylesheet from index.html not found among the assets.`);
+  process.exit(1);
+}
 
 // Static-import closure of the entry chunk. Only `from"x.js"` and bare
 // `import"x.js"` forms match; a dynamic `import("x.js")` carries a
@@ -73,18 +80,29 @@ function staticImports(name) {
 }
 
 const routeSet = new Set([entry, ...(routeCss !== null ? [routeCss] : [])]);
-const landing = assets.find((name) => name.startsWith(LANDING_STAGE_PREFIX));
+// The landing lookup scans chunks only: a future Setup-*.css would
+// otherwise shadow the real Setup chunk here.
+const landing = assets
+  .filter((name) => name.endsWith(".js"))
+  .find((name) => name.startsWith(LANDING_STAGE_PREFIX));
 if (landing === undefined) {
-  console.error(
-    `check-bundle: landing stage chunk (${LANDING_STAGE_PREFIX}*) not found; ` +
-      "the route total would not match a first visit.",
-  );
+  if (assets.some((name) => name.startsWith("Home-"))) {
+    console.error(
+      "check-bundle: a Home stage chunk exists, so the landing route is no longer " +
+        "Setup. Update LANDING_STAGE_PREFIX before trusting this gate.",
+    );
+  } else {
+    console.error(
+      `check-bundle: landing stage chunk (${LANDING_STAGE_PREFIX}*) not found; ` +
+        "the route total would not match a first visit.",
+    );
+  }
   process.exit(1);
 }
 routeSet.add(landing);
 const queue = [entry, landing];
 while (queue.length > 0) {
-  for (const dep of staticImports(queue.shift() ?? "")) {
+  for (const dep of staticImports(queue.shift())) {
     if (!routeSet.has(dep)) {
       routeSet.add(dep);
       queue.push(dep);
