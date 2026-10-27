@@ -1,3 +1,18 @@
+## Unreleased — browser UI (lifecycle SPA)
+
+The full research flow ships as a browser app at `/app/`, served by
+the same server. Eight stages: Setup (system status, sample data),
+Ingest (files, website with crawl, paste text, server paths,
+transcripts), Review (degraded chunks, coding review queue, topics),
+Scale (self-polling run ledger, bulk ingest with force, re-embed),
+Ask (cited answers, honest verify badge, search, notebook ask),
+Analyze (method advisor, manifest-driven runner), Codebook (promote
+gate, notebook views, governance report, one-stage cycle wizard),
+and Release (assess, request, review, gated execute, structured
+block refusals). Hardening: Playwright smoke plus axe-core a11y scan
+on a live throwaway server (REQUIRED ci job), a per-route bundle
+budget gate, and honest states for every degraded mode. See
+docs/UI-SPA.md and docs/UI-DEVELOPMENT.md.
 ## Unreleased — structure-aware ingestion wave (PPTX, web, late chunking)
 
 First-class ingestion for two more modalities plus the late-chunking

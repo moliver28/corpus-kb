@@ -14,8 +14,8 @@ Plain English only. Each step has a fallback line for the worst case.
 5. Topics beat: set `topics.enabled: true` and install the `[topics]` extra.
    Without it the button honestly reports "disabled" with the remedy (fix landing in PR-6).
 6. Verified-answer beat (optional): serve `qwen3-reranker:4b` (llama-server recipe in
-   `docs/ADMIN.md`). Without a reranker every answer honestly shows "not verified"
-   with its claim-support number — that is the designed degraded state, not a bug.
+   `docs/ADMIN.md`). Without a reranker, every answer honestly shows "not verified".
+   The claim-support number shows too. That is the designed degraded state, not a bug.
 7. Warm-up BEFORE the room fills: one ask (embeddings + one generation, ~90 s cold).
 
 ## The script (8 steps, ~10 minutes)
@@ -32,9 +32,11 @@ Plain English only. Each step has a fallback line for the worst case.
 | 8 | Codebook: promote gate; Release: assess with an unknown id | Human gate modal; structured refusal, never a crash | ~60 s | "Human gates stay human; refusals name the failing gates." |
 
 Recorded walkthrough (2026-10-27, throwaway stack, qwen3-embedding:4b + qwen3:4b):
-app load 2.4 s · folder ingest 12 files ~18 s · cited answer ~73 s · topics build
-disabled in that stack's config (honest disabled notice; beat needs prep step 5) ·
-layout holds at 1024 px · server restart reloads the SPA in ~1.5 s on the same stage.
+- App load 2.4 s. Folder ingest of 12 files ~18 s. Cited answer ~73 s.
+- Topics build was disabled in that stack's config. The card showed the honest
+  disabled notice (that beat needs prep step 5).
+- Layout held at 1024 px. A server restart reloaded the SPA in ~1.5 s on the
+  same stage.
 
 ## Risk drills (all passed live)
 
@@ -51,15 +53,14 @@ layout holds at 1024 px · server restart reloads the SPA in ~1.5 s on the same 
 - Warm-up run before the room fills (step 7 of prep), timed.
 - Screen-record the full run as the backup; save it next to this file.
 - String audit on demoed screens: no config keys, exit codes, or status words in
-  the money path (doctor's detail table and Analyze dormant cards show config
-  keys by design and are not demoed beats).
-- Known honest states you may see: not-wired banners for operations still missing
-  manifest rows (issue #182), "not verified" badges without a reranker.
+  the money path. (Doctor's detail table and Analyze dormant cards show config
+  keys by design; they are not demoed beats.)
+- Known honest states: not-wired banners for operations still missing manifest
+  rows (issue #182). Also "not verified" badges without a reranker.
 
 ## Verified-live caveats
 
-- The header menu was verified via DOM event dispatch; an automation-browser
-  quirk blocked synthetic trusted clicks, so do one manual click-through of the
+- The header menu was verified via DOM event dispatch. An automation-browser
+  quirk blocked synthetic trusted clicks. Do one manual click-through of the
   stage menu before the room fills.
-- Citations currently show full local file paths; a basename fix is landing in
-  PR-6.
+- Citations showed full local file paths; the basename fix landed in PR-6.
