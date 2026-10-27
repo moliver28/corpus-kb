@@ -5,23 +5,35 @@ import askEmpty200 from "./fixtures/ask-empty-200.json";
 import askSuccess200 from "./fixtures/ask-success-200.json";
 import assignmentsOk200 from "./fixtures/assignments-ok-200.json";
 import blocked409 from "./fixtures/blocked-409.json";
+import codebooksOk200 from "./fixtures/codebooks-ok-200.json";
+import cycleHalted200 from "./fixtures/cycle-halted-200.json";
 import degraded200 from "./fixtures/degraded-200.json";
 import demoLoaded200 from "./fixtures/demo-loaded-200.json";
 import demoPartial200 from "./fixtures/demo-partial-200.json";
 import doctorOk200 from "./fixtures/doctor-ok.json";
 import empty200 from "./fixtures/empty-200.json";
+import governanceOk200 from "./fixtures/governance-ok-200.json";
 import ingestStatusOk200 from "./fixtures/ingest-status-ok-200.json";
 import ingestDirectoryOk200 from "./fixtures/ingest-directory-ok-200.json";
 import ingestUrlOk200 from "./fixtures/ingest-url-ok-200.json";
 import notebookAnswer200 from "./fixtures/notebook-answer-200.json";
+import notebookEvidenceOk200 from "./fixtures/notebook-evidence-ok-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
 import ok200 from "./fixtures/ok-200.json";
+import projectsOk200 from "./fixtures/projects-ok-200.json";
+import promoteDuplicate200 from "./fixtures/promote-duplicate-200.json";
+import promoteOk200 from "./fixtures/promote-ok-200.json";
+import proposalsOk200 from "./fixtures/proposals-ok-200.json";
 import reembedOk200 from "./fixtures/reembed-ok-200.json";
+import releaseAssessOk200 from "./fixtures/release-assess-ok-200.json";
+import releaseBlocked409 from "./fixtures/release-blocked-409.json";
+import releaseReviewOk200 from "./fixtures/release-review-ok-200.json";
+import releaseStatusOk200 from "./fixtures/release-status-ok-200.json";
 import researchIngestOk200 from "./fixtures/research-ingest-ok-200.json";
 import reviewExecuteOk200 from "./fixtures/review-execute-ok-200.json";
 import searchOk200 from "./fixtures/search-ok-200.json";
-import serverError500 from "./fixtures/server-error-500.json";
 import selectMethodOk200 from "./fixtures/select-method-ok-200.json";
+import serverError500 from "./fixtures/server-error-500.json";
 import topicsOk200 from "./fixtures/topics-ok-200.json";
 import topicsTrendsDisabled200 from "./fixtures/topics-trends-disabled-200.json";
 import unavailable503 from "./fixtures/unavailable-503.json";
@@ -102,6 +114,18 @@ const FIXTURES = [
   ingestUrlOk200,
   ingestDirectoryOk200,
   researchIngestOk200,
+  codebooksOk200,
+  projectsOk200,
+  proposalsOk200,
+  promoteOk200,
+  promoteDuplicate200,
+  cycleHalted200,
+  governanceOk200,
+  notebookEvidenceOk200,
+  releaseAssessOk200,
+  releaseBlocked409,
+  releaseReviewOk200,
+  releaseStatusOk200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -132,6 +156,18 @@ const EXPECTED_KINDS: Record<string, string> = {
   "ingest-url-ok-200": "ok",
   "ingest-directory-ok-200": "ok",
   "research-ingest-ok-200": "ok",
+  "codebooks-ok-200": "ok",
+  "projects-ok-200": "ok",
+  "proposals-ok-200": "ok",
+  "promote-ok-200": "ok",
+  "promote-duplicate-200": "ok",
+  "cycle-halted-200": "ok",
+  "governance-ok-200": "unknown",
+  "notebook-evidence-ok-200": "ok",
+  "release-assess-ok-200": "ok",
+  "release-blocked-409": "blocked",
+  "release-review-ok-200": "ok",
+  "release-status-ok-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -167,7 +203,18 @@ describe("committed envelope fixtures", () => {
         f.name === "topics-trends-disabled-200" ||
         f.name === "ingest-url-ok-200" ||
         f.name === "ingest-directory-ok-200" ||
-        f.name === "research-ingest-ok-200"
+        f.name === "research-ingest-ok-200" ||
+        f.name === "codebooks-ok-200" ||
+        f.name === "projects-ok-200" ||
+        f.name === "proposals-ok-200" ||
+        f.name === "promote-ok-200" ||
+        f.name === "promote-duplicate-200" ||
+        f.name === "cycle-halted-200" ||
+        f.name === "governance-ok-200" ||
+        f.name === "notebook-evidence-ok-200" ||
+        f.name === "release-assess-ok-200" ||
+        f.name === "release-review-ok-200" ||
+        f.name === "release-status-ok-200"
       ) {
         expect(result.ok).toBe(true);
       } else {

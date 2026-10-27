@@ -1,19 +1,23 @@
 import { Button, Card, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import ErrorPanel from "../../components/ErrorPanel";
-import JsonViewer from "../../components/JsonViewer";
-import ReceiptCard from "../../components/ReceiptCard";
-import StatusBanner from "../../components/StatusBanner";
-import ConfirmGate from "../../components/ConfirmGate";
-import UnavailablePanel from "../../components/UnavailablePanel";
-import { callOp } from "../../api/client";
-import { getOp } from "../../api/ops";
-import type { OpResult } from "../../api/types";
-import { useLongOp } from "../../hooks/useLongOp";
-import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
-import type { DormantHint } from "./shapes";
+import ErrorPanel from "./ErrorPanel";
+import JsonViewer from "./JsonViewer";
+import ReceiptCard from "./ReceiptCard";
+import StatusBanner from "./StatusBanner";
+import ConfirmGate from "./ConfirmGate";
+import UnavailablePanel from "./UnavailablePanel";
+import { callOp } from "../api/client";
+import { getOp } from "../api/ops";
+import type { OpResult } from "../api/types";
+import { useLongOp } from "../hooks/useLongOp";
+import { useOp } from "../hooks/useOp";
+import { strings } from "../strings";
+/** One dormant-feature notice: the exact config key + a YAML snippet. */
+export interface DormantHint {
+  configKey: string;
+  yaml: string;
+}
 
 /** A dormant (config-off) answer: the exact key + a copyable YAML snippet. */
 function DormantNote({ hint }: { hint: DormantHint }) {

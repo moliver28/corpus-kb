@@ -1,0 +1,16 @@
+{
+  "name": "cycle-halted-200",
+  "source": "canonical",
+  "note": "POST /api/research/cycle receipt (tools/cycle_tools.py: status from _status_for + exit_code + gate + checkpoint_kind); halted at the promotion gate (exit 10). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/research/cycle" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "halted",
+      "exit_code": 10,
+      "gate": "codebook_promotion",
+      "checkpoint_kind": "gate_halt",
+      "resume_hint": ""
+    }
+  }
+}

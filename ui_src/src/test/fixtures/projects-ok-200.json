@@ -1,0 +1,19 @@
+{
+  "name": "projects-ok-200",
+  "source": "canonical",
+  "note": "GET /api/projects listing (tools/lifecycle_read_tools.py projects_list: {status, result}). Re-record against a running server.",
+  "request": { "method": "GET", "path": "/api/projects" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": [
+        {
+          "project_id": "11111111-2222-4333-8444-555566667777",
+          "name": "Grid Interviews",
+          "created_at": "2026-01-04T08:00:00Z"
+        }
+      ]
+    }
+  }
+}

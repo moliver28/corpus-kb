@@ -60,8 +60,3 @@ export function manifestOpId(registerOp: string): string {
   return registerOp.replace(/_/g, "-");
 }
 
-/** One dormant-feature notice: the exact config key + a YAML snippet. */
-export interface DormantHint {
-  configKey: string;
-  yaml: string;
-}
