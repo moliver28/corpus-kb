@@ -1,0 +1,19 @@
+{
+  "name": "promote-ok-200",
+  "source": "canonical",
+  "note": "POST /api/codebook/promote promoted receipt (research/promote_code.py promote_proposal). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/codebook/promote" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "promoted",
+      "proposal_id": 12,
+      "codebook_version_id": "cccc3333-4444-4d55-8e66-777788889999",
+      "code_id": "eeee4444-5555-4f66-8a77-9999bbbb0000",
+      "n_members": 9,
+      "tau_dup": 0.9,
+      "max_cos": 0.71,
+      "rederivation": "k-medoids over member A/QA/Q views (deductive space)"
+    }
+  }
+}

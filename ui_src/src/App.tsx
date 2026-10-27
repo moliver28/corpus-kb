@@ -9,7 +9,9 @@ const Ingest = lazy(() => import("./pages/Ingest"));
 const Review = lazy(() => import("./pages/Review"));
 const Ask = lazy(() => import("./pages/Ask"));
 const Analyze = lazy(() => import("./pages/Analyze"));
+const Codebook = lazy(() => import("./pages/Codebook"));
 const Scale = lazy(() => import("./pages/Scale"));
+const Release = lazy(() => import("./pages/Release"));
 
 /** A stage whose screen has not landed yet — one honest placeholder.
     Plain markup keeps antd's Card out of the shell chunk. */
@@ -62,7 +64,9 @@ function StageShell() {
             <Route path="/review" element={<Review />} />
             <Route path="/ask" element={<Ask />} />
             <Route path="/analyze" element={<Analyze />} />
+            <Route path="/codebook" element={<Codebook />} />
             <Route path="/scale" element={<Scale />} />
+            <Route path="/release" element={<Release />} />
             {/* Stages without screens yet (Tasks 6-7) land above this
                 catch-all; until then each shows the same placeholder. */}
             <Route path="*" element={<StagePlaceholder />} />

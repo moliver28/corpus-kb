@@ -1,0 +1,21 @@
+{
+  "name": "release-status-ok-200",
+  "source": "canonical",
+  "note": "GET /api/release/status report (handlers/release_handlers.py StatusReport.to_payload). Re-record against a running server.",
+  "request": { "method": "GET", "path": "/api/release/status" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "ok",
+      "codebook_version_id": "aaaa1111-2222-4333-8444-555566667777",
+      "current_stage": "gate_evidence",
+      "release_state": "draft_candidate",
+      "blocking_criteria": ["precision gate must pass"],
+      "recommended_next_action": "Improve precision or waive g_precision, then execute.",
+      "active_release": null,
+      "draft": { "release_id": "7777cccc-8888-4ddd-9eee-5555ffff6666" },
+      "pending_change_proposals": [],
+      "data_sufficiency": { "embeddings": true, "assignments": true }
+    }
+  }
+}

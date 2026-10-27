@@ -1,0 +1,25 @@
+{
+  "name": "governance-ok-200",
+  "source": "canonical",
+  "note": "POST /api/research/report artifact (research/governance_report.py to_dict: schema_version + the pinned metric fields; the payload carries no status word). Subset shown; re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/research/report" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "schema_version": "1.0",
+      "generated_at": "2026-01-05T11:00:00Z",
+      "level": "novice",
+      "codebook_label": "Grid interviews v2",
+      "isr_pooled": 0.82,
+      "coverage_explicit": 0.91,
+      "coverage_qdep": 0.77,
+      "gray_zone_share": 0.08,
+      "tier3_disagreement_rate": 0.11,
+      "link_accuracy": 0.95,
+      "review_backlog": 3,
+      "residual": { "uncoded": 4 },
+      "missing_codes": [],
+      "run_stop": "complete"
+    }
+  }
+}

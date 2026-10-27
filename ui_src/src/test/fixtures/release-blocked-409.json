@@ -1,0 +1,18 @@
+{
+  "name": "release-blocked-409",
+  "source": "canonical",
+  "note": "POST /api/release/release blocked outcome (handlers/release_handlers.py ReleaseOutcome.to_payload, status blocked; the transport answers 409). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/release/release" },
+  "response": {
+    "httpStatus": 409,
+    "body": {
+      "status": "blocked",
+      "approver": "Alex",
+      "release_id": "7777cccc-8888-4ddd-9eee-5555ffff6666",
+      "enforcement": "enforce",
+      "unmet_required_gates": ["g_precision"],
+      "warnings": [],
+      "reason": "required gates must be pass or waived before release"
+    }
+  }
+}

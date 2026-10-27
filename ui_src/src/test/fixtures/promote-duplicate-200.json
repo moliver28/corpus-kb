@@ -1,0 +1,16 @@
+{
+  "name": "promote-duplicate-200",
+  "source": "canonical",
+  "note": "POST /api/codebook/promote duplicate-gate block (research/promote_code.py promote_proposal: status duplicate_blocked with the merge suggestion). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/codebook/promote" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "duplicate_blocked",
+      "proposal_id": 12,
+      "tau_dup": 0.9,
+      "max_cos": 0.93,
+      "merge_suggestion": "grid_reliability"
+    }
+  }
+}

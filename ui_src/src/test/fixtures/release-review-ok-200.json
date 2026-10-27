@@ -1,0 +1,23 @@
+{
+  "name": "release-review-ok-200",
+  "source": "canonical",
+  "note": "POST /api/release/review packet (handlers/release_handlers.py ReviewPacket.to_payload). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/release/review" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "review_packet",
+      "release_id": "7777cccc-8888-4ddd-9eee-5555ffff6666",
+      "release_state": "draft_candidate",
+      "profile": "default",
+      "enforcement": "enforce",
+      "evidence": [],
+      "failing_gates": ["g_precision"],
+      "not_evaluable_gates": [],
+      "waived_gates": [],
+      "unmet_required_gates": ["g_precision"],
+      "next_actions": ["Improve precision", "Waive g_precision with a justification"],
+      "recommended_next_action": "Improve precision or waive g_precision, then execute."
+    }
+  }
+}

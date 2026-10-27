@@ -1,0 +1,38 @@
+{
+  "name": "release-assess-ok-200",
+  "source": "canonical",
+  "note": "POST /api/release/assess evidence bundle (handlers/release_handlers.py AssessResult.to_payload; gate rows are the rubric's serialization). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/release/assess" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "assessed",
+      "codebook_version_id": "aaaa1111-2222-4333-8444-555566667777",
+      "profile": "default",
+      "enforcement": "enforce",
+      "gate_results": [
+        {
+          "gate_id": "g_coverage",
+          "status": "pass",
+          "reason": "Coverage 0.91 clears the floor.",
+          "value": 0.91,
+          "threshold": 0.8,
+          "evidence_refs": []
+        },
+        {
+          "gate_id": "g_precision",
+          "status": "fail",
+          "reason": "Precision 0.62 is under the 0.75 floor.",
+          "value": 0.62,
+          "threshold": 0.75,
+          "evidence_refs": []
+        }
+      ],
+      "required_gate_ids": ["g_coverage", "g_precision"],
+      "required_failing": ["g_precision"],
+      "required_not_evaluable": [],
+      "all_required_pass_without_waivers": false,
+      "data_sufficiency": { "embeddings": true, "assignments": true }
+    }
+  }
+}

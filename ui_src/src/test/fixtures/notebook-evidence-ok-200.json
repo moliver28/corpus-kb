@@ -1,0 +1,30 @@
+{
+  "name": "notebook-evidence-ok-200",
+  "source": "canonical",
+  "note": "POST /api/notebook/evidence view (research/notebook_evidence.py evidence_for_code: {status, code, code_id, definition, version_id, n_units, tabs}); one trimmed entry. Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/notebook/evidence" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "ok",
+      "code": "storm_outage_blame",
+      "code_id": "storm_outage_blame",
+      "definition": "Assigns blame for outages to storms or crews.",
+      "version_id": "cccc3333-4444-4d55-8e66-777788889999",
+      "n_units": 1,
+      "tabs": {
+        "explicit": [
+          {
+            "unit_id": 7,
+            "text": "The storm took the line down.",
+            "confidence": "high",
+            "status": "confirmed",
+            "disagreement": false,
+            "conformal_set_size": 1
+          }
+        ],
+        "question_dependent": []
+      }
+    }
+  }
+}
