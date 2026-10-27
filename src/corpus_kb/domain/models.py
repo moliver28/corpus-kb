@@ -38,7 +38,9 @@ class IngestFileCommand(DomainCommand):
     source_type: str | None = None
     # Wire name is ``validate`` (the surface param); the field carries the
     # same value. Named validate_mode here: BaseModel already uses `validate`.
-    validate_mode: str = "off"
+    # None means "the caller did not say": the active profile's ``validate``
+    # value then decides (Wave 6); with no profile it resolves to ``off``.
+    validate_mode: str | None = None
 
 
 class IngestTextCommand(DomainCommand):
@@ -47,7 +49,7 @@ class IngestTextCommand(DomainCommand):
     text: str
     source: str
     source_type: str = "text"
-    validate_mode: str = "off"
+    validate_mode: str | None = None
 
 
 class IngestDirectoryCommand(DomainCommand):
@@ -55,7 +57,7 @@ class IngestDirectoryCommand(DomainCommand):
 
     directory_path: str
     recursive: bool = True
-    validate_mode: str = "off"
+    validate_mode: str | None = None
 
 
 class AddEntityCommand(DomainCommand):

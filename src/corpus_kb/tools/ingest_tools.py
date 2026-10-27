@@ -65,14 +65,15 @@ async def ingest_file(
     config: dict[str, object] | None = None,
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
     source_type: str | None = None,
-    validate: str = "off",
+    validate: str | None = None,
 ) -> dict[str, object]:
     """Ingest a single file (auto-detects type).
 
     ``source_type``, when given, explicitly pins the ingestion strategy
     (e.g. "transcript"); the DOCUMENT source type is still auto-detected
     from the file extension. ``validate`` is the optional validation gate
-    (off | advisory | enforce | calibrate); default ``off``.
+    (off | advisory | enforce | calibrate); None falls back to the active
+    profile's ``validate`` value, then ``off``.
     """
     config = load_config_or_pass(config)
     path = Path(file_path)
@@ -106,7 +107,7 @@ async def ingest_directory(
     tenant_id: str = "00000000-0000-0000-0000-000000000001",
     source_type: str | None = None,
     recursive: bool = True,
-    validate: str = "off",
+    validate: str | None = None,
 ) -> dict[str, object]:
     """Ingest the supported files in a directory. This is the ONE walk.
 
@@ -129,7 +130,8 @@ async def ingest_directory(
     ``source_type`` optionally pins the ingestion strategy for every file
     (validated once up front against the registry). ``validate`` is the
     optional validation gate passed to every per-file ingest (off |
-    advisory | enforce | calibrate); default ``off``.
+    advisory | enforce | calibrate); None falls back to the active
+    profile's ``validate`` value, then ``off``.
     """
     config = load_config_or_pass(config)
     directory = Path(directory_path)

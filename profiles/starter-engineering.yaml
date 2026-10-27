@@ -1,0 +1,17 @@
+# The `code` strategy needs the optional extra: pip install 'corpus-kb[code]'.
+# Without the extra, code files still ingest: the strategy falls back to the
+# default plan and records a warning in the ingest result.
+name: starter-engineering
+description: >-
+  Paved starting profile for engineering corpora. Source files chunk per
+  top-level definition when the code extra is installed. Markdown files
+  chunk at heading boundaries. Everything else keeps the default plan,
+  so a missing extra never fails an ingest. Validation runs in advisory
+  mode and never blocks a write. Edit freely, or copy it and rename.
+data_type: engineering
+ingestion:
+  strategies:
+    code: code
+    markdown: markdown_sections
+  default: default
+validate: advisory

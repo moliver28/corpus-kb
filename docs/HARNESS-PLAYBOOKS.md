@@ -74,10 +74,16 @@ templates:
 Field reference:
 
 - `name`: must match the file name without the `.yaml` suffix.
-- `data_type`: `interview`, `focus_group`, `survey`, `news`, `mixed`.
+- `data_type`: `interview`, `focus_group`, `survey`, `news`, `mixed`,
+  `product`, `engineering`, or `design`. There is no `research` type.
+  Research transcripts use `interview` or `focus_group`. The research
+  ingest path reads those turn by turn.
 - `ingestion.strategies`: maps a source type to a strategy name.
 - `ingestion.default`: the strategy when nothing else decides.
 - `extraction.mode`: `zero_shot`, `few_shot`, or `customized`.
+- `validate`: `off`, `advisory`, `enforce`, or `calibrate`. Quote the
+  value. YAML reads a bare `off` as false. This is the default gate for
+  callers that pass no `validate` argument. A caller-passed mode wins.
 - `templates`: claim-template ids from `config/claim_templates/`.
 - `seeds_file`: a seeds file in the profiles directory (the
   `extraction-tune` op writes and points to it for you).
@@ -86,6 +92,23 @@ Precedence is fixed. An explicit per-call strategy override wins. The
 profile wins next. The `ingestion.strategies` config map wins next.
 Content detection wins next. The default wins last. The result reports
 which layer decided in `strategy_basis`.
+
+## Starter profiles
+
+Four starters ship. Copy one, rename it, and adjust it. Each starter
+sets `validate: advisory`, so findings ride the ingest result and never
+block a write.
+
+| Profile | Data type | Ingestion defaults |
+|---------|-----------|--------------------|
+| `starter-interview` | `interview` | transcript strategy for interview sessions |
+| `starter-product` | `product` | surveys, web pages, markdown files |
+| `starter-engineering` | `engineering` | code files, markdown files |
+| `starter-design` | `design` | slide decks, web pages, markdown files |
+
+The `code` strategy needs the optional `code` extra. Without it, code
+files still ingest. The strategy falls back to the default plan and
+records a warning.
 
 ## Tuning with the tune op
 

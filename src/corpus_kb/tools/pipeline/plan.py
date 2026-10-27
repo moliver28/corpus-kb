@@ -57,7 +57,7 @@ async def run_pipeline(
     rag_backend: RagBackend | None = None,
     is_file: bool = False,
     strategy_name: str | None = None,
-    validate_mode: str = "off",
+    validate_mode: str | None = None,
 ) -> dict[str, Any]:
     """Run the full ingest pipeline: resolve strategy, build chunks, embed,
     extract, store.
@@ -97,11 +97,13 @@ async def run_pipeline(
         strategy_name: Optional explicit ingestion-strategy override (a
             registered strategy name). Unknown names raise UnknownStrategyError.
         validate_mode: Optional validation gate (unified-ingestion Wave 4):
-            ``off`` (default — validators do not run, the envelope is
-            byte-identical), ``advisory`` (attach the ``validation`` summary
+            ``off`` (validators do not run, the envelope stays clean),
+            ``advisory`` (attach the ``validation`` summary
             to the envelope), ``enforce`` (raise the typed ValidationError
             when a validator fails), ``calibrate`` (record the summary in
-            the ingest_runs ledger stages without blocking).
+            the ingest_runs ledger stages without blocking). None (the
+            default) falls back to the active profile's ``validate``
+            value (Wave 6). With no profile, None resolves to ``off``.
 
     Returns:
         Result dict with keys: status ("success" when every stage was clean,
@@ -185,7 +187,13 @@ async def run_pipeline(
         # Validation gate (Wave 4): read-only, pre-ledger — a failure in
         # enforce mode raises before the advisory lock, so nothing is written
         # (the PlanConformanceError pattern). ``off`` never builds the report.
+        # Mode precedence (Wave 6): an explicit caller mode wins; otherwise
+        # the profile's ``validate`` value decides; otherwise off.
         validation_report: dict[str, Any] | None = None
+        if validate_mode is None:
+            validate_mode = (
+                ingestion_profile.validate_mode if ingestion_profile is not None else "off"
+            )
         mode = resolve_mode(validate_mode)
         if mode != "off":
             probe = IngestDocument(
