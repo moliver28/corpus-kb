@@ -1,0 +1,15 @@
+{
+  "name": "review-execute-ok-200",
+  "source": "canonical",
+  "note": "POST /api/review/execute reply (research/review_surface.py execute_review): the aggregate UUID as a string plus the projector count. Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/review/execute" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "assignment_id": "3f6d2c9a-1111-4c4c-8d8d-222222222222",
+      "decision": "accept",
+      "projection": { "reviewed_events_applied": 1 }
+    }
+  }
+}

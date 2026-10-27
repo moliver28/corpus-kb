@@ -1,0 +1,10 @@
+{
+  "name": "reembed-ok-200",
+  "source": "canonical",
+  "note": "POST /api/ingest/reembed honest summary (tools/ingest_reembed.py reembed_degraded). Re-record against a running server with degraded chunks.",
+  "request": { "method": "POST", "path": "/api/ingest/reembed" },
+  "response": {
+    "httpStatus": 200,
+    "body": { "status": "success", "scanned": 3, "fixed": 3, "failed": 0 }
+  }
+}

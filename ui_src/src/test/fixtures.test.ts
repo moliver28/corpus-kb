@@ -1,14 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { normalize } from "../api/errors";
+import askDegraded200 from "./fixtures/ask-degraded-200.json";
+import askEmpty200 from "./fixtures/ask-empty-200.json";
+import askSuccess200 from "./fixtures/ask-success-200.json";
+import assignmentsOk200 from "./fixtures/assignments-ok-200.json";
 import blocked409 from "./fixtures/blocked-409.json";
 import degraded200 from "./fixtures/degraded-200.json";
 import demoLoaded200 from "./fixtures/demo-loaded-200.json";
 import demoPartial200 from "./fixtures/demo-partial-200.json";
 import doctorOk200 from "./fixtures/doctor-ok.json";
 import empty200 from "./fixtures/empty-200.json";
+import ingestStatusOk200 from "./fixtures/ingest-status-ok-200.json";
+import notebookAnswer200 from "./fixtures/notebook-answer-200.json";
 import notFound404 from "./fixtures/not-found-404.json";
 import ok200 from "./fixtures/ok-200.json";
+import reembedOk200 from "./fixtures/reembed-ok-200.json";
+import reviewExecuteOk200 from "./fixtures/review-execute-ok-200.json";
+import searchOk200 from "./fixtures/search-ok-200.json";
 import serverError500 from "./fixtures/server-error-500.json";
+import topicsOk200 from "./fixtures/topics-ok-200.json";
 import unavailable503 from "./fixtures/unavailable-503.json";
 import validationError400 from "./fixtures/validation-error-400.json";
 
@@ -72,6 +82,16 @@ const FIXTURES = [
   doctorOk200,
   demoLoaded200,
   demoPartial200,
+  assignmentsOk200,
+  topicsOk200,
+  ingestStatusOk200,
+  reembedOk200,
+  askSuccess200,
+  askEmpty200,
+  askDegraded200,
+  searchOk200,
+  notebookAnswer200,
+  reviewExecuteOk200,
 ] as unknown[];
 
 /** name -> the kind the normalizer must produce for that fixture. */
@@ -87,6 +107,16 @@ const EXPECTED_KINDS: Record<string, string> = {
   "doctor-ok-200": "ok",
   "demo-loaded-200": "ok",
   "demo-partial-200": "ok",
+  "assignments-ok-200": "ok",
+  "topics-ok-200": "ok",
+  "ingest-status-ok-200": "ok",
+  "reembed-ok-200": "ok",
+  "ask-success-200": "ok",
+  "ask-empty-200": "ok",
+  "ask-degraded-200": "ok",
+  "search-ok-200": "ok",
+  "notebook-answer-200": "ok",
+  "review-execute-ok-200": "ok",
 };
 
 describe("committed envelope fixtures", () => {
@@ -107,7 +137,17 @@ describe("committed envelope fixtures", () => {
         f.name === "degraded-200" ||
         f.name === "doctor-ok-200" ||
         f.name === "demo-loaded-200" ||
-        f.name === "demo-partial-200"
+        f.name === "demo-partial-200" ||
+        f.name === "assignments-ok-200" ||
+        f.name === "topics-ok-200" ||
+        f.name === "ingest-status-ok-200" ||
+        f.name === "reembed-ok-200" ||
+        f.name === "ask-success-200" ||
+        f.name === "ask-empty-200" ||
+        f.name === "ask-degraded-200" ||
+        f.name === "search-ok-200" ||
+        f.name === "notebook-answer-200" ||
+        f.name === "review-execute-ok-200"
       ) {
         expect(result.ok).toBe(true);
       } else {

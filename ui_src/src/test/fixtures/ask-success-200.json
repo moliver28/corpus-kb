@@ -1,0 +1,45 @@
+{
+  "name": "ask-success-200",
+  "source": "canonical",
+  "note": "POST /api/ask success envelope (ask/composer.py AnswerBundle.to_payload). Re-record against a running server with a provisioned model.",
+  "request": { "method": "POST", "path": "/api/ask" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": {
+        "answer": "The grid plan adds storage. Storage smooths evening peaks [1] [2].",
+        "sentences": [
+          { "text": "The grid plan adds storage.", "citations": [1] },
+          { "text": "Storage smooths evening peaks [1] [2].", "citations": [1, 2] }
+        ],
+        "sources": [
+          {
+            "n": 1,
+            "chunk_id": "1111aaaa-2222-4bbb-8ccc-3333dddd4444",
+            "doc_id": "5555eeee-6666-4fff-8aaa-4444bbbb5555",
+            "source": "samples/grid-brief.md",
+            "text": "The plan installs battery storage at two substations.",
+            "score": 0.91,
+            "file_path": "samples/grid-brief.md",
+            "heading_path": ["Storage"]
+          },
+          {
+            "n": 2,
+            "chunk_id": "7777cccc-8888-4ddd-9eee-5555ffff6666",
+            "doc_id": "5555eeee-6666-4fff-8aaa-4444bbbb5555",
+            "source": "samples/grid-brief.md",
+            "text": "Evening peaks drop when batteries discharge between 6 and 9 pm.",
+            "score": 0.84,
+            "file_path": "samples/grid-brief.md",
+            "heading_path": ["Peaks"]
+          }
+        ],
+        "verify": { "groundedness": 1.0, "verdicts": [], "abstained": false },
+        "model": "test-model",
+        "note": null
+      },
+      "degraded_excluded": { "count": 0, "reasons": [] }
+    }
+  }
+}
