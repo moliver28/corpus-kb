@@ -369,6 +369,9 @@ jobs:
       POSTGRES_SUPERUSER: corpus_user
       POSTGRES_SUPERUSER_PASSWORD: corpus_pass
       CORPUS_KB_TEST_DB: corpus_kb_e2e
+      # The CPU runner needs room for the cold 4B model load plus generation;
+      # Ollama's own model load timeout is 5 minutes.
+      CORPUS_KB_LLM_TIMEOUT_S: "900"
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers
 
     steps:
