@@ -24,6 +24,8 @@ type Call = { method: string; url: string; body: string };
 
 const calls: Call[] = [];
 
+const CYCLE_BODY = '{"mode":"in"}';
+
 function respond(status: number, body: unknown): MinimalResponse {
   return { status, text: async () => JSON.stringify(body) };
 }
@@ -100,11 +102,19 @@ describe("Codebook page", () => {
     });
     fireEvent.click(promoteButtons[0]);
     const dialog = await screen.findByRole("dialog");
-    // The name seeds from the suggested label; the definition stays empty.
+    const textboxes = within(dialog).getAllByRole("textbox");
+    const nameInput = textboxes.find((el) => el.tagName === "INPUT")!;
+    const definition = textboxes.find((el) => el.tagName === "TEXTAREA")!;
+    // Nothing is pre-seeded: the first pass asks for the name, then the
+    // definition, and only a typed pair unlocks the op.
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.codebookPromoteAction }));
+    expect(await screen.findByText(strings.codebookPromoteNameRequired)).toBeTruthy();
+    expect(calls.some((c) => c.url.includes("/api/codebook/promote"))).toBe(false);
+    fireEvent.change(nameInput, { target: { value: "Storm outage blame" } });
     fireEvent.click(within(dialog).getByRole("button", { name: strings.codebookPromoteAction }));
     expect(await screen.findByText(strings.codebookPromoteDefinitionRequired)).toBeTruthy();
     expect(calls.some((c) => c.url.includes("/api/codebook/promote"))).toBe(false);
-    fireEvent.change(within(dialog).getAllByRole("textbox").find((el) => el.tagName === "TEXTAREA")!, {
+    fireEvent.change(definition, {
       target: { value: "Blames storm damage for outage delays." },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: strings.codebookPromoteAction }));
@@ -133,7 +143,11 @@ describe("Codebook page", () => {
     });
     fireEvent.click(promoteButtons[0]);
     const dialog = await screen.findByRole("dialog");
-    fireEvent.change(within(dialog).getAllByRole("textbox").find((el) => el.tagName === "TEXTAREA")!, {
+    const textboxes = within(dialog).getAllByRole("textbox");
+    fireEvent.change(textboxes.find((el) => el.tagName === "INPUT")!, {
+      target: { value: "Storm outage blame" },
+    });
+    fireEvent.change(textboxes.find((el) => el.tagName === "TEXTAREA")!, {
       target: { value: "Blames storm damage for outage delays." },
     });
     fireEvent.click(within(dialog).getByRole("button", { name: strings.codebookPromoteAction }));
@@ -150,8 +164,10 @@ describe("Codebook page", () => {
       });
       // One impl: the cycle holds on the gate promise; the pre-flight
       // reads answer from the recorded routes.
-      const impl = (url: string | URL, init?: { method?: string }): Promise<MinimalResponse> => {
+      const cycleBodies: string[] = [];
+      const impl = (url: string | URL, init?: { method?: string; body?: unknown }): Promise<MinimalResponse> => {
         if (String(url).includes("/api/research/cycle")) {
+          cycleBodies.push(String(init?.body ?? ""));
           return gate;
         }
         const method = (init?.method ?? "GET").toUpperCase();
@@ -179,6 +195,9 @@ describe("Codebook page", () => {
       });
       expect(within(cycleCard).getByText(strings.codebookCycleHalted)).toBeTruthy();
       expect(within(cycleCard).getAllByText(/codebook_promotion/).length).toBeGreaterThan(0);
+      // The safety rule, pinned: the wizard asks for one more stage and
+      // for nothing else — approve can never ride along.
+      expect(cycleBodies).toEqual([CYCLE_BODY]);
     } finally {
       vi.useRealTimers();
     }

@@ -7,6 +7,7 @@
     "httpStatus": 409,
     "body": {
       "status": "blocked",
+      "approver": "Alex",
       "release_id": "7777cccc-8888-4ddd-9eee-5555ffff6666",
       "enforcement": "enforce",
       "unmet_required_gates": ["g_precision"],

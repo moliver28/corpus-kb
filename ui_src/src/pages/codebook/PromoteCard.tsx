@@ -1,10 +1,9 @@
-import { Button, Card, Input, Modal, Table, Tag, Typography } from "antd";
+import { Button, Card, Input, Modal, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
-
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
@@ -35,18 +34,6 @@ function isProposalsEnvelope(value: unknown): value is ProposalsEnvelope {
         typeof (row as Record<string, unknown>).proposed_id === "number",
     )
   );
-}
-
-// The server's proposal states never render raw.
-const STATE_WORDS: Record<string, string> = {
-  proposed: strings.codebookStateProposed,
-  promoted: strings.codebookStatePromoted,
-  rejected: strings.codebookStateRejected,
-  duplicate_blocked: strings.codebookStateDuplicate,
-};
-
-function stateWord(status: string): string {
-  return STATE_WORDS[status] ?? strings.codebookStateUnknown;
 }
 
 /**
@@ -92,18 +79,22 @@ export default function PromoteCard() {
       name: name.trim(),
       definition: definition.trim(),
     });
+    // Any settled answer closes the dialog (a failure renders in the
+    // card, never trapped behind the modal).
+    setPromoting(null);
     if (res.ok) {
-      // Promoted or duplicate-blocked: the card below carries the
-      // outcome, so the dialog always closes on a settled answer.
-      setPromoted(true);
-      setPromoting(null);
+      // The false-success trap: duplicate_blocked is also res.ok, and
+      // only a promoted receipt may claim the success line.
+      const data = res.data as Record<string, unknown> | null;
+      setPromoted(data !== null && data.status === "promoted");
       refresh();
     }
   }
 
   function open(row: ProposalRow): void {
+    // Both fields are typed by the person; nothing is pre-seeded.
     setPromoting(row);
-    setName(row.suggested_label);
+    setName("");
     setDefinition("");
     setWarning("");
   }
@@ -112,22 +103,13 @@ export default function PromoteCard() {
     { title: strings.codebookColumnLabel, dataIndex: "suggested_label", key: "label" },
     { title: strings.codebookColumnUnits, dataIndex: "n_members", key: "members", width: 70 },
     {
-      title: strings.codebookColumnState,
-      dataIndex: "status",
-      key: "status",
-      render: (value: unknown) => <Tag>{stateWord(String(value))}</Tag>,
-    },
-    {
       title: strings.codebookPromoteAction,
       key: "actions",
-      render: (_value: unknown, row: ProposalRow) =>
-        row.status === "proposed" ? (
-          <Button size="small" onClick={() => open(row)}>
-            {strings.codebookPromoteAction}
-          </Button>
-        ) : (
-          <Typography.Text type="secondary">{row.block_reason ?? ""}</Typography.Text>
-        ),
+      render: (_value: unknown, row: ProposalRow) => (
+        <Button size="small" onClick={() => open(row)}>
+          {strings.codebookPromoteAction}
+        </Button>
+      ),
     },
   ];
 
@@ -156,6 +138,7 @@ export default function PromoteCard() {
           pagination={false}
           dataSource={rows}
           columns={columns}
+          locale={{ emptyText: strings.codebookProposalsNone }}
         />
         {promote.result !== null && !promote.result.ok && (
           <ErrorPanel result={promote.result} onRetry={refresh} opId="codebook-promote" />
@@ -176,7 +159,9 @@ export default function PromoteCard() {
   return (
     <Card title={strings.codebookPromoteTitle}>
       <Typography.Paragraph type="secondary">{strings.codebookPromoteBody}</Typography.Paragraph>
-      {result === null && <StatusBanner kind="info">{strings.codebookVersionsNone}</StatusBanner>}
+      {result === null && (
+        <StatusBanner kind="info">{strings.codebookProposalsNone}</StatusBanner>
+      )}
       {body}
       <Modal
         title={strings.codebookPromoteModalTitle}

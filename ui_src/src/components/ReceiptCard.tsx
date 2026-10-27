@@ -7,6 +7,10 @@ import StatusBanner from "./StatusBanner";
 /** Map the envelope status word to one plain headline (jargon defense). */
 function headline(status: string): string {
   switch (status) {
+    case "":
+      // A status-less artifact (e.g. the governance report) is not a
+      // completed op — never claim "Done" for it.
+      return strings.receiptEmpty;
     case "empty":
       return strings.receiptEmpty;
     case "degraded":

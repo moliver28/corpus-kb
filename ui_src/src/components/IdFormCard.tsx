@@ -22,9 +22,10 @@ export interface FormField {
 
 /**
  * One typed release form: named id fields over ONE manifest op. `via`
-   picks the transport shape — a JSON body or a query-string GET.
- * `gate` wraps the run in a confirm dialog that lists every field
- * value (the approver + gate summary + waivers view, spec F9).
+ * picks the transport shape — a JSON body or a query-string GET.
+ * `gate` wraps the run in a confirm dialog that shows `gateSummary`
+ * (the assess/review gate state) above every field value, so the
+ * approver sees the gate state before confirming (spec F9).
  */
 export default function IdFormCard({
   title,
@@ -33,7 +34,9 @@ export default function IdFormCard({
   opId,
   via = "body",
   gate = false,
+  gateSummary,
   renderResult,
+  onResult,
 }: {
   title: string;
   body?: string;
@@ -41,7 +44,9 @@ export default function IdFormCard({
   opId: string;
   via?: "body" | "query";
   gate?: boolean;
+  gateSummary?: ReactNode;
   renderResult?: (result: OpResult) => ReactNode;
+  onResult?: (result: OpResult) => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [hint, setHint] = useState("");
@@ -90,10 +95,14 @@ export default function IdFormCard({
     const payload = built.body;
     const res =
       via === "query"
-        ? await callOp<unknown>(`${op.path}?${new URLSearchParams(payload as Record<string, string>)}`, { method: "GET" })
+        ? await callOp<unknown>(
+            `${op.path}?${new URLSearchParams(payload as Record<string, string>)}`,
+            { method: "GET" },
+          )
         : await callOp<unknown>(op.path, { method: "POST", body: payload });
     setRunning(false);
     setResult(res);
+    onResult?.(res);
   }
 
   function trigger(): void {
@@ -109,7 +118,9 @@ export default function IdFormCard({
     if (result.kind === "unavailable") {
       resultView = <UnavailablePanel result={result} onRetry={() => void run()} />;
     } else if (result.kind === "blocked" || result.status === "blocked") {
-      resultView = <BlockedPanel result={result} onRetry={() => void run()} />;
+      // A blocked refusal carries its own remediation (the gates); a
+      // retry button would just re-submit the same failing release.
+      resultView = <BlockedPanel result={result} />;
     } else if (result.ok && result.kind !== "network") {
       resultView = renderResult !== undefined ? renderResult(result) : <ReceiptCard result={result} />;
     } else if (result.kind === "unknown") {
@@ -164,6 +175,9 @@ export default function IdFormCard({
         okText={strings.confirmConfirm}
         cancelText={strings.confirmCancel}
       >
+        {gateSummary !== null && gateSummary !== undefined && (
+          <div className="ui-stack">{gateSummary}</div>
+        )}
         {fields.map((field) => (
           <p key={field.key}>
             <strong>{field.label}: </strong>

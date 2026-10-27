@@ -1,5 +1,6 @@
 import { Card, Typography } from "antd";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { strings } from "../strings";
 import IdFormCard from "../components/IdFormCard";
 import type { FormField } from "../components/IdFormCard";
@@ -62,12 +63,40 @@ function renderReview(result: OpResult): ReactNode {
   );
 }
 
+/** The gate-state lines the execute dialog shows (from the last assess). */
+function gateSummaryOf(result: OpResult): ReactNode {
+  const data =
+    typeof result.data === "object" && result.data !== null
+      ? (result.data as Record<string, unknown>)
+      : {};
+  const rows = Array.isArray(data.gate_results) ? data.gate_results : [];
+  if (rows.length === 0) {
+    return null;
+  }
+  return (
+    <>
+      <Typography.Text strong>{strings.releaseGatesHeading}</Typography.Text>
+      {rows.map((row, index) => {
+        const gate = typeof row === "object" && row !== null ? (row as Record<string, unknown>) : {};
+        return (
+          <p key={index} style={{ marginBottom: 0 }}>
+            <strong>{String(gate.gate_id ?? "")}: </strong>
+            {String(gate.status ?? "")} — {String(gate.reason ?? "")}
+          </p>
+        );
+      })}
+    </>
+  );
+}
+
 /**
  * The Release stage — assess, request, review, status, compare, and
  * the gated execute. A blocked run renders as the structured refusal
- * (reason + unmet required gates), never a generic error panel.
+ * (reason + unmet required gates), never a generic error panel. The
+ * execute dialog carries the last assess gate summary.
  */
 export default function Release() {
+  const [gateSummary, setGateSummary] = useState<ReactNode>(null);
   return (
     <div className="ui-stack">
       <Card title={strings.releaseTitle}>
@@ -79,6 +108,7 @@ export default function Release() {
         fields={[VERSION]}
         opId="release-assess"
         renderResult={renderAssess}
+        onResult={(res) => setGateSummary(gateSummaryOf(res))}
       />
       <IdFormCard
         title={strings.releaseRequestTitle}
@@ -111,6 +141,7 @@ export default function Release() {
         ]}
         opId="release-execute"
         gate
+        gateSummary={gateSummary}
       />
       <IdFormCard
         title={strings.releaseCompareTitle}

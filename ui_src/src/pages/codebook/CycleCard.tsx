@@ -116,10 +116,9 @@ export default function CycleCard() {
       )}
       {cycle.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
       {cycle.unknownOutcome && (
-        <div className="ui-actions">
-          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-          <Button onClick={() => void cycle.checkStatus()}>{strings.runnerCheckStatus}</Button>
-        </div>
+        // No "Check status" here: it polls the ingest ledger, which
+        // says nothing about a research cycle. The stage runs again.
+        <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
       )}
       {outcome}
     </Card>

@@ -10,7 +10,7 @@
       "result": [
         {
           "proposed_id": 12,
-          "cluster_id": 7,
+          "cluster_id": "7",
           "run_id": "bbbb2222-3333-4c44-8d55-666677778888",
           "suggested_label": "Storm outage blame",
           "n_members": 9,
@@ -20,7 +20,7 @@
         },
         {
           "proposed_id": 11,
-          "cluster_id": 3,
+          "cluster_id": "3",
           "run_id": "bbbb2222-3333-4c44-8d55-666677778888",
           "suggested_label": "Grid reliability",
           "n_members": 6,
