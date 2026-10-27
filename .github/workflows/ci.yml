@@ -342,7 +342,9 @@ jobs:
     name: "ui-e2e (spa smoke + axe on a live server)"
     runs-on: ubuntu-latest
     needs: [ui, test-ubuntu]
-    timeout-minutes: 20
+    # 35 minutes: the runner embeds the demo corpus and generates the ask
+    # answer on CPU with the 4B model, which alone can take 10+ minutes.
+    timeout-minutes: 35
 
     services:
       postgres:

@@ -6,7 +6,9 @@ import { defineConfig } from "@playwright/test";
 // built SPA. No webServer block: Python owns the server lifecycle.
 export default defineConfig({
   testDir: "./e2e",
-  timeout: 240_000,
+  // 10 minutes per test: the CI runner generates answers on CPU with the
+  // 4B model, so the ask step can take several minutes by itself.
+  timeout: 600_000,
   expect: { timeout: 30_000 },
   fullyParallel: false,
   workers: 1,
