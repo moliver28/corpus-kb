@@ -173,9 +173,14 @@ export default function PromoteCard() {
       >
         <div className="ui-stack">
           <Typography.Text>{strings.codebookPromoteNameLabel}:</Typography.Text>
-          <Input value={name} onChange={(event) => setName(event.target.value)} />
+          <Input
+            aria-label={strings.codebookPromoteNameLabel}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
           <Typography.Text>{strings.codebookPromoteDefinitionLabel}:</Typography.Text>
           <Input.TextArea
+            aria-label={strings.codebookPromoteDefinitionLabel}
             value={definition}
             onChange={(event) => setDefinition(event.target.value)}
             rows={3}

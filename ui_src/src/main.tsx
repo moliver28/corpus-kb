@@ -16,7 +16,16 @@ const queryClient = new QueryClient();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ConfigProvider>
+      <ConfigProvider
+        theme={{
+          token: {
+            colorPrimary: "#0958d9",
+            // AA contrast: antd defaults (#8c8c8c on white) fail 4.5:1.
+            colorTextDescription: "#595959",
+            colorTextSecondary: "#595959",
+          },
+        }}
+      >
         <App />
       </ConfigProvider>
     </QueryClientProvider>
