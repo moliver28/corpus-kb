@@ -82,9 +82,10 @@ docs/ADMIN.md for the values and bounds.
 
 ## Gates
 
-CI runs these gates, and poe runs them locally: lint, types, unit
-tests, the build, the bundle budget, the license allowlist, the
-manifest drift check, and the Playwright smoke with the axe scan.
+CI runs these gates, and poe runs them locally.
+The gates: lint, types, unit tests, the build, the bundle budget, the
+license allowlist, and the manifest drift check.
+The Playwright smoke runs with the axe scan.
 The CI enforcement map in
 docs/research/harness-zero-drift-program.md (rule 10) holds the pairings.
 
