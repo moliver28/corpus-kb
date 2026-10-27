@@ -107,7 +107,6 @@ def main() -> int:
                     raise
                 server.terminate()
                 server.wait(timeout=15)
-                log_handle.close()
                 time.sleep(2)
         preload_demo()
         return run_playwright()
