@@ -4,7 +4,7 @@ import { strings } from "../strings";
 import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";
-import ActionCard from "./analyze/ActionCard";
+import ActionCard from "../components/ActionCard";
 import NotWiredCard from "./analyze/NotWiredCard";
 
 /** The guided, present-in-manifest actions (dormant hints where known). */
