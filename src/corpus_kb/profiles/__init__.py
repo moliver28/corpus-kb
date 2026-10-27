@@ -12,13 +12,12 @@ from __future__ import annotations
 from corpus_kb.profiles.loader import (
     IngestionProfile,
     load_profile,
-    load_seeds,
-    profile_seeds_path,
     profiles_dir,
     resolve_profile_name,
     safe_profile_path,
     with_profile_overrides,
 )
+from corpus_kb.profiles.seeds import load_seeds, profile_seeds_path
 
 __all__ = [
     "IngestionProfile",

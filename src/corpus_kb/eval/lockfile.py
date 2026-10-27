@@ -25,8 +25,8 @@ from corpus_kb.eval.labels import overlap_rule
 from corpus_kb.ingestion.tokenizer import tokenizer_name
 
 if TYPE_CHECKING:
-    from corpus_kb.eval.calibrate import CandidateScore
-    from corpus_kb.profiles.loader import CalibrateSpec
+    from corpus_kb.eval.scoring import CandidateScore
+    from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 
 __all__ = ["build_lock", "check_profile_lock", "profile_file_sha256"]
 
