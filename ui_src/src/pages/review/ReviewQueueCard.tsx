@@ -1,4 +1,4 @@
-import { Button, Card, Input, Modal, Skeleton, Table, Tag, Typography } from "antd";
+import { Button, Card, Input, Skeleton, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -209,23 +209,29 @@ export default function ReviewQueueCard() {
         </div>
         {noteWarning !== "" && <StatusBanner kind="warn">{noteWarning}</StatusBanner>}
         {body}
+        {/* The override form sits inline under the queue (no modal): the
+            note stays next to the rows it judges. */}
+        {overriding !== null && (
+          <div className="ui-stack">
+            <p>
+              <strong>{strings.reviewOverrideTitle}</strong>
+            </p>
+            <p>{strings.reviewOverrideBody}</p>
+            <Input.TextArea
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              placeholder={strings.reviewNoteLabel}
+              rows={3}
+            />
+            <div className="ui-actions">
+              <Button type="primary" onClick={() => void confirmOverride()}>
+                {strings.reviewOverrideSubmit}
+              </Button>
+              <Button onClick={() => setOverriding(null)}>{strings.confirmCancel}</Button>
+            </div>
+          </div>
+        )}
       </div>
-      <Modal
-        title={strings.reviewOverrideTitle}
-        open={overriding !== null}
-        onOk={() => void confirmOverride()}
-        onCancel={() => setOverriding(null)}
-        okText={strings.reviewOverride}
-        cancelText={strings.confirmCancel}
-      >
-        <p>{strings.reviewOverrideBody}</p>
-        <Input.TextArea
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          placeholder={strings.reviewNoteLabel}
-          rows={3}
-        />
-      </Modal>
     </Card>
   );
 }

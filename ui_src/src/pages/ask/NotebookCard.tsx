@@ -79,7 +79,10 @@ export default function NotebookCard() {
       } else if (env.status === "empty") {
         body = <StatusBanner kind="warn">{message || strings.askEmptyState}</StatusBanner>;
       } else {
-        body = <StatusBanner kind="error">{message || strings.errorTitle}</StatusBanner>;
+        // The server's "error" status (a filter value it rejects) and any
+        // unknown status word are notes about the request, never a
+        // scary error banner — the server message carries the reason.
+        body = <StatusBanner kind="info">{message || strings.receiptEmpty}</StatusBanner>;
       }
     } else if (result.ok) {
       body = (
@@ -89,7 +92,7 @@ export default function NotebookCard() {
         </div>
       );
     } else {
-      body = <ErrorPanel result={result} onRetry={() => void run()} />;
+      body = <ErrorPanel result={result} onRetry={() => void run()} opId="notebook-ask" />;
     }
   }
 

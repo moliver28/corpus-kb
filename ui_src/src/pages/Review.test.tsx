@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -133,17 +133,17 @@ describe("Review page", () => {
     render(<Review />, { wrapper: makeWrapper() });
     const overrideButtons = await screen.findAllByRole("button", { name: strings.reviewOverride });
     fireEvent.click(overrideButtons[0]);
-    const dialog = await screen.findByRole("dialog");
-    // The empty note keeps the gate shut with the honest warning.
+    // The inline override form opens under the queue; the empty note
+    // keeps the gate shut with the honest warning.
     fireEvent.click(
-      within(dialog).getByRole("button", { name: strings.reviewOverride }),
+      await screen.findByRole("button", { name: strings.reviewOverrideSubmit }),
     );
     expect(await screen.findByText(strings.reviewNoteRequired)).toBeTruthy();
     expect(calls.some((c) => c.url.includes("/api/review/execute"))).toBe(false);
-    fireEvent.change(within(dialog).getByPlaceholderText(strings.reviewNoteLabel), {
+    fireEvent.change(screen.getByPlaceholderText(strings.reviewNoteLabel), {
       target: { value: "Wrong code; the unit is about pricing." },
     });
-    fireEvent.click(within(dialog).getByRole("button", { name: strings.reviewOverride }));
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewOverrideSubmit }));
     expect(await screen.findByText(strings.reviewDecisionDone)).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/review/execute"));
     expect(sent?.body).toContain('"decision":"override"');
