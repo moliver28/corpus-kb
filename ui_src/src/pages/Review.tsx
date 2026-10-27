@@ -1,6 +1,6 @@
 import { Card } from "antd";
 import { strings } from "../strings";
-import DegradedCard from "./review/DegradedCard";
+import DegradedCard from "../components/DegradedCard";
 import DocumentsCard from "./review/DocumentsCard";
 import ReviewQueueCard from "./review/ReviewQueueCard";
 import TopicsCard from "./review/TopicsCard";

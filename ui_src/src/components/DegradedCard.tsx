@@ -1,17 +1,46 @@
 import { Button, Card, Skeleton } from "antd";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import ErrorPanel from "../../components/ErrorPanel";
-import JsonViewer from "../../components/JsonViewer";
-import StatusBanner from "../../components/StatusBanner";
-import UnavailablePanel from "../../components/UnavailablePanel";
-import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
-import {
-  degradedCount,
-  isDegradedEnvelope,
-  isReembedEnvelope,
-} from "./shapes";
+import ErrorPanel from "./ErrorPanel";
+import JsonViewer from "./JsonViewer";
+import StatusBanner from "./StatusBanner";
+import UnavailablePanel from "./UnavailablePanel";
+import { useOp } from "../hooks/useOp";
+import { strings } from "../strings";
+
+// The payload guards ride with the shared card (a component never
+// imports stage code): the ingest-status degraded block and the honest
+// re-embed summary, exactly as the server sends them.
+interface DegradedEnvelope {
+  status: string;
+  degraded: { chunks: unknown; chunk_vectors: unknown };
+}
+
+function isDegradedEnvelope(value: unknown): value is DegradedEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const d = (value as Record<string, unknown>).degraded;
+  return typeof d === "object" && d !== null;
+}
+
+interface ReembedEnvelope {
+  status: string;
+  scanned: number;
+  fixed: number;
+  failed: number;
+}
+
+function isReembedEnvelope(value: unknown): value is ReembedEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.scanned === "number" && typeof r.fixed === "number" && typeof r.failed === "number"
+  );
+}
+
+/** One degraded count cell -> 0 (an absent or junk cell never inflates). */
+function degradedCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
 
 /**
  * The degraded-chunks watch: one ingest-status read on mount, a warn

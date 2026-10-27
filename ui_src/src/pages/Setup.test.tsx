@@ -102,10 +102,11 @@ describe("Setup page", () => {
     expect(screen.queryByRole("button", { name: strings.setupDemoNext })).toBeNull();
   });
 
-  it("shows the upload cap and the upload action before any upload", async () => {
+  it("keeps the ingest surfaces off the stage (they live on Ingest)", async () => {
     stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) }]);
     render(<Setup />, { wrapper: makeWrapper() });
-    expect(await screen.findByText("Each file can be up to 50 MB.")).toBeTruthy();
-    expect(screen.getByRole("button", { name: strings.setupUploadAction })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: strings.setupDemoAction })).toBeTruthy();
+    expect(screen.queryByText("Each file can be up to 50 MB.")).toBeNull();
+    expect(screen.queryByText(strings.setupIngestTitle)).toBeNull();
   });
 });
