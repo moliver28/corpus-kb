@@ -222,7 +222,6 @@
   "ingestDirRequired": "Enter a folder path first.",
   "ingestRecursiveToggle": "Include subfolders",
   "ingestTranscriptPathLabel": "Transcript file path on the server",
-  "ingestTranscriptNameLabel": "Title (optional)",
   "ingestTranscriptPathRequired": "Enter the transcript's server path first.",
   "scaleTitle": "Scale up the ingest",
   "scaleBody": "Watch the run ledger, bulk-load folders, and re-embed degraded chunks.",

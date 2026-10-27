@@ -1,6 +1,7 @@
 // The ledger poll (spec F6): GET ingest/status every ui.spa.poll_ms
-// while the browser tab is visible, paused when it is hidden, and with
-// a 10 s backoff after a 503. One loop, no parallel polls.
+// while the browser tab is visible, parked on a visibilitychange wake
+// while it is hidden (no busy polling), and a 10 s backoff after a 503.
+// One loop, no parallel polls.
 import { useEffect, useState } from "react";
 import { callOp } from "../../api/client";
 import { getOp } from "../../api/ops";
@@ -33,14 +34,30 @@ export function useLedgerPoll(): LedgerPoll {
       new Promise<void>((resolve) => {
         window.setTimeout(resolve, ms);
       });
+    // The hidden park: the loop awaits this promise until the tab
+    // becomes visible again — a visibilitychange wake, not a timer.
+    const untilVisible = () =>
+      new Promise<void>((resolve) => {
+        const onChange = () => {
+          if (stopped) {
+            document.removeEventListener("visibilitychange", onChange);
+            return;
+          }
+          if (!document.hidden) {
+            document.removeEventListener("visibilitychange", onChange);
+            resolve();
+          }
+        };
+        document.addEventListener("visibilitychange", onChange);
+      });
     void (async () => {
       while (!stopped) {
         if (document.hidden) {
-          // Hidden: idle without fetching; the next visible iteration
-          // polls immediately.
           setPaused(true);
-          await sleep(500);
-          continue;
+          await untilVisible();
+          if (stopped) {
+            return;
+          }
         }
         setPaused(false);
         const res = await callOp<unknown>(status.path, { method: "GET" });

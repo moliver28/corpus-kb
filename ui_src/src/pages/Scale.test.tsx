@@ -52,17 +52,23 @@ function ledgerCalls(): Call[] {
 }
 
 function cardOf(title: string): HTMLElement {
-  const card = screen.getByText(title).closest(".ant-card");
-  if (card === null) {
+  const card = screen
+    .getAllByText(title)
+    .map((el) => el.closest(".ant-card"))
+    .find((c) => c !== null && c.querySelector(".ant-card-head-title")?.textContent === title);
+  if (card === undefined) {
     throw new Error(`no card found for ${title}`);
   }
   return card as HTMLElement;
 }
 
 // jsdom keeps document.hidden on the Document prototype; a getter spy
-// fakes tab visibility per test.
-function setHidden(hidden: boolean): void {
-  vi.spyOn(document, "hidden", "get").mockReturnValue(hidden);
+// fakes tab visibility, and the event wakes the parked poll loop.
+function setTabVisible(visible: boolean): void {
+  vi.spyOn(document, "hidden", "get").mockReturnValue(!visible);
+  act(() => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
 }
 
 async function flush(): Promise<void> {
@@ -83,7 +89,7 @@ describe("Scale page", () => {
   it("polls the ledger on the runtime interval and pauses when hidden", async () => {
     vi.useFakeTimers();
     try {
-      setHidden(false);
+      setTabVisible(true);
       stubFetch([
         {
           method: "GET",
@@ -101,18 +107,16 @@ describe("Scale page", () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
       expect(ledgerCalls().length).toBe(3);
-      // Hidden: the loop idles without a single fetch.
-      setHidden(true);
+      // Hidden: the loop parks on the visibilitychange wake — no fetches.
+      setTabVisible(false);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(4000);
       });
       expect(ledgerCalls().length).toBe(3);
       expect(screen.getByText(strings.scaleLedgerPaused)).toBeTruthy();
-      // Visible again: the next iteration polls at once.
-      setHidden(false);
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(2000);
-      });
+      // The wake event polls at once, and the backoff state is clean.
+      setTabVisible(true);
+      await flush();
       expect(ledgerCalls().length).toBe(4);
       expect(screen.getByText(strings.scaleLedgerPolling.replace("{sec}", "2"))).toBeTruthy();
     } finally {
@@ -120,22 +124,36 @@ describe("Scale page", () => {
     }
   });
 
-  it("backs off to ten seconds after a 503", async () => {
+  it("backs off to ten seconds after a 503 and clears on a good poll", async () => {
     vi.useFakeTimers();
     try {
-      setHidden(false);
-      stubFetch([
-        {
-          method: "GET",
-          path: "/api/ingest/status",
-          reply: respond(503, unavailable503.response.body),
-        },
-      ]);
+      setTabVisible(true);
+      // The poll and the re-embed watch share the route: the first two
+      // status reads answer 503, everything after answers 200.
+      let statusReads = 0;
+      const seqImpl = (
+        url: string | URL,
+        init?: { method?: string; body?: unknown },
+      ): Promise<MinimalResponse> => {
+        const method = (init?.method ?? "GET").toUpperCase();
+        calls.push({ method, url: String(url), body: String(init?.body ?? "") });
+        if (String(url).includes("/api/ingest/status")) {
+          statusReads += 1;
+          const body = statusReads <= 2 ? unavailable503.response.body : ingestStatusOk.response.body;
+          return Promise.resolve(respond(statusReads <= 2 ? 503 : 200, body));
+        }
+        return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
+      };
+      vi.stubGlobal("fetch", seqImpl as unknown as typeof fetch);
       render(<Scale />, { wrapper: makeWrapper() });
       await flush();
-      // Poll + the re-embed watch's mount read, both 503.
       expect(ledgerCalls().length).toBe(2);
       expect(screen.getByText(strings.scaleLedgerBackoff)).toBeTruthy();
+      // Spec F6: the server's own message shows beneath the backoff.
+      // (The re-embed watch's unavailable panel repeats it — fine.)
+      expect(
+        screen.getAllByText("The query handler is not ported to the DuckDB backend.").length,
+      ).toBeGreaterThan(0);
       // The normal interval passes with no poll; the backoff fires it.
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
@@ -145,13 +163,16 @@ describe("Scale page", () => {
         await vi.advanceTimersByTimeAsync(8000);
       });
       expect(ledgerCalls().length).toBe(3);
+      // The good poll clears the backoff state.
+      expect(screen.queryByText(strings.scaleLedgerBackoff)).toBeNull();
+      expect(screen.getByText(strings.scaleLedgerPolling.replace("{sec}", "2"))).toBeTruthy();
     } finally {
       vi.useRealTimers();
     }
   });
 
   it("runs the bulk folder walk and the research ingest with the force warning", async () => {
-    setHidden(false);
+    setTabVisible(true);
     stubFetch([
       { method: "GET", path: "/api/ingest/status", reply: respond(200, ingestStatusOk.response.body) },
       { method: "POST", path: "/api/research/ingest", reply: respond(200, ok200.response.body) },
@@ -175,6 +196,11 @@ describe("Scale page", () => {
     fireEvent.click(
       within(researchCard).getByRole("button", { name: strings.runnerRunLabel }),
     );
+    // Force re-ingest is a gated run (spec F10); the dialog repeats the
+    // warning, then the long op runs with its honest wait.
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(strings.scaleForceWarning)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.confirmConfirm }));
     expect(await within(researchCard).findByText(strings.receiptDone)).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/research/ingest"));
     expect(sent?.body).toContain('"path":"/data/corpus/**"');

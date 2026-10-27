@@ -227,7 +227,6 @@ export interface Strings {
   ingestDirRequired: string;
   ingestRecursiveToggle: string;
   ingestTranscriptPathLabel: string;
-  ingestTranscriptNameLabel: string;
   ingestTranscriptPathRequired: string;
   scaleTitle: string;
   scaleBody: string;
