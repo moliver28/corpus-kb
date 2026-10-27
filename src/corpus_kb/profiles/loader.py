@@ -55,6 +55,7 @@ KNOWN_TOP_KEYS: frozenset[str] = frozenset(
         "templates",
         "seeds_file",
         "validate",
+        "calibrate",
     }
 )
 KNOWN_INGESTION_KEYS: frozenset[str] = frozenset({"strategies", "default"})
@@ -94,6 +95,21 @@ def safe_profile_path(base_dir: str, leaf: str) -> str:
 
 
 @dataclass(frozen=True)
+class CalibrateSpec:
+    """The calibrate-then-lock sweep block (Wave 7).
+
+    ``sample`` and ``golden`` resolve against the profiles directory, so a
+    profile stays portable with its corpus.
+    """
+
+    candidates: tuple[str, ...]
+    sample: str
+    golden: str
+    k: int = 10
+    min_overlap: float = 0.5
+
+
+@dataclass(frozen=True)
 class IngestionProfile:
     """One validated profile, resolved to plain values."""
 
@@ -106,6 +122,7 @@ class IngestionProfile:
     validate_mode: str = "off"
     seeds_file: str | None = None
     templates: tuple[str, ...] = ()
+    calibrate: CalibrateSpec | None = None
 
 
 def profiles_dir(config: dict[str, Any]) -> str:
@@ -211,6 +228,63 @@ def parse_profile(raw: Any, name: str, path: str) -> IngestionProfile:
         validate_mode=validate_mode,
         seeds_file=seeds_file,
         templates=tuple(templates),
+        calibrate=_parse_calibrate(raw.get("calibrate"), name),
+    )
+
+
+def _parse_calibrate(raw: Any, name: str) -> CalibrateSpec | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValidationError(
+            f"Profile {name!r} calibrate must be a mapping.",
+            remediation="Use candidates, sample, golden, and optional k / min_overlap.",
+        )
+    candidates_raw = raw.get("candidates")
+    if not isinstance(candidates_raw, list) or not candidates_raw:
+        raise ValidationError(
+            f"Profile {name!r} calibrate.candidates must be a non-empty list.",
+            remediation="Name at least one ingestion strategy, e.g. [default, markdown_sections].",
+        )
+    if not all(isinstance(c, str) and c for c in candidates_raw):
+        raise ValidationError(
+            f"Profile {name!r} calibrate.candidates must hold strategy name strings.",
+            remediation="Use registered strategy names, e.g. [default, markdown_sections].",
+        )
+    sample = raw.get("sample")
+    golden = raw.get("golden")
+    if not isinstance(sample, str) or not sample:
+        raise ValidationError(
+            f"Profile {name!r} calibrate.sample must be a path.",
+            remediation="Point calibrate.sample at a file in the profiles directory.",
+        )
+    if not isinstance(golden, str) or not golden:
+        raise ValidationError(
+            f"Profile {name!r} calibrate.golden must be a path.",
+            remediation="Point calibrate.golden at a JSONL file in the profiles directory.",
+        )
+    k_raw = raw.get("k", 10)
+    if not isinstance(k_raw, int) or isinstance(k_raw, bool) or k_raw < 1:
+        raise ValidationError(
+            f"Profile {name!r} calibrate.k must be a positive integer.",
+            remediation="Set calibrate.k to a positive integer, e.g. 10.",
+        )
+    overlap_raw = raw.get("min_overlap", 0.5)
+    if (
+        isinstance(overlap_raw, bool)
+        or not isinstance(overlap_raw, (int, float))
+        or not 0.0 < float(overlap_raw) <= 1.0
+    ):
+        raise ValidationError(
+            f"Profile {name!r} calibrate.min_overlap must fall in (0, 1].",
+            remediation="Set calibrate.min_overlap to a fraction, e.g. 0.5.",
+        )
+    return CalibrateSpec(
+        candidates=tuple(candidates_raw),
+        sample=sample,
+        golden=golden,
+        k=k_raw,
+        min_overlap=float(overlap_raw),
     )
 
 

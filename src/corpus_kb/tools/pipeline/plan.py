@@ -47,6 +47,75 @@ from .validate import resolve_mode, validate_document
 logger = logging.getLogger(__name__)
 
 
+def _check_profile_lock(config: dict[str, Any], profile: Any) -> None:
+    """Enforce aid (Wave 7): fail when a calibrated profile drifted."""
+    from corpus_kb.eval.lockfile import check_profile_lock
+    from corpus_kb.profiles.loader import profiles_dir as profiles_root
+
+    root = Path(profiles_root(config))
+    check_profile_lock(root / f"{profile.name}.yaml", root / f"{profile.name}.lock.json")
+
+
+async def _validation_gate(
+    *,
+    document: Any,
+    text: str,
+    file_hash: str,
+    source_type: str,
+    path: str,
+    is_file: bool,
+    chunks: Any,
+    empty_reason: str | None,
+    resolution: Any,
+    config: dict[str, Any],
+    ingestion_profile: Any,
+    validate_mode: str | None,
+) -> tuple[dict[str, Any] | None, str, dict[str, Any] | None]:
+    """The pre-ledger gate (Waves 4/6/7): validators plus the calibrate sweep.
+
+    Mode precedence: an explicit caller mode wins; otherwise the profile's
+    ``validate`` value decides; otherwise off. Enforce compares a
+    calibrated profile to its lock and raises on drift, so nothing is
+    written. The sweep runs only in calibrate mode with a profile that
+    carries a ``calibrate:`` block; its summary rides the ledger stages,
+    never the envelope. ``chunks`` is the post-dedup list, so the
+    validators see exactly what would be stored.
+    """
+    if validate_mode is None:
+        validate_mode = ingestion_profile.validate_mode if ingestion_profile is not None else "off"
+    mode = resolve_mode(validate_mode)
+    if mode == "enforce" and ingestion_profile is not None:
+        _check_profile_lock(config, ingestion_profile)
+    validation_report: dict[str, Any] | None = None
+    if mode != "off":
+        probe = IngestDocument(
+            document=document,
+            text=text,
+            file_hash=file_hash,
+            source_type=source_type,
+            path=path,
+            is_file=is_file,
+            chunks=chunks,
+            empty_reason=empty_reason,
+            strategy=resolution.strategy.name,
+        )
+        validation_report = validate_document(probe, mode)
+    calibration_summary: dict[str, Any] | None = None
+    if (
+        mode == "calibrate"
+        and ingestion_profile is not None
+        and ingestion_profile.calibrate is not None
+    ):
+        from corpus_kb.tools.pipeline.calibrate_engine import maybe_calibrate
+
+        calibration = await maybe_calibrate(ingestion_profile, config)
+        if calibration is not None and calibration.status != "success":
+            logger.warning("Calibration sweep refused: %s", calibration.reason)
+        if calibration is not None and calibration.summary:
+            calibration_summary = dict(calibration.summary)
+    return validation_report, mode, calibration_summary
+
+
 async def run_pipeline(
     text: str,
     source_type: str,
@@ -184,30 +253,22 @@ async def run_pipeline(
         if dedup_settings is not None and len(chunks) > 1:
             chunks, dedup_dropped = dedup_chunks(chunks, threshold=dedup_settings["threshold"])
 
-        # Validation gate (Wave 4): read-only, pre-ledger — a failure in
-        # enforce mode raises before the advisory lock, so nothing is written
-        # (the PlanConformanceError pattern). ``off`` never builds the report.
-        # Mode precedence (Wave 6): an explicit caller mode wins; otherwise
-        # the profile's ``validate`` value decides; otherwise off.
-        validation_report: dict[str, Any] | None = None
-        if validate_mode is None:
-            validate_mode = (
-                ingestion_profile.validate_mode if ingestion_profile is not None else "off"
-            )
-        mode = resolve_mode(validate_mode)
-        if mode != "off":
-            probe = IngestDocument(
-                document=document,
-                text=text,
-                file_hash=file_hash,
-                source_type=source_type,
-                path=path,
-                is_file=is_file,
-                chunks=chunks,
-                empty_reason=plan.empty_reason,
-                strategy=resolution.strategy.name,
-            )
-            validation_report = validate_document(probe, mode)
+        # Validation gate (Waves 4/6/7): mode resolution, the read-only
+        # validators, and the calibration sweep — one helper, pre-ledger.
+        validation_report, mode, calibration_summary = await _validation_gate(
+            document=document,
+            text=text,
+            file_hash=file_hash,
+            source_type=source_type,
+            path=path,
+            is_file=is_file,
+            chunks=chunks,
+            empty_reason=plan.empty_reason,
+            resolution=resolution,
+            config=config,
+            ingestion_profile=ingestion_profile,
+            validate_mode=validate_mode,
+        )
 
         # Serialize concurrent ingests of the same content per tenant. The
         # Postgres lock is session-scoped on its own pooled connection, so a
@@ -240,6 +301,7 @@ async def run_pipeline(
                 strategy=resolution.strategy.name,
                 validation_report=validation_report,
                 validation_mode=mode,
+                calibration_summary=calibration_summary,
             )
             # Strategy provenance (plan Section 0): which seam produced the
             # chunks. Attached here because resolution/plan live in this scope.

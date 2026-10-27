@@ -213,6 +213,11 @@ semchunk = ["semchunk>=4.1,<5"]
 # across versions — we never persist them. CI NEVER installs this extra;
 # the import is lazy behind the config gate (same contract as latechunk).
 dedup = ["datasketch>=2.0,<3"]
+# Calibration statistics (unified-ingestion Wave 7, plan Phase 4): paired
+# comparison and ranking metrics via ranx (MIT). CI NEVER installs this
+# extra; eval/stats.py falls back to the plain sign test and the report
+# names the method that ran (same lazy contract as semchunk/dedup).
+calibrate = ["ranx>=0.3,<0.4"]
 # Tree-sitter AST code chunking (unified-ingestion Wave 5): the [code]
 # extra restores grammar-aware chunking for source files
 # (ingestion/strategies/code.py). MIT. The import is lazy behind the
@@ -394,6 +399,9 @@ DEP002 = [
     # them, so deptry cannot see the import edges.
     "semchunk",
     "datasketch",
+    # Wave 7 extra (calibrate): eval/_ranx.py imports ranx lazily behind a
+    # try/except probe; CI never installs it, so deptry cannot see the edge.
+    "ranx",
     # UX program extras (W0): every consumer imports these lazily behind
     # runtime gates and CI never installs them, so deptry cannot see the
     # import edges.
