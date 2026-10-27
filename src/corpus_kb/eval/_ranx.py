@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from corpus_kb.errors import ValidationError
+
 __all__ = ["fisher_comparison", "ranx_available"]
 
 
@@ -30,16 +32,33 @@ def fisher_comparison(
     """Paired fisher randomization test across candidates via ranx compare.
 
     ``runs`` maps candidate name -> per-query ``(relevant, ranked)`` pairs
-    in one shared query order. Returns the ranx Report dict (per-model
-    scores, pairwise p-values, win/tie/loss), or None when the extra is
-    missing. Ranx errors other than absence propagate: a bug is a bug,
-    not a fallback.
+    in one shared query order. Every candidate must resolve the SAME
+    relevant set per query — the qrels come from the first candidate, so a
+    mismatch would silently score the others against foreign labels.
+    Returns the ranx Report dict (per-model scores, pairwise p-values,
+    win/tie/loss), or None when the extra is missing. Ranx errors other
+    than absence propagate: a bug is a bug, not a fallback.
     """
     if not ranx_available():
         return None
     from ranx import Qrels, Run, compare
 
     first = next(iter(runs.values()))
+    for name, pairs in runs.items():
+        if len(pairs) != len(first):
+            raise ValidationError(
+                f"Candidate {name!r} scored {len(pairs)} queries; expected {len(first)}.",
+                remediation="Score every candidate over the same golden queries.",
+            )
+        for position, (own, other) in enumerate(zip(first, pairs, strict=True), start=1):
+            if own[0] != other[0]:
+                raise ValidationError(
+                    f"Golden labels differ across candidates at query q{position}:"
+                    f" {name!r} resolved a different relevant set.",
+                    remediation=(
+                        "Score every candidate from the same golden file and the same label rules."
+                    ),
+                )
     query_ids = [f"q{index}" for index in range(len(first))]
     qrels = Qrels()
     qrels.add_multi(

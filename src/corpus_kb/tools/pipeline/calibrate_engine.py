@@ -14,10 +14,16 @@ arms so the sweep measures exactly the retrieval path research users hit.
 The sample files must be session transcripts: the sweep ranks the research
 units they produce. A zero-vector probe answers the degraded flag, so a
 downed embedder refuses to score instead of producing fake numbers.
+
+Cleanup covers the synthetic tenant's aux tables and ``ingested_files``
+rows plus the documents root, whose cascade removes chunks, units, and the
+other children; event-store rows for the synthetic tenant remain as
+operational residue.
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
@@ -40,9 +46,12 @@ from corpus_kb.profiles.loader import IngestionProfile, profiles_dir
 
 __all__ = ["ScratchTenantEngine", "maybe_calibrate"]
 
+logger = logging.getLogger(__name__)
+
 # Cleanup order: children that do NOT hang off documents first, then the
 # document root (its cascade removes chunks, units, exchanges, speakers,
-# statements, and shadow vectors).
+# statements, and shadow vectors). ``ingested_files`` is INGEST-OWNED and
+# does not cascade from documents, so it is deleted explicitly.
 _AUX_TABLES = (
     "research_noise_queue",
     "research_proposed_codes",
@@ -50,6 +59,7 @@ _AUX_TABLES = (
     "research_keyword_hits",
     "research_exact_cache",
     "research_projects",
+    "ingested_files",
 )
 
 
@@ -86,9 +96,10 @@ def _connection_string(cfg: Mapping[str, object]) -> str:
 class ScratchTenantEngine:
     """One candidate's scratch tenant: probe, ingest, index, rank, clean."""
 
-    def __init__(self, cfg: Mapping[str, object], tenant_id: UUID) -> None:
+    def __init__(self, cfg: Mapping[str, object], tenant_id: UUID, min_overlap: float) -> None:
         self._cfg: dict[str, object] = dict(cfg)
         self._tenant = tenant_id
+        self._min_overlap = min_overlap
         self._pool: asyncpg.Pool | None = None
         self._degraded = False
 
@@ -151,7 +162,7 @@ class ScratchTenantEngine:
             )
             for row in rows
         )
-        return LabelIndex(entries=entries)
+        return LabelIndex(entries=entries, min_overlap=self._min_overlap)
 
     async def rank(self, query: str, k: int) -> list[str]:
         from corpus_kb.eval.runner import _ranked_chunks
@@ -160,7 +171,7 @@ class ScratchTenantEngine:
         from corpus_kb.storage.tenant_conn import tenant_connection
 
         pool = self._pool_or_raise()
-        embedder = ResearchEmbedder(pool, create_embedder(self._cfg))
+        embedder = ResearchEmbedder(pool, create_embedder(self._cfg, pool))
         async with tenant_connection(pool, str(self._tenant)) as conn:
             return await _ranked_chunks(
                 conn, embedder, query, str(self._tenant), NIL_PROJECT_ID, k * 2, 60
@@ -211,9 +222,13 @@ async def maybe_calibrate(
     try:
 
         async def factory(candidate: str) -> ScratchTenantEngine:
-            engine = ScratchTenantEngine(config, _tenant_for(profile.name, digest, candidate))
-            await engine.open()
+            engine = ScratchTenantEngine(
+                config, _tenant_for(profile.name, digest, candidate), min_overlap=spec.min_overlap
+            )
+            # Track the engine BEFORE open(): a failed open must still get
+            # cleanup and close in the finally block below.
             opened.append(engine)
+            await engine.open()
             return engine
 
         return await run_calibration(
@@ -232,20 +247,26 @@ async def maybe_calibrate(
             try:
                 await engine.cleanup()
             except Exception as exc:  # cleanup must never mask the sweep result
-                import logging
-
-                logging.getLogger(__name__).warning(
-                    "Calibration tenant cleanup failed for %s: %s", engine, exc
+                logger.warning(
+                    "Calibration tenant cleanup failed for tenant %s: %s",
+                    engine._tenant,
+                    exc,
                 )
             await engine.close()
 
 
 def _sample_files(sample: Path) -> list[Path]:
-    """The sample files: one file, or every file directly under a directory."""
+    """The sample files: one file, or every file directly under a directory.
+
+    Dotfiles are skipped: editors and systems drop hidden cruft (``.DS_Store``,
+    swap files) into sample folders, and none of it is a transcript.
+    """
     if sample.is_file():
         return [sample]
     if sample.is_dir():
-        return sorted(path for path in sample.iterdir() if path.is_file())
+        return sorted(
+            path for path in sample.iterdir() if path.is_file() and not path.name.startswith(".")
+        )
     raise ValidationError(
         f"calibrate.sample path not found: {sample}",
         remediation="Point calibrate.sample at the transcript file or folder to sweep.",

@@ -313,3 +313,19 @@ def test_calibrate_sample_must_be_a_string(profiles_dir: Path) -> None:
         _calib_profile(
             profiles_dir, "calibrate:\n  candidates: [default]\n  sample: 5\n  golden: g\n"
         )
+
+
+def test_calibrate_unknown_key_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match=r"unknown keys.*bogus"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates: [default]\n  sample: s\n  golden: g\n  bogus: 1\n",
+        )
+
+
+def test_calibrate_duplicate_candidates_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="repeats: default"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates: [default, default]\n  sample: s\n  golden: g\n",
+        )

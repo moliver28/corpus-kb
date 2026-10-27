@@ -41,13 +41,33 @@ def profile_file_sha256(path: Path) -> str:
 
 
 def check_profile_lock(profile_path: Path, lock_path: Path) -> None:
-    """Enforce aid: fail when the authored profile drifted from its lock."""
+    """Enforce aid: fail when the authored profile drifted from its lock.
+
+    A MISSING lock file means no enforcement (nothing was calibrated yet).
+    An UNREADABLE lock — broken JSON, a non-object, or a missing
+    ``profile_sha256`` string — is a loud ValidationError, never a silent
+    pass: enforcement that cannot read its lock must not look like a pass.
+    """
     if not lock_path.is_file():
         return
-    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    try:
+        lock: object = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValidationError(
+            f"Calibration lock {lock_path.name} is not readable JSON.",
+            remediation="Re-run calibrate to regenerate the lock.",
+        ) from exc
+    if not isinstance(lock, dict):
+        raise ValidationError(
+            f"Calibration lock {lock_path.name} is not a JSON object.",
+            remediation="Re-run calibrate to regenerate the lock.",
+        )
     recorded = lock.get("profile_sha256")
     if not isinstance(recorded, str):
-        return
+        raise ValidationError(
+            f"Calibration lock {lock_path.name} has no profile_sha256 string.",
+            remediation="Re-run calibrate to regenerate the lock.",
+        )
     current = profile_file_sha256(profile_path)
     if current != recorded:
         raise ValidationError(

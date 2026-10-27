@@ -1,9 +1,13 @@
-"""Calibrate-then-lock: sweep ingestion strategies over a labeled sample.
+"""Calibrate-then-lock: baseline ONE ingestion strategy over a labeled sample.
 
 ``validate=calibrate`` on an ingest whose profile carries a ``calibrate:``
-block ingests the sample once per candidate strategy into a fresh scratch
-engine, scores the golden queries, and writes ``<profile>.lock.json``
-next to the profile. The authored YAML is never touched.
+block ingests the sample once for the single configured candidate into a
+fresh scratch engine, scores the golden queries, and writes
+``<profile>.lock.json`` next to the profile. The authored YAML is never
+touched. The sweep is a single-candidate baseline tool today: it refuses
+more than one candidate, because transcript ingests share one strategy
+axis and the candidates would tie. Multi-candidate comparison is tracked
+in the follow-up issue.
 
 Refusals are honest: degraded embeddings (zero-vector fallback) or labels
 that match nothing answer ``insufficient_data`` and write no lock, because
@@ -117,10 +121,11 @@ async def run_calibration(
     lock_path: Path | None = None,
     known_candidates: Collection[str] | None = None,
 ) -> CalibrationResult:
-    """Sweep every candidate, score the golden queries, write the lock.
+    """Baseline the single candidate, score the golden queries, write the lock.
 
     Candidates are checked against the registry (or ``known_candidates``)
-    BEFORE any engine is built, so a typo never burns a sweep.
+    BEFORE any engine is built, so a typo never burns a sweep. Exactly one
+    candidate is allowed: this is a baseline tool, not a comparison sweep.
     """
     if not golden:
         return _insufficient("the golden file has no records", spec.min_overlap)
@@ -131,6 +136,15 @@ async def run_calibration(
         raise ValidationError(
             f"calibrate.candidates names unknown strategies: {', '.join(unknown)}.",
             remediation=f"Use registered strategies, e.g. {examples}.",
+        )
+    if len(spec.candidates) > 1:
+        raise ValidationError(
+            "Multi-candidate sweeps are not available yet: transcript ingests"
+            " share one strategy axis, so the candidates would tie.",
+            remediation=(
+                "Sweep one candidate to baseline it; multi-candidate comparison"
+                " is tracked in the follow-up issue."
+            ),
         )
     rule = overlap_rule(spec.min_overlap)
     scored: list[CandidateScore] = []
@@ -167,7 +181,10 @@ async def run_calibration(
     )
     if lock_path is not None:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
-        lock_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        payload = json.dumps(lock, indent=2, sort_keys=True) + "\n"
+        tmp_path = lock_path.with_suffix(lock_path.suffix + ".tmp")
+        tmp_path.write_text(payload, encoding="utf-8")
+        tmp_path.replace(lock_path)
     summary = {key: value for key, value in lock.items() if key != "date"}
     return CalibrationResult(
         status="success",

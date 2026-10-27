@@ -60,6 +60,9 @@ KNOWN_TOP_KEYS: frozenset[str] = frozenset(
 )
 KNOWN_INGESTION_KEYS: frozenset[str] = frozenset({"strategies", "default"})
 KNOWN_EXTRACTION_KEYS: frozenset[str] = frozenset({"mode"})
+KNOWN_CALIBRATE_KEYS: frozenset[str] = frozenset(
+    {"candidates", "sample", "golden", "k", "min_overlap"}
+)
 
 DEFAULT_PROFILES_DIR = "profiles"
 
@@ -240,6 +243,12 @@ def _parse_calibrate(raw: Any, name: str) -> CalibrateSpec | None:
             f"Profile {name!r} calibrate must be a mapping.",
             remediation="Use candidates, sample, golden, and optional k / min_overlap.",
         )
+    unknown = sorted(set(raw) - KNOWN_CALIBRATE_KEYS)
+    if unknown:
+        raise ValidationError(
+            f"Profile {name!r} calibrate has unknown keys: {', '.join(unknown)}.",
+            remediation=f"Allowed keys: {', '.join(sorted(KNOWN_CALIBRATE_KEYS))}.",
+        )
     candidates_raw = raw.get("candidates")
     if not isinstance(candidates_raw, list) or not candidates_raw:
         raise ValidationError(
@@ -250,6 +259,12 @@ def _parse_calibrate(raw: Any, name: str) -> CalibrateSpec | None:
         raise ValidationError(
             f"Profile {name!r} calibrate.candidates must hold strategy name strings.",
             remediation="Use registered strategy names, e.g. [default, markdown_sections].",
+        )
+    duplicates = sorted({c for c in candidates_raw if candidates_raw.count(c) > 1})
+    if duplicates:
+        raise ValidationError(
+            f"Profile {name!r} calibrate.candidates repeats: {', '.join(duplicates)}.",
+            remediation="List each strategy once.",
         )
     sample = raw.get("sample")
     golden = raw.get("golden")

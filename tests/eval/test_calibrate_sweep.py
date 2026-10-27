@@ -14,9 +14,9 @@ from corpus_kb.eval.labels import ChunkEntry, LabelIndex
 from corpus_kb.profiles.loader import CalibrateSpec
 from corpus_kb.research.retrieval import _child_uuid
 
-_SPEC = CalibrateSpec(candidates=("slow", "fast"), sample="s.txt", golden="g.jsonl", k=2)
+_SPEC = CalibrateSpec(candidates=("baseline",), sample="s.txt", golden="g.jsonl", k=2)
 _CFG: dict[str, object] = {"embedding": {"model": "fake-model", "dimensions": 8}}
-_KNOWN = {"slow", "fast"}
+_KNOWN = {"baseline"}
 
 
 class FakeEngine:
@@ -98,14 +98,13 @@ def _read_lock(lock_path: Path) -> dict[str, object]:
 async def test_sweep_scores_candidates_and_writes_lock(tmp_path: Path) -> None:
     records, digest, _ = _golden(tmp_path)
     good = {"q1": [_child_uuid("unit:1")]}
-    bad = {"q1": [_child_uuid("unit:9")]}
     lock_path = tmp_path / "starter.lock.json"
     result = await run_calibration(
         _SPEC,
         golden=records,
         golden_sha256=digest,
         sample_paths=_sample(tmp_path),
-        engine_factory=_factory({"slow": bad, "fast": good}, (_unit_entry(1),)),
+        engine_factory=_factory({"baseline": good}, (_unit_entry(1),)),
         known_candidates=_KNOWN,
         cfg=_CFG,
         profile_name="starter",
@@ -113,14 +112,13 @@ async def test_sweep_scores_candidates_and_writes_lock(tmp_path: Path) -> None:
         lock_path=lock_path,
     )
     assert result.status == "success"
-    assert result.chosen == "fast"
+    assert result.chosen == "baseline"
     by_name = {row.candidate: row for row in result.candidates}
-    assert by_name["fast"].recall_at_k == 1.0
-    assert by_name["slow"].recall_at_k == 0.0
+    assert by_name["baseline"].recall_at_k == 1.0
     lock = _read_lock(lock_path)
     assert lock["profile_sha256"] == "psha"
     assert lock["golden_sha256"] == digest
-    assert lock["chosen"] == "fast"
+    assert lock["chosen"] == "baseline"
     assert lock["rule"] == "span overlap >= 0.50 of the chunk length"
     sample_rows = lock["sample"]
     assert isinstance(sample_rows, list) and sample_rows[0]["path"] == "s.txt"
@@ -138,7 +136,7 @@ async def test_lock_deterministic_apart_from_date(tmp_path: Path) -> None:
         golden=records,
         golden_sha256=digest,
         sample_paths=_sample(tmp_path),
-        engine_factory=_factory({"slow": ranking, "fast": ranking}, entries),
+        engine_factory=_factory({"baseline": ranking}, entries),
         cfg=_CFG,
         profile_name="starter",
         profile_sha256="psha",
@@ -150,7 +148,7 @@ async def test_lock_deterministic_apart_from_date(tmp_path: Path) -> None:
         golden=records,
         golden_sha256=digest,
         sample_paths=_sample(tmp_path),
-        engine_factory=_factory({"slow": ranking, "fast": ranking}, entries),
+        engine_factory=_factory({"baseline": ranking}, entries),
         cfg=_CFG,
         profile_name="starter",
         profile_sha256="psha",
@@ -170,7 +168,7 @@ async def test_degraded_embeddings_refuse_to_score(tmp_path: Path) -> None:
         golden=records,
         golden_sha256=digest,
         sample_paths=_sample(tmp_path),
-        engine_factory=_factory({"slow": {}, "fast": {}}, degraded=True),
+        engine_factory=_factory({"baseline": {}}, degraded=True),
         cfg=_CFG,
         profile_name="starter",
         profile_sha256="psha",
@@ -189,7 +187,7 @@ async def test_unmatched_labels_report_insufficient(tmp_path: Path) -> None:
         golden=records,
         golden_sha256=digest,
         sample_paths=_sample(tmp_path),
-        engine_factory=_factory({"slow": {}, "fast": {}}, ()),
+        engine_factory=_factory({"baseline": {}}, ()),
         known_candidates=_KNOWN,
         cfg=_CFG,
         profile_name="starter",
@@ -218,22 +216,23 @@ async def test_unknown_candidate_rejected_before_any_engine(tmp_path: Path) -> N
     assert built == []
 
 
-async def test_tied_metrics_choose_alphabetically(tmp_path: Path) -> None:
+async def test_multi_candidate_sweep_refused(tmp_path: Path) -> None:
     records, digest, _ = _golden(tmp_path)
-    ranking = {"q1": [_child_uuid("unit:1")]}
-    result = await run_calibration(
-        _SPEC,
-        golden=records,
-        golden_sha256=digest,
-        sample_paths=_sample(tmp_path),
-        engine_factory=_factory({"slow": ranking, "fast": ranking}, (_unit_entry(1),)),
-        known_candidates=_KNOWN,
-        cfg=_CFG,
-        profile_name="starter",
-        profile_sha256="psha",
-    )
-    assert result.chosen == "fast"
-    assert {row.candidate for row in result.query_scores} == {"slow", "fast"}
+    spec = CalibrateSpec(candidates=("slow", "fast"), sample="s.txt", golden="g.jsonl", k=2)
+    built: list[str] = []
+    with pytest.raises(ValidationError, match="Multi-candidate"):
+        await run_calibration(
+            spec,
+            golden=records,
+            golden_sha256=digest,
+            sample_paths=_sample(tmp_path),
+            engine_factory=_factory({"slow": {}, "fast": {}}, built=built),
+            known_candidates={"slow", "fast"},
+            cfg=_CFG,
+            profile_name="starter",
+            profile_sha256="psha",
+        )
+    assert built == []
 
 
 # -- Lock enforcement (eval/lockfile.py)
@@ -270,3 +269,25 @@ def test_check_profile_lock_fails_on_drift(tmp_path: Path) -> None:
     profile.write_text("name: starter\n", encoding="utf-8")
     with pytest.raises(ValidationError, match="calibration lock"):
         check_profile_lock(profile, _lock_file(tmp_path, "stale-hash"))
+
+
+def test_check_profile_lock_fails_on_unreadable_json(tmp_path: Path) -> None:
+    from corpus_kb.eval.lockfile import check_profile_lock
+
+    profile = tmp_path / "starter.yaml"
+    profile.write_text("name: starter\n", encoding="utf-8")
+    lock = tmp_path / "starter.lock.json"
+    lock.write_text("{not json", encoding="utf-8")
+    with pytest.raises(ValidationError, match="not readable JSON"):
+        check_profile_lock(profile, lock)
+
+
+def test_check_profile_lock_fails_on_missing_hash(tmp_path: Path) -> None:
+    from corpus_kb.eval.lockfile import check_profile_lock
+
+    profile = tmp_path / "starter.yaml"
+    profile.write_text("name: starter\n", encoding="utf-8")
+    lock = tmp_path / "starter.lock.json"
+    lock.write_text(json.dumps({"chosen": "baseline"}), encoding="utf-8")
+    with pytest.raises(ValidationError, match="profile_sha256"):
+        check_profile_lock(profile, lock)

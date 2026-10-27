@@ -20,6 +20,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.eval.calibrate import QueryScore
 from corpus_kb.eval.golden import GoldenRecord
 from corpus_kb.eval.labels import LabelIndex, resolve_relevance
@@ -27,6 +28,7 @@ from corpus_kb.eval.labels import LabelIndex, resolve_relevance
 __all__ = [
     "PairOutcome",
     "paired_comparison",
+    "query_id_map",
     "write_report",
     "write_trec_qrels",
     "write_trec_run",
@@ -59,16 +61,29 @@ def paired_comparison(
 ) -> PairOutcome:
     """Compare two candidates on one metric over the same queries.
 
-    The queries are paired by position: the sweep scores every candidate
-    against the same golden order. The ranx fisher test needs the ranked
-    lists; without the extra the sign test answers from the per-query
-    scalars and reports no p-value.
+    Queries pair by QUERY TEXT, never by position: a candidate that skipped
+    a query would otherwise shift every later pair. A differing query set
+    is a hard error — the candidates are not comparable. The ranx fisher
+    test needs the ranked lists; without the extra the sign test answers
+    from the per-query scalars and reports no p-value.
     """
     field = METRIC_FIELDS[metric]
-    base_rows = query_scores[baseline]
-    challenge_rows = query_scores[challenger]
-    base_values = [float(getattr(row, field)) for row in base_rows]
-    challenge_values = [float(getattr(row, field)) for row in challenge_rows]
+    base_by_query = {row.query: row for row in query_scores[baseline]}
+    challenge_by_query = {row.query: row for row in query_scores[challenger]}
+    if set(base_by_query) != set(challenge_by_query):
+        only_base = sorted(set(base_by_query) - set(challenge_by_query))
+        only_challenge = sorted(set(challenge_by_query) - set(base_by_query))
+        raise ValidationError(
+            "The two candidates were scored on different query sets.",
+            remediation=(
+                f"Queries only the baseline scored: {only_base[:5]}."
+                f" Only the challenger scored: {only_challenge[:5]}."
+                " Re-run the sweep so both candidates score the same queries."
+            ),
+        )
+    queries = sorted(base_by_query)
+    base_values = [float(getattr(base_by_query[query], field)) for query in queries]
+    challenge_values = [float(getattr(challenge_by_query[query], field)) for query in queries]
     delta = (
         round(sum(challenge_values) / len(challenge_values), 6)
         - round(sum(base_values) / len(base_values), 6)
@@ -145,34 +160,64 @@ def _ranx_metric_key(report: Mapping[str, object], metric: str) -> str:
     return metric
 
 
+def query_id_map(golden: Sequence[GoldenRecord]) -> dict[str, str]:
+    """Map query text -> TREC qid (``q1``, ``q2``, ...), in golden order.
+
+    One shared map keeps the qrels file and every run file aligned: the
+    same query text gets the SAME qid in both files, so a skipped query
+    can never shift the numbering apart.
+    """
+    return {record.query: f"q{position}" for position, record in enumerate(golden, start=1)}
+
+
 def write_trec_qrels(
     path: Path,
     golden: Sequence[GoldenRecord],
     index: LabelIndex,
     min_overlap: float,
+    *,
+    qids: Mapping[str, str] | None = None,
 ) -> int:
     """TREC qrels from the golden labels: ``qid 0 docid gain`` per line.
 
     Labels resolve through the SAME rules the sweep scored with, so the
-    exported file and the reported numbers can never disagree. Returns
-    the number of written lines.
+    exported file and the reported numbers can never disagree. Pass the
+    ``query_id_map`` result as ``qids``; the default derives qids from the
+    golden order. Returns the number of written lines.
     """
+    qid_map = qids if qids is not None else query_id_map(golden)
     lines: list[str] = []
-    for position, record in enumerate(golden, start=1):
+    for record in golden:
         relevant = sorted(resolve_relevance(record, LabelIndex(index.entries, min_overlap)))
         for doc_id in relevant:
-            lines.append(f"q{position} 0 {doc_id} 1")
+            lines.append(f"{qid_map[record.query]} 0 {doc_id} 1")
     path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
     return len(lines)
 
 
-def write_trec_run(path: Path, rows: list[QueryScore]) -> int:
-    """TREC run for one candidate: ``qid Q0 docid rank score`` per line."""
+def write_trec_run(
+    path: Path,
+    rows: list[QueryScore],
+    *,
+    qids: Mapping[str, str] | None = None,
+) -> int:
+    """TREC run for one candidate: ``qid Q0 docid rank score`` per line.
+
+    Pass the SAME ``qids`` map the qrels file used (built by
+    ``query_id_map`` over the golden records); the default derives qids
+    from row order, which misaligns the files when a query was skipped.
+    Returns the number of written lines.
+    """
+    qid_map = (
+        qids
+        if qids is not None
+        else {row.query: f"q{position}" for position, row in enumerate(rows, start=1)}
+    )
     lines: list[str] = []
-    for position, row in enumerate(rows, start=1):
+    for row in rows:
         for rank, doc_id in enumerate(row.ranked, start=1):
             score = f"{1.0 / rank:.6f}"
-            lines.append(f"q{position} Q0 {doc_id} {rank} {score}")
+            lines.append(f"{qid_map[row.query]} Q0 {doc_id} {rank} {score}")
     path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
     return len(lines)
 
