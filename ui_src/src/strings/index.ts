@@ -211,6 +211,24 @@ export interface Strings {
   analyzeDormantConfigKey: string;
   analyzeCopyYaml: string;
   analyzeYamlCopied: string;
+  ingestTitle: string;
+  ingestBody: string;
+  ingestTabFiles: string;
+  ingestTabWebsite: string;
+  ingestTabPaste: string;
+  ingestTabServerPath: string;
+  ingestTabTranscripts: string;
+  ingestTabSample: string;
+  ingestUrlLabel: string;
+  ingestUrlRequired: string;
+  ingestCrawlToggle: string;
+  ingestPasteNotWired: string;
+  ingestDirLabel: string;
+  ingestDirRequired: string;
+  ingestRecursiveToggle: string;
+  ingestTranscriptPathLabel: string;
+  ingestTranscriptNameLabel: string;
+  ingestTranscriptPathRequired: string;
 }
 
 export const strings: Strings = en;

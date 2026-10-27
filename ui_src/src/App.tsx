@@ -5,6 +5,7 @@ import { strings } from "./strings";
 
 // One lazy chunk per stage, so one stage never loads another's code.
 const Setup = lazy(() => import("./pages/Setup"));
+const Ingest = lazy(() => import("./pages/Ingest"));
 const Review = lazy(() => import("./pages/Review"));
 const Ask = lazy(() => import("./pages/Ask"));
 const Analyze = lazy(() => import("./pages/Analyze"));
@@ -56,6 +57,7 @@ function StageShell() {
           <Routes>
             <Route path="/" element={<Navigate to="/setup" replace />} />
             <Route path="/setup" element={<Setup />} />
+            <Route path="/ingest" element={<Ingest />} />
             <Route path="/review" element={<Review />} />
             <Route path="/ask" element={<Ask />} />
             <Route path="/analyze" element={<Analyze />} />
