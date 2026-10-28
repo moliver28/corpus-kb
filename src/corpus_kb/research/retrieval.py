@@ -127,24 +127,26 @@ def _child_uuid(key: str) -> str:
     return str(uuid5(_RRF_NAMESPACE, f"corpus-research:{key}"))
 
 
-async def research_search(
+async def ranked_children(
     store: Store,
     embedder: ResearchEmbedder,
     q: ResearchQuery,
     reranker: object | None = None,
     hnsw_settings: HnswSettings | None = None,
     retrieval_settings: RetrievalSettings | None = None,
-) -> list[Citation]:
-    """Search retrieval children, return parent citations (small-to-big).
+) -> list[dict[str, Any]]:
+    """Rank retrieval children; return the fused list BEFORE parent mapping.
 
-    ``hnsw_settings`` (U20) defaults to the ``search.hnsw.*`` config block;
-    when the installed pgvector supports iterative scans the matching
-    ``SET LOCAL`` statements are applied inside this search's transaction
-    (never session-wide, so pooled connections cannot leak them).
-    ``retrieval_settings`` (U45/U21) defaults to the ``search.*`` block and
-    drives the exact-scan fallback threshold below. DuckDB runs the
-    exact-scan twins in ``research/retrieval_duckdb.py`` (no pgvector, no
-    SQL fusion; the pure rrf_fuse port fuses instead).
+    This is the ONE rank seam: dense + FTS arms fused by the house RRF
+    inside one tenant-scoped transaction. The eval runner, the calibration
+    sweeps and :func:`research_search` all rank through it, so the numbers
+    they report are the same species by construction. ``retrieval_settings``
+    drives the fusion constant (``rrf_k``) and floors the per-arm candidate
+    depth (``vector_candidates`` / ``lexical_candidates``); ``reranker``
+    reranks the children when given and ``q.rerank`` is set. Rows carry
+    ``chunk_id``, ``score``, and fusion metadata; order is fused-score
+    DESC, chunk id ASC (zero-drift rule 9). No truncation: callers cut to
+    their own k AFTER any rerank.
     """
     from corpus_kb.rag.embedder import instruct
 
@@ -152,7 +154,12 @@ async def research_search(
     r_settings = (
         retrieval_settings if retrieval_settings is not None else load_retrieval_settings(config)
     )
-    depth = max(q.k * CANDIDATE_MULTIPLIER, RERANK_MIN_CANDIDATES)
+    depth = max(
+        q.k * CANDIDATE_MULTIPLIER,
+        RERANK_MIN_CANDIDATES,
+        r_settings.vector_candidates,
+        r_settings.lexical_candidates,
+    )
     query_vector: list[float] | None = await embedder.embed_cached(q.tenant_id, instruct(q.query))
     settings = hnsw_settings if hnsw_settings is not None else load_hnsw_settings(config)
     duck = dialect_of(store).is_duckdb
@@ -179,7 +186,35 @@ async def research_search(
         exch_fused = await _rrf(conn, dense_ex, fts_ex, depth, r_settings.rrf_k, duck)
         fused = await _rrf(conn, units_fused, exch_fused, depth, r_settings.rrf_k, duck)
 
-        children = _children_from_fused(fused)
+    if reranker is not None and q.rerank and fused:
+        fused = await _rerank_children(q.query, fused, reranker)
+    return fused
+
+
+async def research_search(
+    store: Store,
+    embedder: ResearchEmbedder,
+    q: ResearchQuery,
+    reranker: object | None = None,
+    hnsw_settings: HnswSettings | None = None,
+    retrieval_settings: RetrievalSettings | None = None,
+) -> list[Citation]:
+    """Search retrieval children, return parent citations (small-to-big).
+
+    Ranking runs through :func:`ranked_children` (the one rank seam); this
+    function adds the small-to-big parent expansion, the citation fields,
+    and the parent-level rerank. ``hnsw_settings`` (U20) defaults to the
+    ``search.hnsw.*`` config block; ``retrieval_settings`` (U45/U21)
+    defaults to the ``search.*`` block. DuckDB runs the exact-scan twins
+    in ``research/retrieval_duckdb.py`` (no pgvector, no SQL fusion; the
+    pure rrf_fuse port fuses instead).
+    """
+    fused = await ranked_children(
+        store, embedder, q, hnsw_settings=hnsw_settings, retrieval_settings=retrieval_settings
+    )
+    children = _children_from_fused(fused)
+    duck = dialect_of(store).is_duckdb
+    async with tenant_scope(store, q.tenant_id) as conn:
         windows = await _meeting_windows(conn, children, duck)
         parents = _to_parents(children, windows)
         citations = await _citations(conn, parents, windows, duck)
@@ -583,3 +618,27 @@ async def _rerank(query: str, citations: list[Citation], reranker: object) -> li
     span = (hi - lo) or 1.0
     ranked = sorted(zip(citations, scores, strict=True), key=lambda pair: pair[1], reverse=True)
     return [replace(c, score=(s - lo) / span) for c, s in ranked]
+
+
+async def _rerank_children(
+    query: str, rows: list[dict[str, Any]], reranker: object
+) -> list[dict[str, Any]]:
+    """Rerank fused child rows in place of the parent-level ``_rerank``.
+
+    Same scorer contract and the same min-max calibration as ``_rerank``;
+    ties break by chunk id so the order stays deterministic (rule 9).
+    """
+    score = getattr(reranker, "score", None)
+    if not callable(score):
+        return rows
+    raw = await asyncio.to_thread(score, query, [str(row["text"]) for row in rows])
+    if not raw:
+        return rows
+    scores = [float(value) for value in cast("list[float]", raw)]
+    lo, hi = (min(scores), max(scores)) if scores else (0.0, 1.0)
+    span = (hi - lo) or 1.0
+    ranked = sorted(
+        zip(rows, scores, strict=True),
+        key=lambda pair: (-pair[1], str(pair[0]["chunk_id"])),
+    )
+    return [dict(row, score=(s - lo) / span) for row, s in ranked]

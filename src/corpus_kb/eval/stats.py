@@ -1,38 +1,30 @@
-"""Paired statistics and report artifacts (unified-ingestion Wave 7).
+"""Paired statistics for the calibration sweep (unified-ingestion Wave 7).
 
-The calibration sweep reports mean metrics per candidate; this module says
-whether a difference is real. Two methods, named honestly in every result:
+The sweep reports mean metrics per candidate; this module says whether a
+difference is real, for the WHOLE family at once. Two methods, named
+honestly in every result:
 
 - ``fisher randomization (ranx)`` when the optional ``calibrate`` extra is
   installed — the paired test the eval protocol pre-registers;
 - ``sign test`` otherwise — distribution-free, no p-value claim, stated
   as such so no reader mistakes it for the ranx result.
 
-Artifacts: a JSON report (the lock summary plus every paired outcome) and
-TREC-format qrels/run files, so a human can re-score every number on
-another machine with standard tools.
+``compare_all`` runs every baseline-versus-challenger pairing and applies
+a Holm step-down correction, so a five-candidate sweep cannot claim a
+winner on a p-value that would not survive family-wise correction.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from corpus_kb.errors import ValidationError
-from corpus_kb.eval.golden import GoldenRecord
-from corpus_kb.eval.labels import LabelIndex, resolve_relevance
 from corpus_kb.eval.scoring import QueryScore
 
-__all__ = [
-    "PairOutcome",
-    "paired_comparison",
-    "query_id_map",
-    "write_report",
-    "write_trec_qrels",
-    "write_trec_run",
-]
+__all__ = ["PairOutcome", "compare_all", "paired_comparison", "write_report"]
 
 METRIC_FIELDS = {"recall": "recall_at_k", "mrr": "mrr", "ndcg": "ndcg_at_10"}
 
@@ -50,6 +42,7 @@ class PairOutcome:
     ties: int
     method: str
     p_value: float | None
+    significant: bool = False
 
 
 def paired_comparison(
@@ -119,6 +112,54 @@ def paired_comparison(
     )
 
 
+def compare_all(
+    family_scores: Mapping[str, list[QueryScore]],
+    baseline_name: str,
+    metric: str = "ndcg",
+    alpha: float = 0.05,
+) -> list[PairOutcome]:
+    """Compare every challenger against the baseline on one metric.
+
+    Challengers run in name order (deterministic output). The p-values get
+    a Holm step-down correction at ``alpha``. The baseline is never in the
+    output — it is what every challenger is measured against.
+    """
+    if baseline_name not in family_scores:
+        raise ValidationError(
+            f"The baseline candidate {baseline_name!r} was not scored.",
+            remediation="Score the baseline beside every challenger, then compare again.",
+        )
+    outcomes = [
+        paired_comparison(family_scores, baseline_name, challenger, metric)
+        for challenger in sorted(family_scores)
+        if challenger != baseline_name
+    ]
+    return _holm_bonferroni(outcomes, alpha)
+
+
+def _holm_bonferroni(outcomes: list[PairOutcome], alpha: float) -> list[PairOutcome]:
+    """Holm step-down: smallest p first, each scaled by the tests left.
+
+    The scaled values grow monotonically; at the first failure the walk
+    stops and every later outcome is not significant, so a small raw
+    p-value can never rescue a family the correction already rejected.
+    """
+    tested = sorted(
+        (outcome for outcome in outcomes if outcome.p_value is not None),
+        key=lambda outcome: (outcome.p_value, outcome.challenger),
+    )
+    adjusted = 0.0
+    significant: dict[str, bool] = {}
+    for position, outcome in enumerate(tested, start=1):
+        assert outcome.p_value is not None
+        adjusted = max(adjusted, (len(tested) - position + 1) * outcome.p_value)
+        significant[outcome.challenger] = adjusted <= alpha
+    return [
+        replace(outcome, significant=significant.get(outcome.challenger, False))
+        for outcome in outcomes
+    ]
+
+
 def _ranx_p_value(
     query_scores: Mapping[str, list[QueryScore]],
     baseline: str,
@@ -158,68 +199,6 @@ def _ranx_metric_key(report: Mapping[str, object], metric: str) -> str:
             if isinstance(candidate, str) and candidate.startswith(metric):
                 return candidate
     return metric
-
-
-def query_id_map(golden: Sequence[GoldenRecord]) -> dict[str, str]:
-    """Map query text -> TREC qid (``q1``, ``q2``, ...), in golden order.
-
-    One shared map keeps the qrels file and every run file aligned: the
-    same query text gets the SAME qid in both files, so a skipped query
-    can never shift the numbering apart.
-    """
-    return {record.query: f"q{position}" for position, record in enumerate(golden, start=1)}
-
-
-def write_trec_qrels(
-    path: Path,
-    golden: Sequence[GoldenRecord],
-    index: LabelIndex,
-    min_overlap: float,
-    *,
-    qids: Mapping[str, str] | None = None,
-) -> int:
-    """TREC qrels from the golden labels: ``qid 0 docid gain`` per line.
-
-    Labels resolve through the SAME rules the sweep scored with, so the
-    exported file and the reported numbers can never disagree. Pass the
-    ``query_id_map`` result as ``qids``; the default derives qids from the
-    golden order. Returns the number of written lines.
-    """
-    qid_map = qids if qids is not None else query_id_map(golden)
-    lines: list[str] = []
-    for record in golden:
-        relevant = sorted(resolve_relevance(record, LabelIndex(index.entries, min_overlap)))
-        for doc_id in relevant:
-            lines.append(f"{qid_map[record.query]} 0 {doc_id} 1")
-    path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
-    return len(lines)
-
-
-def write_trec_run(
-    path: Path,
-    rows: list[QueryScore],
-    *,
-    qids: Mapping[str, str] | None = None,
-) -> int:
-    """TREC run for one candidate: ``qid Q0 docid rank score`` per line.
-
-    Pass the SAME ``qids`` map the qrels file used (built by
-    ``query_id_map`` over the golden records); the default derives qids
-    from row order, which misaligns the files when a query was skipped.
-    Returns the number of written lines.
-    """
-    qid_map = (
-        qids
-        if qids is not None
-        else {row.query: f"q{position}" for position, row in enumerate(rows, start=1)}
-    )
-    lines: list[str] = []
-    for row in rows:
-        for rank, doc_id in enumerate(row.ranked, start=1):
-            score = f"{1.0 / rank:.6f}"
-            lines.append(f"{qid_map[row.query]} Q0 {doc_id} {rank} {score}")
-    path.write_text("".join(line + "\n" for line in lines), encoding="utf-8")
-    return len(lines)
 
 
 def write_report(
