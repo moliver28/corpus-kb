@@ -12,13 +12,8 @@ from corpus_kb.eval._ranx import ranx_available
 from corpus_kb.eval.golden import GoldenRecord
 from corpus_kb.eval.labels import ChunkEntry, LabelIndex
 from corpus_kb.eval.scoring import QueryScore
-from corpus_kb.eval.stats import (
-    paired_comparison,
-    query_id_map,
-    write_report,
-    write_trec_qrels,
-    write_trec_run,
-)
+from corpus_kb.eval.stats import compare_all, paired_comparison, write_report
+from corpus_kb.eval.trec import query_id_map, write_trec_qrels, write_trec_run
 from corpus_kb.research.retrieval import _child_uuid
 
 
@@ -165,3 +160,70 @@ def test_fisher_outcome_when_ranx_installed() -> None:
     assert outcome.method.startswith("fisher randomization")
     assert isinstance(outcome.p_value, float)
     assert 0.0 <= outcome.p_value <= 1.0
+
+
+# ============================================================================
+# compare_all: every challenger vs the baseline, Holm-corrected
+# ============================================================================
+
+
+def _family() -> dict[str, list[QueryScore]]:
+    return {
+        "baseline": _rows("baseline", [0.0, 0.0, 0.0]),
+        "alpha": _rows("alpha", [1.0, 1.0, 1.0]),
+        "beta": _rows("beta", [1.0, 1.0, 1.0]),
+    }
+
+
+def _p_by_challenger(table: dict[str, float]):
+    def fake_p(
+        query_scores: object, baseline: str, challenger: str, metric: str, k: int | None
+    ) -> float | None:
+        return table.get(challenger)
+
+    return fake_p
+
+
+def test_compare_all_marks_significant_winners(monkeypatch) -> None:
+    monkeypatch.setattr("corpus_kb.eval.stats._ranx_p_value", _p_by_challenger({"alpha": 0.01}))
+    outcomes = compare_all(_family(), "baseline", metric="recall", alpha=0.05)
+    assert [outcome.challenger for outcome in outcomes] == ["alpha", "beta"]
+    by_name = {outcome.challenger: outcome for outcome in outcomes}
+    assert by_name["alpha"].significant is True
+    assert by_name["beta"].significant is False
+    assert by_name["alpha"].delta > 0
+
+
+def test_holm_step_down_stops_at_the_first_failure(monkeypatch) -> None:
+    # Holm: p=[0.03, 0.04], m=2. The smallest scales to 0.06 > 0.05 and
+    # fails, so the 0.04 p-value is NOT significant despite p < alpha.
+    monkeypatch.setattr(
+        "corpus_kb.eval.stats._ranx_p_value", _p_by_challenger({"alpha": 0.03, "beta": 0.04})
+    )
+    outcomes = compare_all(_family(), "baseline", metric="recall", alpha=0.05)
+    by_name = {outcome.challenger: outcome for outcome in outcomes}
+    assert by_name["alpha"].significant is False
+    assert by_name["beta"].significant is False
+
+
+def test_holm_step_down_keeps_both_when_scaling_holds(monkeypatch) -> None:
+    # p=[0.02, 0.03]: 0.02*2 = 0.04 passes, then 0.03*1 = 0.03 passes.
+    monkeypatch.setattr(
+        "corpus_kb.eval.stats._ranx_p_value", _p_by_challenger({"alpha": 0.02, "beta": 0.03})
+    )
+    outcomes = compare_all(_family(), "baseline", metric="recall", alpha=0.05)
+    assert all(outcome.significant for outcome in outcomes)
+
+
+def test_compare_all_requires_the_baseline(monkeypatch) -> None:
+    monkeypatch.setattr("corpus_kb.eval.stats._ranx_p_value", _p_by_challenger({}))
+    with pytest.raises(ValidationError, match="baseline"):
+        compare_all({"solo": _rows("solo", [1.0])}, "absent", metric="recall")
+
+
+def test_compare_all_sign_test_marks_nothing_significant(monkeypatch) -> None:
+    monkeypatch.setattr("corpus_kb.eval._ranx.ranx_available", lambda: False)
+    outcomes = compare_all(_family(), "baseline", metric="recall")
+    assert all(outcome.p_value is None for outcome in outcomes)
+    assert all(outcome.significant is False for outcome in outcomes)
+    assert all(outcome.method.startswith("sign test") for outcome in outcomes)
