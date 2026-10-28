@@ -93,13 +93,20 @@ DOC_RECONCILIATION = "docs/research/upgrade-reconciliation.md"
 
 @dataclass(frozen=True)
 class ResearchCheck:
-    """One doctor research check with its actionable remediation."""
+    """One doctor research check with its actionable remediation.
+
+    ``embedding_dimensions`` is the structured read of the configured
+    embedding width (issue #183): the detail string stays plain English,
+    machines read the field. ``None`` where the check does not probe a
+    width (or the config leaves it unset).
+    """
 
     name: str
     status: str
     detail: str
     fix: str = ""
     doc: str = ""
+    embedding_dimensions: int | None = None
 
 
 def surface_parity_check() -> ResearchCheck:
@@ -194,6 +201,7 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
             "embedders must emit exactly 1024 dims",
             fix="set research.embedder.dimensions: 1024 in config.yaml",
             doc=DOC_RESEARCH,
+            embedding_dimensions=dimensions or None,
         )
     if provider == "pgml" and pgml_installed is False:
         return ResearchCheck(
@@ -204,6 +212,7 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
             fix="set embedding.provider: ollama and embedding.model to a >=1024-dim "
             "model (e.g. qwen3-embedding:8b-q8_0)",
             doc=DOC_RESEARCH,
+            embedding_dimensions=dimensions,
         )
     if provider == "ollama":
         try:
@@ -218,6 +227,7 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
                 "Research embeddings abstain (never padded)",
                 fix="set embedding.model to a >=1024-dim model (e.g. qwen3-embedding:8b-q8_0)",
                 doc=DOC_RESEARCH,
+                embedding_dimensions=emb_dims,
             )
         if emb_dims == 0:
             # Unset dimensions: the model default may still be under 1024
@@ -231,11 +241,16 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
                 fix="set embedding.dimensions to the model's true dimensionality",
                 doc=DOC_RESEARCH,
             )
+    try:
+        emb_dims = int(emb_cfg.get("dimensions", dimensions))
+    except (TypeError, ValueError):
+        emb_dims = dimensions
     return ResearchCheck(
         name="research.embedder config",
         status=STATUS_OK,
-        detail=f"provider={provider} model={model} dims={dimensions}",
+        detail=f"provider={provider} model={model} dims={emb_dims}",
         doc=DOC_RESEARCH,
+        embedding_dimensions=emb_dims,
     )
 
 
