@@ -207,20 +207,21 @@ async def _reembed_flow(limit: int | None, doc_id: str | None, json_output: bool
     return EXIT_PARTIAL if isinstance(failed, int) and failed else EXIT_OK
 
 
-async def _status_flow(limit: int, json_output: bool) -> int:
+async def _status_flow(limit: int, json_output: bool, project_id: str | None = None) -> int:
     from corpus_kb.tools.ingest_surface_tools import ingest_status
 
     cfg = _load_config()
     pool = await _open_pool(cfg)
     try:
-        report = await ingest_status(pool, cfg, TENANT_DEFAULT, limit=limit)
+        report = await ingest_status(pool, cfg, TENANT_DEFAULT, limit=limit, project_id=project_id)
     finally:
         await pool.close()
     if json_output:
         print(json.dumps(report, indent=2, default=str))
     else:
         print_status_report(report)
-    return EXIT_CONFIG if str(report.get("status")) == "unavailable" else EXIT_OK
+    status = str(report.get("status"))
+    return EXIT_CONFIG if status in ("unavailable", "error") else EXIT_OK
 
 
 async def _ingest_url_flow(
@@ -386,13 +387,17 @@ def ingest(
 
 def ingest_status(
     limit: int = typer.Option(20, "--limit", min=1, help="How many recent runs to show (max 200)"),
+    project_id: str | None = typer.Option(
+        None, "--project-id", help="Show only the runs of this project UUID"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
 ) -> int:
     """Read the ingest run ledger: recent runs, degraded counts, incomplete runs.
 
-    Exit codes: 0 ok, 3 configuration error (ledger absent / database down).
+    Exit codes: 0 ok, 3 configuration error (ledger absent / bad --project-id /
+    database down).
     """
-    return _run_sync(lambda: _status_flow(limit, json_output))
+    return _run_sync(lambda: _status_flow(limit, json_output, project_id))
 
 
 def ingest_reembed(

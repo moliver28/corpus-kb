@@ -456,6 +456,7 @@ def test_cli_ingest_status_command_json_and_unavailable(
             config: dict[str, object] | None = None,
             tenant_id: str = TENANT,
             limit: int = 20,
+            project_id: str | None = None,
         ) -> dict[str, object]:
             return report
 
@@ -516,8 +517,10 @@ class _StatusConn:
         ledger_present: bool = True,
         degraded_columns: int = 2,
         degraded_counts: tuple[int, int] = (0, 0),
+        project_column: bool = True,
     ) -> None:
         self.runs = runs
+        self.project_column = project_column
         self.ledger_present = ledger_present
         self.degraded_columns = degraded_columns
         self.degraded_counts = degraded_counts
@@ -542,6 +545,8 @@ class _StatusConn:
     async def fetchval(self, statement: str, *args: object) -> object:
         if "to_regclass" in statement:
             return "ingest_runs" if self.ledger_present else None
+        if "column_name = 'project_id'" in statement:
+            return 1 if self.project_column else 0
         if "information_schema" in statement:
             return self.degraded_columns
         if "FROM ingest_runs WHERE tenant_id" in statement and "running" in statement:
@@ -601,6 +606,7 @@ def test_ingest_status_tool_reports_runs_and_degraded(
                 "finish_hash": None,
                 "stages": "{}",
                 "error": None,
+                "project_id": None,
             }
         ],
         degraded_counts=(2, 1),
@@ -675,6 +681,7 @@ def test_ingest_status_route_smoke() -> None:
                 "finish_hash": None,
                 "stages": "{}",
                 "error": "EmbeddingError: Connection failed: zero vectors",
+                "project_id": None,
             }
         ],
         degraded_counts=(1, 1),
