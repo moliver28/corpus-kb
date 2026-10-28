@@ -139,6 +139,12 @@ class TestRunValidators:
         chunks = [_chunk("alpha beta", 0, 10, "c1"), _chunk("gamma", 11, 16, "c2")]
         assert run_validators(_doc(text, chunks)) == []
 
+    def test_transcript_meta_rides_first_in_validator_order(self) -> None:
+        """The metadata checks are the cheapest; they list first."""
+        from corpus_kb.tools.pipeline.validate import VALIDATOR_ORDER
+
+        assert VALIDATOR_ORDER[0] == "transcript_meta"
+
     def test_summary_shape_is_stable(self) -> None:
         from corpus_kb.tools.pipeline.validate import summarize
 
@@ -149,6 +155,7 @@ class TestRunValidators:
         assert report["status"] == "findings"
         assert report["problem_count"] == 1
         assert [v["name"] for v in report["validators"]] == [
+            "transcript_meta",
             "offset_invariant",
             "coverage",
             "budget",

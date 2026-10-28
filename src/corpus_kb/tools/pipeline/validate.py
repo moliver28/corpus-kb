@@ -1,14 +1,17 @@
 """Wave 4 ingest validators: pure checks over the canonical document.
 
-One module, three validators, four modes. The validators are pure functions
+Three core validators live here; the ``transcript_meta`` validator lives
+in ``transcript_meta.py`` beside them. The validators are pure functions
 over an :class:`~corpus_kb.tools.pipeline.document.IngestDocument`; they
 write nothing and never raise for a dirty document — they return findings.
 The mode wrapper decides what a finding means:
 
-* ``off``       — validators do not run (byte-identical envelope).
-* ``advisory``  — the summary rides the envelope under ``validation``.
-* ``enforce``   — any error-severity finding raises ``ValidationError``.
-* ``calibrate`` — the summary rides the ledger ``stages`` (Wave 7 feed).
+* ``off``            — validators do not run (byte-identical envelope).
+* ``advisory``       — the summary rides the envelope under ``validation``.
+* ``enforce``        — any error-severity finding raises ``ValidationError``.
+* ``calibrate``      — the summary rides the ledger ``stages`` (Wave 7 feed).
+* ``transcript_meta``— the transcript metadata checks run alone; they ride
+  the advisory channel and never raise.
 
 Output is deterministic: validators run in a fixed order and findings sort
 by validator, code, then chunk id.
@@ -23,11 +26,12 @@ from corpus_kb.errors import ValidationError
 
 from .document import IngestDocument
 
-MODES = ("off", "advisory", "enforce", "calibrate")
+MODES = ("off", "advisory", "enforce", "calibrate", "transcript_meta")
 
 # Validator order is part of the output contract (determinism, zero-drift
-# standard 9): callers sort findings by this rank first.
-VALIDATOR_ORDER = ("offset_invariant", "coverage", "budget")
+# standard 9): callers sort findings by this rank first. Metadata checks
+# are the cheapest, so ``transcript_meta`` rides first.
+VALIDATOR_ORDER = ("transcript_meta", "offset_invariant", "coverage", "budget")
 
 _WHITESPACE = frozenset(" \t\r\n")
 
@@ -52,7 +56,7 @@ def resolve_mode(raw: object) -> str:
     allowed = ", ".join(MODES)
     raise ValidationError(
         f"Unknown validate mode '{raw}'. Allowed values: {allowed}.",
-        remediation="Set validate to off, advisory, enforce, or calibrate.",
+        remediation="Set validate to off, advisory, enforce, calibrate, or transcript_meta.",
     )
 
 
@@ -161,7 +165,7 @@ def budget_findings(doc: IngestDocument) -> list[Finding]:
 
 
 def run_validators(doc: IngestDocument) -> list[Finding]:
-    """All validators, fixed order, deterministic sort (zero-drift no. 9)."""
+    """The core validators, fixed order, deterministic sort (zero-drift 9)."""
     findings = offset_invariant_findings(doc) + coverage_findings(doc) + budget_findings(doc)
     order = {name: rank for rank, name in enumerate(VALIDATOR_ORDER)}
     findings.sort(key=lambda f: (order[f.validator], f.code, f.chunk_id or "", f.detail))
@@ -201,7 +205,12 @@ def validate_document(doc: IngestDocument, mode: str) -> dict[str, Any]:
 
     Returns the summary dict for the advisory/calibrate callers. ``off``
     never reaches this function (the pipeline skips it entirely).
+    ``transcript_meta`` runs only the metadata checks and never raises.
     """
+    if mode == "transcript_meta":
+        from .transcript_meta import transcript_meta_findings
+
+        return summarize(mode, transcript_meta_findings(doc))
     findings = run_validators(doc)
     if mode == "enforce" and findings:
         names = sorted({f.validator for f in findings})
