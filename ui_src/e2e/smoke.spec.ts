@@ -79,7 +79,13 @@ test.describe("SPA smoke on a live server", () => {
     const filter = ledger.locator(".ant-select");
     await expect(filter).toBeVisible({ timeout: 60_000 });
     await filter.click();
-    await expect(page.getByRole("option", { name: "All projects" })).toBeVisible();
+    // AntD renders a visually hidden aria mirror with role="option", so
+    // assert the dropdown item a user sees, not the role element.
+    const dropdown = page.locator(".ant-select-dropdown");
+    await expect(dropdown).toBeVisible();
+    await expect(
+      dropdown.locator(".ant-select-item-option").filter({ hasText: "All projects" }),
+    ).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(ledger.getByRole("columnheader", { name: "Project" })).toBeVisible();
     await expect(ledger.getByRole("cell").first()).toBeVisible();
