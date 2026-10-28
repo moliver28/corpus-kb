@@ -88,6 +88,7 @@ class IngestSql:
     entity_fetch_sql: str
     finish_run_sql: str
     fail_run_sql: str
+    set_run_project_sql: str
     vector_insert_sql: str
 
     @property
@@ -111,6 +112,9 @@ def ingest_sql_for(backend: str) -> IngestSql:
                 "UPDATE ingest_runs SET status = 'failed', finished_at = NOW(), error = $2"
                 " WHERE run_id = $1 AND tenant_id = $3"
             ),
+            set_run_project_sql=(
+                "UPDATE ingest_runs SET project_id = $2 WHERE run_id = $1 AND tenant_id = $3"
+            ),
             vector_insert_sql=_VECTOR_INSERT.format(
                 embedding="$3::FLOAT[2560]", v1024="$4::FLOAT[1024]"
             ),
@@ -126,6 +130,10 @@ def ingest_sql_for(backend: str) -> IngestSql:
         finish_run_sql=_FINISH_TAIL.format(stages_cast="$4::jsonb", run_ref="$1::uuid"),
         fail_run_sql=(
             "UPDATE ingest_runs SET status = 'failed', finished_at = NOW(), error = $2"
+            " WHERE run_id = $1::uuid AND tenant_id = $3"
+        ),
+        set_run_project_sql=(
+            "UPDATE ingest_runs SET project_id = $2::uuid"
             " WHERE run_id = $1::uuid AND tenant_id = $3"
         ),
         vector_insert_sql=_VECTOR_INSERT.format(embedding="$3::halfvec", v1024="$4::vector"),
