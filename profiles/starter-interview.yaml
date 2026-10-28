@@ -14,3 +14,15 @@ templates:
   - opinion
   - sentiment_target
   - temporal_change
+# Calibrate then lock (optional). Uncomment to sweep query-time recipes
+# against your golden labels; see docs/VALIDATION.md. Copy the winner's
+# proposed_overrides into config.yaml. Query time only; no re-ingest.
+# calibrate:
+#   candidates:
+#     - default
+#     - transcript: {retrieval.rrf_k: 10}
+#   baseline: default
+#   sample: calib-sample/
+#   golden: calib-golden.jsonl
+#   alpha: 0.05
+#   min_queries: 30

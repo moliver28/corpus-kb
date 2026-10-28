@@ -1,5 +1,7 @@
 # corpus-kb: Validated Ingestion and Pluggable Chunking — Implementation Plan v2 (surgical)
 
+> **Implemented** by PRs #211–#214 (October 2026); see [ingestion-recipes-as-built.md](ingestion-recipes-as-built.md). The as-built doc records where this plan changed.
+
 Document status: DRAFT v2 for user review. NOT approved. Nothing here may be merged until the approval gates in Section 8 are answered.
 Written: 2026-10-25. Repo audited: `moliver28/corpus-kb`, branch `master`, HEAD `dcf6f6139f9d97530cf6f71d8c07c9f8f201cc51`.
 Reader: an engineer or coding model that understands what corpus-kb is but has NO other context. Read top to bottom. Every term is defined before use. Section 12 is a blocker runbook; Section 13 is a file-by-file change map.

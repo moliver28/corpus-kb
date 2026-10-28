@@ -39,7 +39,8 @@ document source label. A chunk is relevant when the label covers at
 least `min_overlap` of it (default 0.5). A unit label names a research
 unit id directly.
 
-The calibration sweep uses these labels; see the profiles playbook.
+The calibration sweep uses these labels; the full author, measure, and
+apply loop is [VALIDATION.md](VALIDATION.md).
 `eval build-golden --validate` accepts all three label kinds.
 
 ## Build a golden set from reviewed codings
