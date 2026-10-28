@@ -28,6 +28,17 @@ export interface DoctorResult {
     reachable: boolean;
     message: string;
   };
+  /** Structured embedding facts (issue #183); absent on older servers. */
+  embedding?: {
+    model: string;
+    dimensions: number | null;
+  };
+  /** The reranker's active state from config; absent on older servers. */
+  reranker?: {
+    enabled: boolean;
+    backend: string | null;
+    model: string;
+  };
   env: DoctorCheck;
   research_checks: DoctorCheck[];
   storage_checks: DoctorCheck[];

@@ -68,10 +68,32 @@ test.describe("SPA smoke on a live server", () => {
       assess.getByText("no codebook document recorded (inputs.codebook is empty)").first(),
     ).toBeVisible();
   });
+
+  test("the run ledger offers the project filter and lists the runs", async ({ page }) => {
+    await page.goto("/app/#/scale");
+    // The sample ingest from the first test wrote ledger runs, so the
+    // poll answers with history. The filter lists every project the
+    // runs name (the demo corpus has none — all rows are "no project");
+    // the narrowing logic itself is covered by the runFilter unit tests.
+    const ledger = page.locator(".ant-card").filter({ hasText: "Run ledger" });
+    const filter = ledger.locator(".ant-select");
+    await expect(filter).toBeVisible({ timeout: 60_000 });
+    await filter.click();
+    // AntD renders a visually hidden aria mirror with role="option", so
+    // assert the dropdown item a user sees, not the role element.
+    const dropdown = page.locator(".ant-select-dropdown");
+    await expect(dropdown).toBeVisible();
+    await expect(
+      dropdown.locator(".ant-select-item-option").filter({ hasText: "All projects" }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(ledger.getByRole("columnheader", { name: "Project" })).toBeVisible();
+    await expect(ledger.getByRole("cell").first()).toBeVisible();
+  });
 });
 
 test.describe("accessibility (axe-core)", () => {
-  for (const stage of ["#/ingest", "#/analyze", "#/release"]) {
+  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale"]) {
     test(`no critical or serious violations on ${stage}`, async ({ page }) => {
       await page.goto(`/app/${stage}`);
       // Wait for the stage's first card, not a fixed sleep.

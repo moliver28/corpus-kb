@@ -2,7 +2,10 @@
   "name": "ingest-status-ok-200",
   "source": "canonical",
   "note": "GET /api/ingest/status shape with degraded counts (tools/ingest_surface_tools.py ingest_status; run rows are _serialize_run's keys). Re-record against a running server after an ingest.",
-  "request": { "method": "GET", "path": "/api/ingest/status" },
+  "request": {
+    "method": "GET",
+    "path": "/api/ingest/status"
+  },
   "response": {
     "httpStatus": 200,
     "body": {
@@ -17,12 +20,20 @@
           "status": "success",
           "start_hash": "9f2a1c",
           "finish_hash": "9f2a1c",
-          "stages": { "partition": "ok", "embed": "ok", "extract": "ok" },
-          "error": null
+          "stages": {
+            "partition": "ok",
+            "embed": "ok",
+            "extract": "ok"
+          },
+          "error": null,
+          "project_id": null
         }
       ],
       "incomplete_runs": 0,
-      "degraded": { "chunks": 3, "chunk_vectors": 3 }
+      "degraded": {
+        "chunks": 3,
+        "chunk_vectors": 3
+      }
     }
   }
 }

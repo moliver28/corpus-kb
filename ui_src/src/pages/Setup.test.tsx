@@ -66,6 +66,32 @@ describe("Setup page", () => {
     expect(screen.queryByText("ok")).toBeNull();
   });
 
+  it("shows the embedding dims and the reranker state as plain lines", async () => {
+    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) }]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    expect(
+      await screen.findByText(
+        strings.setupEmbeddingLine
+          .replace("{model}", "nomic-embed-text")
+          .replace("{dims}", "768"),
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(strings.setupRerankerOff)).toBeTruthy();
+  });
+
+  it("hides the embedding and reranker lines on an older payload", async () => {
+    const body = JSON.parse(JSON.stringify(doctorOk.response.body));
+    delete body.result.embedding;
+    delete body.result.reranker;
+    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, body) }]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    expect(
+      (await screen.findAllByText(/model server is not reachable/)).length,
+    ).toBeGreaterThan(0);
+    expect(screen.queryByText(/Embedding:/)).toBeNull();
+    expect(screen.queryByText(/Reranker:/)).toBeNull();
+  });
+
   it("runs the demo load behind the confirm gate and shows the receipt", async () => {
     stubFetch([
       { method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) },

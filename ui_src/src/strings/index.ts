@@ -326,6 +326,22 @@ export interface Strings {
   releaseCompareTitle: string;
   releaseOldLabel: string;
   releaseNewLabel: string;
+  receiptValidationLabel: string;
+  receiptValidationOk: string;
+  receiptValidationFindings: string;
+  receiptDedupDropped: string;
+  setupEmbeddingLine: string;
+  setupEmbeddingDimsUnknown: string;
+  setupRerankerOn: string;
+  setupRerankerBackendAuto: string;
+  setupRerankerOff: string;
+  scaleRunsFilterLabel: string;
+  scaleRunsAll: string;
+  scaleRunsEmpty: string;
+  scaleRunsColumnStarted: string;
+  scaleRunsColumnSource: string;
+  scaleRunsColumnStatus: string;
+  scaleRunsColumnProject: string;
 }
 
 export const strings: Strings = en;

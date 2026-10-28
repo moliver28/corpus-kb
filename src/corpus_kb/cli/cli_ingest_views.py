@@ -65,6 +65,11 @@ def print_status_report(report: dict[str, object]) -> None:
         print(f"ingest-status: UNAVAILABLE — {report.get('reason')}")
         print(f"    remedy: {report.get('remedy')}")
         return
+    if str(report.get("status")) == "error":
+        print(f"ingest-status: ERROR — {report.get('message')}")
+        if report.get("remedy"):
+            print(f"    remedy: {report.get('remedy')}")
+        return
     degraded = report.get("degraded")
     degraded_map = degraded if isinstance(degraded, dict) else {}
     print(
@@ -82,6 +87,7 @@ def print_status_report(report: dict[str, object]) -> None:
         started = str(run.get("started_at", "?"))[:19]
         source = str(run.get("source_type") or "-")
         run_id = str(run.get("run_id"))[:8]
-        print(f"{status:>9}  {started}  {source:<10} {run_id}")
+        project = str(run.get("project_id") or "-")[:8]
+        print(f"{status:>9}  {started}  {source:<10} {run_id}  {project}")
         if run.get("error"):
             print(f"          error: {str(run['error'])[:160]}")

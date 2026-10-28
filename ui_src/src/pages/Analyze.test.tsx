@@ -72,11 +72,16 @@ describe("Analyze page", () => {
       { method: "POST", path: "/api/analysis/select-method", reply: respond(200, selectMethodOk.response.body) },
     ]);
     render(<Analyze />, { wrapper: makeWrapper() });
-    fireEvent.change(await screen.findByPlaceholderText(strings.analyzeAdvisorTaskLabel), {
-      target: { value: "find the recurring themes in the interviews" },
-    });
+    // The suite runs many jsdom files in parallel workers; the default
+    // 1 s async timeout flakes under that load, so these waits are 5 s.
+    fireEvent.change(
+      await screen.findByPlaceholderText(strings.analyzeAdvisorTaskLabel, {}, { timeout: 5_000 }),
+      {
+        target: { value: "find the recurring themes in the interviews" },
+      },
+    );
     fireEvent.click(screen.getByRole("button", { name: strings.analyzeAdvisorAction }));
-    expect(await screen.findByText("TF-IDF keyphrase scan")).toBeTruthy();
+    expect(await screen.findByText("TF-IDF keyphrase scan", {}, { timeout: 5_000 })).toBeTruthy();
     // Spec F8: the row carries its summary plus the register's own
     // validation and permitted-claims guidance (expanded by default).
     expect(

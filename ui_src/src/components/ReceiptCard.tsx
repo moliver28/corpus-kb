@@ -46,10 +46,39 @@ export default function ReceiptCard({ result }: { result: OpResult }) {
     typeof data.remedy === "string" && data.remedy !== ""
       ? data.remedy
       : result.remediation;
+  // Ingestion facts the pipeline attaches when they ran (both optional in
+  // the envelope): the validation summary and the MinHash dedup drops.
+  const validation =
+    typeof data.validation === "object" && data.validation !== null
+      ? (data.validation as Record<string, unknown>)
+      : null;
+  const problemCount =
+    validation !== null && typeof validation.problem_count === "number"
+      ? validation.problem_count
+      : null;
+  const dedupDropped = Array.isArray(data.dedup_dropped)
+    ? data.dedup_dropped.length
+    : 0;
   return (
     <Card title={headline(result.status)} size="small">
       {result.status === "degraded" && (
         <StatusBanner kind="warn">{strings.receiptDegraded}</StatusBanner>
+      )}
+      {validation !== null && problemCount !== null && (
+        <StatusBanner kind={problemCount === 0 ? "ok" : "warn"}>
+          <strong>{strings.receiptValidationLabel}: </strong>
+          {problemCount === 0
+            ? strings.receiptValidationOk
+            : strings.receiptValidationFindings.replace(
+                "{n}",
+                String(problemCount),
+              )}
+        </StatusBanner>
+      )}
+      {dedupDropped > 0 && (
+        <StatusBanner kind="info">
+          {strings.receiptDedupDropped.replace("{n}", String(dedupDropped))}
+        </StatusBanner>
       )}
       {note && (
         <>

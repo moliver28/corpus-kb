@@ -38,9 +38,9 @@ DEFAULT_RUN_LIMIT = 20
 
 _RUNS_SELECT = """
     SELECT run_id, source_type, started_at, finished_at, status,
-           start_hash, finish_hash, stages, error
+           start_hash, finish_hash, stages, error{project_select}
     FROM ingest_runs
-    WHERE {tenant_pred}
+    WHERE {tenant_pred}{project_pred}
     ORDER BY {order}
     LIMIT $2
 """
@@ -68,6 +68,7 @@ def _serialize_run(row: Row) -> dict[str, object]:
         "finish_hash": row["finish_hash"],
         "stages": _parse_stages(row["stages"]),
         "error": row["error"],
+        "project_id": str(row["project_id"]) if row["project_id"] is not None else None,
     }
 
 
@@ -78,12 +79,30 @@ def _status_sql(is_duckdb: bool) -> dict[str, str]:
     ``$1::uuid`` casts, the ``information_schema`` degraded probe). DuckDB
     probes ``duckdb_tables``/``duckdb_columns`` and takes plain varchar
     comparisons; ``run_id DESC`` is the deterministic tiebreaker.
+
+    ``project_present`` gates the ``project_id`` column (migration 036): a
+    pre-migration ledger reads NULL into every run and the filter answers
+    with the honest error, never a SQL crash. The filtered statement binds
+    ``$3`` as the project id.
     """
     if is_duckdb:
         return {
             "ledger": "SELECT count(*) FROM duckdb_tables() WHERE table_name = 'ingest_runs'",
+            "project_present": (
+                "SELECT count(*) FROM duckdb_columns() WHERE table_name = 'ingest_runs' "
+                "AND column_name = 'project_id'"
+            ),
             "runs": _RUNS_SELECT.format(
-                tenant_pred="tenant_id = $1", order="started_at DESC, run_id DESC"
+                tenant_pred="tenant_id = $1",
+                order="started_at DESC, run_id DESC",
+                project_select=", NULL AS project_id",
+                project_pred="",
+            ),
+            "runs_project": _RUNS_SELECT.format(
+                tenant_pred="tenant_id = $1",
+                order="started_at DESC, run_id DESC",
+                project_select=", project_id",
+                project_pred=" AND project_id = $3",
             ),
             "incomplete": (
                 "SELECT count(*) FROM ingest_runs WHERE tenant_id = $1 AND status = 'running'"
@@ -101,7 +120,23 @@ def _status_sql(is_duckdb: bool) -> dict[str, str]:
         }
     return {
         "ledger": "SELECT to_regclass('public.ingest_runs')",
-        "runs": _RUNS_SELECT.format(tenant_pred="tenant_id = $1::uuid", order="started_at DESC"),
+        "project_present": (
+            "SELECT count(*) FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'ingest_runs' "
+            "AND column_name = 'project_id'"
+        ),
+        "runs": _RUNS_SELECT.format(
+            tenant_pred="tenant_id = $1::uuid",
+            order="started_at DESC",
+            project_select=", NULL AS project_id",
+            project_pred="",
+        ),
+        "runs_project": _RUNS_SELECT.format(
+            tenant_pred="tenant_id = $1::uuid",
+            order="started_at DESC",
+            project_select=", project_id",
+            project_pred=" AND project_id = $3::uuid",
+        ),
         "incomplete": (
             "SELECT count(*) FROM ingest_runs WHERE tenant_id = $1::uuid AND status = 'running'"
         ),
@@ -124,6 +159,7 @@ async def ingest_status(
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     limit: int = DEFAULT_RUN_LIMIT,
+    project_id: str | None = None,
 ) -> dict[str, object]:
     """Recent ``ingest_runs`` entries + degraded counts for one tenant.
 
@@ -131,7 +167,16 @@ async def ingest_status(
     where ``degraded`` carries the chunks/chunks_vectors flag counts.
     ``status`` is ``"success"`` when the ledger is readable, else
     ``"unavailable"`` (migration 022 not applied) with the setup remedy.
+
+    ``project_id`` narrows the runs to one project (migration 036). An
+    unparsable id, or a pre-migration ledger without the column, is a
+    structured ``{"status": "error"}`` answer, never a crash.
     """
+    if project_id is not None:
+        try:
+            UUID(project_id)
+        except ValueError:
+            return {"status": "error", "message": f"project_id is not a UUID: {project_id}"}
     sql = _status_sql(gateway_backend(as_gateway(pg_pool)) == "duckdb")
     bounded_limit = max(1, min(int(limit), 200))
     async with as_gateway(pg_pool).transaction(tenant_id) as tx:
@@ -145,7 +190,20 @@ async def ingest_status(
                 "incomplete_runs": 0,
                 "degraded": {"chunks": 0, "chunk_vectors": 0},
             }
-        rows = await tx.fetch(sql["runs"], tenant_id, bounded_limit)
+        project_col = bool(await tx.fetchval(sql["project_present"]))
+        if project_id is not None and not project_col:
+            return {
+                "status": "error",
+                "message": "ingest_runs has no project_id column (migration 036 not applied)",
+                "remedy": "run corpus-kb setup",
+            }
+        filter_project = project_id is not None and project_col
+        rows = await tx.fetch(
+            sql["runs_project"] if filter_project else sql["runs"],
+            tenant_id,
+            bounded_limit,
+            *(project_id,) if filter_project else (),
+        )
         incomplete = await tx.fetchval(sql["incomplete"], tenant_id)
         degraded_present = await tx.fetchval(sql["degraded_present"], ["chunks", "chunks_vectors"])
         degraded = {"chunks": 0, "chunk_vectors": 0}

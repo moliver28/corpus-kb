@@ -148,7 +148,7 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
         family="ingest",
         description="Recent ingest ledger entries plus degraded-chunk counts.",
         handler="corpus_kb.tools.ingest_surface_tools:ingest_status",
-        params=(ParamSpec("limit", default=20), _TENANT),
+        params=(ParamSpec("limit", default=20), ParamSpec("project_id"), _TENANT),
         envelope_keys=("status", "ledger_present", "runs", "incomplete_runs", "degraded"),
         surfaces=(
             SurfaceSpec(MCP, "ingest_status"),

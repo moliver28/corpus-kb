@@ -268,6 +268,28 @@ class PostgresIngestStore:
         except Exception as exc:
             logger.warning("Could not mark ingest run %s failed: %s", run_id, exc)
 
+    async def set_run_project(self, run_id: str, project_id: str) -> None:
+        """Attach a project to a ledger run (migration 036). Best effort: never raises.
+
+        Callers pass a run id the ingest chain handed out (``begin_run``); a
+        run row that never existed (the research path keeps no corpus ledger
+        row) simply matches zero rows. A missing column (migration not yet
+        applied) or an unreachable database is a warning, never an ingest
+        failure.
+        """
+        try:
+            async with self._gateway.transaction(self._tenant_id) as tx:
+                await tx.execute(
+                    self._sql.set_run_project_sql,
+                    run_id,
+                    project_id,
+                    self._tenant_id,
+                )
+        except Exception as exc:
+            logger.warning(
+                "Could not link ingest run %s to project %s: %s", run_id, project_id, exc
+            )
+
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
         """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding.
 

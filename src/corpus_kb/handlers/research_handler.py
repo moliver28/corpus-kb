@@ -40,6 +40,7 @@ from corpus_kb.research.linking import link_exchanges
 from corpus_kb.research.roles import map_roles, speaker_role_basis
 from corpus_kb.research.transcript_parser import parse_transcript
 from corpus_kb.tools.ingest_common import file_ingest_concurrency
+from corpus_kb.tools.ingest_store import PostgresIngestStore
 from corpus_kb.tools.pipeline.research_units import research_document
 from corpus_kb.tools.pipeline.sinks import UnitSink
 from corpus_kb.tools.pipeline.validate import resolve_mode, validate_document
@@ -139,6 +140,20 @@ class ResearchHandler:
 
         parsed = parse_transcript(file_path)
         canonical = research_document(str(file_path), parsed.source_type, parsed.turns)
+        if project_id is not None:
+            # Link the run to its project (migration 036), best effort. The
+            # research path keeps no corpus ingest_runs row (r9, the events
+            # are the ledger), so the write targets this path's run identity
+            # (the document id, per the UnitSink port) and matches zero rows
+            # when no ledger row carries it. set_run_project never raises;
+            # the guard keeps that contract local so ingest can never fail
+            # because of this link.
+            try:
+                await PostgresIngestStore(self._pool, str(tenant_id)).set_run_project(
+                    str(canonical.document.document_id), str(project_id)
+                )
+            except Exception as exc:
+                logger.warning("Could not link ingest run to project %s: %s", project_id, exc)
         # Wave 4 validation gate: read-only, pre-write. resolve_mode raises
         # the typed ValidationError for an unknown mode before anything runs.
         validation_report: dict[str, Any] | None = None

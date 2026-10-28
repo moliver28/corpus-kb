@@ -224,6 +224,7 @@
         'config': 'POSITIONAL_OR_KEYWORD',
         'limit': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
