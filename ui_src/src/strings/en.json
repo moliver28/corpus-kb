@@ -320,5 +320,21 @@
   "releaseStatusTitle": "Release status",
   "releaseCompareTitle": "Compare releases",
   "releaseOldLabel": "Old release id",
-  "releaseNewLabel": "New release id"
+  "releaseNewLabel": "New release id",
+  "receiptValidationLabel": "Validation",
+  "receiptValidationOk": "no problems found",
+  "receiptValidationFindings": "{n} problems found",
+  "receiptDedupDropped": "{n} near-duplicate chunks dropped",
+  "setupEmbeddingLine": "Embedding: {model}, {dims} dimensions.",
+  "setupEmbeddingDimsUnknown": "unknown",
+  "setupRerankerOn": "Reranker: on ({backend}).",
+  "setupRerankerBackendAuto": "automatic",
+  "setupRerankerOff": "Reranker: off.",
+  "scaleRunsFilterLabel": "Filter runs by project",
+  "scaleRunsAll": "All projects",
+  "scaleRunsEmpty": "No runs match this filter.",
+  "scaleRunsColumnStarted": "Started",
+  "scaleRunsColumnSource": "Source",
+  "scaleRunsColumnStatus": "Status",
+  "scaleRunsColumnProject": "Project"
 }

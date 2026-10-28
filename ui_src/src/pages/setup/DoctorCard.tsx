@@ -43,6 +43,29 @@ function DoctorView({ result }: { result: DoctorResult }) {
           .replace("{profile}", result.profile.profile)
           .replace("{model}", result.profile.recommended_model)}
       </Typography.Paragraph>
+      {result.embedding && (
+        <Typography.Paragraph type="secondary">
+          {strings.setupEmbeddingLine.replace(
+            "{model}",
+            result.embedding.model === "" ? "-" : result.embedding.model,
+          ).replace(
+            "{dims}",
+            result.embedding.dimensions === null
+              ? strings.setupEmbeddingDimsUnknown
+              : String(result.embedding.dimensions),
+          )}
+        </Typography.Paragraph>
+      )}
+      {result.reranker && (
+        <Typography.Paragraph type="secondary">
+          {result.reranker.enabled
+            ? strings.setupRerankerOn.replace(
+                "{backend}",
+                result.reranker.backend ?? strings.setupRerankerBackendAuto,
+              )
+            : strings.setupRerankerOff}
+        </Typography.Paragraph>
+      )}
       <Typography.Title level={5}>{strings.setupDoctorChecksHeading}</Typography.Title>
       {rows.length === 0 ? (
         <StatusBanner kind="info">{strings.setupDoctorChecksNone}</StatusBanner>
