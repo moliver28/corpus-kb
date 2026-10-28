@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
+from corpus_kb._setup import doctor_reranker
 from corpus_kb._setup.doctor_reranker import reranker_backend_check
 from corpus_kb._setup.doctor_research import STATUS_OK, STATUS_WARN
 from corpus_kb.rag.rerank_llamacpp import LlamaCppReranker
@@ -401,3 +402,115 @@ async def test_doctor_disabled_reranking_reports_ok() -> None:
     check = await reranker_backend_check({"reranking": {"enabled": False}})
     assert check.status == STATUS_OK
     assert "disabled" in check.detail
+
+
+# ---------------------------------------------------------------------------
+# Doctor: rerank sanity pair (functional probe behind a healthy /health)
+# ---------------------------------------------------------------------------
+
+
+def _doctor_config(server: _StubRerankServer, **overrides: object) -> dict[str, object]:
+    """Doctor config block pointing at the stub's llama-server surface."""
+    return {
+        "reranking": {
+            "enabled": True,
+            "backend": "llamacpp",
+            "llamacpp_url": _stub_url(server),
+            **overrides,
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_doctor_sanity_pair_passes_and_sends_configured_model(stub_server) -> None:
+    check = await reranker_backend_check(
+        _doctor_config(stub_server, model="bge-reranker-v2-m3-Q8_0.gguf")
+    )
+    assert check.status == STATUS_OK
+    assert "sanity" in check.detail
+    request = stub_server.requests[0]
+    assert request["model"] == "bge-reranker-v2-m3-Q8_0.gguf"
+    assert request["query"] == doctor_reranker.SANITY_QUERY
+    assert len(request["documents"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_doctor_sanity_pair_inverted_scores_warn(stub_server) -> None:
+    # Rank-order body (best first): the unrelated text outranks the topic text.
+    stub_server.responder = lambda body: (
+        200,
+        {
+            "results": [
+                {"index": 1, "relevance_score": 0.9},
+                {"index": 0, "relevance_score": 0.2},
+            ]
+        },
+    )
+    check = await reranker_backend_check(_doctor_config(stub_server))
+    assert check.status == STATUS_WARN
+    assert "gave the relevant text a lower score" in check.detail
+    assert "fused RRF order" in check.detail
+    assert "classifier tensor" in check.fix
+
+
+@pytest.mark.asyncio
+async def test_doctor_sanity_pair_near_zero_scores_warn(stub_server) -> None:
+    stub_server.responder = lambda body: (
+        200,
+        {
+            "results": [
+                {"index": 0, "relevance_score": 4.6e-23},
+                {"index": 1, "relevance_score": 4.5e-23},
+            ]
+        },
+    )
+    check = await reranker_backend_check(_doctor_config(stub_server))
+    assert check.status == STATUS_WARN
+    assert "near-zero scores" in check.detail
+    assert "classifier tensor" in check.fix
+
+
+@pytest.mark.asyncio
+async def test_doctor_sanity_pair_timeout_degrades_not_crashes(stub_server, monkeypatch) -> None:
+    def slow(body: dict[str, object]) -> tuple[int, object]:
+        time.sleep(0.5)
+        return _rank_response(body)
+
+    stub_server.responder = slow
+    monkeypatch.setattr(doctor_reranker, "SANITY_TIMEOUT_SECONDS", 0.2)
+    check = await reranker_backend_check(_doctor_config(stub_server))
+    assert check.status == STATUS_WARN
+    assert "rerank probe failed" in check.detail
+
+
+@pytest.mark.asyncio
+async def test_doctor_sanity_pair_http_500_degrades(stub_server) -> None:
+    stub_server.responder = lambda body: (500, {"error": "no rerank route"})
+    check = await reranker_backend_check(_doctor_config(stub_server))
+    assert check.status == STATUS_WARN
+    assert "answered HTTP 500" in check.detail
+
+
+@pytest.mark.asyncio
+async def test_doctor_sanity_pair_unreadable_answer_degrades(stub_server) -> None:
+    stub_server.responder = lambda body: (200, {"unexpected": True})
+    check = await reranker_backend_check(_doctor_config(stub_server))
+    assert check.status == STATUS_WARN
+    assert "no usable scores" in check.detail
+
+
+@pytest.mark.asyncio
+async def test_doctor_generative_backend_skips_the_sanity_pair(stub_server) -> None:
+    stub_server.tagged_model = "qwen3:4b"
+    check = await reranker_backend_check(
+        {
+            "reranking": {
+                "enabled": True,
+                "backend": None,
+                "model": "qwen3:4b",
+                "base_url": _stub_url(stub_server),
+            }
+        }
+    )
+    assert check.status == STATUS_OK
+    assert stub_server.requests == []

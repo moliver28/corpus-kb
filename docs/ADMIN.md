@@ -85,13 +85,19 @@ the generate route, so it cannot produce true cross-encoder scores. The
 standard path is a rank-capable llama.cpp server:
 
 1. Download a rank-pooling GGUF (for example `Qwen3-Reranker-0.6B-Q8_0.gguf`).
-2. Start the server: `llama-server -m Qwen3-Reranker-0.6B-Q8_0.gguf --port 8080`.
+2. Start the server: `llama-server -m Qwen3-Reranker-0.6B-Q8_0.gguf --port 8080 --reranking --pooling rank --embedding`.
 3. Set `reranking.backend: llamacpp` in `config.yaml`, then restart corpus-kb.
 
 The reranker then posts to `http://localhost:8080/v1/rerank` and returns
 graded relevance scores. `corpus-kb doctor` probes the server under
 "reranker backend". Without the server, the stage falls open to the fused
 RRF order.
+
+When the backend is `llamacpp`, `doctor` also runs a sanity pair against
+`/v1/rerank`. The pair is one short query with two short texts: one on
+topic, one not. `doctor` warns when the topic text does not outscore the
+other text, or both scores sit near zero. A conversion that lost the
+classifier tensor can pass `/health` and still return useless scores.
 
 Legacy namespaces: `search.*`, `ingest.hierarchy.*`, and `contextual.*`
 still work as aliases. Canonical keys win; alias use logs a deprecation
