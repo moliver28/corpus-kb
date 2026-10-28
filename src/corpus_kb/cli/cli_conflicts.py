@@ -8,21 +8,12 @@ the import in cli.py stays acyclic.
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import typer
 
-from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
-
-EXIT_OK = 0
-EXIT_FAILED = 1
-EXIT_CONFIG = 3
-
-_OK_STATUSES = ("success", "disabled", "empty", "insufficient_data")
-
-_JSON_OPT = typer.Option(False, "--json", help="Machine-readable JSON output")
-_TENANT_OPT = typer.Option("00000000-0000-0000-0000-000000000001", "--tenant-id", help="Tenant id")
+from corpus_kb.cli._plumbing import _JSON_OPT, _TENANT_OPT, flow
+from corpus_kb.cli.cli_ingest import _run_sync
 
 
 def register(app: typer.Typer) -> None:
@@ -42,44 +33,13 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
             print(f"  {key}: {result[key]}")
 
 
-async def _flow(module_name: str, op_name: str, kwargs: dict[str, Any], json_output: bool) -> int:
-    """One command flow: load config, open the pool, call, emit, map."""
-    from corpus_kb.errors import CorpusError
-
-    module = __import__(f"corpus_kb.tools.{module_name}", fromlist=[op_name])
-    handler: Callable[..., Awaitable[dict[str, object]]] = getattr(module, op_name)
-    cfg = _load_config()
-    pool = await _open_pool(cfg)
-    try:
-        result = await handler(pool, cfg, **kwargs)
-    except CorpusError as exc:
-        print(f"ERROR: {exc}")
-        remediation = getattr(exc, "remediation", None)
-        if remediation:
-            print(f"  {remediation}")
-        return EXIT_FAILED
-    finally:
-        await pool.close()
-    _emit(result, json_output)
-    return _exit_for(result)
-
-
-def _exit_for(result: dict[str, object]) -> int:
-    status = str(result.get("status", "error"))
-    if status in _OK_STATUSES:
-        return EXIT_OK
-    if status == "unavailable":
-        return EXIT_CONFIG
-    return EXIT_FAILED
-
-
 def conflicts_scan(
     tenant_id: str = _TENANT_OPT,
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Run the contradiction cascade over live statements."""
     kwargs: dict[str, Any] = {"tenant_id": tenant_id}
-    return _run_sync(lambda: _flow("conflicts_tools", "conflicts_scan", kwargs, json_output))
+    return _run_sync(lambda: flow("conflicts_tools", "conflicts_scan", kwargs, json_output, _emit))
 
 
 def conflicts_list(
@@ -90,7 +50,7 @@ def conflicts_list(
 ) -> int:
     """List recorded conflict flags newest-first."""
     kwargs = {"tenant_id": tenant_id, "verdict": verdict, "limit": limit}
-    return _run_sync(lambda: _flow("conflicts_tools", "conflicts_list", kwargs, json_output))
+    return _run_sync(lambda: flow("conflicts_tools", "conflicts_list", kwargs, json_output, _emit))
 
 
 def conflicts_resolve(
@@ -107,4 +67,6 @@ def conflicts_resolve(
         "resolved_verdict": resolved_verdict,
         "resolved_by": resolved_by,
     }
-    return _run_sync(lambda: _flow("conflicts_tools", "conflicts_resolve", kwargs, json_output))
+    return _run_sync(
+        lambda: flow("conflicts_tools", "conflicts_resolve", kwargs, json_output, _emit)
+    )

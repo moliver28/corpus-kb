@@ -25,6 +25,7 @@ from corpus_kb.ingest_watch import (
     scan_watch_dir,
     watch_directory,
 )
+from tests.cli_fakes import FakePool
 
 runner = CliRunner()
 
@@ -47,20 +48,10 @@ def _result(status: str, path: str, **extra: object) -> dict[str, object]:
     return payload
 
 
-class _FakePool:
-    """Pool double: the CLI flows only ever close it (tools are faked)."""
+def _patch_pool(monkeypatch: pytest.MonkeyPatch) -> FakePool:
+    pool = FakePool()
 
-    def __init__(self) -> None:
-        self.closed = False
-
-    async def close(self) -> None:
-        self.closed = True
-
-
-def _patch_pool(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
-    pool = _FakePool()
-
-    async def _open(_cfg: dict[str, object]) -> _FakePool:
+    async def _open(_cfg: dict[str, object]) -> FakePool:
         return pool
 
     monkeypatch.setattr("corpus_kb.cli.cli_ingest._open_pool", _open)
@@ -716,7 +707,7 @@ def test_ingest_reembed_route_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
         return {"status": "success", "scanned": 1, "fixed": 1, "failed": 0, "limit": limit}
 
     monkeypatch.setattr(ingest_surface_tools, "ingest_reembed", fake_reembed)
-    research_http.set_research_pool(cast("object", _FakePool()))
+    research_http.set_research_pool(cast("object", FakePool()))
     try:
         client = TestClient(create_http_app())
         response = client.post("/api/ingest/reembed", json={"limit": 1})

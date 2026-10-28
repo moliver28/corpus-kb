@@ -18,18 +18,11 @@ from corpus_kb.cli import app
 from corpus_kb.errors import CorpusError
 from corpus_kb.eval.golden import GoldenRecord
 from corpus_kb.eval.report import EvalReport, RetrievalRow, RetrievalSummary
+from tests.cli_fakes import FakePool
 
 runner = CliRunner()
 
 _CFG: dict[str, object] = {"embedding": {"model": "nomic-embed-text", "dimensions": 1024}}
-
-
-class _FakePool:
-    def __init__(self) -> None:
-        self.closed = False
-
-    async def close(self) -> None:
-        self.closed = True
 
 
 def _report(status: str = "success") -> EvalReport:
@@ -64,11 +57,11 @@ def _patch_world(
     monkeypatch: pytest.MonkeyPatch,
     report: EvalReport | None = None,
     error: Exception | None = None,
-) -> tuple[_FakePool, dict[str, object]]:
-    pool = _FakePool()
+) -> tuple[FakePool, dict[str, object]]:
+    pool = FakePool()
     captured: dict[str, object] = {}
 
-    async def _open(_cfg: dict[str, object]) -> _FakePool:
+    async def _open(_cfg: dict[str, object]) -> FakePool:
         return pool
 
     def _cfg() -> dict[str, object]:

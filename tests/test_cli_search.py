@@ -16,6 +16,7 @@ from typer.testing import CliRunner
 
 from corpus_kb.cli import app
 from corpus_kb.errors import CorpusError
+from tests.cli_fakes import FakePool
 
 runner = CliRunner()
 
@@ -51,14 +52,6 @@ _DEGRADED = {
 }
 
 
-class _FakePool:
-    def __init__(self) -> None:
-        self.closed = False
-
-    async def close(self) -> None:
-        self.closed = True
-
-
 class _RecordingSearch:
     """Canned envelopes + the call args, for pass-through assertions."""
 
@@ -74,10 +67,10 @@ class _RecordingSearch:
         return self.envelope
 
 
-def _patch_world(monkeypatch: pytest.MonkeyPatch, fake_search: _RecordingSearch) -> _FakePool:
-    pool = _FakePool()
+def _patch_world(monkeypatch: pytest.MonkeyPatch, fake_search: _RecordingSearch) -> FakePool:
+    pool = FakePool()
 
-    async def _open(_cfg: dict[str, object]) -> _FakePool:
+    async def _open(_cfg: dict[str, object]) -> FakePool:
         return pool
 
     def _cfg() -> dict[str, object]:

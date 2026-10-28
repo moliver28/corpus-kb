@@ -15,21 +15,21 @@ English (ASD-STE100).
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 import typer
 
+from corpus_kb.cli._plumbing import _JSON_OPT, flow
+
 # Reuse the ingest front door's shared plumbing (same honest-sync rule);
 # cli_ingest imports corpus_kb.cli only lazily, so this import is acyclic.
-from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
+from corpus_kb.cli.cli_ingest import _run_sync
 
-EXIT_OK = 0
-EXIT_FAILED = 1
-EXIT_CONFIG = 3
-
-# Honest no-op statuses: the command answered, there is nothing to fix.
-_OK_STATUSES = ("success", "disabled", "empty", "insufficient_data")
+# Module-level option singletons (B008): repeatable list options must not
+# call typer.Option inline.
+_IDS_OPT = typer.Option(None, "--chunk-id", help="Limit to these chunk ids (repeatable)")
+_INPUTS_OPT = typer.Option(None, "--input", help="Available input kinds (repeatable)")
+_LABELS_OPT = typer.Option(None, "--label", help="Candidate labels (repeatable)")
 
 
 def register(app: typer.Typer) -> None:
@@ -48,16 +48,6 @@ def register(app: typer.Typer) -> None:
     app.command("active-learn-next")(active_learn_next)
 
 
-def _exit_for(result: dict[str, object]) -> int:
-    """Map a method-op envelope to the honest exit code."""
-    status = str(result.get("status", "error"))
-    if status in _OK_STATUSES:
-        return EXIT_OK
-    if status == "unavailable":
-        return EXIT_CONFIG
-    return EXIT_FAILED
-
-
 def _emit(result: dict[str, object], json_output: bool) -> None:
     if json_output:
         print(json.dumps(result, indent=2, default=str))
@@ -67,34 +57,6 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
         value = result.get(key)
         if value:
             print(f"  {key}: {value}")
-
-
-async def _flow(module_name: str, op_name: str, kwargs: dict[str, Any], json_output: bool) -> int:
-    """One command flow: load config, open the pool, call, emit, map."""
-    from corpus_kb.errors import CorpusError
-
-    module = __import__(f"corpus_kb.tools.{module_name}", fromlist=[op_name])
-    handler: Callable[..., Awaitable[dict[str, object]]] = getattr(module, op_name)
-    cfg = _load_config()
-    pool = await _open_pool(cfg)
-    try:
-        result = await handler(pool, cfg, **kwargs)
-    except CorpusError as exc:
-        print(f"ERROR: {exc}")
-        remediation = getattr(exc, "remediation", None)
-        if remediation:
-            print(f"  {remediation}")
-        return EXIT_FAILED
-    finally:
-        await pool.close()
-    _emit(result, json_output)
-    return _exit_for(result)
-
-
-_JSON_OPT = typer.Option(False, "--json", help="Machine-readable JSON output")
-_IDS_OPT = typer.Option(None, "--chunk-id", help="Limit to these chunk ids (repeatable)")
-_INPUTS_OPT = typer.Option(None, "--input", help="Available input kinds (repeatable)")
-_LABELS_OPT = typer.Option(None, "--label", help="Candidate labels (repeatable)")
 
 
 def _ids(values: list[str] | None) -> list[str] | None:
@@ -114,14 +76,14 @@ def analysis_select_method(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Rank the register's methods for the stated task."""
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "task_description": task_description,
         "output_family": output_family,
         "inputs_available": _ids(inputs),
         "max_complexity_tier": max_complexity_tier,
     }
     return _run_sync(
-        lambda: _flow("method_select_tools", "analysis_select_method", kwargs, json_output)
+        lambda: flow("method_select_tools", "analysis_select_method", kwargs, json_output, _emit)
     )
 
 
@@ -132,14 +94,16 @@ def keyphrases_extract(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Rank keyphrase candidates over the selected chunks."""
-    kwargs = {"variant": variant, "limit": limit, "chunk_ids": _ids(chunk_ids)}
-    return _run_sync(lambda: _flow("keyphrase_tools", "keyphrases_extract", kwargs, json_output))
+    kwargs: dict[str, Any] = {"variant": variant, "limit": limit, "chunk_ids": _ids(chunk_ids)}
+    return _run_sync(
+        lambda: flow("keyphrase_tools", "keyphrases_extract", kwargs, json_output, _emit)
+    )
 
 
 def lexical_classify(chunk_ids: list[str] = _IDS_OPT, json_output: bool = _JSON_OPT) -> int:
     """Train on the stored labels; score the corpus (TF-IDF + logistic)."""
-    kwargs = {"chunk_ids": _ids(chunk_ids)}
-    return _run_sync(lambda: _flow("lexical_tools", "lexical_classify", kwargs, json_output))
+    kwargs: dict[str, Any] = {"chunk_ids": _ids(chunk_ids)}
+    return _run_sync(lambda: flow("lexical_tools", "lexical_classify", kwargs, json_output, _emit))
 
 
 def neighbors_classify(
@@ -148,8 +112,10 @@ def neighbors_classify(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """kNN-vote labels over the labeled chunks."""
-    kwargs = {"k": k, "chunk_ids": _ids(chunk_ids)}
-    return _run_sync(lambda: _flow("neighbor_tools", "neighbors_classify", kwargs, json_output))
+    kwargs: dict[str, Any] = {"k": k, "chunk_ids": _ids(chunk_ids)}
+    return _run_sync(
+        lambda: flow("neighbor_tools", "neighbors_classify", kwargs, json_output, _emit)
+    )
 
 
 def centroids_classify(
@@ -160,8 +126,10 @@ def centroids_classify(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Nearest-centroid labels with recorded abstentions."""
-    kwargs = {"abstain_margin": abstain_margin, "chunk_ids": _ids(chunk_ids)}
-    return _run_sync(lambda: _flow("centroid_tools", "centroids_classify", kwargs, json_output))
+    kwargs: dict[str, Any] = {"abstain_margin": abstain_margin, "chunk_ids": _ids(chunk_ids)}
+    return _run_sync(
+        lambda: flow("centroid_tools", "centroids_classify", kwargs, json_output, _emit)
+    )
 
 
 def clusters_inspect(
@@ -172,8 +140,8 @@ def clusters_inspect(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Report the corpus cluster structure (sizes, noise, exemplars)."""
-    kwargs = {"min_cluster_size": min_cluster_size, "sample_cap": sample_cap}
-    return _run_sync(lambda: _flow("cluster_tools", "clusters_inspect", kwargs, json_output))
+    kwargs: dict[str, Any] = {"min_cluster_size": min_cluster_size, "sample_cap": sample_cap}
+    return _run_sync(lambda: flow("cluster_tools", "clusters_inspect", kwargs, json_output, _emit))
 
 
 def duplicates_screen(
@@ -182,8 +150,10 @@ def duplicates_screen(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Report near-duplicate candidate pairs."""
-    kwargs = {"threshold": threshold, "limit": limit}
-    return _run_sync(lambda: _flow("vector_screen_tools", "duplicates_screen", kwargs, json_output))
+    kwargs: dict[str, Any] = {"threshold": threshold, "limit": limit}
+    return _run_sync(
+        lambda: flow("vector_screen_tools", "duplicates_screen", kwargs, json_output, _emit)
+    )
 
 
 def outliers_rank(
@@ -192,8 +162,10 @@ def outliers_rank(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Rank chunks by distance to the k-th nearest neighbor."""
-    kwargs = {"k": k, "limit": limit}
-    return _run_sync(lambda: _flow("vector_screen_tools", "outliers_rank", kwargs, json_output))
+    kwargs: dict[str, Any] = {"k": k, "limit": limit}
+    return _run_sync(
+        lambda: flow("vector_screen_tools", "outliers_rank", kwargs, json_output, _emit)
+    )
 
 
 def nli_classify(
@@ -204,13 +176,13 @@ def nli_classify(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Zero-shot labels via entailment judgments."""
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "labels": [str(label) for label in labels] if labels else [],
         "chunk_ids": _ids(chunk_ids),
         "limit": limit,
         "model": model,
     }
-    return _run_sync(lambda: _flow("nli_tools", "nli_classify", kwargs, json_output))
+    return _run_sync(lambda: flow("nli_tools", "nli_classify", kwargs, json_output, _emit))
 
 
 def contradictions_screen(
@@ -220,8 +192,8 @@ def contradictions_screen(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Report candidate pairs the NLI model marks CONTRADICT."""
-    kwargs = {"candidate_k": candidate_k, "limit": limit, "model": model}
-    return _run_sync(lambda: _flow("nli_tools", "contradictions_screen", kwargs, json_output))
+    kwargs: dict[str, Any] = {"candidate_k": candidate_k, "limit": limit, "model": model}
+    return _run_sync(lambda: flow("nli_tools", "contradictions_screen", kwargs, json_output, _emit))
 
 
 def sentiment_screen(
@@ -230,8 +202,10 @@ def sentiment_screen(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Screen chunks with the preset lexicon (vote aggregation)."""
-    kwargs = {"chunk_ids": _ids(chunk_ids), "limit": limit}
-    return _run_sync(lambda: _flow("sentiment_tools", "sentiment_screen", kwargs, json_output))
+    kwargs: dict[str, Any] = {"chunk_ids": _ids(chunk_ids), "limit": limit}
+    return _run_sync(
+        lambda: flow("sentiment_tools", "sentiment_screen", kwargs, json_output, _emit)
+    )
 
 
 def active_learn_next(
@@ -240,5 +214,7 @@ def active_learn_next(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Rank stored predictions for the next labeling batch."""
-    kwargs = {"strategy": strategy, "batch": batch}
-    return _run_sync(lambda: _flow("active_learn_tools", "active_learn_next", kwargs, json_output))
+    kwargs: dict[str, Any] = {"strategy": strategy, "batch": batch}
+    return _run_sync(
+        lambda: flow("active_learn_tools", "active_learn_next", kwargs, json_output, _emit)
+    )

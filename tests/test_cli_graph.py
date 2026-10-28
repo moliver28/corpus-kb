@@ -17,6 +17,7 @@ from typer.testing import CliRunner
 
 from corpus_kb.cli import app
 from corpus_kb.errors import CorpusError
+from tests.cli_fakes import FakePool
 
 runner = CliRunner()
 
@@ -51,14 +52,6 @@ _LIST = {
 _DELETE = {"status": "success", "document_id": DOC_ID}
 
 
-class _FakePool:
-    def __init__(self) -> None:
-        self.closed = False
-
-    async def close(self) -> None:
-        self.closed = True
-
-
 class _RecordingTool:
     """Canned envelope + the call args, for pass-through assertions."""
 
@@ -79,10 +72,10 @@ def _patch_world(
     module: str,
     fn_name: str,
     fake: _RecordingTool,
-) -> _FakePool:
-    pool = _FakePool()
+) -> FakePool:
+    pool = FakePool()
 
-    async def _open(_cfg: dict[str, object]) -> _FakePool:
+    async def _open(_cfg: dict[str, object]) -> FakePool:
         return pool
 
     def _cfg() -> dict[str, object]:
@@ -216,11 +209,11 @@ def _patch_hops_world(
     monkeypatch: pytest.MonkeyPatch,
     fn_name: str,
     fake: _RecordingTool,
-) -> _FakePool:
+) -> FakePool:
     """Same seam patch as _patch_world, aimed at the cli_graph_hops flows."""
-    pool = _FakePool()
+    pool = FakePool()
 
-    async def _open(_cfg: dict[str, object]) -> _FakePool:
+    async def _open(_cfg: dict[str, object]) -> FakePool:
         return pool
 
     def _cfg() -> dict[str, object]:
