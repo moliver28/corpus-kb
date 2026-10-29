@@ -1,3 +1,34 @@
+## Unreleased — ingestion recipes, calibrate-then-lock sweep, and honest gates (PRs #211–#214)
+
+The author → measure → apply loop for retrieval quality, documented in
+docs/VALIDATION.md (new). Profiles accept a `calibrate:` block naming up
+to eight query-time recipe candidates (six allowed override keys:
+`retrieval.rrf_k`, `retrieval.vector_candidates`,
+`retrieval.lexical_candidates`, `reranking.enabled`,
+`reranking.over_retrieve_n`, `reranking.score_floor`; unknown keys fail
+the profile load). An ingest under `validate: "calibrate"` sweeps the
+family over one scratch Postgres tenant per (profile, golden) pair —
+the sample is ingested once, every candidate ranks cheaply through the
+one `ranked_children` seam shared with search and eval. Paired tests
+run Holm-corrected across the family (ranx fisher test with the
+`calibrate` extra; an honest sign test without it). Outcomes are
+`success`, `no_significant_winner`, or `insufficient_data`; only
+`success` writes `<profile>.lock.json`, whose additive keys record
+`baseline`, `alpha`, `min_queries`, `outcome`, `proposed_overrides`
+(the manual apply path: copy into config.yaml, query-time, no
+re-ingest; CLI tracked in issue #200), and `reranker_active`. Doctor
+reports structured embedding dims plus reranker state, and the llamacpp
+probe POSTs a sanity pair (llama-server needs `--reranking --pooling
+rank --embedding`). A fifth validation mode, `transcript_meta` (PR
+#213), checks speaker presence, strictly increasing sequence numbers,
+and empty-unit counts — advisory only. Ingest runs gained a nullable
+`project_id` (migrations 036 PG / 037 DuckDB) with a best-effort
+research transcript link; the SPA Scale page gained a project filter,
+receipts show the validation summary and dedup count, and Setup shows
+dims and reranker. Design record:
+docs/research/ingestion-recipes-as-built.md (new), which supersedes
+docs/research/ingestion-validation-chunking-plan.md.
+
 ## Unreleased — browser UI (lifecycle SPA)
 
 The full research flow ships as a browser app at `/app/`, served by

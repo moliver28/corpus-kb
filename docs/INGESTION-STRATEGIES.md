@@ -238,8 +238,17 @@ either way for structured access.
 
 ---
 
+## Pick settings with data, not guesswork
+
+Chunking and retrieval settings interact. The calibrate sweep measures
+query-time recipes on your own golden labels and writes the winner to a
+lock file. The step-by-step loop is [VALIDATION.md](VALIDATION.md).
+
+---
+
 ## Next steps
 
 - [Ingestion pipeline](INGESTION.md) — what happens after `build_chunks()`
 - [Getting started (research)](getting-started.md) — ingesting transcripts end to end
+- [Validation runbook](VALIDATION.md) — calibrate then lock, step by step
 - [API reference](API.md) — `source_type` on the ingest routes
