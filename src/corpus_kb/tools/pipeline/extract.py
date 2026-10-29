@@ -9,6 +9,7 @@ import asyncpg
 
 from ...extraction import ExtractStats, extraction_backend_name
 from ...extraction.cache import ExtractionCache
+from ...storage.graph_policy import graph_eligible_relations, graph_policy_mode
 from ...utils.models import Chunk, Entity, Relation
 from ..ingest_cfg import _nested_dict
 from ._facade import _ic
@@ -82,11 +83,20 @@ async def _stage_extract_entities(
             ]
         if relations:
             graph_cfg = _nested_dict(config, "graph")
-            await ingest_sink.store_relations(
-                relations,
-                model_version=cast("str | None", graph_cfg.get("model_version")),
-                prompt_version=cast("str | None", graph_cfg.get("prompt_version")),
-            )
+            # Graph write policy (storage/graph_policy.py, the one routing
+            # point): mode "all" writes every relation, byte for byte like
+            # the pre-policy pipeline. "semantic_only" loads the ontology
+            # once here and drops the types it marks graph_eligible: false.
+            # The stage's returned relations stay complete either way.
+            written = relations
+            if graph_policy_mode(config) == "semantic_only":
+                written = graph_eligible_relations(relations, _ic().ontology(config))
+            if written:
+                await ingest_sink.store_relations(
+                    written,
+                    model_version=cast("str | None", graph_cfg.get("model_version")),
+                    prompt_version=cast("str | None", graph_cfg.get("prompt_version")),
+                )
     except Exception as exc:
         logger.warning("Entity extraction failed: %s", exc)
         errors.append(f"ExtractionError: {exc}")

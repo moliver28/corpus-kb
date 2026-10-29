@@ -31,6 +31,7 @@ from corpus_kb.config import AGE_ON_DUCKDB_ERROR, backend_mix_errors
 from corpus_kb.errors import ConfigError
 from corpus_kb.storage.duckdb_store import DuckDbGraphStore
 from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path, map_connect_error
+from corpus_kb.storage.duckpgq import DUCKDB_GRAPH_BACKENDS
 from corpus_kb.storage.graph_store import GraphStore
 
 if TYPE_CHECKING:
@@ -65,10 +66,13 @@ async def open_duckdb_connection(conn_string: str) -> DuckDBPyConnection:
 async def _duckdb_graph_store(
     cfg: dict[str, Any],
     source: asyncpg.Pool | DuckDBPyConnection | None,
+    traversal_engine: str = "cte",
 ) -> DuckDbGraphStore:
     """Select the DuckDB graph store; open the configured file when ungiven."""
     if source is not None:
-        return DuckDbGraphStore(cast("DuckDBPyConnection", source))
+        return DuckDbGraphStore(
+            cast("DuckDBPyConnection", source), traversal_engine=traversal_engine
+        )
     database = cfg.get("database", {}) or {}
     conn_string = str(database.get("connection_string", ""))
     if not conn_string:
@@ -76,7 +80,9 @@ async def _duckdb_graph_store(
             "No database connection string for the DuckDB graph store.",
             remediation="Set database.connection_string to a duckdb:/// file path.",
         )
-    return DuckDbGraphStore(await open_duckdb_connection(conn_string))
+    return DuckDbGraphStore(
+        await open_duckdb_connection(conn_string), traversal_engine=traversal_engine
+    )
 
 
 async def create_graph_store(
@@ -106,7 +112,10 @@ async def create_graph_store(
         graph_cfg = cfg.get("graph", {}) or {}
         if graph_cfg.get("backend") == "age":
             raise ConfigError(AGE_ON_DUCKDB_ERROR)
-        return await _duckdb_graph_store(cfg, source)
+        engine = str(graph_cfg.get("duckdb_graph_backend") or "cte")
+        if engine not in DUCKDB_GRAPH_BACKENDS:
+            raise ValueError(f"Unknown DuckDB graph backend: {engine!r}. Use 'cte' or 'duckpgq'.")
+        return await _duckdb_graph_store(cfg, source, traversal_engine=engine)
 
     if selected == "postgres":
         graph_backend = (cfg.get("graph", {}) or {}).get("backend", "age")
