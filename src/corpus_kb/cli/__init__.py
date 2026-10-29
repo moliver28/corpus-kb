@@ -124,6 +124,12 @@ from corpus_kb.cli.cli_queue import register as register_queue_commands  # noqa:
 
 register_queue_commands(app)
 
+# Textbook-ingestion program (Wave 2C) scan front door: cli_textbook
+# imports corpus_kb.cli nowhere, so this import stays acyclic.
+from corpus_kb.cli.cli_textbook import register as register_textbook_commands  # noqa: E402
+
+register_textbook_commands(app)
+
 # The core search op's CLI leg: cli_search mirrors cli_topics (it reuses
 # the cli_ingest plumbing and imports corpus_kb.cli nowhere), so this
 # import stays acyclic.

@@ -1,8 +1,10 @@
-"""Queue-op CLI commands (textbook-ingestion program, Wave 1).
+"""Queue-op CLI commands (textbook-ingestion program, Wave 1 + 2C).
 
-Three commands over the shared handlers, mirroring cli_conflicts: it
-reuses the cli_ingest plumbing and imports corpus_kb.cli nowhere, so
-the import in cli/__init__ stays acyclic.
+Three op commands over the shared handlers plus the Wave 2C ``queue-run``
+drain command, mirroring cli_conflicts: it reuses the cli_ingest plumbing
+and imports corpus_kb.cli nowhere, so the import in cli/__init__ stays
+acyclic. ``queue-run`` is a lifecycle command (not a catalogue op): it
+drives the QueueWorker directly over the cli_ingest config/pool seam.
 """
 
 from __future__ import annotations
@@ -11,15 +13,17 @@ import json
 
 import typer
 
-from corpus_kb.cli._plumbing import _JSON_OPT, _TENANT_OPT, EXIT_FAILED, flow
+from corpus_kb.cli._plumbing import _JSON_OPT, _TENANT_OPT, EXIT_FAILED, EXIT_OK, flow
 from corpus_kb.cli.cli_ingest import _run_sync
+from corpus_kb.queue import QueueWorker, install_stop_signals
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the three queue commands to the main Typer app."""
+    """Attach the four queue commands to the main Typer app."""
     app.command("queue-enqueue")(queue_enqueue)
     app.command("queue-status")(queue_status)
     app.command("queue-cancel")(queue_cancel)
+    app.command("queue-run")(queue_run)
 
 
 def _emit(result: dict[str, object], json_output: bool) -> None:
@@ -102,3 +106,49 @@ def queue_cancel(
 def _run(op_name: str, kwargs: dict[str, object], json_output: bool) -> int:
     """One command flow with the module's emit (the plumbing seam)."""
     return _run_sync(lambda: flow("queue_tools", op_name, dict(kwargs), json_output, _emit))
+
+
+def queue_run(
+    watch: bool = typer.Option(
+        False, "--watch", help="Keep polling every queue.poll_seconds until Ctrl-C"
+    ),
+    tenant_id: str = _TENANT_OPT,
+    json_output: bool = _JSON_OPT,
+) -> int:
+    """Run the ingest queue: drain each pending book through the pipeline.
+
+    The first Ctrl-C finishes the current book and ends the pass. A
+    second Ctrl-C stops the process at once. Exit 0 when no row failed,
+    1 when a row landed on failed, 3 for a config problem.
+    """
+    return _run_sync(lambda: _run_drain(watch, tenant_id, json_output))
+
+
+async def _run_drain(watch: bool, tenant_id: str, json_output: bool) -> int:
+    """Open the pool, drain (once or watched), and print the report."""
+    from corpus_kb.cli import cli_ingest
+    from corpus_kb.errors import CorpusError
+
+    cfg = cli_ingest._load_config()
+    pool = await cli_ingest._open_pool(cfg)
+    try:
+        worker = QueueWorker(pool=pool, tenant_id=tenant_id, config=cfg)
+    except CorpusError as exc:
+        print(f"ERROR: {exc}")
+        print(f"  {exc.remediation}")
+        return exc.cli_exit
+    install_stop_signals(worker.stop)
+    try:
+        report = await (worker.watch() if watch else worker.drain_once())
+    except CorpusError as exc:
+        print(f"ERROR: {exc}")
+        print(f"  {exc.remediation}")
+        return exc.cli_exit
+    finally:
+        await pool.close()
+    if json_output:
+        print(json.dumps(report.as_dict(), indent=2, default=str))
+    else:
+        for line in report.render_lines():
+            print(line)
+    return EXIT_FAILED if report.counts().get("failed") else EXIT_OK
