@@ -50,6 +50,58 @@ entry-point discovery for packaged plugins.
 | `survey` | CSV question/answer exports (Wave 5). Each answer is one chunk. The question text rides in chunk metadata (`question`, `row`, `answer_column`), so a retrieved answer carries its question. Detection claims a `.csv` whose header has a question-like and an answer-like column; other CSVs keep the default strategy. |
 | `markdown_sections` | Raw markdown text segmented at ATX/setext heading boundaries (Wave 5). Every chunk is an exact char-span slice of the canonical text and carries the heading breadcrumb. Markdown FILES keep the default partition — detection never claims them — so only the degenerate raw-text path changes. |
 | `code` (optional) | Tree-sitter AST chunking for source files (Wave 5). Each top-level definition is one chunk. Adjacent small siblings pack up to the token budget. Spans are exact char offsets. Needs `pip install 'corpus-kb[code]'`. Without the extra, code files use the default plan and the result carries a warnings entry. |
+| `textbook` (optional) | Windowed parsing for large PDFs (textbook program). One Docling parse per page window, a disk cache, pypdf outline enrichment, and section titles that carry across window edges. Full parse needs the `[docling]` extra; see the section below. |
+
+## The textbook strategy
+
+Large textbooks are long jobs. One whole-book parse holds a worker for
+hours and loses everything on a crash. The textbook strategy splits the
+job: it parses a PDF in page windows, caches each parsed window, and
+assembles chunks after the last window lands.
+
+**The gate.** The strategy claims PDFs. Detection sees only the file
+name and the text head, so the real page-count gate runs when the
+strategy builds chunks: a PDF with at least `textbook.min_pages` pages
+(default 120) takes the windowed path. A shorter PDF falls back to the
+default plan, and the result records why. `corpus-kb textbook scan`
+runs the same signals up front, so you can see the candidates before
+you enqueue anything.
+
+**Windows.** Each parse call covers `textbook.window_pages` pages
+(default 50). One window is one Docling `convert` call, so memory stays
+bounded and one book cannot hold a worker for the whole run.
+
+**The parse cache.** Each parsed window caches as JSON under
+`textbook.cache_dir`. The cache key is the parser version, the file
+SHA-256, and the window index. A retry or a resume loads its windows
+instead of paying the parse again. A changed file, a changed parser, or
+a corrupted record misses and re-parses.
+
+**Outline enrichment.** A windowed parse sees no global structure; PDF
+bookmarks are the exception. The strategy reads the pypdf outline and
+uses bookmark titles on pages where Docling labels are thin.
+
+**The seam, stated plainly.** When a window starts mid-section, the
+previous window's open section title carries. A section that spans many
+windows keeps its opening title. A header Docling missed inside a later
+window stays unfilled. Content repeated across a window boundary dedupes
+by page, first window wins.
+
+**Degrade paths, never a crash.** Without the `[docling]` extra, the
+strategy warns once and parses windows with pypdf only (page text,
+outline titles, and page metadata survive). Without the `[scan]` extra,
+or below `min_pages`, it falls back to the default plan.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `textbook.min_pages` | `120` | The page-count gate for the windowed path. Whole number, 1 or more |
+| `textbook.window_pages` | `50` | Pages per parse window. Whole number, 1 or more |
+| `textbook.parser` | `docling` | The page parser: `docling` or `pypdf` |
+| `textbook.cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root |
+
+Books are long jobs, so most people run them through the ingest queue
+([HARNESS-PLAYBOOKS.md](HARNESS-PLAYBOOKS.md), "Recipe: queue the
+textbooks"). The queue worker drains one book at a time.
 
 ## Three extension ladders
 

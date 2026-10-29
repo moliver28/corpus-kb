@@ -137,6 +137,7 @@ running app without a rebuild.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `backend` | `age` | Graph store backend (`age` or `postgres`) |
+| `duckdb_graph_backend` | `cte` | DuckDB-only traversal engine: `cte` (recursive CTE) or `duckpgq` (opt-in DuckPGQ; falls back to the CTE with one warning on failure or past 3 hops). See [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) |
 | `max_hops` | `5` | Graph traversal depth cap. Positive int, 1 to 25; the ceiling matches the AGE cap |
 | `extractor` | `pgml` | LEGACY alias for `extraction.backend`. Accepted forever; `extraction.backend` wins when both are set |
 | `extract_entities` | `true` | Enable entity extraction during ingest |
@@ -145,6 +146,15 @@ running app without a rebuild.
 | `live_fallback` | `false` | Allow live LLM calls when no fixture exists |
 | `model_version` | `langextract-default` | Extraction provenance tag stored on relations |
 | `prompt_version` | `v1` | Extraction prompt provenance tag |
+
+### `graph_policy`
+
+Which extracted relations reach the graph store. The pipeline's extract
+stage reads it; nothing else does.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `mode` | `all` | `all` writes every extracted relation. `semantic_only` keeps only the relation types the ontology marks `graph_eligible` and drops the rest, in stable input order |
 
 ### `extraction`
 
@@ -194,6 +204,30 @@ revision tag are fixed in code — deliberately not configuration.
 | `data_dir` | `~/.corpus-kb` | Installer checkpoint + data directory |
 | `verify_image_signature` | `true` | Verify the Postgres image signature (cosign) before pull |
 | `profiles.*` | (block) | Hardware profiles (minimal / balanced / performance) |
+
+### `textbook`
+
+The windowed large-PDF strategy (`docs/INGESTION-STRATEGIES.md`,
+"The textbook strategy"). Unknown or malformed keys keep their defaults.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `min_pages` | `120` | The page-count gate: PDFs at or above this count take the windowed path; shorter PDFs fall back to the default plan |
+| `window_pages` | `50` | Pages per parse window; one Docling call per window |
+| `parser` | `docling` | The page parser: `docling` or `pypdf` |
+| `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |
+
+### `queue`
+
+The durable ingest queue (`docs/HARNESS-PLAYBOOKS.md`, "Recipe: queue
+the textbooks"). Enqueue lands rows; a worker drains them.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `autorun` | `false` | `true` lets the server start a queue worker at boot; `false` keeps the queue at rest until `corpus-kb queue-run` starts |
+| `poll_seconds` | `20` | Seconds between the worker's claim scans. Positive int |
+| `stale_lease_seconds` | `600` | How long a running row's heartbeat may go quiet before the worker may reclaim it. Positive int |
+| `max_attempts` | `3` | Retry cap per row; the row lands on `failed` past it. Positive int |
 
 ### Environment variables
 
