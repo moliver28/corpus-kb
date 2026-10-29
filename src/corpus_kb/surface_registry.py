@@ -432,6 +432,27 @@ SURFACES: tuple[Surface, ...] = (
         description="Answer a question from retrieved evidence with cited sentences.",
         http_route="/api/ask",
     ),
+    Surface(
+        name="queue-enqueue",
+        cli_path="queue-enqueue",
+        mcp_tool="queue_enqueue",
+        description="Queue one file for ingestion; repeat calls answer the existing row.",
+        http_route="/api/queue/enqueue",
+    ),
+    Surface(
+        name="queue-status",
+        cli_path="queue-status",
+        mcp_tool="queue_status",
+        description="Show one queue row, or the pending and running rows.",
+        http_route="/api/queue/status",
+    ),
+    Surface(
+        name="queue-cancel",
+        cli_path="queue-cancel",
+        mcp_tool="queue_cancel",
+        description="Cancel one pending or running queue row.",
+        http_route="/api/queue/cancel",
+    ),
 )
 
 # --------------------------------------------------------------------------
