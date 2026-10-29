@@ -526,3 +526,7 @@ stat_test
 # rerank_settings (SSRF hardening): allow_remote_urls is a frozen-dataclass
 # field read by load_rerank_settings callers; vulture sees attribute-only use.
 allow_remote_urls
+
+# HashRandom.randint is called by scripts/gen_demo_corpus.py only; the
+# vulture gate does not scan scripts/.
+randint

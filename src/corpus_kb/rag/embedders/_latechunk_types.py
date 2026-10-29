@@ -123,7 +123,9 @@ class AutoModelLike(Protocol):
     ``eval`` token that code-injection scanners misread.
     """
 
-    def train(self, mode: bool = ...) -> AutoModelLike: ...
+    def train(self, mode: bool = ...) -> AutoModelLike:
+        """Switch to eval mode when ``mode`` is false; return the model."""
+        return self
 
     def __call__(
         self, *, input_ids: IntTensor2D, attention_mask: IntTensor2D

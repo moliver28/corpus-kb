@@ -74,11 +74,10 @@ def duck_side() -> dict:
     import duckdb
 
     out: dict = {}
-    if "'" in DSN or "\x00" in DSN:
-        raise SystemExit("DSN must not contain quotes or NUL bytes")
-    con.execute("ATTACH '" + DSN.replace("'", "''") + "' AS src (TYPE POSTGRES, READ_ONLY)")
     con = duckdb.connect()
     con.execute("LOAD postgres")
+    if "'" in DSN or "\x00" in DSN:
+        raise SystemExit("DSN must not contain quotes or NUL bytes")
     con.execute("ATTACH '" + DSN.replace("'", "''") + "' AS src (TYPE POSTGRES, READ_ONLY)")
     # DuckDB-side types of chunks_vectors
     out["chunks_vectors_duckdb_types"] = [

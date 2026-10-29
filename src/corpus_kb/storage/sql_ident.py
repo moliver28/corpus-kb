@@ -39,16 +39,6 @@ def sql_qualified(name: str) -> str:
     return ".".join(sql_identifier(part) for part in name.split("."))
 
 
-def sql_escape_identifier(name: str) -> str:
-    """Validate ``name``, then escape it as a double-quoted identifier.
-
-    Same text as ``sql_identifier``: shape check first, then standard
-    double-quote escaping. The distinct name states the act at call
-    sites where an escaped identifier lands in a statement.
-    """
-    return sql_identifier(name)
-
-
 def sql_literal(value: str) -> str:
     """Escape ``value`` as a single-quoted SQL string literal."""
     if "\x00" in value:
