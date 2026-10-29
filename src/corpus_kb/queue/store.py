@@ -29,6 +29,7 @@ from .sql import (
     HEARTBEAT_SQL,
     INSERT_SQL,
     LIST_ACTIVE_SQL,
+    PAGES_TOTAL_SQL,
     RECLAIM_STALE_SQL,
     RELEASE_SQL,
 )
@@ -46,6 +47,7 @@ __all__ = [
     "HEARTBEAT_SQL",
     "INSERT_SQL",
     "LIST_ACTIVE_SQL",
+    "PAGES_TOTAL_SQL",
     "RECLAIM_STALE_SQL",
     "RELEASE_SQL",
     "IngestQueueStore",
@@ -146,6 +148,18 @@ class IngestQueueStore:
         """Touch the heartbeat of one live claim; False when the claim is gone."""
         row = await self._fetch_one(HEARTBEAT_SQL, self._tenant_id, queue_id, claimed_by)
         return row is not None
+
+    async def set_pages_total(
+        self, queue_id: str, claimed_by: str, pages_total: int
+    ) -> dict[str, Any] | None:
+        """Fill the best-effort page count on one live claim (Wave 3).
+
+        A None answer means the claim moved on already; the fill stays
+        best-effort and never blocks the run.
+        """
+        return await self._fetch_one(
+            PAGES_TOTAL_SQL, self._tenant_id, queue_id, pages_total, claimed_by
+        )
 
     async def release(self, queue_id: str, claimed_by: str) -> dict[str, Any] | None:
         """Put one untouched claim back to pending (stop before the run)."""

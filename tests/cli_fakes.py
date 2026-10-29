@@ -84,6 +84,8 @@ class _FakeQueueConn:
             return self._pool._heartbeat(*args[1:])
         if "status = 'pending', claimed_by = NULL" in sql:
             return self._pool._release(*args[1:])
+        if "pages_total = $3" in sql:
+            return self._pool._pages_total(*args[1:])
         if "status = 'done'" in sql:
             return self._pool._finish(*args[1:])
         if "attempts + 1" in sql:
@@ -153,6 +155,15 @@ class FakeQueuePool:
         row["heartbeat_at"] = self.now
         return {"id": row["id"]}
 
+    def _pages_total(
+        self, queue_id: str, pages_total: int, claimed_by: str
+    ) -> dict[str, Any] | None:
+        row = self._live(queue_id, claimed_by)
+        if row is None:
+            return None
+        row["pages_total"] = pages_total
+        return dict(row)
+
     def _reclaim(self, stale_seconds: float) -> list[dict[str, Any]]:
         cutoff = self.now - timedelta(seconds=float(stale_seconds))
         stale = [
@@ -194,7 +205,9 @@ class FakeQueuePool:
         row["status"] = "done"
         row["run_id"] = run_id or row["run_id"]
         row["pages_done"] = pages_done
-        row["pages_total"] = pages_total
+        # The SQL COALESCEs pages_total, so the claim-time probe fill
+        # survives a finish that answers NULL.
+        row["pages_total"] = pages_total if pages_total is not None else row["pages_total"]
         row["chunks"] = chunks
         row["last_error"] = last_error
         row["claimed_by"] = None

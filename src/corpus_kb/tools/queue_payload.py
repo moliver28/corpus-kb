@@ -22,13 +22,20 @@ def _iso(value: object) -> str | None:
     return value.isoformat() if isinstance(value, datetime) else None
 
 
+def _int_or_none(value: object) -> int | None:
+    """A real int, or None: NULL, junk, and bools are not counts."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
 def queue_entry_payload(row: dict[str, Any]) -> dict[str, object]:
     """The documented queue-status entry for one raw row.
 
     ``elapsed_seconds`` counts from ``started_at`` when a worker claimed
     the row, else from ``queued_at``; a finished row counts to
     ``finished_at``, a live row to now. Non-database shapes (the parity
-    stubs) answer None elapsed rather than guessing.
+    stubs) answer None elapsed rather than guessing. The progress keys
+    read the row's counters and stay None while the database answers
+    NULL — a claim fills ``pages_total`` first, a finish adds ``chunks``.
     """
     queued_at = row.get("queued_at")
     started_at = row.get("started_at")
@@ -52,5 +59,5 @@ def queue_entry_payload(row: dict[str, Any]) -> dict[str, object]:
         "project_id": row.get("project_id"),
     }
     for key in PROGRESS_KEYS:
-        payload[key] = None
+        payload[key] = _int_or_none(row.get(key))
     return payload
