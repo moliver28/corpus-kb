@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Migration 040: the ingest queue progress counters (DuckDB mirror)
 -- ============================================================================
--- Pair of migrations/039_ingest_queue_progress.sql. Translation rules
+-- Pair of migrations/038_ingest_queue_progress.sql. Translation rules
 -- (000 header): UUID -> VARCHAR, JSONB -> JSON; RLS stays dropped (the
 -- gateway carries tenant predicates). INTEGER maps 1:1.
 --
