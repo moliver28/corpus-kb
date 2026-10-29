@@ -137,7 +137,7 @@ running app without a rebuild.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `backend` | `age` | Graph store backend (`age` or `postgres`) |
-| `duckdb_graph_backend` | `cte` | DuckDB-only traversal engine: `cte` (recursive CTE) or `duckpgq` (opt-in DuckPGQ; falls back to the CTE with one warning on failure or past 3 hops). See [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) |
+| `duckdb_graph_backend` | `cte` | DuckDB-only traversal engine: `cte` (recursive CTE) or `duckpgq` (opt-in DuckPGQ. Falls back to the CTE with one warning on failure or past 3 hops). See [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) |
 | `max_hops` | `5` | Graph traversal depth cap. Positive int, 1 to 25; the ceiling matches the AGE cap |
 | `extractor` | `pgml` | LEGACY alias for `extraction.backend`. Accepted forever; `extraction.backend` wins when both are set |
 | `extract_entities` | `true` | Enable entity extraction during ingest |
@@ -212,7 +212,7 @@ The windowed large-PDF strategy (`docs/INGESTION-STRATEGIES.md`,
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `min_pages` | `120` | The page-count gate: PDFs at or above this count take the windowed path; shorter PDFs fall back to the default plan |
+| `min_pages` | `120` | The page-count gate: PDFs at or above this count take the windowed path. Shorter PDFs fall back to the default plan |
 | `window_pages` | `50` | Pages per parse window; one Docling call per window |
 | `parser` | `docling` | The page parser: `docling` or `pypdf` |
 | `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |

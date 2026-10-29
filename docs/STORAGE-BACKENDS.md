@@ -90,9 +90,9 @@ The DuckDB graph store answers walks with a recursive CTE by default. It
 is deterministic, needs no extension, and handles every depth the
 server allows. Set `graph.duckdb_graph_backend: duckpgq` to route
 traversals through the DuckPGQ community extension instead. On first
-use the store installs the extension from the community repository and
-creates a static property graph over the fixed `entities`/`relations`
-tables.
+use the store installs the extension from the community repository. It
+then creates a static property graph over the fixed
+`entities`/`relations` tables.
 
 DuckPGQ on duckdb 1.5.6 has known defects (each one probed live):
 
@@ -101,18 +101,18 @@ DuckPGQ on duckdb 1.5.6 has known defects (each one probed live):
 - Undirected patterns (`-[e]-`) crash the binder.
 - A `UNION ALL` of two `GRAPH_TABLE` arms aborts the connection.
 
-The store works around the parameter defect with quoted literals, and
-it renders one fixed statement per orientation chain (depths 1 to 3).
+The store works around the parameter defect with quoted literals. It
+renders one fixed statement per orientation chain (depths 1 to 3).
 The defects set two hard limits. Deep walks past 3 hops are not
-expressible, and any install, load, or engine failure ends DuckPGQ for
-that connection: the store logs one warning and stays on the recursive
+expressible. Any install, load, or engine failure ends DuckPGQ for
+that connection. The store logs one warning and stays on the recursive
 CTE path permanently. Answers never change with the backend; only the
 plan does.
 
 **Which one to pick.** Keep `cte` (the default) unless you specifically
 want SQL/GRAPH_TABLE plans for shallow walks. Choose `duckpgq` to
 exercise the SQL/PGQ standard path on a small corpus, or to benchmark
-the extension — with the 3-hop ceiling and the CTE fallback in mind.
+the extension. Keep the 3-hop ceiling and the CTE fallback in mind.
 
 ---
 

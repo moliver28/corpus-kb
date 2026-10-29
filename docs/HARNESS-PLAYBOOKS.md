@@ -189,9 +189,9 @@ search stays chunk-level; `meta_hits` only routes.
 ## Recipe: queue the textbooks
 
 Textbooks are long jobs. The ingest queue keeps them out of the
-interactive path: enqueue lands rows, and a worker drains them one at a
+interactive path. Enqueue lands rows, and a worker drains them one at a
 time. Every step below has an MCP tool and an HTTP route over the same
-three ops (`queue_enqueue`, `queue_status`, `queue_cancel`); the CLI is
+three ops (`queue_enqueue`, `queue_status`, `queue_cancel`). The CLI is
 shown because it reads best.
 
 1. Find the candidates first. The scan prints one scored line per PDF:
@@ -239,5 +239,5 @@ shown because it reads best.
 **The autorun flag.** By default (`queue.autorun: false`) the queue
 stays at rest until a worker starts. Set `queue.autorun: true` in
 `config.yaml` to let the server start a worker at boot. Keep it false
-when you want enqueue and drain on your own schedule; the
+when you want enqueue and drain on your own schedule. The
 `queue.max_attempts` cap still bounds every retry either way.

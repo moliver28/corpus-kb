@@ -56,20 +56,20 @@ entry-point discovery for packaged plugins.
 
 Large textbooks are long jobs. One whole-book parse holds a worker for
 hours and loses everything on a crash. The textbook strategy splits the
-job: it parses a PDF in page windows, caches each parsed window, and
+job. It parses a PDF in page windows, caches each parsed window, and
 assembles chunks after the last window lands.
 
 **The gate.** The strategy claims PDFs. Detection sees only the file
-name and the text head, so the real page-count gate runs when the
-strategy builds chunks: a PDF with at least `textbook.min_pages` pages
+name and the text head. The real page-count gate runs when the
+strategy builds chunks. A PDF with at least `textbook.min_pages` pages
 (default 120) takes the windowed path. A shorter PDF falls back to the
 default plan, and the result records why. `corpus-kb textbook scan`
 runs the same signals up front, so you can see the candidates before
 you enqueue anything.
 
 **Windows.** Each parse call covers `textbook.window_pages` pages
-(default 50). One window is one Docling `convert` call, so memory stays
-bounded and one book cannot hold a worker for the whole run.
+(default 50). One window is one Docling `convert` call. Memory stays
+bounded, and one book cannot hold a worker for the whole run.
 
 **The parse cache.** Each parsed window caches as JSON under
 `textbook.cache_dir`. The cache key is the parser version, the file
@@ -91,8 +91,8 @@ window stays unfilled. Content repeated across a window boundary dedupes
 by page, first window wins.
 
 **Degrade paths, never a crash.** Without the `[docling]` extra, the
-strategy warns once and parses windows with pypdf only (page text,
-outline titles, and page metadata survive). Without the `[scan]` extra,
+strategy warns once and parses windows with pypdf only. Page text,
+outline titles, and page metadata survive. Without the `[scan]` extra,
 or below `min_pages`, it falls back to the default plan.
 
 | Key | Default | Description |

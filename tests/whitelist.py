@@ -537,3 +537,7 @@ randint
 # calls it, and vulture only scans src.
 _graph_flags_declared
 relation_is_graph_eligible
+
+# textbook scan (cli_textbook.py): typer command callback bound by its
+# decorator; vulture sees no direct caller.
+scan

@@ -87,9 +87,9 @@ class DuckDbGraphStore(GraphStore):
         self._stmt_lock = threading.Lock()
         self._tx_lock = asyncio.Lock()
         self._tx_depth = 0
-        # DuckPGQ opt-in (graph.duckdb_graph_backend). None = not probed
-        # yet; False after any failure = permanent CTE for this connection.
-        self._traversal_engine = traversal_engine
+        # DuckPGQ opt-in (graph.duckdb_graph_backend). None = opted in and
+        # not probed yet; False after any failure = permanent CTE for this
+        # connection.
         self._pgq_active: bool | None = None if traversal_engine == "duckpgq" else False
         self._pgq_warned = False
 
