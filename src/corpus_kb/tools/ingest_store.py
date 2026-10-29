@@ -330,6 +330,14 @@ class PostgresIngestStore:
                 tx, self._tenant_id, doc_id, inserts
             )
             needs_embedding |= await ingest_batch.update_chunks(tx, updates)
+            # An existing row keeps its stored id (inserts are skipped, not
+            # rewritten), so the in-memory chunk must adopt it: later stages
+            # (relations, statements) key on chunk.chunk_id, and a resumed
+            # ingest minting fresh uuid4 ids would otherwise dangle. The
+            # DuckDB loop applies the same re-point.
+            for chunk, index in indexed:
+                if index in existing:
+                    chunk.chunk_id = existing[index][0]
             await tx.execute(_CHUNK_TOMBSTONE_SQL, self._tenant_id, doc_id, len(chunks))
         return needs_embedding
 

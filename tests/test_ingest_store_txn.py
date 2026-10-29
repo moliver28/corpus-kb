@@ -215,3 +215,45 @@ async def test_empty_inputs_return_before_touching_the_pool() -> None:
 
     assert conn.sql == []
     assert pool.acquired is False
+
+
+class _ResumedConn(_RecordingConn):
+    """Recording conn whose chunk-state probe answers preset stored rows.
+
+    Models a resumed ingest: a prior (crashed) run already stored chunks;
+    this run's chunk_state SELECT finds every (chunk_index -> id, hash).
+    """
+
+    def __init__(self, existing_rows: list[dict[str, object]]) -> None:
+        super().__init__()
+        self._existing_rows = existing_rows
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+        if "FROM chunks" in sql and "RETURNING" not in sql:
+            self.sql.append(sql)
+            self.bound_args[sql] = args
+            return self._existing_rows
+        return await super().fetch(sql, *args)
+
+
+async def test_store_chunks_pg_repoints_ids_from_a_resumed_ingest() -> None:
+    """A stored row keeps its id; the in-memory chunk must adopt it.
+
+    Regression pin for the textbook pilot: chunk ids are fresh uuid4s per
+    run, so a resume after a crashed run found every chunk_index already
+    present (same content hash), skipped the inserts, and left the
+    in-memory ids dangling — the statements stage then violated
+    ``statements_chunk_id_fkey`` and the book landed with zero statements.
+    """
+    existing = [
+        {"chunk_index": 0, "chunk_id": "stored-0", "chunk_hash": "ha"},
+        {"chunk_index": 1, "chunk_id": "stored-1", "chunk_hash": "hb"},
+    ]
+    store = PostgresIngestStore(_RecordingPool(_ResumedConn(existing)), TENANT)
+    chunks = [
+        Chunk(chunk_id="fresh-0", document_id="d1", text="a", source_type="text", chunk_hash="ha"),
+        Chunk(chunk_id="fresh-1", document_id="d1", text="b", source_type="text", chunk_hash="hb"),
+    ]
+    needs_embedding = await store.store_chunks(chunks)
+    assert [c.chunk_id for c in chunks] == ["stored-0", "stored-1"]
+    assert needs_embedding == set()
