@@ -632,7 +632,7 @@ def test_cli_rejects_unknown_source_type() -> None:
     text = re.sub(r"[│╭─╮╰╯├┤]", " ", _strip_ansi(result.output))
     assert (
         "Valid strategies: code, default, markdown_sections, pptx_structure, "
-        "survey, transcript, web_structure" in " ".join(text.split())
+        "survey, textbook, transcript, web_structure" in " ".join(text.split())
     )
 
 
