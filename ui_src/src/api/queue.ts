@@ -1,8 +1,8 @@
 // The ingest-queue family (textbook program W1): typed client seam over
 // the three queue ops. Path rule (zero-drift rule 1): the manifest is the
 // ONE op table, so every call resolves through getOp first. The registry
-// rows land with the queue surfaces' parity wave; until then the pinned
-// HTTP routes keep the tab working. Both states serve the same handlers.
+// rows are live; the pinned HTTP routes are only the fallback for a
+// getOp miss. Both states serve the same handlers.
 import { callOp } from "./client";
 import { getOp } from "./ops";
 import type { OpResult } from "./types";

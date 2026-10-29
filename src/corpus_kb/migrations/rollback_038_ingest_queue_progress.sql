@@ -1,5 +1,5 @@
 -- ============================================================================
--- Rollback migration 039: drop the ingest queue progress counters.
+-- Rollback migration 038: drop the ingest queue progress counters.
 -- ============================================================================
 -- Three derived columns; no tables, no indexes, no functions. The worker
 -- recomputes them on the next run. The migration can be re-applied

@@ -75,7 +75,10 @@ bounded and one book cannot hold a worker for the whole run.
 `textbook.cache_dir`. The cache key is the parser version, the file
 SHA-256, and the window index. A retry or a resume loads its windows
 instead of paying the parse again. A changed file, a changed parser, or
-a corrupted record misses and re-parses.
+a corrupted record misses and re-parses. Nothing prunes the cache
+today: files add up, and a changed book or parser leaves its old files
+in place. To clear the cache, delete the directory. That is safe at any
+time; the next run re-parses what it misses and only loses time.
 
 **Outline enrichment.** A windowed parse sees no global structure; PDF
 bookmarks are the exception. The strategy reads the pypdf outline and

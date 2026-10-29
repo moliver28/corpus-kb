@@ -456,10 +456,10 @@ def get_default_config() -> dict[str, object]:
             # runtime helper caps it at two below the pool size.
             "concurrency": 4,
         },
-        # Textbook ingestion (textbook-ingestion program, Wave 1). The
-        # strategy lands in Wave 2 behind the [docling] extra; these are
-        # the gate + window + parser declarations the validate_configs
-        # gate pins (types and enums in RUNTIME_CONFIG_KEYS).
+        # Textbook ingestion (textbook-ingestion program). Full parses
+        # need the [docling] extra; these are the gate + window + parser
+        # declarations the validate_configs gate pins (types and enums
+        # in RUNTIME_CONFIG_KEYS).
         "textbook": {
             "min_pages": 120,
             "window_pages": 50,

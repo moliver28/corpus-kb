@@ -5,8 +5,10 @@ the pipeline seam is ``queue.worker.ingest_book``, monkeypatched. Pins:
 
 * claim order (queued_at, id) and the done shape (run id, chunk count)
 * the attempt ladder (pending under max_attempts, else failed)
-* stale reclaim without an attempt bump; release on stop-before-run
-* stop-during-book finishes the book; a lost lease reads pending
+* stale reclaim costs one attempt (failed past the cap); release on
+  stop-before-run stays attempts-neutral
+* stop-during-book finishes the book; a lost lease reads pending and
+  the drain continues with the remaining books
 * the duckdb backend refusal and the stop-flag signal path
 * the per-book config (row profile + strategy_config) and the
   claim-time pages_total probe (Wave 3)
@@ -204,7 +206,7 @@ async def test_partial_run_completes_with_stage_errors_recorded(
 
 
 @pytest.mark.asyncio
-async def test_stale_reclaim_returns_row_without_an_attempt(
+async def test_stale_reclaim_costs_one_attempt_and_the_row_retries(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stale = queue_row(
@@ -218,9 +220,29 @@ async def test_stale_reclaim_returns_row_without_an_attempt(
     _patch_ingest(monkeypatch, fake)
     report = await _worker(pool).drain_once()
     row = pool.rows[0]
-    assert row["attempts"] == 0  # a stale lease is a crash, not a failure
+    assert row["attempts"] == 1  # a crashed worker is a spent try
     assert row["status"] == "done"  # reclaimed, then claimed and run to done
     assert any(o.detail == "reclaimed: the worker lease ran out" for o in report.outcomes)
+
+
+@pytest.mark.asyncio
+async def test_a_reclaim_at_the_cap_lands_the_row_on_failed() -> None:
+    """A process-killing book cannot retry forever: the reclaim spends tries."""
+    stale = queue_row(
+        status="running",
+        claimed_by="other:1:x",
+        heartbeat_at=EPOCH - timedelta(seconds=700),
+        attempts=2,
+        max_attempts=3,
+    )
+    pool = FakeQueuePool([stale])
+    report = await _worker(pool).drain_once()
+    row = pool.rows[0]
+    assert row["attempts"] == 3 and row["status"] == "failed"
+    assert row["finished_at"] is not None
+    outcome = report.outcomes[0]
+    assert outcome.status == "failed"
+    assert outcome.last_error == "The worker lease ran out. The retries are spent."
 
 
 @pytest.mark.asyncio
@@ -318,6 +340,43 @@ async def test_a_lost_lease_reports_pending(monkeypatch: pytest.MonkeyPatch) -> 
     report = await _worker(pool).drain_once()
     assert report.outcomes[0].status == "pending"
     assert report.outcomes[0].detail == "the queue lease was lost during the run"
+
+
+@pytest.mark.asyncio
+async def test_a_cancelled_book_does_not_halt_the_drain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A lost lease is per-book: the next books still run, no global stop."""
+
+    class _CancelFirstPool(FakeQueuePool):
+        def _heartbeat(self, queue_id: str, claimed_by: str) -> dict[str, Any] | None:
+            if queue_id == QUEUE_ID:
+                for row in self.rows:
+                    if row["id"] == QUEUE_ID:
+                        row["status"] = "cancelled"
+                return None
+            return super()._heartbeat(queue_id, claimed_by)
+
+    pool = _CancelFirstPool(
+        [
+            queue_row(),
+            queue_row(
+                id=SECOND_ID,
+                queued_at=EPOCH + timedelta(seconds=1),
+                content_hash="hash-b",
+            ),
+        ]
+    )
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        await asyncio.sleep(0.05)  # let one heartbeat beat first
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    worker = _worker(pool)
+    report = await worker.drain_once()
+    assert worker.stop.requested is False  # the stop flag stays for signals
+    assert report.counts() == {"done": 1, "failed": 0, "pending": 1}
+    assert pool.rows[0]["status"] == "cancelled"
+    assert pool.rows[1]["status"] == "done"
 
 
 # ---------------------------------------------------------------------------

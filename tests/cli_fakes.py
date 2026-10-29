@@ -102,10 +102,10 @@ class FakeQueuePool:
     """One in-memory queue table with the worker-facing store semantics.
 
     Emulates: oldest-pending claim (SKIP LOCKED stands in for concurrency),
-    live heartbeats, stale reclaim without an attempt bump, release, the
-    done shape with progress counters, and the attempt ladder (pending
-    while attempts stay under max_attempts, else failed). ``now`` is
-    mutable so tests can age a lease without sleeping.
+    live heartbeats, stale reclaim that costs one attempt (failed past the
+    cap), release, the done shape with progress counters, and the attempt
+    ladder (pending while attempts stay under max_attempts, else failed).
+    ``now`` is mutable so tests can age a lease without sleeping.
     """
 
     def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
@@ -174,10 +174,16 @@ class FakeQueuePool:
             and r["heartbeat_at"] < cutoff
         ]
         for row in stale:
-            row["status"] = "pending"
+            row["attempts"] += 1  # a crash costs an attempt, like the SQL
             row["claimed_by"] = None
             row["heartbeat_at"] = None
-            row["last_error"] = "The worker lease ran out. The row is pending again."
+            if row["attempts"] >= row["max_attempts"]:
+                row["status"] = "failed"
+                row["finished_at"] = self.now
+                row["last_error"] = "The worker lease ran out. The retries are spent."
+            else:
+                row["status"] = "pending"
+                row["last_error"] = "The worker lease ran out. The row is pending again."
         return [dict(r) for r in stale]
 
     def _release(self, queue_id: str, claimed_by: str) -> dict[str, Any] | None:

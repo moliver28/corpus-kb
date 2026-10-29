@@ -199,19 +199,29 @@ async def test_relation_types_match_cte(
         ), f"hops={hops} direction={direction}"
 
 
-async def test_deep_walk_falls_back_and_warns_once(
-    cte_store: DuckDbGraphStore,
-    pgq_store: DuckDbGraphStore,
+async def test_a_deep_walk_keeps_the_engine_usable(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Past the 3-hop chain bound: warn once, then CTE forever."""
+    """Past the 3-hop chain bound: CTE rows, no disable, engine stays on.
+
+    The store pre-checks depth, so a deep walk never reaches the engine
+    branch: no warning, and _pgq_active does not flip off. A later walk
+    inside the bound still rides DuckPGQ.
+    """
+    _skip_without_engine()
     caplog.set_level(logging.WARNING, logger="corpus_kb.storage.duckdb_store")
-    assert await pgq_store.traverse("a", 5) == await cte_store.traverse("a", 5)
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1
-    # The branch is off for this connection: no new warning, CTE rows.
-    assert await pgq_store.neighbors("a", 1, "out") == await cte_store.neighbors("a", 1, "out")
-    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+    store = _store("duckpgq")
+    cte = _store("cte")
+    try:
+        assert await store.traverse("a", 5) == await cte.traverse("a", 5)
+        assert store._pgq_active is not False
+        assert [r for r in caplog.records if r.levelno == logging.WARNING] == []
+        # A subsequent <=3-hop walk still uses duckpgq.
+        assert await store.neighbors("a", 2, "both") == await cte.neighbors("a", 2, "both")
+        assert store._pgq_active is True
+    finally:
+        await store.close()
+        await cte.close()
 
 
 async def test_engine_probe_failure_falls_back(
@@ -265,11 +275,13 @@ async def test_unavailable_error_is_typed() -> None:
 
 
 async def test_factory_refuses_unknown_engine() -> None:
-    """An unknown graph.duckdb_graph_backend is refused, not downgraded."""
+    """An unknown graph.duckdb_graph_backend is refused typed, not downgraded."""
+    from corpus_kb.errors import ConfigError
     from corpus_kb.storage.graph_factory import create_graph_store
 
-    with pytest.raises(ValueError, match="Unknown DuckDB graph backend"):
+    with pytest.raises(ConfigError, match="Unknown DuckDB graph backend") as excinfo:
         await create_graph_store(
             {"database": {"backend": "duckdb"}, "graph": {"duckdb_graph_backend": "bogus"}},
             source=None,
         )
+    assert "cte or duckpgq" in excinfo.value.remediation

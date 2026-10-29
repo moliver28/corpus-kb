@@ -3,19 +3,23 @@
 Offline pins: off (the default) starts no task; on starts ONE drain task
 over the same QueueWorker loop and stops it cleanly through the worker's
 stop flag; a DuckDB refusal answers None instead of a task; the logged
-exception consumer ends the task quietly; the run_all wiring call sites
+consumer ends the task quietly on an error and logs the end reason (a
+stop reason, or a warning without one); the run_all wiring call sites
 are pinned by source inspection (the uvicorn seam is heavy).
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from corpus_kb.queue.autorun import QueueAutorun, _drain_forever, start_queue_autorun
+from corpus_kb.queue.report import DrainReport
+from corpus_kb.queue.worker_support import StopFlag
 from tests.cli_fakes import TENANT, FakeQueuePool, queue_row
 
 RUN_ID = "00000000-0000-0000-0000-0000000000f1"
@@ -84,6 +88,40 @@ async def test_the_drain_consumer_ends_quietly_on_an_error() -> None:
     task = asyncio.create_task(_drain_forever(worker))
     await task
     assert task.exception() is None  # the consumer logged it; nothing escapes
+
+
+class _EndingWorker:
+    """A watch that returns (no error), with a stop flag the test sets."""
+
+    def __init__(self, flag: StopFlag) -> None:
+        self.stop = flag
+
+    async def watch(self) -> DrainReport:
+        return DrainReport()
+
+
+@pytest.mark.asyncio
+async def test_the_drain_consumer_logs_the_stop_reason(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """watch() never ends silently: the stop reason names the end."""
+    flag = StopFlag()
+    flag.request("server shutdown")
+    with caplog.at_level(logging.INFO, logger="corpus_kb.queue.autorun"):
+        await _drain_forever(_EndingWorker(flag))
+    lines = [record.getMessage() for record in caplog.records]
+    assert any("server shutdown" in line for line in lines)
+
+
+@pytest.mark.asyncio
+async def test_the_drain_consumer_warns_on_an_end_without_a_stop(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """No stop request and watch() over: a warning line, never silence."""
+    with caplog.at_level(logging.WARNING, logger="corpus_kb.queue.autorun"):
+        await _drain_forever(_EndingWorker(StopFlag()))
+    lines = [record.getMessage() for record in caplog.records]
+    assert any("without a stop request" in line for line in lines)
 
 
 def test_run_all_starts_and_stops_the_autorun() -> None:

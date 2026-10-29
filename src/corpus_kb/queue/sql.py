@@ -87,21 +87,29 @@ WHERE q.id = (
 RETURNING {_ROW_COLUMNS}
 """
 
-#: A running row whose heartbeat went quiet goes back to pending. attempts
-#: stays (a stale lease is a crash, not a counted failure). The note lands
-#: in last_error so the status payload explains the reset.
+#: A running row whose heartbeat went quiet goes back to pending, and the
+#: reclaim costs one attempt: a dead worker is a spent try, so the
+#: max_attempts cap fires even when every run dies with its process. A row
+#: that reaches the cap lands on failed. The note lands in last_error so
+#: the status payload explains the reset.
 RECLAIM_STALE_SQL = f"""
 UPDATE ingest_queue
-SET status = 'pending', claimed_by = NULL, heartbeat_at = NULL,
-    last_error = 'The worker lease ran out. The row is pending again.',
-    updated_at = now()
+SET attempts = attempts + 1,
+    status = CASE WHEN attempts + 1 >= max_attempts THEN 'failed' ELSE 'pending' END,
+    finished_at = CASE WHEN attempts + 1 >= max_attempts THEN now() ELSE finished_at END,
+    last_error = CASE WHEN attempts + 1 >= max_attempts
+        THEN 'The worker lease ran out. The retries are spent.'
+        ELSE 'The worker lease ran out. The row is pending again.' END,
+    claimed_by = NULL, heartbeat_at = NULL, updated_at = now()
 WHERE tenant_id = $1 AND status = 'running'
   AND heartbeat_at < now() - make_interval(secs => $2)
 RETURNING {_ROW_COLUMNS}
 """
 
-#: One live heartbeat per book. No row back means the claim was lost
-#: (cancel or reclaim) and the worker must stop the book.
+#: One live heartbeat per book. No row back means the claim was lost (a
+#: cancel or a reclaim): the row is no longer ours, the worker drops the
+#: result, and the drain moves on. The book itself is not stopped; it
+#: finishes in the background.
 HEARTBEAT_SQL = """
 UPDATE ingest_queue
 SET heartbeat_at = now(), updated_at = now()

@@ -366,7 +366,7 @@
   "queueElapsedLine": "{sec} s",
   "queueCancel": "Cancel entry",
   "queueCancelConfirmTitle": "Cancel this queue entry?",
-  "queueCancelConfirmBody": "The worker stops the entry before its next attempt.",
+  "queueCancelConfirmBody": "The entry is held back from the next attempt. A running book finishes in the background.",
   "queueCancelConfirmOk": "Cancel entry",
   "queueCancelConfirmDismiss": "Keep it",
   "queueChunksLine": "{chunks} chunks",

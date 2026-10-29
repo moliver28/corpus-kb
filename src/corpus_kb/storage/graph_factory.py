@@ -114,7 +114,10 @@ async def create_graph_store(
             raise ConfigError(AGE_ON_DUCKDB_ERROR)
         engine = str(graph_cfg.get("duckdb_graph_backend") or "cte")
         if engine not in DUCKDB_GRAPH_BACKENDS:
-            raise ValueError(f"Unknown DuckDB graph backend: {engine!r}. Use 'cte' or 'duckpgq'.")
+            raise ConfigError(
+                f"Unknown DuckDB graph backend: {engine!r}.",
+                remediation="Set graph.duckdb_graph_backend to cte or duckpgq in config.yaml.",
+            )
         return await _duckdb_graph_store(cfg, source, traversal_engine=engine)
 
     if selected == "postgres":

@@ -29,7 +29,14 @@ from typing import TYPE_CHECKING, Any
 from ..errors import DatabaseUnavailableError, MigrationMissingError
 from ..utils.models import Entity, Relation
 from .duckpgq import ensure_duckpgq, merge_min_depth_rows, traversal_statements
-from .graph_sql import neighbors_sql, traversal_row, traverse_sql, validate_depth, validate_hops
+from .graph_sql import (
+    MAX_NEIGHBOR_HOPS,
+    neighbors_sql,
+    traversal_row,
+    traverse_sql,
+    validate_depth,
+    validate_hops,
+)
 from .graph_store import DEFAULT_TENANT_ID, GraphStore
 
 if TYPE_CHECKING:
@@ -54,6 +61,16 @@ def _translate_error(exc: Exception) -> Exception:
             remediation="Run corpus-kb setup. Then try again.",
         )
     return exc
+
+
+def _engine_covers(max_depth: int) -> bool:
+    """True when DuckPGQ chains can render this walk.
+
+    The engine's fixed chains cover hops 1..MAX_NEIGHBOR_HOPS. A deeper
+    walk routes to the recursive CTE BEFORE the engine branch runs, so a
+    deep walk never disables the engine for the connection.
+    """
+    return int(max_depth) <= MAX_NEIGHBOR_HOPS
 
 
 class DuckDbGraphStore(GraphStore):
@@ -87,10 +104,13 @@ class DuckDbGraphStore(GraphStore):
         """Rows through DuckPGQ, or None to mean "run the CTE path".
 
         The one-shot probe installs and loads the extension and creates
-        the static property graph. ANY failure warns once (typed
-        DuckPGQUnavailableError text) and turns the branch off for this
-        connection, permanently; the current call then takes the CTE path
-        so the caller still gets CTE-identical rows.
+        the static property graph. Any engine failure (install, load,
+        statement crash) warns once (typed DuckPGQUnavailableError text)
+        and turns the branch off for this connection, permanently; the
+        current call then takes the CTE path so the caller still gets
+        CTE-identical rows. Walks deeper than the engine's chain bound
+        never reach this branch: the callers pre-check depth and take the
+        CTE path with the engine still on.
         """
         if self._pgq_active is False:
             return None
@@ -320,12 +340,14 @@ class DuckDbGraphStore(GraphStore):
         return relations
 
     async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
-        """Breadth-first search; DuckPGQ when active, else the recursive CTE."""
-        rows = await self._duckpgq_rows(
-            lambda: traversal_statements(
-                "both", max_depth, self._tenant_id, start_entity_id, include_start=True
+        """Breadth-first search; DuckPGQ within its hop bound, else the CTE."""
+        rows: list[dict[str, Any]] | None = None
+        if _engine_covers(max_depth):
+            rows = await self._duckpgq_rows(
+                lambda: traversal_statements(
+                    "both", max_depth, self._tenant_id, start_entity_id, include_start=True
+                )
             )
-        )
         if rows is not None:
             visited = {
                 str(row["entity_id"]): int(row["depth"]) for row in merge_min_depth_rows(rows)
@@ -410,11 +432,13 @@ class DuckDbGraphStore(GraphStore):
     ) -> list[dict[str, Any]]:
         """WITH RECURSIVE walk with path-array cycle guard (shared shape)."""
         validate_depth(max_depth)
-        rows = await self._duckpgq_rows(
-            lambda: traversal_statements(
-                "both", max_depth, self._tenant_id, entity_id, entity_types, relation_types
+        rows: list[dict[str, Any]] | None = None
+        if _engine_covers(max_depth):
+            rows = await self._duckpgq_rows(
+                lambda: traversal_statements(
+                    "both", max_depth, self._tenant_id, entity_id, entity_types, relation_types
+                )
             )
-        )
         if rows is None:
             sql, args = traverse_sql(
                 max_depth,

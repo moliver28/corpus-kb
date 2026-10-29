@@ -55,6 +55,11 @@ class QueueAutorun:
             await asyncio.wait_for(self.task, timeout=STOP_GRACE_SECONDS)
             return
         except TimeoutError:
+            logger.warning(
+                "The queue drain passed the %s second grace; the task is cancelled."
+                " A row still claimed stays running; the stale lease reclaims it.",
+                STOP_GRACE_SECONDS,
+            )
             return  # wait_for already cancelled the task
         except asyncio.CancelledError:
             # The shutdown itself was cancelled: stop the drain, then
@@ -66,13 +71,26 @@ class QueueAutorun:
 
 
 async def _drain_forever(worker: QueueWorker) -> None:
-    """The logged exception consumer around the worker's watch loop."""
+    """The logged consumer around the worker's watch loop.
+
+    The watch never exits silently: the end line names the stop reason,
+    or warns when the loop ended without a stop request.
+    """
     try:
-        await worker.watch()
+        report = await worker.watch()
     except asyncio.CancelledError:
         raise
     except Exception as exc:
         logger.error("The queue drain stopped: %s", exc)
+        return
+    counts = report.counts()
+    detail = f"done {counts['done']}, failed {counts['failed']}, not run {counts['pending']}"
+    if worker.stop.requested:
+        logger.info(
+            "The queue drain ended: %s. %s.", worker.stop.reason or "stop requested", detail
+        )
+    else:
+        logger.warning("The queue drain ended without a stop request. %s.", detail)
 
 
 def start_queue_autorun(
