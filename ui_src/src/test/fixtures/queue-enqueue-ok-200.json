@@ -1,0 +1,19 @@
+{
+  "name": "queue-enqueue-ok-200",
+  "source": "canonical",
+  "note": "POST /api/queue/enqueue first insert (tools/queue_tools.py queue_enqueue). Idempotent per content hash; deduplicated false marks the fresh row. Re-record against a running server (ui_src/scripts/record-fixtures.ts).",
+  "request": {
+    "method": "POST",
+    "path": "/api/queue/enqueue"
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "queued",
+      "queue_id": "bbbb1111-2222-4c33-8d44-55556666eeee",
+      "content_hash": "3f7a1c9d2b8e5a40",
+      "deduplicated": false,
+      "state": "pending"
+    }
+  }
+}

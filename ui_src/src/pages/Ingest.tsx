@@ -5,11 +5,12 @@ import DemoLoadCard from "../components/DemoLoadCard";
 import DirectoryCard from "../components/DirectoryCard";
 import ResearchIngestCard from "../components/ResearchIngestCard";
 import PasteCard from "./ingest/PasteCard";
+import QueueCard from "./ingest/QueueCard";
 import TranscriptCard from "./ingest/TranscriptCard";
 import UploadCard from "./ingest/UploadCard";
 import WebsiteCard from "./ingest/WebsiteCard";
 
-type Tab = "files" | "website" | "paste" | "server" | "transcripts" | "sample";
+type Tab = "files" | "website" | "paste" | "server" | "transcripts" | "sample" | "queue";
 
 const TABS: { key: Tab; label: string }[] = [
   { key: "files", label: strings.ingestTabFiles },
@@ -17,14 +18,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "paste", label: strings.ingestTabPaste },
   { key: "server", label: strings.ingestTabServerPath },
   { key: "transcripts", label: strings.ingestTabTranscripts },
+  { key: "queue", label: strings.ingestTabQueue },
   { key: "sample", label: strings.ingestTabSample },
 ];
 
 /**
  * The Ingest stage — one tab per source, each through the ONE pipeline:
  * files (upload), website (crawl toggle), paste text, server folder,
- * transcripts, and the bundled sample knowledge. The switcher follows
- * the Ask precedent: pressed buttons, no tabs machinery.
+ * transcripts, the bundled sample knowledge, and the durable queue
+ * (enqueue now, a worker drains it later). The switcher follows the Ask
+ * precedent: pressed buttons, no tabs machinery.
  */
 export default function Ingest() {
   const [tab, setTab] = useState<Tab>("files");
@@ -57,6 +60,7 @@ export default function Ingest() {
         </div>
       )}
       {tab === "transcripts" && <TranscriptCard />}
+      {tab === "queue" && <QueueCard />}
       {tab === "sample" && <DemoLoadCard />}
     </div>
   );

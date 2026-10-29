@@ -1,0 +1,50 @@
+{
+  "name": "queue-status-ok-200",
+  "source": "canonical",
+  "note": "POST /api/queue/status active list (tools/queue_tools.py queue_status; entries are queue_payload.py queue_entry_payload keys). One running row with worker progress, one pending. Re-record against a running server (ui_src/scripts/record-fixtures.ts).",
+  "request": {
+    "method": "POST",
+    "path": "/api/queue/status"
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "entries": [
+        {
+          "id": "bbbb1111-2222-4c33-8d44-55556666eeee",
+          "path": "/data/books/networks.pdf",
+          "title": "A History of Networks",
+          "status": "running",
+          "attempts": 1,
+          "max_attempts": 3,
+          "last_error": null,
+          "elapsed_seconds": 1840.5,
+          "queued_at": "2026-10-28T12:00:00Z",
+          "run_id": "cccc2222-3333-4d44-9e55-66667777ffff",
+          "project_id": null,
+          "pages_done": 25,
+          "pages_total": 50,
+          "chunks": 12
+        },
+        {
+          "id": "dddd3333-4444-4e55-8f66-77778888aaaa",
+          "path": "/data/books/atlases.pdf",
+          "title": null,
+          "status": "pending",
+          "attempts": 0,
+          "max_attempts": 3,
+          "last_error": null,
+          "elapsed_seconds": null,
+          "queued_at": "2026-10-28T12:05:00Z",
+          "run_id": null,
+          "project_id": null,
+          "pages_done": null,
+          "pages_total": null,
+          "chunks": null
+        }
+      ],
+      "count": 2
+    }
+  }
+}
