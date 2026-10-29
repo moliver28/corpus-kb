@@ -1,19 +1,24 @@
-"""Worker support pieces (textbook-ingestion program, Wave 2C).
+"""Worker support pieces (textbook-ingestion program, Wave 2C + 3).
 
 The lease identity, the cooperative stop flag and its signal wiring, the
-backend guard, the config-knob readers, and the heartbeat scope. They sit
-apart from the drain loop to keep both files under the size limit.
+backend guard, the config-knob readers, the heartbeat scope, and the
+Wave 3 per-book helpers: the row's profile and strategy settings ride
+into the pipeline through ONE config copy, and the claim-time page probe
+fills ``pages_total`` best-effort. They sit apart from the drain loop to
+keep both files under the size limit.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import socket
 import uuid as uuid_mod
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from corpus_kb.errors import ConfigError
@@ -25,7 +30,10 @@ if TYPE_CHECKING:
 __all__ = [
     "StopFlag",
     "WorkerIdentity",
+    "book_config_for",
+    "fill_pages_total",
     "install_stop_signals",
+    "page_count_for",
     "positive_float",
     "positive_int",
     "require_postgres_backend",
@@ -158,3 +166,78 @@ async def heartbeat(
         beat.cancel()
         with suppress(asyncio.CancelledError):
             await beat
+
+
+# --- Wave 3: per-book config and the claim-time page probe ------------------
+
+
+def _strategy_overrides(raw: object) -> dict[str, object]:
+    """The row's strategy settings as a dict, or {} when absent or unreadable.
+
+    The enqueuer validated a JSON object, and asyncpg hands jsonb back as
+    text, so the text parses here. Junk answers {} — queue metadata never
+    fails a book.
+    """
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return dict(parsed) if isinstance(parsed, dict) else {}
+    return {}
+
+
+def book_config_for(config: dict[str, object], row: Mapping[str, object]) -> dict[str, object]:
+    """One per-book config copy with the row's profile and strategy settings.
+
+    The row's ``profile`` sets ``ingestion.profile`` — the one key
+    ``run_pipeline`` already resolves through ``load_profile``. The row's
+    ``strategy_config`` merges into the ``textbook:`` block, the one
+    settings block ``settings_from`` reads; unknown keys are inert there.
+    The input config is never mutated, and blank values leave the copy
+    untouched.
+    """
+    book = dict(config)
+    profile = row.get("profile")
+    if isinstance(profile, str) and profile.strip():
+        ingestion = dict(mapping_section(config, "ingestion"))
+        ingestion["profile"] = profile.strip()
+        book["ingestion"] = ingestion
+    overrides = _strategy_overrides(row.get("strategy_config"))
+    if overrides:
+        textbook = dict(mapping_section(config, "textbook"))
+        textbook.update(overrides)
+        book["textbook"] = textbook
+    return book
+
+
+def page_count_for(path: str) -> int | None:
+    """Best-effort pypdf page count for queue-status; None on any failure.
+
+    The probe rides the textbook strategy's ``open_pdf`` seam (pypdf
+    imports lazily). A missing extra, a missing file, or a corrupt file
+    all answer None: the page total is metadata, never a claim risk.
+    """
+    from corpus_kb.ingestion.strategies.textbook_pages import open_pdf
+
+    try:
+        reader, note = open_pdf(Path(path))
+        if reader is None or note is not None:
+            return None
+        return len(reader.pages)
+    except Exception:
+        return None
+
+
+async def fill_pages_total(
+    store: IngestQueueStore, row: Mapping[str, object], claimed_by: str
+) -> None:
+    """Write the probe's page count onto one live claim, best-effort.
+
+    No probe answer (or a claim lost in between) leaves the column NULL.
+    """
+    total = page_count_for(str(row.get("path") or ""))
+    if total is not None:
+        await store.set_pages_total(str(row.get("id")), claimed_by, total)

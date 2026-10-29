@@ -1,16 +1,17 @@
-"""The ingest-queue drain worker (textbook-ingestion program, Wave 2C).
+"""The ingest-queue drain worker (textbook-ingestion program, Wave 2C+3).
 
 One loop: reclaim stale leases, claim the oldest pending row, run the
 book through the EXISTING ingest pipeline entry (``ingest_tools`` ->
-``run_pipeline`` — one operation, one handler, no second pipeline), and
-record done/failed honestly. Success fills the run id and the progress
-counters; a failure counts one attempt and retries under max_attempts.
+``run_pipeline`` — one operation, one handler, no second pipeline) with
+the row's own settings, and record done/failed honestly. The claim
+probes ``pages_total`` best-effort; the row's profile and strategy
+config ride in through ONE per-book config copy (``worker_support``).
+Success fills the run id and counters; failure retries under max_attempts.
 
-One drain pass gives each row one attempt (the claim carries the pass
-watermark), so a failing book waits for the next pass instead of
-restarting in a tight loop. Postgres claims run under ``FOR UPDATE SKIP
-LOCKED``; the duckdb backend is refused typed (``worker_support``). The
-stop flag finishes the current book and releases an unstarted claim.
+One drain pass gives each row one attempt (the pass watermark), so a
+failing book waits for the next pass, not a tight retry loop. Postgres
+claims run under ``FOR UPDATE SKIP LOCKED``; duckdb is refused typed.
+The stop flag finishes the current book and releases an unstarted claim.
 """
 
 from __future__ import annotations
@@ -37,6 +38,8 @@ from .store import IngestQueueStore
 from .worker_support import (
     StopFlag,
     WorkerIdentity,
+    book_config_for,
+    fill_pages_total,
     heartbeat,
     positive_float,
     positive_int,
@@ -57,8 +60,7 @@ async def ingest_book(
     """The ONE pipeline entry, called the way the ingest tools call it."""
     from corpus_kb.tools.ingest_tools import ingest_file
 
-    result: dict[str, object] = await ingest_file(path, pool, config, tenant_id)
-    return result
+    return await ingest_file(path, pool, config, tenant_id)
 
 
 class QueueWorker:
@@ -106,6 +108,7 @@ class QueueWorker:
             if self.stop:
                 await self._release(row, report)
                 break
+            await fill_pages_total(self._store, row, self._identity.claimed_by)
             report.add(await self._run_book(row))
         return self._close(report, started)
 
@@ -125,6 +128,7 @@ class QueueWorker:
 
     async def _run_book(self, row: dict[str, object]) -> BookOutcome:
         queue_id, path = str(row.get("id")), str(row.get("path"))
+        book_config = book_config_for(self._config, row)
         started = time.monotonic()
         lost: list[bool] = []
 
@@ -136,7 +140,7 @@ class QueueWorker:
             self._store, queue_id, self._identity.claimed_by, self._beat_interval(), _mark_lost
         ):
             try:
-                result = await ingest_book(self._pool, self._config, self._tenant_id, path)
+                result = await ingest_book(self._pool, book_config, self._tenant_id, path)
             except Exception as exc:
                 return await self._record_failure(
                     row, queue_id, str(exc), time.monotonic() - started

@@ -1,4 +1,4 @@
-"""The queue worker (textbook program W2C): state machine over fakes.
+"""The queue worker (textbook program W2C + W3): state machine over fakes.
 
 Offline tier: the pool is the in-memory ``FakeQueuePool`` (cli_fakes) and
 the pipeline seam is ``queue.worker.ingest_book``, monkeypatched. Pins:
@@ -8,6 +8,8 @@ the pipeline seam is ``queue.worker.ingest_book``, monkeypatched. Pins:
 * stale reclaim without an attempt bump; release on stop-before-run
 * stop-during-book finishes the book; a lost lease reads pending
 * the duckdb backend refusal and the stop-flag signal path
+* the per-book config (row profile + strategy_config) and the
+  claim-time pages_total probe (Wave 3)
 """
 
 from __future__ import annotations
@@ -341,6 +343,178 @@ async def test_watch_drains_one_pass_then_stops(monkeypatch: pytest.MonkeyPatch)
     assert calls["n"] == 1  # the first pass ran; the stop ended the polling
     assert report.counts() == {"done": 1, "failed": 0, "pending": 0}
     assert report.stopped
+
+
+# ---------------------------------------------------------------------------
+# Per-book config: the row's profile and strategy_config (Wave 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_row_profile_and_strategy_config_reach_the_pipeline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pool = FakeQueuePool([queue_row(profile="textbooks", strategy_config='{"min_pages": 50}')])
+    seen: dict[str, Any] = {}
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        seen["config"] = config
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    base = _config()
+    report = await _worker(pool, base).drain_once()
+    assert report.outcomes[0].status == "done"
+    assert seen["config"]["ingestion"]["profile"] == "textbooks"
+    assert seen["config"]["textbook"]["min_pages"] == 50
+    # The untouched blocks ride along, and the worker's config stays intact.
+    assert seen["config"]["database"] == base["database"]
+    assert "ingestion" not in base and "textbook" not in base
+
+
+@pytest.mark.asyncio
+async def test_strategy_config_as_a_mapping_merges_the_same_way(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pool = FakeQueuePool([queue_row(strategy_config={"parser": "pypdf"})])
+    seen: dict[str, Any] = {}
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        seen["config"] = config
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    base = _config()
+    base["textbook"] = {"min_pages": 10}  # a configured textbook block
+    await _worker(pool, base).drain_once()
+    # The row's keys win over the configured block; the rest carries over.
+    assert seen["config"]["textbook"] == {"min_pages": 10, "parser": "pypdf"}
+    assert base["textbook"] == {"min_pages": 10}  # the worker config is not mutated
+
+
+@pytest.mark.asyncio
+async def test_blank_row_values_leave_the_base_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    pool = FakeQueuePool([queue_row()])
+    seen: dict[str, Any] = {}
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        seen["config"] = config
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    base = _config()
+    await _worker(pool, base).drain_once()
+    assert seen["config"] == base
+    assert seen["config"] is not base  # a copy: the worker config is never shared
+
+
+@pytest.mark.asyncio
+async def test_a_corrupt_strategy_config_never_fails_the_book(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pool = FakeQueuePool([queue_row(strategy_config="{broken json")])
+    seen: dict[str, Any] = {}
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        seen["config"] = config
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    report = await _worker(pool).drain_once()
+    assert report.outcomes[0].status == "done"
+    assert "textbook" not in seen["config"]
+
+
+# ---------------------------------------------------------------------------
+# The claim-time pages_total probe (Wave 3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_the_claim_fills_pages_total(monkeypatch: pytest.MonkeyPatch) -> None:
+    pool = FakeQueuePool([queue_row()])
+
+    def fake_probe(path: str) -> int | None:
+        return 42
+
+    monkeypatch.setattr("corpus_kb.queue.worker_support.page_count_for", fake_probe)
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    worker = _worker(pool)
+    report = await worker.drain_once()
+    row = pool.rows[0]
+    assert row["pages_total"] == 42
+    # The fill survives the finish (the finish answers NULL page counts).
+    assert report.outcomes[0].status == "done"
+    assert row["chunks"] == 12
+
+
+@pytest.mark.asyncio
+async def test_a_probe_failure_leaves_pages_total_null(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pool = FakeQueuePool([queue_row()])
+
+    def fake_probe(path: str) -> int | None:
+        return None
+
+    monkeypatch.setattr("corpus_kb.queue.worker_support.page_count_for", fake_probe)
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    report = await _worker(pool).drain_once()
+    assert report.outcomes[0].status == "done"
+    assert pool.rows[0]["pages_total"] is None
+
+
+# ---------------------------------------------------------------------------
+# The probe itself (worker_support.page_count_for)
+# ---------------------------------------------------------------------------
+
+
+def test_page_count_for_answers_none_for_a_missing_file() -> None:
+    from corpus_kb.queue.worker_support import page_count_for
+
+    assert page_count_for("/nonexistent/dir/book.pdf") is None
+    assert page_count_for("") is None
+
+
+def test_page_count_for_answers_none_for_a_corrupt_file(tmp_path: Any) -> None:
+    from corpus_kb.queue.worker_support import page_count_for
+
+    bad = tmp_path / "book.pdf"
+    bad.write_bytes(b"not a pdf at all")
+    assert page_count_for(str(bad)) is None
+
+
+def test_page_count_for_maps_the_reader_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    from corpus_kb.ingestion.strategies import textbook_pages
+    from corpus_kb.queue.worker_support import page_count_for
+
+    class _FakeReader:
+        pages = (1, 2, 3)  # len() is all the probe needs
+
+    def fake_open(path: Any) -> tuple[Any, str | None]:
+        return _FakeReader(), None
+
+    monkeypatch.setattr(textbook_pages, "open_pdf", fake_open)
+    assert page_count_for("/tmp/book.pdf") == 3
+
+
+def test_page_count_for_answers_none_for_a_probe_note(monkeypatch: pytest.MonkeyPatch) -> None:
+    from corpus_kb.ingestion.strategies import textbook_pages
+    from corpus_kb.queue.worker_support import page_count_for
+
+    def fake_open(path: Any) -> tuple[Any, str | None]:
+        return None, "the file did not open as a PDF"
+
+    monkeypatch.setattr(textbook_pages, "open_pdf", fake_open)
+    assert page_count_for("/tmp/book.pdf") is None
 
 
 # ---------------------------------------------------------------------------

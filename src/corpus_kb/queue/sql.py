@@ -118,14 +118,26 @@ WHERE tenant_id = $1 AND id = $2::uuid AND status = 'running' AND claimed_by = $
 RETURNING {_ROW_COLUMNS}
 """
 
-#: Success: done, the pipeline's run id, and the progress counters
-#: (page counts stay NULL while the pipeline reports no pages). last_error
-#: carries the stage errors of a "partial" run and clears on a clean one.
+#: Claim-time metadata fill (Wave 3): the best-effort pypdf page count,
+#: written right after the claim so queue-status shows the total while
+#: the book runs. A NULL probe never writes; the statement matches only
+#: the worker's own live claim.
+PAGES_TOTAL_SQL = f"""
+UPDATE ingest_queue
+SET pages_total = $3, updated_at = now()
+WHERE tenant_id = $1 AND id = $2::uuid AND status = 'running' AND claimed_by = $4
+RETURNING {_ROW_COLUMNS}
+"""
+
+#: Success: done, the pipeline's run id, and the progress counters.
+#: ``pages_total`` COALESCEs so the claim-time probe fill survives; the
+#: pipeline reports no page counts itself. last_error carries the stage
+#: errors of a "partial" run and clears on a clean one.
 FINISH_SQL = f"""
 UPDATE ingest_queue
 SET status = 'done', run_id = COALESCE($3::uuid, run_id),
-    pages_done = $4, pages_total = $5, chunks = $6, last_error = $7,
-    claimed_by = NULL, heartbeat_at = NULL,
+    pages_done = $4, pages_total = COALESCE($5, pages_total), chunks = $6,
+    last_error = $7, claimed_by = NULL, heartbeat_at = NULL,
     finished_at = now(), updated_at = now()
 WHERE tenant_id = $1 AND id = $2::uuid AND status = 'running' AND claimed_by = $8
 RETURNING {_ROW_COLUMNS}
