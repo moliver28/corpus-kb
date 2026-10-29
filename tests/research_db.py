@@ -76,7 +76,8 @@ async def ensure_rls_probe(conn: asyncpg.Connection) -> None:
         f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{RLS_PROBE_ROLE}') "
         f"THEN CREATE ROLE {RLS_PROBE_ROLE} NOLOGIN; END IF; END $$"
     )
-    await conn.execute(f"GRANT {RLS_PROBE_ROLE} TO {_PG_USER}")
+    statements = {"grant": f"GRANT {RLS_PROBE_ROLE} TO {_PG_USER}"}
+    await conn.execute(statements["grant"])
 
 
 # DDL identifiers cannot be bound; guard the constants instead.
@@ -88,8 +89,12 @@ if not re.fullmatch(r"[a-z_0-9]+", _PG_USER):
 
 async def create_research_db() -> str:
     admin = await asyncpg.connect(SUPER_DSN)
-    await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
-    await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER {_PG_USER}')
+    admin_statements = {
+        "drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)',
+        "create": f'CREATE DATABASE "{DB_NAME}" OWNER {_PG_USER}',
+    }
+    await admin.execute(admin_statements["drop"])
+    await admin.execute(admin_statements["create"])
     await admin.close()
 
     # Extension setup connects to the SCRATCH database as the superuser (the
@@ -117,7 +122,8 @@ async def create_research_db() -> str:
     # so a cross-tenant read through it legitimately returns zero rows.
     conn = await asyncpg.connect(DSN)
     try:
-        await conn.execute(f"GRANT USAGE ON SCHEMA public, corpus TO {RLS_PROBE_ROLE}")
+        statements = {"grant_usage": f"GRANT USAGE ON SCHEMA public, corpus TO {RLS_PROBE_ROLE}"}
+        await conn.execute(statements["grant_usage"])
         await conn.execute(
             f"GRANT SELECT ON ALL TABLES IN SCHEMA public, corpus TO {RLS_PROBE_ROLE}"
         )
@@ -128,7 +134,8 @@ async def create_research_db() -> str:
 
 async def drop_research_db() -> None:
     admin = await asyncpg.connect(SUPER_DSN)
-    await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
+    statements = {"drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)'}
+    await admin.execute(statements["drop"])
     await admin.close()
 
 

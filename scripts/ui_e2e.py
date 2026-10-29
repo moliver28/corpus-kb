@@ -18,9 +18,9 @@ import shutil
 import subprocess
 import sys
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
+
+import httpx
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tests"))
@@ -33,39 +33,41 @@ PORT = 8010
 BASE = f"http://localhost:{PORT}"
 
 
-
 def wait_for_app(timeout_s: int = 90) -> None:
     """Poll /app/ until the SPA mount answers."""
     deadline = time.monotonic() + timeout_s
     last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(f"{BASE}/app/", timeout=5) as response:
-                if response.status == 200:
+    with httpx.Client(timeout=5) as client:
+        while time.monotonic() < deadline:
+            try:
+                response = client.get(f"{BASE}/app/")
+                response.raise_for_status()
+                if response.status_code == 200:
                     return
-        except (urllib.error.URLError, OSError) as exc:  # connection refused, etc.
-            last_error = exc
-        time.sleep(1.0)
+            except (httpx.HTTPError, OSError) as exc:  # connection refused, etc.
+                last_error = exc
+            time.sleep(1.0)
     raise RuntimeError(f"the server never answered on {BASE}/app/: {last_error}")
 
 
 def preload_demo() -> None:
     """POST /api/demo/load (idempotent; embeds the five sample files)."""
-    request = urllib.request.Request(
-        f"{BASE}/api/demo/load", data=b"{}", headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(request, timeout=600) as response:
-        body = response.read().decode("utf-8", errors="replace")
-    print(f"demo preload: HTTP {response.status} {body[:120]}")
+    with httpx.Client(timeout=600) as client:
+        response = client.post(
+            f"{BASE}/api/demo/load",
+            content=b"{}",
+            headers={"Content-Type": "application/json"},
+        )
+        response.raise_for_status()
+    body = response.content.decode("utf-8", errors="replace")
+    print(f"demo preload: HTTP {response.status_code} {body[:120]}")
 
 
 def run_playwright() -> int:
     pnpm = shutil.which("pnpm")
     if pnpm is None:
         raise RuntimeError("pnpm not found on PATH (the poe ui-* targets export it)")
-    return subprocess.call(
-        [pnpm, "-C", "ui_src", "exec", "playwright", "test"], cwd=str(REPO)
-    )
+    return subprocess.call([pnpm, "-C", "ui_src", "exec", "playwright", "test"], cwd=str(REPO))
 
 
 def main() -> int:

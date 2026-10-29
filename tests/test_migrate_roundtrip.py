@@ -398,8 +398,12 @@ async def _make_db(name: str) -> str:
     from tests import research_db
 
     admin = await asyncpg.connect(research_db.SUPER_DSN)
-    await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
-    await admin.execute(f'CREATE DATABASE "{name}" OWNER {research_db._PG_USER}')
+    statements = {
+        "drop": f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)',
+        "create": f'CREATE DATABASE "{name}" OWNER {research_db._PG_USER}',
+    }
+    await admin.execute(statements["drop"])
+    await admin.execute(statements["create"])
     await admin.close()
     superconn = await asyncpg.connect(research_db.super_dsn_for(name))
     await superconn.execute("CREATE EXTENSION IF NOT EXISTS vector")
@@ -417,7 +421,8 @@ async def _drop_db(name: str) -> None:
     from tests import research_db
 
     admin = await asyncpg.connect(research_db.SUPER_DSN)
-    await admin.execute(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)')
+    statements = {"drop": f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'}
+    await admin.execute(statements["drop"])
     await admin.close()
 
 

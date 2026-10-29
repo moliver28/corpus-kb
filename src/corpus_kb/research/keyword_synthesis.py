@@ -33,6 +33,7 @@ from corpus_kb.research.keyword_text import (
 from corpus_kb.research.keyword_text import (
     tokenize as tokenize,
 )
+from corpus_kb.utils.deterministic import HashRandom
 
 MIN_SUPPORT = 15
 DEFAULT_TOP_N = 8
@@ -157,9 +158,7 @@ def synthesize_exclusion_keywords(
     """
     contrast = list(rejected_texts)
     if widen_n > 0 and widen_pool_texts:
-        import random
-
-        rng = random.Random(seed)
+        rng = HashRandom(seed)
         pool = list(widen_pool_texts)
         contrast.extend(rng.sample(pool, min(widen_n, len(pool))))
     ref_counts = term_counts(coded_texts)

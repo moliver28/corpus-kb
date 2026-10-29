@@ -76,8 +76,12 @@ SUPER_DSN = f"{BASE_DSN}/postgres"
 async def _create_db() -> str:
     admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
     try:
-        await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
-        await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
+        statements = {
+            "drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)',
+            "create": f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user',
+        }
+        await admin.execute(statements["drop"])
+        await admin.execute(statements["create"])
     finally:
         await admin.close()
     # Pre-create the extensions schema.sql needs, as the superuser (same
@@ -105,7 +109,8 @@ async def _create_db() -> str:
 async def _drop_db() -> None:
     admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
     try:
-        await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
+        statements = {"drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)'}
+        await admin.execute(statements["drop"])
     finally:
         await admin.close()
 

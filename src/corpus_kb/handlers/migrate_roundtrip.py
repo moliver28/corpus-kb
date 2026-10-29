@@ -47,6 +47,7 @@ from corpus_kb.handlers.migrate_data import (
     discover_tables,
 )
 from corpus_kb.handlers.migrate_digest import compose_digest, corpus_digest, event_digest
+from corpus_kb.storage.sql_ident import sql_qualified
 
 DIRECTIONS = ("postgres_to_duckdb", "duckdb_to_postgres")
 
@@ -170,8 +171,12 @@ def _verify_pair_counts(
     """Per-table count check across the two legs' connections (the same
     connection on the ATTACH leg, duckdb+psycopg on the stream leg)."""
     for source_entry, target_entry in pairs:
-        source = source_conn.execute(f"SELECT count(*) FROM {source_entry.name}").fetchone()
-        target = target_conn.execute(f"SELECT count(*) FROM {target_entry.name}").fetchone()
+        source = source_conn.execute(
+            "SELECT count(*) FROM " + sql_qualified(source_entry.name)
+        ).fetchone()
+        target = target_conn.execute(
+            "SELECT count(*) FROM " + sql_qualified(target_entry.name)
+        ).fetchone()
         if source != target:
             raise _mismatch()
 

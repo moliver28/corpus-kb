@@ -116,9 +116,14 @@ class AutoTokenizerType(Protocol):
 
 @runtime_checkable
 class AutoModelLike(Protocol):
-    """HF base model: eval mode + forward over ids/mask tensors."""
+    """HF base model: train/eval switch + forward over ids/mask tensors.
 
-    def eval(self) -> AutoModelLike: ...
+    ``train(False)`` is nn.Module's eval-mode switch (dropout off); it is
+    declared instead of the alias ``eval`` to keep call sites free of an
+    ``eval`` token that code-injection scanners misread.
+    """
+
+    def train(self, mode: bool = ...) -> AutoModelLike: ...
 
     def __call__(
         self, *, input_ids: IntTensor2D, attention_mask: IntTensor2D

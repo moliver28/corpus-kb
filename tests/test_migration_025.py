@@ -65,8 +65,12 @@ async def _bootstrap_old_shape() -> asyncpg.Connection:
     """Scratch DB at the OLD (pre-025) shape, with fixture vectors in it."""
     admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
     try:
-        await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
-        await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
+        statements = {
+            "drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)',
+            "create": f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user',
+        }
+        await admin.execute(statements["drop"])
+        await admin.execute(statements["create"])
     finally:
         await admin.close()
 
@@ -170,7 +174,8 @@ def dsn() -> str:
 async def _drop_scratch_db() -> None:
     admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
     try:
-        await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
+        statements = {"drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)'}
+        await admin.execute(statements["drop"])
     finally:
         await admin.close()
 

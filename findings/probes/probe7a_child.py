@@ -15,8 +15,8 @@ con = duckdb.connect(DB)
 con.execute("LOAD vss")
 con.execute("CREATE TABLE docs(id INTEGER, embedding FLOAT[8])")
 import random
-random.seed(3)
-rows = [(i, [random.random() for _ in range(8)]) for i in range(200)]
+rng = random.SystemRandom()
+rows = [(i, [rng.random() for _ in range(8)]) for i in range(200)]
 con.executemany("INSERT INTO docs VALUES (?, ?)", rows)
 
 if MODE == "noflag":

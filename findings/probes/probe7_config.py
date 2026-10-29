@@ -45,9 +45,14 @@ def roundtrip_setting() -> None:
         "threads": 4,
         "memory_limit": "1GB",
     })
+    SETTING_SQL = {
+        "default_null_order": "SELECT current_setting('default_null_order')",
+        "threads": "SELECT current_setting('threads')",
+        "memory_limit": "SELECT current_setting('memory_limit')",
+    }
     for s in ("default_null_order", "threads", "memory_limit"):
         try:
-            print("SETTING", s, "=", con.execute(f"SELECT current_setting('{s}')").fetchone()[0])
+            print("SETTING", s, "=", con.execute(SETTING_SQL[s]).fetchone()[0])
         except Exception as e:  # noqa: BLE001
             print("SETTING", s, "ERR:", e)
     # progress bar: not a connect config key -- test SET-after-connect instead

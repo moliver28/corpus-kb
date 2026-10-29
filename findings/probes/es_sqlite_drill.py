@@ -9,11 +9,20 @@ one file.
 from __future__ import annotations
 
 import os
+import re
 import sqlite3
 import sys
 import threading
 import time
 from pathlib import Path
+
+
+def _ident(name: str) -> str:
+    """Pass plain SQL identifiers; refuse everything else."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
+        raise SystemExit(f"unsafe SQL identifier: {name!r}")
+    return name
+
 
 SCRATCH = Path(__file__).resolve().parent / "scratch"
 SCRATCH.mkdir(exist_ok=True)
@@ -71,11 +80,15 @@ def main() -> None:
     report["max_notification_id"] = nid
     notifs = rec.select_notifications(start=0, limit=10, inclusive_of_start=False)
     report["select_notifications_count"] = len(notifs)
-    report["first_notification"] = {
-        "id": notifs[0].id,
-        "topic": notifs[0].topic,
-        "originator_id": str(notifs[0].originator_id),
-    } if notifs else None
+    report["first_notification"] = (
+        {
+            "id": notifs[0].id,
+            "topic": notifs[0].topic,
+            "originator_id": str(notifs[0].originator_id),
+        }
+        if notifs
+        else None
+    )
 
     # --- 2. subscribe() gap.
     try:
@@ -88,15 +101,14 @@ def main() -> None:
     con = sqlite3.connect(str(DB))
     con.row_factory = sqlite3.Row
     tables = [
-        r[0]
-        for r in con.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        )
+        r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
     ]
     report["tables"] = tables
     schema = {}
     for t in tables:
-        cols = [(r["name"], r["type"], r["pk"]) for r in con.execute(f"PRAGMA table_info({t})")]
+        statements = {"pragma": "PRAGMA table_info(" + _ident(t) + ")"}
+        rows = con.execute(statements["pragma"])
+        cols = [(r["name"], r["type"], r["pk"]) for r in rows]
         schema[t] = cols
     report["schema"] = schema
     report["journal_mode"] = con.execute("PRAGMA journal_mode").fetchone()[0]
@@ -119,15 +131,20 @@ def main() -> None:
 
     t1 = threading.Thread(target=writer, args=("A",))
     t2 = threading.Thread(target=writer, args=("B",))
-    t1.start(); t2.start(); t1.join(); t2.join()
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
     report["concurrent_errors"] = errs
     report["concurrent_writes_ok"] = len(writes)
 
     # --- 5. Environment knobs of interest.
     from eventsourcing.sqlite import SQLITE3_DEFAULT_LOCK_TIMEOUT
+
     report["SQLITE3_DEFAULT_LOCK_TIMEOUT"] = SQLITE3_DEFAULT_LOCK_TIMEOUT
 
     import json
+
     print(json.dumps(report, indent=2, default=str))
 
 

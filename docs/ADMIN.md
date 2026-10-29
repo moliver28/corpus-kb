@@ -71,6 +71,7 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `backend` | `null` | `null`/`generative` = qwen3 judgment scorer; `llamacpp` = true cross-encoder via llama-server; `fake` = test double |
 | `model` | `qwen3-reranker:4b` | Rerank model |
 | `llamacpp_url` | `http://localhost:8080` | `/v1/rerank` endpoint for backend `llamacpp` (llama-server default port) |
+| `allow_remote_urls` | `false` | Opt-in for remote rerank endpoints; localhost and private hosts are always allowed |
 | `over_retrieve_n` | `60` | Rerank pre-fetch width for the fused candidates |
 | `candidates` | `100` | Cap on results entering the reranker |
 | `return_top_k` | `20` | The default return k: search/query callers that omit k get this value |

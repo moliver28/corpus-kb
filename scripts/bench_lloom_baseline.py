@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+from corpus_kb.utils.deterministic import HashRandom
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _inductive_common import (
@@ -128,7 +129,7 @@ def run_lloom(
     hypothesizer: ConceptHypothesizer = heuristic_hypothesizer,
 ) -> dict[str, object]:
     """Meaningful-run report: the sample -> induce -> apply -> score loop."""
-    rng = random.Random(seed)
+    rng = HashRandom(seed)
     concepts: list[Concept] = []
     seen_terms: set[frozenset[str]] = set()
     coverage_curve: list[dict[str, object]] = []

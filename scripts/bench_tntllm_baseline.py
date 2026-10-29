@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import random
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
+
+from corpus_kb.utils.deterministic import HashRandom
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _inductive_common import (
@@ -143,7 +144,7 @@ def run_tntllm(
 ) -> dict[str, object]:
     """Meaningful-run report: induce taxonomy on the sample, classify the rest."""
     order = list(range(len(docs)))
-    random.Random(seed).shuffle(order)
+    HashRandom(seed).shuffle(order)
     n_sample = max(2, round(sample_frac * len(docs)))
     sample_idx, held_out_idx = order[:n_sample], order[n_sample:]
     sample_docs = [docs[i] for i in sample_idx]

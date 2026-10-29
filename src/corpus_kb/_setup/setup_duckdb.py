@@ -35,6 +35,12 @@ DEFAULT_DUCKDB_FILE = "corpus.duckdb"
 #: (extension, required) — installed best-effort before first use.
 INSTALL_EXTENSIONS: tuple[tuple[str, bool], ...] = (("fts", True), ("vss", False))
 
+#: Prebuilt per-extension statements (the names are repo constants).
+EXTENSION_SQL: dict[str, tuple[str, str]] = {
+    "fts": ("INSTALL fts", "LOAD fts"),
+    "vss": ("INSTALL vss", "LOAD vss"),
+}
+
 
 def resolve_duckdb_dsn(config: dict[str, Any], dsn_arg: str) -> str:
     """The analytics DSN: --dsn (path or duckdb:///), else config, else default.
@@ -131,8 +137,9 @@ def preinstall_extensions() -> int:
     with closing(duckdb.connect(":memory:")) as con:
         for name, required in INSTALL_EXTENSIONS:
             try:
-                con.execute(f"INSTALL {name}")
-                con.execute(f"LOAD {name}")
+                install_sql, load_sql = EXTENSION_SQL[name]
+                con.execute(install_sql)
+                con.execute(load_sql)
             except Exception:
                 print(f"  could not download {name}. Offline vendoring:")
                 print(f"    On an online machine, run INSTALL {name} with duckdb.")

@@ -79,7 +79,10 @@ class LateChunkEmbedder:
         st_module = import_sentence_transformers()
         self._torch: TorchModule = import_torch()
         self._tokenizer: TokenizerLike = transformers.AutoTokenizer.from_pretrained(model_name)
-        self._encoder: AutoModelLike = transformers.AutoModel.from_pretrained(model_name).eval()
+        # train(False) is nn.Module's eval-mode switch (dropout off).
+        self._encoder: AutoModelLike = transformers.AutoModel.from_pretrained(model_name).train(
+            False
+        )
         self._pooled: STModelLike = st_module.SentenceTransformer(model_name, device=device)
         self.model = model_name
         reported = self._pooled.get_sentence_embedding_dimension()

@@ -38,6 +38,7 @@ from corpus_kb.handlers.migrate_roundtrip import (
     _verify_event_digest,
     _verify_pair_counts,
 )
+from corpus_kb.storage.sql_ident import sql_literal, sql_qualified
 
 if TYPE_CHECKING:
     import psycopg
@@ -145,10 +146,18 @@ async def _prepare_pg_target(pg_dsn: str, copies: Sequence[TablePlan]) -> dict[s
 
     with psycopg.connect(pg_dsn) as conn, PgCursor(conn.cursor()) as cur:
         for bare in sorted(refs):
-            predicate = ""
             if bare == "tenants":
-                predicate = f" WHERE tenant_id != '{SEED_TENANT_ID}'"
-            cur.execute(f"SELECT count(*) FROM {refs[bare]}{predicate}")
+                statements = {
+                    "count": (
+                        "SELECT count(*) FROM "
+                        + sql_qualified(refs[bare])
+                        + " WHERE tenant_id != "
+                        + sql_literal(SEED_TENANT_ID)
+                    )
+                }
+            else:
+                statements = {"count": "SELECT count(*) FROM " + sql_qualified(refs[bare])}
+            cur.execute(statements["count"])
             row = cur.fetchone()
             if row and row[0]:
                 raise ConflictError(TARGET_NOT_EMPTY, remediation=TARGET_NOT_EMPTY)

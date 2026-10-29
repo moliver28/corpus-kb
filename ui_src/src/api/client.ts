@@ -32,7 +32,14 @@ export async function callOp<T>(
     signal?.addEventListener("abort", () => ctrl.abort());
   }
   try {
-    const res = await fetch(path, {
+    // The SPA talks to its own origin only. Building the URL from the
+    // page origin and refusing any other origin keeps every request
+    // same-origin, whatever path string a caller passes.
+    const url = new URL(path, window.location.origin);
+    if (url.origin !== window.location.origin) {
+      return networkResult();
+    }
+    const res = await fetch(url, {
       method,
       signal: ctrl.signal,
       headers: body === undefined ? undefined : { "Content-Type": "application/json" },

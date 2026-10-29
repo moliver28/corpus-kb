@@ -23,6 +23,9 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any
 
+from defusedxml import DefusedXmlException
+from defusedxml.ElementTree import fromstring as parse_untrusted_xml
+
 from corpus_kb.coding.codebook import validate_codebook
 from corpus_kb.coding.refi_qda._codec import (
     REFI_QDA_NAMESPACE,
@@ -160,14 +163,17 @@ def import_project(
         ``sets`` list both normalize to absent).
 
     Raises:
-        RefiQdaError: On malformed XML, a wrong root element, sections the
-            codebook model cannot represent, guid/boolean violations, or a
-            sidecar failing canonical-form, hash, or binding verification.
+        RefiQdaError: On malformed XML, forbidden entities, a wrong root
+            element, sections the codebook model cannot represent,
+            guid/boolean violations, or a sidecar failing canonical-form,
+            hash, or binding verification.
     """
     try:
-        root = ET.fromstring(project_xml)
+        root = parse_untrusted_xml(project_xml)
     except ET.ParseError as exc:
         raise RefiQdaError(f"project XML is not well-formed: {exc}") from exc
+    except DefusedXmlException as exc:
+        raise RefiQdaError(f"project XML was rejected: {exc}") from exc
     if root.tag != _qualified("Project"):
         raise RefiQdaError(
             f"root element is {root.tag!r}, expected {{{REFI_QDA_NAMESPACE}}}Project"

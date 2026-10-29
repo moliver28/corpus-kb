@@ -14,7 +14,6 @@ import asyncio
 import hashlib
 import logging
 import math
-import random
 from collections import OrderedDict
 from typing import Any, Protocol, cast, runtime_checkable
 
@@ -25,6 +24,7 @@ from ollama._types import EmbedResponse
 
 from ..config import load_config
 from ..errors import ConfigError
+from ..utils.deterministic import HashRandom
 from .model_profiles import native_dimensions
 
 logger = logging.getLogger(__name__)
@@ -413,7 +413,7 @@ class FakeEmbedder:
 
     def _vector_for(self, text: str) -> list[float]:
         seed = int(hashlib.sha256(text.encode("utf-8")).hexdigest(), 16)
-        rng = random.Random(seed)
+        rng = HashRandom(seed)
         return [rng.uniform(-1.0, 1.0) for _ in range(self.dimensions)]
 
 

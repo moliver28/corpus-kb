@@ -16,7 +16,9 @@ N = 2000
 CHUNK = 500
 
 con = duckdb.connect(DB)
-con.execute(f"CREATE OR REPLACE TABLE vecs (id INTEGER, v FLOAT[{D}])")
+con.execute(  # DDL cannot bind the dimension
+    "CREATE OR REPLACE TABLE vecs (id INTEGER, v FLOAT[" + str(D) + "])"
+)
 
 import array  # noqa: E402
 

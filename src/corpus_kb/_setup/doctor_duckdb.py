@@ -46,6 +46,13 @@ EXTENSION_PROBES: tuple[tuple[str, bool], ...] = (
     ("postgres", False),
 )
 
+#: Prebuilt LOAD statements (probe names are repo constants).
+_PROBE_LOAD_SQL: dict[str, str] = {
+    "fts": "LOAD 'fts'",
+    "vss": "LOAD 'vss'",
+    "postgres": "LOAD 'postgres'",
+}
+
 _EXTENSION_PURPOSE = {
     "fts": "Lexical search needs it.",
     "vss": "Optional: the experimental HNSW index.",
@@ -165,7 +172,7 @@ def extension_load_check(
     checks: list[ResearchCheck] = []
     for name, required in probes:
         try:
-            probe_con.execute(f"LOAD '{name}'")
+            probe_con.execute(_PROBE_LOAD_SQL[name])
         except Exception:
             checks.append(
                 ResearchCheck(

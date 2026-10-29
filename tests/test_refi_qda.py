@@ -11,11 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
 import pytest
+from defusedxml.ElementTree import fromstring as parse_xml
 
 from corpus_kb.coding.refi_qda import (
     GUID_PATTERN,
@@ -119,7 +119,7 @@ def export(codebook: dict[str, Any], manifest: ReleaseManifest):
 
 
 def test_export_xml_structure(export) -> None:
-    root = ET.fromstring(export.project_xml)
+    root = parse_xml(export.project_xml)
     assert root.tag == f"{{{REFI_QDA_NAMESPACE}}}Project"
     assert root.get("name") == "corpus-kb cb-test-001"
     assert root.get("origin")
@@ -143,7 +143,7 @@ def test_export_xml_structure(export) -> None:
 
 
 def test_export_description_carries_marker_and_echo(export) -> None:
-    root = ET.fromstring(export.project_xml)
+    root = parse_xml(export.project_xml)
     desc = root.find("q:CodeBook/q:Codes/q:Code/q:Description", NS)
     assert desc is not None and desc.text
     echo, marker, payload = desc.text.partition(META_MARKER)

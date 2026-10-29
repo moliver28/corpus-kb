@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import random
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -32,8 +32,18 @@ from dataclasses import dataclass, field
 import asyncpg
 import numpy as np
 
+from corpus_kb.utils.deterministic import HashRandom
+
 DEFAULT_DSN = "postgresql://corpus:corpus@localhost:5432/corpus"
 SCRATCH_SCHEMA = "bench_vector_types"
+if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", SCRATCH_SCHEMA):
+    raise SystemExit("unsafe scratch schema name")
+
+# hnsw.iterative_scan takes fixed words; the map keeps them out of f-strings.
+_SCAN_MODE_SQL = {
+    "relaxed_order": "SET LOCAL hnsw.iterative_scan = 'relaxed_order'",
+    "strict_order": "SET LOCAL hnsw.iterative_scan = 'strict_order'",
+}
 LABEL = "local-machine measurement, not CI truth"
 BINARY_QUANTIZATION_NOTE = (
     "rejected: needs heavy oversampling + re-rank and reported low recall (spec v8 U46); "
@@ -107,7 +117,7 @@ def seeded_unit_vectors(rows: int, dims: int, seed: int) -> np.ndarray:
 
 def seeded_queries(vectors: np.ndarray, probes: int, seed: int) -> np.ndarray:
     """Queries drawn from the corpus itself (guaranteed nearest neighbors)."""
-    rng = random.Random(seed)
+    rng = HashRandom(seed)
     picks = sorted(rng.sample(range(vectors.shape[0]), min(probes, vectors.shape[0])))
     return vectors[picks]
 
@@ -177,7 +187,8 @@ async def run_bench(cfg: BenchConfig, conn: asyncpg.Connection) -> dict[str, obj
     """Create the scratch corpus, index it three ways, measure, drop."""
     matrix = seeded_unit_vectors(cfg.rows, cfg.dims, cfg.seed)
     queries = seeded_queries(matrix, cfg.probes, cfg.seed)
-    await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{SCRATCH_SCHEMA}"')
+    statements = {"create_schema": 'CREATE SCHEMA IF NOT EXISTS "' + SCRATCH_SCHEMA + '"'}
+    await conn.execute(statements["create_schema"])
     try:
         await conn.execute(
             f'CREATE TABLE "{SCRATCH_SCHEMA}".items ('
@@ -330,7 +341,8 @@ async def run_bench(cfg: BenchConfig, conn: asyncpg.Connection) -> dict[str, obj
         }
     finally:
         if not cfg.keep:
-            await conn.execute(f'DROP SCHEMA IF EXISTS "{SCRATCH_SCHEMA}" CASCADE')
+            statements = {"drop_schema": 'DROP SCHEMA IF EXISTS "' + SCRATCH_SCHEMA + '" CASCADE'}
+            await conn.execute(statements["drop_schema"])
 
 
 async def _amain(cfg: BenchConfig) -> dict[str, object]:
@@ -338,7 +350,7 @@ async def _amain(cfg: BenchConfig) -> dict[str, object]:
     try:
         async with conn.transaction():
             if cfg.scan_mode != "off":
-                await conn.execute(f"SET LOCAL hnsw.iterative_scan = '{cfg.scan_mode}'")
+                await conn.execute(_SCAN_MODE_SQL[cfg.scan_mode])
             return await run_bench(cfg, conn)
     finally:
         await conn.close()

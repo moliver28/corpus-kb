@@ -3,6 +3,7 @@
 //   CORPUS_KB_BASE_URL=http://localhost:8010 node scripts/record-fixtures.ts
 // Canonical fixtures (no live route yet) are never touched — flip their
 // "source" to "recorded" and add a probe here once the route exists.
+import { lookup } from "node:dns/promises";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,6 +18,26 @@ interface Probe {
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = resolve(here, "..", "src", "test", "fixtures");
 const base = process.env["CORPUS_KB_BASE_URL"] ?? "http://localhost:8010";
+// The recorder talks to a local dev server only; fail on anything else.
+const parsedBase = new URL(base);
+if (parsedBase.protocol !== "http:" && parsedBase.protocol !== "https:") {
+  throw new Error(`CORPUS_KB_BASE_URL must be http or https; got ${base}`);
+}
+if (parsedBase.username || parsedBase.password) {
+  throw new Error(`CORPUS_KB_BASE_URL must not carry credentials; got ${base}`);
+}
+// One more boundary: the host must be a loopback name that resolves to a
+// loopback address, so the recorder can never point at another machine.
+const host = parsedBase.hostname.replace(/^\[/, "").replace(/\]$/, "");
+if (host !== "localhost" && host !== "127.0.0.1" && host !== "::1") {
+  throw new Error(`CORPUS_KB_BASE_URL must be a loopback host; got ${parsedBase.hostname}`);
+}
+const resolved = await lookup(host);
+if (resolved.address !== "127.0.0.1" && resolved.address !== "::1") {
+  throw new Error(
+    `CORPUS_KB_BASE_URL must resolve to a loopback address; got ${resolved.address}`,
+  );
+}
 
 const PROBES: Probe[] = [
   {
@@ -33,7 +54,8 @@ const PROBES: Probe[] = [
 for (const probe of PROBES) {
   let response: Response;
   try {
-    response = await fetch(base + probe.path, {
+    const url = new URL(probe.path, base);
+    response = await fetch(url, {
       method: probe.method,
       headers: { "Content-Type": "application/json" },
     });

@@ -522,3 +522,7 @@ offset_invariant_problems
 # the lazy ranx surface. compare() carries stat_test only as keyword
 # signature surface; vulture sees no body reference.
 stat_test
+
+# rerank_settings (SSRF hardening): allow_remote_urls is a frozen-dataclass
+# field read by load_rerank_settings callers; vulture sees attribute-only use.
+allow_remote_urls

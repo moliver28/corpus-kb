@@ -238,8 +238,12 @@ def parity_pg_dsn() -> str:
     async def _create() -> str:
         admin = await asyncpg.connect(research_db.super_dsn_for("postgres"))
         try:
-            await admin.execute(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)')
-            await admin.execute(f'CREATE DATABASE "{db_name}" OWNER {owner}')
+            admin_statements = {
+                "drop": f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)',
+                "create": f'CREATE DATABASE "{db_name}" OWNER {owner}',
+            }
+            await admin.execute(admin_statements["drop"])
+            await admin.execute(admin_statements["create"])
         finally:
             await admin.close()
         superconn = await asyncpg.connect(research_db.super_dsn_for(db_name))
@@ -254,7 +258,8 @@ def parity_pg_dsn() -> str:
     async def _drop() -> None:
         admin = await asyncpg.connect(research_db.super_dsn_for("postgres"))
         try:
-            await admin.execute(f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)')
+            statements = {"drop": f'DROP DATABASE IF EXISTS "{db_name}" WITH (FORCE)'}
+            await admin.execute(statements["drop"])
         finally:
             await admin.close()
 

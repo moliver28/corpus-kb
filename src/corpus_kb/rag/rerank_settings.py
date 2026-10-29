@@ -16,8 +16,10 @@ become a hard dependency of search, rag/reranker.py degrade contract).
 
 from __future__ import annotations
 
+import ipaddress
 from dataclasses import dataclass
 from typing import Any, cast
+from urllib.parse import urlparse
 
 DEFAULT_RERANK_ENABLED = True
 DEFAULT_RERANK_BACKEND: str | None = None
@@ -25,6 +27,10 @@ DEFAULT_RERANK_MODEL = "qwen3-reranker:4b"
 DEFAULT_RERANK_BASE_URL = "http://localhost:11434"
 # llama-server's default port (reranking.backend: llamacpp reads this URL).
 DEFAULT_RERANK_LLAMACPP_URL = "http://localhost:8080"
+# The rerank endpoints are operator-configured local inference servers.
+# Remote hosts are opt-in so a tampered config cannot pivot the server
+# at arbitrary internal HTTP services (SSRF hardening, issue #210).
+DEFAULT_RERANK_ALLOW_REMOTE_URLS = False
 DEFAULT_OVER_RETRIEVE_N = 60
 DEFAULT_RERANK_CANDIDATES = 100
 DEFAULT_RETURN_TOP_K = 20
@@ -38,6 +44,8 @@ CALIBRATION_MODES = frozenset({"minmax", "none"})
 RETURN_TOP_K_MIN = 1
 RETURN_TOP_K_MAX = 1000
 
+_ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
+
 
 RERANK_CONFIG_DEFAULTS: dict[str, Any] = {
     "enabled": DEFAULT_RERANK_ENABLED,
@@ -45,6 +53,7 @@ RERANK_CONFIG_DEFAULTS: dict[str, Any] = {
     "model": DEFAULT_RERANK_MODEL,
     "base_url": DEFAULT_RERANK_BASE_URL,
     "llamacpp_url": DEFAULT_RERANK_LLAMACPP_URL,
+    "allow_remote_urls": DEFAULT_RERANK_ALLOW_REMOTE_URLS,
     "over_retrieve_n": DEFAULT_OVER_RETRIEVE_N,
     "candidates": DEFAULT_RERANK_CANDIDATES,
     "return_top_k": DEFAULT_RETURN_TOP_K,
@@ -76,6 +85,7 @@ class RerankSettings:
     model: str = DEFAULT_RERANK_MODEL
     base_url: str = DEFAULT_RERANK_BASE_URL
     llamacpp_url: str = DEFAULT_RERANK_LLAMACPP_URL
+    allow_remote_urls: bool = DEFAULT_RERANK_ALLOW_REMOTE_URLS
     over_retrieve_n: int = DEFAULT_OVER_RETRIEVE_N
     candidates: int = DEFAULT_RERANK_CANDIDATES
     return_top_k: int = DEFAULT_RETURN_TOP_K
@@ -93,6 +103,32 @@ def _return_top_k_error(value: object) -> str | None:
         return (
             f"reranking.return_top_k must be between {RETURN_TOP_K_MIN} and "
             f"{RETURN_TOP_K_MAX}; got {value}"
+        )
+    return None
+
+
+def _is_local_host(hostname: str) -> bool:
+    """True for loopback, private, link-local, or reserved addresses."""
+    if hostname in {"localhost", "127.0.0.1", "::1"}:
+        return True
+    try:
+        addr = ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+    return bool(addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved)
+
+
+def _service_url_error(value: str, key: str, allow_remote: bool) -> str | None:
+    """Scheme, credential, and local-host rules for one rerank endpoint."""
+    parsed = urlparse(value)
+    if parsed.scheme not in _ALLOWED_URL_SCHEMES or not parsed.hostname:
+        return f"{key} must be an http or https URL with a host; got {value!r}"
+    if parsed.username is not None or parsed.password is not None:
+        return f"{key} must not carry credentials; got {value!r}"
+    if not allow_remote and not _is_local_host(parsed.hostname):
+        return (
+            f"{key} must target localhost or a private address; set "
+            f"reranking.allow_remote_urls: true for a remote server; got {value!r}"
         )
     return None
 
@@ -139,12 +175,20 @@ def load_rerank_settings(config: dict[str, Any]) -> RerankSettings:
         raise ValueError(f"reranking.timeout_seconds must be a number; got {timeout!r}")
     if float(timeout) <= 0:
         raise ValueError(f"reranking.timeout_seconds must be positive; got {timeout!r}")
+    allow_remote = block.get("allow_remote_urls", DEFAULT_RERANK_ALLOW_REMOTE_URLS)
+    if not isinstance(allow_remote, bool):
+        raise ValueError(f"reranking.allow_remote_urls must be a bool; got {allow_remote!r}")
+    for key, url in (("reranking.base_url", base_url), ("reranking.llamacpp_url", llamacpp_url)):
+        url_error = _service_url_error(url, key, allow_remote)
+        if url_error is not None:
+            raise ValueError(url_error)
     return RerankSettings(
         enabled=enabled,
         backend=backend,
         model=model,
         base_url=base_url,
         llamacpp_url=llamacpp_url,
+        allow_remote_urls=allow_remote,
         over_retrieve_n=over_retrieve_n,
         candidates=candidates,
         return_top_k=return_top_k,

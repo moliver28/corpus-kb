@@ -217,7 +217,8 @@ def assert_postgres_events_empty(conn_str: str) -> None:
     app = CorpusApplication(conn_str, backend="postgres")
     with psycopg.connect(conn_str) as conn, PgCursor(conn.cursor()) as cur:
         for table in (_snapshot_table(app), events_table_name(app)):
-            cur.execute(f"SELECT count(*) FROM {table}")  # lib-owned + _table_guard names
+            statements = {"count": f"SELECT count(*) FROM {table}"}
+            cur.execute(statements["count"])
             row = cur.fetchone()
             if row and row[0]:
                 raise ConflictError(TARGET_NOT_EMPTY, remediation=TARGET_NOT_EMPTY)

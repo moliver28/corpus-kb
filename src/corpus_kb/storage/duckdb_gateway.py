@@ -170,7 +170,9 @@ class DuckDbGateway:
                     raise
                 conflict = exc
                 if attempt + 1 < MAX_TRANSACTION_ATTEMPTS:
-                    await asyncio.sleep(_BACKOFF_SECONDS * 2**attempt * random.uniform(0.8, 1.2))
+                    await asyncio.sleep(
+                        _BACKOFF_SECONDS * 2**attempt * random.SystemRandom().uniform(0.8, 1.2)
+                    )
         assert conflict is not None
         raise conflict
 

@@ -9,12 +9,12 @@ sub-shape text, pictures warn (no OCR in scope).
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
+from defusedxml.ElementTree import fromstring as parse_untrusted_xml
 from pptx.chart.chart import Chart
 from pptx.presentation import Presentation
 from pptx.shapes.autoshape import Shape
@@ -302,7 +302,7 @@ def _company(deck: Presentation) -> str | None:
         for part in deck.part.package.iter_parts():
             if str(part.partname) != _APP_XML_PART:
                 continue
-            root = ET.fromstring(part.blob)
+            root = parse_untrusted_xml(part.blob)
             node = root.find(f"{_EXTENDED_NS}Company")
             return _clean_text(node.text) if node is not None else None
     except Exception:
