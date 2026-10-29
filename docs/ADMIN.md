@@ -217,6 +217,14 @@ The windowed large-PDF strategy (`docs/INGESTION-STRATEGIES.md`,
 | `parser` | `docling` | The page parser: `docling` or `pypdf` |
 | `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |
 
+The cache grows and nothing prunes it today. Each parsed window is one
+JSON file named `<parser>-<16 hex chars>-w<NNNN>.json` under
+`textbook.cache_dir`. A changed file or a parser change adds new files;
+the old files stay. To reclaim the space, delete the directory. That is
+safe at any time: the next run re-parses what it misses, so a delete
+only costs parse time. No cache garbage collection ships in this
+version.
+
 ### `queue`
 
 The durable ingest queue (`docs/HARNESS-PLAYBOOKS.md`, "Recipe: queue
@@ -227,7 +235,7 @@ the textbooks"). Enqueue lands rows; a worker drains them.
 | `autorun` | `false` | `true` lets the server start a queue worker at boot; `false` keeps the queue at rest until `corpus-kb queue-run` starts |
 | `poll_seconds` | `20` | Seconds between the worker's claim scans. Positive int |
 | `stale_lease_seconds` | `600` | How long a running row's heartbeat may go quiet before the worker may reclaim it. Positive int |
-| `max_attempts` | `3` | Retry cap per row; the row lands on `failed` past it. Positive int |
+| `max_attempts` | `3` | Retry cap per row. Each failed run or reclaimed stale lease costs one attempt; the row lands on `failed` past the cap. Positive int |
 
 ### Environment variables
 

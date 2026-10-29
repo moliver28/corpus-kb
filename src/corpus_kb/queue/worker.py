@@ -11,7 +11,9 @@ Success fills the run id and counters; failure retries under max_attempts.
 One drain pass gives each row one attempt (the pass watermark), so a
 failing book waits for the next pass, not a tight retry loop. Postgres
 claims run under ``FOR UPDATE SKIP LOCKED``; duckdb is refused typed.
-The stop flag finishes the current book and releases an unstarted claim.
+A lost lease is per-book: the worker drops that book's result and the
+drain continues. The stop flag is only for a signal or a shutdown; it
+finishes the current book and releases an unstarted claim.
 """
 
 from __future__ import annotations
@@ -133,8 +135,8 @@ class QueueWorker:
         lost: list[bool] = []
 
         def _mark_lost() -> None:
+            # Per-book, never global: the drain continues; the stop stays for signals.
             lost.append(True)
-            self.stop.request("the queue lease was lost")
 
         async with heartbeat(
             self._store, queue_id, self._identity.claimed_by, self._beat_interval(), _mark_lost
@@ -231,7 +233,8 @@ class QueueWorker:
                     queue_id=str(row.get("id")),
                     path=str(row.get("path")),
                     queued_at=iso_or_empty(row.get("queued_at")),
-                    status="pending",
+                    status=report_status(row.get("status") or "pending"),
+                    last_error=str_or_none(row.get("last_error")),
                     detail="reclaimed: the worker lease ran out",
                 )
             )

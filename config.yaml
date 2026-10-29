@@ -86,8 +86,8 @@ ingestion:
     survey: survey
   default: default
 
-# Textbook ingestion (textbook-ingestion program; the strategy lands in
-# Wave 2 behind the [docling] extra). The textbook gate claims PDFs with
+# Textbook ingestion (textbook-ingestion program; full parses need the
+# [docling] extra). The textbook gate claims PDFs with
 # at least min_pages pages (pypdf probe, the [scan] extra) and windows
 # them into window_pages blocks so one book does not monopolize a run.
 # parser picks the page parser; cache_dir keeps parsed page artifacts

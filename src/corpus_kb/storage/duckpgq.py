@@ -4,9 +4,11 @@
 
 Active when ``graph.duckdb_graph_backend: duckpgq`` (and the database
 backend is duckdb). The extension installs from the community repository
-on first use; ANY failure raises the typed
+on first use; any engine failure raises the typed
 ``DuckPGQUnavailableError``, the store warns once, and that connection
-stays on the recursive-CTE path permanently.
+stays on the recursive-CTE path permanently. A walk deeper than the
+chain bound is not a failure: the store pre-checks depth and takes the
+CTE path with the engine still on.
 
 Engine reality (probed on duckdb 1.5.6, windows_amd64, duckpgq community):
 
@@ -20,8 +22,9 @@ Engine reality (probed on duckdb 1.5.6, windows_amd64, duckpgq community):
     are stable and do carry edge predicates.
   - One statement per orientation chain therefore renders each walk:
     for depth ``k`` the walk is ``2**k`` chains (one per out/in
-    permutation), depths 1..3. Deep walks are not expressible; the
-    store falls back. The per-statement rows merge in
+    permutation), depths 1..3. Deep walks are not expressible; the store
+    pre-checks depth and routes them to the recursive CTE with the
+    engine still on. The per-statement rows merge in
     ``merge_min_depth_rows`` (zero-drift rule 9: the pinned
     ``(depth, name, entity_id)`` order, min depth per node).
 
@@ -193,10 +196,11 @@ def traversal_statements(
     Each list element is a self-contained statement (one orientation
     chain per depth); the store runs them separately and merges the
     rows — two GRAPH_TABLE arms in one statement crash this build.
-    Depths past ``MAX_NEIGHBOR_HOPS`` raise the typed error (the store
-    falls back to the recursive CTE, which owns deeper walks).
-    ``include_start`` adds the depth-0 base row the recursive CTE seeds
-    (the bfs visited map needs it).
+    Depths past ``MAX_NEIGHBOR_HOPS`` raise the typed error. The store
+    pre-checks depth, so a deep walk never reaches this module: it takes
+    the recursive CTE with the engine still on. This guard is for direct
+    callers. ``include_start`` adds the depth-0 base row the recursive
+    CTE seeds (the bfs visited map needs it).
     """
     if direction not in ("in", "out", "both"):
         raise ValueError(f"direction must be one of ('in', 'out', 'both'), got {direction!r}")

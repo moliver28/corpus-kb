@@ -5,8 +5,11 @@
 --   UUID -> VARCHAR (values stay canonical uuid text), JSONB -> JSON.
 --   RLS and policies are dropped; the gateway carries tenant predicates.
 --   The unique partial index loses its WHERE predicate (DuckDB has no
---   partial indexes; the 022 mirror pattern) and stays UNIQUE — the
---   one-active-row-per-hash rule the enqueue probe relies on.
+--   partial indexes; the 022 mirror pattern). The full UNIQUE is stricter
+--   than Postgres: one row EVER per (tenant, hash), not one ACTIVE row —
+--   a finished or failed hash could never enqueue again. Nothing writes
+--   this table today: the queue store and the worker refuse the duckdb
+--   backend (typed), so the stricter rule has no effect yet.
 -- DuckDB is at 038 because 030 is its own ledger migration; see that
 -- file for the numbering note.
 -- Idempotent: CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS.
@@ -36,6 +39,8 @@ CREATE TABLE IF NOT EXISTS ingest_queue (
 );
 
 -- Postgres keeps this index partial (WHERE status IN ('pending','running')).
+-- Here the full UNIQUE means one row ever per (tenant, hash). Queue
+-- writes are refused on duckdb today, so the stricter rule waits unused.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ingest_queue_active_hash
     ON ingest_queue(tenant_id, content_hash);
 

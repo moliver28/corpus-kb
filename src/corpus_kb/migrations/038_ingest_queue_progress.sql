@@ -1,5 +1,5 @@
 -- ============================================================================
--- Migration 039: the ingest queue progress counters (textbook program, W2C)
+-- Migration 038: the ingest queue progress counters (textbook program, W2C)
 -- ============================================================================
 -- Three nullable columns on the existing ingest_queue table. The Wave 2C
 -- worker fills them from the pipeline result when a book finishes; the
