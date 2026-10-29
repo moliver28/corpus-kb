@@ -33,9 +33,10 @@ con = duckdb.connect(":memory:", config={
     "autoinstall_known_extensions": False,
     "autoload_known_extensions": False,
 })
+LOAD_SQL = {"fts": "LOAD fts", "postgres": "LOAD postgres"}
 for ext in ("fts", "postgres"):
     try:
-        con.execute(f"LOAD {ext}")
+        con.execute(LOAD_SQL[ext])
         print(f"LOAD-{ext}: OK")
     except Exception as e:
         print(f"LOAD-{ext}-ERRTYPE: {type(e).__module__}.{type(e).__name__}")

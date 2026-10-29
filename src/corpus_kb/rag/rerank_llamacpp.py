@@ -106,7 +106,8 @@ class LlamaCppReranker:
         url = f"{self.base_url}/v1/rerank"
         payload = {"model": self.model, "query": query, "documents": documents}
         try:
-            response = httpx.post(url, json=payload, timeout=self._settings.timeout_seconds)
+            with httpx.Client(timeout=self._settings.timeout_seconds) as client:
+                response = client.post(url, json=payload)
             response.raise_for_status()
             body: object = response.json()
         except (httpx.HTTPError, OSError, ValueError) as exc:

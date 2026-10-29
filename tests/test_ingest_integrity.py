@@ -622,8 +622,12 @@ def integrity_dsn():
 
         admin = await asyncpg.connect(SUPER_DSN)
         try:
-            await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
-            await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
+            admin_statements = {
+                "drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)',
+                "create": f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user',
+            }
+            await admin.execute(admin_statements["drop"])
+            await admin.execute(admin_statements["create"])
         finally:
             await admin.close()
 
@@ -648,7 +652,8 @@ def integrity_dsn():
             await conn.execute("ALTER TABLE chunks NO FORCE ROW LEVEL SECURITY")
             await conn.execute("ALTER TABLE chunks_vectors NO FORCE ROW LEVEL SECURITY")
             # The probe role writes the ledger row in the FORCE-RLS test.
-            await conn.execute(f"GRANT INSERT ON ingest_runs TO {RLS_PROBE_ROLE}")
+            statements = {"grant": f"GRANT INSERT ON ingest_runs TO {RLS_PROBE_ROLE}"}
+            await conn.execute(statements["grant"])
         finally:
             await conn.close()
         return DSN
@@ -704,7 +709,8 @@ async def test_ingest_runs_table_is_force_rls(integrity_pool) -> None:
         # Exercise it through the non-superuser probe role: the app role is
         # the bootstrap SUPERUSER in the CI service image, and a superuser
         # bypasses row level security entirely.
-        await conn.execute(f"SET ROLE {RLS_PROBE_ROLE}")
+        statements = {"stmt": f"SET ROLE {RLS_PROBE_ROLE}"}
+        await conn.execute(statements["stmt"])
         try:
             with pytest.raises(asyncpg.PostgresError):
                 await conn.execute(

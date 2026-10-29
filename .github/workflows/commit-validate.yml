@@ -22,7 +22,9 @@ jobs:
             BASE="origin/master"
             HEAD="HEAD"
           fi
-          git log --format=%B ${BASE}..${HEAD} | while read -r msg; do
+          # --no-merges: mechanical master-sync merge commits carry a generated
+          # subject, not an authored conventional message.
+          git log --no-merges --format=%B ${BASE}..${HEAD} | while read -r msg; do
             if [[ -z "$msg" ]]; then continue; fi
             # Skip Co-authored-by and other footers
             if [[ "$msg" =~ ^[A-Z][a-z]+-.*: ]]; then continue; fi

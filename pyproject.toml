@@ -46,6 +46,10 @@ dependencies = [
     "unstructured[md]>=0.13",
     # python-pptx: pure-Python MIT, first-class PPTX structure.
     "python-pptx>=1.0",
+    # defusedxml: XXE/billion-laughs-safe parsing of untrusted XML
+    # (REFI-QDA project imports, pptx part XML). The Python-docs
+    # recommendation; declared directly because both importers use it.
+    "defusedxml>=0.7.1",
     "asyncpg>=0.29.0",
     "pgvector>=0.3.0",
     "numpy>=1.26",

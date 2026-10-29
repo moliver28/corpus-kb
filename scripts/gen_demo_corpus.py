@@ -23,9 +23,10 @@ the higher-numbered files in place, so delete the folder to start over.
 from __future__ import annotations
 
 import argparse
-import random
 import sys
 from pathlib import Path
+
+from corpus_kb.utils.deterministic import HashRandom
 
 DEFAULT_COUNT = 150
 DEFAULT_SEED = 20261025
@@ -118,11 +119,11 @@ MEETING_ACTIONS = (
 )
 
 
-def _pick(rng: random.Random, items: tuple[str, ...]) -> str:
+def _pick(rng: HashRandom, items: tuple[str, ...]) -> str:
     return rng.choice(items)
 
 
-def _sentences(rng: random.Random, templates: tuple[str, ...], count: int) -> list[str]:
+def _sentences(rng: HashRandom, templates: tuple[str, ...], count: int) -> list[str]:
     lines: list[str] = []
     for _ in range(count):
         template = _pick(rng, templates)
@@ -131,11 +132,11 @@ def _sentences(rng: random.Random, templates: tuple[str, ...], count: int) -> li
     return lines
 
 
-def _title(rng: random.Random, index: int) -> str:
+def _title(rng: HashRandom, index: int) -> str:
     return f"{_pick(rng, TOPICS)} - note {index}"
 
 
-def _note_doc(rng: random.Random, index: int, count: int) -> str:
+def _note_doc(rng: HashRandom, index: int, count: int) -> str:
     parts = [f"# {_title(rng, index)}", ""]
     parts.append(_sentences(rng, NOTE_LINES, 1)[0])
     parts.append("")
@@ -150,7 +151,7 @@ def _note_doc(rng: random.Random, index: int, count: int) -> str:
     return "\n".join(parts)
 
 
-def _faq_doc(rng: random.Random, index: int, count: int) -> str:
+def _faq_doc(rng: HashRandom, index: int, count: int) -> str:
     parts = [f"# FAQ: {_pick(rng, TOPICS)}", ""]
     for _ in range(rng.randint(3, 4)):
         question = _pick(rng, FAQ_QUESTIONS).format(topic=_pick(rng, TOPICS))
@@ -164,7 +165,7 @@ def _faq_doc(rng: random.Random, index: int, count: int) -> str:
     return "\n".join(parts)
 
 
-def _glossary_doc(rng: random.Random, index: int, count: int) -> str:
+def _glossary_doc(rng: HashRandom, index: int, count: int) -> str:
     parts = [f"# Glossary: {_pick(rng, TOPICS)}", ""]
     for _ in range(rng.randint(3, 5)):
         term = _pick(rng, GLOSSARY_TERMS)
@@ -177,7 +178,7 @@ def _glossary_doc(rng: random.Random, index: int, count: int) -> str:
     return "\n".join(parts)
 
 
-def _meeting_doc(rng: random.Random, index: int, count: int) -> str:
+def _meeting_doc(rng: HashRandom, index: int, count: int) -> str:
     parts = [f"# Meeting notes: {_pick(rng, TOPICS)}", ""]
     parts.append("## Decisions")
     parts.append("")
@@ -200,7 +201,7 @@ _BUILDERS = (_note_doc, _faq_doc, _glossary_doc, _meeting_doc)
 def build_document(index: int, seed: int, count: int) -> tuple[str, str]:
     """One document's slug and markdown; a pure function of the inputs."""
     # str seed: version-2 seeding is stable across runs and Python versions.
-    rng = random.Random(f"{seed}:{index}")
+    rng = HashRandom(f"{seed}:{index}")
     builder = _BUILDERS[index % len(_BUILDERS)]
     text = builder(rng, index, count)
     heading = text.splitlines()[0].removeprefix("# ")

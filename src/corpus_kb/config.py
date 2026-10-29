@@ -514,6 +514,9 @@ def get_default_config() -> dict[str, object]:
             # llama.cpp /v1/rerank server for backend: "llamacpp"
             # (llama-server listens on 8080 by default).
             "llamacpp_url": "http://localhost:8080",
+            # Remote rerank endpoints are opt-in (SSRF hardening):
+            # localhost and private hosts are always allowed.
+            "allow_remote_urls": False,
             # Rerank pre-fetch width for score-based rerankers.
             "over_retrieve_n": 60,
             "candidates": 100,

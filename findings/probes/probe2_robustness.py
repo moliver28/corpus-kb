@@ -41,8 +41,7 @@ for label, q in queries:
     except Exception as e:
         print(f"[{label!r:>22}] RAISED {type(e).__name__}: {str(e)[:200]}")
 
-random.seed(42)
-rnd = ''.join(random.choices(string.ascii_letters + string.digits + ' ', k=500))
+rnd = ''.join(random.SystemRandom().choices(string.ascii_letters + string.digits + ' ', k=500))
 try:
     rows = con.execute(SHAPE, [rnd]).fetchall()
     print(f"[{'500-char random':>22}] OK rows: {rows if rows else '(empty, no error)'}")

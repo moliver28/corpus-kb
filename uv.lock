@@ -1082,6 +1082,7 @@ source = { editable = "." }
 dependencies = [
     { name = "asyncpg" },
     { name = "cymem" },
+    { name = "defusedxml" },
     { name = "eventsourcing", extra = ["postgres"] },
     { name = "fastapi" },
     { name = "httpx" },
@@ -1213,6 +1214,7 @@ requires-dist = [
     { name = "cymem", specifier = "<2.0.14" },
     { name = "datasketch", marker = "extra == 'dedup'", specifier = ">=2.0,<3" },
     { name = "deepeval", marker = "extra == 'eval'", specifier = ">=4.3" },
+    { name = "defusedxml", specifier = ">=0.7.1" },
     { name = "deptry", marker = "extra == 'dev'", specifier = ">=0.20" },
     { name = "diff-cover", marker = "extra == 'dev'", specifier = ">=9.0" },
     { name = "duckdb", marker = "extra == 'duckdb'", specifier = ">=1.5,<2.0" },

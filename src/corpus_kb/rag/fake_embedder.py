@@ -6,7 +6,7 @@ float is derived directly from SHA-256 digest bytes (no RNG stream, no
 floating-point environment dependence beyond IEEE-754 division).
 
 Distinction from ``corpus_kb.rag.embedder.FakeEmbedder``: that one is the
-legacy CI stub seeded via ``random.Random(int(sha256(...)))`` and emits
+legacy CI stub seeded from a SHA-256 digest and emits
 NON-normalized uniform vectors; it is kept for compatibility with existing
 tests. This module's FakeEmbedder is the contract-tested baseline oracle
 for retrieval/eval harnesses (P3+): L2-normalized, configurable dims,

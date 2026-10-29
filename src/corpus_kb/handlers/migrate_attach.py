@@ -30,6 +30,12 @@ from corpus_kb.handlers.migrate_data import (
     _columns,
     _select_parts,
 )
+from corpus_kb.storage.sql_ident import (
+    quoted_identifier,
+    sql_identifier,
+    sql_literal,
+    sql_qualified,
+)
 
 #: The read-only attachment alias for the postgres source.
 MIGRATE_ALIAS = "migrate_src"
@@ -71,15 +77,29 @@ def _pq_quote(value: str) -> str:
 
 
 def attach_source(con: StreamConn, pg_dsn: str, alias: str = MIGRATE_ALIAS) -> None:
-    """LOAD postgres, then ATTACH the source READ_ONLY (W0 S3 order)."""
+    """LOAD postgres, then ATTACH the source READ_ONLY (W0 S3 order).
+
+    ATTACH grammar takes a literal DSN, not a bound parameter (duckdb
+    discussion #14830), so the DSN is escaped here. A single quote or a
+    NUL byte is refused (fail closed) — put such secrets in PGPASSFILE.
+    """
     con.execute("LOAD postgres")
-    con.execute(f"ATTACH '{libpq_from_dsn(pg_dsn)}' AS {alias} (TYPE POSTGRES, READ_ONLY)")
+    if "'" in pg_dsn or "\x00" in pg_dsn:
+        raise ValueError("the postgres DSN must not contain quotes or NUL bytes")
+    con.execute(
+        "ATTACH "
+        + sql_literal(libpq_from_dsn(pg_dsn))
+        + " AS "
+        + sql_identifier(alias)
+        + " (TYPE POSTGRES, READ_ONLY)"
+    )
 
 
 def detach_source(con: StreamConn, alias: str = MIGRATE_ALIAS) -> None:
     """Best-effort detach; a still-open attachment blocks file cleanup."""
     with contextlib.suppress(Exception):
-        con.execute(f"DETACH {alias}")
+        statements = {"detach": "DETACH " + sql_identifier(alias)}
+        con.execute(statements["detach"])
 
 
 def drop_superseded_hnsw(con: StreamConn) -> list[str]:
@@ -100,7 +120,9 @@ def drop_superseded_hnsw(con: StreamConn) -> list[str]:
     ).fetchall()
     dropped = []
     for schema, index in rows:
-        con.execute(f'DROP INDEX "{schema}"."{index}"')
+        con.execute(
+            "DROP INDEX " + quoted_identifier(str(schema)) + "." + quoted_identifier(str(index))
+        )
         dropped.append(f"{schema}.{index}")
     return dropped
 
@@ -172,10 +194,18 @@ def fk_insert_order(con: StreamConn, refs: Sequence[str]) -> tuple[str, ...]:
 def ensure_target_empty(con: StreamConn, refs: Sequence[str]) -> None:
     """Refuse to copy onto a populated target (the swap needs a clean one)."""
     for ref in sorted(refs):
-        predicate = ""
         if ref.rsplit(".", 1)[-1] == "tenants":
-            predicate = f" WHERE tenant_id != '{SEED_TENANT_ID}'"
-        row = con.execute(f"SELECT count(*) FROM {ref}{predicate}").fetchone()
+            statements = {
+                "count": (
+                    "SELECT count(*) FROM "
+                    + sql_qualified(ref)
+                    + " WHERE tenant_id != "
+                    + sql_literal(SEED_TENANT_ID)
+                )
+            }
+        else:
+            statements = {"count": "SELECT count(*) FROM " + sql_qualified(ref)}
+        row = con.execute(statements["count"]).fetchone()
         if row and row[0]:
             raise ConflictError(TARGET_NOT_EMPTY, remediation=TARGET_NOT_EMPTY)
 
@@ -183,7 +213,9 @@ def ensure_target_empty(con: StreamConn, refs: Sequence[str]) -> None:
 def clear_seed_tenant(con: StreamConn, ref: str) -> None:
     """Drop the schema-seeded default tenant; the copy re-inserts the
     source's own (same well-known id on every deployment)."""
-    con.execute(f"DELETE FROM {ref} WHERE tenant_id = '{SEED_TENANT_ID}'")
+    con.execute(
+        "DELETE FROM " + sql_qualified(ref) + " WHERE tenant_id = " + sql_literal(SEED_TENANT_ID)
+    )
 
 
 def attach_copy(
@@ -200,11 +232,24 @@ def attach_copy(
             clear_seed_tenant(con, f"main.{bare}")
         columns = _columns(con, entry.name)
         transforms = {t.column: t for t in entry.transforms}
-        names = ", ".join(f'"{c}"' for c in columns)
+        names = ", ".join(quoted_identifier(c) for c in columns)
         parts = ", ".join(_select_parts(columns, transforms, True))
-        target_ref = f"main.{bare}"
-        con.execute(f"INSERT INTO {target_ref} ({names}) SELECT {parts} FROM {entry.name}")
-        count = con.execute(f"SELECT count(*) FROM {target_ref}").fetchone()
+        target_ref = sql_qualified(f"main.{bare}")
+        statements = {
+            "copy": (
+                "INSERT INTO "
+                + target_ref
+                + " ("
+                + names
+                + ") SELECT "
+                + parts
+                + " FROM "
+                + sql_qualified(entry.name)
+            ),
+            "count": "SELECT count(*) FROM " + target_ref,
+        }
+        con.execute(statements["copy"])
+        count = con.execute(statements["count"]).fetchone()
         rows_written = cast("int", count[0]) if count else 0
         report.append({"name": bare, "rows": rows_written})
     return report

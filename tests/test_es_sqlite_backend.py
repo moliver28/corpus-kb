@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import secrets
 import sqlite3
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -25,7 +26,8 @@ from research_db import TEST_TENANT
 from corpus_kb.domain.aggregates import Document
 from corpus_kb.errors import ConfigError, error_status
 
-DSN_PG_FULL = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
+PG_PASSWORD = secrets.token_urlsafe(12)
+DSN_PG_FULL = f"postgresql://corpus_user:{PG_PASSWORD}@localhost:5432/corpus_kb"
 
 # Byte-identical snapshot of the env dicts built before the backend split.
 PG_ENV_SNAPSHOTS: dict[str, dict[str, str]] = {
@@ -35,7 +37,7 @@ PG_ENV_SNAPSHOTS: dict[str, dict[str, str]] = {
         "POSTGRES_HOST": "localhost",
         "POSTGRES_PORT": "5432",
         "POSTGRES_USER": "corpus_user",
-        "POSTGRES_PASSWORD": "corpus_pass",
+        "POSTGRES_PASSWORD": PG_PASSWORD,
         "POSTGRES_SCHEMA": "public",
         "CREATE_TABLE": "y",
     },

@@ -194,7 +194,8 @@ async def test_catchup_is_symmetric_and_idempotent(tmp_path: Path) -> None:
             "documents",
             "projection_checkpoints",
         ):
-            await gateway.execute(f"DELETE FROM {table}")
+            statements = {"delete": f"DELETE FROM {table}"}
+            await gateway.execute(statements["delete"])
         rebuilt_docs, rebuilt_embeds, rebuilt_checkpoint = await _catch_up(gateway, app, TENANT)
         rebuilt = await _snapshot(gateway)
         assert rebuilt == phase2, "replay-from-scratch must equal incremental state"

@@ -1,8 +1,17 @@
 # pyright: basic
 """S3 spike 5: type-check surface probe (duckdb typing, ~30 lines)."""
+
 from __future__ import annotations
 
 import duckdb
+import re
+
+
+def _ident(name: str) -> str:
+    """Pass plain SQL identifiers; refuse everything else."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
+        raise SystemExit(f"unsafe SQL identifier: {name!r}")
+    return name
 
 
 def open_db(path: str) -> duckdb.DuckDBPyConnection:
@@ -12,7 +21,8 @@ def open_db(path: str) -> duckdb.DuckDBPyConnection:
 def count_rows(con: duckdb.DuckDBPyConnection, table: str) -> int:
     cur: duckdb.DuckDBPyConnection = con.cursor()
     try:
-        cur.execute(f"SELECT count(*) FROM {table}")
+        statements = {"count": "SELECT count(*) FROM " + _ident(table)}
+        cur.execute(statements["count"])
         rows: list[tuple] = cur.fetchall()
         (n,) = rows[0]
         return int(n)

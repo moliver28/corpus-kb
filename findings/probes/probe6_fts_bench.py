@@ -13,11 +13,11 @@ con = duckdb.connect(DB)
 con.execute("LOAD fts")
 
 WORDS = [w for w in string.ascii_lowercase]  # will build pseudo words
-random.seed(11)
-vocab = [''.join(random.choices(string.ascii_lowercase, k=random.randint(3, 10))) for _ in range(4000)]
+rng = random.SystemRandom()
+vocab = [''.join(rng.choices(string.ascii_lowercase, k=rng.randint(3, 10))) for _ in range(4000)]
 
 def sentence(n=80):
-    return ' '.join(random.choices(vocab, k=n))
+    return ' '.join(rng.choices(vocab, k=n))
 
 print("=== build 5000-row chunks table ===")
 t0 = time.perf_counter()
@@ -47,7 +47,7 @@ print(f"drop_fts_index: {t_drop:.3f}s | recreate: {t_recreate:.3f}s | drop+recre
 print("\n=== match_bm25 query timing (param-bound, scalar shape) ===")
 SHAPE = ("SELECT chunk_id, score FROM (SELECT *, fts_main_chunks.match_bm25(chunk_id, $1) AS score "
          "FROM chunks) sq WHERE score IS NOT NULL ORDER BY score DESC LIMIT 10")
-term = random.choice(vocab)
+term = rng.choice(vocab)
 # warm
 r = con.execute(SHAPE, [term]).fetchall()
 times = []
@@ -57,7 +57,7 @@ for _ in range(5):
     times.append(time.perf_counter() - t0)
 print(f"single-term query x5: min {min(times)*1000:.1f}ms max {max(times)*1000:.1f}ms; rows={len(rows_q)}")
 
-multi = f"{random.choice(vocab)} {random.choice(vocab)} {random.choice(vocab)}"
+multi = f"{rng.choice(vocab)} {rng.choice(vocab)} {rng.choice(vocab)}"
 times = []
 for _ in range(5):
     t0 = time.perf_counter()

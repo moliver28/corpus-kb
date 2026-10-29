@@ -308,8 +308,29 @@ def test_llamacpp_url_settings_defaults_and_overrides() -> None:
     assert DEFAULT_RERANK_LLAMACPP_URL == "http://localhost:8080"
     assert RERANK_CONFIG_DEFAULTS["llamacpp_url"] == "http://localhost:8080"
     assert load_rerank_settings({}).llamacpp_url == "http://localhost:8080"
-    loaded = load_rerank_settings({"reranking": {"llamacpp_url": "http://gpu-box:8081"}})
+    loaded = load_rerank_settings(
+        {"reranking": {"llamacpp_url": "http://gpu-box:8081", "allow_remote_urls": True}}
+    )
     assert loaded.llamacpp_url == "http://gpu-box:8081"
+
+
+def test_rerank_urls_default_to_local_hosts() -> None:
+    """SSRF hardening: remote endpoints need reranking.allow_remote_urls."""
+    with pytest.raises(ValueError, match="must target localhost or a private address"):
+        load_rerank_settings({"reranking": {"llamacpp_url": "http://gpu-box:8081"}})
+    private = load_rerank_settings({"reranking": {"llamacpp_url": "http://192.168.1.10:8080"}})
+    assert private.llamacpp_url == "http://192.168.1.10:8080"
+
+
+def test_rerank_urls_reject_bad_shapes() -> None:
+    """Scheme, host, and credential rules fail loudly at load time."""
+    for bad in ("ftp://x", "http://", "not a url"):
+        with pytest.raises(ValueError, match="must be an http or https URL"):
+            load_rerank_settings({"reranking": {"llamacpp_url": bad}})
+    with pytest.raises(ValueError, match="must not carry credentials"):
+        load_rerank_settings({"reranking": {"llamacpp_url": "http://user:pw@localhost:8080"}})
+    with pytest.raises(ValueError, match="allow_remote_urls must be a bool"):
+        load_rerank_settings({"reranking": {"allow_remote_urls": "yes"}})
 
 
 def test_llamacpp_url_lockstep_across_the_three_config_locations() -> None:

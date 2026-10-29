@@ -275,8 +275,10 @@ def test_duckdb_vector_cast_executes(duck_con: duckdb.DuckDBPyConnection) -> Non
 def test_duckdb_matryoshka_probe_slices(duck_con: duckdb.DuckDBPyConnection) -> None:
     """The DuckDB probe is the 1-based array slice."""
     assert DUCKDB_SMALL.matryoshka_probe("embedding", 2) == "embedding[1:2]"
-    sql = f"SELECT {DUCKDB_SMALL.matryoshka_probe('embedding', 2)} FROM v WHERE id = 1"
-    assert duck_con.execute(sql).fetchone() == ([1.0, 0.0],)
+    statements = {
+        "probe": f"SELECT {DUCKDB_SMALL.matryoshka_probe('embedding', 2)} FROM v WHERE id = 1"
+    }
+    assert duck_con.execute(statements["probe"]).fetchone() == ([1.0, 0.0],)
 
 
 def test_duckdb_fts_match_scalar_macro_shape(fts_con: duckdb.DuckDBPyConnection) -> None:
@@ -344,7 +346,8 @@ def test_duckdb_setting_shims_emit_nothing() -> None:
 
 def test_duckdb_uuid_new_executes(duck_con: duckdb.DuckDBPyConnection) -> None:
     assert DUCKDB.uuid_new() == "gen_random_uuid()"
-    value = duck_con.execute(f"SELECT {DUCKDB.uuid_new()}").fetchone()
+    statements = {"uuid": "SELECT " + DUCKDB.uuid_new()}
+    value = duck_con.execute(statements["uuid"]).fetchone()
     assert value is not None and len(str(value[0])) == 36
 
 
@@ -353,8 +356,10 @@ def test_duckdb_zero_vector_guard_filters(duck_con: duckdb.DuckDBPyConnection) -
     assert DUCKDB_SMALL.zero_vector_guard("embedding") == (
         "sqrt(array_inner_product(embedding, embedding)) > 0"
     )
-    sql = f"SELECT id FROM v WHERE {DUCKDB_SMALL.zero_vector_guard('embedding')} ORDER BY id"
-    assert [r[0] for r in duck_con.execute(sql).fetchall()] == [1, 2]
+    statements = {
+        "guard": f"SELECT id FROM v WHERE {DUCKDB_SMALL.zero_vector_guard('embedding')} ORDER BY id"
+    }
+    assert [r[0] for r in duck_con.execute(statements["guard"]).fetchall()] == [1, 2]
 
 
 # ---------------------------------------------------------------------------

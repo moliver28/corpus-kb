@@ -10,9 +10,10 @@ promotion gate: micro F1 >= 0.80 (absolute floor) AND >= baseline
 
 from __future__ import annotations
 
-import random
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+
+from corpus_kb.utils.deterministic import HashRandom
 
 from ._eval_gold import GoldDoc, GoldSpan, SpanKey, load_gold
 
@@ -149,7 +150,7 @@ def paired_bootstrap(
     for key in baseline_keys:
         doc_base[key[0]].add(key)
 
-    rng = random.Random(seed)
+    rng = HashRandom(seed)
     doc_ids = list(doc_gold)
     deltas: list[float] = []
     for _ in range(resamples):

@@ -33,8 +33,12 @@ async def _create_scratch() -> None:
     # 20): locally the superuser is postgres, in the CI service image it is
     # the bootstrap role corpus_user. No hardcoded role override here.
     admin = await asyncpg.connect(SUPER_DSN)
-    await admin.execute(f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
-    await admin.execute(f'CREATE DATABASE "{SCRATCH_DB}" OWNER corpus_user')
+    statements = {
+        "drop": f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)',
+        "create": f'CREATE DATABASE "{SCRATCH_DB}" OWNER corpus_user',
+    }
+    await admin.execute(statements["drop"])
+    await admin.execute(statements["create"])
     await admin.close()
     # Extensions first, exactly like tests/research_db.py: the scratch role
     # is not a superuser, so it cannot CREATE EXTENSION itself.
@@ -46,7 +50,8 @@ async def _create_scratch() -> None:
 
 async def _drop_scratch() -> None:
     admin = await asyncpg.connect(SUPER_DSN)
-    await admin.execute(f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)')
+    statements = {"drop": f'DROP DATABASE IF EXISTS "{SCRATCH_DB}" WITH (FORCE)'}
+    await admin.execute(statements["drop"])
     await admin.close()
 
 

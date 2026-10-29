@@ -15,13 +15,12 @@ installer once used; this module owns URL parsing from now on.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from urllib.parse import quote, unquote, urlparse
 
 import asyncpg
 
-_IDENT_RX = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
+from corpus_kb.storage.sql_ident import sql_identifier
 
 
 @dataclass
@@ -116,7 +115,10 @@ async def ensure_role_and_database(superuser_dsn: str, parts: DsnParts) -> str:
         if db_exists:
             report += f"; database {parts.database} already exists"
         else:
-            await conn.execute(f"CREATE DATABASE {_quote_ident(parts.database)} OWNER {role}")
+            statements = {
+                "create_db": f"CREATE DATABASE {_quote_ident(parts.database)} OWNER {role}"
+            }
+            await conn.execute(statements["create_db"])
             report += f"; created database {parts.database} (owner {parts.user})"
     finally:
         await conn.close()
@@ -125,9 +127,7 @@ async def ensure_role_and_database(superuser_dsn: str, parts: DsnParts) -> str:
 
 def _quote_ident(name: str) -> str:
     """Quote a DDL identifier after validating it needs no quoting."""
-    if not _IDENT_RX.fullmatch(name):
-        raise ValueError(f"Unsafe SQL identifier: {name!r}")
-    return f'"{name}"'
+    return sql_identifier(name)
 
 
 def _quote_literal(value: str) -> str:

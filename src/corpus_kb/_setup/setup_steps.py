@@ -28,6 +28,7 @@ import yaml
 
 from corpus_kb._setup.install_state import DEFAULT_CONFIG_DIR, DEFAULT_CONFIG_PATH
 from corpus_kb._setup.profiles import load_installer_profiles
+from corpus_kb.storage.sql_ident import sql_identifier
 
 # PostgreSQL server extensions required by migrations 004/005.
 EXTENSIONS: tuple[tuple[str, str], ...] = (
@@ -209,7 +210,8 @@ async def install_database(conn_str: str, apply: bool) -> int:
         conn = await asyncpg.connect(maintenance_dsn, timeout=5)
         exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", dbname)
         if not exists:
-            await conn.execute(f'CREATE DATABASE "{dbname}"')
+            statements = {"create_db": "CREATE DATABASE " + sql_identifier(dbname)}
+            await conn.execute(statements["create_db"])
             print(f"  Created database {dbname}")
         else:
             print(f"  Database {dbname} already exists")

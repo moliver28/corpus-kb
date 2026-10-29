@@ -13,10 +13,11 @@ con.execute("PRAGMA create_fts_index('main.chunks','chunk_id','text')")
 
 DOC_SHAPE = ("SELECT chunk_id, score FROM (SELECT *, fts_main_chunks.match_bm25(chunk_id, {q}) AS score "
              "FROM chunks) sq WHERE score IS NOT NULL ORDER BY score DESC")
+LITERAL_NEEDLE = "'needle'"
 
 print("=== documented literal shape ===")
 try:
-    rows = con.execute(DOC_SHAPE.format(q="'needle'")).fetchall()
+    rows = con.execute(DOC_SHAPE.replace("{q}", LITERAL_NEEDLE)).fetchall()
     print("OK:", rows)
 except Exception as e:
     print("FAIL:", type(e).__name__, "|", str(e)[:300])
@@ -57,14 +58,14 @@ print("=== reopen file DB WITHOUT LOAD fts first (does the index survive? does q
 con.close()
 con2 = duckdb.connect(DB)
 try:
-    rows = con2.execute(DOC_SHAPE.format(q="'needle'")).fetchall()
+    rows = con2.execute(DOC_SHAPE.replace("{q}", LITERAL_NEEDLE)).fetchall()
     print("OK without LOAD:", rows)
 except Exception as e:
     print("FAIL without LOAD:", type(e).__name__, "|", str(e)[:300])
 print("--- now LOAD fts then retry")
 con2.execute("LOAD fts")
 try:
-    rows = con2.execute(DOC_SHAPE.format(q="'needle'")).fetchall()
+    rows = con2.execute(DOC_SHAPE.replace("{q}", LITERAL_NEEDLE)).fetchall()
     print("OK after LOAD:", rows)
 except Exception as e:
     print("FAIL after LOAD:", type(e).__name__, "|", str(e)[:300])

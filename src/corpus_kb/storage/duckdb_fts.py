@@ -30,8 +30,6 @@ from typing import Any
 #: (``fts_main_`` + table name, W0 spike 1/6).
 FTS_SCHEMA = "fts_main_chunks"
 
-_FTS_TARGET = "main.chunks"
-
 
 async def ensure_fts_index(gateway: Any) -> bool:
     """Rebuild the fts index when it is missing or stale. True when rebuilt.
@@ -66,5 +64,5 @@ async def rebuild_fts_index(gateway: Any) -> None:
     with suppress(Exception):  # autoload may have it already; the CREATE is the arbiter
         await gateway.execute("LOAD fts")
     with suppress(duckdb.CatalogException):
-        await gateway.execute(f"PRAGMA drop_fts_index('{_FTS_TARGET}')")
-    await gateway.execute(f"PRAGMA create_fts_index('{_FTS_TARGET}', 'chunk_id', 'text')")
+        await gateway.execute("PRAGMA drop_fts_index('main.chunks')")
+    await gateway.execute("PRAGMA create_fts_index('main.chunks', 'chunk_id', 'text')")

@@ -232,7 +232,8 @@ async def test_coding_rls_forced_and_tenant_scoped_on_live_db() -> None:
             """
         )
         try:
-            await conn.execute(f"SET ROLE {PROBE_ROLE}")
+            statements = {"stmt": f"SET ROLE {PROBE_ROLE}"}
+            await conn.execute(statements["stmt"])
         except asyncpg.InsufficientPrivilegeError:
             pytest.skip("cannot SET ROLE to the non-owner probe role")
         try:

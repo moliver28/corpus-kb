@@ -12,9 +12,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 import asyncpg
+
+
+def _ident(name: str) -> str:
+    """Pass plain SQL identifiers; refuse everything else."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
+        raise SystemExit(f"unsafe SQL identifier: {name!r}")
+    return name
+
 
 DSN = "postgresql://postgres:postgres@localhost:5432/corpus_kb"
 SCRATCH = Path(__file__).resolve().parent / "scratch"
@@ -67,9 +76,9 @@ def duck_side() -> dict:
     out: dict = {}
     con = duckdb.connect()
     con.execute("LOAD postgres")
-    con.execute(
-        f"ATTACH '{DSN}' AS src (TYPE POSTGRES, READ_ONLY)"
-    )
+    if "'" in DSN or "\x00" in DSN:
+        raise SystemExit("DSN must not contain quotes or NUL bytes")
+    con.execute("ATTACH '" + DSN.replace("'", "''") + "' AS src (TYPE POSTGRES, READ_ONLY)")
     # DuckDB-side types of chunks_vectors
     out["chunks_vectors_duckdb_types"] = [
         [r[0], r[1]] for r in con.execute("DESCRIBE src.public.chunks_vectors").fetchall()
@@ -87,7 +96,9 @@ def duck_side() -> dict:
     # CTAS into a scratch file: constraints dropped? halfvec text parseable?
     scon = duckdb.connect(str(SCRATCH_DB))
     scon.execute("LOAD postgres")
-    scon.execute(f"ATTACH '{DSN}' AS src (TYPE POSTGRES, READ_ONLY)")
+    if "'" in DSN or "\x00" in DSN:
+        raise SystemExit("DSN must not contain quotes or NUL bytes")
+    scon.execute("ATTACH '" + DSN.replace("'", "''") + "' AS src (TYPE POSTGRES, READ_ONLY)")
     scon.execute(
         """
         CREATE TABLE scratch_chunks AS
@@ -114,8 +125,12 @@ def duck_side() -> dict:
     out["scratch_vectors_cols"] = {c: types[c] for c in cols}
     vec_col = next((c for c in cols if "vec" in c.lower() or "half" in c.lower()), None)
     if vec_col:
+        vec_col = _ident(vec_col)
         typ = types[vec_col]
-        row = scon.execute(f"SELECT {vec_col} FROM scratch_vectors WHERE {vec_col} IS NOT NULL LIMIT 1").fetchone()
+        row = scon.execute(
+            "SELECT " + vec_col + " FROM scratch_vectors"
+            " WHERE " + vec_col + " IS NOT NULL LIMIT 1"
+        ).fetchone()
         sample = row[0] if row else None
         out["halfvec_sample"] = {
             "duckdb_type": typ,

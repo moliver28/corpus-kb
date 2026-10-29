@@ -263,7 +263,8 @@ class TestE2EIntegration:
         # security entirely, so the app-role read would see the row there.
         from tests.research_db import RLS_PROBE_ROLE
 
-        await db_conn.execute(f"SET ROLE {RLS_PROBE_ROLE}")
+        statements = {"stmt": f"SET ROLE {RLS_PROBE_ROLE}"}
+        await db_conn.execute(statements["stmt"])
         count = await db_conn.fetchval("SELECT COUNT(*) FROM documents")
         await db_conn.execute("RESET ROLE")
         assert count == 0, f"RLS failed: tenant B sees {count} documents from tenant A"

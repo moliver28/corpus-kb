@@ -11,6 +11,7 @@ server both work.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 import asyncpg
@@ -19,6 +20,18 @@ from corpus_kb._setup.migrate import run_migrations
 from corpus_kb._setup.schema_apply import apply_schema
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
+
+
+def _pg_ident(name: str) -> str:
+    """Pass plain SQL identifiers; refuse everything else."""
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name or ""):
+        raise SystemExit(f"unsafe SQL identifier: {name!r}")
+    return '"' + name + '"'
+
+
+def _pg_lit(value: str) -> str:
+    """Single-quoted SQL string literal (doubling)."""
+    return "'" + value.replace("'", "''") + "'"
 
 
 def pg_env() -> tuple[str, str, str]:
@@ -39,8 +52,12 @@ async def pg_prepare(base_dsn: str, super_dsn: str, user: str, db: str) -> None:
     """Drop, create and fully schema one throwaway bench database."""
     admin = await asyncpg.connect(super_dsn + "/postgres")
     try:
-        await admin.execute(f'DROP DATABASE IF EXISTS "{db}" WITH (FORCE)')
-        await admin.execute(f'CREATE DATABASE "{db}" OWNER {user}')
+        statements = {
+            "drop_db": "DROP DATABASE IF EXISTS " + _pg_ident(db) + " WITH (FORCE)",
+            "create_db": "CREATE DATABASE " + _pg_ident(db) + " OWNER " + _pg_ident(user),
+        }
+        await admin.execute(statements["drop_db"])
+        await admin.execute(statements["create_db"])
     finally:
         await admin.close()
     # The extensions must exist BEFORE apply_schema: storage/schema.sql opens
@@ -59,8 +76,9 @@ async def pg_drop(super_dsn: str, db: str) -> int:
     """Drop the bench database; return its byte size as measured before."""
     admin = await asyncpg.connect(super_dsn + "/postgres")
     try:
-        size = int(await admin.fetchval(f"SELECT pg_database_size('{db}')") or 0)
-        await admin.execute(f'DROP DATABASE IF EXISTS "{db}" WITH (FORCE)')
+        size = int(await admin.fetchval("SELECT pg_database_size(" + _pg_lit(db) + ")") or 0)
+        statements = {"drop_db": "DROP DATABASE IF EXISTS " + _pg_ident(db) + " WITH (FORCE)"}
+        await admin.execute(statements["drop_db"])
     finally:
         await admin.close()
     return size

@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
 from corpus_kb.errors import ConflictError
+from corpus_kb.storage.sql_ident import quoted_identifier, sql_qualified
 
 Disposition = Literal["copy", "skip", "special"]
 
@@ -192,17 +193,27 @@ def _copy_table(
     """
     columns = _columns(source, entry.name)
     transforms = {t.column: t for t in entry.transforms}
-    names = ", ".join(f'"{c}"' for c in columns)
+    names = ", ".join(quoted_identifier(c) for c in columns)
     parts = ", ".join(_select_parts(columns, transforms, reparse))
-    select = f"SELECT {parts} FROM {entry.name}"
     marks = ", ".join("?" for _ in columns)
-    insert = f"INSERT INTO {target_name or entry.name} ({names}) VALUES ({marks})"
-    cursor = source.execute(select)
+    statements = {
+        "select": "SELECT " + parts + " FROM " + sql_qualified(entry.name),
+        "insert": (
+            "INSERT INTO "
+            + sql_qualified(target_name or entry.name)
+            + " ("
+            + names
+            + ") VALUES ("
+            + marks
+            + ")"
+        ),
+    }
+    cursor = source.execute(statements["select"])
     copied = 0
     while rows := cursor.fetchmany(STREAM_BATCH):
         if transform_row is not None:
             rows = [tuple(transform_row(row)) for row in rows]
-        target.executemany(insert, rows)
+        target.executemany(statements["insert"], rows)
         copied += len(rows)
     return copied
 
@@ -219,8 +230,9 @@ def _corpus_digest(
 def _verify_counts(source: StreamConn, target: StreamConn, tables: Sequence[TablePlan]) -> None:
     """Per-table row-count check; mismatch raises the bank string."""
     for entry in sorted(tables, key=lambda e: e.name):
-        src = source.execute(f"SELECT count(*) FROM {entry.name}").fetchone()
-        dst = target.execute(f"SELECT count(*) FROM {entry.name}").fetchone()
+        statements = {"count": "SELECT count(*) FROM " + sql_qualified(entry.name)}
+        src = source.execute(statements["count"]).fetchone()
+        dst = target.execute(statements["count"]).fetchone()
         if src != dst:
             raise ConflictError(MIGRATION_MISMATCH, remediation=MIGRATION_MISMATCH)
 

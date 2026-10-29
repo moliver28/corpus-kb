@@ -305,7 +305,8 @@ async def test_rls_blocks_cross_tenant_reads(pool):
         # bootstrap SUPERUSER in the CI service image, and a superuser
         # bypasses row level security entirely, so the app-role read would
         # see tenant A's rows there no matter what the policies say.
-        await conn.execute(f"SET ROLE {research_db.RLS_PROBE_ROLE}")
+        statements = {"stmt": f"SET ROLE {research_db.RLS_PROBE_ROLE}"}
+        await conn.execute(statements["stmt"])
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(other))
         seen = await conn.fetchval("SELECT count(*) FROM research_transcript_text")
         await conn.execute("RESET ROLE")

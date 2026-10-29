@@ -38,6 +38,7 @@ from corpus_kb.handlers.migrate_data import (
     _columns,
     _select_parts,
 )
+from corpus_kb.storage.sql_ident import quoted_identifier, sql_qualified
 
 #: Event-store digest record: (originator hex, version, topic, state bytes).
 EventRecord = tuple[str, int, str, bytes]
@@ -120,14 +121,14 @@ def _post_steps(
 
 def _row_lines(
     conn: StreamConn,
-    sql: str,
+    statements: dict[str, str],
     columns: Sequence[str],
     posts: Sequence[Callable[[object], object] | None] = (),
 ) -> Iterator[str]:
     """Stream canonical row lines for the digest hash: sorted
     (column, value) pairs, so the postgres physical order (ALTER-history)
     and the mirror's end-state DDL order hash equal."""
-    cursor = conn.execute(sql)
+    cursor = conn.execute(statements["rows"])
     while rows := cursor.fetchmany(STREAM_BATCH):
         for row in rows:
             pairs = sorted(
@@ -158,10 +159,16 @@ def corpus_digest(
         transforms = {t.column: t for t in entry.transforms}
         reparse = transform_text_vectors and not python_parse
         parts = ", ".join(_select_parts(columns, transforms, reparse))
-        sql = f"SELECT {parts} FROM {entry.name}"
+        pks = ", ".join(quoted_identifier(c) for c in entry.pk)
         if entry.pk:
-            sql += " ORDER BY " + ", ".join(f'"{c}"' for c in entry.pk)
-        lines = _row_lines(conn, sql, columns, _post_steps(entry, columns))
+            statements = {
+                "rows": (
+                    "SELECT " + parts + " FROM " + sql_qualified(entry.name) + " ORDER BY " + pks
+                )
+            }
+        else:
+            statements = {"rows": "SELECT " + parts + " FROM " + sql_qualified(entry.name)}
+        lines = _row_lines(conn, statements, columns, _post_steps(entry, columns))
         if not entry.pk:
             lines = iter(sorted(lines))
         table_hash = hashlib.sha256()

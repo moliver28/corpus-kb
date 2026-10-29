@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import random
 from dataclasses import dataclass
 from typing import Any, TypeVar
+
+from corpus_kb.utils.deterministic import HashRandom
 
 T = TypeVar("T")
 
@@ -100,7 +101,7 @@ def stratified_sample(
     Returns:
         List of sampled rows, stratified by (code_id, disposition).
     """
-    rng = random.Random(seed)
+    rng = HashRandom(seed)
 
     # Group by (code_id, disposition)
     strata: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -179,7 +180,7 @@ def audit_partitions(
     Returns:
         AuditSampleRow rows -- the exact ``audit_partitions`` shape.
     """
-    rng = random.Random(seed)
+    rng = HashRandom(seed)
     strata: dict[str, list[dict[str, Any]]] = {}
     for row in units:
         agreement = float(row["agreement"])

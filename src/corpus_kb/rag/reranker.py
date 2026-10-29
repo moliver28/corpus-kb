@@ -45,7 +45,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import random
 import re
 from collections import OrderedDict
 from typing import Protocol, cast, runtime_checkable
@@ -56,6 +55,7 @@ from ollama import Client, ResponseError
 
 from ..config import load_config
 from ..domain.models import SearchResult
+from ..utils.deterministic import HashRandom
 from .embedder import _str_or_default
 from .rerank_settings import load_rerank_settings
 
@@ -327,7 +327,7 @@ class FakeReranker:
 
     def _score_one(self, query: str, text: str) -> float:
         seed = int(hashlib.sha256((query + "\x00" + text).encode("utf-8")).hexdigest(), 16)
-        return random.Random(seed).uniform(0.0, 1.0)
+        return HashRandom(seed).uniform(0.0, 1.0)
 
 
 def _cache_key(query: str, text: str) -> str:
