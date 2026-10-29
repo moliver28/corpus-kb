@@ -78,6 +78,7 @@ def queue_enqueue(
         "profile": profile,
         "strategy_config": strategy_config,
         "project_id": project_id,
+        "tenant_id": tenant_id,
     }
     return _run("queue_enqueue", kwargs, json_output)
 
@@ -89,7 +90,7 @@ def queue_status(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Read one queue row, or the pending and running rows."""
-    kwargs: dict[str, object] = {"queue_id": queue_id, "limit": limit}
+    kwargs: dict[str, object] = {"queue_id": queue_id, "limit": limit, "tenant_id": tenant_id}
     return _run("queue_status", kwargs, json_output)
 
 
@@ -99,7 +100,7 @@ def queue_cancel(
     json_output: bool = _JSON_OPT,
 ) -> int:
     """Cancel one pending or running queue row."""
-    kwargs: dict[str, object] = {"queue_id": queue_id}
+    kwargs: dict[str, object] = {"queue_id": queue_id, "tenant_id": tenant_id}
     return _run("queue_cancel", kwargs, json_output)
 
 

@@ -143,3 +143,35 @@ def test_queue_run_watch_ends_on_the_stop(monkeypatch: pytest.MonkeyPatch, tmp_p
     payload = json.loads(result.output)
     assert payload["counts"]["done"] == 1
     assert payload["stopped"] is True
+
+
+def test_queue_op_commands_forward_tenant_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``--tenant-id`` reaches the shared handler, never a silent default.
+
+    The op commands build kwargs by hand; a dropped tenant_id would queue
+    under the default tenant (uuid column) while ``queue-run`` drains the
+    caller's tenant — the books would never drain.
+    """
+    seen: dict[str, str] = {}
+
+    def _spy(op: str) -> Any:
+        async def handler(pool: Any, config: Any, **kwargs: Any) -> dict[str, Any]:
+            seen[op] = str(kwargs.get("tenant_id"))
+            return {"status": "success"}
+
+        return handler
+
+    pool = FakeQueuePool([])
+    _patch_world(monkeypatch, pool)
+    for op in ("queue_enqueue", "queue_status", "queue_cancel"):
+        monkeypatch.setattr(f"corpus_kb.tools.queue_tools.{op}", _spy(op))
+    tenant = "20000000-0000-0000-0000-000000000002"
+    assert runner.invoke(app, ["queue-enqueue", "book.pdf", "--tenant-id", tenant]).exit_code == 0
+    assert runner.invoke(app, ["queue-status", "--tenant-id", tenant]).exit_code == 0
+    assert runner.invoke(app, ["queue-cancel", "x", "--tenant-id", tenant]).exit_code == 0
+    assert seen == {
+        "queue_enqueue": tenant,
+        "queue_status": tenant,
+        "queue_cancel": tenant,
+    }
+    assert pool.closed is True
