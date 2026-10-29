@@ -326,3 +326,111 @@ def test_calibrate_duplicate_candidates_rejected(profiles_dir: Path) -> None:
             profiles_dir,
             "calibrate:\n  candidates: [default, default]\n  sample: s\n  golden: g\n",
         )
+
+
+# -- Recipe sweeps: name-or-mapping candidates, sweep controls (recipe PR-1)
+
+
+def test_calibrate_recipe_defaults(profiles_dir: Path) -> None:
+    profile = _calib_profile(
+        profiles_dir,
+        "calibrate:\n  candidates: [default]\n  sample: s.txt\n  golden: g.jsonl\n",
+    )
+    assert profile is not None and profile.calibrate is not None
+    spec = profile.calibrate
+    assert spec.baseline is None
+    assert spec.alpha == 0.05
+    assert spec.min_queries == 30
+    assert spec.recipes == {}
+
+
+def test_calibrate_recipe_block_parsed(profiles_dir: Path) -> None:
+    profile = _calib_profile(
+        profiles_dir,
+        "calibrate:\n"
+        "  candidates:\n"
+        "    - default\n"
+        "    - tight: {retrieval.rrf_k: 10, reranking.enabled: false}\n"
+        "  baseline: default\n"
+        "  alpha: 0.01\n"
+        "  min_queries: 5\n"
+        "  sample: s.txt\n"
+        "  golden: g.jsonl\n",
+    )
+    assert profile is not None and profile.calibrate is not None
+    spec = profile.calibrate
+    assert spec.candidates == ("default", "tight")
+    assert spec.recipes == {"tight": {"retrieval.rrf_k": 10, "reranking.enabled": False}}
+    assert spec.baseline == "default"
+    assert spec.alpha == 0.01
+    assert spec.min_queries == 5
+
+
+def test_calibrate_unknown_recipe_key_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match=r"ingestion\.strategy"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n"
+            "  candidates:\n"
+            "    - fast: {ingestion.strategy: markdown_sections}\n"
+            "  sample: s\n"
+            "  golden: g\n",
+        )
+
+
+def test_calibrate_recipe_must_be_a_mapping(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="recipe"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates:\n    - fast: 10\n  sample: s\n  golden: g\n",
+        )
+
+
+def test_calibrate_multi_key_recipe_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="one candidate"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n"
+            "  candidates:\n"
+            "    - fast: {retrieval.rrf_k: 10}\n"
+            "      slow: {retrieval.rrf_k: 90}\n"
+            "  sample: s\n"
+            "  golden: g\n",
+        )
+
+
+def test_calibrate_baseline_outside_candidates_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="baseline"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n"
+            "  candidates: [default]\n"
+            "  baseline: markdown_sections\n"
+            "  sample: s\n"
+            "  golden: g\n",
+        )
+
+
+def test_calibrate_bad_alpha_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="alpha"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates: [default]\n  alpha: 1.5\n  sample: s\n  golden: g\n",
+        )
+
+
+def test_calibrate_bad_min_queries_rejected(profiles_dir: Path) -> None:
+    with pytest.raises(ValidationError, match="min_queries"):
+        _calib_profile(
+            profiles_dir,
+            "calibrate:\n  candidates: [default]\n  min_queries: -1\n  sample: s\n  golden: g\n",
+        )
+
+
+def test_calibrate_more_than_eight_candidates_rejected(profiles_dir: Path) -> None:
+    many = ", ".join(f"s{index}" for index in range(9))
+    with pytest.raises(ValidationError, match="8"):
+        _calib_profile(
+            profiles_dir,
+            f"calibrate:\n  candidates: [{many}]\n  sample: s\n  golden: g\n",
+        )

@@ -33,7 +33,7 @@ async def maybe_calibrate(
     Returns None when the profile has no sweep to run. Called from
     ``run_pipeline`` in ``validate=calibrate`` mode, before the advisory
     lock opens: the sweep is slow and writes only under its synthetic
-    tenants plus the lock file. Every tenant is cleaned in the finally
+    tenant plus the lock file. The tenant is cleaned in the finally
     block on success, failure, and cancel alike.
     """
     spec = profile.calibrate
@@ -49,8 +49,10 @@ async def maybe_calibrate(
     try:
 
         async def factory(candidate: str) -> ScratchTenantEngine:
+            # ONE tenant per (profile, golden): the whole family ranks the
+            # same ingested corpus, so run_calibration builds one engine.
             engine = ScratchTenantEngine(
-                config, tenant_for(profile.name, digest, candidate), min_overlap=spec.min_overlap
+                config, tenant_for(profile.name, digest), min_overlap=spec.min_overlap
             )
             # Track the engine BEFORE open(): a failed open must still get
             # cleanup and close in the finally block below.

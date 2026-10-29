@@ -487,6 +487,9 @@ markers = [
     "slow: long-running perf fixture (100k synthetic chunks); skipped unless CORPUS_KB_PERF_RUN=1",
 ]
 asyncio_mode = "auto"
+# Pin the pytest-asyncio 1.x default explicitly: same behavior as today,
+# and it silences the plugin's per-session deprecation warning.
+asyncio_default_fixture_loop_scope = "function"
 # Third-party warning noise (no repo-side fix exists):
 # - umap warns that random_state pins n_jobs=1 — our determinism contract
 #   (inductive engine, r7) sets random_state on purpose.

@@ -53,7 +53,7 @@ async def test_tool_signatures_unchanged() -> None:
         # placeholder default as before).
         "delete_document": {"document_id", "pg_pool", "config", "tenant_id"},
         # S5: ingest front door surfaces (tools/ingest_surface_tools.py).
-        "ingest_status": {"pg_pool", "config", "tenant_id", "limit"},
+        "ingest_status": {"pg_pool", "config", "tenant_id", "limit", "project_id"},
         "ingest_reembed": {"pg_pool", "config", "tenant_id", "limit", "doc_id"},
     }
 

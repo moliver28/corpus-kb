@@ -1,7 +1,10 @@
 {
   "name": "doctor-ok-200",
   "source": "canonical",
-  "request": { "method": "GET", "path": "/api/doctor" },
+  "request": {
+    "method": "GET",
+    "path": "/api/doctor"
+  },
   "response": {
     "httpStatus": 200,
     "body": {
@@ -25,6 +28,15 @@
         "ollama": {
           "reachable": false,
           "message": "connection refused"
+        },
+        "embedding": {
+          "model": "nomic-embed-text",
+          "dimensions": 768
+        },
+        "reranker": {
+          "enabled": false,
+          "backend": null,
+          "model": "qwen3-reranker:4b"
         },
         "env": {
           "name": "CORPUS_KB env vars",

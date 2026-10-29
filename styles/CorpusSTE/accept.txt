@@ -196,3 +196,6 @@ unwaived
 ui
 px
 basename
+holm
+llamacpp
+ranx

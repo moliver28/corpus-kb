@@ -437,6 +437,7 @@ class _Check:
     detail: str
     fix: str = ""
     doc: str = ""
+    embedding_dimensions: int | None = None
 
 
 @dataclass
@@ -522,8 +523,19 @@ def test_doctor_snapshot_reuses_the_cli_probes(monkeypatch: pytest.MonkeyPatch) 
     assert result["ollama"] == {"reachable": False, "message": "down"}
     assert result["profile"]["recommended_model"] == "m"
     assert result["research_checks"] == [
-        {"name": "surface parity", "status": "ok", "detail": "green", "fix": "", "doc": ""}
+        {
+            "name": "surface parity",
+            "status": "ok",
+            "detail": "green",
+            "fix": "",
+            "doc": "",
+            "embedding_dimensions": None,
+        }
     ]
+    # Structured embedding facts + reranker state (issue #183), read from
+    # the same config the CLI doctor checks (defaults in this fixture).
+    assert result["embedding"] == {"model": "", "dimensions": 1024}
+    assert result["reranker"]["enabled"] is True
     assert result["storage_checks"][0]["name"] == "engine"
     assert result["env"]["status"] == "ok"
 

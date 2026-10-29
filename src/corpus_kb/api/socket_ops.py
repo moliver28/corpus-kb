@@ -146,10 +146,12 @@ async def _ingest_status(params: dict[str, Any], tenant_id: str) -> dict[str, An
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.ingest_surface_tools import ingest_status
 
+    project_id = params.get("project_id")
     return await ingest_status(
         await research_pool(),
         tenant_id=tenant_id,
         limit=int(params.get("limit", 20)),
+        project_id=str(project_id) if project_id is not None else None,
     )
 
 

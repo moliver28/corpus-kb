@@ -43,7 +43,9 @@ DATA_TYPES: frozenset[str] = frozenset(
 )
 # Mirrors tools.pipeline.validate.MODES (kept literal so profiles never
 # imports the tools layer; test_profiles pins the two in lockstep).
-PROFILE_VALIDATE_MODES: frozenset[str] = frozenset({"off", "advisory", "enforce", "calibrate"})
+PROFILE_VALIDATE_MODES: frozenset[str] = frozenset(
+    {"off", "advisory", "enforce", "calibrate", "transcript_meta"}
+)
 KNOWN_TOP_KEYS: frozenset[str] = frozenset(
     {
         "name",
@@ -183,8 +185,8 @@ def parse_profile(raw: Any, name: str, path: str) -> IngestionProfile:
         raise ValidationError(
             f"Profile {name!r} has unknown validate mode {validate_mode!r}.",
             remediation=(
-                "Use one of: off, advisory, enforce, calibrate. YAML reads a bare"
-                " off/on as true/false, so quote it: validate: 'off'."
+                "Use one of: off, advisory, enforce, calibrate, transcript_meta."
+                " YAML reads a bare off/on as true/false, so quote it: validate: 'off'."
             ),
         )
     templates = raw.get("templates", [])

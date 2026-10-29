@@ -53,6 +53,7 @@ def test_embedder_check_warns_pgml_absent() -> None:
     assert check.status == dr.STATUS_WARN
     assert "abstain" in check.detail
     assert "embedding.provider: ollama" in check.fix
+    assert check.embedding_dimensions == 1024
 
 
 def test_embedder_check_warns_sub_1024_ollama() -> None:
@@ -67,6 +68,8 @@ def test_embedder_check_warns_sub_1024_ollama() -> None:
     check = dr.embedder_check(config, pgml_installed=None)
     assert check.status == dr.STATUS_WARN
     assert "never padded" in check.detail
+    # Structured width (issue #183): the configured model's real dims.
+    assert check.embedding_dimensions == 768
 
 
 def test_embedder_check_fails_non_1024_guard() -> None:
@@ -77,6 +80,7 @@ def test_embedder_check_fails_non_1024_guard() -> None:
     check = dr.embedder_check(config, pgml_installed=True)
     assert check.status == dr.STATUS_FAIL
     assert "exactly 1024" in check.detail
+    assert check.embedding_dimensions == 768
 
 
 def test_embedder_check_ok() -> None:
@@ -90,6 +94,19 @@ def test_embedder_check_ok() -> None:
     }
     check = dr.embedder_check(config, pgml_installed=False)
     assert check.status == dr.STATUS_OK
+    # Structured width (issue #183): the corpus embedding dims, not the
+    # research boundary's 1024.
+    assert check.embedding_dimensions == 2560
+
+
+def test_embedder_check_unset_dimensions_have_no_structured_width() -> None:
+    config = {
+        "embedding": {"provider": "ollama", "model": "nomic-embed-text"},
+        "research": {"embedder": {"dimensions": 1024}},
+    }
+    check = dr.embedder_check(config, pgml_installed=None)
+    assert check.status == dr.STATUS_WARN
+    assert check.embedding_dimensions is None
 
 
 def test_print_research_checks_renders_fix_and_doc() -> None:

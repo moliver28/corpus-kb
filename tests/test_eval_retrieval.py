@@ -20,7 +20,7 @@ import pytest
 from corpus_kb.eval.golden import load_golden
 from corpus_kb.eval.report import to_envelope
 from corpus_kb.eval.runner import run_eval
-from corpus_kb.research.retrieval import _child_uuid
+from corpus_kb.research.retrieval import ResearchQuery, _child_uuid
 from corpus_kb.research.retrieval_settings import RetrievalSettings
 
 TENANT = "00000000-0000-0000-0000-000000000001"
@@ -79,6 +79,7 @@ class _ScriptedConn:
         self.fts_rows = fts_rows
         self.fused_rows = fused_rows
         self.sql: list[str] = []
+        self.fusion_args: list[tuple[object, ...]] = []
 
     async def execute(self, sql: str, *args: object) -> str:
         self.sql.append(sql)
@@ -88,6 +89,7 @@ class _ScriptedConn:
         self.sql.append(sql)
         normalized = " ".join(sql.split())
         if "rrf_fusion" in normalized:
+            self.fusion_args.append(args)
             return self.fused_rows
         if "<=>" in normalized:
             return self.dense_rows
@@ -145,8 +147,9 @@ def _unit_row(unit_id: int) -> dict[str, object]:
     }
 
 
-@pytest.fixture()
-def scripted(monkeypatch: pytest.MonkeyPatch) -> tuple[_ScriptedPool, _FakeEmbedder]:
+def _scripted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[_ScriptedPool, _FakeEmbedder, _ScriptedConn]:
     conn = _ScriptedConn(
         dense_rows=[_unit_row(1), _unit_row(2)],
         fts_rows=[_unit_row(2)],
@@ -159,7 +162,20 @@ def scripted(monkeypatch: pytest.MonkeyPatch) -> tuple[_ScriptedPool, _FakeEmbed
     pool = _ScriptedPool(conn)
     embedder = _FakeEmbedder()
     monkeypatch.setattr("corpus_kb.eval.runner._build_embedder", lambda cfg, pool_: embedder)
+    return pool, embedder, conn
+
+
+@pytest.fixture()
+def scripted(monkeypatch: pytest.MonkeyPatch) -> tuple[_ScriptedPool, _FakeEmbedder]:
+    pool, embedder, _ = _scripted(monkeypatch)
     return pool, embedder
+
+
+@pytest.fixture()
+def scripted_triple(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[_ScriptedPool, _FakeEmbedder, _ScriptedConn]:
+    return _scripted(monkeypatch)
 
 
 def _golden_file(tmp_path: Path, with_answer: bool = False) -> Path:
@@ -293,3 +309,101 @@ def test_retrieval_settings_default_is_the_pinned_dataclass() -> None:
     settings = RetrievalSettings()
     assert settings.vector_candidates > 0
     assert settings.rrf_k > 0
+
+
+# ============================================================================
+# ranked_children: the one rank seam (fused children, before parents)
+# ============================================================================
+
+
+def _children_query() -> ResearchQuery:
+    return ResearchQuery(
+        query="billing concern",
+        tenant_id=UUID(TENANT),
+        project_id=UUID(PROJECT),
+        k=2,
+        include_exchange_children=False,
+    )
+
+
+async def test_ranked_children_returns_fused_children_before_parents(
+    scripted_triple: tuple[_ScriptedPool, _FakeEmbedder, _ScriptedConn],
+) -> None:
+    from corpus_kb.research.retrieval import ranked_children
+
+    pool, embedder, _ = scripted_triple
+    rows = await ranked_children(pool, embedder, _children_query())
+    assert [str(row["chunk_id"]) for row in rows] == [
+        _child_uuid("unit:2"),
+        _child_uuid("unit:1"),
+    ]
+
+
+async def test_ranked_children_honors_settings_rrf_k(
+    scripted_triple: tuple[_ScriptedPool, _FakeEmbedder, _ScriptedConn],
+) -> None:
+    from corpus_kb.research.retrieval import ranked_children
+    from corpus_kb.research.retrieval_settings import RetrievalSettings
+
+    pool, embedder, conn = scripted_triple
+    settings = RetrievalSettings(rrf_k=42)
+    await ranked_children(pool, embedder, _children_query(), retrieval_settings=settings)
+    assert conn.fusion_args
+    assert all(args[3] == 42 for args in conn.fusion_args)
+
+
+async def test_ranked_children_floors_depth_at_vector_candidates(
+    scripted_triple: tuple[_ScriptedPool, _FakeEmbedder, _ScriptedConn],
+) -> None:
+    from corpus_kb.research.retrieval import ranked_children
+    from corpus_kb.research.retrieval_settings import RetrievalSettings
+
+    pool, embedder, conn = scripted_triple
+    settings = RetrievalSettings(vector_candidates=300)
+    await ranked_children(pool, embedder, _children_query(), retrieval_settings=settings)
+    assert conn.fusion_args
+    assert all(args[2] == 300 for args in conn.fusion_args)
+
+
+class _ReversingReranker:
+    """Scores the LAST text highest, so a rerank flips the fused order."""
+
+    def score(self, query: str, texts: list[str]) -> list[float]:
+        return [float(position) for position in range(len(texts))]
+
+
+async def test_ranked_children_applies_the_reranker_seam_arg(
+    scripted_triple: tuple[_ScriptedPool, _FakeEmbedder, _ScriptedConn],
+) -> None:
+    from corpus_kb.research.retrieval import ranked_children
+
+    pool, embedder, _ = scripted_triple
+    rows = await ranked_children(pool, embedder, _children_query(), reranker=_ReversingReranker())
+    assert [str(row["chunk_id"]) for row in rows] == [
+        _child_uuid("unit:1"),
+        _child_uuid("unit:2"),
+    ]
+    # Min-max normalized rerank scores land on the children.
+    scores = [float(row["score"]) for row in rows]
+    assert scores == [pytest.approx(1.0), pytest.approx(0.0)]
+
+
+async def test_ranked_children_rerank_flag_off_skips_the_reranker(
+    scripted_triple: tuple[_ScriptedPool, _FakeEmbedder, _ScriptedConn],
+) -> None:
+    from corpus_kb.research.retrieval import ResearchQuery, ranked_children
+
+    pool, embedder, _ = scripted_triple
+    q = ResearchQuery(
+        query="billing concern",
+        tenant_id=UUID(TENANT),
+        project_id=UUID(PROJECT),
+        k=2,
+        include_exchange_children=False,
+        rerank=False,
+    )
+    rows = await ranked_children(pool, embedder, q, reranker=_ReversingReranker())
+    assert [str(row["chunk_id"]) for row in rows] == [
+        _child_uuid("unit:2"),
+        _child_uuid("unit:1"),
+    ]

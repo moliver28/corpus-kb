@@ -15,11 +15,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import asdict
-from typing import Any
+from typing import Any, cast
 
 from corpus_kb._setup.doctor_env import env_var_check
-from corpus_kb._setup.doctor_research import ResearchCheck, research_checks
+from corpus_kb._setup.doctor_research import ResearchCheck, embedder_check, research_checks
 from corpus_kb._setup.doctor_storage import storage_checks
+from corpus_kb.rag.rerank_settings import load_rerank_settings
 from corpus_kb.tools.ingest_common import load_config_or_pass
 
 __all__ = ["doctor_snapshot"]
@@ -75,6 +76,13 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
     storage = await storage_checks(cfg, conn_str, postgres_ok)
     env = env_var_check()
 
+    # Structured embedding facts (issue #183) + the reranker's active
+    # state, straight from config — the SPA's System-ready strip reads
+    # these fields, so they must not hide inside check detail strings.
+    embedder = embedder_check(cfg, pgml_installed=None)
+    rerank = load_rerank_settings(cast("dict[str, object]", cfg))
+    emb_cfg = cfg.get("embedding") or {}
+
     return {
         "status": "success",
         "result": {
@@ -99,6 +107,15 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
                 },
             },
             "ollama": {"reachable": bool(ollama_ok), "message": str(ollama_msg)},
+            "embedding": {
+                "model": str(emb_cfg.get("model", "")),
+                "dimensions": embedder.embedding_dimensions,
+            },
+            "reranker": {
+                "enabled": bool(rerank.enabled),
+                "backend": rerank.backend,
+                "model": rerank.model,
+            },
             "env": dict(asdict(env)),
             "research_checks": [] if research is None else _check_dicts(research),
             "storage_checks": _check_dicts(storage),

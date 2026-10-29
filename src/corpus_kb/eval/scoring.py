@@ -9,7 +9,7 @@ statistics module; orchestration lives in ``calibrate``.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -39,13 +39,20 @@ class IngestedDoc:
 
 
 class SweepEngine(Protocol):
-    """One candidate's scratch world: ingest, index, rank, discard."""
+    """One candidate's scratch world: ingest, index, rank, discard.
+
+    ``rank`` takes the candidate's query-time recipe overrides; the engine
+    applies them at rank time, so one ingested corpus serves the whole
+    family.
+    """
 
     async def ingest(self, path: Path, strategy: str) -> IngestedDoc: ...
 
     async def label_index(self) -> LabelIndex: ...
 
-    async def rank(self, query: str, k: int) -> list[str]: ...
+    async def rank(
+        self, query: str, k: int, overrides: Mapping[str, object] | None = None
+    ) -> list[str]: ...
 
     async def close(self) -> None: ...
 
@@ -114,7 +121,8 @@ async def score_candidate(
         if not relevant:
             skipped += 1
             continue
-        ranked = await engine.rank(record.query, spec.k)
+        overrides = spec.recipes.get(candidate) or None
+        ranked = await engine.rank(record.query, spec.k, overrides)
         recall = _recall_k(ranked, relevant, spec.k)
         mrr = _mrr(ranked, relevant)
         ndcg = _ndcg(ranked, relevant)

@@ -201,6 +201,7 @@ async def ingest_status_route(request: Request) -> JSONResponse:
         await research_pool(),
         tenant_id=request.query_params.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
         limit=limit,
+        project_id=request.query_params.get("project_id"),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)

@@ -130,11 +130,13 @@ span or unit labels. `poe validate-profiles` checks that every path
 exists and every candidate is a registered strategy.
 
 The sweep runs when an ingest uses `validate: calibrate` with that
-profile. Each candidate ingests the sample into its own scratch DuckDB
-file. The sweep scores the golden queries and writes
-`<profile>.lock.json` next to the profile. The scratch directory is
-always deleted. Two sweeps on the same inputs write the same lock,
-except the date.
+profile. The sweep ingests the sample once into one scratch Postgres
+tenant. Every candidate then ranks the same corpus through its own
+overrides. The sweep needs the Postgres backend; DuckDB raises a typed
+error. It scores the golden queries and writes `<profile>.lock.json`
+next to the profile. Only the lock file survives the sweep. Two sweeps
+on the same inputs write the same lock, except the date. The full
+walk-through is [VALIDATION.md](VALIDATION.md).
 
 The sweep refuses to score when embeddings are degraded. Fake vectors
 would give fake numbers, so it answers `insufficient_data` instead.

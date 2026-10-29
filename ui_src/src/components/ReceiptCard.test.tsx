@@ -66,4 +66,53 @@ describe("ReceiptCard", () => {
     expect(screen.getByText(strings.receiptEmpty)).toBeTruthy();
     expect(screen.queryByText(strings.receiptDone)).toBeNull();
   });
+
+  it("renders the validation summary when the receipt carries one", () => {
+    render(
+      <ReceiptCard
+        result={resultOf("success", {
+          validation: { mode: "advisory", status: "findings", problem_count: 2 },
+        })}
+      />,
+    );
+    const banners = screen.getAllByRole("status");
+    expect(
+      banners.some((b) =>
+        (b.textContent ?? "").includes(strings.receiptValidationLabel),
+      ),
+    ).toBe(true);
+    expect(
+      screen.getByText(strings.receiptValidationFindings.replace("{n}", "2")),
+    ).toBeTruthy();
+  });
+
+  it("states a clean validation pass in plain words", () => {
+    render(
+      <ReceiptCard
+        result={resultOf("success", {
+          validation: { mode: "advisory", status: "ok", problem_count: 0 },
+        })}
+      />,
+    );
+    expect(screen.getByText(strings.receiptValidationOk)).toBeTruthy();
+  });
+
+  it("counts the near-duplicate drops only when the field is present", () => {
+    render(
+      <ReceiptCard
+        result={resultOf("success", { dedup_dropped: ["c1", "c2", "c3"] })}
+      />,
+    );
+    expect(
+      screen.getByText(strings.receiptDedupDropped.replace("{n}", "3")),
+    ).toBeTruthy();
+  });
+
+  it("renders neither ingestion fact when the receipt lacks them", () => {
+    render(<ReceiptCard result={resultOf("success")} />);
+    expect(screen.queryByText(strings.receiptValidationLabel)).toBeNull();
+    expect(
+      screen.queryByText(strings.receiptDedupDropped.replace("{n}", "0")),
+    ).toBeNull();
+  });
 });

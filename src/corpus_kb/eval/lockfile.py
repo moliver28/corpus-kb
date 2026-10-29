@@ -90,8 +90,19 @@ def build_lock(
     profile_sha256: str,
     golden_sha256: str,
     sample_paths: Sequence[Path],
+    baseline: str,
+    alpha: float,
+    min_queries: int,
+    outcome: str,
+    proposed_overrides: Mapping[str, object],
+    reranker_active: bool,
 ) -> dict[str, object]:
-    """The lock payload. Only ``date`` moves between two identical sweeps."""
+    """The lock payload. Only ``date`` moves between two identical sweeps.
+
+    The recipe keys (``baseline``, ``alpha``, ``min_queries``, ``outcome``,
+    ``proposed_overrides``, ``reranker_active``) are additive: enforcement
+    reads only ``profile_sha256``, so older locks stay valid.
+    """
     raw = cfg.get("embedding")
     embedding: Mapping[str, object] = raw if isinstance(raw, Mapping) else {}
     try:
@@ -111,6 +122,12 @@ def build_lock(
         "candidates": [asdict(row) for row in rows],
         "chosen": chosen,
         "proposed_default_strategy": chosen,
+        "baseline": baseline,
+        "alpha": alpha,
+        "min_queries": min_queries,
+        "outcome": outcome,
+        "proposed_overrides": dict(proposed_overrides),
+        "reranker_active": reranker_active,
         "embedding": {
             "model": embedding.get("model", "unknown"),
             "dimensions": embedding.get("dimensions", "unknown"),

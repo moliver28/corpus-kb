@@ -9,7 +9,8 @@ Design contract:
 
 - METRIC REUSE: recall@k, MRR and nDCG@10 come from
   ``research/retrieval_eval.py`` (the U45 harness). The retrieval path
-  reuses the same ``_unit_arms`` + ``_rrf`` internals, so the numbers are
+  ranks through ``research.retrieval.ranked_children`` — the same seam
+  the live search and the calibration sweeps use — so the numbers are
   the same species the research benchmarks report.
 - LAZY DEPENDENCY: deepeval is imported ONLY inside
   ``eval/deepeval_adapter.py``, behind the ``topics/engine.py`` import
