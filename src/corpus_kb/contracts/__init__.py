@@ -10,8 +10,9 @@ program's trends op), ``contracts.catalogue_ask`` (the UX Wave 1 ask
 family), and the analysis program families
 ``contracts.catalogue_labeling`` / ``contracts.catalogue_classification``
 / ``contracts.catalogue_analysis`` (the Wave 0 registry skeleton plus
-the analysis method register program's twelve method ops). This
-package assembles the FINAL catalogue: ``OPERATIONS`` is
+the analysis method register program's twelve method ops), and
+``contracts.catalogue_queue`` (the textbook program's ingest queue).
+This package assembles the FINAL catalogue: ``OPERATIONS`` is
 the tuple every consumer (the parity gate, ``corpus-kb operations``)
 iterates, so the test and the inventory can never diverge.
 """
@@ -26,6 +27,7 @@ from corpus_kb.contracts.catalogue_classification import CLASSIFICATION_OPERATIO
 from corpus_kb.contracts.catalogue_conflicts import CONFLICTS_OPERATIONS
 from corpus_kb.contracts.catalogue_documents import DOCUMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_labeling import LABELING_OPERATIONS
+from corpus_kb.contracts.catalogue_queue import QUEUE_OPERATIONS
 from corpus_kb.contracts.catalogue_release import RELEASE_OPERATIONS
 from corpus_kb.contracts.catalogue_research import (
     RESEARCH_OPERATIONS,
@@ -59,6 +61,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *CONFLICTS_OPERATIONS,
     *BELIEFS_OPERATIONS,
     *EXTRACTION_TUNE_OPERATIONS,
+    *QUEUE_OPERATIONS,
 )
 
 __all__ = [

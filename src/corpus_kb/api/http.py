@@ -132,6 +132,11 @@ from corpus_kb.api.routes_meta import (
     sql_tables,
 )
 from corpus_kb.api.routes_meta_embed import analysis_embed_meta_route
+from corpus_kb.api.routes_queue import (
+    queue_cancel_route,
+    queue_enqueue_route,
+    queue_status_route,
+)
 from corpus_kb.api.routes_search import (
     embed_text,
     query_sql,
@@ -220,6 +225,10 @@ def create_http_app() -> FastAPI:
         Route("/api/beliefs/predict", beliefs_predict_route, methods=["POST"]),
         # Living Corpus W5: the tune op.
         Route("/api/extraction-tune", extraction_tune_route, methods=["POST"]),
+        # Textbook-ingestion program (Wave 1): the ingest queue ops.
+        Route("/api/queue/enqueue", queue_enqueue_route, methods=["POST"]),
+        Route("/api/queue/status", queue_status_route, methods=["POST"]),
+        Route("/api/queue/cancel", queue_cancel_route, methods=["POST"]),
         Route("/api/beliefs/compare", beliefs_compare_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),

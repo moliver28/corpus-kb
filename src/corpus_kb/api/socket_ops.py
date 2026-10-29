@@ -376,6 +376,44 @@ async def _conflicts_resolve(params: dict[str, Any], tenant_id: str) -> dict[str
     )
 
 
+async def _queue_enqueue(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.queue_tools import queue_enqueue
+
+    return await queue_enqueue(
+        await research_pool(),
+        tenant_id=tenant_id,
+        path=str(params.get("path", "")),
+        title=_opt_str(params, "title"),
+        profile=_opt_str(params, "profile"),
+        strategy_config=params.get("strategy_config"),
+        project_id=_opt_str(params, "project_id"),
+    )
+
+
+async def _queue_status(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.queue_tools import queue_status
+
+    return await queue_status(
+        await research_pool(),
+        tenant_id=tenant_id,
+        queue_id=_opt_str(params, "queue_id"),
+        limit=opt_int(params.get("limit"), 50),
+    )
+
+
+async def _queue_cancel(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.queue_tools import queue_cancel
+
+    return await queue_cancel(
+        await research_pool(),
+        tenant_id=tenant_id,
+        queue_id=str(params.get("queue_id", "")),
+    )
+
+
 async def _beliefs_current(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.beliefs_tools import beliefs_current
@@ -784,6 +822,10 @@ _CORE_ARMS: dict[str, Arm] = {
     "beliefs_timeline": _beliefs_timeline,
     "beliefs_predict": _beliefs_predict,
     "beliefs_compare": _beliefs_compare,
+    # Textbook-ingestion program (Wave 1): the ingest queue ops.
+    "queue_enqueue": _queue_enqueue,
+    "queue_status": _queue_status,
+    "queue_cancel": _queue_cancel,
     # Living Corpus W5: the tune op.
     "extraction_tune": _extraction_tune,
     "search": _search,

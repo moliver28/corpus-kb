@@ -698,6 +698,23 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "database.backend": str,
     # -- graph traversal ------------------------------------------------------
     "graph.max_hops": int,
+    # DuckDB graph traversal engine (textbook-ingestion Wave 1; Postgres
+    # ignores the key). The when-present enum lives in the cross-field
+    # rules (SUPPORTED_DUCKDB_GRAPH_BACKENDS).
+    "graph.duckdb_graph_backend": str,
+    # -- textbook ingestion (textbook-ingestion program, Wave 1) -------------
+    "textbook.min_pages": int,
+    "textbook.window_pages": int,
+    # textbook.parser enum: SUPPORTED_TEXTBOOK_PARSERS (cross-field rules).
+    "textbook.parser": str,
+    "textbook.cache_dir": str,
+    # -- ingest queue worker knobs (tools/queue_tools.py, Wave 1) ------------
+    "queue.autorun": bool,
+    "queue.poll_seconds": int,
+    "queue.stale_lease_seconds": int,
+    "queue.max_attempts": int,
+    # -- graph_policy (Wave 1; enum in the cross-field rules) -----------------
+    "graph_policy.mode": str,
     # -- ui (UI SPA program Task 3, src/corpus_kb/ui/spa.py) ----------------
     "ui.spa.poll_ms": int,
     "ui.spa.request_timeout_s": float,
@@ -743,6 +760,15 @@ SUPPORTED_TOPIC_METHODS = frozenset({"bertopic"})
 SUPPORTED_RERANK_BACKENDS = frozenset({"llamacpp", "generative", "fake"})
 RETURN_TOP_K_MIN = 1
 RETURN_TOP_K_MAX = 1000
+# textbook.parser values (textbook-ingestion Wave 1). "docling" is the
+# structured page parser ([docling] extra); "pypdf" the scan-only fallback
+# ([scan] extra).
+SUPPORTED_TEXTBOOK_PARSERS = frozenset({"docling", "pypdf"})
+# graph_policy.mode values (Wave 1): "all" mirrors today's write behavior;
+# "semantic_only" admits only graph_eligible relation types.
+SUPPORTED_GRAPH_POLICY_MODES = frozenset({"all", "semantic_only"})
+# graph.duckdb_graph_backend values (DuckDB graph traversal engine).
+SUPPORTED_DUCKDB_GRAPH_BACKENDS = frozenset({"cte", "duckpgq"})
 
 
 def _contextualize_block_errors(contextualize: dict[str, Any]) -> list[str]:
@@ -819,6 +845,27 @@ def _validate_cross_field_rules(config: dict[str, Any]) -> list[str]:
     graph = config.get("graph")
     if isinstance(graph, dict):
         errors.extend(_max_hops_errors(graph.get("max_hops")))
+        backend = graph.get("duckdb_graph_backend")
+        if backend is not None and backend not in SUPPORTED_DUCKDB_GRAPH_BACKENDS:
+            engines = ", ".join(sorted(SUPPORTED_DUCKDB_GRAPH_BACKENDS))
+            errors.append(
+                f"graph.duckdb_graph_backend: must be one of ({engines}), got {backend!r}"
+            )
+
+    graph_policy = config.get("graph_policy")
+    if isinstance(graph_policy, dict):
+        mode = graph_policy.get("mode")
+        if mode not in SUPPORTED_GRAPH_POLICY_MODES:
+            modes = ", ".join(sorted(SUPPORTED_GRAPH_POLICY_MODES))
+            errors.append(f"graph_policy.mode: must be one of ({modes}), got {mode!r}")
+
+    textbook = config.get("textbook")
+    if isinstance(textbook, dict):
+        errors.extend(_textbook_block_errors(textbook))
+
+    queue = config.get("queue")
+    if isinstance(queue, dict):
+        errors.extend(_queue_block_errors(queue))
 
     retrieval = config.get("retrieval")
     if isinstance(retrieval, dict):
@@ -941,6 +988,30 @@ def _max_hops_errors(hops: object) -> list[str]:
             f"graph.max_hops: must be between {MAX_HOPS_MIN} and {MAX_HOPS_CEILING}, got {hops}"
         ]
     return []
+
+
+def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
+    """Enum + positive-int rules for the ``textbook`` block (Wave 1)."""
+    errors: list[str] = []
+    parser = textbook.get("parser")
+    if parser is not None and parser not in SUPPORTED_TEXTBOOK_PARSERS:
+        parsers = ", ".join(sorted(SUPPORTED_TEXTBOOK_PARSERS))
+        errors.append(f"textbook.parser: must be one of ({parsers}), got {parser!r}")
+    for key in ("min_pages", "window_pages"):
+        value = textbook.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            errors.append(f"textbook.{key}: must be a positive int, got {value!r}")
+    return errors
+
+
+def _queue_block_errors(queue: dict[str, Any]) -> list[str]:
+    """Positive-number rules for the ``queue`` worker knobs (Wave 1)."""
+    errors: list[str] = []
+    for key in ("poll_seconds", "stale_lease_seconds", "max_attempts"):
+        value = queue.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            errors.append(f"queue.{key}: must be a positive int, got {value!r}")
+    return errors
 
 
 def _fts_debounce_errors(debounce: object) -> list[str]:

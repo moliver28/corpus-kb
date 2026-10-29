@@ -530,3 +530,10 @@ allow_remote_urls
 # HashRandom.randint is called by scripts/gen_demo_corpus.py only; the
 # vulture gate does not scan scripts/.
 randint
+
+# Textbook-ingestion Wave 1 (ontology.py): the graph_eligible validator is
+# bound by its decorator, and relation_is_graph_eligible is declared read
+# surface for the Wave 2 graph_policy consumer; tests/test_queue_tools.py
+# calls it, and vulture only scans src.
+_graph_flags_declared
+relation_is_graph_eligible

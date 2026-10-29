@@ -86,6 +86,35 @@ ingestion:
     survey: survey
   default: default
 
+# Textbook ingestion (textbook-ingestion program; the strategy lands in
+# Wave 2 behind the [docling] extra). The textbook gate claims PDFs with
+# at least min_pages pages (pypdf probe, the [scan] extra) and windows
+# them into window_pages blocks so one book does not monopolize a run.
+# parser picks the page parser; cache_dir keeps parsed page artifacts
+# under the repo's data dir convention (~/.corpus-kb).
+textbook:
+  min_pages: 120
+  window_pages: 50
+  parser: docling
+  cache_dir: ~/.corpus-kb/textbook-cache
+
+# Ingest queue worker knobs (queue_tools + the Wave 2 worker). autorun
+# keeps the worker off by default: enqueue lands rows, nothing drains
+# until a worker starts. poll_seconds is the claim-scan cadence;
+# stale_lease_seconds is how long a running row's heartbeat may go quiet
+# before the worker may reclaim it; max_attempts caps retries per row.
+queue:
+  autorun: false
+  poll_seconds: 20
+  stale_lease_seconds: 600
+  max_attempts: 3
+
+# Graph write policy (Wave 2 consumers): "all" mirrors today's behavior —
+# every extracted relation reaches the graph store. "semantic_only" will
+# admit only the relation types the ontology marks graph_eligible.
+graph_policy:
+  mode: all
+
 retrieval:
   # Only hybrid_rrf exists today; other values are rejected at load time.
   mode: hybrid_rrf
@@ -441,6 +470,10 @@ statements:
 
 graph:
   backend: age
+  # DuckDB graph traversal engine (graph.backend: duckdb only): "cte" is
+  # the recursive-CTE walker (deterministic, default); "duckpgq" opts into
+  # the DuckPGQ property-graph extension. Postgres ignores this key.
+  duckdb_graph_backend: cte
   # Graph traversal depth cap (1..25; 25 is today's AGE cap). Consumed by
   # the graph neighbor/traverse operations.
   max_hops: 5

@@ -974,6 +974,20 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "observability.enabled": bool,
         "observability.otlp_endpoint": str,
         "observability.service_name": str,
+        # Textbook-ingestion program Wave 1: the textbook gate + parser,
+        # the queue worker knobs, the graph write policy, and the DuckDB
+        # graph traversal engine (parser/mode/engine enums live in the
+        # cross-field rules; poll_seconds and friends in _queue_block_errors).
+        "textbook.min_pages": int,
+        "textbook.window_pages": int,
+        "textbook.parser": str,
+        "textbook.cache_dir": str,
+        "queue.autorun": bool,
+        "queue.poll_seconds": int,
+        "queue.stale_lease_seconds": int,
+        "queue.max_attempts": int,
+        "graph_policy.mode": str,
+        "graph.duckdb_graph_backend": str,
     } == RUNTIME_CONFIG_KEYS
 
 

@@ -237,6 +237,17 @@ code = [
     "tree-sitter-go>=0.23",
     "tree-sitter-java>=0.23",
 ]
+# Textbook PDF parsing (textbook-ingestion program, Wave 1 declaration;
+# the strategy lands in Wave 2): docling parses the PDF page structure
+# behind textbook.parser: docling, and pypdf is the fast page-count probe
+# the textbook gate needs (textbook.min_pages). MIT (both). Both import
+# lazily behind the parser gate; CI NEVER installs this extra, so the
+# extras-less jobs stay green (same contract as semchunk/dedup).
+docling = ["docling>=2.144", "pypdf>=6.21"]
+# PDF scan-only support (textbook-ingestion program, Wave 1 declaration):
+# pypdf alone for callers that only need page counts and text probes, no
+# docling parse. MIT. Same lazy contract as [docling]; CI NEVER installs it.
+scan = ["pypdf>=6.21"]
 # Researcher console (UX program W6): marimo notebooks are reproducible
 # .py files served by the running server via create_asgi_app. Apache-2.0.
 # CI NEVER installs this extra (same lazy contract).
@@ -468,6 +479,11 @@ DEP002 = [
     "tree-sitter-rust",
     "tree-sitter-go",
     "tree-sitter-java",
+    # Textbook-ingestion extras (docling/scan): the parsers import lazily
+    # behind textbook.parser (Wave 2 lands the strategy); CI never installs
+    # them, so deptry cannot see the import edges.
+    "docling",
+    "pypdf",
 ]
 # httpx is imported directly in ten modules but arrives transitively (via
 # mcp[cli]/ollama). Ratchet follow-up: declare httpx explicitly and
