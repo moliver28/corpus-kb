@@ -93,6 +93,11 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         #    tools that gained surface_registry rows (manifest longRunning) --
         "ingest_directory",
         "ingest_url",
+        # -- ingest queue (textbook program): catalogue-registered MCP tools
+        #    with surface_registry rows ------------------------------------
+        "queue_enqueue",
+        "queue_status",
+        "queue_cancel",
         # -- lifecycle UI ops (UI SPA Task 5b, issue #176): registry rows over
         #    the demo loader and the doctor probes ---------------------------
         "demo_load",
