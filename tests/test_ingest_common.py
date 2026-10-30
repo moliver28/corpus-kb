@@ -16,12 +16,13 @@ from corpus_kb.tools.ingest_common import (
     _extract_entities_flag,
     _extractor_name,
     _stage_store_and_embed,
+    build_document,
     embed_chunks,
     extract_with_fallback,
     load_config_or_pass,
     ontology,
 )
-from corpus_kb.utils.models import Chunk, Entity
+from corpus_kb.utils.models import Chunk, Document, Entity
 
 _ONTOLOGY_PATH = (
     Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
@@ -600,6 +601,9 @@ class _RecordingIngestStore:
         self.stored_chunks.extend(chunks)
         return {str(c.chunk_id) for c in chunks}
 
+    async def count_chunks_for_document(self, doc_id: str) -> int:
+        return len(self.stored_chunks)
+
     async def store_vectors(
         self,
         chunks: list[Chunk],
@@ -687,6 +691,289 @@ async def test_apply_to_lexical_only_embeds_raw_text(monkeypatch) -> None:
     assert store.stored_chunks[0].context_blurb == "the blurb"
     (override,) = capture.text_overrides
     assert list(override.values()) == ["chunk body"]
+
+
+# ---------------------------------------------------------------------------
+# The honest chunk total (issue #222: a re-run writes nothing)
+# ---------------------------------------------------------------------------
+
+
+class _RerunIngestStore:
+    """Fake store where the second pass of the same chunks inserts nothing.
+
+    ``count_chunks_for_document`` answers the document's stored total, the
+    number a real re-run still holds.
+    """
+
+    def __init__(self) -> None:
+        self.stored_hashes: set[str] = set()
+        self.total = 30
+
+    async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
+        fresh = {str(c.chunk_id) for c in chunks if c.chunk_hash not in self.stored_hashes}
+        self.stored_hashes |= {c.chunk_hash for c in chunks}
+        return fresh
+
+    async def store_vectors(
+        self,
+        chunks: list[Chunk],
+        model: str,
+        dimensions: int,
+        vectors_1024: dict[str, list[float]] | None = None,
+    ) -> int:
+        return len(chunks)
+
+    async def count_chunks_for_document(self, doc_id: str) -> int:
+        return self.total
+
+
+def _two_chunks() -> list[Chunk]:
+    return [
+        Chunk(document_id="doc-1", text="first body", source_type="text"),
+        Chunk(document_id="doc-1", text="second body", source_type="text"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_rerun_reports_the_document_total_not_just_new_writes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pg_chunk_count drops to 0 on an idempotent re-run; pg_chunk_total
+    stays at the document's full stored count (issue #222)."""
+    capture = _EmbedCapture()
+    monkeypatch.setattr("corpus_kb.tools.ingest_common.embed_chunks", capture)
+    store = _RerunIngestStore()
+    first = await _stage_store_and_embed(store, _two_chunks(), {}, "doc text", None, [])
+    second = await _stage_store_and_embed(store, _two_chunks(), {}, "doc text", None, [])
+    assert first[0] == 2  # pg_chunk_count: chunks this run wrote
+    assert first[1] == 30  # pg_chunk_total: the document's stored count
+    assert second[0] == 0  # the re-run inserted nothing
+    assert second[1] == 30  # the total stays honest
+
+
+class _CountConn:
+    """Asyncpg double: the tenant GUC, then the count read, answers 30."""
+
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+        self.args: tuple[object, ...] = ()
+
+    def transaction(self) -> _CountConn:
+        return self
+
+    async def __aenter__(self) -> _CountConn:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def execute(self, sql: str, *args: object) -> str:
+        self.sql.append(sql)
+        return "SET"
+
+    async def fetchval(self, sql: str, *args: object) -> int:
+        self.sql.append(sql)
+        self.args = args
+        return 30
+
+
+class _CountPool:
+    """Pool double that hands out one recording connection."""
+
+    def __init__(self, conn: _CountConn) -> None:
+        self._conn = conn
+
+    def acquire(self) -> _CountPool:
+        return self
+
+    async def __aenter__(self) -> _CountConn:
+        return self._conn
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+
+@pytest.mark.asyncio
+async def test_count_chunks_for_document_is_tenant_scoped() -> None:
+    """The count rides one tenant-scoped transaction and answers the total."""
+    from corpus_kb.tools.ingest_store import PostgresIngestStore
+
+    conn = _CountConn()
+    store = PostgresIngestStore(_CountPool(conn), "00000000-0000-0000-0000-000000000003")
+    total = await store.count_chunks_for_document("doc-1")
+    assert total == 30
+    assert conn.sql[0] == "SELECT set_config('app.current_tenant_id', $1, true)"
+    assert "SELECT COUNT(*) FROM chunks" in conn.sql[1]
+    assert "tombstoned_at IS NULL" in conn.sql[1]
+    assert conn.args == ("00000000-0000-0000-0000-000000000003", "doc-1")
+
+
+# ---------------------------------------------------------------------------
+# The title rides the direct documents upsert (issue #222)
+# ---------------------------------------------------------------------------
+
+
+def _off_switches() -> dict[str, Any]:
+    """Config that keeps extraction, statements, and the shadow tree off."""
+    return {
+        "ingestion": {"title": "A Book Title"},
+        "graph": {"extract_entities": False},
+        "ingest": {"chunking": {"enabled": False}},
+    }
+
+
+class _TitleCaptureStore:
+    """Stub store: captures the document begin_run writes (title lift pin)."""
+
+    def __init__(self) -> None:
+        self.begun: list[Document] = []
+
+    async def unchanged_doc_id(self, source: str, file_hash: str) -> str | None:
+        return None
+
+    async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]:
+        self.begun.append(document)
+        return "doc-t", "run-t"
+
+    async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
+        return {str(c.chunk_id) for c in chunks}
+
+    async def count_chunks_for_document(self, doc_id: str) -> int:
+        return 2
+
+    async def store_vectors(
+        self,
+        chunks: list[Chunk],
+        embedding_model: str,
+        dimensions: int = 768,
+        vectors_1024: dict[str, list[float]] | None = None,
+    ) -> int:
+        return 0
+
+    async def update_document(self, document: Document, file_hash: str) -> None:
+        return None
+
+    async def finish_run(self, run_id: str, file_hash: str, stages: Any, errors: Any) -> None:
+        return None
+
+
+async def _run_locked_with_title(
+    monkeypatch: pytest.MonkeyPatch, store: _TitleCaptureStore, config: dict[str, Any]
+) -> dict[str, Any]:
+    """One locked-stages run with embed stubbed and the store captured."""
+    from corpus_kb.tools.pipeline.stages import _run_locked_stages
+
+    async def fake_embed(
+        chunks: list[Chunk],
+        config: dict[str, Any],
+        pool: object = None,
+        text_override: dict[str, str] | None = None,
+        document_text: str | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> tuple[bool, str | None]:
+        return False, None
+
+    monkeypatch.setattr("corpus_kb.tools.ingest_common.embed_chunks", fake_embed)
+    monkeypatch.setattr(
+        "corpus_kb.tools.ingest_common.PostgresIngestStore", lambda pool, tenant: store
+    )
+    return await _run_locked_stages(
+        document=build_document("book.pdf", "text", "book body"),
+        chunks=_two_chunks(),
+        file_hash="h" * 64,
+        text="book body",
+        source_type="text",
+        path="book.pdf",
+        config=config,
+        pg_pool=None,
+        tenant_id="00000000-0000-0000-0000-000000000003",
+        rag_backend=None,
+        is_file=False,
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_config_title_rides_the_document_into_the_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The per-book title reaches begin_run's document AND the envelope."""
+    store = _TitleCaptureStore()
+    result = await _run_locked_with_title(monkeypatch, store, _off_switches())
+    assert result["status"] == "success"
+    assert store.begun[0].metadata["title"] == "A Book Title"
+    assert result["title"] == "A Book Title"
+
+
+@pytest.mark.asyncio
+async def test_a_titleless_config_leaves_the_document_metadata_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    store = _TitleCaptureStore()
+    config = _off_switches()
+    del config["ingestion"]
+    result = await _run_locked_with_title(monkeypatch, store, config)
+    assert result["status"] == "success"
+    assert "title" not in store.begun[0].metadata
+    assert "title" not in result
+
+
+class _DocConn:
+    """Asyncpg double capturing the documents upsert binding (title lift)."""
+
+    def __init__(self) -> None:
+        self.sql: list[str] = []
+        self.row_args: tuple[object, ...] = ()
+
+    def transaction(self) -> _DocConn:
+        return self
+
+    async def __aenter__(self) -> _DocConn:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def execute(self, sql: str, *args: object) -> str:
+        self.sql.append(sql)
+        return "SET"
+
+    async def fetchrow(self, sql: str, *args: object) -> dict[str, Any]:
+        self.sql.append(sql)
+        self.row_args = args
+        return {"doc_id": "doc-t"}
+
+    async def fetchval(self, sql: str, *args: object) -> str:
+        self.sql.append(sql)
+        return "run-t"
+
+
+@pytest.mark.asyncio
+async def test_begin_run_binds_the_document_title_into_the_upsert() -> None:
+    """The queue path's documents row carries the title ($10)."""
+    from corpus_kb.tools.ingest_store import PostgresIngestStore
+
+    conn = _DocConn()
+    store = PostgresIngestStore(_CountPool(conn), "00000000-0000-0000-0000-000000000003")
+    doc = build_document("book.pdf", "text", "book body")
+    doc.metadata["title"] = "A Book Title"
+    doc_id, run_id = await store.begin_run(doc, "h" * 64)
+    assert (doc_id, run_id) == ("doc-t", "run-t")
+    assert any("INSERT INTO documents" in s for s in conn.sql)
+    assert conn.row_args[9] == "A Book Title"
+
+
+@pytest.mark.asyncio
+async def test_a_titleless_upsert_binds_null_and_keeps_a_stored_title() -> None:
+    """A title-less ingest binds NULL; the SQL COALESCE keeps a stored one."""
+    from corpus_kb.tools.ingest_store import PostgresIngestStore
+
+    conn = _DocConn()
+    store = PostgresIngestStore(_CountPool(conn), "00000000-0000-0000-0000-000000000003")
+    doc = build_document("book.pdf", "text", "book body")
+    await store.begin_run(doc, "h" * 64)
+    assert conn.row_args[9] is None
+    # The NULL-safe merge lives in the statement: no bind can clear a title.
+    assert any("title = COALESCE(EXCLUDED.title, documents.title)" in s for s in conn.sql)
 
 
 # ---------------------------------------------------------------------------

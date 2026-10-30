@@ -459,12 +459,17 @@ def get_default_config() -> dict[str, object]:
         # Textbook ingestion (textbook-ingestion program). Full parses
         # need the [docling] extra; these are the gate + window + parser
         # declarations the validate_configs gate pins (types and enums
-        # in RUNTIME_CONFIG_KEYS).
+        # in RUNTIME_CONFIG_KEYS). window_subprocess isolates each
+        # Docling window in a child process (issue #219); cache_max_mb
+        # evicts the oldest window-cache files past the cap (issue #221).
         "textbook": {
             "min_pages": 120,
             "window_pages": 50,
             "parser": "docling",
             "cache_dir": "~/.corpus-kb/textbook-cache",
+            "window_subprocess": True,
+            "window_timeout_s": 3600.0,
+            "cache_max_mb": 2048,
         },
         # Ingest queue worker knobs (tools/queue_tools.py + the Wave 2
         # worker). autorun: false keeps the worker off; enqueue-only is

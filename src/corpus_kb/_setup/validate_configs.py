@@ -713,6 +713,12 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     # textbook.parser enum: SUPPORTED_TEXTBOOK_PARSERS (cross-field rules).
     "textbook.parser": str,
     "textbook.cache_dir": str,
+    # Window isolation + cache cap (issues #219/#221). window_timeout_s is
+    # a positive number; cache_max_mb allows 0 (the cap-off value) — both
+    # range rules live in _textbook_block_errors.
+    "textbook.window_subprocess": bool,
+    "textbook.window_timeout_s": float,
+    "textbook.cache_max_mb": int,
     # -- ingest queue worker knobs (tools/queue_tools.py, Wave 1) ------------
     "queue.autorun": bool,
     "queue.poll_seconds": int,
@@ -1006,6 +1012,17 @@ def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
         value = textbook.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             errors.append(f"textbook.{key}: must be a positive int, got {value!r}")
+    flag = textbook.get("window_subprocess")
+    if flag is not None and not isinstance(flag, bool):
+        errors.append(f"textbook.window_subprocess: must be a bool, got {flag!r}")
+    timeout = textbook.get("window_timeout_s")
+    if timeout is not None and (
+        isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
+    ):
+        errors.append(f"textbook.window_timeout_s: must be a positive number, got {timeout!r}")
+    cap = textbook.get("cache_max_mb")
+    if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
+        errors.append(f"textbook.cache_max_mb: must be a non-negative int, got {cap!r}")
     return errors
 
 

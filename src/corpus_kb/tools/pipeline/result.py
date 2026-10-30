@@ -29,16 +29,21 @@ def _stage_result_dict(
     extractor_id: str,
     stats: ExtractStats,
     pg_chunk_count: int,
+    pg_chunk_total: int,
     pg_vector_count: int,
     errors: list[str],
     run_id: str,
     statements: dict[str, Any] | None = None,
+    title: str | None = None,
 ) -> dict[str, Any]:
     """Stage 5: the run result dict (nothing reports success on a partial).
 
     Any stage error flips the status (the ledger row is 'failed' either
     way). Shadow keys are present ONLY when the hierarchy flag is on, so
     the flag-off result dict stays byte-identical to the pre-U48 shape.
+    ``pg_chunk_total`` is the document's whole stored count; it stays
+    honest when a re-run writes nothing (issue #222). ``title`` appears
+    only when the per-book config carried one.
     """
     result: dict[str, Any] = {
         "status": "success" if not errors else "partial",
@@ -50,6 +55,7 @@ def _stage_result_dict(
         "entity_count": len(entities),
         "relation_count": len(relations),
         "pg_chunk_count": pg_chunk_count,
+        "pg_chunk_total": pg_chunk_total,
         "pg_vector_count": pg_vector_count,
         "degraded": degraded,
         "extractor_id": extractor_id,
@@ -82,6 +88,8 @@ def _stage_result_dict(
         result["embedding_note"] = embed_meta["embedding_note"]
     if empty_reason is not None:
         result["empty_reason"] = empty_reason
+    if title is not None:
+        result["title"] = title
     if hierarchy_settings.enabled:
         result["shadow_chunk_count"] = shadow_chunk_count
         result["shadow_vector_count"] = shadow_vector_count

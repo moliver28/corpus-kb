@@ -246,6 +246,11 @@ code = [
 # Constraint: docling 2.144 needs semchunk<4 through docling-core, so
 # [docling] and [semchunk] cannot share one env; uv locks them apart
 # (see the [tool.uv] conflicts block near [build-system]).
+# Constraint (issue #220): onnxruntime — pulled in beside some
+# unstructured PDF chains — crashes docling's native OCR at import or
+# parse time. Keep the two dependency sets in separate environments;
+# the textbook strategy detects the combination at parse time and
+# warns (textbook_pages.docling_env_warnings).
 docling = ["docling>=2.144", "pypdf>=6.21"]
 # PDF scan-only support (textbook-ingestion program, Wave 1 declaration):
 # pypdf alone for callers that only need page counts and text probes, no

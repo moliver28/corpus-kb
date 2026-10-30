@@ -122,20 +122,26 @@ class DocumentsProjection:
                 )
 
     async def _project_document(self, tenant_id: UUID, payload: dict[str, Any]) -> None:
-        """Upsert into the documents table."""
+        """Upsert into the documents table (title column, issue #222).
+
+        A payload without a title never clears a stored one — the
+        COALESCE mirrors the file_hash merge.
+        """
+        title = payload.get("title")
         async with self._gateway.transaction(str(tenant_id)) as tx:
             await tx.execute(
                 """
                 INSERT INTO documents
                 (doc_id, tenant_id, source, source_type, file_size, file_hash,
-                 language, metadata)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 language, metadata, title)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                 ON CONFLICT (tenant_id, source) DO UPDATE SET
                     source_type = $4,
                     file_size = $5,
                     file_hash = COALESCE($6, documents.file_hash),
                     language = $7,
                     metadata = $8,
+                    title = COALESCE($9, documents.title),
                     updated_at = NOW()
                 """,
                 str(payload.get("aggregate_id", "")),
@@ -146,6 +152,7 @@ class DocumentsProjection:
                 payload.get("file_hash"),
                 payload.get("language"),
                 json.dumps(payload.get("metadata", {})),
+                title if isinstance(title, str) else None,
             )
 
     async def _project_chunks(self, tenant_id: UUID, payload: dict[str, Any]) -> None:

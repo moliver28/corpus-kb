@@ -91,12 +91,19 @@ ingestion:
 # at least min_pages pages (pypdf probe, the [scan] extra) and windows
 # them into window_pages blocks so one book does not monopolize a run.
 # parser picks the page parser; cache_dir keeps parsed page artifacts
-# under the repo's data dir convention (~/.corpus-kb).
+# under the repo's data dir convention (~/.corpus-kb). window_subprocess
+# parses each Docling window in a child process, so a scanned-page crash
+# cannot kill the worker (issue #219); the window then falls back to
+# pypdf after window_timeout_s. cache_max_mb caps the window cache in
+# MiB and evicts the oldest files first; 0 disables the cap (issue #221).
 textbook:
   min_pages: 120
   window_pages: 50
   parser: docling
   cache_dir: ~/.corpus-kb/textbook-cache
+  window_subprocess: true
+  window_timeout_s: 3600.0
+  cache_max_mb: 2048
 
 # Ingest queue worker knobs (queue_tools + the Wave 2 worker). autorun
 # keeps the worker off by default: enqueue lands rows, nothing drains

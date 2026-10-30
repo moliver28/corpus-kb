@@ -53,6 +53,8 @@ class IngestSink(Protocol):
 
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]: ...
 
+    async def count_chunks_for_document(self, doc_id: str) -> int: ...
+
     async def store_vectors(
         self,
         chunks: list[Chunk],
@@ -125,6 +127,10 @@ class ChunkSink:
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
         """Delegates to the store's chunk write."""
         return await self._store.store_chunks(chunks)
+
+    async def count_chunks_for_document(self, doc_id: str) -> int:
+        """Delegates to the store's per-document chunk count."""
+        return await self._store.count_chunks_for_document(doc_id)
 
     async def store_vectors(
         self,

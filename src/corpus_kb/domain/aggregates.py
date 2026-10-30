@@ -26,7 +26,7 @@ class Document(Aggregate):
     """Aggregate root for an ingested document.
 
     Events:
-        Ingested: fired on creation (source, source_type, metadata)
+        Ingested: fired on creation (source, source_type, title, metadata)
         ChunksAdded: fired when chunks are added (tenant_id, chunk_count, chunk_texts)
         Deleted: fired when document is deleted
     """
@@ -38,6 +38,7 @@ class Document(Aggregate):
     file_size: int | None = None
     file_hash: str | None = None
     language: str | None = None
+    title: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
 
     @event("Ingested")
@@ -49,6 +50,7 @@ class Document(Aggregate):
         file_size: int | None = None,
         file_hash: str | None = None,
         language: str | None = None,
+        title: str | None = None,
         metadata: dict[str, object] | None = None,
     ) -> None:
         self.tenant_id = tenant_id
@@ -57,6 +59,7 @@ class Document(Aggregate):
         self.file_size = file_size
         self.file_hash = file_hash
         self.language = language
+        self.title = title
         self.metadata = metadata or {}
         self.chunk_count = 0
 

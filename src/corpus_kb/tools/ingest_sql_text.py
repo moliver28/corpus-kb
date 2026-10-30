@@ -11,11 +11,12 @@ from __future__ import annotations
 
 DOCUMENT_UPSERT_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
-        chunk_count, file_size, file_hash, metadata, document_date)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        chunk_count, file_size, file_hash, metadata, document_date, title)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     ON CONFLICT (tenant_id, source) DO UPDATE
     SET chunk_count = $5, file_size = $6, file_hash = $7,
         document_date = COALESCE(EXCLUDED.document_date, documents.document_date),
+        title = COALESCE(EXCLUDED.title, documents.title),
         updated_at = NOW()
     RETURNING doc_id::text
 """
@@ -24,11 +25,13 @@ DOCUMENT_UPSERT_SQL = """
 # and eight child tables reference documents — engine limitation, duckdb#8988),
 # so the DuckDB document "upsert" inserts once and afterwards only fetches
 # the existing doc_id; run freshness lives in the ledger (migration 030
-# adds ingest_runs.source).
+# adds ingest_runs.source). The title rides the first insert (issue #222):
+# a title-less first ingest leaves the column NULL, and DuckDB never
+# rewrites the row afterwards anyway.
 DOCUMENT_INSERT_DUCKDB_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
-        chunk_count, file_size, file_hash, metadata, document_date)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        chunk_count, file_size, file_hash, metadata, document_date, title)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     ON CONFLICT (tenant_id, source) DO NOTHING
     RETURNING doc_id::text
 """

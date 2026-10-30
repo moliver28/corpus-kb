@@ -3,16 +3,20 @@
 The Docling leg runs against a fake converter double (same shapes:
 ``convert -> document.iterate_items`` with labeled, provenance-stamped
 items), so windowing, the seam, and cache wiring test without the
-``[docling]`` extra. PDFs for the pypdf legs are generated in-test with
-pypdf — small and deterministic, no committed fixtures. Every test that
-needs pypdf skips when the ``[scan]`` extra is absent (CI installs
-neither extra); one real-Docling leg skips without ``[docling]``. No
-test reaches the network or downloads models.
+``[docling]`` extra. Tests that exercise the direct converter call set
+``window_subprocess: false``; tests for the child-process path patch the
+wrapper seam (``parse_window_in_subprocess``) and never start a real
+child. PDFs for the pypdf legs are generated in-test with pypdf — small
+and deterministic, no committed fixtures. Every test that needs pypdf
+skips when the ``[scan]`` extra is absent (CI installs neither extra);
+one real-Docling leg skips without ``[docling]``. No test reaches the
+network or downloads models.
 """
 
 from __future__ import annotations
 
 import io
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -27,10 +31,22 @@ from corpus_kb.ingestion.base import (
 )
 from corpus_kb.ingestion.registry import resolve_strategy, strategy_names
 from corpus_kb.ingestion.strategies.textbook import TEXTBOOK_STRATEGY_NAME, TextbookStrategy
+from corpus_kb.ingestion.strategies.textbook_pages import PageItem
 from corpus_kb.ingestion.strategies.textbook_settings import settings_from
 
 _PAGES_TARGET = "corpus_kb.ingestion.strategies.textbook.load_docling_converter"
 _DEFAULT_TARGET = "corpus_kb.ingestion.strategies.textbook.DefaultStrategy"
+_SUBPROCESS_TARGET = "corpus_kb.ingestion.strategies.textbook.parse_window_in_subprocess"
+# Subprocess mode gates on the module spec (the parent never imports
+# docling), so the child-path tests patch this seam, not the loader.
+_SPEC_TARGET = "corpus_kb.ingestion.strategies.textbook.find_spec"
+
+
+def _patch_docling_present(monkeypatch: pytest.MonkeyPatch, present: bool) -> None:
+    monkeypatch.setattr(
+        _SPEC_TARGET, lambda name: object() if present and name == "docling" else None
+    )
+
 
 _CFG: dict[str, object] = {"ingestion": {"strategies": {}, "default": "default"}}
 
@@ -39,7 +55,9 @@ def _profile(path: str, config: dict[str, object] | None = None) -> SourceProfil
     return SourceProfile(source_type="textbook", is_file=True, path=path, config=config or _CFG)
 
 
-def _config(min_pages: int, window_pages: int, cache_dir: str, parser: str = "docling") -> dict:
+def _config(
+    min_pages: int, window_pages: int, cache_dir: str, parser: str = "docling", **extra: object
+) -> dict:
     return {
         "ingestion": {"strategies": {}, "default": "default"},
         "textbook": {
@@ -47,6 +65,7 @@ def _config(min_pages: int, window_pages: int, cache_dir: str, parser: str = "do
             "window_pages": window_pages,
             "parser": parser,
             "cache_dir": cache_dir,
+            **extra,
         },
     }
 
@@ -303,7 +322,7 @@ def test_docling_windows_seam_and_metadata(tmp_path: Path, monkeypatch: pytest.M
     path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
     loader = _fake_loader(_six_page_nodes())
     monkeypatch.setattr(_PAGES_TARGET, loader)
-    config = _config(1, 4, str(tmp_path / "cache"))
+    config = _config(1, 4, str(tmp_path / "cache"), window_subprocess=False)
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     assert loader().calls == [(1, 4), (5, 6)]
     assert validate_plan(plan) == []
@@ -332,7 +351,7 @@ def test_window_parse_dedupes_a_repeated_page(
     pages[5] = [_Node("text", "marker-five " + pages[5][0].text, 5)]
     converter = _Bleeding(pages)
     monkeypatch.setattr(_PAGES_TARGET, lambda: converter)
-    config = _config(1, 4, str(tmp_path / "cache"))
+    config = _config(1, 4, str(tmp_path / "cache"), window_subprocess=False)
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     texts = [chunk.text for chunk in plan.chunks]
     assert sum(text.count("page five prose") for text in texts) == 1
@@ -344,7 +363,7 @@ def test_cache_hits_skip_second_parse(tmp_path: Path, monkeypatch: pytest.Monkey
     loader = _fake_loader(_six_page_nodes())
     monkeypatch.setattr(_PAGES_TARGET, loader)
     cache_dir = tmp_path / "cache"
-    config = _config(1, 4, str(cache_dir))
+    config = _config(1, 4, str(cache_dir), window_subprocess=False)
     first = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     assert len(list(cache_dir.glob("docling-*.json"))) == 2
 
@@ -361,7 +380,7 @@ def test_cache_invalidates_when_the_file_changes(
 ) -> None:
     path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
     monkeypatch.setattr(_PAGES_TARGET, _fake_loader(_six_page_nodes()))
-    config = _config(1, 4, str(tmp_path / "cache"))
+    config = _config(1, 4, str(tmp_path / "cache"), window_subprocess=False)
     TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     _write_pdf(path, ["changed body"] * 6)  # same page count, different bytes
     fresh = _fake_loader(_six_page_nodes())
@@ -375,6 +394,7 @@ def test_degrade_without_docling_extra_warns_and_chunks(
 ) -> None:
     path = _write_pdf(tmp_path / "book.pdf", [f"body {n}" for n in range(1, 5)])
     monkeypatch.setattr(_PAGES_TARGET, lambda: None)
+    _patch_docling_present(monkeypatch, present=False)  # subprocess mode reads the spec
     config = _config(1, 2, str(tmp_path / "cache"))
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     assert any("'docling' extra" in warning for warning in plan.warnings)
@@ -398,7 +418,7 @@ def test_failed_convert_window_falls_back_to_pypdf(
     pages = {1: [_Node("section_header", "Chapter One", 1), _Node("text", "alpha body", 1)]}
     converter = _HalfBroken(pages)
     monkeypatch.setattr(_PAGES_TARGET, lambda: converter)
-    config = _config(1, 1, str(tmp_path / "cache"))
+    config = _config(1, 1, str(tmp_path / "cache"), window_subprocess=False)
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     assert any("docling failed on pages 2 to 2" in warning for warning in plan.warnings)
     assert validate_plan(plan) == []
@@ -407,10 +427,89 @@ def test_failed_convert_window_falls_back_to_pypdf(
 
 def test_unknown_parser_setting_warns(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(_PAGES_TARGET, lambda: None)  # keep the test hermetic
+    _patch_docling_present(monkeypatch, present=False)  # subprocess mode reads the spec
     path = _write_pdf(tmp_path / "book.pdf", ["body"])
     config = _config(1, 50, str(tmp_path / "cache"), parser="ocr9000")
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     assert any("unknown textbook.parser 'ocr9000'" in warning for warning in plan.warnings)
+    assert plan.chunks
+
+
+# ---------------------------------------------------------------------------
+# Child-process windows (issue #219): the wrapper seam, patched, never real
+# ---------------------------------------------------------------------------
+
+
+def test_subprocess_crash_falls_back_and_caches_under_pypdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", [f"body {n}" for n in range(1, 5)])
+    loader = _fake_loader(_six_page_nodes())
+    monkeypatch.setattr(_PAGES_TARGET, loader)
+    _patch_docling_present(monkeypatch, present=True)  # the spec gate passes; the child fails
+    monkeypatch.setattr(_SUBPROCESS_TARGET, lambda pdf, start, end, timeout_s: None)
+    cache_dir = tmp_path / "cache"
+    config = _config(1, 2, str(cache_dir))
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert any("crashed or timed out in the child process" in warning for warning in plan.warnings)
+    assert loader().calls == []  # the direct converter call never ran
+    assert plan.chunks
+    assert validate_plan(plan) == []
+    assert list(cache_dir.glob("pypdf-*.json"))  # the fallback caches under pypdf
+    assert not list(cache_dir.glob("docling-*.json"))
+
+
+def test_subprocess_payload_feeds_the_docling_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    loader = _fake_loader(_six_page_nodes())
+    monkeypatch.setattr(_PAGES_TARGET, loader)
+    _patch_docling_present(monkeypatch, present=True)  # the spec gate passes
+
+    def _wrapper(pdf: Path, start: int, end: int, timeout_s: float) -> list[PageItem]:
+        del pdf, timeout_s
+        return [PageItem(page, "text", f"shipped page {page}") for page in range(start, end + 1)]
+
+    monkeypatch.setattr(_SUBPROCESS_TARGET, _wrapper)
+    cache_dir = tmp_path / "cache"
+    config = _config(1, 4, str(cache_dir))
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert loader().calls == []
+    assert list(cache_dir.glob("docling-*.json"))
+    assert not list(cache_dir.glob("pypdf-*.json"))
+    assert any("shipped page 2" in chunk.text for chunk in plan.chunks)
+
+
+def test_subprocess_off_uses_the_direct_call(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    loader = _fake_loader(_six_page_nodes())
+    monkeypatch.setattr(_PAGES_TARGET, loader)
+
+    def _must_not_spawn(*args: object) -> object:
+        raise AssertionError("window_subprocess false must parse in-process")
+
+    monkeypatch.setattr(_SUBPROCESS_TARGET, _must_not_spawn)
+    config = _config(1, 4, str(tmp_path / "cache"), window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert loader().calls == [(1, 4), (5, 6)]
+    assert validate_plan(plan) == []
+
+
+def test_cache_cap_prunes_before_parsing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    monkeypatch.setattr(_PAGES_TARGET, _fake_loader(_six_page_nodes()))
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    stale = cache_dir / "docling-aaaaaaaaaaaaaaaa-w0999.json"
+    stale.write_bytes(b"x" * (2 * 1024 * 1024))
+    os.utime(stale, (1000.0, 1000.0))  # ancient: the first file to evict
+    config = _config(1, 4, str(cache_dir), cache_max_mb=1, window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert not stale.exists()  # the over-cap stale record went first
+    assert list(cache_dir.glob("docling-*.json"))  # fresh windows still cached
     assert plan.chunks
 
 
