@@ -27,11 +27,9 @@ import typer
 
 # Reuse the ingest front door's shared plumbing (same honest-sync rule);
 # cli_ingest imports corpus_kb.cli only lazily, so this import is acyclic.
+from corpus_kb.cli._plumbing import EXIT_FAILED, EXIT_OK
 from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
 from corpus_kb.eval.golden import GoldenRecord, golden_summary
-
-EXIT_OK = 0
-EXIT_FAILED = 1
 
 eval_app = typer.Typer(help="Offline evaluation: golden sets, retrieval and answer metrics")
 
