@@ -63,7 +63,7 @@ async def ingest_file(
     file_path: str,
     pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
-    tenant_id: str = "00000000-0000-0000-0000-000000000001",
+    tenant_id: str = DEFAULT_TENANT_ID,
     source_type: str | None = None,
     validate: str | None = None,
 ) -> dict[str, object]:
@@ -104,7 +104,7 @@ async def ingest_directory(
     directory_path: str,
     pg_pool: asyncpg.Pool | SqlGateway,
     config: dict[str, object] | None = None,
-    tenant_id: str = "00000000-0000-0000-0000-000000000001",
+    tenant_id: str = DEFAULT_TENANT_ID,
     source_type: str | None = None,
     recursive: bool = True,
     validate: str | None = None,

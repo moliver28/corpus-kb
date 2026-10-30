@@ -36,6 +36,8 @@ from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+
 from ..analysis.dates import parse_date_value
 from ..errors import ConfigError
 from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
@@ -51,8 +53,6 @@ from .ingest_sql import (
 )
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 _CHUNK_TOMBSTONE_SQL = (
     "UPDATE chunks SET tombstoned_at = NOW() WHERE tenant_id = $1 AND doc_id = $2 "

@@ -17,12 +17,12 @@ from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+
 from ..utils.models import Chunk, Document, Entity, Relation
 from .graph_sql import neighbors_sql, traversal_row, traverse_sql
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 # ============================================================================

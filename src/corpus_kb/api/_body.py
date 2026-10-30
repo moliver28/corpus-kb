@@ -17,6 +17,9 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+# Re-export of the canonical tenant sentinel (corpus_kb.contracts.model):
+# route modules import it from here, so the public name stays stable.
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT_ID
 from corpus_kb.errors import (
     DEFAULT_ERROR_TYPE,
     DEFAULT_HTTP_STATUS,
@@ -26,8 +29,6 @@ from corpus_kb.errors import (
 )
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_TENANT_ID = "00000000-0000-0000-0000-000000000001"
 
 
 async def parse_body(request: Request) -> dict[str, Any]:

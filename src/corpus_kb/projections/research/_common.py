@@ -13,6 +13,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.projections.event_reader import DomainNotification
 from corpus_kb.research.conn import Store, dialect_of, tenant_scope
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 RESEARCH_PROJECTION_NAME = "ResearchProjection"
 
-DEFAULT_TENANT = UUID("00000000-0000-0000-0000-000000000001")
+DEFAULT_TENANT = UUID(DEFAULT_TENANT_ID)
 
 
 def event_payload(notification: DomainNotification) -> dict[str, Any]:

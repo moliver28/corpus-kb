@@ -13,9 +13,9 @@ from uuid import UUID
 
 import asyncpg
 
-__all__ = ["research_cycle"]
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 
-DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
+__all__ = ["research_cycle"]
 
 
 def _status_for(exit_code: int, halted: bool) -> str:

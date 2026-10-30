@@ -31,6 +31,7 @@ from corpus_kb._setup.doctor_research import (
     ResearchCheck,
 )
 from corpus_kb.config import KNOWN_CORPUS_KB_ENV_VARS
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 DOC_ADMIN = "docs/ADMIN.md"
 
@@ -261,7 +262,7 @@ async def _dimensions_histogram(conn: asyncpg.Connection, width: int) -> dict[in
         async with conn.transaction():
             await conn.execute(
                 "SELECT set_config('app.current_tenant_id', $1, true)",
-                "00000000-0000-0000-0000-000000000001",
+                DEFAULT_TENANT_ID,
             )
             rows = await conn.fetch(DIMENSIONS_HISTOGRAM_SQL)
     except Exception:

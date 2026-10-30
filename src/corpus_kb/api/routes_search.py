@@ -17,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import opt_bool, parse_body, route_errors
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.domain.models import (
     RoutedQuery,
     SearchContextQuery,
@@ -35,7 +36,7 @@ async def search(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     query = SearchQuery(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         query=body["query"],
         k=body.get("k"),
         source_type=body.get("source_type"),
@@ -55,7 +56,7 @@ async def search_similar(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     query = SearchSimilarQuery(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         chunk_id=UUID(body["chunk_id"]),
         k=body.get("k", 10),
     )
@@ -73,7 +74,7 @@ async def search_context(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     query = SearchContextQuery(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         query=body["query"],
         k=body.get("k", 5),
         context_chunks=body.get("context_chunks", 2),
@@ -103,7 +104,7 @@ async def route_query(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     query = RoutedQuery(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         query=body["query"],
         k=body.get("k"),
     )
@@ -119,7 +120,7 @@ async def query_sql(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     query = SQLQuery(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         sql=body["sql"],
         params=body.get("params", {}),
     )

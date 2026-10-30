@@ -29,7 +29,7 @@ async def add_entity(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     cmd = AddEntityCommand(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         name=body["name"],
         entity_type=body.get("entity_type", "concept"),
         metadata=body.get("metadata", {}),
@@ -46,7 +46,7 @@ async def add_relation(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     cmd = AddRelationCommand(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         source_entity_id=UUID(body["source_entity_id"]),
         target_entity_id=UUID(body["target_entity_id"]),
         relation_type=body.get("relation_type", "related_to"),
@@ -78,7 +78,7 @@ async def search_graph(request: Request) -> JSONResponse:
     body = await parse_body(request)
     handler = get_graph_handler()
     results = await handler.handle_search_graph(
-        UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         body.get("query", ""),
         body.get("entity_type"),
         body.get("limit", 100),

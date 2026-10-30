@@ -24,10 +24,9 @@ from typing import Any
 from uuid import UUID
 
 from corpus_kb.api._body import opt_bool, opt_int, opt_str
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 
 Arm = Callable[[dict[str, Any], str], Awaitable[dict[str, Any]]]
-
-DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 class MethodNotFoundError(Exception):

@@ -78,7 +78,7 @@ async def ingest_file(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     cmd = IngestFileCommand(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         file_path=body["file_path"],
         content=body.get("content"),
         source_type=body.get("source_type"),
@@ -96,7 +96,7 @@ async def ingest_text(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     cmd = IngestTextCommand(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         text=body["text"],
         source=body.get("source", "raw_text"),
         source_type=body.get("source_type", "text"),
@@ -114,7 +114,7 @@ async def ingest_directory(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     cmd = IngestDirectoryCommand(
-        tenant_id=UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         directory_path=body["directory_path"],
         recursive=body.get("recursive", True),
         validate_mode=opt_str(body.get("validate")),
@@ -134,7 +134,7 @@ async def ingest_url_route(request: Request) -> JSONResponse:
     result = await ingest_url(
         str(body["url"]),
         await research_pool(),
-        tenant_id=body.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
+        tenant_id=body.get("tenant_id", DEFAULT_TENANT_ID),
         crawl=opt_bool(body.get("crawl"), False),
         source_type=body.get("source_type"),
         validate=opt_str(body.get("validate")),
@@ -199,7 +199,7 @@ async def ingest_status_route(request: Request) -> JSONResponse:
     limit = int(request.query_params.get("limit", ingest_surface_tools.DEFAULT_RUN_LIMIT))
     result = await ingest_surface_tools.ingest_status(
         await research_pool(),
-        tenant_id=request.query_params.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
+        tenant_id=request.query_params.get("tenant_id", DEFAULT_TENANT_ID),
         limit=limit,
         project_id=request.query_params.get("project_id"),
     )
@@ -217,7 +217,7 @@ async def ingest_reembed_route(request: Request) -> JSONResponse:
     raw_limit = body.get("limit")
     result = await ingest_surface_tools.ingest_reembed(
         await research_pool(),
-        tenant_id=body.get("tenant_id", "00000000-0000-0000-0000-000000000001"),
+        tenant_id=body.get("tenant_id", DEFAULT_TENANT_ID),
         limit=int(raw_limit) if raw_limit is not None else None,
         doc_id=body.get("doc_id"),
     )

@@ -11,11 +11,14 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _DEFAULT_TENANT_ID_STR
+
 # ============================================================================
-# Default tenant (single-tenant placeholder)
+# Default tenant (single-tenant placeholder); the canonical sentinel string
+# lives in corpus_kb.contracts.model — this module exposes it as a UUID.
 # ============================================================================
 
-DEFAULT_TENANT_ID = UUID("00000000-0000-0000-0000-000000000001")
+DEFAULT_TENANT_ID = UUID(_DEFAULT_TENANT_ID_STR)
 
 
 # ============================================================================

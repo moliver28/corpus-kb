@@ -32,6 +32,7 @@ from corpus_kb.cli.cli_ingest_views import (
     print_reembed_summary,
     print_status_report,
 )
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as TENANT_DEFAULT
 
 if TYPE_CHECKING:
     import asyncpg
@@ -43,8 +44,6 @@ INGEST_EXIT_OK = 0
 INGEST_EXIT_PARTIAL = 1
 INGEST_EXIT_FAILED = 2
 INGEST_EXIT_CONFIG = 3
-
-TENANT_DEFAULT = "00000000-0000-0000-0000-000000000001"
 
 
 def register(app: typer.Typer) -> None:

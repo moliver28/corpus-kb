@@ -22,6 +22,7 @@ from collections.abc import Sequence
 from typing import cast
 from urllib.parse import urlparse
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as SEED_TENANT_ID
 from corpus_kb.errors import ConflictError
 from corpus_kb.handlers.migrate_data import (
     ColumnTransform,
@@ -45,10 +46,10 @@ TARGET_NOT_EMPTY = (
     "The target database already has data. Use an empty database, then run migrate-data again."
 )
 
-#: The schema-seeded default tenant (storage.sql and the DuckDB mirror
-#: both insert it). It is schema, not data: the empty gate ignores it and
-#: the copy clears it first, so the source's row re-seeds the target.
-SEED_TENANT_ID = "00000000-0000-0000-0000-000000000001"
+# SEED_TENANT_ID above is the schema-seeded default tenant (storage.sql and
+# the DuckDB mirror both insert it). It is schema, not data: the empty gate
+# ignores it and the copy clears it first, so the source's row re-seeds the
+# target. It aliases the canonical contracts constant.
 
 
 def libpq_from_dsn(dsn: str) -> str:
