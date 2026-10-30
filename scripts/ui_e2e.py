@@ -7,6 +7,9 @@ down. Requires: a reachable Postgres (tests/research_db.py recipe),
 the venv console script (corpus-kb), pnpm, and the Playwright chromium
 browser (`pnpm -C ui_src exec playwright install chromium` once).
 
+The ask LLM endpoint points at a closed port. The smoke then sees the
+honest degraded badge at once, with no model-timer race.
+
 Exit code: the Playwright run's exit code (0 = smoke green).
 """
 
@@ -21,6 +24,7 @@ import time
 from pathlib import Path
 
 import httpx
+import yaml
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "tests"))
@@ -63,6 +67,17 @@ def preload_demo() -> None:
     print(f"demo preload: HTTP {response.status_code} {body[:120]}")
 
 
+def write_llm_override() -> Path:
+    """Point llm.base_url at a closed port for a fast, honest degrade."""
+    config = yaml.safe_load((REPO / "config.yaml").read_text(encoding="utf-8")) or {}
+    llm = config.setdefault("llm", {})
+    llm["base_url"] = "http://127.0.0.1:9"
+    path = REPO / "ui_src" / "test-results" / "e2e-config.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return path
+
+
 def run_playwright() -> int:
     pnpm = shutil.which("pnpm")
     if pnpm is None:
@@ -81,7 +96,14 @@ def main() -> int:
         exe = str(Path(sys.executable).parent / "corpus-kb.exe")
         if not Path(exe).is_file():
             exe = shutil.which("corpus-kb") or exe
-        env = {**os.environ, "CORPUS_KB_DATABASE_URL": dsn}
+        # CORPUS_KB_CONFIG replaces the root config file, so the override is
+        # the full root config with llm.base_url re-pointed. The ask path
+        # refuses fast and the degraded badge renders at once (#218, #226).
+        env = {
+            **os.environ,
+            "CORPUS_KB_DATABASE_URL": dsn,
+            "CORPUS_KB_CONFIG": str(write_llm_override()),
+        }
         # A just-killed server can leave port 8010 unbindable for a few
         # seconds on Windows; retry the start instead of failing the run.
         server_log = REPO / "ui_src" / "test-results" / "server.log"
