@@ -164,64 +164,25 @@ class TextbookStrategy:
         docling_active = parser_key == "docling"
         for index, (start, end) in enumerate(window_ranges(page_count, settings.window_pages)):
             active = "docling" if docling_active else "pypdf"
-            cached = load_window_cache(
-                cache_file(cache_dir, active, digest, index),
-                PARSER_VERSIONS[active],
-                digest,
-                index,
-            )
+            cached = self._cached_record(cache_dir, digest, index, active)
             if cached is not None:
                 records.append(cached)
                 continue
             if docling_active and not extra_checked:
                 extra_checked = True
-                if settings.window_subprocess:
-                    # The child imports docling; the parent only probes the
-                    # module spec (a parent import can crash, issue #220).
-                    docling_active = find_spec("docling") is not None
-                else:
-                    converter = load_docling_converter()
-                    docling_active = converter is not None
-                if not docling_active:
-                    warnings.append(_MISSING_DOCLING)
-                else:
-                    warnings.extend(docling_env_warnings())
+                docling_active, converter = self._confirm_docling(settings, converter, warnings)
             use_docling = docling_active and (settings.window_subprocess or converter is not None)
             effective = "docling" if use_docling else "pypdf"
             if effective != active:
-                # A prior degraded run may have cached the pypdf text.
-                fallback_cache = load_window_cache(
-                    cache_file(cache_dir, effective, digest, index),
-                    PARSER_VERSIONS[effective],
-                    digest,
-                    index,
-                )
-                if fallback_cache is not None:
-                    records.append(fallback_cache)
+                cached = self._cached_record(cache_dir, digest, index, effective)
+                if cached is not None:
+                    records.append(cached)
                     continue
             items: list[PageItem] | None = None
             if use_docling:
-                if settings.window_subprocess:
-                    try:
-                        items = parse_window_in_subprocess(
-                            path, start, end, settings.window_timeout_s
-                        )
-                    except Exception:
-                        items = None  # a wrapper failure must not kill the run
-                    if items is None:
-                        effective = "pypdf"
-                        warnings.append(
-                            f"Window {index + 1} crashed or timed out in the child process. "
-                            "Used the pypdf fallback."
-                        )
-                else:
-                    try:
-                        items = parse_window_docling(converter, path, start, end)
-                    except Exception:
-                        warnings.append(
-                            f"docling failed on pages {start} to {end}; used pypdf page text"
-                        )
-                        items = None
+                items, effective = self._parse_docling_window(
+                    settings, converter, path, start, end, index, warnings
+                )
             if items is None:
                 items = parse_window_pypdf(reader, start, end, warnings)
             record = WindowRecord(start_page=start, end_page=end, items=items)
@@ -234,6 +195,68 @@ class TextbookStrategy:
             )
             records.append(record)
         return records
+
+    def _cached_record(
+        self, cache_dir: Path, digest: str, index: int, parser_key: str
+    ) -> WindowRecord | None:
+        """The cached window for one parser, or None on a miss."""
+        return load_window_cache(
+            cache_file(cache_dir, parser_key, digest, index),
+            PARSER_VERSIONS[parser_key],
+            digest,
+            index,
+        )
+
+    def _confirm_docling(
+        self,
+        settings: TextbookSettings,
+        converter: Any | None,
+        warnings: list[str],
+    ) -> tuple[bool, Any | None]:
+        """The one-time extra check: (docling active, converter or None).
+
+        Subprocess mode probes the module spec only: the child imports
+        docling, and a parent import can crash the worker (issue #220).
+        """
+        if settings.window_subprocess:
+            active = find_spec("docling") is not None
+        else:
+            converter = load_docling_converter()
+            active = converter is not None
+        if not active:
+            warnings.append(_MISSING_DOCLING)
+        else:
+            warnings.extend(docling_env_warnings())
+        return active, converter
+
+    def _parse_docling_window(
+        self,
+        settings: TextbookSettings,
+        converter: Any | None,
+        path: Path,
+        start: int,
+        end: int,
+        index: int,
+        warnings: list[str],
+    ) -> tuple[list[PageItem] | None, str]:
+        """One docling window; `(None, "pypdf")` on crash or timeout."""
+        if settings.window_subprocess:
+            try:
+                items = parse_window_in_subprocess(path, start, end, settings.window_timeout_s)
+            except Exception:
+                items = None  # a wrapper failure must not kill the run
+            if items is None:
+                warnings.append(
+                    f"Window {index + 1} crashed or timed out in the child process. "
+                    "Used the pypdf fallback."
+                )
+                return None, "pypdf"
+            return items, "docling"
+        try:
+            return parse_window_docling(converter, path, start, end), "docling"
+        except Exception:
+            warnings.append(f"docling failed on pages {start} to {end}; used pypdf page text")
+            return None, "pypdf"
 
     def _fallback(
         self,
