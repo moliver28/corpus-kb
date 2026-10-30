@@ -342,8 +342,9 @@ jobs:
     name: "ui-e2e (spa smoke + axe on a live server)"
     runs-on: ubuntu-latest
     needs: [ui, test-ubuntu]
-    # 35 minutes: the runner embeds the demo corpus and generates the ask
-    # answer on CPU with the 4B model, which alone can take 10+ minutes.
+    # 35 minutes: the runner boots the stack, embeds the demo corpus, and
+    # runs the Playwright smoke. The ask leg degrades fast (closed-port LLM),
+    # so no model generation time is budgeted here.
     timeout-minutes: 35
 
     services:
@@ -369,8 +370,9 @@ jobs:
       POSTGRES_SUPERUSER: corpus_user
       POSTGRES_SUPERUSER_PASSWORD: corpus_pass
       CORPUS_KB_TEST_DB: corpus_kb_e2e
-      # The CPU runner needs room for the cold 4B model load plus generation;
-      # Ollama's own model load timeout is 5 minutes. 780 s keeps the degrade
+      # scripts/ui_e2e.py points llm.base_url at a closed port, so the ask
+      # leg degrades in seconds and the model timer cannot race the smoke.
+      # The timeout stays as a backstop: any real generation must still end
       # inside the smoke's 840 s expectation window.
       CORPUS_KB_LLM_TIMEOUT_S: "780"
       PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.pw-browsers
