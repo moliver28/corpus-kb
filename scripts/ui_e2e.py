@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -72,8 +73,9 @@ def write_llm_override() -> Path:
     config = yaml.safe_load((REPO / "config.yaml").read_text(encoding="utf-8")) or {}
     llm = config.setdefault("llm", {})
     llm["base_url"] = "http://127.0.0.1:9"
-    path = REPO / "ui_src" / "test-results" / "e2e-config.yaml"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # The ask path re-loads config per request. Playwright cleans its
+    # test-results dir at run start, so the override must live outside it.
+    path = Path(tempfile.gettempdir()) / f"corpus-kb-e2e-config-{os.getpid()}.yaml"
     path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return path
 
