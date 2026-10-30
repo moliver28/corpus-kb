@@ -117,6 +117,49 @@ async def test_pg_chunk_count_wins_over_chunk_count(monkeypatch: pytest.MonkeyPa
 
 
 # ---------------------------------------------------------------------------
+# The honest chunk total (issue #222: a re-run writes nothing)
+# ---------------------------------------------------------------------------
+
+
+def test_chunk_count_from_prefers_the_first_positive_value() -> None:
+    from corpus_kb.queue.report import chunk_count_from
+
+    assert chunk_count_from({"pg_chunk_total": 30, "pg_chunk_count": 2}) == 30
+    # A stub sink answers total 0; that 0 must not shadow a truthful count.
+    assert chunk_count_from({"pg_chunk_total": 0, "pg_chunk_count": 2}) == 2
+    assert chunk_count_from({"pg_chunk_total": 0, "pg_chunk_count": 0, "chunk_count": 12}) == 12
+    assert chunk_count_from({"pg_chunk_count": 2}) == 2
+    assert chunk_count_from({"chunk_count": 12}) == 12
+
+
+def test_chunk_count_from_falls_back_to_the_first_non_negative_value() -> None:
+    from corpus_kb.queue.report import chunk_count_from
+
+    assert chunk_count_from({"pg_chunk_total": 0}) == 0
+    assert chunk_count_from({"pg_chunk_total": 0, "pg_chunk_count": 0}) == 0
+    assert chunk_count_from({"pg_chunk_total": None, "pg_chunk_count": None}) is None
+    assert chunk_count_from({}) is None
+
+
+@pytest.mark.asyncio
+async def test_a_rerun_finish_records_the_document_full_chunk_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pool = FakeQueuePool([queue_row()])
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        # An idempotent re-run: nothing new written, total still the full count.
+        return {"status": "success", "pg_chunk_total": 30, "pg_chunk_count": 0}
+
+    _patch_ingest(monkeypatch, fake)
+    report = await _worker(pool).drain_once()
+    row = pool.rows[0]
+    assert row["status"] == "done"
+    assert row["chunks"] == 30
+    assert report.outcomes[0].status == "done"
+
+
+# ---------------------------------------------------------------------------
 # The attempt ladder (one attempt per pass; retries land in later passes)
 # ---------------------------------------------------------------------------
 
@@ -482,6 +525,58 @@ async def test_a_corrupt_strategy_config_never_fails_the_book(
     report = await _worker(pool).drain_once()
     assert report.outcomes[0].status == "done"
     assert "textbook" not in seen["config"]
+
+
+# ---------------------------------------------------------------------------
+# The row title rides the per-book config (issue #222)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_row_title_reaches_the_pipeline_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    pool = FakeQueuePool([queue_row(title="  A Book Title  ")])
+    seen: dict[str, Any] = {}
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        seen["config"] = config
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    base = _config()
+    await _worker(pool, base).drain_once()
+    assert seen["config"]["ingestion"]["title"] == "A Book Title"
+    assert "ingestion" not in base  # the worker config is not mutated
+
+
+@pytest.mark.asyncio
+async def test_row_title_and_profile_share_one_ingestion_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pool = FakeQueuePool([queue_row(profile="textbooks", title="A Book Title")])
+    seen: dict[str, Any] = {}
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        seen["config"] = config
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    await _worker(pool).drain_once()
+    assert seen["config"]["ingestion"] == {"profile": "textbooks", "title": "A Book Title"}
+
+
+@pytest.mark.asyncio
+async def test_a_blank_row_title_leaves_the_config_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    pool = FakeQueuePool([queue_row(title="   ")])
+    seen: dict[str, Any] = {}
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        seen["config"] = config
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    base = _config()
+    await _worker(pool, base).drain_once()
+    assert seen["config"] == base
 
 
 # ---------------------------------------------------------------------------

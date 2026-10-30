@@ -734,3 +734,56 @@ class TestRuntimeRerankerBackendKeys:
         config["reranking"]["llamacpp_url"] = 8080
         errors = validate_runtime_config(config)
         assert any("key 'reranking.llamacpp_url' must be str" in e for e in errors)
+
+
+class TestRuntimeTextbookKeys:
+    """RUNTIME_CONFIG_KEYS learned the textbook isolation + cache-cap keys."""
+
+    def test_textbook_keys_declared(self):
+        assert RUNTIME_CONFIG_KEYS["textbook.window_subprocess"] is bool
+        assert RUNTIME_CONFIG_KEYS["textbook.window_timeout_s"] is float
+        assert RUNTIME_CONFIG_KEYS["textbook.cache_max_mb"] is int
+
+    def test_shipped_yamls_carry_the_new_textbook_keys(self):
+        for name in ("config.yaml", "src/corpus_kb/config.yaml"):
+            cfg = validate_configs.load_yaml(ROOT / name)
+            assert validate_runtime_config(cfg) == [], name
+            assert cfg["textbook"]["window_subprocess"] is True, name
+            assert cfg["textbook"]["window_timeout_s"] == 3600.0, name
+            assert cfg["textbook"]["cache_max_mb"] == 2048, name
+
+    def test_extended_textbook_block_passes(self):
+        errors = validate_configs._textbook_block_errors(
+            {
+                "parser": "docling",
+                "min_pages": 120,
+                "window_pages": 50,
+                "window_subprocess": True,
+                "window_timeout_s": 3600.0,
+                "cache_max_mb": 2048,
+            }
+        )
+        assert errors == []
+
+    def test_bad_new_textbook_values_rejected(self):
+        errors = validate_configs._textbook_block_errors(
+            {
+                "window_subprocess": "yes",
+                "window_timeout_s": -1,
+                "cache_max_mb": "big",
+            }
+        )
+        assert any("textbook.window_subprocess" in e for e in errors)
+        assert any("textbook.window_timeout_s" in e for e in errors)
+        assert any("textbook.cache_max_mb" in e for e in errors)
+
+    def test_cache_cap_zero_is_valid(self):
+        block = {"min_pages": 120, "window_pages": 50, "cache_max_mb": 0}
+        errors = validate_configs._textbook_block_errors(block)
+        assert errors == []
+
+    def test_mistyped_window_timeout_rejected_by_type_map(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["textbook"]["window_timeout_s"] = "long"
+        errors = validate_runtime_config(config)
+        assert any("key 'textbook.window_timeout_s' must be float" in e for e in errors)

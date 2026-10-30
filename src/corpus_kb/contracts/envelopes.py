@@ -8,6 +8,9 @@ parity gate's subset check holds for every outcome the surfaces return.
 from __future__ import annotations
 
 # Shared ingest pipeline (tools/ingest_common.py run_pipeline).
+# ``pg_chunk_total`` is the document's whole stored chunk count; it stays
+# honest when a re-run inserts nothing (issue #222). ``pg_chunk_count``
+# keeps its old meaning: chunks this run wrote or rewrote.
 INGEST_ENVELOPE = (
     "status",
     "document_id",
@@ -18,6 +21,7 @@ INGEST_ENVELOPE = (
     "entity_count",
     "relation_count",
     "pg_chunk_count",
+    "pg_chunk_total",
     "pg_vector_count",
     "degraded",
     "extractor_id",
@@ -60,3 +64,8 @@ VALIDATION_KEYS = frozenset({"validation"})
 # ``ingestion.dedup: minhash``): the dropped chunk ids appear ONLY when the
 # config gate is on, so the default envelope stays byte-identical.
 DEDUP_KEYS = frozenset({"dedup_dropped"})
+
+# Per-book title (issue #222): the result ``title`` key appears ONLY when a
+# caller (the queue worker) set ``ingestion.title``, so the default envelope
+# stays byte-identical. documents.title is the durable channel.
+TITLE_KEYS = frozenset({"title"})

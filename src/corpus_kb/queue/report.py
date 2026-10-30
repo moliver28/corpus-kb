@@ -68,10 +68,21 @@ def report_status(raw: object) -> str:
 
 
 def chunk_count_from(result: dict[str, object]) -> int | None:
-    """The stored chunk count from one pipeline result, or None."""
-    for key in ("pg_chunk_count", "chunk_count"):
-        value = result.get(key)
-        if isinstance(value, int):
+    """The stored chunk count from one pipeline result, or None.
+
+    The first POSITIVE value wins, read in the order ``pg_chunk_total``,
+    ``pg_chunk_count``, ``chunk_count``. The envelope always carries
+    ``pg_chunk_total``, and a stub sink answers 0, so a plain
+    first-int read would let that 0 shadow a truthful
+    ``pg_chunk_count``. When no value is positive, the first
+    non-negative value present wins; None only when nothing is usable.
+    """
+    values = [result.get(key) for key in ("pg_chunk_total", "pg_chunk_count", "chunk_count")]
+    for value in values:
+        if isinstance(value, int) and value > 0:
+            return value
+    for value in values:
+        if isinstance(value, int) and value >= 0:
             return value
     return None
 

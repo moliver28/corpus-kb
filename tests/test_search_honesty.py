@@ -982,6 +982,10 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "textbook.window_pages": int,
         "textbook.parser": str,
         "textbook.cache_dir": str,
+        # Textbook hardening: optional isolation, timeout, and cache-cap knobs.
+        "textbook.window_subprocess": bool,
+        "textbook.window_timeout_s": float,
+        "textbook.cache_max_mb": int,
         "queue.autorun": bool,
         "queue.poll_seconds": int,
         "queue.stale_lease_seconds": int,

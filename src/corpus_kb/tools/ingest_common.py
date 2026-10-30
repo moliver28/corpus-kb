@@ -26,7 +26,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any, cast
 
@@ -113,6 +113,33 @@ __all__ = [
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+_ChunkCounter = Callable[[str], Awaitable[int]]
+
+
+async def _stored_chunk_total(sink: IngestSink, doc_id: str) -> int:
+    """The document's whole stored chunk count, or 0 when the sink lacks it.
+
+    The count rides the sink's underlying store (``ChunkSink.store`` or the
+    bare store). A sink without the count — a test stub of the older
+    protocol — answers 0, and the queue report falls back to
+    ``pg_chunk_count``; the read is metadata, never a write-path claim. A
+    failed read logs and answers 0, so a committed write never flips to
+    partial because the count went missing.
+    """
+    target = getattr(sink, "store", sink)
+    counter = cast(
+        "_ChunkCounter | None",
+        getattr(target, "count_chunks_for_document", None),
+    )
+    if counter is None:
+        return 0
+    try:
+        return int(await counter(doc_id))
+    except Exception as exc:
+        logger.warning("Stored chunk count read failed for %s: %s", doc_id, exc)
+        return 0
 
 
 # The advisory-lock SQL stays owned (and pinned) by the orchestrator: the
@@ -252,18 +279,22 @@ async def _stage_store_and_embed(
     text: str,
     pool: asyncpg.Pool | None,
     errors: list[str],
-) -> tuple[int, int, bool, str | None, dict[str, Any]]:
+) -> tuple[int, int, int, bool, str | None, dict[str, Any]]:
     """Stage 2: store chunks, embed the new ones, store their vectors.
 
-    Returns (pg_chunk_count, pg_vector_count, degraded, embed_note, embed_meta).
-    ``ingest_store`` is the pipeline sink (the ChunkSink wrapper or the bare
-    store — both satisfy the port). Stage errors are appended to
-    ``errors``; the dimension-switch guard's ConfigError propagates typed
-    (a width mismatch is a config problem, not a write failure — the
+    Returns (pg_chunk_count, pg_chunk_total, pg_vector_count, degraded,
+    embed_note, embed_meta). ``pg_chunk_count`` counts what THIS run wrote
+    or rewrote; ``pg_chunk_total`` is the document's whole stored count
+    (issue #222), so an idempotent re-run stays honest. ``ingest_store``
+    is the pipeline sink (the ChunkSink wrapper or the bare store — both
+    satisfy the port). Stage errors are appended to ``errors``; the
+    dimension-switch guard's ConfigError propagates typed (a width
+    mismatch is a config problem, not a write failure — the
     BaseException handler in the caller closes the ledger on the way out).
     """
     embed_note: str | None = None
     pg_chunk_count = 0
+    pg_chunk_total = 0
     pg_vector_count = 0
     inserted_chunk_ids: set[str] = set()
 
@@ -287,6 +318,8 @@ async def _stage_store_and_embed(
             inserted_chunk_ids = await ingest_store.store_chunks(chunks)
             pg_chunk_count = len(inserted_chunk_ids)
             store_span.set_attribute(ATTR_CHUNK_COUNT, pg_chunk_count)
+            if chunks:
+                pg_chunk_total = await _stored_chunk_total(ingest_store, str(chunks[0].document_id))
     except Exception as exc:
         logger.warning("Postgres chunk write failed: %s", exc)
         errors.append(f"PostgresWriteError: {exc}")
@@ -351,7 +384,7 @@ async def _stage_store_and_embed(
         errors.append(f"PostgresWriteError: {exc}")
         pg_chunk_count = 0
         pg_vector_count = 0
-    return pg_chunk_count, pg_vector_count, degraded, embed_note, embed_meta
+    return pg_chunk_count, pg_chunk_total, pg_vector_count, degraded, embed_note, embed_meta
 
 
 async def ingest_text(

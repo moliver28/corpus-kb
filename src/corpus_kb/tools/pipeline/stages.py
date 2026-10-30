@@ -49,6 +49,23 @@ logger = logging.getLogger(__name__)
 __all__ = ["_run_locked_stages"]
 
 
+def _book_title(config: dict[str, Any]) -> str | None:
+    """The per-book title from the config's ``ingestion`` block, or None.
+
+    The queue worker forwards the row's ``title`` there (issue #222). The
+    envelope carries the key only when a title was set, so the default
+    ingest shape stays byte-identical. The store lifts the title into
+    documents.title on the direct upsert; the Ingested event carries it
+    to the projection's own upsert.
+    """
+    ingestion = config.get("ingestion")
+    raw = ingestion.get("title") if isinstance(ingestion, dict) else None
+    if not isinstance(raw, str):
+        return None
+    title = raw.strip()
+    return title or None
+
+
 async def _run_locked_stages(
     document: Document,
     chunks: list[Chunk],
@@ -77,6 +94,13 @@ async def _run_locked_stages(
     """
     ingest_sink: IngestSink = ChunkSink(_ic().PostgresIngestStore(pg_pool, tenant_id))
     pool = _ic()._raw_pool(pg_pool)
+    # The per-book title (issue #222): documents.title is the durable
+    # channel — the store upsert reads it behind a COALESCE guard — while
+    # metadata["title"] is the transport into that upsert. One read, one
+    # value, and the result envelope carries the same value.
+    title = _book_title(config)
+    if title is not None:
+        document.metadata["title"] = title
     canonical = IngestDocument(
         document=document,
         text=text,
@@ -118,6 +142,7 @@ async def _run_locked_stages(
 
         (
             pg_chunk_count,
+            pg_chunk_total,
             pg_vector_count,
             degraded,
             embed_note,
@@ -208,10 +233,12 @@ async def _run_locked_stages(
             extractor_id=extractor_id,
             stats=stats,
             pg_chunk_count=pg_chunk_count,
+            pg_chunk_total=pg_chunk_total,
             pg_vector_count=pg_vector_count,
             errors=errors,
             run_id=run_id,
             statements=statements_summary,
+            title=title,
         )
     except BaseException as exc:
         # BaseException, not Exception: asyncio.CancelledError (watch-mode

@@ -71,14 +71,36 @@ you enqueue anything.
 (default 50). One window is one Docling `convert` call. Memory stays
 bounded, and one book cannot hold a worker for the whole run.
 
+**Isolation.** A scanned page can crash Docling's native parser. The
+crash is a segfault, so no error handler can catch it inside the
+process. With `textbook.window_subprocess: true` (the default), each
+Docling window parses in a spawned child process. A crash or a timeout
+kills only that child. The window falls back to pypdf, the run
+continues, and the fallback text caches under the pypdf key.
+`textbook.window_timeout_s` (default 3600) bounds one window.
+
+**Scan-tier timing.** Scanned pages are slow. Docling's OCR tier takes
+31 to 70 seconds per page. A 912-page scan is a job of hours. Size the
+window timeout for that pace. The ingest queue drains one book at a
+time, so one slow scan does not block other documents.
+
+**The environment.** Docling and onnxruntime must not share one
+environment. onnxruntime breaks Docling's OCR on scanned pages at
+import or parse time. The strategy warns when it sees both installed.
+Remove onnxruntime from the docling environment to fix the crashes.
+The `[docling]` extra in `pyproject.toml` records the same constraint.
+
 **The parse cache.** Each parsed window caches as JSON under
 `textbook.cache_dir`. The cache key is the parser version, the file
 SHA-256, and the window index. A retry or a resume loads its windows
 instead of paying the parse again. A changed file, a changed parser, or
-a corrupted record misses and re-parses. Nothing prunes the cache
-today: files add up, and a changed book or parser leaves its old files
-in place. To clear the cache, delete the directory. That is safe at any
-time; the next run re-parses what it misses and only loses time.
+a corrupted record misses and re-parses. One window record runs 4-8 MB,
+so the directory grows as windows parse. `textbook.cache_max_mb`
+(default 2048) caps the directory in MiB. The next parse deletes the
+oldest files first until the directory fits the cap. Set it to `0` to
+disable the cap. To clear the cache by hand, delete the directory. That
+is safe at any time; the next run re-parses what it misses and only
+loses time.
 
 **Outline enrichment.** A windowed parse sees no global structure; PDF
 bookmarks are the exception. The strategy reads the pypdf outline and
@@ -101,6 +123,9 @@ or below `min_pages`, it falls back to the default plan.
 | `textbook.window_pages` | `50` | Pages per parse window. Whole number, 1 or more |
 | `textbook.parser` | `docling` | The page parser: `docling` or `pypdf` |
 | `textbook.cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root |
+| `textbook.window_subprocess` | `true` | Parse each Docling window in a child process, so a crash kills only the child |
+| `textbook.window_timeout_s` | `3600.0` | Seconds before a child window parse is killed and pypdf takes over. Number, 1 or more |
+| `textbook.cache_max_mb` | `2048` | Window-cache size cap in MiB. The oldest files evict first. `0` disables the cap |
 
 Books are long jobs, so most people run them through the ingest queue
 ([HARNESS-PLAYBOOKS.md](HARNESS-PLAYBOOKS.md), "Recipe: queue the

@@ -27,6 +27,7 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -188,8 +189,22 @@ def parse_window_docling(converter: Any, path: Path, start: int, end: int) -> li
     text (``section_header`` drives the assembly half).
     """
     result = converter.convert(source=str(path), page_range=(start, end))
+    return items_from_convert_result(result)
+
+
+def items_from_convert_result(result: object) -> list[PageItem]:
+    """Per-page items from one docling convert result.
+
+    The one extraction rule for both parse surfaces: the in-process
+    converter and the isolated child both call this, so their windows
+    carry identical items. Items without text or without a page number
+    are dropped; labels pass through as text.
+    """
     items: list[PageItem] = []
-    for node, _level in result.document.iterate_items():
+    document = getattr(result, "document", None)
+    if document is None:
+        return items
+    for node, _level in document.iterate_items():
         text = getattr(node, "text", None)
         prov = getattr(node, "prov", None)
         page = getattr(prov[0], "page_no", None) if prov else None
@@ -199,3 +214,20 @@ def parse_window_docling(converter: Any, path: Path, start: int, end: int) -> li
             continue
         items.append(PageItem(page, str(getattr(node, "label", "text")), text))
     return items
+
+
+def docling_env_warnings() -> list[str]:
+    """Warnings for the environment a docling parse is about to run in.
+
+    onnxruntime beside docling crashes the native OCR stack at import or
+    parse time (issue #220), and the crash kills the process. The two
+    dependency sets must live in separate environments; removing
+    onnxruntime fixes the scanned-PDF crashes.
+    """
+    if find_spec("docling") is None or find_spec("onnxruntime") is None:
+        return []
+    return [
+        "onnxruntime is installed beside docling. The two dependency sets "
+        "must not share one environment. Remove onnxruntime to fix "
+        "scanned-PDF crashes."
+    ]

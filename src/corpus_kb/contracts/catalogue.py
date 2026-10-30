@@ -20,6 +20,7 @@ from corpus_kb.contracts.envelopes import (
     DEDUP_KEYS,
     INGEST_ENVELOPE,
     SEARCH_ENVELOPE,
+    TITLE_KEYS,
     VALIDATION_KEYS,
 )
 from corpus_kb.contracts.model import (
@@ -58,8 +59,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/text", "POST"),
             SurfaceSpec(SOCKET, "ingest_text"),
         ),
-        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
-        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
+        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
+        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
         exit_codes=(0, 1, 3),
     ),
     Operation(
@@ -80,8 +81,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/file", "POST"),
             SurfaceSpec(SOCKET, "ingest_file"),
         ),
-        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
-        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS,
+        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
+        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(
@@ -116,8 +117,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/directory", "POST"),
             SurfaceSpec(SOCKET, "ingest_directory"),
         ),
-        http_extra=VALIDATION_KEYS | DEDUP_KEYS,
-        socket_extra=VALIDATION_KEYS | DEDUP_KEYS,
+        http_extra=VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
+        socket_extra=VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(

@@ -59,6 +59,9 @@ _CHUNK_TOMBSTONE_SQL = (
     "AND chunk_index >= $3 AND tombstoned_at IS NULL"
 )
 _CHUNK_DEGRADED_SQL = "UPDATE chunks SET degraded = $3 WHERE chunk_id = $1 AND tenant_id = $2"
+_CHUNK_COUNT_SQL = (
+    "SELECT COUNT(*) FROM chunks WHERE tenant_id = $1 AND doc_id = $2 AND tombstoned_at IS NULL"
+)
 
 # DuckDB: a chunks row referenced by ANY child row (vectors, relations,
 # topics, labels, predictions) cannot be rewritten (an UPDATE rewrites the
@@ -123,6 +126,18 @@ def _document_date_param(document: Document) -> datetime | None:
     return parse_date_value(document.metadata.get("document_date"))
 
 
+def _document_title_param(document: Document) -> str | None:
+    """The upsert's ``title`` bind value (metadata ``title``, None -> NULL).
+
+    Same channel as the date: the pipeline stages put the per-book title
+    into ``document.metadata`` (issue #222), the store lifts it into the
+    documents.title column. The SQL's COALESCE keeps a stored title when
+    this ingest carries none.
+    """
+    title = document.metadata.get("title")
+    return title if isinstance(title, str) and title else None
+
+
 class PostgresIngestStore:
     """All ingest pipeline writes over one SqlGateway (Postgres or DuckDB)."""
 
@@ -164,6 +179,18 @@ class PostgresIngestStore:
             )
             return row["doc_id"] if row is not None else None
 
+    async def count_chunks_for_document(self, doc_id: str) -> int:
+        """The document's total live chunk count in the store.
+
+        Tombstoned rows stay out: they are leftovers of an earlier, larger
+        chunking. Unlike ``store_chunks`` (new and rewritten rows only),
+        this count answers the full stored number, so an idempotent re-run
+        still reports the document's real size (issue #222).
+        """
+        async with self._gateway.transaction(self._tenant_id) as tx:
+            count = await tx.fetchval(_CHUNK_COUNT_SQL, self._tenant_id, doc_id)
+        return int(count or 0)
+
     async def begin_run(self, document: Document, file_hash: str) -> tuple[str, str]:
         """Upsert the document row and open the 'running' ledger row, atomically.
 
@@ -188,6 +215,7 @@ class PostgresIngestStore:
                 file_hash,
                 json.dumps(document.metadata),
                 _document_date_param(document),
+                _document_title_param(document),
             )
             if row is None:
                 doc_id = await tx.fetchval(
@@ -229,6 +257,7 @@ class PostgresIngestStore:
                 file_hash,
                 json.dumps(document.metadata),
                 _document_date_param(document),
+                _document_title_param(document),
             )
 
     async def finish_run(

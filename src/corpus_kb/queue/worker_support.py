@@ -190,20 +190,29 @@ def _strategy_overrides(raw: object) -> dict[str, object]:
 
 
 def book_config_for(config: dict[str, object], row: Mapping[str, object]) -> dict[str, object]:
-    """One per-book config copy with the row's profile and strategy settings.
+    """One per-book config copy with the row's profile, title, and strategy.
 
     The row's ``profile`` sets ``ingestion.profile`` — the one key
     ``run_pipeline`` already resolves through ``load_profile``. The row's
-    ``strategy_config`` merges into the ``textbook:`` block, the one
-    settings block ``settings_from`` reads; unknown keys are inert there.
-    The input config is never mutated, and blank values leave the copy
-    untouched.
+    ``title`` sets ``ingestion.title``; the pipeline puts it on the result
+    envelope, and the Ingested event lifts it into documents.title
+    (issue #222). The row's ``strategy_config`` merges into the
+    ``textbook:`` block, the one settings block ``settings_from`` reads;
+    unknown keys are inert there. The input config is never mutated, and
+    blank values leave the copy untouched.
     """
     book = dict(config)
+    ingestion: dict[str, object] | None = None
     profile = row.get("profile")
     if isinstance(profile, str) and profile.strip():
         ingestion = dict(mapping_section(config, "ingestion"))
         ingestion["profile"] = profile.strip()
+    title = row.get("title")
+    if isinstance(title, str) and title.strip():
+        if ingestion is None:
+            ingestion = dict(mapping_section(config, "ingestion"))
+        ingestion["title"] = title.strip()
+    if ingestion is not None:
         book["ingestion"] = ingestion
     overrides = _strategy_overrides(row.get("strategy_config"))
     if overrides:

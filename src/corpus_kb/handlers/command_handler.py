@@ -200,7 +200,9 @@ class CommandHandler:
         """Attach the audit trail to a SUCCESSFUL tool envelope.
 
         The aggregate records the envelope's DOCUMENT source type (never
-        the caller's strategy override). Non-success envelopes pass through.
+        the caller's strategy override). A title on the envelope (queue
+        books) rides the Ingested event into documents.title. Non-success
+        envelopes pass through.
         """
         if result.get("status") != "success":
             return result
@@ -211,6 +213,7 @@ class CommandHandler:
                 source=source,
                 source_type=str(result.get("source_type", "text")),
                 file_size=result.get("size_bytes"),
+                title=str(result["title"]) if isinstance(result.get("title"), str) else None,
             )
             doc.add_chunks(
                 tenant_id=tenant_id,

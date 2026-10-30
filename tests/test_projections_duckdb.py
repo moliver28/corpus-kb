@@ -33,7 +33,7 @@ from corpus_kb.projections.dlq import DLQHandler
 from corpus_kb.projections.documents_projection import DocumentsProjection
 from corpus_kb.projections.embed_projection import EmbedChunksProjection
 from corpus_kb.projections.event_reader import EventReader
-from corpus_kb.projections.ids import deterministic_chunk_id
+from corpus_kb.projections.ids import deterministic_chunk_id, deterministic_event_id
 from corpus_kb.rag.embedder import FakeEmbedder
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
@@ -352,6 +352,83 @@ async def test_legacy_tenantless_chunksadded_converges_without_foreign_insert(
         # A second drain is quiet: nothing is revisited.
         assert await docs.catch_up(_reader(app), TENANT) == 0
         assert await embeds.catch_up(_reader(app), TENANT) == 0
+    finally:
+        await gateway.close()
+
+
+async def test_ingested_title_lands_in_the_documents_row(tmp_path: Path) -> None:
+    """Issue #222: the Ingested event's title reaches documents.title.
+
+    The aggregate carries the title, the event payload serializes it, and
+    the projection writes the column. A later Ingested replay without a
+    title leaves the stored one in place (the COALESCE merge).
+    """
+    gateway, _ = await _migrated_gateway(tmp_path, "title.duckdb")
+    app = _app(tmp_path)
+    try:
+        doc = Document(
+            tenant_id=TENANT,
+            source="title222://book",
+            source_type="transcript",
+            title="A Book Title",
+        )
+        doc.add_chunks(TENANT, chunk_count=1, chunk_texts=["P: body."])
+        app.save(doc)
+        await _catch_up(gateway, app, TENANT)
+        row = await gateway.fetchrow("SELECT title FROM documents WHERE source = 'title222://book'")
+        assert row is not None and row["title"] == "A Book Title"
+
+        # A second ingest of the same source without a title keeps it.
+        docs_projection = DocumentsProjection(
+            None, CheckpointManager(gateway=gateway), DLQHandler(gateway=gateway), gateway=gateway
+        )
+        doc_row = await gateway.fetchrow(
+            "SELECT doc_id FROM documents WHERE source = 'title222://book'"
+        )
+        assert doc_row is not None
+        await docs_projection.process_event(
+            TENANT,
+            deterministic_event_id(UUID(str(doc_row["doc_id"])), 99),
+            "Ingested",
+            {
+                "aggregate_id": str(doc_row["doc_id"]),
+                "source": "title222://book",
+                "source_type": "transcript",
+                "metadata": {},
+            },
+            datetime.now(tz=UTC),
+        )
+        row = await gateway.fetchrow("SELECT title FROM documents WHERE source = 'title222://book'")
+        assert row is not None and row["title"] == "A Book Title"
+    finally:
+        await gateway.close()
+
+
+async def test_an_ingested_payload_without_title_leaves_the_column_null(
+    tmp_path: Path,
+) -> None:
+    """A payload with no title writes NULL, never an empty string."""
+    gateway, _ = await _migrated_gateway(tmp_path, "no-title.duckdb")
+    try:
+        checkpoint = CheckpointManager(gateway=gateway)
+        dlq = DLQHandler(gateway=gateway)
+        docs = DocumentsProjection(None, checkpoint, dlq, gateway=gateway)
+        await docs.process_event(
+            TENANT,
+            deterministic_event_id(uuid4(), 1),
+            "Ingested",
+            {
+                "aggregate_id": str(uuid4()),
+                "source": "title222://untitled",
+                "source_type": "text",
+                "metadata": {},
+            },
+            datetime.now(tz=UTC),
+        )
+        row = await gateway.fetchrow(
+            "SELECT title FROM documents WHERE source = 'title222://untitled'"
+        )
+        assert row is not None and row["title"] is None
     finally:
         await gateway.close()
 

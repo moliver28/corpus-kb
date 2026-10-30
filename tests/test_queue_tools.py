@@ -347,12 +347,14 @@ async def test_cancel_requires_an_id() -> None:
 
 def test_defaults_carry_the_wave_one_keys() -> None:
     cfg = load_config()
-    assert cfg["textbook"] == {
+    # Subset, not equality: the textbook block grows strategy keys (window
+    # subprocess tuning); the wave-one keys must stay regardless.
+    assert {
         "min_pages": 120,
         "window_pages": 50,
         "parser": "docling",
         "cache_dir": "~/.corpus-kb/textbook-cache",
-    }
+    }.items() <= cfg["textbook"].items()
     assert cfg["queue"] == {
         "autorun": False,
         "poll_seconds": 20,
