@@ -25,10 +25,8 @@ import typer
 
 # Reuse the ingest front door's shared plumbing (same honest-sync rule);
 # cli_ingest imports corpus_kb.cli only lazily, so this import is acyclic.
+from corpus_kb.cli._plumbing import EXIT_FAILED, EXIT_OK
 from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
-
-EXIT_OK = 0
-EXIT_FAILED = 1
 
 # Statuses that ARE the operation answering (honest outcomes, not errors).
 _ANSWER_STATUSES = frozenset({"success", "empty", "degraded"})

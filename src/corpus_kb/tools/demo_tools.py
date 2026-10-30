@@ -13,13 +13,15 @@ from __future__ import annotations
 import contextlib
 import io
 
+from corpus_kb.cli._plumbing import EXIT_OK
+
 __all__ = ["research_demo"]
 
 # The demo exit codes run_demo documents (see docs/OPERATIONS.md): 0 the
-# pipeline finished, 2 embeddings unavailable at preflight, 1 any other
-# failure caught by the demo's own error narration.
-EXIT_OK = 0
-EXIT_UNAVAILABLE = 2
+# pipeline finished (the shared ``cli._plumbing`` EXIT_OK), 2 embeddings
+# unavailable at preflight (demo-only; no shared constant exists), 1 any
+# other failure caught by the demo's own error narration.
+DEMO_EXIT_UNAVAILABLE = 2
 
 
 async def research_demo(
@@ -41,6 +43,6 @@ async def research_demo(
     with contextlib.redirect_stdout(buffer):
         exit_code = await run_demo(config if config is not None else None)
     status = "completed" if exit_code == EXIT_OK else "failed"
-    if exit_code == EXIT_UNAVAILABLE:
+    if exit_code == DEMO_EXIT_UNAVAILABLE:
         status = "unavailable"
     return {"status": status, "exit_code": int(exit_code), "narration": buffer.getvalue()}

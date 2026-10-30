@@ -34,8 +34,7 @@ from corpus_kb._setup.quickstart_types import (
     QuickstartOutcome,
 )
 from corpus_kb._setup.schema_apply import SchemaApplyResult, apply_schema
-
-EXIT_CONFIG = 3
+from corpus_kb.cli._plumbing import EXIT_CONFIG
 
 
 def register(app: typer.Typer) -> None:

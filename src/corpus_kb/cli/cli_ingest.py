@@ -36,10 +36,13 @@ from corpus_kb.cli.cli_ingest_views import (
 if TYPE_CHECKING:
     import asyncpg
 
-EXIT_OK = 0
-EXIT_PARTIAL = 1
-EXIT_FAILED = 2
-EXIT_CONFIG = 3
+# Ingest's own exit table. It is NOT the shared ``cli._plumbing`` table
+# (``_plumbing.EXIT_FAILED`` there is 1). Scripts depend on these values.
+# Do not renumber.
+INGEST_EXIT_OK = 0
+INGEST_EXIT_PARTIAL = 1
+INGEST_EXIT_FAILED = 2
+INGEST_EXIT_CONFIG = 3
 
 TENANT_DEFAULT = "00000000-0000-0000-0000-000000000001"
 
@@ -61,7 +64,7 @@ def _finish(code: int) -> int:
     """Honest exit: typer ignores plain int returns, so non-zero must raise."""
     if code:
         raise typer.Exit(code=code)
-    return EXIT_OK
+    return INGEST_EXIT_OK
 
 
 def _run_sync(coro: Callable[[], Coroutine[Any, Any, int]]) -> int:
@@ -74,18 +77,18 @@ def _run_sync(coro: Callable[[], Coroutine[Any, Any, int]]) -> int:
         return _finish(asyncio.run(coro()))
     except KeyboardInterrupt:
         print("stopped")
-        raise typer.Exit(code=EXIT_OK) from None
+        raise typer.Exit(code=INGEST_EXIT_OK) from None
     except OSError as exc:
         print(f"ERROR: cannot reach the database/provider: {exc}")
         print("Fix: check the service is running, or run corpus-kb quickstart.")
-        raise typer.Exit(code=EXIT_CONFIG) from None
+        raise typer.Exit(code=INGEST_EXIT_CONFIG) from None
     except asyncpg.PostgresError as exc:
         # Bad DSN / wrong password / unknown database surface as
         # asyncpg.PostgresError subclasses, not OSError — same honest
         # config/connection bucket, exit 3.
         print(f"ERROR: cannot reach the database (check DSN/credentials): {exc}")
         print("Fix: check the DSN in config.yaml, or run corpus-kb quickstart.")
-        raise typer.Exit(code=EXIT_CONFIG) from None
+        raise typer.Exit(code=INGEST_EXIT_CONFIG) from None
 
 
 def _load_config() -> dict[str, object]:
@@ -113,7 +116,7 @@ def _unknown_strategy_exit(source_type: str) -> None:
         f"ERROR: unknown source-type strategy '{source_type}'. "
         f"Valid strategies: {', '.join(sorted(strategy_names()))}"
     )
-    raise typer.Exit(code=EXIT_CONFIG) from None
+    raise typer.Exit(code=INGEST_EXIT_CONFIG) from None
 
 
 def _resolve_files(path: Path) -> list[Path]:
@@ -132,10 +135,10 @@ def _resolve_files(path: Path) -> list[Path]:
 def _ingest_exit_code(results: list[dict[str, object]]) -> int:
     statuses = [str(r.get("status", "error")) for r in results]
     if statuses and all(s == "error" for s in statuses):
-        return EXIT_FAILED
+        return INGEST_EXIT_FAILED
     if any(s in ("error", "partial") for s in statuses):
-        return EXIT_PARTIAL
-    return EXIT_OK
+        return INGEST_EXIT_PARTIAL
+    return INGEST_EXIT_OK
 
 
 async def _open_pool(cfg: dict[str, object]) -> asyncpg.Pool:
@@ -171,10 +174,10 @@ async def _ingest_files(path: Path, source_type: str | None, json_output: bool) 
         files = _resolve_files(path)
         if not files and not path.exists():
             print(f"ERROR: path not found: {path}")
-            return EXIT_CONFIG
+            return INGEST_EXIT_CONFIG
         if not files:
             print(f"ERROR: no supported files under {path}")
-            return EXIT_CONFIG
+            return INGEST_EXIT_CONFIG
         for file in files:
             result = await ingest_file(str(file), pool, cfg, TENANT_DEFAULT, source_type)
             results.append(result)
@@ -202,9 +205,9 @@ async def _reembed_flow(limit: int | None, doc_id: str | None, json_output: bool
         print_reembed_summary(summary)
     status = str(summary.get("status", "error"))
     if status in ("unavailable", "error"):
-        return EXIT_CONFIG
+        return INGEST_EXIT_CONFIG
     failed = summary.get("failed", 0)
-    return EXIT_PARTIAL if isinstance(failed, int) and failed else EXIT_OK
+    return INGEST_EXIT_PARTIAL if isinstance(failed, int) and failed else INGEST_EXIT_OK
 
 
 async def _status_flow(limit: int, json_output: bool, project_id: str | None = None) -> int:
@@ -221,7 +224,7 @@ async def _status_flow(limit: int, json_output: bool, project_id: str | None = N
     else:
         print_status_report(report)
     status = str(report.get("status"))
-    return EXIT_CONFIG if status in ("unavailable", "error") else EXIT_OK
+    return INGEST_EXIT_CONFIG if status in ("unavailable", "error") else INGEST_EXIT_OK
 
 
 async def _ingest_url_flow(
@@ -250,7 +253,7 @@ async def _ingest_url_flow(
         await pool.close()
     if str(aggregate.get("status")) != "success":
         print(f"ERROR: {aggregate.get('message', 'fetch failed')}")
-        return EXIT_FAILED
+        return INGEST_EXIT_FAILED
     raw_pages = aggregate.get("pages", [])
     pages = (
         [page for page in raw_pages if isinstance(page, dict)]
@@ -265,8 +268,9 @@ async def _ingest_url_flow(
         print(f"ingest-url: {aggregate.get('total_documents', 0)}/{len(pages)} pages ingested")
     statuses = [str(page.get("status", "error")) for page in pages]
     if aggregate.get("total_documents", 0) == len(pages):
-        return EXIT_OK
-    return EXIT_FAILED if all(status == "error" for status in statuses) else EXIT_PARTIAL
+        return INGEST_EXIT_OK
+    all_failed = all(status == "error" for status in statuses)
+    return INGEST_EXIT_FAILED if all_failed else INGEST_EXIT_PARTIAL
 
 
 def ingest_url_command(
@@ -331,7 +335,7 @@ async def _watch_flow(path: Path, source_type: str | None, no_heal: bool) -> int
     finally:
         await pool.close()
     print(json.dumps(summary, indent=2, default=str))
-    return EXIT_OK if str(summary.get("status")) == "success" else EXIT_PARTIAL
+    return INGEST_EXIT_OK if str(summary.get("status")) == "success" else INGEST_EXIT_PARTIAL
 
 
 # ---------------------------------------------------------------------------
@@ -375,11 +379,11 @@ def ingest(
         return _run_sync(lambda: _reembed_flow(limit, doc_id, json_output))
     if path is None:
         print("ERROR: a PATH argument is required (or use --reembed)")
-        raise typer.Exit(code=EXIT_CONFIG) from None
+        raise typer.Exit(code=INGEST_EXIT_CONFIG) from None
     target = Path(path)
     if not target.exists():
         print(f"ERROR: path not found: {target}")
-        raise typer.Exit(code=EXIT_CONFIG) from None
+        raise typer.Exit(code=INGEST_EXIT_CONFIG) from None
     if watch:
         return _run_sync(lambda: _watch_flow(target, source_type, no_heal))
     return _run_sync(lambda: _ingest_files(target, source_type, json_output))

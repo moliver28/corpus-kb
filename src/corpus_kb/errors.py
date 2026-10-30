@@ -18,13 +18,14 @@ CLI exit codes KEEP the codes this repo already scripts against:
 
   1  bad input or crash — ``cli._cli_error_exit`` maps ValueError (unknown
      gate, malformed UUID) to 1; an uncaught traceback also exits 1.
-  3  environment problem — ``cli_ingest`` documents EXIT_CONFIG=3 for "bad
-     path, unknown --source-type, unreachable database, migration missing";
-     promote exits 3 on ``duplicate_blocked`` (the conflict case).
+  3  environment problem — ``cli_ingest`` documents INGEST_EXIT_CONFIG=3 for
+     "bad path, unknown --source-type, unreachable database, migration
+     missing"; promote exits 3 on ``duplicate_blocked`` (the conflict case).
 
-The suggested 2/4 split would collide with live codes (2 = EXIT_FAILED
-total ingest failure and cycle EXIT_UNAVAILABLE), so the existing
-convention stands. Do not renumber: scripts depend on these values.
+The suggested 2/4 split would collide with live codes (2 =
+INGEST_EXIT_FAILED total ingest failure and cycle EXIT_UNAVAILABLE), so
+the existing convention stands. Do not renumber: scripts depend on these
+values.
 
 ``ERROR_MAP`` also carries the plain exception class names the legacy HTTP
 envelopes used as ``error_type`` strings, so old string payloads get honest

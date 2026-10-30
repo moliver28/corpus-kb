@@ -19,8 +19,7 @@ import json
 
 import typer
 
-EXIT_OK = 0
-EXIT_FAILED = 1
+from corpus_kb.cli._plumbing import EXIT_FAILED, EXIT_OK
 
 
 def register(app: typer.Typer) -> None:
