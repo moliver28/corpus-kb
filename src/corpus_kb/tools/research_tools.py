@@ -14,6 +14,7 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 from corpus_kb.handlers.research_handler import get_research_handler
 from corpus_kb.projections.catchup import advance_all_projections
 
@@ -26,8 +27,6 @@ __all__ = [
     "research_report",
     "review_execute",
 ]
-
-DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 async def research_ingest_transcript(

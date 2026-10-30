@@ -29,6 +29,7 @@ from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.errors import ConfigError, DatabaseUnavailableError
 from corpus_kb.storage.graph_factory import create_graph_store
 
@@ -345,7 +346,7 @@ async def run_all(services: dict[str, Any]) -> None:
     # constructed but never running).
     from uuid import UUID
 
-    default_tenant = UUID("00000000-0000-0000-0000-000000000001")
+    default_tenant = UUID(DEFAULT_TENANT_ID)
     projection_task = asyncio.create_task(embed_projection.run(default_tenant, event_reader))
     docs_projection_task = asyncio.create_task(docs_projection.run(default_tenant, event_reader))
 

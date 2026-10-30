@@ -12,6 +12,7 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 from corpus_kb.research.notebook import NotebookQuery, notebook_ask
 from corpus_kb.research.notebook_views import (
     evidence_for_code,
@@ -25,8 +26,6 @@ __all__ = [
     "notebook_overlap_tool",
     "notebook_uncoded_tool",
 ]
-
-DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 def _uuid(value: str) -> UUID:

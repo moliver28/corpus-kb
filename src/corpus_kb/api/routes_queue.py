@@ -13,8 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import opt_int, opt_str, parse_body, route_errors
-
-_TENANT_DEFAULT = "00000000-0000-0000-0000-000000000001"
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
 
 
 async def _pool() -> Any:

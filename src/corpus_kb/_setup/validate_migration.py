@@ -19,10 +19,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import asyncpg
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
-
-DEFAULT_TENANT = "00000000-0000-0000-0000-000000000001"
 
 
 async def validate() -> bool:

@@ -17,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 
 @route_errors
@@ -27,7 +28,7 @@ async def add_tag_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     handler = get_tag_handler()
     result = await handler.handle_add_tag(
-        UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         body["name"],
         body.get("color"),
         body.get("description"),
@@ -44,7 +45,7 @@ async def tag_document_route(request: Request) -> JSONResponse:
     doc_id = request.path_params.get("doc_id")
     handler = get_tag_handler()
     result = await handler.handle_tag_document(
-        UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         UUID(doc_id),
         body["tag"],
     )
@@ -59,7 +60,7 @@ async def get_document_tags_route(request: Request) -> JSONResponse:
     doc_id = request.path_params.get("doc_id")
     handler = get_tag_handler()
     results = await handler.handle_get_document_tags(
-        UUID("00000000-0000-0000-0000-000000000001"),
+        UUID(DEFAULT_TENANT_ID),
         UUID(doc_id),
     )
     return JSONResponse({"status": "success", "result": results})
@@ -74,7 +75,7 @@ async def set_metadata_route(request: Request) -> JSONResponse:
     handler = get_tag_handler()
     doc_id = UUID(body["doc_id"]) if body.get("doc_id") else None
     result = await handler.handle_set_metadata(
-        UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001")),
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         body["key"],
         body["value"],
         doc_id,
@@ -91,7 +92,7 @@ async def get_metadata_route(request: Request) -> JSONResponse:
     key = request.query_params.get("key")
     doc_id = request.query_params.get("doc_id")
     results = await handler.handle_get_metadata(
-        UUID("00000000-0000-0000-0000-000000000001"),
+        UUID(DEFAULT_TENANT_ID),
         key,
         UUID(doc_id) if doc_id else None,
     )

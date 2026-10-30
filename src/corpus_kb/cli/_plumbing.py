@@ -14,6 +14,8 @@ from typing import Any
 
 import typer
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+
 EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_CONFIG = 3
@@ -22,7 +24,7 @@ EXIT_CONFIG = 3
 _OK_STATUSES = ("success", "disabled", "empty", "insufficient_data")
 
 _JSON_OPT = typer.Option(False, "--json", help="Machine-readable JSON output")
-_TENANT_OPT = typer.Option("00000000-0000-0000-0000-000000000001", "--tenant-id", help="Tenant id")
+_TENANT_OPT = typer.Option(DEFAULT_TENANT_ID, "--tenant-id", help="Tenant id")
 
 
 def exit_for(result: dict[str, object], ok_statuses: tuple[str, ...] = _OK_STATUSES) -> int:

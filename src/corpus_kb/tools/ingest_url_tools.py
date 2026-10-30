@@ -14,6 +14,8 @@ from __future__ import annotations
 import asyncpg
 import httpx
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+
 from ..ingestion.registry import strategy_names
 from ..web.fetch import WebFetchError, fetch_page
 from ..web.fetch import crawl as crawl_pages
@@ -37,7 +39,7 @@ async def ingest_url(
     url: str,
     pg_pool: asyncpg.Pool,
     config: dict[str, object] | None = None,
-    tenant_id: str = "00000000-0000-0000-0000-000000000001",
+    tenant_id: str = DEFAULT_TENANT_ID,
     crawl: bool = False,
     source_type: str | None = None,
     validate: str | None = None,

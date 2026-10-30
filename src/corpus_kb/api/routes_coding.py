@@ -17,6 +17,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 
 @route_errors
@@ -25,7 +26,7 @@ async def coding_embed_codebook(request: Request) -> JSONResponse:
     from corpus_kb.handlers.coding_handler import get_coding_handler
 
     body = await parse_body(request)
-    tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+    tenant_id = UUID(body.get("tenant_id", DEFAULT_TENANT_ID))
     codebook = body.get("codebook") or {}
     result = await get_coding_handler().handle_embed_codebook(tenant_id, codebook)
     return JSONResponse(result)
@@ -37,7 +38,7 @@ async def coding_pool(request: Request) -> JSONResponse:
     from corpus_kb.handlers.coding_handler import get_coding_handler
 
     body = await parse_body(request)
-    tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+    tenant_id = UUID(body.get("tenant_id", DEFAULT_TENANT_ID))
     codebook_version_id = UUID(str(body["codebook_version_id"]))
     result = await get_coding_handler().handle_pool(tenant_id, codebook_version_id)
     return JSONResponse(result)
@@ -50,7 +51,7 @@ async def coding_code_batch(request: Request) -> JSONResponse:
     from corpus_kb.handlers.coding_handler import get_coding_handler
 
     body = await parse_body(request)
-    tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+    tenant_id = UUID(body.get("tenant_id", DEFAULT_TENANT_ID))
     raw_bands = body.get("bands")
     bands = Bands(**raw_bands) if raw_bands else None
     result = await get_coding_handler().handle_code_batch(
@@ -71,7 +72,7 @@ async def coding_reliability(request: Request) -> JSONResponse:
     from corpus_kb.handlers.coding_handler import get_coding_handler
 
     body = await parse_body(request)
-    tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+    tenant_id = UUID(body.get("tenant_id", DEFAULT_TENANT_ID))
     result = await get_coding_handler().handle_reliability(
         tenant_id,
         per_code_min=int(body.get("per_code_min", 5)),
@@ -87,7 +88,7 @@ async def coding_calibrate_floors(request: Request) -> JSONResponse:
     from corpus_kb.handlers.coding_handler import get_coding_handler
 
     body = await parse_body(request)
-    tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+    tenant_id = UUID(body.get("tenant_id", DEFAULT_TENANT_ID))
     result = await get_coding_handler().handle_calibrate_floors(
         tenant_id,
         code_id=str(body["code_id"]),
@@ -106,7 +107,7 @@ async def coding_saturation(request: Request) -> JSONResponse:
     from corpus_kb.handlers.coding_handler import get_coding_handler
 
     body = await parse_body(request)
-    tenant_id = UUID(body.get("tenant_id", "00000000-0000-0000-0000-000000000001"))
+    tenant_id = UUID(body.get("tenant_id", DEFAULT_TENANT_ID))
     result = await get_coding_handler().handle_saturation(
         tenant_id,
         batch_id=body.get("batch_id"),

@@ -19,6 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import route_errors
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.domain.models import ListDocumentsQuery, ListEntitiesQuery
 
 
@@ -28,9 +29,7 @@ async def list_documents(request: Request) -> JSONResponse:
     from corpus_kb.handlers.query_handler import get_query_handler
 
     query = ListDocumentsQuery(
-        tenant_id=UUID(
-            request.query_params.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-        ),
+        tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
         limit=int(request.query_params.get("limit", 100)),
         offset=int(request.query_params.get("offset", 0)),
     )
@@ -47,9 +46,7 @@ async def list_entities(request: Request) -> JSONResponse:
     from corpus_kb.handlers.query_handler import get_query_handler
 
     query = ListEntitiesQuery(
-        tenant_id=UUID(
-            request.query_params.get("tenant_id", "00000000-0000-0000-0000-000000000001")
-        ),
+        tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
         entity_type=request.query_params.get("entity_type"),
         limit=int(request.query_params.get("limit", 100)),
     )
@@ -67,7 +64,7 @@ async def list_versions(request: Request) -> JSONResponse:
 
     handler = get_versioning_handler()
     results = await handler.handle_list_versions(
-        UUID("00000000-0000-0000-0000-000000000001"),
+        UUID(DEFAULT_TENANT_ID),
     )
     return JSONResponse({"status": "success", "result": results})
 
@@ -79,7 +76,7 @@ async def get_stats(request: Request) -> JSONResponse:
 
     handler = get_versioning_handler()
     result = await handler.handle_get_stats(
-        UUID("00000000-0000-0000-0000-000000000001"),
+        UUID(DEFAULT_TENANT_ID),
     )
     return JSONResponse(result)
 
@@ -91,7 +88,7 @@ async def sql_tables(request: Request) -> JSONResponse:
 
     handler = get_versioning_handler()
     results = await handler.handle_sql_tables(
-        UUID("00000000-0000-0000-0000-000000000001"),
+        UUID(DEFAULT_TENANT_ID),
     )
     return JSONResponse({"status": "success", "result": results})
 
@@ -103,7 +100,7 @@ async def document_stats(request: Request) -> JSONResponse:
 
     handler = get_versioning_handler()
     result = await handler.handle_query_document_stats(
-        UUID("00000000-0000-0000-0000-000000000001"),
+        UUID(DEFAULT_TENANT_ID),
     )
     return JSONResponse(result)
 

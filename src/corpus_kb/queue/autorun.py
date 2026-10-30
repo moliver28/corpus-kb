@@ -16,6 +16,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_AUTORUN_TENANT
 from corpus_kb.errors import ConfigError
 from corpus_kb.utils.config_sections import mapping_section
 
@@ -29,10 +30,6 @@ logger = logging.getLogger(__name__)
 #: How long a shutdown waits for the current book before the cancel. A
 #: cancelled book leaves its row running; the stale lease reclaims it.
 STOP_GRACE_SECONDS = 30.0
-
-#: The default tenant the projections already drain (the queue table is
-#: tenant-scoped, and the autorun serves the same default tenant).
-DEFAULT_AUTORUN_TENANT = "00000000-0000-0000-0000-000000000001"
 
 __all__ = ["QueueAutorun", "start_queue_autorun"]
 
