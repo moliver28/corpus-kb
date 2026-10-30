@@ -15,7 +15,11 @@ relation_types:
   - DEFINED_AS
   - AUTHORED_BY
   - CITES
-  - SUPPORTS
+  # graph_eligible is the optional per-type graph-write flag (Wave 1).
+  # Absent means eligible, so this explicit true documents the key
+  # without changing behavior; set false to hold a type back when
+  # graph_policy.mode is semantic_only.
+  - {name: SUPPORTS, graph_eligible: true}
   - CONTRADICTS
   - RELATED_TO
   - INSTANCE_OF

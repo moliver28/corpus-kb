@@ -41,6 +41,7 @@ import hashlib
 import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 from uuid import UUID
@@ -91,6 +92,7 @@ import corpus_kb.tools.method_select_tools as method_select_tools_module
 import corpus_kb.tools.neighbor_tools as neighbor_tools_module
 import corpus_kb.tools.nli_tools as nli_tools_module
 import corpus_kb.tools.notebook_tools as notebook_tools_module
+import corpus_kb.tools.queue_tools as queue_tools_module
 import corpus_kb.tools.release_tools as release_tools_module
 import corpus_kb.tools.research_tools as research_tools_module
 import corpus_kb.tools.search_tools as search_tools_module
@@ -499,6 +501,27 @@ async def _shared_conflicts_resolve(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+# -- Textbook program W1: the queue ops. The stub pool answers the canned
+#    _QUEUE_ROW for every ingest_queue statement, so enqueue rides the
+#    dedup path and cancel rides the success path on every surface.
+
+
+async def _shared_queue_enqueue(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await queue_tools_module.queue_enqueue(
+        ctx["pool"], config=ctx["config"], path=str(ctx[_FILE_PATH])
+    )
+
+
+async def _shared_queue_status(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await queue_tools_module.queue_status(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_queue_cancel(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await queue_tools_module.queue_cancel(
+        ctx["pool"], config=ctx["config"], queue_id=_QUEUE_ID
+    )
+
+
 _SEED_BELIEF = {"subject": "speaker:777", "relation": "preference", "object": "ice cream"}
 
 
@@ -862,6 +885,7 @@ def _mcp(args: dict[str, Any]) -> Any:
 _FILE_PATH = "file_path"
 _DIR_PATH = "dir_path"
 DOC_ID = "00000000-0000-0000-0000-00000000000d"
+_QUEUE_ID = "00000000-0000-0000-0000-0000000000e1"
 
 LEGS: dict[str, _Leg] = {
     "ingest_text": _Leg(
@@ -1075,6 +1099,31 @@ LEGS: dict[str, _Leg] = {
         _post("/api/extraction-tune", {"dry_run": True}),
         _sock("extraction_tune", {"dry_run": True}),
         _mcp({"dry_run": True}),
+    ),
+    # -- Textbook program W1: the queue ops. The enqueue leg points at the
+    #    tmp file; the stub pool answers the canned pending row, so
+    #    enqueue dedupes and cancel succeeds on every surface.
+    "queue_enqueue": _Leg(
+        _shared_queue_enqueue,
+        lambda ctx: {
+            "method": "post",
+            "path": "/api/queue/enqueue",
+            "json": {"path": str(ctx[_FILE_PATH])},
+        },
+        lambda ctx: ("queue_enqueue", {"path": str(ctx[_FILE_PATH])}),
+        lambda ctx: {"path": str(ctx[_FILE_PATH])},
+    ),
+    "queue_status": _Leg(
+        _shared_queue_status,
+        _post("/api/queue/status", {}),
+        _sock("queue_status", {}),
+        _mcp({}),
+    ),
+    "queue_cancel": _Leg(
+        _shared_queue_cancel,
+        _post("/api/queue/cancel", {"queue_id": _QUEUE_ID}),
+        _sock("queue_cancel", {"queue_id": _QUEUE_ID}),
+        _mcp({"queue_id": _QUEUE_ID}),
     ),
     # -- Living Corpus W6: the meta-embed build (document kind only; the
     #    profile kind would call the real embedder — env-dependent).
@@ -1446,6 +1495,30 @@ async def _shared_release_status(ctx: dict[str, Any]) -> dict[str, Any]:
 # Offline stubs (pool / pipeline store / eventsourcing app / handlers)
 # ---------------------------------------------------------------------------
 
+#: The canned ingest_queue row every queue statement returns on the stub
+#: pool: the SELECT column set of queue/store.py, one pending row.
+_QUEUE_ROW: dict[str, Any] = {
+    "id": _QUEUE_ID,
+    "tenant_id": TENANT,
+    "path": "/tmp/parity-book.pdf",
+    "title": "parity textbook",
+    "project_id": None,
+    "profile": None,
+    "strategy_config": "{}",
+    "status": "pending",
+    "attempts": 0,
+    "max_attempts": 3,
+    "last_error": None,
+    "run_id": None,
+    "content_hash": "parityhash",
+    "claimed_by": None,
+    "heartbeat_at": None,
+    "queued_at": datetime(2026, 10, 28, 12, 0, 0, tzinfo=UTC),
+    "started_at": None,
+    "finished_at": None,
+    "updated_at": None,
+}
+
 
 class _LockConn:
     """Connection stub every pool hands out: writes OK, reads empty.
@@ -1468,18 +1541,21 @@ class _LockConn:
 
     def __getattr__(self, name: str) -> Callable[..., Any]:
         # House fake pattern (attribute routing, as in test_extraction_tune):
-        # execute is the tenant-GUC write (always OK); fetchrow is the
-        # single-row beliefs posterior probe (the only one on this stub).
+        # execute is the tenant-GUC write (always OK); fetchrow routes the
+        # single-row probes (the beliefs posterior, and every ingest_queue
+        # statement, which answers the canned queue row below).
         if name == "execute":
             return self._ok
         if name == "fetchrow":
-            return self._belief_row
+            return self._fetchrow
         raise AttributeError(name)
 
     async def _ok(self, *args: Any) -> str:
         return "OK"
 
-    async def _belief_row(self, *args: Any) -> dict[str, Any]:
+    async def _fetchrow(self, sql: str, *args: Any) -> dict[str, Any]:
+        if "ingest_queue" in sql:
+            return dict(_QUEUE_ROW)
         # The stored alpha/beta a rebuild pooled — beliefs_timeline and
         # beliefs_predict return the real success envelope against it.
         return {"alpha": 3.0, "beta": 1.0, "evidence_count": 4, "era_count": 1}

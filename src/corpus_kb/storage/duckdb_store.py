@@ -22,13 +22,21 @@ import asyncio
 import json
 import logging
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 from ..errors import DatabaseUnavailableError, MigrationMissingError
 from ..utils.models import Entity, Relation
-from .graph_sql import neighbors_sql, traversal_row, traverse_sql
+from .duckpgq import ensure_duckpgq, merge_min_depth_rows, traversal_statements
+from .graph_sql import (
+    MAX_NEIGHBOR_HOPS,
+    neighbors_sql,
+    traversal_row,
+    traverse_sql,
+    validate_depth,
+    validate_hops,
+)
 from .graph_store import DEFAULT_TENANT_ID, GraphStore
 
 if TYPE_CHECKING:
@@ -55,6 +63,16 @@ def _translate_error(exc: Exception) -> Exception:
     return exc
 
 
+def _engine_covers(max_depth: int) -> bool:
+    """True when DuckPGQ chains can render this walk.
+
+    The engine's fixed chains cover hops 1..MAX_NEIGHBOR_HOPS. A deeper
+    walk routes to the recursive CTE BEFORE the engine branch runs, so a
+    deep walk never disables the engine for the connection.
+    """
+    return int(max_depth) <= MAX_NEIGHBOR_HOPS
+
+
 class DuckDbGraphStore(GraphStore):
     """GraphStore backend over one DuckDB connection (sync, thread-offloaded)."""
 
@@ -62,12 +80,60 @@ class DuckDbGraphStore(GraphStore):
         self,
         conn: DuckDBPyConnection,
         tenant_id: str = DEFAULT_TENANT_ID,
+        traversal_engine: str = "cte",
     ) -> None:
         self._conn = conn
         self._tenant_id = tenant_id
         self._stmt_lock = threading.Lock()
         self._tx_lock = asyncio.Lock()
         self._tx_depth = 0
+        # DuckPGQ opt-in (graph.duckdb_graph_backend). None = opted in and
+        # not probed yet; False after any failure = permanent CTE for this
+        # connection.
+        self._pgq_active: bool | None = None if traversal_engine == "duckpgq" else False
+        self._pgq_warned = False
+
+    # -- duckpgq branch ------------------------------------------------------
+
+    def _ensure_duckpgq(self) -> None:
+        """Install/load DuckPGQ once, under the statement lock."""
+        with self._stmt_lock:
+            ensure_duckpgq(self._conn)
+
+    async def _duckpgq_rows(self, build: Callable[[], list[str]]) -> list[dict[str, Any]] | None:
+        """Rows through DuckPGQ, or None to mean "run the CTE path".
+
+        The one-shot probe installs and loads the extension and creates
+        the static property graph. Any engine failure (install, load,
+        statement crash) warns once (typed DuckPGQUnavailableError text)
+        and turns the branch off for this connection, permanently; the
+        current call then takes the CTE path so the caller still gets
+        CTE-identical rows. Walks deeper than the engine's chain bound
+        never reach this branch: the callers pre-check depth and take the
+        CTE path with the engine still on.
+        """
+        if self._pgq_active is False:
+            return None
+        try:
+            if self._pgq_active is None:
+                if self._tx_depth:
+                    await asyncio.to_thread(self._ensure_duckpgq)
+                else:
+                    async with self._tx_lock:
+                        await asyncio.to_thread(self._ensure_duckpgq)
+            # One statement per GRAPH_TABLE arm: a UNION ALL of two arms
+            # is a fatal crasher on duckpgq builds (see duckpgq.py).
+            rows: list[dict[str, Any]] = []
+            for sql in build():
+                rows.extend(await self._fetch(sql, []))
+            self._pgq_active = True
+            return rows
+        except Exception as exc:
+            self._pgq_active = False
+            if not self._pgq_warned:
+                self._pgq_warned = True
+                logger.warning("DuckPGQ traversal unavailable; using the CTE path: %s", exc)
+            return None
 
     # -- execution boundary --------------------------------------------------
 
@@ -274,7 +340,23 @@ class DuckDbGraphStore(GraphStore):
         return relations
 
     async def bfs(self, start_entity_id: str, max_depth: int = 5) -> dict[str, Any]:
-        """Breadth-first search using the same recursive CTE shape as PG."""
+        """Breadth-first search; DuckPGQ within its hop bound, else the CTE."""
+        rows: list[dict[str, Any]] | None = None
+        if _engine_covers(max_depth):
+            rows = await self._duckpgq_rows(
+                lambda: traversal_statements(
+                    "both", max_depth, self._tenant_id, start_entity_id, include_start=True
+                )
+            )
+        if rows is not None:
+            visited = {
+                str(row["entity_id"]): int(row["depth"]) for row in merge_min_depth_rows(rows)
+            }
+            return {
+                "start_entity_id": start_entity_id,
+                "max_depth": max_depth,
+                "visited": visited,
+            }
         rows = await self._fetch(
             """
             WITH RECURSIVE graph_bfs AS (
@@ -320,17 +402,25 @@ class DuckDbGraphStore(GraphStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Fixed self-join chain over relations (shared graph_sql shape)."""
-        sql, args = neighbors_sql(
-            hops,
-            direction,
-            self._tenant_id,
-            entity_id,
-            relation_types,
-            entity_types,
-            limit,
+        validate_hops(hops)
+        rows = await self._duckpgq_rows(
+            lambda: traversal_statements(
+                direction, hops, self._tenant_id, entity_id, entity_types, relation_types
+            )
         )
-        rows = await self._fetch(sql, args)
-        return [traversal_row(row) for row in rows]
+        if rows is None:
+            sql, args = neighbors_sql(
+                hops,
+                direction,
+                self._tenant_id,
+                entity_id,
+                relation_types,
+                entity_types,
+                limit,
+            )
+            rows = await self._fetch(sql, args)
+            return [traversal_row(row) for row in rows]
+        return [traversal_row(row) for row in merge_min_depth_rows(rows, limit, exclude=entity_id)]
 
     async def traverse(
         self,
@@ -341,16 +431,26 @@ class DuckDbGraphStore(GraphStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """WITH RECURSIVE walk with path-array cycle guard (shared shape)."""
-        sql, args = traverse_sql(
-            max_depth,
-            self._tenant_id,
-            entity_id,
-            relation_types,
-            entity_types,
-            limit,
-        )
-        rows = await self._fetch(sql, args)
-        return [traversal_row(row) for row in rows]
+        validate_depth(max_depth)
+        rows: list[dict[str, Any]] | None = None
+        if _engine_covers(max_depth):
+            rows = await self._duckpgq_rows(
+                lambda: traversal_statements(
+                    "both", max_depth, self._tenant_id, entity_id, entity_types, relation_types
+                )
+            )
+        if rows is None:
+            sql, args = traverse_sql(
+                max_depth,
+                self._tenant_id,
+                entity_id,
+                relation_types,
+                entity_types,
+                limit,
+            )
+            rows = await self._fetch(sql, args)
+            return [traversal_row(row) for row in rows]
+        return [traversal_row(row) for row in merge_min_depth_rows(rows, limit, exclude=entity_id)]
 
     # -- lifecycle -----------------------------------------------------------
 

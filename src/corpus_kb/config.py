@@ -414,6 +414,10 @@ def get_default_config() -> dict[str, object]:
         },
         "graph": {
             "backend": "age",
+            # DuckDB graph traversal engine (graph.backend: duckdb only):
+            # "cte" (recursive-CTE walker, deterministic) or "duckpgq" (the
+            # DuckPGQ extension). Postgres ignores the key.
+            "duckdb_graph_backend": "cte",
             # Graph traversal depth cap (1..25; 25 is today's AGE cap).
             # Consumed by the neighbor/traverse operations (program §5.2).
             "max_hops": 5,
@@ -451,6 +455,31 @@ def get_default_config() -> dict[str, object]:
             # Bounded parallel file ingestion (Wave 1 throughput); the
             # runtime helper caps it at two below the pool size.
             "concurrency": 4,
+        },
+        # Textbook ingestion (textbook-ingestion program). Full parses
+        # need the [docling] extra; these are the gate + window + parser
+        # declarations the validate_configs gate pins (types and enums
+        # in RUNTIME_CONFIG_KEYS).
+        "textbook": {
+            "min_pages": 120,
+            "window_pages": 50,
+            "parser": "docling",
+            "cache_dir": "~/.corpus-kb/textbook-cache",
+        },
+        # Ingest queue worker knobs (tools/queue_tools.py + the Wave 2
+        # worker). autorun: false keeps the worker off; enqueue-only is
+        # the shipped default.
+        "queue": {
+            "autorun": False,
+            "poll_seconds": 20,
+            "stale_lease_seconds": 600,
+            "max_attempts": 3,
+        },
+        # Graph write policy: "all" mirrors today's behavior (every
+        # extracted relation reaches the graph store); "semantic_only"
+        # admits only the ontology's graph_eligible relation types.
+        "graph_policy": {
+            "mode": "all",
         },
         "storage": {
             # chunks_vectors.embedding column type. halfvec is REQUIRED at

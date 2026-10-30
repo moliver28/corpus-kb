@@ -8,6 +8,7 @@ import demoLoaded from "../test/fixtures/demo-loaded-200.json";
 import ingestDirectoryOk from "../test/fixtures/ingest-directory-ok-200.json";
 import ingestUrlOk from "../test/fixtures/ingest-url-ok-200.json";
 import ok200 from "../test/fixtures/ok-200.json";
+import queueStatusOk from "../test/fixtures/queue-status-ok-200.json";
 import researchIngestOk from "../test/fixtures/research-ingest-ok-200.json";
 import Ingest from "./Ingest";
 
@@ -186,6 +187,22 @@ describe("Ingest page", () => {
     expect(await screen.findByText(strings.receiptDone)).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/research/ingest-transcript"));
     expect(sent?.body).toContain('"file_path":"/data/interview-01.docx"');
+  });
+
+  it("shows the queue tab with its form and the polled entries", async () => {
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/queue/status",
+        reply: respond(200, queueStatusOk.response.body),
+      },
+    ]);
+    render(<Ingest />, { wrapper: makeWrapper() });
+    openTab(strings.ingestTabQueue);
+    expect(await screen.findByText(strings.queueFormTitle)).toBeTruthy();
+    expect(screen.getByTestId("queue-path")).toBeTruthy();
+    // The status card answers the first poll with the active rows.
+    expect(await screen.findByText("A History of Networks")).toBeTruthy();
   });
 
   it("loads the sample knowledge behind its confirm gate", async () => {

@@ -50,7 +50,7 @@ corpus-kb start
 | Writers | One process opens the file read-write | Many clients, RLS-isolated |
 | Corpus size | Up to about 100k chunks | Beyond that; the HNSW index keeps search fast |
 | Vector search | Exact scan, always exact results | pgvector HNSW, fast approximate results |
-| Graph engine | Recursive CTEs | Apache AGE openCypher, or CTEs |
+| Graph engine | Recursive CTEs, or opt-in DuckPGQ | Apache AGE openCypher, or CTEs |
 | In-database ML | None; `pgml` selections are refused | PostgresML embeddings, rerank, and NER |
 | Tenancy | Single user, `tenant_id` predicates | Row-level security plus the same predicates |
 
@@ -83,6 +83,36 @@ On Postgres, HNSW index builds need `maintenance_work_mem`. Queries reach the in
 ### The SQLite event store sidecar
 
 On DuckDB, commands append events to `<file>.events.db`, a SQLite file beside the database. The eventsourcing library owns that file. Back it up together with the `.duckdb` file; one without the other is half the corpus. A connection string that names the sidecar is refused at load. `corpus-kb doctor` probes the sidecar under "SQLite event store".
+
+### Graph traversal: the CTE default and the DuckPGQ opt-in
+
+The DuckDB graph store answers walks with a recursive CTE by default. It
+is deterministic, needs no extension, and handles every depth the
+server allows. Set `graph.duckdb_graph_backend: duckpgq` to route
+traversals through the DuckPGQ community extension instead. On first
+use the store installs the extension from the community repository. It
+then creates a static property graph over the fixed
+`entities`/`relations` tables.
+
+DuckPGQ on duckdb 1.5.6 has known defects (each one probed live):
+
+- Bound parameters do not reach the `GRAPH_TABLE` matcher; values travel
+  as quoted literals.
+- Undirected patterns (`-[e]-`) crash the binder.
+- A `UNION ALL` of two `GRAPH_TABLE` arms aborts the connection.
+
+The store works around the parameter defect with quoted literals. It
+renders one fixed statement per orientation chain (depths 1 to 3).
+The defects set two hard limits. Deep walks past 3 hops are not
+expressible. Any install, load, or engine failure ends DuckPGQ for
+that connection. The store logs one warning and stays on the recursive
+CTE path permanently. Answers never change with the backend; only the
+plan does.
+
+**Which one to pick.** Keep `cte` (the default) unless you specifically
+want SQL/GRAPH_TABLE plans for shallow walks. Choose `duckpgq` to
+exercise the SQL/PGQ standard path on a small corpus, or to benchmark
+the extension. Keep the 3-hop ceiling and the CTE fallback in mind.
 
 ---
 

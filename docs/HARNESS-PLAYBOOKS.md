@@ -185,3 +185,59 @@ document, topic, belief, and the active profile. Every search response
 then carries `meta_hits`: the closest aggregates with their distances.
 Run the op after ingests and after `conflicts-resolve` decisions. The
 search stays chunk-level; `meta_hits` only routes.
+
+## Recipe: queue the textbooks
+
+Textbooks are long jobs. The ingest queue keeps them out of the
+interactive path. Enqueue lands rows, and a worker drains them one at a
+time. Every step below has an MCP tool and an HTTP route over the same
+three ops (`queue_enqueue`, `queue_status`, `queue_cancel`). The CLI is
+shown because it reads best.
+
+1. Find the candidates first. The scan prints one scored line per PDF:
+
+   ```bash
+   corpus-kb textbook scan /data/books
+   ```
+
+2. Enqueue each candidate with the project profile. Enqueue is
+   idempotent: a repeat of the same file, profile, and strategy config
+   answers the existing row with `deduplicated: true`.
+
+   ```bash
+   corpus-kb queue-enqueue /data/books/networks.pdf \
+       --title "A History of Networks" --profile my-project
+   ```
+
+   `--strategy-config '{"window_pages": 25}'` rides along when a book
+   needs different windowing; different config never dedupes into an
+   older row.
+
+3. Run the worker. `--watch` keeps polling every `queue.poll_seconds`
+   until you press Ctrl-C. The first Ctrl-C finishes the current book
+   and prints the end-of-run report; a second Ctrl-C stops at once.
+
+   ```bash
+   corpus-kb queue-run --watch
+   ```
+
+4. Watch status from another shell (or from the SPA's Ingest page,
+   Queue tab). Rows report status, attempts, elapsed time, and — once a
+   worker claims them — `pages_done`, `pages_total`, and `chunks`.
+
+   ```bash
+   corpus-kb queue-status
+   ```
+
+5. Stop a pending or running row by id. A done, failed, or cancelled
+   row answers a conflict instead.
+
+   ```bash
+   corpus-kb queue-cancel <queue_id>
+   ```
+
+**The autorun flag.** By default (`queue.autorun: false`) the queue
+stays at rest until a worker starts. Set `queue.autorun: true` in
+`config.yaml` to let the server start a worker at boot. Keep it false
+when you want enqueue and drain on your own schedule. The
+`queue.max_attempts` cap still bounds every retry either way.

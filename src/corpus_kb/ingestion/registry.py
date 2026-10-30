@@ -81,6 +81,7 @@ def _ensure_ready() -> None:
     from .strategies.markdown_sections import MarkdownSectionsStrategy
     from .strategies.pptx import PptxStructureStrategy
     from .strategies.survey import SurveyStrategy
+    from .strategies.textbook import TextbookStrategy
     from .strategies.transcript import TranscriptStrategy
     from .strategies.web import WebStructureStrategy
 
@@ -93,6 +94,7 @@ def _ensure_ready() -> None:
     register_strategy(CodeStrategy())
     register_strategy(MarkdownSectionsStrategy())
     register_strategy(SurveyStrategy())
+    register_strategy(TextbookStrategy())
     _discover_entry_points()
 
 

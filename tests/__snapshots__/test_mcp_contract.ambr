@@ -491,6 +491,36 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.queue_tools': dict({
+      'content_hash_for': dict({
+        'path': 'POSITIONAL_OR_KEYWORD',
+        'profile': 'POSITIONAL_OR_KEYWORD',
+        'strategy_config': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'queue_cancel': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'queue_id': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'queue_enqueue': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'path': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'profile': 'KEYWORD_ONLY',
+        'project_id': 'KEYWORD_ONLY',
+        'strategy_config': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'title': 'KEYWORD_ONLY',
+      }),
+      'queue_status': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'queue_id': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.release_tools': dict({
       'release_assess': dict({
         'codebook_version_id': 'POSITIONAL_OR_KEYWORD',

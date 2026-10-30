@@ -353,6 +353,14 @@ async def run_all(services: dict[str, Any]) -> None:
     # extra actually mounted and CORPUS_KB_UI_OPEN is not "0".
     browser_task = schedule_browser_open(services, str(host), port)
 
+    # Queue autorun (textbook program Wave 3): ONE background drain task
+    # when queue.autorun is true; the default false starts nothing. The
+    # worker's typed refusal covers DuckDB, and a refusal logs one line
+    # while the server continues.
+    from corpus_kb.queue.autorun import start_queue_autorun
+
+    queue_autorun = start_queue_autorun(services["pool"], config)
+
     # Start HTTP server via uvicorn
     config_obj = uvicorn.Config(
         http_app,
@@ -366,6 +374,8 @@ async def run_all(services: dict[str, Any]) -> None:
         logger.info("Starting HTTP server on %s:%d", host, port)
         await server.serve()
     finally:
+        if queue_autorun is not None:
+            await queue_autorun.stop()
         if browser_task is not None:
             browser_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):

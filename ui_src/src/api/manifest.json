@@ -435,6 +435,36 @@
     "required": []
   },
   {
+    "description": "Cancel one pending or running queue row.",
+    "id": "queue-cancel",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/queue/cancel",
+    "required": []
+  },
+  {
+    "description": "Queue one file for ingestion; repeat calls answer the existing row.",
+    "id": "queue-enqueue",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/queue/enqueue",
+    "required": []
+  },
+  {
+    "description": "Show one queue row, or the pending and running rows.",
+    "id": "queue-status",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/queue/status",
+    "required": []
+  },
+  {
     "description": "Compose every release gate over current evidence; WRITES NO RELEASE.",
     "id": "release-assess",
     "longRunning": false,

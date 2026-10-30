@@ -80,6 +80,18 @@ def _bind_list(args: list[object], values: list[str] | None) -> str | None:
     return f"${len(args)}"
 
 
+def validate_hops(hops: int) -> None:
+    """The neighbors hop bound (1..MAX_NEIGHBOR_HOPS); one shared message."""
+    if not 1 <= int(hops) <= MAX_NEIGHBOR_HOPS:
+        raise ValueError(f"hops must be between 1 and {MAX_NEIGHBOR_HOPS}, got {hops!r}")
+
+
+def validate_depth(depth: int) -> None:
+    """The traverse depth floor; one shared message."""
+    if int(depth) < 1:
+        raise ValueError(f"max_depth must be 1 or more, got {depth!r}")
+
+
 def _hop_branch(
     depth: int,
     direction: str,
@@ -136,14 +148,12 @@ def neighbors_sql(
     """
     if direction not in DIRECTIONS:
         raise ValueError(f"direction must be one of {DIRECTIONS}, got {direction!r}")
-    depth = int(hops)
-    if not 1 <= depth <= MAX_NEIGHBOR_HOPS:
-        raise ValueError(f"hops must be between 1 and {MAX_NEIGHBOR_HOPS}, got {hops!r}")
+    validate_hops(hops)
     args: list[object] = [tenant_id, entity_id]
     relation_param = _bind_list(args, relation_types)
     entity_param = _bind_list(args, entity_types)
     branches = "\n    UNION ALL\n".join(
-        _hop_branch(hop, direction, relation_param, entity_param) for hop in range(1, depth + 1)
+        _hop_branch(hop, direction, relation_param, entity_param) for hop in range(1, int(hops) + 1)
     )
     sql = _DEDUP_WRAP.format(columns=_ROW_COLUMNS, rows=branches, limit=int(limit))
     return sql, args
@@ -185,10 +195,8 @@ def traverse_sql(
     min-depth wrap keeps BFS semantics. Rows ordered ``(depth, name,
     entity_id)``; the start node is never a row.
     """
-    depth = int(max_depth)
-    if depth < 1:
-        raise ValueError(f"max_depth must be 1 or more, got {max_depth!r}")
-    args: list[object] = [tenant_id, entity_id, depth]
+    validate_depth(max_depth)
+    args: list[object] = [tenant_id, entity_id, int(max_depth)]
     relation_param = _bind_list(args, relation_types)
     entity_param = _bind_list(args, entity_types)
     # The walk is undirected: both edge orientations per step.

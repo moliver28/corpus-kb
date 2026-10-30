@@ -295,3 +295,38 @@ async def test_coding_migrations_rollback_and_reapply_on_live_db() -> None:
         await conn.execute(CODING_MIGRATIONS[0].read_text(encoding="utf-8"))
     finally:
         await conn.close()
+
+
+class _StubConn:
+    """A connection stand-in: one canned result per executed SQL text."""
+
+    def __init__(self, raise_on_load: Exception | None) -> None:
+        self._raise_on_load = raise_on_load
+        self.executed: list[str] = []
+
+    async def execute(self, sql: str) -> str:
+        self.executed.append(sql)
+        if sql == "LOAD 'age'" and self._raise_on_load is not None:
+            raise self._raise_on_load
+        return "OK"
+
+
+@pytest.mark.asyncio
+async def test_prepare_age_session_tolerates_absent_and_denied_library() -> None:
+    """A missing or forbidden AGE library returns False and touches nothing.
+
+    CI hosts and least-privilege roles (a bare-metal ``corpus_user`` may not
+    LOAD arbitrary libraries) both take the False path: no search_path SET,
+    no exception out of the runner.
+    """
+    absent = _StubConn(asyncpg.UndefinedFileError("library age not found"))
+    assert await prepare_age_session(absent) is False
+    assert absent.executed == ["LOAD 'age'"]
+
+    denied = _StubConn(asyncpg.InsufficientPrivilegeError("access to library age is not allowed"))
+    assert await prepare_age_session(denied) is False
+    assert denied.executed == ["LOAD 'age'"]
+
+    ready = _StubConn(None)
+    assert await prepare_age_session(ready) is True
+    assert ready.executed == ["LOAD 'age'", 'SET search_path = "$user", public, ag_catalog']

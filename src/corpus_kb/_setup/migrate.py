@@ -139,11 +139,11 @@ async def prepare_age_session(conn: asyncpg.Connection) -> bool:
     the path on purpose: unqualified migration DDL must keep creating in
     ``public``, while the opclass, cypher() and agtype still resolve
     through the path. Returns False when the AGE shared library is
-    absent, leaving the connection untouched.
+    absent or the role may not load it, leaving the connection untouched.
     """
     try:
         await conn.execute("LOAD 'age'")
-    except asyncpg.UndefinedFileError:
+    except (asyncpg.UndefinedFileError, asyncpg.InsufficientPrivilegeError):
         return False
     await conn.execute('SET search_path = "$user", public, ag_catalog')
     return True
