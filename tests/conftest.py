@@ -273,26 +273,6 @@ async def duckdb_gateway(duckdb_path: Path):
         await gateway.close()
 
 
-@pytest.fixture(scope="session")
-def duckdb_session_path(tmp_path_factory: pytest.TempPathFactory) -> Path:
-    """Session-long DuckDB file path (rule 23: passed as a fixture argument)."""
-    return tmp_path_factory.mktemp("duckdb-session") / "session.duckdb"
-
-
-@pytest.fixture(scope="session")
-async def duckdb_session_gateway(duckdb_session_path: Path):
-    from corpus_kb.storage.gateway import DuckDbGateway
-
-    gateway = await DuckDbGateway.connect(str(duckdb_session_path))
-    try:
-        yield gateway
-    finally:
-        await gateway.close()
-        # Delete only after close; duckdb writes a `<file>.wal` sidecar.
-        for suffix in ("", ".wal"):
-            Path(f"{duckdb_session_path}{suffix}").unlink(missing_ok=True)
-
-
 #: Storage backends the suite can exercise today. The postgres leg joins when
 #: the full-parity harness lands (the PG service is live on the ubuntu CI leg
 #: since phase B); without Postgres the pg_pool fixture skips that leg.

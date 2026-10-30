@@ -159,7 +159,6 @@ promoted
 _types
 dropped_entities
 dropped_relations
-handle_errors
 handle_untag_document
 detection_confidence
 detection_reason

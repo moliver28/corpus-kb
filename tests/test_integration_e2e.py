@@ -352,20 +352,6 @@ class TestE2EIntegration:
         assert len(failures) == 0
 
     @pytest.mark.asyncio
-    async def test_error_handling_returns_error_dict(self):
-        """Test 10: Error handling decorator returns structured error dict."""
-        from corpus_kb.handlers.error_handling import handle_errors
-
-        @handle_errors(timeout_seconds=1.0, max_retries=1)
-        async def failing_function():
-            raise FileNotFoundError("test file not found")
-
-        result = await failing_function()
-        assert result["status"] == "error"
-        assert result["error"] == "test file not found"
-        assert result["error_type"] == "FileNotFoundError"
-
-    @pytest.mark.asyncio
     async def test_width_guard_rejects_mismatched_width(self, clean_db, db_conn):
         """A 768-dim width cannot enter halfvec(2560): typed ConfigError.
 
