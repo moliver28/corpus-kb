@@ -170,8 +170,8 @@ Done-when: full suite green, ruff clean, route smoke + parity seed in CI.
 - `ingest_common.py` → embed/extract/reembed modules; `install.py` →
   state/profiles/steps; `release_handlers`, `doctor_research`, `retrieval`,
   `surface_registry` get their natural seams.
-- Dead code removed: `handlers/error_handling.py` (adopted or deleted),
-  `reset_query_handler`, `_get_tenant_id`, `tenant_id_of`.
+- Dead code removed: `handlers/error_handling.py` (deleted: its only caller
+  was one test), `reset_query_handler`, `_get_tenant_id`, `tenant_id_of`.
 
 ### Wave 4 — Interop and the real MCP server
 
