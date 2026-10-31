@@ -617,8 +617,8 @@ cmd = "python -m pytest tests/test_plain_language.py -m ste -q --tb=short"
 help = "ASD-STE100 plain-language gate: docs grade, error strings, tool docstrings"
 
 [tool.poe.tasks.verify]
-sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps", "complexity", "size-ratchet", "test"]
-help = "All quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + size-ratchet + test"
+sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps", "complexity", "size-ratchet", "dup-check", "audit-deps", "test"]
+help = "Quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + size-ratchet + dup-check + audit-deps + test (coverage gates run in CI on the covered suite)"
 
 [tool.poe.tasks.gen]
 # All three generators run in --check mode: exit 1 on drift, write nothing.
@@ -675,11 +675,11 @@ help = "MCP config + runtime config consistency gate (ci.yml validate-configs jo
 # scan surface is src/ Python only: .jscpd.json ignores ui_dist,
 # __pycache__, *.sql, *.yaml, and *.json (append-only SQL migrations
 # score 8.7 percent and are excluded by design). THRESHOLD is the
-# ratchet: 1.8 vs the 1.597 measured on master 6309fed (565 files,
-# 128 clones). In-flight dedup PRs only remove clones; ratchet the
-# number down in the same PR that removes a clone family.
-cmd = "pnpm -C ui_src exec jscpd --config ../.jscpd.json --threshold 1.8 ../src"
-help = "jscpd duplication gate over src/ (threshold 1.8, config .jscpd.json)"
+# ratchet: 1.6 vs the 1.55 measured on master 46dc44a after the dedup
+# wave (126 clones, 566 files). Ratchet the number down in the same PR
+# that removes a clone family.
+cmd = "pnpm -C ui_src exec jscpd --config ../.jscpd.json --threshold 1.6 ../src"
+help = "jscpd duplication gate over src/ (threshold 1.6, config .jscpd.json)"
 
 [tool.poe.tasks.audit-deps]
 # Dependency CVE gate (PR-F, rule 10). uv-native audit of the COMMITTED
