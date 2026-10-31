@@ -1,9 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { strings } from "../strings";
+import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import type { MinimalResponse } from "../test/testUtils";
 import assignmentsOk from "../test/fixtures/assignments-ok-200.json";
 import ingestStatusOk from "../test/fixtures/ingest-status-ok-200.json";
 import reembedOk from "../test/fixtures/reembed-ok-200.json";
@@ -18,42 +17,11 @@ import Review from "./Review";
  * the override needs a note and the reviewer name is remembered.
  */
 
-type MinimalResponse = { status: number; text: () => Promise<string> };
-type Call = { method: string; url: string; body: string };
-
-const calls: Call[] = [];
-
-function respond(status: number, body: unknown): MinimalResponse {
-  return { status, text: async () => JSON.stringify(body) };
-}
-
-function stubFetch(routes: { method: string; path: string; reply: MinimalResponse }[]): void {
-  const impl = (url: string | URL, init?: { method?: string; body?: unknown }): Promise<MinimalResponse> => {
-    const method = (init?.method ?? "GET").toUpperCase();
-    calls.push({ method, url: String(url), body: String(init?.body ?? "") });
-    const hit = routes.find((r) => r.method === method && String(url).includes(r.path));
-    if (hit) return Promise.resolve(hit.reply);
-    return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
-  };
-  vi.stubGlobal("fetch", impl as unknown as typeof fetch);
-}
-
-function makeWrapper() {
-  const client = new QueryClient();
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </QueryClientProvider>
-    );
-  };
-}
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.localStorage.clear();
-  calls.length = 0;
+  clearCalls();
 });
 
 function reviewRoutes(): { method: string; path: string; reply: MinimalResponse }[] {

@@ -1,7 +1,7 @@
 import { Button, Card, Input, Modal, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
@@ -51,12 +51,13 @@ export default function PromoteCard() {
 
   const proposals = useOp("codebook-proposals");
   const promote = useOp("codebook-promote");
+  const { run: proposalsRun } = proposals;
 
-  // One GET on mount through a ref (useOp's run is not stable).
-  const runRef = useRef<() => Promise<unknown>>(proposals.run);
+  // One GET on mount. useOp's run holds a stable identity, so the
+  // [proposalsRun] dependency never re-fires the effect.
   useEffect(() => {
-    void runRef.current();
-  }, []);
+    void proposalsRun();
+  }, [proposalsRun]);
 
   function refresh(): void {
     proposals.reset();

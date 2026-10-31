@@ -1,7 +1,7 @@
 import { Button, Card, Skeleton, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
@@ -89,12 +89,11 @@ function DoctorView({ result }: { result: DoctorResult }) {
 export default function DoctorCard() {
   const { run, result, running, reset } = useOp("doctor");
 
-  // useOp's run is not referentially stable, so the mount call goes
-  // through a ref: one GET on mount, never a re-fetch loop.
-  const runRef = useRef<() => Promise<unknown>>(run);
+  // One GET on mount. useOp's run holds a stable identity, so the
+  // [run] dependency never re-fires the effect.
   useEffect(() => {
-    void runRef.current();
-  }, []);
+    void run();
+  }, [run]);
 
   function refresh(): void {
     reset();

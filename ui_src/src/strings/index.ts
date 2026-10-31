@@ -100,7 +100,6 @@ export interface Strings {
   setupUploadTooLarge: string;
   setupUploadPickFirst: string;
   setupIngestTitle: string;
-  setupIngestDirTitle: string;
   setupIngestDirBody: string;
   setupIngestUrlTitle: string;
   setupIngestUrlBody: string;

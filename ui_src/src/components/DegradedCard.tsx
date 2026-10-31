@@ -1,6 +1,6 @@
 import { Button, Card, Skeleton } from "antd";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
@@ -50,14 +50,14 @@ function degradedCount(value: unknown): number {
 export default function DegradedCard() {
   const status = useOp("ingest-status");
   const reembed = useOp("ingest-reembed");
+  const { run: statusRun } = status;
   const [summary, setSummary] = useState<ReembedSummary | null>(null);
 
-  // useOp's run is not referentially stable, so the mount call goes
-  // through a ref: one GET on mount, never a re-fetch loop.
-  const runRef = useRef<() => Promise<unknown>>(status.run);
+  // One GET on mount. useOp's run holds a stable identity, so the
+  // [statusRun] dependency never re-fires the effect.
   useEffect(() => {
-    void runRef.current();
-  }, []);
+    void statusRun();
+  }, [statusRun]);
 
   function refresh(): void {
     status.reset();

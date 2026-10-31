@@ -1,13 +1,23 @@
 import { Card } from "antd";
 import { strings } from "../strings";
 import ActionCard from "../components/ActionCard";
+import NotWiredCard from "../components/NotWiredCard";
 import PathCard from "../components/PathCard";
 import CycleCard from "./codebook/CycleCard";
 import GovernanceCard from "./codebook/GovernanceCard";
-import NotWiredCard from "./codebook/NotWiredCard";
 import PreFlightCard from "./codebook/PreFlightCard";
 import PromoteCard from "./codebook/PromoteCard";
 import { EvidenceCard, OverlapCard, UncodedCard } from "./codebook/NotebookCards";
+
+/** The honest not-wired rows for the coding-pipeline steps (op id, line). */
+const NOT_WIRED = [
+  { opId: "coding-embed-codebook", text: strings.codebookEmbedNotWired },
+  { opId: "coding-pool", text: strings.codebookPoolNotWired },
+  { opId: "coding-batch", text: strings.codebookBatchNotWired },
+  { opId: "coding-calibrate", text: strings.codebookCalibrateNotWired },
+  { opId: "coding-reliability", text: strings.codebookReliabilityNotWired },
+  { opId: "coding-saturation", text: strings.codebookSaturationNotWired },
+];
 
 /**
  * The Codebook stage — pre-flight, the two wired coding steps, the
@@ -48,7 +58,7 @@ export default function Codebook() {
       </Card>
       <GovernanceCard />
       <CycleCard />
-      <NotWiredCard />
+      <NotWiredCard title={strings.codebookNotWiredTitle} items={NOT_WIRED} />
     </div>
   );
 }

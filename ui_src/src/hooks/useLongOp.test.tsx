@@ -1,9 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
-import type { ReactNode } from "react";
 import type { OpResult } from "../api/types";
 import { networkResult } from "../api/errors";
+import { makeWrapper } from "../test/testUtils";
 import { useLongOp } from "./useLongOp";
 
 /**
@@ -12,13 +11,6 @@ import { useLongOp } from "./useLongOp";
  * result -> unknown-outcome, elapsed timer ticks each second, and a
  * status poll never clobbers the settled receipt.
  */
-
-function makeWrapper() {
-  const client = new QueryClient();
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  };
-}
 
 function deferred(): { promise: Promise<OpResult>; resolve: (r: OpResult) => void } {
   let resolve!: (r: OpResult) => void;
@@ -42,7 +34,7 @@ describe("useLongOp", () => {
   it("refuses a second start while running and returns the same promise", async () => {
     const first = deferred();
     const fn: Mock<(signal: AbortSignal) => Promise<OpResult>> = vi.fn(() => first.promise);
-    const { result } = renderHook(() => useLongOp("op", fn), { wrapper: makeWrapper() });
+    const { result } = renderHook(() => useLongOp("op", fn), { wrapper: makeWrapper(false) });
 
     let flight1!: Promise<OpResult>;
     let flight2!: Promise<OpResult>;
@@ -73,7 +65,7 @@ describe("useLongOp", () => {
     const flightData = deferred();
     const { result } = renderHook(
       () => useLongOp("op", () => flightData.promise),
-      { wrapper: makeWrapper() },
+      { wrapper: makeWrapper(false) },
     );
 
     let flight!: Promise<OpResult>;
@@ -93,7 +85,7 @@ describe("useLongOp", () => {
 
   it("marks unknown-outcome when the network kind comes back", async () => {
     const { result } = renderHook(() => useLongOp("op", () => Promise.resolve(networkResult())), {
-      wrapper: makeWrapper(),
+      wrapper: makeWrapper(false),
     });
     await act(async () => {
       await result.current.start();
@@ -108,7 +100,7 @@ describe("useLongOp", () => {
         useLongOp("op", (signal) => new Promise<OpResult>((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(new Error("aborted")));
         })),
-      { wrapper: makeWrapper() },
+      { wrapper: makeWrapper(false) },
     );
     let flight!: Promise<OpResult>;
     act(() => {
@@ -143,7 +135,7 @@ describe("useLongOp", () => {
     const receipt: OpResult = { ...OK, message: "the receipt" };
     const flightData = deferred();
     const { result } = renderHook(() => useLongOp("op", () => flightData.promise), {
-      wrapper: makeWrapper(),
+      wrapper: makeWrapper(false),
     });
     let flight!: Promise<OpResult>;
     await act(async () => {
@@ -166,7 +158,7 @@ describe("useLongOp", () => {
     vi.useFakeTimers();
     const flightData = deferred();
     const { result } = renderHook(() => useLongOp("op", () => flightData.promise), {
-      wrapper: makeWrapper(),
+      wrapper: makeWrapper(false),
     });
     act(() => {
       result.current.start();

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { stubFetchImpl } from "../test/testUtils";
 
 /**
  * Runtime-config rows: one fetch, cached; every invalid or missing value
@@ -6,10 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
  * typeguard rows below pin the degrade path — a bad key never crashes
  * the SPA and never changes policy silently.
  */
-
-function stubFetch(impl: unknown): void {
-  vi.stubGlobal("fetch", impl as typeof fetch);
-}
 
 function jsonBody(body: unknown): unknown {
   return { json: async () => body };
@@ -27,7 +24,7 @@ afterEach(() => {
 describe("runtimeConfig", () => {
   it("maps the wire keys onto the typed snapshot", async () => {
     const rc = await fresh();
-    stubFetch(() =>
+    stubFetchImpl(() =>
       Promise.resolve(
         jsonBody({
           poll_ms: 1500,
@@ -49,7 +46,7 @@ describe("runtimeConfig", () => {
 
   it("keeps the defaults when the fetch fails", async () => {
     const rc = await fresh();
-    stubFetch(() => Promise.reject(new Error("down")));
+    stubFetchImpl(() => Promise.reject(new Error("down")));
     await rc.loadRuntimeConfig();
     expect(rc.runtimeConfig()).toEqual({
       pollMs: 2000,
@@ -62,14 +59,14 @@ describe("runtimeConfig", () => {
 
   it("keeps the defaults when the body is not an object", async () => {
     const rc = await fresh();
-    stubFetch(() => Promise.resolve(jsonBody("nope")));
+    stubFetchImpl(() => Promise.resolve(jsonBody("nope")));
     await rc.loadRuntimeConfig();
     expect(rc.requestTimeoutMs()).toBe(60_000);
   });
 
   it("degrades per key when a value has the wrong type or range", async () => {
     const rc = await fresh();
-    stubFetch(() =>
+    stubFetchImpl(() =>
       Promise.resolve(
         jsonBody({
           poll_ms: "fast",
@@ -91,7 +88,7 @@ describe("runtimeConfig", () => {
   it("fetches once and reuses the cache afterwards", async () => {
     const rc = await fresh();
     const impl = vi.fn(() => Promise.resolve(jsonBody({ request_timeout_s: 30 })));
-    stubFetch(impl);
+    stubFetchImpl(impl);
     await rc.loadRuntimeConfig();
     await rc.loadRuntimeConfig();
     expect(impl).toHaveBeenCalledTimes(1);

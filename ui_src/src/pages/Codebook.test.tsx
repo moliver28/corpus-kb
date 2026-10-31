@@ -1,9 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { strings } from "../strings";
+import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import type { MinimalResponse } from "../test/testUtils";
 import codebooksOk from "../test/fixtures/codebooks-ok-200.json";
 import cycleHalted from "../test/fixtures/cycle-halted-200.json";
 import doctorOk from "../test/fixtures/doctor-ok.json";
@@ -19,38 +18,7 @@ import Codebook from "./Codebook";
  * banners for the unwired pipeline steps.
  */
 
-type MinimalResponse = { status: number; text: () => Promise<string> };
-type Call = { method: string; url: string; body: string };
-
-const calls: Call[] = [];
-
 const CYCLE_BODY = '{"mode":"in"}';
-
-function respond(status: number, body: unknown): MinimalResponse {
-  return { status, text: async () => JSON.stringify(body) };
-}
-
-function stubFetch(routes: { method: string; path: string; reply: MinimalResponse }[]): void {
-  const impl = (url: string | URL, init?: { method?: string; body?: unknown }): Promise<MinimalResponse> => {
-    const method = (init?.method ?? "GET").toUpperCase();
-    calls.push({ method, url: String(url), body: String(init?.body ?? "") });
-    const hit = routes.find((r) => r.method === method && String(url).includes(r.path));
-    if (hit) return Promise.resolve(hit.reply);
-    return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
-  };
-  vi.stubGlobal("fetch", impl as unknown as typeof fetch);
-}
-
-function makeWrapper() {
-  const client = new QueryClient();
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </QueryClientProvider>
-    );
-  };
-}
 
 function cardOf(title: string): HTMLElement {
   const card = screen
@@ -76,7 +44,7 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   vi.useRealTimers();
-  calls.length = 0;
+  clearCalls();
 });
 
 describe("Codebook page", () => {

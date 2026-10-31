@@ -1,9 +1,14 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { strings } from "../../strings";
+import {
+  calls,
+  clearCalls,
+  makeWrapper,
+  respond,
+  stubFetch,
+} from "../../test/testUtils";
+import type { Call, MinimalResponse, Route } from "../../test/testUtils";
 import queueCancelOk from "../../test/fixtures/queue-cancel-ok-200.json";
 import queueEnqueueDedup from "../../test/fixtures/queue-enqueue-dedup-200.json";
 import queueEnqueueOk from "../../test/fixtures/queue-enqueue-ok-200.json";
@@ -13,36 +18,15 @@ import QueueCard from "./QueueCard";
 /**
  * The queue tab from canonical fixtures: the enqueue form (path gate,
  * client-side strategy-config JSON check), the polled table, and the
- * confirm-gated cancel per active row. The poll is the useLedgerPoll
+ * confirm-gated cancel per active row. The poll is the usePoll
  * precedent, so every timer-driven test runs under fake timers.
  */
-
-type MinimalResponse = { status: number; text: () => Promise<string> };
-type Call = { method: string; url: string; body: string };
-type Route = { method: string; path: string; reply: MinimalResponse };
-
-const calls: Call[] = [];
-
-function respond(status: number, body: unknown): MinimalResponse {
-  return { status, text: async () => JSON.stringify(body) };
-}
 
 const statusRoute: Route = {
   method: "POST",
   path: "/api/queue/status",
   reply: respond(200, queueStatusOk.response.body),
 };
-
-function stubFetch(routes: Route[]): void {
-  const impl = (url: string | URL, init?: { method?: string; body?: unknown }): Promise<MinimalResponse> => {
-    const method = (init?.method ?? "GET").toUpperCase();
-    calls.push({ method, url: String(url), body: String(init?.body ?? "") });
-    const hit = routes.find((r) => r.method === method && String(url).includes(r.path));
-    if (hit) return Promise.resolve(hit.reply);
-    return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
-  };
-  vi.stubGlobal("fetch", impl as unknown as typeof fetch);
-}
 
 /** The enqueue answers deduplicated on its second call (repeat click). */
 function stubEnqueueThenDedup(): void {
@@ -62,17 +46,6 @@ function stubEnqueueThenDedup(): void {
     return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
   };
   vi.stubGlobal("fetch", impl as unknown as typeof fetch);
-}
-
-function makeWrapper() {
-  const client = new QueryClient();
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </QueryClientProvider>
-    );
-  };
 }
 
 function queueCalls(path: string): Call[] {
@@ -118,7 +91,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   vi.useRealTimers();
-  calls.length = 0;
+  clearCalls();
 });
 
 describe("QueueCard", () => {

@@ -33,10 +33,14 @@ export function useOp(opId: string, timeoutMs?: number | "none"): UseOp {
     },
     onSuccess: setResult,
   });
-  const run = useCallback((body?: unknown) => mutation.mutateAsync(body), [mutation]);
+  // mutateAsync and reset are bound methods of the observer, so they
+  // keep one identity across renders (the mutation object does not).
+  // run and reset therefore hold stable identities too.
+  const { mutateAsync, reset: resetMutation, isPending } = mutation;
+  const run = useCallback((body?: unknown) => mutateAsync(body), [mutateAsync]);
   const reset = useCallback(() => {
-    mutation.reset();
+    resetMutation();
     setResult(null);
-  }, [mutation]);
-  return { run, running: mutation.isPending, result, reset };
+  }, [resetMutation]);
+  return { run, running: isPending, result, reset };
 }

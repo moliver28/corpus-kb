@@ -1,9 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { strings } from "../strings";
+import { makeWrapper, respond, stubFetch } from "../test/testUtils";
 import demoLoaded from "../test/fixtures/demo-loaded-200.json";
 import demoPartial from "../test/fixtures/demo-partial-200.json";
 import doctorOk from "../test/fixtures/doctor-ok.json";
@@ -16,33 +14,6 @@ import Setup from "./Setup";
  * demo-load flow goes confirm -> long op -> receipt, and the upload cap
  * line shows before any upload happens.
  */
-
-type MinimalResponse = { status: number; text: () => Promise<string> };
-
-function respond(status: number, body: unknown): MinimalResponse {
-  return { status, text: async () => JSON.stringify(body) };
-}
-
-function stubFetch(routes: { method: string; path: string; reply: MinimalResponse }[]): void {
-  const impl = (url: string | URL | Request, init?: { method?: string }): Promise<MinimalResponse> => {
-    const method = (init?.method ?? "GET").toUpperCase();
-    const hit = routes.find((r) => r.method === method && String(url).includes(r.path));
-    if (hit) return Promise.resolve(hit.reply);
-    return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
-  };
-  vi.stubGlobal("fetch", impl as unknown as typeof fetch);
-}
-
-function makeWrapper() {
-  const client = new QueryClient();
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </QueryClientProvider>
-    );
-  };
-}
 
 afterEach(() => {
   cleanup();
