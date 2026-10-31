@@ -761,6 +761,9 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "textbook.window_subprocess": bool,
     "textbook.window_timeout_s": float,
     "textbook.cache_max_mb": int,
+    # Rich-structure flag (textbook program W1-B): keeps level, page
+    # boxes, and table markdown in the parsed windows.
+    "textbook.structured_output": bool,
     # -- ingest queue worker knobs (tools/queue_tools.py, Wave 1) ------------
     "queue.autorun": bool,
     "queue.poll_seconds": int,
@@ -1062,6 +1065,9 @@ def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
     cap = textbook.get("cache_max_mb")
     if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
         errors.append(f"textbook.cache_max_mb: must be a non-negative int, got {cap!r}")
+    flag = textbook.get("structured_output")
+    if flag is not None and not isinstance(flag, bool):
+        errors.append(f"textbook.structured_output: must be a bool, got {flag!r}")
     return errors
 
 
