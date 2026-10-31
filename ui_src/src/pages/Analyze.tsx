@@ -5,7 +5,16 @@ import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";
 import ActionCard from "../components/ActionCard";
-import NotWiredCard from "./analyze/NotWiredCard";
+import NotWiredCard from "../components/NotWiredCard";
+
+/** The honest not-wired rows for the analysis families (op id, line). */
+const NOT_WIRED = [
+  { opId: "statements-list", text: strings.analyzeStatementsNotWired },
+  { opId: "conflicts-scan", text: strings.analyzeConflictsNotWired },
+  { opId: "beliefs-current", text: strings.analyzeBeliefsNotWired },
+  { opId: "analysis-embed-meta", text: strings.analyzeEmbedMetaNotWired },
+  { opId: "extraction-tune", text: strings.analyzeExtractionTuneNotWired },
+];
 
 /** The guided, present-in-manifest actions (dormant hints where known). */
 const GUIDED = [
@@ -97,7 +106,7 @@ export default function Analyze() {
       {GUIDED.map((card) => (
         <ActionCard key={card.opId} {...card} />
       ))}
-      <NotWiredCard />
+      <NotWiredCard title={strings.analyzeNotWiredTitle} items={NOT_WIRED} />
     </div>
   );
 }

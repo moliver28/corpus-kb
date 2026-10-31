@@ -1,8 +1,8 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { strings } from "../strings";
+import { makeWrapper, stubFetchImpl } from "../test/testUtils";
+import type { MinimalResponse } from "../test/testUtils";
 import OpRunner from "./OpRunner";
 
 /**
@@ -12,19 +12,6 @@ import OpRunner from "./OpRunner";
  * simple path.
  */
 
-function makeWrapper() {
-  const client = new QueryClient();
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
-  };
-}
-
-type MinimalResponse = { status: number; text: () => Promise<string> };
-
-function stubFetch(impl: () => Promise<MinimalResponse>): void {
-  vi.stubGlobal("fetch", impl as unknown as typeof fetch);
-}
-
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -32,13 +19,13 @@ afterEach(() => {
 
 describe("OpRunner", () => {
   it("renders the unknown-op error panel for an id outside the manifest", () => {
-    render(<OpRunner opId="no-such-op" />, { wrapper: makeWrapper() });
+    render(<OpRunner opId="no-such-op" />, { wrapper: makeWrapper(false) });
     expect(screen.getByText(strings.unknownOperation)).toBeTruthy();
   });
 
   it("retries a settled longRunning op through the long path", async () => {
     let calls = 0;
-    stubFetch(() => {
+    stubFetchImpl(() => {
       calls += 1;
       if (calls === 1) {
         return Promise.resolve({
@@ -48,7 +35,7 @@ describe("OpRunner", () => {
       }
       return new Promise<MinimalResponse>(() => {}); // a long op keeps waiting
     });
-    render(<OpRunner opId="research-demo" />, { wrapper: makeWrapper() });
+    render(<OpRunner opId="research-demo" />, { wrapper: makeWrapper(false) });
 
     // The initial run goes through the confirm gate, then fails.
     fireEvent.click(screen.getByRole("button", { name: strings.runnerRunLabel }));

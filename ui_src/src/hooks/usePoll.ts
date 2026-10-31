@@ -1,19 +1,19 @@
-// The queue poll: POST queue/status every ui.spa.poll_ms while the
-// browser tab is visible, parked on a visibilitychange wake while it is
-// hidden, and a 10 s backoff after a 503. The useLedgerPoll precedent,
-// plus a refresh() kick: an enqueue or a cancel wakes the loop at once.
-// One loop, no parallel polls.
+// The one poll loop for status reads (the ingest ledger, the ingest
+// queue): poll the op every ui.spa.poll_ms while the browser tab is
+// visible, park on a visibilitychange wake while it is hidden, and back
+// off for 10 s after a 503. refresh() kicks the loop at once. One loop,
+// no parallel polls. The op table (api/ops) is the one endpoint source.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { readQueue } from "../../api/queue";
-import { runtimeConfig } from "../../api/runtimeConfig";
-import type { OpResult } from "../../api/types";
-import type { QueueStatusPayload } from "../../api/queue";
+import { callOp } from "../api/client";
+import { getOp } from "../api/ops";
+import { runtimeConfig } from "../api/runtimeConfig";
+import type { OpResult } from "../api/types";
 
-export const QUEUE_BACKOFF_MS = 10_000;
+export const POLL_BACKOFF_MS = 10_000;
 
-export interface QueuePoll {
-  /** The most recent queue answer (null until the first poll lands). */
-  result: OpResult<QueueStatusPayload> | null;
+export interface Poll<T> {
+  /** The most recent answer (null until the first poll lands). */
+  result: OpResult<T> | null;
   /** True while the browser tab is hidden (no fetches go out). */
   paused: boolean;
   /** True after a 503, until a poll answers again. */
@@ -22,16 +22,26 @@ export interface QueuePoll {
   refresh: () => void;
 }
 
-export function useQueuePoll(): QueuePoll {
-  const [result, setResult] = useState<OpResult<QueueStatusPayload> | null>(null);
+export function usePoll<T>(opId: string, body?: unknown): Poll<T> {
+  const [result, setResult] = useState<OpResult<T> | null>(null);
   const [paused, setPaused] = useState(document.hidden);
   const [backingOff, setBackingOff] = useState(false);
   // The sleep resolves early on a wake; the dirty flag covers a refresh
   // that lands while a poll is in flight (it re-polls right after).
   const wakeRef = useRef<(() => void) | null>(null);
   const dirtyRef = useRef(false);
+  // The loop reads the latest body without restarting on a new object
+  // identity (callers pass literals, so [opId] is the only effect key).
+  const bodyRef = useRef(body);
+  useEffect(() => {
+    bodyRef.current = body;
+  });
 
   useEffect(() => {
+    const op = getOp(opId);
+    if (op === undefined) {
+      return undefined;
+    }
     let stopped = false;
     const sleepOrWake = (ms: number): Promise<void> =>
       new Promise<void>((resolve) => {
@@ -72,7 +82,10 @@ export function useQueuePoll(): QueuePoll {
         // A poll reads the freshest state there is, so a refresh that
         // fired before this moment is answered by THIS read, not another.
         dirtyRef.current = false;
-        const res = await readQueue();
+        const res = await callOp<T>(op.path, {
+          method: op.method === "GET" ? "GET" : "POST",
+          body: bodyRef.current,
+        });
         if (stopped) {
           return;
         }
@@ -83,14 +96,14 @@ export function useQueuePoll(): QueuePoll {
         if (dirtyRef.current) {
           continue;
         }
-        await sleepOrWake(backoff ? QUEUE_BACKOFF_MS : runtimeConfig().pollMs);
+        await sleepOrWake(backoff ? POLL_BACKOFF_MS : runtimeConfig().pollMs);
       }
     })();
     return () => {
       stopped = true;
       wakeRef.current = null;
     };
-  }, []);
+  }, [opId]);
 
   const refresh = useCallback((): void => {
     dirtyRef.current = true;

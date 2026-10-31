@@ -8,10 +8,10 @@ import DirectoryCard from "../components/DirectoryCard";
 import JsonViewer from "../components/JsonViewer";
 import ResearchIngestCard from "../components/ResearchIngestCard";
 import StatusBanner from "../components/StatusBanner";
+import { usePoll } from "../hooks/usePoll";
 import { strings } from "../strings";
 import { filterRuns, projectOptions, runsOf } from "./scale/runFilter";
 import type { LedgerRun } from "./scale/runFilter";
-import { useLedgerPoll } from "./scale/useLedgerPoll";
 
 /** The project filter plus the narrowed run list (migration 036 link). */
 function RunFilterView({ runs }: { runs: LedgerRun[] }) {
@@ -76,7 +76,7 @@ function dash(value: unknown): string {
 
 /** The self-polling run ledger (spec F6): poll_ms, hidden pause, backoff. */
 function LedgerCard() {
-  const poll = useLedgerPoll();
+  const poll = usePoll("ingest-status");
   const runs = poll.result === null ? [] : runsOf(poll.result.data);
   let body: ReactNode;
   if (poll.result === null) {

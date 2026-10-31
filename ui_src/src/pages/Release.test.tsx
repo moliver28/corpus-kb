@@ -1,9 +1,7 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ReactNode } from "react";
 import { strings } from "../strings";
+import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import releaseAssessOk from "../test/fixtures/release-assess-ok-200.json";
 import releaseBlocked409 from "../test/fixtures/release-blocked-409.json";
 import releaseStatusOk from "../test/fixtures/release-status-ok-200.json";
@@ -14,37 +12,6 @@ import Release from "./Release";
  * status read over the query-string GET, the gated execute, and the
  * structured 409 refusal that lists the unmet required gates.
  */
-
-type MinimalResponse = { status: number; text: () => Promise<string> };
-type Call = { method: string; url: string; body: string };
-
-const calls: Call[] = [];
-
-function respond(status: number, body: unknown): MinimalResponse {
-  return { status, text: async () => JSON.stringify(body) };
-}
-
-function stubFetch(routes: { method: string; path: string; reply: MinimalResponse }[]): void {
-  const impl = (url: string | URL, init?: { method?: string; body?: unknown }): Promise<MinimalResponse> => {
-    const method = (init?.method ?? "GET").toUpperCase();
-    calls.push({ method, url: String(url), body: String(init?.body ?? "") });
-    const hit = routes.find((r) => r.method === method && String(url).includes(r.path));
-    if (hit) return Promise.resolve(hit.reply);
-    return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
-  };
-  vi.stubGlobal("fetch", impl as unknown as typeof fetch);
-}
-
-function makeWrapper() {
-  const client = new QueryClient();
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={client}>
-        <MemoryRouter>{children}</MemoryRouter>
-      </QueryClientProvider>
-    );
-  };
-}
 
 function cardOf(title: string): HTMLElement {
   const card = screen
@@ -66,7 +33,7 @@ function fill(card: HTMLElement, placeholder: string, value: string): void {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  calls.length = 0;
+  clearCalls();
 });
 
 describe("Release page", () => {

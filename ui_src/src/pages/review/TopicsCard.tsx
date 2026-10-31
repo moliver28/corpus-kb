@@ -1,6 +1,6 @@
 import { Card, Skeleton } from "antd";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import TopicsTable from "../../components/TopicsTable";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
@@ -16,12 +16,13 @@ import { isTopicsEnvelope, topicRows } from "./shapes";
  */
 export default function TopicsCard() {
   const topics = useOp("topics-list");
+  const { run: topicsRun } = topics;
 
-  // One GET on mount through a ref (useOp's run is not stable).
-  const runRef = useRef<() => Promise<unknown>>(topics.run);
+  // One GET on mount. useOp's run holds a stable identity, so the
+  // [topicsRun] dependency never re-fires the effect.
   useEffect(() => {
-    void runRef.current();
-  }, []);
+    void topicsRun();
+  }, [topicsRun]);
 
   function refresh(): void {
     topics.reset();

@@ -1,14 +1,14 @@
 import { Button, Card, Input, Typography } from "antd";
 import { useState } from "react";
 import { cancelEntry, enqueueBook, entriesOf } from "../../api/queue";
-import type { QueueEnqueuePayload } from "../../api/queue";
+import type { QueueEnqueuePayload, QueueStatusPayload } from "../../api/queue";
 import { runtimeConfig } from "../../api/runtimeConfig";
 import type { OpResult } from "../../api/types";
 import ErrorPanel from "../../components/ErrorPanel";
 import StatusBanner from "../../components/StatusBanner";
+import { usePoll } from "../../hooks/usePoll";
 import { strings } from "../../strings";
 import QueueTable from "./QueueTable";
-import { useQueuePoll } from "./useQueuePoll";
 
 /**
  * The Ingest queue tab: enqueue one server-side file (idempotent per
@@ -16,7 +16,7 @@ import { useQueuePoll } from "./useQueuePoll";
  * to the same three ops the CLI, MCP, socket, and HTTP surfaces use.
  */
 export default function QueueCard() {
-  const poll = useQueuePoll();
+  const poll = usePoll<QueueStatusPayload>("queue-status", {});
   const [path, setPath] = useState("");
   const [title, setTitle] = useState("");
   const [profile, setProfile] = useState("");

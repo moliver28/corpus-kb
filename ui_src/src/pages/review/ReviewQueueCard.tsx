@@ -1,7 +1,7 @@
 import { Button, Card, Input, Skeleton, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
@@ -52,16 +52,17 @@ export default function ReviewQueueCard() {
   const [decided, setDecided] = useState(false);
 
   const assignments = useOp("coding-assignments");
+  const { run: assignmentsRun } = assignments;
   // One manifest row per decision kind (both post /api/review/execute);
   // the body's decision value stays the server's contract either way.
   const accept = useOp("review-accept");
   const overrideOp = useOp("review-override");
 
-  // One GET on mount through a ref (useOp's run is not stable).
-  const runRef = useRef<() => Promise<unknown>>(assignments.run);
+  // One GET on mount. useOp's run holds a stable identity, so the
+  // [assignmentsRun] dependency never re-fires the effect.
   useEffect(() => {
-    void runRef.current();
-  }, []);
+    void assignmentsRun();
+  }, [assignmentsRun]);
 
   function refresh(): void {
     assignments.reset();

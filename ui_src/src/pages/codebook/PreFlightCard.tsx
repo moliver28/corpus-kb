@@ -1,7 +1,7 @@
 import { Card, Skeleton, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
@@ -42,18 +42,21 @@ export default function PreFlightCard() {
   const projects = useOp("projects-list");
   const versions = useOp("codebooks-list");
   const doctor = useOp("doctor");
+  const { run: projectsRun } = projects;
+  const { run: versionsRun } = versions;
+  const { run: doctorRun } = doctor;
 
-  // One GET each on mount through a ref (useOp's run is not stable).
-  const ref = useRef<() => Promise<unknown>>(() => Promise.all([projects.run(), versions.run(), doctor.run()]));
+  // One GET each on mount. useOp's run holds a stable identity, so the
+  // dependencies never re-fire the effect.
   useEffect(() => {
-    void ref.current();
-  }, []);
+    void Promise.all([projectsRun(), versionsRun(), doctorRun()]);
+  }, [projectsRun, versionsRun, doctorRun]);
 
   function refresh(): void {
     projects.reset();
     versions.reset();
     doctor.reset();
-    void ref.current();
+    void Promise.all([projectsRun(), versionsRun(), doctorRun()]);
   }
 
   function readRows(result: typeof projects.result): { rows: unknown[]; node: ReactNode } {
