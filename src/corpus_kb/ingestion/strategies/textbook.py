@@ -70,7 +70,7 @@ from .textbook_pages import (
     read_outline,
 )
 from .textbook_settings import TextbookSettings, settings_from
-from .textbook_windows import confirm_docling, parse_docling_window
+from .textbook_windows import confirm_docling, parse_one_docling_window
 
 TEXTBOOK_STRATEGY_NAME = "textbook"
 
@@ -188,7 +188,7 @@ class TextbookStrategy:
             window_warnings: list[str] = []
             items: list[PageItem] | None = None
             if use_docling:
-                items, effective = parse_docling_window(
+                items, effective = parse_one_docling_window(
                     settings, converter, path, start, end, index, window_warnings
                 )
             if items is None:

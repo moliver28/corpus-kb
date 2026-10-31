@@ -9,7 +9,7 @@ parent import can crash the worker (issue #220); in-process mode loads
 the converter. A missing extra warns once and the book degrades to
 pypdf.
 
-``parse_docling_window`` runs one window: in a spawned child when
+``parse_one_docling_window`` runs one window: in a spawned child when
 ``window_subprocess`` is set, else one converter call. A crashed,
 timed-out, or wrapper-failed window takes the pypdf path (issue #219).
 Both seams append their warnings to the caller's window list, so each
@@ -56,7 +56,7 @@ def confirm_docling(
     return active, converter
 
 
-def parse_docling_window(
+def parse_one_docling_window(
     settings: TextbookSettings,
     converter: Any | None,
     path: Path,

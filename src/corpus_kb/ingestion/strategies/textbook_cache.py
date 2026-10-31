@@ -5,7 +5,7 @@ Parsed windows cache as JSON files under ``textbook.cache_dir``, keyed by
 the file name AND the record-match rule, so the name and the stored
 triple can never drift apart. A retry or resume loads its parsed windows
 instead of paying the parse again; a changed file, a changed parser, a
-record that names pages outside the requested window, or a corrupted
+record whose span differs from the requested window, or a corrupted
 record all miss and force a re-parse. Pure stdlib: no parser imports,
 fully deterministic round trip.
 """
@@ -54,9 +54,16 @@ class CacheKey:
         return cache_dir / f"{self.parser_key}-{self.sha256[:16]}-w{self.window_index:04d}.json"
 
     def matches(self, parser: object, sha256: object, window: object) -> bool:
-        """True when a record's stored key parts are this key's parts."""
+        """True when a record's stored key parts are this key's parts.
+
+        The window check is a strict int check: JSON ``true`` must never
+        equal the window index 1.
+        """
         return (
-            parser == self.parser_version and sha256 == self.sha256 and window == self.window_index
+            parser == self.parser_version
+            and sha256 == self.sha256
+            and type(window) is int
+            and window == self.window_index
         )
 
 
@@ -80,13 +87,15 @@ def window_ranges(page_count: int, window_pages: int) -> list[tuple[int, int]]:
 def load_window_cache(
     path: Path, key: CacheKey, start_page: int, end_page: int
 ) -> WindowRecord | None:
-    """The cached window when the record matches the key and the bounds.
+    """The cached window when the record matches the key and the span.
 
     A missing file, unreadable JSON, or any key/schema mismatch returns
     None: the caller re-parses the window (cache misses are always safe).
-    The record's page span must lie inside the requested window and every
-    cached page inside the record's span — a stale or foreign record that
-    names other pages would serve wrong text, so it misses too.
+    The match is EXACT: the record's span must equal the requested
+    window, and every cached page must sit inside it — a stale subset
+    span would silently leave the window's later pages unparsed, and a
+    foreign record that names other pages would serve wrong text, so
+    both miss too.
     """
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -99,9 +108,9 @@ def load_window_cache(
     start = raw.get("start_page")
     end = raw.get("end_page")
     pages = raw.get("pages")
-    if not isinstance(start, int) or not isinstance(end, int) or not isinstance(pages, list):
+    if type(start) is not int or type(end) is not int or not isinstance(pages, list):
         return None
-    if not start_page <= start <= end <= end_page:
+    if start != start_page or end != end_page:
         return None
     items: list[PageItem] = []
     for row in pages:
@@ -110,7 +119,7 @@ def load_window_cache(
         page = row.get("page")
         label = row.get("label")
         text = row.get("text")
-        if not isinstance(page, int) or not isinstance(label, str) or not isinstance(text, str):
+        if type(page) is not int or not isinstance(label, str) or not isinstance(text, str):
             return None
         if not start <= page <= end:
             return None

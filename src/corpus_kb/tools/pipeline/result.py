@@ -36,7 +36,6 @@ def _stage_result_dict(
     run_id: str,
     statements: dict[str, Any] | None = None,
     title: str | None = None,
-    textbook_summary: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Stage 5: the run result dict (nothing reports success on a partial).
 
@@ -45,8 +44,7 @@ def _stage_result_dict(
     the flag-off result dict stays byte-identical to the pre-U48 shape.
     ``pg_chunk_total`` is the document's whole stored count; it stays
     honest when a re-run writes nothing (issue #222). ``title`` appears
-    only when the per-book config carried one; ``textbook`` only when
-    the textbook strategy ran its windowed parse.
+    only when the per-book config carried one.
     """
     result: dict[str, Any] = {
         "status": "success" if not errors else "partial",
@@ -93,8 +91,6 @@ def _stage_result_dict(
         result["empty_reason"] = empty_reason
     if title is not None:
         result["title"] = title
-    if textbook_summary is not None:
-        result["textbook"] = textbook_summary
     if hierarchy_settings.enabled:
         result["shadow_chunk_count"] = shadow_chunk_count
         result["shadow_vector_count"] = shadow_vector_count

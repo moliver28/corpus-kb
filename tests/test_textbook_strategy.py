@@ -643,6 +643,8 @@ def test_load_window_cache_rejects_records_outside_the_bounds(tmp_path: Path) ->
     assert load_window_cache(path, key, 1, 2) is None  # start before the window
     _seed(WindowRecord(1, 3, [PageItem(1, "text", "late end")]))
     assert load_window_cache(path, key, 1, 2) is None  # end past the window
+    _seed(WindowRecord(1, 2, [PageItem(1, "text", "subset span")]))
+    assert load_window_cache(path, key, 1, 4) is None  # subset span: the match is exact
     _seed(WindowRecord(1, 2, [PageItem(3, "text", "wild page")]))
     assert load_window_cache(path, key, 1, 2) is None  # page outside the record span
     _seed(WindowRecord(1, 2, [PageItem(1, "text", "ok"), PageItem(2, "text", "ok")]))
@@ -720,6 +722,30 @@ def test_summarize_folds_outcomes_and_breaks_parser_ties_alphabetically() -> Non
         "pages": 0,
         "warning_count": 0,
     }
+
+
+def test_window_warnings_keep_exact_window_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["alpha body", "beta body", "gamma body"])
+
+    class _AlwaysFails(_FakeConverter):
+        def convert(self, source: str, page_range: tuple[int, int] | None = None) -> _Result:
+            del source, page_range
+            raise RuntimeError("docling exploded")
+
+    pages = {
+        1: [_Node("section_header", "Chapter One", 1), _Node("text", "alpha body", 1)],
+        2: [_Node("text", "beta body", 2)],
+        3: [_Node("text", "gamma body", 3)],
+    }
+    monkeypatch.setattr(_PAGES_TARGET, lambda: _AlwaysFails(pages))
+    config = _config(1, 2, str(tmp_path / "cache"), window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert plan.warnings == [
+        "docling failed on pages 1 to 2; used pypdf page text",
+        "docling failed on pages 3 to 3; used pypdf page text",
+    ]
 
 
 def test_summary_counts_warnings_and_resolves_parser_ties(
