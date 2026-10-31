@@ -20,7 +20,7 @@ from corpus_kb.ingestion.strategies.textbook_assemble import (
     section_blocks,
 )
 from corpus_kb.ingestion.strategies.textbook_cache import (
-    cache_file,
+    CacheKey,
     file_sha256,
     load_window_cache,
     save_window_cache,
@@ -211,28 +211,31 @@ def test_plan_chunks_packs_small_blocks_together() -> None:
 
 def test_cache_round_trip_preserves_the_record(tmp_path: Path) -> None:
     record = _record(3, [_item(3, "text", "text"), _item(4, "head", HEADER)])
-    path = cache_file(tmp_path, "docling", "a" * 64, 1)
-    save_window_cache(path, "docling-v1", "a" * 64, 1, record)
-    loaded = load_window_cache(path, "docling-v1", "a" * 64, 1)
+    key = CacheKey("docling", "a" * 64, 1)
+    path = key.path(tmp_path)
+    save_window_cache(path, key, record)
+    loaded = load_window_cache(path, key, 3, 4)
     assert loaded == record
 
 
 def test_cache_invalidates_on_any_key_change(tmp_path: Path) -> None:
     record = _record(1, [_item(1, "text")])
-    path = cache_file(tmp_path, "docling", "a" * 64, 0)
-    save_window_cache(path, "docling-v1", "a" * 64, 0, record)
-    assert load_window_cache(path, "docling-v1", "b" * 64, 0) is None  # file changed
-    assert load_window_cache(path, "pypdf-v1", "a" * 64, 0) is None  # parser changed
-    assert load_window_cache(path, "docling-v1", "a" * 64, 1) is None  # window changed
+    key = CacheKey("docling", "a" * 64, 0)
+    path = key.path(tmp_path)
+    save_window_cache(path, key, record)
+    assert load_window_cache(path, CacheKey("docling", "b" * 64, 0), 1, 2) is None  # file changed
+    assert load_window_cache(path, CacheKey("pypdf", "a" * 64, 0), 1, 2) is None  # parser changed
+    assert load_window_cache(path, CacheKey("docling", "a" * 64, 1), 1, 2) is None  # window moved
 
 
 def test_cache_corrupt_or_missing_file_is_a_miss(tmp_path: Path) -> None:
-    path = cache_file(tmp_path, "docling", "a" * 64, 0)
-    assert load_window_cache(path, "docling-v1", "a" * 64, 0) is None
+    key = CacheKey("docling", "a" * 64, 0)
+    path = key.path(tmp_path)
+    assert load_window_cache(path, key, 1, 2) is None
     path.write_text("{not json", encoding="utf-8")
-    assert load_window_cache(path, "docling-v1", "a" * 64, 0) is None
+    assert load_window_cache(path, key, 1, 2) is None
     path.write_text('{"parser": "docling-v1"}', encoding="utf-8")
-    assert load_window_cache(path, "docling-v1", "a" * 64, 0) is None
+    assert load_window_cache(path, key, 1, 2) is None
 
 
 def test_file_sha256_tracks_content(tmp_path: Path) -> None:

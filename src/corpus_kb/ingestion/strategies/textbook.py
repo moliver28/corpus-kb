@@ -26,12 +26,16 @@ plan. Docling can crash the process on scanned pages, so each Docling
 window parses in a spawned child when ``window_subprocess`` is set; the
 parent only probes the module spec, never imports docling. A crashed,
 timed-out, or wrapper-failed window takes the pypdf path (issue #219).
-The window cache evicts its oldest files past ``cache_max_mb``.
+The window cache evicts its oldest files past ``cache_max_mb``. Every
+parsed window leaves a :class:`WindowOutcome` (parser, cache hit,
+warnings) whose fold becomes the conditional ``textbook`` envelope key.
+
+The docling seams live in ``textbook_windows.py``; the assembly in
+``textbook_assemble.py``; the cache in ``textbook_cache.py``.
 """
 
 from __future__ import annotations
 
-from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
@@ -49,30 +53,26 @@ from .textbook_assemble import (
     section_blocks,
 )
 from .textbook_cache import (
-    cache_file,
+    CacheKey,
     file_sha256,
     load_window_cache,
     prune_window_cache,
     save_window_cache,
     window_ranges,
 )
+from .textbook_outcomes import WindowOutcome, summarize
 from .textbook_pages import (
     PARSER_VERSIONS,
     PageItem,
     WindowRecord,
-    docling_env_warnings,
-    load_docling_converter,
     open_pdf,
-    parse_window_docling,
     parse_window_pypdf,
     read_outline,
 )
 from .textbook_settings import TextbookSettings, settings_from
-from .textbook_subprocess import parse_window_in_subprocess
+from .textbook_windows import confirm_docling, parse_docling_window
 
 TEXTBOOK_STRATEGY_NAME = "textbook"
-
-_MISSING_DOCLING = "textbook strategy needs the optional 'docling' extra; used pypdf page text"
 
 _PDF_SUFFIX_SCORE = 0.55
 _HINT_SCORE = 0.2
@@ -93,9 +93,13 @@ class TextbookStrategy:
             confidence += _HINT_SCORE
         return DetectResult(min(confidence, 1.0), "pdf-suffix")
 
-    def _empty(self, reason: str, warnings: list[str]) -> ChunkPlan:
+    def _empty(
+        self, reason: str, warnings: list[str], summary: dict[str, object] | None = None
+    ) -> ChunkPlan:
         """An honest empty plan (non-file sources, missing files, no text)."""
-        return ChunkPlan(strategy=self.name, empty_reason=reason, warnings=warnings)
+        return ChunkPlan(
+            strategy=self.name, empty_reason=reason, warnings=warnings, textbook_summary=summary
+        )
 
     def build_chunks(self, raw: str, filename: str, profile: SourceProfile) -> ChunkPlan:
         """Gate on page count, parse in cached windows, assemble chunks."""
@@ -120,10 +124,10 @@ class TextbookStrategy:
             return self._fallback(raw, filename, profile, warnings, note)
         bookmarks = read_outline(reader)
         digest = file_sha256(path)
-        records = self._parse_windows(path, reader, digest, page_count, settings, warnings)
-        items = flatten_windows(records)
+        outcomes = self._parse_windows(path, reader, digest, page_count, settings, warnings)
+        items = flatten_windows([outcome.record for outcome in outcomes])
         if not items:
-            return self._empty("no text recovered from the pdf", warnings)
+            return self._empty("no text recovered from the pdf", warnings, summarize(outcomes))
         blocks = section_blocks(assign_sections(items, bookmarks))
         document_text, chunks = plan_chunks(
             blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, warnings
@@ -133,6 +137,7 @@ class TextbookStrategy:
             chunks=chunks,
             document_text=document_text,
             warnings=warnings,
+            textbook_summary=summarize(outcomes),
         )
 
     def _parse_windows(
@@ -143,7 +148,7 @@ class TextbookStrategy:
         page_count: int,
         settings: TextbookSettings,
         warnings: list[str],
-    ) -> list[WindowRecord]:
+    ) -> list[WindowOutcome]:
         """Parse every window, cache writes after each, cache hits skip.
 
         In-process mode loads the converter only when a window needs it;
@@ -151,6 +156,8 @@ class TextbookStrategy:
         back per book (missing extra, one warning) or per window (a
         failed convert call, one warning each). A degraded window caches
         under its parser, so a later run with the extra re-parses it.
+        Each window yields one outcome: its record, the parser that
+        served it, whether the cache did, and that window's warnings.
         """
         parser_key = settings.parser if settings.parser in PARSER_VERSIONS else "docling"
         if settings.parser not in PARSER_VERSIONS:
@@ -158,105 +165,50 @@ class TextbookStrategy:
         cache_dir = Path(settings.cache_dir).expanduser()
         if settings.cache_max_mb > 0:
             prune_window_cache(cache_dir, settings.cache_max_mb)
-        records: list[WindowRecord] = []
+        outcomes: list[WindowOutcome] = []
         converter: Any | None = None
         extra_checked = False
         docling_active = parser_key == "docling"
         for index, (start, end) in enumerate(window_ranges(page_count, settings.window_pages)):
             active = "docling" if docling_active else "pypdf"
-            cached = self._cached_record(cache_dir, digest, index, active)
+            cached = self._cached_record(cache_dir, digest, index, active, start, end)
             if cached is not None:
-                records.append(cached)
+                outcomes.append(cached)
                 continue
             if docling_active and not extra_checked:
                 extra_checked = True
-                docling_active, converter = self._confirm_docling(settings, converter, warnings)
+                docling_active, converter = confirm_docling(settings, converter, warnings)
             use_docling = docling_active and (settings.window_subprocess or converter is not None)
             effective = "docling" if use_docling else "pypdf"
             if effective != active:
-                cached = self._cached_record(cache_dir, digest, index, effective)
+                cached = self._cached_record(cache_dir, digest, index, effective, start, end)
                 if cached is not None:
-                    records.append(cached)
+                    outcomes.append(cached)
                     continue
+            window_warnings: list[str] = []
             items: list[PageItem] | None = None
             if use_docling:
-                items, effective = self._parse_docling_window(
-                    settings, converter, path, start, end, index, warnings
+                items, effective = parse_docling_window(
+                    settings, converter, path, start, end, index, window_warnings
                 )
             if items is None:
-                items = parse_window_pypdf(reader, start, end, warnings)
+                items = parse_window_pypdf(reader, start, end, window_warnings)
+            warnings.extend(window_warnings)
             record = WindowRecord(start_page=start, end_page=end, items=items)
-            save_window_cache(
-                cache_file(cache_dir, effective, digest, index),
-                PARSER_VERSIONS[effective],
-                digest,
-                index,
-                record,
-            )
-            records.append(record)
-        return records
+            key = CacheKey(effective, digest, index)
+            save_window_cache(key.path(cache_dir), key, record)
+            outcomes.append(WindowOutcome(record, effective, False, tuple(window_warnings)))
+        return outcomes
 
     def _cached_record(
-        self, cache_dir: Path, digest: str, index: int, parser_key: str
-    ) -> WindowRecord | None:
+        self, cache_dir: Path, digest: str, index: int, parser_key: str, start: int, end: int
+    ) -> WindowOutcome | None:
         """The cached window for one parser, or None on a miss."""
-        return load_window_cache(
-            cache_file(cache_dir, parser_key, digest, index),
-            PARSER_VERSIONS[parser_key],
-            digest,
-            index,
-        )
-
-    def _confirm_docling(
-        self,
-        settings: TextbookSettings,
-        converter: Any | None,
-        warnings: list[str],
-    ) -> tuple[bool, Any | None]:
-        """The one-time extra check: (docling active, converter or None).
-
-        Subprocess mode probes the module spec only: the child imports
-        docling, and a parent import can crash the worker (issue #220).
-        """
-        if settings.window_subprocess:
-            active = find_spec("docling") is not None
-        else:
-            converter = load_docling_converter()
-            active = converter is not None
-        if not active:
-            warnings.append(_MISSING_DOCLING)
-        else:
-            warnings.extend(docling_env_warnings())
-        return active, converter
-
-    def _parse_docling_window(
-        self,
-        settings: TextbookSettings,
-        converter: Any | None,
-        path: Path,
-        start: int,
-        end: int,
-        index: int,
-        warnings: list[str],
-    ) -> tuple[list[PageItem] | None, str]:
-        """One docling window; `(None, "pypdf")` on crash or timeout."""
-        if settings.window_subprocess:
-            try:
-                items = parse_window_in_subprocess(path, start, end, settings.window_timeout_s)
-            except Exception:
-                items = None  # a wrapper failure must not kill the run
-            if items is None:
-                warnings.append(
-                    f"Window {index + 1} crashed or timed out in the child process. "
-                    "Used the pypdf fallback."
-                )
-                return None, "pypdf"
-            return items, "docling"
-        try:
-            return parse_window_docling(converter, path, start, end), "docling"
-        except Exception:
-            warnings.append(f"docling failed on pages {start} to {end}; used pypdf page text")
-            return None, "pypdf"
+        key = CacheKey(parser_key, digest, index)
+        record = load_window_cache(key.path(cache_dir), key, start, end)
+        if record is None:
+            return None
+        return WindowOutcome(record, parser_key, True, ())
 
     def _fallback(
         self,

@@ -83,6 +83,7 @@ async def _run_locked_stages(
     validation_report: dict[str, Any] | None = None,
     validation_mode: str = "off",
     calibration_summary: dict[str, Any] | None = None,
+    textbook_summary: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Pipeline stages under the advisory lock: open the ledger, store, close.
 
@@ -239,6 +240,7 @@ async def _run_locked_stages(
             run_id=run_id,
             statements=statements_summary,
             title=title,
+            textbook_summary=textbook_summary,
         )
     except BaseException as exc:
         # BaseException, not Exception: asyncio.CancelledError (watch-mode

@@ -226,6 +226,7 @@ async def run_pipeline(
                 validation_report=validation_report,
                 validation_mode=mode,
                 calibration_summary=calibration_summary,
+                textbook_summary=plan.textbook_summary,
             )
             # Strategy provenance (plan Section 0): which seam produced the
             # chunks. Attached here because resolution/plan live in this scope.
@@ -239,9 +240,8 @@ async def run_pipeline(
                 result["detected_strategy"] = resolution.detected
             if plan.warnings:
                 result["warnings"] = list(plan.warnings)
-            # Wave 4 additive keys: only the modes that ran validation (and
-            # only on a non-skipped run) add them — the ``off`` envelope is
-            # byte-identical to the pre-Wave-4 shape.
+            # Wave 4 additive keys: only runs that validated add them — the
+            # ``off`` envelope is byte-identical to the pre-Wave-4 shape.
             if result.get("status") in ("success", "partial"):
                 if mode == "advisory" and validation_report is not None:
                     result["validation"] = validation_report

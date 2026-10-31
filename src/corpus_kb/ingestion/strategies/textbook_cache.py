@@ -1,12 +1,13 @@
 """On-disk window cache for the textbook strategy.
 
 Parsed windows cache as JSON files under ``textbook.cache_dir``, keyed by
-(parser version, file sha256, window index): the file name carries a
-parser tag plus the short hash, and the record repeats all three key
-parts. A retry or resume loads its parsed windows instead of paying the
-parse again; a changed file, a changed parser, or a corrupted record all
-miss and force a re-parse. Pure stdlib: no parser imports, fully
-deterministic round trip.
+(parser version, file sha256, window index): one :class:`CacheKey` owns
+the file name AND the record-match rule, so the name and the stored
+triple can never drift apart. A retry or resume loads its parsed windows
+instead of paying the parse again; a changed file, a changed parser, a
+record that names pages outside the requested window, or a corrupted
+record all miss and force a re-parse. Pure stdlib: no parser imports,
+fully deterministic round trip.
 """
 
 from __future__ import annotations
@@ -17,9 +18,10 @@ import logging
 import os
 import time
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 
-from .textbook_pages import PageItem, WindowRecord
+from .textbook_pages import PARSER_VERSIONS, PageItem, WindowRecord
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +29,35 @@ _BLOCK = 1 << 20
 
 #: A file this fresh may be mid-save; pruning leaves it for a later run.
 _FRESH_SECONDS = 60.0
+
+
+@dataclass(frozen=True)
+class CacheKey:
+    """One cache entry's identity: parser, file bytes, and window index.
+
+    The single owner of the entry's file name and of the record-match
+    rule, so a saved record and a later load can never disagree about
+    what the key parts are.
+    """
+
+    parser_key: str
+    sha256: str
+    window_index: int
+
+    @property
+    def parser_version(self) -> str:
+        """The version tag this key's records carry (``PARSER_VERSIONS``)."""
+        return PARSER_VERSIONS[self.parser_key]
+
+    def path(self, cache_dir: Path) -> Path:
+        """The JSON cache file for this triple."""
+        return cache_dir / f"{self.parser_key}-{self.sha256[:16]}-w{self.window_index:04d}.json"
+
+    def matches(self, parser: object, sha256: object, window: object) -> bool:
+        """True when a record's stored key parts are this key's parts."""
+        return (
+            parser == self.parser_version and sha256 == self.sha256 and window == self.window_index
+        )
 
 
 def file_sha256(path: Path) -> str:
@@ -46,18 +77,16 @@ def window_ranges(page_count: int, window_pages: int) -> list[tuple[int, int]]:
     ]
 
 
-def cache_file(cache_dir: Path, parser_key: str, sha256: str, window_index: int) -> Path:
-    """The JSON cache path for one (parser, file, window) triple."""
-    return cache_dir / f"{parser_key}-{sha256[:16]}-w{window_index:04d}.json"
-
-
 def load_window_cache(
-    path: Path, parser_version: str, sha256: str, window_index: int
+    path: Path, key: CacheKey, start_page: int, end_page: int
 ) -> WindowRecord | None:
-    """The cached window when the record matches all three key parts.
+    """The cached window when the record matches the key and the bounds.
 
     A missing file, unreadable JSON, or any key/schema mismatch returns
     None: the caller re-parses the window (cache misses are always safe).
+    The record's page span must lie inside the requested window and every
+    cached page inside the record's span — a stale or foreign record that
+    names other pages would serve wrong text, so it misses too.
     """
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
@@ -65,14 +94,14 @@ def load_window_cache(
         return None
     if not isinstance(raw, dict):
         return None
-    if raw.get("parser") != parser_version or raw.get("sha256") != sha256:
-        return None
-    if raw.get("window") != window_index:
+    if not key.matches(raw.get("parser"), raw.get("sha256"), raw.get("window")):
         return None
     start = raw.get("start_page")
     end = raw.get("end_page")
     pages = raw.get("pages")
     if not isinstance(start, int) or not isinstance(end, int) or not isinstance(pages, list):
+        return None
+    if not start_page <= start <= end <= end_page:
         return None
     items: list[PageItem] = []
     for row in pages:
@@ -83,24 +112,26 @@ def load_window_cache(
         text = row.get("text")
         if not isinstance(page, int) or not isinstance(label, str) or not isinstance(text, str):
             return None
+        if not start <= page <= end:
+            return None
         items.append(PageItem(page, label, text))
     return WindowRecord(start_page=start, end_page=end, items=items)
 
 
-def save_window_cache(
-    path: Path, parser_version: str, sha256: str, window_index: int, record: WindowRecord
-) -> None:
+def save_window_cache(path: Path, key: CacheKey, record: WindowRecord) -> None:
     """Write one window record atomically; a failed write logs, never raises.
 
     The bytes land in a temp file first and ``os.replace`` moves them
     into place, so a concurrent prune never unlinks a half-written file
-    and a reader never sees torn JSON. Keys sort: the bytes are stable
-    for a snapshot. OSError is the one tolerated failure.
+    and a reader never sees torn JSON. The record's key parts come from
+    ``key`` — the same owner the load matches against. Keys sort: the
+    bytes are stable for a snapshot. OSError is the one tolerated
+    failure.
     """
     payload = {
-        "parser": parser_version,
-        "sha256": sha256,
-        "window": window_index,
+        "parser": key.parser_version,
+        "sha256": key.sha256,
+        "window": key.window_index,
         "start_page": record.start_page,
         "end_page": record.end_page,
         "pages": [
