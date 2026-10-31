@@ -13,6 +13,7 @@ import json
 from typing import TYPE_CHECKING, Any
 
 from corpus_kb.storage.gateway import Row, SqlGateway, is_gateway
+from corpus_kb.storage.tenant_conn import tenant_connection
 
 from .atomize import StatementAtom, statement_row
 
@@ -128,10 +129,7 @@ class StatementStore:
         ``app.current_tenant_id`` setting, so the WHERE predicate alone
         hides every row when the setting is absent.
         """
-        async with pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(pool, self._tenant_id) as conn:
             rows = await conn.fetch(LIST_SQL, self._tenant_id, template_id, document_id, limit)
         return [_row_to_dict(row) for row in rows]
 
@@ -143,9 +141,6 @@ class StatementStore:
         limit: int = 200,
     ) -> list[dict[str, Any]]:
         """Chronological view (valid_at first) — the belief history view."""
-        async with pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(pool, self._tenant_id) as conn:
             rows = await conn.fetch(TIMELINE_SQL, self._tenant_id, text_query, limit)
         return [_row_to_dict(row) for row in rows]
