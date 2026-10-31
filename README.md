@@ -152,7 +152,6 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
 | [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, ops tuning |
-| [Harness playbooks](docs/HARNESS-PLAYBOOKS.md) | Per-project profiles: the decision table, the six-question wizard, tuning |
 | [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
 | [API](docs/API.md) | HTTP routes, the `/v1` OpenAI adapter, curl examples, MCP tool reference |
 | [Observability](docs/OBSERVABILITY.md) | OpenTelemetry spans, exporters, zero-cost when off |
@@ -162,14 +161,13 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Research](docs/research.md) | Research command reference, config keys, embedding requirements |
 | [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Understanding your report](docs/understanding-your-report.md) | Plain-language guide to every governance-report section |
-| [Research math](docs/research-math.md) | Every formula, its v5 source, and its calibration provenance |
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
 | [Ingestion strategies](docs/INGESTION-STRATEGIES.md) | Extending ingestion: config mapping, in-process registration, entry-point plugins |
 | [Topics](docs/TOPICS.md) | The topic layer: offline BERTopic over stored embeddings, LLM labels, config |
-| [Harness distribution](docs/harness-distribution.md) | Packaging and distributing the agent harness pack |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
+| [Internal program docs](docs/research/) | Archive: playbooks, research math, benchmarks, harness distribution, program plans |
 
 The qualitative-coding walkthrough keeps its home in
 [docs/getting-started.md](docs/getting-started.md), under "Your own
@@ -181,7 +179,7 @@ transcripts".
 
 Editors connect over **MCP stdio** (native, no bridge), the **HTTP API**, or the JSON-RPC socket:
 
-- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files (Claude Code, Cursor, Codex) and the root `opencode.json` (OpenCode) launch exactly this command. Generic MCP clients such as Hermes or Cline need no config file: they point at the same stdio server. See [docs/harness-distribution.md](docs/harness-distribution.md). The server registers every catalogue operation as an MCP tool; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference.
+- MCP stdio: `corpus-kb --transport stdio` — the `mcp-configs/` files (Claude Code, Cursor, Codex) and the root `opencode.json` (OpenCode) launch exactly this command. Generic MCP clients such as Hermes or Cline need no config file: they point at the same stdio server. See [docs/research/harness-distribution.md](docs/research/harness-distribution.md). The server registers every catalogue operation as an MCP tool; see [docs/FEATURES.md](docs/FEATURES.md) for the tool reference.
 - HTTP: `corpus-kb start --transport http --port 8010` — every catalogue operation has a route, plus the `/v1` OpenAI adapter (see [docs/API.md](docs/API.md)).
 - JSON-RPC socket: same command, for local automation.
 - The research and coding surfaces are first-class CLI commands (`corpus-kb research ...` and `corpus-kb coding ...`). Ingestion has a top-level front door: `corpus-kb ingest` with `--watch` auto-heal, plus `corpus-kb ingest-status` and `corpus-kb ingest-reembed`.

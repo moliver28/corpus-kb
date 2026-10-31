@@ -1,7 +1,7 @@
 # UI development guide
 
 How to build, test, and harden the lifecycle SPA (`ui_src/`). The user
-guide is docs/UI-SPA.md; the demo script is docs/UI-DEMO.md.
+guide is docs/UI-SPA.md; the demo script is docs/research/UI-DEMO.md.
 
 ## Layout
 

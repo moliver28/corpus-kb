@@ -128,7 +128,7 @@ or below `min_pages`, it falls back to the default plan.
 | `textbook.cache_max_mb` | `2048` | Window-cache size cap in MiB. The oldest files evict first. `0` disables the cap |
 
 Books are long jobs, so most people run them through the ingest queue
-([HARNESS-PLAYBOOKS.md](HARNESS-PLAYBOOKS.md), "Recipe: queue the
+([HARNESS-PLAYBOOKS.md](research/HARNESS-PLAYBOOKS.md), "Recipe: queue the
 textbooks"). The queue worker drains one book at a time.
 
 ## Three extension ladders

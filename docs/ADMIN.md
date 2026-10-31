@@ -227,7 +227,7 @@ version.
 
 ### `queue`
 
-The durable ingest queue (`docs/HARNESS-PLAYBOOKS.md`, "Recipe: queue
+The durable ingest queue (`docs/research/HARNESS-PLAYBOOKS.md`, "Recipe: queue
 the textbooks"). Enqueue lands rows; a worker drains them.
 
 | Key | Default | Description |

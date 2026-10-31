@@ -6,7 +6,7 @@ Scale, Ask, Analyze, Codebook, Release. The stage order is the research
 flow: set up, load data, review, scale up, ask, analyze, code, release.
 
 This guide covers the screens and what each one promises. The demo
-script is docs/UI-DEMO.md. The build and gate details are in
+script is docs/research/UI-DEMO.md. The build and gate details are in
 docs/UI-DEVELOPMENT.md.
 
 ## Setup

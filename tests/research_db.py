@@ -163,6 +163,6 @@ async def reset_singletons() -> None:
 
 
 if __name__ == "__main__":
-    # One-line bootstrap for the demo/e2e recipes (docs/UI-DEMO.md):
+    # One-line bootstrap for the demo/e2e recipes (docs/research/UI-DEMO.md):
     # create the scratch database and print its application DSN.
     print(asyncio.run(create_research_db()))

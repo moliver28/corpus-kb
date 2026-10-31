@@ -136,7 +136,7 @@ overrides. The sweep needs the Postgres backend; DuckDB raises a typed
 error. It scores the golden queries and writes `<profile>.lock.json`
 next to the profile. Only the lock file survives the sweep. Two sweeps
 on the same inputs write the same lock, except the date. The full
-walk-through is [VALIDATION.md](VALIDATION.md).
+walk-through is [VALIDATION.md](../VALIDATION.md).
 
 The sweep refuses to score when embeddings are degraded. Fake vectors
 would give fake numbers, so it answers `insufficient_data` instead.

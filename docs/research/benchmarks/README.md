@@ -1,7 +1,7 @@
 # Benchmark artifacts
 
 Raw benchmark measurements for the U1–U48 retrieval/performance upgrades live
-in [`docs/retrieval-benchmarks.md`](../../retrieval-benchmarks.md) (committed
+in [`docs/research/retrieval-benchmarks.md`](../retrieval-benchmarks.md) (committed
 2026-10-10, Windows x64 / Postgres 17 + pgvector 0.8.3 / Ollama 0.31.1 —
 local-machine measurements, not CI truth; the corpora are synthetic fixtures
 so absolute numbers are not deployment expectations).
