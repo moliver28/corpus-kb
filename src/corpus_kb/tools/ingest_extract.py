@@ -9,10 +9,11 @@ reads (``_extractor_name``, ``_extract_entities_flag``).
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
-from ..extraction import ExtractStats, create_extractor, extraction_backend_name
+from ..extraction import Extractor, ExtractStats, create_extractor, extraction_backend_name
 from ..extraction.pgml_backend import PgmlExtractor
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
@@ -22,6 +23,114 @@ if TYPE_CHECKING:
     import asyncpg
 
 logger = logging.getLogger(__name__)
+
+_Extraction = tuple[list[Entity], list[Relation], ExtractStats]
+_ExtractRun = Callable[[Extractor, list[Chunk], Ontology, str], Awaitable[_Extraction]]
+
+
+@dataclass(frozen=True)
+class _FallbackStep:
+    """One rung of the extractor fallback chain in ``extract_with_fallback``.
+
+    ``applies_to`` gates the rung by configured backend name. ``build``
+    makes the extractor; ``run`` drives one extraction. ``accept_relations``
+    lets the ml rung succeed on relations alone. ``reraise_value_error``
+    propagates configuration errors for rungs where a silent downgrade is
+    never allowed. The note and warning texts keep every fallback honest.
+    """
+
+    key: str
+    applies_to: frozenset[str]
+    build: Callable[[dict[str, object], asyncpg.Pool | None], Extractor]
+    run: _ExtractRun
+    accept_relations: bool
+    reraise_value_error: bool
+    empty_note: str
+    empty_warning: str
+    failure_warning: str
+
+
+def _build_ml(config: dict[str, object], pool: asyncpg.Pool | None) -> Extractor:
+    """The ml rung factory: profile seeds feed the customized mode."""
+    return create_extractor(config, pool=pool, extra_examples=_customized_seeds(config))
+
+
+def _build_configured(config: dict[str, object], pool: asyncpg.Pool | None) -> Extractor:
+    """The plain factory for rungs that use the configured backend."""
+    return create_extractor(config, pool=pool)
+
+
+def _build_langextract(config: dict[str, object], pool: asyncpg.Pool | None) -> Extractor:
+    """The langextract rung factory: force the langextract backend."""
+    return create_extractor(
+        {**config, "graph": {**_nested_dict(config, "graph"), "extractor": "langextract"}}
+    )
+
+
+async def _run_extract(
+    extractor: Extractor, chunks: list[Chunk], ontology: Ontology, source_document_id: str
+) -> _Extraction:
+    """One sync extraction call, wrapped to fit the uniform rung loop."""
+    return extractor.extract(chunks, ontology, source_document_id)
+
+
+async def _run_pgml(
+    extractor: Extractor, chunks: list[Chunk], ontology: Ontology, source_document_id: str
+) -> _Extraction:
+    """PostgresML extracts in the database when possible; others run sync."""
+    if isinstance(extractor, PgmlExtractor):
+        return await extractor.aextract(chunks, ontology, source_document_id)
+    return extractor.extract(chunks, ontology, source_document_id)
+
+
+# The fallback chain, in order. The langextract rung serves every backend
+# that allows a langextract retry; the regex floor after the loop is fixed.
+_FALLBACK_STEPS: tuple[_FallbackStep, ...] = (
+    _FallbackStep(
+        key="ml",
+        applies_to=frozenset({"ml"}),
+        build=_build_ml,
+        run=_run_extract,
+        accept_relations=True,
+        reraise_value_error=True,
+        empty_note="ml returned no candidates",
+        empty_warning="ML extraction returned no candidates; falling back to langextract.",
+        failure_warning="ML extraction failed: %s; falling back to langextract.",
+    ),
+    _FallbackStep(
+        key="gliner",
+        applies_to=frozenset({"gliner"}),
+        build=_build_configured,
+        run=_run_extract,
+        accept_relations=False,
+        reraise_value_error=True,
+        empty_note="gliner returned no entities",
+        empty_warning="Gliner extraction returned no entities; falling back to regex.",
+        failure_warning="Gliner extraction failed: %s; falling back to regex.",
+    ),
+    _FallbackStep(
+        key="pgml",
+        applies_to=frozenset({"pgml"}),
+        build=_build_configured,
+        run=_run_pgml,
+        accept_relations=False,
+        reraise_value_error=False,
+        empty_note="pgml returned no entities",
+        empty_warning="PostgresML extraction returned no entities; falling back to langextract.",
+        failure_warning="PostgresML extraction failed: %s; falling back to langextract.",
+    ),
+    _FallbackStep(
+        key="langextract",
+        applies_to=frozenset({"pgml", "langextract", "ml"}),
+        build=_build_langextract,
+        run=_run_extract,
+        accept_relations=False,
+        reraise_value_error=False,
+        empty_note="langextract returned no entities",
+        empty_warning="LangExtract extraction returned no entities; falling back to regex.",
+        failure_warning="LangExtract extraction failed: %s; falling back to regex.",
+    ),
+)
 
 
 def _customized_seeds(config: dict[str, object]) -> list[dict[str, object]] | None:
@@ -77,106 +186,28 @@ async def extract_with_fallback(
     if extractor_name not in {"pgml", "langextract", "regex", "gliner", "ml"}:
         create_extractor(config, pool=pool)
 
-    if extractor_name == "ml":
+    for step in _FALLBACK_STEPS:
+        if extractor_name not in step.applies_to:
+            continue
         try:
-            ml_extractor = create_extractor(
-                config, pool=pool, extra_examples=_customized_seeds(config)
+            extractor = step.build(config, pool)
+            entities, relations, stats = await step.run(
+                extractor, chunks, ontology, source_document_id
             )
-            entities, relations, stats = ml_extractor.extract(chunks, ontology, source_document_id)
-            if entities or relations:
+            if entities or (step.accept_relations and relations):
                 return (
                     entities,
                     relations,
-                    _actual_extractor_id(entities, ml_extractor.extractor_id),
+                    _actual_extractor_id(entities, extractor.extractor_id),
                     stats,
                 )
-            failures.append("ml returned no candidates")
-            logger.warning("ML extraction returned no candidates; falling back to langextract.")
-        except ValueError:
-            # Configuration error (unknown mode, bad threshold): propagate
-            # loudly instead of silently downgrading the user's explicit
-            # extractor choice to regex.
-            raise
+            failures.append(step.empty_note)
+            logger.warning(step.empty_warning)
         except Exception as exc:
-            failures.append(f"ml: {type(exc).__name__}: {exc}")
-            logger.warning("ML extraction failed: %s; falling back to langextract.", exc)
-
-    if extractor_name == "gliner":
-        try:
-            gliner_extractor = create_extractor(config, pool=pool)
-            entities, relations, stats = gliner_extractor.extract(
-                chunks, ontology, source_document_id
-            )
-            if entities:
-                return (
-                    entities,
-                    relations,
-                    _actual_extractor_id(entities, gliner_extractor.extractor_id),
-                    stats,
-                )
-            failures.append("gliner returned no entities")
-            logger.warning("Gliner extraction returned no entities; falling back to regex.")
-        except ValueError:
-            # Configuration error (e.g. gliner not enabled, unknown mention
-            # type): propagate loudly instead of silently downgrading the
-            # user's explicit extractor choice to regex.
-            raise
-        except Exception as exc:
-            failures.append(f"gliner: {type(exc).__name__}: {exc}")
-            logger.warning("Gliner extraction failed: %s; falling back to regex.", exc)
-
-    if extractor_name == "pgml":
-        try:
-            pgml_extractor = create_extractor(config, pool=pool)
-            if isinstance(pgml_extractor, PgmlExtractor):
-                entities, relations, stats = await pgml_extractor.aextract(
-                    chunks, ontology, source_document_id
-                )
-            else:
-                entities, relations, stats = pgml_extractor.extract(
-                    chunks, ontology, source_document_id
-                )
-            if entities:
-                return (
-                    entities,
-                    relations,
-                    _actual_extractor_id(entities, pgml_extractor.extractor_id),
-                    stats,
-                )
-            failures.append("pgml returned no entities")
-            logger.warning(
-                "PostgresML extraction returned no entities; falling back to langextract."
-            )
-        except Exception as exc:
-            failures.append(f"pgml: {type(exc).__name__}: {exc}")
-            logger.warning("PostgresML extraction failed: %s; falling back to langextract.", exc)
-
-    if extractor_name in ("pgml", "langextract", "ml"):
-        try:
-            lang_extractor = create_extractor(
-                {
-                    **config,
-                    "graph": {
-                        **_nested_dict(config, "graph"),
-                        "extractor": "langextract",
-                    },
-                }
-            )
-            entities, relations, stats = lang_extractor.extract(
-                chunks, ontology, source_document_id
-            )
-            if entities:
-                return (
-                    entities,
-                    relations,
-                    _actual_extractor_id(entities, lang_extractor.extractor_id),
-                    stats,
-                )
-            failures.append("langextract returned no entities")
-            logger.warning("LangExtract extraction returned no entities; falling back to regex.")
-        except Exception as exc:
-            failures.append(f"langextract: {type(exc).__name__}: {exc}")
-            logger.warning("LangExtract extraction failed: %s; falling back to regex.", exc)
+            if step.reraise_value_error and isinstance(exc, ValueError):
+                raise
+            failures.append(f"{step.key}: {type(exc).__name__}: {exc}")
+            logger.warning(step.failure_warning, exc)
 
     from ..extraction import RegexExtractor
 

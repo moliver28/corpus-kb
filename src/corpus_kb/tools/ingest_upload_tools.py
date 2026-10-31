@@ -50,11 +50,11 @@ __all__ = [
     "upload_cap_mb",
 ]
 
+BYTES_PER_MB = 1024 * 1024
+
 # 1 MiB read/spool steps: bounded memory no matter how big the body claims
 # to be, and cap checks every step of the stream.
-CHUNK_BYTES = 1024 * 1024
-
-BYTES_PER_MB = 1024 * 1024
+CHUNK_BYTES = BYTES_PER_MB
 
 
 class UploadSource(Protocol):

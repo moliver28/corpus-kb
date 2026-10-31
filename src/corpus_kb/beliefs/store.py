@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from .eras import eras as segment_eras
-from .math_core import Evidence, Posterior, beta_interval
+from .math_core import DEFAULT_HALF_LIFE_DAYS, Evidence, Posterior, beta_interval
 from .math_core import posterior as exact_posterior
 from .rebuild import BeliefEvidence, build_evidence
 
@@ -100,7 +100,7 @@ class BeliefStore:
         self._pool = pool
         self._tenant_id = tenant_id
 
-    async def rebuild(self, *, half_life_days: float = 365.0) -> dict[str, Any]:
+    async def rebuild(self, *, half_life_days: float = DEFAULT_HALF_LIFE_DAYS) -> dict[str, Any]:
         """Recompute every belief from the statements; returns the summary."""
         statements = await self._scan_statements()
         ratio = _tenant_ratio(statements)

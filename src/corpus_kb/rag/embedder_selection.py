@@ -96,6 +96,19 @@ def _construct_late_chunk_embedder() -> LateChunkEmbedder:
 _late_embedder_singleton: LateChunkEmbedder | None = None
 
 
+def _pooled_plan(
+    config: dict[str, Any],
+    pool: asyncpg.Pool | None,
+    note: str | None = None,
+) -> IngestEmbeddingPlan:
+    """The pooled fallback plan; ``note`` names the reason when set."""
+    return IngestEmbeddingPlan(
+        mode=POOLED_MODE,
+        embedder=cast("Embedder", create_embedder(config, pool)),
+        note=note,
+    )
+
+
 def select_ingest_embedder(
     config: dict[str, Any],
     pool: asyncpg.Pool | None = None,
@@ -109,24 +122,22 @@ def select_ingest_embedder(
     construction never raises out of this function.
     """
     if not late_chunking_requested(config):
-        return IngestEmbeddingPlan(
-            mode=POOLED_MODE, embedder=cast("Embedder", create_embedder(config, pool))
-        )
+        return _pooled_plan(config, pool)
     embedding = cast(dict[str, Any], config.get("embedding", {}))
     model = str(embedding.get("model", DEFAULT_EMBEDDING_MODEL))
     if not is_latechunk_installed():
-        return IngestEmbeddingPlan(
-            mode=POOLED_MODE,
-            embedder=cast("Embedder", create_embedder(config, pool)),
+        return _pooled_plan(
+            config,
+            pool,
             note=(
                 "late_chunking requested but the latechunk extra is not installed. "
                 'Pooled fallback. Run: pip install -e ".[latechunk]"'
             ),
         )
     if not model.startswith(TOKEN_LEVEL_MODEL_PREFIX):
-        return IngestEmbeddingPlan(
-            mode=POOLED_MODE,
-            embedder=cast("Embedder", create_embedder(config, pool)),
+        return _pooled_plan(
+            config,
+            pool,
             note=(
                 f"late_chunking requested but embedding model {model!r} is not a "
                 f"token-level-capable family. Only {TOKEN_LEVEL_MODEL_PREFIX}* "
@@ -139,9 +150,9 @@ def select_ingest_embedder(
     try:
         embedder = factory()
     except Exception as exc:
-        return IngestEmbeddingPlan(
-            mode=POOLED_MODE,
-            embedder=cast("Embedder", create_embedder(config, pool)),
+        return _pooled_plan(
+            config,
+            pool,
             note=(
                 "late_chunking requested but LateChunkEmbedder failed to load "
                 f"({type(exc).__name__}: {exc}). Pooled fallback."
@@ -158,9 +169,9 @@ def select_ingest_embedder(
         else -1
     )
     if configured_dims > 0 and embedder.dimensions != configured_dims:
-        return IngestEmbeddingPlan(
-            mode=POOLED_MODE,
-            embedder=cast("Embedder", create_embedder(config, pool)),
+        return _pooled_plan(
+            config,
+            pool,
             note=(
                 "late_chunking requested but the activated model outputs "
                 f"{embedder.dimensions}-dim vectors while embedding.dimensions is "
