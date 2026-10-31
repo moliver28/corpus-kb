@@ -1,7 +1,7 @@
 """Typed ``ingest.contextualize.*`` settings (W3 contextualize v2).
 
 Same house pattern as ``rag/rerank_settings.py`` (U30) and
-``ingest/hierarchy_settings.py`` (U48): the module owns the defaults, a
+``chunking/hierarchy_settings.py`` (U48): the module owns the defaults, a
 frozen dataclass carries the typed reads, and a loader validates so the
 YAML files, ``config.py`` defaults and this module cannot drift. W1 moved
 the block from ``contextual.*``; the loader's alias layer already copies

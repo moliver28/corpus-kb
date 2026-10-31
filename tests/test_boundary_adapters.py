@@ -33,13 +33,13 @@ from corpus_kb.chunking.hierarchy_paths import (
     segments_from_transcript_chunks,
     segments_from_turns,
 )
+from corpus_kb.chunking.hierarchy_settings import DEFAULT_RESPECT_BOUNDARIES, HierarchySettings
 from corpus_kb.chunking.hierarchy_tree import (
     LEVEL_CHILD,
     LEVEL_CHUNK,
     HierarchyTree,
     build_hierarchy,
 )
-from corpus_kb.ingest.hierarchy_settings import DEFAULT_RESPECT_BOUNDARIES, HierarchySettings
 from corpus_kb.tools import shadow_adapters, shadow_ingest
 from corpus_kb.tools.shadow_adapters import (
     ADAPTER_HEADING,

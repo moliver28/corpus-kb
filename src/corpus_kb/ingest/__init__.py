@@ -1,7 +1,7 @@
-"""Ingest-side helpers (U48/P6 shadow hierarchy).
+"""Compatibility shim for the old ``corpus_kb.ingest`` import path.
 
-Currently: the typed multi-granularity hierarchy settings. The pipeline
-orchestration itself stays in ``corpus_kb.tools.ingest_common``.
+The hierarchy settings moved to ``corpus_kb.chunking.hierarchy_settings``.
+The re-export below keeps ``corpus_kb.ingest`` imports working.
 """
 
 from __future__ import annotations

@@ -27,12 +27,13 @@ from typing import Protocol
 
 import asyncpg
 
+from corpus_kb.chunking.hierarchy_settings import HierarchySettings
+
 from ..chunking.hierarchy_tree import (
     LEVEL_CHILD,
     LEVEL_CHUNK,
     HierarchyTree,
 )
-from ..ingest.hierarchy_settings import HierarchySettings
 from ..storage.gateway import SqlGateway
 from ..utils.models import Chunk
 from .shadow_adapters import (

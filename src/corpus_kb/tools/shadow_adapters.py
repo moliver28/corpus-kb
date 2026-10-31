@@ -21,6 +21,8 @@ selection logic: no I/O, no embedder, no writer.
 
 from __future__ import annotations
 
+from corpus_kb.chunking.hierarchy_settings import HierarchySettings
+
 from ..chunking.hierarchy import Segment
 from ..chunking.hierarchy_paths import (
     segments_from_chunks,
@@ -28,7 +30,6 @@ from ..chunking.hierarchy_paths import (
     segments_from_transcript_chunks,
 )
 from ..chunking.hierarchy_tree import HierarchyTree, build_hierarchy
-from ..ingest.hierarchy_settings import HierarchySettings
 from ..ingestion.base import QA_CONTEXT_KEY, TRANSCRIPT_STRATEGY_NAME
 from ..utils.models import Chunk
 

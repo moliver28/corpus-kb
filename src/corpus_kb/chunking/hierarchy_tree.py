@@ -17,7 +17,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 
-from ..ingest.hierarchy_settings import HierarchySettings
+from corpus_kb.chunking.hierarchy_settings import HierarchySettings
+
 from .hierarchy import Segment, estimate_tokens, merge_groups, pack_windows
 
 LEVEL_CHILD = "child"

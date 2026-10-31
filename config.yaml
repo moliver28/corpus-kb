@@ -526,7 +526,7 @@ coding:
   repair_retries: 1
   require_structured_enforcement: false
 
-# Multi-granularity chunk hierarchy + shadow index (ingest/hierarchy_settings.py
+# Multi-granularity chunk hierarchy + shadow index (chunking/hierarchy_settings.py
 # is the source of truth). enabled writes the shadow hierarchy at ingest; the
 # live v1 corpus is untouched. expand_to_parent lives under retrieval now.
 ingest:

@@ -7,7 +7,8 @@ from typing import Any
 
 import asyncpg
 
-from ...ingest.hierarchy_settings import HierarchySettings, load_hierarchy_settings
+from corpus_kb.chunking.hierarchy_settings import HierarchySettings, load_hierarchy_settings
+
 from ...storage.gateway import SqlGateway
 from ...utils.models import Chunk, Document
 
