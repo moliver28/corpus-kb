@@ -12,6 +12,12 @@
 # results are visible even if one fails. The test legs split at phase B of
 # the storage portability program (issue #127, rule 20): ubuntu carries the
 # Postgres service container (Linux-only), windows/macos run without it.
+#
+# Wave-4 quality gates (PR-F) add audit-deps (dependency CVEs over the
+# committed uv.lock), dup-check (jscpd duplication over src/), and
+# gen-drift (generated artifacts must be current). The lint job also runs
+# the size ratchet, and the ubuntu test leg enforces the coverage diff
+# gate plus the overall coverage floor from one suite run.
 
 name: CI
 
@@ -84,6 +90,13 @@ jobs:
       # undeclared column/PK/unique/FK/sequence/index drift fails the PR.
       - name: Schema parity gate (sqlglot)
         run: python scripts/schema_parity_gate.py
+
+      # Size ratchet (PR-F, zero-drift rule 10): PLR0915 count and src/
+      # files over the 250-line soft limit, against the checked-in
+      # baselines in scripts/quality-baselines.json. Growth fails the
+      # PR; shrink passes, so dedup PRs land without touching this gate.
+      - name: Size ratchet (PLR0915 + 250-line files)
+        run: poe size-ratchet
 
   # ─────────────────────────────────────────────────────────────────────
   # Type-check: pyright in basic mode (warnings downgraded, see
@@ -181,8 +194,120 @@ jobs:
       - name: Install PyYAML
         run: python -m pip install pyyaml
 
+      - name: Install poethepoet
+        # The gate runs through poe (rule 8); the target wraps the same
+        # validate_configs.py command this job ran before PR-F.
+        run: python -m pip install poethepoet
+
       - name: Validate config files
-        run: python src/corpus_kb/_setup/validate_configs.py
+        run: poe validate-configs
+
+  # ─────────────────────────────────────────────────────────────────────
+  # audit-deps (PR-F, zero-drift rule 10): uv-native CVE audit of the
+  # COMMITTED uv.lock. --locked fails both on known vulnerabilities and
+  # on a lock that is stale against pyproject.toml. The ignore list,
+  # with a written justification per entry, lives in uv.toml ([audit]).
+  # A weekly re-run lives in dependency-audit.yml.
+  # ─────────────────────────────────────────────────────────────────────
+  audit-deps:
+    name: "audit-deps (dependency CVEs)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install poethepoet
+        run: python -m pip install poethepoet
+
+      - name: Dependency CVE audit
+        run: poe audit-deps
+
+  # ─────────────────────────────────────────────────────────────────────
+  # dup-check (PR-F, zero-drift rule 10): jscpd duplication gate over
+  # src/ Python (config .jscpd.json; threshold 1.8 in the poe target).
+  # The scanner is pinned in ui_src/package.json, so this job reuses the
+  # ui job's pnpm setup and installs from the committed lockfile.
+  # ─────────────────────────────────────────────────────────────────────
+  dup-check:
+    name: "dup-check (jscpd duplication)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install poethepoet
+        run: python -m pip install poethepoet
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ui_src/.nvmrc
+          cache: pnpm
+          cache-dependency-path: ui_src/pnpm-lock.yaml
+
+      - name: UI install (frozen lockfile)
+        run: poe ui-install
+
+      # The gate must fail when jscpd measures NOTHING (it exits 0 with a
+      # "analyzed no files" warning if the path/ignore set ever filters out
+      # every file — a silent no-op gate).
+      - name: Duplication gate
+        run: |
+          poe dup-check > dup-check.log 2>&1; status=$?
+          cat dup-check.log
+          if grep -q "analyzed no files" dup-check.log; then
+            echo "::error::jscpd analyzed no files - the duplication gate measured nothing"
+            status=1
+          fi
+          exit $status
+
+  # ─────────────────────────────────────────────────────────────────────
+  # gen-drift (PR-F, rule-10 hygiene): poe gen runs all three generators
+  # in --check mode (harness pack, method docs, UI manifest) and exits 1
+  # on drift; `git diff --exit-code` is the backstop if any generator
+  # writes anyway. Stale generated artifacts fail the PR.
+  # ─────────────────────────────────────────────────────────────────────
+  gen-drift:
+    name: "gen-drift (generated artifacts)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install poethepoet and project
+        # The manifest generator reads the installed api layer
+        # (research_http.tool_routes), so the project installs here.
+        run: |
+          python -m pip install poethepoet
+          pip install -e .
+
+      - name: Generated-artifact drift check
+        run: poe gen
+
+      - name: No uncommitted generated changes
+        run: git diff --exit-code
 
   # ─────────────────────────────────────────────────────────────────────
   # Verify Postgres image: pull the pinned GHCR image and smoke-test that
@@ -481,6 +606,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        # Full history: the coverage diff gate (poe cover-diff) computes
+        # the PR diff against origin/master, which a depth-1 checkout
+        # cannot see.
+        with:
+          fetch-depth: 0
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -604,7 +734,17 @@ jobs:
         # cap after every test had passed (run 40471314193); 30 keeps the
         # hang protection with headroom.
         timeout-minutes: 30
-        run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=term-missing
+        run: python -m pytest tests/ -v --tb=short --durations=10 --cov=corpus_kb --cov-report=xml --cov-report=term-missing
+
+      # Coverage gates (PR-F, zero-drift rule 10). ONE suite run feeds
+      # both checks: the diff gate keeps changed lines at 90 percent
+      # coverage, the floor keeps overall coverage from sliding
+      # (scripts/quality-baselines.json). poe comes from the dev extra.
+      - name: Diff coverage gate (changed lines >= 90 percent)
+        run: poe cover-diff
+
+      - name: Coverage floor
+        run: poe cover-floor
 
   test-cross:
     name: "test (${{ matrix.os }})"

@@ -1,0 +1,36 @@
+# Weekly dependency audit (PR-F, zero-drift rule 10).
+#
+# The PR-time audit-deps job lives in ci.yml; this workflow re-runs the
+# SAME poe target on a schedule so new CVEs in an unchanged lockfile are
+# caught between PRs. Manual runs: workflow_dispatch.
+name: Dependency audit (weekly)
+
+on:
+  schedule:
+    # Mondays 06:00 UTC — off-peak for the repo's US/EU owners.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-deps:
+    name: "audit-deps (weekly CVE sweep)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install poethepoet
+        run: uv tool install poethepoet
+
+      # Same gate as ci.yml: audits the committed uv.lock; ignores with
+      # written justifications live in uv.toml ([audit]).
+      - name: Dependency CVE audit
+        run: poe audit-deps

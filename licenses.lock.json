@@ -659,9 +659,9 @@
   },
   {
     "name": "pypdf",
-    "version": "6.21.2",
+    "version": "6.21.4",
     "license": "BSD-3-Clause",
-    "homepage": "https://pypi.org/project/pypdf/6.21.2/",
+    "homepage": "https://pypi.org/project/pypdf/6.21.4/",
     "licenseTextUrl": "https://opensource.org/licenses/BSD-3-Clause"
   },
   {

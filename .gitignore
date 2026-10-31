@@ -65,3 +65,8 @@ src/corpus_kb/ui_dist/
 # Playwright local artifacts (ui-e2e)
 ui_src/test-results/
 ui_src/playwright-report/
+
+# Coverage artifacts (poe test-cov / CI test-ubuntu suite run)
+.coverage
+coverage.xml
+htmlcov/

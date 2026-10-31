@@ -1,0 +1,11 @@
+{
+  "min-tokens": 50,
+  "reporters": ["console"],
+  "ignore": [
+    "**/ui_dist/**",
+    "**/__pycache__/**",
+    "**/*.sql",
+    "**/*.yaml",
+    "**/*.json"
+  ]
+}

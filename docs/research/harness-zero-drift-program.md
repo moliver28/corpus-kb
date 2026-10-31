@@ -233,16 +233,16 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Route liveness | `tests/test_http_route_smoke.py` runs in the test job; a dead route fails the PR | ci.yml / test | 1 |
 | Cross-surface envelope parity | `tests/test_surface_parity_deep.py` in the test job; undeclared key on one surface fails with a diff | ci.yml / test | 1 (seed) → 2 (full) |
 | MCP surface parity | FastMCP in-memory `Client` calls in the same parity test | ci.yml / test | 4 |
-| OpenAPI spec freshness | CI regenerates `corpus-kb operations --openapi` and runs `git diff --exit-code` | ci.yml / contract | 2 |
-| Breaking API changes | `oasdiff breaking` of PR spec vs master spec; failure blocks merge | ci.yml / contract | 2 |
-| HTTP conformance | `schemathesis run` against the app with a fixed hypothesis seed | ci.yml / contract | 2 |
+| OpenAPI spec freshness | NOT WIRED — planned in Wave 2, no job ever landed. Verified against `.github/workflows/` on 2026-10-30 (PR-F): no `contract` workflow exists | none | — |
+| Breaking API changes | NOT WIRED — `oasdiff` never landed; same verification as above | none | — |
+| HTTP conformance | NOT WIRED — `schemathesis` never landed; same verification as above | none | — |
 | Layering | `poe lint-imports` (`lint-imports`, contracts in `pyproject.toml`). TRUTHFUL AS OF 2026-10-20 (sp-suite-hardening): before that date this row was aspirational — no poe target and no CI step ran the contracts. Wave F added both and fixed the two violations the first run exposed (lazy `tools → server_wiring → api` chains in `tools/graph_read_tools.py` and `tools/query_tools.py`, now importing `storage.graph_factory` directly) | ci.yml / lint | F (wired; first declared Wave 2) |
 | Gate commands | all CI jobs call `poe lint`, `poe types`, `poe verify`, `poe gen` — not raw commands | ci.yml (all jobs) | 2 |
 | Dead code | `vulture src/` with `tests/whitelist.py`; new hits fail | ci.yml / lint | 3 |
 | Unused / missing deps | `deptry src/` | ci.yml / lint | 3 |
-| Function complexity | `xenon --max-absolute B` | ci.yml / lint | 3 |
-| Coverage on changes | `diff-cover --fail-under 90` on the PR diff | ci.yml / test | 3 |
-| Generated artifacts | `gen_harness_pack.py --check`, `cog --check docs/*.md` | ci.yml / contract | 2 (pack) → 5 (cog) |
+| Function complexity | `xenon --max-absolute C --max-average B` (the absolute gate is C; W6B split the D blocks) | ci.yml / lint | 3 |
+| Coverage on changes | `poe cover-diff` (`diff-cover coverage.xml --fail-under 90`) after the ubuntu suite run. TRUTHFUL AS OF 2026-10-30 (PR-F): before that date the target existed but no CI step ran it | ci.yml / test-ubuntu | 3 (target) → PR-F (wired) |
+| Generated artifacts | `poe gen` (harness pack, method docs, UI manifest — all three generators run `--check` and exit 1 on drift), then `git diff --exit-code`. The old `cog --check docs/*.md` row was stale: cog never shipped and was verified absent on 2026-10-30 | ci.yml / gen-drift | 2 (pack) → PR-F (job) |
 | ASD-STE100 prose | Vale GitHub Action with `.vale.ini` + `styles/CorpusSTE`; `SentenceLength` is `level: error` (ratchet closed 2026-10-13: 163 warnings rewritten to 0) and blocks the PR | docs-quality.yml | 5 (error: w6a ratchet) |
 | Grade level + string rules | `pytest -m ste` walks docs, tool docstrings, and error-message tables (Flesch-Kincaid ≤ 9, sentence ≤ 20 words) | ci.yml / test | 5 |
 | Config truth | `validate_configs.py` extended: dead-key and env-var-table checks fail the build | ci.yml / validate-configs | 4 |
@@ -254,6 +254,10 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Ingest validation gate | `poe validation-gate`: the Wave 4 ingest validators (offset invariant, coverage, budget), the off/advisory/enforce/calibrate mode semantics, the off-mode byte-identity pin, and the semchunk/dedup lazy seams (`tests/pipeline/`, `tests/ingestion/`). Extras stay uninstalled, so the extras-less contract is under test | ci.yml / validation-gate | unified-ingestion Wave 4 |
 | UI licenses | `poe ui-licenses`: `scripts/ui_licenses.py` runs `pnpm licenses list --prod --json`, enforces the allowlist (MIT, Apache-2.0, BSD, ISC, 0BSD, plus CC0-1.0/MIT-0), and writes the committed `ui_licenses.lock.json`; the lock records the production tree only (dev trees carry OS-specific native packages) | ci.yml / ui | UI SPA Task 4 |
 | UI manifest | `poe ui-manifest`: `src/corpus_kb/_setup/gen_ui_manifest.py` merges `surface_registry.SURFACES` with `research_http.tool_routes()`, diffs `src/corpus_kb/ui_manifest.json` plus `ui_src/src/api/ops.generated.ts` and `thresholds.generated.ts`, and exits 1 on drift. Also wired into `poe gen` | ci.yml / ui | UI SPA Task 4 |
+| Duplication (python) | `poe dup-check`: jscpd (pinned in `ui_src/package.json`) over `src/`, Python-only surface (`.jscpd.json` ignores ui_dist, `__pycache__`, `*.sql`, `*.yaml`, `*.json`), `--threshold 1.8` vs the 1.597 measured on master 6309fed. In-flight dedup PRs only remove clones; ratchet the threshold down in the PR that removes a clone family | ci.yml / dup-check | PR-F |
+| Dependency CVEs | `poe audit-deps`: `uv audit --locked` audits the committed `uv.lock` (direct + transitive, all groups) against OSV and fails on a stale lock. Unfixable findings are ignored in `uv.toml [audit]` with a written justification per entry. PR-time job here plus a weekly sweep | ci.yml / audit-deps + dependency-audit.yml (weekly cron) | PR-F |
+| Size ratchet | `poe size-ratchet` (`scripts/size_ratchet.py`, stdlib): counts ruff `PLR0915` findings and `src/` files over the 250-line soft limit and compares them with `scripts/quality-baselines.json`. Above baseline fails; at or below passes (report-only ratchet — lower the numbers in the PR that shrinks the code, never raise them) | ci.yml / lint | PR-F |
+| Coverage floor | `poe cover-floor` (`scripts/coverage_floor.py`, stdlib): overall line rate from `coverage.xml` must stay at or above `coverage_floor` in `scripts/quality-baselines.json` (set 0.5 points under the measured value at adoption). Runs after the same ubuntu suite run that feeds `cover-diff` | ci.yml / test-ubuntu | PR-F |
 
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate

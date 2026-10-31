@@ -26,8 +26,9 @@ repos:
         name: Block merge conflict markers
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    # Keep in lockstep with the ruff the poe lint gate runs (repo dev env).
-    rev: v0.17.0
+    # Keep in lockstep with the ruff the poe lint gate runs (repo dev env
+    # pins ruff==0.15.18; ci.yml installs the same version).
+    rev: v0.15.18
     hooks:
       - id: ruff-check
         name: Ruff lint (Python files only)
