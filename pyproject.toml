@@ -591,10 +591,12 @@ help = "Xenon complexity gate (ratchet to --max-absolute B; see comment above)"
 
 # Needs coverage data first: run ``poe test-cov`` to generate coverage.xml,
 # then ``poe cover-diff``. Kept out of ``verify`` because the plain test
-# run does not produce coverage.xml.
+# run does not produce coverage.xml. Wired into CI in PR-F (test-ubuntu,
+# after the covered suite). The compare branch is pinned: diff-cover's
+# default is origin/main, which does not exist in this repo (master).
 [tool.poe.tasks.cover-diff]
-cmd = "diff-cover coverage.xml --fail-under 90"
-help = "Diff coverage of at least 90 percent (requires coverage.xml from poe test-cov)"
+cmd = "diff-cover coverage.xml --fail-under 90 --compare-branch origin/master"
+help = "Diff coverage of at least 90 percent vs origin/master (needs coverage.xml)"
 
 [tool.poe.tasks.test-cov]
 cmd = "python -m pytest tests/ -q --cov=corpus_kb --cov-report=xml --cov-report=term-missing"
@@ -615,8 +617,8 @@ cmd = "python -m pytest tests/test_plain_language.py -m ste -q --tb=short"
 help = "ASD-STE100 plain-language gate: docs grade, error strings, tool docstrings"
 
 [tool.poe.tasks.verify]
-sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps", "complexity", "test"]
-help = "All quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + test"
+sequence = ["lint", "lint-imports", "format-check", "types", "dead-code", "deps", "complexity", "size-ratchet", "test"]
+help = "All quality gates: lint + lint-imports + format-check + types + dead-code + deps + complexity + size-ratchet + test"
 
 [tool.poe.tasks.gen]
 # All three generators run in --check mode: exit 1 on drift, write nothing.
@@ -658,6 +660,57 @@ help = "Wave 4 ingest validator gate: validators, modes, semchunk, dedup"
 [tool.poe.tasks.validate-profiles]
 cmd = "python src/corpus_kb/_setup/validate_profiles.py"
 help = "Profile schema + cross-reference gate (Living Corpus W5, rule 10)"
+
+[tool.poe.tasks.validate-configs]
+# The MCP + runtime config gate (rule 10 hygiene, PR-F): CI's
+# validate-configs job now calls this target instead of the raw command,
+# so local and CI run one command (program standard 8).
+cmd = "python src/corpus_kb/_setup/validate_configs.py"
+help = "MCP config + runtime config consistency gate (ci.yml validate-configs job)"
+
+[tool.poe.tasks.dup-check]
+# jscpd duplication gate (PR-F, rule 10: poe target + ci.yml dup-check
+# job + enforcement-map row). The scanner is pinned as a ui_src
+# devDependency, so the version travels with the pnpm lockfile. The
+# scan surface is src/ Python only: .jscpd.json ignores ui_dist,
+# __pycache__, *.sql, *.yaml, and *.json (append-only SQL migrations
+# score 8.7 percent and are excluded by design). THRESHOLD is the
+# ratchet: 1.8 vs the 1.597 measured on master 6309fed (565 files,
+# 128 clones). In-flight dedup PRs only remove clones; ratchet the
+# number down in the same PR that removes a clone family.
+cmd = "pnpm -C ui_src exec jscpd --config ../.jscpd.json --threshold 1.8 ../src"
+help = "jscpd duplication gate over src/ (threshold 1.8, config .jscpd.json)"
+
+[tool.poe.tasks.audit-deps]
+# Dependency CVE gate (PR-F, rule 10). uv-native audit of the COMMITTED
+# lockfile: --locked audits exactly what uv.lock pins and fails when the
+# lock is stale against pyproject.toml, so a dep edit without a lock
+# refresh cannot slip through. Known-vulnerability ignores live in
+# uv.toml ([audit] ignore), each with its written justification; delete
+# an entry in the same PR that fixes it. Also runs weekly
+# (.github/workflows/dependency-audit.yml).
+cmd = "uv audit --locked --preview-features audit-command"
+help = "Dependency CVE audit over uv.lock (ignore list: uv.toml [audit])"
+
+[tool.poe.tasks.size-ratchet]
+# Report-only length/complexity ratchet (PR-F, rule 10). Compares two
+# counts against scripts/quality-baselines.json: ruff PLR0915
+# (too-many-statements) and src/ files over the 250-line soft limit.
+# Growth fails the build; shrink passes so in-flight dedup PRs land
+# without touching this gate. Baseline comments live in the JSON and
+# the script docstring.
+cmd = "python scripts/size_ratchet.py"
+help = "PLR0915 + 250-line file counts vs scripts/quality-baselines.json"
+
+[tool.poe.tasks.cover-floor]
+# Overall coverage floor (PR-F, rule 10). Reads coverage.xml (from
+# poe test-cov or the CI test-ubuntu suite run) and fails when the
+# total line rate drops under scripts/quality-baselines.json
+# coverage_floor. The floor sits 0.5 points under the measured value
+# at adoption so normal drift does not flake; raise it in the same PR
+# that adds tests.
+cmd = "python scripts/coverage_floor.py"
+help = "Overall coverage floor gate (requires coverage.xml from poe test-cov)"
 
 [tool.poe.tasks.license-lock]
 cmd = "uv run --frozen python scripts/generate_license_lock.py"

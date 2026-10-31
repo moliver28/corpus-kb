@@ -1,0 +1,29 @@
+# Dependency-audit gate configuration (Wave 4 quality gates, zero-drift
+# rule 10). The `audit` section below feeds `poe audit-deps`
+# (`uv audit --locked`), which fails the build on known CVEs in the
+# locked dependency set. Every ignore entry here is a vulnerability the
+# tree cannot fix today, with the reason written next to it. An entry
+# whose reason no longer holds must be deleted in the same PR that
+# fixes it.
+[audit]
+ignore = [
+    # filelock 3.32.7: 13 advisories (local-only soft-lock timing and
+    # integrity issues, CVSS <= 5.3, no remote attack surface). Every fix
+    # version is in the filelock 4.x line, but unstructured 0.27.34 pins
+    # "filelock>=3.12.0, <4.0.0", so 4.x is unresolvable while unstructured
+    # is a runtime dependency. Revisit when unstructured lifts the cap;
+    # delete all 13 rows in that PR.
+    "GHSA-567q-5qvw-pf92",
+    "GHSA-6627-m3xw-93mp",
+    "GHSA-69hj-f68j-2879",
+    "GHSA-8mx5-7m5m-r77g",
+    "GHSA-9c4x-gm8v-wgc4",
+    "GHSA-9j6q-wvj5-jgjg",
+    "GHSA-9vhv-jxww-xfm5",
+    "GHSA-cwqr-hh33-gh44",
+    "GHSA-fq56-3cx3-fjxp",
+    "GHSA-j8f7-rjxc-mr56",
+    "GHSA-m462-7rxw-wvpg",
+    "GHSA-rfpc-qcw5-3pc4",
+    "GHSA-v4x8-3wr5-3wq8",
+]
