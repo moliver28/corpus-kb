@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ..graph.extractor import extract_entities
+from corpus_kb.extraction.regex_entities import extract_entities
+
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
 from .protocol import ExtractStats, OntologyViolationError, Timer
