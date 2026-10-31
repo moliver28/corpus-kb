@@ -51,6 +51,14 @@ def _resolve_labels(
     return sorted(set(y_true) | set(y_pred))
 
 
+def _validate_pairs(y_true: Sequence[str], y_pred: Sequence[str]) -> None:
+    """The shared input guard: aligned lengths, both non-empty."""
+    if len(y_true) != len(y_pred):
+        raise ValueError("y_true and y_pred must align (one prediction per truth row)")
+    if not y_true:
+        raise ValueError("y_true and y_pred must be non-empty")
+
+
 def confusion_matrix(
     y_true: Sequence[str],
     y_pred: Sequence[str],
@@ -62,10 +70,7 @@ def confusion_matrix(
     lengths or empty inputs raise ``ValueError`` — a silent partial
     matrix would understate the error counts.
     """
-    if len(y_true) != len(y_pred):
-        raise ValueError("y_true and y_pred must align (one prediction per truth row)")
-    if not y_true:
-        raise ValueError("y_true and y_pred must be non-empty")
+    _validate_pairs(y_true, y_pred)
     order = _resolve_labels(y_true, y_pred, labels)
     index = {label: position for position, label in enumerate(order)}
     matrix = [[0 for _ in order] for _ in order]
@@ -85,10 +90,7 @@ def per_class_precision_recall(
     A denominator of zero scores 0.0 (the scikit-learn zero-division
     convention), so an absent class is an honest zero, never NaN.
     """
-    if len(y_true) != len(y_pred):
-        raise ValueError("y_true and y_pred must align (one prediction per truth row)")
-    if not y_true:
-        raise ValueError("y_true and y_pred must be non-empty")
+    _validate_pairs(y_true, y_pred)
     order = _resolve_labels(y_true, y_pred, labels)
     rows: list[dict[str, object]] = []
     for label in order:
@@ -125,9 +127,7 @@ def evaluate(y_true: Sequence[str], y_pred: Sequence[str]) -> dict[str, object]:
     }
 
 
-# ---------------------------------------------------------------------------
-# The EECS data path: paired stored predictions vs gold labels
-# ---------------------------------------------------------------------------
+# --- The EECS data path: paired stored predictions vs gold labels ----------
 
 # Working-set bound for both reads (a guard, not a target).
 MAX_PAIRED_WINDOW = 100_000
