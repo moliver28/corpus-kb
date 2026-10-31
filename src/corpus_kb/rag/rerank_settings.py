@@ -16,10 +16,12 @@ become a hard dependency of search, rag/reranker.py degrade contract).
 
 from __future__ import annotations
 
-import ipaddress
 from dataclasses import dataclass
 from typing import Any, cast
-from urllib.parse import urlparse
+
+# The rerank RULES live in one module (the validate-configs gate and this
+# reader share them); this file keeps the typed settings + defaults.
+from corpus_kb.rag.rerank_rules import return_top_k_error, service_url_error
 
 DEFAULT_RERANK_ENABLED = True
 DEFAULT_RERANK_BACKEND: str | None = None
@@ -40,11 +42,6 @@ DEFAULT_CALIBRATION = "minmax"
 DEFAULT_RERANK_TIMEOUT_SECONDS = 120.0
 
 CALIBRATION_MODES = frozenset({"minmax", "none"})
-
-RETURN_TOP_K_MIN = 1
-RETURN_TOP_K_MAX = 1000
-
-_ALLOWED_URL_SCHEMES = frozenset({"http", "https"})
 
 
 RERANK_CONFIG_DEFAULTS: dict[str, Any] = {
@@ -95,44 +92,6 @@ class RerankSettings:
     timeout_seconds: float = DEFAULT_RERANK_TIMEOUT_SECONDS
 
 
-def _return_top_k_error(value: object) -> str | None:
-    """Range rule for ``reranking.return_top_k``: a positive int in 1..1000."""
-    if isinstance(value, bool) or not isinstance(value, int):
-        return f"reranking.return_top_k must be an int; got {value!r}"
-    if not RETURN_TOP_K_MIN <= value <= RETURN_TOP_K_MAX:
-        return (
-            f"reranking.return_top_k must be between {RETURN_TOP_K_MIN} and "
-            f"{RETURN_TOP_K_MAX}; got {value}"
-        )
-    return None
-
-
-def _is_local_host(hostname: str) -> bool:
-    """True for loopback, private, link-local, or reserved addresses."""
-    if hostname in {"localhost", "127.0.0.1", "::1"}:
-        return True
-    try:
-        addr = ipaddress.ip_address(hostname)
-    except ValueError:
-        return False
-    return bool(addr.is_loopback or addr.is_private or addr.is_link_local or addr.is_reserved)
-
-
-def _service_url_error(value: str, key: str, allow_remote: bool) -> str | None:
-    """Scheme, credential, and local-host rules for one rerank endpoint."""
-    parsed = urlparse(value)
-    if parsed.scheme not in _ALLOWED_URL_SCHEMES or not parsed.hostname:
-        return f"{key} must be an http or https URL with a host; got {value!r}"
-    if parsed.username is not None or parsed.password is not None:
-        return f"{key} must not carry credentials; got {value!r}"
-    if not allow_remote and not _is_local_host(parsed.hostname):
-        return (
-            f"{key} must target localhost or a private address; set "
-            f"reranking.allow_remote_urls: true for a remote server; got {value!r}"
-        )
-    return None
-
-
 def load_rerank_settings(config: dict[str, Any]) -> RerankSettings:
     """Read ``reranking.*`` from a loaded config, defaulting safely.
 
@@ -156,7 +115,7 @@ def load_rerank_settings(config: dict[str, Any]) -> RerankSettings:
         block.get("over_retrieve_n"), DEFAULT_OVER_RETRIEVE_N, "over_retrieve_n"
     )
     candidates = _positive_int(block.get("candidates"), DEFAULT_RERANK_CANDIDATES, "candidates")
-    top_k_error = _return_top_k_error(block.get("return_top_k", DEFAULT_RETURN_TOP_K))
+    top_k_error = return_top_k_error(block.get("return_top_k", DEFAULT_RETURN_TOP_K))
     if top_k_error is not None:
         raise ValueError(top_k_error)
     return_top_k = int(block.get("return_top_k", DEFAULT_RETURN_TOP_K))
@@ -179,7 +138,7 @@ def load_rerank_settings(config: dict[str, Any]) -> RerankSettings:
     if not isinstance(allow_remote, bool):
         raise ValueError(f"reranking.allow_remote_urls must be a bool; got {allow_remote!r}")
     for key, url in (("reranking.base_url", base_url), ("reranking.llamacpp_url", llamacpp_url)):
-        url_error = _service_url_error(url, key, allow_remote)
+        url_error = service_url_error(url, key, allow_remote)
         if url_error is not None:
             raise ValueError(url_error)
     return RerankSettings(

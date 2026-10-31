@@ -214,10 +214,16 @@ class TestEmbedRouteContract:
         assert len(_EMBED_CALLS) == 1
         assert _EMBED_CALLS[0] == QUERY_INSTRUCTION_PREFIX + query
 
-    def test_missing_text_is_400(self, embed_client: TestClient) -> None:
+    def test_missing_text_is_typed_error_envelope(self, embed_client: TestClient) -> None:
         response = embed_client.post("/api/embed", json={})
         assert response.status_code == 400
-        assert response.json() == {"error": "text is required"}
+        # Rule 4: one error envelope. The route raises the taxonomy class;
+        # the shared error path renders status + error + error_type.
+        assert response.json() == {
+            "status": "error",
+            "error": "text is required",
+            "error_type": "validation_error",
+        }
         assert _EMBED_CALLS == []
 
 
