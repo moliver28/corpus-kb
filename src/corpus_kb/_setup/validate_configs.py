@@ -33,6 +33,31 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
         "validate_extraction_ml"
     ).validate_extraction_ml
 
+# The rerank rules are shared with rag/rerank_settings.py (ONE rules
+# module, rag/rerank_rules.py). Same two-context shape as above: the CI
+# validate-configs job installs only PyYAML, so the fallback loads the
+# module file directly (its imports are stdlib-only, and skipping the rag
+# package init keeps the dep-less job working).
+try:
+    # Package context (installed checkout, tests).
+    from corpus_kb.rag.rerank_rules import (
+        SUPPORTED_RERANK_BACKENDS,
+        backend_error,
+        return_top_k_error,
+    )
+except ImportError:  # pragma: no cover - script context (CI validate job)
+    import importlib.util
+
+    _rules_path = Path(__file__).resolve().parents[1] / "rag" / "rerank_rules.py"
+    _spec = importlib.util.spec_from_file_location("rerank_rules", _rules_path)
+    if _spec is None or _spec.loader is None:
+        raise ImportError(f"Cannot load rerank rules from {_rules_path}") from None
+    _rules = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_rules)
+    SUPPORTED_RERANK_BACKENDS = _rules.SUPPORTED_RERANK_BACKENDS
+    backend_error = _rules.backend_error
+    return_top_k_error = _rules.return_top_k_error
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -766,11 +791,8 @@ PGML_EXTRACTION_ON_DUCKDB_ERROR = (
 SUPPORTED_CONTEXTUAL_PROFILES = frozenset({"interview", "generic"})
 SUPPORTED_APPLY_TO_TARGETS = frozenset({"embedding", "lexical"})
 SUPPORTED_TOPIC_METHODS = frozenset({"bertopic"})
-# reranking.backend values (null also valid — the qwen3 judgment scorer).
-# "generative" is the explicit alias of null; "fake" is the test double.
-SUPPORTED_RERANK_BACKENDS = frozenset({"llamacpp", "generative", "fake"})
-RETURN_TOP_K_MIN = 1
-RETURN_TOP_K_MAX = 1000
+# reranking.backend and reranking.return_top_k rules are shared with
+# rag/rerank_settings.py — see the rerank_rules import above.
 # textbook.parser values (textbook-ingestion Wave 1). "docling" is the
 # structured page parser ([docling] extra); "pypdf" the scan-only fallback
 # ([scan] extra).
@@ -1049,28 +1071,17 @@ def _fts_debounce_errors(debounce: object) -> list[str]:
 
 
 def _reranking_block_errors(reranking: dict[str, Any]) -> list[str]:
-    """Enum rule for ``reranking.backend`` (None is the shipped default)."""
-    errors: list[str] = []
-    backend = reranking.get("backend")
-    if backend is not None and backend not in SUPPORTED_RERANK_BACKENDS:
-        backends = ", ".join(sorted(SUPPORTED_RERANK_BACKENDS))
-        errors.append(f"reranking.backend: must be null or one of ({backends}), got {backend!r}")
-    return errors
+    """Enum rule for ``reranking.backend`` (shared rule in rerank_rules)."""
+    error = backend_error(reranking.get("backend"))
+    return [error] if error is not None else []
 
 
 def _return_top_k_errors(reranking: object) -> list[str]:
-    """Positive-int range rule for ``reranking.return_top_k``."""
+    """Positive-int range rule for ``reranking.return_top_k`` (shared rule)."""
     if not isinstance(reranking, dict):
         return []
-    top_k = reranking.get("return_top_k")
-    if isinstance(top_k, bool) or not isinstance(top_k, int):
-        return [f"reranking.return_top_k: must be an int, got {type(top_k).__name__}"]
-    if not RETURN_TOP_K_MIN <= top_k <= RETURN_TOP_K_MAX:
-        return [
-            f"reranking.return_top_k: must be between {RETURN_TOP_K_MIN} and "
-            f"{RETURN_TOP_K_MAX}, got {top_k}"
-        ]
-    return []
+    error = return_top_k_error(reranking.get("return_top_k"))
+    return [error] if error is not None else []
 
 
 def validate_runtime_config(config: dict[str, Any]) -> list[str]:

@@ -677,16 +677,18 @@ class TestRuntimeCanonicalKeys:
         assert any("ingest.contextualize.backend" in e for e in errors)
 
     def test_return_top_k_range_enforced(self):
+        # The exact wording is the contract: rerank_rules.py is the one
+        # rules source now, so these messages must not drift again.
         config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
         config["reranking"]["return_top_k"] = 0
         errors = validate_runtime_config(config)
-        assert any("reranking.return_top_k" in e for e in errors)
+        assert "reranking.return_top_k must be between 1 and 1000; got 0" in errors
         config["reranking"]["return_top_k"] = 1001
         errors = validate_runtime_config(config)
-        assert any("reranking.return_top_k" in e for e in errors)
+        assert "reranking.return_top_k must be between 1 and 1000; got 1001" in errors
         config["reranking"]["return_top_k"] = "20"
         errors = validate_runtime_config(config)
-        assert any("reranking.return_top_k" in e for e in errors)
+        assert "reranking.return_top_k must be an int; got '20'" in errors
 
     def test_matryoshka_cross_field_rule_on_retrieval(self):
         config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")

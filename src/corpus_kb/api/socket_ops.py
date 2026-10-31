@@ -289,13 +289,14 @@ async def _analyze_run(params: dict[str, Any], tenant_id: str) -> dict[str, Any]
 
 
 def _opt_int(params: dict[str, Any], key: str) -> int | None:
+    """Absent answers None; an explicit junk value raises.
+
+    This is the one deliberate difference from the HTTP ``opt_int``: the
+    cluster and sentiment arms must answer a junk explicit value with an
+    error, not a silent default (pinned by tests/test_api_opt_coercion.py).
+    """
     raw = params.get(key)
     return int(raw) if raw is not None else None
-
-
-def _opt_str(params: dict[str, Any], key: str) -> str | None:
-    raw = params.get(key)
-    return str(raw) if raw is not None else None
 
 
 async def _statements_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
@@ -305,8 +306,8 @@ async def _statements_list(params: dict[str, Any], tenant_id: str) -> dict[str, 
     return await statements_list(
         await research_pool(),
         tenant_id=tenant_id,
-        template_id=_opt_str(params, "template_id"),
-        document_id=_opt_str(params, "document_id"),
+        template_id=opt_str(params.get("template_id")),
+        document_id=opt_str(params.get("document_id")),
         limit=opt_int(params.get("limit"), 50),
     )
 
@@ -318,7 +319,7 @@ async def _statements_timeline(params: dict[str, Any], tenant_id: str) -> dict[s
     return await statements_timeline(
         await research_pool(),
         tenant_id=tenant_id,
-        text_query=_opt_str(params, "text_query"),
+        text_query=opt_str(params.get("text_query")),
         limit=opt_int(params.get("limit"), 200),
     )
 
@@ -343,7 +344,7 @@ async def _extraction_tune(params: dict[str, Any], tenant_id: str) -> dict[str, 
         await research_pool(),
         tenant_id=tenant_id,
         method=str(params.get("method") or "exemplar"),
-        profile=_opt_str(params, "profile"),
+        profile=opt_str(params.get("profile")),
         min_confidence=min_confidence,
         limit=opt_int(params.get("limit"), 8),
         dry_run=opt_bool(params.get("dry_run"), False),
@@ -357,7 +358,7 @@ async def _conflicts_list(params: dict[str, Any], tenant_id: str) -> dict[str, A
     return await conflicts_list(
         await research_pool(),
         tenant_id=tenant_id,
-        verdict=_opt_str(params, "verdict"),
+        verdict=opt_str(params.get("verdict")),
         limit=opt_int(params.get("limit"), 50),
     )
 
@@ -383,10 +384,10 @@ async def _queue_enqueue(params: dict[str, Any], tenant_id: str) -> dict[str, An
         await research_pool(),
         tenant_id=tenant_id,
         path=str(params.get("path", "")),
-        title=_opt_str(params, "title"),
-        profile=_opt_str(params, "profile"),
+        title=opt_str(params.get("title")),
+        profile=opt_str(params.get("profile")),
         strategy_config=params.get("strategy_config"),
-        project_id=_opt_str(params, "project_id"),
+        project_id=opt_str(params.get("project_id")),
     )
 
 
@@ -397,7 +398,7 @@ async def _queue_status(params: dict[str, Any], tenant_id: str) -> dict[str, Any
     return await queue_status(
         await research_pool(),
         tenant_id=tenant_id,
-        queue_id=_opt_str(params, "queue_id"),
+        queue_id=opt_str(params.get("queue_id")),
         limit=opt_int(params.get("limit"), 50),
     )
 
@@ -420,7 +421,7 @@ async def _beliefs_current(params: dict[str, Any], tenant_id: str) -> dict[str, 
     return await beliefs_current(
         await research_pool(),
         tenant_id=tenant_id,
-        subject=_opt_str(params, "subject"),
+        subject=opt_str(params.get("subject")),
         limit=opt_int(params.get("limit"), 50),
         rebuild=opt_bool(params.get("rebuild"), True),
     )
@@ -434,9 +435,9 @@ async def _beliefs_triple(params: dict[str, Any], tenant_id: str, op_name: str) 
     return await handler(
         await research_pool(),
         tenant_id=tenant_id,
-        subject=_opt_str(params, "subject"),
-        relation=_opt_str(params, "relation"),
-        object=_opt_str(params, "object"),
+        subject=opt_str(params.get("subject")),
+        relation=opt_str(params.get("relation")),
+        object=opt_str(params.get("object")),
     )
 
 
@@ -455,7 +456,7 @@ async def _beliefs_compare(params: dict[str, Any], tenant_id: str) -> dict[str, 
     return await beliefs_compare(
         await research_pool(),
         tenant_id=tenant_id,
-        subject=_opt_str(params, "subject"),
+        subject=opt_str(params.get("subject")),
     )
 
 
@@ -468,9 +469,9 @@ async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dic
         await research_pool(),
         tenant_id=tenant_id,
         task_description="" if task is None else str(task),
-        output_family=_opt_str(params, "output_family"),
+        output_family=opt_str(params.get("output_family")),
         inputs_available=params.get("inputs_available"),
-        max_complexity_tier=_opt_str(params, "max_complexity_tier"),
+        max_complexity_tier=opt_str(params.get("max_complexity_tier")),
     )
 
 
@@ -569,7 +570,7 @@ async def _nli_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any
         labels=[str(label) for label in labels] if labels is not None else [],
         chunk_ids=params.get("chunk_ids"),
         limit=int(params.get("limit", 50)),
-        model=_opt_str(params, "model"),
+        model=opt_str(params.get("model")),
     )
 
 
@@ -582,7 +583,7 @@ async def _contradictions_screen(params: dict[str, Any], tenant_id: str) -> dict
         tenant_id=tenant_id,
         candidate_k=int(params.get("candidate_k", 5)),
         limit=int(params.get("limit", 50)),
-        model=_opt_str(params, "model"),
+        model=opt_str(params.get("model")),
     )
 
 
@@ -841,12 +842,24 @@ _CORE_ARMS: dict[str, Arm] = {
 }
 
 
+_ARM_TABLE: dict[str, Arm] | None = None
+
+
 def arms() -> dict[str, Arm]:
-    """The full socket method table (core arms + generated route arms)."""
-    table: dict[str, Arm] = dict(_CORE_ARMS)
-    for name, arm in _route_arms().items():
-        table.setdefault(name, arm)
-    return table
+    """The full socket method table (core arms + generated route arms).
+
+    Built once and cached at module level: dispatch used to rebuild all
+    route arms on every call. Handler imports stay lazy — each arm still
+    imports its own handler inside the call, so first dispatch cost is
+    table assembly only.
+    """
+    global _ARM_TABLE
+    if _ARM_TABLE is None:
+        table: dict[str, Arm] = dict(_CORE_ARMS)
+        for name, arm in _route_arms().items():
+            table.setdefault(name, arm)
+        _ARM_TABLE = table
+    return _ARM_TABLE
 
 
 async def dispatch(method: str, params: dict[str, Any]) -> dict[str, Any]:

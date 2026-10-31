@@ -26,6 +26,7 @@ from corpus_kb.domain.models import (
     SQLQuery,
     VerifyAnswerQuery,
 )
+from corpus_kb.errors import ValidationError
 
 
 @route_errors
@@ -142,7 +143,7 @@ async def embed_text(request: Request) -> JSONResponse:
     requested_instructed = opt_bool(body.get("instructed"), False)
 
     if not text:
-        return JSONResponse({"error": "text is required"}, status_code=400)
+        raise ValidationError("text is required")
 
     instruct = load_instruct()
     payload = instruct(text) if (instruct is not None and requested_instructed) else text

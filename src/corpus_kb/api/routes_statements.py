@@ -13,7 +13,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_int, opt_str, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
 
 
@@ -21,19 +21,6 @@ async def _pool() -> Any:
     from corpus_kb.api.research_http import research_pool
 
     return await research_pool()
-
-
-def _opt_str(body: dict[str, Any], key: str) -> str | None:
-    raw = body.get(key)
-    return str(raw) if raw is not None else None
-
-
-def _opt_int(body: dict[str, Any], key: str, default: int) -> int:
-    raw = body.get(key)
-    try:
-        return int(raw) if raw is not None else default
-    except (TypeError, ValueError):
-        return default
 
 
 @route_errors
@@ -45,9 +32,9 @@ async def statements_list_route(request: Request) -> JSONResponse:
     result = await statements_list(
         await _pool(),
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
-        template_id=_opt_str(body, "template_id"),
-        document_id=_opt_str(body, "document_id"),
-        limit=_opt_int(body, "limit", 50),
+        template_id=opt_str(body.get("template_id")),
+        document_id=opt_str(body.get("document_id")),
+        limit=opt_int(body.get("limit"), 50),
     )
     return JSONResponse(result)
 
@@ -61,7 +48,7 @@ async def statements_timeline_route(request: Request) -> JSONResponse:
     result = await statements_timeline(
         await _pool(),
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
-        text_query=_opt_str(body, "text_query"),
-        limit=_opt_int(body, "limit", 200),
+        text_query=opt_str(body.get("text_query")),
+        limit=opt_int(body.get("limit"), 200),
     )
     return JSONResponse(result)

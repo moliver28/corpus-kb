@@ -12,7 +12,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import opt_bool, parse_body, route_errors
+from corpus_kb.api._body import opt_bool, opt_int, opt_str, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
 
 
@@ -22,23 +22,10 @@ async def _pool() -> Any:
     return await research_pool()
 
 
-def _opt_str(body: dict[str, Any], key: str) -> str | None:
-    raw = body.get(key)
-    return str(raw) if raw is not None else None
-
-
 def _opt_float(body: dict[str, Any], key: str, default: float) -> float:
     raw = body.get(key)
     try:
         return float(raw) if raw is not None else default
-    except (TypeError, ValueError):
-        return default
-
-
-def _opt_int(body: dict[str, Any], key: str, default: int) -> int:
-    raw = body.get(key)
-    try:
-        return int(raw) if raw is not None else default
     except (TypeError, ValueError):
         return default
 
@@ -53,9 +40,9 @@ async def extraction_tune_route(request: Request) -> JSONResponse:
         await _pool(),
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         method=str(body.get("method", "exemplar")),
-        profile=_opt_str(body, "profile"),
+        profile=opt_str(body.get("profile")),
         min_confidence=_opt_float(body, "min_confidence", 0.8),
-        limit=_opt_int(body, "limit", 8),
+        limit=opt_int(body.get("limit"), 8),
         dry_run=opt_bool(body.get("dry_run"), False),
     )
     return JSONResponse(result)
