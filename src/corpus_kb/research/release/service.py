@@ -141,8 +141,8 @@ class ReleaseService:
             release_id=release_id,
             gate_id=result.gate_id,
             status=result.status,
-            value=_json_safe(result.value),
-            threshold=_json_safe(result.threshold),
+            value=_gate_result_payload(result.value),
+            threshold=_gate_result_payload(result.threshold),
             reason=result.reason,
             evidence_refs=list(result.evidence_refs),
             evaluator=dict(evaluator or {}),
@@ -276,7 +276,7 @@ class ReleaseService:
         }
 
 
-def _json_safe(value: object) -> dict[str, object] | None:
+def _gate_result_payload(value: object) -> dict[str, object] | None:
     """GateResult value/threshold into JSON-safe dicts (None stays None)."""
     if value is None:
         return None
