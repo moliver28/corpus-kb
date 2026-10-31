@@ -7,10 +7,11 @@ Storage: takes an ``asyncpg.Pool`` (legacy wiring) or a
 :class:`~corpus_kb.storage.gateway.SqlGateway` (portable wiring — the
 DuckDB arm). ``handle_sql_tables`` is the one dialect branch: ``pg_tables``
 exists only on Postgres; the gateway path reads ``information_schema``
-and reports the ``duckdb`` owner. ``handle_list_versions`` and the
-``total_events`` probe keep their shipped try/except shape on both
-storages — the event store's live table is the eventsourcing library's
-(``corpusapplication_events``), not ``event_store``.
+and reports the ``duckdb`` owner. Every method runs inside
+:func:`storage.tenant_conn.tenant_connection`. A missing ``event_store``
+table still maps to the graceful empty result (the live table is the
+eventsourcing library's ``corpusapplication_events``); every other
+error propagates.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.storage.gateway import SqlGateway, is_gateway
+from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,17 @@ _STATS_TABLES = [
 ]
 
 
+def _missing_table(exc: Exception) -> bool:
+    """True when the driver says the table itself is missing."""
+    if isinstance(exc, asyncpg.UndefinedTableError):
+        return True
+    try:
+        import duckdb
+    except ImportError:
+        return False
+    return isinstance(exc, duckdb.CatalogException)
+
+
 class VersioningHandler:
     """Handles versioning, tagging, branching via event store."""
 
@@ -51,60 +64,37 @@ class VersioningHandler:
 
     async def handle_list_versions(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all aggregate versions from the event store."""
-        if is_gateway(self._pool):
-            async with self._pool.transaction(str(tenant_id)) as gw:
-                try:
-                    rows = await gw.fetch(_VERSIONS_SQL)
-                    return [dict(r) for r in rows]
-                except Exception:
-                    return []  # event_store table not created yet
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
-            try:
+        try:
+            async with tenant_connection(self._pool, tenant_id) as conn:
                 rows = await conn.fetch(_VERSIONS_SQL)
                 return [dict(r) for r in rows]
-            except Exception:
-                return []  # event_store table not created yet
+        except Exception as exc:
+            if not _missing_table(exc):
+                raise
+            return []  # event_store table not created yet
 
     async def handle_get_stats(self, tenant_id: UUID) -> dict[str, Any]:
         """Get database statistics."""
-        if is_gateway(self._pool):
-            async with self._pool.transaction(str(tenant_id)) as gw:
-                stats = {
-                    table: await gw.fetchval(f"SELECT COUNT(*) FROM {table}")
-                    for table in _STATS_TABLES
-                }
-                try:
-                    stats["total_events"] = await gw.fetchval("SELECT COUNT(*) FROM event_store")
-                except Exception:
-                    stats["total_events"] = 0  # event_store table not created yet
-                return stats
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
-            stats: dict[str, Any] = {}
-            for table in _STATS_TABLES:
-                stats[table] = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
+        async with tenant_connection(self._pool, tenant_id) as conn:
+            stats: dict[str, Any] = {
+                table: await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
+                for table in _STATS_TABLES
+            }
             try:
                 stats["total_events"] = await conn.fetchval("SELECT COUNT(*) FROM event_store")
-            except Exception:
+            except Exception as exc:
+                if not _missing_table(exc):
+                    raise
+                # The failed probe aborts the transaction; the block exit
+                # rolls it back. Keep later statements out of this block.
                 stats["total_events"] = 0  # event_store table not created yet
             return stats
 
     async def handle_sql_tables(self, tenant_id: UUID) -> list[dict[str, Any]]:
         """List all tables in the schema."""
-        if is_gateway(self._pool):
-            async with self._pool.transaction(str(tenant_id)) as gw:
-                rows = await gw.fetch(_DUCKDB_TABLES_SQL)
-                return [dict(r) for r in rows]
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
-            rows = await conn.fetch(_TABLES_SQL)
+        sql = _DUCKDB_TABLES_SQL if is_gateway(self._pool) else _TABLES_SQL
+        async with tenant_connection(self._pool, tenant_id) as conn:
+            rows = await conn.fetch(sql)
             return [dict(r) for r in rows]
 
     async def handle_query_document_stats(self, tenant_id: UUID) -> dict[str, Any]:
@@ -116,26 +106,11 @@ class VersioningHandler:
             "total_entities": "entities",
             "total_relations": "relations",
         }
-        if is_gateway(self._pool):
-            async with self._pool.transaction(str(tenant_id)) as gw:
-                stats = {
-                    name: await gw.fetchval(f"SELECT COUNT(*) FROM {t}")
-                    for name, t in counts.items()
-                }
-                by_type = await gw.fetch(
-                    """SELECT source_type, COUNT(*) as count FROM documents
-                       WHERE tenant_id = $1 GROUP BY source_type""",
-                    str(tenant_id),
-                )
-                stats["by_source_type"] = [dict(r) for r in by_type]
-                return stats
-        async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, false)", str(tenant_id)
-            )
-            stats: dict[str, Any] = {}
-            for name, table in counts.items():
-                stats[name] = await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
+        async with tenant_connection(self._pool, tenant_id) as conn:
+            stats: dict[str, Any] = {
+                name: await conn.fetchval(f"SELECT COUNT(*) FROM {table}")
+                for name, table in counts.items()
+            }
             by_type = await conn.fetch(
                 """SELECT source_type, COUNT(*) as count FROM documents
                    WHERE tenant_id = $1 GROUP BY source_type""",

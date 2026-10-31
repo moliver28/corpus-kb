@@ -12,6 +12,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from corpus_kb.storage.gateway import Row, SqlGateway, is_gateway
+
 from .atomize import StatementAtom, statement_row
 
 if TYPE_CHECKING:
@@ -51,7 +53,7 @@ LIMIT $3
 """
 
 
-def _row_to_dict(row: Any) -> dict[str, Any]:
+def _row_to_dict(row: Row) -> dict[str, Any]:
     data = dict(row)
     if isinstance(data.get("entities"), str):
         data["entities"] = json.loads(data["entities"])
@@ -59,9 +61,9 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
 
 
 class StatementStore:
-    """Statement writes and reads over one SqlGateway."""
+    """Statement writes over a SqlGateway; the page reads take a pool."""
 
-    def __init__(self, gateway: Any, tenant_id: str) -> None:
+    def __init__(self, gateway: asyncpg.Pool | SqlGateway, tenant_id: str) -> None:
         self._gateway = gateway
         self._tenant_id = tenant_id
 
@@ -75,8 +77,14 @@ class StatementStore:
         """Insert atoms write-once; returns rows actually inserted."""
         if not atoms:
             return 0
+        gateway = self._gateway
+        if not is_gateway(gateway):
+            raise TypeError(
+                "store_statements needs a gateway with a transaction scope. "
+                "A pool only serves the read paths."
+            )
         written = 0
-        async with self._gateway.transaction(self._tenant_id) as tx:
+        async with gateway.transaction(self._tenant_id) as tx:
             for atom in atoms:
                 row = statement_row(
                     atom,

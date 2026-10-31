@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from .cascade import CascadeVerdict
+
 if TYPE_CHECKING:
     import asyncpg
 
@@ -52,7 +54,9 @@ LIMIT 500
 """
 
 
-def conflict_row(verdict: Any, tenant_id: str) -> tuple[Any, ...]:
+def conflict_row(
+    verdict: CascadeVerdict, tenant_id: str
+) -> tuple[str, str, str, str, str, str, str, str | None, str]:
     """The 9-value insert tuple (pure data; the store owns the SQL)."""
     return (
         tenant_id,
@@ -74,7 +78,7 @@ class ConflictStore:
         self._pool = pool
         self._tenant_id = tenant_id
 
-    async def record(self, verdicts: list[Any]) -> int:
+    async def record(self, verdicts: list[CascadeVerdict]) -> int:
         """Insert flags write-once; returns rows actually inserted."""
         written = 0
         async with self._pool.acquire() as conn, conn.transaction():
