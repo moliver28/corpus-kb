@@ -16,7 +16,7 @@ Corpus-KB exposes MCP over stdio, HTTP REST, and JSON-RPC over a Unix socket or 
 The `mcp-configs/` files (Claude Code, Cursor, Codex) and the root
 `opencode.json` (OpenCode) launch the stdio server. Generic MCP clients
 (Hermes, Cline, and others) need no config file; they point at the same
-command. See [harness-distribution.md](harness-distribution.md).
+command. See [harness-distribution.md](research/harness-distribution.md).
 
 There is no authentication today. Corpus-KB is intended to run locally.
 

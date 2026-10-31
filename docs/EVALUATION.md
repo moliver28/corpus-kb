@@ -93,7 +93,7 @@ Exit codes: 0 means the run answered, including an empty golden set.
 - contextual precision: how high the useful evidence ranks inside the retrieved context.
 
 The retrieval metrics reuse the research benchmark code, so eval numbers
-match the numbers in docs/retrieval-benchmarks.md.
+match the numbers in docs/research/retrieval-benchmarks.md.
 
 ## The local judge
 

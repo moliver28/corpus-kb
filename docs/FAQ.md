@@ -54,7 +54,7 @@ Yes. Postgres handles millions of rows and vectors. Ingest directories recursive
 
 ## What editors are supported?
 
-Any MCP-compatible client: Claude Code, Cursor, Codex, OpenCode, Hermes, Cline, and others. The `mcp-configs/` files cover Claude Code, Cursor, and Codex; OpenCode uses the root `opencode.json`. Generic MCP clients need no config file — they point at `corpus-kb --transport stdio`. See [harness-distribution.md](harness-distribution.md).
+Any MCP-compatible client: Claude Code, Cursor, Codex, OpenCode, Hermes, Cline, and others. The `mcp-configs/` files cover Claude Code, Cursor, and Codex; OpenCode uses the root `opencode.json`. Generic MCP clients need no config file — they point at `corpus-kb --transport stdio`. See [harness-distribution.md](research/harness-distribution.md).
 
 ## How do I switch from HTTP mode to MCP stdio mode?
 

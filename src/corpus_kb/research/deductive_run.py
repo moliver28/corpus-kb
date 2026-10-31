@@ -1,6 +1,6 @@
 """Deductive coding-run pipeline (todo 14, v5 §8) — the `coding run` surface.
 
-Layering contract (r11), mirrored in docs/research-math.md:
+Layering contract (r11), mirrored in docs/research/research-math.md:
   * tau (per-code, calibrated) is the DECISION rule on raw cosine;
   * temperature/ECE calibrate the REPORTED confidence only — never move tau;
   * conformal prediction sets are the GUARANTEE layer — routing only;

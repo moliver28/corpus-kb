@@ -25,7 +25,7 @@ closed.
 
 The **Setup** stage shows the system's health in plain language. More
 stages — Ingest, Ask, Review, and the rest — land through the UI SPA
-program ([build plan](ui-spa-program-plan.md)). Until then, the API and
+program ([build plan](research/ui-spa-program-plan.md)). Until then, the API and
 the CLI cover every operation (see the terminal path below). Details:
 [UI.md](UI.md).
 

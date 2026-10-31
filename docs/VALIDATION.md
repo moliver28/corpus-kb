@@ -180,5 +180,5 @@ as your labels can prove.
 ## Where to read more
 
 - [EVALUATION.md](EVALUATION.md) — the golden format, the metrics, and `eval run`.
-- [HARNESS-PLAYBOOKS.md](HARNESS-PLAYBOOKS.md) — profile fields and the starter profiles.
+- [HARNESS-PLAYBOOKS.md](research/HARNESS-PLAYBOOKS.md) — profile fields and the starter profiles.
 - [ingestion-recipes-as-built.md](research/ingestion-recipes-as-built.md) — the design and the papers behind the tests.

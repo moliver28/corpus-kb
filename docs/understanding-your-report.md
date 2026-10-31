@@ -3,7 +3,7 @@
 `corpus-kb research report` emits ONE governance artifact. The **novice**
 level prints traffic lights, plain language, and next actions; the **expert**
 level is the full schema. This guide walks every section in plain language.
-Formulas and their sources live in [research-math.md](research-math.md).
+Formulas and their sources live in [research-math.md](research/research-math.md).
 
 ## ISR (Incremental Sampling Rate)
 

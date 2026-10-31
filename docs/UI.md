@@ -40,7 +40,7 @@ Without a build the server logs one line and keeps the API working:
 The app walks through eight lifecycle stages: Setup, Ingest, Review,
 Scale, Ask, Analyze, Codebook, and Release. The app shell and the
 Setup stage are live now. The remaining screens land task by task
-([build plan](ui-spa-program-plan.md)).
+([build plan](research/ui-spa-program-plan.md)).
 
 ## Config
 

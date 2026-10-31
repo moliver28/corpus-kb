@@ -2,7 +2,7 @@
 
 Corpus-KB ships its research/coding surfaces to AI-agent harnesses as a
 GENERATED command pack. The one source of truth is
-[`src/corpus_kb/surface_registry.py`](../src/corpus_kb/surface_registry.py)
+[`src/corpus_kb/surface_registry.py`](../../src/corpus_kb/surface_registry.py)
 (strictly stdlib-only); `scripts/gen_harness_pack.py` emits everything from
 it. **Never hand-edit a generated wrapper** — `gen_harness_pack.py --check`
 (which `scripts/check_agent_configs.py` runs internally) fails the bar on

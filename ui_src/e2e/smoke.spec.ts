@@ -4,7 +4,7 @@ import { test } from "@playwright/test";
 
 // The SPA smoke (program Task 9): a REAL corpus-kb server on a
 // throwaway database serves /app/ with the demo corpus preloaded.
-// Steps mirror the accepted walkthrough (docs/UI-DEMO.md): sample
+// Steps mirror the accepted walkthrough (docs/research/UI-DEMO.md): sample
 // ingest through the UI, an ask that accepts degraded honestly, the
 // method advisor, the promote gate copy, and a structured release
 // refusal. axe-core scans the shell pages for critical/serious
