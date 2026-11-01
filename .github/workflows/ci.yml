@@ -191,6 +191,9 @@ jobs:
 
       # Runtime config validation (extraction.gliner lockstep etc.) parses
       # YAML; this fast gate deliberately skips the full project install.
+      # The packaged-config lockstep half (issue #246) needs corpus_kb
+      # importable, so it reports a clean skip here — the test job (full
+      # install, tests/test_config_lockstep.py) hard-enforces it.
       - name: Install PyYAML
         run: python -m pip install pyyaml
 

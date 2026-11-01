@@ -109,6 +109,8 @@ Runtime overrides of `config.yaml`, auto-merged by `corpus_kb.config.load_config
 
 Definitive 13-variable table: `docs/ADMIN.md`; code truth: `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS`; `corpus-kb doctor` warns on set-but-unread `CORPUS_KB_*` vars. Every `CORPUS_KB_*` var must be consumed — no dead mappings. Ingestion/extraction config is `config.yaml` only: `ingestion.strategies`, `ingestion.default`, `extraction.backend`, `extraction.gliner.*`, `search.exclude_degraded`, `search.qa_context_in_fts` — no env override; guide `docs/INGESTION-STRATEGIES.md`.
 
+Config-default lockstep (issue #246): `get_default_config()` and the PACKAGED `src/corpus_kb/config.yaml` must agree leaf-for-leaf; any new or changed default lands in BOTH in the same PR. Enforced by `poe validate-configs` (skips where `corpus_kb` is not importable) plus `tests/test_config_lockstep.py`; the root `config.yaml` is a user-owned runtime file and is exempt.
+
 ## GraphStore Pattern (new backends)
 
 Contract: abstract `GraphStore` in `storage/graph_store.py`; subclass it and implement all `@abstractmethod` methods (all async). Reference implementations: `PostgresGraphStore` (asyncpg + RLS, recursive CTE BFS), `AgeGraphStore` (Apache AGE openCypher `MATCH` when `graph.backend: age`). **Do not modify MCP graph tools** — they call the interface, not the implementation.
