@@ -54,12 +54,9 @@ def _dsn() -> str:
     )
 
 
-async def _connect_or_skip() -> asyncpg.Connection:
-    try:
-        conn = await asyncpg.connect(_dsn())
-    except Exception:
-        pytest.skip("Postgres not available")
-        raise  # never reached: pytest.skip raises, but keeps the return type honest
+async def _connect() -> asyncpg.Connection:
+    """Open the live connection; the requires_postgres marker gates reachability."""
+    conn = await asyncpg.connect(_dsn())
     # The AGE session ritual (apache/age#2504): direct 004 execution calls
     # create_graph, which resolves graphid_ops through the search_path.
     await prepare_age_session(conn)
@@ -88,14 +85,10 @@ async def _apply_coding_migrations(conn: asyncpg.Connection) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_migration_idempotency() -> None:
     """Running migrations twice on the same database is a no-op."""
     conn_str = _dsn()
-    try:
-        conn = await asyncpg.connect(conn_str)
-        await conn.close()
-    except Exception:
-        pytest.skip("Postgres not available")
     try:
         await run_migrations(conn_str)
         await run_migrations(conn_str)
@@ -128,9 +121,10 @@ def test_age_pgml_migrations_are_idempotent_sql() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_age_pgml_migrations_apply_twice_on_live_db() -> None:
     """Executing each new migration's SQL twice directly succeeds (no tracking table)."""
-    conn = await _connect_or_skip()
+    conn = await _connect()
     try:
         for path in (AGE_MIGRATION, PGML_MIGRATION):
             sql = path.read_text(encoding="utf-8")
@@ -175,9 +169,10 @@ def test_coding_migrations_are_idempotent_sql() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_coding_migrations_apply_twice_on_live_db() -> None:
     """Executing each coding migration's SQL directly a second time succeeds."""
-    conn = await _connect_or_skip()
+    conn = await _connect()
     try:
         await _apply_coding_migrations(conn)
         for path in CODING_MIGRATIONS:
@@ -190,9 +185,10 @@ async def test_coding_migrations_apply_twice_on_live_db() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_coding_rls_forced_and_tenant_scoped_on_live_db() -> None:
     """All coding tables are FORCE RLS and opaque to a non-owner tenant role."""
-    conn = await _connect_or_skip()
+    conn = await _connect()
     try:
         await _apply_coding_migrations(conn)
         rows = await conn.fetch(
@@ -247,9 +243,10 @@ async def test_coding_rls_forced_and_tenant_scoped_on_live_db() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_coding_migrations_rollback_and_reapply_on_live_db() -> None:
     """Rollback 015->012 drops the coding domain; re-running migrations restores it."""
-    conn = await _connect_or_skip()
+    conn = await _connect()
     try:
         await _apply_coding_migrations(conn)
 

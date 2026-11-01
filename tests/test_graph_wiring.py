@@ -485,6 +485,7 @@ class TestGraphWiringLiveFallback:
     """Live wiring against PG16 without AGE exercises the fallback path."""
 
     @pytest.mark.asyncio
+    @pytest.mark.requires_postgres
     async def test_age_backend_on_pg16_without_age_falls_back(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
@@ -493,13 +494,7 @@ class TestGraphWiringLiveFallback:
         from corpus_kb.storage.graph_store import PostgresGraphStore
 
         dsn = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb"
-        try:
-            pool = await asyncpg.create_pool(
-                dsn, min_size=1, max_size=1, timeout=3, command_timeout=3
-            )
-        except Exception:
-            pytest.skip("Postgres not available")
-            raise  # never reached: pytest.skip raises, keeps the binding total
+        pool = await asyncpg.create_pool(dsn, min_size=1, max_size=1, timeout=3, command_timeout=3)
         try:
             # The premise is "this server has no AGE". The bundled CI image
             # ships the extension (and the bootstrap creates the graph), so
