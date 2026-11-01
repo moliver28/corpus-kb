@@ -31,6 +31,9 @@ def test_installer_defaults(no_env_overrides: None) -> None:
     assert installer["verify_image_signature"] is True
     assert "profiles" in installer
     assert "data_dir" in installer
+    # Literal tilde form (issue #246): ~ expands at READ time, never at
+    # import time, so the default stays machine-independent.
+    assert installer["data_dir"] == "~/.corpus-kb"
     # Dead keys (zero-drift audit row 11) stay dead.
     for dead in ("auto_detect", "database_mode", "postgres_port", "ollama_mode", "telemetry"):
         assert dead not in installer
@@ -187,6 +190,25 @@ def test_extractor_alias_applied_by_load_config(no_env_overrides: None) -> None:
     extraction = cast(dict[str, object], cfg["extraction"])
     assert extraction["backend"] == "ml"
     assert graph["extractor"] == "ml"
+
+
+def test_code_defaults_match_packaged_backend_and_data_dir() -> None:
+    """Code-side defaults carry the packaged values (issue #246 lockstep).
+
+    The loader deep-merges the packaged yaml OVER these defaults, so the
+    runtime-effective value was already "ml"; the code side only stops
+    disagreeing. duckdb code-fallback environments load again because the
+    backend-mix gate refuses pgml AT LOAD.
+    """
+    from corpus_kb.config import get_default_config
+
+    defaults = get_default_config()
+    extraction = cast(dict[str, object], defaults["extraction"])
+    graph = cast(dict[str, object], defaults["graph"])
+    installer = cast(dict[str, object], defaults["installer"])
+    assert extraction["backend"] == "ml"
+    assert graph["extractor"] == "ml"
+    assert installer["data_dir"] == "~/.corpus-kb"
 
 
 def test_research_defaults_are_not_aliased_across_loads() -> None:
