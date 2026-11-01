@@ -516,9 +516,14 @@ DEP003 = ["httpx"]
 DEP004 = ["duckdb"]
 
 [tool.pytest.ini_options]
+# The ONE marker registry (issue 235): every marker lives here, nowhere
+# else. The conftest skip hook (pytest_runtest_setup) consumes
+# requires_hi_res/requires_postgres; it no longer registers markers.
 markers = [
     "requires_ollama: mark test as needing a running Ollama service",
     "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
+    "requires_postgres: mark test as needing a running Postgres instance",
+    "requires_krippendorff: mark test as needing the krippendorff package",
     "ste: ASD-STE100 plain-language gate (docs, error strings, tool docstrings)",
     "slow: long-running perf fixture (100k synthetic chunks); skipped unless CORPUS_KB_PERF_RUN=1",
 ]

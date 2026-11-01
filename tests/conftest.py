@@ -37,23 +37,8 @@ def _pin_local_tests_package() -> None:
 _pin_local_tests_package()
 
 
-def pytest_configure(config: object) -> None:
-    config.addinivalue_line(
-        "markers",
-        "requires_ollama: mark test as needing a running Ollama service",
-    )
-    config.addinivalue_line(
-        "markers",
-        "requires_hi_res: mark test as needing Unstructured hi_res (detectron2)",
-    )
-    config.addinivalue_line(
-        "markers",
-        "requires_postgres: mark test as needing a running Postgres instance",
-    )
-    config.addinivalue_line(
-        "markers",
-        "requires_krippendorff: mark test as needing the krippendorff package",
-    )
+# Markers are registered in ONE place: [tool.pytest.ini_options].markers in
+# pyproject.toml (issue 235). This hook only SKIPS on the capability checks.
 
 
 def _postgres_dsn() -> str:
