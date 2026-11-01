@@ -23,6 +23,7 @@ import importlib
 import multiprocessing
 import pickle
 import time
+from collections.abc import Callable
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 from queue import Empty
@@ -76,6 +77,40 @@ def _stop(proc: BaseProcess) -> None:
     proc.join()
 
 
+def _docling_window_rows(
+    pdf_path: str, start: int, end: int, structured: bool = False
+) -> list[dict[str, object]]:
+    """One docling window as rows; the docling import stays in the child."""
+    module = importlib.import_module("docling.document_converter")
+    converter = module.DocumentConverter()
+    result = converter.convert(source=pdf_path, page_range=(start, end))
+    return [page_row(item) for item in items_from_convert_result(result, structured)]
+
+
+def _paddle_window_rows(
+    pdf_path: str, start: int, end: int, structured: bool = False
+) -> list[dict[str, object]]:
+    """One paddle-vl window as rows (the paddle module owns the parse).
+
+    A sibling import, not a module-level one: this module owns the
+    wrapper, the paddle module owns the parse, and each imports the
+    other only inside its own edge.
+    """
+    from .textbook_paddle import paddle_window_rows
+
+    return paddle_window_rows(pdf_path, start, end, structured)
+
+
+#: One rows factory per registry parser that parses in a child. The
+#: invariant ``set(_WINDOW_ROW_FACTORIES) == set(_PARSER_SEAMS)`` is
+#: pinned in the tests, so a fourth registry parser cannot silently
+#: fall into another parser's child.
+_WINDOW_ROW_FACTORIES: dict[str, Callable[[str, int, int, bool], list[dict[str, object]]]] = {
+    "docling": _docling_window_rows,
+    "paddle-vl": _paddle_window_rows,
+}
+
+
 def _window_child(
     pdf_path: str,
     parser: str,
@@ -86,26 +121,18 @@ def _window_child(
 ) -> None:
     """Child target: import the parser here, parse one window, ship dicts.
 
-    The parser import stays inside the child; the parent only probes
+    The parser import stays inside the factory; the parent only probes
     the module spec, so a full import never runs there. An import-time
     crash exits the child nonzero instead of taking the worker down. An
     uncaught error exits nonzero; the parent reads the exit code, never
     a traceback over the queue. ``structured`` turns on the rich item
-    fields in the shipped rows (a no-op for paddle-vl today).
+    fields in the shipped rows (a no-op for paddle-vl today). An
+    unknown parser raises: no parser ever borrows another's rows.
     """
-    if parser == "paddle-vl":
-        # A sibling import, not a module-level one: this module owns the
-        # wrapper, the paddle module owns the parse, and each imports the
-        # other only inside its own edge.
-        from .textbook_paddle import paddle_window_rows
-
-        rows = paddle_window_rows(pdf_path, start, end, structured)
-    else:
-        module = importlib.import_module("docling.document_converter")
-        converter = module.DocumentConverter()
-        result = converter.convert(source=pdf_path, page_range=(start, end))
-        rows = [page_row(item) for item in items_from_convert_result(result, structured)]
-    payload.put(rows)
+    factory = _WINDOW_ROW_FACTORIES.get(parser)
+    if factory is None:
+        raise ValueError(f"no child rows factory for parser {parser!r}")
+    payload.put(factory(pdf_path, start, end, structured))
 
 
 def _start_child(

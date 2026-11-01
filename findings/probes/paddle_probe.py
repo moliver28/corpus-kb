@@ -5,7 +5,7 @@ over the first N pages of the smallest golden book and records: wall-clock,
 per-page timings, page-text fidelity vs the pypdfium2 layer, labels, and
 rich-field presence. Writes one JSON blob for the probe doc.
 
-Run: .venv-ocrvl/Scripts/python.exe findings/paddle_probe.py <out.json> [pages]
+Run: .venv-ocrvl/Scripts/python.exe findings/probes/paddle_probe.py <out.json> [pages] [first_page]
 """
 
 from __future__ import annotations

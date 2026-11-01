@@ -20,8 +20,15 @@ The `PaddlePaddle/PaddleOCR-VL` weights (~1.8 GB) downloaded once into the
 HF cache and loaded through the exact transformers 5.x recipe the parser
 codes against (`AutoModelForImageTextToText` + `AutoProcessor`, chat
 template, generate, prompt-trim, decode). Model load ran about 1-2 minutes
-on the dev machine. One page completed end to end, so the parse surface,
-the item shape, and the cache/subprocess seams are all exercised for real.
+on the dev machine. One page completed end to end. Scope note, stated
+plainly: the probe drove `load_paddle_model`, `render_page`, and
+`recognize_image` directly, so only the model recipe ran live — no
+`PageItem` was built and no window record written by the probe; the item
+contract, the cache tags, and the subprocess wrapper ran under fakes in
+the unit suite only. The probe venv validated transformers 5.22.1 with
+torch 2.15.0+cpu while the committed lock resolves transformers 5.16.1 /
+torch 2.14.1 — both satisfy the extra's floors; the probe result is not
+a lock-pin claim.
 
 ## Machine
 

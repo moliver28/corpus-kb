@@ -4,11 +4,13 @@ Keys (all optional; unknown shapes keep the default):
 
 * ``min_pages`` — the page-count gate (default 120)
 * ``window_pages`` — pages per parse window (default 50)
-* ``parser`` — ``docling`` (default) or ``pypdf``
+* ``parser`` — ``docling`` (default), ``paddle-vl`` (the ``[ocr-vl]``
+  challenger), or ``pypdf`` (the ``[scan]`` degrade parser)
 * ``cache_dir`` — parsed-window cache root (default
   ``~/.corpus-kb/textbook-cache``)
-* ``window_subprocess`` — parse each Docling window in a child process
-  so a scanner crash cannot kill the worker (default true)
+* ``window_subprocess`` — parse each heavy window (docling, paddle-vl)
+  in a child process so a scanner crash cannot kill the worker
+  (default true)
 * ``window_timeout_s`` — seconds before a child window parse is killed
   and the window falls back to pypdf (default 3600.0)
 * ``cache_max_mb`` — window-cache size cap in MiB; the oldest files

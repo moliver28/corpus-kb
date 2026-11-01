@@ -25,6 +25,7 @@ cleanly. Tests fake the model state and patch the loader seams.
 from __future__ import annotations
 
 import importlib
+import logging
 from dataclasses import dataclass
 from importlib.util import find_spec
 from pathlib import Path
@@ -34,6 +35,8 @@ from .textbook_docling import page_row
 from .textbook_pages import PageItem
 from .textbook_settings import TextbookSettings
 from .textbook_subprocess import parse_window_in_subprocess
+
+logger = logging.getLogger(__name__)
 
 #: The Hugging Face model id (verified: huggingface.co/PaddlePaddle/PaddleOCR-VL).
 PADDLE_VL_MODEL = "PaddlePaddle/PaddleOCR-VL"
@@ -84,8 +87,8 @@ def load_paddle_model() -> PaddleState | None:
 def render_page(pdf_path: str, page: int) -> Any | None:
     """One page as a PIL image, or None when the render fails.
 
-    A render gap drops that one page; it never fails the window (the
-    pypdf per-page rule).
+    A render gap drops that one page; :func:`parse_window_paddle`
+    records the gap as a window warning (the pypdf per-page rule).
     """
     try:
         pdfium = importlib.import_module("pypdfium2")
@@ -130,24 +133,36 @@ def recognize_image(state: PaddleState, image: Any) -> str:
 
 
 def parse_window_paddle(
-    state: PaddleState, path: Path, start: int, end: int, structured: bool = False
+    state: PaddleState,
+    path: Path,
+    start: int,
+    end: int,
+    warnings: list[str],
+    structured: bool = False,
 ) -> list[PageItem]:
     """One window through PaddleOCR-VL: one ``text`` item per parsed page.
 
     ``structured`` is accepted for seam symmetry and is a no-op today:
     the transformers route has no layout detector, so there are no
-    table or formula regions to export. A page whose render or
-    recognition comes back empty drops.
+    table or formula regions to export. A page whose render fails is a
+    gap: its number lands in one warning per window (the pypdf rule),
+    so a shrunk record never caches silently. A page whose recognition
+    comes back empty drops, like pypdf's empty pages.
     """
     del structured
     items: list[PageItem] = []
+    failed: list[int] = []
     for page in range(start, end + 1):
         image = render_page(str(path), page)
         if image is None:
+            failed.append(page)
             continue
         text = recognize_image(state, image)
         if text.strip():
             items.append(PageItem(page, "text", text))
+    if failed:
+        skipped = ", ".join(str(page) for page in failed)
+        warnings.append(f"pages {skipped} did not render; skipped")
     return items
 
 
@@ -158,12 +173,17 @@ def paddle_window_rows(
 
     The child calls this (the same shape as the docling child target).
     A missing extra raises, so the child exits nonzero and the parent
-    takes the pypdf path.
+    takes the pypdf path. The row payload has no warning channel, so a
+    child-side render gap logs here (the child's stderr reaches the
+    run's log) instead of traveling to the envelope.
     """
     state = load_paddle_model()
     if state is None:
         raise RuntimeError("the 'ocr-vl' extra is missing in the child process")
-    items = parse_window_paddle(state, Path(pdf_path), start, end, structured)
+    window_warnings: list[str] = []
+    items = parse_window_paddle(state, Path(pdf_path), start, end, window_warnings, structured)
+    for note in window_warnings:
+        logger.warning("paddle-vl child window pages %s-%s: %s", start, end, note)
     return [page_row(item) for item in items]
 
 
@@ -176,12 +196,14 @@ def confirm_paddle(
 
     Subprocess mode probes the module spec only: the child imports
     transformers and loads the model, and the parent never does (the
-    docling parent-import rule, issue #220).
+    docling parent-import rule, issue #220). torch is probed beside
+    transformers: transformers without torch would pass a lone probe
+    and then crash every child window.
     """
     del state
     loaded: PaddleState | None = None
     if settings.window_subprocess:
-        active = find_spec("transformers") is not None
+        active = find_spec("transformers") is not None and find_spec("torch") is not None
     else:
         loaded = load_paddle_model()
         active = loaded is not None
@@ -226,7 +248,7 @@ def parse_one_paddle_window(
     if state is None:
         return None
     try:
-        return parse_window_paddle(state, path, start, end, settings.structured_output)
+        return parse_window_paddle(state, path, start, end, warnings, settings.structured_output)
     except Exception:
         warnings.append(f"paddle-vl failed on pages {start} to {end}; used pypdf page text")
         return None

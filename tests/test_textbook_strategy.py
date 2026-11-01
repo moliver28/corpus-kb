@@ -766,9 +766,14 @@ def test_paddle_windows_parse_and_cache_under_their_tag(
     seen: list[tuple[int, int]] = []
 
     def _parse_window(
-        state: object, pdf: Path, start: int, end: int, structured: bool = False
+        state: object,
+        pdf: Path,
+        start: int,
+        end: int,
+        warnings: list[str],
+        structured: bool = False,
     ) -> list[PageItem]:
-        del state, pdf, structured
+        del state, pdf, warnings, structured
         seen.append((start, end))
         return [PageItem(page, "text", f"paddle page {page}") for page in range(start, end + 1)]
 
@@ -791,9 +796,14 @@ def test_paddle_structured_flag_keeps_the_plain_cache_tag(
     monkeypatch.setattr(_PADDLE_MODEL_TARGET, lambda: object())
 
     def _parse_window(
-        state: object, pdf: Path, start: int, end: int, structured: bool = False
+        state: object,
+        pdf: Path,
+        start: int,
+        end: int,
+        warnings: list[str],
+        structured: bool = False,
     ) -> list[PageItem]:
-        del state, pdf, structured
+        del state, pdf, warnings, structured
         return [PageItem(page, "text", "paddle body") for page in range(start, end + 1)]
 
     monkeypatch.setattr(_PADDLE_PARSE_TARGET, _parse_window)
@@ -817,6 +827,26 @@ def test_paddle_missing_extra_degrades_to_pypdf(
     assert any("'ocr-vl' extra" in warning for warning in plan.warnings)
     assert plan.chunks
     assert validate_plan(plan) == []
+
+
+def test_paddle_degraded_second_run_serves_the_pypdf_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", [f"body {n}" for n in range(1, 5)])
+    monkeypatch.setattr(_PADDLE_SPEC_TARGET, lambda name: None)  # the extra is absent
+    config = _config(1, 2, str(tmp_path / "cache"), parser="paddle-vl")
+    first = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert list((tmp_path / "cache").glob("pypdf-*.json"))
+
+    def _must_not_parse(*args: object) -> list[PageItem]:
+        raise AssertionError("the second degraded run must use the pypdf cache")
+
+    monkeypatch.setattr(
+        "corpus_kb.ingestion.strategies.textbook.parse_window_pypdf", _must_not_parse
+    )
+    second = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert [chunk.text for chunk in second.chunks] == [chunk.text for chunk in first.chunks]
+    assert second.chunks
 
 
 def test_paddle_child_crash_falls_back_and_caches_under_pypdf(

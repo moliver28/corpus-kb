@@ -262,9 +262,14 @@ scan = ["pypdf>=6.21"]
 # set: transformers Apache-2.0, torch BSD-3-Clause, pypdfium2 (Apache-2.0/
 # BSD-3-Clause). The transformers floor is the first line with native
 # PaddleOCRVL support (no remote code): the model docs and the model card
-# pin transformers>=5.0.0, whose own metadata raises the torch floor to
-# 2.4 — repeated here so the extra is self-sufficient. pypdfium2 renders
-# the page images (the floor is the 5.x line the golden bench verifies).
+# pin transformers>=5.0.0. torch>=2.4 is OUR floor, not a forced one:
+# base transformers never requires torch (it arrives only through
+# transformers' own optional torch extras, whose pins range >=2.2 at
+# 5.0.0 to >=2.5 at 5.16.1), so no solver would pull torch at all — the
+# extra must be self-sufficient and states the support line it was
+# probed on (2.15.0+cpu; the committed lock resolves 2.14.1). pypdfium2
+# renders the page images (the floor is the 5.x line the golden bench
+# verifies).
 # No paddlepaddle/paddleocr wheels: no Windows GPU builds (plan W3-A).
 # Every consumer import is lazy (the eval/_ranx.py pattern); CI NEVER
 # installs this extra, so the extras-less jobs stay green (same contract

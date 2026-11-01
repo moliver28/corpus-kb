@@ -135,12 +135,14 @@ def test_window_builds_one_text_item_per_rendered_page(
 ) -> None:
     state, _model, _processor = _fake_state()
     monkeypatch.setattr(textbook_paddle, "render_page", lambda path, page: f"img-{page}")
-    items = parse_window_paddle(state, Path("book.pdf"), 2, 4)
+    warnings: list[str] = []
+    items = parse_window_paddle(state, Path("book.pdf"), 2, 4, warnings)
     assert items == [
         PageItem(2, "text", "page body text"),
         PageItem(3, "text", "page body text"),
         PageItem(4, "text", "page body text"),
     ]
+    assert warnings == []
 
 
 def test_window_drops_a_failed_render_and_empty_text(
@@ -159,15 +161,29 @@ def test_window_drops_a_failed_render_and_empty_text(
 
     monkeypatch.setattr(textbook_paddle, "render_page", _render)
     state.processor.batch_decode = _decode
-    items = parse_window_paddle(state, Path("book.pdf"), 2, 4)
+    warnings: list[str] = []
+    items = parse_window_paddle(state, Path("book.pdf"), 2, 4, warnings)
     assert [item.page for item in items] == [4]
+    # The render gap warns (the pypdf per-page rule); a blank decode does not.
+    assert warnings == ["pages 3 did not render; skipped"]
+
+
+def test_window_names_every_failed_render_in_one_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state, _model, _processor = _fake_state()
+    monkeypatch.setattr(textbook_paddle, "render_page", lambda path, page: None)
+    warnings: list[str] = []
+    items = parse_window_paddle(state, Path("book.pdf"), 2, 4, warnings)
+    assert items == []
+    assert warnings == ["pages 2, 3, 4 did not render; skipped"]
 
 
 def test_structured_flag_is_a_no_op_for_paddle(monkeypatch: pytest.MonkeyPatch) -> None:
     state, _model, _processor = _fake_state()
     monkeypatch.setattr(textbook_paddle, "render_page", lambda path, page: f"img-{page}")
-    plain = parse_window_paddle(state, Path("book.pdf"), 1, 2, structured=False)
-    rich = parse_window_paddle(state, Path("book.pdf"), 1, 2, structured=True)
+    plain = parse_window_paddle(state, Path("book.pdf"), 1, 2, [], structured=False)
+    rich = parse_window_paddle(state, Path("book.pdf"), 1, 2, [], structured=True)
     assert rich == plain
     assert all(item.table_markdown is None and item.level is None for item in rich)
 
@@ -219,6 +235,24 @@ def test_confirm_probes_the_spec_in_subprocess_mode(
     assert active is True
     assert state is None  # the parent never loads the model
     assert warnings == []
+
+
+def test_confirm_probes_torch_beside_transformers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    specs = {"transformers": True, "torch": False}
+
+    def _find_spec(name: str) -> object | None:
+        return object() if specs.get(name) else None
+
+    monkeypatch.setattr(textbook_paddle, "find_spec", _find_spec)
+    warnings: list[str] = []
+    active, state = confirm_paddle(_settings(True), None, warnings)
+    # transformers without torch must yield the one missing-extra warning,
+    # not a crash warning on every child window.
+    assert active is False
+    assert state is None
+    assert len(warnings) == 1 and "ocr-vl" in warnings[0]
 
 
 def test_confirm_warns_without_the_extra_in_subprocess_mode(
@@ -408,6 +442,19 @@ def test_child_target_routes_docling(monkeypatch: pytest.MonkeyPatch) -> None:
     textbook_subprocess._window_child("b.pdf", "docling", 1, 2, queue)
     # The docling walk provides the level, so the row carries it (W1-B).
     assert queue.rows == [{"page": 1, "label": "text", "text": "child body", "level": 0}]
+
+
+def test_child_target_raises_on_an_unknown_parser() -> None:
+    queue = _FakeQueue()
+    with pytest.raises(ValueError, match="no child rows factory"):
+        textbook_subprocess._window_child("b.pdf", "tesseract", 1, 2, queue)
+    assert queue.rows is None  # nothing shipped under a foreign name
+
+
+def test_child_factories_mirror_the_seam_registry() -> None:
+    # Every registry parser with a child must have exactly one rows
+    # factory, so no parser can silently borrow another parser's child.
+    assert set(textbook_subprocess._WINDOW_ROW_FACTORIES) == set(_PARSER_SEAMS)
 
 
 # ---------------------------------------------------------------------------

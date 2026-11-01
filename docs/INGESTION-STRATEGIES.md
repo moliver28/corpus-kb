@@ -124,7 +124,7 @@ extra, or below `min_pages`, it falls back to the default plan.
 | `textbook.window_pages` | `50` | Pages per parse window. Whole number, 1 or more |
 | `textbook.parser` | `docling` | The page parser: `docling`, `paddle-vl`, or `pypdf`. `paddle-vl` is the PaddleOCR-VL challenger; it needs the `[ocr-vl]` extra and parses page text only today |
 | `textbook.cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root |
-| `textbook.window_subprocess` | `true` | Parse each Docling window in a child process, so a crash kills only the child |
+| `textbook.window_subprocess` | `true` | Parse each heavy window (docling, paddle-vl) in a child process, so a crash kills only the child |
 | `textbook.window_timeout_s` | `3600.0` | Seconds before a child window parse is killed and pypdf takes over. Number, 1 or more |
 | `textbook.cache_max_mb` | `2048` | Window-cache size cap in MiB. The oldest files evict first. `0` disables the cap |
 | `textbook.structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows. Flag, true or false |
