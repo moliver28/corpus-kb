@@ -4,6 +4,7 @@ This page is for contributors and anyone who wants to understand how Corpus-KB i
 
 ## Contents
 
+- [Contents](#contents)
 - [Project structure](#project-structure)
 - [Quality gates (poe)](#quality-gates-poe)
 - [CI pipeline](#ci-pipeline)
@@ -14,6 +15,8 @@ This page is for contributors and anyone who wants to understand how Corpus-KB i
 - [Conventions](#conventions)
 - [PR workflow](#pr-workflow)
 - [Governance checks](#governance-checks)
+- [Next steps](#next-steps)
+
 
 ## Project structure
 

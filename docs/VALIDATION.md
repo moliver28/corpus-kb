@@ -6,6 +6,18 @@ and the golden labels. One sweep scores every member against the same
 ingested corpus. A paired test with a Holm correction guards the pick.
 The winner lands in `<profile>.lock.json` next to the profile.
 
+## Contents
+
+- [What a sweep measures](#what-a-sweep-measures)
+- [Step 1 — Pick a golden set and a sample](#step-1--pick-a-golden-set-and-a-sample)
+- [Step 2 — Author the candidates](#step-2--author-the-candidates)
+- [Step 3 — Run the sweep](#step-3--run-the-sweep)
+- [Step 4 — Read the outcome](#step-4--read-the-outcome)
+- [Step 5 — Apply a win](#step-5--apply-a-win)
+- [Step 6 — Keep the lock current](#step-6--keep-the-lock-current)
+- [Iterate](#iterate)
+- [Where to read more](#where-to-read-more)
+
 This page walks one full loop. Follow the six steps in order.
 
 ## What a sweep measures
