@@ -4,7 +4,6 @@ This page is for contributors and anyone who wants to understand how Corpus-KB i
 
 ## Contents
 
-- [Contents](#contents)
 - [Project structure](#project-structure)
 - [Quality gates (poe)](#quality-gates-poe)
 - [CI pipeline](#ci-pipeline)
@@ -22,7 +21,7 @@ This page is for contributors and anyone who wants to understand how Corpus-KB i
 
 Single source tree; all new code goes in `src/corpus_kb/`.
 
-```
+```text
 <repo-root>/
 ├── config.yaml                    # Root runtime config
 ├── config/ontology.yaml           # Entity/relation type vocabulary
@@ -122,7 +121,7 @@ Additional governance workflows check branch naming, commit messages, and agent 
 
 ## MCP config validation
 
-The validator (`src/corpus_kb/_setup/validate_configs.py`, target `poe validate-configs`) checks three things:
+The validator (`src/corpus_kb/_setup/validate_configs*.py`, target `poe validate-configs`) checks three things:
 
 1. **Schema per format** — each config file is validated against its expected structure. The root `opencode.json` uses the OpenCode native format. Files under `mcp-configs/` are validated against their respective editor formats.
 2. **Cross-config consistency** — all configs must define the same set of tools. Descriptions must match, and auto-approve lists must match where the format supports them.
@@ -142,7 +141,7 @@ Every `autoApprove` name must be a real tool under `src/corpus_kb/tools/`. Run t
 To add a new editor format:
 
 1. Create `mcp-configs/<platform>.json` in that platform's MCP server shape.
-2. Add a validator function in `src/corpus_kb/_setup/validate_configs.py` (top-level key, required fields, `command` type, platform constraints).
+2. Add a validator function in the matching `src/corpus_kb/_setup/validate_configs_*.py` module (top-level key, required fields, `command` type, platform constraints).
 3. Register it in the main validation loop.
 4. Add cross-config checks if the format supports auto-approve or descriptions.
 5. Cover it in `tests/test_validate_configs.py`: valid config passes; missing fields fail; wrong types fail; cross-config mismatch fails.

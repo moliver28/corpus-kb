@@ -12,7 +12,7 @@ reference.
 - [Config reference](#config-reference)
 - [Optional extras](#optional-extras)
 - [Research cycle](#research-cycle)
-- [Release lifecycle (U5, v6 §6)](#release-lifecycle-u5-v6-6)
+- [Release lifecycle](#release-lifecycle)
 
 ## The pipeline at a glance
 
@@ -28,7 +28,7 @@ reference.
 4. **Review**: `corpus-kb review accept|override <assignment-id>` executes
    human decisions; overrides feed threshold refits and the G3 audit.
 5. **Report**: `corpus-kb research report [--level novice|expert]` emits the
-   ONE governance artifact (saturation, exhaustiveness, overlap, IRR, G3).
+   one governance artifact (saturation, exhaustiveness, overlap, IRR, G3).
 6. **Notebook**: `corpus-kb research ask "<question>" --project-id <uuid>`
    answers with exchange-level citations; `research evidence|uncoded|overlap`
    are the analyst views.
@@ -40,7 +40,7 @@ with narration. It is the fastest way to see the shapes of every artifact.
 
 ## Deployment note: embeddings
 
-The research embedding boundary requires EXACTLY 1024 dims (native or
+The research embedding boundary requires exactly 1024 dims (native or
 MRL-sliced from >=1024). The default `pgml` provider abstains when the pgml
 extension is absent. 768-dim models (nomic-embed-text) always abstain:
 vectors stay NULL and retrieval degrades to lexical-only. Real research
@@ -58,12 +58,6 @@ undocumented.
 | Key | Default | Effect |
 |-----|---------|--------|
 | `research.embedder.dimensions` | `1024` | Promotion guard: research embedders must emit exactly 1024 dims; anything else halts promotion and abstains at run time. |
-
-The research embedding strategy is not a runtime knob. The G1 experiment
-(two-arm, 52-pair fixture) was decided in code: naive per-text pooling with
-a deterministic prefix won. Every research embedding row records the
-revision tag `"1024"`. Changing embedding behavior is a committed code
-change, never a config edit.
 | `research.ingest.watch_interval_s` | `10` | Poll interval (seconds) for `research ingest --watch` drop-directory tailing. |
 | `research.inductive.entropy_threshold` | `0.85` | Normalized soft-entropy gate above which a unit gets the LLM "existing code vs new code" meta-decision. |
 | `research.inductive.recluster_every_batches` | `8` | Full re-cluster cadence during incremental inductive growth (v5 §9.5: every 5-10 batches). |
@@ -77,9 +71,9 @@ change, never a config edit.
 | `research.alt_test.n_bootstrap` | see `config.yaml` | Bootstrap resample count when alt_test.method is bootstrap (U13). |
 | `research.audit.sample_rate` | see `config.yaml` | Fraction of auto-accepted units drawn for human audit after risk-coverage routing (U41). |
 | `research.audit.seed` | see `config.yaml` | Seed for the stratified audit draw; recorded with the sample for reproducibility (U17). |
-| `research.consensus.runs` | `3` | LIVE (U48): the cycle's inductive stage runs this many INDEPENDENT inductive passes. Their proposed codes are aggregated by the release-layer multi-run consensus (`research/release/consensus.py`, wired via `research/cycle_consensus.py`) before themes surface. `1` keeps the single-pass path. |
-| `research.consensus.min_run_fraction` | `0.5` | LIVE (U48): a consensus theme is kept only when candidates from at least this fraction of the runs support it. |
-| `research.consensus.similarity_threshold` | `0.8` | LIVE (U48): cosine at which a candidate joins an existing consensus theme during greedy leader clustering. |
+| `research.consensus.runs` | `3` | Live (U48): the cycle's inductive stage runs this many independent inductive passes. Their proposed codes are aggregated by the release-layer multi-run consensus (`research/release/consensus.py`, wired via `research/cycle_consensus.py`) before themes surface. `1` keeps the single-pass path. |
+| `research.consensus.min_run_fraction` | `0.5` | Live (U48): a consensus theme is kept only when candidates from at least this fraction of the runs support it. |
+| `research.consensus.similarity_threshold` | `0.8` | Live (U48): cosine at which a candidate joins an existing consensus theme during greedy leader clustering. |
 | `research.judgment_distribution.use_mean` | see `config.yaml` | Use the mean over sampled/probabilistic judgments instead of the mode (U35); off by default. |
 | `research.labeling.aggregation` | see `config.yaml` | Weak-supervision aggregation strategy: em (Dawid-Skene) or vote (U38). |
 | `research.labeling.min_signals` | see `config.yaml` | Minimum independent coding signals before EM aggregation is permitted; below it, majority vote with tie-to-review (U38). |
@@ -88,7 +82,7 @@ change, never a config edit.
 | `research.prompt_stability.alpha_threshold` | see `config.yaml` | Minimum agreement (krippendorff alpha) across hashed prompt variants over calibration units (U12). |
 | `research.prompt_stability.min_variants` | see `config.yaml` | Prompt variants required before stability is evaluable; fewer reports `not_evaluable` (U12). |
 | `research.release.default_profile` | see `config.yaml` | Release profile applied when none is named: exploratory | team-codebook | high-assurance (U3). |
-| `research.release.enforcement` | `warn` | LIVE (U24): off \| warn \| enforce, read from config by the deduction guard (`research/deduction_guard.py`). `warn` records the active release hash or an `unreleased_draft` warning on every deductive run. `enforce` blocks unreleased codebook versions unless `--allow-draft` (bypass runs are labeled `sandbox`). `off` leaves run behavior unchanged. |
+| `research.release.enforcement` | `warn` | Live (U24): off \| warn \| enforce, read from config by the deduction guard (`research/deduction_guard.py`). `warn` records the active release hash or an `unreleased_draft` warning on every deductive run. `enforce` blocks unreleased codebook versions unless `--allow-draft` (bypass runs are labeled `sandbox`). `off` leaves run behavior unchanged. |
 | `research.review.batch_size` | see `config.yaml` | Units per active human-review batch (U37). |
 | `research.review.random_fraction` | see `config.yaml` | Stratified-random fraction always present in review batches so error can be estimated without selection bias (U37). |
 | `research.review.diversity` | see `config.yaml` | Apply greedy max-min embedding diversity when selecting the active part of a review batch (U37). |
@@ -128,11 +122,17 @@ change, never a config edit.
 | `research.release.profiles.high-assurance.max_stratum_disparity` | profile value | high-assurance profile: full evidence incl. audit sample; Maximum allowed per-stratum metric disparity. |
 | `research.release.profiles.high-assurance.agreement_routing_threshold` | profile value | high-assurance profile: full evidence incl. audit sample; Cross-run agreement score at/above which units may auto-accept. |
 
+The research embedding strategy is not a runtime knob. The G1 experiment
+(two-arm, 52-pair fixture) was decided in code: naive per-text pooling with
+a deterministic prefix won. Every research embedding row records the
+revision tag `"1024"`. Changing embedding behavior is a committed code
+change, never a config edit.
+
 ## Optional extras
 
-- `pip install -e ".[latechunk]"` - late chunking embedder (G1 A/B loser on
+- `pip install -e ".[latechunk]"` — late chunking embedder (G1 A/B loser on
   the pinned fixture; kept as the causal reference arm).
-- `pip install -e ".[inductive]"` - UMAP/HDBSCAN clustering for the
+- `pip install -e ".[inductive]"` — UMAP/HDBSCAN clustering for the
   inductive engine.
 
 Both are optional: `corpus-kb doctor` reports their status and the core
@@ -146,13 +146,13 @@ notebook. It contains no new analytics and never auto-promotes a codebook.
 
 ### Postures
 
-- `--mode in` executes exactly ONE next stage, then exits (fully in the
+- `--mode in` executes exactly one next stage, then exits (fully in the
   loop).
 - `--mode on` executes the next stage, then halts for explicit approval
   before continuing. The CLI shows a y/N prompt. The MCP tool returns an
   `awaiting_approval` receipt and continues when called again with
   `approve=true`.
-- `--mode out` runs unattended through the chain and halts ONLY at the
+- `--mode out` runs unattended through the chain and halts only at the
   human-critical gates in `research.cycle.halt_on`.
 - `--watch <dir>` is a foreground poll: when new transcripts land in the
   drop directory, the full out-mode cycle re-arms. Idle is sleep (no
@@ -163,20 +163,20 @@ notebook. It contains no new analytics and never auto-promotes a codebook.
 
 Each halt prints `AWAITING HUMAN: <gate>` plus the exact next command,
 with a distinct per-gate exit code (10-17). `codebook_promotion` is
-HARD-FLOORED: config may add gates to `halt_on` but can never remove the
+hard-floored: config may add gates to `halt_on` but can never remove the
 floor, and promotion itself always runs through
 `corpus-kb codebook promote`. A denied on-mode approval exits 20 (a
 closed stdin counts as a denial). A cycle that cannot proceed (e.g. no
 codebook version yet) exits 2. The full exit-code table lives in
 [OPERATIONS.md](OPERATIONS.md).
 
-Progress is event-sourced: the cycle IS a `CodingRun` with
+Progress is event-sourced: the cycle is a `CodingRun` with
 `params.kind='cycle'`, and each stage boundary lands a checkpoint. To
 resume, act on the gate, then re-run the same command. The new cycle
 run continues after the last checkpoint. It never re-halts on the SAME
 gate it halted on.
 
-The `gray_zone_escalation` gate is CONVERGENT. It fires on review-queue
+The `gray_zone_escalation` gate is convergent. It fires on review-queue
 items that still await a decision, plus conformal-coverage violations
 from the current run. It does not fire on the raw volume that routed to
 review.
@@ -191,36 +191,36 @@ covers what is happening, what to look at, proposed codes with example
 units, and promote-vs-skip consequences. `--json` emits one
 machine-readable stage/gate event per line for agents.
 
-## Release lifecycle (U5, v6 §6)
+## Release lifecycle
 
 `corpus-kb release ...` walks one codebook version from draft to released
-codebook. ONE handler per operation (`handlers/release_handlers.py`)
+codebook. One handler per operation (`handlers/release_handlers.py`)
 backs all three transports: the CLI commands, the `release_*` MCP tools,
 and the `/api/release/*` HTTP routes. The payloads are identical across
 surfaces, and every command takes `--json`.
 
 The lifecycle: `request` opens a `draft_candidate` release pinned to the
-current codebook content hash. `assess` composes EVERY registered gate
-over the evidence the read models can supply, and WRITES NOTHING.
+current codebook content hash. `assess` composes every registered gate
+over the evidence the read models can supply, and writes nothing.
 `review` renders the packet (per-gate evidence, failing +
 `not_evaluable` gates, waivers, the exact next commands). `release`
 re-evaluates and records the gate results on the draft. It applies any
 explicit `--waive GATE=justification` and executes the transition with a
-REQUIRED `--approver`. `status` and `compare` read the trail.
+required `--approver`. `status` and `compare` read the trail.
 
 Honesty contract (v6 §6):
 
-- `assess` never fails on `not_evaluable` gates — it REPORTS them (exit 0).
+- `assess` never fails on `not_evaluable` gates — it reports them (exit 0).
   The `data_sufficiency` flags say which evidence blocks were present.
   A gate never upgrades missing data into a pass.
 - `release` refusal is structured, not a crash. Under
   `enforcement=enforce`, an unmet required gate set exits 1 with the
   `blocked` payload (`unmet_required_gates` + reason). Default
-  `enforcement=warn` releases WITH explicit warnings. Profiles
+  `enforcement=warn` releases with explicit warnings. Profiles
   (exploratory / team-codebook / high-assurance) and enforcement live in
   the `research.release.*` config block.
 - `status` never invents state: no release row is `pre_draft`, and
-  `recommended_next_action` is always a LITERAL runnable
+  `recommended_next_action` is always a literal runnable
   `corpus-kb release ...` command for the current stage
   (`current_stage`, `release_state`, `blocking_criteria`,
   `pending_change_proposals`, `data_sufficiency`).

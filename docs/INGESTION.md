@@ -1,13 +1,10 @@
-# Ontology Ingestion Pipeline
-
-## Overview
+# Ingestion Pipeline
 
 ## Contents
 
-- [Overview](#overview)
 - [Quick Start](#quick-start)
 - [Pipeline Stages](#pipeline-stages)
-- [Statement atoms](#statement-atoms)
+- [Statement Atoms](#statement-atoms)
 - [Conflicts](#conflicts)
 - [Beliefs](#beliefs)
 - [Deduplication and Provenance](#deduplication-and-provenance)
@@ -20,7 +17,7 @@
 - [Adaptive Routing](#adaptive-routing)
 - [Ontology Vocabulary](#ontology-vocabulary)
 - [Extractor Seam](#extractor-seam)
-- [Ingestion strategies](#ingestion-strategies)
+- [Ingestion Strategies](#ingestion-strategies)
 - [Ingest from the CLI](#ingest-from-the-cli)
 - [Config Keys](#config-keys)
 - [One-Line Setup](#one-line-setup)
@@ -67,7 +64,7 @@ corpus-kb ingest path/to/notes.md
 
 ## Pipeline Stages
 
-```
+```text
                     +-------------+
                     | Input File  |
                     +------+------+
@@ -112,7 +109,7 @@ corpus-kb ingest path/to/notes.md
    input (filename + text head); the highest-confidence match wins.
 4. `ingestion.default` (built-in: `default`).
 
-The resolution is printed at ingest, e.g.
+The resolution is printed at ingest, for example
 `detected: transcript (0.92, moderator-pattern) → strategy transcript`, and
 recorded in the pipeline result. See
 [Ingestion strategies](#ingestion-strategies) for the extension guide.
@@ -122,8 +119,8 @@ recorded in the pipeline result. See
 The input file is partitioned into semantic elements (paragraphs, headings,
 code blocks) using the `unstructured` library. Raw text input bypasses this
 stage and wraps the text in a single element. Strategies that don't fit the
-element model (e.g. `transcript`) skip this stage entirely and build chunks
-directly.
+element model (for example, `transcript`) skip this stage entirely and
+build chunks directly.
 
 - **File**: `src/corpus_kb/partitioning.py`
 - **Config**: `chunking.code.parser: tree-sitter`
@@ -145,7 +142,7 @@ them inside Postgres with `pgml.embed()`. When the primary provider is
 unreachable, the pipeline falls back to the configured
 `fallback_provider`, and ultimately to zero vectors.
 Zero-vector rows are flagged `degraded = true` on `chunks` and
-`chunk_vectors` (migration `022_ingest_integrity.sql`) — they are never
+`chunks_vectors` (migration `022_ingest_integrity.sql`) — they are never
 silently mixed into vector search:
 
 - `retrieval.exclude_degraded` (default `true`) keeps degraded rows out of the
@@ -179,11 +176,12 @@ instead of keeping them.
 ### Stage 4: Extract
 
 Entities and relations are extracted from chunks using a configurable
-chain. The default primary extractor is **PostgresML NER** (`pgml`), which
-runs ONNX NER models inside Postgres via `pgml.transform()`. When pgml is
-unavailable, the pipeline falls back to LangExtract (LLM-based,
-ontology-aware), then to RegexExtractor (rule-based, ontology-agnostic
-fallback). Extraction is capped at 10 relations per chunk to prevent
+chain. The shipped default backend is `ml`: GLiNER2 schema-conditioned NER
+plus GLiNER-Relex zero-shot relations (described below). Set
+`extraction.backend: pgml` to run ONNX NER models inside Postgres via
+`pgml.transform()`. On failure the pipeline falls back to LangExtract
+(LLM-based, ontology-aware), then to RegexExtractor (rule-based,
+ontology-agnostic fallback). Extraction is capped at 10 relations per chunk to prevent
 quadratic explosion. LangExtract offsets are validated; invalid
 offsets (negative, start >= end, out of bounds) are skipped with a warning.
 
@@ -219,7 +217,7 @@ installs both model stacks. `corpus-kb setup` pre-pulls the weights.
 - The former BERT backend was dead code: the extractor factory never routed
   to it, so it has been removed. Issue #31 is the GLiNER follow-up.
 
-## Statement atoms
+## Statement Atoms
 
 After extraction, each chunk atomizes into statement rows (migration
 031). The atomizer splits sentences, classifies each one against the
@@ -273,8 +271,8 @@ extractor id, model version, and prompt version. The unique key includes
 `chunk_id` so the same triple asserted in two different chunks keeps both
 provenance rows.
 
-- **Files**: `src/corpus_kb/extraction/pgml_backend.py`, `src/corpus_kb/extraction/langextract_backend.py`, `src/corpus_kb/extraction/regex_backend.py`, `src/corpus_kb/extraction/gliner_backend.py`
-- **Config**: `graph.extractor: pgml | langextract | gliner | regex`, `graph.extract_entities: true`, `extraction.gliner.*`
+- **Files**: `src/corpus_kb/extraction/ml_backend.py`, `src/corpus_kb/extraction/pgml_backend.py`, `src/corpus_kb/extraction/langextract_backend.py`, `src/corpus_kb/extraction/regex_backend.py`, `src/corpus_kb/extraction/gliner_backend.py`
+- **Config**: `extraction.backend: ml | pgml | langextract | gliner | regex` (`graph.extractor` is the accepted legacy alias), `graph.extract_entities: true`, `extraction.gliner.*`
 - **Provenance**: migration `008_typed_relations.sql`
 
 ### Stage 5: Store
@@ -546,31 +544,38 @@ If not set, defaults to `config/ontology.yaml`.
 
 ## Extractor Seam
 
-The pipeline supports four extractors via a strategy pattern (three ship by
-default; GLiNER is opt-in):
+The pipeline resolves one extractor per ingest through
+`extraction.backend`. That key is preferred. `graph.extractor` stays as
+the accepted legacy alias, and the preferred key wins when both are set.
+Five backends exist; the standalone GLiNER backend is opt-in:
 
-1. **PostgresML NER** (`graph.extractor: pgml`, default): ONNX NER inside
+1. **`ml`** (the shipped default): the composite engine — GLiNER2
+   schema-conditioned NER plus GLiNER-Relex zero-shot relations. The
+   LangExtract few-shot modes run under `extraction.mode` (see Stage 4
+   above).
+
+2. **PostgresML NER** (`extraction.backend: pgml`): ONNX NER inside
    Postgres via `pgml.transform()`. Falls back to LangExtract, then to
    RegexExtractor when pgml is unavailable.
 
-2. **LangExtract** (`graph.extractor: langextract`): LLM-based extraction
-   with ontology-aware type enforcement. Uses recorded fixtures for
-   deterministic test runs. Falls back to RegexExtractor on import error
-   or empty extraction.
+3. **LangExtract** (`extraction.backend: langextract`): LLM-based
+   extraction with ontology-aware type enforcement. Uses recorded fixtures
+   for deterministic test runs. Falls back to RegexExtractor on import
+   error or empty extraction.
 
-3. **RegexExtractor** (`graph.extractor: regex`): Rule-based extraction
+4. **RegexExtractor** (`extraction.backend: regex`): rule-based extraction
    using heading patterns and `camelCase` splitting. Ontology-agnostic;
    produces `CONCEPT` and `CLASS` types regardless of ontology config.
 
-4. **GLiNER** (`graph.extractor: gliner`, opt-in): schema-conditioned
+5. **GLiNER** (`extraction.backend: gliner`, opt-in): schema-conditioned
    mention-level NER (`fastino/gliner2-large-v1`) for six types (person,
    organization, location, date, money, product). No relations. Requires
    the `ner` extra and `extraction.gliner.enabled: true`; gate promotion on
    the span-eval harness (see Stage 4 above).
 
-## Ingestion strategies
+## Ingestion Strategies
 
-Corpus-KB ingests through ONE seam. Everything above storage consumes a
+Corpus-KB ingests through one seam. Everything above storage consumes a
 `ChunkPlan` (ordered chunk drafts + per-chunk metadata + strategy name +
 detection provenance). Everything below it — embed, extract, store — is
 strategy-agnostic and never changes when a new modality is added. Adding
@@ -595,7 +600,7 @@ class IngestionStrategy(Protocol):
 - `detect()` scores how well the input (explicit hint, filename, and a text
   head) fits the strategy's modality and returns
   `DetectResult(confidence, reason)`. The reason is human-readable — it is
-  printed at ingest time, e.g.
+  printed at ingest time, for example
   `detected: transcript (0.92, moderator-pattern) → strategy transcript`.
 - `build_chunks()` turns raw content into a `ChunkPlan`. Strategies that
   don't fit the element model (like `transcript`) bypass the `unstructured`
@@ -929,7 +934,7 @@ failed), `2` total failure, `3` configuration error. They are printed in
 
 **Watch auto-heal**: `--watch` polls the directory and records every run in
 the `ingest_runs` ledger. When a run fails because embeddings were
-unavailable, the watcher re-attempts ONLY that failure class once Ollama
+unavailable, the watcher re-attempts only that failure class once Ollama
 health returns. The mechanism: health probe + backoff + capped attempts. Other failures
 are never retried silently; `--no-heal` turns auto-heal off. Ctrl-C exits
 cleanly.
@@ -938,7 +943,7 @@ cleanly.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `graph.extractor` | `pgml` | Extractor: `pgml`, `langextract`, `gliner`, or `regex` |
+| `extraction.backend` | `ml` | Extractor: `ml`, `pgml`, `langextract`, `gliner`, or `regex` (`graph.extractor` is the accepted legacy alias) |
 | `graph.extract_entities` | `true` | Enable entity extraction |
 | `graph.ontology_path` | `config/ontology.yaml` | Path to ontology YAML |
 | `graph.backend` | `age` | Graph store backend (`age` or `postgres`) |

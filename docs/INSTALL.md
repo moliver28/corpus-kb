@@ -28,7 +28,7 @@ Pick one before you start. Ports differ, and the port tells you which path is li
   starts the bundled Postgres container and loads the schema. The container
   listens on 5432 inside; compose publishes it on host port **5433**. The
   packaged config already points at 5433, so it works unchanged. The manual
-  steps in Step 1 and Step 2 below are then NOT needed.
+  steps in Step 1 and Step 2 below are then not needed.
 - **Native path.** You have no Docker, or you run your own Postgres. It
   usually listens on **5432**. Follow Step 1 and Step 2, then set
   `CORPUS_KB_DATABASE_URL` so the runtime and `corpus-kb doctor` target
@@ -152,7 +152,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO corpus_user;
 
 Your connection string will be:
 
-```
+```text
 postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
 ```
 
@@ -273,7 +273,7 @@ embedding:
   base_url: http://localhost:11434
   batch_size: 32
 
-search:
+retrieval:
   rrf_k: 60
 
 graph:
@@ -281,7 +281,7 @@ graph:
   ontology_path: config/ontology.yaml
 
 extraction:
-  backend: langextract
+  backend: ml
 ```
 
 Every key above has a live consumer. The full reference (including keys this
@@ -299,7 +299,7 @@ You can also use environment variables. These override some values in `config.ya
 | `CORPUS_KB_PORT` | `server.port` |
 
 `corpus-kb doctor` honors the same precedence as the runtime (env wins over
-config), so with `CORPUS_KB_DATABASE_URL` set it diagnoses THAT deployment.
+config), so with `CORPUS_KB_DATABASE_URL` set it diagnoses that deployment.
 
 ---
 

@@ -12,7 +12,7 @@ Corpus-KB exposes MCP over stdio, HTTP, and JSON-RPC over a Unix socket or Windo
 - [Tags and metadata](#tags-and-metadata)
 - [Admin](#admin)
 - [Research subsystem](#research-subsystem)
-- [Release lifecycle (U5, v6 §6)](#release-lifecycle-u5-v6-6)
+- [Release lifecycle](#release-lifecycle)
 - [OpenAI-compatible API (v1)](#openai-compatible-api-v1)
 - [MCP tool reference](#mcp-tool-reference)
 - [Next steps](#next-steps)
@@ -217,7 +217,7 @@ remedy. The status is `degraded_empty` when results came back empty AND at
 least one impairment was recorded. The remedy: start Ollama, then
 run `corpus-kb ingest-reembed`. With tracing on, the envelope also carries
 `trace_id`, the 32-char hex id of the active OpenTelemetry trace. It is
-absent when tracing is off (see docs/OBSERVABILITY.md).
+absent when tracing is off (see [OBSERVABILITY.md](OBSERVABILITY.md)).
 
 ### Result ordering
 
@@ -506,7 +506,7 @@ curl -X POST http://localhost:8010/api/research/report   -H "Content-Type: appli
 
 ---
 
-## Release lifecycle (U5, v6 §6)
+## Release lifecycle
 
 The release lifecycle ships on all three transports with identical
 payloads: CLI `corpus-kb release ...`, MCP `release_*` tools, and these

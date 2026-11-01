@@ -119,8 +119,8 @@ warning.
 
 ### `topics`
 
-The Wave 4 topic layer (`src/corpus_kb/topics/`, docs/ANALYSIS.md). Ships
-dormant; the BERTopic import needs the `[topics]` extra.
+The Wave 4 topic layer (`src/corpus_kb/topics/`, [ANALYSIS.md](ANALYSIS.md),
+"Topics"). Ships dormant; the BERTopic import needs the `[topics]` extra.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -136,7 +136,7 @@ dormant; the BERTopic import needs the `[topics]` extra.
 ### `ui.spa`
 
 The browser UI runtime keys (the SPA reads them from
-/app/runtime-config.json at boot; docs/UI.md). They tune the
+/app/runtime-config.json at boot; see [UI.md](UI.md)). They tune the
 running app without a rebuild.
 
 | Key | Default | Description |
@@ -152,7 +152,7 @@ running app without a rebuild.
 | `backend` | `age` | Graph store backend (`age` or `postgres`) |
 | `duckdb_graph_backend` | `cte` | DuckDB-only traversal engine: `cte` (recursive CTE) or `duckpgq` (opt-in DuckPGQ. Falls back to the CTE with one warning on failure or past 3 hops). See [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) |
 | `max_hops` | `5` | Graph traversal depth cap. Positive int, 1 to 25; the ceiling matches the AGE cap |
-| `extractor` | `pgml` | LEGACY alias for `extraction.backend`. Accepted forever; `extraction.backend` wins when both are set |
+| `extractor` | `ml` | LEGACY alias for `extraction.backend`. Accepted forever; `extraction.backend` wins when both are set |
 | `extract_entities` | `true` | Enable entity extraction during ingest |
 | `ontology_path` | `config/ontology.yaml` | Ontology vocabulary file |
 | `fixture_dir` | `tests/fixtures/langextract_recorded` | Recorded fixtures for offline runs |
@@ -173,7 +173,7 @@ stage reads it; nothing else does.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `backend` | `pgml` | PREFERRED extraction-backend key: `regex`, `langextract`, `pgml`, or `gliner` |
+| `backend` | `ml` | PREFERRED extraction-backend key: `ml`, `regex`, `langextract`, `pgml`, or `gliner` |
 | `gliner.enabled` | `false` | Opt-in gate for the GLiNER2 backend |
 | `gliner.model` | `fastino/gliner2-large-v1` | GLiNER2 model |
 | `gliner.revision` | `main` | Model revision |
@@ -220,7 +220,7 @@ revision tag are fixed in code — deliberately not configuration.
 
 ### `textbook`
 
-The windowed large-PDF strategy (docs/INGESTION.md,
+The windowed large-PDF strategy ([INGESTION.md](INGESTION.md),
 "The textbook strategy"). Unknown or malformed keys keep their defaults.
 
 | Key | Default | Description |
@@ -241,7 +241,8 @@ only costs parse time. This version ships no automatic cache pruning.
 
 ### `queue`
 
-The durable ingest queue (`docs/research/HARNESS-PLAYBOOKS.md`, "Recipe: queue
+The durable ingest queue
+([HARNESS-PLAYBOOKS.md](research/HARNESS-PLAYBOOKS.md), "Recipe: queue
 the textbooks"). Enqueue lands rows; a worker drains them.
 
 | Key | Default | Description |
@@ -294,9 +295,10 @@ options.
 Vectors are never padded and never truncated. Three guards make this honest:
 
 1. **At ingest**: the write path probes the column width first. A mismatch raises a typed `config_error`.
-2. The fix: point `embedding.model` at a model emitting 2560 dimensions. Set `embedding.dimensions` to 2560. Then re-ingest.
-3. **At the embedder**: the first embed response is width-checked. A wrong-width model raises a `config_error` with the native-width fix.
-4. **In doctor**: the dimension check compares the config with the column typmod. It reports the stored per-row histogram. FAIL on mismatch.
+2. **At the embedder**: the first embed response is width-checked. A wrong-width model raises a `config_error` with the native-width fix.
+3. **In doctor**: the dimension check compares the config with the column typmod. It reports the stored per-row histogram. FAIL on mismatch.
+
+The fix for a mismatch: point `embedding.model` at a model that emits 2560 dimensions. Set `embedding.dimensions` to 2560. Then re-ingest.
 
 A model switch invalidates all stored embeddings. Migration 025 retypes the
 column; old rows become stale (`embedding IS NULL`). `corpus-kb
@@ -488,12 +490,12 @@ write-ahead log into the file. See [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 The CI workflow runs on every pull request and push to `master`:
 
-1. **lint (ruff)** - syntax and format checks
-2. **type-check (pyright)** - static type checking
-3. **validate-configs** - validates MCP config files
-4. **test** - runs `pytest tests/test_ingest.py` on Ubuntu, Windows, and macOS
+1. **lint (ruff)** — style checks plus dead-code, dependency, complexity, and layering gates
+2. **type-check (pyright)** — static type checking
+3. **validate-configs** — validates the MCP config files and the packaged defaults
+4. **test** — runs the full pytest suite on Ubuntu, Windows, and macOS
 
-Additional governance workflows check branch naming, commit messages, and agent governance rules.
+A docs-quality workflow runs Vale on README and the top-level docs when they change. Other workflows check branch naming, commit messages, and the validation gate.
 
 See `.github/workflows/` for the exact definitions.
 

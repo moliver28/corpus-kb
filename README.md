@@ -35,9 +35,9 @@ corpus-kb start
 ```
 
 The browser opens the lifecycle app at `http://localhost:8010/app/`.
-The Setup stage shows the system's health in plain language. More
-stages land task by task. See the
-[build plan](docs/research/ui-spa-program-plan.md).
+The Setup stage shows the system's health in plain language. The other
+stages follow the research flow: Ingest, Review, Scale, Ask, Analyze,
+Codebook, Release.
 
 Details: [docs/UI.md](docs/UI.md).
 
@@ -70,7 +70,7 @@ a first search. The step-by-step quickstart is in
 - **Self-query filters** — natural-language filters parsed into parameterized SQL predicates
 - **Knowledge graph** with entities, relations, and BFS traversal
 - **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER)
-- **Pluggable ingestion strategies** — default, transcript, PPTX slide structure, and web page structure, extensible three ways ([docs/INGESTION.md](docs/INGESTION.md#ingestion-strategies))
+- **Pluggable ingestion strategies** — eight built-ins (default, transcript, slides, web, survey, markdown, code, textbook), extensible three ways ([docs/INGESTION.md](docs/INGESTION.md#ingestion-strategies))
 - **Website ingestion** — a robots-respecting fetcher with same-domain crawl and heading-section chunks
 - **Late chunking** — one model pass per document; chunk vectors pool from their own token spans
 - **Qualitative coding** — transcript ingestion, codebooks, deductive and inductive runs, human review, governance reports, and a gated release lifecycle
@@ -98,7 +98,7 @@ graph TB
     Handlers --> Domain[Domain Layer<br/>Aggregates + Events]
     Domain --> ES[Event Store<br/>append-only]
     ES --> Projections[Async Projections]
-    Projections --> PG[PostgreSQL 17]
+    Projections --> PG[Postgres 17]
     Projections --> DUCK[DuckDB<br/>local single-user engine]
     PG --> VEC[pgvector<br/>vector search]
     PG --> FTS[Postgres FTS<br/>to_tsvector]
@@ -146,7 +146,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 
 | Page | What it covers |
 |------|----------------|
-| [Getting started](docs/getting-started.md) | Both paths: the browser for novices, the terminal quickstart for everyone else |
+| [Getting started](docs/getting-started.md) | Both paths: the browser for novices, the terminal quickstart for everyone else. Then qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
 | [Browser UI](docs/UI.md) | The lifecycle app: stage-by-stage user guide, config, build, gates, troubleshooting |
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
@@ -159,7 +159,6 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Notebooks](docs/NOTEBOOKS.md) | The marimo console and the three example notebooks |
 | [Development](docs/DEVELOPMENT.md) | Architecture deep dive, testing, PR workflow, conventions |
 | [Research](docs/research.md) | Research command reference, config keys, embedding requirements |
-| [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Understanding your report](docs/understanding-your-report.md) | Plain-language guide to every governance-report section |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline: partition, chunk, embed, extract, store, plus the strategy reference and extension ladders |
@@ -167,10 +166,6 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Analysis methods](docs/ANALYSIS-METHODS.md) | GENERATED reference: the 30-method register with required validation and permitted claims |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
 | [Internal program docs](docs/research/) | Archive: playbooks, research math, benchmarks, harness distribution, program plans |
-
-The qualitative-coding walkthrough keeps its home in
-[docs/getting-started.md](docs/getting-started.md), under "Your own
-transcripts".
 
 ---
 

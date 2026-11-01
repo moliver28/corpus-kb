@@ -1,7 +1,7 @@
 # Offline evaluation
 
 The `eval` command family scores search and answer quality on your own
-machine. It runs fully local: your database, your Ollama models, no
+machine. Everything runs locally: your database, your Ollama models, no
 cloud calls. The optional `deepeval` package powers the answer metrics;
 everything else needs no extra.
 
@@ -93,7 +93,8 @@ Exit codes: 0 means the run answered, including an empty golden set.
 - contextual precision: how high the useful evidence ranks inside the retrieved context.
 
 The retrieval metrics reuse the research benchmark code, so eval numbers
-match the numbers in docs/research/retrieval-benchmarks.md.
+match the numbers in
+[retrieval-benchmarks.md](research/retrieval-benchmarks.md).
 
 ## The local judge
 

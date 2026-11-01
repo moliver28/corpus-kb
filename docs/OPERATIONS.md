@@ -30,7 +30,7 @@ exit codes in `corpus-kb <command> --help`.
 ### The ingest family
 
 `corpus-kb ingest`, `ingest-status`, `ingest-reembed`, and `ingest-url`
-(`src/corpus_kb/cli_ingest.py`):
+(`src/corpus_kb/cli/cli_ingest.py`):
 
 | Code | Meaning |
 |------|---------|
@@ -51,7 +51,7 @@ Per-command nuances:
 ### The topics family
 
 `corpus-kb topics-build` and `corpus-kb topics-list`
-(`src/corpus_kb/cli_topics.py`):
+(`src/corpus_kb/cli/cli_topics.py`):
 
 | Code | Meaning |
 |------|---------|
@@ -76,8 +76,8 @@ Per-command nuances:
 
 `corpus-kb search`, `ask`, `query`, `verify-answer`, `add-entity`,
 `add-relation`, `list-documents`, `delete-document`, and `ingest-text` (the
-`cli_search.py` / `cli_ask.py` / `cli_query.py` / `cli_graph.py` /
-`cli_ingest_text.py` front doors):
+`cli/cli_search.py` / `cli/cli_ask.py` / `cli/cli_query.py` /
+`cli/cli_graph.py` / `cli/cli_ingest_text.py` front doors):
 
 | Code | Meaning |
 |------|---------|
@@ -133,7 +133,7 @@ the socket method return a receipt with the captured narration.
 
 ### Codebook promotion
 
-`corpus-kb codebook promote` (`src/corpus_kb/cli_coding.py`):
+`corpus-kb codebook promote` (`src/corpus_kb/cli/cli_coding.py`):
 
 | Code | Meaning |
 |------|---------|
@@ -219,7 +219,7 @@ Two supported setups. State which one you run before you debug a connection.
 
 The two URLs differ only in the port:
 
-```
+```text
 postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb   # compose
 postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb   # native
 ```
@@ -258,7 +258,7 @@ doctor diagnoses that deployment, not the config file's.
 
 ### Ingestion strategy names
 
-Four built-in strategies register in code
+Eight built-in strategies register in code
 (`src/corpus_kb/ingestion/registry.py`):
 
 | Name | Chunking behavior |
@@ -267,6 +267,10 @@ Four built-in strategies register in code
 | `transcript` | Turn-aligned Q+A chunks for interviews and meetings |
 | `pptx_structure` | One chunk per slide, plus speaker notes |
 | `web_structure` | One chunk per page section |
+| `survey` | CSV exports; one chunk per answer, question text in metadata |
+| `markdown_sections` | Raw markdown segmented at heading boundaries |
+| `code` (optional) | Tree-sitter AST chunks; needs the `[code]` extra |
+| `textbook` (optional) | Windowed large-PDF parsing; needs the `[docling]` extra |
 
 Third-party plugins register through the `corpus_kb.ingestion_strategies`
 entry-point group. A broken plugin is logged and skipped. It never stops
@@ -330,9 +334,9 @@ Editors connect over stdio. The command is:
 corpus-kb --transport stdio
 ```
 
-This serves 34 MCP tools, generated from the same catalogue the CLI, HTTP,
+This serves the MCP tools generated from the same catalogue the CLI, HTTP,
 and socket surfaces use (`src/corpus_kb/mcp_server.py`). Every catalogue
-operation — 34 of them — is reachable on all four surfaces: MCP, CLI,
+operation is reachable on all four surfaces: MCP, CLI,
 HTTP, and socket. The `mcp-configs/` files for Claude Code, Cursor, and
 Codex, plus the root `opencode.json`, launch this command. Tool names,
 parameters, and envelopes match the other surfaces; the parity gate holds

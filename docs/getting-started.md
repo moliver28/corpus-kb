@@ -32,11 +32,10 @@ schema. `corpus-kb start` starts the server and opens your browser at
 `http://localhost:8010/app/`. Set `CORPUS_KB_UI_OPEN=0` to keep the tab
 closed.
 
-The **Setup** stage shows the system's health in plain language. More
-stages — Ingest, Ask, Review, and the rest — land through the UI SPA
-program ([build plan](research/ui-spa-program-plan.md)). Until then, the API and
-the CLI cover every operation (see the terminal path below). Details:
-[UI.md](UI.md).
+The **Setup** stage shows the system's health in plain language. The
+other stages — Ingest, Review, Scale, Ask, Analyze, Codebook, Release —
+follow the research flow. Details: [UI.md](UI.md). The API and the CLI
+cover every operation too (see the terminal path below).
 
 ## The terminal quickstart
 
@@ -122,8 +121,8 @@ step 5; the demo needs a research-grade embedder.
 The research pipeline needs two things on your machine before any command
 works, and `corpus-kb doctor` verifies both (read-only diagnostics).
 
-**1. A Postgres database.** Two first-class paths - pick whichever fits your
-machine:
+**1. A Postgres database.** Two first-class paths — pick whichever fits
+your machine:
 
 - **Docker path** (recommended if you have Docker):
   `corpus-kb setup` starts a bundled Postgres stack, creates the database,
@@ -137,8 +136,8 @@ machine:
   export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
   ```
 
-  Every research command and `corpus-kb doctor` honor it - doctor probes
-  THAT deployment. The database user needs the grants from
+  Every research command and `corpus-kb doctor` honor it — doctor probes
+  that deployment. The database user needs the grants from
   [INSTALL.md step 2](INSTALL.md) (on Postgres 15+ the `GRANT CREATE ON
   SCHEMA public` line is required).
 
@@ -251,7 +250,7 @@ timestamp/turn range). Add `--retrieval-only` for evidence without generation.
 
 ## Where to go next
 
-- [UI.md](UI.md) — the four browser pages in detail.
+- [UI.md](UI.md) — the browser app and its stage pages in detail.
 - [OBSERVABILITY.md](OBSERVABILITY.md) — trace every operation with OpenTelemetry.
 - [EVALUATION.md](EVALUATION.md) — score retrieval and answers on your own golden set.
 - [NOTEBOOKS.md](NOTEBOOKS.md) — marimo notebooks served at `/notebooks`.
