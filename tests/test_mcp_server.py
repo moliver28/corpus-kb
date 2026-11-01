@@ -125,10 +125,11 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # Derivation of the pinned total: 70 registered before UI SPA Task 5b,
     # +2 for the #176 lifecycle UI ops (doctor, demo_load), +4 for the
     # spec B2 read lists (projects, codebooks, proposals, assignments),
-    # +3 for the textbook program's queue ops (enqueue, status, cancel)
-    # == 79. The set under the pin is the catalogue/registry UNION, so a
+    # +3 for the textbook program's queue ops (enqueue, status, cancel),
+    # +2 for the label-quality pair (triage, gold check, issue #234)
+    # == 81. The set under the pin is the catalogue/registry UNION, so a
     # tool added without a row (or dropped without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 79
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 81
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

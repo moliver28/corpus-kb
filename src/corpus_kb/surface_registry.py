@@ -304,6 +304,20 @@ SURFACES: tuple[Surface, ...] = (
         http_route="/api/labeling/lfs",
     ),
     Surface(
+        name="labeling-triage",
+        cli_path="labeling-triage",
+        mcp_tool="labeling_triage",
+        description="Rank built labels with weak support into a human review queue.",
+        http_route="/api/labeling/triage",
+    ),
+    Surface(
+        name="labeling-gold-check",
+        cli_path="labeling-gold-check",
+        mcp_tool="labeling_gold_check",
+        description="Score built labels against a gold dev set (PPI-corrected).",
+        http_route="/api/labeling/gold-check",
+    ),
+    Surface(
         name="classification-build",
         cli_path="classification-build",
         mcp_tool="classification_build",
@@ -746,6 +760,20 @@ them into probabilistic chunk labels. Dormant by default:
   corpus-kb labeling-lfs [--limit N]
   ```
 
+- Rank weakly supported labels for human review (advisory; never
+  relabels):
+
+  ```
+  corpus-kb labeling-triage [--cv-folds 5] [--flag-threshold 0.2]
+  ```
+
+- Score the built labels against a small gold dev set file (a JSON
+  object that maps chunk ids to label names):
+
+  ```
+  corpus-kb labeling-gold-check --gold-file <path>
+  ```
+
 - A disabled feature is an honest no-op result, not an error.
 - All flags: `corpus-kb labeling-build --help`
 """
@@ -1092,10 +1120,19 @@ WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-labeling",
         title="corpus-labeling",
-        description="Labeling layer: build chunk labels, list labels and labeling functions",
+        description=(
+            "Labeling layer: build chunk labels, list labels and labeling "
+            "functions, triage weak labels, gold-set check"
+        ),
         argument_hint="[--limit N]",
         body=_LABELING_BODY,
-        covers=("labeling-build", "labeling-list", "labeling-lfs"),
+        covers=(
+            "labeling-build",
+            "labeling-list",
+            "labeling-lfs",
+            "labeling-triage",
+            "labeling-gold-check",
+        ),
     ),
     Wrapper(
         name="corpus-classification",
