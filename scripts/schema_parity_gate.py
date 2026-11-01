@@ -8,6 +8,10 @@ uniques, FKs, sequences, and plain indexes. Undeclared drift exits 1.
 STALE allowlist entries (declared but no longer real) also exit 1, so
 the allowlist cannot outlive its drift.
 
+A second check compares migration NAME sets across the two trees
+(``schema_parity_nameset``, issue #230): the same name at a different
+ordinal passes by design, a one-sided name fails unless declared.
+
 sqlglot is STATIC ANALYSIS ONLY here, never a runtime transpiler
 (storage portability program, OSS table; section 17).
 
@@ -27,6 +31,7 @@ from pathlib import Path
 from schema_parity_compare import Drift, compare_states
 from schema_parity_fold import fold_file
 from schema_parity_model import SchemaState
+from schema_parity_nameset import NameSetResult, name_set_result
 
 ROOT = Path(__file__).resolve().parents[1]
 PG_BASE = Path("src/corpus_kb/storage/schema.sql")
@@ -105,8 +110,9 @@ def migration_files(root: Path) -> tuple[list[tuple[Path, str]], list[tuple[Path
 
     Forward Postgres truth is storage/schema.sql plus the numbered
     migrations (glob ``[0-9]*.sql`` skips the rollback files and keeps
-    working past migration 099). The DuckDB set runs 000..030 in name
-    order.
+    working past migration 099). The DuckDB set runs 000..039 in name
+    order; from 031 on each file pairs by name with its Postgres twin
+    one ordinal lower (issue #230).
     """
     pg: list[tuple[Path, str]] = []
     base = root / PG_BASE
@@ -162,10 +168,30 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Schema parity gate: FAIL. {err}")
         return 1
     result = evaluate(pg, duck)
+    names: NameSetResult = name_set_result(root)
     print(f"Schema parity gate: {len(pg_files)} pg files, {len(duck_files)} duckdb files.")
+    if not names.ok:
+        for drift in names.undeclared:
+            print(f"UNDECLARED NAME {drift.line()}")
+        for key, why in names.stale:
+            print(f"STALE NAME ROW {key}: {why}")
+        print(
+            f"Migration name-set check: FAIL. {len(names.undeclared)} undeclared "
+            f"name(s), {len(names.stale)} stale row(s)."
+        )
+        print("Fix the file names or declare each asymmetry in ALLOWED_NAME_ASYMMETRY.")
+        return 1
     if result.ok:
         print("Schema parity: PASS.")
         print(f"Declared drift: {len(result.declared)} (see ALLOWED_DRIFT).")
+        print(f"Migration name-set check: PASS ({len(names.declared)} declared row(s)).")
+        for label, name_list in (
+            ("pg forward", names.pg_forward),
+            ("duckdb forward", names.duck_forward),
+            ("pg rollback", names.pg_rollback),
+            ("duckdb rollback", names.duck_rollback),
+        ):
+            print(f"{label} names ({len(name_list)}): {', '.join(name_list)}")
         return 0
     for drift in result.undeclared:
         print(f"UNDECLARED {drift.line()}")
