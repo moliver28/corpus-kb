@@ -4,7 +4,9 @@ Functions moved out of ``query_handler.QueryHandler`` byte-identical: the
 engine selection, the reranker resolution, the W3 default-k contract, the
 self-query predicates, the candidate inflation, the DuckDB arm wrapper, and
 ``search_with_meta``. The class keeps thin delegates. The result stages
-(fusion pin, rerank, parent expansion) live in :mod:`query_stages`.
+(fusion pin, rerank, parent expansion) live in :mod:`query_stages`; the
+connection-level acquisition and result assembly live in
+:mod:`query_acquire` (the 250-line split).
 """
 
 from __future__ import annotations
@@ -15,29 +17,18 @@ from typing import cast
 import asyncpg
 
 from corpus_kb.domain.models import SearchQuery
-from corpus_kb.handlers import query_stages
-from corpus_kb.handlers.query_integrity import (
-    SearchEnvelope,
-    degraded_candidate_predicate,
-    finalize_envelope,
-)
+from corpus_kb.handlers.query_acquire import ArmRun, arm_outcome, final_envelope, post_fusion
+from corpus_kb.handlers.query_integrity import SearchEnvelope, degraded_candidate_predicate
 from corpus_kb.handlers.query_search_pg import PostgresSearchBackend
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 from corpus_kb.rag.rerank_settings import RerankSettings
 from corpus_kb.rag.reranker import build_reranker, create_reranker
 from corpus_kb.research.retrieval_settings import RetrievalSettings
-from corpus_kb.research.search_settings import (
-    HnswSettings,
-    SqlExecutor,
-    VersionReader,
-    apply_hnsw_settings,
-    pgvector_version,
-    supports_iterative_scan,
-)
+from corpus_kb.research.search_settings import HnswSettings
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_search import DuckDbSearchBackend
 from corpus_kb.storage.gateway import SqlGateway
-from corpus_kb.storage.search_backend import SearchBackend, SearchRequest
+from corpus_kb.storage.search_backend import SearchBackend
 from corpus_kb.utils.tracing import SPAN_QUERY, span
 
 
@@ -152,87 +143,16 @@ async def search_with_meta(
             query, self_query_parser, self_query_enabled
         )
         over_retrieve = over_retrieve_n(reranker, rerank_settings)
-
-        degraded_pred = degraded_candidate_predicate(exclude_degraded)
-        if isinstance(pool, DuckDbGateway):
-            # Storage-portability §13 (sp-duckdb-search): the arms on
-            # DuckDB. One gateway transaction wraps both arms. No tenant
-            # GUC (no RLS — explicit ``tenant_id`` predicates) and no
-            # pgvector/HNSW preamble (DuckDB exact-scans the column).
-            gateway = cast("DuckDbGateway", pool)
-            async with gateway.transaction(str(query.tenant_id)):
-                outcome = await search_backend.search(
-                    SearchRequest(
-                        conn=cast("asyncpg.Connection", gateway),
-                        query=query,
-                        semantic_query=semantic_query,
-                        dynamic_predicates=dynamic_predicates,
-                        degraded_pred=degraded_pred,
-                        over_retrieve_n=over_retrieve,
-                        reasons=reasons,
-                    )
-                )
-        else:
-            # The gateway kind is decided above; what remains is the
-            # shipped asyncpg pool (test fakes included).
-            pg_pool = cast("asyncpg.Pool", pool)
-            async with pg_pool.acquire() as acquired, acquired.transaction():
-                conn = cast("asyncpg.Connection", acquired)
-                await conn.execute(
-                    "SELECT set_config('app.current_tenant_id', $1, true)",
-                    str(query.tenant_id),
-                )
-                # U20: transaction-local HNSW settings (SET LOCAL dies with this
-                # transaction — a pooled connection never leaks them). Gated on
-                # the installed pgvector version: emitting `SET LOCAL hnsw.*`
-                # below 0.8 aborts the query, so unknown/old versions keep the
-                # pre-iterative-scan behavior (fail closed).
-                extversion = await pgvector_version(cast("VersionReader", conn))
-                if supports_iterative_scan(extversion):
-                    await apply_hnsw_settings(cast("SqlExecutor", conn), hnsw_settings)
-
-                outcome = await search_backend.search(
-                    SearchRequest(
-                        conn=conn,
-                        query=query,
-                        semantic_query=semantic_query,
-                        dynamic_predicates=dynamic_predicates,
-                        degraded_pred=degraded_pred,
-                        over_retrieve_n=over_retrieve,
-                        reasons=reasons,
-                    )
-                )
-
-        # 3. RRF fusion in Python (handlers/query_fusion.py) — the exact
-        #    port of corpus.rrf_fusion (migration 024); the determinism pin
-        #    region lives in query_stages now. No fusion SQL is issued on
-        #    this path; research/retrieval.py keeps the SQL function.
-        k = query.k if query.k is not None else rerank_settings.return_top_k
-        fused_results = query_stages.fuse_arm_rows(outcome, k, retrieval_settings.rrf_k)
-
-        # 4. Reranking (post-RRF) + envelope finalization. The rerank stage
-        #    runs outside the handler's connection so a max_size=1 pool
-        #    cannot deadlock on the reranker's own acquire.
-        resolved_k = query.k if query.k is not None else rerank_settings.return_top_k
-        final_results = await query_stages.post_fuse(
-            reranker,
-            rerank_settings,
-            pool,
-            retrieval_settings,
-            fused_results,
-            semantic_query,
-            resolved_k,
-            over_retrieve,
-            str(query.tenant_id),
-            reasons,
+        run = ArmRun(
+            query=query,
+            semantic_query=semantic_query,
+            dynamic_predicates=dynamic_predicates,
+            degraded_pred=degraded_candidate_predicate(exclude_degraded),
+            over_retrieve=over_retrieve,
+            reasons=reasons,
         )
-        return finalize_envelope(
-            final_results,
-            reasons,
-            excluded_count=outcome.excluded_count,
-            vector_index_mode=outcome.vector_index_mode,
-            lexical_index_mode=outcome.lexical_index_mode,
-            vector_index_note=outcome.vector_index_note,
-            lexical_index_note=outcome.lexical_index_note,
-            meta_hits=[dict(row) for row in outcome.meta_rows],
+        outcome = await arm_outcome(pool, search_backend, run, hnsw_settings)
+        final_results = await post_fusion(
+            reranker, rerank_settings, pool, retrieval_settings, outcome, run
         )
+        return final_envelope(outcome, final_results, run)
