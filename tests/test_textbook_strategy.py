@@ -763,6 +763,33 @@ def test_settings_helper_matches_config_block() -> None:
     assert settings_from(None).citations is False
 
 
+def test_citations_flag_reaches_built_chunks_and_flag_off_stays_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    loader = _fake_loader(_six_page_nodes())
+    monkeypatch.setattr(_PAGES_TARGET, loader)
+    on = _config(1, 4, str(tmp_path / "cache-on"), window_subprocess=False, citations=True)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), on))
+    assert plan.chunks
+    assert validate_plan(plan) == []
+    for chunk in plan.chunks:
+        start, end = chunk.metadata["page_start"], chunk.metadata["page_end"]
+        pages = f"p. {start}" if start == end else f"pp. {start}-{end}"
+        assert chunk.metadata["citation"] == f"{pages} - {chunk.metadata['section']}"
+
+    off = _config(1, 4, str(tmp_path / "cache-off"), window_subprocess=False)
+    plain = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), off))
+    assert [dict(chunk.metadata) for chunk in plain.chunks] == [
+        {k: v for k, v in chunk.metadata.items() if k != "citation"} for chunk in plan.chunks
+    ]
+    assert all(
+        list(chunk.metadata) == ["strategy", "section", "page_start", "page_end"]
+        for chunk in plain.chunks
+    )
+    assert all("citation" not in chunk.metadata for chunk in plain.chunks)
+
+
 # ---------------------------------------------------------------------------
 # Cache bounds: a record naming foreign pages is a miss (re-parse)
 # ---------------------------------------------------------------------------

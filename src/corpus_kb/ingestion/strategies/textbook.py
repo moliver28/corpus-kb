@@ -131,7 +131,11 @@ class TextbookStrategy:
             return self._empty("no text recovered from the pdf", warnings, summarize(outcomes))
         blocks = section_blocks(assign_sections(items, bookmarks))
         document_text, chunks = plan_chunks(
-            blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, warnings
+            blocks,
+            TEXTBOOK_STRATEGY_NAME,
+            TOKEN_BUDGET_CHARS,
+            warnings,
+            citations=settings.citations,
         )
         return ChunkPlan(
             strategy=self.name,
