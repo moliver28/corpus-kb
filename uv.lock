@@ -1201,6 +1201,11 @@ ml = [
 notebook = [
     { name = "marimo" },
 ]
+ocr-vl = [
+    { name = "pypdfium2" },
+    { name = "torch" },
+    { name = "transformers" },
+]
 otel = [
     { name = "openinference-semantic-conventions" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
@@ -1279,6 +1284,7 @@ requires-dist = [
     { name = "pynvml", marker = "extra == 'pynvml'" },
     { name = "pypdf", marker = "extra == 'docling'", specifier = ">=6.21" },
     { name = "pypdf", marker = "extra == 'scan'", specifier = ">=6.21" },
+    { name = "pypdfium2", marker = "extra == 'ocr-vl'", specifier = ">=5" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.24" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=5.0" },
@@ -1301,7 +1307,9 @@ requires-dist = [
     { name = "textstat", marker = "extra == 'dev'", specifier = ">=0.7" },
     { name = "threadpoolctl", marker = "extra == 'classify'", specifier = ">=3.5" },
     { name = "torch", marker = "extra == 'latechunk'", specifier = ">=2.2" },
+    { name = "torch", marker = "extra == 'ocr-vl'", specifier = ">=2.4" },
     { name = "transformers", marker = "extra == 'latechunk'", specifier = ">=4.51.0" },
+    { name = "transformers", marker = "extra == 'ocr-vl'", specifier = ">=5.0" },
     { name = "tree-sitter", marker = "extra == 'code'", specifier = ">=0.23" },
     { name = "tree-sitter-go", marker = "extra == 'code'", specifier = ">=0.23" },
     { name = "tree-sitter-java", marker = "extra == 'code'", specifier = ">=0.23" },
@@ -1318,7 +1326,7 @@ requires-dist = [
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.10" },
     { name = "xenon", marker = "extra == 'dev'", specifier = ">=0.9" },
 ]
-provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "semchunk", "dedup", "calibrate", "code", "docling", "scan", "notebook", "classify", "setfit", "dev"]
+provides-extras = ["graphqlite", "langextract", "pynvml", "duckdb", "latechunk", "inductive", "ml", "tune", "topics", "ui", "otel", "eval", "semchunk", "dedup", "calibrate", "code", "docling", "scan", "ocr-vl", "notebook", "classify", "setfit", "dev"]
 
 [[package]]
 name = "coverage"

@@ -114,14 +114,15 @@ by page, first window wins.
 
 **Degrade paths, never a crash.** Without the `[docling]` extra, the
 strategy warns once and parses windows with pypdf only. Page text,
-outline titles, and page metadata survive. Without the `[scan]` extra,
-or below `min_pages`, it falls back to the default plan.
+outline titles, and page metadata survive. Without the `[ocr-vl]`
+extra, `parser: paddle-vl` degrades the same way. Without the `[scan]`
+extra, or below `min_pages`, it falls back to the default plan.
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `textbook.min_pages` | `120` | The page-count gate for the windowed path. Whole number, 1 or more |
 | `textbook.window_pages` | `50` | Pages per parse window. Whole number, 1 or more |
-| `textbook.parser` | `docling` | The page parser: `docling` or `pypdf` |
+| `textbook.parser` | `docling` | The page parser: `docling`, `paddle-vl`, or `pypdf`. `paddle-vl` is the PaddleOCR-VL challenger; it needs the `[ocr-vl]` extra and parses page text only today |
 | `textbook.cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root |
 | `textbook.window_subprocess` | `true` | Parse each Docling window in a child process, so a crash kills only the child |
 | `textbook.window_timeout_s` | `3600.0` | Seconds before a child window parse is killed and pypdf takes over. Number, 1 or more |

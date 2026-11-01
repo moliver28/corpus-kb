@@ -19,19 +19,24 @@ by page (first window wins). Bookmarks are the only global structure a
 windowed parse sees (docling discussion #2744); they only fill pages
 where labels are thin.
 
-Degrade paths, never a crash: without the ``[docling]`` extra the
-strategy warns once and parses windows with pypdf only; without the
-``[scan]`` extra, or below ``min_pages``, it falls back to the default
-plan. Docling can crash the process on scanned pages, so each Docling
-window parses in a spawned child when ``window_subprocess`` is set; the
-parent only probes the module spec, never imports docling. A crashed,
-timed-out, or wrapper-failed window takes the pypdf path (issue #219).
-The window cache evicts its oldest files past ``cache_max_mb``. Every
-parsed window leaves a :class:`WindowOutcome` (parser, cache hit,
-warnings) whose fold becomes the conditional ``textbook`` envelope key.
+Degrade paths, never a crash: without a parser's extra (``docling``,
+``ocr-vl`` for the paddle challenger) the strategy warns once and
+parses windows with pypdf only; without the ``[scan]`` extra, or below
+``min_pages``, it falls back to the default plan. A heavy parser can
+crash the process on scanned pages, so each of its windows parses in a
+spawned child when ``window_subprocess`` is set; the parent only probes
+the module spec, never imports the parser. A crashed, timed-out, or
+wrapper-failed window takes the pypdf path (issue #219). The window
+cache evicts its oldest files past ``cache_max_mb``. Every parsed
+window leaves a :class:`WindowOutcome` (parser, cache hit, warnings)
+whose fold becomes the conditional ``textbook`` envelope key.
 
-The docling seams live in ``textbook_windows.py``; the assembly in
-``textbook_assemble.py``; the cache in ``textbook_cache.py``.
+The parser registry is the ``_PARSER_SEAMS`` table in
+``textbook_registry.py``: one row per optional extra, each pointing at
+that parser's check and window seams. The docling seams live in
+``textbook_windows.py``; the paddle seams in ``textbook_paddle.py``;
+the assembly in ``textbook_assemble.py``; the cache in
+``textbook_cache.py``.
 """
 
 from __future__ import annotations
@@ -60,18 +65,16 @@ from .textbook_cache import (
     save_window_cache,
     window_ranges,
 )
-from .textbook_docling import parser_key
 from .textbook_outcomes import WindowOutcome, summarize
 from .textbook_pages import (
-    PARSER_VERSIONS,
     PageItem,
     WindowRecord,
     open_pdf,
     parse_window_pypdf,
     read_outline,
 )
+from .textbook_registry import _PARSER_SEAMS, PARSER_VERSIONS, parser_key
 from .textbook_settings import TextbookSettings, settings_from
-from .textbook_windows import confirm_docling, parse_one_docling_window
 
 TEXTBOOK_STRATEGY_NAME = "textbook"
 
@@ -156,13 +159,14 @@ class TextbookStrategy:
     ) -> list[WindowOutcome]:
         """Parse every window, cache writes after each, cache hits skip.
 
-        In-process mode loads the converter only when a window needs it;
-        subprocess mode only probes the module spec. The parser falls
-        back per book (missing extra, one warning) or per window (a
-        failed convert call, one warning each). A degraded window caches
-        under its parser, so a later run with the extra re-parses it.
-        Each window yields one outcome: its record, the parser that
-        served it, whether the cache did, and that window's warnings.
+        In-process mode loads the parser's model only when a window
+        needs it; subprocess mode only probes the module spec. The
+        parser falls back per book (missing extra, one warning) or per
+        window (a failed parse, one warning each). A degraded window
+        caches under its parser, so a later run with the extra
+        re-parses it. Each window yields one outcome: its record, the
+        parser that served it, whether the cache did, and that window's
+        warnings.
         """
         structured = settings.structured_output
         parser_name = settings.parser if settings.parser in PARSER_VERSIONS else "docling"
@@ -172,33 +176,32 @@ class TextbookStrategy:
         if settings.cache_max_mb > 0:
             prune_window_cache(cache_dir, settings.cache_max_mb)
         outcomes: list[WindowOutcome] = []
-        converter: Any | None = None
-        extra_checked = False
-        docling_active = parser_name == "docling"
+        seam = _PARSER_SEAMS.get(parser_name)
+        state: Any | None = None
+        primary_active = seam is not None
+        confirmed = seam is None  # the pypdf parser needs no extra check
         for index, (start, end) in enumerate(window_ranges(page_count, settings.window_pages)):
-            active = "docling" if docling_active else "pypdf"
+            active = parser_name if primary_active else "pypdf"
             cached = self._cached_record(cache_dir, digest, index, active, start, end, structured)
             if cached is not None:
                 outcomes.append(cached)
                 continue
-            if docling_active and not extra_checked:
-                extra_checked = True
-                docling_active, converter = confirm_docling(settings, converter, warnings)
-            use_docling = docling_active and (settings.window_subprocess or converter is not None)
-            effective = "docling" if use_docling else "pypdf"
-            if effective != active:
-                cached = self._cached_record(
-                    cache_dir, digest, index, effective, start, end, structured
-                )
-                if cached is not None:
-                    outcomes.append(cached)
-                    continue
+            if not confirmed:
+                confirmed = True
+                if seam is not None:
+                    primary_active, state = seam.confirm(settings, state, warnings)
+                    active = parser_name if primary_active else "pypdf"
+                    cached = self._cached_record(
+                        cache_dir, digest, index, active, start, end, structured
+                    )
+                    if cached is not None:
+                        outcomes.append(cached)
+                        continue
             window_warnings: list[str] = []
             items: list[PageItem] | None = None
-            if use_docling:
-                items, effective = parse_one_docling_window(
-                    settings, converter, path, start, end, index, window_warnings
-                )
+            if seam is not None and primary_active:
+                items = seam.parse_window(settings, state, path, start, end, index, window_warnings)
+            effective = active if items is not None else "pypdf"
             if items is None:
                 items = parse_window_pypdf(reader, start, end, window_warnings)
             warnings.extend(window_warnings)

@@ -64,8 +64,8 @@ def parse_one_docling_window(
     end: int,
     index: int,
     warnings: list[str],
-) -> tuple[list[PageItem] | None, str]:
-    """One docling window; `(None, "pypdf")` on crash or timeout.
+) -> list[PageItem] | None:
+    """One docling window; ``None`` hands the window to the pypdf fallback.
 
     ``settings.structured_output`` passes through to the parse, so a
     flag-on window carries the rich item fields end to end.
@@ -73,7 +73,12 @@ def parse_one_docling_window(
     if settings.window_subprocess:
         try:
             items = parse_window_in_subprocess(
-                path, start, end, settings.window_timeout_s, settings.structured_output
+                path,
+                "docling",
+                start,
+                end,
+                settings.window_timeout_s,
+                settings.structured_output,
             )
         except Exception:
             items = None  # a wrapper failure must not kill the run
@@ -82,12 +87,9 @@ def parse_one_docling_window(
                 f"Window {index + 1} crashed or timed out in the child process. "
                 "Used the pypdf fallback."
             )
-            return None, "pypdf"
-        return items, "docling"
+        return items
     try:
-        return parse_window_docling(converter, path, start, end, settings.structured_output), (
-            "docling"
-        )
+        return parse_window_docling(converter, path, start, end, settings.structured_output)
     except Exception:
         warnings.append(f"docling failed on pages {start} to {end}; used pypdf page text")
-        return None, "pypdf"
+        return None

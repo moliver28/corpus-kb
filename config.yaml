@@ -87,17 +87,20 @@ ingestion:
   default: default
 
 # Textbook ingestion (textbook-ingestion program; full parses need the
-# [docling] extra). The textbook gate claims PDFs with
+# [docling] extra; the paddle-vl challenger needs the [ocr-vl] extra).
+# The textbook gate claims PDFs with
 # at least min_pages pages (pypdf probe, the [scan] extra) and windows
 # them into window_pages blocks so one book does not monopolize a run.
-# parser picks the page parser; cache_dir keeps parsed page artifacts
+# parser picks the page parser (docling, paddle-vl, or pypdf); cache_dir
+# keeps parsed page artifacts
 # under the repo's data dir convention (~/.corpus-kb). window_subprocess
-# parses each Docling window in a child process, so a scanned-page crash
+# parses each heavy window in a child process, so a scanned-page crash
 # cannot kill the worker (issue #219); the window then falls back to
 # pypdf after window_timeout_s. cache_max_mb caps the window cache in
 # MiB and evicts the oldest files first; 0 disables the cap (issue #221).
 # structured_output keeps rich page structure (heading level, page box,
 # table markdown) in the parsed windows; false keeps the plain text.
+# The paddle-vl parse is page text today, so the flag does not change it.
 # citations writes a plain page + section citation into each chunk's
 # metadata; false leaves the metadata unchanged.
 textbook:

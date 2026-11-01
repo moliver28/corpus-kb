@@ -214,7 +214,7 @@ The windowed large-PDF strategy (`docs/INGESTION-STRATEGIES.md`,
 |-----|---------|-------------|
 | `min_pages` | `120` | The page-count gate: PDFs at or above this count take the windowed path. Shorter PDFs fall back to the default plan |
 | `window_pages` | `50` | Pages per parse window; one Docling call per window |
-| `parser` | `docling` | The page parser: `docling` or `pypdf` |
+| `parser` | `docling` | The page parser: `docling`, `paddle-vl`, or `pypdf`. `paddle-vl` is the PaddleOCR-VL challenger; it needs the `[ocr-vl]` extra and parses page text only today |
 | `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |
 | `structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows |
 | `citations` | `false` | Write a plain-English `citation` string (true pages, section title) into each chunk's metadata |

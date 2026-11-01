@@ -817,9 +817,9 @@ SUPPORTED_TOPIC_METHODS = frozenset({"bertopic"})
 # reranking.backend and reranking.return_top_k rules are shared with
 # rag/rerank_settings.py — see the rerank_rules import above.
 # textbook.parser values (textbook-ingestion Wave 1). "docling" is the
-# structured page parser ([docling] extra); "pypdf" the scan-only fallback
-# ([scan] extra).
-SUPPORTED_TEXTBOOK_PARSERS = frozenset({"docling", "pypdf"})
+# structured page parser ([docling] extra); "paddle-vl" the PaddleOCR-VL
+# challenger ([ocr-vl] extra); "pypdf" the scan-only fallback ([scan] extra).
+SUPPORTED_TEXTBOOK_PARSERS = frozenset({"docling", "paddle-vl", "pypdf"})
 # graph_policy.mode values (Wave 1): "all" mirrors today's write behavior;
 # "semantic_only" admits only graph_eligible relation types.
 SUPPORTED_GRAPH_POLICY_MODES = frozenset({"all", "semantic_only"})

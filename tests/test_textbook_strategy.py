@@ -49,6 +49,12 @@ _SUBPROCESS_TARGET = "corpus_kb.ingestion.strategies.textbook_windows.parse_wind
 # Subprocess mode gates on the module spec (the parent never imports
 # docling), so the child-path tests patch this seam, not the loader.
 _SPEC_TARGET = "corpus_kb.ingestion.strategies.textbook_windows.find_spec"
+# The paddle challenger's seams: the dispatch table in textbook.py points
+# at the textbook_paddle module, so its patches target that namespace.
+_PADDLE_MODEL_TARGET = "corpus_kb.ingestion.strategies.textbook_paddle.load_paddle_model"
+_PADDLE_PARSE_TARGET = "corpus_kb.ingestion.strategies.textbook_paddle.parse_window_paddle"
+_PADDLE_SPEC_TARGET = "corpus_kb.ingestion.strategies.textbook_paddle.find_spec"
+_PADDLE_SUB_TARGET = "corpus_kb.ingestion.strategies.textbook_paddle.parse_window_in_subprocess"
 
 
 def _patch_docling_present(monkeypatch: pytest.MonkeyPatch, present: bool) -> None:
@@ -461,7 +467,8 @@ def test_subprocess_crash_falls_back_and_caches_under_pypdf(
     monkeypatch.setattr(_PAGES_TARGET, loader)
     _patch_docling_present(monkeypatch, present=True)  # the spec gate passes; the child fails
     monkeypatch.setattr(
-        _SUBPROCESS_TARGET, lambda pdf, start, end, timeout_s, structured=False: None
+        _SUBPROCESS_TARGET,
+        lambda pdf, parser, start, end, timeout_s, structured=False: None,
     )
     cache_dir = tmp_path / "cache"
     config = _config(1, 2, str(cache_dir))
@@ -483,8 +490,14 @@ def test_subprocess_payload_feeds_the_docling_cache(
     _patch_docling_present(monkeypatch, present=True)  # the spec gate passes
 
     def _wrapper(
-        pdf: Path, start: int, end: int, timeout_s: float, structured: bool = False
+        pdf: Path,
+        parser: str,
+        start: int,
+        end: int,
+        timeout_s: float,
+        structured: bool = False,
     ) -> list[PageItem]:
+        assert parser == "docling"  # the dispatch names the child target
         del pdf, timeout_s, structured
         return [PageItem(page, "text", f"shipped page {page}") for page in range(start, end + 1)]
 
@@ -716,9 +729,15 @@ def test_structured_subprocess_window_ships_and_caches_rich(
     seen: dict[str, object] = {}
 
     def _wrapper(
-        pdf: Path, start: int, end: int, timeout_s: float, structured: bool = False
+        pdf: Path,
+        parser: str,
+        start: int,
+        end: int,
+        timeout_s: float,
+        structured: bool = False,
     ) -> list[PageItem]:
         seen["structured"] = structured
+        seen["parser"] = parser
         return [
             PageItem(page, "table", "| t |", table_markdown="| t |", level=2)
             for page in range(start, end + 1)
@@ -729,8 +748,93 @@ def test_structured_subprocess_window_ships_and_caches_rich(
     config = _config(1, 4, str(cache_dir), structured_output=True)
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
     assert seen["structured"] is True  # the flag traveled to the child call
+    assert seen["parser"] == "docling"
     assert list(cache_dir.glob("docling-v2-rich-*.json"))  # cached under the rich tag
     assert any("| t |" in chunk.text for chunk in plan.chunks)
+
+
+# ---------------------------------------------------------------------------
+# paddle-vl challenger: dispatch, cache tag, degrade paths (all fakes)
+# ---------------------------------------------------------------------------
+
+
+def test_paddle_windows_parse_and_cache_under_their_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    monkeypatch.setattr(_PADDLE_MODEL_TARGET, lambda: object())  # sentinel model state
+    seen: list[tuple[int, int]] = []
+
+    def _parse_window(
+        state: object, pdf: Path, start: int, end: int, structured: bool = False
+    ) -> list[PageItem]:
+        del state, pdf, structured
+        seen.append((start, end))
+        return [PageItem(page, "text", f"paddle page {page}") for page in range(start, end + 1)]
+
+    monkeypatch.setattr(_PADDLE_PARSE_TARGET, _parse_window)
+    cache_dir = tmp_path / "cache"
+    config = _config(1, 4, str(cache_dir), parser="paddle-vl", window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert seen == [(1, 4), (5, 6)]
+    assert list(cache_dir.glob("paddle-vl-v1-*.json"))
+    assert any("paddle page 2" in chunk.text for chunk in plan.chunks)
+    assert plan.textbook_summary is not None
+    assert plan.textbook_summary["parser"] == "paddle-vl"
+    assert validate_plan(plan) == []
+
+
+def test_paddle_structured_flag_keeps_the_plain_cache_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    monkeypatch.setattr(_PADDLE_MODEL_TARGET, lambda: object())
+
+    def _parse_window(
+        state: object, pdf: Path, start: int, end: int, structured: bool = False
+    ) -> list[PageItem]:
+        del state, pdf, structured
+        return [PageItem(page, "text", "paddle body") for page in range(start, end + 1)]
+
+    monkeypatch.setattr(_PADDLE_PARSE_TARGET, _parse_window)
+    cache_dir = tmp_path / "cache"
+    config = _config(
+        1, 4, str(cache_dir), parser="paddle-vl", window_subprocess=False, structured_output=True
+    )
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert list(cache_dir.glob("paddle-vl-v1-*.json"))
+    assert not list(cache_dir.glob("paddle-vl-v1-rich-*.json"))
+    assert plan.chunks
+
+
+def test_paddle_missing_extra_degrades_to_pypdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", [f"body {n}" for n in range(1, 5)])
+    monkeypatch.setattr(_PADDLE_SPEC_TARGET, lambda name: None)  # the spec gate fails
+    config = _config(1, 2, str(tmp_path / "cache"), parser="paddle-vl")  # subprocess default on
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert any("'ocr-vl' extra" in warning for warning in plan.warnings)
+    assert plan.chunks
+    assert validate_plan(plan) == []
+
+
+def test_paddle_child_crash_falls_back_and_caches_under_pypdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", [f"body {n}" for n in range(1, 5)])
+    monkeypatch.setattr(_PADDLE_SPEC_TARGET, lambda name: object())  # the spec gate passes
+    monkeypatch.setattr(
+        _PADDLE_SUB_TARGET,
+        lambda pdf, parser, start, end, timeout_s, structured=False: None,
+    )
+    cache_dir = tmp_path / "cache"
+    config = _config(1, 2, str(cache_dir), parser="paddle-vl")
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert any("crashed or timed out" in warning for warning in plan.warnings)
+    assert list(cache_dir.glob("pypdf-*.json"))
+    assert not list(cache_dir.glob("paddle-vl-*.json"))
+    assert plan.chunks
 
 
 # ---------------------------------------------------------------------------

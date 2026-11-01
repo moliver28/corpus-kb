@@ -22,7 +22,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .textbook_docling import page_row, rich_fields_from_row
-from .textbook_pages import PARSER_VERSIONS, PageItem, WindowRecord
+from .textbook_pages import PageItem, WindowRecord
+from .textbook_registry import PARSER_VERSIONS
 
 logger = logging.getLogger(__name__)
 
