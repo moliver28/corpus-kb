@@ -19,6 +19,7 @@ import pytest
 
 from corpus_kb.handlers import (
     coding_handler,
+    command_handler,
     graph_handler,
     idempotency,
     research_handler,
@@ -26,6 +27,7 @@ from corpus_kb.handlers import (
     tag_handler,
     versioning_handler,
 )
+from corpus_kb.handlers.command_handler import CommandHandler
 from corpus_kb.handlers.idempotency import IdempotencyChecker
 
 _RAISE_STYLE_FAMILIES: list[tuple[ModuleType, str, str, str, str]] = [
@@ -133,3 +135,17 @@ def test_research_handler_lazy_create_and_no_pool_returns_existing() -> None:
             research_handler.get_research_handler()
     finally:
         research_handler.reset_research_handler()
+
+
+def test_command_handler_lazy_create_reuses_and_reset() -> None:
+    command_handler.reset_command_handler()
+    try:
+        first = command_handler.get_command_handler()
+        second = command_handler.get_command_handler()
+        assert first is second
+        assert isinstance(first, CommandHandler)
+        command_handler.reset_command_handler()
+        third = command_handler.get_command_handler()
+        assert third is not first
+    finally:
+        command_handler.reset_command_handler()
