@@ -87,7 +87,7 @@ Exit codes: 0 means the run answered, including an empty golden set.
 - recall@k: the share of relevant chunk ids that appear in the top k hits.
 - MRR: the reciprocal rank of the first relevant hit, averaged over records.
 - nDCG@10: the ranking quality of the top ten, rewarding relevant hits placed higher.
-- faithfulness: the share of answer claims the retrieved evidence supports.
+- faithfulness: the share of answer assertions the retrieved evidence supports.
 - answer relevancy: how closely the produced answer addresses the question.
 - contextual recall: the share of the reference answer found in the retrieved evidence.
 - contextual precision: how high the useful evidence ranks inside the retrieved context.

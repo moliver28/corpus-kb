@@ -366,7 +366,7 @@ To add real multi-tenancy, create tenants in the `tenants` table and route each 
 
 DuckDB is the opt-in local engine (`database.backend: duckdb`). While an
 ingest runs, a few read-time behaviors differ from Postgres. All of them
-settle when the ingest commit lands. Engine selection, ops tuning, and
+settle when the ingest commit lands. Engine selection, runtime tuning, and
 the full swap guide live in [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 - Chunk vectors and relations write in a second pass. A read during an

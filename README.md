@@ -2,7 +2,7 @@
 
 **A local NLP engine for files, transcripts, and code. Ingest, search, ask, extract, and code. No cloud.**
 
-Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coders get a CLI with a guided quickstart. Expert researchers get a qualitative-coding pipeline, an OpenAI-compatible API, and MCP tools for coding agents. Everything runs on your machine. Postgres stores the data by default; DuckDB is the single-file local engine ([Storage backends](docs/STORAGE-BACKENDS.md)). Ollama or PostgresML generates embeddings. One server exposes the catalogue over MCP stdio, HTTP REST, and a JSON-RPC socket. An OpenAI-compatible adapter serves `/v1` chat and embeddings. See [Editor integration](#editor-integration).
+Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coders get a CLI with a guided quickstart. Expert researchers get a qualitative-coding pipeline, an OpenAI-compatible API, and MCP tools for coding agents. Everything runs on your machine. Postgres stores the data by default; DuckDB is the single-file local engine ([Storage backends](docs/STORAGE-BACKENDS.md)). Ollama or PostgresML generates embeddings. One server exposes the catalogue over MCP stdio, HTTP, and a JSON-RPC socket. An OpenAI-compatible adapter serves `/v1` chat and embeddings. See [Editor integration](#editor-integration).
 
 ---
 
@@ -65,11 +65,11 @@ a first search. The step-by-step quickstart is in
 
 - **Hybrid search** that blends vector similarity, full-text search, and rank fusion, with honest handling of degraded (zero-vector) chunks
 - **Reranking** — a local judgment scorer by default, or a true cross-encoder through llama.cpp
-- **Answer generation** with per-sentence citations, plus claim-level verification with honest abstention
+- **Answer generation** with per-sentence citations, plus assertion-level verification with honest abstention
 - **Query routing** — each question goes to vector search, SQL aggregates, or graph traversal
 - **Self-query filters** — natural-language filters parsed into parameterized SQL predicates
 - **Knowledge graph** with entities, relations, and BFS traversal
-- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER2)
+- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER)
 - **Pluggable ingestion strategies** — default, transcript, PPTX slide structure, and web page structure, extensible three ways ([docs/INGESTION-STRATEGIES.md](docs/INGESTION-STRATEGIES.md))
 - **Website ingestion** — a robots-respecting fetcher with same-domain crawl and heading-section chunks
 - **Late chunking** — one model pass per document; chunk vectors pool from their own token spans
@@ -151,7 +151,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Browser UI](docs/UI.md) | The four pages: Add, Ask, Library, Overview |
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
-| [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, ops tuning |
+| [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, runtime tuning |
 | [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
 | [API](docs/API.md) | HTTP routes, the `/v1` OpenAI adapter, curl examples, MCP tool reference |
 | [Observability](docs/OBSERVABILITY.md) | OpenTelemetry spans, exporters, zero-cost when off |

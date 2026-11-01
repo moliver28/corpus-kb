@@ -121,7 +121,7 @@ change, never a config edit.
 
 ## Optional extras
 
-- `pip install -e ".[latechunk]"` - late-chunking embedder (G1 A/B loser on
+- `pip install -e ".[latechunk]"` - late chunking embedder (G1 A/B loser on
   the pinned fixture; kept as the causal reference arm).
 - `pip install -e ".[inductive]"` - UMAP/HDBSCAN clustering for the
   inductive engine.

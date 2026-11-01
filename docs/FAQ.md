@@ -4,7 +4,7 @@ Common questions about Corpus-KB.
 
 ---
 
-## Do I need PostgreSQL?
+## Do I need Postgres?
 
 Not always. Postgres 17 with pgvector and Apache AGE is the default engine. The DuckDB engine stores everything in one local file and needs no Docker. Both are first-class; see [Storage backends](STORAGE-BACKENDS.md). Earlier prototypes used LanceDB, DuckDB, and SQLite; DuckDB returned as a full engine in the storage-portability program.
 

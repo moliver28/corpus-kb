@@ -1,6 +1,6 @@
 # API Reference
 
-Corpus-KB exposes MCP over stdio, HTTP REST, and JSON-RPC over a Unix socket or Windows named pipe. This page lists the HTTP routes and gives curl examples for each; the MCP tool reference lives in [FEATURES.md](FEATURES.md).
+Corpus-KB exposes MCP over stdio, HTTP, and JSON-RPC over a Unix socket or Windows named pipe. This page lists the HTTP routes and gives curl examples for each; the MCP tool reference lives in [FEATURES.md](FEATURES.md).
 
 ---
 
