@@ -479,6 +479,8 @@ def get_default_config() -> dict[str, object]:
         # Docling window in a child process (issue #219); cache_max_mb
         # evicts the oldest window-cache files past the cap (issue #221).
         # structured_output keeps rich page structure in the windows.
+        # citations writes a plain page + section citation into each
+        # chunk's metadata.
         "textbook": {
             "min_pages": 120,
             "window_pages": 50,
@@ -488,6 +490,7 @@ def get_default_config() -> dict[str, object]:
             "window_timeout_s": 3600.0,
             "cache_max_mb": 2048,
             "structured_output": False,
+            "citations": False,
         },
         # Ingest queue worker knobs (tools/queue_tools.py + the Wave 2
         # worker). autorun: false keeps the worker off; enqueue-only is

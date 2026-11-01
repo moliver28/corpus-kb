@@ -988,6 +988,8 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "textbook.cache_max_mb": int,
         # Rich-structure flag (textbook program W1-B).
         "textbook.structured_output": bool,
+        # Citation flag (textbook program W2-B).
+        "textbook.citations": bool,
         "queue.autorun": bool,
         "queue.poll_seconds": int,
         "queue.stale_lease_seconds": int,

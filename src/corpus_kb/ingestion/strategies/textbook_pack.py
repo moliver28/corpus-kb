@@ -31,6 +31,16 @@ def page_range(page_map: list[PageSpan], start: int, end: int) -> tuple[int, int
     return hits[0][2], hits[-1][3]
 
 
+def _citation_text(page_start: int, page_end: int, title: str | None) -> str:
+    """A plain-English citation: the true pages, then the section title.
+
+    One page reads ``p. 34``; a range reads ``pp. 34-36``; a known
+    section appends after `` - `` (``pp. 34-36 - Section 2.1``).
+    """
+    pages = f"p. {page_start}" if page_start == page_end else f"pp. {page_start}-{page_end}"
+    return f"{pages} - {title}" if title else pages
+
+
 def make_chunk(
     document_text: str,
     strategy: str,
@@ -39,25 +49,34 @@ def make_chunk(
     end: int,
     title: str | None,
     index: int,
+    *,
+    citation: bool = False,
 ) -> PlannedChunk:
     """Build one chunk draft over ``document_text[start:end]`` — the one builder.
 
     Both ``plan_chunks`` call sites (greedy packing and hard split)
     derive every field here: the text is an exact slice, the claimed
     pages come from the page map, and the heading path carries the
-    opening block's title (or None when it has none).
+    opening block's title (or None when it has none). With ``citation``
+    set and pages known, the metadata gains a ``citation`` string built
+    from those same claimed pages; flag-off keeps the metadata exact.
     """
     page_start, page_end = page_range(page_map, start, end)
     start_line, end_line = _line_span(document_text, start, end)
+    metadata: dict[str, object] = {
+        "strategy": strategy,
+        "section": title,
+        "page_start": page_start,
+        "page_end": page_end,
+    }
+    if citation and page_start > 0:
+        # Same pages as the entries above: the citation cites what the
+        # page map resolved for this chunk's char span, nothing else.
+        metadata["citation"] = _citation_text(page_start, page_end, title)
     return PlannedChunk(
         text=document_text[start:end],
         index=index,
-        metadata={
-            "strategy": strategy,
-            "section": title,
-            "page_start": page_start,
-            "page_end": page_end,
-        },
+        metadata=metadata,
         source_type="text",
         heading_path=[title] if title else None,
         start_line=start_line,

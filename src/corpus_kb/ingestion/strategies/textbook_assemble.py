@@ -18,6 +18,8 @@ The pass order is fixed:
    (``textbook_pack``): pages are the true first and last pages the
    chunk's char span touches, and ``heading_path`` carries the section
    title. Chunk texts are exact ``document_text`` slices by construction.
+   With ``citations`` set, each chunk's metadata also gains a plain
+   ``citation`` string built from its claimed pages and section title.
 
 Honest limits: a section spanning many windows keeps its opening title,
 and headers Docling missed inside later windows stay unfilled — bookmarks
@@ -139,6 +141,8 @@ def plan_chunks(
     strategy: str,
     budget_chars: int,
     warnings: list[str],
+    *,
+    citations: bool = False,
 ) -> tuple[str, list[PlannedChunk]]:
     """Pack section blocks into budget-bounded chunks with true page metadata.
 
@@ -148,7 +152,9 @@ def plan_chunks(
     through :func:`bounded_pieces` (zero overlap, exact offsets). Every
     chunk goes through :func:`make_chunk`, so its pages are the true
     first and last pages its char span touches, its heading path is its
-    opening block's title, and its text is an exact slice.
+    opening block's title, and its text is an exact slice. With
+    ``citations`` set, each chunk's metadata also carries a ``citation``
+    string; flag-off leaves the metadata shape unchanged.
     """
     target_tokens = max(1, budget_chars // CHARS_PER_TOKEN)
     segments: list[Segment] = []
@@ -183,6 +189,7 @@ def plan_chunks(
                 current[-1][0].end_char,
                 current[0][1].title,
                 len(chunks),
+                citation=citations,
             )
         )
         current = []
@@ -205,6 +212,7 @@ def plan_chunks(
                         piece.end_char,
                         block.title,
                         len(chunks),
+                        citation=citations,
                     )
                 )
             continue

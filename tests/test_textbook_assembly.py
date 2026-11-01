@@ -26,6 +26,7 @@ from corpus_kb.ingestion.strategies.textbook_cache import (
     save_window_cache,
     window_ranges,
 )
+from corpus_kb.ingestion.strategies.textbook_pack import make_chunk
 from corpus_kb.ingestion.strategies.textbook_pages import OutlineBookmark, PageItem, WindowRecord
 from corpus_kb.ingestion.strategies.textbook_settings import settings_from
 
@@ -55,6 +56,8 @@ def test_window_ranges_cover_all_pages_inclusive() -> None:
 def test_settings_defaults_and_overrides() -> None:
     defaults = settings_from({})
     assert (defaults.min_pages, defaults.window_pages, defaults.parser) == (120, 50, "docling")
+    assert defaults.structured_output is False
+    assert defaults.citations is False
     tuned = settings_from(
         {"textbook": {"min_pages": 3, "window_pages": 7, "parser": "pypdf", "cache_dir": "x"}}
     )
@@ -64,8 +67,13 @@ def test_settings_defaults_and_overrides() -> None:
         "pypdf",
         "x",
     )
-    junk = settings_from({"textbook": {"min_pages": "many", "window_pages": -1, "parser": 3}})
+    flagged = settings_from({"textbook": {"citations": True, "structured_output": True}})
+    assert (flagged.citations, flagged.structured_output) == (True, True)
+    junk = settings_from(
+        {"textbook": {"min_pages": "many", "window_pages": -1, "parser": 3, "citations": "yes"}}
+    )
     assert (junk.min_pages, junk.window_pages, junk.parser) == (120, 50, "docling")
+    assert junk.citations is False
 
 
 # ---------------------------------------------------------------------------
@@ -268,6 +276,67 @@ def test_blocks_without_item_spans_fall_back_to_block_level_pages() -> None:
     assert all(
         (chunk.metadata["page_start"], chunk.metadata["page_end"]) == (3, 9) for chunk in chunks
     )
+
+
+# ---------------------------------------------------------------------------
+# Citations: flag-off exact shape, flag-on format, true pages per piece
+# ---------------------------------------------------------------------------
+
+
+def test_flag_off_metadata_keeps_the_exact_default_shape() -> None:
+    blocks = section_blocks(assign_sections(flatten_windows(_two_window_book()), []))
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, 60, [])
+    for chunk in chunks:
+        assert list(chunk.metadata) == ["strategy", "section", "page_start", "page_end"]
+        assert "citation" not in chunk.metadata
+    assert chunks[0].metadata == {
+        "strategy": TEXTBOOK_STRATEGY_NAME,
+        "section": "Chapter One",
+        "page_start": 1,
+        "page_end": 3,
+    }
+
+
+def test_citation_format_single_page_range_and_missing_title() -> None:
+    page_map = [(0, 10, 34, 34), (10, 20, 35, 36)]
+    single = make_chunk(
+        "x" * 10, TEXTBOOK_STRATEGY_NAME, page_map[:1], 0, 10, None, 0, citation=True
+    )
+    assert single.metadata["citation"] == "p. 34"
+    titled = make_chunk(
+        "x" * 20, TEXTBOOK_STRATEGY_NAME, page_map, 0, 20, "Section 2.1", 0, citation=True
+    )
+    assert titled.metadata["citation"] == "pp. 34-36 - Section 2.1"
+    plain = make_chunk("x" * 20, TEXTBOOK_STRATEGY_NAME, page_map, 0, 20, None, 0, citation=True)
+    assert plain.metadata["citation"] == "pp. 34-36"
+
+
+def test_flag_on_adds_citation_and_keeps_the_first_four_keys() -> None:
+    blocks = [
+        SectionBlock("One", 1, 1, "a body"),
+        SectionBlock(None, 2, 2, "b body"),
+    ]
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, 8, [], citations=True)
+    assert [chunk.metadata["citation"] for chunk in chunks] == ["p. 1 - One", "p. 2"]
+    for chunk in chunks:
+        assert list(chunk.metadata)[:4] == ["strategy", "section", "page_start", "page_end"]
+
+
+def test_citation_pages_are_the_true_attributed_pages_of_each_piece() -> None:
+    page_text = "word " * 819
+    items = [_item(2, "Chapter Deep", HEADER), *(_item(page, page_text) for page in (3, 4, 5))]
+    blocks = section_blocks(assign_sections(items, []))
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, [], citations=True)
+    assert len(chunks) > 1
+    assert chunks[0].metadata["page_start"] == 2  # the header page opens the block
+    assert chunks[-1].metadata["page_end"] == 5
+    citations = [str(chunk.metadata["citation"]) for chunk in chunks]
+    assert len(set(citations)) > 1  # pieces cite their own pages, not one block range
+    for chunk in chunks:
+        start, end = chunk.metadata["page_start"], chunk.metadata["page_end"]
+        pages = f"p. {start}" if start == end else f"pp. {start}-{end}"
+        assert chunk.metadata["citation"] == f"{pages} - Chapter Deep"
+        assert start <= end
 
 
 def _audit_book() -> list[WindowRecord]:

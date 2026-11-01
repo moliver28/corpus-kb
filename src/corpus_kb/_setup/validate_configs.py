@@ -764,6 +764,9 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     # Rich-structure flag (textbook program W1-B): keeps level, page
     # boxes, and table markdown in the parsed windows.
     "textbook.structured_output": bool,
+    # Citation flag (textbook program W2-B): writes a plain page +
+    # section citation string into each chunk's metadata.
+    "textbook.citations": bool,
     # -- ingest queue worker knobs (tools/queue_tools.py, Wave 1) ------------
     "queue.autorun": bool,
     "queue.poll_seconds": int,
@@ -1068,6 +1071,9 @@ def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
     flag = textbook.get("structured_output")
     if flag is not None and not isinstance(flag, bool):
         errors.append(f"textbook.structured_output: must be a bool, got {flag!r}")
+    flag = textbook.get("citations")
+    if flag is not None and not isinstance(flag, bool):
+        errors.append(f"textbook.citations: must be a bool, got {flag!r}")
     return errors
 
 

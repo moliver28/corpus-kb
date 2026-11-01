@@ -759,6 +759,8 @@ def test_real_docling_leg(tmp_path: Path) -> None:
 def test_settings_helper_matches_config_block() -> None:
     assert settings_from({"textbook": {"min_pages": 5}}).min_pages == 5
     assert settings_from(None).window_pages == 50
+    assert settings_from({"textbook": {"citations": True}}).citations is True
+    assert settings_from(None).citations is False
 
 
 # ---------------------------------------------------------------------------

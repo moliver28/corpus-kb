@@ -746,6 +746,7 @@ class TestRuntimeTextbookKeys:
         assert RUNTIME_CONFIG_KEYS["textbook.window_timeout_s"] is float
         assert RUNTIME_CONFIG_KEYS["textbook.cache_max_mb"] is int
         assert RUNTIME_CONFIG_KEYS["textbook.structured_output"] is bool
+        assert RUNTIME_CONFIG_KEYS["textbook.citations"] is bool
 
     def test_shipped_yamls_carry_the_new_textbook_keys(self):
         for name in ("config.yaml", "src/corpus_kb/config.yaml"):
@@ -755,6 +756,7 @@ class TestRuntimeTextbookKeys:
             assert cfg["textbook"]["window_timeout_s"] == 3600.0, name
             assert cfg["textbook"]["cache_max_mb"] == 2048, name
             assert cfg["textbook"]["structured_output"] is False, name
+            assert cfg["textbook"]["citations"] is False, name
 
     def test_extended_textbook_block_passes(self):
         errors = validate_configs._textbook_block_errors(
@@ -798,6 +800,19 @@ class TestRuntimeTextbookKeys:
         config["textbook"]["structured_output"] = "yes"
         errors = validate_runtime_config(config)
         assert any("key 'textbook.structured_output' must be bool" in e for e in errors)
+
+    def test_citations_flag_rules(self):
+        block = {"min_pages": 120, "window_pages": 50}
+        ok = validate_configs._textbook_block_errors({**block, "citations": True})
+        assert ok == []
+        bad = validate_configs._textbook_block_errors({**block, "citations": "yes"})
+        assert any("textbook.citations: must be a bool" in e for e in bad)
+
+    def test_mistyped_citations_rejected_by_type_map(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["textbook"]["citations"] = "yes"
+        errors = validate_runtime_config(config)
+        assert any("key 'textbook.citations' must be bool" in e for e in errors)
 
     def test_mistyped_window_timeout_rejected_by_type_map(self):
         config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
