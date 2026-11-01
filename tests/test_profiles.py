@@ -196,6 +196,15 @@ def test_audience_data_types_accepted(profiles_dir: Path, data_type: str) -> Non
     assert profile.data_type == data_type
 
 
+def test_textbook_data_type_accepted(profiles_dir: Path) -> None:
+    """The textbook data type labels the shipped textbook starter profile."""
+    (profiles_dir / "tb.yaml").write_text("name: tb\ndata_type: textbook\n", encoding="utf-8")
+    config = _config(profiles_dir, ingestion={"profile": "tb"})
+    profile = load_profile(config)
+    assert profile is not None
+    assert profile.data_type == "textbook"
+
+
 def test_validate_modes_stay_in_lockstep() -> None:
     """profiles never imports the tools layer; this test pins the two sets."""
     from corpus_kb.tools.pipeline.validate import MODES
@@ -235,6 +244,7 @@ def test_shipped_starter_profiles_parse() -> None:
         "starter-product": ("product", "advisory"),
         "starter-engineering": ("engineering", "advisory"),
         "starter-design": ("design", "advisory"),
+        "starter-textbook": ("textbook", "advisory"),
     }
     for name, (data_type, validate_mode) in expected.items():
         path = repo_profiles / f"{name}.yaml"

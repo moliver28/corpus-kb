@@ -1,0 +1,15 @@
+# The textbook strategy gates on page count: files under the floor keep
+# the default plan, so a short PDF never fails an ingest. Knobs live in
+# config.yaml under `textbook:`. Packaged defaults: min_pages 120,
+# window_pages 50, parser docling, structured_output false.
+name: starter-textbook
+description: >-
+  Paved starting profile for textbook corpora. Long PDFs parse with
+  docling and chunk in page windows, so chapters stay coherent. Files
+  that miss the page floor keep the default plan. Validation runs in
+  advisory mode. Findings ride the ingest result. They never block a
+  write. Edit freely, or copy it and rename.
+data_type: textbook
+ingestion:
+  default: textbook
+validate: advisory

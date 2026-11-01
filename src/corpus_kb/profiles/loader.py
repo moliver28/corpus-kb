@@ -7,7 +7,8 @@ the profiles directory, so a profile is portable with its corpus.
 
 Data types are corpus labels, not pipelines. ``product``, ``engineering``,
 and ``design`` (Wave 6) label the shipped starter profiles for those
-audiences. There is no ``research`` type on purpose: research transcripts
+audiences; ``textbook`` labels the textbook starter. There is no
+``research`` type on purpose: research transcripts
 stay on ``interview``/``focus_group``, which the research ingest path
 already serves turn by turn.
 """
@@ -39,6 +40,10 @@ DATA_TYPES: frozenset[str] = frozenset(
         "product",
         "engineering",
         "design",
+        # Textbook corpora (textbook upgrade W2-C): labels the shipped
+        # textbook starter profile. The strategy gates on page count and
+        # falls back to the default plan for short files.
+        "textbook",
     }
 )
 # Mirrors tools.pipeline.validate.MODES (kept literal so profiles never
