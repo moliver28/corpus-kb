@@ -63,11 +63,11 @@ HANDLER_FTS_MATCH = (
     "to_tsvector('english', coalesce(chunks.context_blurb,'') || ' ' || chunks.text)"
     " @@ plainto_tsquery('english', $1)"
 )
-# research/retrieval.py:310 (unit dense arm; tenant $1, project $2, vector $3)
+# research/retrieval_arms.py (unit dense arm; tenant $1, project $2, vector $3)
 RETRIEVAL_DISTANCE = "u.embedding::halfvec(1024) <=> $3::halfvec(1024)"
-# research/retrieval.py:361
+# research/retrieval_arms.py (unit FTS arm)
 RETRIEVAL_FTS_RANK = "ts_rank(to_tsvector('english', u.text), plainto_tsquery('english', $3))"
-# research/retrieval.py:366
+# research/retrieval_arms.py (unit FTS match guard)
 RETRIEVAL_FTS_MATCH = "to_tsvector('english', u.text) @@ plainto_tsquery('english', $3)"
 # projections/research/_embed.py:166
 EMBED_MATRYOSHKA = "l2_normalize(subvector($3::vector, 1, 256))"
@@ -98,14 +98,14 @@ def test_pg_vector_distance_matches_arm_literals() -> None:
     assert _norm(POSTGRES.vector_distance("cv.embedding", pgml_param)) == _norm(
         "cv.embedding <=> (SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1)::halfvec"
     )
-    # research/retrieval.py:310
+    # research/retrieval_arms.py, shared dense arm
     assert POSTGRES.vector_distance("u.embedding::halfvec(1024)", "$3::halfvec(1024)") == (
         RETRIEVAL_DISTANCE
     )
 
 
 def test_pg_vector_cast_matches_retrieval_literal() -> None:
-    """::halfvec(n) matches research/retrieval.py; ::vector(n) is the twin form."""
+    """::halfvec(n) matches the research arms; ::vector(n) is the twin form."""
     assert POSTGRES.vector_cast("$3", 1024) == "$3::halfvec(1024)"
     plain = Dialect(backend="postgres", vector_type="vector")
     assert plain.vector_cast("$3", 1024) == "$3::vector(1024)"
@@ -123,7 +123,7 @@ def test_pg_fts_fragments_match_query_handler_literals() -> None:
 
 
 def test_pg_fts_fragments_match_retrieval_literals() -> None:
-    """research/retrieval.py FTS arms (query text is param $3 there)."""
+    """Research arm FTS forms (retrieval_arms.py; query text is param $3 there)."""
     assert POSTGRES.fts_match("to_tsvector('english', u.text)", "$3") == RETRIEVAL_FTS_MATCH
     assert POSTGRES.fts_rank("to_tsvector('english', u.text)", "$3") == RETRIEVAL_FTS_RANK
 
