@@ -144,9 +144,10 @@ poe ui-licenses  # production license allowlist
 CI runs the same targets: the `ui` job for the build gates, the
 REQUIRED `ui-e2e` job for the live smoke. The e2e job needs Postgres
 (the bundled image) and degrades without Ollama exactly like the pytest
-suite. The gates cover lint, types, unit tests, the build, the bundle
-budget (350 kB gzip per initial route), the license allowlist, and the
-manifest drift check. The Playwright smoke runs with the axe scan. The
+suite. The gates cover lint, types, unit tests, the build, and the
+license allowlist. The bundle budget caps the initial route at 350 kB
+gzip. The manifest drift check pins the ops table. The Playwright
+smoke runs with the axe scan. The
 CI enforcement map in
 [research/harness-zero-drift-program.md](research/harness-zero-drift-program.md)
 (rule 10) holds the pairings.
