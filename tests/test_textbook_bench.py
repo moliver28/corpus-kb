@@ -149,21 +149,36 @@ def test_attribution_exact_when_no_block_splits() -> None:
     assert report["exact"] == report["chunks"]
 
 
-def test_attribution_flags_split_pieces_claiming_whole_block() -> None:
-    # One section flowing over two pages, long enough to force a split;
-    # every split piece claims the full block span, so the head and tail
-    # pieces lie while only the middle piece spans both pages.
+def test_attribution_split_pieces_carry_true_spans() -> None:
+    # One section flowing over two pages, long enough to force a split.
+    # W2-A stamps every split piece with its own char-derived page span,
+    # so no piece claims pages it does not overlap and all are exact.
     body = "word " * 1600  # two 8000-char pages; the merged block splits in three
     items = [PageItem(1, "text", body), PageItem(2, "text", body)]
     _document_text, chunks = _pipeline(items)
     _rebuilt, spans = bench.rebuild_pages(items)
     report = bench.attribution_report(chunks, spans, True)
     assert report["chunks"] >= 3
-    assert report["exact"] < report["chunks"]
+    assert report["exact"] == report["chunks"]
+    assert report["exact_rate"] == 1.0
+    assert report["mismatch_examples"] == []
+
+
+def test_attribution_report_flags_a_span_overclaim() -> None:
+    # The checker itself must still flag the W0-era lie: a chunk whose
+    # recorded span claims a page its char range never overlaps.
+    items = [PageItem(1, "text", "alpha words"), PageItem(2, "text", "beta words")]
+    _document_text, spans = bench.rebuild_pages(items)
+    chunks = [
+        _chunk("alpha words", index=0, page_start=1, page_end=1),
+        _chunk("overclaim", index=1, page_start=1, page_end=2),
+    ]
+    report = bench.attribution_report(chunks, spans, True)
+    assert report["chunks"] == 2
+    assert report["exact"] == 1
     assert report["exact_rate"] < 1.0
-    trues = {tuple(example["true"]) for example in report["mismatch_examples"]}
-    assert trues == {(1, 1), (2, 2)}
-    assert all(example["claimed"] == [1, 2] for example in report["mismatch_examples"])
+    assert report["mismatch_examples"][0]["claimed"] == [1, 2]
+    assert report["mismatch_examples"][0]["true"] == [1, 1]
 
 
 def test_rebuild_pages_drops_blank_items_and_orders_by_page() -> None:
