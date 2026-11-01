@@ -225,3 +225,97 @@ async def test_junk_confidence_levels_raise_the_typed_error(
         await labeling_gold_tools.labeling_gold_check(
             object(), tenant_id=TENANT, gold_file=gold_path, confidence_level=level
         )
+
+
+def test_short_sha_answers_empty_on_an_unreadable_path(tmp_path: Path) -> None:
+    assert labeling_gold_tools._short_sha(str(tmp_path)) == ""
+    assert labeling_gold_tools._short_sha(str(tmp_path / "gold.json")).startswith("")
+
+
+async def test_bad_gold_label_values_answer_insufficient_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install(monkeypatch, _label_rows())
+    bad_label = tmp_path / "bad-label.json"
+    bad_label.write_text(json.dumps({"any-chunk": ""}), encoding="utf-8")
+    result = await labeling_gold_tools.labeling_gold_check(
+        object(), tenant_id=TENANT, gold_file=str(bad_label)
+    )
+    assert result["status"] == "insufficient_data"
+    assert "non-empty label name" in str(result["reason"])
+
+
+class _ProbeConn:
+    """Tables present, canned chunk_labels read (the ops-probe conn)."""
+
+    def __init__(self, label_rows: list[dict[str, Any]]) -> None:
+        self.label_rows = label_rows
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        if "to_regclass" in sql:
+            return "public.chunk_labels"
+        return None
+
+    async def execute(self, sql: str, *args: Any) -> str:
+        return "OK"
+
+    async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
+        if "FROM chunk_labels" in sql:
+            return list(self.label_rows)
+        return []
+
+    def transaction(self) -> _ProbeConn:
+        return self
+
+    async def __aenter__(self) -> _ProbeConn:
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+class _ProbePool:
+    """The pool shell tenant_connection needs (acquire + close)."""
+
+    def __init__(self, conn: _ProbeConn) -> None:
+        self._conn = conn
+
+    def acquire(self) -> _ProbePool:
+        return self
+
+    async def __aenter__(self) -> _ProbeConn:
+        return self._conn
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+    async def close(self) -> None:
+        return None
+
+
+async def test_real_seams_over_a_probe_pool(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No seam is patched: the store probe and the label read run against
+    the canned pool, and the gold check lands the per-class rows."""
+    rows = _label_rows()
+    label_rows = [
+        {
+            "chunk_id": str(row["chunk_id"]),
+            "label": str(row["label"]),
+            "probability": 0.9,
+            "created_at": None,
+        }
+        for row in rows
+    ]
+    pool = _ProbePool(_ProbeConn(label_rows))
+    # One meetings entry so BOTH classes validate (the first five built
+    # chunks are all reports).
+    gold = {**_gold(rows), str(rows[6]["chunk_id"]): str(rows[6]["label"])}
+    gold_path = _gold_file(tmp_path, gold)
+    result = await labeling_gold_tools.labeling_gold_check(
+        pool, tenant_id=TENANT, gold_file=gold_path
+    )
+    assert result["status"] == "success"
+    assert result["class_count"] == 2
+    assert result["params"]["n_population"] == 10

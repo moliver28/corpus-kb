@@ -153,3 +153,84 @@ async def test_junk_params_raise_the_typed_error(
     _install(monkeypatch, space, rows)
     with pytest.raises(ValidationError, match=fragment):
         await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT, **kwargs)
+
+
+class _ProbeConn:
+    """Tables present, canned reads keyed by table (the ops-probe conn)."""
+
+    def __init__(self, label_rows: list[dict[str, Any]], vector_rows: list[dict[str, Any]]):
+        self.label_rows = label_rows
+        self.vector_rows = vector_rows
+
+    async def fetchval(self, sql: str, *args: Any) -> Any:
+        if "to_regclass" in sql:
+            return "public.chunk_labels"
+        return None
+
+    async def execute(self, sql: str, *args: Any) -> str:
+        return "OK"
+
+    async def fetch(self, sql: str, *args: Any) -> list[dict[str, Any]]:
+        if "FROM chunks_vectors" in sql:
+            return list(self.vector_rows)
+        if "FROM chunk_labels" in sql:
+            return list(self.label_rows)
+        return []
+
+    def transaction(self) -> _ProbeConn:
+        return self
+
+    async def __aenter__(self) -> _ProbeConn:
+        return self
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+
+class _ProbePool:
+    """The pool shell tenant_connection needs (acquire + close)."""
+
+    def __init__(self, conn: _ProbeConn) -> None:
+        self._conn = conn
+
+    def acquire(self) -> _ProbePool:
+        return self
+
+    async def __aenter__(self) -> _ProbeConn:
+        return self._conn
+
+    async def __aexit__(self, *args: Any) -> bool:
+        return False
+
+    async def close(self) -> None:
+        return None
+
+
+async def test_real_seams_over_a_probe_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """No seam is patched: the store probe, the label read, and the real
+    vector loader all run against the canned pool and still flag the
+    planted mislabel first."""
+    space, rows = _rows()
+    vector_rows = [
+        {
+            "chunk_id": chunk_id,
+            "text": f"text {chunk_id}",
+            "embedding": "[" + ",".join(str(float(v)) for v in row) + "]",
+        }
+        for chunk_id, row in zip(space.ids, space.matrix.tolist(), strict=True)
+    ]
+    label_rows = [
+        {
+            "chunk_id": str(row["chunk_id"]),
+            "label": str(row["label"]),
+            "probability": 0.9,
+            "created_at": None,
+        }
+        for row in rows
+    ]
+    pool = _ProbePool(_ProbeConn(label_rows, vector_rows))
+    result = await labeling_triage_tools.labeling_triage(pool, tenant_id=TENANT)
+    assert result["status"] == "success"
+    assert result["n_flagged"] == 1
+    assert result["queue"][0]["chunk_id"] == _OUTLIER
+    assert result["queue"][0]["assigned_label"] == "b"
