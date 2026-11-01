@@ -53,7 +53,7 @@ Every operation is reachable programmatically. One line per surface:
 - **Tracing** with OpenTelemetry spans: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
 - **Offline evaluation** of retrieval and answers: [docs/EVALUATION.md](docs/EVALUATION.md)
 - **marimo notebooks** served at `/notebooks`: [docs/NOTEBOOKS.md](docs/NOTEBOOKS.md)
-- **Topics** (offline BERTopic over stored embeddings): [docs/TOPICS.md](docs/TOPICS.md)
+- **Topics** (offline BERTopic over stored embeddings): [docs/ANALYSIS.md](docs/ANALYSIS.md)
 
 First time on a terminal? `corpus-kb quickstart` walks you from zero to
 a first search. The step-by-step quickstart is in
@@ -70,11 +70,11 @@ a first search. The step-by-step quickstart is in
 - **Self-query filters** — natural-language filters parsed into parameterized SQL predicates
 - **Knowledge graph** with entities, relations, and BFS traversal
 - **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER)
-- **Pluggable ingestion strategies** — default, transcript, PPTX slide structure, and web page structure, extensible three ways ([docs/INGESTION-STRATEGIES.md](docs/INGESTION-STRATEGIES.md))
+- **Pluggable ingestion strategies** — default, transcript, PPTX slide structure, and web page structure, extensible three ways ([docs/INGESTION.md](docs/INGESTION.md#ingestion-strategies))
 - **Website ingestion** — a robots-respecting fetcher with same-domain crawl and heading-section chunks
 - **Late chunking** — one model pass per document; chunk vectors pool from their own token spans
 - **Qualitative coding** — transcript ingestion, codebooks, deductive and inductive runs, human review, governance reports, and a gated release lifecycle
-- **Topics** — offline BERTopic clustering over stored embeddings ([docs/TOPICS.md](docs/TOPICS.md))
+- **Topics** — offline BERTopic clustering over stored embeddings ([docs/ANALYSIS.md](docs/ANALYSIS.md))
 - **LlamaIndex RAG backend** with PGVectorStore and Ollama for local vector search
 - **Event sourcing** for audit trails and rebuildable projections
 - **Multi-tenant Postgres** with row-level security on every table
@@ -164,8 +164,8 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
 | [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
-| [Ingestion strategies](docs/INGESTION-STRATEGIES.md) | Extending ingestion: config mapping, in-process registration, entry-point plugins |
-| [Topics](docs/TOPICS.md) | The topic layer: offline BERTopic over stored embeddings, LLM labels, config |
+| [Ingestion strategies](docs/INGESTION.md#ingestion-strategies) | Extending ingestion: config mapping, in-process registration, entry-point plugins |
+| [Topics](docs/ANALYSIS.md#topics) | The topic layer: offline BERTopic over stored embeddings, LLM labels, config |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
 | [Internal program docs](docs/research/) | Archive: playbooks, research math, benchmarks, harness distribution, program plans |
 
