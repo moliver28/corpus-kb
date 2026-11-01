@@ -27,7 +27,7 @@ from corpus_kb.ingestion.strategies.textbook_cache import (
     save_window_cache,
     window_ranges,
 )
-from corpus_kb.ingestion.strategies.textbook_pack import bounded_pieces, make_chunk
+from corpus_kb.ingestion.strategies.textbook_pack import bounded_pieces, make_chunk, page_units
 from corpus_kb.ingestion.strategies.textbook_pages import OutlineBookmark, PageItem, WindowRecord
 from corpus_kb.ingestion.strategies.textbook_settings import settings_from
 
@@ -338,6 +338,73 @@ def test_citation_pages_are_the_true_attributed_pages_of_each_piece() -> None:
         pages = f"p. {start}" if start == end else f"pp. {start}-{end}"
         assert chunk.metadata["citation"] == f"{pages} - Chapter Deep"
         assert start <= end
+
+
+# ---------------------------------------------------------------------------
+# Units: table pages ride structured_output into chunk metadata
+# ---------------------------------------------------------------------------
+
+
+def _table(page: int, markdown: str) -> PageItem:
+    # The real flag-on shape: a blank-text table carries its markdown as text.
+    return PageItem(page=page, label="table", text=markdown, table_markdown=markdown)
+
+
+def test_page_units_maps_table_pages_and_stays_empty_when_the_flag_is_off() -> None:
+    items = [_item(1, "prose"), _table(2, "| a |"), _table(3, "| b |"), _item(4, "prose")]
+    assert page_units(items) == {2: ("table",), 3: ("table",)}
+    assert page_units([_item(1, "prose")]) == {}  # no rich fields, no units
+
+
+def test_units_attach_to_chunks_that_cover_table_pages() -> None:
+    items = [
+        _item(1, "Chapter One", HEADER),
+        _item(2, "small body"),
+        _item(3, "Chapter Two", HEADER),
+        _table(4, "| a |"),
+    ]
+    blocks = section_blocks(assign_sections(items, []))
+    _, chunks = plan_chunks(
+        blocks, TEXTBOOK_STRATEGY_NAME, 40, [], units=page_units(items)
+    )  # 40 chars: one block per chunk (6 + 5 tokens over the 10-token target)
+    assert [chunk.metadata.get("units") for chunk in chunks] == [None, ["table"]]
+
+
+def test_chunk_over_several_table_pages_lists_the_unit_once() -> None:
+    items = [_item(1, "Chapter One", HEADER), _table(2, "| a |"), _table(3, "| b |")]
+    blocks = section_blocks(assign_sections(items, []))
+    _, chunks = plan_chunks(
+        blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, [], units=page_units(items)
+    )
+    assert len(chunks) == 1  # one packed chunk spans both table pages
+    assert chunks[0].metadata["units"] == ["table"]
+
+
+def test_units_key_stays_absent_when_no_covered_page_holds_a_unit() -> None:
+    items = [_item(1, "Chapter One", HEADER), _item(2, "body")]
+    blocks = section_blocks(assign_sections(items, []))
+    _, with_map = plan_chunks(
+        blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, [], units={5: ("table",)}
+    )
+    assert all("units" not in chunk.metadata for chunk in with_map)  # page 5 is not covered
+    _, plain = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, [])
+    assert [dict(chunk.metadata) for chunk in with_map] == [
+        dict(chunk.metadata) for chunk in plain
+    ]  # an empty coverage is byte-identical to no map
+
+
+def test_units_metadata_is_a_sorted_plain_string_list() -> None:
+    chunk = make_chunk(
+        "x" * 10,
+        TEXTBOOK_STRATEGY_NAME,
+        [(0, 10, 3, 4)],
+        0,
+        10,
+        None,
+        0,
+        units={3: ("table",), 4: ("figure", "table")},
+    )
+    assert chunk.metadata["units"] == ["figure", "table"]  # sorted; plain strings only
 
 
 def _audit_book() -> list[WindowRecord]:

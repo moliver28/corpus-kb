@@ -934,6 +934,53 @@ def test_citations_flag_reaches_built_chunks_and_flag_off_stays_exact(
     assert all("citation" not in chunk.metadata for chunk in plain.chunks)
 
 
+def test_table_units_ride_structured_output_and_flag_off_stays_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pages = {
+        1: [_RichNode("section_header", "Chapter One", 1), _RichNode("text", "intro body", 1)],
+        2: [_RichNode("table", "", 2, "| a |")],
+        3: [_RichNode("text", "mid body", 3)],
+        4: [_RichNode("section_header", "Chapter Two", 4), _RichNode("table", "", 4, "| b |")],
+        5: [_RichNode("text", "tail body", 5)],
+        6: [_RichNode("text", "end body", 6)],
+    }
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    monkeypatch.setattr(_PAGES_TARGET, lambda: _RichConverter(pages))
+    on = _config(1, 4, str(tmp_path / "cache-on"), window_subprocess=False, structured_output=True)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), on))
+    assert plan.chunks and validate_plan(plan) == []
+    table_pages = {2, 4}
+    for chunk in plan.chunks:
+        covers = any(
+            chunk.metadata["page_start"] <= page <= chunk.metadata["page_end"]
+            for page in table_pages
+        )
+        assert (chunk.metadata.get("units") == ["table"]) is covers
+
+    def _boom() -> object:
+        raise AssertionError("must use the rich cache")
+
+    monkeypatch.setattr(_PAGES_TARGET, _boom)
+    again = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), on))
+    assert [chunk.text for chunk in again.chunks] == [chunk.text for chunk in plan.chunks]
+    for fresh, cached in zip(plan.chunks, again.chunks, strict=True):
+        assert (fresh.metadata["page_start"], fresh.metadata["page_end"]) == (
+            cached.metadata["page_start"],
+            cached.metadata["page_end"],
+        )
+        assert fresh.metadata.get("units") == cached.metadata.get("units")
+
+    monkeypatch.setattr(_PAGES_TARGET, lambda: _RichConverter(pages))
+    off = _config(1, 4, str(tmp_path / "cache-off"), window_subprocess=False)
+    plain = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), off))
+    assert plain.chunks and validate_plan(plain) == []
+    assert all(
+        list(chunk.metadata) == ["strategy", "section", "page_start", "page_end"]
+        for chunk in plain.chunks
+    )
+
+
 # ---------------------------------------------------------------------------
 # Cache bounds: a record naming foreign pages is a miss (re-parse)
 # ---------------------------------------------------------------------------
