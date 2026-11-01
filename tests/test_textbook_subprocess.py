@@ -63,19 +63,23 @@ class _FakeProc:
 
 
 class _FakeQueue:
-    """Payload-queue double: canned rows, or Empty on every read."""
+    """Payload-queue double: canned rows, or Empty on every read.
 
-    def __init__(self, rows: list[dict[str, object]] | None = None) -> None:
+    Rows are typed loosely on purpose: a corrupt child payload may hold
+    non-dict rows, and the tests feed exactly that.
+    """
+
+    def __init__(self, rows: list[object] | None = None) -> None:
         self._rows = rows
         self.closed = False
 
-    def get(self, timeout: float | None = None) -> list[dict[str, object]]:
+    def get(self, timeout: float | None = None) -> list[object]:
         del timeout
         if self._rows is None:
             raise Empty
         return self._rows
 
-    def put(self, rows: list[dict[str, object]]) -> None:
+    def put(self, rows: list[object]) -> None:
         self._rows = rows
 
     def close(self) -> None:
@@ -205,6 +209,19 @@ def test_a_malformed_rich_row_is_skipped(monkeypatch: pytest.MonkeyPatch) -> Non
     _patch_child(monkeypatch, proc, _FakeQueue(rows))
     items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
     assert items == [PageItem(5, "text", "kept")]
+
+
+def test_a_non_dict_row_is_skipped_and_the_parse_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows: list[object] = [
+        "garbage",  # a corrupt payload row: skipped, not a crash
+        {"page": 6, "label": "text", "text": "kept"},
+    ]
+    proc = _FakeProc(exitcode=0)
+    _patch_child(monkeypatch, proc, _FakeQueue(rows))
+    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    assert items == [PageItem(6, "text", "kept")]
 
 
 # ---------------------------------------------------------------------------

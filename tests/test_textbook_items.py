@@ -4,8 +4,8 @@ The Docling leg runs against fakes shaped like the real walk
 (``convert -> document.iterate_items`` with levels, provenance boxes,
 and table nodes that export markdown). The rich fields follow the W1-B
 rule: level and bbox fill on every item, table markdown fills only
-behind ``structured_output``, and a plain parse serializes the legacy
-three keys and nothing else.
+behind ``structured_output``. A row holds three keys only when the
+item set nothing; a docling item's row carries level/bbox flag-off too.
 """
 
 from __future__ import annotations

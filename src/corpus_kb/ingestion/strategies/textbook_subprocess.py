@@ -163,6 +163,8 @@ def _items_from_rows(rows: WindowPayload) -> list[PageItem]:
     """
     items: list[PageItem] = []
     for row in rows:
+        if not isinstance(row, dict):
+            continue  # a corrupt payload row skips, never fails the window
         page = row.get("page")
         label = row.get("label")
         text = row.get("text")

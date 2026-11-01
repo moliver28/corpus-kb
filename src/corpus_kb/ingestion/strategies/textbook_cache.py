@@ -162,7 +162,8 @@ def save_window_cache(path: Path, key: CacheKey, record: WindowRecord) -> None:
         "start_page": record.start_page,
         "end_page": record.end_page,
         # The shared row rule: rich keys appear only when the item set
-        # them, so a plain parse serializes the legacy three-key rows.
+        # them. A pypdf row holds three keys; a docling row also carries
+        # level/bbox once the walk provides them.
         "pages": [page_row(item) for item in record.items],
     }
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")

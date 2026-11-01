@@ -187,7 +187,8 @@ def _table_markdown(node: object, document: object) -> str | None:
 def page_row(item: PageItem) -> dict[str, object]:
     """The serialized row for one item; rich keys appear only when set.
 
-    One row rule for both carriers; a flag-off record holds three keys.
+    One row rule for both carriers: a pypdf row holds three keys, and a
+    docling row also carries level/bbox once the walk provides them.
     """
     row: dict[str, object] = {"page": item.page, "label": item.label, "text": item.text}
     if item.level is not None:

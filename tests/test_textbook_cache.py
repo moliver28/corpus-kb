@@ -1,11 +1,12 @@
 """The window cache: rich-field round trip and legacy-record compatibility.
 
-The save side serializes rich keys only when the item set them, so a
-plain parse writes the legacy three-key rows and the JSON bytes do not
-change. The load side parses rich keys when present and misses on a
-malformed value (the caller re-parses, never guesses). Keys come from
-:class:`CacheKey`, whose ``parser_version`` resolves plain parser
-names and passes rich-variant tags through.
+The save side serializes rich keys only when the item set them: a pypdf
+row holds three keys, and a docling row also carries level/bbox once
+the walk provides them (absorbed by the docling-v2 cache tag). The load
+side parses rich keys when present and misses on a malformed value (the
+caller re-parses, never guesses). Keys come from :class:`CacheKey`,
+whose ``parser_version`` resolves plain parser names and passes
+rich-variant tags through.
 """
 
 from __future__ import annotations
