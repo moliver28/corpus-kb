@@ -98,6 +98,8 @@ ingestion:
 # MiB and evicts the oldest files first; 0 disables the cap (issue #221).
 # structured_output keeps rich page structure (heading level, page box,
 # table markdown) in the parsed windows; false keeps the plain text.
+# citations writes a plain page + section citation into each chunk's
+# metadata; false leaves the metadata unchanged.
 textbook:
   min_pages: 120
   window_pages: 50
@@ -107,6 +109,7 @@ textbook:
   window_timeout_s: 3600.0
   cache_max_mb: 2048
   structured_output: false
+  citations: false
 
 # Ingest queue worker knobs (queue_tools + the Wave 2 worker). autorun
 # keeps the worker off by default: enqueue lands rows, nothing drains

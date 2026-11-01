@@ -15,6 +15,9 @@ Keys (all optional; unknown shapes keep the default):
   evict first, and ``0`` disables the cap (default 2048)
 * ``structured_output`` — keep rich page structure (heading level,
   page box, table markdown) in the parsed windows (default false)
+* ``citations`` — write a plain-English ``citation`` string (the true
+  pages and the section title) into each chunk's metadata
+  (default false)
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ DEFAULT_WINDOW_SUBPROCESS = True
 DEFAULT_WINDOW_TIMEOUT_S = 3600.0
 DEFAULT_CACHE_MAX_MB = 2048
 DEFAULT_STRUCTURED_OUTPUT = False
+DEFAULT_CITATIONS = False
 
 
 @dataclass(frozen=True)
@@ -44,6 +48,7 @@ class TextbookSettings:
     window_timeout_s: float = DEFAULT_WINDOW_TIMEOUT_S
     cache_max_mb: int = DEFAULT_CACHE_MAX_MB
     structured_output: bool = DEFAULT_STRUCTURED_OUTPUT
+    citations: bool = DEFAULT_CITATIONS
 
 
 def _int_setting(raw: object, default: int) -> int:
@@ -90,4 +95,5 @@ def settings_from(config: Mapping[str, object] | None) -> TextbookSettings:
         window_timeout_s=_float_setting(block.get("window_timeout_s"), DEFAULT_WINDOW_TIMEOUT_S),
         cache_max_mb=_nonneg_int_setting(block.get("cache_max_mb"), DEFAULT_CACHE_MAX_MB),
         structured_output=_bool_setting(block.get("structured_output"), DEFAULT_STRUCTURED_OUTPUT),
+        citations=_bool_setting(block.get("citations"), DEFAULT_CITATIONS),
     )

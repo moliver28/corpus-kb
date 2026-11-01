@@ -127,6 +127,7 @@ or below `min_pages`, it falls back to the default plan.
 | `textbook.window_timeout_s` | `3600.0` | Seconds before a child window parse is killed and pypdf takes over. Number, 1 or more |
 | `textbook.cache_max_mb` | `2048` | Window-cache size cap in MiB. The oldest files evict first. `0` disables the cap |
 | `textbook.structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows. Flag, true or false |
+| `textbook.citations` | `false` | Write a plain-English `citation` string (true pages, section title) into each chunk's metadata. Flag, true or false |
 
 Books are long jobs, so most people run them through the ingest queue
 ([HARNESS-PLAYBOOKS.md](research/HARNESS-PLAYBOOKS.md), "Recipe: queue the
