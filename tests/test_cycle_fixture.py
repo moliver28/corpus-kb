@@ -3,9 +3,19 @@
 The cycle runs the REAL pipeline (dynamic ingest, inductive pass,
 promotion gate, deductive run, keywords, report, notebook), so this file
 carries BOTH requires_postgres AND requires_ollama: CI's DB-less matrix
-auto-skips via the conftest TCP probe, and the ollama probe below skips
-model-less hosts. All cycle control-flow semantics that need no database
-are pinned offline in test_cycle_offline.py.
+auto-skips via the conftest TCP probe, and the probe marks below skip
+model-less hosts before any fixture runs. All cycle control-flow
+semantics that need no database are pinned offline in
+test_cycle_offline.py.
+
+Provisioning: the conftest session fixture builds the throwaway database
+through tests/research_db.py. Its name is corpus_kb_t11_test; set
+CORPUS_KB_TEST_DB to run two pytest sessions at once, or one session
+force-drops the other's database mid-run. Each test rebinds the
+eventsourcing app through fresh_research_app. That fixture pins the DSN
+env var for the test body, so codebook_promote reads the throwaway
+database. A bare config read would target config.yaml's compose DSN and
+hang the eventsourcing pool for 30 seconds (issue 215).
 
 The heavy live-inductive work runs ONCE (tenant X): one out-mode call
 halts at the promotion gate with halt_on stripped to the hard floor AND
@@ -24,10 +34,12 @@ from io import StringIO
 from pathlib import Path
 from typing import cast
 from unittest.mock import patch
+from urllib.parse import urlparse
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 import asyncpg
 import pytest
+import research_db
 
 from corpus_kb.config import load_config
 from corpus_kb.research import guide_copy
@@ -35,8 +47,6 @@ from corpus_kb.research.cycle import run_cycle
 from corpus_kb.research.cycle_gates import GATE_EXIT_CODES
 from corpus_kb.research.cycle_stages import build_stack, stage_ingest
 from corpus_kb.research.cycle_state import last_cycle_checkpoint, pending_files
-
-pytestmark = [pytest.mark.requires_postgres, pytest.mark.requires_ollama]
 
 try:
     import umap  # noqa: F401
@@ -66,6 +76,28 @@ def _ollama_up() -> bool:
             return True
     except OSError:
         return False
+
+
+def _fixture_postgres_up() -> bool:
+    """TCP-probe the research_db fixture host (POSTGRES_* seam, not the env DSN)."""
+    parsed = urlparse(research_db.BASE_DSN)
+    host = parsed.hostname or "localhost"
+    port = parsed.port or 5432
+    try:
+        with socket.create_connection((host, port), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+pytestmark = [
+    pytest.mark.requires_postgres,
+    pytest.mark.requires_ollama,
+    pytest.mark.skipif(not _ollama_up(), reason="Ollama not reachable"),
+    pytest.mark.skipif(
+        not _fixture_postgres_up(), reason="Postgres fixture database not reachable"
+    ),
+]
 
 
 def _cycle_config(dsn: str) -> dict[str, object]:
@@ -165,32 +197,30 @@ async def _codable_units(dsn: str, tenant: UUID) -> int:
     not _INDUCTIVE_EXTRA, reason="the inductive extra (umap-learn) is not installed"
 )
 async def test_out_mode_taught_halt_promote_resume_complete(
-    research_dsn: str, tmp_path: Path
+    fresh_research_app: str, tmp_path: Path
 ) -> None:
     """The full happy path: one-stage in-mode -> taught gate-halt (hard floor)
     -> human promotes -> resume -> cited notebook answer + report artifact."""
-    if not _ollama_up():
-        pytest.skip("Ollama not reachable")
     drop = _drop_dir(tmp_path, TRANSCRIPTS)
 
     # In-mode: executes exactly ONE next stage (the ingest) and exits.
     code, out = await _run_cycle(
-        research_dsn, TENANT_X, mode="in", project_id=PROJECT_X, ingest_dir=drop, halt_on=[]
+        fresh_research_app, TENANT_X, mode="in", project_id=PROJECT_X, ingest_dir=drop, halt_on=[]
     )
     assert code == 0, out
     assert "--- ingest ---" in out
     assert "--- inductive ---" not in out, "in-mode ran more than one stage"
-    checkpoint = await _last_checkpoint(research_dsn, TENANT_X)
+    checkpoint = await _last_checkpoint(fresh_research_app, TENANT_X)
     assert checkpoint["kind"] == "stage_complete"
     assert checkpoint["stage"] == "ingest"
-    n_units = await _codable_units(research_dsn, TENANT_X)
+    n_units = await _codable_units(fresh_research_app, TENANT_X)
     assert n_units > 0, "ingest must project codable answer units for the inductive stage"
 
     # Out-of-loop with the config halt list EMPTY: only the HARD-FLOOR gate
     # remains, the cycle STILL halts at codebook_promotion, and --guide
     # turns the halt into a taught decision (r12 block asserted verbatim).
     code, out = await _run_cycle(
-        research_dsn,
+        fresh_research_app,
         TENANT_X,
         mode="out",
         project_id=PROJECT_X,
@@ -210,15 +240,18 @@ async def test_out_mode_taught_halt_promote_resume_complete(
     assert guide_copy.GATE_CODEBOOK_PROMOTION_SKIP_CONSEQUENCE in out
     assert "codebook promote" in out, "halt must print the actionable next command"
 
-    run_id = await _any_inductive_run(research_dsn, TENANT_X)
-    ids = await _proposed_ids(research_dsn, TENANT_X, run_id)
+    run_id = await _any_inductive_run(fresh_research_app, TENANT_X)
+    ids = await _proposed_ids(fresh_research_app, TENANT_X, run_id)
     assert ids, "fixture inductive pass produced no proposals"
 
     # The human acts through the NAMED surface (corpus-kb codebook promote),
-    # which records the decision AND advances the projections.
+    # which records the decision AND advances the projections. The fixture
+    # pins the DSN env var for this test body, so the surface binds the
+    # eventsourcing app to THIS database (a config read would target the
+    # compose stack from config.yaml).
     from corpus_kb.tools.research_tools import codebook_promote as promote_surface
 
-    pool = await _pool(research_dsn)
+    pool = await _pool(fresh_research_app)
     try:
         promoted = await promote_surface(
             pool,
@@ -234,7 +267,7 @@ async def test_out_mode_taught_halt_promote_resume_complete(
 
     # Resume: the new cycle run continues after the gate and completes.
     code, out = await _run_cycle(
-        research_dsn,
+        fresh_research_app,
         TENANT_X,
         mode="out",
         project_id=PROJECT_X,
@@ -246,7 +279,7 @@ async def test_out_mode_taught_halt_promote_resume_complete(
     assert "Resuming after stage: inductive" in out
     for stage in ("deductive", "keywords", "report"):
         assert f"--- {stage} ---" in out, stage
-    checkpoint = await _last_checkpoint(research_dsn, TENANT_X)
+    checkpoint = await _last_checkpoint(fresh_research_app, TENANT_X)
     assert checkpoint["kind"] == "cycle_complete"
     # The cited notebook answer + the report artifact (traffic lights).
     assert guide_copy.NOTEBOOK_EVIDENCE_HEADER in out
@@ -255,7 +288,7 @@ async def test_out_mode_taught_halt_promote_resume_complete(
 
     # In-mode after completion: precisely the next (fresh) stage, then stop.
     code, out = await _run_cycle(
-        research_dsn, TENANT_X, mode="in", project_id=PROJECT_X, ingest_dir=drop, halt_on=[]
+        fresh_research_app, TENANT_X, mode="in", project_id=PROJECT_X, ingest_dir=drop, halt_on=[]
     )
     assert code == 0, out
     assert "--- ingest ---" in out
@@ -267,20 +300,18 @@ async def test_out_mode_taught_halt_promote_resume_complete(
 # ---------------------------------------------------------------------------
 
 
-async def test_on_mode_deny_stops_clean(research_dsn: str, tmp_path: Path) -> None:
-    if not _ollama_up():
-        pytest.skip("Ollama not reachable")
+async def test_on_mode_deny_stops_clean(fresh_research_app: str, tmp_path: Path) -> None:
     drop = _drop_dir(tmp_path, (TRANSCRIPTS[0],))
 
     async def deny(stage: str) -> bool:
         return False
 
     code, out = await _run_cycle(
-        research_dsn, TENANT_D, mode="on", ingest_dir=drop, halt_on=[], approve=deny
+        fresh_research_app, TENANT_D, mode="on", ingest_dir=drop, halt_on=[], approve=deny
     )
     assert code == 20, out
     assert guide_copy.CYCLE_APPROVAL_DENIED in out
-    checkpoint = await _last_checkpoint(research_dsn, TENANT_D)
+    checkpoint = await _last_checkpoint(fresh_research_app, TENANT_D)
     assert checkpoint["kind"] == "approval_denied"
     assert checkpoint["stage"] == "ingest"
 
@@ -290,15 +321,13 @@ async def test_on_mode_deny_stops_clean(research_dsn: str, tmp_path: Path) -> No
 # ---------------------------------------------------------------------------
 
 
-async def test_watch_picks_up_new_file_once(research_dsn: str, tmp_path: Path) -> None:
-    if not _ollama_up():
-        pytest.skip("Ollama not reachable")
+async def test_watch_picks_up_new_file_once(fresh_research_app: str, tmp_path: Path) -> None:
     drop = _drop_dir(tmp_path, (TRANSCRIPTS[0],))
 
-    pool = await _pool(research_dsn)
+    pool = await _pool(fresh_research_app)
     try:
         assert await pending_files(pool, TENANT_E, Path(drop)) == 1
-        stack = build_stack(pool, _cycle_config(research_dsn), research_dsn)
+        stack = build_stack(pool, _cycle_config(fresh_research_app), fresh_research_app)
         with patch("sys.stdout", StringIO()):
             receipt = await stage_ingest(pool, stack, TENANT_E, None, drop)
         assert receipt["status"] == "success"
