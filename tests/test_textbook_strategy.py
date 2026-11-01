@@ -595,6 +595,8 @@ def test_a_failing_page_extraction_warns_and_keeps_the_rest() -> None:
     items = parse_window_pypdf(_Reader(), 1, 3, warnings)
     assert [(item.page, item.text) for item in items] == [(1, "first"), (3, "third")]
     assert warnings == ["pages 2 did not extract; skipped"]
+
+
 # structured_output flag: the rich parse caches under its own tag
 # ---------------------------------------------------------------------------
 
