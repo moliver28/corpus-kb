@@ -76,10 +76,71 @@ def test_invalid_json_names_the_line(tmp_path: Any) -> None:
         {"lfs": []},
         {"classes": ["a", "a"], "lfs": []},
         {"classes": ["a"], "lfs": {}},
+        ["not", "an", "object"],
     ],
 )
 def test_bad_top_level_shapes_rejected(tmp_path: Any, doc: object) -> None:
     with pytest.raises(ValidationError):
+        load_lfs(_write(tmp_path, doc))
+
+
+def test_class_names_must_be_non_empty_strings(tmp_path: Any) -> None:
+    doc = {"classes": [""], "lfs": []}
+    with pytest.raises(ValidationError, match="every class name must be a non-empty string"):
+        load_lfs(_write(tmp_path, doc))
+
+
+def test_lf_entries_must_be_json_objects(tmp_path: Any) -> None:
+    doc = {"classes": ["a"], "lfs": ["x"]}
+    with pytest.raises(ValidationError, match='every entry in "lfs" must be a JSON object'):
+        load_lfs(_write(tmp_path, doc))
+
+
+def test_lf_needs_a_non_empty_name(tmp_path: Any) -> None:
+    doc = {"classes": ["a"], "lfs": [{"name": "", "kind": "regex", "label": "a", "config": {}}]}
+    with pytest.raises(ValidationError, match='non-empty "name"'):
+        load_lfs(_write(tmp_path, doc))
+
+
+def test_lf_config_must_be_a_json_object(tmp_path: Any) -> None:
+    doc = {"classes": ["a"], "lfs": [{"name": "x", "kind": "regex", "label": "a", "config": []}]}
+    with pytest.raises(ValidationError, match="config must be a JSON object"):
+        load_lfs(_write(tmp_path, doc))
+
+
+def test_terms_must_be_non_empty_strings(tmp_path: Any) -> None:
+    doc = {
+        "classes": ["a"],
+        "lfs": [{"name": "x", "kind": "lexicon", "label": "a", "config": {"terms": [""]}}],
+    }
+    with pytest.raises(ValidationError, match="every term must be a non-empty string"):
+        load_lfs(_write(tmp_path, doc))
+
+
+def test_case_sensitive_must_be_bool(tmp_path: Any) -> None:
+    doc = {
+        "classes": ["a"],
+        "lfs": [
+            {
+                "name": "x",
+                "kind": "lexicon",
+                "label": "a",
+                "config": {"terms": ["a"], "case_sensitive": "yes"},
+            }
+        ],
+    }
+    with pytest.raises(ValidationError, match="case_sensitive must be true or false"):
+        load_lfs(_write(tmp_path, doc))
+
+
+def test_required_config_strings_cannot_be_empty(tmp_path: Any) -> None:
+    doc = {
+        "classes": ["a"],
+        "lfs": [
+            {"name": "x", "kind": "metadata", "label": "a", "config": {"key": "", "equals": "x"}}
+        ],
+    }
+    with pytest.raises(ValidationError, match=r"config\.key must be a non-empty string"):
         load_lfs(_write(tmp_path, doc))
 
 
