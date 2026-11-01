@@ -35,6 +35,8 @@ Route families (the Route order below is the original single-file order):
                                POST /api/topics/trends
   api/routes_labeling.py       POST /api/labeling/build  GET /api/labeling
                                GET  /api/labeling/lfs
+                               POST /api/labeling/triage
+                               POST /api/labeling/gold-check
   api/routes_classification.py POST /api/classification/build  GET /api/classification
   api/routes_analysis.py       POST /api/analysis/backfill-dates  POST /api/analyze
   api/routes_analysis_methods.py  POST /api/analysis/{select-method,
@@ -119,8 +121,10 @@ from corpus_kb.api.routes_ingest import (
 )
 from corpus_kb.api.routes_labeling import (
     labeling_build_route,
+    labeling_gold_check_route,
     labeling_lfs_route,
     labeling_list_route,
+    labeling_triage_route,
 )
 from corpus_kb.api.routes_meta import (
     doctor_route,
@@ -193,6 +197,8 @@ def create_http_app() -> FastAPI:
         Route("/api/labeling/build", labeling_build_route, methods=["POST"]),
         Route("/api/labeling", labeling_list_route, methods=["GET"]),
         Route("/api/labeling/lfs", labeling_lfs_route, methods=["GET"]),
+        Route("/api/labeling/triage", labeling_triage_route, methods=["POST"]),
+        Route("/api/labeling/gold-check", labeling_gold_check_route, methods=["POST"]),
         Route("/api/classification/build", classification_build_route, methods=["POST"]),
         Route("/api/classification", classification_list_route, methods=["GET"]),
         Route("/api/analysis/backfill-dates", analysis_backfill_dates_route, methods=["POST"]),

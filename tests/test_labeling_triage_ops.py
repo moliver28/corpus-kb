@@ -1,0 +1,155 @@
+"""The labeling triage op end to end on faked seams (the ops-test pattern).
+
+The handler's seams (vectors, labels, store probe) are patched, so the
+numpy triage itself runs for real: a mislabeled unit in an otherwise
+clean space is flagged first, clean units stay out of the queue, the
+queue is deterministic, and every guard (no labels, thin corpus, absent
+tables, junk params) answers the honest envelope.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+import numpy as np
+import pytest
+
+from corpus_kb.analysis.vectors import VectorSpace
+from corpus_kb.errors import ValidationError
+from corpus_kb.tools import labeling_triage_tools
+
+TENANT = "00000000-0000-0000-0000-000000000001"
+
+# 8 "a" units near [1, 0], 3 clean "b" units near [0, 1], and one "b"
+# unit sitting in the "a" cluster: the planted label error (U39).
+_CLEAN_A = [f"a{index:011d}" for index in range(8)]
+_CLEAN_B = [f"b{index:011d}" for index in range(3)]
+_OUTLIER = "m00000000000"
+
+
+def _rows() -> tuple[VectorSpace, list[dict[str, object]]]:
+    matrix = np.array(
+        [[1.0, 0.0]] * 8 + [[0.0, 1.0]] * 3 + [[1.0, 0.0]],
+        dtype=np.float64,
+    )
+    ids = _CLEAN_A + _CLEAN_B + [_OUTLIER]
+    labels = ["a"] * 8 + ["b"] * 3 + ["b"]
+    rows = [
+        {"chunk_id": chunk_id, "label": label, "probability": 0.9}
+        for chunk_id, label in zip(ids, labels, strict=True)
+    ]
+    return VectorSpace(ids=ids, matrix=matrix, excluded_zero_count=0), rows
+
+
+def _install(
+    monkeypatch: pytest.MonkeyPatch,
+    space: VectorSpace,
+    rows: list[dict[str, object]],
+    tables: bool = True,
+) -> None:
+    """Pin the three handler seams to the canned world."""
+
+    async def vectors(pool: Any, tenant_id: str, config: dict[str, object] | None) -> VectorSpace:
+        return space
+
+    async def labels(pool: Any, tenant_id: str) -> list[dict[str, object]]:
+        return rows
+
+    async def present(pool: Any) -> bool:
+        return tables
+
+    monkeypatch.setattr(labeling_triage_tools, "_load_vectors", vectors)
+    monkeypatch.setattr(labeling_triage_tools, "_load_labels", labels)
+    monkeypatch.setattr(labeling_triage_tools, "_tables_present", present)
+
+
+async def test_mislabeled_unit_flags_first_and_queue_stays_clean(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space, rows = _rows()
+    _install(monkeypatch, space, rows)
+    result = await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT)
+    assert result["status"] == "success"
+    assert result["n_flagged"] == 1
+    queue = result["queue"]
+    assert len(queue) == 1
+    row = queue[0]
+    assert row["chunk_id"] == _OUTLIER
+    assert row["assigned_label"] == "b"
+    assert row["runner_up_label"] == "a"
+    assert row["oos_probability"] < row["runner_up_probability"]
+    assert result["classes"] == ["a", "b"]
+    assert result["n_units"] == 12
+
+
+async def test_queue_is_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
+    space, rows = _rows()
+    _install(monkeypatch, space, rows)
+    first = await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT)
+    second = await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT)
+    assert json.dumps(first["queue"]) == json.dumps(second["queue"])
+
+
+async def test_limit_bounds_the_head_but_not_the_total(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space, rows = _rows()
+    _install(monkeypatch, space, rows)
+    result = await labeling_triage_tools.labeling_triage(
+        object(), tenant_id=TENANT, cv_folds=2, flag_threshold=0.99, limit=2
+    )
+    # The near-one threshold flags most units, so the honest total can
+    # exceed the head: the queue is cut at 2 rows, the total never is.
+    assert result["n_flagged"] >= 2
+    assert len(result["queue"]) == 2
+    assert result["n_flagged"] >= len(result["queue"])
+
+
+async def test_thin_corpus_answers_insufficient_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space, rows = _rows()
+    _install(monkeypatch, space, rows[:5])
+    result = await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT)
+    assert result["status"] == "insufficient_data"
+    assert result["n_flagged"] == 0
+    assert result["queue"] == []
+    assert result["remedy"]
+
+
+async def test_no_labels_answers_insufficient_data(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    space, _rows_out = _rows()
+    _install(monkeypatch, space, [])
+    result = await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT)
+    assert result["status"] == "insufficient_data"
+    assert "no built labels" in str(result["reason"])
+
+
+async def test_absent_tables_answer_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    space, rows = _rows()
+    _install(monkeypatch, space, rows, tables=False)
+    result = await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT)
+    assert result["status"] == "unavailable"
+    assert result["remedy"] == "run corpus-kb setup"
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "fragment"),
+    [
+        ({"cv_folds": 1}, "cv_folds"),
+        ({"cv_folds": True}, "cv_folds"),
+        ({"flag_threshold": 0.0}, "flag_threshold"),
+        ({"flag_threshold": 1.5}, "flag_threshold"),
+        ({"limit": 0}, "limit"),
+    ],
+)
+async def test_junk_params_raise_the_typed_error(
+    monkeypatch: pytest.MonkeyPatch, kwargs: dict[str, Any], fragment: str
+) -> None:
+    space, rows = _rows()
+    _install(monkeypatch, space, rows)
+    with pytest.raises(ValidationError, match=fragment):
+        await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT, **kwargs)

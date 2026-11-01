@@ -3,6 +3,8 @@
 POST /api/labeling/build
 GET  /api/labeling
 GET  /api/labeling/lfs
+POST /api/labeling/triage      — the U39 review queue (read-only op)
+POST /api/labeling/gold-check  — the F6 gold-set validation (read-only op)
 
 Thin adapters: parse JSON, call the shared tool layer, return
 JSONResponse. Every route runs through ``@route_errors`` (api._body) —
@@ -60,6 +62,43 @@ async def labeling_lfs_route(request: Request) -> JSONResponse:
         await research_pool(),
         tenant_id=request.query_params.get("tenant_id", _TENANT_DEFAULT),
         limit=int(request.query_params.get("limit", labeling_tools.DEFAULT_LIST_LIMIT)),
+    )
+    status_code = 503 if result.get("status") == "unavailable" else 200
+    return JSONResponse(result, status_code=status_code)
+
+
+@route_errors
+async def labeling_triage_route(request: Request) -> JSONResponse:
+    """POST /api/labeling/triage — the weak-label review queue (U39)."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools import labeling_triage_tools
+
+    body = await parse_body(request)
+    result = await labeling_triage_tools.labeling_triage(
+        await research_pool(),
+        tenant_id=body.get("tenant_id", _TENANT_DEFAULT),
+        cv_folds=int(body.get("cv_folds", labeling_triage_tools.DEFAULT_TRIAGE_FOLDS)),
+        flag_threshold=float(
+            body.get("flag_threshold", labeling_triage_tools.DEFAULT_FLAG_THRESHOLD)
+        ),
+        limit=int(body.get("limit", labeling_triage_tools.DEFAULT_QUEUE_LIMIT)),
+    )
+    status_code = 503 if result.get("status") == "unavailable" else 200
+    return JSONResponse(result, status_code=status_code)
+
+
+@route_errors
+async def labeling_gold_check_route(request: Request) -> JSONResponse:
+    """POST /api/labeling/gold-check — the gold-set validation (F6)."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools import labeling_gold_tools
+
+    body = await parse_body(request)
+    result = await labeling_gold_tools.labeling_gold_check(
+        await research_pool(),
+        tenant_id=body.get("tenant_id", _TENANT_DEFAULT),
+        gold_file=body.get("gold_file"),
+        confidence_level=float(body.get("confidence_level", 0.95)),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)

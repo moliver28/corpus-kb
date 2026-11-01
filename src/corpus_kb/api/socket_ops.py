@@ -236,6 +236,34 @@ async def _labeling_lfs(params: dict[str, Any], tenant_id: str) -> dict[str, Any
     )
 
 
+async def _labeling_triage(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools import labeling_triage_tools
+
+    return await labeling_triage_tools.labeling_triage(
+        await research_pool(),
+        tenant_id=tenant_id,
+        cv_folds=int(params.get("cv_folds", labeling_triage_tools.DEFAULT_TRIAGE_FOLDS)),
+        flag_threshold=float(
+            params.get("flag_threshold", labeling_triage_tools.DEFAULT_FLAG_THRESHOLD)
+        ),
+        limit=int(params.get("limit", labeling_triage_tools.DEFAULT_QUEUE_LIMIT)),
+    )
+
+
+async def _labeling_gold_check(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.labeling_gold_tools import labeling_gold_check as gold_check_tool
+
+    gold_file = params.get("gold_file")
+    return await gold_check_tool(
+        await research_pool(),
+        tenant_id=tenant_id,
+        gold_file=str(gold_file) if gold_file is not None else None,
+        confidence_level=float(params.get("confidence_level", 0.95)),
+    )
+
+
 async def _classification_build(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.classification_tools import (
@@ -791,6 +819,8 @@ _CORE_ARMS: dict[str, Arm] = {
     "labeling_build": _labeling_build,
     "labeling_list": _labeling_list,
     "labeling_lfs": _labeling_lfs,
+    "labeling_triage": _labeling_triage,
+    "labeling_gold_check": _labeling_gold_check,
     "classification_build": _classification_build,
     "classification_list": _classification_list,
     "analysis_backfill_dates": _analysis_backfill_dates,
