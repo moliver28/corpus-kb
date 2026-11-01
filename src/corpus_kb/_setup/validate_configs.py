@@ -1057,9 +1057,6 @@ def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
         value = textbook.get(key)
         if isinstance(value, bool) or not isinstance(value, int) or value < 1:
             errors.append(f"textbook.{key}: must be a positive int, got {value!r}")
-    flag = textbook.get("window_subprocess")
-    if flag is not None and not isinstance(flag, bool):
-        errors.append(f"textbook.window_subprocess: must be a bool, got {flag!r}")
     timeout = textbook.get("window_timeout_s")
     if timeout is not None and (
         isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
@@ -1068,12 +1065,10 @@ def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
     cap = textbook.get("cache_max_mb")
     if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
         errors.append(f"textbook.cache_max_mb: must be a non-negative int, got {cap!r}")
-    flag = textbook.get("structured_output")
-    if flag is not None and not isinstance(flag, bool):
-        errors.append(f"textbook.structured_output: must be a bool, got {flag!r}")
-    flag = textbook.get("citations")
-    if flag is not None and not isinstance(flag, bool):
-        errors.append(f"textbook.citations: must be a bool, got {flag!r}")
+    for key in ("window_subprocess", "structured_output", "citations"):
+        flag = textbook.get(key)
+        if flag is not None and not isinstance(flag, bool):
+            errors.append(f"textbook.{key}: must be a bool, got {flag!r}")
     return errors
 
 
