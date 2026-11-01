@@ -813,6 +813,7 @@ class TestRuntimeTextbookKeys:
         config["textbook"]["citations"] = "yes"
         errors = validate_runtime_config(config)
         assert any("key 'textbook.citations' must be bool" in e for e in errors)
+
     def test_parser_enum_admits_paddle_vl(self):
         ok = validate_configs._textbook_block_errors(
             {
