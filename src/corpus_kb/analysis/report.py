@@ -30,7 +30,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from ..errors import CorpusError
+from ..errors import CorpusError, ValidationError
 
 __all__ = [
     "AnalysisSection",
@@ -77,13 +77,18 @@ async def run_section(
 ) -> AnalysisSection:
     """Call one feature handler; a typed failure becomes a failed section.
 
-    ``CorpusError`` keeps the error's remediation text. ``ValueError``
-    (the labeling loader's malformed-file contract) carries the fix in
-    its message, so no remedy row is added. Any other exception is NOT
-    a section outcome — it fails the run loudly.
+    ``CorpusError`` keeps the error's remediation text. The labeling
+    loader's ``ValidationError`` carries the fix in its message, so it
+    gets no remedy row — the same row shape a plain ``ValueError``
+    keeps. Any other exception is NOT a section outcome — it fails the
+    run loudly.
     """
     try:
         return mirror_section(name, await run())
+    except ValidationError as exc:
+        # Malformed user input: the fix text sits in the message. The
+        # section keeps the legacy ValueError envelope (no remedy row).
+        return failed_section(name, str(exc), None)
     except CorpusError as exc:
         return failed_section(name, str(exc), exc.remediation)
     except ValueError as exc:
