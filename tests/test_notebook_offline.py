@@ -245,6 +245,32 @@ def test_exchange_filters_use_exists_over_answer_units() -> None:
     assert "ra.unit_id = ANY(e.a_unit_ids)" in ex_frag
 
 
+def test_source_type_filter_flows_through_the_compiler() -> None:
+    """source_type binds once, on the shared documents join."""
+    sql = _Sql(str(TENANT), str(PROJECT))
+    q = ResearchQuery(query="x", tenant_id=TENANT, project_id=PROJECT, source_type="interview")
+    frag = _unit_filters(sql, q)
+    assert "d.source_type = $3" in frag
+    assert sql.values[2] == "interview"
+
+
+def test_topic_filter_flows_through_both_grains() -> None:
+    """topic_id reaches the compiler: parent subquery for units, column for exchanges."""
+    from corpus_kb.research.retrieval import _exchange_filters
+
+    sql = _Sql(str(TENANT), str(PROJECT))
+    q = ResearchQuery(query="x", tenant_id=TENANT, project_id=PROJECT, topic_id=7)
+    unit_frag = _unit_filters(sql, q)
+    assert "u.exchange_id IN (SELECT exchange_id FROM research_exchanges" in unit_frag
+    assert "topic_id = $3" in unit_frag
+    assert sql.values[2] == 7
+
+    ex_sql = _Sql(str(TENANT), str(PROJECT))
+    ex_frag = _exchange_filters(ex_sql, q)
+    assert "e.topic_id = $3" in ex_frag
+    assert ex_sql.values[2] == 7
+
+
 # ---------------------------------------------------------------------------
 # The notebook_ask tool docstring documents every filter (W5C)
 # ---------------------------------------------------------------------------
