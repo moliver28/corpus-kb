@@ -474,3 +474,245 @@ def test_import_never_pulls_transformers_torch_or_pdfium() -> None:
         [sys.executable, "-I", "-c", code], capture_output=True, text=True, timeout=120
     )
     assert result.returncode == 0, result.stderr
+    # The guard covers the whole strategy package surface.
+
+
+def test_parse_one_paddle_window_subprocess_crash_warns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A crash or timeout in the child warns once and hands the window
+    # to the pypdf fallback.
+    def _boom(*args: object, **kwargs: object) -> list[PageItem]:
+        raise RuntimeError("child died")
+
+    monkeypatch.setattr(textbook_paddle, "parse_window_in_subprocess", _boom)
+    notes: list[str] = []
+    settings = TextbookSettings(window_subprocess=True)
+    items = parse_one_paddle_window(settings, None, Path("b.pdf"), 1, 3, 0, notes)
+    assert items is None
+    expected = "Window 1 crashed or timed out in the child process. Used the pypdf fallback."
+    assert notes == [expected]
+
+
+def test_paddle_window_rows_logs_child_gaps(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A child-side render gap logs in the child (stderr reaches the run
+    # log) instead of traveling to the envelope.
+
+    def _gap_parse(
+        state: object,
+        path: object,
+        start: int,
+        end: int,
+        notes_list: list[str],
+        structured: bool,
+    ) -> list[PageItem]:
+        notes_list.append("render gap on page 3")
+        return []
+
+    monkeypatch.setattr(textbook_paddle, "load_paddle_model", lambda: "state")
+    monkeypatch.setattr(textbook_paddle, "parse_window_paddle", _gap_parse)
+    rows = paddle_window_rows("b.pdf", 3, 4)
+    assert rows == []
+    assert any("child window pages 3-4" in r.getMessage() for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# load_paddle_model / render_page: the lazy-import seams under fake modules
+# ---------------------------------------------------------------------------
+
+
+class _FakeCuda:
+    """The torch.cuda seam: no GPU, so the load lands on CPU."""
+
+    def is_available(self) -> bool:
+        return False
+
+
+class _FakeTorch:
+    """The torch double: the two dtype selection inputs."""
+
+    def __init__(self) -> None:
+        self.cuda = _FakeCuda()
+        self.float32 = "float32"
+        self.bfloat16 = "bfloat16"
+
+
+class _FakeLoadedModel:
+    """The from_pretrained product: records the move and eval order."""
+
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+
+    def to(self, device: str) -> None:
+        self.events.append(f"to:{device}")
+
+    def eval(self) -> None:
+        self.events.append("eval")
+
+
+class _FakeAutoModel:
+    """The AutoModelForImageTextToText seam: records the load call."""
+
+    def __init__(self, events: list[str]) -> None:
+        self.events = events
+        self.model = _FakeLoadedModel(events)
+        self.load_name = ""
+        self.load_kwargs: dict[str, object] = {}
+
+    def from_pretrained(self, name: str, **kwargs: object) -> _FakeLoadedModel:
+        self.events.append("load")
+        self.load_name = name
+        self.load_kwargs = dict(kwargs)
+        return self.model
+
+
+class _FakeAutoProcessor:
+    """The AutoProcessor seam: hands back one sentinel processor."""
+
+    def __init__(self) -> None:
+        self.processor = object()
+        self.load_name = ""
+
+    def from_pretrained(self, name: str) -> object:
+        self.load_name = name
+        return self.processor
+
+
+class _FakeTransformers:
+    """The transformers module double: the two auto classes."""
+
+    def __init__(self, events: list[str]) -> None:
+        self.AutoModelForImageTextToText = _FakeAutoModel(events)
+        self.AutoProcessor = _FakeAutoProcessor()
+
+
+class _FakeLoadImportlib:
+    """The import seam for the loader: torch plus transformers."""
+
+    def __init__(self, events: list[str]) -> None:
+        self.torch = _FakeTorch()
+        self.transformers = _FakeTransformers(events)
+
+    def import_module(self, name: str) -> object:
+        if name == "torch":
+            return self.torch
+        assert name == "transformers"
+        return self.transformers
+
+
+def test_load_paddle_model_loads_the_pair_on_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    fake = _FakeLoadImportlib(events)
+    monkeypatch.setattr(textbook_paddle, "importlib", fake)
+    auto_model = fake.transformers.AutoModelForImageTextToText
+    auto_processor = fake.transformers.AutoProcessor
+    state = textbook_paddle.load_paddle_model()
+    assert isinstance(state, PaddleState)
+    assert state.model is auto_model.model
+    assert state.processor is auto_processor.processor
+    # No CUDA in the fake: float32, load, move to CPU, then eval, in order.
+    assert events == ["load", "to:cpu", "eval"]
+    assert auto_model.load_name == PADDLE_VL_MODEL
+    assert auto_model.load_kwargs == {"dtype": "float32"}
+    assert auto_processor.load_name == PADDLE_VL_MODEL
+
+
+def test_load_paddle_model_returns_none_without_the_extra(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _NoTorch:
+        def import_module(self, name: str) -> object:
+            raise ImportError(name)
+
+    monkeypatch.setattr(textbook_paddle, "importlib", _NoTorch())
+    assert textbook_paddle.load_paddle_model() is None
+
+
+class _FakeBitmap:
+    """The render product: ``to_pil`` hands back one sentinel image."""
+
+    def __init__(self) -> None:
+        self.image = object()
+
+    def to_pil(self) -> object:
+        return self.image
+
+
+class _FakePdfPage:
+    """The page double: records the render scale."""
+
+    def __init__(self, bitmap: _FakeBitmap) -> None:
+        self.bitmap = bitmap
+        self.render_scale: float | None = None
+
+    def render(self, scale: float) -> _FakeBitmap:
+        self.render_scale = scale
+        return self.bitmap
+
+
+class _FakePdfDocument:
+    """The document double: zero-based indexing plus one close."""
+
+    def __init__(self) -> None:
+        self.page = _FakePdfPage(_FakeBitmap())
+        self.opened_with = ""
+        self.index: int | None = None
+        self.closes = 0
+
+    def __getitem__(self, index: int) -> _FakePdfPage:
+        self.index = index
+        return self.page
+
+    def close(self) -> None:
+        self.closes += 1
+
+
+class _FakePdfium:
+    """The pypdfium2 module double."""
+
+    def __init__(self) -> None:
+        self.document = _FakePdfDocument()
+
+    def PdfDocument(self, path: str) -> _FakePdfDocument:  # noqa: N802 (pypdfium2 API)
+        self.document.opened_with = path
+        return self.document
+
+
+class _FakeRenderImportlib:
+    """The import seam for render_page: pypdfium2 only."""
+
+    def __init__(self, pdfium: _FakePdfium) -> None:
+        self.pdfium = pdfium
+
+    def import_module(self, name: str) -> object:
+        assert name == "pypdfium2"
+        return self.pdfium
+
+
+def test_render_page_renders_one_page_and_closes_the_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pdfium = _FakePdfium()
+    monkeypatch.setattr(textbook_paddle, "importlib", _FakeRenderImportlib(pdfium))
+    document = pdfium.document
+    image = textbook_paddle.render_page("book.pdf", 3)
+    assert image is document.page.bitmap.image
+    assert document.opened_with == "book.pdf"
+    assert document.index == 2  # page - 1: the zero-based PDF index
+    assert document.page.render_scale == 2.0
+    assert document.closes == 1
+
+
+def test_render_page_returns_none_when_the_import_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _NoPdfium:
+        def import_module(self, name: str) -> object:
+            raise ImportError(name)
+
+    monkeypatch.setattr(textbook_paddle, "importlib", _NoPdfium())
+    assert textbook_paddle.render_page("book.pdf", 1) is None
