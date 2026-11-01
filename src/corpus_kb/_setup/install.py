@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 import psutil
@@ -303,6 +304,146 @@ async def _run_phase(
     return exit_code
 
 
+@dataclass
+class _SetupPlan:
+    """Resolved context for one ``corpus-kb setup`` run (checkpointed)."""
+
+    state: dict[str, Any]
+    completed: list[str]
+    conn_str: str
+    profile: str
+    recommended_model: str
+    compose_cmd: str | None
+    postgres_image: str
+    skip_image_verify: bool
+
+
+def _prepare_setup_plan(config: dict[str, Any], fresh: bool, skip_image_verify: bool) -> _SetupPlan:
+    """Resolve profile, DSN, compose command and checkpoint state for setup."""
+    info = detect_profile()
+    profiles = load_installer_profiles(config)
+    profile = info["profile"]
+    profile_cfg = profiles.get(profile, {})
+    recommended_model = profile_cfg.get("model", "nomic-embed-text")
+
+    conn_str = str(config.get("database", {}).get("connection_string", "")) or os.environ.get(
+        "CORPUS_KB_DATABASE_URL", ""
+    )
+    if not conn_str:
+        conn_str = "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb"
+
+    compose_cmd = _find_compose_command()
+
+    if fresh:
+        reset_install_state(config)
+
+    state = load_install_state(config)
+    # Shared list object with state["completed"]: _run_phase appends into it
+    # before each save_install_state, so checkpoints persist (same mechanism
+    # as the pre-split inline phases).
+    completed: list[str] = state.get("completed", [])
+
+    installer_cfg = config.get("installer", {})
+    postgres_image = str(installer_cfg.get("postgres_image", DEFAULT_POSTGRES_IMAGE))
+    verify_enabled = bool(installer_cfg.get("verify_image_signature", True))
+    return _SetupPlan(
+        state=state,
+        completed=completed,
+        conn_str=conn_str,
+        profile=profile,
+        recommended_model=recommended_model,
+        compose_cmd=compose_cmd,
+        postgres_image=postgres_image,
+        skip_image_verify=skip_image_verify or not verify_enabled,
+    )
+
+
+def _print_setup_banner(plan: _SetupPlan) -> None:
+    """Print the setup header: profile, model, DSN, and checkpoint state."""
+    print("\n=== Corpus-KB One-Line Setup ===")
+    print(f"Detected profile: {plan.profile}")
+    print(f"Recommended embedding model: {plan.recommended_model}")
+    print(f"Database connection string: {plan.conn_str}")
+    if plan.completed:
+        print(f"Checkpoint: {len(plan.completed)}/{len(INSTALL_PHASES)} phases completed")
+        print(f"  Completed: {', '.join(plan.completed)}")
+
+
+def _print_setup_warning() -> None:
+    """Print the mutating-actions warning shown before the phases run."""
+    print("\nWARNING: setup will start Docker containers, modify Python packages,")
+    print("create database objects, and pull Ollama models. Each step requires")
+    print("confirmation.\n")
+
+
+def _setup_phase_steps(
+    config: dict[str, Any], conn_str: str, profile: str
+) -> list[tuple[str, str, Callable[[], Awaitable[int] | int]]]:
+    """The checkpointed step table: (name, skip banner, runner) in run order.
+
+    Phase 1 (compose) is absent on purpose: its image-verify failure is
+    fatal, so _run_setup_phases runs it before this table.
+    """
+    return [
+        (
+            "python",
+            "\n[Step 2/6] Python dependencies already installed; skipping.",
+            install_python_deps,
+        ),
+        (
+            "database",
+            "\n[Step 3/6] Database already set up; skipping.",
+            lambda: _run_database_phase(conn_str),
+        ),
+        (
+            "extensions",
+            "\n[Step 4/6] Extensions already verified; skipping.",
+            lambda: setup_verify_extensions(conn_str, apply=True),
+        ),
+        (
+            "models",
+            "\n[Step 5/6] Ollama models already pulled; skipping.",
+            lambda: setup_pull_models(apply=True),
+        ),
+        (
+            "weights",
+            "\n[Step 5b/6] Extraction weights already present; skipping.",
+            lambda: setup_pull_weights(apply=True),
+        ),
+        (
+            "config",
+            "\n[Step 6/6] User config already written; skipping.",
+            lambda: setup_update_config(config, profile, apply=True),
+        ),
+    ]
+
+
+async def _run_setup_phases(
+    plan: _SetupPlan, config: dict[str, Any], *, build_local: bool
+) -> tuple[int, bool]:
+    """Run the compose phase, then every step-table phase in order.
+
+    Returns (exit_code, fatal); fatal means the image-verify step failed and
+    setup must stop (a compose START failure is not fatal — the later phases
+    still run, matching the historical behavior).
+    """
+    phase_exit, fatal = await _phase_compose(
+        plan.state,
+        config,
+        plan.completed,
+        compose_cmd=plan.compose_cmd,
+        postgres_image=plan.postgres_image,
+        skip_image_verify=plan.skip_image_verify,
+        build_local=build_local,
+    )
+    if fatal:
+        return phase_exit, True
+    exit_code = phase_exit
+    for name, skip_banner, step in _setup_phase_steps(config, plan.conn_str, plan.profile):
+        exit_code |= await _run_phase(plan.state, config, plan.completed, name, skip_banner, step)
+    return exit_code, False
+
+
 async def setup_cmd(
     config: dict[str, Any],
     dry_run: bool,
@@ -338,115 +479,20 @@ async def setup_cmd(
         print(f"\nERROR: unknown backend {backend!r}. Use postgres or duckdb.")
         return 2
 
-    info = detect_profile()
-    profiles = load_installer_profiles(config)
-    profile = info["profile"]
-    profile_cfg = profiles.get(profile, {})
-    recommended_model = profile_cfg.get("model", "nomic-embed-text")
-
-    conn_str = str(config.get("database", {}).get("connection_string", "")) or os.environ.get(
-        "CORPUS_KB_DATABASE_URL", ""
-    )
-    if not conn_str:
-        conn_str = "postgresql://corpus_user:corpus_pass@localhost:5433/corpus_kb"
-
-    compose_cmd = _find_compose_command()
-
-    if fresh:
-        reset_install_state(config)
-
-    state = load_install_state(config)
-    # Shared list object with state["completed"]: _run_phase appends into it
-    # before each save_install_state, so checkpoints persist (same mechanism
-    # as the pre-split inline phases).
-    completed = state.get("completed", [])
-
-    installer_cfg = config.get("installer", {})
-    postgres_image = str(installer_cfg.get("postgres_image", DEFAULT_POSTGRES_IMAGE))
-    verify_enabled = bool(installer_cfg.get("verify_image_signature", True))
-    skip_image_verify = skip_image_verify or not verify_enabled
-
-    print("\n=== Corpus-KB One-Line Setup ===")
-    print(f"Detected profile: {profile}")
-    print(f"Recommended embedding model: {recommended_model}")
-    print(f"Database connection string: {conn_str}")
-    if completed:
-        print(f"Checkpoint: {len(completed)}/{len(INSTALL_PHASES)} phases completed")
-        print(f"  Completed: {', '.join(completed)}")
+    plan = _prepare_setup_plan(config, fresh, skip_image_verify)
+    _print_setup_banner(plan)
 
     if dry_run:
         setup_print_dry_run_steps(
-            compose_cmd, conn_str, profile, build_local=build_local, state=state
+            plan.compose_cmd, plan.conn_str, plan.profile, build_local=build_local, state=plan.state
         )
         return 0
 
-    print("\nWARNING: setup will start Docker containers, modify Python packages,")
-    print("create database objects, and pull Ollama models. Each step requires")
-    print("confirmation.\n")
+    _print_setup_warning()
 
-    phase_exit, fatal = await _phase_compose(
-        state,
-        config,
-        completed,
-        compose_cmd=compose_cmd,
-        postgres_image=postgres_image,
-        skip_image_verify=skip_image_verify,
-        build_local=build_local,
-    )
-    exit_code = phase_exit
-    if fatal:
-        return exit_code
-
-    exit_code |= await _run_phase(
-        state,
-        config,
-        completed,
-        "python",
-        "\n[Step 2/6] Python dependencies already installed; skipping.",
-        install_python_deps,
-    )
-    exit_code |= await _run_phase(
-        state,
-        config,
-        completed,
-        "database",
-        "\n[Step 3/6] Database already set up; skipping.",
-        lambda: _run_database_phase(conn_str),
-    )
-    exit_code |= await _run_phase(
-        state,
-        config,
-        completed,
-        "extensions",
-        "\n[Step 4/6] Extensions already verified; skipping.",
-        lambda: setup_verify_extensions(conn_str, apply=True),
-    )
-    exit_code |= await _run_phase(
-        state,
-        config,
-        completed,
-        "models",
-        "\n[Step 5/6] Ollama models already pulled; skipping.",
-        lambda: setup_pull_models(apply=True),
-    )
-    exit_code |= await _run_phase(
-        state,
-        config,
-        completed,
-        "weights",
-        "\n[Step 5b/6] Extraction weights already present; skipping.",
-        lambda: setup_pull_weights(apply=True),
-    )
-    exit_code |= await _run_phase(
-        state,
-        config,
-        completed,
-        "config",
-        "\n[Step 6/6] User config already written; skipping.",
-        lambda: setup_update_config(config, profile, apply=True),
-    )
-
-    print_next_steps()
+    exit_code, fatal = await _run_setup_phases(plan, config, build_local=build_local)
+    if not fatal:
+        print_next_steps()
     return exit_code
 
 
