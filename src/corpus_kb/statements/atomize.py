@@ -103,8 +103,14 @@ def atomize_chunk(
     chunk: Chunk,
     entities: list[Entity],
     catalogue: TemplateCatalogue,
+    *,
+    max_per_chunk: int = MAX_STATEMENTS_PER_CHUNK,
 ) -> list[StatementAtom]:
-    """Split one chunk into classified statement atoms."""
+    """Split one chunk into classified statement atoms.
+
+    ``max_per_chunk`` is the per-chunk atom cap; it defaults to the
+    shipped constant (``statements.max_per_chunk`` mirrors it in config).
+    """
     text = chunk.text or ""
     chunk_entities = [e for e in entities if e.chunk_id == chunk.chunk_id]
     exchange_id = None
@@ -113,7 +119,7 @@ def atomize_chunk(
         exchange_id = _exchange_number(qa_context.get("exchange_id"))
     atoms: list[StatementAtom] = []
     for match in _SENTENCE_RE.finditer(text):
-        if len(atoms) >= MAX_STATEMENTS_PER_CHUNK:
+        if len(atoms) >= max_per_chunk:
             break
         sentence = match.group(0).strip()
         if len(sentence) < 12:

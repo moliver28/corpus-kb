@@ -227,6 +227,51 @@ topics:
   fixture_dir: tests/fixtures/topics_recorded
   live_fallback: false
 
+# Corpus analysis program (src/corpus_kb/analysis/, analysis/settings.py
+# is the source of truth for these values). Weak-supervision labeling,
+# few-shot classification, temporal topic trends, EECS and sentiment —
+# every feature ships dormant behind enabled: false.
+analysis:
+  labeling:
+    # Weak-supervision feature flag; labeling_build/list/lfs refuse while
+    # it is false, never silently.
+    enabled: false
+    # How many labeling functions must fire before a label is accepted.
+    # One correlated signal is not evidence.
+    min_signals: 3
+    # Path to the labeling-function definitions (JSON); null registers
+    # none, so a build answers an honest empty envelope.
+    lfs_file: null
+  classification:
+    # Few-shot classification flag.
+    enabled: false
+    # Only "head" (logistic head on stored embeddings) and "setfit" (the
+    # [setfit] extra) exist; other values are rejected at load.
+    tier: head
+    # Seed floor per class: below 8 labels the build answers an honest
+    # insufficient-labels envelope (the SetFit claims start at 8).
+    min_labels_per_class: 8
+  topics:
+    over_time:
+      # Temporal topic-trends flag (topics_trends).
+      enabled: false
+      # "auto" or a positive int (the topics.min_topic_size union rule).
+      bins: auto
+      # "drop" or "unknown": what happens to undated chunks.
+      undated: drop
+    # Cap on embeddings per trend build; null means no cap.
+    max_embeddings: null
+  # Method register (analysis_methods.yaml) for the method layer.
+  method_register_path: config/analysis_methods.yaml
+  eecs:
+    # EECS feature flag (dormant until its wave lands).
+    enabled: false
+  sentiment:
+    # Sentiment feature flag.
+    enabled: false
+    # Lexicon source for the rule-based scorer.
+    lexicon_path: config/sentiment_lexicon.yaml
+
 # Browser UI (UI SPA program Task 3, src/corpus_kb/ui/spa.py): the
 # lifecycle SPA (React, built by Vite into src/corpus_kb/ui_dist/) is
 # served at /app/ by the running HTTP server. Without a build the server

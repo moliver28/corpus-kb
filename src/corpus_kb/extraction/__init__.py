@@ -27,7 +27,7 @@ def extraction_backend_name(config: dict[str, Any]) -> str:
     ``graph.extractor`` mixed two concerns); the alias stays accepted
     forever. When both are set the preferred key wins; when only the alias
     is set it stays authoritative. Anything unreadable falls back to
-    ``"pgml"`` (the shipped default). ``config.load_config`` mirrors the
+    ``"ml"`` (the shipped default). ``config.load_config`` mirrors the
     preferred key onto the alias so every reader agrees.
     """
     extraction = config.get("extraction")
@@ -40,7 +40,7 @@ def extraction_backend_name(config: dict[str, Any]) -> str:
         raw = cast(dict[str, Any], graph).get("extractor")
         if isinstance(raw, str) and raw:
             return raw
-    return "pgml"
+    return "ml"
 
 
 def create_extractor(
@@ -54,7 +54,7 @@ def create_extractor(
     Args:
         config: Application configuration. Reads ``extraction.backend``
             (preferred) with ``graph.extractor`` as the accepted legacy
-            alias, defaulting to ``"pgml"``. The ``"gliner"`` backend
+            alias, defaulting to ``"ml"``. The ``"gliner"`` backend
             additionally reads ``extraction.gliner`` (``model``,
             ``revision``, ``types``) and requires
             ``extraction.gliner.enabled: true``.

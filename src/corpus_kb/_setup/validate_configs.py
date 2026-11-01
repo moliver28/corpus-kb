@@ -58,6 +58,23 @@ except ImportError:  # pragma: no cover - script context (CI validate job)
     backend_error = _rules.backend_error
     return_top_k_error = _rules.return_top_k_error
 
+# The packaged-config lockstep gate (issue #246) is stdlib+PyYAML only,
+# so the same two-context pattern applies; the module reports a clean
+# skip itself when corpus_kb cannot import (the slim CI job).
+try:
+    # Package context (installed checkout, tests).
+    from corpus_kb._setup.config_lockstep import check_packaged_lockstep
+except ImportError:  # pragma: no cover - script context (CI validate job)
+    import importlib.util
+
+    _lockstep_path = Path(__file__).resolve().parent / "config_lockstep.py"
+    _lockstep_spec = importlib.util.spec_from_file_location("config_lockstep", _lockstep_path)
+    if _lockstep_spec is None or _lockstep_spec.loader is None:
+        raise ImportError(f"Cannot load config_lockstep from {_lockstep_path}") from None
+    _lockstep_module = importlib.util.module_from_spec(_lockstep_spec)
+    _lockstep_spec.loader.exec_module(_lockstep_module)
+    check_packaged_lockstep = _lockstep_module.check_packaged_lockstep
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -1247,6 +1264,14 @@ def validate_all(project_root: Path | None = None) -> list[str]:
 
     # 5. Runtime config.yaml — root and packaged copies (see helper).
     errors.extend(_validate_runtime_yaml(project_root))
+
+    # 6. Packaged-config lockstep (issue #246): the code-side defaults and
+    # the PACKAGED yaml must agree leaf-for-leaf. Skips cleanly where the
+    # package cannot import (the PyYAML-only CI job); the pytest suite
+    # (tests/test_config_lockstep.py) is the hard enforcement there.
+    lockstep = check_packaged_lockstep()
+    if not lockstep.skipped:
+        errors.extend(f"config-lockstep: {e}" for e in lockstep.errors)
 
     return errors
 

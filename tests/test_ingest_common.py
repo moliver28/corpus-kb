@@ -533,10 +533,10 @@ async def test_extract_with_fallback_unknown_extractor_raises() -> None:
         )
 
 
-def test_extractor_name_defaults_to_pgml() -> None:
-    """_extractor_name defaults to 'pgml' when not configured."""
+def test_extractor_name_defaults_to_ml() -> None:
+    """_extractor_name defaults to 'ml' when not configured (issue #246)."""
     config: dict[str, object] = {"graph": {}}
-    assert _extractor_name(config) == "pgml"
+    assert _extractor_name(config) == "ml"
 
 
 # ---------------------------------------------------------------------------

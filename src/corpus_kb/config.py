@@ -423,9 +423,16 @@ def get_default_config() -> dict[str, object]:
             "max_hops": 5,
             # Accepted legacy alias for extraction.backend (kept forever);
             # see apply_extraction_backend_alias.
-            "extractor": "pgml",
+            "extractor": "ml",
             "model_version": "langextract-default",
             "prompt_version": "v1",
+            # Recorded-fixture extraction (LangExtract members): the fixture
+            # corpus and the live-call escape hatch. fixture_dir is the
+            # repo-relative tests path; installed runs resolve it from CWD
+            # exactly as before — the packaged yaml carries the same value.
+            "fixture_dir": "tests/fixtures/langextract_recorded",
+            "live_fallback": False,
+            "ontology_path": "config/ontology.yaml",
         },
         "embedding": {
             # ollama serves the 4B embedder; pgml cannot host a model of
@@ -455,6 +462,15 @@ def get_default_config() -> dict[str, object]:
             # Bounded parallel file ingestion (Wave 1 throughput); the
             # runtime helper caps it at two below the pool size.
             "concurrency": 4,
+            # Pluggable strategy mapping (source_type -> strategy name) and
+            # the fallback strategy; see corpus_kb.ingestion.registry.
+            "strategies": {
+                "transcript": "transcript",
+                "pptx": "pptx_structure",
+                "web": "web_structure",
+                "survey": "survey",
+            },
+            "default": "default",
         },
         # Textbook ingestion (textbook-ingestion program). Full parses
         # need the [docling] extra; these are the gate + window + parser
@@ -656,8 +672,80 @@ def get_default_config() -> dict[str, object]:
         },
         # extraction.backend is the PREFERRED extraction-backend key;
         # graph.extractor (above) stays as the accepted legacy alias.
+        # "ml" is the shipped default (the packaged yaml value wins at
+        # runtime either way; aligning the code side keeps duckdb
+        # code-fallback environments loadable — pgml is Postgres-only and
+        # the backend-mix gate refuses it on duckdb AT LOAD).
         "extraction": {
-            "backend": "pgml",
+            "backend": "ml",
+            # zero_shot: GLiNER2 NER + GLiNER-Relex relations under one
+            # extractor; few_shot/customized route to LangExtract instead.
+            "mode": "zero_shot",
+            # Opt-in GLiNER2 NER knobs (the standalone "gliner" backend
+            # refuses to construct while enabled is false).
+            "gliner": {
+                "enabled": False,
+                "model": "fastino/gliner2-large-v1",
+                "revision": "main",
+                "types": [
+                    "person",
+                    "organization",
+                    "location",
+                    "date",
+                    "money",
+                    "product",
+                ],
+            },
+            # GLiNER-Relex zero-shot relation member.
+            "relex": {
+                "model": "knowledgator/gliner-relex-large-v1.0",
+                "threshold": 0.5,
+                "max_label_pairs": 40,
+            },
+            # LoRA adapter tuning (extraction-tune method=lora). The adapter
+            # is a candidate artifact; the eval promotion gate decides.
+            "tune": {
+                "model": "knowledgator/gliner-multitask-large-v0.5",
+                "steps": 200,
+                "learning_rate": 5e-05,
+                "batch_size": 2,
+                "lora_r": 8,
+                "lora_alpha": 16,
+                "lora_dropout": 0.05,
+            },
+            # Optional voting across extractors (issue #133): members run
+            # beside the primary; candidates survive on majority agreement.
+            "ensemble": {
+                "enabled": False,
+                "members": ["langextract"],
+            },
+            # Chunk-hash result cache (migration 030): re-ingesting
+            # unchanged content skips the extraction pass.
+            "cache": {
+                "enabled": True,
+            },
+        },
+        # Statement atoms (Living Corpus W2, migration 031): chunks
+        # atomize into classified, bi-temporal statement rows.
+        "statements": {
+            "enabled": True,
+            "templates_dir": "config/claim_templates",
+            # Per-chunk cap on atoms; overflow is dropped and reported.
+            "max_per_chunk": 12,
+        },
+        # Website (URL) ingestion; ingest_url builds WebFetchConfig from
+        # this section (web/settings.py). Values mirror the WebFetchConfig
+        # dataclass defaults.
+        "web": {
+            "user_agent": "corpus-kb/0.1 (+https://github.com/moliver28/corpus-kb)",
+            "timeout_seconds": 30,
+            "max_bytes": 5242880,
+            "respect_robots": True,
+            "max_pages": 5,
+            "max_depth": 2,
+            "delay_seconds": 1.0,
+            # SSRF-guard escape hatch; true only for genuinely local targets.
+            "allow_private_addresses": False,
         },
         # OpenTelemetry tracing (UX program Wave 4). Off by default: the
         # no-op opentelemetry-api tracer makes every span free. Enable with
@@ -670,7 +758,11 @@ def get_default_config() -> dict[str, object]:
         },
         "installer": {
             "postgres_image": "ghcr.io/moliver28/corpus-kb-postgres:0.1.0-pg17",
-            "data_dir": str(Path.home() / ".corpus-kb"),
+            # Literal tilde form: ~ expands at READ time (install_state
+            # expanduser), never at import time — an import-time
+            # Path.home() baked the authoring machine's path into the
+            # defaults and broke machine-independent comparison.
+            "data_dir": "~/.corpus-kb",
             "verify_image_signature": True,
             # All three profiles embed at 2560 dims (the schema width);
             # only the LLM varies. A different embedding width needs a

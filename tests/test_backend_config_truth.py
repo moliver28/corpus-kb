@@ -128,6 +128,8 @@ def _duckdb_config() -> dict[str, object]:
 
 class TestBackendMixErrors:
     def test_postgres_backend_accepts_age_and_pgml(self):
+        # The default extraction backend is "ml" (issue #246 owner
+        # decision); postgres accepts every engine selection either way.
         assert backend_mix_errors(get_default_config()) == []
 
     def test_duckdb_with_age_graph_is_refused(self):
@@ -216,8 +218,11 @@ class TestBackendMixErrors:
 
 class TestLoadConfigGate:
     def test_duckdb_default_selection_raises_with_age_remedy(self, tmp_path: Path):
-        # Defaults select age + pgml extraction, so a bare duckdb switch
-        # fails fast with the first (age) remediation.
+        # Defaults still select the age graph store, so a bare duckdb
+        # switch fails fast with the first (age) remediation. The default
+        # extraction backend is "ml" (issue #246 owner decision), so only
+        # the age mix fires — an explicitly configured pgml backend still
+        # trips its own error (test below).
         path = tmp_path / "config.yaml"
         path.write_text(yaml.safe_dump({"database": {"backend": "duckdb"}}), encoding="utf-8")
         with pytest.raises(ValueError) as excinfo:
@@ -239,14 +244,30 @@ class TestLoadConfigGate:
         database = cast(dict[str, object], config["database"])
         assert database["backend"] == "duckdb"
 
-    def test_duckdb_with_age_only_mix_raises_after_env_and_aliases(self, tmp_path: Path):
-        # graph.backend: postgres fixes the store, but the default pgml
-        # extraction backend still trips the gate: the alias layer runs
-        # BEFORE the mix gate.
+    def test_duckdb_clean_defaults_load_after_backend_default_change(self, tmp_path: Path):
+        # Issue #246 owner decision: the default extraction backend is
+        # "ml", so a duckdb switch plus a postgres graph store now loads
+        # cleanly (the old pgml default tripped the mix gate at load).
         path = tmp_path / "config.yaml"
         payload = {
             "database": {"backend": "duckdb"},
             "graph": {"backend": "postgres"},
+        }
+        path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+        config = load_config(str(path))
+        database = cast(dict[str, object], config["database"])
+        assert database["backend"] == "duckdb"
+
+    def test_duckdb_explicit_pgml_extraction_still_raises_after_aliases(self, tmp_path: Path):
+        # An EXPLICIT pgml extraction backend stays refused on duckdb; the
+        # alias layer runs BEFORE the mix gate. The alias-only spelling is
+        # a hand-built-dict concern only: the merged default always fills
+        # the preferred key (extraction.backend), which then wins.
+        path = tmp_path / "config.yaml"
+        payload = {
+            "database": {"backend": "duckdb"},
+            "graph": {"backend": "postgres"},
+            "extraction": {"backend": "pgml"},
         }
         path.write_text(yaml.safe_dump(payload), encoding="utf-8")
         with pytest.raises(ValueError) as excinfo:

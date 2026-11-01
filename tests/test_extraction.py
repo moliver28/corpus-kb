@@ -11,6 +11,7 @@ import pytest
 from corpus_kb.extraction import (
     GlinerExtractor,
     LangExtractExtractor,
+    MLExtractor,
     OntologyViolationError,
     PgmlExtractor,
     RegexExtractor,
@@ -278,10 +279,10 @@ class TestExtractorFactory:
         extractor = create_extractor({"graph": {"extractor": "langextract"}})
         assert isinstance(extractor, LangExtractExtractor)
 
-    def test_factory_defaults_to_pgml(self) -> None:
-        """Given no explicit extractor, factory defaults to pgml."""
+    def test_factory_defaults_to_ml(self) -> None:
+        """Given no explicit extractor, factory defaults to ml (issue #246)."""
         extractor = create_extractor({"graph": {}})
-        assert isinstance(extractor, PgmlExtractor)
+        assert isinstance(extractor, MLExtractor)
 
     def test_factory_explicit_langextract_returns_langextract(self) -> None:
         """Given config graph.extractor=langextract, factory returns LangExtractExtractor."""
@@ -348,9 +349,9 @@ class TestExtractionBackendAlias:
         }
         assert extraction_backend_name(config) == "regex"
 
-    def test_no_keys_defaults_to_pgml(self) -> None:
-        """No backend key anywhere resolves to the shipped default."""
-        assert extraction_backend_name({}) == "pgml"
+    def test_no_keys_defaults_to_ml(self) -> None:
+        """No backend key anywhere resolves to the shipped default (issue #246)."""
+        assert extraction_backend_name({}) == "ml"
 
     def test_factory_unknown_extractor_raises_value_error(self) -> None:
         """Given an unsupported extractor name, factory raises ValueError."""
