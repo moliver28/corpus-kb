@@ -41,14 +41,13 @@ from corpus_kb.ingestion.strategies.textbook_assemble import (
     section_blocks,
 )
 from corpus_kb.ingestion.strategies.textbook_cache import (
-    cache_file,
+    CacheKey,
     file_sha256,
     load_window_cache,
     save_window_cache,
     window_ranges,
 )
 from corpus_kb.ingestion.strategies.textbook_pages import (
-    PARSER_VERSIONS,
     OutlineBookmark,
     PageItem,
     WindowRecord,
@@ -63,6 +62,22 @@ from corpus_kb.ingestion.strategies.textbook_pages import (
 __all__ = ["run_book", "text_layer"]
 
 _MISSING_DOCLING = "textbook bench needs the optional 'docling' extra; used pypdf page text"
+
+
+def _cache_lookup(
+    cache_dir: Path, parser_key: str, digest: str, index: int, start: int, end: int
+) -> WindowRecord | None:
+    """One cache lookup through the exact-span CacheKey seam."""
+    key = CacheKey(parser_key, digest, index)
+    return load_window_cache(key.path(cache_dir), key, start, end)
+
+
+def _cache_store(
+    cache_dir: Path, parser_key: str, digest: str, index: int, record: WindowRecord
+) -> None:
+    """One cache write through the exact-span CacheKey seam."""
+    key = CacheKey(parser_key, digest, index)
+    save_window_cache(key.path(cache_dir), key, record)
 
 
 def _load_pdfium() -> Any | None:
@@ -123,9 +138,7 @@ def _parse_windows(
     docling_active = parser == "docling"
     for index, (start, end) in enumerate(window_ranges(page_count, window_pages)):
         active = "docling" if docling_active else "pypdf"
-        cached = load_window_cache(
-            cache_file(cache_dir, active, digest, index), PARSER_VERSIONS[active], digest, index
-        )
+        cached = _cache_lookup(cache_dir, active, digest, index, start, end)
         if cached is not None:
             records.append(cached)
             continue
@@ -148,13 +161,7 @@ def _parse_windows(
             items = parse_window_pypdf(reader, start, end, warnings)
             effective = "pypdf"
         record = WindowRecord(start_page=start, end_page=end, items=items)
-        save_window_cache(
-            cache_file(cache_dir, effective, digest, index),
-            PARSER_VERSIONS[effective],
-            digest,
-            index,
-            record,
-        )
+        _cache_store(cache_dir, effective, digest, index, record)
         records.append(record)
     return records
 

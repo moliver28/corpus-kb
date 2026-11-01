@@ -102,7 +102,9 @@ class ChunkPlan:
     (for files, the partitioned text — exactly what the pre-registry
     pipeline used for the Document model, file hash, contextualizer, and
     shadow hierarchy). ``warnings`` carries non-fatal notes surfaced in the
-    ingest result dict.
+    ingest result dict. ``textbook_summary`` is the textbook strategy's
+    window-parse fold; it stays None for every other strategy, so the
+    default ingest envelope is byte-identical.
     """
 
     strategy: str
@@ -112,6 +114,7 @@ class ChunkPlan:
     detection_reason: str = ""
     empty_reason: str | None = None
     warnings: list[str] = field(default_factory=list)
+    textbook_summary: dict[str, object] | None = None
 
 
 class IngestionStrategy(Protocol):

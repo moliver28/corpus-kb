@@ -21,6 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from test_ingest_integrity import _FakePool, _LockConn
 
 from corpus_kb.ingestion.base import (
     DETECT_ADOPT_CONFIDENCE,
@@ -31,15 +32,23 @@ from corpus_kb.ingestion.base import (
 )
 from corpus_kb.ingestion.registry import resolve_strategy, strategy_names
 from corpus_kb.ingestion.strategies.textbook import TEXTBOOK_STRATEGY_NAME, TextbookStrategy
-from corpus_kb.ingestion.strategies.textbook_pages import PageItem
+from corpus_kb.ingestion.strategies.textbook_cache import (
+    CacheKey,
+    file_sha256,
+    load_window_cache,
+    save_window_cache,
+)
+from corpus_kb.ingestion.strategies.textbook_outcomes import WindowOutcome, summarize
+from corpus_kb.ingestion.strategies.textbook_pages import PageItem, WindowRecord, open_pdf
 from corpus_kb.ingestion.strategies.textbook_settings import settings_from
+from corpus_kb.utils.models import Chunk
 
-_PAGES_TARGET = "corpus_kb.ingestion.strategies.textbook.load_docling_converter"
+_PAGES_TARGET = "corpus_kb.ingestion.strategies.textbook_windows.load_docling_converter"
 _DEFAULT_TARGET = "corpus_kb.ingestion.strategies.textbook.DefaultStrategy"
-_SUBPROCESS_TARGET = "corpus_kb.ingestion.strategies.textbook.parse_window_in_subprocess"
+_SUBPROCESS_TARGET = "corpus_kb.ingestion.strategies.textbook_windows.parse_window_in_subprocess"
 # Subprocess mode gates on the module spec (the parent never imports
 # docling), so the child-path tests patch this seam, not the loader.
-_SPEC_TARGET = "corpus_kb.ingestion.strategies.textbook.find_spec"
+_SPEC_TARGET = "corpus_kb.ingestion.strategies.textbook_windows.find_spec"
 
 
 def _patch_docling_present(monkeypatch: pytest.MonkeyPatch, present: bool) -> None:
@@ -614,3 +623,281 @@ def test_real_docling_leg(tmp_path: Path) -> None:
 def test_settings_helper_matches_config_block() -> None:
     assert settings_from({"textbook": {"min_pages": 5}}).min_pages == 5
     assert settings_from(None).window_pages == 50
+
+
+# ---------------------------------------------------------------------------
+# Cache bounds: a record naming foreign pages is a miss (re-parse)
+# ---------------------------------------------------------------------------
+
+
+def test_load_window_cache_rejects_records_outside_the_bounds(tmp_path: Path) -> None:
+    key = CacheKey("docling", "a" * 64, 0)
+    path = key.path(tmp_path)
+
+    def _seed(record: WindowRecord) -> None:
+        save_window_cache(path, key, record)
+
+    _seed(WindowRecord(2, 1, [PageItem(2, "text", "inverted span")]))
+    assert load_window_cache(path, key, 1, 2) is None  # start after end
+    _seed(WindowRecord(0, 2, [PageItem(1, "text", "early start")]))
+    assert load_window_cache(path, key, 1, 2) is None  # start before the window
+    _seed(WindowRecord(1, 3, [PageItem(1, "text", "late end")]))
+    assert load_window_cache(path, key, 1, 2) is None  # end past the window
+    _seed(WindowRecord(1, 2, [PageItem(1, "text", "subset span")]))
+    assert load_window_cache(path, key, 1, 4) is None  # subset span: the match is exact
+    _seed(WindowRecord(1, 2, [PageItem(3, "text", "wild page")]))
+    assert load_window_cache(path, key, 1, 2) is None  # page outside the record span
+    _seed(WindowRecord(1, 2, [PageItem(1, "text", "ok"), PageItem(2, "text", "ok")]))
+    assert load_window_cache(path, key, 1, 2) is not None  # the honest record loads
+
+
+def test_stale_cache_record_serves_no_foreign_pages(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    digest = file_sha256(path)
+    cache_dir = tmp_path / "cache"
+    key = CacheKey("docling", digest, 0)
+    save_window_cache(
+        key.path(cache_dir), key, WindowRecord(7, 9, [PageItem(7, "text", "foreign text")])
+    )
+    loader = _fake_loader(_six_page_nodes())
+    monkeypatch.setattr(_PAGES_TARGET, loader)
+    config = _config(1, 4, str(cache_dir), window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert loader().calls == [(1, 4), (5, 6)]  # the foreign record re-parsed
+    assert not any("foreign text" in chunk.text for chunk in plan.chunks)
+    assert plan.textbook_summary == {
+        "parser": "docling",
+        "cache_hits": 0,
+        "cache_misses": 2,
+        "pages": 6,
+        "warning_count": 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Window outcomes: parser, cache flag, warnings, and the envelope summary
+# ---------------------------------------------------------------------------
+
+
+def test_parse_windows_returns_outcomes_and_marks_cache_hits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    loader = _fake_loader(_six_page_nodes())
+    monkeypatch.setattr(_PAGES_TARGET, loader)
+    settings = settings_from(_config(1, 4, str(tmp_path / "cache"), window_subprocess=False))
+    strategy = TextbookStrategy()
+    reader, note = open_pdf(path)
+    assert reader is not None and note is None
+    digest = file_sha256(path)
+    warnings: list[str] = []
+    outcomes = strategy._parse_windows(path, reader, digest, 6, settings, warnings)
+    assert [(o.parser_used, o.cache_hit) for o in outcomes] == [("docling", False)] * 2
+    assert [o.record.start_page for o in outcomes] == [1, 5]
+    assert warnings == []
+    again = strategy._parse_windows(path, reader, digest, 6, settings, warnings)
+    assert [(o.parser_used, o.cache_hit) for o in again] == [("docling", True)] * 2
+    assert [o.record for o in again] == [o.record for o in outcomes]
+
+
+def test_summarize_folds_outcomes_and_breaks_parser_ties_alphabetically() -> None:
+    outcomes = [
+        WindowOutcome(WindowRecord(1, 2, []), "pypdf", True, ()),
+        WindowOutcome(WindowRecord(3, 4, []), "docling", False, ("w1",)),
+        WindowOutcome(WindowRecord(5, 6, []), "docling", False, ("w2", "w3")),
+    ]
+    assert summarize(outcomes) == {
+        "parser": "docling",
+        "cache_hits": 1,
+        "cache_misses": 2,
+        "pages": 6,
+        "warning_count": 3,
+    }
+    assert summarize([]) == {
+        "parser": "",
+        "cache_hits": 0,
+        "cache_misses": 0,
+        "pages": 0,
+        "warning_count": 0,
+    }
+
+
+def test_window_warnings_keep_exact_window_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["alpha body", "beta body", "gamma body"])
+
+    class _AlwaysFails(_FakeConverter):
+        def convert(self, source: str, page_range: tuple[int, int] | None = None) -> _Result:
+            del source, page_range
+            raise RuntimeError("docling exploded")
+
+    pages = {
+        1: [_Node("section_header", "Chapter One", 1), _Node("text", "alpha body", 1)],
+        2: [_Node("text", "beta body", 2)],
+        3: [_Node("text", "gamma body", 3)],
+    }
+    monkeypatch.setattr(_PAGES_TARGET, lambda: _AlwaysFails(pages))
+    config = _config(1, 2, str(tmp_path / "cache"), window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert plan.warnings == [
+        "docling failed on pages 1 to 2; used pypdf page text",
+        "docling failed on pages 3 to 3; used pypdf page text",
+    ]
+
+
+def test_summary_counts_warnings_and_resolves_parser_ties(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["alpha body", "beta body"])
+
+    class _HalfBroken(_FakeConverter):
+        def convert(self, source: str, page_range: tuple[int, int] | None = None) -> _Result:
+            assert page_range is not None
+            if page_range[0] > 1:
+                raise RuntimeError("docling exploded")
+            return super().convert(source, page_range)
+
+    pages = {1: [_Node("section_header", "Chapter One", 1), _Node("text", "alpha body", 1)]}
+    monkeypatch.setattr(_PAGES_TARGET, lambda: _HalfBroken(pages))
+    config = _config(1, 1, str(tmp_path / "cache"), window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert plan.textbook_summary == {
+        "parser": "docling",  # one window each: the tie breaks alphabetically
+        "cache_hits": 0,
+        "cache_misses": 2,
+        "pages": 2,
+        "warning_count": 1,
+    }
+
+
+def test_no_text_recovered_still_carries_the_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "blank.pdf", [" ", " ", " "])
+    monkeypatch.setattr(_PAGES_TARGET, lambda: None)
+    _patch_docling_present(monkeypatch, present=False)
+    config = _config(1, 2, str(tmp_path / "cache"))
+    plan = TextbookStrategy().build_chunks("", "blank.pdf", _profile(str(path), config))
+    assert plan.empty_reason == "no text recovered from the pdf"
+    assert plan.textbook_summary == {
+        "parser": "pypdf",
+        "cache_hits": 0,
+        "cache_misses": 2,
+        "pages": 3,
+        "warning_count": 0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Envelope: the conditional ``textbook`` key (default shape byte-identical)
+# ---------------------------------------------------------------------------
+
+
+def test_textbook_key_is_a_declared_extra_on_the_ingest_rows() -> None:
+    from corpus_kb.contracts.catalogue import CORE_OPERATIONS
+
+    rows = {op.name: op for op in CORE_OPERATIONS}
+    for name in ("ingest_text", "ingest_file", "ingest_directory"):
+        assert "textbook" in rows[name].http_extra, name
+        assert "textbook" in rows[name].socket_extra, name
+
+
+_INGEST_CONFIG: dict[str, object] = {
+    "graph": {"extract_entities": False},
+    "ingest": {"chunking": {"enabled": False}},
+    "embedding": {
+        "provider": "pgml",
+        "fallback_provider": "ollama",
+        "model": "nomic-embed-text",
+        "base_url": "http://localhost:65432",
+        "dimensions": 768,
+        "batch_size": 32,
+    },
+    "ingestion": {"strategies": {}, "default": "default"},
+}
+
+
+def _patch_stores(monkeypatch: pytest.MonkeyPatch) -> _FakePool:
+    """Swap the Postgres store and the embedder for fakes (offline pipeline)."""
+    from corpus_kb.tools import ingest_common
+
+    class _FakeStore:
+        def __init__(self, pool: object, tenant_id: str = "") -> None:
+            self._pool = pool
+
+        async def unchanged_doc_id(self, path: str, file_hash: str) -> None:
+            return None
+
+        async def begin_run(self, document: object, file_hash: str) -> tuple[str, str]:
+            return "doc-envelope-test", "run-envelope-test"
+
+        async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
+            return {str(chunk.chunk_id) for chunk in chunks}
+
+        async def store_vectors(
+            self,
+            chunks: list[Chunk],
+            embedding_model: str,
+            dimensions: int = 768,
+            vectors_1024: object = None,
+        ) -> int:
+            return len(chunks)
+
+        async def update_document(self, document: object, file_hash: str) -> None:
+            return None
+
+        async def finish_run(
+            self, run_id: str, file_hash: str, stages: dict[str, object], errors: list[str]
+        ) -> None:
+            return None
+
+        async def fail_run(self, run_id: str, error: str) -> None:
+            return None
+
+    async def fake_embed_chunks(
+        chunks, config, pool=None, text_override=None, document_text=None, meta=None
+    ):
+        for chunk in chunks:
+            chunk.embedding = [0.1] * 768
+        return False, None
+
+    monkeypatch.setattr(ingest_common, "PostgresIngestStore", _FakeStore)
+    monkeypatch.setattr(ingest_common, "embed_chunks", fake_embed_chunks)
+    return _FakePool(_LockConn(acquired=True))
+
+
+async def test_run_pipeline_carries_the_textbook_key_only_for_textbook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pool = _patch_stores(monkeypatch)
+    from corpus_kb.tools.ingest_common import run_pipeline
+
+    plain = await run_pipeline("plain body text", "text", "plain-src", _INGEST_CONFIG, pool)
+    assert plain["status"] == "success"
+    assert "textbook" not in plain  # the default envelope is byte-identical
+
+    path = _write_pdf(tmp_path / "book.pdf", [f"body {n}" for n in range(1, 4)])
+    config = {
+        **_INGEST_CONFIG,
+        "textbook": {
+            "min_pages": 1,
+            "window_pages": 2,
+            "parser": "pypdf",
+            "cache_dir": str(tmp_path / "cache"),
+        },
+    }
+    result = await run_pipeline(
+        "", "text", str(path), config, pool, is_file=True, strategy_name="textbook"
+    )
+    assert result["status"] == "success"
+    assert result["strategy"] == "textbook"
+    assert result["textbook"] == {
+        "parser": "pypdf",
+        "cache_hits": 0,
+        "cache_misses": 2,
+        "pages": 3,
+        "warning_count": 0,
+    }

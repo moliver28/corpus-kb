@@ -20,6 +20,7 @@ from corpus_kb.contracts.envelopes import (
     DEDUP_KEYS,
     INGEST_ENVELOPE,
     SEARCH_ENVELOPE,
+    TEXTBOOK_KEYS,
     TITLE_KEYS,
     VALIDATION_KEYS,
 )
@@ -35,6 +36,13 @@ from corpus_kb.contracts.model import (
 )
 
 _TENANT = ParamSpec("tenant_id", default=DEFAULT_TENANT_ID)
+
+# Additive HTTP/socket key sets for the ingest rows. The aggregate rows add
+# the audit aggregate; the directory row wraps per-file envelopes instead.
+_AGGREGATE_INGEST_EXTRA = (
+    AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS | TEXTBOOK_KEYS
+)
+_INGEST_EXTRA = VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS | TEXTBOOK_KEYS
 
 CORE_OPERATIONS: tuple[Operation, ...] = (
     Operation(
@@ -59,8 +67,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/text", "POST"),
             SurfaceSpec(SOCKET, "ingest_text"),
         ),
-        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
-        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
+        http_extra=_AGGREGATE_INGEST_EXTRA,
+        socket_extra=_AGGREGATE_INGEST_EXTRA,
         exit_codes=(0, 1, 3),
     ),
     Operation(
@@ -81,8 +89,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/file", "POST"),
             SurfaceSpec(SOCKET, "ingest_file"),
         ),
-        http_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
-        socket_extra=AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
+        http_extra=_AGGREGATE_INGEST_EXTRA,
+        socket_extra=_AGGREGATE_INGEST_EXTRA,
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(
@@ -117,8 +125,8 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/ingest/directory", "POST"),
             SurfaceSpec(SOCKET, "ingest_directory"),
         ),
-        http_extra=VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
-        socket_extra=VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS,
+        http_extra=_INGEST_EXTRA,
+        socket_extra=_INGEST_EXTRA,
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(

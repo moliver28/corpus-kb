@@ -69,3 +69,9 @@ DEDUP_KEYS = frozenset({"dedup_dropped"})
 # caller (the queue worker) set ``ingestion.title``, so the default envelope
 # stays byte-identical. documents.title is the durable channel.
 TITLE_KEYS = frozenset({"title"})
+
+# Textbook window summary: the ``textbook`` key appears ONLY when the
+# resolved strategy ran its windowed parse. Value: {parser, cache_hits,
+# cache_misses, pages, warning_count}. The default envelope stays
+# byte-identical.
+TEXTBOOK_KEYS = frozenset({"textbook"})
