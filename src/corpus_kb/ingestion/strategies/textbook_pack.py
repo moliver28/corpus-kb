@@ -71,9 +71,9 @@ def bounded_pieces(segment: Segment, target_tokens: int, budget_chars: int) -> l
     """Word-boundary pieces within the budget, exact char offsets kept.
 
     ``split_oversized`` emits one unbreakable run (a word with no
-    whitespace) whole and over budget; such runs fall back to exact char
-    slices — the code strategy's last resort — so the plan always
-    conforms.
+    whitespace) whole and over budget; such runs fall back to slices at
+    fixed char steps, the same last resort the code strategy uses, so
+    the plan always conforms.
     """
     pieces = split_oversized(segment, target_tokens, 0)
     if all(len(piece.text) <= budget_chars for piece in pieces):

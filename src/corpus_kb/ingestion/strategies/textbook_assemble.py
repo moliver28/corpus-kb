@@ -113,12 +113,20 @@ def section_blocks(pairs: list[tuple[PageItem, str | None]]) -> list[SectionBloc
         previous = blocks[-1] if blocks else None
         if previous is not None and previous.title == title:
             offset = len(previous.text) + len(_JOIN)
+            # The open item's span grows over the join before the new item
+            # (spans tile the block text); the new item's span stays exact —
+            # no join follows the block end, so the last span ends there.
+            last_start, _, last_page = previous.pages[-1]
             blocks[-1] = SectionBlock(
                 title=title,
                 start_page=previous.start_page,
                 end_page=max(previous.end_page, item.page),
                 text=_JOIN.join((previous.text, item.text)),
-                pages=(*previous.pages, (offset, offset + len(item.text), item.page)),
+                pages=(
+                    *previous.pages[:-1],
+                    (last_start, offset, last_page),
+                    (offset, offset + len(item.text), item.page),
+                ),
             )
         else:
             first = (0, len(item.text), item.page)
