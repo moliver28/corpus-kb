@@ -2,6 +2,17 @@
 
 Corpus-KB runs on two storage engines. Postgres is the default. DuckDB is the local single-user engine. One config key selects the engine. `corpus-kb migrate-data` moves a corpus between them. No re-ingest.
 
+## Contents
+
+- [Quickstart](#quickstart)
+- [Which engine fits your corpus](#which-engine-fits-your-corpus)
+- [Operating DuckDB](#operating-duckdb)
+- [Module map](#module-map)
+- [Keep the two schemas in step](#keep-the-two-schemas-in-step)
+- [Declared differences between the engines](#declared-differences-between-the-engines)
+- [Move a corpus with migrate-data](#move-a-corpus-with-migrate-data)
+- [Backup and restore](#backup-and-restore)
+
 Both engines give you the same product. Every operation returns the same envelope on both. The small engine differences are declared below and pinned by tests.
 
 ---

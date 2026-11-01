@@ -5,6 +5,15 @@ coded, queryable, audited qualitative dataset. Start with
 [getting-started.md](getting-started.md); this page is the command and config
 reference.
 
+## Contents
+
+- [The pipeline at a glance](#the-pipeline-at-a-glance)
+- [Deployment note: embeddings](#deployment-note-embeddings)
+- [Config reference](#config-reference)
+- [Optional extras](#optional-extras)
+- [Research cycle](#research-cycle)
+- [Release lifecycle (U5, v6 §6)](#release-lifecycle-u5-v6-6)
+
 ## The pipeline at a glance
 
 1. **Ingest** transcripts: `corpus-kb research ingest-transcript <file>` for

@@ -2,6 +2,22 @@
 
 This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **Postgres 17** with **pgvector** and **Apache AGE**, **Python 3.11 or newer**, and **Ollama** for local embeddings. This page installs the Postgres engine. The no-Docker DuckDB path is shorter; see [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
+## Contents
+
+- [Two database paths: 5433 (compose) vs 5432 (native)](#two-database-paths-5433-compose-vs-5432-native)
+- [No Docker? The DuckDB path](#no-docker-the-duckdb-path)
+- [Prerequisites](#prerequisites)
+- [Step 1: Install Postgres 17](#step-1-install-postgres-17)
+- [Step 2: Create the database and user](#step-2-create-the-database-and-user)
+- [Step 3: Clone and install Corpus-KB](#step-3-clone-and-install-corpus-kb)
+- [Step 4: Load the schema](#step-4-load-the-schema)
+- [Step 5: Install and start Ollama](#step-5-install-and-start-ollama)
+- [Step 6: Configure Corpus-KB](#step-6-configure-corpus-kb)
+- [Step 7: Start the server](#step-7-start-the-server)
+- [Step 8: Ingest and search](#step-8-ingest-and-search)
+- [Troubleshooting](#troubleshooting)
+- [Next steps](#next-steps)
+
 All commands assume you are at the repo root.
 
 ## Two database paths: 5433 (compose) vs 5432 (native)

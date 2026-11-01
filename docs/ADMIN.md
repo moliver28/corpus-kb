@@ -2,6 +2,19 @@
 
 This page is for operators: configuration, schema, maintenance, and troubleshooting.
 
+## Contents
+
+- [Configuration reference](#configuration-reference)
+- [Database schema](#database-schema)
+- [Multi-tenancy](#multi-tenancy)
+- [DuckDB engine notes](#duckdb-engine-notes)
+- [DuckDB backend: setup and doctor](#duckdb-backend-setup-and-doctor)
+- [Backup and restore](#backup-and-restore)
+- [Monitoring](#monitoring)
+- [CI/CD pipeline](#cicd-pipeline)
+- [Troubleshooting](#troubleshooting)
+- [Next steps](#next-steps)
+
 ---
 
 ## Configuration reference

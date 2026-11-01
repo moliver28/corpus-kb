@@ -2,6 +2,31 @@
 
 ## Overview
 
+## Contents
+
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Pipeline Stages](#pipeline-stages)
+- [Statement atoms](#statement-atoms)
+- [Conflicts](#conflicts)
+- [Beliefs](#beliefs)
+- [Deduplication and Provenance](#deduplication-and-provenance)
+- [Contextual Retrieval](#contextual-retrieval)
+- [Matryoshka Two-Tier Retrieval](#matryoshka-two-tier-retrieval)
+- [Search Stage](#search-stage)
+- [Reranker Configuration](#reranker-configuration)
+- [Self-Query Filters](#self-query-filters)
+- [Judge and Answer Verification](#judge-and-answer-verification)
+- [Adaptive Routing](#adaptive-routing)
+- [Ontology Vocabulary](#ontology-vocabulary)
+- [Extractor Seam](#extractor-seam)
+- [Ingestion strategies](#ingestion-strategies)
+- [Ingest from the CLI](#ingest-from-the-cli)
+- [Config Keys](#config-keys)
+- [One-Line Setup](#one-line-setup)
+- [Error Handling](#error-handling)
+- [Fixture System](#fixture-system)
+
 Corpus-KB ingests files, raw text, and directories through a five-stage
 pipeline: **partition**, **chunk**, **embed**, **extract**, and **store**.
 The first two stages are owned by a pluggable **ingestion strategy**
@@ -182,16 +207,17 @@ extraction engine. `extraction.mode` picks the ladder:
   high-confidence relations of this tenant.
 
 The optional `ml` dependency extra (`pip install "corpus-kb[ml]"`)
-installs both model stacks; `corpus-kb setup` pre-pulls the weights. A
-bare install degrades honestly through the extraction fallback chain
-(every fallback lands in `ExtractStats.notes`). The extraction cache
-(keyed by chunk hash, backend, model version, prompt version) makes
-re-ingest of unchanged content free. The span-eval harness
-(`src/corpus_kb/extraction/eval.py`) scores per-type P/R/F1 with
-bootstrap confidence intervals. The promotion gate is micro F1 >= 0.80
-and >= baseline + 0.02. The former BERT backend was dead code: the
-extractor factory never routed to it, so it has been removed. Issue #31
-is the GLiNER follow-up.
+installs both model stacks. `corpus-kb setup` pre-pulls the weights.
+
+- A bare install degrades honestly through the extraction fallback chain
+  (every fallback lands in `ExtractStats.notes`).
+- The extraction cache (keyed by chunk hash, backend, model version, prompt
+  version) makes re-ingest of unchanged content free.
+- The span-eval harness (`src/corpus_kb/extraction/eval.py`) scores per-type
+  P/R/F1 with bootstrap confidence intervals.
+- The promotion gate is micro F1 >= 0.80 and >= baseline + 0.02.
+- The former BERT backend was dead code: the extractor factory never routed
+  to it, so it has been removed. Issue #31 is the GLiNER follow-up.
 
 ## Statement atoms
 
@@ -768,8 +794,6 @@ from corpus_kb.ingestion.base import (
     PlannedChunk,
 )
 
-
-
 class MeetingNotesStrategy:
     """Chunk meeting notes at decision/action/discussion headings."""
 
@@ -952,7 +976,7 @@ cleanly.
 | `reranking.score_floor` | `0.15` | Minimum normalized rerank score to keep |
 | `reranking.calibration` | `minmax` | Score calibration method |
 
-#### `ingest.contextualize`
+### `ingest.contextualize`
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -982,7 +1006,7 @@ Legacy namespaces still load as aliases: `search.*`, `ingest.hierarchy.*`,
 and `contextual.*`. Canonical keys win. Alias use logs a deprecation
 warning.
 
-#### Judge and routing
+### Judge and routing
 
 | Key | Default | Description |
 |-----|---------|-------------|

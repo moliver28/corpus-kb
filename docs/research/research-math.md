@@ -171,23 +171,26 @@ byte-stable for identical seeds.
   `r_i = max over (code k, prototype p, view v ∈ {A, QA}) cos(u_i^v, proto_{k,p})`.
 
   Low `r_i` = the unit is far from EVERY code = candidate missing
-  structure. The DB path (`analytics_sql`) is SQL-side. Basis: the MRL
-  contract (Kusupati et al. 2022, r10 revision). ANALYTICS scans retrieve
-  candidate id sets. The mechanism: one ordered HNSW scan per prototype.
-  The scan runs on the 016 `embedding_256` column. The pinned probe is
-  `embedding_256 <=> $1::vector(256)`. Prototypes are sliced to 256 dims
-  and re-normalized. Surfaced candidates are then RE-RANKED at the FULL
-  1024-d vectors by exact cosine (ids fetched by PK). Final values are
-  full-dim exact, consistent with the 1024-d `tau_res` calibration. The
-  QA-view leg probes `research_exchanges.embedding_256` the same way and
-  maps back to answer units. The RETRIEVAL access pattern uses the
-  halfvec(1024) cast index with the pinned probe
-  `embedding::halfvec(1024) <=> $1::halfvec(1024)`. That is one primary
-  index per access pattern (r11). Recall@k delta of the 256-d
-  slice vs full-dim is 0.0 — owned by the todo-13 G1 artifact
-  (task13-g1-report.json). NEVER a Python-side O(n·m) full-vector scan
-  (Oracle B r7); EXPLAIN on the fixture proves HNSW index usage for both
-  probes.
+  structure.
+
+  - The DB path (`analytics_sql`) is SQL-side. Basis: the MRL contract
+    (Kusupati et al. 2022, r10 revision).
+  - ANALYTICS scans retrieve candidate id sets. The mechanism: one ordered
+    HNSW scan per prototype. The scan runs on the 016 `embedding_256`
+    column. The pinned probe is `embedding_256 <=> $1::vector(256)`.
+    Prototypes are sliced to 256 dims and re-normalized.
+  - Surfaced candidates are then RE-RANKED at the FULL 1024-d vectors by
+    exact cosine (ids fetched by PK). Final values are full-dim exact,
+    consistent with the 1024-d `tau_res` calibration.
+  - The QA-view leg probes `research_exchanges.embedding_256` the same way
+    and maps back to answer units.
+  - The RETRIEVAL access pattern uses the halfvec(1024) cast index with the
+    pinned probe `embedding::halfvec(1024) <=> $1::halfvec(1024)`. That is
+    one primary index per access pattern (r11).
+  - Recall@k delta of the 256-d slice vs full-dim is 0.0 — owned by the
+    todo-13 G1 artifact (task13-g1-report.json).
+  - NEVER a Python-side O(n·m) full-vector scan (Oracle B r7); EXPLAIN on
+    the fixture proves HNSW index usage for both probes.
 - **Residual share** `R(τ_res) = frac(r_i < τ_res)`. This is the share of
   codable units NOT within the threshold of any code (v5 §11; Oracle A
   D1). Reported with P10/P50/P90 of `r` per source type. Naming: `r_i` is
