@@ -130,7 +130,7 @@ machine:
 
   Every research command and `corpus-kb doctor` honor it - doctor probes
   THAT deployment. The database user needs the grants from
-  [INSTALL.md step 2](INSTALL.md) (on PostgreSQL 15+ the `GRANT CREATE ON
+  [INSTALL.md step 2](INSTALL.md) (on Postgres 15+ the `GRANT CREATE ON
   SCHEMA public` line is required).
 
 **2. A research-grade embedder.** Research embeddings require at least

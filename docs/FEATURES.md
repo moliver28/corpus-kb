@@ -1,6 +1,6 @@
 # Features
 
-Corpus-KB turns your local files into a searchable, queryable knowledge base. This page explains what you can do once the server is running.
+Corpus-KB turns your local files into a searchable, queryable corpus. This page explains what you can do once the server is running.
 
 ---
 
@@ -80,7 +80,7 @@ Four stages tune recall and precision. Each stage fails open: retrieval keeps wo
 ### Answer routing and verification
 
 - **Adaptive routing** (`routing.*`): each question is matched to an intent prototype. Semantic questions run hybrid search, relational questions run SQL aggregates, and graph questions run entity traversal. Low confidence falls back to hybrid search.
-- **Answer verification** (`judge.*`): each answer is split into claims and scored against the cited chunks. The result is a groundedness score with `entailed` / `contradicted` / `unsupported` verdicts. The verifier abstains rather than guessing.
+- **Answer verification** (`judge.*`): each answer is split into assertions and scored against the cited chunks. The result is a groundedness score with `entailed` / `contradicted` / `unsupported` verdicts. The verifier abstains rather than guessing.
 
 ### Contextual retrieval
 
@@ -103,7 +103,7 @@ Three extraction backends ship by default, plus an opt-in fourth:
 | Regex | `regex` | Zero-dependency fallback. Fast, deterministic, no LLM calls. |
 | LangExtract | `langextract` | LLM-based extraction with recorded fixtures for deterministic CI. |
 | PostgresML | `pgml` | In-database ONNX NER with regex fallback. Requires `pgml` extension. |
-| GLiNER2 | `gliner` | Opt-in mention-level NER (`fastino/gliner2-large-v1`); entities only, no relations. Needs the `ner` extra and `extraction.gliner.enabled: true`. |
+| GLiNER | `gliner` | Opt-in mention-level NER (`fastino/gliner2-large-v1`); entities only, no relations. Needs the `ner` extra and `extraction.gliner.enabled: true`. |
 
 You can:
 
@@ -273,7 +273,7 @@ Honest caveats:
 | Graph | `add_relation` | Add one relation between two entities |
 | Search | `search` | Hybrid vector + full-text search |
 | Search | `query` | Route one question to the vector, SQL, or graph backend |
-| Search | `verify_answer` | Check each claim of an answer against the cited chunks |
+| Search | `verify_answer` | Check each assertion of an answer against the cited chunks |
 | Search | `ask` | Cited answer generated from retrieved evidence |
 | Research | `research_ingest_transcript` | Ingest one transcript: turns, roles, exchanges |
 | Research | `research_ingest` | Dynamic ingest of file/dir/glob with dedup |
