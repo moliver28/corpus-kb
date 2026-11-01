@@ -10,7 +10,9 @@ migration change.
 
 from __future__ import annotations
 
-PROMOTABLE_DIMENSIONS = 1024
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
+
+PROMOTABLE_DIMENSIONS = RESEARCH_EMBEDDING_DIMENSIONS
 
 
 class NonPromotableDimensionsError(RuntimeError):

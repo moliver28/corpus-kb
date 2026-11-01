@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
+
 from ...storage.gateway import SqlGateway
 from ...utils.models import Chunk, Document, Entity, Relation
 
@@ -137,7 +139,7 @@ class UnitSink:
         self,
         chunks: list[Chunk],
         embedding_model: str,
-        dimensions: int = 2560,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         vectors_1024: dict[str, list[float]] | None = None,
     ) -> int:
         """No corpus vector writes on the research path."""

@@ -20,12 +20,15 @@ import logging
 import math
 from typing import Any
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder, aembed_batch, assert_unit_or_zero
 from corpus_kb.research.conn import Store, dialect_of, resolve_store, tenant_scope
 
 logger = logging.getLogger(__name__)
 
-RESEARCH_DIMENSIONS = 1024
+# The research width (schema-facing alias for corpus_kb.dimensions;
+# this module is the research boundary the constant's docstring cites).
+RESEARCH_DIMENSIONS = RESEARCH_EMBEDDING_DIMENSIONS
 
 
 class ResearchEmbedder:
@@ -83,8 +86,8 @@ class ResearchEmbedder:
 
     async def _cache_put(self, tenant_id: Any, content_sha: str, vector: list[float]) -> None:
         # Postgres keeps its byte-identical ::vector text bind; DuckDB casts
-        # the same compact literal to the fixed FLOAT[1024] column type.
-        cast = "$6::FLOAT[1024]" if self._duck else "$6::vector"
+        # the same compact literal to the fixed FLOAT[k] column type.
+        cast = f"$6::FLOAT[{RESEARCH_DIMENSIONS}]" if self._duck else "$6::vector"
         async with tenant_scope(self._store, tenant_id) as conn:
             await conn.execute(
                 f"""

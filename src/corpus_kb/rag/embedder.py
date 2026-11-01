@@ -22,6 +22,8 @@ import httpx
 from ollama import Client
 from ollama._types import EmbedResponse
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
+
 from ..config import load_config
 from ..errors import ConfigError
 from ..utils.deterministic import HashRandom
@@ -35,7 +37,7 @@ MAX_CACHE_SIZE = 10_000
 # files, this module). No silent other fallback exists; a config missing the
 # key gets exactly this pair.
 DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:4b"
-DEFAULT_EMBEDDING_DIMENSIONS = 2560
+DEFAULT_EMBEDDING_DIMENSIONS = EMBEDDING_DIMENSIONS
 
 # Bound on every embed call (seconds). Same contract as nli_client.py
 # (commit 3e37bed): without a client timeout, a server that accepts TCP but
