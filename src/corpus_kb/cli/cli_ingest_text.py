@@ -23,7 +23,13 @@ import typer
 
 # Reuse the ingest front door's shared plumbing (same honest-sync rule);
 # cli_ingest imports corpus_kb.cli only lazily, so this import is acyclic.
-from corpus_kb.cli._plumbing import EXIT_FAILED, EXIT_OK
+from corpus_kb.cli._plumbing import (
+    _VALIDATE_OPT,
+    EXIT_FAILED,
+    EXIT_OK,
+    ValidateMode,
+    validate_kwargs,
+)
 from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
 
 
@@ -37,7 +43,13 @@ def _read_text(text: str) -> str:
     return sys.stdin.read() if text == "-" else text
 
 
-async def _ingest_text_flow(text: str, source: str, source_type: str, json_output: bool) -> int:
+async def _ingest_text_flow(
+    text: str,
+    source: str,
+    source_type: str,
+    json_output: bool,
+    validate: ValidateMode | None,
+) -> int:
     from corpus_kb.errors import CorpusError
     from corpus_kb.tools.ingest_common import ingest_text
 
@@ -50,6 +62,7 @@ async def _ingest_text_flow(text: str, source: str, source_type: str, json_outpu
             config=cfg,
             source=source,
             source_type=source_type,
+            **validate_kwargs(validate),
         )
     except CorpusError as exc:
         print(f"ERROR: {exc}")
@@ -64,9 +77,11 @@ async def _ingest_text_flow(text: str, source: str, source_type: str, json_outpu
     if status != "success":
         print(f"ingest-text: {status}")
         return EXIT_FAILED
+    profile = result.get("profile")
+    profile_note = f", profile {profile}" if profile is not None else ""
     print(
         f"ingested {result.get('document_id')}: {result.get('chunk_count')} chunks, "
-        f"{result.get('entity_count')} entities"
+        f"{result.get('entity_count')} entities{profile_note}"
     )
     return EXIT_OK
 
@@ -76,9 +91,12 @@ def ingest_text(
     source: str = typer.Option("raw_text", "--source", help="A source label for the document"),
     source_type: str = typer.Option("text", "--source-type", help="The document type"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+    validate: ValidateMode | None = _VALIDATE_OPT,
 ) -> int:
     """Ingest raw text with a source label and a document type.
 
     Exit codes: 0 ingested, 1 failed, 3 the database is unreachable.
     """
-    return _run_sync(lambda: _ingest_text_flow(_read_text(text), source, source_type, json_output))
+    return _run_sync(
+        lambda: _ingest_text_flow(_read_text(text), source, source_type, json_output, validate)
+    )

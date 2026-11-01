@@ -9,6 +9,8 @@ codes and the heal loop are exercised end-to-end without a database.
 from __future__ import annotations
 
 import asyncio
+import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import cast
 
@@ -728,3 +730,139 @@ def test_ingest_reembed_route_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
         }
     finally:
         research_http.set_research_pool(None)
+
+
+# ---------------------------------------------------------------------------
+# --validate (issue #188): the optional gate flag reaches the shared handlers
+# ---------------------------------------------------------------------------
+
+
+def _flat_help(output: str) -> str:
+    ansi = re.compile(r"\[[0-9;]*m")
+    return " ".join(ansi.sub("", output).split())
+
+
+def _patch_ingest_file_capture(
+    monkeypatch: pytest.MonkeyPatch, result: dict[str, object]
+) -> list[dict[str, object]]:
+    """Fake ingest_file that records every kwarg (the --validate seam)."""
+    calls: list[dict[str, object]] = []
+
+    async def fake_ingest_file(*args: object, **kwargs: object) -> dict[str, object]:
+        calls.append({"args": args, **kwargs})
+        return result
+
+    monkeypatch.setattr("corpus_kb.tools.ingest_tools.ingest_file", fake_ingest_file)
+    return calls
+
+
+def test_cli_ingest_validate_reaches_the_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = tmp_path / "note.md"
+    file.write_text("hello", encoding="utf-8")
+    _patch_pool(monkeypatch)
+    calls = _patch_ingest_file_capture(monkeypatch, _result("success", str(file)))
+    result = runner.invoke(app, ["ingest", str(file), "--validate", "enforce"])
+    assert result.exit_code == 0, result.output
+    assert calls[0]["validate"] == "enforce"
+
+
+def test_cli_ingest_validate_omitted_keeps_the_profile_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = tmp_path / "note.md"
+    file.write_text("hello", encoding="utf-8")
+    _patch_pool(monkeypatch)
+    calls = _patch_ingest_file_capture(monkeypatch, _result("success", str(file)))
+    result = runner.invoke(app, ["ingest", str(file)])
+    assert result.exit_code == 0, result.output
+    assert "validate" not in calls[0]
+
+
+def test_cli_ingest_validate_rejects_unknown_mode(tmp_path: Path) -> None:
+    file = tmp_path / "note.md"
+    file.write_text("hello", encoding="utf-8")
+    result = runner.invoke(app, ["ingest", str(file), "--validate", "strict"])
+    assert result.exit_code == 2, result.output
+    assert "not one of" in result.output
+    assert "calibrate" in result.output
+
+
+def test_cli_ingest_url_validate_reaches_the_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    async def fake_ingest_url(*args: object, **kwargs: object) -> dict[str, object]:
+        calls.append({"args": args, **kwargs})
+        return {
+            "status": "success",
+            "pages": [_result("success", "https://example.test/")],
+            "total_documents": 1,
+        }
+
+    monkeypatch.setattr("corpus_kb.tools.ingest_tools.ingest_url", fake_ingest_url)
+    _patch_pool(monkeypatch)
+    result = runner.invoke(app, ["ingest-url", "https://example.test/", "--validate", "advisory"])
+    assert result.exit_code == 0, result.output
+    assert calls[0]["validate"] == "advisory"
+
+
+def test_cli_watch_validate_reaches_the_per_file_ingest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "call.txt"
+    target.write_text("transcript", encoding="utf-8")
+    _patch_pool(monkeypatch)
+    calls = _patch_ingest_file_capture(monkeypatch, _result("success", str(target)))
+
+    async def fake_ledger_available(pool: object, tenant: str) -> bool:
+        return False
+
+    async def fake_watch(
+        directory: object,
+        ingest_cb: Callable[[Path], Awaitable[dict[str, object]]],
+        options: WatchOptions,
+        **kw: object,
+    ) -> dict[str, object]:
+        await ingest_cb(target)
+        return {"status": "success", "ingested": 0, "still_broken": []}
+
+    monkeypatch.setattr("corpus_kb.ingest_watch.ledger_available", fake_ledger_available)
+    monkeypatch.setattr("corpus_kb.ingest_watch.watch_directory", fake_watch)
+    result = runner.invoke(app, ["ingest", str(target), "--watch", "--validate", "off"])
+    assert result.exit_code == 0, result.output
+    assert calls[0]["validate"] == "off"
+
+
+def test_cli_ingest_prints_the_active_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = tmp_path / "note.md"
+    file.write_text("hello", encoding="utf-8")
+    _patch_pool(monkeypatch)
+    _patch_ingest_file_capture(monkeypatch, _result("success", str(file), profile="interviews"))
+    result = runner.invoke(app, ["ingest", str(file)])
+    assert result.exit_code == 0, result.output
+    assert "profile: interviews" in result.output
+
+
+def test_cli_ingest_omits_the_profile_line_without_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    file = tmp_path / "note.md"
+    file.write_text("hello", encoding="utf-8")
+    _patch_pool(monkeypatch)
+    _patch_ingest_file_capture(monkeypatch, _result("success", str(file)))
+    result = runner.invoke(app, ["ingest", str(file)])
+    assert result.exit_code == 0, result.output
+    assert "profile:" not in result.output
+
+
+def test_cli_ingest_help_documents_the_validate_choices() -> None:
+    result = runner.invoke(app, ["ingest", "--help"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    flat = _flat_help(result.output)
+    assert "--validate" in flat
+    assert "off|advisory|enforce|calibrate" in flat

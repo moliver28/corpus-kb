@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
+from corpus_kb.cli._plumbing import _RESEARCH_VALIDATE_OPT, ValidateMode, validate_kwargs
 from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, _tenant, wired_pool
 
 if TYPE_CHECKING:
@@ -38,11 +39,14 @@ def research_ingest_transcript(
         "--source-type",
         help="Ingestion strategy override (validated against the registry)",
     ),
+    validate: ValidateMode | None = _RESEARCH_VALIDATE_OPT,
 ) -> int:
     """Ingest one transcript: turns -> roles -> exchanges -> event stream."""
 
     return _run_async(
-        _ingest_coroutine(path, project_id, watch=False, force=force, source_type=source_type)
+        _ingest_coroutine(
+            path, project_id, watch=False, force=force, source_type=source_type, validate=validate
+        )
     )
 
 
@@ -56,10 +60,18 @@ def research_ingest(
         "--source-type",
         help="Ingestion strategy override (validated against the registry)",
     ),
+    validate: ValidateMode | None = _RESEARCH_VALIDATE_OPT,
 ) -> int:
     """Dynamic ingestion with separate file-hash and text-hash dedup."""
     return _run_async(
-        _ingest_coroutine(path, project_id, watch=watch, force=force, source_type=source_type)
+        _ingest_coroutine(
+            path,
+            project_id,
+            watch=watch,
+            force=force,
+            source_type=source_type,
+            validate=validate,
+        )
     )
 
 
@@ -69,6 +81,7 @@ def _ingest_coroutine(
     watch: bool,
     force: bool,
     source_type: str | None = None,
+    validate: ValidateMode | None = None,
 ):
     _validate_strategy_override(source_type)
     from corpus_kb.config import load_config
@@ -104,6 +117,7 @@ def _ingest_coroutine(
                         pool,
                         project_id=project_id,
                         tenant_id=DEFAULT_TENANT,
+                        **validate_kwargs(validate),
                     )
 
                 await watch_dir(pool, _tenant(), Path(path), interval, ingest_one)
@@ -114,6 +128,7 @@ def _ingest_coroutine(
                 project_id=project_id,
                 tenant_id=DEFAULT_TENANT,
                 force=force,
+                **validate_kwargs(validate),
             )
             import json
 

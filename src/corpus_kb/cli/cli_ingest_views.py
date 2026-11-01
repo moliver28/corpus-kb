@@ -18,7 +18,7 @@ def string_list(value: object) -> list[str]:
 
 
 def print_ingest_result(result: dict[str, object]) -> None:
-    """One pipeline result as a line plus its warnings/errors, honestly."""
+    """One pipeline result as a line plus its profile and warnings, honestly."""
     print(
         RUN_LINE.format(
             status=str(result.get("status", "error")),
@@ -27,8 +27,10 @@ def print_ingest_result(result: dict[str, object]) -> None:
             path=str(result.get("path", "?")),
         )
     )
-    # Honesty envelope: which embedding technique actually ran, and why a
-    # requested one (late chunking) fell back.
+    # Honesty envelope: the profile that drove the run (None when no
+    # profile is active), then the embedding technique that ran.
+    if result.get("profile") is not None:
+        print(f"    profile: {result['profile']}")
     if result.get("embedding_mode") is not None:
         print(f"    embedding: {result['embedding_mode']}")
     if result.get("embedding_note") is not None:

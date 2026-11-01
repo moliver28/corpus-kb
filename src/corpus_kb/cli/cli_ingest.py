@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 import typer
 
+from corpus_kb.cli._plumbing import _VALIDATE_OPT, ValidateMode, validate_kwargs
 from corpus_kb.cli.cli_ingest_views import (
     print_ingest_result,
     print_reembed_summary,
@@ -163,7 +164,9 @@ def _watch_interval(cfg: dict[str, object]) -> float:
         return 10.0
 
 
-async def _ingest_files(path: Path, source_type: str | None, json_output: bool) -> int:
+async def _ingest_files(
+    path: Path, source_type: str | None, json_output: bool, validate: ValidateMode | None
+) -> int:
     from corpus_kb.tools.ingest_tools import ingest_file
 
     cfg = _load_config()
@@ -178,7 +181,9 @@ async def _ingest_files(path: Path, source_type: str | None, json_output: bool) 
             print(f"ERROR: no supported files under {path}")
             return INGEST_EXIT_CONFIG
         for file in files:
-            result = await ingest_file(str(file), pool, cfg, TENANT_DEFAULT, source_type)
+            result = await ingest_file(
+                str(file), pool, cfg, TENANT_DEFAULT, source_type, **validate_kwargs(validate)
+            )
             results.append(result)
             if not json_output:
                 print_ingest_result(result)
@@ -232,6 +237,7 @@ async def _ingest_url_flow(
     max_pages: int | None,
     source_type: str | None,
     json_output: bool,
+    validate: ValidateMode | None,
 ) -> int:
     from corpus_kb.tools.ingest_tools import ingest_url
 
@@ -246,7 +252,13 @@ async def _ingest_url_flow(
     pool = await _open_pool(cfg)
     try:
         aggregate = await ingest_url(
-            url, pool, cfg, TENANT_DEFAULT, crawl=crawl, source_type=source_type
+            url,
+            pool,
+            cfg,
+            TENANT_DEFAULT,
+            crawl=crawl,
+            source_type=source_type,
+            **validate_kwargs(validate),
         )
     finally:
         await pool.close()
@@ -286,6 +298,7 @@ def ingest_url_command(
         help="Ingestion strategy override (default: web_structure via detection)",
     ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+    validate: ValidateMode | None = _VALIDATE_OPT,
 ) -> int:
     """Fetch a website and ingest its HTML pages (web_structure strategy).
 
@@ -293,10 +306,14 @@ def ingest_url_command(
     2 total failure (fetch blocked or every page failed), 3 configuration
     error (unknown --source-type).
     """
-    return _run_sync(lambda: _ingest_url_flow(url, crawl, max_pages, source_type, json_output))
+    return _run_sync(
+        lambda: _ingest_url_flow(url, crawl, max_pages, source_type, json_output, validate)
+    )
 
 
-async def _watch_flow(path: Path, source_type: str | None, no_heal: bool) -> int:
+async def _watch_flow(
+    path: Path, source_type: str | None, no_heal: bool, validate: ValidateMode | None
+) -> int:
     from corpus_kb.ingest_watch import (
         WatchLedger,
         WatchOptions,
@@ -319,7 +336,9 @@ async def _watch_flow(path: Path, source_type: str | None, no_heal: bool) -> int
         interval = _watch_interval(cfg)
 
         async def ingest_one(file: Path) -> dict[str, object]:
-            return await ingest_file(str(file), pool, cfg, TENANT_DEFAULT, source_type)
+            return await ingest_file(
+                str(file), pool, cfg, TENANT_DEFAULT, source_type, **validate_kwargs(validate)
+            )
 
         options = WatchOptions(interval_s=interval, heal=not no_heal)
         heal_label = "off" if no_heal else "on"
@@ -363,6 +382,7 @@ def ingest(
     no_heal: bool = typer.Option(
         False, "--no-heal", help="--watch: disable auto-heal (failures are never retried)"
     ),
+    validate: ValidateMode | None = _VALIDATE_OPT,
 ) -> int:
     """Ingest files/directories, watch a drop folder, or re-embed degraded chunks.
 
@@ -384,8 +404,8 @@ def ingest(
         print(f"ERROR: path not found: {target}")
         raise typer.Exit(code=INGEST_EXIT_CONFIG) from None
     if watch:
-        return _run_sync(lambda: _watch_flow(target, source_type, no_heal))
-    return _run_sync(lambda: _ingest_files(target, source_type, json_output))
+        return _run_sync(lambda: _watch_flow(target, source_type, no_heal, validate))
+    return _run_sync(lambda: _ingest_files(target, source_type, json_output, validate))
 
 
 def ingest_status(
