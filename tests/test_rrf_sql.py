@@ -131,23 +131,22 @@ def _assert_identical(
 
 @pytest.fixture
 async def live_conn():
-    """Explicit-DSN PG16 connection with migration 006 applied (idempotent)."""
-    try:
-        conn = await asyncio.wait_for(asyncpg.connect(DSN), timeout=CONNECT_TIMEOUT)
-    except Exception:
-        pytest.skip("Postgres not available on localhost:5432")
+    """Explicit-DSN PG16 connection with migration 006 applied (idempotent).
+
+    Reachability is the requires_postgres marker's job (conftest TCP probe);
+    the connect itself stays bare.
+    """
+    conn = await asyncio.wait_for(asyncpg.connect(DSN), timeout=CONNECT_TIMEOUT)
     await conn.execute(MIGRATION.read_text(encoding="utf-8"))
     yield conn
     await conn.close()
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_migration_006_double_apply_is_noop() -> None:
     """CREATE OR REPLACE makes re-applying 006 clean on a live server."""
-    try:
-        conn = await asyncio.wait_for(asyncpg.connect(DSN), timeout=CONNECT_TIMEOUT)
-    except Exception:
-        pytest.skip("Postgres not available on localhost:5432")
+    conn = await asyncio.wait_for(asyncpg.connect(DSN), timeout=CONNECT_TIMEOUT)
     try:
         sql = MIGRATION.read_text(encoding="utf-8")
         await conn.execute(sql)
@@ -164,6 +163,7 @@ async def test_migration_006_double_apply_is_noop() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_matches_python_on_overlapping_sides(live_conn) -> None:
     """Chunks in both sides accumulate both rank contributions; FTS metadata wins."""
     shared = [str(uuid4()) for _ in range(2)]
@@ -184,6 +184,7 @@ async def test_rrf_fusion_matches_python_on_overlapping_sides(live_conn) -> None
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_matches_python_on_disjoint_sides(live_conn) -> None:
     """Equal ranks across disjoint sides tie; ties keep Python's stable order."""
     vector_rows = _side_rows("vec", 3)
@@ -205,6 +206,7 @@ async def test_rrf_fusion_matches_python_on_disjoint_sides(live_conn) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_matches_python_with_empty_vector_side(live_conn) -> None:
     """An empty vector side yields the FTS side in rank order."""
     fts_rows = _side_rows("fts", 3)
@@ -214,6 +216,7 @@ async def test_rrf_fusion_matches_python_with_empty_vector_side(live_conn) -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_matches_python_with_empty_fts_side(live_conn) -> None:
     """An empty FTS side yields the vector side in rank order."""
     vector_rows = _side_rows("vec", 3)
@@ -223,6 +226,7 @@ async def test_rrf_fusion_matches_python_with_empty_fts_side(live_conn) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_null_side_behaves_like_empty(live_conn) -> None:
     """A NULL JSONB side contributes nothing, same as an empty array."""
     fts_rows = _side_rows("fts", 2)
@@ -232,6 +236,7 @@ async def test_rrf_fusion_null_side_behaves_like_empty(live_conn) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_single_result(live_conn) -> None:
     """A single hit scores exactly 1/(rrf_k + 1)."""
     vector_rows = _side_rows("vec", 1)
@@ -243,6 +248,7 @@ async def test_rrf_fusion_single_result(live_conn) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_both_sides_empty_returns_no_rows(live_conn) -> None:
     """Two empty sides fuse to an empty result, like the Python loop."""
     assert await _sql_rrf(live_conn, [], [], k=10) == []
@@ -250,6 +256,7 @@ async def test_rrf_fusion_both_sides_empty_returns_no_rows(live_conn) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_default_rrf_k_is_60(live_conn) -> None:
     """Omitting rrf_k uses the DEFAULT 60, matching the old Python constant."""
     vector_rows = _side_rows("vec", 2)
@@ -260,6 +267,7 @@ async def test_rrf_fusion_default_rrf_k_is_60(live_conn) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_custom_rrf_k(live_conn) -> None:
     """A non-default rrf_k flows through to the same formula on both sides."""
     vector_rows = _side_rows("vec", 3)
@@ -270,6 +278,7 @@ async def test_rrf_fusion_custom_rrf_k(live_conn) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.requires_postgres
 async def test_rrf_fusion_respects_k_limit(live_conn) -> None:
     """LIMIT k trims the fused list exactly like the Python slice [:k]."""
     vector_rows = _side_rows("vec", 3)

@@ -435,11 +435,9 @@ async def test_tenant_context_scoped_per_store(conn: FakeConnection, pool: FakeP
 # ============================================================================
 
 
+@pytest.mark.requires_postgres
 async def test_live_degraded_probe_raises_clear_error_without_age() -> None:
-    try:
-        pool = await asyncpg.create_pool(LIVE_DSN, min_size=1, max_size=1, timeout=3)
-    except Exception:
-        pytest.skip("Postgres not available on localhost:5432")
+    pool = await asyncpg.create_pool(LIVE_DSN, min_size=1, max_size=1, timeout=3)
     try:
         async with pool.acquire() as conn:
             age_present = await conn.fetchval(
@@ -464,11 +462,9 @@ async def test_live_degraded_probe_raises_clear_error_without_age() -> None:
 # ============================================================================
 
 
+@pytest.mark.requires_postgres
 async def test_live_age_roundtrip_when_available() -> None:
-    try:
-        pool = await asyncpg.create_pool(LIVE_DSN, min_size=1, max_size=2, timeout=3)
-    except Exception:
-        pytest.skip("Postgres not available on localhost:5432")
+    pool = await asyncpg.create_pool(LIVE_DSN, min_size=1, max_size=2, timeout=3)
     try:
         async with pool.acquire() as conn:
             age_present = await conn.fetchval(

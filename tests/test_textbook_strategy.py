@@ -514,6 +514,77 @@ def test_cache_cap_prunes_before_parsing(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 # ---------------------------------------------------------------------------
+# Error injection: the three documented swallow sites (issue 235). Bookmarks
+# and page text are best-effort enrichment over a real PDF parse, so a
+# failure there drops that piece and never fails the parse. Fakes only: no
+# extra installed in CI.
+# ---------------------------------------------------------------------------
+
+
+class _OutlineEntry:
+    def __init__(self, title: str, broken: bool = False) -> None:
+        self.title = title
+        self.broken = broken
+
+
+def test_a_broken_bookmark_destination_drops_only_that_bookmark() -> None:
+    """Injection at get_destination_page_number: one bad destination is skipped."""
+    from corpus_kb.ingestion.strategies.textbook_pages import read_outline
+
+    class _Reader:
+        def __init__(self) -> None:
+            self.outline = [_OutlineEntry("Bad", broken=True), _OutlineEntry("Good")]
+
+        def get_destination_page_number(self, entry: _OutlineEntry) -> int:
+            if entry.broken:
+                raise ValueError("broken destination")
+            return 4
+
+    assert [(b.title, b.page, b.level) for b in read_outline(_Reader())] == [("Good", 5, 0)]
+
+
+def test_a_failing_outline_read_returns_the_empty_sentinel() -> None:
+    """Injection at the outline property: an unreadable outline yields no bookmarks."""
+    from corpus_kb.ingestion.strategies.textbook_pages import read_outline
+
+    class _Reader:
+        @property
+        def outline(self) -> list[object]:
+            raise ValueError("malformed outline")
+
+    assert read_outline(_Reader()) == []
+
+
+class _ExtractPage:
+    def __init__(self, text: str, broken: bool = False) -> None:
+        self.text = text
+        self.broken = broken
+
+    def extract_text(self) -> str:
+        if self.broken:
+            raise OSError("font table blew up")
+        return self.text
+
+
+def test_a_failing_page_extraction_warns_and_keeps_the_rest() -> None:
+    """Injection at extract_text: the bad page warns once; its neighbors parse."""
+    from corpus_kb.ingestion.strategies.textbook_pages import parse_window_pypdf
+
+    class _Reader:
+        def __init__(self) -> None:
+            self.pages = [
+                _ExtractPage("first"),
+                _ExtractPage("bad", broken=True),
+                _ExtractPage("third"),
+            ]
+
+    warnings: list[str] = []
+    items = parse_window_pypdf(_Reader(), 1, 3, warnings)
+    assert [(item.page, item.text) for item in items] == [(1, "first"), (3, "third")]
+    assert warnings == ["pages 2 did not extract; skipped"]
+
+
+# ---------------------------------------------------------------------------
 # Real legs (skip when the extra is absent — CI installs neither)
 # ---------------------------------------------------------------------------
 
