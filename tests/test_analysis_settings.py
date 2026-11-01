@@ -175,7 +175,10 @@ def test_bad_positive_ints_are_rejected_at_load(dotted: str, value: object) -> N
 def test_load_config_raises_on_invalid_block_from_file(tmp_path: Path) -> None:
     """A bad tier in a user YAML fails AT LOAD with the remediation text."""
     base = (REPO / "config.yaml").read_text(encoding="utf-8")
-    assert "analysis:" not in base  # Wave 0: the shipped YAML carries no block
+    # The block ships now (issue #246 lockstep) with every feature dormant;
+    # the appended override replaces it wholesale (last duplicate key wins).
+    assert "analysis:" in base
+    assert "tier: head" in base
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text(
         base + "\nanalysis:\n  classification:\n    enabled: true\n    tier: gpt\n",
