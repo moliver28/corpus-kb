@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from corpus_kb.chunking.hierarchy import Segment
 from corpus_kb.ingestion.base import TOKEN_BUDGET_CHARS, ChunkPlan, validate_plan
 from corpus_kb.ingestion.strategies.textbook import TEXTBOOK_STRATEGY_NAME
 from corpus_kb.ingestion.strategies.textbook_assemble import (
@@ -26,6 +27,7 @@ from corpus_kb.ingestion.strategies.textbook_cache import (
     save_window_cache,
     window_ranges,
 )
+from corpus_kb.ingestion.strategies.textbook_pack import bounded_pieces
 from corpus_kb.ingestion.strategies.textbook_pages import OutlineBookmark, PageItem, WindowRecord
 from corpus_kb.ingestion.strategies.textbook_settings import settings_from
 
@@ -393,3 +395,25 @@ def test_file_sha256_tracks_content(tmp_path: Path) -> None:
     first = file_sha256(path)
     path.write_bytes(b"two")
     assert file_sha256(path) != first
+
+
+def test_bounded_pieces_returns_fitting_text_whole() -> None:
+    # Text within the budget passes through split_oversized untouched.
+    segment = Segment(text="one two three", start_char=10, end_char=23, kind="section")
+    pieces = bounded_pieces(segment, target_tokens=10, budget_chars=200)
+    assert len(pieces) == 1
+    assert pieces[0].text == "one two three"
+    assert (pieces[0].start_char, pieces[0].end_char) == (10, 23)
+
+
+def test_bounded_pieces_slices_unbreakable_runs_to_budget() -> None:
+    # A run with no whitespace cannot split at words, so split_oversized
+    # emits it whole and over budget; the fixed-step fallback slices it
+    # while keeping exact source offsets, like the code strategy does.
+    run = "x" * 500
+    segment = Segment(text=run, start_char=100, end_char=600, kind="section")
+    pieces = bounded_pieces(segment, target_tokens=10, budget_chars=200)
+    assert [piece.text for piece in pieces] == [run[0:200], run[200:400], run[400:500]]
+    assert [piece.start_char for piece in pieces] == [100, 300, 500]
+    assert [piece.end_char for piece in pieces] == [300, 500, 600]
+    assert all(piece.kind == "split" for piece in pieces)
