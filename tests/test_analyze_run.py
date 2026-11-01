@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from corpus_kb.errors import DependencyMissingError
+from corpus_kb.errors import DependencyMissingError, ValidationError
 from corpus_kb.tools import analysis_tools
 
 TENANT = "00000000-0000-0000-0000-000000000001"
@@ -240,6 +240,31 @@ async def test_value_error_failure_carries_no_remedy_row(
         analysis_tools.labeling_tools,
         "labeling_build",
         _raises(ValueError("LF file lfs.json is not valid JSON: x (line 1).")),
+    )
+    monkeypatch.setattr(analysis_tools, "analysis_backfill_dates", _returns(_backfill()))
+    monkeypatch.setattr(analysis_tools.topics_tools, "topics_trends", _returns(_trends()))
+    result = await analysis_tools.analyze_run(
+        _ProbePool(), config=LABELING_PLUS_TRENDS, tenant_id=TENANT
+    )
+    assert result["status"] == "success"
+    labeling = result["sections"][1]
+    assert labeling["status"] == "failed"
+    assert "not valid JSON" in labeling["detail"]["reason"]
+    assert "remedy" not in labeling["detail"]
+
+
+async def test_validation_error_failure_keeps_the_same_row_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The labeling loader's typed rejection keeps the legacy envelope.
+
+    Wave 1 (issue 229) retypes the loader's raises. The failed section
+    must keep the reason-only row: no generic remedy row appears.
+    """
+    monkeypatch.setattr(
+        analysis_tools.labeling_tools,
+        "labeling_build",
+        _raises(ValidationError("LF file lfs.json is not valid JSON: x (line 1).")),
     )
     monkeypatch.setattr(analysis_tools, "analysis_backfill_dates", _returns(_backfill()))
     monkeypatch.setattr(analysis_tools.topics_tools, "topics_trends", _returns(_trends()))

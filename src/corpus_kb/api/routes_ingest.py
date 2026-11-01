@@ -22,7 +22,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import Message, Receive
 
-from corpus_kb.api._body import DEFAULT_TENANT_ID, opt_bool, opt_str, parse_body, route_errors
+from corpus_kb.api._body import (
+    DEFAULT_TENANT_ID,
+    opt_bool,
+    opt_int,
+    opt_str,
+    parse_body,
+    route_errors,
+)
 from corpus_kb.domain.models import (
     IngestDirectoryCommand,
     IngestFileCommand,
@@ -196,7 +203,9 @@ async def ingest_status_route(request: Request) -> JSONResponse:
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools import ingest_surface_tools
 
-    limit = int(request.query_params.get("limit", ingest_surface_tools.DEFAULT_RUN_LIMIT))
+    limit = opt_int(
+        request.query_params.get("limit"), ingest_surface_tools.DEFAULT_RUN_LIMIT, name="limit"
+    )
     result = await ingest_surface_tools.ingest_status(
         await research_pool(),
         tenant_id=request.query_params.get("tenant_id", DEFAULT_TENANT_ID),
@@ -214,11 +223,10 @@ async def ingest_reembed_route(request: Request) -> JSONResponse:
     from corpus_kb.tools import ingest_surface_tools
 
     body = await parse_body(request)
-    raw_limit = body.get("limit")
     result = await ingest_surface_tools.ingest_reembed(
         await research_pool(),
         tenant_id=body.get("tenant_id", DEFAULT_TENANT_ID),
-        limit=int(raw_limit) if raw_limit is not None else None,
+        limit=opt_int(body.get("limit"), None, name="limit"),
         doc_id=body.get("doc_id"),
     )
     # Same contract as ingest-status: a pre-migration database is 503,

@@ -45,7 +45,7 @@ async def conflicts_list_route(request: Request) -> JSONResponse:
         await _pool(),
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         verdict=opt_str(body.get("verdict")),
-        limit=opt_int(body.get("limit"), 50),
+        limit=opt_int(body.get("limit"), 50, name="limit"),
     )
     return JSONResponse(result)
 

@@ -34,7 +34,7 @@ async def statements_list_route(request: Request) -> JSONResponse:
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         template_id=opt_str(body.get("template_id")),
         document_id=opt_str(body.get("document_id")),
-        limit=opt_int(body.get("limit"), 50),
+        limit=opt_int(body.get("limit"), 50, name="limit"),
     )
     return JSONResponse(result)
 
@@ -49,6 +49,6 @@ async def statements_timeline_route(request: Request) -> JSONResponse:
         await _pool(),
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         text_query=opt_str(body.get("text_query")),
-        limit=opt_int(body.get("limit"), 200),
+        limit=opt_int(body.get("limit"), 200, name="limit"),
     )
     return JSONResponse(result)
