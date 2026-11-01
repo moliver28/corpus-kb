@@ -6,6 +6,8 @@ Top-level commands registered on the main app (see ``register``):
     handler the MCP + HTTP + socket surfaces call).
   * ``corpus-kb labeling-list`` — the built chunk labels.
   * ``corpus-kb labeling-lfs`` — the registered labeling functions.
+  * ``corpus-kb labeling-triage`` — the weak-label review queue (U39).
+  * ``corpus-kb labeling-gold-check`` — gold-set validation (F6).
 
 HONEST EXIT CODES (stable for scripting): ``0`` the command answered
 (including the honest no-op outcomes: disabled feature, unavailable
@@ -28,10 +30,12 @@ from corpus_kb.cli.cli_ingest import _load_config, _open_pool, _run_sync
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the three labeling commands to the main Typer app."""
+    """Attach the five labeling commands to the main Typer app."""
     app.command("labeling-build")(labeling_build)
     app.command("labeling-list")(labeling_list)
     app.command("labeling-lfs")(labeling_lfs)
+    app.command("labeling-triage")(labeling_triage)
+    app.command("labeling-gold-check")(labeling_gold_check)
 
 
 def _exit_for(result: dict[str, object]) -> int:
@@ -53,6 +57,29 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
         print(f"labeling: {result.get('label_count', 0)} labels; status {status}")
         return
     print(f"labeling: {status}")
+    reason = result.get("reason")
+    if reason:
+        print(f"  {reason}")
+    remedy = result.get("remedy")
+    if remedy:
+        print(f"  remedy: {remedy}")
+
+
+def _emit_quality(result: dict[str, object], name: str, json_output: bool) -> None:
+    """Emit one label-quality envelope (triage or gold-check)."""
+    if json_output:
+        print(json.dumps(result, indent=2, default=str))
+        return
+    status = str(result.get("status", "error"))
+    if status == "success" and "n_flagged" in result:
+        queue = result.get("queue")
+        shown = len(queue) if isinstance(queue, list) else 0
+        print(f"{name}: {result.get('n_flagged', 0)} flagged; {shown} rows shown")
+        return
+    if status == "success":
+        print(f"{name}: {result.get('class_count', 0)} classes validated")
+        return
+    print(f"{name}: {status}")
     reason = result.get("reason")
     if reason:
         print(f"  {reason}")
@@ -113,3 +140,75 @@ def labeling_lfs(
     database down.
     """
     return _run_sync(lambda: _call("labeling_lfs", limit, json_output))
+
+
+async def _call_triage(cv_folds: int, flag_threshold: float, limit: int, json_output: bool) -> int:
+    """Run the triage op through the shared tool layer and emit it."""
+    from corpus_kb.tools.labeling_triage_tools import labeling_triage
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await labeling_triage(
+            pool,
+            cfg,
+            cv_folds=cv_folds,
+            flag_threshold=flag_threshold,
+            limit=limit,
+        )
+    finally:
+        await pool.close()
+    _emit_quality(result, "labeling-triage", json_output)
+    return _exit_for(result)
+
+
+async def _call_gold(gold_file: str, confidence_level: float, json_output: bool) -> int:
+    """Run the gold-check op through the shared tool layer and emit it."""
+    from corpus_kb.tools.labeling_gold_tools import labeling_gold_check
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await labeling_gold_check(
+            pool,
+            gold_file=gold_file,
+            config=cfg,
+            confidence_level=confidence_level,
+        )
+    finally:
+        await pool.close()
+    _emit_quality(result, "labeling-gold-check", json_output)
+    return _exit_for(result)
+
+
+def labeling_triage(
+    cv_folds: int = typer.Option(5, "--cv-folds", min=2, help="Cross-validation folds"),
+    flag_threshold: float = typer.Option(
+        0.2, "--flag-threshold", min=0.001, max=1.0, help="Support level that flags a label"
+    ),
+    limit: int = typer.Option(50, "--limit", min=1, help="How many queue rows to show"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Rank weakly supported built labels into a human review queue.
+
+    Advisory only; nothing is relabeled. Exit codes: 0 ok (including
+    the honest no-op outcomes), 1 failed, 3 database down.
+    """
+    return _run_sync(lambda: _call_triage(cv_folds, flag_threshold, limit, json_output))
+
+
+def labeling_gold_check(
+    gold_file: str = typer.Option(
+        ..., "--gold-file", help="Gold dev set: JSON object of chunk id to label name"
+    ),
+    confidence_level: float = typer.Option(
+        0.95, "--confidence-level", min=0.001, max=0.999, help="Interval coverage"
+    ),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Score built labels against a gold dev set, one class at a time.
+
+    Exit codes: 0 ok (including the honest no-op outcomes), 1 failed,
+    3 database down.
+    """
+    return _run_sync(lambda: _call_gold(gold_file, confidence_level, json_output))

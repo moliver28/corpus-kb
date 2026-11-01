@@ -18,6 +18,7 @@ from typing import Any
 from uuid import UUID
 
 from corpus_kb.errors import ValidationError
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.storage.graph_sql import DEFAULT_LIMIT, DIRECTIONS, MAX_NEIGHBOR_HOPS
 from corpus_kb.storage.graph_store import GraphStore
 from corpus_kb.utils.models import Entity, Relation
@@ -221,21 +222,18 @@ async def _relation_to_response(store: GraphStore, relation: Relation) -> dict[s
 # Singleton
 # ============================================================================
 
-_graph_handler: GraphHandler | None = None
+_graph_handler = SingletonSlot[GraphHandler](
+    "GraphHandler not initialized. Call set_graph_handler() during startup."
+)
 
 
 def get_graph_handler() -> GraphHandler:
-    global _graph_handler
-    if _graph_handler is None:
-        raise RuntimeError("GraphHandler not initialized. Call set_graph_handler() during startup.")
-    return _graph_handler
+    return _graph_handler.get()
 
 
 def set_graph_handler(handler: GraphHandler) -> None:
-    global _graph_handler
-    _graph_handler = handler
+    _graph_handler.set(handler)
 
 
 def reset_graph_handler() -> None:
-    global _graph_handler
-    _graph_handler = None
+    _graph_handler.reset()

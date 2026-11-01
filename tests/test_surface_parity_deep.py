@@ -85,7 +85,9 @@ import corpus_kb.tools.ingest_common as ingest_common_module
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools_module
 import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
 import corpus_kb.tools.keyphrase_tools as keyphrase_tools_module
+import corpus_kb.tools.labeling_gold_tools as labeling_gold_tools_module
 import corpus_kb.tools.labeling_tools as labeling_tools_module
+import corpus_kb.tools.labeling_triage_tools as labeling_triage_tools_module
 import corpus_kb.tools.lexical_tools as lexical_tools_module
 import corpus_kb.tools.meta_embed_tools as meta_embed_tools_module
 import corpus_kb.tools.method_select_tools as method_select_tools_module
@@ -358,6 +360,21 @@ async def _shared_labeling_list(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_labeling_lfs(ctx: dict[str, Any]) -> dict[str, Any]:
     return await labeling_tools_module.labeling_lfs(ctx["pool"], config=ctx["config"], limit=50)
+
+
+async def _shared_labeling_triage(ctx: dict[str, Any]) -> dict[str, Any]:
+    # cv_folds=2: the canned world holds 4 labeled units in 2 classes, so
+    # the leg exercises the REAL triage run (numpy logistic, fixed seed),
+    # not just the guard envelope.
+    return await labeling_triage_tools_module.labeling_triage(
+        ctx["pool"], config=ctx["config"], cv_folds=2
+    )
+
+
+async def _shared_labeling_gold_check(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await labeling_gold_tools_module.labeling_gold_check(
+        ctx["pool"], config=ctx["config"], gold_file=str(ctx[_GOLD_PATH])
+    )
 
 
 async def _shared_classification_build(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -884,6 +901,7 @@ def _mcp(args: dict[str, Any]) -> Any:
 
 _FILE_PATH = "file_path"
 _DIR_PATH = "dir_path"
+_GOLD_PATH = "gold_path"
 DOC_ID = "00000000-0000-0000-0000-00000000000d"
 _QUEUE_ID = "00000000-0000-0000-0000-0000000000e1"
 
@@ -971,6 +989,24 @@ LEGS: dict[str, _Leg] = {
         _get("/api/labeling/lfs", {"limit": 50}),
         _sock("labeling_lfs", {"limit": 50}),
         _mcp({"limit": 50}),
+    ),
+    # Label-quality pair (U39 triage + F6 gold check) over the canned
+    # labeling world; the gold file rides the ctx like the ingest file.
+    "labeling_triage": _Leg(
+        _shared_labeling_triage,
+        _post("/api/labeling/triage", {"cv_folds": 2}),
+        _sock("labeling_triage", {"cv_folds": 2}),
+        _mcp({"cv_folds": 2}),
+    ),
+    "labeling_gold_check": _Leg(
+        _shared_labeling_gold_check,
+        lambda ctx: {
+            "method": "post",
+            "path": "/api/labeling/gold-check",
+            "json": {"gold_file": str(ctx[_GOLD_PATH])},
+        },
+        lambda ctx: ("labeling_gold_check", {"gold_file": str(ctx[_GOLD_PATH])}),
+        lambda ctx: {"gold_file": str(ctx[_GOLD_PATH])},
     ),
     "classification_build": _Leg(
         _shared_classification_build,
@@ -2076,6 +2112,24 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     monkeypatch.setattr(labeling_writer_module, "read_labels", _canned_labels)
     monkeypatch.setattr(labeling_engine_module, "read_chunks", _canned_chunks)
 
+    # Label-quality pair: the same canned labeling world feeds the triage
+    # (vectors + labels seams) and the gold check (labels seam + file).
+    monkeypatch.setattr(labeling_triage_tools_module, "_load_vectors", _canned_vectors)
+    monkeypatch.setattr(labeling_triage_tools_module, "_load_labels", _canned_labels)
+    monkeypatch.setattr(labeling_gold_tools_module, "_load_labels", _canned_labels)
+    gold_path = tmp_path / "gold.json"
+    gold_path.write_text(
+        json.dumps(
+            {
+                "chunk-0": "reports",
+                "chunk-1": "meetings",
+                "chunk-2": "meetings",
+                "chunk-99": "reports",  # off-build id: counted as ignored
+            }
+        ),
+        encoding="utf-8",
+    )
+
     # sentiment + active-learning + the selector answer their honest
     # default paths on this world (disabled flag, empty store, real
     # register) — no stubs beyond the shared offline config.
@@ -2099,6 +2153,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         "mcp_server": build_mcp_server(pool, _offline_config()),
         _FILE_PATH: file_path,
         _DIR_PATH: tmp_path,
+        _GOLD_PATH: gold_path,
     }
     command_handler_module.reset_command_handler()
     research_http_module.set_research_pool(None)
@@ -2163,6 +2218,9 @@ def test_catalogue_matches_surface_registry() -> None:
         "labeling_build",
         "labeling_list",
         "labeling_lfs",
+        # Label-quality pair (issue #234: the WP-2 modules wired).
+        "labeling_triage",
+        "labeling_gold_check",
         "classification_build",
         "classification_list",
         "analysis_backfill_dates",

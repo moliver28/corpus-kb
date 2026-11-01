@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 from corpus_kb.errors import ConfigError
 
 POSTGRES_BACKEND = "postgres"
@@ -72,7 +73,7 @@ class Dialect:
     """
 
     backend: str
-    vector_dims: int = 2560
+    vector_dims: int = EMBEDDING_DIMENSIONS
     vector_type: str = "halfvec"
 
     @property

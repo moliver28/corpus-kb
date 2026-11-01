@@ -30,6 +30,7 @@ from uuid import UUID, uuid5
 import asyncpg
 
 from corpus_kb.config import load_config
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.research.chunking import CHILD_QA, unit_kind
 from corpus_kb.research.citations import (
@@ -64,6 +65,10 @@ logger = logging.getLogger(__name__)
 CANDIDATE_MULTIPLIER = 8
 RERANK_MIN_CANDIDATES = 30
 _RRF_NAMESPACE = UUID("6f6f6f6f-6f6f-6f6f-6f6f-6f6f6f6f6f6f")
+
+# The dense-arm halfvec cast, interpolated into the f-string arms below so
+# the index cast and the query probe share the research width constant.
+_HALFVEC = f"::halfvec({RESEARCH_EMBEDDING_DIMENSIONS})"
 
 # U21: paired-count selectivity probes, same join shape + parameter
 # numbering as the dense arms ($1 tenant, $2 project, filters $3+).
@@ -340,7 +345,7 @@ async def _unit_arms(
                 f"""
                 WITH candidate AS MATERIALIZED (
                     SELECT u.unit_id, u.doc_id, u.exchange_id, u.seq, u.text, u.role_in_exchange,
-                           1 - (u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                           1 - (u.embedding{_HALFVEC} <=> {vec}{_HALFVEC}) AS score
                     FROM research_units u
                     JOIN documents d ON d.doc_id = u.doc_id
                     LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
@@ -365,13 +370,13 @@ async def _unit_arms(
                 f"""
                 WITH candidate AS MATERIALIZED (
                     SELECT u.unit_id, u.doc_id, u.exchange_id, u.seq, u.text, u.role_in_exchange,
-                           1 - (u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                           1 - (u.embedding{_HALFVEC} <=> {vec}{_HALFVEC}) AS score
                     FROM research_units u
                     JOIN documents d ON d.doc_id = u.doc_id
                     LEFT JOIN research_speakers s ON s.speaker_id = u.speaker_id
                     WHERE u.tenant_id = $1 AND d.project_id = $2
                       AND u.embedding IS NOT NULL{filters}
-                    ORDER BY u.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
+                    ORDER BY u.embedding{_HALFVEC} <=> {vec}{_HALFVEC}
                     LIMIT {limit}
                 )
                 SELECT candidate.unit_id, candidate.doc_id, candidate.exchange_id,
@@ -438,7 +443,7 @@ async def _exchange_arms(
                 f"""
                 WITH candidate AS MATERIALIZED (
                     SELECT e.exchange_id, e.doc_id, e.seq, coalesce(e.qa_text, '') AS text,
-                           1 - (e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                           1 - (e.embedding{_HALFVEC} <=> {vec}{_HALFVEC}) AS score
                     FROM research_exchanges e
                     JOIN documents d ON d.doc_id = e.doc_id
                     WHERE e.tenant_id = $1 AND d.project_id = $2
@@ -458,12 +463,12 @@ async def _exchange_arms(
                 f"""
                 WITH candidate AS MATERIALIZED (
                     SELECT e.exchange_id, e.doc_id, e.seq, coalesce(e.qa_text, '') AS text,
-                           1 - (e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)) AS score
+                           1 - (e.embedding{_HALFVEC} <=> {vec}{_HALFVEC}) AS score
                     FROM research_exchanges e
                     JOIN documents d ON d.doc_id = e.doc_id
                     WHERE e.tenant_id = $1 AND d.project_id = $2
                       AND e.embedding IS NOT NULL{filters}
-                    ORDER BY e.embedding::halfvec(1024) <=> {vec}::halfvec(1024)
+                    ORDER BY e.embedding{_HALFVEC} <=> {vec}{_HALFVEC}
                     LIMIT {limit}
                 )
                 SELECT candidate.exchange_id, candidate.doc_id, candidate.seq,

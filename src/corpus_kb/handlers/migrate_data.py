@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal, Protocol
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.errors import ConflictError
 from corpus_kb.storage.sql_ident import quoted_identifier, sql_qualified
 
@@ -92,8 +93,8 @@ EXEMPTION_MANIFEST: tuple[TablePlan, ...] = (
 # vectors are tolerated end to end (W0 surprise 4).
 VECTOR_TEXT_TRANSFORMS: dict[str, tuple[ColumnTransform, ...]] = {
     "chunks_vectors": (
-        ColumnTransform("embedding", 2560),
-        ColumnTransform("vector_1024", 1024),
+        ColumnTransform("embedding", EMBEDDING_DIMENSIONS),
+        ColumnTransform("vector_1024", RESEARCH_EMBEDDING_DIMENSIONS),
     ),
 }
 
