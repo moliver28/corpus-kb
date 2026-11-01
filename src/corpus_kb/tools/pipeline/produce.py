@@ -79,10 +79,10 @@ async def _produce_artifacts(
 ) -> StageArtifacts:
     """Run the producing stages in order and pack their outputs.
 
-    Order is load-bearing: prepare (identity/provenance) -> store+embed ->
-    shadow hierarchy -> extract (under the SPAN_EXTRACT span) -> atomize.
-    ``_stage_store_and_embed`` is resolved through the facade so the
-    historical ``embed_chunks`` patch seam keeps working.
+    Order is load-bearing: prepare -> store+embed -> shadow -> extract
+    (under the SPAN_EXTRACT span) -> atomize. ``_stage_store_and_embed``
+    is resolved through the facade so the historical ``embed_chunks``
+    patch seam keeps working.
     """
     pool = _ic()._raw_pool(pg_pool)
     _prepare_chunks_for_store(doc, config, document_id, errors)
