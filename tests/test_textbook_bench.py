@@ -47,19 +47,33 @@ def test_normalized_distance_ignores_whitespace_and_is_symmetric() -> None:
     )
 
 
-def test_page_fidelity_mean_and_counts() -> None:
+def test_page_fidelity_scores_layer_scope_with_missing_as_one() -> None:
     parsed = {1: "abc", 2: "xy"}
     layer = {1: "abd", 2: "zz", 3: "only the layer has this"}
     report = bench.page_fidelity(parsed, layer)
-    assert report["compared_pages"] == 2
+    assert report["compared_pages"] == 3
     assert report["parsed_pages"] == 2
-    mean = (1 / 3 + 1.0) / 2
+    assert report["missing_pages"] == 1
+    mean = (1 / 3 + 1.0 + 1.0) / 3
     assert report["mean_distance"] == pytest.approx(round(mean, 6), abs=1e-9)
 
 
-def test_page_fidelity_no_shared_pages_is_zeroed() -> None:
-    report = bench.page_fidelity({}, {1: "text"})
-    assert report == {"compared_pages": 0, "mean_distance": 0.0, "parsed_pages": 0}
+def test_page_fidelity_dropping_pages_cannot_improve_the_mean() -> None:
+    full = bench.page_fidelity({1: "abc", 2: "zz"}, {1: "abd", 2: "zz"})
+    half = bench.page_fidelity({1: "abd"}, {1: "abd", 2: "zz"})
+    assert full["mean_distance"] < half["mean_distance"]
+    assert half["missing_pages"] == 1
+    assert half["mean_distance"] == pytest.approx(0.5, abs=1e-9)
+
+
+def test_page_fidelity_no_layer_pages_is_zeroed() -> None:
+    report = bench.page_fidelity({1: "text"}, {})
+    assert report == {
+        "compared_pages": 0,
+        "mean_distance": 0.0,
+        "missing_pages": 0,
+        "parsed_pages": 1,
+    }
 
 
 def test_section_f1_partial_overlap() -> None:
@@ -166,6 +180,18 @@ def test_attribution_report_empty_chunks() -> None:
     assert report["chunks"] == 0
     assert report["exact_rate"] == 0.0
     assert report["join_matches_document_text"] is False
+
+
+def test_attribution_chunk_covering_no_page_is_always_a_mismatch() -> None:
+    # Char range outside every span, claimed metadata equally empty:
+    # (0, 0) == (0, 0) must not count as exact.
+    chunk = _chunk("orphan", page_start=0, page_end=0)
+    chunk.source_start_char = 99999
+    chunk.source_end_char = 100000
+    report = bench.attribution_report([chunk], [(1, 0, 5)], True)
+    assert report["exact"] == 0
+    assert report["exact_rate"] == 0.0
+    assert report["mismatch_examples"][0]["true"] == [0, 0]
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +471,24 @@ def test_main_stamp_adds_timestamp(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
 def test_main_without_books_exits_two(tmp_path: Path) -> None:
     assert bench.main(["--books-dir", str(tmp_path / "empty")]) == 2
+
+
+def test_main_book_error_exits_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    def failing(
+        path: Path, parser: str, cache_dir: Path, window_pages: int, max_pages: int
+    ) -> dict:
+        del parser, cache_dir, window_pages, max_pages
+        return {"error": "the pdf did not open: broken", "file": str(path)}
+
+    monkeypatch.setattr(bench_run, "run_book", failing)
+    book = tmp_path / "book.pdf"
+    book.write_bytes(b"pdf")
+    out = tmp_path / "failed.json"
+    assert bench.main(["--pdf", str(book), "--out", str(out)]) == 1
+    assert "every book failed" in capsys.readouterr().err
+    assert "error" in json.loads(out.read_text(encoding="utf-8"))["books"][0]
 
 
 def test_main_golden_books_from_env_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

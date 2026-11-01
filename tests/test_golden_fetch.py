@@ -134,6 +134,17 @@ def test_fetch_book_survives_a_network_failure(
     assert not list(tmp_path.glob("*.part"))
 
 
+def test_fetch_book_aborts_an_oversized_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(fetch, "MAX_DOWNLOAD_BYTES", 4)
+    _use(monkeypatch, b"these bytes are far over the ceiling")
+    status = fetch.fetch_book(_book(), tmp_path)
+    assert status == "oversized"
+    assert not list(tmp_path.glob("*.part"))
+    assert not (tmp_path / "ConceptsOfBiology-LR.pdf").exists()
+
+
 def test_main_exit_zero_only_when_every_book_verifies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
 ) -> None:

@@ -353,9 +353,12 @@ include = ["corpus_kb*"]
 # ui_dist/**/* (UI SPA program Task 3, spec D.7): the built SPA ships as
 # package data; a source checkout without a build degrades honestly
 # (mount_spa logs one line, the API keeps serving).
+# eval/*.json (textbook program W0): the golden-book manifest ships so
+# the bench CLI works from an installed wheel.
 corpus_kb = [
     "*.yaml",
     "config/*.yaml",
+    "eval/*.json",
     "migrations/*.sql",
     "migrations_duckdb/*.sql",
     "ui_dist/**/*",

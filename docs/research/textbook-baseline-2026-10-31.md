@@ -30,11 +30,14 @@ marker and pypdf cannot open it, so the production gate would reject it.
 
 ## Metric definitions (as implemented)
 
-- **Page-text fidelity** — mean over parsed pages of the character
-  Levenshtein distance between the parser's page text and an
+- **Page-text fidelity** — mean over the text layer's pages of the
+  character Levenshtein distance between the parser's page text and an
   independent text layer, each squashed to single spaces first,
-  divided by the longer length. The layer is pypdfium2 5.14 (exact,
-  independent of both parsers).
+  divided by the longer length. The layer is the gold scope: a page it
+  covers that the parser returned nothing for scores 1.0, so dropping
+  pages cannot inflate the mean (rule corrected post-review; the first
+  published table averaged over the intersection only). The layer is
+  pypdfium2 5.14 (exact, independent of both parsers).
 - **Section F1** — set F1 between detected section titles (casefolded,
   whitespace-collapsed) and the PDF outline bookmark titles in the
   parsed span.
@@ -94,9 +97,10 @@ books, window size 50, fresh cache per book, text layer pypdfium2.
 
 | Metric | Concepts of Biology (638p) | Introductory Statistics (863p) | Chemistry 2e (1331p) |
 |---|---|---|---|
-| Parse wall-clock (s) | 12.4 | 16.7 | 22.0 |
-| Compared pages (of parsed) | 637 / 637 | 862 / 862 | 1329 / 1329 |
-| Fidelity: mean normalized distance | 0.00143 | 0.005637 | 0.006492 |
+| Parse wall-clock (s) | 9.9 | 15.0 | 27.4 |
+| Compared pages (layer scope) | 638 | 863 | 1331 |
+| Fidelity: mean normalized distance | 0.002995 | 0.006789 | 0.007985 |
+| Pages missing from parser output | 1 | 1 | 2 |
 | Sections: detected / gold titles | 115 / 138 | 140 / 152 | 173 / 184 |
 | Section precision / recall / F1 | 1.000 / 0.833 / 0.909 | 1.000 / 0.921 / 0.959 | 1.000 / 0.940 / 0.969 |
 | Chunks | 371 | 370 | 580 |
@@ -105,8 +109,14 @@ books, window size 50, fresh cache per book, text layer pypdfium2.
 | Attribution exact rate | 0.0997 (37/371) | 0.1757 (65/370) | 0.0862 (50/580) |
 | Rebuild equals document text | yes | yes | yes |
 
+Fidelity rows are layer-scope means under the corrected rule; each
+book's blank-or-unextracted page(s) score 1.0 and are listed
+explicitly. Section, chunk, and attribution numbers are
+rule-independent and stand from the first run batch.
+
 Reading: the pypdf parser tracks the embedded text stream almost
-exactly (fidelity ~0.1-0.7 percent), recovers structure purely from
+exactly (fidelity 0.3-0.8 percent under the layer-scope rule), recovers
+structure purely from
 bookmarks (precision 1.0 by construction — every detected title comes
 from `read_outline` filling a page with no header item), stays inside
 the token budget everywhere, and — the headline finding — attributes

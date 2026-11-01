@@ -109,7 +109,13 @@ def _parse_windows(
     Cache hits skip, a parsed window caches before it appends, and a
     docling window that cannot parse (extra missing, convert crash)
     falls back to pypdf and caches under that parser — the same rule
-    ``TextbookStrategy`` applies, minus the subprocess isolation.
+    ``TextbookStrategy`` applies, minus two things: the subprocess
+    isolation, and the alternate-parser cache re-check on a mid-run
+    fallback (``textbook.py`` lines 176-180 look up the pypdf cache for
+    the window the docling path just missed; this loop parses it
+    directly). The re-check cannot fire here: bench runs use a fresh
+    temporary cache (the default, and what the baseline used), so every
+    lookup misses either way.
     """
     records: list[WindowRecord] = []
     converter: Any | None = None

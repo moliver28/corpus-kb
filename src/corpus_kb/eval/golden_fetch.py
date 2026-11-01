@@ -47,6 +47,12 @@ class GoldenBook:
     license: str
 
 
+#: Hard byte ceiling per download. The manifest pins exact hashes, so a
+#: stream that grows past this bound is wrong (a redirect loop, a mirror
+#: serving the wrong object); the partial file is deleted.
+MAX_DOWNLOAD_BYTES = 1 << 30
+
+
 def default_dir() -> Path:
     """The golden book directory: the env var, else the home default."""
     raw = os.environ.get(ENV_DIR_VAR) or DEFAULT_DIR
@@ -80,7 +86,9 @@ def fetch_book(book: GoldenBook, dest_dir: Path, timeout_s: float = DEFAULT_TIME
     ``downloaded`` means fresh bytes landed and the hash matches,
     ``cached`` means the file was already there with the pinned hash,
     ``mismatch`` means the served bytes broke the pin (the partial file
-    is deleted), and ``failed`` means the network step went wrong.
+    is deleted), ``oversized`` means the stream passed the 1 GiB byte
+    ceiling mid-download (the partial file is deleted), and ``failed``
+    means the network step went wrong.
     """
     target = dest_dir / book.filename
     if target.exists() and file_sha256(target) == book.sha256:
@@ -88,14 +96,25 @@ def fetch_book(book: GoldenBook, dest_dir: Path, timeout_s: float = DEFAULT_TIME
     part = target.with_name(f"{target.name}.{os.getpid()}.part")
     dest_dir.mkdir(parents=True, exist_ok=True)
     try:
+        oversized = False
         with (
             httpx.Client(follow_redirects=True, timeout=timeout_s) as client,
             client.stream("GET", book.source_url) as reply,
         ):
             reply.raise_for_status()
             with part.open("wb") as handle:
+                received = 0
                 for chunk in reply.iter_bytes():
+                    received += len(chunk)
+                    if received > MAX_DOWNLOAD_BYTES:
+                        oversized = True
+                        break
                     handle.write(chunk)
+        if oversized:
+            # Unlink only after the write handle closed; Windows cannot
+            # delete an open file.
+            part.unlink(missing_ok=True)
+            return "oversized"
         if file_sha256(part) != book.sha256:
             part.unlink(missing_ok=True)
             return "mismatch"

@@ -1,22 +1,17 @@
 """Deterministic quality metrics and CLI for the textbook bench (W0).
 
-The metrics are pure functions over parsed page items, planned chunks,
-and an independent text layer; the per-book runner that produces those
-inputs lives in ``textbook_bench_run``. The four scores:
+Pure metrics over parsed page items, planned chunks, and an independent
+text layer; the per-book runner lives in ``textbook_bench_run``. Scores:
 
-* page-text fidelity: mean per-page normalized edit distance between
-  the parser's page text and the independent text layer.
-* section F1: detected section titles vs PDF outline bookmarks, the
-  structure gold.
-* chunk stats: chunk count, mean and max estimated tokens, and the
-  budget-conformance rate at the production token budget.
-* page-attribution exactness: the document text rebuilt from page
-  texts with the assembly join rule, and every chunk's claimed page
-  span must equal the span it truly covers.
+* page-text fidelity: mean per-page normalized edit distance against
+  the independent text layer (layer scope; unparsed pages score 1.0).
+* section F1: detected section titles vs PDF outline bookmarks.
+* chunk stats: count, estimated tokens, budget conformance.
+* page-attribution exactness: claimed page spans must equal the spans
+  rebuilt from page texts.
 
-Wall-clock parse time is a separate field, never part of a correctness
-metric. The JSON report sorts keys and carries no timestamp unless
-``--stamp`` is passed, so harnesses can snapshot it.
+Parse wall-clock is a separate field, never a correctness metric. The
+JSON sorts keys and carries no timestamp unless ``--stamp`` is passed.
 
 Run: ``python -m corpus_kb.eval.textbook_bench --pdf BOOK.pdf --parser pypdf``
 """
@@ -56,7 +51,7 @@ def _squash(text: str) -> str:
 
 
 def normalized_distance(left: str, right: str) -> float:
-    """Levenshtein distance over the longer squashed text (exact two-row DP).
+    """Levenshtein over the longer squashed text (exact two-row DP).
 
     1.0 when exactly one side is empty; 0.0 when both squash the same.
     """
@@ -75,14 +70,23 @@ def normalized_distance(left: str, right: str) -> float:
 
 
 def page_fidelity(parsed: dict[int, str], layer: dict[int, str]) -> dict[str, float | int]:
-    """Mean per-page normalized distance over the pages both sides cover."""
-    pages = sorted(set(parsed) & set(layer))
+    """Mean per-page normalized distance over the text layer's pages.
+
+    The layer is the gold scope: a page it covers but the parser missed
+    scores 1.0, so dropping pages cannot inflate the score. Parser
+    pages without a layer counterpart only count in ``parsed_pages``.
+    """
+    pages = sorted(layer)
     if not pages:
-        return {"compared_pages": 0, "mean_distance": 0.0, "parsed_pages": len(parsed)}
-    total = sum(normalized_distance(parsed[page], layer[page]) for page in pages)
+        empty = {"compared_pages": 0, "mean_distance": 0.0, "missing_pages": 0}
+        return {**empty, "parsed_pages": len(parsed)}
+    distances = [
+        normalized_distance(parsed[page], layer[page]) if page in parsed else 1.0 for page in pages
+    ]
     return {
         "compared_pages": len(pages),
-        "mean_distance": round(total / len(pages), 6),
+        "mean_distance": round(sum(distances) / len(pages), 6),
+        "missing_pages": sum(1 for page in pages if page not in parsed),
         "parsed_pages": len(parsed),
     }
 
@@ -119,11 +123,10 @@ def chunk_report(chunks: list[PlannedChunk], budget_chars: int) -> dict[str, flo
 
 
 def rebuild_pages(items: list[PageItem]) -> tuple[str, list[tuple[int, int, int]]]:
-    """The document text rebuilt from page texts, plus each page's span.
+    """The document text rebuilt from page texts, plus page spans.
 
-    The independent audit path: blank items drop (the rule
-    ``section_blocks`` applies too), the rest join per page, then across
-    pages, with the assembly join rule. A span is ``(page, start, end)``.
+    Blank items drop (the ``section_blocks`` rule); a span is a
+    ``(page, start, end)`` tuple into the rebuilt text.
     """
     by_page: dict[int, list[str]] = {}
     for item in items:
@@ -146,8 +149,8 @@ def attribution_report(
     """The share of chunks whose claimed page span equals the true span.
 
     A chunk's true span is the pages whose rebuilt text overlaps the
-    chunk's char range. A split piece that claims its whole block's
-    pages fails this audit; that gap is what wave W2-A closes.
+    chunk's char range; a split piece claiming its whole block's pages
+    fails here, which is what wave W2-A closes.
     """
     exact = 0
     examples: list[dict[str, object]] = []
@@ -159,7 +162,8 @@ def attribution_report(
         ]
         true_span = (min(covered), max(covered)) if covered else (0, 0)
         claimed = (_page_meta(chunk, "page_start"), _page_meta(chunk, "page_end"))
-        if claimed == true_span:
+        # No covered page is always a mismatch, even at (0, 0) == (0, 0).
+        if covered and claimed == true_span:
             exact += 1
         elif len(examples) < 5:
             note = {"claimed": list(claimed), "index": chunk.index, "true": list(true_span)}
@@ -189,12 +193,10 @@ def _book_paths(args: argparse.Namespace) -> list[Path]:
         have = {path.name for path in paths}
         for book in load_manifest():
             local = default_dir() / book.filename
-            if local.exists():
-                if local.name not in have:
-                    paths.append(local)
-            else:
-                miss = f"golden book not on disk (run golden_fetch): {book.filename}"
-                print(miss, file=sys.stderr)
+            if not local.exists():
+                print(f"golden book missing (run golden_fetch): {book.filename}", file=sys.stderr)
+            elif local.name not in have:
+                paths.append(local)
     if args.books_dir:
         paths.extend(sorted(args.books_dir.glob("*.pdf")))
     return paths
@@ -203,23 +205,15 @@ def _book_paths(args: argparse.Namespace) -> list[Path]:
 def main(argv: list[str] | None = None) -> int:
     """Run the bench over the given books and print one JSON report."""
     parser = argparse.ArgumentParser(description="Score textbook parsing quality over PDF books.")
-    parser.add_argument("--pdf", action="append", help="A book to score; repeat for several.")
-    parser.add_argument(
-        "--golden", action="store_true", help="Add the pinned golden books on disk."
-    )
-    parser.add_argument(
-        "--books-dir", type=Path, default=None, help="A directory of extra local PDFs."
-    )
+    parser.add_argument("--pdf", action="append", help="A book to score; repeatable.")
+    parser.add_argument("--golden", action="store_true", help="Add the pinned golden books.")
+    parser.add_argument("--books-dir", type=Path, help="A directory of extra local PDFs.")
     parser.add_argument("--parser", choices=("docling", "pypdf"), default="pypdf")
-    parser.add_argument("--window-pages", type=int, default=50, help="Pages per parse window.")
-    parser.add_argument(
-        "--max-pages", type=int, default=0, help="Cap the parsed span (0 = no cap)."
-    )
-    parser.add_argument(
-        "--cache-dir", type=Path, default=None, help="Window cache (default: temp dir)."
-    )
-    parser.add_argument("--out", type=Path, default=None, help="Write the JSON report here.")
-    parser.add_argument("--stamp", action="store_true", help="Add a UTC run stamp to the report.")
+    parser.add_argument("--window-pages", type=int, default=50, help="Pages per window.")
+    parser.add_argument("--max-pages", type=int, default=0, help="Cap the span (0 = no cap).")
+    parser.add_argument("--cache-dir", type=Path, help="Window cache (default: temp dir).")
+    parser.add_argument("--out", type=Path, help="Write the JSON report here.")
+    parser.add_argument("--stamp", action="store_true", help="Add a UTC run stamp.")
     args = parser.parse_args(argv)
     paths = _book_paths(args)
     if not paths:
@@ -228,10 +222,14 @@ def main(argv: list[str] | None = None) -> int:
     # Deferred: the runner imports this module's metric functions.
     from corpus_kb.eval.textbook_bench_run import run_book
 
-    cache_dir = args.cache_dir or Path(tempfile.mkdtemp(prefix="textbook-bench-"))
-    books = [
-        run_book(path, args.parser, cache_dir, args.window_pages, args.max_pages) for path in paths
-    ]
+    def score(cache: Path) -> list[dict[str, object]]:
+        return [run_book(p, args.parser, cache, args.window_pages, args.max_pages) for p in paths]
+
+    if args.cache_dir:
+        books = score(args.cache_dir)
+    else:
+        with tempfile.TemporaryDirectory(prefix="textbook-bench-") as tmp:
+            books = score(Path(tmp))
     payload: dict[str, object] = {"books": books, "parser": args.parser}
     if args.stamp:
         payload["stamp_utc"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -241,7 +239,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"report written to {args.out}")
     else:
         print(text)
-    return 0
+    failed = sum(1 for book in books if "error" in book)
+    if failed == len(books):
+        print("every book failed; see the error fields in the report", file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
