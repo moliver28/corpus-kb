@@ -11,9 +11,10 @@ socket surface dispatchable. Two arm shapes:
     table the HTTP surface registers. One table, two transports, so a new
     research/release route is socket-reachable the moment it exists.
 
-Error mapping is unchanged: a missing method raises
-:class:`MethodNotFoundError` (mapped to -32601 by the server); any other
-error maps to -32603 by the server's one catch.
+Error mapping: a missing method raises
+:class:`MethodNotFoundError` (mapped to -32601 by the server); a
+taxonomy ``ValidationError`` (bad numeric param, issue #238) maps to
+-32602; any other error maps to -32603 by the server's one catch.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
-from corpus_kb.api._body import opt_bool, opt_int, opt_str
+from corpus_kb.api._body import opt_bool, opt_float, opt_int, opt_str
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 
 Arm = Callable[[dict[str, Any], str], Awaitable[dict[str, Any]]]
@@ -149,7 +150,7 @@ async def _ingest_status(params: dict[str, Any], tenant_id: str) -> dict[str, An
     return await ingest_status(
         await research_pool(),
         tenant_id=tenant_id,
-        limit=int(params.get("limit", 20)),
+        limit=opt_int(params.get("limit"), 20, name="limit"),
         project_id=str(project_id) if project_id is not None else None,
     )
 
@@ -161,7 +162,7 @@ async def _ingest_reembed(params: dict[str, Any], tenant_id: str) -> dict[str, A
     return await ingest_reembed(
         await research_pool(),
         tenant_id=tenant_id,
-        limit=params.get("limit"),
+        limit=opt_int(params.get("limit"), None, name="limit"),
         doc_id=params.get("doc_id"),
     )
 
@@ -191,7 +192,7 @@ async def _topics_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]
     return await topics_list_tool(
         await research_pool(),
         tenant_id=tenant_id,
-        limit=int(params.get("limit", 50)),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
     )
 
 
@@ -203,7 +204,7 @@ async def _topics_trends(params: dict[str, Any], tenant_id: str) -> dict[str, An
     return await topics_trends_tool(
         await research_pool(),
         tenant_id=tenant_id,
-        bins=int(bins) if bins is not None else None,
+        bins=opt_int(bins, None, name="bins"),
     )
 
 
@@ -221,7 +222,7 @@ async def _labeling_list(params: dict[str, Any], tenant_id: str) -> dict[str, An
     return await labeling_list_tool(
         await research_pool(),
         tenant_id=tenant_id,
-        limit=int(params.get("limit", 50)),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
     )
 
 
@@ -232,7 +233,7 @@ async def _labeling_lfs(params: dict[str, Any], tenant_id: str) -> dict[str, Any
     return await labeling_lfs_tool(
         await research_pool(),
         tenant_id=tenant_id,
-        limit=int(params.get("limit", 50)),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
     )
 
 
@@ -243,11 +244,15 @@ async def _labeling_triage(params: dict[str, Any], tenant_id: str) -> dict[str, 
     return await labeling_triage_tools.labeling_triage(
         await research_pool(),
         tenant_id=tenant_id,
-        cv_folds=int(params.get("cv_folds", labeling_triage_ops.DEFAULT_TRIAGE_FOLDS)),
-        flag_threshold=float(
-            params.get("flag_threshold", labeling_triage_ops.DEFAULT_FLAG_THRESHOLD)
+        cv_folds=opt_int(
+            params.get("cv_folds"), labeling_triage_ops.DEFAULT_TRIAGE_FOLDS, name="cv_folds"
         ),
-        limit=int(params.get("limit", labeling_triage_ops.DEFAULT_QUEUE_LIMIT)),
+        flag_threshold=opt_float(
+            params.get("flag_threshold"),
+            labeling_triage_ops.DEFAULT_FLAG_THRESHOLD,
+            name="flag_threshold",
+        ),
+        limit=opt_int(params.get("limit"), labeling_triage_ops.DEFAULT_QUEUE_LIMIT, name="limit"),
     )
 
 
@@ -259,7 +264,7 @@ async def _labeling_gold_check(params: dict[str, Any], tenant_id: str) -> dict[s
         await research_pool(),
         gold_file=str(params.get("gold_file", "")),
         tenant_id=tenant_id,
-        confidence_level=float(params.get("confidence_level", 0.95)),
+        confidence_level=opt_float(params.get("confidence_level"), 0.95, name="confidence_level"),
     )
 
 
@@ -286,7 +291,7 @@ async def _classification_list(params: dict[str, Any], tenant_id: str) -> dict[s
     return await classification_list_tool(
         await research_pool(),
         tenant_id=tenant_id,
-        limit=int(params.get("limit", 50)),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
     )
 
 
@@ -312,18 +317,10 @@ async def _analyze_run(params: dict[str, Any], tenant_id: str) -> dict[str, Any]
 
 
 # -- AMR program wave 2: the method ops (one arm per catalogue row; same
-#    lazy-import + pool shape as the analysis arms above) ------------------
-
-
-def _opt_int(params: dict[str, Any], key: str) -> int | None:
-    """Absent answers None; an explicit junk value raises.
-
-    This is the one deliberate difference from the HTTP ``opt_int``: the
-    cluster and sentiment arms must answer a junk explicit value with an
-    error, not a silent default (pinned by tests/test_api_opt_coercion.py).
-    """
-    raw = params.get(key)
-    return int(raw) if raw is not None else None
+#    lazy-import + pool shape as the analysis arms above). Numeric params
+#    go through the ONE strict coercion (api._body opt_int/opt_float,
+#    issue #238): junk answers the taxonomy ValidationError, which the
+#    server maps to -32602, never a silent default. --------------------
 
 
 async def _statements_list(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
@@ -335,7 +332,7 @@ async def _statements_list(params: dict[str, Any], tenant_id: str) -> dict[str, 
         tenant_id=tenant_id,
         template_id=opt_str(params.get("template_id")),
         document_id=opt_str(params.get("document_id")),
-        limit=opt_int(params.get("limit"), 50),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
     )
 
 
@@ -347,7 +344,7 @@ async def _statements_timeline(params: dict[str, Any], tenant_id: str) -> dict[s
         await research_pool(),
         tenant_id=tenant_id,
         text_query=opt_str(params.get("text_query")),
-        limit=opt_int(params.get("limit"), 200),
+        limit=opt_int(params.get("limit"), 200, name="limit"),
     )
 
 
@@ -363,17 +360,13 @@ async def _extraction_tune(params: dict[str, Any], tenant_id: str) -> dict[str, 
     from corpus_kb.tools.extraction_tune_tools import extraction_tune
 
     raw = params.get("min_confidence")
-    try:
-        min_confidence = float(raw) if raw is not None else 0.8
-    except (TypeError, ValueError):
-        min_confidence = 0.8
     return await extraction_tune(
         await research_pool(),
         tenant_id=tenant_id,
         method=str(params.get("method") or "exemplar"),
         profile=opt_str(params.get("profile")),
-        min_confidence=min_confidence,
-        limit=opt_int(params.get("limit"), 8),
+        min_confidence=opt_float(raw, 0.8, name="min_confidence"),
+        limit=opt_int(params.get("limit"), 8, name="limit"),
         dry_run=opt_bool(params.get("dry_run"), False),
     )
 
@@ -386,7 +379,7 @@ async def _conflicts_list(params: dict[str, Any], tenant_id: str) -> dict[str, A
         await research_pool(),
         tenant_id=tenant_id,
         verdict=opt_str(params.get("verdict")),
-        limit=opt_int(params.get("limit"), 50),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
     )
 
 
@@ -426,7 +419,7 @@ async def _queue_status(params: dict[str, Any], tenant_id: str) -> dict[str, Any
         await research_pool(),
         tenant_id=tenant_id,
         queue_id=opt_str(params.get("queue_id")),
-        limit=opt_int(params.get("limit"), 50),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
     )
 
 
@@ -449,7 +442,7 @@ async def _beliefs_current(params: dict[str, Any], tenant_id: str) -> dict[str, 
         await research_pool(),
         tenant_id=tenant_id,
         subject=opt_str(params.get("subject")),
-        limit=opt_int(params.get("limit"), 50),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
         rebuild=opt_bool(params.get("rebuild"), True),
     )
 
@@ -510,7 +503,7 @@ async def _keyphrases_extract(params: dict[str, Any], tenant_id: str) -> dict[st
         await research_pool(),
         tenant_id=tenant_id,
         variant=str(params.get("variant", "tfidf")),
-        limit=int(params.get("limit", 20)),
+        limit=opt_int(params.get("limit"), 20, name="limit"),
         chunk_ids=params.get("chunk_ids"),
     )
 
@@ -533,7 +526,7 @@ async def _neighbors_classify(params: dict[str, Any], tenant_id: str) -> dict[st
     return await neighbors_classify(
         await research_pool(),
         tenant_id=tenant_id,
-        k=int(params.get("k", 5)),
+        k=opt_int(params.get("k"), 5, name="k"),
         chunk_ids=params.get("chunk_ids"),
     )
 
@@ -545,7 +538,7 @@ async def _centroids_classify(params: dict[str, Any], tenant_id: str) -> dict[st
     return await centroids_classify(
         await research_pool(),
         tenant_id=tenant_id,
-        abstain_margin=float(params.get("abstain_margin", 0.05)),
+        abstain_margin=opt_float(params.get("abstain_margin"), 0.05, name="abstain_margin"),
         chunk_ids=params.get("chunk_ids"),
     )
 
@@ -557,8 +550,8 @@ async def _clusters_inspect(params: dict[str, Any], tenant_id: str) -> dict[str,
     return await clusters_inspect(
         await research_pool(),
         tenant_id=tenant_id,
-        min_cluster_size=_opt_int(params, "min_cluster_size"),
-        sample_cap=_opt_int(params, "sample_cap"),
+        min_cluster_size=opt_int(params.get("min_cluster_size"), None, name="min_cluster_size"),
+        sample_cap=opt_int(params.get("sample_cap"), None, name="sample_cap"),
     )
 
 
@@ -569,8 +562,8 @@ async def _duplicates_screen(params: dict[str, Any], tenant_id: str) -> dict[str
     return await duplicates_screen(
         await research_pool(),
         tenant_id=tenant_id,
-        threshold=float(params.get("threshold", 0.98)),
-        limit=int(params.get("limit", 100)),
+        threshold=opt_float(params.get("threshold"), 0.98, name="threshold"),
+        limit=opt_int(params.get("limit"), 100, name="limit"),
     )
 
 
@@ -581,8 +574,8 @@ async def _outliers_rank(params: dict[str, Any], tenant_id: str) -> dict[str, An
     return await outliers_rank(
         await research_pool(),
         tenant_id=tenant_id,
-        k=int(params.get("k", 10)),
-        limit=int(params.get("limit", 20)),
+        k=opt_int(params.get("k"), 10, name="k"),
+        limit=opt_int(params.get("limit"), 20, name="limit"),
     )
 
 
@@ -596,7 +589,7 @@ async def _nli_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any
         tenant_id=tenant_id,
         labels=[str(label) for label in labels] if labels is not None else [],
         chunk_ids=params.get("chunk_ids"),
-        limit=int(params.get("limit", 50)),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
         model=opt_str(params.get("model")),
     )
 
@@ -608,8 +601,8 @@ async def _contradictions_screen(params: dict[str, Any], tenant_id: str) -> dict
     return await contradictions_screen(
         await research_pool(),
         tenant_id=tenant_id,
-        candidate_k=int(params.get("candidate_k", 5)),
-        limit=int(params.get("limit", 50)),
+        candidate_k=opt_int(params.get("candidate_k"), 5, name="candidate_k"),
+        limit=opt_int(params.get("limit"), 50, name="limit"),
         model=opt_str(params.get("model")),
     )
 
@@ -622,7 +615,7 @@ async def _sentiment_screen(params: dict[str, Any], tenant_id: str) -> dict[str,
         await research_pool(),
         tenant_id=tenant_id,
         chunk_ids=params.get("chunk_ids"),
-        limit=_opt_int(params, "limit"),
+        limit=opt_int(params.get("limit"), None, name="limit"),
     )
 
 
@@ -634,7 +627,7 @@ async def _active_learn_next(params: dict[str, Any], tenant_id: str) -> dict[str
         await research_pool(),
         tenant_id=tenant_id,
         strategy=str(params.get("strategy", "margin")),
-        batch=int(params.get("batch", 10)),
+        batch=opt_int(params.get("batch"), 10, name="batch"),
     )
 
 
@@ -658,7 +651,8 @@ async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     query = SearchQuery(
         tenant_id=UUID(tenant_id),
         query=params["query"],
-        k=params.get("k"),
+        # k=None keeps the handler contract: reranking.return_top_k decides.
+        k=opt_int(params.get("k"), None, name="k"),
         source_type=params.get("source_type"),
         self_query=params.get("self_query"),
     )
@@ -674,7 +668,7 @@ async def _ask(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     return await ask_tool(
         str(params.get("query", "")),
         tenant_id=tenant_id,
-        k=params.get("k"),
+        k=opt_int(params.get("k"), None, name="k"),
         pg_pool=await research_pool(),
     )
 
@@ -686,7 +680,7 @@ async def _query(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     routed_query = RoutedQuery(
         tenant_id=UUID(tenant_id),
         query=params["query"],
-        k=params.get("k"),
+        k=opt_int(params.get("k"), None, name="k"),
     )
     result = await get_router_handler().handle_routed_query(routed_query)
     return {"status": "success", "result": result.model_dump(mode="json")}
@@ -698,8 +692,8 @@ async def _list_documents(params: dict[str, Any], tenant_id: str) -> dict[str, A
 
     query = ListDocumentsQuery(
         tenant_id=UUID(tenant_id),
-        limit=params.get("limit", 100),
-        offset=params.get("offset", 0),
+        limit=opt_int(params.get("limit"), 100, name="limit"),
+        offset=opt_int(params.get("offset"), 0, name="offset"),
     )
     results = await get_query_handler().handle_list_documents(query)
     return {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
@@ -753,7 +747,7 @@ async def _search_graph(params: dict[str, Any], tenant_id: str) -> dict[str, Any
         str(params.get("query", "")),
         tenant_id=tenant_id,
         entity_type=params.get("entity_type"),
-        limit=int(params.get("limit", 100)),
+        limit=opt_int(params.get("limit"), 100, name="limit"),
     )
 
 
@@ -761,12 +755,11 @@ async def _get_entity_relations(params: dict[str, Any], tenant_id: str) -> dict[
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.graph_read_tools import get_entity_relations as relations_tool
 
-    raw_limit = params.get("limit")
     return await relations_tool(
         await research_pool(),
         str(params["entity_id"]),
         tenant_id=tenant_id,
-        limit=int(raw_limit) if raw_limit is not None else None,
+        limit=opt_int(params.get("limit"), None, name="limit"),
     )
 
 
@@ -778,11 +771,11 @@ async def _graph_neighbors(params: dict[str, Any], tenant_id: str) -> dict[str, 
         await research_pool(),
         str(params["entity_id"]),
         tenant_id=tenant_id,
-        hops=int(params.get("hops", 1)),
+        hops=opt_int(params.get("hops"), 1, name="hops"),
         direction=str(params.get("direction", "both")),
         relation_types=params.get("relation_types"),
         entity_types=params.get("entity_types"),
-        limit=int(params.get("limit", 100)),
+        limit=opt_int(params.get("limit"), 100, name="limit"),
     )
 
 
@@ -790,15 +783,14 @@ async def _graph_traverse(params: dict[str, Any], tenant_id: str) -> dict[str, A
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.graph_read_tools import graph_traverse as traverse_tool
 
-    raw_depth = params.get("max_depth")
     return await traverse_tool(
         await research_pool(),
         str(params["entity_id"]),
         tenant_id=tenant_id,
-        max_depth=int(raw_depth) if raw_depth is not None else None,
+        max_depth=opt_int(params.get("max_depth"), None, name="max_depth"),
         relation_types=params.get("relation_types"),
         entity_types=params.get("entity_types"),
-        limit=int(params.get("limit", 100)),
+        limit=opt_int(params.get("limit"), 100, name="limit"),
     )
 
 

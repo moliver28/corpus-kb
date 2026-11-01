@@ -22,6 +22,7 @@ import yaml
 from pydantic import BaseModel, field_validator, model_validator
 
 from corpus_kb.analysis.settings import load_analysis_settings
+from corpus_kb.errors import ValidationError
 
 PARADIGMS = ("supervised", "weak_supervision", "unsupervised", "zero_shot", "human_led")
 EVIDENCE_LABELS = ("direct", "model_based", "preset_composition", "human_judgment")
@@ -228,16 +229,16 @@ def load_method_register(config: dict[str, object] | None = None) -> MethodRegis
 
     raw = yaml.safe_load(text) or {}
     if not isinstance(raw, dict):
-        raise ValueError(f"Analysis method register must be a YAML mapping: {source}")
+        raise ValidationError(f"Analysis method register must be a YAML mapping: {source}")
     try:
         register = MethodRegister.model_validate(raw)
     except Exception as exc:
-        raise ValueError(f"Malformed analysis method register {source}: {exc}") from exc
+        raise ValidationError(f"Malformed analysis method register {source}: {exc}") from exc
     ids = [record.id for record in register.methods]
     missing = sorted(EXPECTED_IDS - set(ids))
     duplicated = sorted({one for one in ids if ids.count(one) > 1})
     if missing or duplicated:
-        raise ValueError(
+        raise ValidationError(
             f"Analysis method register {source}: expected ids 01 to 30 exactly once. "
             f"missing: {missing or 'none'}. duplicated: {duplicated or 'none'}."
         )

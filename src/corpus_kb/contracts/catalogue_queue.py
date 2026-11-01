@@ -60,7 +60,7 @@ QUEUE_OPERATIONS: tuple[Operation, ...] = (
             "queued first. Progress keys stay null until a worker runs."
         ),
         handler="corpus_kb.tools.queue_tools:queue_status",
-        params=(_TENANT, ParamSpec("queue_id"), ParamSpec("limit")),
+        params=(_TENANT, ParamSpec("queue_id"), ParamSpec("limit", default=50)),
         envelope_keys=STATUS_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "queue_status"),

@@ -16,7 +16,7 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import opt_bool, parse_body, route_errors
+from corpus_kb.api._body import opt_bool, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.domain.models import (
     RoutedQuery,
@@ -39,7 +39,8 @@ async def search(request: Request) -> JSONResponse:
     query = SearchQuery(
         tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         query=body["query"],
-        k=body.get("k"),
+        # k=None keeps the handler contract: reranking.return_top_k decides.
+        k=opt_int(body.get("k"), None, name="k"),
         source_type=body.get("source_type"),
         self_query=body.get("self_query"),
     )
@@ -59,7 +60,7 @@ async def search_similar(request: Request) -> JSONResponse:
     query = SearchSimilarQuery(
         tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         chunk_id=UUID(body["chunk_id"]),
-        k=body.get("k", 10),
+        k=opt_int(body.get("k"), 10, name="k"),
     )
     handler = get_query_handler()
     results = await handler.handle_search_similar(query)
@@ -77,8 +78,8 @@ async def search_context(request: Request) -> JSONResponse:
     query = SearchContextQuery(
         tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         query=body["query"],
-        k=body.get("k", 5),
-        context_chunks=body.get("context_chunks", 2),
+        k=opt_int(body.get("k"), 5, name="k"),
+        context_chunks=opt_int(body.get("context_chunks"), 2, name="context_chunks"),
     )
     handler = get_query_handler()
     results = await handler.handle_search_context(query)
@@ -107,7 +108,7 @@ async def route_query(request: Request) -> JSONResponse:
     query = RoutedQuery(
         tenant_id=UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         query=body["query"],
-        k=body.get("k"),
+        k=opt_int(body.get("k"), None, name="k"),
     )
     handler = get_router_handler()
     result = await handler.handle_routed_query(query)

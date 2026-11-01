@@ -18,7 +18,7 @@ from __future__ import annotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_float, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
 
 
@@ -46,7 +46,9 @@ async def labeling_list_route(request: Request) -> JSONResponse:
     result = await labeling_tools.labeling_list(
         await research_pool(),
         tenant_id=request.query_params.get("tenant_id", _TENANT_DEFAULT),
-        limit=int(request.query_params.get("limit", labeling_tools.DEFAULT_LIST_LIMIT)),
+        limit=opt_int(
+            request.query_params.get("limit"), labeling_tools.DEFAULT_LIST_LIMIT, name="limit"
+        ),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)
@@ -61,7 +63,9 @@ async def labeling_lfs_route(request: Request) -> JSONResponse:
     result = await labeling_tools.labeling_lfs(
         await research_pool(),
         tenant_id=request.query_params.get("tenant_id", _TENANT_DEFAULT),
-        limit=int(request.query_params.get("limit", labeling_tools.DEFAULT_LIST_LIMIT)),
+        limit=opt_int(
+            request.query_params.get("limit"), labeling_tools.DEFAULT_LIST_LIMIT, name="limit"
+        ),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)
@@ -77,11 +81,15 @@ async def labeling_triage_route(request: Request) -> JSONResponse:
     result = await labeling_triage_tools.labeling_triage(
         await research_pool(),
         tenant_id=body.get("tenant_id", _TENANT_DEFAULT),
-        cv_folds=int(body.get("cv_folds", labeling_triage_ops.DEFAULT_TRIAGE_FOLDS)),
-        flag_threshold=float(
-            body.get("flag_threshold", labeling_triage_ops.DEFAULT_FLAG_THRESHOLD)
+        cv_folds=opt_int(
+            body.get("cv_folds"), labeling_triage_ops.DEFAULT_TRIAGE_FOLDS, name="cv_folds"
         ),
-        limit=int(body.get("limit", labeling_triage_ops.DEFAULT_QUEUE_LIMIT)),
+        flag_threshold=opt_float(
+            body.get("flag_threshold"),
+            labeling_triage_ops.DEFAULT_FLAG_THRESHOLD,
+            name="flag_threshold",
+        ),
+        limit=opt_int(body.get("limit"), labeling_triage_ops.DEFAULT_QUEUE_LIMIT, name="limit"),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)
@@ -98,7 +106,7 @@ async def labeling_gold_check_route(request: Request) -> JSONResponse:
         await research_pool(),
         gold_file=str(body.get("gold_file", "")),
         tenant_id=body.get("tenant_id", _TENANT_DEFAULT),
-        confidence_level=float(body.get("confidence_level", 0.95)),
+        confidence_level=opt_float(body.get("confidence_level"), 0.95, name="confidence_level"),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)

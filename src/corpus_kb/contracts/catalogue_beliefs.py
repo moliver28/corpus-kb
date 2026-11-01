@@ -43,7 +43,13 @@ BELIEFS_OPERATIONS: tuple[Operation, ...] = (
             "default). Filters: subject, limit."
         ),
         handler="corpus_kb.tools.beliefs_tools:beliefs_current",
-        params=(_TENANT, ParamSpec("subject"), ParamSpec("limit"), ParamSpec("rebuild")),
+        params=(
+            _TENANT,
+            ParamSpec("subject"),
+            # Issue #238: the page size lives here, not in the adapters.
+            ParamSpec("limit", default=50),
+            ParamSpec("rebuild", default=True),
+        ),
         envelope_keys=CURRENT_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "beliefs_current"),
