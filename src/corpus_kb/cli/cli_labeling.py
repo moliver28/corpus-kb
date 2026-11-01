@@ -171,8 +171,8 @@ async def _call_gold(gold_file: str, confidence_level: float, json_output: bool)
     try:
         result = await labeling_gold_check(
             pool,
-            cfg,
             gold_file=gold_file,
+            config=cfg,
             confidence_level=confidence_level,
         )
     finally:

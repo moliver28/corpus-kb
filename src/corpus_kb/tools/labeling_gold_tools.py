@@ -14,8 +14,12 @@ prevalence estimate — so the corrected number never travels alone.
 Envelope: ``{status, class_count, validations}`` guaranteed on every
 outcome, plus ``reason`` everywhere and ``remedy`` on the guard paths.
 Statuses: ``success``, ``insufficient_data`` (no gold file, unreadable
-file, no built labels, no gold overlap, off-vocabulary labels),
-``unavailable`` (migration 028 not applied).
+file, oversized file, no built labels, no gold overlap, off-vocabulary
+labels), ``unavailable`` (migration 028 not applied).
+
+The gold file is read ONCE: the reported sha256 and the parsed JSON
+come from the same bytes, so the record can never describe a different
+file than the one that was scored.
 """
 
 from __future__ import annotations
@@ -30,11 +34,15 @@ import numpy as np
 from ..errors import ValidationError
 from .ingest_common import DEFAULT_TENANT_ID
 
-__all__ = ["labeling_gold_check"]
+__all__ = ["MAX_GOLD_FILE_BYTES", "labeling_gold_check"]
 
 # The labeled-corpus read bound (the engine's read-batch scale; the
 # gold check needs the FULL built population for an honest prevalence).
 LABEL_READ_LIMIT = 200_000
+
+# A gold dev set is a small audited sample by design; this cap keeps a
+# runaway file from being parsed as one (one MiB is generous).
+MAX_GOLD_FILE_BYTES = 1_048_576
 
 _UNAVAILABLE_REASON = "labeling tables absent (migration 028 not applied)"
 _UNAVAILABLE_REMEDY = "run corpus-kb setup"
@@ -57,17 +65,18 @@ async def _tables_present(pg_pool: asyncpg.Pool) -> bool:
 
 async def labeling_gold_check(
     pg_pool: asyncpg.Pool,
+    gold_file: str,
     config: dict[str, object] | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
-    gold_file: str | None = None,
     confidence_level: float = 0.95,
 ) -> dict[str, object]:
     """Score the built labels against the gold dev set, per class.
 
     ``gold_file`` names a JSON object that maps built chunk ids to label
     names. Returns ``{status, class_count, validations}`` plus
-    ``params``; each validation row is one class's ``GoldValidation``
-    (raw agreement and the PPI-corrected prevalence with its interval).
+    ``reason`` and ``params``; each validation row is one class's
+    ``GoldValidation`` (raw agreement and the PPI-corrected prevalence
+    with its interval).
     """
     del config  # accepted for MCP-tool signature symmetry; reads are config-free
     level = _validated_level(confidence_level)
@@ -75,9 +84,10 @@ async def labeling_gold_check(
         raise ValidationError("gold_file is required: point it at the gold dev set JSON file.")
     if not await _tables_present(pg_pool):
         return _honest("unavailable", _UNAVAILABLE_REASON, _UNAVAILABLE_REMEDY, level, gold_file)
-    gold = _load_gold(gold_file)
-    if isinstance(gold, str):
-        return _honest("insufficient_data", gold, _GOLD_REMEDY, level, gold_file)
+    loaded = _load_gold(gold_file)
+    if isinstance(loaded, str):
+        return _honest("insufficient_data", loaded, _GOLD_REMEDY, level, gold_file)
+    gold, sha12 = loaded
     rows = await _load_labels(pg_pool, tenant_id)
     if not rows:
         return _honest(
@@ -87,7 +97,7 @@ async def labeling_gold_check(
             level,
             gold_file,
         )
-    return _validate_classes(rows, gold, level, gold_file)
+    return _validate_classes(rows, gold, level, gold_file, sha12)
 
 
 def _validate_classes(
@@ -95,14 +105,23 @@ def _validate_classes(
     gold: dict[str, str],
     level: float,
     gold_file: str,
+    sha12: str,
 ) -> dict[str, object]:
     """Run one PPI validation per gold-covered class (pure once read)."""
     from corpus_kb.labeling.ppi_check import ppi_validate
 
-    chunk_ids = [str(row["chunk_id"]) for row in rows]
-    classes = sorted({str(row["label"]) for row in rows})
+    # One row per chunk is the store's key invariant; the first row wins
+    # defensively so a duplicate can never trip ppi_validate's uniqueness
+    # check as a raw error.
+    by_id: dict[str, dict[str, object]] = {}
+    for row in rows:
+        chunk_id = str(row["chunk_id"])
+        if chunk_id not in by_id:
+            by_id[chunk_id] = row
+    chunk_ids = list(by_id)
+    classes = sorted({str(row["label"]) for row in by_id.values()})
     index_of = {name: position for position, name in enumerate(classes)}
-    labels = [index_of[str(row["label"])] for row in rows]
+    labels = [index_of[str(by_id[chunk_id]["label"])] for chunk_id in chunk_ids]
     built = set(chunk_ids)
     matched: dict[str, int] = {}
     ignored = 0
@@ -135,9 +154,10 @@ def _validate_classes(
         "status": "success",
         "class_count": len(validations),
         "validations": validations,
+        "reason": f"{len(matched)} gold chunks matched the build; {ignored} ignored.",
         "params": {
             "gold_file": Path(gold_file).name,
-            "gold_file_sha256": _short_sha(gold_file),
+            "gold_file_sha256": sha12,
             "confidence_level": level,
             "classes": classes,
             "gold_matched": len(matched),
@@ -147,21 +167,35 @@ def _validate_classes(
     }
 
 
-def _load_gold(gold_file: str) -> dict[str, str] | str:
-    """Read + shape-check the gold file; a str return is the reason."""
+def _load_gold(gold_file: str) -> tuple[dict[str, str], str] | str:
+    """Read + shape-check the gold file; a str return is the reason.
+
+    One read feeds both the parse and the reported sha256, so the
+    identity record can never lag the file that was scored.
+    """
     path = Path(gold_file)
     if not path.is_file():
-        return f"the gold file was not found: {gold_file}."
+        return f"the gold file was not found: {path.name}."
     try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        return f"the gold file is not readable JSON: {exc}"
-    if not isinstance(raw, dict) or not raw:
+        raw = path.read_bytes()
+    except OSError:
+        return f"the gold file is not readable: {path.name}."
+    if len(raw) > MAX_GOLD_FILE_BYTES:
+        return (
+            f"the gold file is over the gold-set cap "
+            f"({MAX_GOLD_FILE_BYTES // 1048576} MiB). A gold dev set stays small."
+        )
+    try:
+        parsed: object = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        return "the gold file is not readable JSON (UTF-8 JSON expected)."
+    if not isinstance(parsed, dict) or not parsed:
         return "the gold file must hold a non-empty JSON object (chunk id -> label name)."
-    for chunk_id, label in raw.items():
+    for chunk_id, label in parsed.items():
         if not isinstance(label, str) or not label:
             return f"gold[{chunk_id!r}]: the label must be a non-empty label name."
-    return {str(chunk_id): str(label) for chunk_id, label in raw.items()}
+    gold = {str(chunk_id): str(label) for chunk_id, label in parsed.items()}
+    return gold, hashlib.sha256(raw).hexdigest()[:12]
 
 
 def _honest(
@@ -190,12 +224,3 @@ def _validated_level(confidence_level: float) -> float:
     ):
         raise ValidationError("confidence_level must be a number strictly between 0 and 1.")
     return float(confidence_level)
-
-
-def _short_sha(gold_file: str) -> str:
-    """The gold file's identity, 12 hex chars (the seed_file convention)."""
-    try:
-        raw = Path(gold_file).read_bytes()
-    except OSError:
-        return ""
-    return hashlib.sha256(raw).hexdigest()[:12]

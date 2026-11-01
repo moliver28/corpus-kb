@@ -10,6 +10,7 @@ params) answers the honest envelope or the typed error.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -102,6 +103,12 @@ async def test_gold_agreement_and_correction_land_per_class(
     params = result["params"]
     assert params["gold_matched"] == 5
     assert params["n_population"] == 10
+    # The success envelope keeps its reason, and the recorded sha256 is
+    # the identity of the SAME bytes that were parsed (no second read).
+    assert result["reason"] == "5 gold chunks matched the build; 0 ignored."
+    assert (
+        params["gold_file_sha256"] == hashlib.sha256(Path(gold_path).read_bytes()).hexdigest()[:12]
+    )
 
 
 async def test_off_build_gold_ids_are_ignored_and_counted(
@@ -169,12 +176,19 @@ async def test_missing_or_broken_gold_files_answer_insufficient_data(
         object(), tenant_id=TENANT, gold_file=str(tmp_path / "nope.json")
     )
     assert missing["status"] == "insufficient_data"
+    # The reason names the file, never the caller's full path or a raw
+    # exception dump.
+    assert "nope.json" in str(missing["reason"])
+    assert str(tmp_path) not in str(missing["reason"])
     broken = tmp_path / "broken.json"
     broken.write_text("{not json", encoding="utf-8")
     unreadable = await labeling_gold_tools.labeling_gold_check(
         object(), tenant_id=TENANT, gold_file=str(broken)
     )
     assert unreadable["status"] == "insufficient_data"
+    assert "not readable JSON" in str(unreadable["reason"])
+    assert "json.decoder" not in str(unreadable["reason"])
+    assert str(tmp_path) not in str(unreadable["reason"])
     empty = tmp_path / "empty.json"
     empty.write_text("[]", encoding="utf-8")
     not_object = await labeling_gold_tools.labeling_gold_check(
@@ -212,7 +226,7 @@ async def test_missing_gold_file_argument_raises_the_typed_error(
 ) -> None:
     _install(monkeypatch, _label_rows())
     with pytest.raises(ValidationError, match="gold_file"):
-        await labeling_gold_tools.labeling_gold_check(object(), tenant_id=TENANT)
+        await labeling_gold_tools.labeling_gold_check(object(), tenant_id=TENANT, gold_file="")
 
 
 @pytest.mark.parametrize("level", [0.0, 1.0, 1.5])
@@ -227,9 +241,43 @@ async def test_junk_confidence_levels_raise_the_typed_error(
         )
 
 
-def test_short_sha_answers_empty_on_an_unreadable_path(tmp_path: Path) -> None:
-    assert labeling_gold_tools._short_sha(str(tmp_path)) == ""
-    assert labeling_gold_tools._short_sha(str(tmp_path / "gold.json")).startswith("")
+async def test_oversized_gold_file_answers_insufficient_data(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _install(monkeypatch, _label_rows())
+    gold_path = _gold_file(tmp_path, {"any-chunk": "reports"})
+    monkeypatch.setattr(labeling_gold_tools, "MAX_GOLD_FILE_BYTES", 8)
+    result = await labeling_gold_tools.labeling_gold_check(
+        object(), tenant_id=TENANT, gold_file=gold_path
+    )
+    assert result["status"] == "insufficient_data"
+    assert "gold-set cap" in str(result["reason"])
+
+
+async def test_duplicate_built_rows_are_deduped_first_row_wins(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A repeated chunk id in the store can never surface ppi_validate's
+    uniqueness check as a raw error: the first row wins (the triage
+    rule), the population counts unique ids only."""
+    rows = _label_rows()
+    duplicated = [*rows, dict(rows[0])]
+
+    async def labels(pool: Any, tenant_id: str) -> list[dict[str, object]]:
+        return duplicated
+
+    async def present(pool: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(labeling_gold_tools, "_load_labels", labels)
+    monkeypatch.setattr(labeling_gold_tools, "_tables_present", present)
+    gold = _gold(rows, {rows[0]["chunk_id"]: "meetings"})
+    gold_path = _gold_file(tmp_path, gold)
+    result = await labeling_gold_tools.labeling_gold_check(
+        object(), tenant_id=TENANT, gold_file=gold_path
+    )
+    assert result["status"] == "success"
+    assert result["params"]["n_population"] == 10  # unique ids, not 11 rows
 
 
 async def test_bad_gold_label_values_answer_insufficient_data(
@@ -319,3 +367,21 @@ async def test_real_seams_over_a_probe_pool(
     assert result["status"] == "success"
     assert result["class_count"] == 2
     assert result["params"]["n_population"] == 10
+
+
+def test_read_time_failure_answers_a_typed_reason(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A file that vanishes (or turns unreadable) between the existence
+    probe and the read still answers a plain reason, never raw OSError."""
+    gold_path = tmp_path / "gold.json"
+    gold_path.write_text("{}", encoding="utf-8")
+
+    def _boom(self: object) -> bytes:
+        raise OSError("gone mid-read")
+
+    monkeypatch.setattr(Path, "read_bytes", _boom)
+    reason = labeling_gold_tools._load_gold(str(gold_path))
+    assert isinstance(reason, str)
+    assert "not readable" in reason
+    assert "gold.json" in reason

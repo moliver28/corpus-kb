@@ -96,8 +96,8 @@ async def labeling_gold_check_route(request: Request) -> JSONResponse:
     body = await parse_body(request)
     result = await labeling_gold_tools.labeling_gold_check(
         await research_pool(),
+        gold_file=str(body.get("gold_file", "")),
         tenant_id=body.get("tenant_id", _TENANT_DEFAULT),
-        gold_file=body.get("gold_file"),
         confidence_level=float(body.get("confidence_level", 0.95)),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200

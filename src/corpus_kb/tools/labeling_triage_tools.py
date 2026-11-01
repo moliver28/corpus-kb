@@ -18,8 +18,17 @@ always yields the same queue. ``n_flagged`` carries the honest total;
 
 Envelope: ``{status, n_flagged, queue}`` guaranteed on every outcome,
 plus ``reason`` everywhere and ``remedy`` on the guard paths. Statuses:
-``success``, ``insufficient_data`` (no labels, no vectors, too few units
-or classes), ``unavailable`` (migration 028 not applied).
+``success``, ``insufficient_data`` (no labels, no vectors, too few units,
+a class below the fold floor), ``unavailable`` (migration 028 not
+applied).
+
+Fold-coverage guard: the injected predictor derives its class count
+from the train split, so a class with fewer members than ``cv_folds``
+can leave a fold's train split without that class and make the per-fold
+shape check fail. The handler refuses that state BEFORE calling the
+module: every class must hold at least ``cv_folds`` members, or the
+answer is the honest ``insufficient_data`` envelope naming the thinnest
+class.
 """
 
 from __future__ import annotations
@@ -108,7 +117,28 @@ async def labeling_triage(
         )
     classes = sorted({label_map[chunk_id] for chunk_id in ids})
     index_of = {name: position for position, name in enumerate(classes)}
+    labels = [index_of[label_map[chunk_id]] for chunk_id in ids]
+    thin = _thinnest_class(classes, labels, folds)
+    if thin is not None:
+        name, count = thin
+        return _honest(
+            "insufficient_data",
+            f"the thinnest class {name!r} holds only {count} of the needed {folds} labeled units.",
+            "Label more chunks, then retry.",
+            folds,
+            threshold,
+            n_units=len(ids),
+            classes=classes,
+        )
     positions = {chunk_id: index for index, chunk_id in enumerate(space.ids)}
+    result = label_triage(
+        space.matrix[[positions[chunk_id] for chunk_id in ids]],
+        np.array(labels, dtype=int),
+        fold_predictor=logistic_fold_predictor(),
+        cv_folds=folds,
+        flag_threshold=threshold,
+        seed=_TRIAGE_SEED,
+    )
     result = label_triage(
         space.matrix[[positions[chunk_id] for chunk_id in ids]],
         np.array([index_of[label_map[chunk_id]] for chunk_id in ids], dtype=int),
@@ -149,6 +179,22 @@ def _queue_row(item: LabelReviewItem, ids: list[str], classes: list[str]) -> dic
         "runner_up_label": classes[item.runner_up_label],
         "runner_up_probability": item.runner_up_probability,
     }
+
+
+def _thinnest_class(classes: list[str], labels: list[int], folds: int) -> tuple[str, int] | None:
+    """(name, count) when a class sits below the fold floor, else None.
+
+    A class with fewer members than ``cv_folds`` can leave one fold's
+    train split without it, and the module's per-fold shape check would
+    raise a raw error. The guard refuses that state up front.
+    """
+    counts = [0] * len(classes)
+    for label in labels:
+        counts[label] += 1
+    name, count = min(zip(classes, counts, strict=True), key=lambda item: item[1])
+    if count < folds:
+        return name, count
+    return None
 
 
 def _honest(

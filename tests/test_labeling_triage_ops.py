@@ -3,8 +3,9 @@
 The handler's seams (vectors, labels, store probe) are patched, so the
 numpy triage itself runs for real: a mislabeled unit in an otherwise
 clean space is flagged first, clean units stay out of the queue, the
-queue is deterministic, and every guard (no labels, thin corpus, absent
-tables, junk params) answers the honest envelope.
+queue is deterministic, and every guard (no labels, thin corpus, a
+class below the fold floor, absent tables, junk params) answers the
+honest envelope.
 """
 
 from __future__ import annotations
@@ -21,20 +22,38 @@ from corpus_kb.tools import labeling_triage_tools
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 
-# 8 "a" units near [1, 0], 3 clean "b" units near [0, 1], and one "b"
-# unit sitting in the "a" cluster: the planted label error (U39).
+# 8 "a" units near [1, 0], 5 clean "b" units near [0, 1], and one "b"
+# unit sitting in the "a" cluster: the planted label error (U39). Both
+# classes clear the default five-fold floor (8 and 6 members).
 _CLEAN_A = [f"a{index:011d}" for index in range(8)]
-_CLEAN_B = [f"b{index:011d}" for index in range(3)]
+_CLEAN_B = [f"b{index:011d}" for index in range(5)]
 _OUTLIER = "m00000000000"
 
 
 def _rows() -> tuple[VectorSpace, list[dict[str, object]]]:
     matrix = np.array(
-        [[1.0, 0.0]] * 8 + [[0.0, 1.0]] * 3 + [[1.0, 0.0]],
+        [[1.0, 0.0]] * 8 + [[0.0, 1.0]] * 5 + [[1.0, 0.0]],
         dtype=np.float64,
     )
     ids = _CLEAN_A + _CLEAN_B + [_OUTLIER]
-    labels = ["a"] * 8 + ["b"] * 3 + ["b"]
+    labels = ["a"] * 8 + ["b"] * 5 + ["b"]
+    rows = [
+        {"chunk_id": chunk_id, "label": label, "probability": 0.9}
+        for chunk_id, label in zip(ids, labels, strict=True)
+    ]
+    return VectorSpace(ids=ids, matrix=matrix, excluded_zero_count=0), rows
+
+
+def _singleton_world() -> tuple[VectorSpace, list[dict[str, object]]]:
+    """12 units, 2 classes, ONE member in the max-index class.
+
+    The exact fold-coverage crash shape: a stratified fold holds the
+    singleton, its train split misses the class, and the module's shape
+    check would raise a raw error without the handler's guard.
+    """
+    matrix = np.array([[1.0, 0.0]] * 11 + [[0.0, 1.0]], dtype=np.float64)
+    ids = [f"s{index:011d}" for index in range(11)] + ["x00000000000"]
+    labels = ["a"] * 11 + ["b"]
     rows = [
         {"chunk_id": chunk_id, "label": label, "probability": 0.9}
         for chunk_id, label in zip(ids, labels, strict=True)
@@ -80,7 +99,7 @@ async def test_mislabeled_unit_flags_first_and_queue_stays_clean(
     assert row["runner_up_label"] == "a"
     assert row["oos_probability"] < row["runner_up_probability"]
     assert result["classes"] == ["a", "b"]
-    assert result["n_units"] == 12
+    assert result["n_units"] == 14
 
 
 async def test_queue_is_deterministic(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -116,6 +135,24 @@ async def test_thin_corpus_answers_insufficient_data(
     assert result["n_flagged"] == 0
     assert result["queue"] == []
     assert result["remedy"]
+
+
+async def test_singleton_class_answers_insufficient_data_not_a_crash(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fold-coverage guard (regression): a singleton max-index class
+    used to make the per-fold shape check raise a raw ValueError; the
+    handler now answers the honest thin-class envelope instead."""
+    space, rows = _singleton_world()
+    _install(monkeypatch, space, rows)
+    result = await labeling_triage_tools.labeling_triage(object(), tenant_id=TENANT, cv_folds=2)
+    assert result["status"] == "insufficient_data"
+    assert result["n_flagged"] == 0
+    assert result["queue"] == []
+    assert "'b'" in str(result["reason"])  # the thinnest class is named
+    assert "holds only 1 of the needed 2" in str(result["reason"])
+    assert result["classes"] == ["a", "b"]
+    assert result["n_units"] == 12
 
 
 async def test_no_labels_answers_insufficient_data(

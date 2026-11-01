@@ -124,7 +124,7 @@ LABELING_OPERATIONS: tuple[Operation, ...] = (
         ),
         handler="corpus_kb.tools.labeling_gold_tools:labeling_gold_check",
         params=(
-            ParamSpec("gold_file", default=None),
+            ParamSpec("gold_file", required=True),
             ParamSpec("confidence_level", default=0.95),
             _TENANT,
         ),

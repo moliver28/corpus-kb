@@ -255,11 +255,10 @@ async def _labeling_gold_check(params: dict[str, Any], tenant_id: str) -> dict[s
     from corpus_kb.api.research_http import research_pool
     from corpus_kb.tools.labeling_gold_tools import labeling_gold_check as gold_check_tool
 
-    gold_file = params.get("gold_file")
     return await gold_check_tool(
         await research_pool(),
+        gold_file=str(params.get("gold_file", "")),
         tenant_id=tenant_id,
-        gold_file=str(gold_file) if gold_file is not None else None,
         confidence_level=float(params.get("confidence_level", 0.95)),
     )
 
