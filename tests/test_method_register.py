@@ -21,7 +21,7 @@ from corpus_kb.analysis.method_register import (
 )
 from corpus_kb.analysis.method_register_rubric import rank_methods
 from corpus_kb.api._body import error_response
-from corpus_kb.errors import ERROR_MAP
+from corpus_kb.errors import ValidationError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROOT_YAML = REPO_ROOT / "config" / "analysis_methods.yaml"
@@ -197,10 +197,11 @@ def test_register_not_a_mapping_keeps_the_400_wire_contract(tmp_path: Path) -> N
     path = tmp_path / "register.yaml"
     path.write_text("- one\n- two\n", encoding="utf-8")
     config = {"analysis": {"method_register_path": str(path)}}
-    with pytest.raises(ValueError, match="must be a YAML mapping") as excinfo:
+    with pytest.raises(ValidationError, match="must be a YAML mapping") as excinfo:
         load_method_register(config)
-    assert ERROR_MAP[type(excinfo.value).__name__] == (400, -32602, 1)
-    assert error_response(excinfo.value).status_code == 400
+    exc = excinfo.value
+    assert (exc.http_status, exc.socket_code, exc.cli_exit) == (400, -32602, 1)
+    assert error_response(exc).status_code == 400
 
 
 def test_schema_mismatch_names_the_source(tmp_path: Path) -> None:
@@ -215,11 +216,12 @@ def test_schema_mismatch_names_the_source(tmp_path: Path) -> None:
     }
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
     config = {"analysis": {"method_register_path": str(path)}}
-    with pytest.raises(ValueError, match="Malformed analysis method register") as excinfo:
+    with pytest.raises(ValidationError, match="Malformed analysis method register") as excinfo:
         load_method_register(config)
-    assert "register.yaml" in str(excinfo.value)
-    assert ERROR_MAP[type(excinfo.value).__name__] == (400, -32602, 1)
-    assert error_response(excinfo.value).status_code == 400
+    exc = excinfo.value
+    assert "register.yaml" in str(exc)
+    assert (exc.http_status, exc.socket_code, exc.cli_exit) == (400, -32602, 1)
+    assert error_response(exc).status_code == 400
 
 
 # ---------------------------------------------------------------------------
@@ -542,5 +544,5 @@ def test_loader_enforces_full_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyP
     path = tmp_path / "register.yaml"
     path.write_text(yaml.safe_dump(payload), encoding="utf-8")
     config = {"analysis": {"method_register_path": str(path)}}
-    with pytest.raises(ValueError, match="01 to 30"):
+    with pytest.raises(ValidationError, match="01 to 30"):
         load_method_register(config)
