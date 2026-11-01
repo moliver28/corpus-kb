@@ -5,7 +5,7 @@
 import { strings } from "../../strings";
 
 /** One doctor probe row, exactly as the server sends it. */
-export interface DoctorCheck {
+interface DoctorCheck {
   name: string;
   status: string;
   detail: string;

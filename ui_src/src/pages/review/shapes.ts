@@ -16,7 +16,7 @@ export interface AssignmentRow {
   created_at: string | null;
 }
 
-export interface AssignmentsEnvelope {
+interface AssignmentsEnvelope {
   status: string;
   result: AssignmentRow[];
 }
@@ -62,14 +62,14 @@ export function confidenceText(value: unknown): string {
 }
 
 /** One topics row (topics/writer.py read_topics). */
-export interface TopicPayload {
+interface TopicPayload {
   topic_id: string;
   label: unknown;
   size: unknown;
   keywords: unknown;
 }
 
-export interface TopicsEnvelope {
+interface TopicsEnvelope {
   status: string;
   topics: TopicPayload[];
 }
@@ -94,37 +94,4 @@ export function topicRows(topics: TopicPayload[]): TopicRow[] {
       ? topic.keywords.filter((word): word is string => typeof word === "string")
       : [],
   }));
-}
-
-/** The degraded counts block of GET /api/ingest/status. */
-export interface DegradedEnvelope {
-  status: string;
-  degraded: { chunks: unknown; chunk_vectors: unknown };
-}
-
-export function isDegradedEnvelope(value: unknown): value is DegradedEnvelope {
-  if (typeof value !== "object" || value === null) return false;
-  const d = (value as Record<string, unknown>).degraded;
-  return typeof d === "object" && d !== null;
-}
-
-/** The honest re-embed summary (tools/ingest_reembed.py). */
-export interface ReembedEnvelope {
-  status: string;
-  scanned: number;
-  fixed: number;
-  failed: number;
-}
-
-export function isReembedEnvelope(value: unknown): value is ReembedEnvelope {
-  if (typeof value !== "object" || value === null) return false;
-  const r = value as Record<string, unknown>;
-  return (
-    typeof r.scanned === "number" && typeof r.fixed === "number" && typeof r.failed === "number"
-  );
-}
-
-/** One degraded count cell -> 0 (an absent or junk cell never inflates). */
-export function degradedCount(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }

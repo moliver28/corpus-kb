@@ -14,7 +14,7 @@ import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
 import { strings } from "../strings";
 
-export interface PathCardProps {
+interface PathCardProps {
   title: string;
   body?: string;
   label: string;

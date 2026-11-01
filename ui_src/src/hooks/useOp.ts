@@ -6,7 +6,7 @@ import { unknownOpResult } from "../api/errors";
 import { getOp } from "../api/ops";
 import type { OpResult } from "../api/types";
 
-export interface UseOp {
+interface UseOp {
   run: (body?: unknown) => Promise<OpResult<unknown>>;
   running: boolean;
   result: OpResult<unknown> | null;
