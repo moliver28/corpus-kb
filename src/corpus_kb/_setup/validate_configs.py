@@ -7,7 +7,7 @@ Validates MCP configuration files across four editor formats:
   - Codex (mcpServers key + autoApprove — copy-template for Codex CLI users)
 
 Usage:
-    python scripts/validate_configs.py
+    poe validate-configs   (python src/corpus_kb/_setup/validate_configs.py)
 
 Exit code 0 = all valid, 1 = validation errors found.
 
