@@ -3,6 +3,16 @@
 This page is the operator's contract. Every number here comes from the code.
 When this page and the code disagree, the code wins — and please open an issue.
 
+## Contents
+
+- [Exit codes](#exit-codes)
+- [Ports](#ports)
+- [Vocabularies](#vocabularies)
+- [Tenancy](#tenancy)
+- [Embedding model vs schema](#embedding-model-vs-schema)
+- [The MCP surface](#the-mcp-surface)
+- [Where to go next](#where-to-go-next)
+
 The machine-readable source of truth is the operation inventory:
 
 ```bash

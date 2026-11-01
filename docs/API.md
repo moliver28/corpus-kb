@@ -2,6 +2,21 @@
 
 Corpus-KB exposes MCP over stdio, HTTP, and JSON-RPC over a Unix socket or Windows named pipe. This page lists the HTTP routes and gives curl examples for each; the MCP tool reference lives in [FEATURES.md](FEATURES.md).
 
+## Contents
+
+- [Protocols](#protocols)
+- [Ingest](#ingest)
+- [Search](#search)
+- [SQL queries](#sql-queries)
+- [Graph](#graph)
+- [Tags and metadata](#tags-and-metadata)
+- [Admin](#admin)
+- [Research subsystem](#research-subsystem)
+- [Release lifecycle (U5, v6 §6)](#release-lifecycle-u5-v6-6)
+- [OpenAI-compatible API (v1)](#openai-compatible-api-v1)
+- [MCP tool reference](#mcp-tool-reference)
+- [Next steps](#next-steps)
+
 ---
 
 ## Protocols

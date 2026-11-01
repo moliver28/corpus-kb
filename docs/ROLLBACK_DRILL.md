@@ -38,7 +38,15 @@ jobs running in that environment can request the OIDC token PyPI accepts.
 
 ## Rollback steps
 
-If a published release is broken:
+If a published release is broken, run these three steps in order:
+
+| Step | Action | Where |
+|---|---|---|
+| 1 | Yank the broken version on PyPI | PyPI release management |
+| 2 | Mark the GitHub release as a pre-release (or delete it and the tag) | GitHub releases |
+| 3 | Ship a fixed version through the normal CI gate, then publish a new GitHub release | repo + GitHub releases |
+
+Details:
 
 1. **Yank the release on PyPI**.
    - Go to **https://pypi.org/manage/project/corpus-kb/releases/**.
@@ -123,9 +131,11 @@ Could not find a version that satisfies the requirement corpus-kb==0.1.0a1
 
 ## Rollback checklist
 
-- [ ] PyPI trusted publisher is configured for the `pypi` environment.
-- [ ] Broken version has been yanked on PyPI.
-- [ ] GitHub release is marked as pre-release or deleted.
-- [ ] A new, higher version has been prepared and merged.
-- [ ] New GitHub release has been published and the pipeline is green.
-- [ ] `pip install corpus-kb` resolves to the fixed version.
+| # | Check | Done |
+|---|---|---|
+| 1 | PyPI trusted publisher is configured for the `pypi` environment. | [ ] |
+| 2 | Broken version has been yanked on PyPI. | [ ] |
+| 3 | GitHub release is marked as pre-release or deleted. | [ ] |
+| 4 | A new, higher version has been prepared and merged. | [ ] |
+| 5 | New GitHub release has been published and the pipeline is green. | [ ] |
+| 6 | `pip install corpus-kb` resolves to the fixed version. | [ ] |

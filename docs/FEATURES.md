@@ -2,6 +2,21 @@
 
 Corpus-KB turns your local files into a searchable, queryable corpus. This page explains what you can do once the server is running.
 
+## Contents
+
+- [Ingest anything](#ingest-anything)
+- [Hybrid search](#hybrid-search)
+- [Knowledge graph](#knowledge-graph)
+- [Tags and metadata](#tags-and-metadata)
+- [Versioning and replay](#versioning-and-replay)
+- [Configurable embeddings](#configurable-embeddings)
+- [LlamaIndex RAG backend](#llamaindex-rag-backend)
+- [Sample knowledge and notebooks](#sample-knowledge-and-notebooks)
+- [Multi-tenancy ready](#multi-tenancy-ready)
+- [Research and coding subsystem](#research-and-coding-subsystem)
+- [MCP tool reference](#mcp-tool-reference)
+- [Next steps](#next-steps)
+
 ---
 
 ## Ingest anything

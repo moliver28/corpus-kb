@@ -4,6 +4,15 @@ Corpus-KB answers questions from your own files, with citations. This
 page gets you there two ways: the browser for novices, the terminal for
 everyone else. Pick one; you can switch at any time.
 
+## Contents
+
+- [The browser path](#the-browser-path)
+- [The terminal quickstart](#the-terminal-quickstart)
+- [Before you start: a database and an embedder](#before-you-start-a-database-and-an-embedder)
+- [Run the demo](#run-the-demo)
+- [Your own transcripts](#your-own-transcripts)
+- [Where to go next](#where-to-go-next)
+
 ## The browser path
 
 The browser app is built once from `ui_src/`. Install the package, then
@@ -200,15 +209,15 @@ only new or changed files.
 Two ways to get a codebook version:
 
 1. **Inductive first pass** (optional `inductive` extra):
-   `corpus-kb coding inductive` clusters the corpus and proposes codes; then
-   promote with:
-   `corpus-kb codebook promote --proposed-id <id> --name "Code name" --definition "..."`.
-   Small or homogeneous corpora may produce zero proposals (every unit
-   clusters to noise). The command says so honestly and suggests adding
-   transcripts or seeding directly. Seeding directly is option 2.
-2. **Direct seeding** from your own gold exemplars, as the demo does. Codes
-   need gold exemplar passages (quoted verbatim from your transcripts). The
-   deductive run builds prototypes from them.
+   - `corpus-kb coding inductive` clusters the corpus and proposes codes.
+   - Promote with:
+     `corpus-kb codebook promote --proposed-id <id> --name "Code name" --definition "..."`.
+   - Small or homogeneous corpora may produce zero proposals (every unit
+     clusters to noise). The command says so honestly and suggests adding
+     transcripts or seeding directly.
+2. **Direct seeding** from your own gold exemplars, as the demo does:
+   - Codes need gold exemplar passages (quoted verbatim from your transcripts).
+   - The deductive run builds prototypes from them.
 
 For reliable automated thresholds you want at least 20 gold exemplars per
 code. Below that, coding still runs but routes to review (see the demo).

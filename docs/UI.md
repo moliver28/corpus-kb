@@ -10,6 +10,7 @@ demo script is [research/UI-DEMO.md](research/UI-DEMO.md).
 
 ## Contents
 
+- [Contents](#contents)
 - [Start the app](#start-the-app)
 - [User guide](#user-guide)
 - [Config](#config)
@@ -20,6 +21,7 @@ demo script is [research/UI-DEMO.md](research/UI-DEMO.md).
 - [Troubleshooting](#troubleshooting)
 - [Maintainability scorecard](#maintainability-scorecard)
 - [Spike results](#spike-results)
+
 
 ## Start the app
 
