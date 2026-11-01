@@ -79,9 +79,18 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
     # Structured embedding facts (issue #183) + the reranker's active
     # state, straight from config — the SPA's System-ready strip reads
     # these fields, so they must not hide inside check detail strings.
-    embedder = embedder_check(cfg, pgml_installed=None)
-    rerank = load_rerank_settings(cast("dict[str, object]", cfg))
+    # ``degraded`` is the provider-health flag: true only when the active
+    # provider cannot emit usable vectors right now (Ollama down, or the
+    # pgml extension known-absent). Unknown states stay honest: an
+    # unprobed pgml is not a degraded pgml.
     emb_cfg = cfg.get("embedding") or {}
+    provider = str(emb_cfg.get("provider", "ollama"))
+    pgml_installed: bool | None = None
+    if provider == "pgml" and extensions is not None:
+        pgml_installed = bool(extensions.get("pgml", (False, ""))[0])
+    embedding_degraded = (not ollama_ok) if provider != "pgml" else pgml_installed is False
+    embedder = embedder_check(cfg, pgml_installed=pgml_installed)
+    rerank = load_rerank_settings(cast("dict[str, object]", cfg))
 
     return {
         "status": "success",
@@ -110,6 +119,7 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
             "embedding": {
                 "model": str(emb_cfg.get("model", "")),
                 "dimensions": embedder.embedding_dimensions,
+                "degraded": embedding_degraded,
             },
             "reranker": {
                 "enabled": bool(rerank.enabled),

@@ -327,6 +327,7 @@
   "receiptDedupDropped": "{n} near-duplicate chunks dropped",
   "setupEmbeddingLine": "Embedding: {model}, {dims} dimensions.",
   "setupEmbeddingDimsUnknown": "unknown",
+  "setupEmbeddingDimsLow": "This model emits fewer than 1024 dimensions. Research coding will abstain.",
   "setupRerankerOn": "Reranker: on ({backend}).",
   "setupRerankerBackendAuto": "automatic",
   "setupRerankerOff": "Reranker: off.",
