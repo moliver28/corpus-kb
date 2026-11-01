@@ -24,9 +24,10 @@ import struct
 
 import numpy as np
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.rag.embedder import instruct as _instruct
 
-DEFAULT_DIMENSIONS = 1024
+DEFAULT_DIMENSIONS = RESEARCH_EMBEDDING_DIMENSIONS
 
 # Fixed probe string for doctor/eval canaries: embed THIS and reject an
 # all-zero reply (the qwen3 zero-vector degraded-mode incident contract).

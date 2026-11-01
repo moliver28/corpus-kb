@@ -22,6 +22,7 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.storage.gateway import SqlGateway, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -124,23 +125,18 @@ class VersioningHandler:
 # Singleton
 # ============================================================================
 
-_versioning_handler: VersioningHandler | None = None
+_versioning_handler = SingletonSlot[VersioningHandler](
+    "VersioningHandler not initialized. Call set_versioning_handler() during startup."
+)
 
 
 def get_versioning_handler() -> VersioningHandler:
-    global _versioning_handler
-    if _versioning_handler is None:
-        raise RuntimeError(
-            "VersioningHandler not initialized. Call set_versioning_handler() during startup."
-        )
-    return _versioning_handler
+    return _versioning_handler.get()
 
 
 def set_versioning_handler(handler: VersioningHandler) -> None:
-    global _versioning_handler
-    _versioning_handler = handler
+    _versioning_handler.set(handler)
 
 
 def reset_versioning_handler() -> None:
-    global _versioning_handler
-    _versioning_handler = None
+    _versioning_handler.reset()
