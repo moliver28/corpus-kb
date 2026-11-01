@@ -52,10 +52,12 @@ def page_units(items: Iterable[PageItem]) -> UnitMap:
     and that field fills only behind ``structured_output``. So the flag
     off gives an empty map, and the map never carries a page the parse
     did not mark. Sorted tuples keep every later read deterministic.
+    The blank-text guard pins locally the parser-side invariant that a
+    marked table also carries its markdown as text.
     """
     units: dict[int, set[str]] = {}
     for item in items:
-        if item.table_markdown is not None:
+        if item.table_markdown is not None and item.text.strip():
             units.setdefault(item.page, set()).add("table")
     return {page: tuple(sorted(names)) for page, names in units.items()}
 

@@ -958,6 +958,20 @@ def test_table_units_ride_structured_output_and_flag_off_stays_exact(
         )
         assert (chunk.metadata.get("units") == ["table"]) is covers
 
+    def _boom() -> object:
+        raise AssertionError("must use the rich cache")
+
+    monkeypatch.setattr(_PAGES_TARGET, _boom)
+    again = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), on))
+    assert [chunk.text for chunk in again.chunks] == [chunk.text for chunk in plan.chunks]
+    for fresh, cached in zip(plan.chunks, again.chunks, strict=True):
+        assert (fresh.metadata["page_start"], fresh.metadata["page_end"]) == (
+            cached.metadata["page_start"],
+            cached.metadata["page_end"],
+        )
+        assert fresh.metadata.get("units") == cached.metadata.get("units")
+
+    monkeypatch.setattr(_PAGES_TARGET, lambda: _RichConverter(pages))
     off = _config(1, 4, str(tmp_path / "cache-off"), window_subprocess=False)
     plain = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), off))
     assert plain.chunks and validate_plan(plain) == []
