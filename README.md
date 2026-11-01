@@ -148,7 +148,7 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 |------|----------------|
 | [Getting started](docs/getting-started.md) | Both paths: the browser for novices, the terminal quickstart for everyone else |
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
-| [Browser UI](docs/UI.md) | The four pages: Add, Ask, Library, Overview |
+| [Browser UI](docs/UI.md) | The lifecycle app: stage-by-stage user guide, config, build, gates, troubleshooting |
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
 | [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, runtime tuning |
@@ -161,11 +161,10 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Research](docs/research.md) | Research command reference, config keys, embedding requirements |
 | [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Understanding your report](docs/understanding-your-report.md) | Plain-language guide to every governance-report section |
-| [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
-| [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
-| [Ingestion strategies](docs/INGESTION.md#ingestion-strategies) | Extending ingestion: config mapping, in-process registration, entry-point plugins |
-| [Topics](docs/ANALYSIS.md#topics) | The topic layer: offline BERTopic over stored embeddings, LLM labels, config |
+| [Ingestion](docs/INGESTION.md) | Full pipeline: partition, chunk, embed, extract, store, plus the strategy reference and extension ladders |
+| [Analysis](docs/ANALYSIS.md) | The analysis layer: analyze-run report, labeling, classification, topics, trends, method register |
+| [Analysis methods](docs/ANALYSIS-METHODS.md) | GENERATED reference: the 30-method register with required validation and permitted claims |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
 | [Internal program docs](docs/research/) | Archive: playbooks, research math, benchmarks, harness distribution, program plans |
 

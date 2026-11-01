@@ -116,6 +116,26 @@ the extension. Keep the 3-hop ceiling and the CTE fallback in mind.
 
 ---
 
+## Module map
+
+The storage seam lives in `src/corpus_kb/storage/`. The modules most people touch:
+
+| Module | Role |
+|---|---|
+| `gateway.py` | The `SqlGateway` seam: `PostgresGateway` thin wrapper, `DuckDbGateway` single-writer file driver |
+| `graph_store.py` | Abstract `GraphStore` contract (all async methods) |
+| `graph_factory.py` | Builds the graph store from `graph.backend` config |
+| `age_graph_store.py` | Apache AGE openCypher graph store |
+| `duckdb_gateway.py` | DuckDB file-driver gateway |
+| `duckpgq.py` | DuckPGQ graph traversal (opt-in behind `graph.duckdb_graph_backend`) |
+| `duckdb_rag.py` | DuckDB `RagBackend` arm over the `SqlGateway` |
+| `rag_backend.py` | The `RagBackend` Protocol (LlamaIndex and DuckDB arms implement it) |
+| `llamaindex_backend.py` | LlamaIndex-backed RAG storage (PGVectorStore + Ollama) |
+| `tenant_conn.py` | Shared tenant-scoped connection helper (Postgres RLS; DuckDB scope) |
+| `dialect.py` | Storage-dialect SQL shims for the portability program |
+| `search_backend.py`, `duckdb_search.py`, `duckdb_fts.py`, `duckdb_similar.py` | Search arms: shared contract, DuckDB lexical/FTS/similarity |
+| `schema.sql` | DuckDB base schema (mirrors the Postgres migration set) |
+
 ## Keep the two schemas in step
 
 Every schema change ships twice:
