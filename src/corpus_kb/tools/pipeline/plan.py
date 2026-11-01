@@ -39,8 +39,9 @@ from ...utils.tracing import (
 )
 from ..ingest_store import DEFAULT_TENANT_ID
 from ._facade import _ic
+from .document import IngestDocument
 from .gate import _validation_gate
-from .stages import _run_locked_stages
+from .stages import _run_document_stages
 
 
 async def run_pipeline(
@@ -194,6 +195,13 @@ async def run_pipeline(
             validate_mode=validate_mode,
         )
 
+        # One canonical document (pipeline.document), built once here and
+        # threaded through every stage call.
+        canonical = IngestDocument(document, text, file_hash, source_type, path, is_file)
+        canonical.chunks = chunks
+        canonical.empty_reason = plan.empty_reason
+        canonical.strategy = resolution.strategy.name
+
         # Serialize concurrent ingests of the same content per tenant. The
         # Postgres lock is session-scoped on its own pooled connection, so a
         # crashed process releases it server-side automatically; the DuckDB
@@ -209,20 +217,12 @@ async def run_pipeline(
                     "source_type": source_type,
                     "errors": [],
                 }
-            result = await _run_locked_stages(
-                document=document,
-                chunks=chunks,
-                file_hash=file_hash,
-                text=text,
-                source_type=source_type,
-                path=path,
-                config=config,
-                pg_pool=pg_pool,
-                tenant_id=tenant_id,
-                rag_backend=rag_backend,
-                is_file=is_file,
-                empty_reason=plan.empty_reason,
-                strategy=resolution.strategy.name,
+            result = await _run_document_stages(
+                canonical,
+                config,
+                pg_pool,
+                tenant_id,
+                rag_backend,
                 validation_report=validation_report,
                 validation_mode=mode,
                 calibration_summary=calibration_summary,
