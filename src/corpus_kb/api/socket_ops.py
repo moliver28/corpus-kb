@@ -238,16 +238,16 @@ async def _labeling_lfs(params: dict[str, Any], tenant_id: str) -> dict[str, Any
 
 async def _labeling_triage(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
-    from corpus_kb.tools import labeling_triage_tools
+    from corpus_kb.tools import labeling_triage_ops, labeling_triage_tools
 
     return await labeling_triage_tools.labeling_triage(
         await research_pool(),
         tenant_id=tenant_id,
-        cv_folds=int(params.get("cv_folds", labeling_triage_tools.DEFAULT_TRIAGE_FOLDS)),
+        cv_folds=int(params.get("cv_folds", labeling_triage_ops.DEFAULT_TRIAGE_FOLDS)),
         flag_threshold=float(
-            params.get("flag_threshold", labeling_triage_tools.DEFAULT_FLAG_THRESHOLD)
+            params.get("flag_threshold", labeling_triage_ops.DEFAULT_FLAG_THRESHOLD)
         ),
-        limit=int(params.get("limit", labeling_triage_tools.DEFAULT_QUEUE_LIMIT)),
+        limit=int(params.get("limit", labeling_triage_ops.DEFAULT_QUEUE_LIMIT)),
     )
 
 

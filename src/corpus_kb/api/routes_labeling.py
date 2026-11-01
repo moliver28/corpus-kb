@@ -71,17 +71,17 @@ async def labeling_lfs_route(request: Request) -> JSONResponse:
 async def labeling_triage_route(request: Request) -> JSONResponse:
     """POST /api/labeling/triage — the weak-label review queue (U39)."""
     from corpus_kb.api.research_http import research_pool
-    from corpus_kb.tools import labeling_triage_tools
+    from corpus_kb.tools import labeling_triage_ops, labeling_triage_tools
 
     body = await parse_body(request)
     result = await labeling_triage_tools.labeling_triage(
         await research_pool(),
         tenant_id=body.get("tenant_id", _TENANT_DEFAULT),
-        cv_folds=int(body.get("cv_folds", labeling_triage_tools.DEFAULT_TRIAGE_FOLDS)),
+        cv_folds=int(body.get("cv_folds", labeling_triage_ops.DEFAULT_TRIAGE_FOLDS)),
         flag_threshold=float(
-            body.get("flag_threshold", labeling_triage_tools.DEFAULT_FLAG_THRESHOLD)
+            body.get("flag_threshold", labeling_triage_ops.DEFAULT_FLAG_THRESHOLD)
         ),
-        limit=int(body.get("limit", labeling_triage_tools.DEFAULT_QUEUE_LIMIT)),
+        limit=int(body.get("limit", labeling_triage_ops.DEFAULT_QUEUE_LIMIT)),
     )
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)
