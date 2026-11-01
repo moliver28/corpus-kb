@@ -28,6 +28,7 @@ from typing import Protocol
 import asyncpg
 
 from corpus_kb.chunking.hierarchy_settings import HierarchySettings
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 
 from ..chunking.hierarchy_tree import (
     LEVEL_CHILD,
@@ -45,7 +46,7 @@ from .shadow_adapters import (
 )
 from .shadow_writer import ShadowIngestWriter
 
-SHADOW_VECTOR_DIM = 1024
+SHADOW_VECTOR_DIM = RESEARCH_EMBEDDING_DIMENSIONS
 
 logger = logging.getLogger(__name__)
 

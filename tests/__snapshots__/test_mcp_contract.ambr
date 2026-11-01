@@ -309,6 +309,15 @@
         'variant': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.labeling_gold_tools': dict({
+      'labeling_gold_check': dict({
+        'confidence_level': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'gold_file': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.labeling_tools': dict({
       'labeling_build': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -323,6 +332,16 @@
       }),
       'labeling_list': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.labeling_triage_tools': dict({
+      'labeling_triage': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'cv_folds': 'POSITIONAL_OR_KEYWORD',
+        'flag_threshold': 'POSITIONAL_OR_KEYWORD',
         'limit': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',

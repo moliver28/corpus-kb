@@ -31,6 +31,7 @@ from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
     plan_file,
@@ -383,21 +384,17 @@ def _batches(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
 
 
-_handler: ResearchHandler | None = None
+_handler = SingletonSlot[ResearchHandler]("ResearchHandler requires an asyncpg pool")
 
 
 def get_research_handler(
     pool: asyncpg.Pool | None = None,
     embed_fn: Callable[[str], list[float]] | None = None,
 ) -> ResearchHandler:
-    global _handler
-    if _handler is None:
-        if pool is None:
-            raise RuntimeError("ResearchHandler requires an asyncpg pool")
-        _handler = ResearchHandler(pool, embed_fn=embed_fn)
-    return _handler
+    if pool is None:
+        return _handler.get()
+    return _handler.get_or_create(lambda: ResearchHandler(pool, embed_fn=embed_fn))
 
 
 def reset_research_handler() -> None:
-    global _handler
-    _handler = None
+    _handler.reset()

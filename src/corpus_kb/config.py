@@ -20,6 +20,7 @@ from typing import Any, cast
 import yaml
 
 from corpus_kb.config_aliases import apply_legacy_aliases
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
 
 
 def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
@@ -443,8 +444,8 @@ def get_default_config() -> dict[str, object]:
             "base_url": "http://localhost:11434",
             "batch_size": 32,
             # Native output width. Must equal the schema width
-            # (chunks_vectors.embedding = halfvec(2560)).
-            "dimensions": 2560,
+            # (chunks_vectors.embedding = halfvec(EMBEDDING_DIMENSIONS)).
+            "dimensions": EMBEDDING_DIMENSIONS,
             # U32 MRL gating: qwen3-embedding is Matryoshka-trained, so
             # front-slice truncation + L2 renormalization is a sound
             # reduced-dimension representation. Gates the two-stage
@@ -550,7 +551,7 @@ def get_default_config() -> dict[str, object]:
                 "timeout_seconds": 8,
             },
             "matryoshka_enabled": False,
-            "matryoshka_dim": 1024,
+            "matryoshka_dim": RESEARCH_EMBEDDING_DIMENSIONS,
         },
         "reranking": {
             "enabled": True,
@@ -642,7 +643,7 @@ def get_default_config() -> dict[str, object]:
                 # embedding rows always record revision "1024" and the
                 # strategy is a committed experiment result, not a runtime
                 # choice. Only the promotion guard is configurable.
-                "dimensions": 1024,
+                "dimensions": RESEARCH_EMBEDDING_DIMENSIONS,
             },
             "ingest": {
                 "watch_interval_s": 10,

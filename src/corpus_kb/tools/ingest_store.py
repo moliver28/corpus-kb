@@ -37,6 +37,7 @@ from typing import Any, cast
 import asyncpg
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 from ..analysis.dates import parse_date_value
 from ..errors import ConfigError
@@ -473,7 +474,7 @@ class PostgresIngestStore:
         self,
         chunks: list[Chunk],
         embedding_model: str,
-        dimensions: int = 2560,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         vectors_1024: dict[str, list[float]] | None = None,
     ) -> int:
         """Insert chunk vectors. vectors_1024, if provided, is keyed by chunk_id (str).

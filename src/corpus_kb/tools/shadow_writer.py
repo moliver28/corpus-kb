@@ -26,6 +26,8 @@ from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
+
 from ..chunking.hierarchy_tree import (
     LEVEL_CHILD,
     LEVEL_CHUNK,
@@ -82,12 +84,13 @@ _VECTOR_UPSERT_PG = """
     SET embedding = $3::vector, embedding_model = $4,
         dimensions = $5, embedded_at = NOW()
 """
-_VECTOR_UPSERT_DUCKDB = """
+_W_V1024 = str(RESEARCH_EMBEDDING_DIMENSIONS)
+_VECTOR_UPSERT_DUCKDB = f"""
     INSERT INTO shadow_vectors (shadow_chunk_id, tenant_id, embedding,
         embedding_model, dimensions)
-    VALUES ($1, $2, $3::FLOAT[1024], $4, $5)
+    VALUES ($1, $2, $3::FLOAT[{_W_V1024}], $4, $5)
     ON CONFLICT (shadow_chunk_id) DO UPDATE
-    SET embedding = $3::FLOAT[1024], embedding_model = $4,
+    SET embedding = $3::FLOAT[{_W_V1024}], embedding_model = $4,
         dimensions = $5, embedded_at = NOW()
 """
 
