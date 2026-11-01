@@ -17,7 +17,7 @@ no SQL fusion); this module dispatches to them on the ``duck`` flag.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 from uuid import UUID, uuid5
 
 from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
@@ -26,6 +26,7 @@ from corpus_kb.research.conn import SqlConn
 from corpus_kb.research.retrieval_filters import (
     _EXCHANGE_GRAIN,
     _UNIT_GRAIN,
+    ResearchQuery,
     _Grain,
     _row_filters,
     _Sql,
@@ -36,9 +37,6 @@ from corpus_kb.research.retrieval_settings import (
     estimate_selectivity,
     should_use_exact_scan,
 )
-
-if TYPE_CHECKING:
-    from corpus_kb.research.retrieval import ResearchQuery
 
 # The dense-arm halfvec cast, interpolated into the f-string arms below so
 # the index cast and the query probe share the research width constant.
@@ -96,7 +94,7 @@ async def _child_arms(
         # ordered HNSW scan of candidates.
         selectivity = (
             await estimate_selectivity(
-                cast("SelectivityReader", conn),
+                cast(SelectivityReader, conn),
                 _COUNT_SQL.format(
                     al=grain.alias, filters=filters, joins=grain.joins, table=grain.table
                 ),

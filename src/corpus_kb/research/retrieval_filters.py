@@ -8,18 +8,40 @@ speaker/topic/assignment shapes, and the stable id column. The fragment
 lambdas emit the exact former byte forms, and the ``_Sql`` parameter
 order stays the contract: source type, speaker role, doc ids, topic,
 then assignment ($1 tenant, $2 project, filters $3+).
+
+This module is the family leaf: it imports nothing from its siblings.
+``ResearchQuery`` lives here (it is the compiler's input), and both
+``retrieval.py`` and ``retrieval_arms.py`` take it from this module.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
+from uuid import UUID
 
 from corpus_kb.research.chunking import CHILD_QA, unit_kind
 
-if TYPE_CHECKING:
-    from corpus_kb.research.retrieval import ResearchQuery
+
+@dataclass(frozen=True)
+class ResearchQuery:
+    """A project-scoped retrieval query (tenant + project mandatory)."""
+
+    query: str
+    tenant_id: UUID
+    project_id: UUID
+    k: int = 10
+    source_type: str | None = None
+    speaker_role: str | None = None
+    doc_ids: tuple[UUID, ...] | None = None
+    topic_id: int | None = None
+    code_id: str | None = None
+    min_confidence: str | None = None
+    review_status: str | None = None
+    include_exchange_children: bool = True
+    rerank: bool = True
+
 
 # Assignment-confidence floors (todo-18 notebook filter): --min-confidence X
 # admits X and every STRONGER level.

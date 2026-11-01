@@ -17,7 +17,7 @@ QUERY-side embeddings route through ``instruct()`` (Wave-1 Embedder
 Protocol): the instruction prefix applies to the query text only; children
 were embedded RAW + deterministic-prefix at projection time.
 
-The shared filter compiler and grain specs live in
+The shared filter compiler, the grain specs, and the query model live in
 ``research/retrieval_filters.py``, the arm and payload builders in
 ``research/retrieval_arms.py``, and the reranker seam in
 ``research/retrieval_rerank.py``.
@@ -27,9 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
 from typing import Any, cast
-from uuid import UUID
 
 import asyncpg
 
@@ -48,6 +46,7 @@ from corpus_kb.research.retrieval_arms import (
 )
 from corpus_kb.research.retrieval_filters import (
     CONFIDENCE_FLOORS,
+    ResearchQuery,
     _exchange_filters,
     _Sql,
     _unit_filters,
@@ -84,25 +83,6 @@ logger = logging.getLogger(__name__)
 
 CANDIDATE_MULTIPLIER = 8
 RERANK_MIN_CANDIDATES = 30
-
-
-@dataclass(frozen=True)
-class ResearchQuery:
-    """A project-scoped retrieval query (tenant + project mandatory)."""
-
-    query: str
-    tenant_id: UUID
-    project_id: UUID
-    k: int = 10
-    source_type: str | None = None
-    speaker_role: str | None = None
-    doc_ids: tuple[UUID, ...] | None = None
-    topic_id: int | None = None
-    code_id: str | None = None
-    min_confidence: str | None = None
-    review_status: str | None = None
-    include_exchange_children: bool = True
-    rerank: bool = True
 
 
 async def ranked_children(
