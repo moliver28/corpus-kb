@@ -106,7 +106,7 @@ warning.
 
 ### `topics`
 
-The Wave 4 topic layer (`src/corpus_kb/topics/`, docs/TOPICS.md). Ships
+The Wave 4 topic layer (`src/corpus_kb/topics/`, docs/ANALYSIS.md). Ships
 dormant; the BERTopic import needs the `[topics]` extra.
 
 | Key | Default | Description |
@@ -123,7 +123,7 @@ dormant; the BERTopic import needs the `[topics]` extra.
 ### `ui.spa`
 
 The browser UI runtime keys (the SPA reads them from
-/app/runtime-config.json at boot; docs/UI-SPA.md). They tune the
+/app/runtime-config.json at boot; docs/UI.md). They tune the
 running app without a rebuild.
 
 | Key | Default | Description |
@@ -207,7 +207,7 @@ revision tag are fixed in code — deliberately not configuration.
 
 ### `textbook`
 
-The windowed large-PDF strategy (`docs/INGESTION-STRATEGIES.md`,
+The windowed large-PDF strategy (docs/INGESTION.md,
 "The textbook strategy"). Unknown or malformed keys keep their defaults.
 
 | Key | Default | Description |

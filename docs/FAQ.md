@@ -22,7 +22,7 @@ Yes. Ingest continues when Ollama is unreachable, but the affected chunks are st
 
 ## Can I teach it a new file format?
 
-Yes — ingestion is pluggable at three levels. Map a source type to an existing strategy in `config.yaml` (no code). Register a strategy in-process with `register_strategy()`. Ship one as an entry-point plugin from your own package. See [Ingestion strategies](INGESTION-STRATEGIES.md).
+Yes — ingestion is pluggable at three levels. Map a source type to an existing strategy in `config.yaml` (no code). Register a strategy in-process with `register_strategy()`. Ship one as an entry-point plugin from your own package. See [Ingestion strategies](INGESTION.md#ingestion-strategies).
 
 ## How is this different from a cloud vector database like Pinecone?
 
@@ -74,7 +74,7 @@ Use `pg_dump` to back up the Postgres database. The event store is inside Postgr
 
 - [Install guide](INSTALL.md)
 - [Features overview](FEATURES.md)
-- [Ingestion strategies](INGESTION-STRATEGIES.md)
+- [Ingestion strategies](INGESTION.md#ingestion-strategies)
 - [Admin guide](ADMIN.md)
 - [API reference](API.md)
 - [Development guide](DEVELOPMENT.md)
