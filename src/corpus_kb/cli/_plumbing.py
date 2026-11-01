@@ -44,7 +44,12 @@ _RESEARCH_VALIDATE_OPT = typer.Option(
 
 
 class ValidateMode(enum.StrEnum):
-    """One ``--validate`` value (matches the other surfaces exactly)."""
+    """The four documented caller modes the CLI exposes for ``--validate``.
+
+    Other surfaces pass raw strings; ``resolve_mode`` also accepts
+    ``transcript_meta`` there. The CLI offers only these four
+    (docs/research/HARNESS-PLAYBOOKS.md).
+    """
 
     OFF = "off"
     ADVISORY = "advisory"

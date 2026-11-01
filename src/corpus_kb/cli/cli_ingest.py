@@ -304,7 +304,8 @@ def ingest_url_command(
 
     Exit codes: 0 every page ok, 1 partial success (some pages failed),
     2 total failure (fetch blocked or every page failed), 3 configuration
-    error (unknown --source-type).
+    error (unknown --source-type). Typer rejects an unknown --validate
+    value with exit 2.
     """
     return _run_sync(
         lambda: _ingest_url_flow(url, crawl, max_pages, source_type, json_output, validate)
