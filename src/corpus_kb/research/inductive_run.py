@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -384,6 +385,144 @@ async def _observe(
     return observations
 
 
+@dataclass
+class _GrowRun:
+    """Per-run streaming state: identity plus the label cursor.
+
+    ``assigned[i]`` is always the label of observations[i]. A mid-loop
+    re-cluster reseeds labels for EVERY observation, so after one, subsequent
+    units must be written IN PLACE at their cursor instead of appended -
+    appending grew assigned past len(observations), which crashed
+    centroids_in_original_space with IndexError and double-counted
+    post-refresh units into the centroids.
+    """
+
+    tenant_id: UUID
+    run_id: UUID
+    assigned: list[int]
+    processed: int
+
+    def record(self, label: int) -> None:
+        if len(self.assigned) > self.processed:
+            self.assigned[self.processed] = label
+        else:
+            self.assigned.append(label)
+        self.processed += 1
+
+
+async def _grow_batch(
+    conn: Any,
+    batch: list[dict[str, Any]],
+    run: _GrowRun,
+    current_centroids: dict[int, list[float]],
+    code_names: list[str],
+    llm: SummaryChatClient | None,
+    threshold: float,
+) -> tuple[set[int], int, int]:
+    """Assign one batch against the live centroids and record every signal.
+
+    Only high-entropy units earn the LLM existing-vs-new meta-decision.
+    Returns the labels touched, the high-entropy count, and the count of
+    "new" meta-decisions.
+    """
+    labels_touched: set[int] = set()
+    high_entropy = 0
+    meta_new = 0
+    for obs in batch:
+        nearest = nearest_centroids(obs["embedding"], current_centroids, k=3)
+        assignments, entropy = soft_assignment_entropy(obs["embedding"], current_centroids)
+        k = clamp_k(3, len(current_centroids))
+        labels_touched.update(nearest)
+        run.record(nearest[0] if nearest else NOISE_LABEL)
+        if is_high_entropy(entropy, k, threshold) and llm is not None:
+            high_entropy += 1
+            question, answer = await _pair_texts(conn, run.tenant_id, obs["unit_id"])
+            decision = await meta_decide(llm, obs["unit_id"], question, answer, code_names)
+            if decision.decision == "new":
+                meta_new += 1
+            extra: dict[str, Any] = {
+                "meta_decision": decision.decision,
+                "meta_prompt_id": decision.prompt_id,
+                "assignments": assignments,
+            }
+        else:
+            extra = {"assignments": assignments}
+        await record_signal(
+            conn,
+            run.tenant_id,
+            obs["unit_id"],
+            run.run_id,
+            soft_cluster_entropy=entropy,
+            n_clusters=k,
+            extra=extra,
+        )
+    return labels_touched, high_entropy, meta_new
+
+
+def _grow_cadence(
+    observations: list[dict[str, Any]],
+    run: _GrowRun,
+    previous_centroids: dict[int, list[float]],
+    due: bool,
+    drift_threshold: float,
+    max_drift: float | None,
+    pins: dict[str, Any],
+) -> tuple[dict[int, list[float]], float | None, int]:
+    """Post-batch cadence (v5 §9.5): refresh, then re-cluster when due or drifted.
+
+    Centroids refresh incrementally (means in the ORIGINAL summary-embedding
+    space); the cosine drift between snapshots triggers an EARLY full
+    re-cluster, and a full re-cluster also fires on the cadence (``due``).
+    Returns the refreshed centroids, the running max drift, and 1 when the
+    drift forced an early re-cluster.
+    """
+    current = centroids_in_original_space([o["embedding"] for o in observations], run.assigned)
+    drift = centroid_drift(previous_centroids, current)
+    if drift is not None:
+        max_drift = drift if max_drift is None else max(max_drift, drift)
+    early = drift is not None and drift > drift_threshold
+    if not (due or early):
+        return current, max_drift, 0
+    refreshed = cluster_embeddings([o["embedding"] for o in observations], **pins)
+    run.assigned = list(refreshed.labels)
+    reseeded = centroids_in_original_space([o["embedding"] for o in observations], run.assigned)
+    return reseeded, max_drift, 1 if early else 0
+
+
+def _grow_settings(settings: dict[str, Any]) -> tuple[float, int, float]:
+    """(entropy threshold, recluster cadence, drift threshold) from settings."""
+    return (
+        float(str(settings["entropy_threshold"])),
+        int(str(settings["recluster_every_batches"])),
+        float(str(settings["centroid_drift_threshold"])),
+    )
+
+
+def _grow_checkpoint(
+    handler: ResearchHandler,
+    tenant_id: UUID,
+    run_id: UUID,
+    batch_no: int,
+    labels_touched: set[int],
+    batch: list[dict[str, Any]],
+    high_entropy: int,
+    meta_new: int,
+) -> None:
+    """Land the per-batch ISR checkpoint on the coding run."""
+    handler.checkpoint_coding_run(
+        tenant_id,
+        run_id,
+        {
+            "kind": "batch",
+            "batch_no": batch_no,
+            "isr": isr(len(labels_touched), len(batch)),
+            "n_units": len(batch),
+            "high_entropy": high_entropy,
+            "meta_new": meta_new,
+        },
+    )
+
+
 async def _grow(
     pool: asyncpg.Pool,
     handler: ResearchHandler,
@@ -405,96 +544,34 @@ async def _grow(
     previous and refreshed snapshots triggers an EARLY full re-cluster, and a
     full re-cluster also fires every ``recluster_every_batches`` batches.
     """
-    threshold = float(str(settings["entropy_threshold"]))
-    recluster_every = int(str(settings["recluster_every_batches"]))
-    drift_threshold = float(str(settings["centroid_drift_threshold"]))
+    threshold, recluster_every, drift_threshold = _grow_settings(settings)
     remaining = observations[len(pilot_labels) :]
+    run = _GrowRun(
+        tenant_id=tenant_id, run_id=run_id, assigned=list(pilot_labels), processed=len(pilot_labels)
+    )
     batches = 0
     high_entropy_total = 0
     meta_new_total = 0
     early_reclusters = 0
     current_centroids = centroids
     max_drift: float | None = None
-    # Streaming cursor: assigned[i] is always the label of observations[i].
-    # A mid-loop re-cluster reseeds labels for EVERY observation, so after
-    # one, subsequent units must be written IN PLACE at their cursor instead
-    # of appended - appending grew assigned past len(observations), which
-    # crashed centroids_in_original_space with IndexError and double-counted
-    # post-refresh units into the centroids.
-    processed = len(pilot_labels)
-    assigned: list[int] = list(pilot_labels)
     for start in range(0, len(remaining), INCREMENTAL_BATCH_SIZE):
         batch = remaining[start : start + INCREMENTAL_BATCH_SIZE]
         batches += 1
-        labels_touched: set[int] = set()
-        high_entropy = 0
-        meta_new = 0
         async with tenant_scope(pool, tenant_id) as conn:
-            for obs in batch:
-                nearest = nearest_centroids(obs["embedding"], current_centroids, k=3)
-                assignments, entropy = soft_assignment_entropy(obs["embedding"], current_centroids)
-                k = clamp_k(3, len(current_centroids))
-                labels_touched.update(nearest)
-                label = nearest[0] if nearest else NOISE_LABEL
-                if len(assigned) > processed:
-                    assigned[processed] = label
-                else:
-                    assigned.append(label)
-                processed += 1
-                if is_high_entropy(entropy, k, threshold) and llm is not None:
-                    high_entropy += 1
-                    question, answer = await _pair_texts(conn, tenant_id, obs["unit_id"])
-                    decision = await meta_decide(llm, obs["unit_id"], question, answer, code_names)
-                    if decision.decision == "new":
-                        meta_new += 1
-                    extra: dict[str, Any] = {
-                        "meta_decision": decision.decision,
-                        "meta_prompt_id": decision.prompt_id,
-                        "assignments": assignments,
-                    }
-                else:
-                    extra = {"assignments": assignments}
-                await record_signal(
-                    conn,
-                    tenant_id,
-                    obs["unit_id"],
-                    run_id,
-                    soft_cluster_entropy=entropy,
-                    n_clusters=k,
-                    extra=extra,
-                )
-        handler.checkpoint_coding_run(
-            tenant_id,
-            run_id,
-            {
-                "kind": "batch",
-                "batch_no": batches,
-                "isr": isr(len(labels_touched), len(batch)),
-                "n_units": len(batch),
-                "high_entropy": high_entropy,
-                "meta_new": meta_new,
-            },
+            labels_touched, high_entropy, meta_new = await _grow_batch(
+                conn, batch, run, current_centroids, code_names, llm, threshold
+            )
+        _grow_checkpoint(
+            handler, tenant_id, run_id, batches, labels_touched, batch, high_entropy, meta_new
         )
         high_entropy_total += high_entropy
         meta_new_total += meta_new
-
-        previous = current_centroids
-        current_centroids = centroids_in_original_space(
-            [o["embedding"] for o in observations], assigned
-        )
-        drift = centroid_drift(previous, current_centroids)
-        if drift is not None:
-            max_drift = drift if max_drift is None else max(max_drift, drift)
         due = batches % recluster_every == 0
-        early = drift is not None and drift > drift_threshold
-        if due or early:
-            if early:
-                early_reclusters += 1
-            refreshed = cluster_embeddings([o["embedding"] for o in observations], **pins)
-            assigned = list(refreshed.labels)
-            current_centroids = centroids_in_original_space(
-                [o["embedding"] for o in observations], assigned
-            )
+        current_centroids, max_drift, early = _grow_cadence(
+            observations, run, current_centroids, due, drift_threshold, max_drift, pins
+        )
+        early_reclusters += early
     return {
         "batches": batches,
         "high_entropy": high_entropy_total,
