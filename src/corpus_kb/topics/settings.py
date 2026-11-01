@@ -1,7 +1,7 @@
 """Typed ``topics.*`` settings (Wave 4 topics layer).
 
 Same house pattern as ``rag/contextual_settings.py`` (W3) and
-``ingest/hierarchy_settings.py`` (U48): the module owns the defaults, a
+``chunking/hierarchy_settings.py`` (U48): the module owns the defaults, a
 frozen dataclass carries the typed reads, and a loader validates so the
 YAML files, ``config.py`` defaults and this module cannot drift. The
 defaults merge into every ``config.load_config()`` result through

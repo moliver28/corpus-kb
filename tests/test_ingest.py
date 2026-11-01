@@ -7,7 +7,7 @@ import os
 import pytest
 
 from corpus_kb.domain.models import DEFAULT_TENANT_ID
-from corpus_kb.graph.extractor import extract_entities
+from corpus_kb.extraction.regex_entities import extract_entities
 from corpus_kb.storage.graph_store import PostgresGraphStore
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.tools.ingest_tools import delete_document, ingest_text

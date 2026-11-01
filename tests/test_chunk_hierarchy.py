@@ -23,15 +23,15 @@ from corpus_kb.chunking.hierarchy import (
     split_oversized,
 )
 from corpus_kb.chunking.hierarchy_paths import segments_from_chunks, segments_from_turns
+from corpus_kb.chunking.hierarchy_settings import (
+    CHUNKING_CONFIG_DEFAULTS,
+    HierarchySettings,
+    load_hierarchy_settings,
+)
 from corpus_kb.chunking.hierarchy_tree import (
     LEVEL_CHUNK,
     LEVEL_PARENT,
     build_hierarchy,
-)
-from corpus_kb.ingest.hierarchy_settings import (
-    CHUNKING_CONFIG_DEFAULTS,
-    HierarchySettings,
-    load_hierarchy_settings,
 )
 from corpus_kb.research.retrieval_settings import load_retrieval_settings
 from corpus_kb.utils.models import Chunk

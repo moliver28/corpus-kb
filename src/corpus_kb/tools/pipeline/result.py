@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from corpus_kb.chunking.hierarchy_settings import HierarchySettings
+
 from ...extraction import ExtractStats
-from ...ingest.hierarchy_settings import HierarchySettings
 from ...rag.embedder_selection import POOLED_MODE
 from ...utils.models import Chunk, Document, Entity, Relation
 

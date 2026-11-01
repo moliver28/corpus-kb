@@ -106,7 +106,7 @@ carry only canonical keys.
 ## Audit result: what already exists (do not rebuild)
 
 - Child/chunk/parent hierarchy: `chunking/hierarchy_tree.py` +
-  `ingest/hierarchy_settings.py` (defaults exactly 128/512/2048/64 and the
+  `chunking/hierarchy_settings.py` (defaults exactly 128/512/2048/64 and the
   four target boundary kinds), shadow storage (migration 021), query-time
   parent expansion (`rag/parent_expand.py`).
 - Contextual retrieval: `rag/contextualizer.py` (document-first by

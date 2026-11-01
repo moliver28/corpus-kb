@@ -722,8 +722,8 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     Imported lazily: config.py is loaded before the package is fully
     importable in some tool paths (validate_configs, installer).
     """
+    from corpus_kb.chunking.hierarchy_settings import CHUNKING_CONFIG_DEFAULTS
     from corpus_kb.coding.measurement_settings import MEASUREMENT_CONFIG_DEFAULTS
-    from corpus_kb.ingest.hierarchy_settings import CHUNKING_CONFIG_DEFAULTS
     from corpus_kb.rag.contextual_settings import CONTEXTUAL_CONFIG_DEFAULTS
     from corpus_kb.research.cycle_consensus import CONSENSUS_CONFIG_DEFAULTS
     from corpus_kb.research.release.profiles import RELEASE_CONFIG_DEFAULTS
@@ -742,7 +742,7 @@ def _apply_typed_module_defaults(config: dict[str, object]) -> None:
     # the release-layer consensus before themes surface.
     research.setdefault("consensus", dict(CONSENSUS_CONFIG_DEFAULTS))
     # Multi-granularity chunk hierarchy + shadow index
-    # (ingest/hierarchy_settings.py): the canonical block is ingest.chunking.
+    # (chunking/hierarchy_settings.py): the canonical block is ingest.chunking.
     ingest = cast(dict[str, object], config.setdefault("ingest", {}))
     ingest.setdefault("chunking", _detached_defaults(CHUNKING_CONFIG_DEFAULTS))
     # Contextual retrieval (rag/contextual_settings.py is the typed reader;

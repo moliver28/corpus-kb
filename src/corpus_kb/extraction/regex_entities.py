@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 
-from ..utils.models import Entity
+from corpus_kb.utils.models import Entity
 
 # ============================================================================
 # Entity Type Patterns
