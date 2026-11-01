@@ -148,6 +148,45 @@
   margin-top: 8px;
 }
 
+/* Width tokens: one class per repeated control width. Each class
+   carries the same pixel value the inline styles it replaced had. */
+.ui-narrow {
+  max-width: 480px;
+}
+
+.ui-narrow--form {
+  max-width: 420px;
+}
+
+.ui-narrow--short {
+  max-width: 360px;
+}
+
+.ui-narrow--small {
+  max-width: 260px;
+}
+
+.ui-narrow--name {
+  max-width: 280px;
+}
+
+.ui-filter-min {
+  min-width: 220px;
+}
+
+/* Vertical rhythm tokens: the same spacing the inline margins had. */
+.ui-stack-gap {
+  margin-top: 8px;
+}
+
+.ui-stack-gap-lg {
+  margin-top: 12px;
+}
+
+.ui-flush {
+  margin-bottom: 0;
+}
+
 /* Stage placeholder (App.tsx): plain markup, card-like without antd. */
 .ui-placeholder {
   border: 1px solid #f0f0f0;

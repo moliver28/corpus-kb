@@ -109,7 +109,7 @@ export default function PathCard({
       )}
       <div className="ui-actions">
         <Input
-          style={{ maxWidth: 420 }}
+          className="ui-narrow--form"
           value={path}
           onChange={(event) => setPath(event.target.value)}
           placeholder={label}

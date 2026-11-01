@@ -101,13 +101,13 @@ export default function NotebookCard() {
       <div className="ui-stack">
         <div className="ui-actions">
           <Input
-            style={{ maxWidth: 360 }}
+            className="ui-narrow--short"
             value={projectId}
             onChange={(event) => setProjectId(event.target.value)}
             placeholder={strings.askNotebookProjectLabel}
           />
           <Input
-            style={{ maxWidth: 480 }}
+            className="ui-narrow"
             value={question}
             onChange={(event) => setQuestion(event.target.value)}
             placeholder={strings.askQueryLabel}

@@ -44,7 +44,7 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
       <Select<string | null>
         aria-label={strings.scaleRunsFilterLabel}
         value={project}
-        style={{ minWidth: 220 }}
+        className="ui-filter-min"
         onChange={(value) => setProject(value)}
         options={[
           { value: null, label: strings.scaleRunsAll },

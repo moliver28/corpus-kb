@@ -94,7 +94,7 @@ export default function QueueCard() {
         <Typography.Paragraph type="secondary">{strings.queueFormBody}</Typography.Paragraph>
         <div className="ui-actions">
           <Input
-            style={{ maxWidth: 420 }}
+            className="ui-narrow--form"
             aria-label={strings.queuePathLabel}
             data-testid="queue-path"
             placeholder={strings.queuePathLabel}
@@ -102,7 +102,7 @@ export default function QueueCard() {
             onChange={(event) => setPath(event.target.value)}
           />
           <Input
-            style={{ maxWidth: 260 }}
+            className="ui-narrow--small"
             aria-label={strings.queueTitleLabel}
             data-testid="queue-title"
             placeholder={strings.queueTitleLabel}
@@ -112,7 +112,7 @@ export default function QueueCard() {
         </div>
         <div className="ui-actions">
           <Input
-            style={{ maxWidth: 260 }}
+            className="ui-narrow--small"
             aria-label={strings.queueProfileLabel}
             data-testid="queue-profile"
             placeholder={strings.queueProfileLabel}
@@ -120,7 +120,7 @@ export default function QueueCard() {
             onChange={(event) => setProfile(event.target.value)}
           />
           <Input.TextArea
-            style={{ maxWidth: 420 }}
+            className="ui-narrow--form"
             rows={3}
             aria-label={strings.queueConfigLabel}
             data-testid="queue-config"

@@ -23,7 +23,7 @@ export default function UnavailablePanel({
         </p>
       )}
       {onRetry && (
-        <Button onClick={onRetry} style={{ marginTop: 8 }}>
+        <Button onClick={onRetry} className="ui-stack-gap">
           {strings.retryLabel}
         </Button>
       )}

@@ -199,12 +199,12 @@ export default function ReviewQueueCard() {
         <div>
           <Typography.Text>{strings.reviewReviewerLabel}: </Typography.Text>
           <Input
-            style={{ maxWidth: 280 }}
+            className="ui-narrow--name"
             value={reviewer}
             onChange={(event) => pickReviewer(event.target.value)}
             placeholder={strings.reviewReviewerLabel}
           />
-          <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+          <Typography.Paragraph type="secondary" className="ui-flush">
             {strings.reviewReviewerHint}
           </Typography.Paragraph>
         </div>
