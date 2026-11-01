@@ -261,6 +261,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE` | `installer.verify_image_signature` | `corpus-kb setup` image verify (`_setup.install`) |
 | `CORPUS_KB_SNAPSHOT_PERIOD` | (no config key; aggregate snapshot interval, default 100) | `domain.application` |
 | `CORPUS_KB_TEST_DB` | (no config key; throwaway test DB name, default `corpus_kb_t11_test`) | `tests/research_db.py` |
+| `CORPUS_KB_TEXTBOOK_GOLDEN_DIR` | (no config key; overrides the golden-bench corpus directory, see `eval/golden_fetch.py`) | `eval/golden_fetch.py` |
 
 ### Embedding dimensions and the vector schema
 
