@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
+
 from corpus_kb.storage.store_utils import entity_names, iso_or_none, parse_jsonb
 
 
@@ -34,6 +36,12 @@ def test_entity_names_reads_an_already_parsed_list() -> None:
 def test_entity_names_answers_empty_for_non_list_values() -> None:
     assert entity_names(None) == []
     assert entity_names(7) == []
+
+
+def test_entity_names_still_raises_on_malformed_json() -> None:
+    """Both pre-dedup originals raised ValueError here; keep that strict."""
+    with pytest.raises(ValueError):
+        entity_names("{not json")
 
 
 def test_iso_or_none_formats_a_timestamp() -> None:
