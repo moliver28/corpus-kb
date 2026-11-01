@@ -21,6 +21,7 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.storage.gateway import SqlConn, SqlGateway, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -139,21 +140,18 @@ def _metadata_select(
 # Singleton
 # ============================================================================
 
-_tag_handler: TagHandler | None = None
+_tag_handler = SingletonSlot[TagHandler](
+    "TagHandler not initialized. Call set_tag_handler() during startup."
+)
 
 
 def get_tag_handler() -> TagHandler:
-    global _tag_handler
-    if _tag_handler is None:
-        raise RuntimeError("TagHandler not initialized. Call set_tag_handler() during startup.")
-    return _tag_handler
+    return _tag_handler.get()
 
 
 def set_tag_handler(handler: TagHandler) -> None:
-    global _tag_handler
-    _tag_handler = handler
+    _tag_handler.set(handler)
 
 
 def reset_tag_handler() -> None:
-    global _tag_handler
-    _tag_handler = None
+    _tag_handler.reset()

@@ -41,6 +41,8 @@ from typing import Any
 
 import numpy as np
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
+
 RETRIEVAL_UNITS_SQL = """
 WITH candidate AS MATERIALIZED (
     SELECT ru.unit_id,
@@ -119,6 +121,11 @@ SELECT candidate.unit_id
 FROM candidate
 ORDER BY candidate.dist + 0, candidate.unit_id ASC
 """
+
+# The probe is a pinned EXPLAIN-proof artifact (module docstring, r11), so
+# the width stays a literal. The assert ties it to the shared constant: a
+# width change fails here at import, not in a fixture.
+assert f"halfvec({RESEARCH_EMBEDDING_DIMENSIONS})" in HALFVEC_PROBE_SQL
 
 UNIT_VECTORS_SQL = """
 SELECT unit_id, embedding FROM research_units WHERE unit_id = ANY($1::bigint[])

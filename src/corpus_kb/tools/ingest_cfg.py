@@ -11,9 +11,10 @@ ingest pipeline and the reembed repair path.
 
 from __future__ import annotations
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.rag.embedder import DEFAULT_EMBEDDING_DIMENSIONS, DEFAULT_EMBEDDING_MODEL
 
-DEFAULT_MATRYOSHKA_DIM = 1024
+DEFAULT_MATRYOSHKA_DIM = RESEARCH_EMBEDDING_DIMENSIONS
 
 
 def _nested_dict(config: dict[str, object], key: str) -> dict[str, object]:

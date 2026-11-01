@@ -17,6 +17,7 @@ from typing import Any
 
 import asyncpg
 
+from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.projections.research._common import DEFAULT_TENANT, RESEARCH_PROJECTION_NAME
 from corpus_kb.research.search_settings import (
     MIN_ITERATIVE_SCAN_VERSION,
@@ -190,16 +191,16 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
     provider = str(emb_cfg.get("provider", ""))
     model = str(emb_cfg.get("model", ""))
     try:
-        dimensions = int(embedder_cfg.get("dimensions", 1024))
+        dimensions = int(embedder_cfg.get("dimensions", RESEARCH_EMBEDDING_DIMENSIONS))
     except (TypeError, ValueError):
         dimensions = 0
-    if dimensions != 1024:
+    if dimensions != RESEARCH_EMBEDDING_DIMENSIONS:
         return ResearchCheck(
             name="research.embedder config",
             status=STATUS_FAIL,
             detail=f"research.embedder.dimensions={dimensions!r}. Promotable research "
-            "embedders must emit exactly 1024 dims",
-            fix="set research.embedder.dimensions: 1024 in config.yaml",
+            f"embedders must emit exactly {RESEARCH_EMBEDDING_DIMENSIONS} dims",
+            fix=f"set research.embedder.dimensions: {RESEARCH_EMBEDDING_DIMENSIONS} in config.yaml",
             doc=DOC_RESEARCH,
             embedding_dimensions=dimensions or None,
         )
@@ -209,8 +210,8 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
             status=STATUS_WARN,
             detail="provider=pgml but the pgml extension is absent. All research "
             "embeddings abstain (lexical-only retrieval)",
-            fix="set embedding.provider: ollama and embedding.model to a >=1024-dim "
-            "model (e.g. qwen3-embedding:8b-q8_0)",
+            fix=f"set embedding.provider: ollama and embedding.model to a "
+            f">={RESEARCH_EMBEDDING_DIMENSIONS}-dim model (e.g. qwen3-embedding:8b-q8_0)",
             doc=DOC_RESEARCH,
             embedding_dimensions=dimensions,
         )
@@ -219,25 +220,28 @@ def embedder_check(config: dict[str, Any], pgml_installed: bool | None) -> Resea
             emb_dims = int(emb_cfg.get("dimensions", 0))
         except (TypeError, ValueError):
             emb_dims = 0
-        if 0 < emb_dims < 1024:
+        if 0 < emb_dims < RESEARCH_EMBEDDING_DIMENSIONS:
             return ResearchCheck(
                 name="research.embedder config",
                 status=STATUS_WARN,
-                detail=f"model {model!r} emits {emb_dims} dims, below 1024. "
+                detail=f"model {model!r} emits {emb_dims} dims, below "
+                f"{RESEARCH_EMBEDDING_DIMENSIONS}. "
                 "Research embeddings abstain (never padded)",
-                fix="set embedding.model to a >=1024-dim model (e.g. qwen3-embedding:8b-q8_0)",
+                fix=f"set embedding.model to a >={RESEARCH_EMBEDDING_DIMENSIONS}-dim "
+                "model (e.g. qwen3-embedding:8b-q8_0)",
                 doc=DOC_RESEARCH,
                 embedding_dimensions=emb_dims,
             )
         if emb_dims == 0:
-            # Unset dimensions: the model default may still be under 1024
-            # (nomic-embed-text is 768) and would abstain - say so instead
-            # of reporting OK for an unverifiable config.
+            # Unset dimensions: the model default may still be under the
+            # research width (nomic-embed-text is 768) and would abstain -
+            # say so instead of reporting OK for an unverifiable config.
             return ResearchCheck(
                 name="research.embedder config",
                 status=STATUS_WARN,
                 detail="embedding.dimensions is not set. Research needs a model with "
-                ">= 1024 dims. nomic-embed-text emits 768 and would abstain",
+                f">= {RESEARCH_EMBEDDING_DIMENSIONS} dims. nomic-embed-text emits "
+                f"{NOMIC_EMBEDDING_DIMENSIONS} and would abstain",
                 fix="set embedding.dimensions to the model's true dimensionality",
                 doc=DOC_RESEARCH,
             )
