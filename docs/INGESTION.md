@@ -13,7 +13,7 @@ embedding service (Ollama) is unavailable, the pipeline stores zero-vector
 fallbacks and flags the affected chunks as **degraded**. It reports the
 failure in structured error output.
 
-The default storage backend is the **PostgreSQL 17 ecosystem** (pgvector +
+The default storage backend is the **Postgres 17 ecosystem** (pgvector +
 Apache AGE, with PostgresML optional). A single-user **DuckDB file engine**
 is the no-Docker alternative ([STORAGE-BACKENDS.md](STORAGE-BACKENDS.md)).
 Embeddings come from the configured
@@ -67,7 +67,7 @@ corpus-kb ingest path/to/notes.md
                     +------+------+
                            |
                     +------+------+
-  Stage 4: Extract        | Entities +  |  (PostgresML / LangExtract / GLiNER2 / Regex)
+  Stage 4: Extract        | Entities +  |  (PostgresML / LangExtract / GLiNER / Regex)
                     | Relations   |
                     +------+------+
                            |
@@ -171,7 +171,7 @@ entity stores provenance metadata (`extractor`, `model`, `revision`,
 The **default `ml` backend** (`extraction.backend: ml`) composes the ML
 extraction engine. `extraction.mode` picks the ladder:
 
-- `zero_shot` (default): GLiNER2 schema-conditioned NER
+- `zero_shot` (default): GLiNER schema-conditioned NER
   (`fastino/gliner2-large-v1`, six mention-level types: person,
   organization, location, date, money, product) plus GLiNER-Relex
   zero-shot relations (`knowledgator/gliner-relex-large-v1.0`). Both
@@ -191,7 +191,7 @@ re-ingest of unchanged content free. The span-eval harness
 bootstrap confidence intervals. The promotion gate is micro F1 >= 0.80
 and >= baseline + 0.02. The former BERT backend was dead code: the
 extractor factory never routed to it, so it has been removed. Issue #31
-is the GLiNER2 follow-up.
+is the GLiNER follow-up.
 
 ## Statement atoms
 
@@ -208,7 +208,7 @@ stay linked to participant answers at the atom level.
 The templates are the paved claim shapes: `preference`, `opinion`,
 `sentiment_target`, `fact_triple`, `numeric_claim`, `temporal_change`,
 and `attribution`, plus a built-in `statement` fallback. A new claim
-shape is a new YAML file — no code. The read ops (`statements-list`,
+shape is a new YAML file — no code. The read operations (`statements-list`,
 `statements-timeline`) are on all four surfaces.
 
 ## Conflicts
@@ -435,9 +435,10 @@ predicates.
 ## Judge and Answer Verification
 
 The judge verifies LLM-generated answers against cited chunks. It first
-decomposes the answer into atomic factual claims, then scores each claim
+decomposes the answer into atomic factual assertions — answer units, not
+the ontology `Claim` type — then scores each assertion
 against the cited texts as `entailed`, `contradicted`, or `unsupported`.
-The final `groundedness` score is the fraction of claims labeled
+The final `groundedness` score is the fraction of assertions labeled
 `entailed`.
 
 Clients call it via `POST /api/verify` with an `answer` and a list of
@@ -520,7 +521,7 @@ If not set, defaults to `config/ontology.yaml`.
 ## Extractor Seam
 
 The pipeline supports four extractors via a strategy pattern (three ship by
-default; GLiNER2 is opt-in):
+default; GLiNER is opt-in):
 
 1. **PostgresML NER** (`graph.extractor: pgml`, default): ONNX NER inside
    Postgres via `pgml.transform()`. Falls back to LangExtract, then to
@@ -535,7 +536,7 @@ default; GLiNER2 is opt-in):
    using heading patterns and `camelCase` splitting. Ontology-agnostic;
    produces `CONCEPT` and `CLASS` types regardless of ontology config.
 
-4. **GLiNER2** (`graph.extractor: gliner`, opt-in): schema-conditioned
+4. **GLiNER** (`graph.extractor: gliner`, opt-in): schema-conditioned
    mention-level NER (`fastino/gliner2-large-v1`) for six types (person,
    organization, location, date, money, product). No relations. Requires
    the `ner` extra and `extraction.gliner.enabled: true`; gate promotion on
@@ -586,10 +587,10 @@ cleanly.
 | `graph.backend` | `age` | Graph store backend (`age` or `postgres`) |
 | `graph.model_version` | `langextract-default` | Model version recorded in relation provenance |
 | `graph.prompt_version` | `v1` | Prompt version recorded in relation provenance |
-| `extraction.gliner.enabled` | `false` | Opt-in GLiNER2 mention-level NER backend (requires the `ner` extra) |
-| `extraction.gliner.model` | `fastino/gliner2-large-v1` | GLiNER2 model id |
-| `extraction.gliner.revision` | `main` | Model revision pin for reproducible GLiNER2 loads (pin a specific HF revision hash in production) |
-| `extraction.gliner.types` | 6 mention types | Mention types GLiNER2 extracts (person, organization, location, date, money, product) |
+| `extraction.gliner.enabled` | `false` | Opt-in GLiNER mention-level NER backend (requires the `ner` extra) |
+| `extraction.gliner.model` | `fastino/gliner2-large-v1` | GLiNER model id |
+| `extraction.gliner.revision` | `main` | Model revision pin for reproducible GLiNER loads (pin a specific HF revision hash in production) |
+| `extraction.gliner.types` | 6 mention types | Mention types GLiNER extracts (person, organization, location, date, money, product) |
 | `ingestion.strategies` | `{transcript: transcript}` | `source_type` → strategy-name map (extension ladder 1; see INGESTION-STRATEGIES.md) |
 | `ingestion.default` | `default` | Strategy used when no override, mapping, or detection matches |
 | `embedding.provider` | `ollama` | Embedding provider (`ollama` or `pgml`) |
@@ -662,10 +663,10 @@ warning.
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `judge.enabled` | `true` | Enable claim-level groundedness verification |
-| `judge.model` | `qwen3:4b` | Model for claim decomposition and entailment |
+| `judge.enabled` | `true` | Enable assertion-level groundedness verification |
+| `judge.model` | `qwen3:4b` | Model for assertion decomposition and entailment |
 | `judge.base_url` | `http://localhost:11434` | Ollama API URL for the judge |
-| `judge.max_claims` | `20` | Maximum atomic claims to evaluate |
+| `judge.max_claims` | `20` | Maximum atomic assertions to evaluate (key name kept) |
 | `routing.enabled` | `true` | Enable adaptive query routing |
 | `routing.confidence_threshold` | `0.35` | Minimum cosine score to accept a non-semantic route |
 | `routing.prototypes.semantic` | (list) | Example phrases for semantic search intent |
@@ -687,7 +688,7 @@ corpus-kb setup
 ```
 
 It will:
-1. `docker compose up -d` (PostgreSQL 17 + pgvector + AGE + pgml)
+1. `docker compose up -d` (Postgres 17 + pgvector + AGE + pgml)
 2. `pip install -e .[dev]`
 3. Create the database/user and run all migrations
 4. Verify AGE + pgml extensions are installed

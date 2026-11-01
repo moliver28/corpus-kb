@@ -1,6 +1,6 @@
 # Install Corpus-KB
 
-This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **PostgreSQL 17** with **pgvector** and **Apache AGE**, **Python 3.11 or newer**, and **Ollama** for local embeddings. This page installs the Postgres engine. The no-Docker DuckDB path is shorter; see [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
+This guide takes you from a clean machine to a running Corpus-KB server. The current release targets **Postgres 17** with **pgvector** and **Apache AGE**, **Python 3.11 or newer**, and **Ollama** for local embeddings. This page installs the Postgres engine. The no-Docker DuckDB path is shorter; see [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 All commands assume you are at the repo root.
 
@@ -60,13 +60,13 @@ as in Step 5.
 
 ## Prerequisites
 
-- PostgreSQL 17+ with pgvector and Apache AGE extensions
+- Postgres 17+ with pgvector and Apache AGE extensions
 - Python 3.11+
 - Ollama
 
 ---
 
-## Step 1: Install PostgreSQL 17
+## Step 1: Install Postgres 17
 
 ### Installing on macOS
 
@@ -343,7 +343,7 @@ Set `CORPUS_KB_DATABASE_URL` or add `database.connection_string` to `config.yaml
 
 ### `permission denied for schema public`
 
-PostgreSQL 15+ no longer grants CREATE on `public` to ordinary roles. As the
+Postgres 15+ no longer grants CREATE on `public` to ordinary roles. As the
 superuser, on the `corpus_kb` database, run:
 
 ```sql
