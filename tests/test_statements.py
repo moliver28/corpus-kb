@@ -17,6 +17,7 @@ from corpus_kb.statements import (
     statement_row,
     template_histogram,
 )
+from corpus_kb.statements.atomize import MAX_STATEMENTS_PER_CHUNK
 from corpus_kb.utils.models import Chunk, Entity
 
 TEMPLATES_DIR = Path(__file__).resolve().parents[1] / "config" / "claim_templates"
@@ -107,6 +108,42 @@ def test_atomize_chunk_respects_min_entities(catalogue: TemplateCatalogue) -> No
     chunk = _chunk(text)
     atoms = atomize_chunk(chunk, [], catalogue)  # fact_triple needs 2 entities
     assert all(a.template_id != "fact_triple" for a in atoms)
+
+
+def _many_sentence_chunk(count: int) -> Chunk:
+    text = " ".join(
+        f"The review board published minutes for session {n} today." for n in range(count)
+    )
+    return _chunk(text)
+
+
+def test_atomize_chunk_default_cap_is_twelve(catalogue: TemplateCatalogue) -> None:
+    """Without the knob the shipped cap is 12 atoms, identical to today."""
+    assert MAX_STATEMENTS_PER_CHUNK == 12
+    atoms = atomize_chunk(_many_sentence_chunk(16), [], catalogue)
+    assert len(atoms) == 12
+
+
+def test_atomize_chunk_honors_max_per_chunk(catalogue: TemplateCatalogue) -> None:
+    """A lower configured cap drops the overflow atoms deterministically."""
+    chunk = _many_sentence_chunk(16)
+    assert len(atomize_chunk(chunk, [], catalogue, max_per_chunk=3)) == 3
+    assert len(atomize_chunk(chunk, [], catalogue, max_per_chunk=1)) == 1
+
+
+def test_stage_max_per_chunk_reader() -> None:
+    """The pipeline stage reads the knob; anything unreadable keeps 12.
+
+    The reader lives in tools/pipeline/atomize.py (the one config seam);
+    the validator pins int >= 1 when the key is present.
+    """
+    from corpus_kb.tools.pipeline.atomize import _stage_max_per_chunk
+
+    assert _stage_max_per_chunk({}) == 12
+    assert _stage_max_per_chunk({"max_per_chunk": 5}) == 5
+    assert _stage_max_per_chunk({"max_per_chunk": True}) == 12
+    assert _stage_max_per_chunk({"max_per_chunk": 0}) == 12
+    assert _stage_max_per_chunk({"max_per_chunk": "3"}) == 12
 
 
 def test_template_histogram_is_sorted() -> None:
