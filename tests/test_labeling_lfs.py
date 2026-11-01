@@ -9,7 +9,7 @@ import pytest
 
 from corpus_kb.api._body import error_response
 from corpus_kb.coding.aggregation import MISSING
-from corpus_kb.errors import ERROR_MAP
+from corpus_kb.errors import ValidationError
 from corpus_kb.labeling.lfs import load_lfs
 from corpus_kb.labeling.protocol import LabelingFunction
 
@@ -65,7 +65,7 @@ def test_load_accepts_zero_lfs(tmp_path: Any) -> None:
 def test_invalid_json_names_the_line(tmp_path: Any) -> None:
     path = tmp_path / "lfs.json"
     path.write_text("{not json", encoding="utf-8")
-    with pytest.raises(ValueError, match="not valid JSON"):
+    with pytest.raises(ValidationError, match="not valid JSON"):
         load_lfs(str(path))
 
 
@@ -79,7 +79,7 @@ def test_invalid_json_names_the_line(tmp_path: Any) -> None:
     ],
 )
 def test_bad_top_level_shapes_rejected(tmp_path: Any, doc: object) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         load_lfs(_write(tmp_path, doc))
 
 
@@ -89,7 +89,7 @@ def test_unknown_kind_names_the_supported_set(tmp_path: Any) -> None:
         "lfs": [{"name": "x", "kind": "spells", "label": "a", "config": {}}],
     }
     supported = "Supported kinds: lexicon, metadata, negation_regex, regex"
-    with pytest.raises(ValueError, match=supported):
+    with pytest.raises(ValidationError, match=supported):
         load_lfs(_write(tmp_path, doc))
 
 
@@ -98,7 +98,7 @@ def test_unknown_class_names_the_vocabulary(tmp_path: Any) -> None:
         "classes": ["a"],
         "lfs": [{"name": "x", "kind": "regex", "label": "b", "config": {"pattern": "x"}}],
     }
-    with pytest.raises(ValueError, match="unknown class 'b'"):
+    with pytest.raises(ValidationError, match="unknown class 'b'"):
         load_lfs(_write(tmp_path, doc))
 
 
@@ -110,7 +110,7 @@ def test_duplicate_lf_names_rejected(tmp_path: Any) -> None:
             {"name": "x", "kind": "regex", "label": "a", "config": {"pattern": "y"}},
         ],
     }
-    with pytest.raises(ValueError, match='duplicate LF name "x"'):
+    with pytest.raises(ValidationError, match='duplicate LF name "x"'):
         load_lfs(_write(tmp_path, doc))
 
 
@@ -119,7 +119,7 @@ def test_invalid_regex_fails_at_load(tmp_path: Any) -> None:
         "classes": ["a"],
         "lfs": [{"name": "x", "kind": "regex", "label": "a", "config": {"pattern": "(("}}],
     }
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         load_lfs(_write(tmp_path, doc))
 
 
@@ -130,7 +130,7 @@ def test_unknown_config_keys_rejected_as_typos(tmp_path: Any) -> None:
             {"name": "x", "kind": "regex", "label": "a", "config": {"patten": "x"}},
         ],
     }
-    with pytest.raises(ValueError, match="unknown config keys"):
+    with pytest.raises(ValidationError, match="unknown config keys"):
         load_lfs(_write(tmp_path, doc))
 
 
@@ -146,7 +146,7 @@ def test_negation_window_must_be_positive(tmp_path: Any) -> None:
             },
         ],
     }
-    with pytest.raises(ValueError, match="negation_window"):
+    with pytest.raises(ValidationError, match="negation_window"):
         load_lfs(_write(tmp_path, doc))
 
 
@@ -155,23 +155,23 @@ def test_lexicon_needs_terms(tmp_path: Any) -> None:
         "classes": ["a"],
         "lfs": [{"name": "x", "kind": "lexicon", "label": "a", "config": {"terms": []}}],
     }
-    with pytest.raises(ValueError, match="terms"):
+    with pytest.raises(ValidationError, match="terms"):
         load_lfs(_write(tmp_path, doc))
 
 
 def test_rejected_lf_file_keeps_the_400_wire_contract(tmp_path: Any) -> None:
     """A rejected LF file answers 400 and CLI exit 1 (issue 229, wave 1).
 
-    The taxonomy retype must hold the wire triple at (400, -32602, 1).
+    The wave-1 retype holds the wire triple at (400, -32602, 1).
     """
     doc = {
         "classes": ["a"],
         "lfs": [{"name": "x", "kind": "regex", "label": "a", "config": {"pattern": "(("}}],
     }
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValidationError) as excinfo:
         load_lfs(_write(tmp_path, doc))
     exc = excinfo.value
-    assert ERROR_MAP[type(exc).__name__] == (400, -32602, 1)
+    assert (exc.http_status, exc.socket_code, exc.cli_exit) == (400, -32602, 1)
     assert error_response(exc).status_code == 400
 
 
