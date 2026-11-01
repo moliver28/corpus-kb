@@ -20,6 +20,8 @@ from corpus_kb.analysis.method_register import (
     load_method_register,
 )
 from corpus_kb.analysis.method_register_rubric import rank_methods
+from corpus_kb.api._body import error_response
+from corpus_kb.errors import ERROR_MAP
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ROOT_YAML = REPO_ROOT / "config" / "analysis_methods.yaml"
@@ -188,6 +190,36 @@ def test_missing_register_file_raises(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError, match="not found"):
         load_method_register({})
+
+
+def test_register_not_a_mapping_keeps_the_400_wire_contract(tmp_path: Path) -> None:
+    """A non-mapping register file answers 400 and CLI exit 1 (issue 229)."""
+    path = tmp_path / "register.yaml"
+    path.write_text("- one\n- two\n", encoding="utf-8")
+    config = {"analysis": {"method_register_path": str(path)}}
+    with pytest.raises(ValueError, match="must be a YAML mapping") as excinfo:
+        load_method_register(config)
+    assert ERROR_MAP[type(excinfo.value).__name__] == (400, -32602, 1)
+    assert error_response(excinfo.value).status_code == 400
+
+
+def test_schema_mismatch_names_the_source(tmp_path: Path) -> None:
+    """A schema-mismatched register names the file and stays on the 400 wire."""
+    path = tmp_path / "register.yaml"
+    payload = {
+        "register_version": "1.0.0",
+        "source_document": {"title": "t", "path_note": "p"},
+        "selection_rules": ["rule"],
+        "adjacent_candidates": "note",
+        "methods": [{"id": "01"}],
+    }
+    path.write_text(yaml.safe_dump(payload), encoding="utf-8")
+    config = {"analysis": {"method_register_path": str(path)}}
+    with pytest.raises(ValueError, match="Malformed analysis method register") as excinfo:
+        load_method_register(config)
+    assert "register.yaml" in str(excinfo.value)
+    assert ERROR_MAP[type(excinfo.value).__name__] == (400, -32602, 1)
+    assert error_response(excinfo.value).status_code == 400
 
 
 # ---------------------------------------------------------------------------

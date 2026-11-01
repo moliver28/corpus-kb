@@ -7,7 +7,9 @@ from typing import Any
 
 import pytest
 
+from corpus_kb.api._body import error_response
 from corpus_kb.coding.aggregation import MISSING
+from corpus_kb.errors import ERROR_MAP
 from corpus_kb.labeling.lfs import load_lfs
 from corpus_kb.labeling.protocol import LabelingFunction
 
@@ -155,6 +157,22 @@ def test_lexicon_needs_terms(tmp_path: Any) -> None:
     }
     with pytest.raises(ValueError, match="terms"):
         load_lfs(_write(tmp_path, doc))
+
+
+def test_rejected_lf_file_keeps_the_400_wire_contract(tmp_path: Any) -> None:
+    """A rejected LF file answers 400 and CLI exit 1 (issue 229, wave 1).
+
+    The taxonomy retype must hold the wire triple at (400, -32602, 1).
+    """
+    doc = {
+        "classes": ["a"],
+        "lfs": [{"name": "x", "kind": "regex", "label": "a", "config": {"pattern": "(("}}],
+    }
+    with pytest.raises(ValueError) as excinfo:
+        load_lfs(_write(tmp_path, doc))
+    exc = excinfo.value
+    assert ERROR_MAP[type(exc).__name__] == (400, -32602, 1)
+    assert error_response(exc).status_code == 400
 
 
 # ---------------------------------------------------------------------------
