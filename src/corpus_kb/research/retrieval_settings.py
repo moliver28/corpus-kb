@@ -37,6 +37,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Protocol, cast
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
+
 logger = logging.getLogger(__name__)
 
 SUPPORTED_MODES = frozenset({"hybrid_rrf"})
@@ -52,7 +54,7 @@ DEFAULT_QA_CONTEXT_IN_FTS = False
 DEFAULT_EXACT_FILTER_SELECTIVITY_THRESHOLD = 0.05
 DEFAULT_CANDIDATE_MULTIPLIER = 8
 DEFAULT_MATRYOSHKA_ENABLED = False
-DEFAULT_MATRYOSHKA_DIM = 1024
+DEFAULT_MATRYOSHKA_DIM = RESEARCH_EMBEDDING_DIMENSIONS
 DEFAULT_SELF_QUERY: dict[str, Any] = {
     "enabled": True,
     "model": "qwen3:4b",

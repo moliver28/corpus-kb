@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
+
 from ...storage.gateway import SqlGateway
 from ...utils.models import Chunk, Document, Entity, Relation
 from ..ingest_store import PostgresIngestStore
@@ -59,7 +61,7 @@ class IngestSink(Protocol):
         self,
         chunks: list[Chunk],
         embedding_model: str,
-        dimensions: int = 2560,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         vectors_1024: dict[str, list[float]] | None = None,
     ) -> int: ...
 
@@ -136,7 +138,7 @@ class ChunkSink:
         self,
         chunks: list[Chunk],
         embedding_model: str,
-        dimensions: int = 2560,
+        dimensions: int = EMBEDDING_DIMENSIONS,
         vectors_1024: dict[str, list[float]] | None = None,
     ) -> int:
         """Delegates to the store's vector write."""

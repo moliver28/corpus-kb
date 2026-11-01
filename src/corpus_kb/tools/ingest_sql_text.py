@@ -9,6 +9,8 @@ difference lives with the ingest_sql module docstring).
 
 from __future__ import annotations
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
+
 DOCUMENT_UPSERT_SQL = """
     INSERT INTO documents (doc_id, tenant_id, source, source_type,
         chunk_count, file_size, file_hash, metadata, document_date, title)
@@ -190,10 +192,15 @@ REPAIR_SQL_PG = """
         embedded_at = NOW(), degraded = FALSE
     WHERE chunk_id = $1::uuid AND tenant_id = $6
 """
-REPAIR_SQL_DUCKDB = """
+# Width interpolations (corpus_kb.dimensions); the SQL text itself stays
+# byte-identical to its pre-split form.
+_W_EMBED = str(EMBEDDING_DIMENSIONS)
+_W_V1024 = str(RESEARCH_EMBEDDING_DIMENSIONS)
+
+REPAIR_SQL_DUCKDB = f"""
     UPDATE chunks_vectors
-    SET embedding = $2::FLOAT[2560],
-        vector_1024 = COALESCE(CAST($3 AS FLOAT[1024]), chunks_vectors.vector_1024),
+    SET embedding = $2::FLOAT[{_W_EMBED}],
+        vector_1024 = COALESCE(CAST($3 AS FLOAT[{_W_V1024}]), chunks_vectors.vector_1024),
         embedding_model = $4, dimensions = $5,
         embedded_at = NOW(), degraded = FALSE
     WHERE chunk_id = $1 AND tenant_id = $6

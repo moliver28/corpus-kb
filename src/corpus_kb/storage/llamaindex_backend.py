@@ -14,6 +14,8 @@ from llama_index.core.schema import NodeRelationship, RelatedNodeInfo, TextNode
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 
+from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,7 +35,7 @@ class LlamaIndexPostgresBackend:
             config.get("database_connection_string", "")
         )
         self._embed_model = str(emb_cfg.get("model", "qwen3-embedding:4b"))
-        self._embed_dimensions = int(emb_cfg.get("dimensions", 768))
+        self._embed_dimensions = int(emb_cfg.get("dimensions", NOMIC_EMBEDDING_DIMENSIONS))
         self._embed_base_url = str(emb_cfg.get("base_url", "http://localhost:11434"))
 
         self._vector_store: PGVectorStore | None = None

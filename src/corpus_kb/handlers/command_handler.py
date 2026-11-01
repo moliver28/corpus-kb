@@ -33,6 +33,7 @@ from corpus_kb.domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.handlers.delete_audit import attach_delete_event
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.tools.ingest_common import ingest_text as ingest_text_tool
@@ -233,7 +234,7 @@ class CommandHandler:
 
 # --- Singleton ---------------------------------------------------------------
 
-_command_handler: CommandHandler | None = None
+_command_handler = SingletonSlot[CommandHandler]("CommandHandler not initialized")
 
 
 def get_command_handler(
@@ -246,15 +247,12 @@ def get_command_handler(
     Passing ``pool`` on an existing singleton updates its pool, so a
     lazily wired surface always sees the live pool server_wiring created.
     """
-    global _command_handler
-    if _command_handler is None:
-        _command_handler = CommandHandler(config, pool, gateway)
-    elif pool is not None:
-        _command_handler._pool = pool
-    return _command_handler
+    handler = _command_handler.get_or_create(lambda: CommandHandler(config, pool, gateway))
+    if pool is not None:
+        handler._pool = pool
+    return handler
 
 
 def reset_command_handler() -> None:
     """Reset the singleton (for testing)."""
-    global _command_handler
-    _command_handler = None
+    _command_handler.reset()

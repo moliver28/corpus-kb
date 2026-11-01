@@ -31,6 +31,7 @@ from corpus_kb.coding.confidence_routing import Bands
 from corpus_kb.coding.floors_calibration import calibrate_code_floors
 from corpus_kb.coding.saturation_query import compute_saturation
 from corpus_kb.handlers import coding_ops
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 
 logger = logging.getLogger(__name__)
@@ -227,25 +228,21 @@ class CodingHandler:
 # Singleton
 # ============================================================================
 
-_coding_handler: CodingHandler | None = None
+_coding_handler = SingletonSlot[CodingHandler](
+    "CodingHandler not initialized. Call set_coding_handler() during startup."
+)
 
 
 def get_coding_handler() -> CodingHandler:
     """Get the singleton CodingHandler."""
-    if _coding_handler is None:
-        raise RuntimeError(
-            "CodingHandler not initialized. Call set_coding_handler() during startup."
-        )
-    return _coding_handler
+    return _coding_handler.get()
 
 
 def set_coding_handler(handler: CodingHandler) -> None:
     """Set the singleton (for server wiring)."""
-    global _coding_handler
-    _coding_handler = handler
+    _coding_handler.set(handler)
 
 
 def reset_coding_handler() -> None:
     """Reset the singleton (for testing)."""
-    global _coding_handler
-    _coding_handler = None
+    _coding_handler.reset()
