@@ -23,6 +23,7 @@ configured halt gates. ``codebook_promotion`` is HARD-FLOORED
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -312,6 +313,42 @@ async def _post_stage_mode_stop(
     return None
 
 
+@dataclass
+class CycleOptions:
+    """Knobs for one research cycle run.
+
+    Internal wiring only: the surfaces (CLI, MCP, HTTP, socket) keep their
+    own keyword envelopes and ``run_cycle`` keeps its public signature. The
+    options object threads the run settings through the internal helpers.
+    """
+
+    mode: str = "out"
+    project_id: UUID | None = None
+    ingest_dir: str | None = None
+    question: str | None = None
+    codebook_version_id: UUID | None = None
+    halt_on: list[str] | None = None
+    guide: bool = False
+    json_output: bool = False
+    approve: Callable[[str], Awaitable[bool]] | None = None
+    cfg: dict[str, Any] | None = None
+    allow_draft: bool = False
+
+
+@dataclass
+class _CycleSession:
+    """Live state of one open cycle run, shared across stage boundaries."""
+
+    recorder: CycleRecorder
+    handler: Any
+    stack: tuple[Any, ...]
+    run_id: str
+    resume_after: str | None
+    suppressed: str | None
+    halt_set: frozenset[str]
+    alarms: list[Alarm] = field(default_factory=list)  # U25: alarms across stages
+
+
 async def run_cycle(
     pool: asyncpg.Pool,
     tenant_id: UUID,
@@ -329,84 +366,68 @@ async def run_cycle(
     allow_draft: bool = False,
 ) -> int:
     """Run the research cycle in one posture; returns the process exit code."""
-    if mode not in MODES:
-        raise ValueError(f"unknown cycle mode: {mode!r} (expected one of {sorted(MODES)})")
+    return await _run_cycle(
+        pool,
+        tenant_id,
+        CycleOptions(
+            mode=mode,
+            project_id=project_id,
+            ingest_dir=ingest_dir,
+            question=question,
+            codebook_version_id=codebook_version_id,
+            halt_on=halt_on,
+            guide=guide,
+            json_output=json_output,
+            approve=approve,
+            cfg=cfg,
+            allow_draft=allow_draft,
+        ),
+    )
+
+
+async def _run_cycle(
+    pool: asyncpg.Pool,
+    tenant_id: UUID,
+    options: CycleOptions,
+) -> int:
+    """Open the coding run and walk the stage chain to ``cycle_complete``."""
+    if options.mode not in MODES:
+        raise ValueError(f"unknown cycle mode: {options.mode!r} (expected one of {sorted(MODES)})")
     from corpus_kb.config import load_config
 
-    cfg = cfg if cfg is not None else load_config()
+    cfg = options.cfg if options.cfg is not None else load_config()
     config: dict[str, Any] = dict(cfg)
     if await _embedder_abstains(pool, config):
-        if not json_output:
+        if not options.json_output:
             print(guide_copy.CYCLE_NO_EMBEDDINGS)
         return EXIT_UNAVAILABLE
-    configured = halt_on if halt_on is not None else _configured_halt_on(config)
+    configured = options.halt_on if options.halt_on is not None else _configured_halt_on(config)
     halt_set = effective_halt_on(configured)
 
     recorder, handler, stack, run_id, resume_after, suppressed = await _start_run(
-        pool, tenant_id, config, mode, json_output=json_output, guide=guide
+        pool,
+        tenant_id,
+        config,
+        options.mode,
+        json_output=options.json_output,
+        guide=options.guide,
     )
-    alarms: list[Alarm] = []  # U25: monitored alarms across this cycle's stages
-
-    for stage in stages_after(resume_after):
-        recorder.emit(EVENT_STAGE_STARTED, run_id=run_id, stage=stage)
-        receipt = await _run_stage_or_consensus(
-            stage,
-            pool,
-            stack,
-            tenant_id,
-            cfg,
-            project_id,
-            ingest_dir,
-            question,
-            codebook_version_id,
-            allow_draft,
-        )
-        if str(receipt.get("status")) == "unavailable":
-            return await _abort_unavailable_stage(
-                handler, stack, recorder, tenant_id, run_id, stage, receipt
-            )
-        _print_stage_view(stage, receipt, json_output)
-        recorder.emit(
-            EVENT_STAGE_COMPLETED, run_id=run_id, stage=stage, receipt=bounded_receipt(receipt)
-        )
-        await seal(
-            handler, stack, tenant_id, UUID(run_id), {"kind": "stage_complete", "stage": stage}
-        )
-        findings = await gate_findings_for(stage, receipt, pool, tenant_id, cfg)
-        alarms.extend(alarms_from_findings(findings))
-        halted = _halted_gate(findings, halt_set, suppressed)
-        if halted is not None:
-            return await halt_and_record(
-                handler,
-                stack,
-                recorder,
-                guide and not json_output,
-                pool,
-                tenant_id,
-                UUID(run_id),
-                stage,
-                findings,
-                halted,
-            )
-        stop = await _post_stage_mode_stop(
-            pool,
-            handler,
-            stack,
-            recorder,
-            tenant_id,
-            run_id,
-            stage,
-            alarms,
-            mode=mode,
-            codebook_version_id=codebook_version_id,
-            json_output=json_output,
-            approve=approve,
-        )
+    session = _CycleSession(
+        recorder=recorder,
+        handler=handler,
+        stack=stack,
+        run_id=run_id,
+        resume_after=resume_after,
+        suppressed=suppressed,
+        halt_set=halt_set,
+    )
+    for stage in stages_after(session.resume_after):
+        stop = await _advance_stage(stage, pool, session, tenant_id, options, cfg)
         if stop is not None:
             return stop
 
     proposal_receipt = await _propose_alarms(
-        pool, handler, tenant_id, codebook_version_id, alarms, json_output
+        pool, handler, tenant_id, options.codebook_version_id, session.alarms, options.json_output
     )
     seal_payload: dict[str, Any] = {"kind": "cycle_complete", "stages": STAGES}
     if proposal_receipt is not None:
@@ -418,33 +439,91 @@ async def run_cycle(
     return 0
 
 
+async def _advance_stage(
+    stage: str,
+    pool: asyncpg.Pool,
+    session: _CycleSession,
+    tenant_id: UUID,
+    options: CycleOptions,
+    cfg: dict[str, Any],
+) -> int | None:
+    """Run one stage, then apply the gate and mode rules (None = continue)."""
+    recorder, handler, stack = session.recorder, session.handler, session.stack
+    run_id = session.run_id
+    recorder.emit(EVENT_STAGE_STARTED, run_id=run_id, stage=stage)
+    receipt = await _run_stage_or_consensus(stage, pool, stack, tenant_id, cfg, options)
+    if str(receipt.get("status")) == "unavailable":
+        return await _abort_unavailable_stage(
+            handler, stack, recorder, tenant_id, run_id, stage, receipt
+        )
+    _print_stage_view(stage, receipt, options.json_output)
+    recorder.emit(
+        EVENT_STAGE_COMPLETED, run_id=run_id, stage=stage, receipt=bounded_receipt(receipt)
+    )
+    await seal(handler, stack, tenant_id, UUID(run_id), {"kind": "stage_complete", "stage": stage})
+    findings = await gate_findings_for(stage, receipt, pool, tenant_id, cfg)
+    session.alarms.extend(alarms_from_findings(findings))
+    halted = _halted_gate(findings, session.halt_set, session.suppressed)
+    if halted is not None:
+        return await halt_and_record(
+            handler,
+            stack,
+            recorder,
+            options.guide and not options.json_output,
+            pool,
+            tenant_id,
+            UUID(run_id),
+            stage,
+            findings,
+            halted,
+        )
+    return await _post_stage_mode_stop(
+        pool,
+        handler,
+        stack,
+        recorder,
+        tenant_id,
+        run_id,
+        stage,
+        session.alarms,
+        mode=options.mode,
+        codebook_version_id=options.codebook_version_id,
+        json_output=options.json_output,
+        approve=options.approve,
+    )
+
+
 async def _run_stage(
     stage: str,
     pool: asyncpg.Pool,
     stack: tuple[Any, ...],
     tenant_id: UUID,
     cfg: dict[str, Any],
-    project_id: UUID | None,
-    ingest_dir: str | None,
-    question: str | None,
-    version_id: UUID | None,
-    allow_draft: bool = False,
+    options: CycleOptions,
 ) -> dict[str, Any]:
     if stage == "ingest":
-        return await stage_ingest(pool, stack, tenant_id, project_id, ingest_dir)
+        return await stage_ingest(pool, stack, tenant_id, options.project_id, options.ingest_dir)
     if stage == "inductive":
-        return await stage_inductive(pool, stack, tenant_id, cfg, project_id)
+        return await stage_inductive(pool, stack, tenant_id, cfg, options.project_id)
     if stage == "deductive":
         # cfg/allow_draft reach the U24 guard inside run_deductive — the
         # injected config decides enforcement, never a disk reload (F8).
         return await stage_deductive(
-            pool, stack, tenant_id, project_id, version_id, cfg=cfg, allow_draft=allow_draft
+            pool,
+            stack,
+            tenant_id,
+            options.project_id,
+            options.codebook_version_id,
+            cfg=cfg,
+            allow_draft=options.allow_draft,
         )
     if stage == "keywords":
-        return await stage_keywords(pool, tenant_id, version_id, cfg)
+        return await stage_keywords(pool, tenant_id, options.codebook_version_id, cfg)
     if stage == "report":
-        return await stage_report(pool, stack, tenant_id, project_id, version_id)
-    return await stage_notebook(pool, stack, tenant_id, cfg, project_id, question)
+        return await stage_report(
+            pool, stack, tenant_id, options.project_id, options.codebook_version_id
+        )
+    return await stage_notebook(pool, stack, tenant_id, cfg, options.project_id, options.question)
 
 
 async def _run_stage_or_consensus(
@@ -453,11 +532,7 @@ async def _run_stage_or_consensus(
     stack: tuple[Any, ...],
     tenant_id: UUID,
     cfg: dict[str, Any],
-    project_id: UUID | None,
-    ingest_dir: str | None,
-    question: str | None,
-    version_id: UUID | None,
-    allow_draft: bool = False,
+    options: CycleOptions,
 ) -> dict[str, Any]:
     """The inductive stage becomes the U48 N-run consensus when configured.
 
@@ -467,51 +542,18 @@ async def _run_stage_or_consensus(
     before themes surface. Every other stage is unchanged.
     """
     if stage != "inductive":
-        return await _run_stage(
-            stage,
-            pool,
-            stack,
-            tenant_id,
-            cfg,
-            project_id,
-            ingest_dir,
-            question,
-            version_id,
-            allow_draft,
-        )
+        return await _run_stage(stage, pool, stack, tenant_id, cfg, options)
     from corpus_kb.research.cycle_consensus import consensus_settings, run_inductive_consensus
 
     if consensus_settings(cfg).runs <= 1:
-        return await _run_stage(
-            stage,
-            pool,
-            stack,
-            tenant_id,
-            cfg,
-            project_id,
-            ingest_dir,
-            question,
-            version_id,
-            allow_draft,
-        )
+        return await _run_stage(stage, pool, stack, tenant_id, cfg, options)
 
     async def run_once() -> dict[str, Any]:
-        return await _run_stage(
-            stage,
-            pool,
-            stack,
-            tenant_id,
-            cfg,
-            project_id,
-            ingest_dir,
-            question,
-            version_id,
-            allow_draft,
-        )
+        return await _run_stage(stage, pool, stack, tenant_id, cfg, options)
 
     # runs > 1 here, so the consensus runner always returns a receipt; the
     # fallback keeps the stage contract (an honest unavailable, never None).
-    receipt = await run_inductive_consensus(pool, tenant_id, cfg, project_id, run_once)
+    receipt = await run_inductive_consensus(pool, tenant_id, cfg, options.project_id, run_once)
     if receipt is None:
         return {"status": "unavailable", "reason": "consensus runner returned no receipt"}
     return receipt
