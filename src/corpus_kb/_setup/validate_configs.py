@@ -141,6 +141,8 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "labeling_build",
         "labeling_list",
         "labeling_lfs",
+        "labeling_triage",
+        "labeling_gold_check",
         "classification_build",
         "classification_list",
         "analysis_backfill_dates",
