@@ -89,7 +89,7 @@ class _FakeQueue:
 def _patch_child(monkeypatch: pytest.MonkeyPatch, proc: _FakeProc, queue: _FakeQueue) -> None:
     monkeypatch.setattr(
         "corpus_kb.ingestion.strategies.textbook_subprocess._start_child",
-        lambda pdf_path, start, end, structured=False: (proc, queue),
+        lambda pdf_path, parser, start, end, structured=False: (proc, queue),
     )
 
 
@@ -107,7 +107,7 @@ _ROWS: list[dict[str, object]] = [
 def test_crashed_child_returns_none(monkeypatch: pytest.MonkeyPatch) -> None:
     proc = _FakeProc(exitcode=1)
     _patch_child(monkeypatch, proc, _FakeQueue())  # rows None: get raises Empty
-    assert parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0) is None
+    assert parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0) is None
 
 
 def test_child_exit_zero_without_payload_returns_none(
@@ -115,7 +115,7 @@ def test_child_exit_zero_without_payload_returns_none(
 ) -> None:
     proc = _FakeProc(exitcode=0)
     _patch_child(monkeypatch, proc, _FakeQueue())
-    assert parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0) is None
+    assert parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0) is None
 
 
 def test_successful_payload_becomes_page_items(
@@ -123,7 +123,7 @@ def test_successful_payload_becomes_page_items(
 ) -> None:
     proc = _FakeProc(exitcode=0)
     _patch_child(monkeypatch, proc, _FakeQueue(_ROWS))
-    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    items = parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0)
     assert items == [
         PageItem(2, "text", "window body"),
         PageItem(3, "section_header", "Chapter Two"),
@@ -138,7 +138,7 @@ def test_malformed_rows_are_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
         {"page": 5, "label": "text", "text": "kept"},
     ]
     _patch_child(monkeypatch, proc, _FakeQueue(rows))
-    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    items = parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0)
     assert items == [PageItem(5, "text", "kept")]
 
 
@@ -148,7 +148,7 @@ def test_hung_child_is_terminated_and_returns_none(
     proc = _FakeProc(exitcode=None)  # alive forever: the timeout path
     queue = _FakeQueue()
     _patch_child(monkeypatch, proc, queue)
-    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 0.05)
+    items = parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 0.05)
     assert items is None
     assert proc.terminated
     assert not proc.is_alive()  # terminate reaped this well-behaved fake
@@ -161,7 +161,7 @@ def test_a_child_alive_past_the_reap_grace_is_stopped(
     proc = _FakeProc(exitcode=None, hang_past_reap=True)  # stays alive after shipping
     queue = _FakeQueue(_ROWS)
     _patch_child(monkeypatch, proc, queue)
-    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    items = parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0)
     assert [item.page for item in items] == [2, 3]  # the shipped payload still wins
     assert proc.terminated  # terminate came first...
     assert proc.killed  # ...and the kill escalation reaped the hung child
@@ -193,7 +193,7 @@ def test_rows_carry_rich_fields_into_the_items(monkeypatch: pytest.MonkeyPatch) 
     ]
     proc = _FakeProc(exitcode=0)
     _patch_child(monkeypatch, proc, _FakeQueue(rows))
-    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0, structured=True)
+    items = parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0, structured=True)
     assert items == [
         PageItem(2, "section_header", "Chapter Two", level=1, bbox=(0.0, 1.0, 2.0, 3.0)),
         PageItem(3, "table", "| a |", table_markdown="| a |"),
@@ -207,7 +207,7 @@ def test_a_malformed_rich_row_is_skipped(monkeypatch: pytest.MonkeyPatch) -> Non
     ]
     proc = _FakeProc(exitcode=0)
     _patch_child(monkeypatch, proc, _FakeQueue(rows))
-    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    items = parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0)
     assert items == [PageItem(5, "text", "kept")]
 
 
@@ -220,7 +220,7 @@ def test_a_non_dict_row_is_skipped_and_the_parse_succeeds(
     ]
     proc = _FakeProc(exitcode=0)
     _patch_child(monkeypatch, proc, _FakeQueue(rows))
-    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    items = parse_window_in_subprocess(Path("book.pdf"), "docling", 1, 4, 5.0)
     assert items == [PageItem(6, "text", "kept")]
 
 

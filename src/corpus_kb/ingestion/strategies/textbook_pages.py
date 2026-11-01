@@ -1,7 +1,7 @@
 """PDF probing, pypdf windows, and the window record for the textbook strategy.
 
 One window — a 1-based inclusive page span — parses at a time, so one
-book never monopolizes a run. Two parsers share one record shape:
+book never monopolizes a run. Every parser shares one record shape:
 
 * ``docling`` (optional ``[docling]`` extra, the primary parser): each
   window is one ``DocumentConverter.convert`` call with a 1-based
@@ -10,8 +10,14 @@ book never monopolizes a run. Two parsers share one record shape:
   records per-page items with their labels and page numbers. The item
   contract and the Docling surface live in ``textbook_docling``; the
   names re-export here for the strategy module's single import point.
+* ``paddle-vl`` (optional ``[ocr-vl]`` extra, the challenger): each
+  page renders to an image and comes back as one text item. Its parse
+  surface lives in ``textbook_paddle``.
 * ``pypdf`` (optional ``[scan]`` extra, the degrade parser): plain
   page-window text, no labels. Bookmarks come from pypdf in both modes.
+
+The parser name/tag registry and the dispatch table live in
+``textbook_registry``.
 
 Both extras import lazily (the semchunk/code pattern); CI installs
 neither, so these edges stay invisible to static resolution. Tests
@@ -34,17 +40,14 @@ from pathlib import Path
 from typing import Any
 
 from .textbook_docling import (
-    PARSER_VERSIONS,
     PageItem,
     load_docling_converter,
     parse_window_docling,
-    parser_key,
 )
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
-    "PARSER_VERSIONS",
     "OutlineBookmark",
     "PageItem",
     "WindowRecord",
@@ -53,7 +56,6 @@ __all__ = [
     "open_pdf",
     "parse_window_docling",
     "parse_window_pypdf",
-    "parser_key",
     "read_outline",
 ]
 

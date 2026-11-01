@@ -15,15 +15,17 @@ from typing import Any
 import pytest
 
 from corpus_kb.ingestion.strategies.textbook_docling import (
-    PARSER_VERSIONS,
     PageItem,
     RichFields,
     page_row,
-    parser_key,
     rich_fields_from_row,
 )
 from corpus_kb.ingestion.strategies.textbook_docling import (
     items_from_convert_result as adapter,
+)
+from corpus_kb.ingestion.strategies.textbook_registry import (
+    PARSER_VERSIONS,
+    parser_key,
 )
 
 
@@ -210,7 +212,11 @@ def test_missing_document_yields_no_items() -> None:
 
 
 def test_parser_versions_bump_docling_and_keep_pypdf() -> None:
-    assert PARSER_VERSIONS == {"docling": "docling-v2", "pypdf": "pypdf-v1"}
+    assert PARSER_VERSIONS == {
+        "docling": "docling-v2",
+        "paddle-vl": "paddle-vl-v1",
+        "pypdf": "pypdf-v1",
+    }
 
 
 def test_parser_key_variants() -> None:
@@ -218,6 +224,8 @@ def test_parser_key_variants() -> None:
     assert parser_key("docling", True) == "docling-v2-rich"
     assert parser_key("pypdf", False) == "pypdf-v1"
     assert parser_key("pypdf", True) == "pypdf-v1"  # pypdf has no rich fields
+    assert parser_key("paddle-vl", False) == "paddle-vl-v1"
+    assert parser_key("paddle-vl", True) == "paddle-vl-v1"  # no rich variant yet
     assert parser_key("ocr9000", False) == "docling-v2"  # unknown: docling tag
     assert parser_key("ocr9000", True) == "docling-v2-rich"
 

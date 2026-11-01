@@ -9,9 +9,8 @@ optionals. ``level`` and ``bbox`` come free with the Docling walk;
 the ``structured_output`` flag (default off). Items keep their first
 page provenance; later provenances are not recorded (the page rule).
 
-``PARSER_VERSIONS`` tags bake into cache records; :func:`parser_key`
-derives the caller-side cache tag, so a flag flip caches the rich
-variant under its own tag and never serves the other variant's records.
+The parser name/tag registry and :func:`parser_key` live in
+``textbook_registry`` (one module owns the whole parser surface).
 """
 
 from __future__ import annotations
@@ -21,10 +20,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-
-#: Version tags baked into cache records; a parser change invalidates the
-#: records the old version wrote (the cache key carries this tag).
-PARSER_VERSIONS: dict[str, str] = {"docling": "docling-v2", "pypdf": "pypdf-v1"}
 
 
 @dataclass(frozen=True)
@@ -50,20 +45,6 @@ class RichFields:
     level: int | None = None
     table_markdown: str | None = None
     bbox: tuple[float, float, float, float] | None = None
-
-
-def parser_key(parser: str, structured: bool) -> str:
-    """The cache tag for one parser and structured-output flag pair.
-
-    The flag changes the parse output, so the Docling rich variant
-    caches under its own tag and a flag flip never serves the other
-    variant's records. An unknown parser falls back to the Docling tag
-    (the caller owns the warning).
-    """
-    base = PARSER_VERSIONS[parser] if parser in PARSER_VERSIONS else PARSER_VERSIONS["docling"]
-    if structured and base == PARSER_VERSIONS["docling"]:
-        return f"{base}-rich"
-    return base
 
 
 def load_docling_converter() -> Any | None:

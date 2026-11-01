@@ -256,6 +256,25 @@ docling = ["docling>=2.144", "pypdf>=6.21"]
 # pypdf alone for callers that only need page counts and text probes, no
 # docling parse. MIT. Same lazy contract as [docling]; CI NEVER installs it.
 scan = ["pypdf>=6.21"]
+# PaddleOCR-VL textbook challenger (textbook program W3-A): the page parser
+# behind textbook.parser: paddle-vl (strategies/textbook_paddle.py). A
+# measurement challenger, not a default change. License-reviewed permissive
+# set: transformers Apache-2.0, torch BSD-3-Clause, pypdfium2 (Apache-2.0/
+# BSD-3-Clause). The transformers floor is the first line with native
+# PaddleOCRVL support (no remote code): the model docs and the model card
+# pin transformers>=5.0.0. torch>=2.4 is OUR floor, not a forced one:
+# base transformers never requires torch (it arrives only through
+# transformers' own optional torch extras, whose pins range >=2.2 at
+# 5.0.0 to >=2.5 at 5.16.1), so no solver would pull torch at all — the
+# extra must be self-sufficient and states the support line it was
+# probed on (2.15.0+cpu; the committed lock resolves 2.14.1). pypdfium2
+# renders the page images (the floor is the 5.x line the golden bench
+# verifies).
+# No paddlepaddle/paddleocr wheels: no Windows GPU builds (plan W3-A).
+# Every consumer import is lazy (the eval/_ranx.py pattern); CI NEVER
+# installs this extra, so the extras-less jobs stay green (same contract
+# as [docling]/[scan]).
+ocr-vl = ["transformers>=5.0", "torch>=2.4", "pypdfium2>=5"]
 # Researcher console (UX program W6): marimo notebooks are reproducible
 # .py files served by the running server via create_asgi_app. Apache-2.0.
 # CI NEVER installs this extra (same lazy contract).
@@ -440,6 +459,10 @@ DEP002 = [
     # Wave 7 extra (calibrate): eval/_ranx.py imports ranx lazily behind a
     # try/except probe; CI never installs it, so deptry cannot see the edge.
     "ranx",
+    # Textbook program W3-A extra (ocr-vl): strategies/textbook_paddle.py
+    # imports pypdfium2 lazily behind the parser gate (CI never installs the
+    # extra), so deptry cannot see the edge.
+    "pypdfium2",
     # UX program extras (W0): every consumer imports these lazily behind
     # runtime gates and CI never installs them, so deptry cannot see the
     # import edges.

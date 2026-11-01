@@ -814,6 +814,24 @@ class TestRuntimeTextbookKeys:
         errors = validate_runtime_config(config)
         assert any("key 'textbook.citations' must be bool" in e for e in errors)
 
+    def test_parser_enum_admits_paddle_vl(self):
+        ok = validate_configs._textbook_block_errors(
+            {
+                "parser": "paddle-vl",
+                "min_pages": 120,
+                "window_pages": 50,
+                "window_subprocess": True,
+                "window_timeout_s": 3600.0,
+                "cache_max_mb": 2048,
+            }
+        )
+        assert ok == []
+        assert "paddle-vl" in validate_configs.SUPPORTED_TEXTBOOK_PARSERS
+
+    def test_parser_enum_rejects_unknown_names(self):
+        bad = validate_configs._textbook_block_errors({"parser": "tesseract", "min_pages": 120})
+        assert any("textbook.parser: must be one of" in e and "paddle-vl" in e for e in bad)
+
     def test_mistyped_window_timeout_rejected_by_type_map(self):
         config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
         config["textbook"]["window_timeout_s"] = "long"
