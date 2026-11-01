@@ -342,6 +342,16 @@
     "required": []
   },
   {
+    "description": "Score built labels against a gold dev set (PPI-corrected).",
+    "id": "labeling-gold-check",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/labeling/gold-check",
+    "required": []
+  },
+  {
     "description": "List the registered labeling functions with kinds and coverage.",
     "id": "labeling-lfs",
     "longRunning": false,
@@ -349,6 +359,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/labeling/lfs",
+    "required": []
+  },
+  {
+    "description": "Rank built labels with weak support into a human review queue.",
+    "id": "labeling-triage",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/labeling/triage",
     "required": []
   },
   {

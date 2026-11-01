@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import asyncpg
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -100,7 +101,10 @@ async def validate() -> bool:
             # pgvector format: [0.1,0.2,...] — count commas for dimension estimate
             dims = vec_str.count(",") + 1
             logger.info("Sample vector dimensions: ~%d", dims)
-            if dims not in (768, 4096):
+            # 768 (nomic-embed-text) and 4096 (qwen3-embedding:8b-q8_0) are
+            # legacy-native widths a pre-025 install may still hold; the
+            # shipped default is EMBEDDING_DIMENSIONS (halfvec(2560)).
+            if dims not in (EMBEDDING_DIMENSIONS, 768, 4096):
                 logger.warning("Unexpected vector dimensions: %d", dims)
 
     await conn.close()

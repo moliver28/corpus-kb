@@ -31,6 +31,7 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 from corpus_kb.projections._drain import (
     dispatch_notification,
     drain_sequence,
@@ -51,7 +52,7 @@ PROJECTION_NAME = "EmbedChunksProjection"
 BATCH_SIZE = 10
 
 #: The DuckDB ``chunks_vectors.embedding`` width (migrations 000 + 025).
-DUCKDB_EMBEDDING_DIMS = 2560
+DUCKDB_EMBEDDING_DIMS = EMBEDDING_DIMENSIONS
 
 
 class EmbedChunksProjection:

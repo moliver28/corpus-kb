@@ -292,6 +292,8 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-labeling` | `corpus-kb labeling-build` | `labeling_build` | Score the labeling functions and write the aggregated chunk labels. |
 | `corpus-labeling` | `corpus-kb labeling-list` | `labeling_list` | List the built chunk labels with probabilities. |
 | `corpus-labeling` | `corpus-kb labeling-lfs` | `labeling_lfs` | List the registered labeling functions with kinds and coverage. |
+| `corpus-labeling` | `corpus-kb labeling-triage` | `labeling_triage` | Rank built labels with weak support into a human review queue. |
+| `corpus-labeling` | `corpus-kb labeling-gold-check` | `labeling_gold_check` | Score built labels against a gold dev set (PPI-corrected). |
 | `corpus-classification` | `corpus-kb classification-build` | `classification_build` | Fit the few-shot classifier against a seed set; write predictions. |
 | `corpus-classification` | `corpus-kb classification-list` | `classification_list` | List the built chunk predictions, bounded by limit. |
 | `corpus-analysis` | `corpus-kb analysis-backfill-dates` | `analysis_backfill_dates` | Backfill documents.document_date from chunk metadata (idempotent). |

@@ -12,6 +12,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.projections.research._common import opt_str
 from corpus_kb.projections.research._embed import ResearchEmbedder
 from corpus_kb.research.chunking import build_context_prefix, speaker_label
@@ -72,9 +73,9 @@ async def apply_unit_embeddings(
             continue
         literal = _vector_literal(vector)
         if duck:
-            sql = """
+            sql = f"""
                 UPDATE research_units SET
-                    embedding = $3::FLOAT[1024],
+                    embedding = $3::FLOAT[{RESEARCH_EMBEDDING_DIMENSIONS}],
                     embedding_256 = $8::FLOAT[256],
                     embedding_model = $4, model_revision = $5, dimensions = $6
                 WHERE tenant_id = $1 AND doc_id = $2 AND text_sha256 = $7
@@ -97,7 +98,7 @@ async def apply_unit_embeddings(
                 literal,
                 embedder.model,
                 embedder.model_revision,
-                1024,
+                RESEARCH_EMBEDDING_DIMENSIONS,
                 text_sha,
                 *extra,
             )
@@ -125,9 +126,9 @@ async def embed_exchange_texts(
             continue
         literal = _vector_literal(vector)
         if duck:
-            sql = """
+            sql = f"""
                 UPDATE research_exchanges SET
-                    embedding = $3::FLOAT[1024],
+                    embedding = $3::FLOAT[{RESEARCH_EMBEDDING_DIMENSIONS}],
                     embedding_256 = $8::FLOAT[256],
                     embedding_model = $4, model_revision = $5, dimensions = $6
                 WHERE tenant_id = $1 AND doc_id = $2 AND exchange_id = $7
@@ -150,7 +151,7 @@ async def embed_exchange_texts(
                 literal,
                 embedder.model,
                 embedder.model_revision,
-                1024,
+                RESEARCH_EMBEDDING_DIMENSIONS,
                 int(exchange_id),
                 *extra,
             )

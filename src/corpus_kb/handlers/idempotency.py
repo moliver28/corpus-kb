@@ -29,6 +29,7 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.storage.gateway import SqlGateway, is_gateway
 
 logger = logging.getLogger(__name__)
@@ -134,26 +135,21 @@ class IdempotencyChecker:
 # Singleton
 # ============================================================================
 
-_checker: IdempotencyChecker | None = None
+_checker = SingletonSlot[IdempotencyChecker]("IdempotencyChecker requires an asyncpg pool")
 
 
 def get_idempotency_checker(pool: asyncpg.Pool | None = None) -> IdempotencyChecker:
     """Get or create the singleton IdempotencyChecker."""
-    global _checker
-    if _checker is None:
-        if pool is None:
-            raise RuntimeError("IdempotencyChecker requires an asyncpg pool")
-        _checker = IdempotencyChecker(pool)
-    return _checker
+    if pool is None:
+        return _checker.get()
+    return _checker.get_or_create(lambda: IdempotencyChecker(pool))
 
 
 def set_idempotency_checker(checker: IdempotencyChecker) -> None:
     """Set the singleton (for server wiring)."""
-    global _checker
-    _checker = checker
+    _checker.set(checker)
 
 
 def reset_idempotency_checker() -> None:
     """Reset the singleton (for testing)."""
-    global _checker
-    _checker = None
+    _checker.reset()

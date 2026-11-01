@@ -20,6 +20,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from corpus_kb.dimensions import (
+    EMBEDDING_DIMENSIONS,
+    NOMIC_EMBEDDING_DIMENSIONS,
+)
+
 
 @dataclass(frozen=True)
 class EmbeddingModelProfile:
@@ -32,9 +37,16 @@ class EmbeddingModelProfile:
 
 # Native output widths (probe-verified against Ollama 0.31.1; the 4b row is
 # re-verified by tests/test_bench_embedders.py via the bench script table).
+# The nomic and 4b rows share the schema-facing width constants in
+# corpus_kb.dimensions; the 4096 row has no schema role, so it stays a
+# literal model fact.
 EMBEDDING_MODEL_PROFILES: tuple[EmbeddingModelProfile, ...] = (
-    EmbeddingModelProfile(model="nomic-embed-text", dimensions=768, mrl_trained=False),
-    EmbeddingModelProfile(model="qwen3-embedding:4b", dimensions=2560, mrl_trained=True),
+    EmbeddingModelProfile(
+        model="nomic-embed-text", dimensions=NOMIC_EMBEDDING_DIMENSIONS, mrl_trained=False
+    ),
+    EmbeddingModelProfile(
+        model="qwen3-embedding:4b", dimensions=EMBEDDING_DIMENSIONS, mrl_trained=True
+    ),
     EmbeddingModelProfile(model="qwen3-embedding:8b-q8_0", dimensions=4096, mrl_trained=True),
 )
 
