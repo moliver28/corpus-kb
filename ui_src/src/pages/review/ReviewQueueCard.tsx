@@ -1,5 +1,4 @@
-import { Button, Card, Input, Skeleton, Table, Tag, Typography } from "antd";
-import type { ColumnsType } from "antd/es/table";
+import { Button, Card, Input, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
@@ -9,32 +8,11 @@ import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
-import {
-  confidenceText,
-  isAssignmentsEnvelope,
-  reviewStateWord,
-  type AssignmentRow,
-} from "./shapes";
-
-// Persisted non-sensitive UI state (F10): the reviewer name only, under
-// the corpus-kb: prefix.
-const REVIEWER_KEY = "corpus-kb:reviewer";
-
-function loadReviewer(): string {
-  try {
-    return window.localStorage.getItem(REVIEWER_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function saveReviewer(name: string): void {
-  try {
-    window.localStorage.setItem(REVIEWER_KEY, name);
-  } catch {
-    // Private mode: the name just does not persist.
-  }
-}
+import AssignmentsTable from "./AssignmentsTable";
+import OverrideForm from "./OverrideForm";
+import { isAssignmentsEnvelope } from "./shapes";
+import type { AssignmentRow } from "./shapes";
+import { loadReviewer, saveReviewer } from "./reviewerStorage";
 
 /** Accept records the model answer as confirmed; override replaces it. */
 type Decision = "accept" | "override";
@@ -47,7 +25,6 @@ export default function ReviewQueueCard() {
   const navigate = useNavigate();
   const [reviewer, setReviewer] = useState(loadReviewer);
   const [overriding, setOverriding] = useState<AssignmentRow | null>(null);
-  const [note, setNote] = useState("");
   const [noteWarning, setNoteWarning] = useState("");
   const [decided, setDecided] = useState(false);
 
@@ -99,50 +76,19 @@ export default function ReviewQueueCard() {
 
   function openOverride(row: AssignmentRow): void {
     setOverriding(row);
-    setNote("");
     setNoteWarning("");
   }
 
-  async function confirmOverride(): Promise<void> {
+  async function confirmOverride(noteText: string): Promise<void> {
     if (overriding === null) return;
-    if (note.trim() === "") {
+    if (noteText === "") {
       setNoteWarning(strings.reviewNoteRequired);
       return;
     }
     const row = overriding;
     setOverriding(null);
-    await send(row, "override", note.trim());
+    await send(row, "override", noteText);
   }
-
-  const columns: ColumnsType<AssignmentRow> = [
-    { title: strings.reviewColumnCode, dataIndex: "code_id", key: "code_id" },
-    { title: strings.reviewColumnUnit, dataIndex: "unit_id", key: "unit_id" },
-    {
-      title: strings.reviewColumnState,
-      dataIndex: "status",
-      key: "status",
-      render: (value: unknown) => <Tag>{reviewStateWord(String(value))}</Tag>,
-    },
-    {
-      title: strings.reviewColumnConfidence,
-      key: "confidence",
-      render: (_value: unknown, row: AssignmentRow) => confidenceText(row.confidence),
-    },
-    {
-      title: strings.reviewColumnActions,
-      key: "actions",
-      render: (_value: unknown, row: AssignmentRow) => (
-        <div className="ui-actions">
-          <Button size="small" onClick={() => void send(row, "accept", "")}>
-            {strings.reviewAccept}
-          </Button>
-          <Button size="small" onClick={() => openOverride(row)}>
-            {strings.reviewOverride}
-          </Button>
-        </div>
-      ),
-    },
-  ];
 
   let body: ReactNode;
   const result = assignments.result;
@@ -173,12 +119,10 @@ export default function ReviewQueueCard() {
             </div>
           </div>
         ) : (
-          <Table<AssignmentRow>
-            size="small"
-            rowKey="assignment_id"
-            pagination={false}
-            dataSource={rows}
-            columns={columns}
+          <AssignmentsTable
+            rows={rows}
+            onAccept={(row) => void send(row, "accept", "")}
+            onOverride={openOverride}
           />
         )}
         {decided && <StatusBanner kind="ok">{strings.reviewDecisionDone}</StatusBanner>}
@@ -210,27 +154,11 @@ export default function ReviewQueueCard() {
         </div>
         {noteWarning !== "" && <StatusBanner kind="warn">{noteWarning}</StatusBanner>}
         {body}
-        {/* The override form sits inline under the queue (no modal): the
-            note stays next to the rows it judges. */}
         {overriding !== null && (
-          <div className="ui-stack">
-            <p>
-              <strong>{strings.reviewOverrideTitle}</strong>
-            </p>
-            <p>{strings.reviewOverrideBody}</p>
-            <Input.TextArea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              placeholder={strings.reviewNoteLabel}
-              rows={3}
-            />
-            <div className="ui-actions">
-              <Button type="primary" onClick={() => void confirmOverride()}>
-                {strings.reviewOverrideSubmit}
-              </Button>
-              <Button onClick={() => setOverriding(null)}>{strings.confirmCancel}</Button>
-            </div>
-          </div>
+          <OverrideForm
+            onSubmit={(note) => void confirmOverride(note)}
+            onCancel={() => setOverriding(null)}
+          />
         )}
       </div>
     </Card>
