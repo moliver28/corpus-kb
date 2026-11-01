@@ -60,6 +60,7 @@ from .textbook_cache import (
     save_window_cache,
     window_ranges,
 )
+from .textbook_docling import parser_key
 from .textbook_outcomes import WindowOutcome, summarize
 from .textbook_pages import (
     PARSER_VERSIONS,
@@ -159,7 +160,8 @@ class TextbookStrategy:
         Each window yields one outcome: its record, the parser that
         served it, whether the cache did, and that window's warnings.
         """
-        parser_key = settings.parser if settings.parser in PARSER_VERSIONS else "docling"
+        structured = settings.structured_output
+        parser_name = settings.parser if settings.parser in PARSER_VERSIONS else "docling"
         if settings.parser not in PARSER_VERSIONS:
             warnings.append(f"unknown textbook.parser '{settings.parser}'; used docling")
         cache_dir = Path(settings.cache_dir).expanduser()
@@ -168,10 +170,10 @@ class TextbookStrategy:
         outcomes: list[WindowOutcome] = []
         converter: Any | None = None
         extra_checked = False
-        docling_active = parser_key == "docling"
+        docling_active = parser_name == "docling"
         for index, (start, end) in enumerate(window_ranges(page_count, settings.window_pages)):
             active = "docling" if docling_active else "pypdf"
-            cached = self._cached_record(cache_dir, digest, index, active, start, end)
+            cached = self._cached_record(cache_dir, digest, index, active, start, end, structured)
             if cached is not None:
                 outcomes.append(cached)
                 continue
@@ -181,7 +183,9 @@ class TextbookStrategy:
             use_docling = docling_active and (settings.window_subprocess or converter is not None)
             effective = "docling" if use_docling else "pypdf"
             if effective != active:
-                cached = self._cached_record(cache_dir, digest, index, effective, start, end)
+                cached = self._cached_record(
+                    cache_dir, digest, index, effective, start, end, structured
+                )
                 if cached is not None:
                     outcomes.append(cached)
                     continue
@@ -195,20 +199,32 @@ class TextbookStrategy:
                 items = parse_window_pypdf(reader, start, end, window_warnings)
             warnings.extend(window_warnings)
             record = WindowRecord(start_page=start, end_page=end, items=items)
-            key = CacheKey(effective, digest, index)
+            key = CacheKey(parser_key(effective, structured), digest, index)
             save_window_cache(key.path(cache_dir), key, record)
             outcomes.append(WindowOutcome(record, effective, False, tuple(window_warnings)))
         return outcomes
 
     def _cached_record(
-        self, cache_dir: Path, digest: str, index: int, parser_key: str, start: int, end: int
+        self,
+        cache_dir: Path,
+        digest: str,
+        index: int,
+        parser: str,
+        start: int,
+        end: int,
+        structured: bool = False,
     ) -> WindowOutcome | None:
-        """The cached window for one parser, or None on a miss."""
-        key = CacheKey(parser_key, digest, index)
+        """The cached window for one parser, or None on a miss.
+
+        The entry carries the ``parser_key`` tag, so a flag-on run reads
+        and writes the rich variant's own files; the outcome still names
+        the plain parser.
+        """
+        key = CacheKey(parser_key(parser, structured), digest, index)
         record = load_window_cache(key.path(cache_dir), key, start, end)
         if record is None:
             return None
-        return WindowOutcome(record, parser_key, True, ())
+        return WindowOutcome(record, parser, True, ())
 
     def _fallback(
         self,
