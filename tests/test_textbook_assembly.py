@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from corpus_kb.chunking.hierarchy import Segment
 from corpus_kb.ingestion.base import TOKEN_BUDGET_CHARS, ChunkPlan, validate_plan
 from corpus_kb.ingestion.strategies.textbook import TEXTBOOK_STRATEGY_NAME
 from corpus_kb.ingestion.strategies.textbook_assemble import (
@@ -26,10 +27,12 @@ from corpus_kb.ingestion.strategies.textbook_cache import (
     save_window_cache,
     window_ranges,
 )
+from corpus_kb.ingestion.strategies.textbook_pack import bounded_pieces
 from corpus_kb.ingestion.strategies.textbook_pages import OutlineBookmark, PageItem, WindowRecord
 from corpus_kb.ingestion.strategies.textbook_settings import settings_from
 
 HEADER = "section_header"
+JOIN = "\n\n"
 
 
 def _item(page: int, text: str, label: str = "text") -> PageItem:
@@ -163,14 +166,18 @@ def test_blocks_merge_same_section_and_track_pages() -> None:
 
 
 def test_plan_chunks_budget_pages_and_offsets() -> None:
-    big = "word " * 3000  # ~15000 chars: forces a split inside one block
-    blocks = [
-        SectionBlock("Chapter One", 1, 2, "small body"),
-        SectionBlock("Chapter Two", 3, 9, big),
+    items = [
+        _item(1, "Chapter One", HEADER),
+        _item(2, "small body"),
+        _item(3, "Chapter Two", HEADER),
+        *(_item(page, "word " * 700) for page in range(3, 10)),
     ]
     warnings: list[str] = []
     document_text, chunks = plan_chunks(
-        blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, warnings
+        section_blocks(assign_sections(items, [])),
+        TEXTBOOK_STRATEGY_NAME,
+        TOKEN_BUDGET_CHARS,
+        warnings,
     )
     plan = ChunkPlan(strategy=TEXTBOOK_STRATEGY_NAME, chunks=chunks)
     assert validate_plan(plan) == []
@@ -178,12 +185,17 @@ def test_plan_chunks_budget_pages_and_offsets() -> None:
     assert any("exceed the token budget" in warning for warning in warnings)
     for chunk in chunks:
         assert document_text[chunk.source_start_char : chunk.source_end_char] == chunk.text
-    packed = [chunk for chunk in chunks if chunk.metadata["section"] == "Chapter One"]
-    assert packed and packed[0].metadata["page_start"] == 1
-    split_chunks = [chunk for chunk in chunks if chunk.metadata["section"] == "Chapter Two"]
-    assert split_chunks
-    assert all(chunk.metadata["page_start"] == 3 for chunk in split_chunks)
-    assert all(chunk.metadata["page_end"] == 9 for chunk in split_chunks)
+    packed = chunks[0]
+    assert packed.metadata["section"] == "Chapter One"
+    assert (packed.metadata["page_start"], packed.metadata["page_end"]) == (1, 2)
+    splits = chunks[1:]
+    assert splits and all(split.metadata["section"] == "Chapter Two" for split in splits)
+    assert all(
+        3 <= split.metadata["page_start"] <= split.metadata["page_end"] <= 9 for split in splits
+    )
+    assert splits[0].metadata["page_start"] == 3
+    assert splits[-1].metadata["page_end"] == 9
+    assert any(split.metadata["page_end"] < 9 for split in splits)  # pieces stop at their text
     assert [chunk.index for chunk in chunks] == list(range(len(chunks)))
 
 
@@ -202,6 +214,145 @@ def test_plan_chunks_packs_small_blocks_together() -> None:
         "page_start": 1,
         "page_end": 2,
     }
+
+
+def test_split_pieces_claim_disjoint_true_page_sets() -> None:
+    page_text = "word " * 819  # 819 two-token words: one split piece per page item
+    items = [_item(page, page_text) for page in (3, 4, 5)]
+    blocks = section_blocks(assign_sections(items, []))
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, [])
+    assert len(chunks) == 3
+    ranges = [(chunk.metadata["page_start"], chunk.metadata["page_end"]) for chunk in chunks]
+    assert ranges == [(3, 3), (4, 4), (5, 5)]  # each piece stops at its own page
+    claimed = {page for start, end in ranges for page in range(start, end + 1)}
+    assert claimed == {3, 4, 5}  # the pieces' union is the block's full range
+
+
+def test_split_pieces_carry_the_section_heading_path() -> None:
+    page_text = "word " * 700
+    items = [_item(2, "Chapter Deep", HEADER), *(_item(page, page_text) for page in (3, 4, 5))]
+    blocks = section_blocks(assign_sections(items, []))
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, [])
+    assert len(chunks) > 1
+    assert all(chunk.heading_path == ["Chapter Deep"] for chunk in chunks)
+    assert all(chunk.metadata["section"] == "Chapter Deep" for chunk in chunks)
+    assert chunks[0].metadata["page_start"] == 2
+    assert chunks[-1].metadata["page_end"] == 5
+    assert any(chunk.metadata["page_end"] < 5 for chunk in chunks)  # no piece claims it all
+
+
+def test_packed_chunk_page_range_is_exact_across_a_window_seam() -> None:
+    blocks = section_blocks(assign_sections(flatten_windows(_two_window_book()), []))
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, 60, [])  # 60 chars: one block each
+    assert [(chunk.metadata["page_start"], chunk.metadata["page_end"]) for chunk in chunks] == [
+        (1, 3),
+        (4, 4),
+    ]
+
+
+def test_plan_chunks_sets_heading_path_from_the_opening_block() -> None:
+    blocks = [
+        SectionBlock("One", 1, 1, "a body"),
+        SectionBlock(None, 2, 2, "b body"),
+    ]
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, 8, [])  # 8 chars: one block each
+    assert [chunk.heading_path for chunk in chunks] == [["One"], None]
+    assert [chunk.metadata["section"] for chunk in chunks] == ["One", None]
+    assert "heading_path" not in chunks[0].metadata
+
+
+def test_blocks_without_item_spans_fall_back_to_block_level_pages() -> None:
+    # A directly built block only knows its page range: every split piece
+    # keeps that range — the honest limit when no item-level map exists.
+    blocks = [SectionBlock("Wide", 3, 9, "word " * 3000)]
+    _, chunks = plan_chunks(blocks, TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, [])
+    assert len(chunks) > 1
+    assert all(
+        (chunk.metadata["page_start"], chunk.metadata["page_end"]) == (3, 9) for chunk in chunks
+    )
+
+
+def _audit_book() -> list[WindowRecord]:
+    """Window 1 ends inside Part One; page 4 is headerless (bookmark); 5-7 split."""
+    page_text = "word " * 819
+    return [
+        _record(
+            1,
+            [
+                _item(1, "Part One", HEADER),
+                _item(1, "intro on one"),
+                _item(2, "body on two"),
+                _item(2, "   "),  # blank text: dropped
+            ],
+        ),
+        _record(3, [_item(3, "carried to three"), _item(4, "prose on four")]),
+        _record(
+            5,
+            [
+                _item(5, "Chapter Deep", HEADER),
+                _item(5, page_text),
+                _item(6, page_text),
+                _item(7, page_text),
+            ],
+        ),
+    ]
+
+
+def test_audit_rebuilds_true_page_ranges_and_exact_slices() -> None:
+    pairs = assign_sections(flatten_windows(_audit_book()), [OutlineBookmark("Part Two", 4, 0)])
+    document_text, chunks = plan_chunks(
+        section_blocks(pairs), TEXTBOOK_STRATEGY_NAME, TOKEN_BUDGET_CHARS, []
+    )
+    plan = ChunkPlan(strategy=TEXTBOOK_STRATEGY_NAME, chunks=chunks)
+    assert validate_plan(plan) == []
+    assert all(len(chunk.text) <= TOKEN_BUDGET_CHARS for chunk in chunks)
+
+    # Independent reconstruction (the program bench's mirror): regroup the
+    # paired items by hand, rebuild the document text, and derive each
+    # item's char span (each item owns the join after it).
+    spans: list[tuple[int, int, int]] = []
+    rebuilt: list[str] = []
+    group: list[tuple[PageItem, str | None]] = []
+    cursor = 0
+
+    def flush() -> None:
+        nonlocal cursor
+        if not group:
+            return
+        text = JOIN.join(item.text for item, _ in group)
+        rebuilt.append(text)
+        offset = cursor
+        for position, (item, _) in enumerate(group):
+            stop = (
+                cursor + len(text)
+                if position == len(group) - 1
+                else offset + len(item.text) + len(JOIN)
+            )
+            spans.append((offset, stop, item.page))
+            offset = stop
+        cursor += len(text) + len(JOIN)
+        group.clear()
+
+    for item, title in pairs:
+        if not item.text.strip():
+            continue
+        if group and group[-1][1] != title:
+            flush()
+        group.append((item, title))
+    flush()
+
+    assert JOIN.join(rebuilt) == document_text
+    for chunk in chunks:
+        start, end = chunk.source_start_char, chunk.source_end_char
+        true_pages = {page for lo, hi, page in spans if lo < end and hi > start}
+        assert true_pages
+        assert (chunk.metadata["page_start"], chunk.metadata["page_end"]) == (
+            min(true_pages),
+            max(true_pages),
+        )
+        assert document_text[start:end] == chunk.text
+        expected = [chunk.metadata["section"]] if chunk.metadata["section"] else None
+        assert chunk.heading_path == expected
 
 
 # ---------------------------------------------------------------------------
@@ -244,3 +395,25 @@ def test_file_sha256_tracks_content(tmp_path: Path) -> None:
     first = file_sha256(path)
     path.write_bytes(b"two")
     assert file_sha256(path) != first
+
+
+def test_bounded_pieces_returns_fitting_text_whole() -> None:
+    # Text within the budget passes through split_oversized untouched.
+    segment = Segment(text="one two three", start_char=10, end_char=23, kind="section")
+    pieces = bounded_pieces(segment, target_tokens=10, budget_chars=200)
+    assert len(pieces) == 1
+    assert pieces[0].text == "one two three"
+    assert (pieces[0].start_char, pieces[0].end_char) == (10, 23)
+
+
+def test_bounded_pieces_slices_unbreakable_runs_to_budget() -> None:
+    # A run with no whitespace cannot split at words, so split_oversized
+    # emits it whole and over budget; the fixed-step fallback slices it
+    # while keeping exact source offsets, like the code strategy does.
+    run = "x" * 500
+    segment = Segment(text=run, start_char=100, end_char=600, kind="section")
+    pieces = bounded_pieces(segment, target_tokens=10, budget_chars=200)
+    assert [piece.text for piece in pieces] == [run[0:200], run[200:400], run[400:500]]
+    assert [piece.start_char for piece in pieces] == [100, 300, 500]
+    assert [piece.end_char for piece in pieces] == [300, 500, 600]
+    assert all(piece.kind == "split" for piece in pieces)
