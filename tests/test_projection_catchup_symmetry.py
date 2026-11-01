@@ -218,6 +218,60 @@ def test_codebook_promote_advances_all_projections(monkeypatch: pytest.MonkeyPat
     assert recorder.calls == ["research", "documents", "embeds"]
 
 
+def test_codebook_promote_binds_the_app_to_the_env_pinned_dsn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The promote surface binds get_app to the ENV-pinned DSN (issue 215).
+
+    A bare get_app() resolves config.yaml's compose stack; a test host with
+    that DSN unreachable hangs the eventsourcing pool for 30 seconds. The
+    surface reads the env var through load_config and hands
+    dsn_from_config(cfg) down to the promote path, whose handler binds
+    get_app to exactly that DSN. Pure fakes: no database, no inductive
+    extra (issue 235 — the CI-runnable pin of the cycle fixture's contract).
+    """
+    import research_db
+
+    pinned = "postgresql://corpus_user:corpus_pass@localhost:59999/promote_pin"
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", pinned)
+    asyncio.run(research_db.reset_singletons())
+    recorder = _install_domain_stubs(monkeypatch)
+
+    bound: list[str | None] = []
+    fake_app = SimpleNamespace(
+        mapper=object(),
+        recorder=SimpleNamespace(events_table_name="events"),
+        save=lambda aggregate: None,
+    )
+
+    def fake_get_app(connection_string: str | None = None, backend: str = "postgres") -> Any:
+        bound.append(connection_string)
+        return fake_app
+
+    monkeypatch.setattr(research_handler_module, "get_app", fake_get_app)
+
+    async def fake_promote_proposal(
+        pool: Any, tenant: UUID, proposed_id: int, name: str, definition: str, **kwargs: Any
+    ) -> dict[str, object]:
+        # The real mint path reads handler.app; that edge IS the binding.
+        handler = research_handler_module.ResearchHandler(pool, dsn=kwargs.get("dsn"))
+        handler.app.save(object())
+        return {"status": "promoted", "dsn_used": kwargs.get("dsn")}
+
+    monkeypatch.setattr("corpus_kb.research.promote_code.promote_proposal", fake_promote_proposal)
+
+    try:
+        result = asyncio.run(
+            codebook_promote(_FakePool(), 1, "code", "definition", tenant_id=TENANT)
+        )
+    finally:
+        asyncio.run(research_db.reset_singletons())
+
+    assert result == {"status": "promoted", "dsn_used": pinned}
+    assert bound == [pinned], "get_app must bind the env-pinned DSN, not None or config.yaml"
+    assert recorder.calls == ["research", "documents", "embeds"]
+
+
 # ---------------------------------------------------------------------------
 # The CLI delegates to the shared tools and never catches up itself
 # ---------------------------------------------------------------------------

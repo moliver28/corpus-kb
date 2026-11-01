@@ -94,8 +94,9 @@ def _strip_markdown(md: str) -> str:
 # Wave 5B owns the README + docs rewrite (program target: grade <= 9 there).
 # A file listed here is skipped with its measured grade until that rewrite
 # lands. A file NOT listed here that exceeds the grade bound FAILS this gate.
-# The list is empty since the w6a sentence ratchet: research/harness-distribution.md
-# was rewritten and now grades FK <= 12 unskipped.
+# The list is empty. research/harness-distribution.md left this gate in
+# PR #253: it moved to docs/research/, which this docs/*.md scan does not
+# cover and which .vale.ini exempts as a frozen research archive.
 PENDING_W5B_REWRITE: dict[str, str] = {}
 
 MAX_DOC_GRADE = 12
