@@ -139,7 +139,7 @@ CREATE EXTENSION IF NOT EXISTS age;
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO corpus_user;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO corpus_user;
 
--- PostgreSQL 15+ revoked CREATE on the public schema from non-owners by
+-- Postgres 15+ revoked CREATE on the public schema from non-owners by
 -- default (PG 14 and older granted it to PUBLIC). Without this grant the
 -- first event-store write dies with "permission denied for schema public".
 GRANT CREATE ON SCHEMA public TO corpus_user;

@@ -166,9 +166,9 @@ with a distinct per-gate exit code (10-17). `codebook_promotion` is
 hard-floored: config may add gates to `halt_on` but can never remove the
 floor, and promotion itself always runs through
 `corpus-kb codebook promote`. A denied on-mode approval exits 20 (a
-closed stdin counts as a denial). A cycle that cannot proceed (e.g. no
-codebook version yet) exits 2. The full exit-code table lives in
-[OPERATIONS.md](OPERATIONS.md).
+closed stdin counts as a denial). A cycle that cannot proceed (for
+example, no codebook version yet) exits 2. The full exit-code table
+lives in [OPERATIONS.md](OPERATIONS.md).
 
 Progress is event-sourced: the cycle is a `CodingRun` with
 `params.kind='cycle'`, and each stage boundary lands a checkpoint. To

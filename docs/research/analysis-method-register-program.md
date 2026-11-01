@@ -321,8 +321,9 @@ One pass, in this order:
    teaches the axis-walk (research question → output family → inputs
    → calibration/autonomy budget → cautions → run → attach validation
    + permitted claims), generated from the register where possible.
-5. `_setup/validate_configs.py` VALID_TOOL_NAMES append (line ~47;
-   re-verify).
+5. `_setup/validate_configs_*.py` VALID_TOOL_NAMES append (the validator
+   modules live beside the `validate_configs.py` entry; re-verify the
+   file).
 6. `tools/method_select_tools.py` — the selector handler: a thin
    envelope wrapper over `rank_methods` (no second rubric) + golden
    determinism snapshot test.
@@ -330,7 +331,7 @@ One pass, in this order:
    block; append to the `poe gen` target in `pyproject.toml`
    (`gen` ~line 468, `check` ~line 480 — re-verify); run `poe gen`.
 8. Adapters: HTTP routes (`api/http.py`, graph routes ~line 172 —
-   re-verify), socket arms (`api/socket_ops.py` ~line 451 —
+   re-verify), socket arms (`api/_socket_arms.py` —
    re-verify). Mind the P0 eager-catalogue rule: no module-level
    optional imports in any handler chain.
 9. `poe verify` + `poe gen` + targeted pytest; fix everything red.
