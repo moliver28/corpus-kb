@@ -451,13 +451,8 @@ def _migration_check(present_tables: set[str]) -> ResearchCheck:
     )
 
 
-async def db_checks(conn: asyncpg.Connection, config: dict[str, Any]) -> list[ResearchCheck]:
-    """DB-backed checks on an OPEN connection (migrations/checkpoint/DLQ/counts).
-
-    Row reads run inside ONE transaction with the default-tenant GUC: the
-    doctor connects as the configured (non-superuser) role, and FORCE RLS
-    makes a GUC-less verification read return ZERO rows silently.
-    """
+async def _public_tables(conn: asyncpg.Connection) -> set[str]:
+    """Names of the ordinary tables in the ``public`` schema."""
     rows = await conn.fetch(
         """
         SELECT c.relname FROM pg_class c
@@ -465,16 +460,18 @@ async def db_checks(conn: asyncpg.Connection, config: dict[str, Any]) -> list[Re
         WHERE n.nspname = 'public' AND c.relkind = 'r'
         """
     )
-    migrations = _migration_check({row["relname"] for row in rows})
-    if migrations.status != STATUS_OK:
-        # Every dependent read (checkpoint/counts/DLQ) needs the same tables;
-        # on a pre-coding or half-applied database name the specific missing
-        # migration ("not applied - run setup") instead of surfacing a pile of
-        # relation-does-not-exist errors (todo-19 QA failure scenario).
-        return [migrations]
+    return {row["relname"] for row in rows}
 
-    checks: list[ResearchCheck] = [migrations]
 
+async def _checkpoint_counts(
+    conn: asyncpg.Connection,
+) -> tuple[asyncpg.Record | None, int, int, int, int]:
+    """Checkpoint row plus the codebook/run/assignment/DLQ counts.
+
+    Row reads run inside ONE transaction with the default-tenant GUC: the
+    doctor connects as the configured (non-superuser) role, and FORCE RLS
+    makes a GUC-less verification read return ZERO rows silently.
+    """
     async with conn.transaction():
         await conn.execute(
             "SELECT set_config('app.current_tenant_id', $1, true)", str(DEFAULT_TENANT)
@@ -490,69 +487,96 @@ async def db_checks(conn: asyncpg.Connection, config: dict[str, Any]) -> list[Re
         versions = await conn.fetchval("SELECT count(*) FROM codebook_versions")
         runs = await conn.fetchval("SELECT count(*) FROM research_runs")
         assignments = await conn.fetchval("SELECT count(*) FROM research_assignments")
-
-    checks.append(
-        ResearchCheck(
-            name="codebook / coding runs",
-            status=STATUS_INFO,
-            detail=(f"codebook_versions={versions} coding_runs={runs} assignments={assignments}"),
-            doc=DOC_GETTING_STARTED,
-        )
+    return (
+        checkpoint,
+        int(dlq_count or 0),
+        int(versions or 0),
+        int(runs or 0),
+        int(assignments or 0),
     )
 
-    if checkpoint is None:
-        checks.append(
-            ResearchCheck(
-                name="projection checkpoint",
-                status=STATUS_WARN,
-                detail="no research projection checkpoint (projections have never run)",
-                fix="corpus-kb research demo  (or ingest a transcript)",
-                doc=DOC_GETTING_STARTED,
-            )
-        )
-    else:
-        last_sequence = int(checkpoint["last_sequence"] or 0)
-        head = await _events_head(conn)
-        if head is None:
-            lag: int | None = None
-            detail = f"checkpoint at sequence {last_sequence}; event head unknown"
-        else:
-            lag = head - last_sequence
-            detail = (
-                f"checkpoint at sequence {last_sequence}, up to date (event head {head})"
-                if lag <= 0
-                else f"checkpoint at sequence {last_sequence}; {lag} events awaiting projection"
-            )
-        stale = lag is not None and lag > 0
-        checks.append(
-            ResearchCheck(
-                name="projection checkpoint",
-                status=STATUS_WARN if stale else STATUS_OK,
-                detail=detail,
-                fix="re-run any research command (catch-up is automatic)" if stale else "",
-                doc=DOC_GETTING_STARTED,
-            )
-        )
 
-    if dlq_count:
-        checks.append(
-            ResearchCheck(
-                name="projection DLQ",
-                status=STATUS_WARN,
-                detail=f"{dlq_count} dead-lettered events need attention",
-                fix="inspect projection_dlq (projection_name, error) then re-ingest",
-                doc=DOC_RESEARCH,
-            )
+def _coding_runs_check(versions: int, runs: int, assignments: int) -> ResearchCheck:
+    """Info line for the codebook and coding-run counters."""
+    return ResearchCheck(
+        name="codebook / coding runs",
+        status=STATUS_INFO,
+        detail=(f"codebook_versions={versions} coding_runs={runs} assignments={assignments}"),
+        doc=DOC_GETTING_STARTED,
+    )
+
+
+async def _checkpoint_check(
+    conn: asyncpg.Connection, checkpoint: asyncpg.Record | None
+) -> ResearchCheck:
+    """Lag of the research projection checkpoint behind the event head."""
+    if checkpoint is None:
+        return ResearchCheck(
+            name="projection checkpoint",
+            status=STATUS_WARN,
+            detail="no research projection checkpoint (projections have never run)",
+            fix="corpus-kb research demo  (or ingest a transcript)",
+            doc=DOC_GETTING_STARTED,
         )
+    last_sequence = int(checkpoint["last_sequence"] or 0)
+    head = await _events_head(conn)
+    if head is None:
+        lag: int | None = None
+        detail = f"checkpoint at sequence {last_sequence}; event head unknown"
     else:
-        checks.append(
-            ResearchCheck(
-                name="projection DLQ",
-                status=STATUS_OK,
-                detail="0 dead-lettered events",
-                doc=DOC_RESEARCH,
-            )
+        lag = head - last_sequence
+        detail = (
+            f"checkpoint at sequence {last_sequence}, up to date (event head {head})"
+            if lag <= 0
+            else f"checkpoint at sequence {last_sequence}; {lag} events awaiting projection"
         )
+    stale = lag is not None and lag > 0
+    return ResearchCheck(
+        name="projection checkpoint",
+        status=STATUS_WARN if stale else STATUS_OK,
+        detail=detail,
+        fix="re-run any research command (catch-up is automatic)" if stale else "",
+        doc=DOC_GETTING_STARTED,
+    )
+
+
+def _dlq_check(dlq_count: int) -> ResearchCheck:
+    """Dead-letter queue state for the projection pipeline."""
+    if dlq_count:
+        return ResearchCheck(
+            name="projection DLQ",
+            status=STATUS_WARN,
+            detail=f"{dlq_count} dead-lettered events need attention",
+            fix="inspect projection_dlq (projection_name, error) then re-ingest",
+            doc=DOC_RESEARCH,
+        )
+    return ResearchCheck(
+        name="projection DLQ",
+        status=STATUS_OK,
+        detail="0 dead-lettered events",
+        doc=DOC_RESEARCH,
+    )
+
+
+async def db_checks(conn: asyncpg.Connection, config: dict[str, Any]) -> list[ResearchCheck]:
+    """DB-backed checks on an OPEN connection (migrations/checkpoint/DLQ/counts).
+
+    Row reads run in tenant-scoped transactions (see ``_checkpoint_counts``
+    and the Stage 3 block below); every check order matches the historical
+    report.
+    """
+    migrations = _migration_check(await _public_tables(conn))
+    if migrations.status != STATUS_OK:
+        # Every dependent read (checkpoint/counts/DLQ) needs the same tables;
+        # on a pre-coding or half-applied database name the specific missing
+        # migration ("not applied - run setup") instead of surfacing a pile of
+        # relation-does-not-exist errors (todo-19 QA failure scenario).
+        return [migrations]
+
+    checkpoint, dlq_count, versions, runs, assignments = await _checkpoint_counts(conn)
+    checks: list[ResearchCheck] = [migrations, _coding_runs_check(versions, runs, assignments)]
+    checks.append(await _checkpoint_check(conn, checkpoint))
+    checks.append(_dlq_check(dlq_count))
 
     # Stage 3 corpus-health checks (each self-guarded; never raise). They
     # re-read chunks/chunks_vectors, so they run in their OWN transaction
