@@ -130,6 +130,14 @@ extra, or below `min_pages`, it falls back to the default plan.
 | `textbook.structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows. Flag, true or false |
 | `textbook.citations` | `false` | Write a plain-English `citation` string (true pages, section title) into each chunk's metadata. Flag, true or false |
 
+**Semantic units.** With `textbook.structured_output` on, each chunk
+also lists the unit kinds on its pages in a `units` metadata key. A
+unit today is a table. A chunk that covers a table page carries
+`"units": ["table"]`. Pages with no units add no key, so the flag-off
+metadata stays exact. Units are durable metadata, like `citation`;
+they do not surface in search results. Figures and formulas will join
+the list when their detection lands.
+
 Books are long jobs, so most people run them through the ingest queue
 ([HARNESS-PLAYBOOKS.md](research/HARNESS-PLAYBOOKS.md), "Recipe: queue the
 textbooks"). The queue worker drains one book at a time.

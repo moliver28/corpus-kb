@@ -31,12 +31,12 @@ cache evicts its oldest files past ``cache_max_mb``. Every parsed
 window leaves a :class:`WindowOutcome` (parser, cache hit, warnings)
 whose fold becomes the conditional ``textbook`` envelope key.
 
-The parser registry is the ``_PARSER_SEAMS`` table in
-``textbook_registry.py``: one row per optional extra, each pointing at
-that parser's check and window seams. The docling seams live in
-``textbook_windows.py``; the paddle seams in ``textbook_paddle.py``;
-the assembly in ``textbook_assemble.py``; the cache in
-``textbook_cache.py``.
+The parser registry is the ``_PARSER_SEAMS`` table in ``textbook_registry.py``:
+one row per optional extra, each pointing at that parser's check and
+window seams. With ``structured_output`` on, chunks over table pages
+carry a ``units`` key (tables only; never a search-result field).
+Seams: docling in ``textbook_windows.py``, paddle in ``textbook_paddle.py``,
+assembly in ``textbook_assemble.py``, cache in ``textbook_cache.py``.
 """
 
 from __future__ import annotations
@@ -66,6 +66,7 @@ from .textbook_cache import (
     window_ranges,
 )
 from .textbook_outcomes import WindowOutcome, summarize
+from .textbook_pack import page_units
 from .textbook_pages import (
     PageItem,
     WindowRecord,
@@ -139,6 +140,7 @@ class TextbookStrategy:
             TOKEN_BUDGET_CHARS,
             warnings,
             citations=settings.citations,
+            units=page_units(items),
         )
         return ChunkPlan(
             strategy=self.name,

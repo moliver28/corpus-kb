@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from ...chunking.hierarchy import CHARS_PER_TOKEN, Segment, estimate_tokens
 from ..base import PlannedChunk
-from .textbook_pack import PageSpan, bounded_pieces, make_chunk
+from .textbook_pack import PageSpan, UnitMap, bounded_pieces, make_chunk
 from .textbook_pages import OutlineBookmark, PageItem, WindowRecord
 
 #: Docling labels that open a section (primary structure signal).
@@ -143,6 +143,7 @@ def plan_chunks(
     warnings: list[str],
     *,
     citations: bool = False,
+    units: UnitMap | None = None,
 ) -> tuple[str, list[PlannedChunk]]:
     """Pack section blocks into budget-bounded chunks with true page metadata.
 
@@ -154,7 +155,9 @@ def plan_chunks(
     first and last pages its char span touches, its heading path is its
     opening block's title, and its text is an exact slice. With
     ``citations`` set, each chunk's metadata also carries a ``citation``
-    string; flag-off leaves the metadata shape unchanged.
+    string; with a ``units`` map, chunks over pages that parsed a unit
+    carry the sorted ``units`` list. Flag-off (both default) leaves the
+    metadata shape unchanged.
     """
     target_tokens = max(1, budget_chars // CHARS_PER_TOKEN)
     segments: list[Segment] = []
@@ -190,6 +193,7 @@ def plan_chunks(
                 current[0][1].title,
                 len(chunks),
                 citation=citations,
+                units=units,
             )
         )
         current = []
@@ -213,6 +217,7 @@ def plan_chunks(
                         block.title,
                         len(chunks),
                         citation=citations,
+                        units=units,
                     )
                 )
             continue
