@@ -32,6 +32,7 @@ from corpus_kb._setup.doctor_research import (
 )
 from corpus_kb.config import KNOWN_CORPUS_KB_ENV_VARS
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 DOC_ADMIN = "docs/ADMIN.md"
 
@@ -55,7 +56,7 @@ DIMENSIONS_HISTOGRAM_SQL = (
 HNSW_INDEX_NAME = "idx_chunks_vectors_hnsw_halfvec2560"
 HNSW_RELOPTIONS_SQL = "SELECT reloptions FROM pg_class WHERE relname = $1 AND relkind = 'i'"
 
-DEFAULT_EMBEDDING_DIMENSIONS = 2560
+DEFAULT_EMBEDDING_DIMENSIONS = EMBEDDING_DIMENSIONS
 DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:4b"
 
 
