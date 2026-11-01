@@ -216,6 +216,7 @@ The windowed large-PDF strategy (`docs/INGESTION-STRATEGIES.md`,
 | `window_pages` | `50` | Pages per parse window; one Docling call per window |
 | `parser` | `docling` | The page parser: `docling` or `pypdf` |
 | `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |
+| `structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows |
 
 The cache grows and nothing prunes it today. Each parsed window is one
 JSON file named `<parser>-<16 hex chars>-w<NNNN>.json` under

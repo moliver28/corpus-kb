@@ -456,7 +456,9 @@ def test_subprocess_crash_falls_back_and_caches_under_pypdf(
     loader = _fake_loader(_six_page_nodes())
     monkeypatch.setattr(_PAGES_TARGET, loader)
     _patch_docling_present(monkeypatch, present=True)  # the spec gate passes; the child fails
-    monkeypatch.setattr(_SUBPROCESS_TARGET, lambda pdf, start, end, timeout_s: None)
+    monkeypatch.setattr(
+        _SUBPROCESS_TARGET, lambda pdf, start, end, timeout_s, structured=False: None
+    )
     cache_dir = tmp_path / "cache"
     config = _config(1, 2, str(cache_dir))
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
@@ -476,8 +478,10 @@ def test_subprocess_payload_feeds_the_docling_cache(
     monkeypatch.setattr(_PAGES_TARGET, loader)
     _patch_docling_present(monkeypatch, present=True)  # the spec gate passes
 
-    def _wrapper(pdf: Path, start: int, end: int, timeout_s: float) -> list[PageItem]:
-        del pdf, timeout_s
+    def _wrapper(
+        pdf: Path, start: int, end: int, timeout_s: float, structured: bool = False
+    ) -> list[PageItem]:
+        del pdf, timeout_s, structured
         return [PageItem(page, "text", f"shipped page {page}") for page in range(start, end + 1)]
 
     monkeypatch.setattr(_SUBPROCESS_TARGET, _wrapper)
@@ -591,6 +595,138 @@ def test_a_failing_page_extraction_warns_and_keeps_the_rest() -> None:
     items = parse_window_pypdf(_Reader(), 1, 3, warnings)
     assert [(item.page, item.text) for item in items] == [(1, "first"), (3, "third")]
     assert warnings == ["pages 2 did not extract; skipped"]
+
+
+# structured_output flag: the rich parse caches under its own tag
+# ---------------------------------------------------------------------------
+
+
+class _RichBox:
+    l, t, r, b = 1.0, 2.0, 3.0, 4.0  # noqa: E741 — docling's attribute names
+
+
+class _RichProv:
+    def __init__(self, page: int) -> None:
+        self.page_no = page
+        self.bbox = _RichBox()
+
+
+class _RichNode:
+    def __init__(self, label: str, text: str, page: int, markdown: str | None = None) -> None:
+        self.label = label
+        self.text = text
+        self.prov = [_RichProv(page)]
+        self._markdown = markdown
+
+    def export_to_markdown(self, doc: object = None) -> str:
+        del doc
+        assert self._markdown is not None
+        return self._markdown
+
+
+class _RichDocument:
+    def __init__(self, items: list[_RichNode]) -> None:
+        self.items = items
+
+    def iterate_items(self) -> list[tuple[_RichNode, int]]:
+        return [(item, 1) for item in self.items]
+
+
+class _RichResult:
+    def __init__(self, items: list[_RichNode]) -> None:
+        self.document = _RichDocument(items)
+
+
+class _RichConverter:
+    """Converter double serving one rich node set per page."""
+
+    def __init__(self, pages: dict[int, list[_RichNode]]) -> None:
+        self._pages = pages
+        self.calls: list[tuple[int, int]] = []
+
+    def convert(self, source: str, page_range: tuple[int, int] | None = None) -> _RichResult:
+        assert page_range is not None and page_range[0] >= 1
+        start, end = page_range
+        self.calls.append((start, end))
+        nodes = [node for page in range(start, end + 1) for node in self._pages.get(page, [])]
+        return _RichResult(nodes)
+
+
+def _rich_pages() -> dict[int, list[_RichNode]]:
+    body = "prose body " * 260  # ~2900 chars: one page near half the budget
+    return {
+        1: [_RichNode("section_header", "Chapter One", 1), _RichNode("text", "intro body", 1)],
+        2: [_RichNode("text", body, 2)],
+        3: [_RichNode("text", body, 3)],
+        4: [_RichNode("section_header", "Chapter Two", 4), _RichNode("table", "", 4, "| a |")],
+        5: [_RichNode("text", body, 5)],
+        6: [_RichNode("text", body, 6)],
+    }
+
+
+def test_structured_flag_caches_under_the_rich_tag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    converter = _RichConverter(_rich_pages())
+    monkeypatch.setattr(_PAGES_TARGET, lambda: converter)
+    cache_dir = tmp_path / "cache"
+    config = _config(1, 4, str(cache_dir), window_subprocess=False, structured_output=True)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert len(list(cache_dir.glob("docling-v2-rich-*.json"))) == 2
+    assert not list(cache_dir.glob("pypdf-*.json"))
+    assert plan.textbook_summary is not None and plan.textbook_summary["parser"] == "docling"
+    assert any("| a |" in chunk.text for chunk in plan.chunks)  # the table reached the chunks
+
+    def _boom() -> object:
+        raise AssertionError("must use the rich cache")
+
+    monkeypatch.setattr(_PAGES_TARGET, _boom)
+    again = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert [chunk.text for chunk in again.chunks] == [chunk.text for chunk in plan.chunks]
+    assert any("| a |" in chunk.text for chunk in again.chunks)  # rich fields survived the cache
+
+
+def test_flag_off_keeps_plain_tag_and_plain_items(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    converter = _RichConverter(_rich_pages())
+    monkeypatch.setattr(_PAGES_TARGET, lambda: converter)
+    cache_dir = tmp_path / "cache"
+    config = _config(1, 4, str(cache_dir), window_subprocess=False)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert len(list(cache_dir.glob("docling-v2-*.json"))) == 2  # the plain tag
+    assert not list(cache_dir.glob("docling-v2-rich-*.json"))
+    assert all("| a |" not in chunk.text for chunk in plan.chunks)  # no table markdown
+    assert plan.textbook_summary is not None and plan.textbook_summary["parser"] == "docling"
+
+
+def test_structured_subprocess_window_ships_and_caches_rich(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = _write_pdf(tmp_path / "book.pdf", ["."] * 6)
+    loader = _fake_loader(_six_page_nodes())
+    monkeypatch.setattr(_PAGES_TARGET, loader)
+    _patch_docling_present(monkeypatch, present=True)
+    seen: dict[str, object] = {}
+
+    def _wrapper(
+        pdf: Path, start: int, end: int, timeout_s: float, structured: bool = False
+    ) -> list[PageItem]:
+        seen["structured"] = structured
+        return [
+            PageItem(page, "table", "| t |", table_markdown="| t |", level=2)
+            for page in range(start, end + 1)
+        ]
+
+    monkeypatch.setattr(_SUBPROCESS_TARGET, _wrapper)
+    cache_dir = tmp_path / "cache"
+    config = _config(1, 4, str(cache_dir), structured_output=True)
+    plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), config))
+    assert seen["structured"] is True  # the flag traveled to the child call
+    assert list(cache_dir.glob("docling-v2-rich-*.json"))  # cached under the rich tag
+    assert any("| t |" in chunk.text for chunk in plan.chunks)
 
 
 # ---------------------------------------------------------------------------

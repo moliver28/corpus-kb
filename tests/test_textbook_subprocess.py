@@ -63,19 +63,23 @@ class _FakeProc:
 
 
 class _FakeQueue:
-    """Payload-queue double: canned rows, or Empty on every read."""
+    """Payload-queue double: canned rows, or Empty on every read.
 
-    def __init__(self, rows: list[dict[str, object]] | None = None) -> None:
+    Rows are typed loosely on purpose: a corrupt child payload may hold
+    non-dict rows, and the tests feed exactly that.
+    """
+
+    def __init__(self, rows: list[object] | None = None) -> None:
         self._rows = rows
         self.closed = False
 
-    def get(self, timeout: float | None = None) -> list[dict[str, object]]:
+    def get(self, timeout: float | None = None) -> list[object]:
         del timeout
         if self._rows is None:
             raise Empty
         return self._rows
 
-    def put(self, rows: list[dict[str, object]]) -> None:
+    def put(self, rows: list[object]) -> None:
         self._rows = rows
 
     def close(self) -> None:
@@ -85,7 +89,7 @@ class _FakeQueue:
 def _patch_child(monkeypatch: pytest.MonkeyPatch, proc: _FakeProc, queue: _FakeQueue) -> None:
     monkeypatch.setattr(
         "corpus_kb.ingestion.strategies.textbook_subprocess._start_child",
-        lambda pdf_path, start, end: (proc, queue),
+        lambda pdf_path, start, end, structured=False: (proc, queue),
     )
 
 
@@ -174,6 +178,50 @@ def test_items_from_rows_filters_bad_shapes() -> None:
         ]
     )
     assert [item.page for item in items] == [1]
+
+
+def test_rows_carry_rich_fields_into_the_items(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows: list[dict[str, object]] = [
+        {
+            "page": 2,
+            "label": "section_header",
+            "text": "Chapter Two",
+            "level": 1,
+            "bbox": [0.0, 1.0, 2.0, 3.0],
+        },
+        {"page": 3, "label": "table", "text": "| a |", "table_markdown": "| a |"},
+    ]
+    proc = _FakeProc(exitcode=0)
+    _patch_child(monkeypatch, proc, _FakeQueue(rows))
+    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0, structured=True)
+    assert items == [
+        PageItem(2, "section_header", "Chapter Two", level=1, bbox=(0.0, 1.0, 2.0, 3.0)),
+        PageItem(3, "table", "| a |", table_markdown="| a |"),
+    ]
+
+
+def test_a_malformed_rich_row_is_skipped(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows: list[dict[str, object]] = [
+        {"page": 4, "label": "text", "text": "bad bbox", "bbox": [1.0, 2.0]},
+        {"page": 5, "label": "text", "text": "kept"},
+    ]
+    proc = _FakeProc(exitcode=0)
+    _patch_child(monkeypatch, proc, _FakeQueue(rows))
+    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    assert items == [PageItem(5, "text", "kept")]
+
+
+def test_a_non_dict_row_is_skipped_and_the_parse_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rows: list[object] = [
+        "garbage",  # a corrupt payload row: skipped, not a crash
+        {"page": 6, "label": "text", "text": "kept"},
+    ]
+    proc = _FakeProc(exitcode=0)
+    _patch_child(monkeypatch, proc, _FakeQueue(rows))
+    items = parse_window_in_subprocess(Path("book.pdf"), 1, 4, 5.0)
+    assert items == [PageItem(6, "text", "kept")]
 
 
 # ---------------------------------------------------------------------------
@@ -315,3 +363,11 @@ def test_settings_defaults_cover_the_new_keys() -> None:
     assert defaults.window_subprocess is True
     assert defaults.window_timeout_s == 3600.0
     assert defaults.cache_max_mb == 2048
+    assert defaults.structured_output is False
+
+
+def test_settings_parse_the_structured_output_flag() -> None:
+    on = settings_from({"textbook": {"structured_output": True}})
+    assert on.structured_output is True
+    junk = settings_from({"textbook": {"structured_output": 1}})  # ints are not flags here
+    assert junk.structured_output is False

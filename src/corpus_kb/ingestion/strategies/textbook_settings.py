@@ -13,6 +13,8 @@ Keys (all optional; unknown shapes keep the default):
   and the window falls back to pypdf (default 3600.0)
 * ``cache_max_mb`` — window-cache size cap in MiB; the oldest files
   evict first, and ``0`` disables the cap (default 2048)
+* ``structured_output`` — keep rich page structure (heading level,
+  page box, table markdown) in the parsed windows (default false)
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ DEFAULT_CACHE_DIR = "~/.corpus-kb/textbook-cache"
 DEFAULT_WINDOW_SUBPROCESS = True
 DEFAULT_WINDOW_TIMEOUT_S = 3600.0
 DEFAULT_CACHE_MAX_MB = 2048
+DEFAULT_STRUCTURED_OUTPUT = False
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,7 @@ class TextbookSettings:
     window_subprocess: bool = DEFAULT_WINDOW_SUBPROCESS
     window_timeout_s: float = DEFAULT_WINDOW_TIMEOUT_S
     cache_max_mb: int = DEFAULT_CACHE_MAX_MB
+    structured_output: bool = DEFAULT_STRUCTURED_OUTPUT
 
 
 def _int_setting(raw: object, default: int) -> int:
@@ -85,4 +89,5 @@ def settings_from(config: Mapping[str, object] | None) -> TextbookSettings:
         window_subprocess=_bool_setting(block.get("window_subprocess"), DEFAULT_WINDOW_SUBPROCESS),
         window_timeout_s=_float_setting(block.get("window_timeout_s"), DEFAULT_WINDOW_TIMEOUT_S),
         cache_max_mb=_nonneg_int_setting(block.get("cache_max_mb"), DEFAULT_CACHE_MAX_MB),
+        structured_output=_bool_setting(block.get("structured_output"), DEFAULT_STRUCTURED_OUTPUT),
     )

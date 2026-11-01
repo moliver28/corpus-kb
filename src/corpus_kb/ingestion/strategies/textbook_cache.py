@@ -21,6 +21,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
+from .textbook_docling import page_row, rich_fields_from_row
 from .textbook_pages import PARSER_VERSIONS, PageItem, WindowRecord
 
 logger = logging.getLogger(__name__)
@@ -46,8 +47,13 @@ class CacheKey:
 
     @property
     def parser_version(self) -> str:
-        """The version tag this key's records carry (``PARSER_VERSIONS``)."""
-        return PARSER_VERSIONS[self.parser_key]
+        """The version tag this key's records carry (``PARSER_VERSIONS``).
+
+        A plain parser name resolves through ``PARSER_VERSIONS``; a
+        rich-variant tag (the ``parser_key`` output) already is a full
+        tag and passes through.
+        """
+        return PARSER_VERSIONS.get(self.parser_key, self.parser_key)
 
     def path(self, cache_dir: Path) -> Path:
         """The JSON cache file for this triple."""
@@ -123,7 +129,19 @@ def load_window_cache(
             return None
         if not start <= page <= end:
             return None
-        items.append(PageItem(page, label, text))
+        rich = rich_fields_from_row(row)
+        if rich is None:
+            return None  # a malformed rich value: re-parse, never guess
+        items.append(
+            PageItem(
+                page,
+                label,
+                text,
+                level=rich.level,
+                table_markdown=rich.table_markdown,
+                bbox=rich.bbox,
+            )
+        )
     return WindowRecord(start_page=start, end_page=end, items=items)
 
 
@@ -143,9 +161,10 @@ def save_window_cache(path: Path, key: CacheKey, record: WindowRecord) -> None:
         "window": key.window_index,
         "start_page": record.start_page,
         "end_page": record.end_page,
-        "pages": [
-            {"page": item.page, "label": item.label, "text": item.text} for item in record.items
-        ],
+        # The shared row rule: rich keys appear only when the item set
+        # them. A pypdf row holds three keys; a docling row also carries
+        # level/bbox once the walk provides them.
+        "pages": [page_row(item) for item in record.items],
     }
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     try:

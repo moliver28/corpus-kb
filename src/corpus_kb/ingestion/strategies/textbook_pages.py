@@ -1,4 +1,4 @@
-"""PDF probing and window parsing for the textbook strategy.
+"""PDF probing, pypdf windows, and the window record for the textbook strategy.
 
 One window — a 1-based inclusive page span — parses at a time, so one
 book never monopolizes a run. Two parsers share one record shape:
@@ -6,8 +6,10 @@ book never monopolizes a run. Two parsers share one record shape:
 * ``docling`` (optional ``[docling]`` extra, the primary parser): each
   window is one ``DocumentConverter.convert`` call with a 1-based
   inclusive ``page_range`` tuple. Known limit (docling discussion #2744):
-  a windowed parse loses global heading and TOC context; this module only
-  records per-page items with their labels and page numbers.
+  a windowed parse loses global heading and TOC context; the parse
+  records per-page items with their labels and page numbers. The item
+  contract and the Docling surface live in ``textbook_docling``; the
+  names re-export here for the strategy module's single import point.
 * ``pypdf`` (optional ``[scan]`` extra, the degrade parser): plain
   page-window text, no labels. Bookmarks come from pypdf in both modes.
 
@@ -31,22 +33,31 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
+from .textbook_docling import (
+    PARSER_VERSIONS,
+    PageItem,
+    load_docling_converter,
+    parse_window_docling,
+    parser_key,
+)
+
 logger = logging.getLogger(__name__)
 
-#: Version tags baked into cache records; a parser change invalidates the
-#: records the old version wrote (the cache key carries this tag).
-PARSER_VERSIONS: dict[str, str] = {"docling": "docling-v1", "pypdf": "pypdf-v1"}
+__all__ = [
+    "PARSER_VERSIONS",
+    "OutlineBookmark",
+    "PageItem",
+    "WindowRecord",
+    "docling_env_warnings",
+    "load_docling_converter",
+    "open_pdf",
+    "parse_window_docling",
+    "parse_window_pypdf",
+    "parser_key",
+    "read_outline",
+]
 
 _NOISY_LOGGERS = ("pypdf", "fontTools")
-
-
-@dataclass(frozen=True)
-class PageItem:
-    """One parsed block: its 1-based page, its parser label, its text."""
-
-    page: int
-    label: str
-    text: str
 
 
 @dataclass(frozen=True)
@@ -163,56 +174,6 @@ def parse_window_pypdf(reader: Any, start: int, end: int, warnings: list[str]) -
     if failed:
         skipped = ", ".join(str(page) for page in failed)
         warnings.append(f"pages {skipped} did not extract; skipped")
-    return items
-
-
-def load_docling_converter() -> Any | None:
-    """A DocumentConverter, or None when the ``[docling]`` extra is absent.
-
-    Dynamic import on purpose: the extra is optional and CI never installs
-    it, so the import edge stays invisible to static resolution (the
-    semchunk/code pattern).
-    """
-    try:
-        module = importlib.import_module("docling.document_converter")
-    except ImportError:
-        return None
-    return module.DocumentConverter()
-
-
-def parse_window_docling(converter: Any, path: Path, start: int, end: int) -> list[PageItem]:
-    """One window through Docling: per-page items with their labels.
-
-    ``page_range`` is a 1-based inclusive ``(start, end)`` tuple, one
-    range per ``convert`` call (the docling 2.x contract). Items without
-    text or without a page number are dropped; labels pass through as
-    text (``section_header`` drives the assembly half).
-    """
-    result = converter.convert(source=str(path), page_range=(start, end))
-    return items_from_convert_result(result)
-
-
-def items_from_convert_result(result: object) -> list[PageItem]:
-    """Per-page items from one docling convert result.
-
-    The one extraction rule for both parse surfaces: the in-process
-    converter and the isolated child both call this, so their windows
-    carry identical items. Items without text or without a page number
-    are dropped; labels pass through as text.
-    """
-    items: list[PageItem] = []
-    document = getattr(result, "document", None)
-    if document is None:
-        return items
-    for node, _level in document.iterate_items():
-        text = getattr(node, "text", None)
-        prov = getattr(node, "prov", None)
-        page = getattr(prov[0], "page_no", None) if prov else None
-        if not isinstance(text, str) or not text.strip():
-            continue
-        if not isinstance(page, int) or isinstance(page, bool):
-            continue
-        items.append(PageItem(page, str(getattr(node, "label", "text")), text))
     return items
 
 
