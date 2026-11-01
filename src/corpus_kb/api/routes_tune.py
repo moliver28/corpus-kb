@@ -12,7 +12,14 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import opt_bool, opt_int, opt_str, parse_body, route_errors
+from corpus_kb.api._body import (
+    opt_bool,
+    opt_float,
+    opt_int,
+    opt_str,
+    parse_body,
+    route_errors,
+)
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
 
 
@@ -20,14 +27,6 @@ async def _pool() -> Any:
     from corpus_kb.api.research_http import research_pool
 
     return await research_pool()
-
-
-def _opt_float(body: dict[str, Any], key: str, default: float) -> float:
-    raw = body.get(key)
-    try:
-        return float(raw) if raw is not None else default
-    except (TypeError, ValueError):
-        return default
 
 
 @route_errors
@@ -41,8 +40,8 @@ async def extraction_tune_route(request: Request) -> JSONResponse:
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         method=str(body.get("method", "exemplar")),
         profile=opt_str(body.get("profile")),
-        min_confidence=_opt_float(body, "min_confidence", 0.8),
-        limit=opt_int(body.get("limit"), 8),
+        min_confidence=opt_float(body.get("min_confidence"), 0.8, name="min_confidence"),
+        limit=opt_int(body.get("limit"), 8, name="limit"),
         dry_run=opt_bool(body.get("dry_run"), False),
     )
     return JSONResponse(result)

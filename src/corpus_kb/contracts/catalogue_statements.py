@@ -33,7 +33,13 @@ STATEMENTS_OPERATIONS: tuple[Operation, ...] = (
             "List statement atoms newest-first. Filters: template_id, document_id, limit."
         ),
         handler="corpus_kb.tools.statements_tools:statements_list",
-        params=(_TENANT, ParamSpec("template_id"), ParamSpec("document_id"), ParamSpec("limit")),
+        params=(
+            _TENANT,
+            ParamSpec("template_id"),
+            ParamSpec("document_id"),
+            # Issue #238: the page size lives here, not in the adapters.
+            ParamSpec("limit", default=50),
+        ),
         envelope_keys=LIST_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "statements_list"),
@@ -51,7 +57,7 @@ STATEMENTS_OPERATIONS: tuple[Operation, ...] = (
             "belief-history view (valid_at first, supersede state shown)."
         ),
         handler="corpus_kb.tools.statements_tools:statements_timeline",
-        params=(_TENANT, ParamSpec("text_query"), ParamSpec("limit")),
+        params=(_TENANT, ParamSpec("text_query"), ParamSpec("limit", default=200)),
         envelope_keys=TIMELINE_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "statements_timeline"),

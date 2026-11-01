@@ -18,7 +18,7 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import route_errors
+from corpus_kb.api._body import opt_int, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 from corpus_kb.domain.models import ListDocumentsQuery, ListEntitiesQuery
 
@@ -30,8 +30,8 @@ async def list_documents(request: Request) -> JSONResponse:
 
     query = ListDocumentsQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
-        limit=int(request.query_params.get("limit", 100)),
-        offset=int(request.query_params.get("offset", 0)),
+        limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
+        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
     )
     handler = get_query_handler()
     results = await handler.handle_list_documents(query)
@@ -48,7 +48,7 @@ async def list_entities(request: Request) -> JSONResponse:
     query = ListEntitiesQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
         entity_type=request.query_params.get("entity_type"),
-        limit=int(request.query_params.get("limit", 100)),
+        limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
     )
     handler = get_query_handler()
     results = await handler.handle_list_entities(query)

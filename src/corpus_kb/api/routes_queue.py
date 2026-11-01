@@ -50,7 +50,7 @@ async def queue_status_route(request: Request) -> JSONResponse:
         await _pool(),
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         queue_id=opt_str(body.get("queue_id")),
-        limit=opt_int(body.get("limit"), 50),
+        limit=opt_int(body.get("limit"), 50, name="limit"),
     )
     return JSONResponse(result)
 
