@@ -335,7 +335,14 @@ def test_every_score_order_by_in_retrieval_carries_tiebreaker() -> None:
     # Issue 232 dedup: one shared arm builder now lives in
     # retrieval_arms.py — the dense template (exact + ANN variants) and the
     # FTS arm contribute one clause each; retrieval.py carries no SQL.
-    clauses = _desc_order_by_clauses(ROOT / "src/corpus_kb/research/retrieval_arms.py")
+    # retrieval_filters.py is scanned too (grain fragments must never grow
+    # an untied score ORDER BY), mirroring the multi-file handler loop above.
+    clauses: list[str] = []
+    for rel in (
+        "src/corpus_kb/research/retrieval_arms.py",
+        "src/corpus_kb/research/retrieval_filters.py",
+    ):
+        clauses.extend(_desc_order_by_clauses(ROOT / rel))
     assert len(clauses) == 2, clauses  # shared dense arm + shared FTS arm
     keys = r"(candidate\.\{grain\.row_id\}|\{grain\.alias\}\.\{grain\.row_id\})"
     for clause in clauses:
