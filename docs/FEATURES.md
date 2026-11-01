@@ -15,7 +15,7 @@ Send files, directories, or raw text into the pipeline. Corpus-KB detects the ty
 | Raw text | Optional type hint: code, markdown, or text |
 | Website | `corpus-kb ingest-url URL` — robots-respecting fetch (optional same-domain crawl), heading-section chunks with OG/JSON-LD metadata |
 
-Detection and chunking run through a pluggable **ingestion strategy**. The built-in `default` strategy preserves the classic behavior; built-in `transcript`, `pptx_structure`, and `web_structure` strategies give interviews, slide decks, and web pages first-class structure-aware chunking. Map source types to strategies in `config.yaml`, register one in-process, or ship one as an entry-point plugin — see [Ingestion strategies](INGESTION-STRATEGIES.md).
+Detection and chunking run through a pluggable **ingestion strategy**. The built-in `default` strategy preserves the classic behavior; built-in `transcript`, `pptx_structure`, and `web_structure` strategies give interviews, slide decks, and web pages first-class structure-aware chunking. Map source types to strategies in `config.yaml`, register one in-process, or ship one as an entry-point plugin — see [Ingestion strategies](INGESTION.md#ingestion-strategies).
 
 **Website ingestion scope:** fetching is static-HTML (no JavaScript rendering) and robots-respecting. Private addresses are blocked by default; `web.allow_private_addresses` opts out for genuinely local targets. The fetcher size-caps the stream and crawls same-site only (hostname modulo `www`). JS-heavy single-page apps yield their shell content only.
 
@@ -310,8 +310,7 @@ catalogue row declares.
 - [Install Corpus-KB](INSTALL.md)
 - [Browser UI](UI.md)
 - [Notebooks console](NOTEBOOKS.md)
-- [Ingestion pipeline details](INGESTION.md)
-- [Ingestion strategies](INGESTION-STRATEGIES.md)
+- [Ingestion pipeline and strategies](INGESTION.md)
 - [Admin guide: configuration and maintenance](ADMIN.md)
 - [API reference with curl examples](API.md)
 - [Development guide](DEVELOPMENT.md)
