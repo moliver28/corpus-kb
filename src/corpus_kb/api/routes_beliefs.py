@@ -33,7 +33,7 @@ async def beliefs_current_route(request: Request) -> JSONResponse:
         await _pool(),
         tenant_id=str(body.get("tenant_id", _TENANT_DEFAULT)),
         subject=opt_str(body.get("subject")),
-        limit=opt_int(body.get("limit"), 50),
+        limit=opt_int(body.get("limit"), 50, name="limit"),
         rebuild=opt_bool(body.get("rebuild"), True),
     )
     return JSONResponse(result)

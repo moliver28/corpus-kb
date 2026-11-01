@@ -12,7 +12,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from functools import wraps
-from typing import Any
+from math import isfinite
+from typing import Any, overload
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -25,6 +26,7 @@ from corpus_kb.errors import (
     DEFAULT_HTTP_STATUS,
     ERROR_MAP,
     CorpusError,
+    ValidationError,
     error_status,
 )
 
@@ -42,18 +44,91 @@ async def parse_body(request: Request) -> dict[str, Any]:
         return {}
 
 
-def opt_int(raw: object, default: int) -> int:
-    """Coerce one JSON count. Absent or junk answers the default."""
+# Postgres int8 bind range: a count past this fails the asyncpg bind one
+# layer down (500/-32603), so the parse helper refuses it up front with
+# the caller's failure class (issue #238 follow-up, deliberate).
+_INT8_MAX = 9223372036854775807
+_INT8_MIN = -9223372036854775808
+
+
+@overload
+def opt_int(raw: object, default: int, *, name: str, allow_negative: bool = ...) -> int: ...
+@overload
+def opt_int(raw: object, default: None, *, name: str, allow_negative: bool = ...) -> int | None: ...
+def opt_int(
+    raw: object, default: int | None, *, name: str = "value", allow_negative: bool = False
+) -> int | None:
+    """Coerce one JSON count. Absent answers the default; junk raises.
+
+    Whole numbers, whole floats (``5.0``), and digit strings pass. Any
+    other value (``"abc"``, ``5.7``, ``true``, a list) raises the
+    taxonomy ``ValidationError``: HTTP answers 400, socket answers
+    -32602. No silent fallback — issue #238 moved the old
+    fall-back-to-default behavior here so every surface fails the same
+    way on the same bad input.
+
+    Counts are non-negative: a negative value (``k=-5``) raises too —
+    Postgres rejects a negative LIMIT, and the old path surfaced that as
+    a 500/-32603 internal error. ``allow_negative=True`` (random seeds)
+    keeps the full Postgres int8 range instead; anything past that range
+    still raises, because the database bind would fail.
+    """
     if raw is None:
         return default
+    if isinstance(raw, bool):
+        raise ValidationError(f"{name} must be a whole number.")
     if isinstance(raw, int):
-        return int(raw)
-    if isinstance(raw, (float, str)):
+        value = raw
+    elif isinstance(raw, float):
+        if not raw.is_integer():
+            raise ValidationError(f"{name} must be a whole number.")
+        value = int(raw)
+    elif isinstance(raw, str):
         try:
-            return int(raw)
-        except (TypeError, ValueError):
-            return default
-    return default
+            value = int(raw)
+        except ValueError:
+            raise ValidationError(f"{name} must be a whole number.") from None
+    else:
+        raise ValidationError(f"{name} must be a whole number.")
+    if allow_negative:
+        if not _INT8_MIN <= value <= _INT8_MAX:
+            raise ValidationError(f"{name} is out of range.")
+    else:
+        if value < 0:
+            raise ValidationError(f"{name} must not be negative.")
+        if value > _INT8_MAX:
+            raise ValidationError(f"{name} is out of range.")
+    return value
+
+
+@overload
+def opt_float(raw: object, default: float, *, name: str) -> float: ...
+@overload
+def opt_float(raw: object, default: None, *, name: str) -> float | None: ...
+def opt_float(raw: object, default: float | None, *, name: str = "value") -> float | None:
+    """Coerce one JSON measure. Absent answers the default; junk raises.
+
+    Numbers and numeric strings pass; bools, other junk, and non-finite
+    values (``NaN``, ``Infinity`` — a NaN confidence poisons every
+    comparison downstream) raise the taxonomy ``ValidationError`` (same
+    failure class as ``opt_int``).
+    """
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        raise ValidationError(f"{name} must be a number.")
+    if isinstance(raw, (int, float)):
+        value = float(raw)
+    elif isinstance(raw, str):
+        try:
+            value = float(raw)
+        except ValueError:
+            raise ValidationError(f"{name} must be a number.") from None
+    else:
+        raise ValidationError(f"{name} must be a number.")
+    if not isfinite(value):
+        raise ValidationError(f"{name} must be a finite number.")
+    return value
 
 
 def opt_bool(raw: object, default: bool) -> bool:

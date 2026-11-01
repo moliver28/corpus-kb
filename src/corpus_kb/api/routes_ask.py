@@ -12,7 +12,13 @@ from __future__ import annotations
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import DEFAULT_TENANT_ID, error_response, parse_body, route_errors
+from corpus_kb.api._body import (
+    DEFAULT_TENANT_ID,
+    error_response,
+    opt_int,
+    parse_body,
+    route_errors,
+)
 
 
 @route_errors
@@ -28,7 +34,7 @@ async def ask(request: Request) -> JSONResponse:
     result = await ask_tool(
         query,
         tenant_id=str(body.get("tenant_id", DEFAULT_TENANT_ID)),
-        k=body.get("k"),
+        k=opt_int(body.get("k"), None, name="k"),
         pg_pool=await research_pool(),
     )
     return JSONResponse(result)

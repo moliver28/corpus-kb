@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.tools import labeling_tools
 from corpus_kb.tools.labeling_tools import MAX_LIST_LIMIT
 
@@ -247,7 +248,7 @@ async def test_build_malformed_lf_file_raises_with_the_fix(tmp_path: Any) -> Non
             },
         ),
     )
-    with pytest.raises(ValueError, match="Supported kinds"):
+    with pytest.raises(ValidationError, match="Supported kinds"):
         await labeling_tools.labeling_build(_probe(), config=config, tenant_id=TENANT)
 
 

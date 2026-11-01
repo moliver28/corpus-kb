@@ -48,11 +48,12 @@ EXTRACTION_TUNE_OPERATIONS: tuple[Operation, ...] = (
         handler="corpus_kb.tools.extraction_tune_tools:extraction_tune",
         params=(
             _TENANT,
-            ParamSpec("method"),
+            # Issue #238: defaults live here, not in the adapters.
+            ParamSpec("method", default="exemplar"),
             ParamSpec("profile"),
-            ParamSpec("min_confidence"),
-            ParamSpec("limit"),
-            ParamSpec("dry_run"),
+            ParamSpec("min_confidence", default=0.8),
+            ParamSpec("limit", default=8),
+            ParamSpec("dry_run", default=False),
         ),
         envelope_keys=TUNE_ENVELOPE,
         surfaces=(
