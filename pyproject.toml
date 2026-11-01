@@ -675,11 +675,11 @@ help = "MCP config + runtime config consistency gate (ci.yml validate-configs jo
 # scan surface is src/ Python only: .jscpd.json ignores ui_dist,
 # __pycache__, *.sql, *.yaml, and *.json (append-only SQL migrations
 # score 8.7 percent and are excluded by design). THRESHOLD is the
-# ratchet: 1.6 vs the 1.55 measured on master 46dc44a after the dedup
-# wave (126 clones, 566 files). Ratchet the number down in the same PR
-# that removes a clone family.
-cmd = "pnpm -C ui_src exec jscpd --config ../.jscpd.json --threshold 1.6 ../src"
-help = "jscpd duplication gate over src/ (threshold 1.6, config .jscpd.json)"
+# ratchet: 1.59 vs the 1.54 measured on chore/store-writer-dedup after
+# the store-writer dedup (#233) (125 clones, 567 files). Ratchet the
+# number down in the same PR that removes a clone family.
+cmd = "pnpm -C ui_src exec jscpd --config ../.jscpd.json --threshold 1.59 ../src"
+help = "jscpd duplication gate over src/ (threshold 1.59, config .jscpd.json)"
 
 [tool.poe.tasks.audit-deps]
 # Dependency CVE gate (PR-F, rule 10). uv-native audit of the COMMITTED

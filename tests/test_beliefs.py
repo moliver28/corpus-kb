@@ -142,6 +142,41 @@ async def test_beliefs_current_rejects_bad_limit() -> None:
 
 
 @pytest.mark.asyncio
+async def test_beliefs_timeline_answers_none_when_the_stored_row_is_gone() -> None:
+    """A vanished stored-posterior row answers None, not a crash."""
+    from collections.abc import AsyncIterator
+    from contextlib import asynccontextmanager
+
+    from corpus_kb.beliefs.store import BeliefStore
+
+    class _Conn:
+        @asynccontextmanager
+        async def transaction(self) -> AsyncIterator[_Conn]:
+            yield self
+
+        async def execute(self, sql: str, *args: object) -> str:
+            return "SET"
+
+        async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+            return []
+
+        async def fetchrow(self, sql: str, *args: object) -> None:
+            return None
+
+        async def fetchval(self, sql: str, *args: object) -> str:
+            return "00000000-0000-0000-0000-00000000000b"
+
+    class _Pool:
+        @asynccontextmanager
+        async def acquire(self) -> AsyncIterator[_Conn]:
+            yield _Conn()
+
+    store = BeliefStore(_Pool(), "00000000-0000-0000-0000-000000000001")
+    result = await store.timeline(subject="speaker:1", relation="preference", object_name="gelato")
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_predict_handler_requires_subject() -> None:
     from corpus_kb.tools.beliefs_tools import beliefs_predict
 

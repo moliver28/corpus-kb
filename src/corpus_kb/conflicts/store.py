@@ -6,6 +6,9 @@ from __future__ import annotations
 import json
 from typing import TYPE_CHECKING, Any
 
+from corpus_kb.storage.store_utils import entity_names
+from corpus_kb.storage.tenant_conn import tenant_connection
+
 from .cascade import CascadeVerdict
 
 if TYPE_CHECKING:
@@ -81,11 +84,7 @@ class ConflictStore:
     async def record(self, verdicts: list[CascadeVerdict]) -> int:
         """Insert flags write-once; returns rows actually inserted."""
         written = 0
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             for verdict in verdicts:
                 row = conflict_row(verdict, self._tenant_id)
                 inserted = await conn.fetchval(
@@ -106,30 +105,19 @@ class ConflictStore:
 
     async def fetch_scan_rows(self) -> list[dict[str, Any]]:
         """Live statements with entity names unfolded for the cascade."""
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             rows = await conn.fetch(SCAN_SQL, self._tenant_id)
         out: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)
-            entities = item.get("entities")
-            if isinstance(entities, str):
-                entities = json.loads(entities)
-            item["entity_names"] = [
-                e.get("name", "") for e in (entities or []) if isinstance(e, dict)
-            ]
+            item["entity_names"] = entity_names(item.get("entities"))
             out.append(item)
         return out
 
     async def list_conflicts(
         self, *, verdict: str | None = None, limit: int = 50
     ) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             rows = await conn.fetch(LIST_SQL, self._tenant_id, verdict, limit)
         return [dict(row) for row in rows]
 
@@ -137,11 +125,7 @@ class ConflictStore:
         self, conflict_id: str, resolved_verdict: str, resolved_by: str
     ) -> dict[str, Any] | None:
         """Finalize one flag; a confirmed revision supersedes statement A."""
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             rows = await conn.fetch(
                 RESOLVE_SQL, self._tenant_id, resolved_verdict, resolved_by, conflict_id
             )

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 import asyncpg
 
 from corpus_kb.storage.gateway import Row
+from corpus_kb.storage.store_utils import iso_or_none, parse_jsonb
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
@@ -113,17 +114,7 @@ def _row_to_dict(row: Row) -> dict[str, object]:
         "label": row["label"],
         "reduced_label": row["reduced_label"],
         "size": int(row["size"]),
-        "keywords": _parse_jsonb(row["keywords"]),
-        "params": _parse_jsonb(row["params"]),
-        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        "keywords": parse_jsonb(row["keywords"]),
+        "params": parse_jsonb(row["params"]),
+        "created_at": iso_or_none(row["created_at"]),
     }
-
-
-def _parse_jsonb(raw: object) -> object:
-    """asyncpg hands jsonb back as a string; parse it, keep raw on failure."""
-    if not isinstance(raw, str):
-        return raw
-    try:
-        return json.loads(raw)
-    except ValueError:
-        return raw

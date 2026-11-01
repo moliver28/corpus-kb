@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 import asyncpg
 
+from corpus_kb.storage.store_utils import iso_or_none, parse_jsonb
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 from .lfs import LFSpec
@@ -112,7 +113,7 @@ async def read_labels(
             "chunk_id": str(row["chunk_id"]),
             "label": row["label"],
             "probability": float(row["probability"]),
-            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "created_at": iso_or_none(row["created_at"]),
         }
         for row in rows
     ]
@@ -136,7 +137,7 @@ async def read_lfs(
         )
     out: list[dict[str, object]] = []
     for row in rows:
-        config = _parse_jsonb(row["config"])
+        config = parse_jsonb(row["config"])
         label = config.pop("label", None) if isinstance(config, dict) else None
         out.append(
             {
@@ -145,17 +146,7 @@ async def read_lfs(
                 "kind": row["kind"],
                 "label": label,
                 "config": config if isinstance(config, dict) else {},
-                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "created_at": iso_or_none(row["created_at"]),
             }
         )
     return out
-
-
-def _parse_jsonb(raw: object) -> object:
-    """asyncpg hands jsonb back as a string; parse it, keep raw on failure."""
-    if not isinstance(raw, str):
-        return raw
-    try:
-        return json.loads(raw)
-    except ValueError:
-        return raw

@@ -7,9 +7,11 @@ truth, so every log is deterministically re-derivable.
 
 from __future__ import annotations
 
-import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+
+from corpus_kb.storage.store_utils import entity_names
+from corpus_kb.storage.tenant_conn import tenant_connection
 
 from .eras import eras as segment_eras
 from .math_core import DEFAULT_HALF_LIFE_DAYS, Evidence, Posterior, beta_interval
@@ -64,13 +66,6 @@ ORDER BY observed_at ASC, revision_id
 """
 
 
-def _names(item: dict[str, Any]) -> list[str]:
-    entities = item.get("entities")
-    if isinstance(entities, str):
-        entities = json.loads(entities)
-    return [e.get("name", "") for e in (entities or []) if isinstance(e, dict)]
-
-
 def _tenant_ratio(statements: list[dict[str, Any]]) -> float | None:
     from .rebuild import stance_of
 
@@ -121,24 +116,18 @@ class BeliefStore:
         return {"status": "success", "beliefs": written, "tenant_ratio": ratio}
 
     async def _scan_statements(self) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             raw = await conn.fetch(SCAN_SQL, self._tenant_id)
         out = []
         for row in raw:
             item = dict(row)
-            item["entity_names"] = _names(item)
+            item["entity_names"] = entity_names(item.get("entities"))
             out.append(item)
         return out
 
     async def _write_belief(self, bundle: BeliefEvidence, post: Posterior) -> None:
         key = bundle.key
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             belief_id = await conn.fetchval(
                 UPSERT_BELIEF_SQL,
                 self._tenant_id,
@@ -169,10 +158,7 @@ class BeliefStore:
                 )
 
     async def current(self, *, subject: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             rows = await conn.fetch(CURRENT_SQL, self._tenant_id, subject, limit)
         return [dict(row) for row in rows]
 
@@ -191,15 +177,14 @@ class BeliefStore:
         belief_id = await self._belief_id(subject, relation, object_name)
         if belief_id is None:
             return None
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             rows = await conn.fetch(TIMELINE_SQL, self._tenant_id, belief_id)
             stored = await conn.fetchrow(
                 "SELECT alpha, beta, evidence_count, era_count FROM beliefs WHERE belief_id = $1",
                 belief_id,
             )
+        if stored is None:
+            return None
         items = [
             Evidence(
                 stance=row["stance"],
@@ -238,10 +223,7 @@ class BeliefStore:
         }
 
     async def _belief_id(self, subject: str, relation: str, object_name: str) -> str | None:
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             return await conn.fetchval(
                 "SELECT belief_id::text FROM beliefs"
                 " WHERE tenant_id = $1 AND subject = $2 AND relation = $3 AND object = $4",

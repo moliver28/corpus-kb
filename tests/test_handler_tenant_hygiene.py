@@ -1,6 +1,8 @@
-"""Tag and versioning handlers: tenant scope and narrow error catches.
+"""Tag and versioning handlers, plus the domain stores: tenant scope.
 
-Two pins live here. Tenant scope: every storage method runs inside
+Structural pins live here: the tag and versioning handlers and the five
+domain stores (labeling, topics, beliefs, conflicts, statements) must
+run their storage methods inside
 ``storage.tenant_conn.tenant_connection`` (acquire, transaction, and
 set_config together), so multi-statement writes commit as one
 transaction. Catches: a missing ``event_store`` table keeps the
@@ -20,6 +22,11 @@ import asyncpg
 import duckdb
 import pytest
 
+import corpus_kb.beliefs.store as beliefs_store_module
+import corpus_kb.conflicts.store as conflicts_store_module
+import corpus_kb.labeling.writer as labeling_writer_module
+import corpus_kb.statements.store as statements_store_module
+import corpus_kb.topics.writer as topics_writer_module
 from corpus_kb.handlers.tag_handler import TagHandler
 from corpus_kb.handlers.versioning_handler import VersioningHandler
 
@@ -177,3 +184,45 @@ def test_every_tag_and_versioning_method_reads_inside_tenant_connection() -> Non
             label = f"{cls.__name__}.{name}"
             assert "tenant_connection(" in source, f"{label} bypasses tenant_connection"
             assert "pool.acquire()" not in source, f"{label} acquires outside the tenant scope"
+
+
+#: The tenant-scoped storage methods of the five domain stores (issue #233
+#: dedup). Each must run inside ``storage.tenant_conn.tenant_connection``.
+#: Out of scope on purpose: the ``to_regclass`` probes
+#: (``labeling_tables_present``, ``topics_tables_present``) check table
+#: existence without a tenant GUC, ``BeliefStore.rebuild`` only composes
+#: the pinned private methods, and ``StatementStore.store_statements``
+#: speaks to a SqlGateway through ``gateway.transaction`` (pinned below).
+_TENANT_CONN_METHODS: list[tuple[object, tuple[str, ...]]] = [
+    (labeling_writer_module, ("write_build", "read_labels", "read_lfs")),
+    (topics_writer_module, ("write_build", "read_topics")),
+    (
+        beliefs_store_module.BeliefStore,
+        ("_scan_statements", "_write_belief", "current", "timeline", "_belief_id"),
+    ),
+    (
+        conflicts_store_module.ConflictStore,
+        ("record", "fetch_scan_rows", "list_conflicts", "resolve"),
+    ),
+    (statements_store_module.StatementStore, ("list_statements", "statements_timeline")),
+]
+
+
+def test_every_domain_store_method_reads_inside_tenant_connection() -> None:
+    """Structural: the five stores stay on the shared tenant helper."""
+    for owner, names in _TENANT_CONN_METHODS:
+        label_owner = getattr(owner, "__name__", str(owner))
+        for name in names:
+            source = inspect.getsource(getattr(owner, name))
+            label = f"{label_owner}.{name}"
+            assert "tenant_connection(" in source, f"{label} bypasses tenant_connection"
+            assert ".acquire()" not in source, f"{label} acquires outside the tenant scope"
+            assert "set_config(" not in source, f"{label} sets the tenant GUC by hand"
+
+
+def test_gateway_write_paths_stay_on_the_gateway_transaction() -> None:
+    """Structural: gateway-only write paths never hand-roll the tenant GUC."""
+    source = inspect.getsource(statements_store_module.StatementStore.store_statements)
+    assert "gateway.transaction(" in source, "store_statements leaves the gateway seam"
+    assert ".acquire()" not in source, "store_statements acquires a raw connection"
+    assert "set_config(" not in source, "store_statements sets the tenant GUC by hand"
