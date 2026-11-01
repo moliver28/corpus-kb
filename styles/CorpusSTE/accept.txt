@@ -200,3 +200,11 @@ holm
 llamacpp
 ranx
 jscpd
+Docling
+Docling's
+autorun
+onnxruntime
+pypdf
+sqlglot
+dataclasses
+docling

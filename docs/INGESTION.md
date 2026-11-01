@@ -435,9 +435,9 @@ predicates.
 ## Judge and Answer Verification
 
 The judge verifies LLM-generated answers against cited chunks. It first
-decomposes the answer into atomic factual assertions — answer units, not
-the ontology `Claim` type — then scores each assertion
-against the cited texts as `entailed`, `contradicted`, or `unsupported`.
+decomposes the answer into atomic factual assertions. These are answer
+units, not the ontology `Claim` type. It scores each assertion against
+the cited texts as `entailed`, `contradicted`, or `unsupported`.
 The final `groundedness` score is the fraction of assertions labeled
 `entailed`.
 
