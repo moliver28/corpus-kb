@@ -2,9 +2,28 @@
 
 Common questions about Corpus-KB.
 
+| Question | Short answer |
+|---|---|
+| [Do I need Postgres?](#do-i-need-postgres) | Postgres 17 by default; DuckDB needs no Docker |
+| [Do I need a GPU?](#do-i-need-a-gpu) | No; CPU works |
+| [Can I use OpenAI embeddings instead of Ollama?](#can-i-use-openai-embeddings-instead-of-ollama) | Not out of the box |
+| [Can I run without Ollama?](#can-i-run-without-ollama) | Yes; chunks flag degraded |
+| [Can I teach it a new file format?](#can-i-teach-it-a-new-file-format) | Yes; three extension levels |
+| [How is this different from a cloud vector database?](#how-is-this-different-from-a-cloud-vector-database-like-pinecone) | Fully local, three query patterns |
+| [How is this different from ripgrep?](#how-is-this-different-from-ripgrep) | Concept search plus structure |
+| [What is event sourcing?](#what-is-event-sourcing) | Events are the source of truth |
+| [How do I version my data?](#how-do-i-version-my-data) | List, tag, and restore states |
+| [What languages does tree-sitter support?](#what-languages-does-tree-sitter-support) | 20+; falls back cleanly |
+| [Can I use a different embedding model?](#can-i-use-a-different-embedding-model) | Any Ollama model at 2560 dims |
+| [Does it work with large codebases?](#does-it-work-with-large-codebases) | Yes; Postgres scales |
+| [What editors are supported?](#what-editors-are-supported) | Any MCP client |
+| [How do I switch from HTTP mode to MCP stdio mode?](#how-do-i-switch-from-http-mode-to-mcp-stdio-mode) | One command, both stay live |
+| [Where is the configuration file?](#where-is-the-configuration-file) | `config.yaml`, then defaults |
+| [How do I back up my data?](#how-do-i-back-up-my-data) | `pg_dump` covers events too |
+
 ---
 
-## Do I need PostgreSQL?
+## Do I need Postgres?
 
 Not always. Postgres 17 with pgvector and Apache AGE is the default engine. The DuckDB engine stores everything in one local file and needs no Docker. Both are first-class; see [Storage backends](STORAGE-BACKENDS.md). Earlier prototypes used LanceDB, DuckDB, and SQLite; DuckDB returned as a full engine in the storage-portability program.
 
@@ -22,7 +41,7 @@ Yes. Ingest continues when Ollama is unreachable, but the affected chunks are st
 
 ## Can I teach it a new file format?
 
-Yes — ingestion is pluggable at three levels. Map a source type to an existing strategy in `config.yaml` (no code). Register a strategy in-process with `register_strategy()`. Ship one as an entry-point plugin from your own package. See [Ingestion strategies](INGESTION-STRATEGIES.md).
+Yes — ingestion is pluggable at three levels. Map a source type to an existing strategy in `config.yaml` (no code). Register a strategy in-process with `register_strategy()`. Ship one as an entry-point plugin from your own package. See [Ingestion strategies](INGESTION.md#ingestion-strategies).
 
 ## How is this different from a cloud vector database like Pinecone?
 
@@ -74,7 +93,7 @@ Use `pg_dump` to back up the Postgres database. The event store is inside Postgr
 
 - [Install guide](INSTALL.md)
 - [Features overview](FEATURES.md)
-- [Ingestion strategies](INGESTION-STRATEGIES.md)
+- [Ingestion strategies](INGESTION.md#ingestion-strategies)
 - [Admin guide](ADMIN.md)
 - [API reference](API.md)
 - [Development guide](DEVELOPMENT.md)

@@ -2,6 +2,19 @@
 
 This page is for operators: configuration, schema, maintenance, and troubleshooting.
 
+## Contents
+
+- [Configuration reference](#configuration-reference)
+- [Database schema](#database-schema)
+- [Multi-tenancy](#multi-tenancy)
+- [DuckDB engine notes](#duckdb-engine-notes)
+- [DuckDB backend: setup and doctor](#duckdb-backend-setup-and-doctor)
+- [Backup and restore](#backup-and-restore)
+- [Monitoring](#monitoring)
+- [CI/CD pipeline](#cicd-pipeline)
+- [Troubleshooting](#troubleshooting)
+- [Next steps](#next-steps)
+
 ---
 
 ## Configuration reference
@@ -106,7 +119,7 @@ warning.
 
 ### `topics`
 
-The Wave 4 topic layer (`src/corpus_kb/topics/`, docs/TOPICS.md). Ships
+The Wave 4 topic layer (`src/corpus_kb/topics/`, docs/ANALYSIS.md). Ships
 dormant; the BERTopic import needs the `[topics]` extra.
 
 | Key | Default | Description |
@@ -123,7 +136,7 @@ dormant; the BERTopic import needs the `[topics]` extra.
 ### `ui.spa`
 
 The browser UI runtime keys (the SPA reads them from
-/app/runtime-config.json at boot; docs/UI-SPA.md). They tune the
+/app/runtime-config.json at boot; docs/UI.md). They tune the
 running app without a rebuild.
 
 | Key | Default | Description |
@@ -207,7 +220,7 @@ revision tag are fixed in code — deliberately not configuration.
 
 ### `textbook`
 
-The windowed large-PDF strategy (`docs/INGESTION-STRATEGIES.md`,
+The windowed large-PDF strategy (docs/INGESTION.md,
 "The textbook strategy"). Unknown or malformed keys keep their defaults.
 
 | Key | Default | Description |
@@ -224,8 +237,7 @@ JSON file named `<parser>-<16 hex chars>-w<NNNN>.json` under
 `textbook.cache_dir`. A changed file or a parser change adds new files;
 the old files stay. To reclaim the space, delete the directory. That is
 safe at any time: the next run re-parses what it misses, so a delete
-only costs parse time. No cache garbage collection ships in this
-version.
+only costs parse time. This version ships no automatic cache pruning.
 
 ### `queue`
 
@@ -367,7 +379,7 @@ To add real multi-tenancy, create tenants in the `tenants` table and route each 
 
 DuckDB is the opt-in local engine (`database.backend: duckdb`). While an
 ingest runs, a few read-time behaviors differ from Postgres. All of them
-settle when the ingest commit lands. Engine selection, ops tuning, and
+settle when the ingest commit lands. Engine selection, runtime tuning, and
 the full swap guide live in [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
 - Chunk vectors and relations write in a second pass. A read during an

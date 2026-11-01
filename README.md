@@ -2,7 +2,7 @@
 
 **A local NLP engine for files, transcripts, and code. Ingest, search, ask, extract, and code. No cloud.**
 
-Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coders get a CLI with a guided quickstart. Expert researchers get a qualitative-coding pipeline, an OpenAI-compatible API, and MCP tools for coding agents. Everything runs on your machine. Postgres stores the data by default; DuckDB is the single-file local engine ([Storage backends](docs/STORAGE-BACKENDS.md)). Ollama or PostgresML generates embeddings. One server exposes the catalogue over MCP stdio, HTTP REST, and a JSON-RPC socket. An OpenAI-compatible adapter serves `/v1` chat and embeddings. See [Editor integration](#editor-integration).
+Corpus-KB serves three kinds of users. Non-coders get a browser UI. Novice coders get a CLI with a guided quickstart. Expert researchers get a qualitative-coding pipeline, an OpenAI-compatible API, and MCP tools for coding agents. Everything runs on your machine. Postgres stores the data by default; DuckDB is the single-file local engine ([Storage backends](docs/STORAGE-BACKENDS.md)). Ollama or PostgresML generates embeddings. One server exposes the catalogue over MCP stdio, HTTP, and a JSON-RPC socket. An OpenAI-compatible adapter serves `/v1` chat and embeddings. See [Editor integration](#editor-integration).
 
 ---
 
@@ -53,7 +53,7 @@ Every operation is reachable programmatically. One line per surface:
 - **Tracing** with OpenTelemetry spans: [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)
 - **Offline evaluation** of retrieval and answers: [docs/EVALUATION.md](docs/EVALUATION.md)
 - **marimo notebooks** served at `/notebooks`: [docs/NOTEBOOKS.md](docs/NOTEBOOKS.md)
-- **Topics** (offline BERTopic over stored embeddings): [docs/TOPICS.md](docs/TOPICS.md)
+- **Topics** (offline BERTopic over stored embeddings): [docs/ANALYSIS.md](docs/ANALYSIS.md)
 
 First time on a terminal? `corpus-kb quickstart` walks you from zero to
 a first search. The step-by-step quickstart is in
@@ -65,16 +65,16 @@ a first search. The step-by-step quickstart is in
 
 - **Hybrid search** that blends vector similarity, full-text search, and rank fusion, with honest handling of degraded (zero-vector) chunks
 - **Reranking** — a local judgment scorer by default, or a true cross-encoder through llama.cpp
-- **Answer generation** with per-sentence citations, plus claim-level verification with honest abstention
+- **Answer generation** with per-sentence citations, plus assertion-level verification with honest abstention
 - **Query routing** — each question goes to vector search, SQL aggregates, or graph traversal
 - **Self-query filters** — natural-language filters parsed into parameterized SQL predicates
 - **Knowledge graph** with entities, relations, and BFS traversal
-- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER2)
-- **Pluggable ingestion strategies** — default, transcript, PPTX slide structure, and web page structure, extensible three ways ([docs/INGESTION-STRATEGIES.md](docs/INGESTION-STRATEGIES.md))
+- **Ontology-aware extraction** with configurable entity/relation types and pluggable backends (regex, LangExtract, PostgresML, plus opt-in GLiNER)
+- **Pluggable ingestion strategies** — default, transcript, PPTX slide structure, and web page structure, extensible three ways ([docs/INGESTION.md](docs/INGESTION.md#ingestion-strategies))
 - **Website ingestion** — a robots-respecting fetcher with same-domain crawl and heading-section chunks
 - **Late chunking** — one model pass per document; chunk vectors pool from their own token spans
 - **Qualitative coding** — transcript ingestion, codebooks, deductive and inductive runs, human review, governance reports, and a gated release lifecycle
-- **Topics** — offline BERTopic clustering over stored embeddings ([docs/TOPICS.md](docs/TOPICS.md))
+- **Topics** — offline BERTopic clustering over stored embeddings ([docs/ANALYSIS.md](docs/ANALYSIS.md))
 - **LlamaIndex RAG backend** with PGVectorStore and Ollama for local vector search
 - **Event sourcing** for audit trails and rebuildable projections
 - **Multi-tenant Postgres** with row-level security on every table
@@ -148,10 +148,10 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 |------|----------------|
 | [Getting started](docs/getting-started.md) | Both paths: the browser for novices, the terminal quickstart for everyone else |
 | [Install](docs/INSTALL.md) | Full setup from scratch: Postgres, Python, Ollama, schema, first query |
-| [Browser UI](docs/UI.md) | The four pages: Add, Ask, Library, Overview |
+| [Browser UI](docs/UI.md) | The lifecycle app: stage-by-stage user guide, config, build, gates, troubleshooting |
 | [Features](docs/FEATURES.md) | Ingest, search, quality controls, graph, tags, research subsystem, embedding models, MCP tool reference |
 | [Admin](docs/ADMIN.md) | Configuration, schema, multi-tenancy, backups, monitoring, CI/CD |
-| [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, ops tuning |
+| [Storage backends](docs/STORAGE-BACKENDS.md) | DuckDB vs Postgres: quickstart, engine selection, migrate-data, runtime tuning |
 | [Operations](docs/OPERATIONS.md) | The operator's contract: exit codes, ports, vocabularies, tenancy, the MCP surface |
 | [API](docs/API.md) | HTTP routes, the `/v1` OpenAI adapter, curl examples, MCP tool reference |
 | [Observability](docs/OBSERVABILITY.md) | OpenTelemetry spans, exporters, zero-cost when off |
@@ -161,11 +161,10 @@ Events are the source of truth. Projections are derived and can be rebuilt by re
 | [Research](docs/research.md) | Research command reference, config keys, embedding requirements |
 | [Getting started (research)](docs/getting-started.md) | Qualitative coding from zero: the demo, your first transcript, first codebook |
 | [Understanding your report](docs/understanding-your-report.md) | Plain-language guide to every governance-report section |
-| [CI](docs/ci.md) | MCP config validation, fail-fast pipeline behavior |
 | [FAQ](docs/FAQ.md) | Common questions |
-| [Ingestion](docs/INGESTION.md) | Full pipeline documentation: partition, chunk, embed, extract, store |
-| [Ingestion strategies](docs/INGESTION-STRATEGIES.md) | Extending ingestion: config mapping, in-process registration, entry-point plugins |
-| [Topics](docs/TOPICS.md) | The topic layer: offline BERTopic over stored embeddings, LLM labels, config |
+| [Ingestion](docs/INGESTION.md) | Full pipeline: partition, chunk, embed, extract, store, plus the strategy reference and extension ladders |
+| [Analysis](docs/ANALYSIS.md) | The analysis layer: analyze-run report, labeling, classification, topics, trends, method register |
+| [Analysis methods](docs/ANALYSIS-METHODS.md) | GENERATED reference: the 30-method register with required validation and permitted claims |
 | [Rollback drill](docs/ROLLBACK_DRILL.md) | Practiced procedure for backing out a bad deployment |
 | [Internal program docs](docs/research/) | Archive: playbooks, research math, benchmarks, harness distribution, program plans |
 
