@@ -387,9 +387,8 @@ def test_parse_windows_docling_success_caches_under_docling(
     )
     assert warnings == []
     assert records[0].items[0].label == "section_header"
-    cached = bench_run.load_window_cache(
-        bench_run.cache_file(tmp_path, "docling", "d" * 64, 0), "docling-v1", "d" * 64, 0
-    )
+    assert list(tmp_path.glob("docling-*-w0000.json")), "the window must cache under docling"
+    cached = bench_run._cache_lookup(tmp_path, "docling", "d" * 64, 0, 1, 1)
     assert cached is not None
     assert cached.items[0].label == "section_header"
 
