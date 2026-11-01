@@ -50,7 +50,7 @@ CONFLICTS_OPERATIONS: tuple[Operation, ...] = (
         family="conflicts",
         description="List recorded conflict flags newest-first, filterable by verdict.",
         handler="corpus_kb.tools.conflicts_tools:conflicts_list",
-        params=(_TENANT, ParamSpec("verdict"), ParamSpec("limit")),
+        params=(_TENANT, ParamSpec("verdict"), ParamSpec("limit", default=50)),
         envelope_keys=CONFLICTS_LIST_ENVELOPE,
         surfaces=(
             SurfaceSpec(MCP, "conflicts_list"),

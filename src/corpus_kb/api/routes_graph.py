@@ -18,7 +18,7 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import DEFAULT_TENANT_ID, parse_body, route_errors
+from corpus_kb.api._body import DEFAULT_TENANT_ID, opt_int, parse_body, route_errors
 from corpus_kb.domain.models import AddEntityCommand, AddRelationCommand
 
 
@@ -81,7 +81,7 @@ async def search_graph(request: Request) -> JSONResponse:
         UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         body.get("query", ""),
         body.get("entity_type"),
-        body.get("limit", 100),
+        opt_int(body.get("limit"), 100, name="limit"),
     )
     return JSONResponse({"status": "success", "result": results})
 
@@ -100,7 +100,7 @@ async def bfs_traversal(request: Request) -> JSONResponse:
     results = await handler.handle_bfs(
         UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         UUID(body["start_entity_id"]),
-        body.get("max_depth", 3),
+        opt_int(body.get("max_depth"), 3, name="max_depth"),
     )
     return JSONResponse(
         {
@@ -118,15 +118,14 @@ async def graph_traverse(request: Request) -> JSONResponse:
 
     body = await parse_body(request)
     handler = get_graph_handler()
-    raw_depth = body.get("max_depth")
     return JSONResponse(
         await handler.handle_graph_traverse(
             UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
             UUID(body["entity_id"]),
-            max_depth=int(raw_depth) if raw_depth is not None else None,
+            max_depth=opt_int(body.get("max_depth"), None, name="max_depth"),
             relation_types=body.get("relation_types"),
             entity_types=body.get("entity_types"),
-            limit=body.get("limit", 100),
+            limit=opt_int(body.get("limit"), 100, name="limit"),
         )
     )
 
@@ -142,11 +141,11 @@ async def graph_neighbors(request: Request) -> JSONResponse:
         await handler.handle_graph_neighbors(
             UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
             UUID(body["entity_id"]),
-            hops=body.get("hops", 1),
+            hops=opt_int(body.get("hops"), 1, name="hops"),
             direction=body.get("direction", "both"),
             relation_types=body.get("relation_types"),
             entity_types=body.get("entity_types"),
-            limit=body.get("limit", 100),
+            limit=opt_int(body.get("limit"), 100, name="limit"),
         )
     )
 
@@ -158,8 +157,7 @@ async def get_entity_relations(request: Request) -> JSONResponse:
 
     entity_id = request.path_params.get("entity_id")
     tenant_id = UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID))
-    raw_limit = request.query_params.get("limit")
-    limit = int(raw_limit) if raw_limit else None
+    limit = opt_int(request.query_params.get("limit"), None, name="limit")
     handler = get_graph_handler()
     results = await handler.handle_get_entity_relations(
         tenant_id,

@@ -16,7 +16,7 @@ from uuid import UUID
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_float, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 
@@ -60,7 +60,7 @@ async def coding_code_batch(request: Request) -> JSONResponse:
         coder=body.get("coder"),
         model=body.get("model"),
         batch_id=body.get("batch_id"),
-        coding_pass=int(body.get("coding_pass", 1)),
+        coding_pass=opt_int(body.get("coding_pass"), 1, name="coding_pass"),
         bands=bands,
     )
     return JSONResponse(result)
@@ -75,8 +75,10 @@ async def coding_reliability(request: Request) -> JSONResponse:
     tenant_id = UUID(body.get("tenant_id", DEFAULT_TENANT_ID))
     result = await get_coding_handler().handle_reliability(
         tenant_id,
-        per_code_min=int(body.get("per_code_min", 5)),
-        seed=int(body.get("seed", 17)),
+        per_code_min=opt_int(body.get("per_code_min"), 5, name="per_code_min"),
+        # Seeds are any-int (random.Random takes negatives); only the
+        # database int8 bind range is refused.
+        seed=opt_int(body.get("seed"), 17, name="seed", allow_negative=True),
         code_universe=body.get("code_universe"),
     )
     return JSONResponse(result)
@@ -95,7 +97,7 @@ async def coding_calibrate_floors(request: Request) -> JSONResponse:
         codebook_version_id=UUID(str(body["codebook_version_id"])),
         positive_chunk_ids=[UUID(str(c)) for c in body.get("positive_chunk_ids", [])],
         negative_chunk_ids=[UUID(str(c)) for c in body.get("negative_chunk_ids", [])],
-        min_pos=int(body.get("min_pos", 10)),
+        min_pos=opt_int(body.get("min_pos"), 10, name="min_pos"),
         global_fallback=body.get("global_fallback"),
     )
     return JSONResponse(result)
@@ -111,7 +113,7 @@ async def coding_saturation(request: Request) -> JSONResponse:
     result = await get_coding_handler().handle_saturation(
         tenant_id,
         batch_id=body.get("batch_id"),
-        threshold=float(body.get("threshold", 0.05)),
-        min_samples=int(body.get("min_samples", 50)),
+        threshold=opt_float(body.get("threshold"), 0.05, name="threshold"),
+        min_samples=opt_int(body.get("min_samples"), 50, name="min_samples"),
     )
     return JSONResponse(result)

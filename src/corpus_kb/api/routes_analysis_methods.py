@@ -18,7 +18,7 @@ from typing import Any
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from corpus_kb.api._body import parse_body, route_errors
+from corpus_kb.api._body import opt_float, opt_int, parse_body, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _TENANT_DEFAULT
 
 
@@ -67,7 +67,7 @@ async def keyphrases_extract_route(request: Request) -> JSONResponse:
         keyphrases_extract,
         {
             "variant": str(body.get("variant", "tfidf")),
-            "limit": int(body.get("limit", 20)),
+            "limit": opt_int(body.get("limit"), 20, name="limit"),
             "chunk_ids": body.get("chunk_ids"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
@@ -98,7 +98,7 @@ async def neighbors_classify_route(request: Request) -> JSONResponse:
     return await _respond(
         neighbors_classify,
         {
-            "k": int(body.get("k", 5)),
+            "k": opt_int(body.get("k"), 5, name="k"),
             "chunk_ids": body.get("chunk_ids"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
@@ -114,7 +114,7 @@ async def centroids_classify_route(request: Request) -> JSONResponse:
     return await _respond(
         centroids_classify,
         {
-            "abstain_margin": float(body.get("abstain_margin", 0.05)),
+            "abstain_margin": opt_float(body.get("abstain_margin"), 0.05, name="abstain_margin"),
             "chunk_ids": body.get("chunk_ids"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
@@ -132,8 +132,8 @@ async def clusters_inspect_route(request: Request) -> JSONResponse:
     return await _respond(
         clusters_inspect,
         {
-            "min_cluster_size": int(min_size) if min_size is not None else None,
-            "sample_cap": int(sample_cap) if sample_cap is not None else None,
+            "min_cluster_size": opt_int(min_size, None, name="min_cluster_size"),
+            "sample_cap": opt_int(sample_cap, None, name="sample_cap"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
     )
@@ -148,8 +148,8 @@ async def duplicates_screen_route(request: Request) -> JSONResponse:
     return await _respond(
         duplicates_screen,
         {
-            "threshold": float(body.get("threshold", 0.98)),
-            "limit": int(body.get("limit", 100)),
+            "threshold": opt_float(body.get("threshold"), 0.98, name="threshold"),
+            "limit": opt_int(body.get("limit"), 100, name="limit"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
     )
@@ -164,8 +164,8 @@ async def outliers_rank_route(request: Request) -> JSONResponse:
     return await _respond(
         outliers_rank,
         {
-            "k": int(body.get("k", 10)),
-            "limit": int(body.get("limit", 20)),
+            "k": opt_int(body.get("k"), 10, name="k"),
+            "limit": opt_int(body.get("limit"), 20, name="limit"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
     )
@@ -184,7 +184,7 @@ async def nli_classify_route(request: Request) -> JSONResponse:
         {
             "labels": [str(label) for label in labels] if labels is not None else [],
             "chunk_ids": body.get("chunk_ids"),
-            "limit": int(body.get("limit", 50)),
+            "limit": opt_int(body.get("limit"), 50, name="limit"),
             "model": str(model) if model is not None else None,
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
@@ -201,8 +201,8 @@ async def contradictions_screen_route(request: Request) -> JSONResponse:
     return await _respond(
         contradictions_screen,
         {
-            "candidate_k": int(body.get("candidate_k", 5)),
-            "limit": int(body.get("limit", 50)),
+            "candidate_k": opt_int(body.get("candidate_k"), 5, name="candidate_k"),
+            "limit": opt_int(body.get("limit"), 50, name="limit"),
             "model": str(model) if model is not None else None,
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
@@ -220,7 +220,7 @@ async def sentiment_screen_route(request: Request) -> JSONResponse:
         sentiment_screen,
         {
             "chunk_ids": body.get("chunk_ids"),
-            "limit": int(limit) if limit is not None else None,
+            "limit": opt_int(limit, None, name="limit"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
     )
@@ -236,7 +236,7 @@ async def active_learn_next_route(request: Request) -> JSONResponse:
         active_learn_next,
         {
             "strategy": str(body.get("strategy", "margin")),
-            "batch": int(body.get("batch", 10)),
+            "batch": opt_int(body.get("batch"), 10, name="batch"),
             "tenant_id": body.get("tenant_id", _TENANT_DEFAULT),
         },
     )
