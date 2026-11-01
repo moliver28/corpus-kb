@@ -1,0 +1,25 @@
+{
+  "books": [
+    {
+      "filename": "ConceptsOfBiology-LR.pdf",
+      "license": "CC-BY-4.0",
+      "sha256": "8e02c04952df8a36139a9585a06f5faccd880766c7f4dd63fd8dbfc73d31b678",
+      "source_url": "https://d3bxy9euw4e147.cloudfront.net/oscms-prodcms/media/documents/ConceptsOfBiology-LR.pdf",
+      "title": "Concepts of Biology"
+    },
+    {
+      "filename": "IntroductoryStatistics-OP.pdf",
+      "license": "CC-BY-4.0",
+      "sha256": "8bd20cdcd376a153580d35e1acfce7bf23f29f39bdd69cc42ba0330bfe07c676",
+      "source_url": "https://d3bxy9euw4e147.cloudfront.net/oscms-prodcms/media/documents/IntroductoryStatistics-OP.pdf",
+      "title": "Introductory Statistics"
+    },
+    {
+      "filename": "Chemistry2e-OP.pdf",
+      "license": "CC-BY-4.0",
+      "sha256": "e366abcf27c301993d6c0747892dd3ebd2c247081155d00d7638f64e081ece90",
+      "source_url": "https://d3bxy9euw4e147.cloudfront.net/oscms-prodcms/media/documents/Chemistry2e-OP.pdf",
+      "title": "Chemistry 2e"
+    }
+  ]
+}

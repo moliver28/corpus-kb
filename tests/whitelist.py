@@ -540,3 +540,7 @@ relation_is_graph_eligible
 # textbook scan (cli_textbook.py): typer command callback bound by its
 # decorator; vulture sees no direct caller.
 scan
+
+# textbook golden bench (eval/golden_fetch.py): GoldenBook.license is a
+# manifest data-surface field (validated by tests/test_golden_fetch.py).
+license
