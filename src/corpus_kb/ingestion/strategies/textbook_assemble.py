@@ -11,11 +11,13 @@ The pass order is fixed:
    bookmark anchors and that carries no header item adopts the bookmark
    title. A window that starts mid-section carries the open title — the
    walk never resets at a window edge.
-3. :func:`section_blocks` merges consecutive same-section items.
-4. :func:`plan_chunks` packs whole blocks up to the token budget with the
-   shared ``chunking.hierarchy`` primitives and emits chunks carrying
-   ``page_start``, ``page_end``, and the section title. Chunk texts are
-   exact ``document_text`` slices by construction.
+3. :func:`section_blocks` merges consecutive same-section items into
+   blocks that record each item's char span (and page).
+4. :func:`plan_chunks` packs whole blocks up to the token budget and
+   emits every chunk — packed or hard-split — through ``make_chunk``
+   (``textbook_pack``): pages are the true first and last pages the
+   chunk's char span touches, and ``heading_path`` carries the section
+   title. Chunk texts are exact ``document_text`` slices by construction.
 
 Honest limits: a section spanning many windows keeps its opening title,
 and headers Docling missed inside later windows stay unfilled — bookmarks
@@ -26,8 +28,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from ...chunking.hierarchy import CHARS_PER_TOKEN, Segment, estimate_tokens, split_oversized
+from ...chunking.hierarchy import CHARS_PER_TOKEN, Segment, estimate_tokens
 from ..base import PlannedChunk
+from .textbook_pack import PageSpan, bounded_pieces, make_chunk
 from .textbook_pages import OutlineBookmark, PageItem, WindowRecord
 
 #: Docling labels that open a section (primary structure signal).
@@ -38,12 +41,18 @@ _JOIN = "\n\n"
 
 @dataclass(frozen=True)
 class SectionBlock:
-    """One merged run of same-section items across any number of windows."""
+    """One merged run of same-section items across any number of windows.
+
+    ``pages`` records each item's ``(start, end, page)`` span inside
+    ``text`` (each item owns the ``_JOIN`` after it); empty when the
+    block was built directly and only the block-level range is known.
+    """
 
     title: str | None
     start_page: int
     end_page: int
     text: str
+    pages: tuple[tuple[int, int, int], ...] = ()
 
 
 def flatten_windows(records: list[WindowRecord]) -> list[PageItem]:
@@ -92,27 +101,29 @@ def assign_sections(
 
 
 def section_blocks(pairs: list[tuple[PageItem, str | None]]) -> list[SectionBlock]:
-    """Merge consecutive same-section items into blocks (empty text dropped)."""
+    """Merge consecutive same-section items into blocks (empty text dropped).
+
+    Each block records its items' ``(start, end, page)`` char spans so
+    :func:`plan_chunks` can attribute any char range to its true pages.
+    """
     blocks: list[SectionBlock] = []
     for item, title in pairs:
         if not item.text.strip():
             continue
         previous = blocks[-1] if blocks else None
         if previous is not None and previous.title == title:
+            offset = len(previous.text) + len(_JOIN)
             blocks[-1] = SectionBlock(
                 title=title,
                 start_page=previous.start_page,
                 end_page=max(previous.end_page, item.page),
                 text=_JOIN.join((previous.text, item.text)),
+                pages=(*previous.pages, (offset, offset + len(item.text), item.page)),
             )
         else:
-            blocks.append(SectionBlock(title, item.page, item.page, item.text))
+            first = (0, len(item.text), item.page)
+            blocks.append(SectionBlock(title, item.page, item.page, item.text, (first,)))
     return blocks
-
-
-def _line_span(text: str, start: int, end: int) -> tuple[int, int]:
-    """1-based line numbers for a char span (the unstructured_chunker rule)."""
-    return text.count("\n", 0, start) + 1, text.count("\n", 0, end) + 1
 
 
 def plan_chunks(
@@ -121,28 +132,30 @@ def plan_chunks(
     budget_chars: int,
     warnings: list[str],
 ) -> tuple[str, list[PlannedChunk]]:
-    """Pack section blocks into budget-bounded chunks with page metadata.
+    """Pack section blocks into budget-bounded chunks with true page metadata.
 
     Returns ``(document_text, chunks)``. ``document_text`` is the
     ``\\n\\n``-join of the block texts; whole blocks pack greedily up to
     the budget, and one oversized block hard-splits at word boundaries
-    through the shared ``split_oversized`` (zero overlap, exact offsets).
-    A chunk's section is its opening block's title, so packed blocks keep
-    the first section name; ``page_start``/``page_end`` span its blocks.
+    through :func:`bounded_pieces` (zero overlap, exact offsets). Every
+    chunk goes through :func:`make_chunk`, so its pages are the true
+    first and last pages its char span touches, its heading path is its
+    opening block's title, and its text is an exact slice.
     """
     target_tokens = max(1, budget_chars // CHARS_PER_TOKEN)
     segments: list[Segment] = []
+    page_map: list[PageSpan] = []
     cursor = 0
     for block in blocks:
-        segments.append(
-            Segment(
-                text=block.text,
-                start_char=cursor,
-                end_char=cursor + len(block.text),
-                kind="section",
+        end = cursor + len(block.text)
+        segments.append(Segment(text=block.text, start_char=cursor, end_char=end, kind="section"))
+        if block.pages:
+            page_map.extend(
+                (cursor + start, cursor + stop, page, page) for start, stop, page in block.pages
             )
-        )
-        cursor += len(block.text) + len(_JOIN)
+        else:
+            page_map.append((cursor, end, block.start_page, block.end_page))
+        cursor = end + len(_JOIN)
     document_text = _JOIN.join(block.text for block in blocks)
 
     chunks: list[PlannedChunk] = []
@@ -153,25 +166,15 @@ def plan_chunks(
         nonlocal current, used
         if not current:
             return
-        first_seg, first_block = current[0]
-        last_block = current[-1][1]
-        start, end = first_seg.start_char, current[-1][0].end_char
-        start_line, end_line = _line_span(document_text, start, end)
         chunks.append(
-            PlannedChunk(
-                text=document_text[start:end],
-                index=len(chunks),
-                metadata={
-                    "strategy": strategy,
-                    "section": first_block.title,
-                    "page_start": first_block.start_page,
-                    "page_end": last_block.end_page,
-                },
-                source_type="text",
-                start_line=start_line,
-                end_line=end_line,
-                source_start_char=start,
-                source_end_char=end,
+            make_chunk(
+                document_text,
+                strategy,
+                page_map,
+                current[0][0].start_char,
+                current[-1][0].end_char,
+                current[0][1].title,
+                len(chunks),
             )
         )
         current = []
@@ -184,23 +187,16 @@ def plan_chunks(
             warnings.append(
                 f"pages {block.start_page} to {block.end_page} exceed the token budget; split"
             )
-            for piece in _bounded_pieces(segment, target_tokens, budget_chars):
-                start_line, end_line = _line_span(document_text, piece.start_char, piece.end_char)
+            for piece in bounded_pieces(segment, target_tokens, budget_chars):
                 chunks.append(
-                    PlannedChunk(
-                        text=document_text[piece.start_char : piece.end_char],
-                        index=len(chunks),
-                        metadata={
-                            "strategy": strategy,
-                            "section": block.title,
-                            "page_start": block.start_page,
-                            "page_end": block.end_page,
-                        },
-                        source_type="text",
-                        start_line=start_line,
-                        end_line=end_line,
-                        source_start_char=piece.start_char,
-                        source_end_char=piece.end_char,
+                    make_chunk(
+                        document_text,
+                        strategy,
+                        page_map,
+                        piece.start_char,
+                        piece.end_char,
+                        block.title,
+                        len(chunks),
                     )
                 )
             continue
@@ -210,28 +206,3 @@ def plan_chunks(
         used += tokens
     emit()
     return document_text, chunks
-
-
-def _bounded_pieces(segment: Segment, target_tokens: int, budget_chars: int) -> list[Segment]:
-    """Word-boundary pieces within the budget, exact char offsets kept.
-
-    ``split_oversized`` emits one unbreakable run (a word with no
-    whitespace) whole and over budget; such runs fall back to exact char
-    slices — the code strategy's last resort — so the plan always
-    conforms.
-    """
-    pieces = split_oversized(segment, target_tokens, 0)
-    if all(len(piece.text) <= budget_chars for piece in pieces):
-        return pieces
-    bounded: list[Segment] = []
-    for piece in pieces:
-        for offset in range(0, len(piece.text), budget_chars):
-            bounded.append(
-                Segment(
-                    text=piece.text[offset : offset + budget_chars],
-                    start_char=piece.start_char + offset,
-                    end_char=piece.start_char + min(offset + budget_chars, len(piece.text)),
-                    kind="split",
-                )
-            )
-    return bounded
