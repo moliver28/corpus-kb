@@ -17,6 +17,7 @@ import math
 from typing import Any, cast
 
 from corpus_kb.domain.models import RouteDecision, RoutedQuery, RoutedResult, SearchQuery
+from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.utils.tracing import (
     ATTR_CONFIDENCE,
     ATTR_FALLBACK,
@@ -126,20 +127,16 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return sum(x * y for x, y in zip(a, b, strict=True))
 
 
-_router_handler: RouterHandler | None = None
+_router_handler = SingletonSlot[RouterHandler]("RouterHandler not initialized")
 
 
 def get_router_handler() -> RouterHandler:
-    if _router_handler is None:
-        raise RuntimeError("RouterHandler not initialized")
-    return _router_handler
+    return _router_handler.get()
 
 
 def set_router_handler(handler: RouterHandler) -> None:
-    global _router_handler
-    _router_handler = handler
+    _router_handler.set(handler)
 
 
 def reset_router_handler() -> None:
-    global _router_handler
-    _router_handler = None
+    _router_handler.reset()

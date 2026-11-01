@@ -1,6 +1,6 @@
 {
   "_readme": "Checked-in ratchet baselines (zero-drift rule 10, PR-F). Each number is a CEILING, not a target: poe size-ratchet fails when the live count is ABOVE the baseline, and passes when the code shrinks. Ratchet-down procedure: after a PR removes duplication or splits long files, measure the new counts (poe size-ratchet prints them), lower the numbers here in that same PR, and commit. Never raise a number to make a failing PR pass. coverage_floor is a FLOOR for overall line coverage (measured by poe test-cov, read from coverage.xml); it was set 0.5 points under the value measured at adoption so normal drift does not flake. Raise it in the same PR that adds tests.",
-  "plr0915": 17,
-  "files_over_250": 80,
+  "plr0915": 16,
+  "files_over_250": 79,
   "coverage_floor": 87.5
 }

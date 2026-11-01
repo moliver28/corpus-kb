@@ -23,6 +23,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
+
 from ..errors import ConfigError
 from ..storage.duckdb_support import vector_literal
 from ..storage.gateway import SqlGateway
@@ -116,7 +118,8 @@ def ingest_sql_for(backend: str) -> IngestSql:
                 "UPDATE ingest_runs SET project_id = $2 WHERE run_id = $1 AND tenant_id = $3"
             ),
             vector_insert_sql=_VECTOR_INSERT.format(
-                embedding="$3::FLOAT[2560]", v1024="$4::FLOAT[1024]"
+                embedding=f"$3::FLOAT[{EMBEDDING_DIMENSIONS}]",
+                v1024=f"$4::FLOAT[{RESEARCH_EMBEDDING_DIMENSIONS}]",
             ),
         )
     return IngestSql(

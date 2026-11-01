@@ -34,6 +34,7 @@ import json
 import logging
 from typing import Any, Protocol
 
+from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS
 from corpus_kb.errors import InternalError, ValidationError
 from corpus_kb.storage.duckdb_support import vector_literal
 from corpus_kb.storage.gateway import Row, SqlGateway
@@ -94,7 +95,7 @@ class DuckDbRagBackend:
         gateway: SqlGateway,
         embedder: EmbedsText,
         *,
-        dimensions: int = 768,
+        dimensions: int = NOMIC_EMBEDDING_DIMENSIONS,
         table: str = "rag_nodes",
     ) -> None:
         if dimensions <= 0:

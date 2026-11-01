@@ -20,6 +20,7 @@ from uuid import UUID
 
 from corpus_kb.coding._scope import CodingStore, ScopedConn, is_gateway, tenant_scope
 from corpus_kb.coding.codebook import CodebookError, codebook_sha256, validate_codebook
+from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 _INSERT_CODE = """
 INSERT INTO code_registry
@@ -31,15 +32,16 @@ ON CONFLICT (code_id, codebook_version_id, tenant_id) DO NOTHING
 """
 
 # The gateway arm casts the pgvector literals through the DuckDB mirror's
-# FLOAT[2560] columns; binding a list parameter instead costs seconds per
-# statement (see duckdb_support.vector_literal). Postgres takes the bare
-# literal its pgvector column parses.
-_INSERT_CODE_DUCKDB = """
+# FLOAT[k] columns (k = the statement width); binding a list parameter
+# instead costs seconds per statement (see duckdb_support.vector_literal).
+# Postgres takes the bare literal its pgvector column parses.
+_W = str(EMBEDDING_DIMENSIONS)
+_INSERT_CODE_DUCKDB = f"""
 INSERT INTO code_registry
   (code_id, codebook_version_id, tenant_id, name, brief_definition,
    inclusion_criteria, exclusion_criteria, examples, theory,
    definition_vector, probe_vector)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::FLOAT[2560], $11::FLOAT[2560])
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::FLOAT[{_W}], $11::FLOAT[{_W}])
 ON CONFLICT (code_id, codebook_version_id, tenant_id) DO NOTHING
 """
 

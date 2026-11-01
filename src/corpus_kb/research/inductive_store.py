@@ -18,10 +18,11 @@ import json
 from typing import Any
 from uuid import UUID
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.projections.research._embed import _parse_pg_vector
 from corpus_kb.research.conn import Store, tenant_scope
 
-_VECTOR = "::FLOAT[1024]"
+_VECTOR = f"::FLOAT[{RESEARCH_EMBEDDING_DIMENSIONS}]"
 
 
 def _vec_cast(duck: bool, idx: str) -> str:

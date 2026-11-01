@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, cast
 
+from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
 from corpus_kb.handlers.query_fusion import RowLike, rrf_fuse
 from corpus_kb.research.retrieval import (
     _exchange_filters,
@@ -102,6 +103,14 @@ _FTS_EXCHANGE_SQL = """
                 ORDER BY scored.score DESC, scored.exchange_id ASC
                 LIMIT {limit}
                 """
+
+# The dense arms pin the research width in SQL text (the cast must match
+# the FLOAT[k] column). These are .format(vec=, limit=, filters=)
+# templates, so the width cannot ride an f-string; the asserts tie the
+# pinned width to the shared constant, and a width change fails here at
+# import instead of per query.
+assert f"FLOAT[{RESEARCH_EMBEDDING_DIMENSIONS}]" in _DENSE_UNIT_SQL
+assert f"FLOAT[{RESEARCH_EMBEDDING_DIMENSIONS}]" in _DENSE_EXCHANGE_SQL
 
 
 async def unit_arms_duck(
