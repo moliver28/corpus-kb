@@ -309,7 +309,7 @@ async def _matryoshka_rows(
 
 async def _halfvec_rows(
     conn: asyncpg.Connection,
-    query_vector: object,
+    query_vector: list[float],
     tenant_id: str,
     vector_limit: int,
     dynamic_predicates: list[Predicate],
