@@ -122,7 +122,7 @@ Additional governance workflows check branch naming, commit messages, and agent 
 The validator (`src/corpus_kb/_setup/validate_configs.py`, target `poe validate-configs`) checks three things:
 
 1. **Schema per format** — each config file is validated against its expected structure. The root `opencode.json` uses the OpenCode native format. Files under `mcp-configs/` are validated against their respective editor formats.
-2. **Cross-config consistency** — all configs must define the same set of tools with matching descriptions and auto-approve lists (where the format supports them).
+2. **Cross-config consistency** — all configs must define the same set of tools. Descriptions must match, and auto-approve lists must match where the format supports them.
 3. **Fail-fast placement** — the job runs before the test legs. A config error stops CI early. The script exits with code 1 and prints every error it found.
 
 Supported formats:
@@ -215,7 +215,7 @@ pytest tests/test_ingest.py -v --tb=short
 pytest --cov=corpus_kb --cov-report=term-missing
 ```
 
-Tests that need Ollama degrade to the zero-vector fallback when it is down, so the suite runs without a model server. Tests that need Unstructured `hi_res` mode are skipped on Windows because detectron2 is unavailable.
+Tests that need Ollama degrade to the zero-vector fallback when it is down. The suite then runs without a model server. Tests that need Unstructured `hi_res` mode are skipped on Windows because detectron2 is unavailable.
 
 ## Conventions
 

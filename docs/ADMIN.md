@@ -224,8 +224,7 @@ JSON file named `<parser>-<16 hex chars>-w<NNNN>.json` under
 `textbook.cache_dir`. A changed file or a parser change adds new files;
 the old files stay. To reclaim the space, delete the directory. That is
 safe at any time: the next run re-parses what it misses, so a delete
-only costs parse time. No cache garbage collection ships in this
-version.
+only costs parse time. This version ships no automatic cache pruning.
 
 ### `queue`
 
