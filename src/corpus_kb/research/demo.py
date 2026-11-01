@@ -290,6 +290,156 @@ def embedder_blocked(cfg: dict[str, Any], pgml_installed: bool | None) -> bool:
     return embedder_check(cfg, pgml_installed).status != "ok"
 
 
+@dataclass
+class _DemoRun:
+    """State the narrated stages share: config, pool, wiring, codebook version."""
+
+    pool: Any
+    cfg: dict[str, Any]
+    conn_str: str
+    tenant_id: UUID
+    version_id: UUID | None = None
+    wiring: tuple[Any, ...] = ()
+
+    def wire(self) -> None:
+        """Build the production stack once, at the ingest stage."""
+        self.wiring = _wiring(self.pool, self.cfg, self.conn_str)
+
+    async def catch_up(self) -> None:
+        reader, _handler, _embedder, projection, docs, embeds = self.wiring
+        await _catch_up(reader, projection, docs, embeds, self.tenant_id)
+
+
+async def _embedder_gate(pool: Any, cfg: dict[str, Any]) -> bool:
+    """True when the demo must stop: the configured embedder would abstain.
+
+    Embedder honesty (todo-19): the default config ships provider=pgml, and
+    with the pgml extension absent every research embedding abstains. Probe
+    the live database and FAIL FAST with the fix - a demo that limps through
+    every stage and dead-ends at review teaches nothing.
+    """
+    pgml_installed: bool | None = None
+    emb_provider = str((cfg.get("embedding", {}) or {}).get("provider", ""))
+    if emb_provider == "pgml":
+        async with pool.acquire() as conn:
+            present = await conn.fetchval(
+                "SELECT count(*) FROM pg_extension WHERE extname = 'pgml'"
+            )
+        pgml_installed = bool(present)
+    return embedder_blocked(cfg, pgml_installed)
+
+
+async def _demo_ingest_stage(run: _DemoRun) -> None:
+    """Ingest the demo transcripts into the demo project and project them."""
+    run.wire()
+    _reader, handler, _embedder, _projection, _docs, _embeds = run.wiring
+    for name in TRANSCRIPTS:
+        path = DEMO_CORPUS_ROOT / name
+        await handler.ingest_transcript(run.tenant_id, str(path), DEMO_PROJECT_ID)
+    await run.catch_up()
+    print(f"ingested {len(TRANSCRIPTS)} transcripts into project {DEMO_PROJECT_ID}")
+
+
+async def _demo_codebook_stage(run: _DemoRun) -> int | None:
+    """Seed (or reuse) the demo codebook; returns an exit code, or None to go on."""
+    codebook = load_demo_codebook()
+    shas_by_code = await _resolve_exemplar_shas(run.pool, run.tenant_id, codebook)
+    missing = [n for n, refs in shas_by_code.items() if not refs]
+    if missing:
+        print(f"ERROR: no ingested unit matches exemplars for codes: {missing}")
+        return 1
+    codes = [
+        {
+            "code_id": str(uuid5(NAMESPACE_URL, f"corpus-kb-demo/code/{code['name']}")),
+            "name": code["name"],
+            "definition": code["definition"],
+            "inclusion": code.get("inclusion", ""),
+            "exclusion": code.get("exclusion", ""),
+        }
+        for code in codebook["codes"]
+    ]
+    version_id = await _existing_codebook_version(run.pool, run.tenant_id, codes)
+    if version_id is not None:
+        print(f"codebook version {version_id} reused (seeded by an earlier run)")
+    else:
+        version_id = await _seed_codebook(
+            run.pool, run.tenant_id, codes, codebook, shas_by_code, run.conn_str
+        )
+        await run.catch_up()
+        print(f"codebook version {version_id} seeded and projected")
+    run.version_id = version_id
+    return None
+
+
+async def _demo_coding_stage(run: _DemoRun, version_id: UUID) -> None:
+    """Run the deductive pass against the seeded codebook."""
+    from corpus_kb.research.deductive_run import run_deductive
+
+    # The injected cfg (not a disk reload) decides enforcement AND binds
+    # the run's event writes to the database this demo drives — the same
+    # F8 rule the cycle stage follows.
+    summary = await run_deductive(
+        run.pool, run.tenant_id, version_id, project_id=DEMO_PROJECT_ID, cfg=run.cfg
+    )
+    await run.catch_up()
+    print(
+        f"units={summary.get('n_units')} codes={summary.get('n_codes')} "
+        f"explicit={summary.get('explicit')} question_dependent="
+        f"{summary.get('question_dependent')} review={summary.get('review')}"
+    )
+
+
+async def _demo_review_stage(run: _DemoRun) -> int | None:
+    """Accept the coding run's pending escalation; returns an exit code or None."""
+    from corpus_kb.research.review_surface import execute_review
+
+    assignment_id = await _pending_review_assignment(run.pool, run.tenant_id, DEMO_PROJECT_ID)
+    if assignment_id is None:
+        print("ERROR: no pending review assignment found after the coding run")
+        return 1
+    review = await execute_review(
+        run.pool, run.tenant_id, run.conn_str, assignment_id, DEMO_REVIEWER, "accept"
+    )
+    print(
+        f"accepted assignment {review.get('assignment_id')} "
+        f"(projection: {review.get('projection')})"
+    )
+    return None
+
+
+async def _demo_report_stage(run: _DemoRun) -> None:
+    """Build the novice governance report and print its summary."""
+    from corpus_kb.research.governance_report import novice_view, to_dict
+    from corpus_kb.research.report_runner import build_report
+
+    report = await build_report(
+        run.pool, run.tenant_id, cast("UUID", run.version_id), level=guide_copy.LEVEL_NOVICE
+    )
+    view = cast("dict[str, Any]", to_dict(report).get("novice_view") or novice_view(report))
+    _print_report_summary(view)
+
+
+async def _demo_ask_stage(run: _DemoRun) -> None:
+    """Answer the demo question through the notebook and print the evidence."""
+    from corpus_kb.handlers.llm_handler import LlmHandler
+    from corpus_kb.projections.research._embed import ResearchEmbedder
+    from corpus_kb.rag import create_embedder
+    from corpus_kb.research.notebook import NotebookQuery, notebook_ask
+
+    embedder = ResearchEmbedder(run.pool, create_embedder(run.cfg, run.pool))
+    ask = await notebook_ask(
+        run.pool,
+        embedder,
+        LlmHandler(run.cfg),
+        NotebookQuery(
+            question=DEMO_QUESTION,
+            tenant_id=run.tenant_id,
+            project_id=DEMO_PROJECT_ID,
+        ),
+    )
+    _print_ask(ask)
+
+
 async def run_demo(cfg: dict[str, Any] | None = None) -> int:
     """Execute the narrated pipeline; returns the process exit code."""
     import asyncpg
@@ -304,118 +454,32 @@ async def run_demo(cfg: dict[str, Any] | None = None) -> int:
     print(guide_copy.DEMO_INTRO)
     print(f"docs: {guide_copy.DEMO_DOC}")
 
-    stages = demo_stages()
-    stage_ingest, stage_codebook, stage_coding, stage_review, stage_report, stage_ask = stages
+    stage_ingest, stage_codebook, stage_coding, stage_review, stage_report, stage_ask = (
+        demo_stages()
+    )
 
     pool = await asyncpg.create_pool(conn_str)
     try:
-        # Embedder honesty (todo-19): the default config ships provider=pgml,
-        # and with the pgml extension absent every research embedding abstains.
-        # Probe the live database and FAIL FAST with the fix - a demo that
-        # limps through every stage and dead-ends at review teaches nothing.
-        pgml_installed: bool | None = None
-        emb_provider = str((cfg.get("embedding", {}) or {}).get("provider", ""))
-        if emb_provider == "pgml":
-            async with pool.acquire() as conn:
-                present = await conn.fetchval(
-                    "SELECT count(*) FROM pg_extension WHERE extname = 'pgml'"
-                )
-            pgml_installed = bool(present)
-        if embedder_blocked(cfg, pgml_installed):
+        if await _embedder_gate(pool, cfg):
             print(f"ERROR: {guide_copy.DEMO_NO_EMBEDDINGS}")
             return 1
-
+        run = _DemoRun(pool=pool, cfg=cfg, conn_str=conn_str, tenant_id=tenant_id)
         _narrate(stage_ingest)
-        reader, handler, _embedder, projection, docs, embeds = _wiring(pool, cfg, conn_str)
-        project_id = DEMO_PROJECT_ID
-        for name in TRANSCRIPTS:
-            path = DEMO_CORPUS_ROOT / name
-            await handler.ingest_transcript(tenant_id, str(path), project_id)
-        await _catch_up(reader, projection, docs, embeds, tenant_id)
-        print(f"ingested {len(TRANSCRIPTS)} transcripts into project {project_id}")
-
+        await _demo_ingest_stage(run)
         _narrate(stage_codebook)
-        codebook = load_demo_codebook()
-        shas_by_code = await _resolve_exemplar_shas(pool, tenant_id, codebook)
-        missing = [n for n, refs in shas_by_code.items() if not refs]
-        if missing:
-            print(f"ERROR: no ingested unit matches exemplars for codes: {missing}")
-            return 1
-        codes = [
-            {
-                "code_id": str(uuid5(NAMESPACE_URL, f"corpus-kb-demo/code/{code['name']}")),
-                "name": code["name"],
-                "definition": code["definition"],
-                "inclusion": code.get("inclusion", ""),
-                "exclusion": code.get("exclusion", ""),
-            }
-            for code in codebook["codes"]
-        ]
-        version_id = await _existing_codebook_version(pool, tenant_id, codes)
-        if version_id is not None:
-            print(f"codebook version {version_id} reused (seeded by an earlier run)")
-        else:
-            version_id = await _seed_codebook(
-                pool, tenant_id, codes, codebook, shas_by_code, conn_str
-            )
-            await _catch_up(reader, projection, docs, embeds, tenant_id)
-            print(f"codebook version {version_id} seeded and projected")
-
+        halt = await _demo_codebook_stage(run)
+        if halt is not None:
+            return halt
         _narrate(stage_coding)
-        from corpus_kb.research.deductive_run import run_deductive
-
-        # The injected cfg (not a disk reload) decides enforcement AND binds
-        # the run's event writes to the database this demo drives — the same
-        # F8 rule the cycle stage follows.
-        summary = await run_deductive(pool, tenant_id, version_id, project_id=project_id, cfg=cfg)
-        await _catch_up(reader, projection, docs, embeds, tenant_id)
-        print(
-            f"units={summary.get('n_units')} codes={summary.get('n_codes')} "
-            f"explicit={summary.get('explicit')} question_dependent="
-            f"{summary.get('question_dependent')} review={summary.get('review')}"
-        )
-
+        await _demo_coding_stage(run, cast("UUID", run.version_id))
         _narrate(stage_review)
-        from corpus_kb.research.review_surface import execute_review
-
-        assignment_id = await _pending_review_assignment(pool, tenant_id, project_id)
-        if assignment_id is None:
-            print("ERROR: no pending review assignment found after the coding run")
-            return 1
-        review = await execute_review(
-            pool, tenant_id, conn_str, assignment_id, DEMO_REVIEWER, "accept"
-        )
-        print(
-            f"accepted assignment {review.get('assignment_id')} "
-            f"(projection: {review.get('projection')})"
-        )
-
+        halt = await _demo_review_stage(run)
+        if halt is not None:
+            return halt
         _narrate(stage_report)
-        from corpus_kb.research.governance_report import novice_view, to_dict
-        from corpus_kb.research.report_runner import build_report
-
-        report = await build_report(pool, tenant_id, version_id, level=guide_copy.LEVEL_NOVICE)
-        view = cast("dict[str, Any]", to_dict(report).get("novice_view") or novice_view(report))
-        _print_report_summary(view)
-
+        await _demo_report_stage(run)
         _narrate(stage_ask)
-        from corpus_kb.handlers.llm_handler import LlmHandler
-        from corpus_kb.projections.research._embed import ResearchEmbedder
-        from corpus_kb.rag import create_embedder
-        from corpus_kb.research.notebook import NotebookQuery, notebook_ask
-
-        embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-        ask = await notebook_ask(
-            pool,
-            embedder,
-            LlmHandler(cfg),
-            NotebookQuery(
-                question=DEMO_QUESTION,
-                tenant_id=tenant_id,
-                project_id=project_id,
-            ),
-        )
-        _print_ask(ask)
+        await _demo_ask_stage(run)
 
         print()
         print(guide_copy.DEMO_OUTRO)
