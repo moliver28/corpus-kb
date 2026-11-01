@@ -196,11 +196,15 @@ def _fake_loader(pages: dict[int, list[_Node]]) -> Callable[[], _FakeConverter]:
 
 
 def _six_page_nodes() -> dict[int, list[_Node]]:
-    """Two chapters over six pages; page bodies sized to split the pack."""
+    """Page 1 opens headerless (the bare-citation leg); two chapters follow."""
     body = "prose body " * 260  # ~2900 chars: one page near half the budget
     return {
-        1: [_Node("section_header", "Chapter One", 1), _Node("text", "intro body", 1)],
-        2: [_Node("text", body, 2)],
+        1: [_Node("text", "lead " * 200, 1)],  # no header: 1000 chars, one chunk alone
+        2: [
+            _Node("section_header", "Chapter One", 2),
+            _Node("text", "intro body", 2),
+            _Node("text", body, 2),
+        ],
         3: [_Node("text", body, 3)],
         4: [_Node("section_header", "Chapter Two", 4), _Node("text", "new body", 4)],
         5: [_Node("text", body, 5)],
@@ -336,7 +340,7 @@ def test_docling_windows_seam_and_metadata(tmp_path: Path, monkeypatch: pytest.M
     assert loader().calls == [(1, 4), (5, 6)]
     assert validate_plan(plan) == []
     chapters = {chunk.metadata["section"] for chunk in plan.chunks}
-    assert chapters == {"Chapter One", "Chapter Two"}
+    assert chapters == {None, "Chapter One", "Chapter Two"}  # page 1 is headerless
     seam = [chunk for chunk in plan.chunks if chunk.metadata["section"] == "Chapter One"]
     assert seam and seam[0].metadata["page_end"] == 3  # the carried page
     assert all(1 <= c.metadata["page_start"] <= c.metadata["page_end"] <= 6 for c in plan.chunks)
@@ -773,10 +777,16 @@ def test_citations_flag_reaches_built_chunks_and_flag_off_stays_exact(
     plan = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), on))
     assert plan.chunks
     assert validate_plan(plan) == []
-    for chunk in plan.chunks:
+    assert [chunk.metadata["citation"] for chunk in plan.chunks] == [
+        "p. 1",  # bare: the headerless lead page
+        "pp. 2-3 - Chapter One",
+        "pp. 4-6 - Chapter Two",
+    ]
+    for chunk in plan.chunks:  # structural check for the rest: pages and title agree
         start, end = chunk.metadata["page_start"], chunk.metadata["page_end"]
         pages = f"p. {start}" if start == end else f"pp. {start}-{end}"
-        assert chunk.metadata["citation"] == f"{pages} - {chunk.metadata['section']}"
+        title = chunk.metadata["section"]
+        assert chunk.metadata["citation"] == (f"{pages} - {title}" if title else pages)
 
     off = _config(1, 4, str(tmp_path / "cache-off"), window_subprocess=False)
     plain = TextbookStrategy().build_chunks("", "book.pdf", _profile(str(path), off))
