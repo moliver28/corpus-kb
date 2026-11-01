@@ -187,6 +187,13 @@
   margin-bottom: 0;
 }
 
+/* antd Typography ships `div.ant-typography { margin-bottom: 1em }`
+   (0,1,1), which beats the single class above; naming the component
+   class too (0,2,0) restores the 0 the inline styles used to force. */
+.ant-typography.ui-flush {
+  margin-bottom: 0;
+}
+
 /* Stage placeholder (App.tsx): plain markup, card-like without antd. */
 .ui-placeholder {
   border: 1px solid #f0f0f0;
