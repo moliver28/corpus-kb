@@ -84,6 +84,34 @@ async def _apply_coding_migrations(conn: asyncpg.Connection) -> None:
             pytest.skip(f"server extension unavailable, coding schema absent: {exc}")
 
 
+async def _skip_unless_tables_owned(conn: asyncpg.Connection) -> None:
+    """Skip loudly when the live coding tables belong to another role.
+
+    The direct-SQL rehearsal re-runs 012-015 and their rollbacks by hand.
+    Those files ALTER and DROP tables, and Postgres reserves that for the
+    table owner. On a database provisioned by a different role (a CI-parity
+    image, a leftover bootstrap user) the rehearsal cannot work, and the
+    failure would be a privilege error, not a product bug.
+    """
+    foreign = await conn.fetch(
+        """
+        SELECT c.relname, pg_get_userbyid(c.relowner) AS owner
+        FROM pg_class c
+        WHERE c.relname = ANY($1::text[]) AND c.relkind = 'r'
+          AND pg_get_userbyid(c.relowner) <> current_user
+        ORDER BY c.relname
+        """,
+        CODING_TABLES,
+    )
+    if foreign:
+        me = await conn.fetchval("SELECT current_user")
+        detail = ", ".join(f"{r['relname']} (owner {r['owner']})" for r in foreign)
+        pytest.skip(
+            f"coding tables are not owned by {me}: {detail}. "
+            "The DDL rehearsal needs the owner role."
+        )
+
+
 @pytest.mark.asyncio
 @pytest.mark.requires_postgres
 async def test_migration_idempotency() -> None:
@@ -174,6 +202,7 @@ async def test_coding_migrations_apply_twice_on_live_db() -> None:
     """Executing each coding migration's SQL directly a second time succeeds."""
     conn = await _connect()
     try:
+        await _skip_unless_tables_owned(conn)
         await _apply_coding_migrations(conn)
         for path in CODING_MIGRATIONS:
             sql = path.read_text(encoding="utf-8")
@@ -248,6 +277,7 @@ async def test_coding_migrations_rollback_and_reapply_on_live_db() -> None:
     """Rollback 015->012 drops the coding domain; re-running migrations restores it."""
     conn = await _connect()
     try:
+        await _skip_unless_tables_owned(conn)
         await _apply_coding_migrations(conn)
 
         for path in reversed(CODING_ROLLBACKS):
