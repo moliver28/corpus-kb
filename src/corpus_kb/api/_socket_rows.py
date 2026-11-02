@@ -34,6 +34,8 @@ _ACTIVE = "corpus_kb.tools.active_learn_tools"
 _MEMBED = "corpus_kb.tools.meta_embed_tools"
 _ASK = "corpus_kb.tools.ask_tools"
 _GRAPH = "corpus_kb.tools.graph_read_tools"
+_SEARCH = "corpus_kb.tools.search_tools"
+_TAG = "corpus_kb.tools.tag_tools"
 
 # Mechanical arms: pool fetch + strict coercion, said once in _spec_arm.
 _SPECS: dict[str, _Spec] = {
@@ -181,6 +183,25 @@ _SPECS: dict[str, _Spec] = {
         positional=(_Opt("query", "sdef", ""),),
         opts=(_Opt("entity_type", "raw"), _Opt("limit", "int", 100)),
     ),
+    # -- issue #182 read ops: the search pair and the tag/metadata reads --
+    "search_similar": _Spec(
+        _SEARCH,
+        "search_similar",
+        positional=(_Opt("chunk_id", "req"),),
+        opts=(_Opt("k", "int", 10),),
+    ),
+    "search_context": _Spec(
+        _SEARCH,
+        "search_context",
+        positional=(_Opt("query", "sdef", ""),),
+        opts=(_Opt("k", "int", 5), _Opt("context_chunks", "int", 2)),
+    ),
+    "get_document_tags": _Spec(
+        _TAG,
+        "get_document_tags",
+        positional=(_Opt("doc_id", "req"),),
+    ),
+    "get_metadata": _Spec(_TAG, "get_metadata", opts=(_Opt("key", "str"), _Opt("doc_id", "raw"))),
     "get_entity_relations": _Spec(
         _GRAPH,
         "get_entity_relations",

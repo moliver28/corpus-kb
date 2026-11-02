@@ -60,6 +60,7 @@ import corpus_kb.handlers.llm_handler as llm_handler_module
 import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
+import corpus_kb.handlers.tag_handler as tag_handler_module
 import corpus_kb.labeling.engine as labeling_engine_module
 import corpus_kb.labeling.writer as labeling_writer_module
 import corpus_kb.projections.research._embed as research_embed_module
@@ -100,6 +101,7 @@ import corpus_kb.tools.research_tools as research_tools_module
 import corpus_kb.tools.search_tools as search_tools_module
 import corpus_kb.tools.sentiment_tools as sentiment_tools_module
 import corpus_kb.tools.statements_tools as statements_tools_module
+import corpus_kb.tools.tag_tools as tag_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
 from corpus_kb.api.http import create_http_app
@@ -723,6 +725,24 @@ async def _shared_list_documents(ctx: dict[str, Any]) -> dict[str, Any]:
     return await list_documents_tool(ctx["pool"], ctx["config"])
 
 
+async def _shared_search_similar(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await search_tools_module.search_similar(ctx["pool"], DOC_ID, config=ctx["config"], k=10)
+
+
+async def _shared_search_context(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await search_tools_module.search_context(
+        ctx["pool"], "parity probe", config=ctx["config"], k=5
+    )
+
+
+async def _shared_get_document_tags(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.get_document_tags(ctx["pool"], DOC_ID)
+
+
+async def _shared_get_metadata(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.get_metadata(ctx["pool"], key="parity")
+
+
 async def _shared_add_entity(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import AddEntityCommand
 
@@ -1294,6 +1314,31 @@ LEGS: dict[str, _Leg] = {
         lambda ctx: {"method": "delete", "path": f"/api/documents/{DOC_ID}"},
         _sock("delete_document", {"document_id": DOC_ID}),
         mcp=_mcp({"document_id": DOC_ID}),
+    ),
+    # -- issue #182 read ops: documents tags/metadata + the search reads ----
+    "get_document_tags": _Leg(
+        _shared_get_document_tags,
+        _get(f"/api/documents/{DOC_ID}/tags", {}),
+        _sock("get_document_tags", {"doc_id": DOC_ID}),
+        _mcp({"doc_id": DOC_ID}),
+    ),
+    "get_metadata": _Leg(
+        _shared_get_metadata,
+        _get("/api/metadata", {"key": "parity"}),
+        _sock("get_metadata", {"key": "parity"}),
+        _mcp({}),
+    ),
+    "search_similar": _Leg(
+        _shared_search_similar,
+        _post("/api/search/similar", {"chunk_id": DOC_ID, "k": 10}),
+        _sock("search_similar", {"chunk_id": DOC_ID}),
+        _mcp({"chunk_id": DOC_ID, "k": 10}),
+    ),
+    "search_context": _Leg(
+        _shared_search_context,
+        _post("/api/search/context", {"query": "parity probe", "k": 5}),
+        _sock("search_context", {"query": "parity probe"}),
+        _mcp({"query": "parity probe", "k": 5}),
     ),
     "add_entity": _Leg(
         _shared_add_entity,
@@ -1883,10 +1928,36 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     async def canned_list_documents(self: Any, query: Any) -> list[Any]:
         return []
 
+    # Issue #182 read ops: the similar/context searches answer through the
+    # same canned QueryHandler; the tag/metadata reads answer through the
+    # same canned TagHandler singleton.
+    async def canned_search_similar(self: Any, query: Any) -> list[Any]:
+        return []
+
+    async def canned_search_context(self: Any, query: Any) -> list[Any]:
+        return []
+
+    async def canned_document_tags(self: Any, tenant_id: Any, doc_id: Any) -> list[Any]:
+        return []
+
+    async def canned_metadata(
+        self: Any, tenant_id: Any, key: Any = None, doc_id: Any = None
+    ) -> list[Any]:
+        return []
+
     monkeypatch.setattr(query_handler_module, "get_query_handler", fake_query_handler)
     monkeypatch.setattr(QueryHandler, "handle_search_with_meta", canned_search)
     monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
     monkeypatch.setattr(QueryHandler, "handle_list_documents", canned_list_documents)
+    monkeypatch.setattr(QueryHandler, "handle_search_similar", canned_search_similar)
+    monkeypatch.setattr(QueryHandler, "handle_search_context", canned_search_context)
+    monkeypatch.setattr(
+        tag_handler_module, "get_tag_handler", lambda: tag_handler_module.TagHandler(_FakePool())
+    )
+    monkeypatch.setattr(
+        tag_handler_module.TagHandler, "handle_get_document_tags", canned_document_tags
+    )
+    monkeypatch.setattr(tag_handler_module.TagHandler, "handle_get_metadata", canned_metadata)
     monkeypatch.setattr(router_handler_module, "get_router_handler", _StubRouter)
 
     # Graph read ops: one canned store behind the handler singleton, so the
@@ -2246,6 +2317,11 @@ def test_catalogue_matches_surface_registry() -> None:
         "notebook_evidence",
         "research_cycle",
         "research_demo",
+        # Issue #182: the search read pair byte-matches its registry rows
+        # (documents-list/verify/document-delete/document-tags/document-
+        # metadata use the UI manifest ids, so no op name coincides).
+        "search_similar",
+        "search_context",
     } <= set(checked)
 
 

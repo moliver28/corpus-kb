@@ -282,6 +282,36 @@
     "required": []
   },
   {
+    "description": "List ingested documents with chunk counts (read-only).",
+    "id": "documents-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents",
+    "required": []
+  },
+  {
+    "description": "Delete one document by ID; chunks and vectors cascade.",
+    "id": "document-delete",
+    "longRunning": false,
+    "method": "DELETE",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}",
+    "required": []
+  },
+  {
+    "description": "List one document's tags (read-only).",
+    "id": "document-tags",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/tags",
+    "required": []
+  },
+  {
     "description": "Ingest the supported files under one directory in one walk.",
     "id": "ingest-directory",
     "longRunning": true,
@@ -369,6 +399,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/labeling/triage",
+    "required": []
+  },
+  {
+    "description": "Read metadata rows by key or document (read-only).",
+    "id": "document-metadata",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/metadata",
     "required": []
   },
   {
@@ -706,6 +746,26 @@
     "required": []
   },
   {
+    "description": "Search with the surrounding context chunks attached.",
+    "id": "search-context",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/search/context",
+    "required": []
+  },
+  {
+    "description": "Find chunks similar to one stored chunk (vector distance).",
+    "id": "search-similar",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/search/similar",
+    "required": []
+  },
+  {
     "description": "List the built topics with sizes, labels, and keywords.",
     "id": "topics-list",
     "longRunning": false,
@@ -733,6 +793,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/topics/trends",
+    "required": []
+  },
+  {
+    "description": "Check each answer claim against the cited chunks.",
+    "id": "verify",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/verify",
     "required": []
   }
 ]

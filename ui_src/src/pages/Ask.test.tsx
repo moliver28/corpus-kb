@@ -176,10 +176,12 @@ describe("Ask page", () => {
     expect(sent?.body).toContain('"retrieval_only":true');
   });
 
-  it("shows the honest gap on the verify tab", async () => {
+  it("wires the verify tab with no gap banner", async () => {
     stubFetch([]);
     render(<Ask />, { wrapper: makeWrapper() });
     fireEvent.click(await screen.findByRole("button", { name: strings.askTabVerify }));
-    expect(await screen.findByText(strings.askVerifyNotWired)).toBeTruthy();
+    // The verify manifest row landed (issue #182), so the honest gap
+    // banner is gone.
+    expect(screen.queryByText(strings.askVerifyNotWired)).toBeNull();
   });
 });

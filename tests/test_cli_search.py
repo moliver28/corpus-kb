@@ -9,6 +9,7 @@ envelope are exercised end-to-end without a database.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
@@ -175,3 +176,133 @@ def test_search_help_documents_exit_codes() -> None:
     assert "0 answered" in result.output
     assert "1 the search failed" in result.output
     assert "3 the database is unreachable" in result.output
+
+
+# ============================================================================
+# Issue #182 read pair: search-similar and search-context (same file's
+# plumbing; the tool layer is faked at the same seam).
+# ============================================================================
+
+
+class _RecordingTool:
+    """Canned envelope + the call args, for pass-through assertions."""
+
+    def __init__(self, envelope: dict[str, object], error: Exception | None = None) -> None:
+        self.envelope = envelope
+        self.error = error
+        self.calls: list[dict[str, Any]] = []
+
+    async def __call__(self, *args: Any, **kwargs: Any) -> dict[str, object]:
+        self.calls.append({"args": args, **kwargs})
+        if self.error is not None:
+            raise self.error
+        return self.envelope
+
+
+def _patch_read_world(
+    monkeypatch: pytest.MonkeyPatch,
+    fn_name: str,
+    fake: _RecordingTool,
+) -> FakePool:
+    """Same seam patch as _patch_world, for the two read commands."""
+    pool = FakePool()
+
+    async def _open(_cfg: dict[str, object]) -> FakePool:
+        return pool
+
+    def _cfg() -> dict[str, object]:
+        return dict(_CFG)
+
+    monkeypatch.setattr("corpus_kb.cli.cli_search._open_pool", _open)
+    monkeypatch.setattr("corpus_kb.cli.cli_search._load_config", _cfg)
+    monkeypatch.setattr(f"corpus_kb.tools.search_tools.{fn_name}", fake)
+    return pool
+
+
+def test_search_similar_json_is_the_tool_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {"status": "success", "result": [_HIT]}
+    fake = _RecordingTool(envelope)
+    pool = _patch_read_world(monkeypatch, "search_similar", fake)
+    result = runner.invoke(app, ["search-similar", CHUNK_ID, "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["args"][1] == CHUNK_ID
+    assert call["k"] == 10
+    assert call["config"] == dict(_CFG)
+    assert call["args"][0] is pool
+    assert pool.closed is True
+
+
+def test_search_similar_passes_k_and_lists_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {"status": "success", "result": [_HIT]}
+    fake = _RecordingTool(envelope)
+    _patch_read_world(monkeypatch, "search_similar", fake)
+    result = runner.invoke(app, ["search-similar", CHUNK_ID, "--k", "3"])
+    assert result.exit_code == 0, result.output
+    assert fake.calls[0]["k"] == 3
+    assert "no results" not in result.output
+    assert "[0.87]" in result.output
+    assert DOC_ID in result.output
+
+
+def test_search_similar_error_envelope_exits_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "error", "result": []})
+    _patch_read_world(monkeypatch, "search_similar", fake)
+    result = runner.invoke(app, ["search-similar", CHUNK_ID])
+    assert result.exit_code == 1
+    assert "search-similar: error" in result.output
+
+
+def test_search_similar_corpus_error_exits_one_and_closes_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _RecordingTool({}, error=CorpusError("the database is down"))
+    pool = _patch_read_world(monkeypatch, "search_similar", fake)
+    result = runner.invoke(app, ["search-similar", CHUNK_ID])
+    assert result.exit_code == 1
+    assert "ERROR: the database is down" in result.output
+    assert pool.closed is True
+
+
+def test_search_context_json_is_the_tool_envelope(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = {"status": "success", "result": [_HIT]}
+    fake = _RecordingTool(envelope)
+    pool = _patch_read_world(monkeypatch, "search_context", fake)
+    result = runner.invoke(app, ["search-context", "startup", "--json"])
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout) == envelope
+    call = fake.calls[0]
+    assert call["args"][1] == "startup"
+    assert call["k"] == 5
+    assert call["config"] == dict(_CFG)
+    assert call["args"][0] is pool
+    assert pool.closed is True
+
+
+def test_search_context_empty_still_exits_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({"status": "success", "result": []})
+    _patch_read_world(monkeypatch, "search_context", fake)
+    result = runner.invoke(app, ["search-context", "ghost"])
+    assert result.exit_code == 0, result.output
+    assert "no results" in result.output
+
+
+def test_search_context_corpus_error_exits_one(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingTool({}, error=CorpusError("the database is down"))
+    pool = _patch_read_world(monkeypatch, "search_context", fake)
+    result = runner.invoke(app, ["search-context", "startup"])
+    assert result.exit_code == 1
+    assert "ERROR: the database is down" in result.output
+    assert pool.closed is True
+
+
+def test_search_read_helps_document_exit_codes() -> None:
+    ansi = re.compile(r"\x1b\[[0-9;]*m")
+    for command in ("search-similar", "search-context"):
+        result = runner.invoke(app, [command, "--help"])
+        assert result.exit_code == 0
+        flat = " ".join(ansi.sub("", result.output).split())
+        assert "0 answered" in flat
+        assert "1 failed" in flat
+        assert "3 the database is unreachable" in flat

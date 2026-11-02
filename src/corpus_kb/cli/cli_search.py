@@ -1,6 +1,6 @@
 """The ``corpus-kb search`` front door (the core search op's CLI leg).
 
-Top-level command registered on the main app (see ``register``):
+Top-level commands registered on the main app (see ``register``):
 
   * ``corpus-kb search QUERY`` — hybrid vector + full-text search against
     the CONFIGURED database (no server needed). The command calls the
@@ -8,6 +8,10 @@ Top-level command registered on the main app (see ``register``):
     (``tools.search_tools:search``), so every surface returns the same
     envelope: ``{"status", "result", "degraded_excluded"}`` (plus
     ``remedy`` only in the ``degraded_empty`` case).
+  * ``corpus-kb search-similar CHUNK_ID`` — chunks nearest to one stored
+    chunk (issue #182 read pair).
+  * ``corpus-kb search-context QUERY`` — search with surrounding context
+    chunks attached (issue #182 read pair).
 
 HONEST EXIT CODES (stable for scripting, documented in the command's
 help): ``0`` the search answered — including ``degraded_empty``, whose
@@ -33,8 +37,10 @@ _TRUNCATED = "..."
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the search command to the main Typer app."""
+    """Attach the three search commands to the main Typer app."""
     app.command("search")(search)
+    app.command("search-similar")(search_similar)
+    app.command("search-context")(search_context)
 
 
 def _exit_for(result: dict[str, object]) -> int:
@@ -127,3 +133,82 @@ def search(
     prints), 1 the search failed, 3 the database is unreachable.
     """
     return _run_sync(lambda: _search_flow(query, k, source_type, json_output))
+
+
+async def _search_similar_flow(chunk_id: str, k: int, json_output: bool) -> int:
+    from corpus_kb.errors import CorpusError
+    from corpus_kb.tools.search_tools import search_similar as search_similar_tool
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await search_similar_tool(pool, chunk_id, config=cfg, k=k)
+    except CorpusError as exc:
+        print(f"ERROR: {exc}")
+        return EXIT_FAILED
+    finally:
+        await pool.close()
+    _emit_rows(result, json_output, label="search-similar")
+    return _exit_for(result)
+
+
+async def _search_context_flow(query: str, k: int, json_output: bool) -> int:
+    from corpus_kb.errors import CorpusError
+    from corpus_kb.tools.search_tools import search_context as search_context_tool
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        result = await search_context_tool(pool, query, config=cfg, k=k)
+    except CorpusError as exc:
+        print(f"ERROR: {exc}")
+        return EXIT_FAILED
+    finally:
+        await pool.close()
+    _emit_rows(result, json_output, label="search-context")
+    return _exit_for(result)
+
+
+def search_similar(
+    chunk_id: str = typer.Argument(..., help="The chunk UUID to search around"),
+    k: int = typer.Option(10, "--k", min=1, help="How many neighbors to return (default: 10)"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Find chunks similar to one stored chunk (vector distance).
+
+    Talks to the configured database directly; no server needed. Exit
+    codes: 0 answered (an empty list is still 0), 1 failed, 3 the
+    database is unreachable.
+    """
+    return _run_sync(lambda: _search_similar_flow(chunk_id, k, json_output))
+
+
+def search_context(
+    query: str = typer.Argument(..., help="What to look for in the knowledge base"),
+    k: int = typer.Option(5, "--k", min=1, help="How many hits to return (default: 5)"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Search with the surrounding context chunks attached.
+
+    Talks to the configured database directly; no server needed. Exit
+    codes: 0 answered (an empty list is still 0), 1 failed, 3 the
+    database is unreachable.
+    """
+    return _run_sync(lambda: _search_context_flow(query, k, json_output))
+
+
+def _emit_rows(result: dict[str, object], json_output: bool, label: str) -> None:
+    """Print the plain result rows, or the exact envelope with --json."""
+    if json_output:
+        # The EXACT handler envelope — no reshaping, no added keys.
+        print(json.dumps(result, indent=2, default=str))
+        return
+    status = str(result.get("status", "error"))
+    if status != "success":
+        print(f"{label}: {status}")
+        return
+    hits = _hits(result)
+    for rank, hit in enumerate(hits, start=1):
+        _print_hit(rank, hit)
+    if not hits:
+        print("no results")
