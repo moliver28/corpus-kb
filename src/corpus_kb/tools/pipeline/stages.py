@@ -1,9 +1,9 @@
 """The locked pipeline stages (unified-ingestion Wave 2).
 
-``_run_locked_stages`` opens the ledger row, runs the stage callables in
-order (prepare -> store+embed -> shadow -> extract -> atomize -> result),
-and closes the ledger — all under the advisory lock the caller (the plan
-stage, ``pipeline.plan.run_pipeline``) already holds.
+``_run_document_stages`` opens the ledger row, runs the stage callables
+in order (prepare -> store+embed -> shadow -> extract -> atomize ->
+result), and closes the ledger — all under the advisory lock the caller
+(the plan stage, ``pipeline.plan.run_pipeline``) already holds.
 
 One small module per stage: ``plan`` (strategy resolution and the
 ChunkPlan), ``prepare`` (chunk identity and provenance), ``shadow`` (the
@@ -18,10 +18,8 @@ resolved through the ``ingest_common`` facade at CALL time via ``_ic()``,
 so the historical patch seams keep working unchanged.
 
 The canonical ``IngestDocument`` is built ONCE in ``plan`` and threaded
-through every stage call. ``_run_document_stages`` is the document-first
-orchestrator; ``_run_locked_stages`` keeps the historical keyword
-signature as a thin seam (the pinned ingest tests call it that way) and
-delegates to it.
+through every stage call; ``_run_document_stages`` is the document-first
+orchestrator (the legacy keyword seam was removed — PR 280 F2).
 """
 
 from __future__ import annotations
@@ -33,7 +31,6 @@ import asyncpg
 
 from ...storage.gateway import SqlGateway
 from ...storage.rag_backend import RagBackend
-from ...utils.models import Chunk, Document
 from ._facade import _ic
 from .document import IngestDocument
 from .produce import StageArtifacts, _commit_document, _mirror_rag_backend, _produce_artifacts
@@ -42,7 +39,7 @@ from .sinks import ChunkSink, IngestSink
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["_run_document_stages", "_run_locked_stages"]
+__all__ = ["_run_document_stages"]
 
 
 def _book_title(config: dict[str, Any]) -> str | None:
@@ -201,49 +198,3 @@ async def _run_document_stages(
         # cancellation (or any other BaseException) propagates unchanged.
         await ingest_sink.fail_run(run_id, f"{type(exc).__name__}: {exc}")
         raise
-
-
-async def _run_locked_stages(
-    document: Document,
-    chunks: list[Chunk],
-    file_hash: str,
-    text: str,
-    source_type: str,
-    path: str,
-    config: dict[str, Any],
-    pg_pool: asyncpg.Pool | SqlGateway,
-    tenant_id: str,
-    rag_backend: RagBackend | None,
-    is_file: bool,
-    empty_reason: str | None = None,
-    strategy: str | None = None,
-    validation_report: dict[str, Any] | None = None,
-    validation_mode: str = "off",
-    calibration_summary: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Legacy keyword seam: build the canonical document, run the stages.
-
-    The pinned ingest tests call this entry with the historical keyword
-    arguments; the plan stage calls ``_run_document_stages`` directly with
-    the ``IngestDocument`` it already built. Behavior is identical.
-    """
-    return await _run_document_stages(
-        IngestDocument(
-            document=document,
-            text=text,
-            file_hash=file_hash,
-            source_type=source_type,
-            path=path,
-            is_file=is_file,
-            chunks=chunks,
-            empty_reason=empty_reason,
-            strategy=strategy,
-        ),
-        config,
-        pg_pool,
-        tenant_id,
-        rag_backend,
-        validation_report=validation_report,
-        validation_mode=validation_mode,
-        calibration_summary=calibration_summary,
-    )
