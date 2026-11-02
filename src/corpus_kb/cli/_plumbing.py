@@ -9,8 +9,9 @@ they live here once. The config and pool seam stays
 
 from __future__ import annotations
 
+import enum
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, TypedDict
 
 import typer
 
@@ -25,6 +26,50 @@ _OK_STATUSES = ("success", "disabled", "empty", "insufficient_data")
 
 _JSON_OPT = typer.Option(False, "--json", help="Machine-readable JSON output")
 _TENANT_OPT = typer.Option(DEFAULT_TENANT_ID, "--tenant-id", help="Tenant id")
+
+# The ingest validation gate — the same values the MCP, HTTP, and socket
+# surfaces accept on the ingest operations (tools.ingest_common).
+_VALIDATE_OPT = typer.Option(
+    None,
+    "--validate",
+    help="Validation gate for this run. Omit it to use the active profile value.",
+)
+
+# The research path has no profile lookup: its handler default is off.
+_RESEARCH_VALIDATE_OPT = typer.Option(
+    None,
+    "--validate",
+    help="Validation gate for this run. Omit it to use the handler default (off).",
+)
+
+
+class ValidateMode(enum.StrEnum):
+    """The four documented caller modes the CLI exposes for ``--validate``.
+
+    Other surfaces pass raw strings; ``resolve_mode`` also accepts
+    ``transcript_meta`` there. The CLI offers only these four
+    (docs/research/HARNESS-PLAYBOOKS.md).
+    """
+
+    OFF = "off"
+    ADVISORY = "advisory"
+    ENFORCE = "enforce"
+    CALIBRATE = "calibrate"
+
+
+class _ValidateKwarg(TypedDict, total=False):
+    """The one handler keyword ``--validate`` may add."""
+
+    validate: str
+
+
+def validate_kwargs(validate: ValidateMode | None) -> _ValidateKwarg:
+    """The ``validate`` handler keyword, or nothing when the flag is omitted.
+
+    Omission keeps the surface default: the main pipeline uses the active
+    profile's ``validate`` value; the research path uses ``off``.
+    """
+    return {} if validate is None else {"validate": validate.value}
 
 
 def exit_for(result: dict[str, object], ok_statuses: tuple[str, ...] = _OK_STATUSES) -> int:

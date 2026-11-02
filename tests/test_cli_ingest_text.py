@@ -159,3 +159,44 @@ def test_help_documents_exit_codes() -> None:
     assert "0 ingested" in flat
     assert "1 failed" in flat
     assert "3 the database is unreachable" in flat
+
+
+# ---------------------------------------------------------------------------
+# --validate (issue #188): the gate flag reaches the shared pipeline function
+# ---------------------------------------------------------------------------
+
+
+def test_validate_flag_reaches_the_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake = _RecordingIngest(_SUCCESS)
+    _patch_world(monkeypatch, fake)
+    result = runner.invoke(app, ["ingest-text", "hello", "--validate", "calibrate"])
+    assert result.exit_code == 0, result.output
+    assert fake.calls[0]["validate"] == "calibrate"
+
+
+def test_validate_omitted_keeps_the_profile_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake = _RecordingIngest(_SUCCESS)
+    _patch_world(monkeypatch, fake)
+    result = runner.invoke(app, ["ingest-text", "hello"])
+    assert result.exit_code == 0, result.output
+    assert "validate" not in fake.calls[0]
+
+
+def test_human_output_names_the_active_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    envelope = dict(_SUCCESS)
+    envelope["profile"] = "interviews"
+    fake = _RecordingIngest(envelope)
+    _patch_world(monkeypatch, fake)
+    result = runner.invoke(app, ["ingest-text", "hello"])
+    assert result.exit_code == 0, result.output
+    assert "profile interviews" in result.output
+
+
+def test_help_documents_the_validate_choices() -> None:
+    result = runner.invoke(app, ["ingest-text", "--help"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    flat = _flat_help(result.output)
+    assert "--validate" in flat
+    assert "off|advisory|enforce|calibrate" in flat
