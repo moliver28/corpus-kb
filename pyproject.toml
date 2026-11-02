@@ -76,7 +76,8 @@ dependencies = [
     # the psycopg exception (distribution permitted); licenses.lock.json
     # regenerated.
     "psycopg[binary]>=3.1",
-    "starlette>=0.35",
+    # floor: 0.37.1 closes the multipart parser file handle on error paths
+    "starlette>=0.37.1",
     "typer>=0.15",
     "uvicorn>=0.24",
     # fastapi: the HTTP composition root returns FastAPI (a Starlette
@@ -567,9 +568,12 @@ asyncio_default_fixture_loop_scope = "function"
 #   crashes cosine_distances — an upstream bug (sklearn#33219), fixed when
 #   1.10 lands. We pass no copy; the notice is third-party noise.
 filterwarnings = [
-    'ignore:n_jobs value 1 overridden to 1 by setting random_state:UserWarning',
+    # Third-party import-time residue only (pynvml deprecation inside the
+    # nvidia stack; the package that installs pynvml owns the fix). Repo-owned
+    # warnings get call-site fixes, not entries here: the umap n_jobs and
+    # sklearn HDBSCAN copy ignores came out when the call sites passed
+    # n_jobs=1 / copy=False explicitly.
     'ignore:The pynvml package is deprecated:FutureWarning',
-    'ignore:The default value of `copy` will change from False to True:FutureWarning',
 ]
 
 # ---------------------------------------------------------------------------

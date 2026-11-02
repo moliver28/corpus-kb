@@ -18,6 +18,8 @@ sklearn PCA fallback (full SVD, deterministic) and the envelope's
 
 from __future__ import annotations
 
+from typing import cast
+
 import asyncpg
 import numpy as np
 
@@ -103,7 +105,15 @@ def _cluster(reduced: np.ndarray, min_cluster_size: int) -> np.ndarray:
         from sklearn.cluster import HDBSCAN
     except ImportError as exc:
         raise _ClusterDependencyError(_CLASSIFY_INSTALL) from exc
-    model = HDBSCAN(min_cluster_size=min_cluster_size, cluster_selection_method="eom")
+    # copy=False pins today's behavior: sklearn 1.10 flips the default to
+    # True and warns until the value is explicit. sklearn's __init__ carries
+    # no annotation, so checkers infer `str` from the "warn" default; the
+    # runtime accepts bool (sklearn 1.10 makes it `bool = True`).
+    model = HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        cluster_selection_method="eom",
+        copy=cast("str", False),
+    )
     return np.asarray(model.fit_predict(reduced))
 
 

@@ -156,6 +156,7 @@ class UmapModule(Protocol):
         min_dist: float,
         metric: str,
         n_neighbors: int = ...,
+        n_jobs: int = ...,
     ) -> UmapInstance: ...
 
 
@@ -452,6 +453,9 @@ def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapI
             n_components=5,
             min_dist=0.0,
             metric="cosine",
+            # random_state pins umap to serial anyway; saying so here skips
+            # its "n_jobs overridden" UserWarning.
+            n_jobs=1,
         )
     return umap_module.UMAP(
         random_state=UMAP_RANDOM_STATE,
@@ -459,6 +463,7 @@ def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapI
         n_components=5,
         min_dist=0.0,
         metric="cosine",
+        n_jobs=1,
     )
 
 

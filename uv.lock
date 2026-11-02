@@ -1302,7 +1302,7 @@ requires-dist = [
     { name = "sentence-transformers", marker = "extra == 'latechunk'", specifier = ">=2.7" },
     { name = "setfit", marker = "extra == 'setfit'", specifier = ">=1.2" },
     { name = "sqlglot", marker = "extra == 'dev'", specifier = ">=30.24,<31" },
-    { name = "starlette", specifier = ">=0.35" },
+    { name = "starlette", specifier = ">=0.37.1" },
     { name = "syrupy", marker = "extra == 'dev'", specifier = ">=4.0" },
     { name = "textstat", marker = "extra == 'dev'", specifier = ">=0.7" },
     { name = "threadpoolctl", marker = "extra == 'classify'", specifier = ">=3.5" },

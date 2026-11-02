@@ -67,6 +67,7 @@ class UmapModuleLike(Protocol):
         n_neighbors: int = ...,
         n_components: int = ...,
         metric: str = ...,
+        n_jobs: int = ...,
         random_state: int = ...,
         transform_seed: int = ...,
     ) -> UmapModelLike: ...
