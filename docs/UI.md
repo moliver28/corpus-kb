@@ -10,7 +10,6 @@ demo script is [research/UI-DEMO.md](research/UI-DEMO.md).
 
 ## Contents
 
-- [Contents](#contents)
 - [Start the app](#start-the-app)
 - [User guide](#user-guide)
 - [Config](#config)
@@ -204,7 +203,7 @@ zero vectors; the ask accepts the honest degraded answer.
 | Analysis card shows "disabled" | Feature flag off | the card shows the config key and remedy | Set the key in `config.yaml`, restart |
 | Missing extra (`topics`, `latechunk`) | Optional extra not installed | the card shows the remedy | `pip install 'corpus-kb[topics]'` |
 | Research screens say embeddings unavailable | Embedder down, or dims under 1024 | Setup screen | Pull `qwen3-embedding:8b-q8_0`; set `embedding.model` and `embedding.dimensions` |
-| Upload fails with a size error | `ui.spa.max_upload_mb` too low | docs/ADMIN.md | Raise the key or ingest by folder path |
+| Upload fails with a size error | `ui.spa.max_upload_mb` too low | [ADMIN.md](ADMIN.md) | Raise the key or ingest by folder path |
 | Long operation seems stuck | Synchronous work still running | "Check status" polls the ledger | Wait; do not resubmit |
 | Release execute says Blocked | Required gates fail without a waiver | the refusal lists them by name | Fix the gates or waive with a justification |
 | Build fails on the license gate | New dependency with a disallowed license | `ui_licenses.lock.json` diff | Replace the dependency |

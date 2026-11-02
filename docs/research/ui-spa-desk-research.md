@@ -127,7 +127,7 @@ Status values: DEFAULT = proceed with this unless the owner objects; APPROVE = n
 ---------------------------------------------------------------------
 ## 4. Target architecture
 
-```
+```text
 Browser (SPA at /app/, hash routes)  --same origin-->  Starlette/FastAPI app (port 8010)
    React + AntD 6 + TanStack Query                       /app/*                    static files (ui_dist)
    api client (envelope normalizer)                      /app/runtime-config.json  (ui.spa.* settings)
@@ -221,7 +221,7 @@ Rejected, with reason:
 - `tests/whitelist.py` (vulture): add entries for protocol keyword arguments that vulture cannot see, as done for the NiceGUI protocols.
 
 ### 6.3 New (frontend), directory `ui_src/` at repo root
-```
+```text
 ui_src/
   package.json  pnpm-lock.yaml  tsconfig.json  vite.config.ts  .nvmrc  eslint config
   index.html

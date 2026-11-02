@@ -14,21 +14,21 @@ Read it together with the coverage-curve slope below.
 
 ## Deductive coverage
 
-How many coded units sit ABOVE their code's threshold. Coverage is
-threshold-driven, so it is NOT a completeness measure: lowering a threshold
+How many coded units sit above their code's threshold. Coverage is
+threshold-driven, so it is not a completeness measure: lowering a threshold
 raises coverage without finding anything new. Use the residual section as the
 completeness radar instead.
 
 ## Residual and missing codes
 
-The residual share R(tau_res) counts codable units that NO existing code
+The residual share R(tau_res) counts codable units that no existing code
 gets close to. A high R means the codebook is missing something. The report
 also lists candidate missing codes: clusters of far-from-every-code units
-that sit calmly together - a theme with no code.
+that sit calmly together — a theme with no code.
 
 ## `tau_res` per source type
 
-`tau_res` is calibrated from your gold data PER source type. It is the low
+`tau_res` is calibrated from your gold data per source type. It is the low
 edge of how similar two units of the same code look. Interviews and meetings
 differ, so the threshold differs too. If one source type's R is much worse,
 add gold exemplars for that type and recalibrate.
@@ -49,14 +49,14 @@ codebook version.
 ## Keyword conflicts
 
 Where two codes claim the same keyword, or a positive term collides with an
-exclusion term. Ambiguous keywords create ambiguous coders - resolve each
+exclusion term. Ambiguous keywords create ambiguous coders — resolve each
 conflict by editing definitions or keyword lists.
 
 ## Keyword lists
 
 Per-code inclusion/exclusion keyword lists synthesized from the units each
 code actually captured (Monroe log-odds or c-TF-IDF). Only keyword hits
-inside the ANSWER count as explicit evidence; question-only hits nominate
+inside the answer count as explicit evidence; question-only hits nominate
 candidates.
 
 ## Provisional keyword lists
@@ -83,7 +83,7 @@ from the review priority automatically.
 
 How many codes remain statistically plausible per unit at your guaranteed
 coverage level. Size 1 is a confident call; larger sets route to review. A
-heavy tail of large sets means scores are not separating codes - add gold or
+heavy tail of large sets means scores are not separating codes — add gold or
 tighten definitions.
 
 ## Run manifest
@@ -94,7 +94,7 @@ audit trail starts.
 
 ## Candidate missing codes
 
-Groups of units that sit far from every existing code AND sit calmly
+Groups of units that sit far from every existing code and sit calmly
 together. This is the report's best guess at themes your codebook does not
 cover.
 Promote real ones with `corpus-kb codebook promote`; discard noise from the

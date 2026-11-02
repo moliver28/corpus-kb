@@ -50,11 +50,11 @@ Plain text is split by semantic gaps. The chunker looks for topic shifts rather 
 
 The ingest pipeline runs five stages:
 
-1. **Partition** - Break the file into semantic elements.
-2. **Chunk** - Group elements into coherent chunks.
-3. **Embed** - Send each chunk to the configured embedding provider (Ollama or PostgresML) and store the vector in Postgres via pgvector.
-4. **Extract** - Run the ontology-aware extractor to find entities and relations.
-5. **Store** - Persist chunks, vectors, entities, and relations directly to Postgres. The event store records what happened for audit and replay.
+1. **Partition** — break the file into semantic elements.
+2. **Chunk** — group elements into coherent chunks.
+3. **Embed** — send each chunk to the configured embedding provider (Ollama or PostgresML) and store the vector in Postgres via pgvector.
+4. **Extract** — run the ontology-aware extractor to find entities and relations.
+5. **Store** — persist chunks, vectors, entities, and relations directly to Postgres. The event store records what happened for audit and replay.
 
 If the embedding provider is unavailable, embedding falls back to zero vectors. The affected chunks are flagged degraded in Postgres. Search leaves them out of vector results by default (`retrieval.exclude_degraded: true`) while reporting the exclusion in the response. `corpus-kb ingest-reembed` repairs them once the provider is back.
 
@@ -179,9 +179,9 @@ The `dimensions` value must match the model output exactly. pgvector enforces th
 
 ### Late chunking (document pipeline)
 
-`embedding.late_chunking: true` (the default) requests **late chunking**. The document is tokenized and run through the model ONCE. Each chunk's vector is mean-pooled from the token states of its exact span. So every chunk vector has seen the whole document (better pronoun/coreference handling, no context bleeding at chunk boundaries). Documents longer than the model context are processed in sliding windows.
+`embedding.late_chunking: true` (the default) requests **late chunking**. The document is tokenized and run through the model once. Each chunk's vector is mean-pooled from the token states of its exact span. So every chunk vector has seen the whole document (better pronoun/coreference handling, no context bleeding at chunk boundaries). Documents longer than the model context are processed in sliding windows.
 
-Activation is capability-checked and honest — late chunking runs only when ALL of:
+Activation is capability-checked and honest — late chunking runs only when all of:
 
 - the `latechunk` extra is installed: `pip install -e ".[latechunk]"` (sentence-transformers + transformers + torch),
 - `embedding.model` is a token-level family (`qwen3-embedding*` — Ollama's endpoint serves pooled vectors only, so token states come from the local HF stack),
@@ -237,7 +237,7 @@ folder logs one line, and the server runs on. See
 
 ## Multi-tenancy ready
 
-Every table has row-level security policies keyed to `app.current_tenant_id`. The default tenant is `00000000-0000-0000-0000-000000000001`. In the future, adding real multi-tenancy is a matter of issuing tenant-scoped tokens and setting the tenant context per request.
+Every table has row-level security policies keyed to `app.current_tenant_id`. The default tenant is `00000000-0000-0000-0000-000000000001`. To add real multi-tenancy later, issue tenant-scoped tokens and set the tenant context per request.
 
 ---
 
@@ -259,8 +259,8 @@ Start with the [getting-started walkthrough](getting-started.md); the full comma
 
 ## MCP tool reference
 
-The MCP stdio server is real: `corpus-kb --transport stdio` serves the
-tools below over stdin/stdout (`src/corpus_kb/mcp_server.py`). The tool
+The MCP stdio server ships with the package: `corpus-kb --transport stdio`
+serves the tools below over stdin/stdout (`src/corpus_kb/mcp_server.py`). The tool
 list is GENERATED from the same registry the CLI and HTTP surfaces use.
 That registry is the parity catalogue (`src/corpus_kb/contracts/`) plus
 the research/coding rows in `src/corpus_kb/surface_registry.py`. A new
@@ -273,6 +273,8 @@ Honest caveats:
 - The `autoApprove` lists in `mcp-configs/*.json` keep legacy names from
   the original design (for example `search_context`, `sql_query`) that
   have no MCP tool today. Unknown names are harmless: they never match.
+- The table below lists the core tools. `corpus-kb operations --indent 0`
+  prints the full live inventory with parameters and envelope keys.
 
 | Surface | Tool | Description |
 |---|---|---|

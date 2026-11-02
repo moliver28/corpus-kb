@@ -6,7 +6,6 @@ report. The default config ships every feature dormant.
 
 ## Contents
 
-- [Contents](#contents)
 - [How it works](#how-it-works)
 - [Requirements](#requirements)
 - [Commands](#commands)
@@ -66,7 +65,7 @@ corpus-kb topics-trends                  # trends only (see Topics)
 ```
 
 Every command also runs as an MCP tool, an HTTP route, and a socket
-method. Exit codes: see docs/OPERATIONS.md.
+method. Exit codes: see [OPERATIONS.md](OPERATIONS.md).
 
 ## Determinism
 
@@ -129,7 +128,7 @@ Every class needs at least `min_labels_per_class` seeds.
 | Status | Meaning |
 |---|---|
 | `success` | The section ran and wrote its result. |
-| `disabled` | The feature flag is off. Labeling also without an LF file. |
+| `disabled` | The feature flag is off. Labeling is also disabled without an LF file. |
 | `skipped` | Classification has no seed label set yet. |
 | `failed` | The handler raised. The reason carries the message. |
 | `unavailable` | The migration for this feature has not run. |
@@ -190,7 +189,7 @@ corpus-kb topics-list           # the built topics, largest first
 
 Both commands also run as MCP tools (`topics_build`, `topics_list`),
 HTTP routes (`POST /api/topics/build`, `GET /api/topics`), and socket
-methods. Exit codes: see docs/OPERATIONS.md.
+methods. Exit codes: see [OPERATIONS.md](OPERATIONS.md).
 
 ### Topic determinism
 
@@ -261,5 +260,6 @@ validation, and the permitted claims.
 The register lives at `config/analysis_methods.yaml`. The generated
 table in `docs/ANALYSIS-METHODS.md` is built from it (`poe gen`). To
 add a method, add a row. To wire an implementation, follow the
-op-addition recipe in the zero-drift program, then extend the row's
-status and op fields.
+op-addition recipe in the
+[zero-drift program](research/harness-zero-drift-program.md), then
+extend the row's status and op fields.

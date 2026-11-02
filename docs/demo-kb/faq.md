@@ -39,5 +39,5 @@ and citation.
 
 ## Can I watch what the server does?
 
-Yes. The **Overview** page shows the doctor's health checks in plain
+Yes. The **Setup** page shows the doctor's health checks in plain
 language. OpenTelemetry tracing can export spans to any OTLP collector.

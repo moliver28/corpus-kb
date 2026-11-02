@@ -131,7 +131,7 @@ Status: R = resolved in this audit, P = partly resolved, O = open.
 | V8 | Who uses the generic golden format? | O | Read `cli_eval.py`, `eval/`, `docs/EVALUATION.md`. Constrains the additive span format. |
 | V9 | Does Presidio coexist with the spaCy C-stack pins? | O | DEFERRED in v2. Skip unless PII screening is requested. |
 | V10 | Where is `surface_registry.py`, and which tests pin the MCP tool-contract snapshot? | O | A path search for `surface_registry.py` and for `ingest_file` in the parity test returned nothing under the guessed paths. Run `git grep -n "surface_registry"` and `git grep -n "ALLOWED_EXTRA"`. |
-| V11 | Which index answers research queries: `chunks` (PATH A) or research units (PATH B)? | O | Read `research/retrieval.py` (`_unit_arms`). This decides Section 4.2. |
+| V11 | Which index answers research queries: `chunks` (PATH A) or research units (PATH B)? | O | Read `research/retrieval_arms.py` (`_unit_arms`). This decides Section 4.2. |
 | V12 | Which tokenizer matches the embedding model, and can it load offline? | O | Default model is Ollama `nomic-embed-text` (768d). Ollama exposes no tokenizer. A Hugging Face tokenizer needs a pre-pulled local file. If absent, keep chars/4 and record `tokenizer_basis: heuristic` in every report. |
 | V13 | Does a project-to-profile mapping already exist (W5 "project profiles")? | O | Search `ingestion.profile`, `project`, `profile` in `research/` and `handlers/`. Decides whether a per-call `profile` argument is needed. |
 | V14 | Size of the codebase (for the 1% budget) | O | Count source lines under `src/corpus_kb/` (for example `find src -name "*.py" | xargs wc -l`). Record in the PR. |
@@ -147,7 +147,7 @@ Record every V-result in the PR description. A result that contradicts this plan
 
 ## 5. Target design
 
-```
+```text
 ingest call  (ingest_file | ingest_directory | ingest_text | ingest_url; PATH B via research handler)
    optional additive args: validate = off | advisory | enforce | calibrate     (default off)
                            profile  = <name>                                    (default: config ingestion.profile)
@@ -446,7 +446,7 @@ Escalation: if a blocker needs a schema change, a new error class, a new depende
 | `src/corpus_kb/validation/labels.py` | NEW: span/unit label mapping | 3 |
 | `src/corpus_kb/validation/retrieval.py` | NEW: self-retrieval + arms via existing code | 3 |
 | `src/corpus_kb/validation/calibrate.py` | NEW: sweep + lock writer | 3 |
-| `src/corpus_kb/cli_eval.py` | EDIT: accept additive label formats | 3 |
+| `src/corpus_kb/cli/cli_eval.py` | EDIT: accept additive label formats | 3 |
 | `src/corpus_kb/validation/report.py` | NEW: stats + exports | 4 |
 | `profiles/*.yaml`, `profiles/*.rq.yaml` | NEW: profiles for `focus_group`, `survey`, `news`, `mixed` as needed; keep `starter-interview.yaml` unchanged | 2 |
 | `pyproject.toml` | EDIT: `[validate]` (datasketch, ranx), `[chunking]` (semchunk), deptry entries | 1-4 |

@@ -105,7 +105,7 @@ byte-stable for identical seeds.
   over the `k = clamp(k, 2, 4)` nearest centroids. The weight and entropy
   formulas:
 
-  ```
+  ```text
   q_ij = (1 + d_ij²/a)^(−(a+1)/2) / Σ_j'
   H_i  = −Σ_j q_ij log q_ij
   ```
