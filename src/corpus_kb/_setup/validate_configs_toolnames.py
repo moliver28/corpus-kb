@@ -110,6 +110,8 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "contradictions_screen",
         "sentiment_screen",
         "active_learn_next",
+        # -- calibrate family (issue #200, tools/calibrate_tools.py) ---------
+        "calibrate_apply",
     }
 )
 
