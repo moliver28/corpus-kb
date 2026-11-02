@@ -93,7 +93,17 @@ async def calibrate_apply(
             # The edit reuses the SAME text the diff came from, so the
             # diff and the write can never disagree.
             new_text = apply_keys_to_text(config_text, dirty)
-            write_atomic(config_path, new_text)
+            try:
+                write_atomic(config_path, new_text)
+            except OSError as exc:
+                # Surface adapters must never see a raw OSError here: it
+                # would print as a database fault on the CLI.
+                raise ConfigError(
+                    f"Cannot write the config file {config_path.name}.",
+                    remediation=(
+                        "Check the file permissions and free disk space, then run the apply again."
+                    ),
+                ) from exc
             applied_count = len(dirty)
     return {
         "status": "success",

@@ -18,7 +18,6 @@ unknown recipe keys), ``3`` no usable config.yaml file.
 from __future__ import annotations
 
 import json
-from typing import Any
 
 import typer
 
@@ -70,7 +69,7 @@ async def _apply_flow(profile: str, write: bool, json_output: bool) -> int:
     return EXIT_OK if result.get("status") == "success" else EXIT_FAILED
 
 
-def _emit(result: dict[str, Any], json_output: bool) -> None:
+def _emit(result: dict[str, object], json_output: bool) -> None:
     """Print the plain diff summary, or the exact envelope with --json."""
     if json_output:
         # The EXACT tool envelope — no reshaping, no added keys.

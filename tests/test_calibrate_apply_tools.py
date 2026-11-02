@@ -109,6 +109,39 @@ async def test_write_is_idempotent(world: dict[str, Path]) -> None:
     assert all(not row["changed"] for row in body["changes"])
 
 
+async def test_write_oserror_is_a_typed_config_error(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A write fault (read-only dir, full disk) must come out as the typed
+    # config error, never as a raw OSError (which the CLI would render as
+    # a database fault).
+    import corpus_kb.tools.calibrate_tools as module
+
+    def boom(_path: Path, _text: str) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module, "write_atomic", boom)
+    with pytest.raises(ConfigError) as excinfo:
+        await calibrate_apply("parity", write=True)
+    assert excinfo.value.cli_exit == 3
+    assert "Cannot write the config file" in str(excinfo.value)
+
+
+def test_cli_write_oserror_names_the_config_fault(
+    world: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import corpus_kb.tools.calibrate_tools as module
+
+    def boom(_path: Path, _text: str) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(module, "write_atomic", boom)
+    result = runner.invoke(app, ["calibrate", "apply", "parity", "--write"])
+    assert result.exit_code == 3, result.output
+    assert "Cannot write the config file" in result.output
+    assert "cannot reach the database" not in result.output
+
+
 # ---------------------------------------------------------------------------
 # Typed refusals (no raw raises; every path is a corpus_kb.errors class)
 # ---------------------------------------------------------------------------
