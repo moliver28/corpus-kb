@@ -416,3 +416,53 @@ async def test_ask_leg_composes_a_grounded_answer_on_duckdb(
     ).to_payload()
     assert payload["status"] == "success"
     assert payload["result"], "ask must carry retrieved evidence"
+
+
+# ---------------------------------------------------------------------------
+# Error-injection pins for the three sentinel swallows (issue 235)
+#
+# Each swallow answers an empty sentinel on ANY failure, so a test that
+# only asserts the sentinel stays green even when the SQL breaks. Each
+# test first runs the healthy path (non-empty or counted), then injects
+# the documented failure class — a real driver CatalogException from a
+# dropped table — and pins the sentinel. The vector arm also pins the
+# reason string that names the driver class, so the sentinel is provably
+# the swallow's answer, not a skip branch's.
+# ---------------------------------------------------------------------------
+
+
+async def test_meta_arm_missing_table_answers_empty(search_gw: DuckDbGateway) -> None:
+    backend = DuckDbSearchBackend(embedder=StubEmbedder(), config=dict(_HANDLER_CONFIG))
+    await search_gw.execute(
+        "INSERT INTO meta_embeddings (tenant_id, meta_kind, meta_key, label, source_count,"
+        " embedding) VALUES (?, 'topic', 'quick', 'Quick', 1, CAST(? AS FLOAT[2560]))",
+        TENANT1,
+        vector_literal(_one_hot("quick")),
+    )
+    request = _request(search_gw, "quick")
+    healthy = await backend._meta_rows(request, search_gw, TENANT1)
+    assert [row["meta_key"] for row in healthy] == ["quick"]  # the arm really reads
+    await search_gw.execute("DROP TABLE meta_embeddings")
+    assert await backend._meta_rows(request, search_gw, TENANT1) == []
+
+
+async def test_vector_arm_missing_table_degrades_with_the_driver_class(
+    search_gw: DuckDbGateway,
+) -> None:
+    backend = DuckDbSearchBackend(embedder=StubEmbedder(), config=dict(_HANDLER_CONFIG))
+    request = _request(search_gw, "quick")
+    healthy, healthy_reason = await backend._vector_rows(request, search_gw, TENANT1, 10)
+    assert healthy and healthy_reason is None  # the arm really reads
+    await search_gw.execute("DROP TABLE chunks_vectors")
+    rows, reason = await backend._vector_rows(request, search_gw, TENANT1, 10)
+    assert rows == []
+    assert reason == "vector-arm-error (CatalogException)"
+
+
+async def test_degraded_probe_missing_table_counts_zero(search_gw: DuckDbGateway) -> None:
+    backend = DuckDbSearchBackend(embedder=StubEmbedder(), config=dict(_HANDLER_CONFIG))
+    request = _request(search_gw, "quick")
+    healthy = await backend._degraded_probe(search_gw, request, TENANT1, [])
+    assert healthy == 3  # live candidates only: the tombstoned row stays invisible
+    await search_gw.execute("DROP TABLE chunks_vectors")
+    assert await backend._degraded_probe(search_gw, request, TENANT1, []) == 0
