@@ -11,7 +11,8 @@ other silently splits the fuse width from the return width.
 from __future__ import annotations
 
 import inspect
-from typing import Any
+
+import pytest
 
 from corpus_kb.domain.models import SearchQuery
 from corpus_kb.handlers.query_acquire import ArmRun, post_fusion
@@ -42,7 +43,7 @@ def _outcome() -> SearchOutcome:
 
 
 async def _capture_k(
-    monkeypatch: Any,
+    monkeypatch: pytest.MonkeyPatch,
     run: ArmRun,
     rerank_settings: RerankSettings,
 ) -> list[int]:
@@ -66,13 +67,13 @@ async def _capture_k(
     return seen
 
 
-async def test_explicit_query_k_reaches_both_stages(monkeypatch: Any) -> None:
+async def test_explicit_query_k_reaches_both_stages(monkeypatch: pytest.MonkeyPatch) -> None:
     """An explicit ``query.k`` is the one k for fusion AND the return width."""
     seen = await _capture_k(monkeypatch, _run(3), RerankSettings(return_top_k=9))
     assert seen == [3, 3]
 
 
-async def test_default_top_k_reaches_both_stages(monkeypatch: Any) -> None:
+async def test_default_top_k_reaches_both_stages(monkeypatch: pytest.MonkeyPatch) -> None:
     """A omitted ``query.k`` falls back to ``return_top_k`` in BOTH stages."""
     seen = await _capture_k(monkeypatch, _run(None), RerankSettings(return_top_k=9))
     assert seen == [9, 9]
