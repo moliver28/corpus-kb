@@ -519,6 +519,15 @@ SURFACES: tuple[Surface, ...] = (
         description="Search with the surrounding context chunks attached.",
         http_route="/api/search/context",
     ),
+    # -- calibrate family (issue #200): apply a profile lock's overrides ----
+    # Write op: NEVER add it to SERVER_AUTO_APPROVE.
+    Surface(
+        name="calibrate-apply",
+        cli_path="calibrate apply",
+        mcp_tool="calibrate_apply",
+        description="Copy a profile lock's proposed overrides into config.yaml.",
+        http_route="/api/calibrate/apply",
+    ),
 )
 
 # --------------------------------------------------------------------------

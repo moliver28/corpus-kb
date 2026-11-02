@@ -62,6 +62,7 @@ def test_cli_paths_resolve_to_registered_commands() -> None:
         "codebook": cli.codebook_app,
         "review": cli.review_app,
         "release": cli.release_app,
+        "calibrate": cli.calibrate_app,
     }
 
     def _commands_of(typer_app: object) -> set[str]:

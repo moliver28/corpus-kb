@@ -743,6 +743,12 @@ async def _shared_get_metadata(ctx: dict[str, Any]) -> dict[str, Any]:
     return await tag_tools_module.get_metadata(ctx["pool"], key="parity")
 
 
+async def _shared_calibrate_apply(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.calibrate_tools import calibrate_apply
+
+    return await calibrate_apply("parity", write=True, config=ctx["config"])
+
+
 async def _shared_add_entity(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import AddEntityCommand
 
@@ -1340,6 +1346,13 @@ LEGS: dict[str, _Leg] = {
         _sock("search_context", {"query": "parity probe"}),
         _mcp({"query": "parity probe", "k": 5}),
     ),
+    # -- issue #200: the calibrate apply op writes the tmp config file ------
+    "calibrate_apply": _Leg(
+        _shared_calibrate_apply,
+        _post("/api/calibrate/apply", {"profile": "parity", "write": True}),
+        _sock("calibrate_apply", {"profile": "parity", "write": True}),
+        _mcp({"profile": "parity", "write": True}),
+    ),
     "add_entity": _Leg(
         _shared_add_entity,
         _post("/api/entities", {"name": "parity-entity", "entity_type": "concept"}),
@@ -1868,12 +1881,15 @@ class _StubLlmHandler:
         self.config = config
 
 
-def _offline_config() -> dict[str, Any]:
-    return {
+def _offline_config(profiles_dir: str | None = None) -> dict[str, Any]:
+    config: dict[str, Any] = {
         "graph": {"extract_entities": False},
         "embedding": {"provider": "pgml"},
         "ingest": {"chunking": {"enabled": False}},
     }
+    if profiles_dir is not None:
+        config["profiles"] = {"dir": profiles_dir}
+    return config
 
 
 def _release_stub(payload: dict[str, Any]) -> Callable[..., Any]:
@@ -1898,6 +1914,31 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         "unstructured_partition",
         lambda *args: [],
     )
+
+    # Calibrate apply (issue #200): one profile lock plus a small config
+    # file, both under tmp_path, so no leg ever touches a real config.yaml.
+    cal_profiles = tmp_path / "profiles"
+    cal_profiles.mkdir()
+    cal_profile = cal_profiles / "parity.yaml"
+    cal_profile.write_text("data_type: transcript\n", encoding="utf-8")
+    cal_lock = cal_profiles / "parity.yaml.lock.json"
+    cal_lock.write_text(
+        json.dumps(
+            {
+                "profile": "parity",
+                "profile_sha256": hashlib.sha256(cal_profile.read_bytes()).hexdigest(),
+                "outcome": "success",
+                "chosen": "rrf10",
+                "proposed_overrides": {"retrieval.rrf_k": 10},
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    cal_config = tmp_path / "config.yaml"
+    cal_config.write_text("retrieval:\n  rrf_k: 60\n", encoding="utf-8")
+    monkeypatch.setattr(config_module, "config_file_path", lambda: cal_config)
+
     pool = _FakePool()
     saved = _SavedAggregate()
     monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: saved)
@@ -1994,7 +2035,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
 
     # Promoted research ops (full surface parity wave): stub at the exact
     # seam the shared tool layer imports at call time.
-    monkeypatch.setattr(config_module, "load_config", _offline_config)
+    monkeypatch.setattr(config_module, "load_config", lambda: _offline_config(str(cal_profiles)))
     monkeypatch.setattr(llm_handler_module, "LlmHandler", _StubLlmHandler)
 
     async def stub_result(payload: dict[str, Any], *args: Any, **kwargs: Any) -> dict[str, Any]:
@@ -2218,10 +2259,10 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
 
     yield {
         "pool": pool,
-        "config": _offline_config(),
+        "config": _offline_config(str(cal_profiles)),
         "client": TestClient(create_http_app()),
         "server": JSONRPCServer(),
-        "mcp_server": build_mcp_server(pool, _offline_config()),
+        "mcp_server": build_mcp_server(pool, _offline_config(str(cal_profiles))),
         _FILE_PATH: file_path,
         _DIR_PATH: tmp_path,
         _GOLD_PATH: gold_path,
@@ -2322,6 +2363,8 @@ def test_catalogue_matches_surface_registry() -> None:
         # metadata use the UI manifest ids, so no op name coincides).
         "search_similar",
         "search_context",
+        # Issue #200: the calibrate apply row byte-matches its registry row.
+        "calibrate_apply",
     } <= set(checked)
 
 
