@@ -109,8 +109,8 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
   const long = useLongOp(opId, (signal) => {
     const op = getOp(opId);
     return callOp<unknown>(op?.path ?? "", {
-      method: op?.method === "GET" ? "GET" : "POST",
-      body: op?.method === "GET" ? undefined : {},
+      method: op?.method,
+      body: op?.method === "POST" ? {} : undefined,
       signal,
       timeoutMs: "none",
     });
@@ -122,8 +122,9 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
       await long.start();
     } else {
       short.reset();
-      // A GET read takes no body; POST guided actions send an empty one.
-      await short.run(getOp(opId)?.method === "GET" ? undefined : {});
+      // A GET or DELETE read takes no body; POST guided actions send an
+      // empty one.
+      await short.run(getOp(opId)?.method === "POST" ? {} : undefined);
     }
   }
 

@@ -4,7 +4,7 @@
 
 export interface OpDescriptor {
   path: string;
-  method: "GET" | "POST";
+  method: "GET" | "POST" | "DELETE";
   longRunning: boolean;
 }
 
@@ -34,6 +34,9 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "coding-run": { path: "/api/coding/run", method: "POST", longRunning: true },
   "demo-load": { path: "/api/demo/load", method: "POST", longRunning: true },
   "doctor": { path: "/api/doctor", method: "GET", longRunning: false },
+  "documents-list": { path: "/api/documents", method: "GET", longRunning: false },
+  "document-delete": { path: "/api/documents/{doc_id}", method: "DELETE", longRunning: false },
+  "document-tags": { path: "/api/documents/{doc_id}/tags", method: "GET", longRunning: false },
   "ingest-directory": { path: "/api/ingest/directory", method: "POST", longRunning: true },
   "ingest-reembed": { path: "/api/ingest/reembed", method: "POST", longRunning: false },
   "ingest-status": { path: "/api/ingest/status", method: "GET", longRunning: false },
@@ -43,6 +46,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "labeling-gold-check": { path: "/api/labeling/gold-check", method: "POST", longRunning: false },
   "labeling-lfs": { path: "/api/labeling/lfs", method: "GET", longRunning: false },
   "labeling-triage": { path: "/api/labeling/triage", method: "POST", longRunning: false },
+  "document-metadata": { path: "/api/metadata", method: "GET", longRunning: false },
   "notebook-ask": { path: "/api/notebook/ask", method: "POST", longRunning: false },
   "notebook-evidence": { path: "/api/notebook/evidence", method: "POST", longRunning: false },
   "notebook-overlap": { path: "/api/notebook/overlap", method: "POST", longRunning: false },
@@ -65,9 +69,12 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "review-accept": { path: "/api/review/execute", method: "POST", longRunning: false },
   "review-override": { path: "/api/review/execute", method: "POST", longRunning: false },
   "search": { path: "/api/search", method: "POST", longRunning: false },
+  "search-context": { path: "/api/search/context", method: "POST", longRunning: false },
+  "search-similar": { path: "/api/search/similar", method: "POST", longRunning: false },
   "topics-list": { path: "/api/topics", method: "GET", longRunning: false },
   "topics-build": { path: "/api/topics/build", method: "POST", longRunning: true },
   "topics-trends": { path: "/api/topics/trends", method: "POST", longRunning: false },
+  "verify": { path: "/api/verify", method: "POST", longRunning: false },
 };
 
 /** One op table row, or undefined when the id is not in the manifest. */

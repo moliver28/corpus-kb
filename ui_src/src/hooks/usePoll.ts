@@ -83,7 +83,7 @@ export function usePoll<T>(opId: string, body?: unknown): Poll<T> {
         // fired before this moment is answered by THIS read, not another.
         dirtyRef.current = false;
         const res = await callOp<T>(op.path, {
-          method: op.method === "GET" ? "GET" : "POST",
+          method: op.method,
           body: bodyRef.current,
         });
         if (stopped) {

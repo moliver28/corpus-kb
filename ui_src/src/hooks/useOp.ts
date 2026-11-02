@@ -26,7 +26,9 @@ export function useOp(opId: string, timeoutMs?: number | "none"): UseOp {
         return unknownOpResult();
       }
       return callOp<unknown>(op.path, {
-        method: op.method === "GET" ? "GET" : "POST",
+        // The manifest's method passes straight through (GET, POST, or
+        // DELETE) — the client never downgrades a declared verb.
+        method: op.method,
         body,
         timeoutMs,
       });

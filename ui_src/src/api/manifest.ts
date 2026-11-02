@@ -7,10 +7,13 @@
 // pins the entry SHAPE only — same-shape content drift is caught there.
 import raw from "./manifest.json";
 
+/** The verbs the client speaks — the generated op table's method union. */
+type Method = "GET" | "POST" | "DELETE";
+
 interface ManifestEntry {
   id: string;
   path: string;
-  method: string;
+  method: Method;
   description: string;
   required: string[];
   optional: string[];
@@ -18,7 +21,10 @@ interface ManifestEntry {
   longRunning: boolean;
 }
 
-const MANIFEST: readonly ManifestEntry[] = raw;
+// One boundary cast over the JSON import: the generator emits only the
+// three verbs above (tests/test_ui_manifest.py pins every manifest method
+// against the real route table), and JSON inference cannot say so.
+const MANIFEST = raw as readonly ManifestEntry[];
 
 /** The full manifest entry for one op id, or undefined when unknown. */
 export function getEntry(opId: string): ManifestEntry | undefined {

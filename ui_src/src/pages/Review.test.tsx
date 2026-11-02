@@ -11,10 +11,10 @@ import topicsOk from "../test/fixtures/topics-ok-200.json";
 import Review from "./Review";
 
 /**
- * The Review page from canonical fixtures: the honest documents gap
- * banner (the read op has no manifest row yet), the degraded-chunks
- * banner with its re-embed summary, and the accept/override flow where
- * the override needs a note and the reviewer name is remembered.
+ * The Review page from canonical fixtures: the documents read is wired
+ * (no gap banner), the degraded-chunks banner with its re-embed summary,
+ * and the accept/override flow where the override needs a note and the
+ * reviewer name is remembered.
  */
 
 afterEach(() => {
@@ -33,12 +33,13 @@ function reviewRoutes(): { method: string; path: string; reply: MinimalResponse 
 }
 
 describe("Review page", () => {
-  it("shows the honest gap where the documents read has no manifest row", async () => {
+  it("wires the documents read and shows no gap banner", async () => {
     stubFetch(reviewRoutes());
     render(<Review />, { wrapper: makeWrapper() });
-    expect(await screen.findByText(strings.reviewDocsNotWired)).toBeTruthy();
-    // The degraded read answers through the same mount cycle.
+    // The documents-list manifest row landed (issue #182), so the honest
+    // gap banner is gone and the degraded read answers on the same mount.
     expect(await screen.findByText(/lack usable embeddings/)).toBeTruthy();
+    expect(screen.queryByText(strings.reviewDocsNotWired)).toBeNull();
   });
 
   it("renders the degraded counts and the re-embed summary", async () => {

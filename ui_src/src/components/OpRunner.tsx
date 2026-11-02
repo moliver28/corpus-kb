@@ -60,7 +60,7 @@ export default function OpRunner({
   const long = useLongOp(opId, (signal) => {
     const current = getEntry(opId);
     return callOp<unknown>(current?.path ?? "", {
-      method: current?.method === "GET" ? "GET" : "POST",
+      method: current?.method,
       body: bodyRef.current,
       signal,
       timeoutMs: "none",
