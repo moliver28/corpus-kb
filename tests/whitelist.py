@@ -382,6 +382,10 @@ gen_min_span_tree
 algorithm
 fit_transform
 MountableApp
+# n_jobs: both UMAP Protocols grew the keyword so the call sites pass
+# n_jobs=1 explicitly (skips umap's "n_jobs overridden" warning). The real
+# library consumes it as a keyword, so vulture sees no name read.
+n_jobs
 
 # Corpus analysis program (analysis/settings.py, Wave 0 skeleton): the
 # typed-reader field the WP-3 engine reads (the seed floor) and the

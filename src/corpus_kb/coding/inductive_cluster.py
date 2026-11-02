@@ -104,6 +104,9 @@ def cluster_embeddings(
         n_neighbors=min(UMAP_N_NEIGHBORS, max(n - 1, 2)),
         n_components=n_components,
         metric=METRIC,
+        # random_state pins umap to serial anyway; saying so here skips its
+        # "n_jobs overridden" UserWarning.
+        n_jobs=1,
         random_state=random_state,
         transform_seed=transform_seed,
     )
