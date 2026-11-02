@@ -1921,7 +1921,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     cal_profiles.mkdir()
     cal_profile = cal_profiles / "parity.yaml"
     cal_profile.write_text("data_type: transcript\n", encoding="utf-8")
-    cal_lock = cal_profiles / "parity.yaml.lock.json"
+    cal_lock = cal_profiles / "parity.lock.json"
     cal_lock.write_text(
         json.dumps(
             {

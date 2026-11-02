@@ -326,6 +326,13 @@ from corpus_kb.cli.cli_eval import eval_app  # noqa: E402
 
 app.add_typer(eval_app, name="eval")
 
+# Calibrate lock ops (issue #200): cli_calibrate imports corpus_kb.cli
+# nowhere (it reuses the cli_ingest plumbing), so this import stays
+# acyclic.
+from corpus_kb.cli.cli_calibrate import calibrate_app  # noqa: E402
+
+app.add_typer(calibrate_app, name="calibrate")
+
 
 def _review_command(decision: str):
     def _cmd(

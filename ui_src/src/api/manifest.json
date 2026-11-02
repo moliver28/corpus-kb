@@ -150,6 +150,20 @@
     "required": []
   },
   {
+    "description": "Copy a profile lock's proposed overrides into config.yaml.",
+    "id": "calibrate-apply",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [
+      "write"
+    ],
+    "paramsKnown": false,
+    "path": "/api/calibrate/apply",
+    "required": [
+      "profile"
+    ]
+  },
+  {
     "description": "List the built chunk predictions, bounded by limit.",
     "id": "classification-list",
     "longRunning": false,

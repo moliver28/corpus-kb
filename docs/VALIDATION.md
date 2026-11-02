@@ -162,8 +162,11 @@ A reranker win sets `reranking.enabled: true`. Check the reranker with
 also sends a sanity pair to a llamacpp reranker. A llama-server on that
 path needs `--reranking --pooling rank --embedding`.
 
-A CLI apply command is planned in issue #200. Until it ships, the copy
-is manual.
+Apply the copy with `corpus-kb calibrate apply <profile>`. It prints the
+diff and changes nothing. Add `--write` to set the values in
+`config.yaml`. The command checks the keys against the recipes
+allow-list and refuses a stale or failed lock. The same op is the MCP
+tool `calibrate_apply` and the POST `/api/calibrate/apply` route.
 
 ## Step 6 — Keep the lock current
 

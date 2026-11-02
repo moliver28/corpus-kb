@@ -132,6 +132,25 @@ def apply_env_overrides(config: dict[str, Any]) -> None:
 
 # The config tree is schemaless YAML; Any is the honest leaf type. It lets
 # callers index nested sections without casting every hop.
+def config_file_path() -> Path | None:
+    """The user's config.yaml file, or None when only the packaged default applies.
+
+    Discovery mirrors ``load_config``: ``CORPUS_KB_CONFIG`` first, then
+    ``./config.yaml`` in the current working directory. The packaged
+    default shipped inside the package is NOT a user file, so it is never
+    returned: callers that WRITE config must treat None as a refusal.
+    """
+    env_path = os.environ.get("CORPUS_KB_CONFIG")
+    if env_path:
+        candidate = Path(env_path)
+        if candidate.exists():
+            return candidate
+    cwd_config = Path.cwd() / "config.yaml"
+    if cwd_config.exists():
+        return cwd_config
+    return None
+
+
 def load_config(path: str | None = None) -> dict[str, Any]:
     """Load config from a YAML file, merged with defaults and env var overrides.
 

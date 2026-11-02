@@ -101,6 +101,7 @@ def _tool_routes() -> tuple[ToolRoute, ...]:
     """The route table (tool modules imported lazily, api/http.py style)."""
     from corpus_kb.api.routes_lifecycle import lifecycle_routes
     from corpus_kb.tools import (
+        calibrate_tools,
         cycle_tools,
         demo_tools,
         notebook_tools,
@@ -269,6 +270,15 @@ def _tool_routes() -> tuple[ToolRoute, ...]:
             None,
             (),
             (),
+        ),
+        # -- calibrate family (issue #200): pool-free file op; the tool
+        #    module is the ONE handler the CLI and the MCP tool share ------
+        ToolRoute(
+            "/api/calibrate/apply",
+            calibrate_tools.calibrate_apply,
+            None,
+            ("profile",),
+            ("write",),
         ),
         # -- lifecycle read routes (UI SPA Task 5b, spec B2): the GET rows --
         *lifecycle_routes(),

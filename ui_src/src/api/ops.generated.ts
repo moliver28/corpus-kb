@@ -24,6 +24,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "sentiment-screen": { path: "/api/analysis/sentiment-screen", method: "POST", longRunning: false },
   "analyze-run": { path: "/api/analyze", method: "POST", longRunning: true },
   "ask": { path: "/api/ask", method: "POST", longRunning: false },
+  "calibrate-apply": { path: "/api/calibrate/apply", method: "POST", longRunning: false },
   "classification-list": { path: "/api/classification", method: "GET", longRunning: false },
   "classification-build": { path: "/api/classification/build", method: "POST", longRunning: true },
   "codebook-promote": { path: "/api/codebook/promote", method: "POST", longRunning: false },
