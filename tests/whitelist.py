@@ -544,3 +544,11 @@ scan
 # textbook golden bench (eval/golden_fetch.py): GoldenBook.license is a
 # manifest data-surface field (validated by tests/test_golden_fetch.py).
 license
+
+# --validate gate (cli/_plumbing.py): typer resolves the ValidateMode members
+# from the Option annotation and the handlers see .value; vulture sees no
+# direct name reference. The four caller modes (HARNESS-PLAYBOOKS.md).
+OFF
+ADVISORY
+ENFORCE
+CALIBRATE

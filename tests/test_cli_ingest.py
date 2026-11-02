@@ -738,7 +738,9 @@ def test_ingest_reembed_route_smoke(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _flat_help(output: str) -> str:
-    ansi = re.compile(r"\[[0-9;]*m")
+    # The escape char must be in the pattern: rich splits one flag token
+    # across style runs, and stripping bare SGR bodies leaves ESC behind.
+    ansi = re.compile(r"\x1b\[[0-9;:?]*[A-Za-z]")
     return " ".join(ansi.sub("", output).split())
 
 
