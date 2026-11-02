@@ -257,7 +257,11 @@ def otel_exporter() -> Iterator[object]:
     global the install replaced and stops the provider. Without it the
     provider survived this file, every later span in the process
     recorded, and the envelope-parity gate failed on the query and
-    verify_answer MCP legs.
+    verify_answer MCP legs. The OTel ``Once`` latch stays spent after
+    the restore: any later ``set_tracer_provider`` in the same process
+    silently no-ops with a warning. No test today trips that latch, but
+    a future real-``setup_tracing`` test collected after this file
+    would install nothing and pass vacuously.
     """
     pytest.importorskip("opentelemetry.sdk")
     from opentelemetry import trace as otel_trace
