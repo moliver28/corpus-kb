@@ -15,7 +15,9 @@ Two tiers:
 
 from __future__ import annotations
 
+import contextlib
 import re
+from collections.abc import Iterator
 from typing import cast
 from uuid import uuid4
 
@@ -246,11 +248,20 @@ class _BrokenLlm:
 
 
 @pytest.fixture(scope="module")
-def otel_exporter() -> object:
+def otel_exporter() -> Iterator[object]:
     """One SDK TracerProvider + InMemorySpanExporter for the whole module.
 
     ``set_tracer_provider`` installs once per process; tests filter the
-    accumulating exporter by span name.
+    accumulating exporter by span name. Teardown undoes the install
+    (issue #282): OTel offers no unset, so the reset restores the module
+    global the install replaced and stops the provider. Without it the
+    provider survived this file, every later span in the process
+    recorded, and the envelope-parity gate failed on the query and
+    verify_answer MCP legs. The OTel ``Once`` latch stays spent after
+    the restore: any later ``set_tracer_provider`` in the same process
+    silently no-ops with a warning. No test today trips that latch, but
+    a future real-``setup_tracing`` test collected after this file
+    would install nothing and pass vacuously.
     """
     pytest.importorskip("opentelemetry.sdk")
     from opentelemetry import trace as otel_trace
@@ -261,8 +272,14 @@ def otel_exporter() -> object:
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
+    previous = otel_trace._TRACER_PROVIDER
     otel_trace.set_tracer_provider(provider)
-    return exporter
+    try:
+        yield exporter
+    finally:
+        with contextlib.suppress(Exception):
+            provider.shutdown()
+        otel_trace._TRACER_PROVIDER = previous
 
 
 def _span_names(exporter: object) -> set[str]:
