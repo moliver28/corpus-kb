@@ -209,43 +209,39 @@ def test_degraded_candidate_predicate_gated() -> None:
     assert degraded_candidate_predicate(False) == ""
 
 
-def test_finalize_envelope_success_with_results() -> None:
-    result = SearchResult(chunk_id=uuid4(), text="t", score=1.0, source="s", doc_id=uuid4())
-    envelope = finalize_envelope([result], ["zero-query-embedding"])
-    assert envelope.status == STATUS_SUCCESS
-    assert envelope.remedy is None
-    # count = rows the degraded filter excluded (probe-backed); an arm
-    # impairment with results is recorded in reasons with count 0.
-    assert envelope.degraded_excluded.count == 0
-    assert envelope.degraded_excluded.reasons == ["zero-query-embedding"]
+#: The one result row for the success-with-results shape.
+_RESULT = SearchResult(chunk_id=uuid4(), text="t", score=1.0, source="s", doc_id=uuid4())
+
+_FINALIZE_ROWS = [
+    # An arm impairment with results stays success; count is probe-backed (0).
+    (True, "zero-query-embedding", 0, STATUS_SUCCESS, 0),
+    # The count is the M2 probe's excluded-row count, not len(reasons).
+    (False, REASON_ZERO_QUERY, 7, STATUS_DEGRADED_EMPTY, 7),
+    (False, REASON_ZERO_QUERY, 0, STATUS_DEGRADED_EMPTY, 0),
+    # Healthy corpus + junk query: plain empty success, NOT degraded_empty.
+    (False, "", 0, STATUS_SUCCESS, 0),
+]
 
 
-def test_finalize_envelope_count_carries_probe_excluded_rows() -> None:
-    """count semantics: the M2 probe's excluded-row count, not len(reasons)."""
-    envelope = finalize_envelope([], [REASON_ZERO_QUERY], excluded_count=7)
-    assert envelope.status == STATUS_DEGRADED_EMPTY
-    assert envelope.degraded_excluded.count == 7
-    assert envelope.degraded_excluded.reasons == [REASON_ZERO_QUERY]
-    assert envelope.remedy == REEMBED_REMEDY
-
-
-def test_finalize_envelope_empty_with_reasons_is_degraded_empty() -> None:
-    envelope = finalize_envelope([], [REASON_ZERO_QUERY])
-    assert envelope.status == STATUS_DEGRADED_EMPTY
-    remedy = envelope.remedy
-    assert remedy == REEMBED_REMEDY
-    assert remedy is not None and "corpus-kb ingest --reembed" in remedy
-    assert envelope.degraded_excluded.reasons == [REASON_ZERO_QUERY]
-    # No probe ran for this reason shape -> the filter excluded nothing.
-    assert envelope.degraded_excluded.count == 0
-
-
-def test_finalize_envelope_empty_without_reasons_is_success() -> None:
-    """Healthy corpus + junk query = plain empty success, NOT degraded_empty."""
-    envelope = finalize_envelope([], [])
-    assert envelope.status == STATUS_SUCCESS
-    assert envelope.remedy is None
-    assert envelope.degraded_excluded.count == 0
+@pytest.mark.parametrize(
+    ("with_results", "reason", "excluded", "status", "count"),
+    _FINALIZE_ROWS,
+    ids=["with-results", "probe-count", "with-reasons", "no-reasons"],
+)
+def test_finalize_envelope_status_count_and_remedy(
+    with_results: bool, reason: str, excluded: int, status: str, count: int
+) -> None:
+    result = [_RESULT] if with_results else []
+    envelope = finalize_envelope(result, [reason] if reason else [], excluded_count=excluded)
+    assert envelope.status == status
+    assert envelope.degraded_excluded.count == count
+    assert envelope.degraded_excluded.reasons == ([reason] if reason else [])
+    if status == STATUS_DEGRADED_EMPTY:
+        remedy = envelope.remedy
+        assert remedy == REEMBED_REMEDY
+        assert remedy is not None and "corpus-kb ingest --reembed" in remedy
+    else:
+        assert envelope.remedy is None
 
 
 def test_envelope_to_payload_shape() -> None:
