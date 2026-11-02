@@ -271,10 +271,11 @@ def apply_extraction_backend_alias(config: dict[str, object]) -> None:
 
 
 # Every CORPUS_KB_* variable the code reads: the load_config override map
-# above plus the three direct readers (config discovery in this module,
-# snapshot interval in domain/application.py, and the golden-bench dir
-# override read by eval/golden_fetch.py). doctor reports any set
-# variable outside this set as a warning (see _setup/doctor_env.py).
+# above plus the direct readers (config discovery in this module, snapshot
+# interval in domain/application.py, the golden-bench dir override read by
+# eval/golden_fetch.py, and the browser auto-open guard read by
+# server_wiring.browser_open_enabled). doctor reports any set variable
+# outside this set as a warning (see _setup/doctor_env.py).
 KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
     {
         "CORPUS_KB_CONFIG",
@@ -294,6 +295,7 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_SNAPSHOT_PERIOD",
         "CORPUS_KB_TEST_DB",
         "CORPUS_KB_TEXTBOOK_GOLDEN_DIR",
+        "CORPUS_KB_UI_OPEN",
     }
 )
 

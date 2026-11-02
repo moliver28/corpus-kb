@@ -860,8 +860,9 @@ class _TitleCaptureStore:
 async def _run_locked_with_title(
     monkeypatch: pytest.MonkeyPatch, store: _TitleCaptureStore, config: dict[str, Any]
 ) -> dict[str, Any]:
-    """One locked-stages run with embed stubbed and the store captured."""
-    from corpus_kb.tools.pipeline.stages import _run_locked_stages
+    """One document-stages run with embed stubbed and the store captured."""
+    from corpus_kb.tools.pipeline.document import IngestDocument
+    from corpus_kb.tools.pipeline.stages import _run_document_stages
 
     async def fake_embed(
         chunks: list[Chunk],
@@ -877,18 +878,21 @@ async def _run_locked_with_title(
     monkeypatch.setattr(
         "corpus_kb.tools.ingest_common.PostgresIngestStore", lambda pool, tenant: store
     )
-    return await _run_locked_stages(
+    doc = IngestDocument(
         document=build_document("book.pdf", "text", "book body"),
-        chunks=_two_chunks(),
-        file_hash="h" * 64,
         text="book body",
+        file_hash="h" * 64,
         source_type="text",
         path="book.pdf",
-        config=config,
-        pg_pool=None,
-        tenant_id="00000000-0000-0000-0000-000000000003",
-        rag_backend=None,
         is_file=False,
+        chunks=_two_chunks(),
+    )
+    return await _run_document_stages(
+        doc,
+        config,
+        None,
+        "00000000-0000-0000-0000-000000000003",
+        None,
     )
 
 

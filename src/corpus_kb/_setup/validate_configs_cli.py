@@ -145,11 +145,13 @@ def validate_all(project_root: Path | None = None) -> list[str]:
 
     errors: list[str] = []
 
-    # 1. Validate root opencode.json (OpenCode native format)
+    # 1. Validate root opencode.json (OpenCode native format); the parsed
+    # config carries forward to the cross-config step (one read, one parse).
+    opencode_config: dict[str, Any] | None = None
     opencode_path = project_root / "opencode.json"
     if opencode_path.exists():
-        config = load_json(opencode_path)
-        errs = validate_opencode_config(config)
+        opencode_config = load_json(opencode_path)
+        errs = validate_opencode_config(opencode_config)
         errors.extend(f"opencode.json: {e}" for e in errs)
     else:
         errors.append("opencode.json not found")
@@ -159,7 +161,6 @@ def validate_all(project_root: Path | None = None) -> list[str]:
     errors.extend(mcp_errors)
 
     # 3. Cross-config consistency
-    opencode_config = load_json(opencode_path) if opencode_path.exists() else None
 
     cross_errors = check_cross_config_consistency(
         opencode_config, claude_config, cursor_config, codex_config
