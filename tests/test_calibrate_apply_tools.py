@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -262,10 +263,14 @@ def test_cli_flag_conflict_exits_one(world: dict[str, Path]) -> None:
 
 
 def test_cli_help_lists_both_flags() -> None:
+    # Rich styles the help on some runners (ANSI between the flag chars),
+    # so strip the codes the way test_cli_tags does before the checks.
+    ansi = re.compile(r"\x1b\[[0-9;]*m")
     result = runner.invoke(app, ["calibrate", "apply", "--help"])
     assert result.exit_code == 0, result.output
-    assert "--write" in result.output
-    assert "--dry-run" in result.output
+    flat = ansi.sub("", result.output)
+    assert "--write" in flat
+    assert "--dry-run" in flat
 
 
 # ---------------------------------------------------------------------------
