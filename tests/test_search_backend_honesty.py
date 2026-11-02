@@ -20,7 +20,7 @@ OFFLINE: a recording connection captures the SQL order and canned rows
 from __future__ import annotations
 
 import re
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
@@ -282,3 +282,59 @@ def test_note_conditional_shape_follows_embedding_note_contract() -> None:
     lpayload = envelope_to_payload(lexical_noted)
     assert "vector_index_note" not in lpayload
     assert set(lpayload) == base_keys | {"lexical_index_note"}
+
+
+# ============================================================================
+# Error-injection pins for the PG sentinel swallows (issue 235)
+#
+# The meta arm and the degraded count probe answer empty sentinels on ANY
+# failure. A raised dependency (the documented failure class: the driver
+# raising mid-probe) must land on the sentinel — and the healthy path on
+# the same fake must not, so the sentinel is provably the swallow's.
+# ============================================================================
+
+
+class _RaisingConn:
+    """Connection stand-in: the transaction opens, every read raises."""
+
+    def __init__(self, exc: Exception) -> None:
+        self.opened = 0
+        self._exc = exc
+
+    def transaction(self):
+        outer = self
+
+        class _Tx:
+            async def __aenter__(self) -> _RaisingConn:
+                outer.opened += 1
+                return outer
+
+            async def __aexit__(self, *exc: object) -> bool:
+                return False
+
+        return _Tx()
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+        raise self._exc
+
+    async def fetchrow(self, sql: str, *args: object) -> dict[str, object] | None:
+        raise self._exc
+
+
+@pytest.mark.asyncio
+async def test_meta_arm_injected_failure_answers_empty() -> None:
+    backend = PostgresSearchBackend(config=dict(_PGML_CONFIG))
+    query = SearchQuery(query="housing", tenant_id=DEFAULT_TENANT_ID)
+    conn = _RaisingConn(RuntimeError("pool reset"))
+    assert await backend._meta_arm_rows(cast("Any", conn), query, "housing") == []
+    assert conn.opened == 1  # the failure path rode the arm's savepoint
+
+
+@pytest.mark.asyncio
+async def test_degraded_probe_injected_failure_counts_zero() -> None:
+    backend = PostgresSearchBackend(config=dict(_PGML_CONFIG))
+    query = SearchQuery(query="housing", tenant_id=DEFAULT_TENANT_ID)
+    conn = _RaisingConn(RuntimeError("pool reset"))
+    count = await backend._degraded_probe(cast("Any", conn), query, [], [], [])
+    assert count == 0
+    assert conn.opened == 1  # the probe ran and swallowed, it never started
