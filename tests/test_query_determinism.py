@@ -232,6 +232,40 @@ def test_rrf_orders_tied_rows_by_chunk_id() -> None:
     assert run([2, 0, 1]) == run([1, 2, 0]) == [(0.02, cid) for cid in sorted(ids)]
 
 
+def test_rrf_pure_twin_matches_the_sql_fusion_port() -> None:
+    """retrieval_duckdb.rrf_pure (the DuckDB fusion twin) must track the
+    exact port of corpus.rrf_fusion: same order, same scores, and the same
+    arm-metadata re-attachment retrieval._rrf does after the SQL call."""
+    from corpus_kb.research.retrieval_duckdb import rrf_pure
+
+    ids = [_det_uuid(f"pure-{i}") for i in range(4)]
+    meta = {
+        "_key": "unit:1",
+        "_kind": "answer",
+        "_unit_id": 1,
+        "_exchange_id": None,
+        "_seq": 1,
+        "_doc_id": _det_uuid("doc"),
+    }
+    dense = [dict(_arm_row(ids[3]), **meta), _arm_row(ids[0])]
+    lexical = [_arm_row(ids[2]), _arm_row(ids[0]), _arm_row(ids[1])]
+
+    fused = rrf_pure(dense, lexical, depth=100, rrf_k=60)
+    port = rrf_fuse(lexical, dense, k=100, rrf_k=60)
+    assert [(str(r.chunk_id), float(r.score)) for r in port] == [
+        (str(row["chunk_id"]), float(row["score"])) for row in fused
+    ]
+    # The dense-only row (ids[3]) carries its arm metadata into the fusion,
+    # exactly as retrieval._rrf re-attaches it after the SQL fusion call.
+    hit = next(row for row in fused if row["chunk_id"] == ids[3])
+    for name, value in meta.items():
+        assert hit[name] == value
+    # Determinism (rule 9): the same legs fuse to the same output, twice;
+    # both sides empty stays empty.
+    assert rrf_pure(dense, lexical, depth=100, rrf_k=60) == fused
+    assert rrf_pure([], [], 100, 60) == []
+
+
 # ============================================================================
 # Part (b): SQL-shape audit — every score ORDER BY carries the tiebreaker
 # ============================================================================
@@ -298,9 +332,19 @@ def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
 
 
 def test_every_score_order_by_in_retrieval_carries_tiebreaker() -> None:
-    clauses = _desc_order_by_clauses(ROOT / "src/corpus_kb/research/retrieval.py")
-    assert len(clauses) == 6, clauses  # 2 dense arms x 2 + 2 FTS arms
-    keys = r"(candidate\.unit_id|candidate\.exchange_id|u\.unit_id|e\.exchange_id)"
+    # Issue 232 dedup: one shared arm builder now lives in
+    # retrieval_arms.py — the dense template (exact + ANN variants) and the
+    # FTS arm contribute one clause each; retrieval.py carries no SQL.
+    # retrieval_filters.py is scanned too (grain fragments must never grow
+    # an untied score ORDER BY), mirroring the multi-file handler loop above.
+    clauses: list[str] = []
+    for rel in (
+        "src/corpus_kb/research/retrieval_arms.py",
+        "src/corpus_kb/research/retrieval_filters.py",
+    ):
+        clauses.extend(_desc_order_by_clauses(ROOT / rel))
+    assert len(clauses) == 2, clauses  # shared dense arm + shared FTS arm
+    keys = r"(candidate\.\{grain\.row_id\}|\{grain\.alias\}\.\{grain\.row_id\})"
     for clause in clauses:
         assert re.fullmatch(rf"ORDER BY .+ DESC, {keys} ASC", clause), clause
 

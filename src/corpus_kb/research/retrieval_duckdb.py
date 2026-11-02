@@ -1,8 +1,8 @@
 """DuckDB retrieval twins (storage portability program §13, sp-research-port).
 
-The Postgres arms in ``research/retrieval.py`` are byte-identical legacy
-SQL and are pinned by file-scan (tests/test_query_determinism.py counts
-exactly six score ORDER BY clauses there), so this module carries the
+The Postgres arms in ``research/retrieval_arms.py`` are byte-identical
+legacy SQL and are pinned by file-scan (tests/test_query_determinism.py
+counts the score ORDER BY clauses there), so this module carries the
 DuckDB forms instead:
 
 - DENSE: always the exact cosine scan (DuckDB has no ANN index; the U40

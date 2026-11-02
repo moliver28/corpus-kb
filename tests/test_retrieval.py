@@ -315,3 +315,30 @@ async def test_handle_search_filters_tombstoned_and_superseded(pg_pool) -> None:
 
     after = await handler.handle_search(SearchQuery(query=unique_phrase, k=10))
     assert all(unique_phrase not in r.text for r in after)
+
+
+def test_children_from_fused_skips_rows_without_a_key() -> None:
+    """Fusion rows keep their metadata; rows without ``_key`` are dropped."""
+    from corpus_kb.research.retrieval import _children_from_fused
+
+    fused = [
+        {"chunk_id": "x", "text": "t", "source": "s", "doc_id": "d", "score": 0.5},
+        {
+            "chunk_id": "c",
+            "text": "hello",
+            "source": "",
+            "doc_id": "d",
+            "score": 0.9,
+            "_key": "unit:7",
+            "_kind": "answer",
+            "_unit_id": 7,
+            "_exchange_id": None,
+            "_seq": 2,
+            "_doc_id": "d",
+        },
+    ]
+    children = _children_from_fused(fused)
+    assert len(children) == 1
+    assert children[0].key == "unit:7"
+    assert children[0].unit_id == 7
+    assert children[0].seq == 2
