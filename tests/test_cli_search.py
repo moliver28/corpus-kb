@@ -9,6 +9,7 @@ envelope are exercised end-to-end without a database.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 import pytest
@@ -297,10 +298,11 @@ def test_search_context_corpus_error_exits_one(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_search_read_helps_document_exit_codes() -> None:
+    ansi = re.compile(r"\x1b\[[0-9;]*m")
     for command in ("search-similar", "search-context"):
         result = runner.invoke(app, [command, "--help"])
         assert result.exit_code == 0
-        flat = " ".join(result.output.split())
+        flat = " ".join(ansi.sub("", result.output).split())
         assert "0 answered" in flat
         assert "1 failed" in flat
         assert "3 the database is unreachable" in flat

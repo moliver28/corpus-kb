@@ -21,7 +21,7 @@ from tests.cli_fakes import FakePool
 
 runner = CliRunner()
 
-_ANSI = re.compile(r"\[[0-9;]*m")
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 DOC_ID = "cccccccc-cccc-cccc-cccc-cccccccccccc"
 
