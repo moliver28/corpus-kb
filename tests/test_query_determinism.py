@@ -308,9 +308,15 @@ def test_every_score_order_by_in_query_handler_carries_tiebreaker() -> None:
     # the total-order unit above). query_stages.py, query_pipeline.py and
     # query_crud_reads.py complete the split's module set (reads there
     # order by name ASC or nothing at all — no score clause to pin).
+    # Issue #281 split: the five vector-arm clauses moved byte-identical
+    # from query_vector_arms.py into query_vector_pgml_arm.py and
+    # query_vector_ollama_arm.py (the shim re-exports names, it carries
+    # no SQL, so it stays in the scan and contributes zero clauses).
     clauses: list[str] = []
     for rel in (
         "src/corpus_kb/handlers/query_vector_arms.py",
+        "src/corpus_kb/handlers/query_vector_pgml_arm.py",
+        "src/corpus_kb/handlers/query_vector_ollama_arm.py",
         "src/corpus_kb/handlers/query_search_pg.py",
         "src/corpus_kb/handlers/query_handler.py",
         "src/corpus_kb/handlers/query_crud.py",

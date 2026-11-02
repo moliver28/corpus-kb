@@ -86,14 +86,14 @@ PLANNER_SORT_OFF = "SET LOCAL enable_sort = off"
 
 
 def test_pg_vector_distance_matches_arm_literals() -> None:
-    """The <=> cast forms of handlers/query_vector_arms.py, byte-identical."""
-    # ollama arm, line 286: 1 - (cv.embedding <=> $1::halfvec) AS score
+    """The <=> cast forms of the vector arms (handlers/query_vector_*_arm.py)."""
+    # halfvec arm, query_vector_ollama_arm.py: 1 - (cv.embedding <=> $1::halfvec) AS score
     assert POSTGRES.vector_distance("cv.embedding", "$1::halfvec") == "cv.embedding <=> $1::halfvec"
-    # matryoshka arm, line 247: ORDER BY cv.vector_1024 <=> $4::vector
+    # matryoshka arm, query_vector_ollama_arm.py: ORDER BY cv.vector_1024 <=> $4::vector
     assert POSTGRES.vector_distance("cv.vector_1024", "$4::vector") == (
         "cv.vector_1024 <=> $4::vector"
     )
-    # pgml arm, lines 136-138 (source wraps the subselect across lines)
+    # pgml arm, query_vector_pgml_arm.py (source wraps the subselect across lines)
     pgml_param = "(SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1)::halfvec"
     assert _norm(POSTGRES.vector_distance("cv.embedding", pgml_param)) == _norm(
         "cv.embedding <=> (SELECT * FROM pgml.embed($1, ARRAY[$2]::text[]) LIMIT 1)::halfvec"
