@@ -76,8 +76,10 @@ dependencies = [
     # the psycopg exception (distribution permitted); licenses.lock.json
     # regenerated.
     "psycopg[binary]>=3.1",
-    # floor: 0.37.1 closes the multipart parser file handle on error paths
-    "starlette>=0.37.1",
+    # floor: 0.40.0 caps multipart part size (CVE-2024-47874,
+    # GHSA-f96h-pmfr-66vw). 0.37.1 only softened a Config env-file warning;
+    # the multipart hardening this upload route wants landed by 0.40.0.
+    "starlette>=0.40.0",
     "typer>=0.15",
     "uvicorn>=0.24",
     # fastapi: the HTTP composition root returns FastAPI (a Starlette
@@ -559,14 +561,14 @@ asyncio_mode = "auto"
 # and it silences the plugin's per-session deprecation warning.
 asyncio_default_fixture_loop_scope = "function"
 # Third-party warning noise (no repo-side fix exists):
-# - umap warns that random_state pins n_jobs=1 — our determinism contract
-#   (inductive engine, r7) sets random_state on purpose.
 # - pynvml deprecation: pypi.org/project/pynvml tells maintainers to move to
 #   nvidia-ml-py; we consume it transitively and must not add the replacement.
-# - sklearn 1.9.1's HDBSCAN emits the copy-deprecation notice from its own
-#   internals (its copy default flips to True in 1.10) and its copy= value
-#   crashes cosine_distances — an upstream bug (sklearn#33219), fixed when
-#   1.10 lands. We pass no copy; the notice is third-party noise.
+# - The two cosine-metric HDBSCAN fits in coding/inductive_cluster.py (the
+#   reduced-space clusterer and the original-space noise fitter) run on the
+#   hdbscan package, which has no copy parameter and supplies the
+#   relative_validity_ metric sklearn's HDBSCAN lacks: those sites cannot
+#   pass copy=False. The upstream sklearn copy story stays open
+#   (sklearn#33219); the hdbscan package emits no copy warning in this env.
 filterwarnings = [
     # Third-party import-time residue only (pynvml deprecation inside the
     # nvidia stack; the package that installs pynvml owns the fix). Repo-owned
