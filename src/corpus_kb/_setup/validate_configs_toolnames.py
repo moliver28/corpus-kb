@@ -22,6 +22,11 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "search_similar",
         "retrieve_context",
         "list_documents",
+        # Issue #182: the document delete and the answer verifier gained
+        # surface_registry rows (the UI manifest ids document-delete and
+        # verify); the tool names join here.
+        "delete_document",
+        "verify_answer",
         "get_stats",
         "list_versions",
         "list_branches",

@@ -467,6 +467,58 @@ SURFACES: tuple[Surface, ...] = (
         description="Cancel one pending or running queue row.",
         http_route="/api/queue/cancel",
     ),
+    # -- UI manifest self-upgrade reads (issue #182): the Review and Ask
+    #    screens resolve these ids through getOp; the names follow the
+    #    manifest ids the shipped screens already reference. --------------
+    Surface(
+        name="documents-list",
+        cli_path="list-documents",
+        mcp_tool="list_documents",
+        description="List ingested documents with chunk counts (read-only).",
+        http_route="/api/documents",
+    ),
+    Surface(
+        name="document-delete",
+        cli_path="delete-document",
+        mcp_tool="delete_document",
+        description="Delete one document by ID; chunks and vectors cascade.",
+        http_route="/api/documents/{doc_id}",
+    ),
+    Surface(
+        name="document-tags",
+        cli_path="get-document-tags",
+        mcp_tool="get_document_tags",
+        description="List one document's tags (read-only).",
+        http_route="/api/documents/{doc_id}/tags",
+    ),
+    Surface(
+        name="document-metadata",
+        cli_path="get-metadata",
+        mcp_tool="get_metadata",
+        description="Read metadata rows by key or document (read-only).",
+        http_route="/api/metadata",
+    ),
+    Surface(
+        name="verify",
+        cli_path="verify-answer",
+        mcp_tool="verify_answer",
+        description="Check each answer claim against the cited chunks.",
+        http_route="/api/verify",
+    ),
+    Surface(
+        name="search-similar",
+        cli_path="search-similar",
+        mcp_tool="search_similar",
+        description="Find chunks similar to one stored chunk (vector distance).",
+        http_route="/api/search/similar",
+    ),
+    Surface(
+        name="search-context",
+        cli_path="search-context",
+        mcp_tool="search_context",
+        description="Search with the surrounding context chunks attached.",
+        http_route="/api/search/context",
+    ),
 )
 
 # --------------------------------------------------------------------------

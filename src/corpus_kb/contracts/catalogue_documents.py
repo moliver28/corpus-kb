@@ -1,6 +1,7 @@
 """The operation catalogue: documents and graph families.
 
-``list_documents``/``delete_document`` (documents) and the graph rows
+``list_documents``/``delete_document`` plus the tags/metadata reads
+(``get_document_tags``/``get_metadata``, issue #182) and the graph rows
 (``add_entity``/``add_relation`` plus the §5.1 read births
 ``search_graph``/``get_entity_relations``/``graph_neighbors``/
 ``graph_traverse``) live here. The delete row pins the Wave 3A unification:
@@ -59,6 +60,36 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(SOCKET, "delete_document"),
         ),
         http_extra=AGGREGATE_EXTRA,
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="get_document_tags",
+        family="documents",
+        description="List one document's tags. Rows carry name, color, description.",
+        handler="corpus_kb.tools.tag_tools:get_document_tags",
+        params=(ParamSpec("doc_id", required=True), _TENANT),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "get_document_tags"),
+            SurfaceSpec(CLI, "get-document-tags"),
+            SurfaceSpec(HTTP, "/api/documents/{doc_id}/tags", "GET"),
+            SurfaceSpec(SOCKET, "get_document_tags"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="get_metadata",
+        family="documents",
+        description="Read metadata rows by key or document. Rows carry key and value.",
+        handler="corpus_kb.tools.tag_tools:get_metadata",
+        params=(ParamSpec("key"), ParamSpec("doc_id"), _TENANT),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "get_metadata"),
+            SurfaceSpec(CLI, "get-metadata"),
+            SurfaceSpec(HTTP, "/api/metadata", "GET"),
+            SurfaceSpec(SOCKET, "get_metadata"),
+        ),
         exit_codes=(0, 1, 3),
     ),
     Operation(
