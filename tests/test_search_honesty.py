@@ -497,7 +497,7 @@ def test_build_embedding_input_blurb_and_plain() -> None:
 def test_pipeline_uses_build_embedding_input() -> None:
     """Single-sourcing guard: the pipeline embeds the SAME bytes a reembed would.
 
-    The embed call lives in _run_locked_stages (ingest_common) and the
+    The embed call lives in the ingest pipeline (ingest_common) and the
     repair site in reembed_degraded (ingest_reembed) since the Wave 3B
     split; check BOTH modules so the guard survives further restructures.
     """

@@ -202,3 +202,9 @@ async def test_hnsw_check_defaults_to_ddl_values() -> None:
     conn = _HnswConn(["m=16", "ef_construction=128"])
     check = await hnsw_index_check(conn, {"retrieval": {}})
     assert check.status == STATUS_OK
+
+
+def test_env_var_check_ok_for_ui_open_direct_reader() -> None:
+    """CORPUS_KB_UI_OPEN is set-but-known (issue #287): doctor stays silent."""
+    check = env_var_check({"CORPUS_KB_UI_OPEN": "0"})
+    assert check.status == STATUS_OK

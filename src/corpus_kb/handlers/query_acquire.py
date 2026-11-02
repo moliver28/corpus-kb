@@ -115,7 +115,6 @@ async def post_fusion(
     """
     k = run.query.k if run.query.k is not None else rerank_settings.return_top_k
     fused_results = query_stages.fuse_arm_rows(outcome, k, retrieval_settings.rrf_k)
-    resolved_k = run.query.k if run.query.k is not None else rerank_settings.return_top_k
     return await query_stages.post_fuse(
         reranker,
         rerank_settings,
@@ -123,7 +122,7 @@ async def post_fusion(
         retrieval_settings,
         fused_results,
         run.semantic_query,
-        resolved_k,
+        k,
         run.over_retrieve,
         str(run.query.tenant_id),
         run.reasons,

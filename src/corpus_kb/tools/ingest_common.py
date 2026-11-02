@@ -73,7 +73,6 @@ from .ingest_reembed import reembed_degraded
 from .ingest_store import DEFAULT_TENANT_ID, PostgresIngestStore
 from .pipeline.plan import run_pipeline
 from .pipeline.sinks import IngestSink
-from .pipeline.stages import _run_locked_stages
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +93,6 @@ __all__ = [
     "_extractor_name",
     "_late_chunk_vectors",
     "_nested_dict",
-    "_run_locked_stages",
     "_sha256",
     "advisory_lock_ctx",
     "build_document",

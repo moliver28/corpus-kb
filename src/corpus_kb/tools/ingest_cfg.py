@@ -27,7 +27,7 @@ def _nested_dict(config: dict[str, object], key: str) -> dict[str, object]:
 def vector_write_config(config: dict[str, object]) -> tuple[str, int, int | None]:
     """(embedding_model, dimensions, matryoshka_dim) for vector writes.
 
-    One reader for the ingest pipeline (``_run_locked_stages``) and the
+    One reader for the ingest pipeline (``_run_document_stages``) and the
     repair path (``reembed_degraded``): same keys, same defaults, same
     coercion. A non-int ``embedding.dimensions`` or
     ``retrieval.matryoshka_dim`` falls back to the documented default

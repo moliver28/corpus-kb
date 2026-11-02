@@ -6,9 +6,8 @@ Modules:
   coordinate system (offset invariant:
   ``text[start_char:end_char] == artifact_text``).
 * ``plan`` — ``run_pipeline``: strategy resolution and the ChunkPlan.
-* ``stages`` — ``_run_document_stages`` (``_run_locked_stages`` is the
-  legacy keyword seam): the locked stage sequence under the advisory
-  lock. One small module per stage: ``prepare``, ``produce``,
+* ``stages`` — ``_run_document_stages``: the locked stage sequence under
+  the advisory lock. One small module per stage: ``prepare``, ``produce``,
   ``shadow``, ``extract``, ``atomize``, ``result``.
 * ``sinks`` — the :class:`IngestSink` write port, :class:`ChunkSink`
   (a verbatim wrapper over ``tools/ingest_store.py``) and

@@ -172,23 +172,17 @@ async def test_locked_stages_mirror_rag_backend(
 
     monkeypatch.setattr("corpus_kb.tools.ingest_common.embed_chunks", fake_embed)
     monkeypatch.setattr("corpus_kb.tools.ingest_common.PostgresIngestStore", _StubIngestStore)
-    from corpus_kb.tools.pipeline.stages import _run_locked_stages
+    from corpus_kb.tools.pipeline.stages import _run_document_stages
 
     doc = _doc_with_chunks()
     backend = _RecordingRagBackend()
 
-    result = await _run_locked_stages(
-        document=doc.document,
-        chunks=doc.chunks,
-        file_hash=doc.file_hash,
-        text=doc.text,
-        source_type=doc.source_type,
-        path=doc.path,
-        config={"graph": {"extract_entities": False}, "ingest": {"chunking": {"enabled": False}}},
-        pg_pool=None,
-        tenant_id="00000000-0000-0000-0000-000000000003",
-        rag_backend=backend,
-        is_file=False,
+    result = await _run_document_stages(
+        doc,
+        {"graph": {"extract_entities": False}, "ingest": {"chunking": {"enabled": False}}},
+        None,
+        "00000000-0000-0000-0000-000000000003",
+        backend,
     )
 
     assert result["status"] == "success"

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from starlette.datastructures import UploadFile
 from starlette.requests import Request
 from starlette.testclient import TestClient
 
@@ -672,3 +673,76 @@ def test_gen_demo_corpus_documents_are_stable_shapes(tmp_path: Path) -> None:
         assert lines[0].startswith("# "), path.name
         index = int(path.stem.split("-")[1])
         assert lines[-1] == f"Synthetic demo document {index} of 8.", path.name
+
+
+async def test_upload_closes_the_spooled_temp_file(
+    monkeypatch: pytest.MonkeyPatch, recwarn: pytest.WarningsRecorder
+) -> None:
+    """The parsed upload file closes at request teardown: no ResourceWarning.
+
+    Starlette's multipart parser spools the file part into a
+    SpooledTemporaryFile inside an UploadFile; the route owns that file
+    from the parse to the end of the request. An unclosed file surfaces
+    later as an interpreter ResourceWarning (gate-scan 2026-11-01, two
+    hits). The closed-state assert pins the route's own teardown; the
+    error-filter sweep plus a forced collection pass is the belt that
+    turns any missed file into a loud failure, not a late warning.
+    """
+    pytest.importorskip("python_multipart")
+    import gc
+    import warnings
+
+    import corpus_kb.api.research_http as research_http
+    import corpus_kb.tools.ingest_upload_tools as upload_tools
+    from corpus_kb.api.routes_ingest import ingest_upload_route
+
+    captured: dict[str, object] = {}
+
+    async def stub_ingest_upload(source: object, pool: object, **kwargs: object) -> dict[str, Any]:
+        del pool, kwargs
+        captured["upload"] = source
+        return {"status": "success"}
+
+    monkeypatch.setattr(upload_tools, "ingest_upload", stub_ingest_upload)
+    monkeypatch.setattr(research_http, "_pool", _FakePool())
+
+    boundary = "parityboundary"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="notes.md"\r\n'
+        "Content-Type: text/markdown\r\n\r\n"
+        "# hello world\r\n"
+        f"--{boundary}--\r\n"
+    ).encode()
+    scope: dict[str, Any] = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "method": "POST",
+        "path": "/api/ingest/upload",
+        "query_string": b"",
+        "headers": [
+            (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+            (b"content-length", str(len(body)).encode()),
+        ],
+    }
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    request = Request(scope, receive=receive)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", ResourceWarning)
+        response = await ingest_upload_route(request)
+        gc.collect()
+    assert response.status_code == 200
+    assert json.loads(response.body) == {"status": "success"}
+    upload = captured["upload"]
+    assert isinstance(upload, UploadFile)
+    assert upload.file.closed, "the route must close the parsed upload file"
+    leaked = [
+        w
+        for w in recwarn.list
+        if issubclass(w.category, ResourceWarning)
+        or w.category.__name__ == "PytestUnraisableExceptionWarning"
+    ]
+    assert not leaked, [str(w.message) for w in leaked]

@@ -185,15 +185,22 @@ async def ingest_upload_route(request: Request) -> JSONResponse:
         raise ValidationError("The multipart form body is malformed or cut short.") from exc
     upload = form.get("file")
     if not isinstance(upload, UploadFile):
+        await form.close()
         raise ValidationError("The upload needs a multipart file field named file.")
     source_type = form.get("source_type")
-    result = await ingest_upload(
-        upload,
-        await research_pool(),
-        tenant_id=str(form.get("tenant_id", DEFAULT_TENANT_ID)),
-        source_type=str(source_type) if source_type is not None else None,
-        max_upload_mb=max_mb,
-    )
+    try:
+        result = await ingest_upload(
+            upload,
+            await research_pool(),
+            tenant_id=str(form.get("tenant_id", DEFAULT_TENANT_ID)),
+            source_type=str(source_type) if source_type is not None else None,
+            max_upload_mb=max_mb,
+        )
+    finally:
+        # The route owns every spooled file the parser created: close them
+        # even when the ingest tool raises, or the interpreter reports an
+        # unclosed SpooledTemporaryFile at collection time.
+        await form.close()
     return JSONResponse(result)
 
 
