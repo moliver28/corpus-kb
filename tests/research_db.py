@@ -140,8 +140,18 @@ async def drop_research_db() -> None:
 
 
 async def superuser_conn() -> asyncpg.Connection:
-    """BYPASSRLS connection for infrastructure verification reads."""
-    return await asyncpg.connect(DSN)
+    """BYPASSRLS connection for infrastructure verification reads.
+
+    Opens the SUPERUSER DSN, not the app-role DSN. The old app-role connect
+    only bypassed RLS where the bootstrap role is a superuser (the CI service
+    image). On a plain local server corpus_user is a normal role, and every
+    tenant table is FORCE RLS (migration 011), so the owner itself sees zero
+    rows without the tenant GUC: infrastructure reads returned None and
+    cleanup DELETEs silently matched nothing. The scratch database can only
+    exist because :func:`create_research_db` already connects through this
+    same superuser DSN, so it works wherever the harness works.
+    """
+    return await asyncpg.connect(super_dsn_for(DB_NAME))
 
 
 def set_env(dsn: str) -> None:
