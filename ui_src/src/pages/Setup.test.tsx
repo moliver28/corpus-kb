@@ -50,6 +50,43 @@ describe("Setup page", () => {
     expect(screen.getByText(strings.setupRerankerOff)).toBeTruthy();
   });
 
+  it("warns when the embedding width is known and under 1024", async () => {
+    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, doctorOk.response.body) }]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    expect(await screen.findByText(strings.setupEmbeddingDimsLow)).toBeTruthy();
+  });
+
+  it("does not warn when the embedding width is unknown", async () => {
+    const body = JSON.parse(JSON.stringify(doctorOk.response.body));
+    body.result.embedding.dimensions = null;
+    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, body) }]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    expect(
+      await screen.findByText(
+        strings.setupEmbeddingLine
+          .replace("{model}", "nomic-embed-text")
+          .replace("{dims}", strings.setupEmbeddingDimsUnknown),
+      ),
+    ).toBeTruthy();
+    // Honest-degraded rule: an unknown width never renders a fake warning.
+    expect(screen.queryByText(strings.setupEmbeddingDimsLow)).toBeNull();
+  });
+
+  it("does not warn when the embedding width reaches the research width", async () => {
+    const body = JSON.parse(JSON.stringify(doctorOk.response.body));
+    body.result.embedding.dimensions = 2560;
+    stubFetch([{ method: "GET", path: "/api/doctor", reply: respond(200, body) }]);
+    render(<Setup />, { wrapper: makeWrapper() });
+    expect(
+      await screen.findByText(
+        strings.setupEmbeddingLine
+          .replace("{model}", "nomic-embed-text")
+          .replace("{dims}", "2560"),
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(strings.setupEmbeddingDimsLow)).toBeNull();
+  });
+
   it("hides the embedding and reranker lines on an older payload", async () => {
     const body = JSON.parse(JSON.stringify(doctorOk.response.body));
     delete body.result.embedding;

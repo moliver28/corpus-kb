@@ -451,11 +451,20 @@ class _Env:
     doc: str = ""
 
 
-def _patch_doctor_probes(monkeypatch: pytest.MonkeyPatch, postgres_ok: bool) -> None:
+def _patch_doctor_probes(
+    monkeypatch: pytest.MonkeyPatch,
+    postgres_ok: bool,
+    *,
+    ollama_ok: bool = False,
+    extensions: dict[str, tuple[bool, str]] | None = None,
+    config: dict[str, Any] | None = None,
+) -> None:
     """Stub the SAME probe functions the CLI doctor calls (source modules).
 
     The snapshot imports the probes lazily from their own modules, so the
-    patches pin the real seams — not wrappers the handler owns.
+    patches pin the real seams — not wrappers the handler owns. The
+    keyword overrides let one helper serve the whole embedding-flag
+    matrix (issue #183) without re-stubbing every seam per test.
     """
     import corpus_kb._setup.install as install
     import corpus_kb._setup.setup_steps as setup_steps
@@ -475,10 +484,10 @@ def _patch_doctor_probes(monkeypatch: pytest.MonkeyPatch, postgres_ok: bool) -> 
         return postgres_ok, "ok" if postgres_ok else "unreachable"
 
     async def fake_extensions(conn_str: str) -> dict[str, tuple[bool, str]]:
-        return {"vector": (True, "0.7.0")}
+        return {"vector": (True, "0.7.0")} if extensions is None else extensions
 
     async def fake_ollama(url: str) -> tuple[bool, str]:
-        return False, "down"
+        return ollama_ok, "ok" if ollama_ok else "down"
 
     async def fake_research(
         conn_str: str, config: object, extensions: object, ollama_ok: object = None
@@ -488,11 +497,10 @@ def _patch_doctor_probes(monkeypatch: pytest.MonkeyPatch, postgres_ok: bool) -> 
     async def fake_storage(config: object, conn_str: str, postgres_ok: bool) -> list[_Check]:
         return [_Check("engine", "info", "postgres")]
 
-    monkeypatch.setattr(
-        doctor_tools,
-        "load_config_or_pass",
-        lambda _c: {"database": {"connection_string": "postgresql://doctor-test"}},
-    )
+    stubbed: dict[str, Any] = {"database": {"connection_string": "postgresql://doctor-test"}}
+    if config is not None:
+        stubbed.update(config)
+    monkeypatch.setattr(doctor_tools, "load_config_or_pass", lambda _c: stubbed)
     monkeypatch.setattr(install, "detect_profile", fake_profile)
     monkeypatch.setattr(install, "load_installer_profiles", lambda _c: {"cpu": {"model": "m"}})
     monkeypatch.setattr(setup_steps, "check_postgres", fake_postgres)
@@ -534,10 +542,78 @@ def test_doctor_snapshot_reuses_the_cli_probes(monkeypatch: pytest.MonkeyPatch) 
     ]
     # Structured embedding facts + reranker state (issue #183), read from
     # the same config the CLI doctor checks (defaults in this fixture).
-    assert result["embedding"] == {"model": "", "dimensions": 1024}
+    # The default provider is ollama, and the stub reports it down, so the
+    # embedder is degraded (zero-vector fallback) even though the config
+    # width reads 1024.
+    assert result["embedding"] == {"model": "", "dimensions": 1024, "degraded": True}
     assert result["reranker"]["enabled"] is True
     assert result["storage_checks"][0]["name"] == "engine"
     assert result["env"]["status"] == "ok"
+
+
+def test_doctor_embedding_degraded_follows_provider_health(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``degraded`` is false only when the active provider can emit vectors."""
+
+    _patch_doctor_probes(monkeypatch, postgres_ok=True, ollama_ok=True)
+
+    client = TestClient(create_http_app())
+    result = client.get("/api/doctor").json()["result"]
+    assert result["embedding"] == {"model": "", "dimensions": 1024, "degraded": False}
+
+
+def test_doctor_embedding_degraded_when_pgml_extension_absent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """provider=pgml degrades exactly when the extension is known-absent."""
+
+    present = {"vector": (True, "0.8.0"), "pgml": (True, "0.6.0")}
+    _patch_doctor_probes(
+        monkeypatch,
+        postgres_ok=True,
+        extensions=present,
+        config={"embedding": {"provider": "pgml", "model": "pgml-text"}},
+    )
+    client = TestClient(create_http_app())
+    result = client.get("/api/doctor").json()["result"]
+    assert result["embedding"] == {
+        "model": "pgml-text",
+        "dimensions": 1024,
+        "degraded": False,
+    }
+
+    absent = {"vector": (True, "0.8.0"), "pgml": (False, "")}
+    _patch_doctor_probes(
+        monkeypatch,
+        postgres_ok=True,
+        extensions=absent,
+        config={"embedding": {"provider": "pgml", "model": "pgml-text"}},
+    )
+    result = client.get("/api/doctor").json()["result"]
+    assert result["embedding"] == {
+        "model": "pgml-text",
+        "dimensions": 1024,
+        "degraded": True,
+    }
+
+
+def test_doctor_embedding_dims_unknown_stays_null(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An unset ollama width reports null — never a guessed number (issue #183)."""
+
+    _patch_doctor_probes(
+        monkeypatch,
+        postgres_ok=True,
+        config={"embedding": {"provider": "ollama", "model": "nomic-embed-text"}},
+    )
+
+    client = TestClient(create_http_app())
+    result = client.get("/api/doctor").json()["result"]
+    assert result["embedding"] == {
+        "model": "nomic-embed-text",
+        "dimensions": None,
+        "degraded": True,
+    }
 
 
 def test_doctor_skips_research_checks_without_postgres(

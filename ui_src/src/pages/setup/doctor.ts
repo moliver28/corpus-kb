@@ -31,7 +31,10 @@ export interface DoctorResult {
   /** Structured embedding facts (issue #183); absent on older servers. */
   embedding?: {
     model: string;
+    /** The configured width; null when the config leaves it unset. */
     dimensions: number | null;
+    /** True when the active provider cannot emit vectors right now. */
+    degraded: boolean;
   };
   /** The reranker's active state from config; absent on older servers. */
   reranker?: {
@@ -104,6 +107,22 @@ export function isDoctorResult(value: unknown): value is DoctorResult {
 export function allChecks(result: DoctorResult): CheckRow[] {
   return [result.env, ...result.research_checks, ...result.storage_checks].map(
     (check, index) => ({ key: String(index), check }),
+  );
+}
+
+/** The research width (src/corpus_kb/dimensions.py): below it, research abstains. */
+export const RESEARCH_EMBEDDING_WIDTH = 1024;
+
+/**
+ * True when the doctor reports a known width under the research boundary.
+ * An unknown width (null) or an old server (field absent) never warns —
+ * the honest-degraded rule: unknown is not "below the width".
+ */
+export function dimsBelowResearchWidth(embedding: DoctorResult["embedding"]): boolean {
+  return (
+    embedding !== undefined &&
+    embedding.dimensions !== null &&
+    embedding.dimensions < RESEARCH_EMBEDDING_WIDTH
   );
 }
 

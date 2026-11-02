@@ -31,7 +31,8 @@
         },
         "embedding": {
           "model": "nomic-embed-text",
-          "dimensions": 768
+          "dimensions": 768,
+          "degraded": true
         },
         "reranker": {
           "enabled": false,

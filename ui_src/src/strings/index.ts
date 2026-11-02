@@ -365,6 +365,7 @@ export interface Strings {
   receiptDedupDropped: string;
   setupEmbeddingLine: string;
   setupEmbeddingDimsUnknown: string;
+  setupEmbeddingDimsLow: string;
   setupRerankerOn: string;
   setupRerankerBackendAuto: string;
   setupRerankerOff: string;

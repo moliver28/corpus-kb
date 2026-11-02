@@ -8,7 +8,7 @@ import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
-import { allChecks, envelopeResult, isDoctorResult, stateWord } from "./doctor";
+import { allChecks, dimsBelowResearchWidth, envelopeResult, isDoctorResult, stateWord } from "./doctor";
 import type { CheckRow, DoctorResult } from "./doctor";
 
 /** The doctor table itself: reachability banners plus the check rows. */
@@ -55,6 +55,9 @@ function DoctorView({ result }: { result: DoctorResult }) {
               : String(result.embedding.dimensions),
           )}
         </Typography.Paragraph>
+      )}
+      {dimsBelowResearchWidth(result.embedding) && (
+        <StatusBanner kind="warn">{strings.setupEmbeddingDimsLow}</StatusBanner>
       )}
       {result.reranker && (
         <Typography.Paragraph type="secondary">
