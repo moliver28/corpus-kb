@@ -55,15 +55,15 @@ function runCell(record: Row, onRunMethod: (opId: string) => void): ReactNode {
 function guidanceRow(record: Row): ReactNode {
   return (
     <div className="ui-stack">
-      <Typography.Paragraph style={{ marginBottom: 0 }}>
+      <Typography.Paragraph className="ui-flush">
         <strong>{strings.analyzeValidationLabel}: </strong>
         {textOf(record.row.validation_required)}
       </Typography.Paragraph>
-      <Typography.Paragraph style={{ marginBottom: 0 }}>
+      <Typography.Paragraph className="ui-flush">
         <strong>{strings.analyzeClaimsLabel}: </strong>
         {textOf(record.row.permitted_claims)}
       </Typography.Paragraph>
-      <Typography.Paragraph style={{ marginBottom: 0 }} type="secondary">
+      <Typography.Paragraph className="ui-flush" type="secondary">
         <strong>{strings.analyzeDoNotClaimLabel}: </strong>
         {textOf(record.row.do_not_claim)}
       </Typography.Paragraph>
@@ -147,7 +147,7 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
       <Typography.Paragraph type="secondary">{strings.analyzeAdvisorBody}</Typography.Paragraph>
       <div className="ui-actions">
         <Input
-          style={{ maxWidth: 480 }}
+          className="ui-narrow"
           value={task}
           onChange={(event) => setTask(event.target.value)}
           placeholder={strings.analyzeAdvisorTaskLabel}

@@ -2,7 +2,7 @@
 // live next to the screen that owns the op — never here.
 
 /** One normalized outcome class for an API call. */
-export type Kind = "ok" | "error" | "unavailable" | "blocked" | "network" | "unknown";
+type Kind = "ok" | "error" | "unavailable" | "blocked" | "network" | "unknown";
 
 /**
  * The one result shape every call resolves to. Neutral envelope statuses

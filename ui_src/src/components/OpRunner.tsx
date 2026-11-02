@@ -122,7 +122,7 @@ export default function OpRunner({
         disabled={running}
       />
       {parseError !== "" && <Typography.Text type="danger">{parseError}</Typography.Text>}
-      <div style={{ marginTop: 8 }}>
+      <div className="ui-stack-gap">
         {op.longRunning ? (
           <ConfirmGate
             title={strings.confirmLongTitle}
@@ -137,7 +137,7 @@ export default function OpRunner({
         )}
       </div>
       {long.running && (
-        <div style={{ marginTop: 8 }}>
+        <div className="ui-stack-gap">
           <StatusBanner kind="info">
             {strings.runnerRunningElapsed.replace("{sec}", String(long.elapsedSec))}
           </StatusBanner>
@@ -145,13 +145,13 @@ export default function OpRunner({
         </div>
       )}
       {long.unknownOutcome && (
-        <div style={{ marginTop: 8 }}>
+        <div className="ui-stack-gap">
           <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
           <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
         </div>
       )}
       {long.statusResult !== null && (
-        <div style={{ marginTop: 8 }}>
+        <div className="ui-stack-gap">
           {/* The status-poll ledger answer renders as a plain status line —
               never as the receipt (that stays the op's own response). */}
           <StatusBanner kind="info">
@@ -162,7 +162,7 @@ export default function OpRunner({
         </div>
       )}
       {settled !== null && (
-        <div style={{ marginTop: 12 }}>
+        <div className="ui-stack-gap-lg">
           {/* A longRunning op retries through the long path too — the
               simple path would cap the wait at the default timeout. */}
           <ResultView

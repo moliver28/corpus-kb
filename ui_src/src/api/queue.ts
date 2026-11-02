@@ -42,14 +42,14 @@ export interface QueueEnqueuePayload {
 }
 
 /** queue_cancel envelope. */
-export interface QueueCancelPayload {
+interface QueueCancelPayload {
   status: string;
   queue_id: string;
   state: string;
 }
 
 /** The body queue_enqueue accepts (every key but path is optional). */
-export interface QueueEnqueueBody {
+interface QueueEnqueueBody {
   path: string;
   title?: string;
   profile?: string;
@@ -72,18 +72,6 @@ export function enqueueBook(
   body: QueueEnqueueBody,
 ): Promise<OpResult<QueueEnqueuePayload>> {
   return callOp<QueueEnqueuePayload>(route("queue-enqueue", ROUTES.enqueue), {
-    method: "POST",
-    body,
-  });
-}
-
-/** One row by id, or the active list when the id is absent. */
-export function readQueue(queueId?: string): Promise<OpResult<QueueStatusPayload>> {
-  const body: Record<string, string> = {};
-  if (queueId !== undefined && queueId !== "") {
-    body.queue_id = queueId;
-  }
-  return callOp<QueueStatusPayload>(route("queue-status", ROUTES.status), {
     method: "POST",
     body,
   });

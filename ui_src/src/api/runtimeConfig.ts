@@ -6,7 +6,7 @@
 // SPA degrades to the pre-fetch behavior, never crashes. The defaults
 // mirror corpus_kb.config's ui.spa.* defaults (config.py).
 
-export interface RuntimeConfig {
+interface RuntimeConfig {
   /** Milliseconds between status polls (ui.spa.poll_ms). */
   pollMs: number;
   /** Seconds one API call waits before giving up (ui.spa.request_timeout_s). */
@@ -17,7 +17,7 @@ export interface RuntimeConfig {
   serverVersion: string;
 }
 
-export const RUNTIME_CONFIG_URL = "/app/runtime-config.json";
+const RUNTIME_CONFIG_URL = "/app/runtime-config.json";
 
 /** Mirrors corpus_kb.config (SPA_*_DEFAULT); used when the fetch fails. */
 const DEFAULTS: RuntimeConfig = {
@@ -36,7 +36,7 @@ function finiteBetween(value: unknown, min: number, max: number): value is numbe
 }
 
 /** Keep every valid key; an invalid key keeps its default (degrade path). */
-export function applyRuntimeConfig(body: unknown): RuntimeConfig {
+function applyRuntimeConfig(body: unknown): RuntimeConfig {
   if (typeof body !== "object" || body === null) {
     return cached;
   }

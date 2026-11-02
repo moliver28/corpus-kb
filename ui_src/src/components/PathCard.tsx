@@ -14,7 +14,7 @@ import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
 import { strings } from "../strings";
 
-export interface PathCardProps {
+interface PathCardProps {
   title: string;
   body?: string;
   label: string;
@@ -109,7 +109,7 @@ export default function PathCard({
       )}
       <div className="ui-actions">
         <Input
-          style={{ maxWidth: 420 }}
+          className="ui-narrow--form"
           value={path}
           onChange={(event) => setPath(event.target.value)}
           placeholder={label}

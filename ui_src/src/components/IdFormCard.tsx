@@ -148,7 +148,7 @@ export default function IdFormCard({
               {field.required === true ? " *" : ""}:{" "}
             </Typography.Text>
             <Input
-              style={{ maxWidth: 420 }}
+              className="ui-narrow--form"
               value={values[field.key] ?? ""}
               onChange={(event) => setValue(field.key, event.target.value)}
               placeholder={field.label}

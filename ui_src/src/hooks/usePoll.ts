@@ -9,9 +9,9 @@ import { getOp } from "../api/ops";
 import { runtimeConfig } from "../api/runtimeConfig";
 import type { OpResult } from "../api/types";
 
-export const POLL_BACKOFF_MS = 10_000;
+const POLL_BACKOFF_MS = 10_000;
 
-export interface Poll<T> {
+interface Poll<T> {
   /** The most recent answer (null until the first poll lands). */
   result: OpResult<T> | null;
   /** True while the browser tab is hidden (no fetches go out). */

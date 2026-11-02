@@ -7,7 +7,7 @@
 // pins the entry SHAPE only — same-shape content drift is caught there.
 import raw from "./manifest.json";
 
-export interface ManifestEntry {
+interface ManifestEntry {
   id: string;
   path: string;
   method: string;
@@ -18,7 +18,7 @@ export interface ManifestEntry {
   longRunning: boolean;
 }
 
-export const MANIFEST: readonly ManifestEntry[] = raw;
+const MANIFEST: readonly ManifestEntry[] = raw;
 
 /** The full manifest entry for one op id, or undefined when unknown. */
 export function getEntry(opId: string): ManifestEntry | undefined {

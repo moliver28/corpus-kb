@@ -11,7 +11,7 @@ function Line({ opId, text }: { opId: string; text: string }) {
 }
 
 /** One not-wired row: the manifest op id to check and the line to show. */
-export interface NotWiredItem {
+interface NotWiredItem {
   opId: string;
   text: string;
 }

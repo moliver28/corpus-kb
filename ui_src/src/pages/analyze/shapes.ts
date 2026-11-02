@@ -17,7 +17,7 @@ export interface AdvisorRow {
   do_not_claim: unknown;
 }
 
-export interface AdvisorEnvelope {
+interface AdvisorEnvelope {
   status: string;
   recommendations: AdvisorRow[];
 }

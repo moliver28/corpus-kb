@@ -79,7 +79,7 @@ function gateSummaryOf(result: OpResult): ReactNode {
       {rows.map((row, index) => {
         const gate = typeof row === "object" && row !== null ? (row as Record<string, unknown>) : {};
         return (
-          <p key={index} style={{ marginBottom: 0 }}>
+          <p key={index} className="ui-flush">
             <strong>{String(gate.gate_id ?? "")}: </strong>
             {String(gate.status ?? "")} — {String(gate.reason ?? "")}
           </p>

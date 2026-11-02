@@ -163,7 +163,7 @@ export default function AskCard() {
       <Typography.Paragraph type="secondary">{strings.askBody}</Typography.Paragraph>
       <div className="ui-actions">
         <Input
-          style={{ maxWidth: 480 }}
+          className="ui-narrow"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={strings.askQueryLabel}

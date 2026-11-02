@@ -8,20 +8,20 @@ import type { EvidenceItem } from "./EvidenceList";
 import { strings } from "../../strings";
 
 /** One cited answer sentence (research/notebook.py cite_sentences). */
-export interface Sentence {
+interface Sentence {
   text: string;
   citations: number[];
 }
 
 /** One numbered evidence block (ask/composer.py evidence_blocks). */
-export interface SourceBlock {
+interface SourceBlock {
   n: number;
   source: string;
   text: string;
 }
 
 /** The inner result of the ask envelope (AnswerBundle.to_payload). */
-export interface AskResult {
+interface AskResult {
   answer: string;
   sentences: Sentence[];
   sources: SourceBlock[];
@@ -29,7 +29,7 @@ export interface AskResult {
   note: unknown;
 }
 
-export interface AskEnvelope {
+interface AskEnvelope {
   status: string;
   result: AskResult;
   degraded_excluded: { count: unknown };
@@ -112,7 +112,7 @@ export interface SearchRow {
   score: unknown;
 }
 
-export interface SearchEnvelope {
+interface SearchEnvelope {
   status: string;
   result: SearchRow[];
   degraded_excluded: { count: unknown };
@@ -135,7 +135,7 @@ export function scoreText(value: unknown): string {
 }
 
 /** One notebook evidence row (research/notebook.py enrich_citations). */
-export interface NotebookEvidenceRow {
+interface NotebookEvidenceRow {
   n: number;
   title: unknown;
   speaker: unknown;
@@ -144,7 +144,7 @@ export interface NotebookEvidenceRow {
   question: unknown;
 }
 
-export interface NotebookEnvelope {
+interface NotebookEnvelope {
   status: string;
   sentences: Sentence[];
   evidence: NotebookEvidenceRow[];

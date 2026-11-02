@@ -43,7 +43,7 @@ export function EvidenceCard() {
     <Card title={strings.codebookEvidenceTitle}>
       <div className="ui-actions">
         <Input
-          style={{ maxWidth: 360 }}
+          className="ui-narrow--short"
           value={code}
           onChange={(event) => setCode(event.target.value)}
           placeholder={strings.codebookEvidenceCodeLabel}

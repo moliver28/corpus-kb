@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { strings } from "../strings";
 
-export type BannerKind = "info" | "ok" | "warn" | "error";
+type BannerKind = "info" | "ok" | "warn" | "error";
 
 /** The word names the state — color is never the only signal. */
 const KIND_WORD: Record<BannerKind, string> = {

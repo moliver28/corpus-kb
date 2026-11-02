@@ -14,7 +14,7 @@ import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
 import { strings } from "../strings";
 /** One dormant-feature notice: the exact config key + a YAML snippet. */
-export interface DormantHint {
+interface DormantHint {
   configKey: string;
   yaml: string;
 }
@@ -92,7 +92,7 @@ function SettledView({
   return <ErrorPanel result={result} onRetry={onRetry} />;
 }
 
-export interface ActionCardProps {
+interface ActionCardProps {
   opId: string;
   title: string;
   body?: string;

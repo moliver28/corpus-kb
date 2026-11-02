@@ -3,7 +3,7 @@ import { networkResult, normalize, unreadableResult } from "./errors";
 import { requestTimeoutMs } from "./runtimeConfig";
 import type { OpResult } from "./types";
 
-export interface CallOpOptions {
+interface CallOpOptions {
   method?: "GET" | "POST" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;

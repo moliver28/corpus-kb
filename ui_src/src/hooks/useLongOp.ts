@@ -7,7 +7,7 @@ import { networkResult, unknownOpResult } from "../api/errors";
 import { getOp } from "../api/ops";
 import type { OpResult } from "../api/types";
 
-export interface LongOpState {
+interface LongOpState {
   running: boolean;
   elapsedSec: number;
   /** The wait ended without an answer (network drop). */
@@ -19,7 +19,7 @@ export interface LongOpState {
   statusResult: OpResult<unknown> | null;
 }
 
-export interface LongOp {
+interface LongOp {
   start: () => Promise<OpResult<unknown>>;
   /** Cancel stops WAITING, not the server. */
   cancel: () => void;
