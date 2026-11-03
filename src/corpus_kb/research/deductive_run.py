@@ -12,6 +12,15 @@ rebuilt at run time from exemplar text_sha256 refs (vectors are derived data,
 never event-carried); gold units scored for the conformal calibration split
 use leave-one-out prototype rebuilds — a gold exemplar is never scored
 against a medoid chosen from it.
+
+Tier-3 wiring (issue #132): every run computes the combined review priority
+and closed-enum routing reasons into the checkpoint's ``review_priority``
+block. With ``coding.uncertainty.tier3_enabled`` the flagged minority is
+escalated: resampled rationales and pairwise mutual-entailment verdicts are
+measured through the degrading clients in ``coding/uncertainty/``, and the
+escalated units' semantic entropy rides their assignment events into
+research_signals. Escalation is OFF by default — the engine stays
+deterministic and LLM-free unless the owner turns it on.
 """
 
 from __future__ import annotations
@@ -28,6 +37,7 @@ from corpus_kb.handlers.research_handler import ResearchHandler
 from corpus_kb.research.calibration import CONFORMAL_ALPHA, conformal_sets
 from corpus_kb.research.deduction_guard import guard_deductive_run
 from corpus_kb.research.deductive import DeductiveDecision, decide_unit
+from corpus_kb.research.deductive_tier3 import _review_priority_block, _tier3_review_pass
 from corpus_kb.research.exact_cache import CacheSettings, load_cache_settings
 from corpus_kb.research.exhaustiveness import exhaustiveness_block
 from corpus_kb.research.prototypes import build_view_prototypes
@@ -166,10 +176,13 @@ def _record_assignments(
     units: list[Any],
     decisions_by_unit: dict[int, list[DeductiveDecision]],
     scored: dict[str, dict[str, list[float]]],
+    signals_by_unit: dict[int, list[dict[str, object]]] | None = None,
 ) -> tuple[int, int, int]:
     """Persist one assignment row per (unit, decision); return basis counts.
 
-    Returns (explicit, question_dependent, review) tallies for the summary.
+    Tier-3 signals (issue #132 wiring) ride the SAME assignment event via
+    the ``signals`` kwarg; the analytics projector lands them in
+    research_signals. Returns (explicit, question_dependent, review).
     """
     explicit = qdep = review = 0
     row_of_unit = {u.unit_id: i for i, u in enumerate(units)}
@@ -192,6 +205,7 @@ def _record_assignments(
                 confidence=d.confidence,
                 tier_fired=d.tier_fired,
                 status=d.status,
+                signals=(signals_by_unit or {}).get(unit.unit_id),
             )
             if d.evidence_basis == "explicit_in_answer":
                 explicit += 1
@@ -265,8 +279,18 @@ async def run_deductive(
     decisions_by_unit, conformal_sets_by_unit, conformal_coverage = _decide_units(
         codes, units, scored, gold_by_code, cal_alpha
     )
+    cascade, signals_by_unit, n_skipped, tier3_on = await _tier3_review_pass(
+        cfg, codes, units, scored, decisions_by_unit
+    )
     explicit, qdep, review = _record_assignments(
-        handler, tenant_id, run_id, codebook_version_id, units, decisions_by_unit, scored
+        handler,
+        tenant_id,
+        run_id,
+        codebook_version_id,
+        units,
+        decisions_by_unit,
+        scored,
+        signals_by_unit,
     )
 
     summary = {
@@ -289,6 +313,7 @@ async def run_deductive(
         **{k: v for k, v in summary.items() if k != "status"},
         "cache": _cache_block(cache),
         "conformal": _conformal_block(conformal_sets_by_unit, cal_alpha, conformal_coverage),
+        "review_priority": _review_priority_block(cascade, tier3_on, units, n_skipped),
         "exhaustiveness": exhaustiveness_block(units, scored, gold_by_code),
     }
     handler.checkpoint_coding_run(tenant_id, run_id, payload)

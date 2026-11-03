@@ -2,19 +2,33 @@
 
 ``evidence_for_code`` — units ranked by confidence with disagreement flags,
 moderator_introduced flag, explicit vs question-dependent tabs, and
-per-unit conformal set-size (r11) — plus its SQL constants, the conformal
-reader, and the shared unit-row renderers. Re-exported from
-``notebook_views`` so every consumer import keeps working.
+per-unit conformal set-size (r11) — plus its SQL constants and the shared
+unit-row renderers. Re-exported from ``notebook_views`` so every consumer
+import keeps working.
+
+Version pinning (issue #132): the view reads ONE codebook version and ONE
+run (the newest run with rows for the version — see
+``notebook_pinning``). A re-run REPLACES the view instead of appending;
+assignments, disagreement signals, and the conformal checkpoint all pin to
+the same run, so the three never disagree about coding state. The review
+ranking of the pinned run decorates each entry with ``review_priority`` /
+``review_reason`` when the run recorded a ``review_priority`` block.
 """
 
 from __future__ import annotations
 
-import json
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.research.notebook_pinning import (
+    _conformal_per_unit,
+    _pinned_checkpoint,
+    _pinned_run_for_version,
+    _ranking_per_unit,
+)
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -32,19 +46,27 @@ JOIN research_units ru ON ru.unit_id = ra.unit_id AND ru.tenant_id = ra.tenant_i
 LEFT JOIN research_speakers s ON s.speaker_id = ru.speaker_id
 JOIN documents d ON d.doc_id = ru.doc_id
 WHERE ra.tenant_id = $1 AND ra.code_id = $2
+  AND (ra.cb_version_id = $3 OR ra.cb_version_id IS NULL)
+  AND ra.run_id IS NOT DISTINCT FROM $4
 """
 
 _DISAGREEMENT_SQL = """
 SELECT DISTINCT unit_id FROM research_signals
 WHERE tenant_id = $1 AND unit_id = ANY($2::bigint[]) AND tier = 3
   AND COALESCE(semantic_entropy, 0) > 0
+  AND run_id IS NOT DISTINCT FROM $3
 """
 
-_LATEST_RUN_SQL = """
-SELECT checkpoint FROM research_runs
-WHERE tenant_id = $1 AND checkpoint IS NOT NULL
-ORDER BY started_at DESC LIMIT 1
-"""
+
+class RowLike(Protocol):
+    """One fetched assignment row (asyncpg Record or the gateway dict)."""
+
+    def __getitem__(self, key: str) -> object: ...
+
+
+def _as_int(value: object) -> int:
+    """Numeric column out of a row (the fusion module's narrowing pattern)."""
+    return value if isinstance(value, int) else int(str(value))
 
 
 async def evidence_for_code(
@@ -69,30 +91,59 @@ async def evidence_for_code(
     if version_id is not None and version_id != resolved_version:
         resolved_version = version_id
     async with tenant_connection(pool, tenant_id) as conn:
+        pinned_run = await _pinned_run_for_version(conn, tenant_id, resolved_version)
         sql = _EVIDENCE_SQL
-        params: list[object] = [str(tenant_id), code_id]
+        params: list[object] = [str(tenant_id), code_id, str(resolved_version)]
+        params.append(str(pinned_run) if pinned_run is not None else None)
         if project_id is not None:
-            sql += " AND d.project_id = $3"
+            sql += " AND d.project_id = $5"
             params.append(str(project_id))
         rows = await conn.fetch(sql, *params)
         if not rows:
             return {
                 "status": "empty",
-                "message": f"no assignments for code {code!r} yet",
+                "message": f"no assignments for code {code!r} in this codebook version yet",
                 "code": code,
                 "code_id": code_id,
             }
         unit_ids = [int(row["unit_id"]) for row in rows]
         disagreeing = {
             int(row["unit_id"])
-            for row in await conn.fetch(_DISAGREEMENT_SQL, str(tenant_id), unit_ids)
+            for row in await conn.fetch(
+                _DISAGREEMENT_SQL,
+                str(tenant_id),
+                unit_ids,
+                str(pinned_run) if pinned_run is not None else None,
+            )
         }
-        conformal = await _conformal_per_unit(conn, tenant_id)
+        checkpoint = await _pinned_checkpoint(conn, tenant_id, pinned_run)
+        conformal = _conformal_per_unit(checkpoint)
+        ranking = _ranking_per_unit(checkpoint)
+    tabs = _evidence_tabs(cast("Sequence[RowLike]", rows), disagreeing, conformal, ranking, limit)
+    return {
+        "status": "ok",
+        "code": str(resolved["name"]),
+        "code_id": code_id,
+        "definition": str(resolved["definition"]),
+        "version_id": str(resolved_version),
+        "n_units": len(rows),
+        "tabs": tabs,
+    }
+
+
+def _evidence_tabs(
+    rows: Sequence[RowLike],
+    disagreeing: set[int],
+    conformal: dict[int, int],
+    ranking: dict[int, dict[str, Any]],
+    limit: int,
+) -> dict[str, list[dict[str, Any]]]:
+    """Build the explicit / question-dependent tabs (sorted, capped)."""
     tabs: dict[str, list[dict[str, Any]]] = {"explicit": [], "question_dependent": []}
     for row in rows:
         basis = str(row["evidence_basis"] or "explicit_in_answer")
         tab = "explicit" if basis == "explicit_in_answer" else "question_dependent"
-        unit_id = int(row["unit_id"])
+        unit_id = _as_int(row["unit_id"])
         entry: dict[str, Any] = {
             "unit_id": unit_id,
             "text": str(row["text"]),
@@ -108,9 +159,13 @@ async def evidence_for_code(
             "speaker_role": row["speaker_role"],
             "doc_id": str(row["doc_id"]),
             "doc_title": str(row["title"] or ""),
-            "unit_seq": int(row["unit_seq"]),
+            "unit_seq": _as_int(row["unit_seq"]),
             "t_start": row["t_start"],
         }
+        ranked = ranking.get(unit_id)
+        if ranked is not None:
+            entry["review_priority"] = float(ranked.get("priority", 0.0))
+            entry["review_reason"] = str(ranked.get("reason", ""))
         tabs[tab].append(entry)
     for tab in tabs:
         tabs[tab] = sorted(
@@ -118,32 +173,10 @@ async def evidence_for_code(
             key=lambda e: (
                 CONFIDENCE_TIERS.get(str(e["confidence"]), 3),
                 -float(str(e["sim_answer"] or 0.0)),
-                int(e["unit_id"]),
+                _as_int(e["unit_id"]),
             ),
         )[:limit]
-    return {
-        "status": "ok",
-        "code": str(resolved["name"]),
-        "code_id": code_id,
-        "definition": str(resolved["definition"]),
-        "version_id": str(resolved_version),
-        "n_units": len(rows),
-        "tabs": tabs,
-    }
-
-
-async def _conformal_per_unit(
-    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID
-) -> dict[int, int]:
-    """Per-unit conformal set sizes (>1 only) from the latest run checkpoint."""
-    row = await conn.fetchrow(_LATEST_RUN_SQL, str(tenant_id))
-    if row is None:
-        return {}
-    checkpoint = row["checkpoint"]
-    if isinstance(checkpoint, str):
-        checkpoint = json.loads(checkpoint or "{}")
-    per_unit = (dict(checkpoint or {}).get("conformal") or {}).get("per_unit") or {}
-    return {int(unit_id): int(size) for unit_id, size in dict(per_unit).items()}
+    return tabs
 
 
 def _unit_margins(assignments: list[dict[str, Any]]) -> dict[int, float]:

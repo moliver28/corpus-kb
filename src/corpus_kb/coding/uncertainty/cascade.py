@@ -91,6 +91,7 @@ def run_cascade(
     delta_amb: float,
     weights: dict[str, float] | None = None,
     n_samples: int = N_SAMPLES,
+    escalate: bool = True,
 ) -> CascadeResult:
     """Run the full cascade over one corpus.
 
@@ -98,13 +99,17 @@ def run_cascade(
         code_scores: (n_units, n_codes) score matrix for margins/routing.
         base_signals: Tiers 0-2 + link/qdep signals per unit (SE unset).
         resample_fn: unit_index -> N resampled rationale strings (same fixed
-            prompt, varied temperature/seed only).
+            prompt, varied temperature/seed only). An EMPTY return marks the
+            unit NOT MEASURED: its SE stays unset and nothing is fabricated.
         nli_fn: Bidirectional mutual-entailment judge for a rationale pair.
         decision_reasons: Raw deductive decision reason per unit (normalized
             onto the closed enum at the routing boundary).
         delta_amb: Calibrated top-2-margin ambiguity threshold.
         weights: Optional refit weights; equal weights by default.
         n_samples: Resample count (default 5 -> 10 NLI calls per escalated unit).
+        escalate: False skips tier-3 entirely (no resample calls, no unit
+            marked escalated) — the priority and routing still compute. The
+            deductive eval path passes False when tier-3 is disabled.
 
     Returns:
         CascadeResult with per-unit priority + closed-enum reasons, the
@@ -113,7 +118,7 @@ def run_cascade(
     if len(base_signals) != code_scores.shape[0] or len(decision_reasons) != len(base_signals):
         raise ValueError("code_scores, base_signals, decision_reasons must align")
     preliminary = priority_scores(base_signals, weights)
-    escalated_idx = set(select_escalation(preliminary))
+    escalated_idx = set(select_escalation(preliminary)) if escalate else set()
 
     margins = top2_margins(code_scores)
     signals = list(base_signals)
@@ -121,6 +126,10 @@ def run_cascade(
     se_by_unit: dict[int, float] = {}
     for idx in sorted(escalated_idx):
         rationales = list(resample_fn(idx))
+        if not rationales:
+            # Not measured (all resamples degraded): leave SE unset so the
+            # priority never mistakes an outage for perfect agreement.
+            continue
         result = self_consistency(rationales, nli_fn)
         nli_calls += result.n_nli_calls
         se_by_unit[idx] = result.semantic_entropy

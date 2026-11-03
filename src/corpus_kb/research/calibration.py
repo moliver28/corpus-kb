@@ -3,6 +3,15 @@
 All statistics are numpy-only. Thresholds are fitted by stratified k-fold CV;
 prototypes are rebuilt inside each training fold so a held-out exemplar is
 never scored against a medoid chosen from it.
+
+Conformal calibration uses ONE unit family per computation: the labeled
+calibration units (at least one true label). A unit without labels carries
+no rank information (its nonconformity is trivially 0) and is trivially
+covered, so mixing it in would drag the rank quantile down and inflate the
+empirical coverage at the same time. Both the quantile and the coverage are
+therefore computed over the labeled rows only (issue #132). An all-unlabeled
+calibration set is degenerate: no quantile exists, so the sets are empty and
+the coverage is 0.0.
 """
 
 from __future__ import annotations
@@ -301,6 +310,9 @@ def conformal_sets(
 ) -> tuple[list[set[int]], float]:
     """Multi-label APS conformal prediction sets.
 
+    The quantile and the empirical coverage use the LABELED calibration rows
+    only (the single unit family; see the module docstring).
+
     Args:
         calibration_scores: (n_cal, n_codes) scores.
         calibration_labels: (n_cal, n_codes) binary labels.
@@ -311,12 +323,14 @@ def conformal_sets(
         (list of predicted code-index sets, empirical coverage on calibration).
     """
     n_cal = len(calibration_scores)
-    if n_cal == 0:
+    labeled = [i for i in range(n_cal) if int(np.sum(calibration_labels[i])) > 0] if n_cal else []
+    if not labeled:
         return [set() for _ in range(len(test_scores))], 0.0
     nc = np.array(
-        [_raps_nonconformity(calibration_scores[i], calibration_labels[i]) for i in range(n_cal)]
+        [_raps_nonconformity(calibration_scores[i], calibration_labels[i]) for i in labeled]
     )
-    q = np.ceil((n_cal + 1) * (1 - alpha)) / n_cal
+    n_labeled = len(labeled)
+    q = np.ceil((n_labeled + 1) * (1 - alpha)) / n_labeled
     # The rank quantile can exceed 1 for tiny calibration sets ((n+1)-th order
     # statistic is +infinity); clamping to 1.0 keeps the guarantee conservative.
     level = min(q, 1.0)
@@ -326,12 +340,12 @@ def conformal_sets(
     for scores in test_scores:
         top_k = np.argsort(-scores)[:k_hat]
         sets.append({int(i) for i in top_k})
-    # Empirical coverage on calibration.
+    # Empirical coverage on the labeled calibration rows.
     covered = 0
-    for i in range(n_cal):
+    for i in labeled:
         true_codes = {int(c) for c in np.where(calibration_labels[i] == 1)[0]}
         pred = {int(c) for c in np.argsort(-calibration_scores[i])[:k_hat]}
         if true_codes.issubset(pred):
             covered += 1
-    coverage = covered / n_cal
+    coverage = covered / n_labeled
     return sets, coverage

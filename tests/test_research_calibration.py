@@ -118,3 +118,84 @@ def test_conformal_sets_tiny_calibration_does_not_crash():
     assert len(sets) == 1
     assert sets[0], "prediction set must never be empty"
     assert 0.0 <= coverage <= 1.0
+
+
+def _mixed_conformal_input() -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Issue #132 input shape: labeled rows mixed with zero-label rows.
+
+    Five labeled rows carry their label on the top-score code (nonconformity
+    1). One labeled row carries its label on the second-ranked code
+    (nonconformity 2). Six rows carry no label at all; the buggy quantile
+    scores each of them at 0.
+    """
+    labeled_scores = np.array(
+        [
+            [0.9, 0.2, 0.1],
+            [0.8, 0.3, 0.1],
+            [0.7, 0.2, 0.2],
+            [0.6, 0.1, 0.3],
+            [0.5, 0.2, 0.1],
+            [0.9, 0.5, 0.1],  # hard row: label on the rank-2 code
+        ],
+        dtype=np.float32,
+    )
+    labeled_labels = np.array(
+        [
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [1, 0, 0],
+            [0, 1, 0],
+        ],
+        dtype=int,
+    )
+    zero_scores = np.array(
+        [
+            [0.4, 0.4, 0.2],
+            [0.3, 0.5, 0.2],
+            [0.5, 0.3, 0.2],
+            [0.2, 0.2, 0.6],
+            [0.6, 0.2, 0.2],
+            [0.1, 0.8, 0.1],
+        ],
+        dtype=np.float32,
+    )
+    zero_labels = np.zeros((6, 3), dtype=int)
+    scores = np.concatenate([labeled_scores, zero_scores], axis=0)
+    labels = np.concatenate([labeled_labels, zero_labels], axis=0)
+    test_scores = np.array([[0.9, 0.2, 0.1], [0.2, 0.9, 0.1]], dtype=np.float32)
+    return scores, labels, test_scores
+
+
+def test_conformal_sets_ignores_zero_label_calibration_rows():
+    """Unlabeled calibration rows must not move the rank quantile (issue #132).
+
+    A zero-label row has trivial nonconformity 0, so the mixed quantile
+    drops k_hat from 2 to 1 and the hard row loses its guaranteed slot.
+    The prediction sets and the coverage must match the labeled-only run.
+    """
+    scores, labels, test_scores = _mixed_conformal_input()
+    labeled_only = 6
+    sets_mixed, coverage_mixed = conformal_sets(scores, labels, test_scores, alpha=0.25)
+    sets_labeled, coverage_labeled = conformal_sets(
+        scores[:labeled_only], labels[:labeled_only], test_scores, alpha=0.25
+    )
+    # Labeled-only: q = ceil(7 * 0.75) / 6 = 1.0 -> k_hat = max nc = 2.
+    assert len(next(iter(sets_labeled))) == 2
+    assert sets_mixed == sets_labeled, (
+        "zero-label calibration rows must not change the prediction sets"
+    )
+    assert coverage_mixed == coverage_labeled, (
+        "zero-label rows are trivially covered and inflate the empirical coverage"
+    )
+
+
+def test_conformal_sets_all_unlabeled_calibration_is_degenerate():
+    """No labeled calibration rows: no quantile exists, so no sets either."""
+    scores = np.array([[0.9, 0.1], [0.2, 0.8]], dtype=np.float32)
+    labels = np.zeros((2, 2), dtype=int)
+    test_scores = np.array([[0.7, 0.3]], dtype=np.float32)
+    sets, coverage = conformal_sets(scores, labels, test_scores, alpha=0.1)
+    assert sets == [set()]
+    assert coverage == 0.0
