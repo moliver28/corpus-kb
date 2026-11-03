@@ -36,6 +36,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from corpus_kb.errors import ValidationError
+
 DEFAULT_CONTEXTUAL_ENABLED = False
 DEFAULT_ENABLED_SOURCE_TYPES: list[str] = ["interview", "research"]
 DEFAULT_CONTEXTUAL_MODEL = "qwen3:8b"
@@ -152,7 +154,7 @@ def load_contextual_settings(config: dict[str, Any]) -> ContextualSettings:
     """
     error = contextualize_settings_error(config)
     if error is not None:
-        raise ValueError(error)
+        raise ValidationError(error)
     block = _contextualize_block(config)
     fixture = block.get("fixture_dir", DEFAULT_CONTEXTUAL_FIXTURE_DIR)
     enabled_source_types = block.get("enabled_source_types", DEFAULT_ENABLED_SOURCE_TYPES)

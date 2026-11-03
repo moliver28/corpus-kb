@@ -31,6 +31,8 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
+from corpus_kb.errors import InternalError
+
 from .textbook_docling import page_row
 from .textbook_pages import PageItem
 from .textbook_settings import TextbookSettings
@@ -179,7 +181,7 @@ def paddle_window_rows(
     """
     state = load_paddle_model()
     if state is None:
-        raise RuntimeError("the 'ocr-vl' extra is missing in the child process")
+        raise InternalError("the 'ocr-vl' extra is missing in the child process")
     window_warnings: list[str] = []
     items = parse_window_paddle(state, Path(pdf_path), start, end, window_warnings, structured)
     for note in window_warnings:

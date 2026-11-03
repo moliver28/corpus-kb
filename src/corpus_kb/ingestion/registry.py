@@ -7,15 +7,16 @@ Resolution precedence (plan Section 0, pinned):
   4. ``ingestion.default`` (a strategy name, default "default")
 
 Built-ins register directly in code (see :func:`_ensure_ready`); third-party
-strategies load ONCE through the importlib.metadata entry-point group
-``corpus_kb.ingestion_strategies``. A broken plugin logs a warning and is
-skipped — it never crashes ingest.
+strategies load ONCE via the ``corpus_kb.ingestion_strategies`` entry-point
+group; a broken plugin logs a warning, is skipped, never crashes ingest.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+
+from corpus_kb.errors import ValidationError
 
 from .base import (
     DEFAULT_STRATEGY_NAME,
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 ENTRY_POINT_GROUP = "corpus_kb.ingestion_strategies"
 
 
-class UnknownStrategyError(ValueError):
+class UnknownStrategyError(ValidationError):
     """A strategy name (explicit override or config mapping) is not registered."""
 
 
@@ -45,11 +46,13 @@ def register_strategy(strategy: IngestionStrategy) -> None:
     """
     name = getattr(strategy, "name", None)
     if not isinstance(name, str) or not name:
-        raise ValueError("Ingestion strategy must expose a non-empty string 'name'")
+        raise ValidationError("Ingestion strategy must expose a non-empty string 'name'")
     if not callable(getattr(strategy, "detect", None)) or not callable(
         getattr(strategy, "build_chunks", None)
     ):
-        raise ValueError(f"Ingestion strategy {name!r} must implement detect() and build_chunks()")
+        raise ValidationError(
+            f"Ingestion strategy {name!r} must implement detect() and build_chunks()"
+        )
     _REGISTRY[name] = strategy
 
 
@@ -101,9 +104,8 @@ def _ensure_ready() -> None:
 def _discover_entry_points() -> list[str]:
     """Load third-party strategies from the entry-point group (error-tolerant).
 
-    Returns the names successfully registered. Import/loading failures are
-    logged as warnings and skipped: a broken third-party plugin must never
-    take ingest down.
+    Returns the names successfully registered; import or load failures are
+    logged as warnings and skipped (a broken plugin never takes ingest down).
     """
     loaded: list[str] = []
     try:
@@ -128,8 +130,7 @@ def _discover_entry_points() -> list[str]:
 class StrategyResolution:
     """The ONE strategy chosen for a document, with full provenance.
 
-    ``detected`` names the strategy that won content detection regardless of
-    which basis actually decided (detection always runs once, for provenance).
+    ``detected`` names the detection winner whatever basis decided (detection runs once).
     """
 
     strategy: IngestionStrategy

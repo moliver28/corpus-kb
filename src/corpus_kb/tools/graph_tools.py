@@ -14,10 +14,9 @@ tools are handed a pool explicitly). The envelope is exactly what POST
 
 from __future__ import annotations
 
-from uuid import UUID
-
 import asyncpg
 
+from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
 __all__ = ["add_entity", "add_relation"]
@@ -42,7 +41,7 @@ async def add_entity(
     from corpus_kb.handlers.command_handler import CommandHandler
 
     cmd = AddEntityCommand(
-        tenant_id=UUID(tenant_id),
+        tenant_id=uuid_arg(tenant_id, "tenant_id"),
         name=name,
         entity_type=entity_type,
         metadata=metadata or {},
@@ -72,9 +71,9 @@ async def add_relation(
     from corpus_kb.handlers.command_handler import CommandHandler
 
     cmd = AddRelationCommand(
-        tenant_id=UUID(tenant_id),
-        source_entity_id=UUID(source_entity_id),
-        target_entity_id=UUID(target_entity_id),
+        tenant_id=uuid_arg(tenant_id, "tenant_id"),
+        source_entity_id=uuid_arg(source_entity_id, "source_entity_id"),
+        target_entity_id=uuid_arg(target_entity_id, "target_entity_id"),
         relation_type=relation_type,
         weight=weight,
         metadata=metadata or {},

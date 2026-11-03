@@ -106,7 +106,7 @@ def duckdb_conn_string_to_path(conn_string: str) -> str:
         return normalized
     parsed = urlparse(normalized)
     if parsed.scheme != "duckdb" or parsed.netloc:
-        raise ValueError(f"Unsupported connection string scheme: {parsed.scheme!r}")
+        raise ValidationError(f"Unsupported connection string scheme: {parsed.scheme!r}")
     path = unquote(parsed.path)
     if re.match(r"^/[A-Za-z]:(/|$)", path):
         path = path[1:]  # Windows drive letter: strip the URL's leading slash

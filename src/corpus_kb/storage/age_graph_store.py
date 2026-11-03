@@ -23,6 +23,8 @@ from typing import Any, cast
 
 import asyncpg
 
+from corpus_kb.errors import InternalError, ValidationError
+
 from ..utils.models import Chunk, Document, Entity, Relation
 from .graph_sql import MAX_NEIGHBOR_HOPS
 from .graph_store import DEFAULT_TENANT_ID, GraphStore
@@ -156,7 +158,7 @@ def _hop_cypher(depth: int, direction: str, has_rel_filter: bool, has_type_filte
 _AGE_ABSENCE_MARKERS = ("ag_catalog", "agtype", "cypher", "$libdir/age")
 
 
-class AgeUnavailableError(RuntimeError):
+class AgeUnavailableError(InternalError):
     """Raised when the Apache AGE backend cannot serve graph operations."""
 
 
@@ -361,7 +363,7 @@ class AgeGraphStore(GraphStore):
                 },
             )
             if not rows:
-                raise ValueError(
+                raise ValidationError(
                     "add_relation failed: source or target entity not found "
                     f"(source={relation.source_entity_id}, "
                     f"target={relation.target_entity_id})"
@@ -423,9 +425,9 @@ class AgeGraphStore(GraphStore):
         try:
             depth = int(max_depth)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"max_depth must be an integer, got {max_depth!r}") from exc
+            raise ValidationError(f"max_depth must be an integer, got {max_depth!r}") from exc
         if not 1 <= depth <= MAX_BFS_DEPTH:
-            raise ValueError(f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}")
+            raise ValidationError(f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}")
         conn = await self._get_conn()
         try:
             params = {"start_id": start_entity_id, "tenant_id": self._tenant_id}
@@ -516,11 +518,11 @@ class AgeGraphStore(GraphStore):
         try:
             hop_count = int(hops)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"hops must be an integer, got {hops!r}") from exc
+            raise ValidationError(f"hops must be an integer, got {hops!r}") from exc
         if not 1 <= hop_count <= MAX_NEIGHBOR_HOPS:
-            raise ValueError(f"hops must be between 1 and {MAX_NEIGHBOR_HOPS}, got {hops}")
+            raise ValidationError(f"hops must be between 1 and {MAX_NEIGHBOR_HOPS}, got {hops}")
         if direction not in ("in", "out", "both"):
-            raise ValueError(f"direction must be one of in, out, both, got {direction!r}")
+            raise ValidationError(f"direction must be one of in, out, both, got {direction!r}")
         return await self._hop_walk(
             entity_id, hop_count, direction, relation_types, entity_types, limit
         )
@@ -541,9 +543,9 @@ class AgeGraphStore(GraphStore):
         try:
             depth = int(max_depth)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"max_depth must be an integer, got {max_depth!r}") from exc
+            raise ValidationError(f"max_depth must be an integer, got {max_depth!r}") from exc
         if not 1 <= depth <= MAX_BFS_DEPTH:
-            raise ValueError(f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}")
+            raise ValidationError(f"max_depth must be between 1 and {MAX_BFS_DEPTH}, got {depth}")
         return await self._hop_walk(entity_id, depth, "both", relation_types, entity_types, limit)
 
     async def add_document(self, document: Document) -> str:

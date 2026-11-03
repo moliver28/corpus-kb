@@ -15,11 +15,12 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.vector_stores.postgres import PGVectorStore
 
 from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS
+from corpus_kb.errors import InternalError, ValidationError
 
 logger = logging.getLogger(__name__)
 
 
-class DimensionMismatchError(ValueError):
+class DimensionMismatchError(ValidationError):
     """Raised when configured embedding dimensions do not match the vector store."""
 
 
@@ -48,7 +49,7 @@ class LlamaIndexPostgresBackend:
     async def initialize(self) -> None:
         """Create the PGVectorStore and verify Ollama is reachable."""
         if not self._connection_string:
-            raise RuntimeError("LlamaIndexPostgresBackend requires database.connection_string")
+            raise InternalError("LlamaIndexPostgresBackend requires database.connection_string")
 
         # Probe the embedding endpoint, but do not refuse to boot: the
         # embedder's zero-vector fallback keeps the server usable, and the
@@ -88,7 +89,7 @@ class LlamaIndexPostgresBackend:
     async def ingest(self, source_id: str, chunks: list[dict]) -> None:
         """Index chunks as LlamaIndex TextNodes in PGVectorStore."""
         if self._vector_store is None:
-            raise RuntimeError("Backend not initialized. Call initialize() first.")
+            raise InternalError("Backend not initialized. Call initialize() first.")
 
         nodes: list[TextNode] = []
         for index, chunk in enumerate(chunks):
@@ -125,7 +126,7 @@ class LlamaIndexPostgresBackend:
     ) -> list:
         """Retrieve top_k relevant nodes for the query."""
         if self._vector_store is None:
-            raise RuntimeError("Backend not initialized. Call initialize() first.")
+            raise InternalError("Backend not initialized. Call initialize() first.")
 
         index_obj = VectorStoreIndex.from_vector_store(
             vector_store=self._vector_store,
@@ -151,7 +152,7 @@ class LlamaIndexPostgresBackend:
     async def delete_source(self, source_id: str) -> None:
         """Delete all nodes referencing the given source id."""
         if self._vector_store is None:
-            raise RuntimeError("Backend not initialized. Call initialize() first.")
+            raise InternalError("Backend not initialized. Call initialize() first.")
 
         await self._vector_store.adelete(ref_doc_id=source_id)
         logger.info("Deleted LlamaIndex nodes for source %s", source_id)

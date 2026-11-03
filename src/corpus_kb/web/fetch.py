@@ -32,6 +32,8 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from lxml import html as lxml_html
 
+from corpus_kb.errors import InternalError
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_USER_AGENT = "corpus-kb/0.1 (+https://github.com/moliver28/corpus-kb)"
@@ -58,7 +60,7 @@ _PRIVATE_NETWORKS = tuple(
 )
 
 
-class WebFetchError(RuntimeError):
+class WebFetchError(InternalError):
     """A fetch failed for a stated reason (robots-disallowed, content-type, ...)."""
 
 

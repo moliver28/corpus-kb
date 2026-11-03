@@ -18,8 +18,10 @@ import importlib
 from types import TracebackType
 from typing import Protocol, cast, runtime_checkable
 
+from corpus_kb.errors import InternalError
 
-class LateChunkDependencyError(RuntimeError):
+
+class LateChunkDependencyError(InternalError):
     """Raised when the ``latechunk`` optional extra is not installed."""
 
 

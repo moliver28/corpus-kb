@@ -695,8 +695,8 @@ def test_domain_error_rebases_speak_the_taxonomy() -> None:
     RuntimeError-based -> InternalError (500/-32603/1, the unmapped
     default these classes already produced).
     """
-    from corpus_kb.ingestion.strategies.textbook_docling import _MalformedRowError
     from corpus_kb.ingestion.registry import UnknownStrategyError
+    from corpus_kb.ingestion.strategies.textbook_docling import _MalformedRowError
     from corpus_kb.rag.embedders._latechunk_types import LateChunkDependencyError
     from corpus_kb.storage.age_graph_store import AgeUnavailableError
     from corpus_kb.storage.llamaindex_backend import DimensionMismatchError
@@ -825,7 +825,7 @@ def test_profile_for_model_rejects_an_unknown_model() -> None:
 def test_rerank_settings_reject_a_non_bool_enabled() -> None:
     from corpus_kb.rag.rerank_settings import load_rerank_settings
 
-    with pytest.raises(ValidationError, match="reranking.enabled must be a bool") as excinfo:
+    with pytest.raises(ValidationError, match=r"reranking.enabled must be a bool") as excinfo:
         load_rerank_settings({"reranking": {"enabled": "yes"}})
     _assert_triple(excinfo.value, 400, -32602, 1)
 
@@ -851,17 +851,13 @@ async def test_research_cycle_rejects_malformed_ids() -> None:
     from corpus_kb.tools import cycle_tools
 
     await _bad_tenant(lambda: cycle_tools.research_cycle(object(), tenant_id="not-a-uuid"))
-    await _bad_tenant(
-        lambda: cycle_tools.research_cycle(object(), project_id="not-a-uuid")
-    )
+    await _bad_tenant(lambda: cycle_tools.research_cycle(object(), project_id="not-a-uuid"))
 
 
 async def test_graph_tools_reject_malformed_ids() -> None:
     from corpus_kb.tools import graph_tools
 
-    await _bad_tenant(
-        lambda: graph_tools.add_entity(object(), "n", tenant_id="not-a-uuid")
-    )
+    await _bad_tenant(lambda: graph_tools.add_entity(object(), "n", tenant_id="not-a-uuid"))
     await _bad_tenant(
         lambda: graph_tools.add_relation(
             object(), source_entity_id="not-a-uuid", target_entity_id=str(uuid4())
@@ -874,12 +870,8 @@ async def test_graph_read_tools_reject_malformed_ids() -> None:
 
     # The id guard fires BEFORE the graph handler resolves, so no database
     # or singleton wiring is needed to see the typed rejection.
-    await _bad_tenant(
-        lambda: graph_read_tools.search_graph(object(), "q", tenant_id="not-a-uuid")
-    )
-    await _bad_tenant(
-        lambda: graph_read_tools.get_entity_relations(object(), "not-a-uuid")
-    )
+    await _bad_tenant(lambda: graph_read_tools.search_graph(object(), "q", tenant_id="not-a-uuid"))
+    await _bad_tenant(lambda: graph_read_tools.get_entity_relations(object(), "not-a-uuid"))
     await _bad_tenant(
         lambda: graph_read_tools.graph_neighbors(object(), "e", tenant_id="not-a-uuid")
     )
@@ -900,15 +892,13 @@ async def test_research_tools_reject_malformed_ids() -> None:
     await _bad_tenant(
         lambda: research_tools.coding_run(object(), str(uuid4()), tenant_id="not-a-uuid")
     )
-    await _bad_tenant(
-        lambda: research_tools.inductive_run(object(), tenant_id="not-a-uuid")
-    )
+    await _bad_tenant(lambda: research_tools.inductive_run(object(), tenant_id="not-a-uuid"))
     await _bad_tenant(
         lambda: research_tools.codebook_promote(object(), 1, "n", "d", tenant_id="not-a-uuid")
     )
+    await _bad_tenant(lambda: research_tools.research_report(object(), tenant_id="not-a-uuid"))
     await _bad_tenant(
-        lambda: research_tools.research_report(object(), tenant_id="not-a-uuid")
-    )
-    await _bad_tenant(
-        lambda: research_tools.review_execute(object(), str(uuid4()), "accept", "r", tenant_id="not-a-uuid")
+        lambda: research_tools.review_execute(
+            object(), str(uuid4()), "accept", "r", tenant_id="not-a-uuid"
+        )
     )

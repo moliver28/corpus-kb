@@ -29,6 +29,8 @@ from pathlib import Path
 from queue import Empty
 from typing import Protocol
 
+from corpus_kb.errors import ValidationError
+
 from .textbook_docling import (
     PageItem,
     items_from_convert_result,
@@ -131,7 +133,7 @@ def _window_child(
     """
     factory = _WINDOW_ROW_FACTORIES.get(parser)
     if factory is None:
-        raise ValueError(f"no child rows factory for parser {parser!r}")
+        raise ValidationError(f"no child rows factory for parser {parser!r}")
     payload.put(factory(pdf_path, start, end, structured))
 
 

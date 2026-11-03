@@ -136,5 +136,5 @@ async def create_graph_store(
                 return PostgresGraphStore(pool)
         if graph_backend == "postgres":
             return PostgresGraphStore(pool)
-        raise ValueError(f"Unknown graph backend: {graph_backend!r}. Use 'age' or 'postgres'.")
-    raise ValueError(f"Unknown database backend: {selected!r}. Use 'postgres' or 'duckdb'.")
+        raise ConfigError(f"Unknown graph backend: {graph_backend!r}. Use 'age' or 'postgres'.")
+    raise ConfigError(f"Unknown database backend: {selected!r}. Use 'postgres' or 'duckdb'.")
