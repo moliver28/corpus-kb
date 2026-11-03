@@ -17,13 +17,15 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Generic, TypeVar
 
+from corpus_kb.errors import InternalError
+
 T = TypeVar("T")
 
 
 class SingletonSlot(Generic[T]):
     """One module-scoped optional value with get, lazy create, set, reset.
 
-    ``get`` raises ``RuntimeError`` with ``missing_message`` while the
+    ``get`` raises ``InternalError`` with ``missing_message`` while the
     slot is empty — the raise-style handlers (tag, versioning, coding,
     graph, router) use it directly. The factory-style handlers
     (idempotency, research, command) call ``get_or_create`` with a
@@ -39,9 +41,9 @@ class SingletonSlot(Generic[T]):
         self._value: T | None = None
 
     def get(self) -> T:
-        """Return the stored value; raise RuntimeError while empty."""
+        """Return the stored value; raise InternalError while empty."""
         if self._value is None:
-            raise RuntimeError(self._missing_message)
+            raise InternalError(self._missing_message)
         return self._value
 
     def get_or_create(self, factory: Callable[[], T]) -> T:

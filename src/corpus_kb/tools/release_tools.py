@@ -15,6 +15,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
+from corpus_kb.errors import ValidationError
 from corpus_kb.handlers import release_handlers
 
 __all__ = [
@@ -102,7 +103,7 @@ async def release_execute(
     pairs: tuple[tuple[str, str], ...] = ()
     for pair in waivers or []:
         if len(pair) != 2:
-            raise ValueError("each waiver must be a [gate_id, justification] pair")
+            raise ValidationError("each waiver must be a [gate_id, justification] pair")
         pairs = (*pairs, (str(pair[0]), str(pair[1])))
     result = await release_handlers.execute_release(
         pg_pool,

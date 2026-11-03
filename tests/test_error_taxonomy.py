@@ -487,3 +487,189 @@ def test_config_error_is_a_corpus_error_with_triple() -> None:
     exc = ConfigError("No database connection string.")
     assert isinstance(exc, CorpusError)
     assert (exc.http_status, exc.socket_code, exc.cli_exit) == ERROR_MAP["config_error"]
+
+
+# ---------------------------------------------------------------------------
+# Wave-1 conversions (issue #229) speak the taxonomy at the raise site
+#
+# One failure class = one HTTP status + one socket code + one CLI exit.
+# Each pin names the file whose raise moved to a typed class and asserts
+# the exact wire triple off the raised instance. Messages stay unchanged;
+# the disclosed rename is the ``error_type`` string only (for example
+# "ValueError" -> "validation_error").
+# ---------------------------------------------------------------------------
+
+
+def _assert_triple(exc: CorpusError, http: int, socket_code: int, cli: int) -> None:
+    assert (exc.http_status, exc.socket_code, exc.cli_exit) == (http, socket_code, cli)
+
+
+async def test_search_similar_rejects_a_malformed_chunk_id() -> None:
+    from corpus_kb.tools import search_tools
+
+    with pytest.raises(ValidationError, match="is not a valid UUID") as excinfo:
+        await search_tools.search_similar(object(), chunk_id="not-a-uuid")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_get_document_tags_rejects_a_malformed_doc_id() -> None:
+    import corpus_kb.tools.tag_tools as tag_tools
+
+    with pytest.raises(ValidationError, match="is not a valid UUID") as excinfo:
+        await tag_tools.get_document_tags(object(), doc_id="not-a-uuid")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_get_metadata_rejects_a_malformed_doc_id() -> None:
+    import corpus_kb.tools.tag_tools as tag_tools
+
+    with pytest.raises(ValidationError, match="is not a valid UUID") as excinfo:
+        await tag_tools.get_metadata(object(), doc_id="not-a-uuid")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_sweep_engine_refuses_use_before_open() -> None:
+    from corpus_kb.tools.pipeline.calibrate_sweep_engine import ScratchTenantEngine
+
+    engine = ScratchTenantEngine({}, uuid4(), 0.5)
+    with pytest.raises(InternalError, match="used before open") as excinfo:
+        engine._pool_or_raise()
+    _assert_triple(excinfo.value, 500, -32603, 1)
+
+
+def test_migrate_attach_refuses_a_dsn_with_quotes() -> None:
+    from corpus_kb.handlers.migrate_attach import attach_source
+
+    class _Conn:
+        def execute(self, _sql: str) -> None:
+            return None
+
+    with pytest.raises(ValidationError, match="quotes or NUL") as excinfo:
+        attach_source(_Conn(), "postgres://user'pass@host/db")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_run_migration_rejects_an_unknown_direction() -> None:
+    from corpus_kb.handlers.migrate_roundtrip import run_migration
+
+    with pytest.raises(ValidationError, match="Unknown migration direction") as excinfo:
+        await run_migration("sideways", "postgres://stub", "duckdb://stub")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_unknown_embedding_provider_raises_config_error() -> None:
+    from corpus_kb.domain.models import SearchQuery
+    from corpus_kb.handlers.query_search_pg import PostgresSearchBackend
+
+    backend = PostgresSearchBackend(embedder=None, config={"embedding": {"provider": "bogus"}})
+    query = SearchQuery(tenant_id=uuid4(), query="q")
+    with pytest.raises(ConfigError, match="Unknown embedding provider") as excinfo:
+        await backend._vector_arm_rows(object(), query, "q", [], "", 10, [])
+    _assert_triple(excinfo.value, 400, -32602, 3)
+
+
+async def test_release_execute_rejects_a_malformed_waiver_pair() -> None:
+    from corpus_kb.tools import release_tools
+
+    with pytest.raises(ValidationError, match="waiver must be") as excinfo:
+        await release_tools.release_execute(object(), "x", "y", "dana", waivers=[["only"]])
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_ingest_transcript_missing_file_raises_not_found(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import corpus_kb.handlers.research_handler as research_handler_module
+
+    monkeypatch.setattr(research_handler_module, "get_app", lambda *_a: object())
+    handler = research_handler_module.ResearchHandler(pool=object())
+    with pytest.raises(NotFoundError, match="no-such-transcript") as excinfo:
+        await handler.ingest_transcript(uuid4(), "no-such-transcript.txt")
+    _assert_triple(excinfo.value, 404, -32001, 1)
+
+
+class _RepoStub:
+    def __init__(self, value: object) -> None:
+        self._value = value
+
+    def get(self, _aggregate_id: object) -> object:
+        return self._value
+
+
+class _AppStub:
+    def __init__(self, value: object) -> None:
+        self.repository = _RepoStub(value)
+
+    def save(self, _aggregate: object) -> None:
+        return None
+
+
+async def test_review_assignment_wrong_aggregate_type_raises_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import corpus_kb.handlers.research_handler as research_handler_module
+
+    monkeypatch.setattr(research_handler_module, "get_app", lambda *_a: _AppStub(object()))
+    handler = research_handler_module.ResearchHandler(pool=object())
+    with pytest.raises(ValidationError, match="is not a CodingAssignment") as excinfo:
+        handler.review_assignment(uuid4(), uuid4(), "dana", "accept")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_set_keywords_wrong_aggregate_type_raises_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import corpus_kb.handlers.research_handler as research_handler_module
+
+    monkeypatch.setattr(research_handler_module, "get_app", lambda *_a: _AppStub(object()))
+    handler = research_handler_module.ResearchHandler(pool=object())
+    with pytest.raises(ValidationError, match="is not a CodebookVersion") as excinfo:
+        handler.set_keywords(uuid4(), uuid4(), uuid4(), [{"word": "x"}])
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_load_run_wrong_aggregate_type_raises_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import corpus_kb.handlers.research_handler as research_handler_module
+
+    monkeypatch.setattr(research_handler_module, "get_app", lambda *_a: _AppStub(object()))
+    handler = research_handler_module.ResearchHandler(pool=object())
+    with pytest.raises(ValidationError, match="is not a CodingRun") as excinfo:
+        handler._load_run(uuid4())
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+def test_command_handler_requires_a_pool_for_ingest() -> None:
+    from corpus_kb.handlers.command_handler import CommandHandler
+
+    handler = CommandHandler(pool=None, gateway=None)
+    with pytest.raises(InternalError, match="requires an asyncpg") as excinfo:
+        handler._require_pool()
+    _assert_triple(excinfo.value, 500, -32603, 1)
+
+
+async def test_command_handler_delete_needs_a_pool_or_gateway() -> None:
+    from corpus_kb.domain.models import DeleteDocumentCommand
+    from corpus_kb.handlers.command_handler import CommandHandler
+
+    handler = CommandHandler(pool=None, gateway=None)
+    with pytest.raises(InternalError, match="pool or a gateway") as excinfo:
+        await handler.handle_delete_document(DeleteDocumentCommand(doc_id=uuid4()))
+    _assert_triple(excinfo.value, 500, -32603, 1)
+
+
+async def test_tag_handler_missing_row_after_insert_raises_internal_error() -> None:
+    import corpus_kb.handlers.tag_handler as tag_handler_module
+
+    class _Reader:
+        async def fetchrow(self, *_args: object) -> None:
+            return None
+
+        async def execute(self, *_args: object) -> str:
+            return "OK"
+
+    handler = tag_handler_module.TagHandler(object())
+    with pytest.raises(InternalError, match="Tag row missing") as excinfo:
+        await handler._tag_id(_Reader(), ("tag", "tenant"))
+    _assert_triple(excinfo.value, 500, -32603, 1)

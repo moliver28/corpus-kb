@@ -92,7 +92,7 @@ def duckdb_swap(source_conn: StreamConn, target_conn: StreamConn, direction: str
     """
     if direction not in DIRECTIONS:
         allowed = ", ".join(DIRECTIONS)
-        raise ValueError(f"Unknown migration direction {direction!r}. Use one of: {allowed}.")
+        raise ValidationError(f"Unknown migration direction {direction!r}. Use one of: {allowed}.")
     started = time.monotonic()
     plan = build_plan(discover_tables(source_conn))
     copies = [entry for entry in plan if entry.disposition == "copy"]
@@ -122,7 +122,7 @@ async def run_migration(direction: str, source_dsn: str, target_dsn: str) -> dic
     """Run one migration leg; async (the postgres target may need a schema)."""
     if direction not in DIRECTIONS:
         allowed = ", ".join(DIRECTIONS)
-        raise ValueError(f"Unknown migration direction {direction!r}. Use one of: {allowed}.")
+        raise ValidationError(f"Unknown migration direction {direction!r}. Use one of: {allowed}.")
     if direction == "postgres_to_duckdb":
         return _to_duckdb(source_dsn, target_dsn)
     from corpus_kb.handlers.migrate_stream import to_postgres

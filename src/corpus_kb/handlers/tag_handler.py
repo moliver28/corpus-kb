@@ -21,6 +21,7 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.errors import InternalError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.storage.gateway import SqlConn, SqlGateway, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
@@ -77,7 +78,7 @@ class TagHandler:
             await reader.execute(_INSERT_TAG_SQL, *args)
             row = await reader.fetchrow(_FIND_TAG_SQL, *args)
         if row is None:
-            raise RuntimeError("Tag row missing right after insert.")
+            raise InternalError("Tag row missing right after insert.")
         return str(row["tag_id"])
 
     async def handle_untag_document(

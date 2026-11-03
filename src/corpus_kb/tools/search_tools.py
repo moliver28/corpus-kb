@@ -16,11 +16,11 @@ it sees, and these tools are handed a pool explicitly).
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 import asyncpg
 
 from corpus_kb.handlers.query_integrity import envelope_to_payload
+from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
 __all__ = ["search", "search_context", "search_similar"]
@@ -58,7 +58,7 @@ async def search(
     embedder = create_embedder(cfg, pg_pool)
 
     search_query = SearchQuery(
-        tenant_id=UUID(tenant_id),
+        tenant_id=uuid_arg(tenant_id, "tenant_id"),
         query=query,
         k=k,
         source_type=source_type,
@@ -90,8 +90,8 @@ async def search_similar(
 
     cfg = load_config_or_pass(config)
     similar_query = SearchSimilarQuery(
-        tenant_id=UUID(tenant_id),
-        chunk_id=UUID(chunk_id),
+        tenant_id=uuid_arg(tenant_id, "tenant_id"),
+        chunk_id=uuid_arg(chunk_id, "chunk_id"),
         k=k,
     )
     handler = QueryHandler(pg_pool, config=cfg)
@@ -124,7 +124,7 @@ async def search_context(
     cfg = load_config_or_pass(config)
     embedder = create_embedder(cfg, pg_pool)
     context_query = SearchContextQuery(
-        tenant_id=UUID(tenant_id),
+        tenant_id=uuid_arg(tenant_id, "tenant_id"),
         query=query,
         k=k,
         context_chunks=context_chunks,

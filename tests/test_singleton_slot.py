@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from corpus_kb.errors import InternalError
 from corpus_kb.handlers._singleton import SingletonSlot
 
 
@@ -19,7 +20,7 @@ def _slot() -> SingletonSlot[str]:
 
 def test_get_on_empty_slot_raises_the_missing_message() -> None:
     slot = _slot()
-    with pytest.raises(RuntimeError, match="Handler not initialized"):
+    with pytest.raises(InternalError, match="Handler not initialized"):
         slot.get()
 
 
@@ -33,7 +34,7 @@ def test_reset_clears_the_slot() -> None:
     slot = _slot()
     slot.set("value")
     slot.reset()
-    with pytest.raises(RuntimeError, match="Handler not initialized"):
+    with pytest.raises(InternalError, match="Handler not initialized"):
         slot.get()
 
 

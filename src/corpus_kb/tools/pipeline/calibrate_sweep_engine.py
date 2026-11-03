@@ -28,7 +28,7 @@ from uuid import UUID, uuid5
 
 import asyncpg
 
-from corpus_kb.errors import DatabaseUnavailableError, ValidationError
+from corpus_kb.errors import DatabaseUnavailableError, InternalError, ValidationError
 from corpus_kb.eval.labels import ChunkEntry, LabelIndex
 from corpus_kb.eval.scoring import IngestedDoc
 
@@ -119,7 +119,7 @@ class ScratchTenantEngine:
 
     def _pool_or_raise(self) -> asyncpg.Pool:
         if self._pool is None:
-            raise RuntimeError("sweep engine used before open()")
+            raise InternalError("sweep engine used before open()")
         return self._pool
 
     async def ingest(self, path: Path, strategy: str) -> IngestedDoc:

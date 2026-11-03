@@ -22,6 +22,7 @@ from corpus_kb import cli
 from corpus_kb.cli.cli_release import _waiver_pairs
 from corpus_kb.cli.cli_store import StoreWired
 from corpus_kb.domain.codebook import CodebookVersion
+from corpus_kb.errors import ValidationError
 from corpus_kb.handlers import release_handlers as rh
 from corpus_kb.research import guide_copy
 from corpus_kb.research.release.gate_types import GateInputs
@@ -335,7 +336,7 @@ def test_execute_release_rejects_unknown_waiver_gate(
 ) -> None:
     aggregate, release_id, _app = _open_draft(PROFILE_EXPLORATORY)
     _wire(monkeypatch, aggregate)
-    with pytest.raises(ValueError, match="unknown release gate"):
+    with pytest.raises(ValidationError, match="unknown release gate"):
         _run(
             rh.execute_release(
                 None,

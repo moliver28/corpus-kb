@@ -23,7 +23,7 @@ from typing import cast
 from urllib.parse import urlparse
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as SEED_TENANT_ID
-from corpus_kb.errors import ConflictError
+from corpus_kb.errors import ConflictError, ValidationError
 from corpus_kb.handlers.migrate_data import (
     ColumnTransform,
     StreamConn,
@@ -86,7 +86,7 @@ def attach_source(con: StreamConn, pg_dsn: str, alias: str = MIGRATE_ALIAS) -> N
     """
     con.execute("LOAD postgres")
     if "'" in pg_dsn or "\x00" in pg_dsn:
-        raise ValueError("the postgres DSN must not contain quotes or NUL bytes")
+        raise ValidationError("the postgres DSN must not contain quotes or NUL bytes")
     con.execute(
         "ATTACH "
         + sql_literal(libpq_from_dsn(pg_dsn))

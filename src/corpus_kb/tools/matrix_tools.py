@@ -9,8 +9,7 @@ rounded to 6 places (the byte-determinism convention). A class with no
 true positives and no predictions scores 0.0 — never NaN, never a guess.
 
 The Postgres readers for the paired rows live at the bottom of this
-module (clearly separated from the math); the section composer in
-``tools/analysis_tools.py`` is their only consumer.
+module; ``tools/analysis_tools.py`` is their only consumer.
 """
 
 from __future__ import annotations
@@ -19,6 +18,8 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import cast
 
 import asyncpg
+
+from corpus_kb.errors import ValidationError
 
 from ..analysis import report as report_mod
 from ..analysis.settings import AnalysisSettings
@@ -42,9 +43,8 @@ def _resolve_labels(
 ) -> list[str]:
     """The label order: explicit when given, else the sorted union.
 
-    The explicit order IS the caller's vocabulary; a label no row
-    reached keeps its all-zero row (an absent class is a result, not an
-    error).
+    The explicit order IS the caller's vocabulary; a label no row reached
+    keeps its all-zero row (an absent class is a result, not an error).
     """
     if labels is not None:
         return list(labels)
@@ -54,9 +54,9 @@ def _resolve_labels(
 def _validate_pairs(y_true: Sequence[str], y_pred: Sequence[str]) -> None:
     """The shared input guard: aligned lengths, both non-empty."""
     if len(y_true) != len(y_pred):
-        raise ValueError("y_true and y_pred must align (one prediction per truth row)")
+        raise ValidationError("y_true and y_pred must align (one prediction per truth row)")
     if not y_true:
-        raise ValueError("y_true and y_pred must be non-empty")
+        raise ValidationError("y_true and y_pred must be non-empty")
 
 
 def confusion_matrix(
@@ -67,7 +67,7 @@ def confusion_matrix(
     """Cell counts against the label order; rows are truth, columns predictions.
 
     Returns ``{"labels": [...], "matrix": [[int]]}``. Mismatched input
-    lengths or empty inputs raise ``ValueError`` — a silent partial
+    lengths or empty inputs raise ``ValidationError`` — a silent partial
     matrix would understate the error counts.
     """
     _validate_pairs(y_true, y_pred)

@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.tools import sentiment_tools
 
 TENANT = "00000000-0000-0000-0000-000000000001"
@@ -84,14 +85,34 @@ async def test_missing_lexicon_file_answers_unavailable(
 async def test_malformed_lexicon_raises_loudly(tmp_path: Path) -> None:
     bad = tmp_path / "lexicon.yaml"
     bad.write_text("positive: [good]\nnegative: 'not a list'\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="lexicon"):
+    with pytest.raises(ValidationError, match="lexicon"):
+        sentiment_tools.load_lexicon(str(bad))
+
+
+async def test_unreadable_lexicon_raises_validation_error(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.yaml"
+    with pytest.raises(ValidationError, match="not readable"):
+        sentiment_tools.load_lexicon(str(missing))
+
+
+async def test_invalid_yaml_lexicon_raises_validation_error(tmp_path: Path) -> None:
+    bad = tmp_path / "lexicon.yaml"
+    bad.write_text("positive: [unclosed\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="not valid YAML"):
+        sentiment_tools.load_lexicon(str(bad))
+
+
+async def test_non_string_lexicon_entry_raises_validation_error(tmp_path: Path) -> None:
+    bad = tmp_path / "lexicon.yaml"
+    bad.write_text("positive: [good, 7]\nnegative: [bad]\n", encoding="utf-8")
+    with pytest.raises(ValidationError, match="non-empty string"):
         sentiment_tools.load_lexicon(str(bad))
 
 
 async def test_overlapping_lists_are_rejected(tmp_path: Path) -> None:
     bad = tmp_path / "lexicon.yaml"
     bad.write_text("positive: [good]\nnegative: [good, bad]\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="disjoint"):
+    with pytest.raises(ValidationError, match="disjoint"):
         sentiment_tools.load_lexicon(str(bad))
 
 
