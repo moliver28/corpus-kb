@@ -65,6 +65,11 @@ def _generate(prompt: str, model: str, base_url: str, seed: int) -> str:
         think=False,
         options={"temperature": RESAMPLE_TEMPERATURE, "seed": seed},
     )
+    return _extract_raw(response)
+
+
+def _extract_raw(response: object) -> str:
+    """The reply text out of an ollama response (object or dict shape)."""
     raw = getattr(response, "response", None)
     if isinstance(response, dict):
         raw = raw if raw is not None else response.get("response")
@@ -98,10 +103,11 @@ async def resample_rationales(
     out: list[str] = []
     for seed in range(n):
         try:
-            rationale = await asyncio.to_thread(_generate, prompt, model, base_url, seed)
+            raw = await asyncio.to_thread(_generate, prompt, model, base_url, seed)
         except (ConnectionError, OSError, httpx.TransportError, ResponseError) as exc:
             logger.warning("resample %s/%s unavailable: %s", seed + 1, n, exc)
             continue
+        rationale = _clean(raw)
         if rationale:
             out.append(rationale)
     return out

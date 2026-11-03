@@ -58,7 +58,7 @@ async def _seed_version(pool: Any, tenant_id: str, label: str, codes: list[tuple
 
 
 async def _seed_run(
-    pool: Any, tenant_id: str, run_id: str, started_at: datetime, checkpoint: dict[str, Any]
+    pool: Any, tenant_id: str, run_id: str, started_at: datetime, checkpoint: dict[str, Any] | None
 ) -> None:
     """One research_runs row with an explicit start time and checkpoint."""
     from corpus_kb.storage.tenant_conn import tenant_connection
@@ -71,7 +71,7 @@ async def _seed_run(
             """,
             run_id,
             tenant_id,
-            json.dumps(checkpoint),
+            json.dumps(checkpoint) if checkpoint is not None else None,
             started_at,
         )
 
@@ -198,3 +198,46 @@ async def test_evidence_view_legacy_rows_without_run_still_surface(research_pool
     result = await evidence_for_code(research_pool, UUID(PIN_TENANT), "pin-legacy-code")
     assert result["status"] == "ok"
     assert sorted(_entry_units(result)) == sorted([seed["units"]["A"], seed["units"]["A2"]])
+
+
+async def test_evidence_view_project_filter_scopes_rows(research_pool) -> None:
+    """The optional project filter scopes the pinned rows; others stay empty."""
+    project = str(uuid4())
+    seed = await _seed(research_pool, PIN_TENANT, project)
+    code_id = str(uuid4())
+    await _seed_version(research_pool, PIN_TENANT, "pin-proj", [(code_id, "pin-proj-code")])
+    await _assign(research_pool, PIN_TENANT, seed["units"]["A"], code_id, None)
+
+    scoped = await evidence_for_code(
+        research_pool, UUID(PIN_TENANT), "pin-proj-code", project_id=UUID(project)
+    )
+    assert scoped["status"] == "ok"
+    assert _entry_units(scoped) == [seed["units"]["A"]]
+    elsewhere = await evidence_for_code(
+        research_pool, UUID(PIN_TENANT), "pin-proj-code", project_id=uuid4()
+    )
+    assert elsewhere["status"] == "empty"
+
+
+async def test_evidence_view_run_without_checkpoint_defaults_sizes(research_pool) -> None:
+    """A pinned run with no checkpoint yields default sizes and no ranking keys."""
+    project = str(uuid4())
+    seed = await _seed(research_pool, PIN_TENANT, project)
+    code_id = str(uuid4())
+    version_id = await _seed_version(
+        research_pool, PIN_TENANT, "pin-nocp", [(code_id, "pin-nocp-code")]
+    )
+    run_id = str(uuid4())
+    await _seed_run(
+        research_pool, PIN_TENANT, run_id, datetime(2026, 1, 3, 10, 0, 0, tzinfo=UTC), None
+    )
+    await _assign_run(research_pool, PIN_TENANT, seed["units"]["A"], code_id, version_id, run_id)
+
+    result = await evidence_for_code(research_pool, UUID(PIN_TENANT), "pin-nocp-code")
+    assert result["status"] == "ok"
+    entries = [
+        e for tab in cast("dict[str, list[dict[str, Any]]]", result["tabs"]).values() for e in tab
+    ]
+    assert [int(e["unit_id"]) for e in entries] == [seed["units"]["A"]]
+    assert all(int(e["conformal_set_size"]) == 1 for e in entries)
+    assert all("review_priority" not in e for e in entries)
