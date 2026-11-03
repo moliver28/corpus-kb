@@ -338,24 +338,39 @@ async def seeded(research_pool):
     )
     async with research_pool.acquire() as conn, conn.transaction():
         await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", NOTEBOOK_TENANT)
-        await conn.execute(
-            """
-            INSERT INTO research_signals (tenant_id, unit_id, tier, semantic_entropy, n_clusters)
-            VALUES ($1, $2, 3, 0.9, 2)
-            """,
-            NOTEBOOK_TENANT,
-            seed["units"]["A"],
-        )
+        run_id = str(uuid4())
         await conn.execute(
             """
             INSERT INTO research_runs (run_id, tenant_id, state, checkpoint)
             VALUES ($1, $2, 'stopped', $3::jsonb)
             """,
-            str(uuid4()),
+            run_id,
             NOTEBOOK_TENANT,
             json.dumps({"conformal": {"per_unit": {str(seed["units"]["B2"]): 2}}}),
         )
-    return {"project": project, "seed": seed, "codes": codes}
+        # Tag this version's rows with the run: the evidence view pins one
+        # run per codebook version (issue #132), so the fixture models a
+        # real coding run instead of pre-versioning legacy rows.
+        await conn.execute(
+            """
+            UPDATE research_assignments SET run_id = $2
+            WHERE tenant_id = $1 AND cb_version_id = $3
+            """,
+            NOTEBOOK_TENANT,
+            run_id,
+            codes["version_id"],
+        )
+        await conn.execute(
+            """
+            INSERT INTO research_signals
+            (tenant_id, unit_id, run_id, tier, semantic_entropy, n_clusters)
+            VALUES ($1, $2, $3, 3, 0.9, 2)
+            """,
+            NOTEBOOK_TENANT,
+            seed["units"]["A"],
+            run_id,
+        )
+    return {"project": project, "seed": seed, "codes": codes, "run_id": run_id}
 
 
 class FakeLlm:

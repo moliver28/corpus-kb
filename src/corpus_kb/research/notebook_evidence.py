@@ -5,6 +5,16 @@ moderator_introduced flag, explicit vs question-dependent tabs, and
 per-unit conformal set-size (r11) — plus its SQL constants, the conformal
 reader, and the shared unit-row renderers. Re-exported from
 ``notebook_views`` so every consumer import keeps working.
+
+Version pinning (issue #132): the view reads ONE codebook version and ONE
+run. The run is the newest ``research_runs`` row with assignment rows for
+the resolved version (started_at DESC, run_id — a stable tiebreak). A newer
+run therefore REPLACES the view instead of appending to it; superseded runs
+stay in the tables for the report surfaces and human reviews. Rows written
+before versioning existed (no run, no version tag) surface only while no
+run-tagged rows exist for the version, so legacy data is never hidden.
+Assignments, disagreement signals, and the conformal checkpoint all pin to
+the same run, so the three never disagree about coding state.
 """
 
 from __future__ import annotations
@@ -32,18 +42,29 @@ JOIN research_units ru ON ru.unit_id = ra.unit_id AND ru.tenant_id = ra.tenant_i
 LEFT JOIN research_speakers s ON s.speaker_id = ru.speaker_id
 JOIN documents d ON d.doc_id = ru.doc_id
 WHERE ra.tenant_id = $1 AND ra.code_id = $2
+  AND (ra.cb_version_id = $3 OR ra.cb_version_id IS NULL)
+  AND ra.run_id IS NOT DISTINCT FROM $4
 """
 
 _DISAGREEMENT_SQL = """
 SELECT DISTINCT unit_id FROM research_signals
 WHERE tenant_id = $1 AND unit_id = ANY($2::bigint[]) AND tier = 3
   AND COALESCE(semantic_entropy, 0) > 0
+  AND run_id IS NOT DISTINCT FROM $3
 """
 
-_LATEST_RUN_SQL = """
+_PINNED_RUN_SQL = """
+SELECT r.run_id
+FROM research_runs r
+JOIN research_assignments ra ON ra.run_id = r.run_id AND ra.tenant_id = r.tenant_id
+WHERE r.tenant_id = $1 AND ra.cb_version_id = $2
+ORDER BY r.started_at DESC, r.run_id
+LIMIT 1
+"""
+
+_RUN_CHECKPOINT_SQL = """
 SELECT checkpoint FROM research_runs
-WHERE tenant_id = $1 AND checkpoint IS NOT NULL
-ORDER BY started_at DESC LIMIT 1
+WHERE tenant_id = $1 AND run_id = $2 AND checkpoint IS NOT NULL
 """
 
 
@@ -69,25 +90,32 @@ async def evidence_for_code(
     if version_id is not None and version_id != resolved_version:
         resolved_version = version_id
     async with tenant_connection(pool, tenant_id) as conn:
+        pinned_run = await _pinned_run_for_version(conn, tenant_id, resolved_version)
         sql = _EVIDENCE_SQL
-        params: list[object] = [str(tenant_id), code_id]
+        params: list[object] = [str(tenant_id), code_id, str(resolved_version)]
+        params.append(str(pinned_run) if pinned_run is not None else None)
         if project_id is not None:
-            sql += " AND d.project_id = $3"
+            sql += " AND d.project_id = $5"
             params.append(str(project_id))
         rows = await conn.fetch(sql, *params)
         if not rows:
             return {
                 "status": "empty",
-                "message": f"no assignments for code {code!r} yet",
+                "message": f"no assignments for code {code!r} in this codebook version yet",
                 "code": code,
                 "code_id": code_id,
             }
         unit_ids = [int(row["unit_id"]) for row in rows]
         disagreeing = {
             int(row["unit_id"])
-            for row in await conn.fetch(_DISAGREEMENT_SQL, str(tenant_id), unit_ids)
+            for row in await conn.fetch(
+                _DISAGREEMENT_SQL,
+                str(tenant_id),
+                unit_ids,
+                str(pinned_run) if pinned_run is not None else None,
+            )
         }
-        conformal = await _conformal_per_unit(conn, tenant_id)
+        conformal = await _conformal_per_unit(conn, tenant_id, pinned_run)
     tabs: dict[str, list[dict[str, Any]]] = {"explicit": [], "question_dependent": []}
     for row in rows:
         basis = str(row["evidence_basis"] or "explicit_in_answer")
@@ -132,11 +160,28 @@ async def evidence_for_code(
     }
 
 
+async def _pinned_run_for_version(
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, version_id: UUID
+) -> UUID | None:
+    """Newest run with assignment rows for this version; None means legacy.
+
+    Returns None both when nothing exists and when only pre-versioning rows
+    (run_id IS NULL) exist; the evidence SQL handles both with
+    ``run_id IS NOT DISTINCT FROM NULL``.
+    """
+    row = await conn.fetchrow(_PINNED_RUN_SQL, str(tenant_id), str(version_id))
+    if row is None or row["run_id"] is None:
+        return None
+    return UUID(str(row["run_id"]))
+
+
 async def _conformal_per_unit(
-    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID
+    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, pinned_run: UUID | None
 ) -> dict[int, int]:
-    """Per-unit conformal set sizes (>1 only) from the latest run checkpoint."""
-    row = await conn.fetchrow(_LATEST_RUN_SQL, str(tenant_id))
+    """Per-unit conformal set sizes (>1 only) from the pinned run checkpoint."""
+    if pinned_run is None:
+        return {}
+    row = await conn.fetchrow(_RUN_CHECKPOINT_SQL, str(tenant_id), str(pinned_run))
     if row is None:
         return {}
     checkpoint = row["checkpoint"]
