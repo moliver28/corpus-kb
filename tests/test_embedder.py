@@ -300,7 +300,7 @@ class TestCreateEmbedder:
 
     def test_unknown_provider_raises_clear_error(self) -> None:
         config: dict[str, object] = {"embedding": {"provider": "cloud-api"}}
-        with pytest.raises(ValueError, match="cloud-api"):
+        with pytest.raises(ConfigError, match="cloud-api"):
             create_embedder(config, pool=None)
 
 

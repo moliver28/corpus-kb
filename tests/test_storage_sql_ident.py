@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.storage.sql_ident import (
     check_identifier,
     quoted_identifier,
@@ -24,7 +25,7 @@ def test_check_identifier_accepts_plain_names() -> None:
 
 @pytest.mark.parametrize("bad", ["", "1x", "a-b", "a b", 'a"b', "a;b", "a.b", "main.chunks"])
 def test_check_identifier_rejects_other_shapes(bad: str) -> None:
-    with pytest.raises(ValueError, match="not a plain SQL identifier"):
+    with pytest.raises(ValidationError, match="not a plain SQL identifier"):
         check_identifier(bad)
 
 
@@ -34,17 +35,17 @@ def test_sql_identifier_quotes() -> None:
 
 def test_quoted_identifier_doubles_quotes() -> None:
     assert quoted_identifier('we"ird') == '"we""ird"'
-    with pytest.raises(ValueError, match="not a usable SQL identifier"):
+    with pytest.raises(ValidationError, match="not a usable SQL identifier"):
         quoted_identifier("")
 
 
 def test_sql_qualified_quotes_each_part() -> None:
     assert sql_qualified("main.chunks") == '"main"."chunks"'
-    with pytest.raises(ValueError, match="not a plain SQL identifier"):
+    with pytest.raises(ValidationError, match="not a plain SQL identifier"):
         sql_qualified("main.bad-name")
 
 
 def test_sql_literal_doubles_and_refuses_nul() -> None:
     assert sql_literal("it's") == "'it''s'"
-    with pytest.raises(ValueError, match="NUL"):
+    with pytest.raises(ValidationError, match="NUL"):
         sql_literal("a" + chr(0) + "b")

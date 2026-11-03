@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from corpus_kb.errors import InternalError, ValidationError
 from corpus_kb.ingestion.strategies import textbook_paddle, textbook_subprocess
 from corpus_kb.ingestion.strategies.textbook_paddle import (
     PADDLE_VL_MODEL,
@@ -372,7 +373,7 @@ def test_rows_serialize_the_window(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_rows_raise_without_the_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(textbook_paddle, "load_paddle_model", lambda: None)
-    with pytest.raises(RuntimeError, match="ocr-vl"):
+    with pytest.raises(InternalError, match="ocr-vl"):
         paddle_window_rows("book.pdf", 1, 2)
 
 
@@ -446,7 +447,7 @@ def test_child_target_routes_docling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_child_target_raises_on_an_unknown_parser() -> None:
     queue = _FakeQueue()
-    with pytest.raises(ValueError, match="no child rows factory"):
+    with pytest.raises(ValidationError, match="no child rows factory"):
         textbook_subprocess._window_child("b.pdf", "tesseract", 1, 2, queue)
     assert queue.rows is None  # nothing shipped under a foreign name
 

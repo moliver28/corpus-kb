@@ -8,6 +8,7 @@ import httpx
 import pytest
 import yaml
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.rag.contextual_settings import (
     CONTEXTUAL_CONFIG_DEFAULTS,
     ContextualSettings,
@@ -266,7 +267,7 @@ def test_invalid_values_are_rejected_with_remediation(block: dict[str, object]) 
     error = contextualize_settings_error(config)
     assert error is not None
     assert "ingest.contextualize" in error
-    with pytest.raises(ValueError, match="ingest\\.contextualize"):
+    with pytest.raises(ValidationError, match="ingest\\.contextualize"):
         load_contextual_settings(config)
 
 
