@@ -70,3 +70,4 @@ ui_src/playwright-report/
 .coverage
 coverage.xml
 htmlcov/
+pytest_w7_full.log
