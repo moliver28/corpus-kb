@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from corpus_kb.errors import ConflictError
+from corpus_kb.errors import ConflictError, ValidationError
 from corpus_kb.handlers import migrate_data
 
 duckdb = pytest.importorskip("duckdb")
@@ -257,5 +257,5 @@ class TestReport:
     def test_invalid_direction_rejected(
         self, source: duckdb.DuckDBPyConnection, target: duckdb.DuckDBPyConnection
     ) -> None:
-        with pytest.raises(ValueError, match="direction"):
+        with pytest.raises(ValidationError, match="direction"):
             migrate_data.migrate(source, target, "sideways")

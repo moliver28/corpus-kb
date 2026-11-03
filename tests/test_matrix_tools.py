@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.tools.matrix_tools import confusion_matrix, per_class_precision_recall
 
 Y_TRUE = ["spam", "spam", "ham", "ham", "ham"]
@@ -36,12 +37,12 @@ def test_confusion_matrix_includes_a_label_no_row_reached() -> None:
 
 
 def test_confusion_matrix_rejects_misaligned_inputs() -> None:
-    with pytest.raises(ValueError, match="align"):
+    with pytest.raises(ValidationError, match="align"):
         confusion_matrix(["a", "b"], ["a"])
 
 
 def test_confusion_matrix_rejects_empty_inputs() -> None:
-    with pytest.raises(ValueError, match="empty"):
+    with pytest.raises(ValidationError, match="empty"):
         confusion_matrix([], [])
 
 

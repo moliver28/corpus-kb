@@ -27,6 +27,7 @@ from corpus_kb.handlers import (
     tag_handler,
     versioning_handler,
 )
+from corpus_kb.errors import InternalError
 from corpus_kb.handlers.command_handler import CommandHandler
 from corpus_kb.handlers.idempotency import IdempotencyChecker
 
@@ -78,21 +79,21 @@ def test_raise_style_family_contract(
 ) -> None:
     getattr(module, reset_name)()
     try:
-        with pytest.raises(RuntimeError, match=message):
+        with pytest.raises(InternalError, match=message):
             getattr(module, get_name)()
         sentinel = cast(object, object())
         getattr(module, set_name)(sentinel)
         assert getattr(module, get_name)() is sentinel
     finally:
         getattr(module, reset_name)()
-    with pytest.raises(RuntimeError, match=message):
+    with pytest.raises(InternalError, match=message):
         getattr(module, get_name)()
 
 
 def test_idempotency_checker_without_pool_raises_on_empty_slot() -> None:
     idempotency.reset_idempotency_checker()
     try:
-        with pytest.raises(RuntimeError, match="requires an asyncpg pool"):
+        with pytest.raises(InternalError, match="requires an asyncpg pool"):
             idempotency.get_idempotency_checker()
     finally:
         idempotency.reset_idempotency_checker()
@@ -106,7 +107,7 @@ def test_idempotency_checker_lazy_create_set_and_reset() -> None:
         second = idempotency.get_idempotency_checker(dummy_pool)
         assert first is second
         idempotency.reset_idempotency_checker()
-        with pytest.raises(RuntimeError, match="requires an asyncpg pool"):
+        with pytest.raises(InternalError, match="requires an asyncpg pool"):
             idempotency.get_idempotency_checker()
         stub = cast(IdempotencyChecker, object())
         idempotency.set_idempotency_checker(stub)
@@ -118,7 +119,7 @@ def test_idempotency_checker_lazy_create_set_and_reset() -> None:
 def test_research_handler_without_pool_raises_on_empty_slot() -> None:
     research_handler.reset_research_handler()
     try:
-        with pytest.raises(RuntimeError, match="requires an asyncpg pool"):
+        with pytest.raises(InternalError, match="requires an asyncpg pool"):
             research_handler.get_research_handler()
     finally:
         research_handler.reset_research_handler()
@@ -131,7 +132,7 @@ def test_research_handler_lazy_create_and_no_pool_returns_existing() -> None:
         first = research_handler.get_research_handler(dummy_pool)
         assert research_handler.get_research_handler() is first
         research_handler.reset_research_handler()
-        with pytest.raises(RuntimeError, match="requires an asyncpg pool"):
+        with pytest.raises(InternalError, match="requires an asyncpg pool"):
             research_handler.get_research_handler()
     finally:
         research_handler.reset_research_handler()
