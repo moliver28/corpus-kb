@@ -44,7 +44,7 @@ TIER3_CFG = {
 
 def _two_cluster_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
     """Deterministic resamples + an NLI judge with two entailment clusters."""
-    import corpus_kb.research.deductive_run as deductive_run_module
+    import corpus_kb.research.deductive_tier3 as tier3_module
 
     async def fake_resample(
         unit_text: str, code_name: str, definition: str, n: int, model: str, base_url: str
@@ -55,8 +55,8 @@ def _two_cluster_fakes(monkeypatch: pytest.MonkeyPatch) -> None:
         ia, ib = int(a.split()[-1]), int(b.split()[-1])
         return ia // 2 == ib // 2
 
-    monkeypatch.setattr(deductive_run_module, "resample_rationales", fake_resample)
-    monkeypatch.setattr(deductive_run_module, "nli_mutual_entailment", fake_nli)
+    monkeypatch.setattr(tier3_module, "resample_rationales", fake_resample)
+    monkeypatch.setattr(tier3_module, "nli_mutual_entailment", fake_nli)
 
 
 async def _seeded_tenant(pool: Any, tenant_id: str) -> dict[str, Any]:
@@ -192,9 +192,7 @@ async def test_evidence_view_is_two_tenant_safe(research_pool) -> None:
     for tenant, data in seeded.items():
         unit_a = data["seed"]["units"]["A"]
         async with research_pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", tenant
-            )
+            await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant)
             await conn.execute(
                 """
                 INSERT INTO research_signals (tenant_id, unit_id, tier, semantic_entropy)
@@ -217,8 +215,7 @@ async def test_evidence_view_is_two_tenant_safe(research_pool) -> None:
             data["codes"]["A"],
             data["codes"]["version_id"],
         )
-    own_units: dict[str, list[int]] = {}
-    for tenant, data in seeded.items():
+    for tenant in seeded:
         result = await evidence_for_code(research_pool, UUID(tenant), "billing-migration")
         assert result["status"] == "ok"
         units = [

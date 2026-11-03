@@ -323,11 +323,7 @@ def conformal_sets(
         (list of predicted code-index sets, empirical coverage on calibration).
     """
     n_cal = len(calibration_scores)
-    labeled = (
-        [i for i in range(n_cal) if int(np.sum(calibration_labels[i])) > 0]
-        if n_cal
-        else []
-    )
+    labeled = [i for i in range(n_cal) if int(np.sum(calibration_labels[i])) > 0] if n_cal else []
     if not labeled:
         return [set() for _ in range(len(test_scores))], 0.0
     nc = np.array(

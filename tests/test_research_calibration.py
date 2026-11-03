@@ -177,9 +177,7 @@ def test_conformal_sets_ignores_zero_label_calibration_rows():
     """
     scores, labels, test_scores = _mixed_conformal_input()
     labeled_only = 6
-    sets_mixed, coverage_mixed = conformal_sets(
-        scores, labels, test_scores, alpha=0.25
-    )
+    sets_mixed, coverage_mixed = conformal_sets(scores, labels, test_scores, alpha=0.25)
     sets_labeled, coverage_labeled = conformal_sets(
         scores[:labeled_only], labels[:labeled_only], test_scores, alpha=0.25
     )

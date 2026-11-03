@@ -2,29 +2,33 @@
 
 ``evidence_for_code`` — units ranked by confidence with disagreement flags,
 moderator_introduced flag, explicit vs question-dependent tabs, and
-per-unit conformal set-size (r11) — plus its SQL constants, the conformal
-reader, and the shared unit-row renderers. Re-exported from
-``notebook_views`` so every consumer import keeps working.
+per-unit conformal set-size (r11) — plus its SQL constants and the shared
+unit-row renderers. Re-exported from ``notebook_views`` so every consumer
+import keeps working.
 
 Version pinning (issue #132): the view reads ONE codebook version and ONE
-run. The run is the newest ``research_runs`` row with assignment rows for
-the resolved version (started_at DESC, run_id — a stable tiebreak). A newer
-run therefore REPLACES the view instead of appending to it; superseded runs
-stay in the tables for the report surfaces and human reviews. Rows written
-before versioning existed (no run, no version tag) surface only while no
-run-tagged rows exist for the version, so legacy data is never hidden.
-Assignments, disagreement signals, and the conformal checkpoint all pin to
-the same run, so the three never disagree about coding state.
+run (the newest run with rows for the version — see
+``notebook_pinning``). A re-run REPLACES the view instead of appending;
+assignments, disagreement signals, and the conformal checkpoint all pin to
+the same run, so the three never disagree about coding state. The review
+ranking of the pinned run decorates each entry with ``review_priority`` /
+``review_reason`` when the run recorded a ``review_priority`` block.
 """
 
 from __future__ import annotations
 
-import json
-from typing import Any
+from collections.abc import Sequence
+from typing import Any, Protocol, cast
 from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.research.notebook_pinning import (
+    _conformal_per_unit,
+    _pinned_checkpoint,
+    _pinned_run_for_version,
+    _ranking_per_unit,
+)
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -53,19 +57,16 @@ WHERE tenant_id = $1 AND unit_id = ANY($2::bigint[]) AND tier = 3
   AND run_id IS NOT DISTINCT FROM $3
 """
 
-_PINNED_RUN_SQL = """
-SELECT r.run_id
-FROM research_runs r
-JOIN research_assignments ra ON ra.run_id = r.run_id AND ra.tenant_id = r.tenant_id
-WHERE r.tenant_id = $1 AND ra.cb_version_id = $2
-ORDER BY r.started_at DESC, r.run_id
-LIMIT 1
-"""
 
-_RUN_CHECKPOINT_SQL = """
-SELECT checkpoint FROM research_runs
-WHERE tenant_id = $1 AND run_id = $2 AND checkpoint IS NOT NULL
-"""
+class RowLike(Protocol):
+    """One fetched assignment row (asyncpg Record or the gateway dict)."""
+
+    def __getitem__(self, key: str) -> object: ...
+
+
+def _as_int(value: object) -> int:
+    """Numeric column out of a row (the fusion module's narrowing pattern)."""
+    return value if isinstance(value, int) else int(str(value))
 
 
 async def evidence_for_code(
@@ -118,11 +119,31 @@ async def evidence_for_code(
         checkpoint = await _pinned_checkpoint(conn, tenant_id, pinned_run)
         conformal = _conformal_per_unit(checkpoint)
         ranking = _ranking_per_unit(checkpoint)
+    tabs = _evidence_tabs(cast("Sequence[RowLike]", rows), disagreeing, conformal, ranking, limit)
+    return {
+        "status": "ok",
+        "code": str(resolved["name"]),
+        "code_id": code_id,
+        "definition": str(resolved["definition"]),
+        "version_id": str(resolved_version),
+        "n_units": len(rows),
+        "tabs": tabs,
+    }
+
+
+def _evidence_tabs(
+    rows: Sequence[RowLike],
+    disagreeing: set[int],
+    conformal: dict[int, int],
+    ranking: dict[int, dict[str, Any]],
+    limit: int,
+) -> dict[str, list[dict[str, Any]]]:
+    """Build the explicit / question-dependent tabs (sorted, capped)."""
     tabs: dict[str, list[dict[str, Any]]] = {"explicit": [], "question_dependent": []}
     for row in rows:
         basis = str(row["evidence_basis"] or "explicit_in_answer")
         tab = "explicit" if basis == "explicit_in_answer" else "question_dependent"
-        unit_id = int(row["unit_id"])
+        unit_id = _as_int(row["unit_id"])
         entry: dict[str, Any] = {
             "unit_id": unit_id,
             "text": str(row["text"]),
@@ -138,7 +159,7 @@ async def evidence_for_code(
             "speaker_role": row["speaker_role"],
             "doc_id": str(row["doc_id"]),
             "doc_title": str(row["title"] or ""),
-            "unit_seq": int(row["unit_seq"]),
+            "unit_seq": _as_int(row["unit_seq"]),
             "t_start": row["t_start"],
         }
         ranked = ranking.get(unit_id)
@@ -152,65 +173,10 @@ async def evidence_for_code(
             key=lambda e: (
                 CONFIDENCE_TIERS.get(str(e["confidence"]), 3),
                 -float(str(e["sim_answer"] or 0.0)),
-                int(e["unit_id"]),
+                _as_int(e["unit_id"]),
             ),
         )[:limit]
-    return {
-        "status": "ok",
-        "code": str(resolved["name"]),
-        "code_id": code_id,
-        "definition": str(resolved["definition"]),
-        "version_id": str(resolved_version),
-        "n_units": len(rows),
-        "tabs": tabs,
-    }
-
-
-async def _pinned_run_for_version(
-    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, version_id: UUID
-) -> UUID | None:
-    """Newest run with assignment rows for this version; None means legacy.
-
-    Returns None both when nothing exists and when only pre-versioning rows
-    (run_id IS NULL) exist; the evidence SQL handles both with
-    ``run_id IS NOT DISTINCT FROM NULL``.
-    """
-    row = await conn.fetchrow(_PINNED_RUN_SQL, str(tenant_id), str(version_id))
-    if row is None or row["run_id"] is None:
-        return None
-    return UUID(str(row["run_id"]))
-
-
-async def _pinned_checkpoint(
-    conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, pinned_run: UUID | None
-) -> dict[str, Any]:
-    """The pinned run's checkpoint body; {} when no run is pinned."""
-    if pinned_run is None:
-        return {}
-    row = await conn.fetchrow(_RUN_CHECKPOINT_SQL, str(tenant_id), str(pinned_run))
-    if row is None:
-        return {}
-    checkpoint = row["checkpoint"]
-    if isinstance(checkpoint, str):
-        checkpoint = json.loads(checkpoint or "{}")
-    return dict(checkpoint or {})
-
-
-def _conformal_per_unit(checkpoint: dict[str, Any]) -> dict[int, int]:
-    """Per-unit conformal set sizes (>1 only) from the pinned checkpoint."""
-    per_unit = (checkpoint.get("conformal") or {}).get("per_unit") or {}
-    return {int(unit_id): int(size) for unit_id, size in dict(per_unit).items()}
-
-
-def _ranking_per_unit(checkpoint: dict[str, Any]) -> dict[int, dict[str, Any]]:
-    """Per-unit review-priority rows from the pinned checkpoint (issue #132).
-
-    Present only when the run recorded a ``review_priority`` block, so
-    pre-wiring snapshots stay byte-identical.
-    """
-    block = checkpoint.get("review_priority") or {}
-    rows = block.get("units") or []
-    return {int(row["unit_id"]): dict(row) for row in rows if row.get("unit_id") is not None}
+    return tabs
 
 
 def _unit_margins(assignments: list[dict[str, Any]]) -> dict[int, float]:

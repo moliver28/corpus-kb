@@ -24,9 +24,7 @@ pytestmark = pytest.mark.requires_postgres
 PIN_TENANT = "00000000-0000-0000-0000-000000000004"
 
 
-async def _seed_version(
-    pool: Any, tenant_id: str, label: str, codes: list[tuple[str, str]]
-) -> str:
+async def _seed_version(pool: Any, tenant_id: str, label: str, codes: list[tuple[str, str]]) -> str:
     """One codebook version; codes are (code_id, name) pairs with no gold."""
     from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -149,7 +147,9 @@ async def test_evidence_view_replace_on_rerun(research_pool) -> None:
     project = str(uuid4())
     seed = await _seed(research_pool, PIN_TENANT, project)
     code_id = str(uuid4())
-    version_id = await _seed_version(research_pool, PIN_TENANT, "pin-run", [(code_id, "pin-run-code")])
+    version_id = await _seed_version(
+        research_pool, PIN_TENANT, "pin-run", [(code_id, "pin-run-code")]
+    )
     run1 = str(uuid4())
     run2 = str(uuid4())
     await _seed_run(
