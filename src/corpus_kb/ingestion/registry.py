@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 ENTRY_POINT_GROUP = "corpus_kb.ingestion_strategies"
 
 
-class UnknownStrategyError(ValidationError):
+class UnknownStrategyError(ValueError):
     """A strategy name (explicit override or config mapping) is not registered."""
 
 
@@ -41,8 +41,7 @@ _ready = False
 def register_strategy(strategy: IngestionStrategy) -> None:
     """Register a strategy instance under its ``name`` (idempotent overwrite).
 
-    In-process registration is extension ladder #2 (scripts/power users);
-    entry points are ladder #3; the config mapping is ladder #1.
+    Ladders: in-process #2 (scripts/power users), entry points #3, config #1.
     """
     name = getattr(strategy, "name", None)
     if not isinstance(name, str) or not name:
@@ -88,8 +87,7 @@ def _ensure_ready() -> None:
     from .strategies.transcript import TranscriptStrategy
     from .strategies.web import WebStructureStrategy
 
-    # Registration order is detection tie-breaking order (first wins a tie
-    # in _detect_best): specific claimants before the generic fallbacks.
+    # Registration order breaks detection ties (first wins, per _detect_best).
     register_strategy(DefaultStrategy())
     register_strategy(PptxStructureStrategy())
     register_strategy(TranscriptStrategy())
@@ -104,8 +102,9 @@ def _ensure_ready() -> None:
 def _discover_entry_points() -> list[str]:
     """Load third-party strategies from the entry-point group (error-tolerant).
 
-    Returns the names successfully registered; import or load failures are
-    logged as warnings and skipped (a broken plugin never takes ingest down).
+    Returns the names successfully registered. Import/loading failures are
+    logged as warnings and skipped: a broken third-party plugin must never
+    take ingest down.
     """
     loaded: list[str] = []
     try:
@@ -130,7 +129,8 @@ def _discover_entry_points() -> list[str]:
 class StrategyResolution:
     """The ONE strategy chosen for a document, with full provenance.
 
-    ``detected`` names the detection winner whatever basis decided (detection runs once).
+    ``detected`` names the strategy that won content detection regardless of
+    which basis actually decided (detection always runs once, for provenance).
     """
 
     strategy: IngestionStrategy

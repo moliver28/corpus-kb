@@ -690,35 +690,41 @@ def test_domain_error_rebases_speak_the_taxonomy() -> None:
     """Builtin-based domain classes rebase onto the taxonomy (issue #229).
 
     Each base keeps the class's effective wire triple, so every raise site
-    behind the class moves to the taxonomy with zero envelope change:
-    ValueError-based -> ValidationError (400/-32602/1), Exception- and
-    RuntimeError-based -> InternalError (500/-32603/1, the unmapped
-    default these classes already produced).
+    behind the class moves to the taxonomy with zero envelope change.
+    UnknownStrategyError is deliberately NOT here: its name is unmapped on
+    master (500/internal_error), and a ValidationError rebase would flip
+    reachable unknown-strategy paths to 400 — deferred pending owner
+    sign-off (see the get_strategy pin below).
     """
-    from corpus_kb.ingestion.registry import UnknownStrategyError
     from corpus_kb.ingestion.strategies.textbook_docling import _MalformedRowError
     from corpus_kb.rag.embedders._latechunk_types import LateChunkDependencyError
     from corpus_kb.storage.age_graph_store import AgeUnavailableError
     from corpus_kb.storage.llamaindex_backend import DimensionMismatchError
     from corpus_kb.web.fetch import WebFetchError
 
-    assert issubclass(UnknownStrategyError, ValidationError)
     assert issubclass(DimensionMismatchError, ValidationError)
     assert issubclass(_MalformedRowError, InternalError)
     assert issubclass(AgeUnavailableError, InternalError)
     assert issubclass(LateChunkDependencyError, InternalError)
     assert issubclass(WebFetchError, InternalError)
     # Instance triples ride the class attributes.
-    _assert_triple(UnknownStrategyError("x"), 400, -32602, 1)
     _assert_triple(WebFetchError("x"), 500, -32603, 1)
 
 
-async def test_get_strategy_unknown_name_raises_validation_error() -> None:
-    from corpus_kb.ingestion.registry import get_strategy
+async def test_get_strategy_unknown_name_keeps_the_master_wire() -> None:
+    """UnknownStrategyError stays on the ValueError base (issue #229 deferral).
 
-    with pytest.raises(ValidationError, match="Valid strategies") as excinfo:
+    The class name has no ERROR_MAP row, so an escaped failure keeps the
+    master wire: the 500/internal_error envelope and socket -32603. The
+    candidate ValidationError rebase (400/-32602, a client-fault
+    classification) needs explicit owner sign-off — tracked as a deferral.
+    """
+    from corpus_kb.ingestion.registry import UnknownStrategyError, get_strategy
+
+    with pytest.raises(UnknownStrategyError, match="Valid strategies") as excinfo:
         get_strategy("not-a-strategy")
-    _assert_triple(excinfo.value, 400, -32602, 1)
+    assert not isinstance(excinfo.value, CorpusError)
+    assert error_status("UnknownStrategyError") == 500
 
 
 def test_register_strategy_rejects_a_nameless_strategy() -> None:

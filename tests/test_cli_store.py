@@ -14,7 +14,7 @@ import pytest
 
 duckdb = pytest.importorskip("duckdb")
 
-from corpus_kb.errors import ConfigError, DatabaseUnavailableError  # noqa: E402
+from corpus_kb.errors import ConfigError, DatabaseUnavailableError, ValidationError  # noqa: E402
 
 
 def _cfg(conn_str: str) -> dict[str, Any]:
@@ -87,4 +87,25 @@ async def test_wired_store_maps_a_dead_postgres_to_database_unavailable() -> Non
     dead = f"postgresql://corpus_user:nope@127.0.0.1:1/{uuid4().hex}"
     with pytest.raises(DatabaseUnavailableError, match="did not accept a connection"):
         async with wired_store(cfg=_cfg(dead)):
+            pass
+
+
+async def test_wired_store_maps_a_dsn_shape_failure_to_config_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A converted DSN-shape failure keeps the friendly ConfigError translation.
+
+    The gateway's DSN normalizer now raises the taxonomy's ValidationError
+    (issue #229 wave 2); the CLI seam must still answer the master
+    ConfigError message (exit 3), not the raw re-raise (exit 1).
+    """
+    import corpus_kb.storage.duckdb_gateway as duckdb_gateway_module
+    from corpus_kb.cli.cli_store import wired_store
+
+    async def refuse(_conn_str: str) -> None:
+        raise ValidationError("Unsupported connection string scheme: 'mysql'")
+
+    monkeypatch.setattr(duckdb_gateway_module.DuckDbGateway, "connect", refuse)
+    with pytest.raises(ConfigError, match="is not a usable duckdb:/// DSN"):
+        async with wired_store(cfg=_cfg("duckdb:///C:/data/x.duckdb")):
             pass
