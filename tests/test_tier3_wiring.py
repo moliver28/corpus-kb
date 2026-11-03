@@ -238,11 +238,15 @@ async def test_evidence_view_is_two_tenant_safe(research_pool) -> None:
     try:
         await conn.execute(f"GRANT SELECT ON research_signals TO {RLS_PROBE_ROLE}")
         await conn.execute(f"SET ROLE {RLS_PROBE_ROLE}")
-        blocked = await conn.fetchval(
-            "SELECT count(*) FROM research_signals WHERE tenant_id = ANY($1::uuid[])",
-            [TENANT_A, TENANT_B],
-        )
-        await conn.execute("RESET ROLE")
+        try:
+            blocked = await conn.fetchval(
+                "SELECT count(*) FROM research_signals WHERE tenant_id = ANY($1::uuid[])",
+                [TENANT_A, TENANT_B],
+            )
+        finally:
+            # Reset even on failure: a pooled connection handed back while
+            # the probe role is active poisons later borrowers.
+            await conn.execute("RESET ROLE")
     finally:
         await research_pool.release(conn)
     assert blocked == 0, "the probe role must see zero signal rows without a tenant GUC"
