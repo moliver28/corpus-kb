@@ -231,8 +231,12 @@ async def test_evidence_view_is_two_tenant_safe(research_pool) -> None:
 
     # RLS negative leg: a plain non-owner role without the tenant GUC sees
     # nothing, so the view cannot leak even if a tenant filter were dropped.
+    # The SELECT grant is (re-)applied here: other suite tests may recreate
+    # tables after the session fixture's blanket grant (the
+    # test_ingest_integrity precedent of self-granting what the leg needs).
     conn = await research_pool.acquire()
     try:
+        await conn.execute(f"GRANT SELECT ON research_signals TO {RLS_PROBE_ROLE}")
         await conn.execute(f"SET ROLE {RLS_PROBE_ROLE}")
         blocked = await conn.fetchval(
             "SELECT count(*) FROM research_signals WHERE tenant_id = ANY($1::uuid[])",
