@@ -20,6 +20,8 @@ import json
 from collections.abc import Mapping
 from typing import cast
 
+from corpus_kb.errors import ValidationError
+
 # The first-class fast path: hops 1-3 run the fixed self-join shape.
 MAX_NEIGHBOR_HOPS = 3
 # Traversal directions (neighbors only; traverse walks undirected).
@@ -83,13 +85,13 @@ def _bind_list(args: list[object], values: list[str] | None) -> str | None:
 def validate_hops(hops: int) -> None:
     """The neighbors hop bound (1..MAX_NEIGHBOR_HOPS); one shared message."""
     if not 1 <= int(hops) <= MAX_NEIGHBOR_HOPS:
-        raise ValueError(f"hops must be between 1 and {MAX_NEIGHBOR_HOPS}, got {hops!r}")
+        raise ValidationError(f"hops must be between 1 and {MAX_NEIGHBOR_HOPS}, got {hops!r}")
 
 
 def validate_depth(depth: int) -> None:
     """The traverse depth floor; one shared message."""
     if int(depth) < 1:
-        raise ValueError(f"max_depth must be 1 or more, got {depth!r}")
+        raise ValidationError(f"max_depth must be 1 or more, got {depth!r}")
 
 
 def _hop_branch(
@@ -147,7 +149,7 @@ def neighbors_sql(
     its shallowest depth.
     """
     if direction not in DIRECTIONS:
-        raise ValueError(f"direction must be one of {DIRECTIONS}, got {direction!r}")
+        raise ValidationError(f"direction must be one of {DIRECTIONS}, got {direction!r}")
     validate_hops(hops)
     args: list[object] = [tenant_id, entity_id]
     relation_param = _bind_list(args, relation_types)

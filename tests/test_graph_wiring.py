@@ -28,6 +28,7 @@ from uuid import UUID
 import asyncpg
 import pytest
 
+from corpus_kb.errors import ConfigError
 from corpus_kb.server_wiring import create_graph_store
 from corpus_kb.storage.age_graph_store import AgeUnavailableError
 from corpus_kb.storage.graph_store import DEFAULT_TENANT_ID, GraphStore
@@ -312,7 +313,7 @@ class TestCreateGraphStore:
 
         pool = object()
         cfg: dict[str, object] = {"graph": {"backend": "nope"}}
-        with pytest.raises(ValueError, match=r"nope"):
+        with pytest.raises(ConfigError, match=r"nope"):
             await create_graph_store(cfg, pool)
 
     @pytest.mark.asyncio
@@ -412,7 +413,7 @@ class TestCreateGraphStoreDuckDb:
     async def test_unknown_database_backend_raises(self) -> None:
         """An unknown database.backend fails loudly at wiring time."""
         cfg: dict[str, object] = {"database": {"backend": "nope"}}
-        with pytest.raises(ValueError, match=r"nope"):
+        with pytest.raises(ConfigError, match=r"nope"):
             await create_graph_store(cfg, object())
 
     @pytest.mark.asyncio

@@ -25,6 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.handlers.query_handler import QueryHandler
 from corpus_kb.handlers.query_integrity import DegradedExcluded, SearchEnvelope
 from corpus_kb.rag.rerank_settings import (
@@ -220,20 +221,20 @@ def test_return_top_k_range_validation() -> None:
     """Range rule 1..1000; W3 made it the default return k (catalogue lockstep)."""
     assert load_rerank_settings({"reranking": {"return_top_k": 1}}).return_top_k == 1
     assert load_rerank_settings({"reranking": {"return_top_k": 1000}}).return_top_k == 1000
-    with pytest.raises(ValueError, match="return_top_k"):
+    with pytest.raises(ValidationError, match="return_top_k"):
         load_rerank_settings({"reranking": {"return_top_k": 0}})
-    with pytest.raises(ValueError, match="return_top_k"):
+    with pytest.raises(ValidationError, match="return_top_k"):
         load_rerank_settings({"reranking": {"return_top_k": 1001}})
-    with pytest.raises(ValueError, match="return_top_k"):
+    with pytest.raises(ValidationError, match="return_top_k"):
         load_rerank_settings({"reranking": {"return_top_k": "20"}})
 
 
 def test_rerank_settings_rejects_invalid_values() -> None:
-    with pytest.raises(ValueError, match="calibration"):
+    with pytest.raises(ValidationError, match="calibration"):
         load_rerank_settings({"reranking": {"calibration": "zscore"}})
-    with pytest.raises(ValueError, match="candidates"):
+    with pytest.raises(ValidationError, match="candidates"):
         load_rerank_settings({"reranking": {"candidates": 0}})
-    with pytest.raises(ValueError, match="score_floor"):
+    with pytest.raises(ValidationError, match="score_floor"):
         load_rerank_settings({"reranking": {"score_floor": "low"}})
 
 
@@ -348,3 +349,13 @@ def _handler(config: dict[str, object], pool: MagicMock) -> QueryHandler:
     pool.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
     pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
     return QueryHandler(cast("object", pool), reranker=None, config=config)
+
+
+def test_rerank_settings_reject_bad_timeout_and_urls() -> None:
+    """Diff-cover pins: the timeout and service-URL guards speak the taxonomy."""
+    with pytest.raises(ValidationError, match="timeout_seconds must be a number"):
+        load_rerank_settings({"reranking": {"timeout_seconds": "slow"}})
+    with pytest.raises(ValidationError, match="timeout_seconds must be positive"):
+        load_rerank_settings({"reranking": {"timeout_seconds": 0}})
+    with pytest.raises(ValidationError, match="must be an http or https URL"):
+        load_rerank_settings({"reranking": {"base_url": "ftp://x"}})

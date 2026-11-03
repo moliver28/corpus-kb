@@ -85,7 +85,7 @@ def test_dsn_inverse_strips_the_leading_slash_before_memory() -> None:
 
 
 def test_dsn_inverse_rejects_foreign_schemes() -> None:
-    with pytest.raises(ValueError, match="scheme"):
+    with pytest.raises(ValidationError, match="scheme"):
         duckdb_conn_string_to_path("postgresql://corpus_user@localhost/corpus_kb")
 
 

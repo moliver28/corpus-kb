@@ -16,6 +16,7 @@ import asyncpg
 import pytest
 
 from corpus_kb.domain.models import SearchQuery, SearchResult
+from corpus_kb.errors import ConfigError
 from corpus_kb.handlers.query_handler import QueryHandler
 from corpus_kb.rag.reranker import (
     FakeReranker,
@@ -96,7 +97,7 @@ def test_create_reranker_pgml_returns_pgml_with_default_model() -> None:
 
 def test_create_reranker_unknown_value_raises() -> None:
     """Given an unknown search.reranker value, the factory raises ValueError."""
-    with pytest.raises(ValueError, match="typo-reranker"):
+    with pytest.raises(ConfigError, match="typo-reranker"):
         create_reranker(config={"search": {"reranker": "typo-reranker"}})
 
 

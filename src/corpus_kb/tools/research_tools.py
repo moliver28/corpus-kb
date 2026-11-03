@@ -10,13 +10,13 @@ identical read models after every event-writing command.
 from __future__ import annotations
 
 from typing import cast
-from uuid import UUID
 
 import asyncpg
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 from corpus_kb.handlers.research_handler import get_research_handler
 from corpus_kb.projections.catchup import advance_all_projections
+from corpus_kb.tools._uuid_input import uuid_arg
 
 __all__ = [
     "codebook_promote",
@@ -45,14 +45,14 @@ async def research_ingest_transcript(
     """
     handler = get_research_handler(pg_pool)
     result = await handler.ingest_transcript(
-        UUID(tenant_id),
+        uuid_arg(tenant_id, "tenant_id"),
         file_path,
-        project_id=UUID(project_id) if project_id else None,
+        project_id=uuid_arg(project_id, "project_id") if project_id else None,
         title=title,
         force=force,
         validate_mode=validate,
     )
-    await advance_all_projections(pg_pool, UUID(tenant_id))
+    await advance_all_projections(pg_pool, uuid_arg(tenant_id, "tenant_id"))
     return result
 
 
@@ -71,13 +71,13 @@ async def research_ingest(
     """
     handler = get_research_handler(pg_pool)
     result = await handler.ingest_path(
-        UUID(tenant_id),
+        uuid_arg(tenant_id, "tenant_id"),
         path,
-        project_id=UUID(project_id) if project_id else None,
+        project_id=uuid_arg(project_id, "project_id") if project_id else None,
         force=force,
         validate_mode=validate,
     )
-    await advance_all_projections(pg_pool, UUID(tenant_id))
+    await advance_all_projections(pg_pool, uuid_arg(tenant_id, "tenant_id"))
     return result
 
 
@@ -106,12 +106,12 @@ async def coding_run(
 
     summary = await run_deductive(
         pool,
-        UUID(tenant_id),
-        UUID(codebook_version_id),
-        project_id=UUID(project_id) if project_id else None,
+        uuid_arg(tenant_id, "tenant_id"),
+        uuid_arg(codebook_version_id, "codebook_version_id"),
+        project_id=uuid_arg(project_id, "project_id") if project_id else None,
         cal_alpha=cal_alpha,
     )
-    await advance_all_projections(pool, UUID(tenant_id))
+    await advance_all_projections(pool, uuid_arg(tenant_id, "tenant_id"))
     return summary
 
 
@@ -137,13 +137,13 @@ async def inductive_run(
     embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
     summary = await run_inductive(
         pool,
-        UUID(tenant_id),
-        project_id=UUID(project_id) if project_id else None,
+        uuid_arg(tenant_id, "tenant_id"),
+        project_id=uuid_arg(project_id, "project_id") if project_id else None,
         llm=LlmHandler(cfg),
         embedder=embedder,
         cfg=cfg,
     )
-    await advance_all_projections(pool, UUID(tenant_id))
+    await advance_all_projections(pool, uuid_arg(tenant_id, "tenant_id"))
     return summary
 
 
@@ -174,7 +174,7 @@ async def codebook_promote(
     effective_tau = tau_dup if tau_dup is not None else float(str(inductive_config(cfg)["tau_dup"]))
     result = await promote_proposal(
         pool,
-        UUID(tenant_id),
+        uuid_arg(tenant_id, "tenant_id"),
         int(proposed_id),
         name,
         definition,
@@ -184,7 +184,7 @@ async def codebook_promote(
         label=label,
         dsn=dsn_from_config(cfg),
     )
-    await advance_all_projections(pool, UUID(tenant_id))
+    await advance_all_projections(pool, uuid_arg(tenant_id, "tenant_id"))
     return result
 
 
@@ -208,8 +208,8 @@ async def research_report(
 
     report = await build_report(
         pool,
-        UUID(tenant_id),
-        UUID(codebook_version_id) if codebook_version_id else None,
+        uuid_arg(tenant_id, "tenant_id"),
+        uuid_arg(codebook_version_id, "codebook_version_id") if codebook_version_id else None,
         level=level,
         run_manifest={"project_id": project_id},
     )
@@ -241,9 +241,9 @@ async def review_execute(
     conn_str = str(db.get("connection_string", ""))
     return await execute_review(
         pool,
-        UUID(tenant_id),
+        uuid_arg(tenant_id, "tenant_id"),
         conn_str,
-        UUID(assignment_id),
+        uuid_arg(assignment_id, "assignment_id"),
         reviewer,
         decision,
         note,

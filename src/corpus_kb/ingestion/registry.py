@@ -7,15 +7,16 @@ Resolution precedence (plan Section 0, pinned):
   4. ``ingestion.default`` (a strategy name, default "default")
 
 Built-ins register directly in code (see :func:`_ensure_ready`); third-party
-strategies load ONCE through the importlib.metadata entry-point group
-``corpus_kb.ingestion_strategies``. A broken plugin logs a warning and is
-skipped — it never crashes ingest.
+strategies load ONCE via the ``corpus_kb.ingestion_strategies`` entry-point
+group; a broken plugin logs a warning, is skipped, never crashes ingest.
 """
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+
+from corpus_kb.errors import ValidationError
 
 from .base import (
     DEFAULT_STRATEGY_NAME,
@@ -40,16 +41,17 @@ _ready = False
 def register_strategy(strategy: IngestionStrategy) -> None:
     """Register a strategy instance under its ``name`` (idempotent overwrite).
 
-    In-process registration is extension ladder #2 (scripts/power users);
-    entry points are ladder #3; the config mapping is ladder #1.
+    Ladders: in-process #2 (scripts/power users), entry points #3, config #1.
     """
     name = getattr(strategy, "name", None)
     if not isinstance(name, str) or not name:
-        raise ValueError("Ingestion strategy must expose a non-empty string 'name'")
+        raise ValidationError("Ingestion strategy must expose a non-empty string 'name'")
     if not callable(getattr(strategy, "detect", None)) or not callable(
         getattr(strategy, "build_chunks", None)
     ):
-        raise ValueError(f"Ingestion strategy {name!r} must implement detect() and build_chunks()")
+        raise ValidationError(
+            f"Ingestion strategy {name!r} must implement detect() and build_chunks()"
+        )
     _REGISTRY[name] = strategy
 
 
@@ -85,8 +87,7 @@ def _ensure_ready() -> None:
     from .strategies.transcript import TranscriptStrategy
     from .strategies.web import WebStructureStrategy
 
-    # Registration order is detection tie-breaking order (first wins a tie
-    # in _detect_best): specific claimants before the generic fallbacks.
+    # Registration order breaks detection ties (first wins, per _detect_best).
     register_strategy(DefaultStrategy())
     register_strategy(PptxStructureStrategy())
     register_strategy(TranscriptStrategy())

@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import re
 
+from corpus_kb.errors import ValidationError
+
 _IDENTIFIER_RX = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def check_identifier(name: str) -> str:
     """Return ``name`` when it is a plain SQL identifier; raise otherwise."""
     if not _IDENTIFIER_RX.fullmatch(name):
-        raise ValueError(f"not a plain SQL identifier: {name!r}")
+        raise ValidationError(f"not a plain SQL identifier: {name!r}")
     return name
 
 
@@ -30,7 +32,7 @@ def sql_identifier(name: str) -> str:
 def quoted_identifier(name: str) -> str:
     """Quote any identifier with SQL quote doubling (introspected names)."""
     if not name or "\x00" in name:
-        raise ValueError(f"not a usable SQL identifier: {name!r}")
+        raise ValidationError(f"not a usable SQL identifier: {name!r}")
     return '"' + name.replace('"', '""') + '"'
 
 
@@ -42,5 +44,5 @@ def sql_qualified(name: str) -> str:
 def sql_literal(value: str) -> str:
     """Escape ``value`` as a single-quoted SQL string literal."""
     if "\x00" in value:
-        raise ValueError("SQL string literal contains a NUL byte")
+        raise ValidationError("SQL string literal contains a NUL byte")
     return "'" + value.replace("'", "''") + "'"

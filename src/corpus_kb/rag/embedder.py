@@ -442,7 +442,7 @@ def create_embedder(
         return PgmlEmbedder(cfg, pool)
     if provider == "ollama":
         return OllamaEmbedder(cfg)
-    raise ValueError(f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'")
+    raise ConfigError(f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'")
 
 
 async def aembed_batch(

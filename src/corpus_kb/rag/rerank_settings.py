@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, cast
 
+from corpus_kb.errors import ValidationError
+
 # The rerank RULES live in one module (the validate-configs gate and this
 # reader share them); this file keeps the typed settings + defaults.
 from corpus_kb.rag.rerank_rules import return_top_k_error, service_url_error
@@ -105,7 +107,7 @@ def load_rerank_settings(config: dict[str, Any]) -> RerankSettings:
 
     enabled = block.get("enabled", DEFAULT_RERANK_ENABLED)
     if not isinstance(enabled, bool):
-        raise ValueError(f"reranking.enabled must be a bool; got {enabled!r}")
+        raise ValidationError(f"reranking.enabled must be a bool; got {enabled!r}")
     backend_raw = block.get("backend", DEFAULT_RERANK_BACKEND)
     backend = str(backend_raw) if backend_raw is not None else None
     model = str(block.get("model", DEFAULT_RERANK_MODEL))
@@ -117,30 +119,32 @@ def load_rerank_settings(config: dict[str, Any]) -> RerankSettings:
     candidates = _positive_int(block.get("candidates"), DEFAULT_RERANK_CANDIDATES, "candidates")
     top_k_error = return_top_k_error(block.get("return_top_k", DEFAULT_RETURN_TOP_K))
     if top_k_error is not None:
-        raise ValueError(top_k_error)
+        raise ValidationError(top_k_error)
     return_top_k = int(block.get("return_top_k", DEFAULT_RETURN_TOP_K))
     max_pair_tokens = _positive_int(
         block.get("max_pair_tokens"), DEFAULT_MAX_PAIR_TOKENS, "max_pair_tokens"
     )
     floor = block.get("score_floor", DEFAULT_SCORE_FLOOR)
     if isinstance(floor, bool) or not isinstance(floor, (int, float)):
-        raise ValueError(f"reranking.score_floor must be a number; got {floor!r}")
+        raise ValidationError(f"reranking.score_floor must be a number; got {floor!r}")
     calibration = str(block.get("calibration", DEFAULT_CALIBRATION))
     if calibration not in CALIBRATION_MODES:
         modes = ", ".join(sorted(CALIBRATION_MODES))
-        raise ValueError(f"reranking.calibration must be one of ({modes}); got {calibration!r}")
+        raise ValidationError(
+            f"reranking.calibration must be one of ({modes}); got {calibration!r}"
+        )
     timeout = block.get("timeout_seconds", DEFAULT_RERANK_TIMEOUT_SECONDS)
     if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
-        raise ValueError(f"reranking.timeout_seconds must be a number; got {timeout!r}")
+        raise ValidationError(f"reranking.timeout_seconds must be a number; got {timeout!r}")
     if float(timeout) <= 0:
-        raise ValueError(f"reranking.timeout_seconds must be positive; got {timeout!r}")
+        raise ValidationError(f"reranking.timeout_seconds must be positive; got {timeout!r}")
     allow_remote = block.get("allow_remote_urls", DEFAULT_RERANK_ALLOW_REMOTE_URLS)
     if not isinstance(allow_remote, bool):
-        raise ValueError(f"reranking.allow_remote_urls must be a bool; got {allow_remote!r}")
+        raise ValidationError(f"reranking.allow_remote_urls must be a bool; got {allow_remote!r}")
     for key, url in (("reranking.base_url", base_url), ("reranking.llamacpp_url", llamacpp_url)):
         url_error = service_url_error(url, key, allow_remote)
         if url_error is not None:
-            raise ValueError(url_error)
+            raise ValidationError(url_error)
     return RerankSettings(
         enabled=enabled,
         backend=backend,
@@ -162,7 +166,7 @@ def _positive_int(value: object, default: int, name: str) -> int:
     if value is None:
         return default
     if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"reranking.{name} must be an int; got {value!r}")
+        raise ValidationError(f"reranking.{name} must be an int; got {value!r}")
     if value <= 0:
-        raise ValueError(f"reranking.{name} must be a positive int; got {value}")
+        raise ValidationError(f"reranking.{name} must be a positive int; got {value}")
     return value

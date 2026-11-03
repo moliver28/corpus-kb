@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from corpus_kb.errors import InternalError
+
 
 @dataclass(frozen=True)
 class PageItem:
@@ -181,8 +183,15 @@ def page_row(item: PageItem) -> dict[str, object]:
     return row
 
 
-class _MalformedRowError(Exception):
-    """A rich row value failed its shape check (internal signal)."""
+class _MalformedRowError(InternalError):
+    """A rich row value failed its shape check (internal signal).
+
+    The one catch converts the raise to ``None``, so the message never
+    surfaces; it stays empty, byte-identical to the pre-taxonomy bare raise.
+    """
+
+    def __init__(self) -> None:
+        super().__init__("")
 
 
 def _level_in(row: Mapping[str, object]) -> int | None:

@@ -18,6 +18,7 @@ from typing import Any
 import asyncpg
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.storage.age_graph_store import AgeGraphStore, AgeUnavailableError
 from corpus_kb.storage.graph_store import DEFAULT_TENANT_ID, GraphStore
 from corpus_kb.utils.models import Chunk, Document, Entity, Relation
@@ -215,7 +216,7 @@ async def test_bfs_does_not_interpolate_untrusted_start_id(
 
 @pytest.mark.parametrize("bad_depth", ["abc", "1; DROP TABLE", "", None, 0, -5, 26])
 async def test_bfs_depth_is_int_cast_and_bounded(store: AgeGraphStore, bad_depth: object) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         await store.bfs("eid", max_depth=bad_depth)
 
 
@@ -264,7 +265,7 @@ async def test_add_relation_missing_endpoints_raises(
         source_entity_id="ghost-1", target_entity_id="ghost-2", relation_type="CALLS"
     )
     conn.fetch_result = []
-    with pytest.raises(ValueError, match="not found"):
+    with pytest.raises(ValidationError, match="not found"):
         await store.add_relation(relation)
 
 

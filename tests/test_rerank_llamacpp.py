@@ -27,6 +27,7 @@ import pytest
 from corpus_kb._setup import doctor_reranker
 from corpus_kb._setup.doctor_reranker import reranker_backend_check
 from corpus_kb._setup.doctor_research import STATUS_OK, STATUS_WARN
+from corpus_kb.errors import ValidationError
 from corpus_kb.rag.rerank_llamacpp import LlamaCppReranker
 from corpus_kb.rag.rerank_settings import (
     DEFAULT_RERANK_LLAMACPP_URL,
@@ -316,7 +317,7 @@ def test_llamacpp_url_settings_defaults_and_overrides() -> None:
 
 def test_rerank_urls_default_to_local_hosts() -> None:
     """SSRF hardening: remote endpoints need reranking.allow_remote_urls."""
-    with pytest.raises(ValueError, match="must target localhost or a private address"):
+    with pytest.raises(ValidationError, match="must target localhost or a private address"):
         load_rerank_settings({"reranking": {"llamacpp_url": "http://gpu-box:8081"}})
     private = load_rerank_settings({"reranking": {"llamacpp_url": "http://192.168.1.10:8080"}})
     assert private.llamacpp_url == "http://192.168.1.10:8080"
@@ -325,11 +326,11 @@ def test_rerank_urls_default_to_local_hosts() -> None:
 def test_rerank_urls_reject_bad_shapes() -> None:
     """Scheme, host, and credential rules fail loudly at load time."""
     for bad in ("ftp://x", "http://", "not a url"):
-        with pytest.raises(ValueError, match="must be an http or https URL"):
+        with pytest.raises(ValidationError, match="must be an http or https URL"):
             load_rerank_settings({"reranking": {"llamacpp_url": bad}})
-    with pytest.raises(ValueError, match="must not carry credentials"):
+    with pytest.raises(ValidationError, match="must not carry credentials"):
         load_rerank_settings({"reranking": {"llamacpp_url": "http://user:pw@localhost:8080"}})
-    with pytest.raises(ValueError, match="allow_remote_urls must be a bool"):
+    with pytest.raises(ValidationError, match="allow_remote_urls must be a bool"):
         load_rerank_settings({"reranking": {"allow_remote_urls": "yes"}})
 
 

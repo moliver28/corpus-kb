@@ -9,11 +9,10 @@ after each stage boundary (the human confirms in their editor).
 
 from __future__ import annotations
 
-from uuid import UUID
-
 import asyncpg
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
+from corpus_kb.tools._uuid_input import uuid_arg
 
 __all__ = ["research_cycle"]
 
@@ -66,19 +65,21 @@ async def research_cycle(
 
     exit_code = await run_cycle(
         pg_pool,
-        UUID(tenant_id),
+        uuid_arg(tenant_id, "tenant_id"),
         mode=mode,
-        project_id=UUID(project_id) if project_id else None,
+        project_id=uuid_arg(project_id, "project_id") if project_id else None,
         ingest_dir=ingest_dir,
         question=question,
-        codebook_version_id=UUID(codebook_version_id) if codebook_version_id else None,
+        codebook_version_id=uuid_arg(codebook_version_id, "codebook_version_id")
+        if codebook_version_id
+        else None,
         halt_on=halt_on,
         guide=guide,
         json_output=True,
         approve=_approve_all if (mode == "on" and approve) else None,
         cfg=load_config(),
     )
-    checkpoint = await last_cycle_checkpoint(pg_pool, UUID(tenant_id))
+    checkpoint = await last_cycle_checkpoint(pg_pool, uuid_arg(tenant_id, "tenant_id"))
     halted = str(checkpoint.get("kind")) == "gate_halt"
     gate = checkpoint.get("gate") if halted else None
     return {

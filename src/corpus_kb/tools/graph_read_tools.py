@@ -18,10 +18,10 @@ imports ``server_wiring``, which would drag the api adapters in).
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
-from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 
 if TYPE_CHECKING:
@@ -66,10 +66,9 @@ async def search_graph(
     ordered ``(name, entity_id)``. Envelope: ``{"status", "result"}``.
     """
     cfg = load_config_or_pass(config)
+    tenant = uuid_arg(tenant_id, "tenant_id")
     handler = await _resolve_graph_handler(cfg, pg_pool)
-    rows = await handler.handle_search_graph(
-        UUID(tenant_id), query, entity_type=entity_type, limit=limit
-    )
+    rows = await handler.handle_search_graph(tenant, query, entity_type=entity_type, limit=limit)
     return {"status": "success", "result": rows}
 
 
@@ -88,8 +87,10 @@ async def get_entity_relations(
     ``limit=None`` keeps the uncapped read the route always had.
     """
     cfg = load_config_or_pass(config)
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    entity = uuid_arg(entity_id, "entity_id")
     handler = await _resolve_graph_handler(cfg, pg_pool)
-    rows = await handler.handle_get_entity_relations(UUID(tenant_id), UUID(entity_id), limit=limit)
+    rows = await handler.handle_get_entity_relations(tenant, entity, limit=limit)
     return {"status": "success", "result": rows}
 
 
@@ -112,10 +113,12 @@ async def graph_neighbors(
     ``{"status", "result"}``.
     """
     cfg = load_config_or_pass(config)
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    entity = uuid_arg(entity_id, "entity_id")
     handler = await _resolve_graph_handler(cfg, pg_pool)
     return await handler.handle_graph_neighbors(
-        UUID(tenant_id),
-        UUID(entity_id),
+        tenant,
+        entity,
         hops=hops,
         direction=direction,
         relation_types=relation_types,
@@ -143,10 +146,12 @@ async def graph_traverse(
     ``{"status", "result", "truncated"}``.
     """
     cfg = load_config_or_pass(config)
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    entity = uuid_arg(entity_id, "entity_id")
     handler = await _resolve_graph_handler(cfg, pg_pool)
     return await handler.handle_graph_traverse(
-        UUID(tenant_id),
-        UUID(entity_id),
+        tenant,
+        entity,
         max_depth=max_depth,
         relation_types=relation_types,
         entity_types=entity_types,

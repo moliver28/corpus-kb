@@ -6,6 +6,7 @@ import math
 
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.rag.fake_embedder import DEFAULT_DIMENSIONS, PROBE_TEXT, FakeEmbedder
 
 
@@ -94,5 +95,5 @@ def test_cross_process_stability_is_hash_derived_not_rng_seeded() -> None:
 
 
 def test_rejects_non_positive_dimensions() -> None:
-    with pytest.raises(ValueError, match="dimensions"):
+    with pytest.raises(ValidationError, match="dimensions"):
         FakeEmbedder(dimensions=0)

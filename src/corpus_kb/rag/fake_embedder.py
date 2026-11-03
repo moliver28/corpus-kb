@@ -25,6 +25,7 @@ import struct
 import numpy as np
 
 from corpus_kb.dimensions import RESEARCH_EMBEDDING_DIMENSIONS
+from corpus_kb.errors import ValidationError
 from corpus_kb.rag.embedder import instruct as _instruct
 
 DEFAULT_DIMENSIONS = RESEARCH_EMBEDDING_DIMENSIONS
@@ -67,7 +68,7 @@ class FakeEmbedder:
 
     def __init__(self, dimensions: int = DEFAULT_DIMENSIONS) -> None:
         if dimensions <= 0:
-            raise ValueError(f"FakeEmbedder dimensions must be positive; got {dimensions}")
+            raise ValidationError(f"FakeEmbedder dimensions must be positive; got {dimensions}")
         self.dimensions = int(dimensions)
         self.model = "fake-embedder-oracle"
 

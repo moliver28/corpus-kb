@@ -58,7 +58,12 @@ async def wired_store(
     import asyncpg
 
     from corpus_kb.config import load_config
-    from corpus_kb.errors import ConfigError, CorpusError, DatabaseUnavailableError
+    from corpus_kb.errors import (
+        ConfigError,
+        CorpusError,
+        DatabaseUnavailableError,
+        ValidationError,
+    )
 
     if cfg is None:
         cfg = load_config()
@@ -74,7 +79,10 @@ async def wired_store(
             )
         try:
             store: asyncpg.Pool | SqlGateway = await DuckDbGateway.connect(conn_str)
-        except ValueError as exc:
+        except (ValueError, ValidationError) as exc:
+            # ValidationError rides here too: the gateway's DSN normalizer
+            # now raises the taxonomy (issue #229 wave 2), and the friendly
+            # master translation (exit 3) must keep applying to it.
             raise ConfigError(
                 f"Connection string {conn_str!r} is not a usable duckdb:/// DSN."
                 " Use the form duckdb:///C:/data/x.duckdb."

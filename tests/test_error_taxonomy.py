@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 import pytest
@@ -673,3 +673,281 @@ async def test_tag_handler_missing_row_after_insert_raises_internal_error() -> N
     with pytest.raises(InternalError, match="Tag row missing") as excinfo:
         await handler._tag_id(_Reader(), ("tag", "tenant"))
     _assert_triple(excinfo.value, 500, -32603, 1)
+
+
+# ---------------------------------------------------------------------------
+# Wave-2 conversions (issue #229) speak the taxonomy at the raise site
+#
+# Scope: ingestion/, storage/, rag/, web/ plus the bare-UUID residue in
+# ask/cycle/graph/graph_read/research tools. Same wave-1 rule: convert only
+# when the typed class keeps the site's effective wire triple; the disclosed
+# change is the ``error_type`` string (plus the three config-vocabulary sites
+# that move to ConfigError's documented CLI exit 3, named below).
+# ---------------------------------------------------------------------------
+
+
+def test_domain_error_rebases_speak_the_taxonomy() -> None:
+    """Builtin-based domain classes rebase onto the taxonomy (issue #229).
+
+    Each base keeps the class's effective wire triple, so every raise site
+    behind the class moves to the taxonomy with zero envelope change.
+    UnknownStrategyError is deliberately NOT here: its name is unmapped on
+    master (500/internal_error), and a ValidationError rebase would flip
+    reachable unknown-strategy paths to 400 — deferred pending owner
+    sign-off (see the get_strategy pin below).
+    """
+    from corpus_kb.ingestion.strategies.textbook_docling import _MalformedRowError
+    from corpus_kb.rag.embedders._latechunk_types import LateChunkDependencyError
+    from corpus_kb.storage.age_graph_store import AgeUnavailableError
+    from corpus_kb.storage.llamaindex_backend import DimensionMismatchError
+    from corpus_kb.web.fetch import WebFetchError
+
+    assert issubclass(DimensionMismatchError, ValidationError)
+    assert issubclass(_MalformedRowError, InternalError)
+    assert issubclass(AgeUnavailableError, InternalError)
+    assert issubclass(LateChunkDependencyError, InternalError)
+    assert issubclass(WebFetchError, InternalError)
+    # Instance triples ride the class attributes.
+    _assert_triple(WebFetchError("x"), 500, -32603, 1)
+
+
+async def test_get_strategy_unknown_name_keeps_the_master_wire() -> None:
+    """UnknownStrategyError stays on the ValueError base (issue #229 deferral).
+
+    The class name has no ERROR_MAP row, so an escaped failure keeps the
+    master wire: the 500/internal_error envelope and socket -32603. The
+    candidate ValidationError rebase (400/-32602, a client-fault
+    classification) needs explicit owner sign-off — tracked as a deferral.
+    """
+    from corpus_kb.ingestion.registry import UnknownStrategyError, get_strategy
+
+    with pytest.raises(UnknownStrategyError, match="Valid strategies") as excinfo:
+        get_strategy("not-a-strategy")
+    assert not isinstance(excinfo.value, CorpusError)
+    assert error_status("UnknownStrategyError") == 500
+
+
+def test_register_strategy_rejects_a_nameless_strategy() -> None:
+    from corpus_kb.ingestion.base import IngestionStrategy
+    from corpus_kb.ingestion.registry import register_strategy
+
+    class _NoName:
+        name = ""
+
+    with pytest.raises(ValidationError, match="non-empty string") as excinfo:
+        register_strategy(cast(IngestionStrategy, _NoName()))
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+def test_register_strategy_rejects_an_incomplete_strategy() -> None:
+    from corpus_kb.ingestion.base import IngestionStrategy
+    from corpus_kb.ingestion.registry import register_strategy
+
+    class _Half:
+        name = "half"
+
+    with pytest.raises(ValidationError, match="detect") as excinfo:
+        register_strategy(cast(IngestionStrategy, _Half()))
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_create_graph_store_rejects_an_unknown_graph_backend() -> None:
+    from corpus_kb.storage.graph_factory import create_graph_store
+
+    with pytest.raises(ConfigError, match="Unknown graph backend") as excinfo:
+        await create_graph_store(
+            {"database": {"backend": "postgres"}, "graph": {"backend": "bogus"}}
+        )
+    _assert_triple(excinfo.value, 400, -32602, 3)
+
+
+async def test_create_graph_store_rejects_an_unknown_database_backend() -> None:
+    from corpus_kb.storage.graph_factory import create_graph_store
+
+    with pytest.raises(ConfigError, match="Unknown database backend") as excinfo:
+        await create_graph_store({"database": {"backend": "sqlite"}})
+    _assert_triple(excinfo.value, 400, -32602, 3)
+
+
+def test_duckdb_conn_string_rejects_an_unsupported_scheme() -> None:
+    from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path
+
+    with pytest.raises(ValidationError, match="Unsupported connection string") as excinfo:
+        duckdb_conn_string_to_path("mysql://host/db")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+def test_duckpgq_traversal_rejects_an_unknown_direction() -> None:
+    from corpus_kb.storage.duckpgq import traversal_statements
+
+    with pytest.raises(ValidationError, match="direction must be one of") as excinfo:
+        traversal_statements("sideways", 2, "tenant", "entity")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+def test_graph_sql_validators_raise_validation_error() -> None:
+    from corpus_kb.storage.graph_sql import validate_depth, validate_hops
+
+    with pytest.raises(ValidationError, match="hops must be between 1"):
+        validate_hops(0)
+    with pytest.raises(ValidationError, match="max_depth must be 1 or more"):
+        validate_depth(0)
+
+
+async def test_age_neighbors_reject_an_unknown_direction() -> None:
+    from corpus_kb.storage.age_graph_store import AgeGraphStore
+
+    store = AgeGraphStore(cast(Any, object()))
+    with pytest.raises(ValidationError, match="direction must be one of") as excinfo:
+        await store.neighbors("eid", hops=1, direction="sideways")
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_llamaindex_backend_requires_initialize() -> None:
+    from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
+
+    backend = LlamaIndexPostgresBackend({})
+    with pytest.raises(InternalError, match="not initialized") as excinfo:
+        await backend.ingest("source-id", [])
+    _assert_triple(excinfo.value, 500, -32603, 1)
+
+
+def test_create_embedder_rejects_an_unknown_provider() -> None:
+    from corpus_kb.rag.embedder import create_embedder
+
+    with pytest.raises(ConfigError, match="Unknown embedding provider") as excinfo:
+        create_embedder({"embedding": {"provider": "bogus"}}, pool=None)
+    _assert_triple(excinfo.value, 400, -32602, 3)
+
+
+def test_profile_for_model_rejects_an_unknown_model() -> None:
+    from corpus_kb.rag.model_profiles import profile_for_model
+
+    with pytest.raises(ConfigError, match="no EmbeddingModelProfile") as excinfo:
+        profile_for_model("no-such-model")
+    _assert_triple(excinfo.value, 400, -32602, 3)
+
+
+def test_rerank_settings_reject_a_non_bool_enabled() -> None:
+    from corpus_kb.rag.rerank_settings import load_rerank_settings
+
+    with pytest.raises(ValidationError, match=r"reranking.enabled must be a bool") as excinfo:
+        load_rerank_settings({"reranking": {"enabled": "yes"}})
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+# ---------------------------------------------------------------------------
+# Wave-2 bare-UUID wraps: tool caller ids go through uuid_arg -> ValidationError
+# ---------------------------------------------------------------------------
+
+
+async def _bad_tenant(call: Any) -> None:
+    with pytest.raises(ValidationError, match="is not a valid UUID") as excinfo:
+        await call()
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+async def test_ask_rejects_a_malformed_tenant_id() -> None:
+    from corpus_kb.tools import ask_tools
+
+    await _bad_tenant(lambda: ask_tools.ask("q", tenant_id="not-a-uuid"))
+
+
+async def test_research_cycle_rejects_malformed_ids() -> None:
+    from corpus_kb.tools import cycle_tools
+
+    await _bad_tenant(lambda: cycle_tools.research_cycle(object(), tenant_id="not-a-uuid"))
+    await _bad_tenant(lambda: cycle_tools.research_cycle(object(), project_id="not-a-uuid"))
+
+
+async def test_graph_tools_reject_malformed_ids() -> None:
+    from corpus_kb.tools import graph_tools
+
+    await _bad_tenant(lambda: graph_tools.add_entity(object(), "n", tenant_id="not-a-uuid"))
+    await _bad_tenant(
+        lambda: graph_tools.add_relation(
+            object(), source_entity_id="not-a-uuid", target_entity_id=str(uuid4())
+        )
+    )
+
+
+async def test_graph_read_tools_reject_malformed_ids() -> None:
+    from corpus_kb.tools import graph_read_tools
+
+    # The id guard fires BEFORE the graph handler resolves, so no database
+    # or singleton wiring is needed to see the typed rejection.
+    await _bad_tenant(lambda: graph_read_tools.search_graph(object(), "q", tenant_id="not-a-uuid"))
+    await _bad_tenant(lambda: graph_read_tools.get_entity_relations(object(), "not-a-uuid"))
+    await _bad_tenant(
+        lambda: graph_read_tools.graph_neighbors(object(), "e", tenant_id="not-a-uuid")
+    )
+    await _bad_tenant(
+        lambda: graph_read_tools.graph_traverse(object(), "e", tenant_id="not-a-uuid")
+    )
+
+
+async def test_research_tools_reject_malformed_ids() -> None:
+    from corpus_kb.tools import research_tools
+
+    await _bad_tenant(
+        lambda: research_tools.research_ingest_transcript("f.md", object(), tenant_id="not-a-uuid")
+    )
+    await _bad_tenant(
+        lambda: research_tools.research_ingest("f.md", object(), tenant_id="not-a-uuid")
+    )
+    await _bad_tenant(
+        lambda: research_tools.coding_run(object(), str(uuid4()), tenant_id="not-a-uuid")
+    )
+    await _bad_tenant(lambda: research_tools.inductive_run(object(), tenant_id="not-a-uuid"))
+    await _bad_tenant(
+        lambda: research_tools.codebook_promote(object(), 1, "n", "d", tenant_id="not-a-uuid")
+    )
+    await _bad_tenant(lambda: research_tools.research_report(object(), tenant_id="not-a-uuid"))
+    await _bad_tenant(
+        lambda: research_tools.review_execute(
+            object(), str(uuid4()), "accept", "r", tenant_id="not-a-uuid"
+        )
+    )
+
+
+async def test_age_neighbors_reject_non_integer_and_out_of_range_hops() -> None:
+    """Diff-cover pins: the neighbors hop guards speak the taxonomy."""
+    from corpus_kb.storage.age_graph_store import AgeGraphStore
+
+    store = AgeGraphStore(cast(Any, object()))
+    with pytest.raises(ValidationError, match="hops must be an integer"):
+        await store.neighbors("eid", hops="abc")
+    with pytest.raises(ValidationError, match="hops must be between 1"):
+        await store.neighbors("eid", hops=99)
+
+
+async def test_age_traverse_reject_non_integer_and_out_of_range_depth() -> None:
+    """Diff-cover pins: the traverse depth guards speak the taxonomy."""
+    from corpus_kb.storage.age_graph_store import AgeGraphStore
+
+    store = AgeGraphStore(cast(Any, object()))
+    with pytest.raises(ValidationError, match="max_depth must be an integer"):
+        await store.traverse("eid", max_depth="abc")
+    with pytest.raises(ValidationError, match="max_depth must be between 1"):
+        await store.traverse("eid", max_depth=99)
+
+
+def test_neighbors_sql_rejects_an_unknown_direction() -> None:
+    """Diff-cover pin: the SQL builder's own direction guard."""
+    from corpus_kb.storage.graph_sql import neighbors_sql
+
+    with pytest.raises(ValidationError, match="direction must be one of"):
+        neighbors_sql(1, "sideways", "tenant", "entity")
+
+
+async def test_llamaindex_backend_guards_speak_the_taxonomy() -> None:
+    """Diff-cover pins: every lifecycle guard on the LlamaIndex backend."""
+    from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
+
+    with pytest.raises(InternalError, match=r"requires database.connection_string"):
+        await LlamaIndexPostgresBackend({}).initialize()
+    backend = LlamaIndexPostgresBackend({})
+    with pytest.raises(InternalError, match="not initialized"):
+        await backend.retrieve("q", 5)
+    with pytest.raises(InternalError, match="not initialized"):
+        await backend.delete_source("source-id")

@@ -24,6 +24,7 @@ from corpus_kb.dimensions import (
     EMBEDDING_DIMENSIONS,
     NOMIC_EMBEDDING_DIMENSIONS,
 )
+from corpus_kb.errors import ConfigError
 
 
 @dataclass(frozen=True)
@@ -57,7 +58,7 @@ def profile_for_model(model: str) -> EmbeddingModelProfile:
         if profile.model == model:
             return profile
     known = ", ".join(p.model for p in EMBEDDING_MODEL_PROFILES)
-    raise ValueError(f"no EmbeddingModelProfile for {model!r}; known models: {known}")
+    raise ConfigError(f"no EmbeddingModelProfile for {model!r}; known models: {known}")
 
 
 def native_dimensions(model: str) -> int | None:

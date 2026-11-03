@@ -39,7 +39,7 @@ from __future__ import annotations
 from itertools import product
 from typing import TYPE_CHECKING, Any
 
-from ..errors import DatabaseUnavailableError
+from ..errors import DatabaseUnavailableError, ValidationError
 from .graph_sql import MAX_NEIGHBOR_HOPS, validate_depth
 
 if TYPE_CHECKING:
@@ -203,7 +203,7 @@ def traversal_statements(
     CTE seeds (the bfs visited map needs it).
     """
     if direction not in ("in", "out", "both"):
-        raise ValueError(f"direction must be one of ('in', 'out', 'both'), got {direction!r}")
+        raise ValidationError(f"direction must be one of ('in', 'out', 'both'), got {direction!r}")
     validate_depth(max_depth)
     if int(max_depth) > MAX_NEIGHBOR_HOPS:
         raise DuckPGQUnavailableError(

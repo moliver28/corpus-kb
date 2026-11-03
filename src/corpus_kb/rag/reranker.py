@@ -53,6 +53,8 @@ import asyncpg
 import httpx
 from ollama import Client, ResponseError
 
+from corpus_kb.errors import ConfigError
+
 from ..config import load_config
 from ..domain.models import SearchResult
 from ..utils.deterministic import HashRandom
@@ -379,4 +381,4 @@ def create_reranker(
         # than the async Reranker protocol; callers selecting "ollama" use
         # the post-RRF scoring path in QueryHandler.
         return cast(Reranker, OllamaReranker(cfg))
-    raise ValueError(f"Unknown search.reranker {reranker!r}: expected 'none', 'pgml', or 'ollama'")
+    raise ConfigError(f"Unknown search.reranker {reranker!r}: expected 'none', 'pgml', or 'ollama'")

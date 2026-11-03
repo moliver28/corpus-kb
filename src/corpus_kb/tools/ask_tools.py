@@ -13,10 +13,10 @@ to evidence-only with a note, never an error).
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 from corpus_kb.utils.tracing import SPAN_ASK, current_trace_id, span
 
@@ -54,6 +54,7 @@ async def ask(
     from corpus_kb.handlers.query_handler import QueryHandler
     from corpus_kb.rag import create_embedder
 
+    tenant = uuid_arg(tenant_id, "tenant_id")
     cfg = load_config_or_pass(config)
     with span(SPAN_ASK):
         own_pool: asyncpg.Pool | None = None
@@ -69,7 +70,7 @@ async def ask(
                 handler,
                 LlmHandler(cfg),
                 judge=_resolve_judge(cfg),
-                tenant_id=UUID(tenant_id),
+                tenant_id=tenant,
                 k=k,
             )
             payload = bundle.to_payload()
