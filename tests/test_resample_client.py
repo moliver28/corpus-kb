@@ -35,7 +35,12 @@ def test_extract_raw_reads_object_and_dict_responses() -> None:
 
     assert _extract_raw(Reply()) == "from attr"
     assert _extract_raw({"response": "from dict"}) == "from dict"
-    assert _extract_raw({"response": None, "other": "x"}) == "None"
+
+
+def test_clean_none_is_empty_not_the_string_none() -> None:
+    """A null/missing reply field yields '' (no fabricated rationale)."""
+    assert _clean(None) == ""
+    assert _extract_raw({"response": None, "other": "x"}) == ""
 
 
 async def test_resample_rationales_collect_seeded_samples(monkeypatch) -> None:

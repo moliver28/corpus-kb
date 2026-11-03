@@ -49,7 +49,14 @@ def build_resample_prompt(text: str, code_name: str, definition: str) -> str:
 
 
 def _clean(raw: object) -> str:
-    """Strip a leaked reasoning block and squeeze whitespace; '' if empty."""
+    """Strip a leaked reasoning block and squeeze whitespace.
+
+    None means NO rationale (a null/missing reply field on the degrade
+    path): the honest result is '' — the caller drops the sample — never
+    the truthy string ``"None"`` passed off as a rationale.
+    """
+    if raw is None:
+        return ""
     body = _THINK_BLOCK.sub(" ", str(raw))
     return " ".join(body.split())
 
