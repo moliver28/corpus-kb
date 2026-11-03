@@ -349,3 +349,13 @@ def _handler(config: dict[str, object], pool: MagicMock) -> QueryHandler:
     pool.acquire.return_value.__aenter__ = AsyncMock(return_value=AsyncMock())
     pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
     return QueryHandler(cast("object", pool), reranker=None, config=config)
+
+
+def test_rerank_settings_reject_bad_timeout_and_urls() -> None:
+    """Diff-cover pins: the timeout and service-URL guards speak the taxonomy."""
+    with pytest.raises(ValidationError, match="timeout_seconds must be a number"):
+        load_rerank_settings({"reranking": {"timeout_seconds": "slow"}})
+    with pytest.raises(ValidationError, match="timeout_seconds must be positive"):
+        load_rerank_settings({"reranking": {"timeout_seconds": 0}})
+    with pytest.raises(ValidationError, match="must be an http or https URL"):
+        load_rerank_settings({"reranking": {"base_url": "ftp://x"}})

@@ -902,3 +902,46 @@ async def test_research_tools_reject_malformed_ids() -> None:
             object(), str(uuid4()), "accept", "r", tenant_id="not-a-uuid"
         )
     )
+
+
+async def test_age_neighbors_reject_non_integer_and_out_of_range_hops() -> None:
+    """Diff-cover pins: the neighbors hop guards speak the taxonomy."""
+    from corpus_kb.storage.age_graph_store import AgeGraphStore
+
+    store = AgeGraphStore(cast(Any, object()))
+    with pytest.raises(ValidationError, match="hops must be an integer"):
+        await store.neighbors("eid", hops="abc")
+    with pytest.raises(ValidationError, match="hops must be between 1"):
+        await store.neighbors("eid", hops=99)
+
+
+async def test_age_traverse_reject_non_integer_and_out_of_range_depth() -> None:
+    """Diff-cover pins: the traverse depth guards speak the taxonomy."""
+    from corpus_kb.storage.age_graph_store import AgeGraphStore
+
+    store = AgeGraphStore(cast(Any, object()))
+    with pytest.raises(ValidationError, match="max_depth must be an integer"):
+        await store.traverse("eid", max_depth="abc")
+    with pytest.raises(ValidationError, match="max_depth must be between 1"):
+        await store.traverse("eid", max_depth=99)
+
+
+def test_neighbors_sql_rejects_an_unknown_direction() -> None:
+    """Diff-cover pin: the SQL builder's own direction guard."""
+    from corpus_kb.storage.graph_sql import neighbors_sql
+
+    with pytest.raises(ValidationError, match="direction must be one of"):
+        neighbors_sql(1, "sideways", "tenant", "entity")
+
+
+async def test_llamaindex_backend_guards_speak_the_taxonomy() -> None:
+    """Diff-cover pins: every lifecycle guard on the LlamaIndex backend."""
+    from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
+
+    with pytest.raises(InternalError, match=r"requires database.connection_string"):
+        await LlamaIndexPostgresBackend({}).initialize()
+    backend = LlamaIndexPostgresBackend({})
+    with pytest.raises(InternalError, match="not initialized"):
+        await backend.retrieve("q", 5)
+    with pytest.raises(InternalError, match="not initialized"):
+        await backend.delete_source("source-id")
