@@ -115,7 +115,9 @@ async def evidence_for_code(
                 str(pinned_run) if pinned_run is not None else None,
             )
         }
-        conformal = await _conformal_per_unit(conn, tenant_id, pinned_run)
+        checkpoint = await _pinned_checkpoint(conn, tenant_id, pinned_run)
+        conformal = _conformal_per_unit(checkpoint)
+        ranking = _ranking_per_unit(checkpoint)
     tabs: dict[str, list[dict[str, Any]]] = {"explicit": [], "question_dependent": []}
     for row in rows:
         basis = str(row["evidence_basis"] or "explicit_in_answer")
@@ -139,6 +141,10 @@ async def evidence_for_code(
             "unit_seq": int(row["unit_seq"]),
             "t_start": row["t_start"],
         }
+        ranked = ranking.get(unit_id)
+        if ranked is not None:
+            entry["review_priority"] = float(ranked.get("priority", 0.0))
+            entry["review_reason"] = str(ranked.get("reason", ""))
         tabs[tab].append(entry)
     for tab in tabs:
         tabs[tab] = sorted(
@@ -175,10 +181,10 @@ async def _pinned_run_for_version(
     return UUID(str(row["run_id"]))
 
 
-async def _conformal_per_unit(
+async def _pinned_checkpoint(
     conn: asyncpg.Connection | SqlGateway, tenant_id: UUID, pinned_run: UUID | None
-) -> dict[int, int]:
-    """Per-unit conformal set sizes (>1 only) from the pinned run checkpoint."""
+) -> dict[str, Any]:
+    """The pinned run's checkpoint body; {} when no run is pinned."""
     if pinned_run is None:
         return {}
     row = await conn.fetchrow(_RUN_CHECKPOINT_SQL, str(tenant_id), str(pinned_run))
@@ -187,8 +193,24 @@ async def _conformal_per_unit(
     checkpoint = row["checkpoint"]
     if isinstance(checkpoint, str):
         checkpoint = json.loads(checkpoint or "{}")
-    per_unit = (dict(checkpoint or {}).get("conformal") or {}).get("per_unit") or {}
+    return dict(checkpoint or {})
+
+
+def _conformal_per_unit(checkpoint: dict[str, Any]) -> dict[int, int]:
+    """Per-unit conformal set sizes (>1 only) from the pinned checkpoint."""
+    per_unit = (checkpoint.get("conformal") or {}).get("per_unit") or {}
     return {int(unit_id): int(size) for unit_id, size in dict(per_unit).items()}
+
+
+def _ranking_per_unit(checkpoint: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    """Per-unit review-priority rows from the pinned checkpoint (issue #132).
+
+    Present only when the run recorded a ``review_priority`` block, so
+    pre-wiring snapshots stay byte-identical.
+    """
+    block = checkpoint.get("review_priority") or {}
+    rows = block.get("units") or []
+    return {int(row["unit_id"]): dict(row) for row in rows if row.get("unit_id") is not None}
 
 
 def _unit_margins(assignments: list[dict[str, Any]]) -> dict[int, float]:

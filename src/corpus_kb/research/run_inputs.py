@@ -30,6 +30,7 @@ class UnitViews:
     stance: str | None
     term_origin: str | None
     source_type: str | None = None
+    text: str | None = None
 
 
 def _vecs(value: Any) -> list[float]:
@@ -38,7 +39,7 @@ def _vecs(value: Any) -> list[float]:
 
 _UNIT_VIEW_SQL = """
 SELECT u.unit_id, u.embedding AS a_vec, x.embedding AS qa_vec,
-       q.embedding AS q_vec, x.stance, x.term_origin, d.source_type
+       q.embedding AS q_vec, x.stance, x.term_origin, d.source_type, u.text
 FROM research_units u
 JOIN research_exchanges x
   ON x.exchange_id = u.exchange_id AND x.tenant_id = u.tenant_id
@@ -87,6 +88,7 @@ async def load_unit_views(
             stance=row["stance"],
             term_origin=row["term_origin"],
             source_type=row["source_type"],
+            text=row["text"],
         )
         for row in rows
     ]
@@ -97,7 +99,7 @@ async def load_codes(
 ) -> list[dict[str, Any]]:
     rows = await conn.fetch(
         """
-        SELECT code_id, theory FROM code_registry
+        SELECT code_id, name, brief_definition, theory FROM code_registry
         WHERE tenant_id = $1 AND codebook_version_id = $2
         """,
         str(tenant_id),
@@ -108,7 +110,14 @@ async def load_codes(
         theory = row["theory"]
         if isinstance(theory, str):
             theory = json.loads(theory or "{}")
-        codes.append({"code_id": str(row["code_id"]), "theory": theory or {}})
+        codes.append(
+            {
+                "code_id": str(row["code_id"]),
+                "name": str(row["name"] or ""),
+                "definition": str(row["brief_definition"] or ""),
+                "theory": theory or {},
+            }
+        )
     return codes
 
 
