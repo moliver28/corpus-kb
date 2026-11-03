@@ -5,8 +5,8 @@ stored ``chunk_predictions`` against gold ``chunk_labels`` through these
 helpers. Both are pure functions with one determinism contract: labels
 sort ascending unless the caller passes an explicit order, matrix rows
 are true labels and columns are predicted labels, and every float is
-rounded to 6 places (the byte-determinism convention). A class that no
-row reaches scores 0.0 — never NaN, never a guess.
+rounded to 6 places (the byte-determinism convention). A class with no
+true positives and no predictions scores 0.0 — never NaN, never a guess.
 
 The Postgres readers for the paired rows live at the bottom of this
 module; ``tools/analysis_tools.py`` is their only consumer.
@@ -43,9 +43,8 @@ def _resolve_labels(
 ) -> list[str]:
     """The label order: explicit when given, else the sorted union.
 
-    The explicit order IS the caller's vocabulary; a label no row
-    reached keeps its all-zero row (an absent class is a result, not an
-    error).
+    The explicit order IS the caller's vocabulary; a label no row reached
+    keeps its all-zero row (an absent class is a result, not an error).
     """
     if labels is not None:
         return list(labels)
