@@ -20,9 +20,9 @@ from typer.testing import CliRunner
 
 from corpus_kb import cli
 from corpus_kb.cli.cli_release import _waiver_pairs
-from corpus_kb.errors import ValidationError
 from corpus_kb.cli.cli_store import StoreWired
 from corpus_kb.domain.codebook import CodebookVersion
+from corpus_kb.errors import ValidationError
 from corpus_kb.handlers import release_handlers as rh
 from corpus_kb.research import guide_copy
 from corpus_kb.research.release.gate_types import GateInputs

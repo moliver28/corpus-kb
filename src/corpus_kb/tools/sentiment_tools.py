@@ -15,8 +15,8 @@ review, and a chunk with no lexicon word gets no row at all.
 
 Honest outcomes: ``disabled`` (``analysis.sentiment.enabled`` false),
 ``unavailable`` (the lexicon file is missing), ``empty`` (no chunks).
-A malformed lexicon file raises ``ValueError`` with the fix — a broken
-input never becomes a quiet empty run. Floats round to 6 places.
+A malformed lexicon file raises ``ValidationError`` with the fix — a
+broken input never becomes a quiet empty run. Floats round to 6 places.
 """
 
 from __future__ import annotations
@@ -25,6 +25,8 @@ from pathlib import Path
 
 import asyncpg
 import yaml
+
+from corpus_kb.errors import ValidationError
 
 from ..analysis.settings import load_analysis_settings
 from ..coding.aggregation import aggregate_signals
@@ -62,26 +64,26 @@ def load_lexicon(path: str) -> tuple[list[str], list[str]]:
     try:
         raw: object = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
     except OSError as exc:
-        raise ValueError(f"lexicon file {path!r} is not readable: {exc.strerror}") from exc
+        raise ValidationError(f"lexicon file {path!r} is not readable: {exc.strerror}") from exc
     except yaml.YAMLError as exc:
-        raise ValueError(f"lexicon file {path!r} is not valid YAML: {exc}") from exc
+        raise ValidationError(f"lexicon file {path!r} is not valid YAML: {exc}") from exc
     if not isinstance(raw, dict):
-        raise ValueError(f"lexicon file {path!r} must hold positive and negative word lists.")
+        raise ValidationError(f"lexicon file {path!r} must hold positive and negative word lists.")
     lists: list[list[str]] = []
     for name in ("positive", "negative"):
         words = raw.get(name)
         if not isinstance(words, list) or not words:
-            raise ValueError(f'lexicon file {path!r}: the "{name}" list is missing or empty.')
+            raise ValidationError(f'lexicon file {path!r}: the "{name}" list is missing or empty.')
         for word in words:
             if not isinstance(word, str) or not word.strip():
-                raise ValueError(
+                raise ValidationError(
                     f'lexicon file {path!r}: every "{name}" entry must be a non-empty string.'
                 )
         lists.append([str(word) for word in words])
     positive, negative = lists
     overlap = sorted(set(positive) & set(negative))
     if overlap:
-        raise ValueError(
+        raise ValidationError(
             f"lexicon file {path!r}: the lists must stay disjoint. Shared words: "
             f"{', '.join(overlap)}."
         )

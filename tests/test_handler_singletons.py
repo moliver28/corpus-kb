@@ -17,6 +17,7 @@ from typing import cast
 import asyncpg
 import pytest
 
+from corpus_kb.errors import InternalError
 from corpus_kb.handlers import (
     coding_handler,
     command_handler,
@@ -27,7 +28,6 @@ from corpus_kb.handlers import (
     tag_handler,
     versioning_handler,
 )
-from corpus_kb.errors import InternalError
 from corpus_kb.handlers.command_handler import CommandHandler
 from corpus_kb.handlers.idempotency import IdempotencyChecker
 

@@ -31,6 +31,7 @@ from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
+from corpus_kb.errors import NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
@@ -129,7 +130,7 @@ class ResearchHandler:
         """
         file_path = Path(path)
         if not file_path.exists():
-            raise FileNotFoundError(path)
+            raise NotFoundError(path)
         decision = await plan_file(self._pool, tenant_id, file_path, force=force)
         if decision.skipped:
             return {
@@ -352,7 +353,7 @@ class ResearchHandler:
     ) -> dict[str, Any]:
         assignment = self.app.repository.get(assignment_aggregate_id)
         if not isinstance(assignment, CodingAssignment):
-            raise ValueError(f"aggregate {assignment_aggregate_id} is not a CodingAssignment")
+            raise ValidationError(f"aggregate {assignment_aggregate_id} is not a CodingAssignment")
         assignment.review(tenant_id=tenant_id, reviewer=reviewer, decision=decision, note=note)
         self.app.save(assignment)
         return {"status": "success", "assignment_id": str(assignment.id), "decision": decision}
@@ -363,7 +364,7 @@ class ResearchHandler:
         """Set one code's synthesized keyword list (KeywordSetUpdated event)."""
         version = self.app.repository.get(version_id)
         if not isinstance(version, CodebookVersion):
-            raise ValueError(f"aggregate {version_id} is not a CodebookVersion")
+            raise ValidationError(f"aggregate {version_id} is not a CodebookVersion")
         version.update_keywords(tenant_id=tenant_id, code_id=code_id, keywords=keywords)
         self.app.save(version)
         return {
@@ -376,7 +377,7 @@ class ResearchHandler:
     def _load_run(self, run_id: UUID) -> CodingRun:
         run = self.app.repository.get(run_id)
         if not isinstance(run, CodingRun):
-            raise ValueError(f"aggregate {run_id} is not a CodingRun")
+            raise ValidationError(f"aggregate {run_id} is not a CodingRun")
         return run
 
 

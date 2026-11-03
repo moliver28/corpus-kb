@@ -15,6 +15,7 @@ import asyncpg
 import pytest
 
 from corpus_kb.domain.models import SearchQuery
+from corpus_kb.errors import ConfigError
 from corpus_kb.handlers.query_handler import QueryHandler
 from tests.mock_pg import transaction_cm
 
@@ -255,7 +256,7 @@ async def test_unknown_provider_raises_clear_error() -> None:
         pool=mock_pool,
         config={"embedding": {"provider": "typo-provider", "model": "x"}},
     )
-    with pytest.raises(ValueError, match="typo-provider"):
+    with pytest.raises(ConfigError, match="typo-provider"):
         await handler.handle_search(SearchQuery(query="x", k=2))
 
 

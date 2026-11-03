@@ -20,6 +20,7 @@ import asyncpg
 
 from corpus_kb.config import load_config
 from corpus_kb.domain.models import SearchQuery
+from corpus_kb.errors import ConfigError
 from corpus_kb.handlers.query_integrity import (
     PG_LEXICAL_INDEX_MODE,
     PG_VECTOR_INDEX_MODE,
@@ -269,7 +270,7 @@ class PostgresSearchBackend:
             # cannot run at all — say so instead of a silent FTS-only answer.
             vector_results, arm_reason = [], REASON_NO_EMBEDDER
         else:
-            raise ValueError(
+            raise ConfigError(
                 f"Unknown embedding provider {provider!r}: expected 'pgml' or 'ollama'"
             )
         if arm_reason:

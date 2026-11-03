@@ -33,6 +33,7 @@ from corpus_kb.domain.models import (
     IngestFileCommand,
     IngestTextCommand,
 )
+from corpus_kb.errors import InternalError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.handlers.delete_audit import attach_delete_event
 from corpus_kb.storage.gateway import SqlGateway
@@ -75,7 +76,7 @@ class CommandHandler:
 
     def _require_pool(self) -> asyncpg.Pool:
         if self._pool is None:
-            raise RuntimeError("CommandHandler requires an asyncpg.Pool for ingest.")
+            raise InternalError("CommandHandler requires an asyncpg.Pool for ingest.")
         return self._pool
 
     async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, Any]:
@@ -183,7 +184,7 @@ class CommandHandler:
         """
         store = self._pool if self._pool is not None else self._gateway
         if store is None:
-            raise RuntimeError("CommandHandler needs an asyncpg pool or a gateway for deletes.")
+            raise InternalError("CommandHandler needs an asyncpg pool or a gateway for deletes.")
         result = await delete_document_tool(
             str(cmd.doc_id),
             store,

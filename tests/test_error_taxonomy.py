@@ -561,9 +561,7 @@ async def test_unknown_embedding_provider_raises_config_error() -> None:
     from corpus_kb.domain.models import SearchQuery
     from corpus_kb.handlers.query_search_pg import PostgresSearchBackend
 
-    backend = PostgresSearchBackend(
-        embedder=None, config={"embedding": {"provider": "bogus"}}
-    )
+    backend = PostgresSearchBackend(embedder=None, config={"embedding": {"provider": "bogus"}})
     query = SearchQuery(tenant_id=uuid4(), query="q")
     with pytest.raises(ConfigError, match="Unknown embedding provider") as excinfo:
         await backend._vector_arm_rows(object(), query, "q", [], "", 10, [])
@@ -646,7 +644,7 @@ def test_command_handler_requires_a_pool_for_ingest() -> None:
     from corpus_kb.handlers.command_handler import CommandHandler
 
     handler = CommandHandler(pool=None, gateway=None)
-    with pytest.raises(InternalError, match="requires an asyncpg.Pool") as excinfo:
+    with pytest.raises(InternalError, match="requires an asyncpg") as excinfo:
         handler._require_pool()
     _assert_triple(excinfo.value, 500, -32603, 1)
 

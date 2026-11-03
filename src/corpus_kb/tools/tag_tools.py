@@ -14,10 +14,10 @@ GET routes return: ``{"status": "success", "result": [...]}``.
 from __future__ import annotations
 
 from typing import Any
-from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID
 
 __all__ = ["get_document_tags", "get_metadata"]
@@ -38,7 +38,9 @@ async def get_document_tags(
     from corpus_kb.handlers.tag_handler import TagHandler
 
     handler = TagHandler(pg_pool)
-    rows = await handler.handle_get_document_tags(UUID(tenant_id), UUID(doc_id))
+    rows = await handler.handle_get_document_tags(
+        uuid_arg(tenant_id, "tenant_id"), uuid_arg(doc_id, "doc_id")
+    )
     return {"status": "success", "result": rows}
 
 
@@ -59,8 +61,8 @@ async def get_metadata(
 
     handler = TagHandler(pg_pool)
     rows = await handler.handle_get_metadata(
-        UUID(tenant_id),
+        uuid_arg(tenant_id, "tenant_id"),
         key,
-        UUID(doc_id) if doc_id else None,
+        uuid_arg(doc_id, "doc_id") if doc_id else None,
     )
     return {"status": "success", "result": rows}

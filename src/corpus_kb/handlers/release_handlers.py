@@ -38,6 +38,7 @@ import asyncpg
 
 from corpus_kb.domain.application import CorpusApplication
 from corpus_kb.domain.codebook import CodebookVersion
+from corpus_kb.errors import ValidationError
 from corpus_kb.research.release.compare import ReleaseDiff, compare_releases
 from corpus_kb.research.release.events import GATE_STATUSES
 from corpus_kb.research.release.gate_reads import (
@@ -643,7 +644,7 @@ async def execute_release(
         )
     for gate_id, justification in waivers:
         if gate_id not in ALL_RELEASE_GATES:
-            raise ValueError(
+            raise ValidationError(
                 f"unknown release gate {gate_id!r} (known: {sorted(ALL_RELEASE_GATES)})"
             )
         service.record_waiver(aggregate, release_id, gate_id, justification, approver, _now_iso())
