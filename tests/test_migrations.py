@@ -97,7 +97,9 @@ async def _skip_unless_tables_owned(conn: asyncpg.Connection) -> None:
         """
         SELECT c.relname, pg_get_userbyid(c.relowner) AS owner
         FROM pg_class c
+        JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE c.relname = ANY($1::text[]) AND c.relkind = 'r'
+          AND n.nspname = 'public'
           AND pg_get_userbyid(c.relowner) <> current_user
         ORDER BY c.relname
         """,
