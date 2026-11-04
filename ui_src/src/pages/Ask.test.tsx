@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useLocation } from "react-router";
 import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import type { MinimalResponse } from "../test/testUtils";
@@ -7,15 +9,29 @@ import askDegraded from "../test/fixtures/ask-degraded-200.json";
 import askEmpty from "../test/fixtures/ask-empty-200.json";
 import askSuccess from "../test/fixtures/ask-success-200.json";
 import notebookAnswer from "../test/fixtures/notebook-answer-200.json";
+import projectsOk from "../test/fixtures/projects-ok-200.json";
 import searchOk from "../test/fixtures/search-ok-200.json";
+import unavailable503 from "../test/fixtures/unavailable-503.json";
 import Ask from "./Ask";
 
 /**
  * The Ask page from canonical fixtures: the cited answer with its
  * verified badge, the exact program strings for the empty and degraded
  * states, the search tab with the degraded-excluded count, the notebook
- * tab with its retrieval-only toggle, and the honest verify gap.
+ * tab with its project picker and retrieval-only toggle, and the
+ * URL-synced switcher (default, restore, write rows).
  */
+
+let query = "";
+
+/** Reports the router location's query so rows can assert the write. */
+function QueryProbe() {
+  const search = useLocation().search;
+  useEffect(() => {
+    query = search;
+  });
+  return null;
+}
 
 function askRoutes(reply: MinimalResponse) {
   return [{ method: "POST", path: "/api/ask", reply }];
@@ -26,6 +42,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   window.sessionStorage.clear();
   clearCalls();
+  query = "";
 });
 
 async function askQuestion(question: string): Promise<void> {
@@ -151,13 +168,18 @@ describe("Ask page", () => {
 
   it("asks the notebook with the retrieval-only toggle on", async () => {
     stubFetch([
+      {
+        method: "GET",
+        path: "/api/projects",
+        reply: respond(200, projectsOk.response.body),
+      },
       { method: "POST", path: "/api/notebook/ask", reply: respond(200, notebookAnswer.response.body) },
     ]);
     render(<Ask />, { wrapper: makeWrapper() });
     fireEvent.click(await screen.findByRole("button", { name: strings.askTabNotebook }));
-    fireEvent.change(await screen.findByPlaceholderText(strings.askNotebookProjectLabel), {
-      target: { value: "11111111-2222-4333-8444-555566667777" },
-    });
+    // The project comes from the picker, not a typed UUID.
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByText("Grid Interviews"));
     // Two "Question" inputs exist now (the ask card and the notebook
     // card); the notebook's is the second in the DOM.
     const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
@@ -173,16 +195,22 @@ describe("Ask page", () => {
     ).toBeTruthy();
     expect(screen.getAllByText(/Outage interview 1/).length).toBeGreaterThan(0);
     const sent = calls.find((c) => c.url.includes("/api/notebook/ask"));
+    expect(sent?.body).toContain('"project_id":"11111111-2222-4333-8444-555566667777"');
     expect(sent?.body).toContain('"retrieval_only":true');
   });
 
   it("clears a stale notebook field error when the field is corrected", async () => {
     stubFetch([
+      {
+        method: "GET",
+        path: "/api/projects",
+        reply: respond(200, projectsOk.response.body),
+      },
       { method: "POST", path: "/api/notebook/ask", reply: respond(200, notebookAnswer.response.body) },
     ]);
     render(<Ask />, { wrapper: makeWrapper() });
     fireEvent.click(await screen.findByRole("button", { name: strings.askTabNotebook }));
-    // One empty submit marks both fields.
+    // One empty submit marks both fields (the project stays unpicked).
     fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));
     expect(screen.getByText(strings.askNotebookProjectRequired)).toBeTruthy();
     expect(screen.getByText(strings.askQueryRequired)).toBeTruthy();
@@ -198,6 +226,48 @@ describe("Ask page", () => {
     expect(calls.some((c) => c.url.includes("/api/notebook/ask"))).toBe(false);
   });
 
+  it("falls back to the typed project id when the project list fails", async () => {
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/projects",
+        reply: respond(503, unavailable503.response.body),
+      },
+      { method: "POST", path: "/api/notebook/ask", reply: respond(200, notebookAnswer.response.body) },
+    ]);
+    render(<Ask />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.askTabNotebook }));
+    // The failed read keeps its error panel and the typed-id path.
+    expect(await screen.findByText(strings.unavailableTitle)).toBeTruthy();
+    expect(screen.getByText(strings.askProjectsFallback)).toBeTruthy();
+    fireEvent.change(await screen.findByPlaceholderText(strings.askNotebookProjectLabel), {
+      target: { value: "11111111-2222-4333-8444-555566667777" },
+    });
+    const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
+    fireEvent.change(questionInputs[questionInputs.length - 1], {
+      target: { value: "what caused the outage?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));
+    expect(
+      await screen.findByText("Residents blamed storm damage for the outage [1]."),
+    ).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/notebook/ask"));
+    expect(sent?.body).toContain('"project_id":"11111111-2222-4333-8444-555566667777"');
+  });
+
+  it("shows the honest empty state when no projects exist", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/projects", reply: respond(200, { status: "success", result: [] }) },
+    ]);
+    render(<Ask />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.askTabNotebook }));
+    expect(await screen.findByText(strings.askProjectsEmpty)).toBeTruthy();
+    // The picker read ran once on mount; no typed fallback on an empty
+    // ledger — the banner is the honest answer.
+    expect(calls.filter((c) => c.url.includes("/api/projects")).length).toBe(1);
+    expect(screen.queryByPlaceholderText(strings.askNotebookProjectLabel)).toBeNull();
+  });
+
   it("wires the verify tab with no gap banner", async () => {
     stubFetch([]);
     render(<Ask />, { wrapper: makeWrapper() });
@@ -205,5 +275,37 @@ describe("Ask page", () => {
     // The verify manifest row landed (issue #182), so the honest gap
     // banner is gone.
     expect(screen.queryByText(strings.askVerifyNotWired)).toBeNull();
+  });
+
+  it("restores the verify tab from the address query", async () => {
+    stubFetch([]);
+    render(<Ask />, { wrapper: makeWrapper(true, ["/ask?tab=verify"]) });
+    expect(
+      screen.getByRole("button", { name: strings.askTabVerify }).getAttribute("aria-pressed"),
+    ).toBe("true");
+  });
+
+  it("falls back to the search tab when the query word is unknown", async () => {
+    stubFetch([]);
+    render(<Ask />, { wrapper: makeWrapper(true, ["/ask?tab=bogus"]) });
+    // The switcher and the pane's submit share the "Search" name; the
+    // switcher renders first.
+    const switcher = (
+      await screen.findAllByRole("button", { name: strings.askTabSearch })
+    )[0];
+    expect(switcher.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("writes the active tab into the address query", async () => {
+    stubFetch([]);
+    render(
+      <>
+        <Ask />
+        <QueryProbe />
+      </>,
+      { wrapper: makeWrapper() },
+    );
+    fireEvent.click(await screen.findByRole("button", { name: strings.askTabVerify }));
+    expect(query).toBe("?tab=verify");
   });
 });

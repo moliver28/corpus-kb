@@ -9,12 +9,15 @@ import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
 import EvidenceList from "./EvidenceList";
+import ProjectField from "./ProjectField";
 import { isNotebookEnvelope, notebookEvidence, notebookSentences } from "./shapes";
 
 /**
  * The notebook tab: grounded Q&A scoped to one research project, with a
- * retrieval-only switch (no LLM call). No verify badge here: the
- * notebook answer path runs no judge, so none is claimed.
+ * retrieval-only switch (no LLM call). The project comes from the
+ * projects-list picker; a failed list read falls back to the typed id.
+ * No verify badge here: the notebook answer path runs no judge, so none
+ * is claimed.
  */
 export default function NotebookCard() {
   const [projectId, setProjectId] = useState("");
@@ -108,16 +111,7 @@ export default function NotebookCard() {
     <Card title={strings.askTabNotebook}>
       <div className="ui-stack" ref={rootRef}>
         <div className="ui-actions">
-          <LabeledField
-            label={strings.askNotebookProjectLabel}
-            value={projectId}
-            onChange={setProjectId}
-            error={projectError}
-            required
-            machine
-            name="project_id"
-            widthClass="ui-narrow--short"
-          />
+          <ProjectField value={projectId} onChange={setProjectId} error={projectError} />
           <LabeledField
             label={strings.askQueryLabel}
             value={question}

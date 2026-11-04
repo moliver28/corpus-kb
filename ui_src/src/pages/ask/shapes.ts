@@ -210,3 +210,25 @@ export function notebookSentences(env: NotebookEnvelope): Citation[] {
       .join(", "),
   }));
 }
+
+/** One research project row (tools/lifecycle_read_tools.py projects_list). */
+export interface ProjectRow {
+  project_id: string;
+  name: string;
+}
+
+interface ProjectsEnvelope {
+  status: string;
+  result: ProjectRow[];
+}
+
+export function isProjectsEnvelope(value: unknown): value is ProjectsEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  if (!Array.isArray(v.result)) return false;
+  return v.result.every((row) => {
+    if (typeof row !== "object" || row === null) return false;
+    const r = row as Record<string, unknown>;
+    return typeof r.project_id === "string" && typeof r.name === "string";
+  });
+}
