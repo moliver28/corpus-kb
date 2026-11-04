@@ -1,6 +1,6 @@
 import { Card, Tag } from "antd";
 import { useState } from "react";
-import { verifyBadge, type VerifySummary } from "../api/verify";
+import { verifyBadge, type BadgeLabel, type VerifySummary } from "../api/verify";
 import { BADGE_THRESHOLDS } from "../api/thresholds.generated";
 import { strings } from "../strings";
 
@@ -11,11 +11,16 @@ export interface Citation {
   sources?: string[];
 }
 
-const LABELS: Record<"verified" | "partial" | "not verified", string> = {
+const LABELS: Record<BadgeLabel, string> = {
   verified: strings.verifyLabelVerified,
   partial: strings.verifyLabelPartial,
   "not verified": strings.verifyLabelNotVerified,
 };
+
+/** The user-facing word for one badge label (shared with VerifyCard). */
+export function badgeLabelText(label: BadgeLabel): string {
+  return LABELS[label];
+}
 
 /** One source label -> its basename (full paths never render on screen). */
 function basename(label: string): string {

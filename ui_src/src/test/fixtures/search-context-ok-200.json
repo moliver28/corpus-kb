@@ -1,0 +1,39 @@
+{
+  "name": "search-context-ok-200",
+  "source": "canonical",
+  "note": "POST /api/search/context success (routes_search.py search_context -> list[SearchResult] with surrounding chunks). Re-record against a running server with an embedded corpus.",
+  "request": {
+    "method": "POST",
+    "path": "/api/search/context"
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": [
+        {
+          "chunk_id": "2222bbbb-3333-4ccc-8ddd-4444eeee5555",
+          "doc_id": "5555eeee-6666-4fff-8aaa-4444bbbb5555",
+          "source": "F:\\corpus\\demo-kb\\grid-brief.md",
+          "text": "The grid plan adds storage before the winter peak.",
+          "score": 0.84,
+          "file_path": "F:\\corpus\\demo-kb\\grid-brief.md",
+          "heading_path": [
+            "Storage"
+          ]
+        },
+        {
+          "chunk_id": "3333cccc-4444-4ddd-8eee-5555ffff6666",
+          "doc_id": "5555eeee-6666-4fff-8aaa-4444bbbb5555",
+          "source": "F:\\corpus\\demo-kb\\grid-brief.md",
+          "text": "The batteries charge at noon and release at dusk.",
+          "score": 0.79,
+          "file_path": "F:\\corpus\\demo-kb\\grid-brief.md",
+          "heading_path": [
+            "Storage"
+          ]
+        }
+      ]
+    }
+  }
+}

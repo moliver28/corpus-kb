@@ -1,0 +1,34 @@
+{
+  "name": "verify-ok-200",
+  "source": "canonical",
+  "note": "POST /api/verify success (routes_search.py verify -> handlers/query_crud_reads.py verify_answer -> VerifyAnswerResult). Re-record against a running server with an embedded corpus.",
+  "request": {
+    "method": "POST",
+    "path": "/api/verify"
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": {
+        "verdicts": [
+          {
+            "claim": "The plan adds storage.",
+            "label": "entailed",
+            "confidence": 0.9,
+            "cited_chunk_ids": ["1111aaaa-2222-4bbb-8ccc-3333dddd4444"]
+          },
+          {
+            "claim": "Storage smooths evening peaks.",
+            "label": "unsupported",
+            "confidence": 0.4,
+            "cited_chunk_ids": ["1111aaaa-2222-4bbb-8ccc-3333dddd4444"]
+          }
+        ],
+        "groundedness": 0.5,
+        "abstained": false
+      },
+      "trace_id": "verify-ok-0001"
+    }
+  }
+}

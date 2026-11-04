@@ -2,7 +2,7 @@
 // Thresholds come from thresholds.generated.ts — never a local literal.
 import { BADGE_THRESHOLDS, type BadgeThresholds } from "./thresholds.generated";
 
-type BadgeLabel = "verified" | "partial" | "not verified";
+export type BadgeLabel = "verified" | "partial" | "not verified";
 
 interface Badge {
   label: BadgeLabel;
