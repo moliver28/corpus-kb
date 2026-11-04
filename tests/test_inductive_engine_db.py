@@ -309,7 +309,12 @@ async def _db_exists(db_name: str) -> bool:
 
     from tests import research_db
 
-    admin = await asyncpg.connect(research_db.SUPER_DSN, user="postgres", password="postgres")
+    # The admin connection carries research_db's env-derived superuser
+    # (POSTGRES_SUPERUSER / POSTGRES_SUPERUSER_PASSWORD, postgres/postgres
+    # as the bare-metal fallback). The old hardcoded postgres/postgres
+    # override broke the CI service image, where the superuser is
+    # corpus_user (storage portability rule 20: creds come from env).
+    admin = await asyncpg.connect(research_db.SUPER_DSN)
     try:
         row = await admin.fetchrow("SELECT 1 FROM pg_database WHERE datname = $1", db_name)
         return row is not None
