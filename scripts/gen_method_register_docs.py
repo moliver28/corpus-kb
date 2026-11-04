@@ -60,6 +60,36 @@ def _input_label(token: str) -> str:
     return "LLM" if token == "llm" else _code(token)
 
 
+def _routing_lines(method: dict[str, Any]) -> list[str]:
+    """The routing-axes bullets for one method (analysis-routing program).
+
+    Renders nothing when the row carries no routing axes (all fields are
+    optional), so old registers and test fixtures still generate cleanly.
+    """
+    if not method.get("task_type"):
+        return []
+    axes = (
+        f"  - Routing axes: task {_code(method['task_type'])}, comparison "
+        f"{_code(method['comparison_structure'])}, output {_code(method['output_form'])}, "
+        f"evidence {_code(method['evidence_basis'])}, rigor "
+        f"{_code(method['statistical_rigor'])}, cost tier {_code(method['cost_tier'])}."
+    )
+    phrases = method.get("question_phrases") or []
+    sample = " / ".join(f'"{phrase}"' for phrase in phrases[:3])
+    follows = " / ".join(f'"{item}"' for item in method.get("suggests") or [])
+    return [
+        axes,
+        f"  - Assumes: {_prose(method['assumptions'])}",
+        f"  - Null check: {_prose(method['null_calibration'])}",
+        f"  - Watch for: {_prose(method['failure_modes'])}",
+        f"  - Limits: {_prose(method['scope_limits'])}",
+        f"  - Workload: {_prose(method['cost_scale'])}",
+        f"  - Ask it: {sample}",
+        f"  - Follow-ups: {follows}",
+        f"  - Evidence: {method['evidence_citation']}",
+    ]
+
+
 def build_block(register: dict[str, Any]) -> str:
     """The generated markdown: the register table plus guidance bullets."""
     methods: list[dict[str, Any]] = register["methods"]
@@ -96,6 +126,7 @@ def build_block(register: dict[str, Any]) -> str:
             f"  - Cautions: {_prose(method['robustness_caveat'])} "
             f"Bias: {_prose(method['bias_risk'])}"
         )
+        lines += _routing_lines(method)
     lines.append(END_MARKER)
     return "\n".join(lines)
 

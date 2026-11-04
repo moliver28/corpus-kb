@@ -20,8 +20,8 @@ from ..analysis.method_register import (
     COMPLEXITY_TIERS,
     INPUT_KINDS,
     OUTPUT_FAMILIES,
-    load_method_register,
 )
+from ..analysis.method_register_loader import load_method_register
 from ..analysis.method_register_rubric import rank_methods
 from ..errors import ValidationError
 from .ingest_common import DEFAULT_TENANT_ID

@@ -480,6 +480,7 @@ _WAVE_E_SURFACE = (
 _input_kinds
 _sources_floor
 _vocabularies_and_op
+_routing_axes
 _semver
 _rules_present
 _ids_unique
@@ -497,6 +498,24 @@ efficiency_workload
 output_shape
 usage_guidance
 excluded_zero_count
+
+# Routing axes (analysis-routing program, wave 1): the routing fields are
+# Pydantic columns the YAML rows set and the loader validates; they surface
+# through model_dump, the docs generator, and the wave-2 router.
+task_type
+comparison_structure
+output_form
+evidence_basis
+statistical_rigor
+cost_tier
+question_phrases
+assumptions
+null_calibration
+failure_modes
+scope_limits
+cost_scale
+suggests
+evidence_citation
 axis
 seed_topic_list
 zeroshot_topic_list
