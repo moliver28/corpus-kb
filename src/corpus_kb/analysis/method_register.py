@@ -6,23 +6,21 @@ carries the owner's research document as data: identity, ordinal, and
 descriptive axes per method. Descriptive axes are surfaced verbatim;
 they are never scored (the document forbids invented ratings).
 
-The selector rubric lives in ``method_register_rubric``. Import
-``rank_methods`` from there; this module holds the models and the
-loader. The wave-2 handler and the UI both call the one rubric.
+Import ``rank_methods`` from ``method_register_rubric``, and
+``load_method_register`` from ``method_register_loader``; this module
+holds the schema models and the vocabularies. Routing vocabularies and
+checks live in ``method_register_routing``. The wave-2 handler and the
+UI both call the one rubric.
 """
 
 from __future__ import annotations
 
 import re
-from importlib import resources
-from pathlib import Path
 from typing import Self
 
-import yaml
 from pydantic import BaseModel, field_validator, model_validator
 
-from corpus_kb.analysis.settings import load_analysis_settings
-from corpus_kb.errors import ValidationError
+from corpus_kb.analysis.method_register_routing import validate_routing_axes
 
 PARADIGMS = ("supervised", "weak_supervision", "unsupervised", "zero_shot", "human_led")
 EVIDENCE_LABELS = ("direct", "model_based", "preset_composition", "human_judgment")
@@ -42,7 +40,6 @@ COMPLEXITY_TIERS = ("baseline", "standard", "advanced")
 SELECTION_PRIORITIES = ("first", "next", "avoid_first")
 OUTPUT_FAMILIES = ("labels", "themes", "scores", "structures", "text", "errors", "recommendations")
 IMPLEMENTATION_STATUSES = ("implemented_existing", "implemented_new", "human_led", "not_planned")
-EXPECTED_IDS = frozenset(f"{index:02d}" for index in range(1, 31))
 
 _VOCAB_FIELDS: dict[str, tuple[str, ...]] = {
     "paradigm": PARADIGMS,
@@ -84,6 +81,23 @@ class MethodRecord(BaseModel):
     implementation_status: str
     op: str | None = None
     sources: list[str]
+
+    # Routing axes (analysis-routing program, wave 1). All optional; the
+    # vocabularies and the checks live in ``method_register_routing``.
+    task_type: str | None = None
+    comparison_structure: str | None = None
+    output_form: str | None = None
+    evidence_basis: str | None = None
+    statistical_rigor: str | None = None
+    cost_tier: str | None = None
+    question_phrases: list[str] | None = None
+    assumptions: str | None = None
+    null_calibration: str | None = None
+    failure_modes: str | None = None
+    scope_limits: str | None = None
+    cost_scale: str | None = None
+    suggests: list[str] | None = None
+    evidence_citation: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -142,6 +156,12 @@ class MethodRecord(BaseModel):
             raise ValueError("op: statuses human_led and not_planned must set op to null.")
         return self
 
+    @model_validator(mode="after")
+    def _routing_axes(self) -> Self:
+        """Routing-field checks; runs after the core vocabulary checks."""
+        validate_routing_axes(self)
+        return self
+
 
 class SourceDocument(BaseModel):
     """The research document the register was transcribed from."""
@@ -198,48 +218,3 @@ class MethodRecommendation(MethodRecord):
     rank: int
     rank_reason: str
     missing_inputs: list[str]
-
-
-def _packaged_register_path(file_name: str) -> Path | None:
-    """The packaged mirror inside the installed ``corpus_kb`` package."""
-    ref = resources.files("corpus_kb") / "config" / file_name
-    if not ref.is_file():
-        return None
-    with resources.as_file(ref) as path:
-        return path
-
-
-def load_method_register(config: dict[str, object] | None = None) -> MethodRegister:
-    """Load and validate the register. Repo path first, packaged mirror next."""
-    settings = load_analysis_settings(config if config is not None else {})
-    relative = Path(settings.method_register_path)
-    repo_path = relative if relative.is_absolute() else Path.cwd() / relative
-    if repo_path.exists():
-        source = str(repo_path)
-        text = repo_path.read_text(encoding="utf-8")
-    else:
-        packaged = _packaged_register_path(relative.name)
-        if packaged is None:
-            raise ValueError(
-                f"Analysis method register not found: {settings.method_register_path}. "
-                "Set analysis.method_register_path or restore the packaged mirror."
-            )
-        source = str(packaged)
-        text = packaged.read_text(encoding="utf-8")
-
-    raw = yaml.safe_load(text) or {}
-    if not isinstance(raw, dict):
-        raise ValidationError(f"Analysis method register must be a YAML mapping: {source}")
-    try:
-        register = MethodRegister.model_validate(raw)
-    except Exception as exc:
-        raise ValidationError(f"Malformed analysis method register {source}: {exc}") from exc
-    ids = [record.id for record in register.methods]
-    missing = sorted(EXPECTED_IDS - set(ids))
-    duplicated = sorted({one for one in ids if ids.count(one) > 1})
-    if missing or duplicated:
-        raise ValidationError(
-            f"Analysis method register {source}: expected ids 01 to 30 exactly once. "
-            f"missing: {missing or 'none'}. duplicated: {duplicated or 'none'}."
-        )
-    return register
