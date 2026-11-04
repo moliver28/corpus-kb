@@ -10,6 +10,8 @@ export default function ConfirmGate({
   loading = false,
   disabled = false,
   onConfirm,
+  open,
+  onOpenChange,
 }: {
   title: string;
   description: string;
@@ -17,8 +19,19 @@ export default function ConfirmGate({
   loading?: boolean;
   disabled?: boolean;
   onConfirm: () => void;
+  /** Controlled open state; leave unset and the gate owns it. */
+  open?: boolean;
+  /** Reports every open change (open button, OK, cancel). */
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [innerOpen, setInnerOpen] = useState(false);
+  const isOpen = open ?? innerOpen;
+  const setOpen = (next: boolean): void => {
+    if (open === undefined) {
+      setInnerOpen(next);
+    }
+    onOpenChange?.(next);
+  };
   return (
     <>
       <Button
@@ -34,7 +47,7 @@ export default function ConfirmGate({
           ConfirmGate.test pins that behavior. */}
       <Modal
         title={title}
-        open={open}
+        open={isOpen}
         onOk={() => {
           setOpen(false);
           onConfirm();

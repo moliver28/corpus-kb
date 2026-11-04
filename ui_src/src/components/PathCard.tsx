@@ -2,11 +2,12 @@ import { Button, Card, Input, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { callOp } from "../api/client";
-import { getOp } from "../api/ops";
+import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import ConfirmGate from "./ConfirmGate";
 import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
+import LongOpControls from "./LongOpControls";
 import ReceiptCard from "./ReceiptCard";
 import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
@@ -34,7 +35,8 @@ interface PathCardProps {
  * longRunning flag picks the wait: long ops (crawl, directory walk,
  * research ingest) run behind the confirm gate with the honest wait —
  * elapsed, stop waiting, check status — never a 60 s abort; short ops
- * (single transcript) run directly.
+ * (single transcript) run directly. Enter routes through the same gate
+ * as the button, so it can never start a long op on its own.
  */
 export default function PathCard({
   title,
@@ -49,6 +51,7 @@ export default function PathCard({
 }: PathCardProps) {
   const [path, setPath] = useState("");
   const [hint, setHint] = useState("");
+  const [gateOpen, setGateOpen] = useState(false);
   const bodyRef = useRef<unknown>({});
   const isLong = getOp(opId)?.longRunning === true;
   const short = useOp(opId);
@@ -60,7 +63,7 @@ export default function PathCard({
       signal,
       timeoutMs: "none",
     });
-  });
+  }, statusOpFor(opId));
 
   async function run(): Promise<void> {
     if (path.trim() === "") {
@@ -75,6 +78,23 @@ export default function PathCard({
       short.reset();
       await short.run(bodyRef.current);
     }
+  }
+
+  /**
+   * The one submit path (button and Enter). A long op opens the gate;
+   * the op itself starts only when the gate confirms.
+   */
+  function requestRun(): void {
+    if (isLong) {
+      if (path.trim() === "") {
+        setHint(requiredMessage);
+        return;
+      }
+      setHint("");
+      setGateOpen(true);
+      return;
+    }
+    void run();
   }
 
   function retry(): void {
@@ -113,13 +133,15 @@ export default function PathCard({
           value={path}
           onChange={(event) => setPath(event.target.value)}
           placeholder={label}
-          onPressEnter={() => void run()}
+          onPressEnter={requestRun}
         />
         {isLong ? (
           <ConfirmGate
             title={strings.confirmLongTitle}
             description={gateDescription ?? strings.confirmLongBody}
             loading={long.running}
+            open={gateOpen}
+            onOpenChange={setGateOpen}
             onConfirm={() => void run()}
           />
         ) : (
@@ -130,28 +152,7 @@ export default function PathCard({
       </div>
       {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
       {children}
-      {long.running && (
-        <div className="ui-actions">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(long.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={() => long.cancel()}>{strings.runnerCancelLabel}</Button>
-        </div>
-      )}
-      {long.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
-      {long.unknownOutcome && (
-        <div className="ui-actions">
-          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
-        </div>
-      )}
-      {long.statusResult !== null && (
-        <StatusBanner kind="info">
-          {long.statusResult.message !== ""
-            ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
-            : strings.runnerStatusEmpty}
-        </StatusBanner>
-      )}
+      <LongOpControls op={long} onRetry={requestRun} />
       {resultView}
     </Card>
   );
