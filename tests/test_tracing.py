@@ -456,3 +456,88 @@ async def test_ingest_span_tree(otel_exporter: object, monkeypatch: pytest.Monke
     assert result["status"] == "success"
     expected = {SPAN_INGEST, SPAN_PARTITION, SPAN_CHUNK, SPAN_EMBED, SPAN_STORE, SPAN_EXTRACT}
     assert expected <= _span_names(otel_exporter)
+
+
+# ============================================================================
+# Issue #296: tracing-on cross-surface parity (query + verify_answer)
+# ============================================================================
+
+
+class _DumpResult:
+    """Duck-typed handler result: every surface calls model_dump(mode=...)."""
+
+    def model_dump(self, mode: str) -> dict[str, object]:
+        return {"kind": "parity"}
+
+
+@pytest.mark.asyncio
+async def test_tracing_on_query_and_verify_envelopes_match_across_surfaces(
+    otel_exporter: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With a recording span, query and verify_answer envelopes share ONE
+    key-set on MCP, HTTP, and socket; trace_id rides all three (issue
+    #296). The deep catalogue pins the tracing-off shape (no extra keys);
+    this test pins the recorded path so the gate exercises it."""
+
+    from starlette.applications import Starlette
+    from starlette.routing import Route
+    from starlette.testclient import TestClient
+
+    from corpus_kb.api._socket_arms import _query as socket_query
+    from corpus_kb.api._socket_arms import _verify_answer as socket_verify
+    from corpus_kb.api.routes_search import route_query as http_route
+    from corpus_kb.api.routes_search import verify as http_verify
+    from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+    from corpus_kb.handlers import query_handler as query_handler_module
+    from corpus_kb.handlers import router_handler as router_handler_module
+    from corpus_kb.tools import query_tools
+
+    class _FakeRouter:
+        async def handle_routed_query(self, query: RoutedQuery) -> _DumpResult:
+            return _DumpResult()
+
+    async def canned_verify(self: object, query: object) -> _DumpResult:
+        return _DumpResult()
+
+    monkeypatch.setattr(router_handler_module, "get_router_handler", lambda: _FakeRouter())
+    monkeypatch.setattr(
+        query_handler_module, "get_query_handler", lambda: object.__new__(QueryHandler)
+    )
+    monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
+
+    cfg = get_default_config()
+    cfg["judge"] = {"enabled": False}
+
+    mcp_query = await query_tools.query("q", config=cfg, pg_pool=object())
+    sock_query = await socket_query({"query": "q", "k": 3}, DEFAULT_TENANT_ID)
+
+    app = Starlette(
+        routes=[
+            Route("/api/query", http_route, methods=["POST"]),
+            Route("/api/verify", http_verify, methods=["POST"]),
+        ]
+    )
+    with TestClient(app) as client:
+        http_query = client.post("/api/query", json={"query": "q", "k": 3}).json()
+        http_verify = client.post("/api/verify", json={"answer": "a", "chunk_ids": []}).json()
+
+    mcp_verify = await query_tools.verify_answer(
+        pg_pool=object(), answer="a", chunk_ids=[], config=cfg
+    )
+    sock_verify = await socket_verify({"answer": "a", "chunk_ids": []}, DEFAULT_TENANT_ID)
+
+    expected_keys = {"status", "result", "trace_id"}
+    for name, envelope in (
+        ("mcp_query", mcp_query),
+        ("http_query", http_query),
+        ("socket_query", sock_query),
+    ):
+        assert set(envelope) == expected_keys, name
+        assert HEX32.fullmatch(str(envelope["trace_id"])), name
+    for name, envelope in (
+        ("mcp_verify", mcp_verify),
+        ("http_verify", http_verify),
+        ("socket_verify", sock_verify),
+    ):
+        assert set(envelope) == expected_keys, name
+        assert HEX32.fullmatch(str(envelope["trace_id"])), name
