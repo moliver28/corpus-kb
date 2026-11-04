@@ -204,6 +204,24 @@ pip install -e ".[dev]"
 
 Install Postgres 17 with pgvector and AGE, create the database, and run migrations (`python src/corpus_kb/_setup/migrate.py`). See [INSTALL.md](INSTALL.md) for platform details. Or use the installer: `corpus-kb setup`. The DuckDB engine skips Docker entirely; see [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md).
 
+### Windows: check the libmagic files after a fresh venv
+
+On Windows, `unstructured` needs the libmagic DLL from `python-magic-bin`. A fresh install can put `python-magic` files over it. The mixed files crash on import. Every `unstructured` import path loads them, so a mixed venv hangs the suite.
+
+Check the installed package version:
+
+```bash
+python -c "import magic; print(magic.__version__)"
+```
+
+`0.4.14` is correct. Another version means the files are mixed. If the command hangs or errors, the files are mixed. Repair them:
+
+```bash
+pip install --force-reinstall --no-deps python-magic-bin==0.4.14
+```
+
+Run the check again after the repair. CI is not exposed: it installs `python-magic-bin` by hand on the Windows leg.
+
 ## Running tests
 
 ```bash
