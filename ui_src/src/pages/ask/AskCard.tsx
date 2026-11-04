@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import CitedAnswer from "../../components/CitedAnswer";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LongOpControls from "../../components/LongOpControls";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { callOp } from "../../api/client";
@@ -174,21 +175,8 @@ export default function AskCard() {
         </Button>
       </div>
       {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
-      {ask.running && (
-        <div className="ui-stack">
-          <Skeleton active title={false} paragraph={{ rows: 3 }} />
-          <div className="ui-actions">
-            <StatusBanner kind="info">
-              {strings.runnerRunningElapsed.replace("{sec}", String(ask.elapsedSec))}
-            </StatusBanner>
-            <Button onClick={stopWaiting}>{strings.runnerCancelLabel}</Button>
-          </div>
-        </div>
-      )}
-      {ask.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
-      {ask.unknownOutcome && (
-        <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-      )}
+      {ask.running && <Skeleton active title={false} paragraph={{ rows: 3 }} />}
+      <LongOpControls op={ask} onRetry={retry} onCancel={stopWaiting} />
       {resultView}
       <h2 className="ui-heading">{strings.askHistoryTitle}</h2>
       {history.length === 0 ? (

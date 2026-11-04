@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import type { OpResult } from "../api/types";
 import { networkResult } from "../api/errors";
+import { strings } from "../strings";
 import { makeWrapper } from "../test/testUtils";
 import { useLongOp } from "./useLongOp";
 
@@ -134,9 +135,10 @@ describe("useLongOp", () => {
     );
     const receipt: OpResult = { ...OK, message: "the receipt" };
     const flightData = deferred();
-    const { result } = renderHook(() => useLongOp("op", () => flightData.promise), {
-      wrapper: makeWrapper(false),
-    });
+    const { result } = renderHook(
+      () => useLongOp("op", () => flightData.promise, "ingest-status"),
+      { wrapper: makeWrapper(false) },
+    );
     let flight!: Promise<OpResult>;
     await act(async () => {
       flight = result.current.start();
@@ -152,6 +154,36 @@ describe("useLongOp", () => {
     expect(result.current.result?.message).toBe("the receipt");
     expect(result.current.statusResult?.status).toBe("running");
     expect(result.current.statusResult?.message).toBe("still working");
+  });
+
+  it("exposes hasStatus only when the family has a manifest status op", () => {
+    const fn: Mock<(signal: AbortSignal) => Promise<OpResult>> = vi.fn(() => deferred().promise);
+    const withStatus = renderHook(() => useLongOp("op", fn, "ingest-status"), {
+      wrapper: makeWrapper(false),
+    });
+    expect(withStatus.result.current.hasStatus).toBe(true);
+    const withoutStatus = renderHook(() => useLongOp("op", fn, null), {
+      wrapper: makeWrapper(false),
+    });
+    expect(withoutStatus.result.current.hasStatus).toBe(false);
+    const unset = renderHook(() => useLongOp("op", fn), { wrapper: makeWrapper(false) });
+    expect(unset.result.current.hasStatus).toBe(false);
+  });
+
+  it("checkStatus with no status op resolves honestly and never fetches", async () => {
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy as unknown as typeof fetch);
+    const { result } = renderHook(() => useLongOp("op", () => deferred().promise, null), {
+      wrapper: makeWrapper(false),
+    });
+    let res!: OpResult;
+    await act(async () => {
+      res = await result.current.checkStatus();
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(result.current.statusResult).toBe(null);
+    expect(res.kind).toBe("error");
+    expect(res.message).toBe(strings.unknownOperation);
   });
 
   it("ticks elapsedSec once per second while running", async () => {

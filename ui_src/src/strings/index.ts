@@ -39,6 +39,7 @@ export interface Strings {
   runnerRunLabel: string;
   runnerCancelLabel: string;
   runnerCheckStatus: string;
+  runnerRunAgain: string;
   runnerRunningElapsed: string;
   runnerUnknownOutcome: string;
   runnerCancelled: string;

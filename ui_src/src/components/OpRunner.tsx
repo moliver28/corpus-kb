@@ -3,14 +3,15 @@ import { useMemo, useRef, useState } from "react";
 import { callOp } from "../api/client";
 import { unknownOpResult } from "../api/errors";
 import { getEntry } from "../api/manifest";
+import { statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import { strings } from "../strings";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
 import ConfirmGate from "./ConfirmGate";
 import ErrorPanel from "./ErrorPanel";
+import LongOpControls from "./LongOpControls";
 import ReceiptCard from "./ReceiptCard";
-import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
 
 /** Dispatch one settled result to the right panel. */
@@ -65,7 +66,7 @@ export default function OpRunner({
       signal,
       timeoutMs: "none",
     });
-  });
+  }, statusOpFor(opId));
 
   if (!op) {
     return <ErrorPanel result={unknownOpResult()} />;
@@ -136,31 +137,7 @@ export default function OpRunner({
           </Button>
         )}
       </div>
-      {long.running && (
-        <div className="ui-stack-gap">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(long.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={() => long.cancel()}>{strings.runnerCancelLabel}</Button>
-        </div>
-      )}
-      {long.unknownOutcome && (
-        <div className="ui-stack-gap">
-          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
-        </div>
-      )}
-      {long.statusResult !== null && (
-        <div className="ui-stack-gap">
-          {/* The status-poll ledger answer renders as a plain status line —
-              never as the receipt (that stays the op's own response). */}
-          <StatusBanner kind="info">
-            {long.statusResult.message !== ""
-              ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
-              : strings.runnerStatusEmpty}
-          </StatusBanner>
-        </div>
-      )}
+      <LongOpControls op={long} onRetry={() => void runLong()} />
       {settled !== null && (
         <div className="ui-stack-gap-lg">
           {/* A longRunning op retries through the long path too — the

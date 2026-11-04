@@ -34,6 +34,7 @@
   "runnerRunLabel": "Run",
   "runnerCancelLabel": "Cancel waiting",
   "runnerCheckStatus": "Check status",
+  "runnerRunAgain": "Run again",
   "runnerRunningElapsed": "Running for {sec} seconds.",
   "runnerUnknownOutcome": "The connection dropped. The server may still be working.",
   "runnerCancelled": "You stopped waiting. The op may still run on the server.",

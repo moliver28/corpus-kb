@@ -6,9 +6,10 @@ import JsonViewer from "./JsonViewer";
 import ReceiptCard from "./ReceiptCard";
 import StatusBanner from "./StatusBanner";
 import ConfirmGate from "./ConfirmGate";
+import LongOpControls from "./LongOpControls";
 import UnavailablePanel from "./UnavailablePanel";
 import { callOp } from "../api/client";
-import { getOp } from "../api/ops";
+import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
@@ -114,7 +115,7 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
       signal,
       timeoutMs: "none",
     });
-  });
+  }, statusOpFor(opId));
   const isLong = getOp(opId)?.longRunning === true;
 
   async function run(): Promise<void> {
@@ -176,28 +177,7 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
           </Button>
         )}
       </div>
-      {long.running && (
-        <div className="ui-actions">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(long.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={() => long.cancel()}>{strings.runnerCancelLabel}</Button>
-        </div>
-      )}
-      {long.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}
-      {long.unknownOutcome && (
-        <div className="ui-actions">
-          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
-        </div>
-      )}
-      {long.statusResult !== null && (
-        <StatusBanner kind="info">
-          {long.statusResult.message !== ""
-            ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
-            : strings.runnerStatusEmpty}
-        </StatusBanner>
-      )}
+      <LongOpControls op={long} onRetry={retry} />
       {resultView}
     </Card>
   );

@@ -2,12 +2,13 @@ import { Button, Card, Typography } from "antd";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../components/ErrorPanel";
 import JsonViewer from "../components/JsonViewer";
+import LongOpControls from "../components/LongOpControls";
 import ReceiptCard from "../components/ReceiptCard";
 import StatusBanner from "../components/StatusBanner";
 import ConfirmGate from "../components/ConfirmGate";
 import UnavailablePanel from "../components/UnavailablePanel";
 import { callOp } from "../api/client";
-import { getOp } from "../api/ops";
+import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import { useLongOp } from "../hooks/useLongOp";
 import { strings } from "../strings";
@@ -27,7 +28,7 @@ export default function DemoLoadCard() {
       signal,
       timeoutMs: "none",
     });
-  });
+  }, statusOpFor("demo-load"));
 
   async function run(): Promise<void> {
     await long.start();
@@ -77,37 +78,7 @@ export default function DemoLoadCard() {
           onConfirm={() => void run()}
         />
       </div>
-      {long.running && (
-        <div className="ui-actions">
-          <StatusBanner kind="info">
-            {strings.runnerRunningElapsed.replace("{sec}", String(long.elapsedSec))}
-          </StatusBanner>
-          <Button onClick={() => long.cancel()}>{strings.runnerCancelLabel}</Button>
-        </div>
-      )}
-      {long.cancelled && (
-        <div className="ui-actions">
-          {/* The user stopped waiting; the server may still be working.
-              No error panel, no retry — status polling stays available. */}
-          <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>
-          <Button onClick={() => void long.checkStatus()}>{strings.runnerCheckStatus}</Button>
-        </div>
-      )}
-      {long.unknownOutcome && (
-        <div className="ui-actions">
-          <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
-          <Button onClick={() => void long.checkStatus()}>
-            {strings.runnerCheckStatus}
-          </Button>
-        </div>
-      )}
-      {long.statusResult !== null && (
-        <StatusBanner kind="info">
-          {long.statusResult.message !== ""
-            ? strings.runnerStatusLine.replace("{message}", long.statusResult.message)
-            : strings.runnerStatusEmpty}
-        </StatusBanner>
-      )}
+      <LongOpControls op={long} onRetry={() => void run()} />
       {resultView}
     </Card>
   );
