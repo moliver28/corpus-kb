@@ -95,3 +95,117 @@ export function topicRows(topics: TopicPayload[]): TopicRow[] {
       : [],
   }));
 }
+
+// -- Document card shapes (tools/ingest_tools.py list_documents +
+//    handlers/tag_handler.py tag and metadata reads). Same drift rule:
+//    a payload that misses a field takes the honest fallback path.
+
+/** One corpus document row (the DocumentResult dump of documents-list). */
+export interface DocumentRow {
+  doc_id: string;
+  source: string;
+  source_type: string;
+  chunk_count: number;
+  created_at: string;
+}
+
+interface DocumentsEnvelope {
+  status: string;
+  result: DocumentRow[];
+}
+
+export function isDocumentsEnvelope(value: unknown): value is DocumentsEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      const r = row as Record<string, unknown>;
+      return (
+        typeof r.doc_id === "string" &&
+        typeof r.source === "string" &&
+        typeof r.source_type === "string" &&
+        typeof r.chunk_count === "number" &&
+        Number.isFinite(r.chunk_count) &&
+        typeof r.created_at === "string"
+      );
+    })
+  );
+}
+
+/** One tag row of a document's tag list (name is the only certain field). */
+export interface TagRow {
+  name: string;
+  color: unknown;
+  description: unknown;
+}
+
+interface TagsEnvelope {
+  status: string;
+  result: TagRow[];
+}
+
+export function isTagsEnvelope(value: unknown): value is TagsEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      return typeof (row as Record<string, unknown>).name === "string";
+    })
+  );
+}
+
+/** One metadata row of a document (key is the only certain field). */
+export interface MetadataRow {
+  key: string;
+  value: unknown;
+  doc_id: unknown;
+}
+
+interface MetadataEnvelope {
+  status: string;
+  result: MetadataRow[];
+}
+
+export function isMetadataEnvelope(value: unknown): value is MetadataEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      return typeof (row as Record<string, unknown>).key === "string";
+    })
+  );
+}
+
+/** One word for a metadata value: strings pass; anything else is JSON. */
+export function metadataText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  try {
+    return JSON.stringify(value) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** The server tag color for an antd Tag, or undefined unless it is a hex word. */
+export function tagColor(color: unknown): string | undefined {
+  return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? color : undefined;
+}
+
+/** One "added" date word from an ISO timestamp (fixed locale, UTC). */
+export function dateText(iso: string): string {
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    timeZone: "UTC",
+  }).format(when);
+}

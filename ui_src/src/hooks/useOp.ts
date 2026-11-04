@@ -11,10 +11,26 @@ interface OpVars {
   body?: unknown;
   /** Query pairs appended to the op path in the caller's order. */
   query?: Record<string, string>;
+  /** Values for the op path's {slot} placeholders (an unknown slot stays). */
+  pathParams?: Record<string, string>;
+}
+
+/** Fill the manifest path's {slots}; a missing value leaves the slot raw. */
+function fillPath(path: string, params?: Record<string, string>): string {
+  if (params === undefined) {
+    return path;
+  }
+  return path.replace(/\{([^}]+)\}/g, (slot, key: string) =>
+    Object.prototype.hasOwnProperty.call(params, key) ? params[key] : slot,
+  );
 }
 
 interface UseOp {
-  run: (body?: unknown, query?: Record<string, string>) => Promise<OpResult<unknown>>;
+  run: (
+    body?: unknown,
+    query?: Record<string, string>,
+    pathParams?: Record<string, string>,
+  ) => Promise<OpResult<unknown>>;
   running: boolean;
   result: OpResult<unknown> | null;
   reset: () => void;
@@ -33,12 +49,12 @@ export function useOp(opId: string, timeoutMs?: number | "none"): UseOp {
         return unknownOpResult();
       }
       // The manifest's method passes straight through (GET, POST, or
-      // DELETE) — the client never downgrades a declared verb. Query
-      // pairs ride the path in the caller's order (deterministic).
+      // DELETE) — the client never downgrades a declared verb. Path
+      // slots take the caller's values; query pairs ride the path in
+      // the caller's order (deterministic).
+      const base = fillPath(op.path, vars.pathParams);
       const path =
-        vars.query === undefined
-          ? op.path
-          : `${op.path}?${new URLSearchParams(vars.query)}`;
+        vars.query === undefined ? base : `${base}?${new URLSearchParams(vars.query)}`;
       return callOp<unknown>(path, {
         method: op.method,
         body: vars.body,
@@ -52,7 +68,8 @@ export function useOp(opId: string, timeoutMs?: number | "none"): UseOp {
   // run and reset therefore hold stable identities too.
   const { mutateAsync, reset: resetMutation, isPending } = mutation;
   const run = useCallback(
-    (body?: unknown, query?: Record<string, string>) => mutateAsync({ body, query }),
+    (body?: unknown, query?: Record<string, string>, pathParams?: Record<string, string>) =>
+      mutateAsync({ body, query, pathParams }),
     [mutateAsync],
   );
   const reset = useCallback(() => {

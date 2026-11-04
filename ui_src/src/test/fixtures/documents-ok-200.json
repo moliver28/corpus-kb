@@ -1,0 +1,28 @@
+{
+  "name": "documents-ok-200",
+  "source": "canonical",
+  "note": "GET /api/documents listing shape (handlers/query_crud.py list_documents -> DocumentResult.model_dump). Re-record against a running server when a corpus exists.",
+  "request": { "method": "GET", "path": "/api/documents" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": [
+        {
+          "doc_id": "d1d11111-2222-4333-8444-555566667777",
+          "source": "corpus/renewable-energy-policy.md",
+          "source_type": "markdown",
+          "chunk_count": 12,
+          "created_at": "2026-01-05T10:12:00Z"
+        },
+        {
+          "doc_id": "e2e22222-3333-4c44-8d55-666677778888",
+          "source": "https://example.com/grid-reliability-report",
+          "source_type": "web",
+          "chunk_count": 5,
+          "created_at": "2026-01-04T09:00:00Z"
+        }
+      ]
+    }
+  }
+}

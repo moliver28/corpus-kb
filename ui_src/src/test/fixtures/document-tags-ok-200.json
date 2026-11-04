@@ -1,0 +1,24 @@
+{
+  "name": "document-tags-ok-200",
+  "source": "canonical",
+  "note": "GET /api/documents/{doc_id}/tags shape (handlers/tag_handler.py handle_get_document_tags rows: name, color, description).",
+  "request": { "method": "GET", "path": "/api/documents/d1d11111-2222-4333-8444-555566667777/tags" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": [
+        {
+          "name": "energy",
+          "color": "#2563eb",
+          "description": "Energy policy and grid items"
+        },
+        {
+          "name": "verified",
+          "color": null,
+          "description": null
+        }
+      ]
+    }
+  }
+}

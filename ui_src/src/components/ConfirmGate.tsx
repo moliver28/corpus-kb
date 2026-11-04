@@ -1,5 +1,5 @@
 import { Button, Modal } from "antd";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { strings } from "../strings";
 
 /** The gate before a long or destructive op: the run starts only on confirm. */
@@ -9,6 +9,7 @@ export default function ConfirmGate({
   confirmLabel,
   loading = false,
   disabled = false,
+  trigger,
   onConfirm,
   open,
   onOpenChange,
@@ -18,6 +19,8 @@ export default function ConfirmGate({
   confirmLabel?: string;
   loading?: boolean;
   disabled?: boolean;
+  /** The caller's opener (a row button); it replaces the default button. */
+  trigger?: ReactNode;
   onConfirm: () => void;
   /** Controlled open state; leave unset and the gate owns it. */
   open?: boolean;
@@ -32,8 +35,8 @@ export default function ConfirmGate({
     }
     onOpenChange?.(next);
   };
-  return (
-    <>
+  const opener =
+    trigger === undefined ? (
       <Button
         type="primary"
         loading={loading}
@@ -42,6 +45,14 @@ export default function ConfirmGate({
       >
         {confirmLabel ?? strings.runnerRunLabel}
       </Button>
+    ) : (
+      // The opener control (normally an antd Button) keeps its own
+      // keyboard activation; the click bubbles to this span.
+      <span onClick={() => setOpen(true)}>{trigger}</span>
+    );
+  return (
+    <>
+      {opener}
       {/* antd 6's declarative Modal has no autoFocusButton: the OK button
           is not auto-focused, so a stray Enter cannot confirm the gate.
           ConfirmGate.test pins that behavior. */}

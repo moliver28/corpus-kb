@@ -1,0 +1,13 @@
+{
+  "name": "document-delete-ok-200",
+  "source": "canonical",
+  "note": "DELETE /api/documents/{doc_id} shape (tools/ingest_tools.py delete_document; the delete is idempotent).",
+  "request": { "method": "DELETE", "path": "/api/documents/d1d11111-2222-4333-8444-555566667777" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "document_id": "d1d11111-2222-4333-8444-555566667777"
+    }
+  }
+}

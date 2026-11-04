@@ -1,0 +1,24 @@
+{
+  "name": "metadata-ok-200",
+  "source": "canonical",
+  "note": "GET /api/metadata?doc_id=... shape (handlers/tag_handler.py handle_get_metadata rows: key, value, doc_id).",
+  "request": { "method": "GET", "path": "/api/metadata" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": [
+        {
+          "key": "author",
+          "value": "A. Rowe",
+          "doc_id": "d1d11111-2222-4333-8444-555566667777"
+        },
+        {
+          "key": "language",
+          "value": "en",
+          "doc_id": "d1d11111-2222-4333-8444-555566667777"
+        }
+      ]
+    }
+  }
+}
