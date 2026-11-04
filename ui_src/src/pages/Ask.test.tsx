@@ -176,6 +176,28 @@ describe("Ask page", () => {
     expect(sent?.body).toContain('"retrieval_only":true');
   });
 
+  it("clears a stale notebook field error when the field is corrected", async () => {
+    stubFetch([
+      { method: "POST", path: "/api/notebook/ask", reply: respond(200, notebookAnswer.response.body) },
+    ]);
+    render(<Ask />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.askTabNotebook }));
+    // One empty submit marks both fields.
+    fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));
+    expect(screen.getByText(strings.askNotebookProjectRequired)).toBeTruthy();
+    expect(screen.getByText(strings.askQueryRequired)).toBeTruthy();
+    // Fill the question only and resubmit: the question's error must go.
+    const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
+    fireEvent.change(questionInputs[questionInputs.length - 1], {
+      target: { value: "what caused the outage?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));
+    expect(screen.queryByText(strings.askQueryRequired)).toBeNull();
+    expect(screen.getByText(strings.askNotebookProjectRequired)).toBeTruthy();
+    // The failed submit never reached the server.
+    expect(calls.some((c) => c.url.includes("/api/notebook/ask"))).toBe(false);
+  });
+
   it("wires the verify tab with no gap banner", async () => {
     stubFetch([]);
     render(<Ask />, { wrapper: makeWrapper() });

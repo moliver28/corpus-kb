@@ -28,16 +28,18 @@ export default function NotebookCard() {
   async function run(): Promise<void> {
     if (projectId.trim() === "") {
       setProjectError(strings.askNotebookProjectRequired);
+    } else {
+      setProjectError("");
     }
     if (question.trim() === "") {
       setQuestionError(strings.askQueryRequired);
+    } else {
+      setQuestionError("");
     }
     if (projectId.trim() === "" || question.trim() === "") {
       flag();
       return;
     }
-    setProjectError("");
-    setQuestionError("");
     notebook.reset();
     await notebook.run({
       project_id: projectId.trim(),
