@@ -1,15 +1,13 @@
-import { Button, Card, Table, Tag, Typography } from "antd";
+import { Button, Card, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import BadgeLine from "../../components/BadgeLine";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
-import { BADGE_THRESHOLDS } from "../../api/thresholds.generated";
-import { verifyBadge } from "../../api/verify";
-import { badgeLabelText } from "../../components/CitedAnswer";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
 import { scoreText } from "./shapes";
@@ -95,22 +93,10 @@ export default function VerifyCard() {
       if (abstainedOf(env) || env.result.verdicts.length === 0) {
         body = <StatusBanner kind="warn">{strings.askVerifyAbstained}</StatusBanner>;
       } else {
-        // The badge logic and thresholds are the answer badge's (api/verify.ts).
-        const badge = verifyBadge(env.result, BADGE_THRESHOLDS);
         body = (
           <div className="ui-stack">
-            <p>
-              <Tag>{badgeLabelText(badge.label)}</Tag>
-              <span>
-                {strings.claimSupportLabel.replace(
-                  "{pct}",
-                  String(Math.round(badge.groundedness * 100)),
-                )}
-              </span>
-            </p>
-            {badge.degraded && (
-              <StatusBanner kind="warn">{strings.badgeDegradeNote}</StatusBanner>
-            )}
+            {/* The badge line is the answer badge's (components/BadgeLine). */}
+            <BadgeLine verify={env.result} />
             <Table<ClaimVerdictRow>
               size="small"
               rowKey={(_row: ClaimVerdictRow, index?: number) => String(index ?? 0)}

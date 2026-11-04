@@ -1,7 +1,7 @@
-import { Card, Tag } from "antd";
+import { Card } from "antd";
 import { useState } from "react";
-import { verifyBadge, type BadgeLabel, type VerifySummary } from "../api/verify";
-import { BADGE_THRESHOLDS } from "../api/thresholds.generated";
+import type { VerifySummary } from "../api/verify";
+import BadgeLine from "./BadgeLine";
 import { strings } from "../strings";
 
 export interface Citation {
@@ -9,17 +9,6 @@ export interface Citation {
   source: string;
   /** The distinct source labels this sentence cites (hover-citation link). */
   sources?: string[];
-}
-
-const LABELS: Record<BadgeLabel, string> = {
-  verified: strings.verifyLabelVerified,
-  partial: strings.verifyLabelPartial,
-  "not verified": strings.verifyLabelNotVerified,
-};
-
-/** The user-facing word for one badge label (shared with VerifyCard). */
-export function badgeLabelText(label: BadgeLabel): string {
-  return LABELS[label];
 }
 
 /** One source label -> its basename (full paths never render on screen). */
@@ -51,23 +40,15 @@ export default function CitedAnswer({
   citations: Citation[];
   verify: VerifySummary | null;
 }) {
-  // The generated policy thresholds ride in (the one numeric-policy
-  // source); a missing or invalid threshold still degrades the badge.
-  const badge = verifyBadge(verify, BADGE_THRESHOLDS);
-  const pct = Math.round(badge.groundedness * 100);
   const [hovered, setHovered] = useState<number | null>(null);
   const activeSources =
     hovered === null ? null : new Set(citations[hovered]?.sources ?? []);
   return (
     <Card title={strings.citedAnswerTitle}>
       <p className="ui-answer">{answer}</p>
-      <p>
-        <Tag>{LABELS[badge.label]}</Tag>
-        <span>{strings.claimSupportLabel.replace("{pct}", String(pct))}</span>
-      </p>
-      {badge.degraded && (
-        <p className="ui-banner ui-banner--warn">{strings.badgeDegradeNote}</p>
-      )}
+      {/* The generated policy thresholds ride in (the one numeric-policy
+          source); a missing or invalid threshold still degrades the badge. */}
+      <BadgeLine verify={verify} />
       <h2 className="ui-heading">{strings.citationsHeading}</h2>
       <ol className="ui-citations" onMouseLeave={() => setHovered(null)}>
         {citations.map((citation, index) => {

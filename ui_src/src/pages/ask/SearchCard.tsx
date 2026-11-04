@@ -13,7 +13,19 @@ import { strings } from "../../strings";
 import { excludedCount, isSearchEnvelope, scoreText, type SearchRow } from "./shapes";
 
 const COLUMNS: ColumnsType<SearchRow> = [
-  { title: strings.askColumnSource, dataIndex: "source", key: "source" },
+  {
+    title: strings.askColumnSource,
+    dataIndex: "source",
+    key: "source",
+    // The chunk id rides under the source: it is the value the verify
+    // tab's chunk field asks for (T8 builds the copy affordance on it).
+    render: (_value: unknown, row: SearchRow) => (
+      <div>
+        {row.source}
+        <div className="ui-row-id">{row.chunk_id}</div>
+      </div>
+    ),
+  },
   { title: strings.askColumnText, dataIndex: "text", key: "text" },
   {
     title: strings.askColumnScore,
@@ -41,7 +53,7 @@ const OP_IDS: Record<Mode, string> = {
 /** One mode's result body: the same table for all three search routes. */
 function resultBody(
   result: OpResult<unknown> | null,
-  opts: { degraded: boolean; opId: string; retry: () => void },
+  opts: { opId: string; retry: () => void },
 ): ReactNode {
   if (result === null) return null;
   if (result.kind === "unavailable") {
@@ -49,11 +61,13 @@ function resultBody(
   }
   if (result.ok && isSearchEnvelope(result.data)) {
     const rows = result.data.result;
+    // Only the plain /api/search envelope carries degraded_excluded; the
+    // count alone decides the banner (0 hides it on every mode).
     const excluded = excludedCount(result.data.degraded_excluded);
     return (
       <div className="ui-stack">
         {rows.length === 0 && <StatusBanner kind="warn">{strings.askSearchEmpty}</StatusBanner>}
-        {opts.degraded && excluded > 0 && (
+        {excluded > 0 && (
           <StatusBanner kind="warn">
             {strings.askDegradedExcluded.replace("{count}", String(excluded))}
           </StatusBanner>
@@ -120,7 +134,7 @@ export default function SearchCard() {
       return;
     }
     const words = query.trim();
-    if (!validate(words, strings.askQueryRequired)) return;
+    if (!validate(words, strings.askSearchQueryRequired)) return;
     if (mode === "context") {
       context.reset();
       await context.run({ query: words });
@@ -179,7 +193,6 @@ export default function SearchCard() {
           </Button>
         </div>
         {resultBody(active.result, {
-          degraded: mode === "text",
           opId: OP_IDS[mode],
           retry,
         })}

@@ -166,6 +166,8 @@ describe("Ask page", () => {
       await screen.findByText("The plan installs battery storage at two substations."),
     ).toBeTruthy();
     expect(screen.getByText("0.91")).toBeTruthy();
+    // The chunk id shows on the row: it is the value the verify tab asks for.
+    expect(screen.getByText("1111aaaa-2222-4bbb-8ccc-3333dddd4444")).toBeTruthy();
     expect(screen.getByText(strings.askDegradedExcluded.replace("{count}", "1"))).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/search"));
     expect(sent?.body).toContain('"query":"storage"');
@@ -265,6 +267,10 @@ describe("Ask page", () => {
       await screen.findAllByRole("button", { name: strings.askTabSearch })
     )[0];
     fireEvent.click(switcher);
+    // The empty search text names its own field, never the ask question.
+    const textButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
+    fireEvent.click(textButtons[textButtons.length - 1]);
+    expect(await screen.findByText(strings.askSearchQueryRequired)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: strings.askSearchModeSimilar }));
     const similarButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
     fireEvent.click(similarButtons[similarButtons.length - 1]);

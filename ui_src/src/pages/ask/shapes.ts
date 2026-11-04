@@ -115,7 +115,10 @@ export interface SearchRow {
 interface SearchEnvelope {
   status: string;
   result: SearchRow[];
-  degraded_excluded: { count: unknown };
+  // Only the plain /api/search envelope carries this key; similar and
+  // context never do, so the type keeps it optional (excludedCount
+  // reads the missing key as 0).
+  degraded_excluded?: { count: unknown };
 }
 
 export function isSearchEnvelope(value: unknown): value is SearchEnvelope {

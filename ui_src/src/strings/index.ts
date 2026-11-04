@@ -161,6 +161,7 @@ export interface Strings {
   askSearchAction: string;
   askSearchQueryLabel: string;
   askSearchEmpty: string;
+  askSearchQueryRequired: string;
   askSearchModeText: string;
   askSearchModeSimilar: string;
   askSearchModeContext: string;

@@ -208,6 +208,15 @@ body {
 
 .ui-stack-gap-lg { margin-top: 12px; }
 
+/* One search row's chunk id: the muted machine value under the source,
+   the value the verify tab's chunk field asks for. */
+.ui-row-id {
+  display: block;
+  color: var(--ckb-color-text-description);
+  font-size: 12px;
+  font-family: var(--ckb-font-family-code);
+}
+
 .ui-flush { margin-bottom: 0; }
 
 /* antd Typography ships `div.ant-typography { margin-bottom: 1em }`
