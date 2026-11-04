@@ -16,11 +16,16 @@ rowcount makes both racers win, which fails the one-winner assertion.
 from __future__ import annotations
 
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
+import asyncpg
 import pytest
 
-from corpus_kb.research.promote_code import _mark_proposal, promote_proposal
+from corpus_kb.research.promote_code import (
+    DerivedPrototypes,
+    _mark_proposal,
+    promote_proposal,
+)
 from tests.mock_pg import FakeSqlGateway
 
 SNAPSHOT_ROW: dict[str, Any] = {
@@ -90,14 +95,14 @@ def mint_log(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     minted: list[dict[str, Any]] = []
 
     async def record_mint(
-        pool: Any,
+        pool: asyncpg.Pool,
         handler: Any,
-        tenant_id: Any,
+        tenant_id: UUID,
         name: str,
         definition: str,
         inclusion: str,
         exclusion: str,
-        derived: Any,
+        derived: DerivedPrototypes,
         label: str,
     ) -> dict[str, str]:
         minted.append({"name": name, "label": label, "n_members": len(derived.unit_ids)})
