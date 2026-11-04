@@ -92,17 +92,26 @@ async def search_context(request: Request) -> JSONResponse:
 async def verify(request: Request) -> JSONResponse:
     """POST /api/verify — claim-level groundedness verification against cited chunks."""
     from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_integrity import attach_trace_id
+    from corpus_kb.utils.tracing import SPAN_VERIFY_ANSWER, span
 
     body = await parse_body(request)
     query = VerifyAnswerQuery(answer=body.get("answer", ""), chunk_ids=body.get("chunk_ids", []))
-    result = await get_query_handler().handle_verify_answer(query)
-    return JSONResponse({"status": "success", "result": result.model_dump(mode="json")})
+    # The span + shared trace attach (issue #296): the recorded envelope
+    # matches the MCP leg's key-set exactly.
+    with span(SPAN_VERIFY_ANSWER):
+        result = await get_query_handler().handle_verify_answer(query)
+        return JSONResponse(
+            attach_trace_id({"status": "success", "result": result.model_dump(mode="json")})
+        )
 
 
 @route_errors
 async def route_query(request: Request) -> JSONResponse:
     """POST /api/query — adaptive routing across vector/SQL/graph backends."""
+    from corpus_kb.handlers.query_integrity import attach_trace_id
     from corpus_kb.handlers.router_handler import get_router_handler
+    from corpus_kb.utils.tracing import SPAN_ROUTE, span
 
     body = await parse_body(request)
     query = RoutedQuery(
@@ -110,9 +119,14 @@ async def route_query(request: Request) -> JSONResponse:
         query=body["query"],
         k=opt_int(body.get("k"), None, name="k"),
     )
-    handler = get_router_handler()
-    result = await handler.handle_routed_query(query)
-    return JSONResponse({"status": "success", "result": result.model_dump(mode="json")})
+    # The span + shared trace attach (issue #296): the recorded envelope
+    # matches the MCP leg's key-set exactly.
+    with span(SPAN_ROUTE):
+        handler = get_router_handler()
+        result = await handler.handle_routed_query(query)
+        return JSONResponse(
+            attach_trace_id({"status": "success", "result": result.model_dump(mode="json")})
+        )
 
 
 @route_errors

@@ -127,15 +127,20 @@ async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
 
 async def _query(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import RoutedQuery
+    from corpus_kb.handlers.query_integrity import attach_trace_id
     from corpus_kb.handlers.router_handler import get_router_handler
+    from corpus_kb.utils.tracing import SPAN_ROUTE, span
 
     routed_query = RoutedQuery(
         tenant_id=UUID(tenant_id),
         query=params["query"],
         k=opt_int(params.get("k"), None, name="k"),
     )
-    result = await get_router_handler().handle_routed_query(routed_query)
-    return {"status": "success", "result": result.model_dump(mode="json")}
+    # The span + shared trace attach (issue #296): the recorded envelope
+    # matches the MCP leg's key-set exactly.
+    with span(SPAN_ROUTE):
+        result = await get_router_handler().handle_routed_query(routed_query)
+        return attach_trace_id({"status": "success", "result": result.model_dump(mode="json")})
 
 
 async def _list_documents(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
@@ -167,12 +172,17 @@ async def _add_entity(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
 async def _verify_answer(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import VerifyAnswerQuery
     from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_integrity import attach_trace_id
+    from corpus_kb.utils.tracing import SPAN_VERIFY_ANSWER, span
 
     query = VerifyAnswerQuery(
         answer=params.get("answer", ""), chunk_ids=params.get("chunk_ids", [])
     )
-    result = await get_query_handler().handle_verify_answer(query)
-    return {"status": "success", "result": result.model_dump(mode="json")}
+    # The span + shared trace attach (issue #296): the recorded envelope
+    # matches the MCP leg's key-set exactly.
+    with span(SPAN_VERIFY_ANSWER):
+        result = await get_query_handler().handle_verify_answer(query)
+        return attach_trace_id({"status": "success", "result": result.model_dump(mode="json")})
 
 
 async def _add_relation(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:

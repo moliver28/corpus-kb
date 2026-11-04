@@ -207,3 +207,18 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
     if envelope.trace_id is not None:
         payload["trace_id"] = envelope.trace_id
     return payload
+
+
+def attach_trace_id(payload: dict[str, object]) -> dict[str, object]:
+    """Attach the active trace id when one is recording (never when off).
+
+    The ONE attach point for the ``{status, result}`` query/verify envelope
+    family (issue #296): MCP, HTTP, and socket all build their envelope
+    through this helper, so a recording span yields the same key-set on
+    every surface. With tracing off it adds no key — the shape matches the
+    tracing-off parity catalogue exactly.
+    """
+    trace_id = current_trace_id()
+    if trace_id is not None:
+        payload["trace_id"] = trace_id
+    return payload

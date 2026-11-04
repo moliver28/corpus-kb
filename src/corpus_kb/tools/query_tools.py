@@ -23,21 +23,14 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.handlers.query_integrity import attach_trace_id
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
-from corpus_kb.utils.tracing import SPAN_ROUTE, SPAN_VERIFY_ANSWER, current_trace_id, span
+from corpus_kb.utils.tracing import SPAN_ROUTE, SPAN_VERIFY_ANSWER, span
 
 if TYPE_CHECKING:
     from corpus_kb.handlers.router_handler import RouterHandler
 
 __all__ = ["query", "verify_answer"]
-
-
-def _with_trace_id(payload: dict[str, Any]) -> dict[str, Any]:
-    """Attach the active trace id when one is recording (never when off)."""
-    trace_id = current_trace_id()
-    if trace_id is not None:
-        payload["trace_id"] = trace_id
-    return payload
 
 
 async def _resolve_router_handler(cfg: dict[str, Any], pool: asyncpg.Pool) -> RouterHandler:
@@ -112,7 +105,7 @@ async def query(
             router = await _resolve_router_handler(cfg, pool)
             routed = RoutedQuery(tenant_id=UUID(tenant_id), query=query, k=k)
             result = await router.handle_routed_query(routed)
-            return _with_trace_id({"status": "success", "result": result.model_dump(mode="json")})
+            return attach_trace_id({"status": "success", "result": result.model_dump(mode="json")})
         finally:
             if own_pool is not None:
                 await own_pool.close()
@@ -157,4 +150,4 @@ async def verify_answer(
         )
         handler = QueryHandler(pg_pool, judge=judge, config=cfg)
         result = await handler.handle_verify_answer(verified)
-        return _with_trace_id({"status": "success", "result": result.model_dump(mode="json")})
+        return attach_trace_id({"status": "success", "result": result.model_dump(mode="json")})

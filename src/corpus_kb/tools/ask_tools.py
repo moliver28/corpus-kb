@@ -16,9 +16,10 @@ from typing import Any
 
 import asyncpg
 
+from corpus_kb.handlers.query_integrity import attach_trace_id
 from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
-from corpus_kb.utils.tracing import SPAN_ASK, current_trace_id, span
+from corpus_kb.utils.tracing import SPAN_ASK, span
 
 __all__ = ["ask"]
 
@@ -74,10 +75,7 @@ async def ask(
                 k=k,
             )
             payload = bundle.to_payload()
-            trace_id = current_trace_id()
-            if trace_id is not None:
-                payload["trace_id"] = trace_id
-            return payload
+            return attach_trace_id(payload)
         finally:
             if own_pool is not None:
                 await own_pool.close()
