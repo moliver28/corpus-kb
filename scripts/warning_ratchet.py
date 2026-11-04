@@ -7,13 +7,18 @@ attribute, so a report file cannot carry the count.
 
 The count is compared with the ``pytest_warnings`` ceiling in
 ``scripts/quality-baselines.json``. A count above the ceiling fails the
-build; a count at or below it passes. The ceiling stays 0 (issue #293
+build; a count at or below it passes. The ceiling stays 0 (PR #293
 measured 0 in the pinned environment; the W11 pinned-env runs
-re-measured 0 on 2026-11-04).
+re-measured 0 on 2026-11-04, with Postgres up).
 
 Pinned measurement environment (issue #294): ``uv pip install -e
-".[dev,duckdb,inductive]"`` with Ollama UP. The count is not comparable
-without the inductive extra, because umap/hdbscan-dependent tests skip.
+".[dev,duckdb,inductive]"`` with Ollama served (best effort) and
+Postgres up. The count is not comparable without the inductive extra,
+because umap/hdbscan-dependent tests skip.
+
+The hook works on the pytest range the dev extra allows (floor 8.0).
+Pytest 9 (9.1.1 installed here) dropped the junit XML warnings
+attribute, so a report file cannot carry the count on it.
 
 Stdlib plus pytest (the dev extra pins it).
 """
