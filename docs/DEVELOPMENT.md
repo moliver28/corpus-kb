@@ -214,10 +214,10 @@ Check the installed package version:
 python -c "import magic; print(magic.__version__)"
 ```
 
-`0.4.14` is correct. Another version means the files are mixed. Repair them:
+`0.4.14` is correct. Another version means the files are mixed. If the command hangs or errors, the files are mixed. Repair them:
 
 ```bash
-uv pip install --force-reinstall --no-deps python-magic-bin==0.4.14
+pip install --force-reinstall --no-deps python-magic-bin==0.4.14
 ```
 
 Run the check again after the repair. CI is not exposed: it installs `python-magic-bin` by hand on the Windows leg.
