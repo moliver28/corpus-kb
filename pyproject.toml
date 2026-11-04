@@ -654,6 +654,18 @@ help = "Full test suite (Ollama/Postgres degrade gracefully)"
 cmd = "python -m pytest tests/ -k \"not ollama\" -q --tb=short"
 help = "Degraded local loop: full suite minus Ollama-dependent tests (local convenience, not a gate)"
 
+# Warning ratchet (issue #294, zero-drift rule 10). Fails when the live
+# suite's pytest warnings exceed the pytest_warnings ceiling in
+# scripts/quality-baselines.json. Pinned measurement env: .[dev,duckdb,
+# inductive] + Ollama UP. The count comes from pytest's own
+# pytest_warning_recorded hook (pytest 9 dropped the junit warnings
+# attribute), so the script runs the suite in-process.
+[tool.poe.tasks.warning-ratchet]
+# -m keeps the repo root on sys.path, so tests can import this module
+# (scripts/ is a namespace package under `python -m` from the repo root).
+cmd = "python -m scripts.warning_ratchet"
+help = "Fail when live pytest warnings exceed the pytest_warnings ceiling (quality-baselines.json)"
+
 # Plain-language gate (zero-drift Wave 5A, program standard 6). The full
 # suite already includes it; this target runs the gate alone.
 [tool.poe.tasks.ste]
