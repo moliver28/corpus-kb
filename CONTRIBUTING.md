@@ -19,6 +19,9 @@ docs under `corpus-kb/docs/`.
    uv sync --extra dev
    ```
 
+   On Windows, check the libmagic files after a fresh venv:
+   [DEVELOPMENT.md](docs/DEVELOPMENT.md#windows-check-the-libmagic-files-after-a-fresh-venv).
+
 2. **Install the pre-commit hooks** so commits are auto-formatted and
    validated before they reach CI:
 
