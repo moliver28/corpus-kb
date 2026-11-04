@@ -182,6 +182,27 @@ body {
 
 .ui-filter-min { min-width: 220px; }
 
+/* The one labeled-field pattern (components/LabeledField.tsx): the
+   visible label sits above the control; the inline error slot sits
+   under it and carries role=alert. Full width with the width-class
+   cap, so a field in an actions row sizes like the naked input did. */
+.ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.ui-field-label {
+  color: var(--ckb-color-text-description);
+  font-size: 12px;
+}
+
+.ui-field-error {
+  color: var(--ckb-color-error);
+  font-size: 12px;
+}
+
 /* Vertical rhythm tokens: the same spacing the inline margins had. */
 .ui-stack-gap { margin-top: 8px; }
 

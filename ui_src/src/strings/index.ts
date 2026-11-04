@@ -277,7 +277,8 @@ export interface Strings {
   scaleResearchPathRequired: string;
   scaleForceToggle: string;
   scaleForceWarning: string;
-  formRequired: string;
+  formFieldRequired: string;
+  formInvalidJson: string;
   codebookTitle: string;
   codebookBody: string;
   codebookPreFlightTitle: string;
