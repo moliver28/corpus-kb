@@ -17,9 +17,10 @@ never rebuilds it. Handler imports stay lazy — each arm still imports
 its own handler inside the call.
 
 Error mapping: a missing method raises
-:class:`MethodNotFoundError` (mapped to -32601 by the server); a
-taxonomy ``ValidationError`` (bad numeric param, issue #238) maps to
--32602; any other error maps to -32603 by the server's one catch.
+:class:`MethodNotFoundError` (mapped to -32601 by the server). Every
+``CorpusError`` subclass answers its own ``socket_code`` (issue #304;
+validation classes map to -32602, issue #238). Plain exceptions map to
+-32603 by the server's last catch.
 """
 
 from __future__ import annotations

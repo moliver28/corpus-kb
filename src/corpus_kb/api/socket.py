@@ -6,9 +6,16 @@ object per line, each response is one JSON object per line.
 Error codes:
   -32600: Invalid request
   -32601: Method not found
-  -32602: Invalid params (taxonomy ValidationError; issue #238 moved the
-          junk-numeric-param failures here from -32603)
+  -32602: Invalid params (caller input is wrong)
+  -32001: Not found
+  -32002: Conflict
+  -32003: Database unavailable
+  -32004: Migration missing
+  -32005: Dependency missing
   -32603: Internal error
+
+Every ``CorpusError`` subclass answers its own ``socket_code`` (issue
+#304, the ERROR_MAP contract). Plain exceptions stay -32603.
 
 The method table lives in ``api/socket_ops.py``: one arm per catalogue
 operation, core arms ported from the old dispatch chain plus generated
@@ -27,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from corpus_kb.api.socket_ops import MethodNotFoundError
-from corpus_kb.errors import ValidationError
+from corpus_kb.errors import CorpusError
 
 logger = logging.getLogger(__name__)
 
@@ -121,11 +128,10 @@ class JSONRPCServer:
             # Same error an absent method gets: unknown methods must map to
             # -32601 (Method not found), never to -32603 (internal error).
             return _error(-32601, "Method not found", req_id)
-        except ValidationError as exc:
-            # Issue #238, approved contract change: bad caller input (for
-            # example a junk limit) is invalid params (-32602), not an
-            # internal error. Other taxonomy classes still ride the
-            # generic -32603 catch below (issue #239 scope).
+        except CorpusError as exc:
+            # Issue #304: every taxonomy class answers its own socket_code.
+            # One failure class maps to one code (the ERROR_MAP contract).
+            # Caller-input classes answer -32602 (issue #238 contract).
             return _error(exc.socket_code, str(exc), req_id)
         except Exception as exc:
             logger.error("RPC method %s failed: %s", method, exc)
