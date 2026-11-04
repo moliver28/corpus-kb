@@ -647,6 +647,13 @@ help = "Run the pre-commit hooks over the whole tree (config: .pre-commit-config
 cmd = "python -m pytest tests/ -x -q --tb=short"
 help = "Full test suite (Ollama/Postgres degrade gracefully)"
 
+# Local convenience (issue #302 finding 7): the degraded loop for machines
+# without a live Ollama. NOT a gate (no CI job, no map row; rule 10 does
+# not attach to local conveniences).
+[tool.poe.tasks.test-degraded]
+cmd = "python -m pytest tests/ -k \"not ollama\" -q --tb=short"
+help = "Degraded local loop: full suite minus Ollama-dependent tests (local convenience, not a gate)"
+
 # Plain-language gate (zero-drift Wave 5A, program standard 6). The full
 # suite already includes it; this target runs the gate alone.
 [tool.poe.tasks.ste]
