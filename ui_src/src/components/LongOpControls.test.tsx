@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { statusOpFor } from "../api/ops";
+import { OPS, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import { strings } from "../strings";
 import LongOpControls from "./LongOpControls";
@@ -122,16 +122,42 @@ describe("LongOpControls", () => {
 });
 
 describe("statusOpFor", () => {
-  it("maps the ingest family to the ingest ledger and nobody else", () => {
-    expect(statusOpFor("research-ingest")).toBe("ingest-status");
-    expect(statusOpFor("ingest-directory")).toBe("ingest-status");
-    expect(statusOpFor("ingest-url")).toBe("ingest-status");
-    expect(statusOpFor("demo-load")).toBe("ingest-status");
-    // Analysis, coding, ask, and the cycle have no status ledger row.
-    expect(statusOpFor("analyze-run")).toBeNull();
-    expect(statusOpFor("coding-run")).toBeNull();
+  // The full, explicit classification of every longRunning manifest op:
+  // "ingest-status" only when the op's runs land in the ingest_runs
+  // ledger (the standard corpus pipeline), null when no ledger tracks
+  // them (research paths, analysis, coding, the cycle). A new longRunning
+  // op fails this row until it is classified here AND mapped in
+  // api/ops.ts — no silent wrong or missing "Check status" button.
+  const LONG_OP_STATUS: Record<string, string | null> = {
+    "analyze-run": null,
+    "classification-build": null,
+    "coding-inductive": null,
+    "coding-run": null,
+    "demo-load": "ingest-status",
+    "ingest-directory": "ingest-status",
+    "ingest-url": "ingest-status",
+    "labeling-build": null,
+    "research-cycle": null,
+    "research-demo": null,
+    // Research ingest writes no ingest_runs row (its events are the
+    // ledger), so a status poll would only report unrelated runs.
+    "research-ingest": null,
+    "topics-build": null,
+  };
+
+  it("classifies every longRunning manifest op: status op or none", () => {
+    const longOps = Object.keys(OPS)
+      .filter((id) => OPS[id]?.longRunning === true)
+      .sort();
+    expect(longOps).toEqual(Object.keys(LONG_OP_STATUS).sort());
+    for (const [id, expected] of Object.entries(LONG_OP_STATUS)) {
+      expect(statusOpFor(id)).toBe(expected);
+    }
+  });
+
+  it("never maps a short op or an unknown id", () => {
     expect(statusOpFor("ask")).toBeNull();
-    expect(statusOpFor("research-cycle")).toBeNull();
+    expect(statusOpFor("research-ingest-transcript")).toBeNull();
     expect(statusOpFor("no-such-op")).toBeNull();
   });
 });

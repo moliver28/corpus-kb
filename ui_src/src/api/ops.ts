@@ -4,16 +4,17 @@ import { getOp } from "./ops.generated";
 export { getOp, OPS } from "./ops.generated";
 
 /**
- * The one status ledger in the backend tracks ingest runs. Only the op
- * families whose runs land in that ledger get a "Check status" button;
- * every other family stays honest by default (no button). A new ingest
- * op adds one row here; nothing else changes.
+ * The one status ledger in the backend (ingest_runs) tracks the standard
+ * corpus pipeline only. Research-path runs write no ingest_runs row (the
+ * domain events are their ledger), so only the standard-pipeline long
+ * ops get a "Check status" button; every other family stays honest by
+ * default (no button). A new longRunning op must be classified here AND
+ * in the LongOpControls parity test; nothing else changes.
  */
 const STATUS_OPS: Readonly<Record<string, string>> = {
   "demo-load": "ingest-status",
   "ingest-directory": "ingest-status",
   "ingest-url": "ingest-status",
-  "research-ingest": "ingest-status",
 };
 
 /** The status op that tracks this op's runs, or null when none does. */
