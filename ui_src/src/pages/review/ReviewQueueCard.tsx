@@ -1,9 +1,10 @@
-import { Button, Card, Input, Skeleton, Typography } from "antd";
+import { Button, Card, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LabeledField from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
@@ -141,12 +142,12 @@ export default function ReviewQueueCard() {
       <Typography.Paragraph type="secondary">{strings.reviewQueueBody}</Typography.Paragraph>
       <div className="ui-stack">
         <div>
-          <Typography.Text>{strings.reviewReviewerLabel}: </Typography.Text>
-          <Input
-            className="ui-narrow--name"
+          <LabeledField
+            label={strings.reviewReviewerLabel}
             value={reviewer}
-            onChange={(event) => pickReviewer(event.target.value)}
-            placeholder={strings.reviewReviewerLabel}
+            onChange={pickReviewer}
+            name="reviewer"
+            widthClass="ui-narrow--name"
           />
           <Typography.Paragraph type="secondary" className="ui-flush">
             {strings.reviewReviewerHint}

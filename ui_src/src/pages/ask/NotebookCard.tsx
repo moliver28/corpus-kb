@@ -1,8 +1,9 @@
-import { Button, Card, Input } from "antd";
+import { Button, Card } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
@@ -19,19 +20,24 @@ export default function NotebookCard() {
   const [projectId, setProjectId] = useState("");
   const [question, setQuestion] = useState("");
   const [retrievalOnly, setRetrievalOnly] = useState(false);
-  const [hint, setHint] = useState("");
+  const [projectError, setProjectError] = useState("");
+  const [questionError, setQuestionError] = useState("");
+  const { rootRef, flag } = useFirstErrorFocus();
   const notebook = useOp("notebook-ask");
 
   async function run(): Promise<void> {
     if (projectId.trim() === "") {
-      setHint(strings.askNotebookProjectRequired);
-      return;
+      setProjectError(strings.askNotebookProjectRequired);
     }
     if (question.trim() === "") {
-      setHint(strings.askQueryRequired);
+      setQuestionError(strings.askQueryRequired);
+    }
+    if (projectId.trim() === "" || question.trim() === "") {
+      flag();
       return;
     }
-    setHint("");
+    setProjectError("");
+    setQuestionError("");
     notebook.reset();
     await notebook.run({
       project_id: projectId.trim(),
@@ -98,19 +104,26 @@ export default function NotebookCard() {
 
   return (
     <Card title={strings.askTabNotebook}>
-      <div className="ui-stack">
+      <div className="ui-stack" ref={rootRef}>
         <div className="ui-actions">
-          <Input
-            className="ui-narrow--short"
+          <LabeledField
+            label={strings.askNotebookProjectLabel}
             value={projectId}
-            onChange={(event) => setProjectId(event.target.value)}
-            placeholder={strings.askNotebookProjectLabel}
+            onChange={setProjectId}
+            error={projectError}
+            required
+            machine
+            name="project_id"
+            widthClass="ui-narrow--short"
           />
-          <Input
-            className="ui-narrow"
+          <LabeledField
+            label={strings.askQueryLabel}
             value={question}
-            onChange={(event) => setQuestion(event.target.value)}
-            placeholder={strings.askQueryLabel}
+            onChange={setQuestion}
+            error={questionError}
+            required
+            name="notebook_question"
+            widthClass="ui-narrow"
             onPressEnter={() => void run()}
           />
         </div>
@@ -128,7 +141,6 @@ export default function NotebookCard() {
             {strings.askNotebookAction}
           </Button>
         </div>
-        {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
         {body}
       </div>
     </Card>

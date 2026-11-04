@@ -1,5 +1,6 @@
-import { Button, Input } from "antd";
+import { Button } from "antd";
 import { useState } from "react";
+import LabeledField from "../../components/LabeledField";
 import { strings } from "../../strings";
 
 /**
@@ -22,11 +23,13 @@ export default function OverrideForm({
         <strong>{strings.reviewOverrideTitle}</strong>
       </p>
       <p>{strings.reviewOverrideBody}</p>
-      <Input.TextArea
+      <LabeledField
+        label={strings.reviewNoteLabel}
         value={note}
-        onChange={(event) => setNote(event.target.value)}
-        placeholder={strings.reviewNoteLabel}
-        rows={3}
+        onChange={setNote}
+        multiline
+        name="review_note"
+        widthClass="ui-narrow--form"
       />
       <div className="ui-actions">
         <Button type="primary" onClick={() => onSubmit(note.trim())}>

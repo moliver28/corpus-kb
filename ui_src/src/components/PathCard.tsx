@@ -1,4 +1,4 @@
-import { Button, Card, Input, Typography } from "antd";
+import { Button, Card, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { callOp } from "../api/client";
@@ -7,6 +7,7 @@ import type { OpResult } from "../api/types";
 import ConfirmGate from "./ConfirmGate";
 import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "./LabeledField";
 import LongOpControls from "./LongOpControls";
 import ReceiptCard from "./ReceiptCard";
 import StatusBanner from "./StatusBanner";
@@ -50,8 +51,9 @@ export default function PathCard({
   children,
 }: PathCardProps) {
   const [path, setPath] = useState("");
-  const [hint, setHint] = useState("");
+  const [error, setError] = useState("");
   const [gateOpen, setGateOpen] = useState(false);
+  const { rootRef, flag } = useFirstErrorFocus();
   const bodyRef = useRef<unknown>({});
   const isLong = getOp(opId)?.longRunning === true;
   const short = useOp(opId);
@@ -67,10 +69,11 @@ export default function PathCard({
 
   async function run(): Promise<void> {
     if (path.trim() === "") {
-      setHint(requiredMessage);
+      setError(requiredMessage);
+      flag();
       return;
     }
-    setHint("");
+    setError("");
     bodyRef.current = { [pathKey]: path.trim(), ...extraBody };
     if (isLong) {
       await long.start();
@@ -87,10 +90,11 @@ export default function PathCard({
   function requestRun(): void {
     if (isLong) {
       if (path.trim() === "") {
-        setHint(requiredMessage);
+        setError(requiredMessage);
+        flag();
         return;
       }
-      setHint("");
+      setError("");
       setGateOpen(true);
       return;
     }
@@ -127,12 +131,16 @@ export default function PathCard({
       {body !== undefined && (
         <Typography.Paragraph type="secondary">{body}</Typography.Paragraph>
       )}
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow--form"
+      <div className="ui-actions" ref={rootRef}>
+        <LabeledField
+          label={label}
           value={path}
-          onChange={(event) => setPath(event.target.value)}
-          placeholder={label}
+          onChange={setPath}
+          error={error}
+          required
+          machine
+          name={pathKey}
+          widthClass="ui-narrow--form"
           onPressEnter={requestRun}
         />
         {isLong ? (
@@ -150,7 +158,6 @@ export default function PathCard({
           </Button>
         )}
       </div>
-      {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
       {children}
       <LongOpControls op={long} onRetry={requestRun} />
       {resultView}

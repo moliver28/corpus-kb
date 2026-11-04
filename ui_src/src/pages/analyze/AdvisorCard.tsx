@@ -1,9 +1,10 @@
-import { Button, Card, Input, Table, Typography } from "antd";
+import { Button, Card, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { getOp } from "../../api/ops";
@@ -79,15 +80,17 @@ function guidanceRow(record: Row): ReactNode {
  */
 export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: string) => void }) {
   const [task, setTask] = useState("");
-  const [hint, setHint] = useState("");
+  const [error, setError] = useState("");
+  const { rootRef, flag } = useFirstErrorFocus();
   const advisor = useOp("analysis-select-method");
 
   async function run(): Promise<void> {
     if (task.trim() === "") {
-      setHint(strings.analyzeAdvisorTaskRequired);
+      setError(strings.analyzeAdvisorTaskRequired);
+      flag();
       return;
     }
-    setHint("");
+    setError("");
     advisor.reset();
     await advisor.run({ task_description: task.trim() });
   }
@@ -145,19 +148,21 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
   return (
     <Card title={strings.analyzeAdvisorTitle}>
       <Typography.Paragraph type="secondary">{strings.analyzeAdvisorBody}</Typography.Paragraph>
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow"
+      <div className="ui-actions" ref={rootRef}>
+        <LabeledField
+          label={strings.analyzeAdvisorTaskLabel}
           value={task}
-          onChange={(event) => setTask(event.target.value)}
-          placeholder={strings.analyzeAdvisorTaskLabel}
+          onChange={setTask}
+          error={error}
+          required
+          name="task_description"
+          widthClass="ui-narrow"
           onPressEnter={() => void run()}
         />
         <Button type="primary" loading={advisor.running} onClick={() => void run()}>
           {strings.analyzeAdvisorAction}
         </Button>
       </div>
-      {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
       {body}
     </Card>
   );

@@ -1,9 +1,9 @@
-import { Button, Card, Input, Typography } from "antd";
+import { Button, Card, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
+import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import ReceiptCard from "../../components/ReceiptCard";
-import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
@@ -14,15 +14,17 @@ import { strings } from "../../strings";
  */
 export function EvidenceCard() {
   const [code, setCode] = useState("");
-  const [hint, setHint] = useState("");
+  const [error, setError] = useState("");
+  const { rootRef, flag } = useFirstErrorFocus();
   const evidence = useOp("notebook-evidence");
 
   async function run(): Promise<void> {
     if (code.trim() === "") {
-      setHint(strings.codebookEvidenceRequired);
+      setError(strings.codebookEvidenceRequired);
+      flag();
       return;
     }
-    setHint("");
+    setError("");
     evidence.reset();
     await evidence.run({ code: code.trim() });
   }
@@ -41,19 +43,21 @@ export function EvidenceCard() {
 
   return (
     <Card title={strings.codebookEvidenceTitle}>
-      <div className="ui-actions">
-        <Input
-          className="ui-narrow--short"
+      <div className="ui-actions" ref={rootRef}>
+        <LabeledField
+          label={strings.codebookEvidenceCodeLabel}
           value={code}
-          onChange={(event) => setCode(event.target.value)}
-          placeholder={strings.codebookEvidenceCodeLabel}
+          onChange={setCode}
+          error={error}
+          required
+          name="code"
+          widthClass="ui-narrow--short"
           onPressEnter={() => void run()}
         />
         <Button type="primary" loading={evidence.running} onClick={() => void run()}>
           {strings.runnerRunLabel}
         </Button>
       </div>
-      {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
       {body}
     </Card>
   );

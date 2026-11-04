@@ -1,15 +1,15 @@
-import { Button, Card, Input, Modal, Skeleton, Typography } from "antd";
+import { Button, Card, Modal, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { callOp } from "../api/client";
-import { getOp } from "../api/ops";
 import type { OpResult } from "../api/types";
 import BlockedPanel from "./BlockedPanel";
 import JsonViewer from "./JsonViewer";
+import LabeledField, { useFirstErrorFocus } from "./LabeledField";
 import ErrorPanel from "./ErrorPanel";
 import ReceiptCard from "./ReceiptCard";
 import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
+import { useOp } from "../hooks/useOp";
 import { strings } from "../strings";
 
 export interface FormField {
@@ -21,11 +21,14 @@ export interface FormField {
 }
 
 /**
- * One typed release form: named id fields over ONE manifest op. `via`
- * picks the transport shape — a JSON body or a query-string GET.
- * `gate` wraps the run in a confirm dialog that shows `gateSummary`
- * (the assess/review gate state) above every field value, so the
- * approver sees the gate state before confirming (spec F9).
+ * One typed release form over ONE manifest op through useOp, the one
+ * op hook. `via` picks the transport shape — a JSON body, or query
+ * pairs appended to the op path. The manifest's method always rides:
+ * a query form sends the op's declared verb with no body. Query pairs
+ * carry string fields only: a query pair is a flat string, and a
+ * structured value would arrive as text the server cannot read back
+ * into the field (no manifest query op declares a structured field).
+ * A failed JSON parse names the field.
  */
 export default function IdFormCard({
   title,
@@ -49,59 +52,66 @@ export default function IdFormCard({
   onResult?: (result: OpResult) => void;
 }) {
   const [values, setValues] = useState<Record<string, string>>({});
-  const [hint, setHint] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [gateOpen, setGateOpen] = useState(false);
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<OpResult | null>(null);
-  const op = getOp(opId);
+  const op = useOp(opId);
+  const { rootRef, flag } = useFirstErrorFocus();
 
   function setValue(key: string, value: string): void {
     setValues((prev) => ({ ...prev, [key]: value }));
   }
 
-  function buildBody(): { ok: boolean; body: Record<string, unknown> } {
-    const out: Record<string, unknown> = {};
+  /** One pass: trim, check required, parse JSON, split body vs query. */
+  function build(): {
+    errors: Record<string, string>;
+    body: Record<string, unknown>;
+    query: Record<string, string>;
+  } {
+    const errors: Record<string, string> = {};
+    const body: Record<string, unknown> = {};
+    const query: Record<string, string> = {};
     for (const field of fields) {
-      const value = (values[field.key] ?? "").trim();
-      if (value === "") continue;
-      if (field.json === true) {
-        try {
-          out[field.key] = JSON.parse(value);
-        } catch {
-          return { ok: false, body: {} };
+      const raw = (values[field.key] ?? "").trim();
+      if (raw === "") {
+        if (field.required === true) {
+          errors[field.key] = strings.formFieldRequired.replace("{field}", field.label);
         }
+        continue;
+      }
+      if (field.json === true) {
+        // Query pairs carry flat strings, so JSON fields ride a body only.
+        if (via === "query") continue;
+        try {
+          body[field.key] = JSON.parse(raw) as unknown;
+        } catch {
+          errors[field.key] = strings.formInvalidJson.replace("{field}", field.label);
+        }
+        continue;
+      }
+      if (via === "query") {
+        query[field.key] = raw;
       } else {
-        out[field.key] = value;
+        body[field.key] = raw;
       }
     }
-    return { ok: true, body: out };
+    return { errors, body, query };
   }
 
   async function run(): Promise<void> {
-    if (op === undefined || running) {
+    if (op.running) {
       return;
     }
-    if (fields.some((field) => field.required && (values[field.key] ?? "").trim() === "")) {
-      setHint(strings.formRequired);
+    const built = build();
+    if (Object.keys(built.errors).length > 0) {
+      setErrors(built.errors);
+      flag();
       return;
     }
-    const built = buildBody();
-    if (!built.ok) {
-      setHint(strings.runnerInvalidJson);
-      return;
-    }
-    setHint("");
-    setRunning(true);
-    const payload = built.body;
+    setErrors({});
     const res =
       via === "query"
-        ? await callOp<unknown>(
-            `${op.path}?${new URLSearchParams(payload as Record<string, string>)}`,
-            { method: "GET" },
-          )
-        : await callOp<unknown>(op.path, { method: "POST", body: payload });
-    setRunning(false);
-    setResult(res);
+        ? await op.run(undefined, built.query)
+        : await op.run(built.body);
     onResult?.(res);
   }
 
@@ -114,7 +124,8 @@ export default function IdFormCard({
   }
 
   let resultView: ReactNode = null;
-  if (result !== null && !running) {
+  if (op.result !== null && !op.running) {
+    const result = op.result;
     if (result.kind === "unavailable") {
       resultView = <UnavailablePanel result={result} onRetry={() => void run()} />;
     } else if (result.kind === "blocked" || result.status === "blocked") {
@@ -140,28 +151,26 @@ export default function IdFormCard({
       {body !== undefined && (
         <Typography.Paragraph type="secondary">{body}</Typography.Paragraph>
       )}
-      <div className="ui-stack">
+      <div className="ui-stack" ref={rootRef}>
         {fields.map((field) => (
-          <div key={field.key}>
-            <Typography.Text>
-              {field.label}
-              {field.required === true ? " *" : ""}:{" "}
-            </Typography.Text>
-            <Input
-              className="ui-narrow--form"
-              value={values[field.key] ?? ""}
-              onChange={(event) => setValue(field.key, event.target.value)}
-              placeholder={field.label}
-            />
-          </div>
+          <LabeledField
+            key={field.key}
+            label={field.label}
+            value={values[field.key] ?? ""}
+            onChange={(value) => setValue(field.key, value)}
+            error={errors[field.key]}
+            required={field.required === true}
+            machine
+            name={field.key}
+            widthClass="ui-narrow--form"
+          />
         ))}
         <div className="ui-actions">
-          <Button type="primary" loading={running} onClick={trigger}>
+          <Button type="primary" loading={op.running} onClick={trigger}>
             {strings.runnerRunLabel}
           </Button>
         </div>
-        {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
-        {running && <Skeleton active title={false} paragraph={{ rows: 2 }} />}
+        {op.running && <Skeleton active title={false} paragraph={{ rows: 2 }} />}
         {resultView}
       </div>
       <Modal

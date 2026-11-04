@@ -103,7 +103,12 @@ describe("Release page", () => {
     render(<Release />, { wrapper: makeWrapper() });
     const requestCard = cardOf(strings.releaseRequestTitle);
     fireEvent.click(within(requestCard).getByRole("button", { name: strings.runnerRunLabel }));
-    expect(await screen.findByText(strings.formRequired)).toBeTruthy();
+    const missing = strings.formFieldRequired.replace("{field}", strings.releaseVersionLabel);
+    expect(await screen.findByText(missing)).toBeTruthy();
+    // Focus moves to the first errored field on a failed submit.
+    expect(document.activeElement).toBe(
+      within(requestCard).getByPlaceholderText(strings.releaseVersionLabel),
+    );
     expect(calls.some((c) => c.url.includes("/api/release/request"))).toBe(false);
   });
 });
