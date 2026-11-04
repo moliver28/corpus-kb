@@ -141,6 +141,8 @@ export interface Strings {
   reviewTopicsTitle: string;
   errorCopyDiagnostic: string;
   errorCopied: string;
+  boundaryTitle: string;
+  boundaryBody: string;
   askTitle: string;
   askBody: string;
   askQueryLabel: string;
@@ -164,6 +166,8 @@ export interface Strings {
   askNotebookAction: string;
   askNotebookProjectRequired: string;
   askNotebookRetrievalOnly: string;
+  askProjectsEmpty: string;
+  askProjectsFallback: string;
   askColumnSource: string;
   askColumnText: string;
   askColumnScore: string;

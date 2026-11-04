@@ -1,11 +1,17 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import App from "./App";
+import AppErrorBoundary from "./components/AppErrorBoundary";
 import { strings } from "./strings";
 
 // globals are off, so testing-library's auto-cleanup never registers.
 afterEach(cleanup);
+
+/** A card whose render always throws (the boundary test's crash). */
+function ThrowingCard(): never {
+  throw new Error("card failed");
+}
 
 // The shell now mounts the real Setup screen, whose doctor card uses
 // react-query — the same provider wrap main.tsx applies.
@@ -48,5 +54,29 @@ describe("App stage shell", () => {
     // The stage screens are lazy chunks; the stage title appears after
     // the chunk resolves.
     expect(await screen.findByText(strings.setupTitle)).toBeTruthy();
+  });
+
+  it("degrades a throwing card to the boundary fallback, not a white screen", () => {
+    // React logs every caught render error; the assertion is the
+    // fallback UI, so the noise stays out of the gate output.
+    const noise = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      render(
+        <AppErrorBoundary>
+          <ThrowingCard />
+        </AppErrorBoundary>,
+      );
+      expect(screen.getByText(strings.boundaryTitle)).toBeTruthy();
+      expect(screen.getByText(strings.boundaryBody)).toBeTruthy();
+      expect(
+        screen.getByRole("button", { name: strings.errorCopyDiagnostic }),
+      ).toBeTruthy();
+      // Retry re-mounts the tree; the deterministic throw lands in the
+      // same fallback instead of crashing the test run.
+      fireEvent.click(screen.getByRole("button", { name: strings.retryLabel }));
+      expect(screen.getByText(strings.boundaryTitle)).toBeTruthy();
+    } finally {
+      noise.mockRestore();
+    }
   });
 });
