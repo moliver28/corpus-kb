@@ -1,5 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useLocation } from "react-router";
 import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import type { Call, MinimalResponse } from "../test/testUtils";
@@ -12,8 +14,44 @@ import Scale from "./Scale";
  * The Scale page from canonical fixtures: the self-polling run ledger
  * (runtime interval, hidden-tab pause, 10 s backoff after a 503 — all
  * under fake timers), the bulk folder walk, the research ingest with
- * its force warning, and the re-embed watch.
+ * its force warning, and the re-embed watch. The project filter rides
+ * the hash query (restore, unknown-fallback, write rows).
  */
+
+let query = "";
+
+/** Reports the router location's query so rows can assert the write. */
+function QueryProbe() {
+  const search = useLocation().search;
+  useEffect(() => {
+    query = search;
+  });
+  return null;
+}
+
+/** A ledger with two projects, for the URL-synced filter rows. */
+const twoProjectsLedger = {
+  status: "success",
+  ledger_present: true,
+  runs: [
+    {
+      run_id: "run-one",
+      status: "success",
+      started_at: "2026-01-05T10:05:00Z",
+      source_type: "upload",
+      project_id: "proj-1",
+    },
+    {
+      run_id: "run-two",
+      status: "success",
+      started_at: "2026-01-05T10:06:00Z",
+      source_type: "upload",
+      project_id: "proj-2",
+    },
+  ],
+  incomplete_runs: 0,
+  degraded: { chunks: 0, chunk_vectors: 0 },
+};
 
 function ledgerCalls(): Call[] {
   return calls.filter((c) => c.method === "GET" && c.url.includes("/api/ingest/status"));
@@ -51,6 +89,7 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   clearCalls();
+  query = "";
 });
 
 describe("Scale page", () => {
@@ -173,5 +212,75 @@ describe("Scale page", () => {
     const sent = calls.find((c) => c.url.includes("/api/research/ingest"));
     expect(sent?.body).toContain('"path":"/data/corpus/**"');
     expect(sent?.body).toContain('"force":true');
+  });
+
+  it("restores the project filter from the address query", async () => {
+    setTabVisible(true);
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, twoProjectsLedger) },
+    ]);
+    render(<Scale />, { wrapper: makeWrapper(true, ["/scale?project=proj-2"]) });
+    // The picker and the table both show the project words, so the wait
+    // targets the combobox and the assert reads the table body only.
+    // (The run id is the row key, never a cell.)
+    await screen.findByRole("combobox");
+    const tbody = document.querySelector(".ant-table-tbody");
+    expect(tbody?.textContent).toContain("proj-2");
+    expect(tbody?.textContent).not.toContain("proj-1");
+  });
+
+  it("reads an unknown project in the query as all runs", async () => {
+    setTabVisible(true);
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, twoProjectsLedger) },
+    ]);
+    render(<Scale />, { wrapper: makeWrapper(true, ["/scale?project=ghost"]) });
+    await screen.findByRole("combobox");
+    const tbody = document.querySelector(".ant-table-tbody");
+    expect(tbody?.textContent).toContain("proj-1");
+    expect(tbody?.textContent).toContain("proj-2");
+  });
+
+  it("writes the project pick into the address query", async () => {
+    setTabVisible(true);
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, twoProjectsLedger) },
+    ]);
+    render(
+      <>
+        <Scale />
+        <QueryProbe />
+      </>,
+      { wrapper: makeWrapper() },
+    );
+    await screen.findByRole("combobox");
+    // The dropdown's aria list mirrors the words of the table cells, so
+    // the pick targets the visual .ant-select-item-option rows inside
+    // the open dropdown. The router write rides a transition, so each
+    // click flushes in an act.
+    const pickFrom = (): Element[] => {
+      const dropdown = document.querySelector(".ant-select-dropdown");
+      return dropdown
+        ? Array.from(dropdown.querySelectorAll(".ant-select-item-option"))
+        : [];
+    };
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    // The null value renders "All projects" in the selector too, so the
+    // open wait matches both (the dropdown one only exists when open).
+    await screen.findAllByText(strings.scaleRunsAll);
+    const pick = pickFrom().find((el) => el.textContent === "proj-1");
+    expect(pick).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(pick!);
+    });
+    expect(query).toBe("?project=proj-1");
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    await screen.findAllByText(strings.scaleRunsAll);
+    const all = pickFrom().find((el) => el.textContent === strings.scaleRunsAll);
+    expect(all).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(all!);
+    });
+    expect(query).toBe("");
   });
 });

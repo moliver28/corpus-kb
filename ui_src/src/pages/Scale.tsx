@@ -1,7 +1,6 @@
 import { Card, Select, Skeleton, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { useState } from "react";
 import { runtimeConfig } from "../api/runtimeConfig";
 import DegradedCard from "../components/DegradedCard";
 import DirectoryCard from "../components/DirectoryCard";
@@ -9,14 +8,20 @@ import JsonViewer from "../components/JsonViewer";
 import ResearchIngestCard from "../components/ResearchIngestCard";
 import StatusBanner from "../components/StatusBanner";
 import { usePoll } from "../hooks/usePoll";
+import { useQueryParam } from "../hooks/useQueryParam";
 import { strings } from "../strings";
 import { filterRuns, projectOptions, runsOf } from "./scale/runFilter";
 import type { LedgerRun } from "./scale/runFilter";
 
-/** The project filter plus the narrowed run list (migration 036 link). */
+/**
+ * The project filter plus the narrowed run list (migration 036 link).
+ * The pick rides the hash query (`#/scale?project=<id>`), so reload and
+ * links restore it; a project absent from the current ledger reads as
+ * "all" — the honest fallback, never a crash.
+ */
 function RunFilterView({ runs }: { runs: LedgerRun[] }) {
-  const [project, setProject] = useState<string | null>(null);
   const options = projectOptions(runs);
+  const [project, setProject] = useQueryParam("project", options);
   const visible = filterRuns(runs, project);
   const columns: ColumnsType<LedgerRun> = [
     {
