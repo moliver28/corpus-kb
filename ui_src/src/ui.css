@@ -1,35 +1,46 @@
 /* The ONE static CSS layer (no CSS-in-JS): signature treatments only.
-   Everything else comes from antd components and design tokens. */
+   Everything else comes from antd components. Colors come from the
+   theme's --ckb-* variables (theme.ts) — no hard-coded hex here. */
+
+/* Base voice: the sans face for plain markup. antd's cssVar scope
+   class lives on component roots (not :root), so the body — the one
+   element outside every scope — repeats the theme's sans stack
+   literally; everything inside the shell reads the --ckb-* variables. */
+body {
+  margin: 0;
+  font-family: "IBM Plex Sans", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+/* Card-internal section headings: semantic h2 under the app h1 (the
+   header title), sized as panel titles (16) per the design scale. */
+.ui-heading {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.6;
+}
+
+.ui-stack > .ui-heading {
+  margin-bottom: 0;
+}
 
 .ui-banner {
   display: flex;
   gap: 8px;
   align-items: baseline;
   padding: 8px 12px;
-  border: 1px solid #d9d9d9;
+  border: 1px solid var(--ckb-color-border);
   border-radius: 6px;
   margin-bottom: 12px;
 }
 
-.ui-banner--ok {
-  border-color: #b7eb8f;
-  background: #f6ffed;
-}
+.ui-banner--ok { border-color: var(--ckb-color-success-border); background: var(--ckb-color-success-bg); }
 
-.ui-banner--warn {
-  border-color: #ffe58f;
-  background: #fffbe6;
-}
+.ui-banner--warn { border-color: var(--ckb-color-warning-border); background: var(--ckb-color-warning-bg); }
 
-.ui-banner--error {
-  border-color: #ffa39e;
-  background: #fff1f0;
-}
+.ui-banner--error { border-color: var(--ckb-color-error-border); background: var(--ckb-color-error-bg); }
 
-.ui-banner--info {
-  border-color: #91caff;
-  background: #e6f4ff;
-}
+.ui-banner--info { border-color: var(--ckb-color-info-border); background: var(--ckb-color-info-bg); }
 
 .ui-banner__kind {
   font-weight: 600;
@@ -44,23 +55,25 @@
 .ui-json pre {
   max-height: 320px;
   overflow: auto;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
-  padding: 8px;
-  font-size: 12px;
 }
 
-/* Analyze: the dormant-feature YAML snippet. */
+/* Machine voice: JSON and YAML render in mono, on a flat fill. */
+.ui-json pre,
 .ui-json-yaml {
-  margin: 0;
-  background: #fafafa;
-  border: 1px solid #f0f0f0;
+  background: var(--ckb-color-fill-quater);
+  border: 1px solid var(--ckb-color-border-secondary);
   padding: 8px;
   font-size: 12px;
+  font-family: var(--ckb-font-family-code);
+}
+
+.ui-json-yaml {
+  margin: 0;
   overflow: auto;
 }
 
-/* App shell (App.tsx): layout-only classes. */
+/* App shell (App.tsx): layout-only classes. The header separates with
+   a 1px border, never a shadow. */
 .ui-shell {
   min-height: 100vh;
 }
@@ -69,11 +82,14 @@
   display: flex;
   align-items: center;
   gap: 24px;
+  border-bottom: 1px solid var(--ckb-color-border-secondary);
 }
 
 .ui-header__title {
-  color: #fff;
-  font-size: 18px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ckb-color-text-heading);
 }
 
 .ui-header__menu {
@@ -88,10 +104,13 @@
   margin: 0 auto;
 }
 
-/* CitedAnswer: the answer text and the evidence list. Cited sentences
-   carry the serif documentary voice (the signature treatment). */
+/* Evidence voice: answers and cited sentences are retrieved source
+   text, so they carry the serif (one step larger than the sans around
+   them); the answer prose caps at 72 characters. */
 .ui-answer {
-  font-size: 15px;
+  max-width: 72ch;
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+  font-size: 16px;
   line-height: 1.6;
 }
 
@@ -100,35 +119,36 @@
   padding-left: 20px;
 }
 
-/* Hover-citation link: the hovered sentence raises itself (blue) and
-   every sentence citing the same source (green); the source label of
-   the hovered sentence is emphasized. Color never carries the signal
-   alone — the source label also gains weight. */
+/* Hover-citation link: the hovered sentence raises itself (the deeper
+   petrol wash) and every sentence citing the same source gets the
+   lighter petrol wash; the source label of the hovered sentence is
+   emphasized. Color never carries the signal alone — the source label
+   also gains weight. */
 .ui-citations li {
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: 2px;
 }
 
 .ui-citation--active {
-  background: #e6f4ff;
+  background: var(--ckb-color-primary-bg-hover);
 }
 
 .ui-citation--linked {
-  background: #f6ffed;
+  background: var(--ckb-color-primary-bg);
 }
 
 .ui-citation-source--active {
-  color: #0958d9;
+  color: var(--ckb-color-primary);
   font-weight: 600;
 }
 
 .ui-citation-text {
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
   font-size: 14px;
 }
 
 .ui-citation-source {
-  color: #595959;
+  color: var(--ckb-color-text-description);
   font-size: 12px;
 }
 
@@ -150,42 +170,24 @@
 
 /* Width tokens: one class per repeated control width. Each class
    carries the same pixel value the inline styles it replaced had. */
-.ui-narrow {
-  max-width: 480px;
-}
+.ui-narrow { max-width: 480px; }
 
-.ui-narrow--form {
-  max-width: 420px;
-}
+.ui-narrow--form { max-width: 420px; }
 
-.ui-narrow--short {
-  max-width: 360px;
-}
+.ui-narrow--short { max-width: 360px; }
 
-.ui-narrow--small {
-  max-width: 260px;
-}
+.ui-narrow--small { max-width: 260px; }
 
-.ui-narrow--name {
-  max-width: 280px;
-}
+.ui-narrow--name { max-width: 280px; }
 
-.ui-filter-min {
-  min-width: 220px;
-}
+.ui-filter-min { min-width: 220px; }
 
 /* Vertical rhythm tokens: the same spacing the inline margins had. */
-.ui-stack-gap {
-  margin-top: 8px;
-}
+.ui-stack-gap { margin-top: 8px; }
 
-.ui-stack-gap-lg {
-  margin-top: 12px;
-}
+.ui-stack-gap-lg { margin-top: 12px; }
 
-.ui-flush {
-  margin-bottom: 0;
-}
+.ui-flush { margin-bottom: 0; }
 
 /* antd Typography ships `div.ant-typography { margin-bottom: 1em }`
    (0,1,1), which beats the single class above; naming the component
@@ -194,12 +196,13 @@
   margin-bottom: 0;
 }
 
-/* Stage placeholder (App.tsx): plain markup, card-like without antd. */
+/* Stage placeholder (App.tsx): plain markup, panel-like without antd
+   (Paper surface, 1px border, panel radius 10). */
 .ui-placeholder {
-  border: 1px solid #f0f0f0;
-  border-radius: 8px;
+  border: 1px solid var(--ckb-color-border-secondary);
+  border-radius: 10px;
   padding: 24px;
-  background: #fff;
+  background: var(--ckb-color-bg-container);
 }
 
 .ui-placeholder h2 {
@@ -209,7 +212,7 @@
 
 .ui-placeholder p {
   margin: 0;
-  color: #595959;
+  color: var(--ckb-color-text-description);
 }
 
 /* AskCard: the client-only question history. A history entry is a
@@ -223,11 +226,22 @@
   border: none;
   background: none;
   padding: 0;
-  color: #0958d9;
+  color: var(--ckb-color-primary);
   cursor: pointer;
   font-size: 14px;
 }
 
 .ui-history__item:hover {
   text-decoration: underline;
+}
+
+/* Motion answers actions only. Under reduced motion everything stops
+   here; antd's JS motion token turns off with it (theme.ts). */
+@media (prefers-reduced-motion: reduce) {
+  #root *,
+  #root *::before,
+  #root *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
 }

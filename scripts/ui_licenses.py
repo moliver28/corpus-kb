@@ -2,7 +2,8 @@
 """UI production-license gate (UI SPA program Task 4).
 
 Runs ``pnpm licenses list`` over ``ui_src/`` and enforces the production
-allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0).
+allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0, and
+OFL-1.1 for the self-hosted @fontsource font packages).
 The lockfile records the production tree only: dev trees contain
 platform-specific native packages (rolldown/esbuild bindings), so a
 dev snapshot would differ per OS and never stay in sync.
@@ -33,7 +34,7 @@ from pathlib import Path
 LOCK_REL = Path("ui_licenses.lock.json")
 UI_SRC_REL = Path("ui_src")
 
-ALLOWED_EXACT = frozenset({"MIT", "Apache-2.0", "ISC", "0BSD", "CC0-1.0", "MIT-0"})
+ALLOWED_EXACT = frozenset({"MIT", "Apache-2.0", "ISC", "0BSD", "CC0-1.0", "MIT-0", "OFL-1.1"})
 _ALLOWED_PREFIXES = ("BSD",)
 _BRANCH_RX = re.compile(r"\s+(?:OR|AND)\s+")
 
@@ -78,7 +79,9 @@ def build_lock(project_root: Path) -> tuple[dict[str, str], str]:
     """(production, rendered-lock) — prod gated and recorded, sorted."""
     production = _pnpm_licenses(project_root, prod_only=True)
     lock = {
-        "gate": "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0)",
+        "gate": (
+            "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0, OFL-1.1)"
+        ),
         "production": production,
     }
     rendered = json.dumps(lock, indent=2, sort_keys=True) + "\n"

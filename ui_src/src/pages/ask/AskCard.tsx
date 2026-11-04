@@ -190,7 +190,7 @@ export default function AskCard() {
         <StatusBanner kind="warn">{strings.runnerUnknownOutcome}</StatusBanner>
       )}
       {resultView}
-      <Typography.Title level={5}>{strings.askHistoryTitle}</Typography.Title>
+      <h2 className="ui-heading">{strings.askHistoryTitle}</h2>
       {history.length === 0 ? (
         <Typography.Text type="secondary">{strings.askHistoryEmpty}</Typography.Text>
       ) : (

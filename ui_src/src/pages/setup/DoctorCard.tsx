@@ -69,7 +69,7 @@ function DoctorView({ result }: { result: DoctorResult }) {
             : strings.setupRerankerOff}
         </Typography.Paragraph>
       )}
-      <Typography.Title level={5}>{strings.setupDoctorChecksHeading}</Typography.Title>
+      <h2 className="ui-heading">{strings.setupDoctorChecksHeading}</h2>
       {rows.length === 0 ? (
         <StatusBanner kind="info">{strings.setupDoctorChecksNone}</StatusBanner>
       ) : (

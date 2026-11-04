@@ -1,5 +1,5 @@
 {
-  "gate": "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0)",
+  "gate": "production allowlist: MIT, Apache-2.0, BSD, ISC, 0BSD (plus CC0-1.0, MIT-0, OFL-1.1)",
   "production": {
     "@ant-design/colors": "MIT",
     "@ant-design/cssinjs": "MIT",
@@ -11,6 +11,9 @@
     "@babel/runtime": "MIT",
     "@emotion/hash": "MIT",
     "@emotion/unitless": "MIT",
+    "@fontsource/ibm-plex-mono": "OFL-1.1",
+    "@fontsource/ibm-plex-sans": "OFL-1.1",
+    "@fontsource/source-serif-4": "OFL-1.1",
     "@rc-component/async-validator": "MIT",
     "@rc-component/cascader": "MIT",
     "@rc-component/checkbox": "MIT",

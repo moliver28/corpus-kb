@@ -119,7 +119,7 @@ export default function PreFlightCard() {
           {strings.codebookProjectsLine.replace("{count}", String(projectView.rows.length))}
         </StatusBanner>
         {projectView.node}
-        <Typography.Title level={5}>{strings.codebookVersionsHeading}</Typography.Title>
+        <h2 className="ui-heading">{strings.codebookVersionsHeading}</h2>
         {versionView.node}
         {versionView.rows.length === 0 && versionView.node === null && (
           <StatusBanner kind="info">{strings.codebookVersionsNone}</StatusBanner>
@@ -133,7 +133,7 @@ export default function PreFlightCard() {
             columns={columns}
           />
         )}
-        <Typography.Title level={5}>{strings.codebookDimsHeading}</Typography.Title>
+        <h2 className="ui-heading">{strings.codebookDimsHeading}</h2>
         {dims}
       </div>
     </Card>

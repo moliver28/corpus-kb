@@ -6,6 +6,12 @@ import NotebookCard from "./ask/NotebookCard";
 import SearchCard from "./ask/SearchCard";
 import VerifyCard from "./ask/VerifyCard";
 
+// The evidence voice: Source Serif 4 loads only in this stage chunk,
+// where the only evidence text renders (answer, citations, notebook).
+import "@fontsource/source-serif-4/latin-400.css";
+import "@fontsource/source-serif-4/latin-600.css";
+import "@fontsource/source-serif-4/latin-400-italic.css";
+
 type Tab = "search" | "verify" | "notebook";
 
 /**

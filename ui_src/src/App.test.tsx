@@ -36,6 +36,13 @@ describe("App stage shell", () => {
     }
   });
 
+  it("renders the app title as the page's h1", () => {
+    renderApp();
+    expect(
+      screen.getByRole("heading", { level: 1, name: strings.appTitle }),
+    ).toBeTruthy();
+  });
+
   it("lands on the Setup stage", async () => {
     renderApp();
     // The stage screens are lazy chunks; the stage title appears after

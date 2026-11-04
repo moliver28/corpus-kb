@@ -26,7 +26,7 @@ function renderAssess(result: OpResult): ReactNode {
   const allPass = data.all_required_pass_without_waivers === true;
   return (
     <div className="ui-stack">
-      <Typography.Title level={5}>{strings.releaseGatesHeading}</Typography.Title>
+      <h2 className="ui-heading">{strings.releaseGatesHeading}</h2>
       {rows.map((row, index) => {
         const gate = typeof row === "object" && row !== null ? (row as Record<string, unknown>) : {};
         const pass = gate.status === "pass";

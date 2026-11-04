@@ -63,7 +63,7 @@ export default function CitedAnswer({
       {badge.degraded && (
         <p className="ui-banner ui-banner--warn">{strings.badgeDegradeNote}</p>
       )}
-      <h4>{strings.citationsHeading}</h4>
+      <h2 className="ui-heading">{strings.citationsHeading}</h2>
       <ol className="ui-citations" onMouseLeave={() => setHovered(null)}>
         {citations.map((citation, index) => {
           const cited = citation.sources ?? [citation.source];

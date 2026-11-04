@@ -53,7 +53,7 @@ export default function NotebookCard() {
         const sentences = notebookSentences(env);
         body = (
           <div className="ui-stack">
-            <h4>{strings.citationsHeading}</h4>
+            <h2 className="ui-heading">{strings.citationsHeading}</h2>
             <ol className="ui-citations">
               {sentences.map((sentence, index) => (
                 <li key={`${index}-${sentence.source}`}>

@@ -43,9 +43,9 @@ function StageShell() {
   return (
     <Layout className="ui-shell">
       <Layout.Header className="ui-header">
-        <strong className="ui-header__title">{strings.appTitle}</strong>
+        {/* The app title is the page's only h1; card sections are h2. */}
+        <h1 className="ui-header__title">{strings.appTitle}</h1>
         <Menu
-          theme="dark"
           mode="horizontal"
           className="ui-header__menu"
           selectedKeys={selected ? [selected] : []}
