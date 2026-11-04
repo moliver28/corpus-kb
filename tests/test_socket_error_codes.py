@@ -9,6 +9,7 @@ and the unchanged JSON-RPC frames: -32600 parse, -32601 method, success.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -66,6 +67,44 @@ async def test_each_taxonomy_class_answers_its_socket_code(
     assert response["error"]["code"] == expected_code
     assert response["error"]["message"] == str(exc)
     assert response["id"] == 3
+
+
+@pytest.mark.parametrize(
+    ("exc", "expected_level"),
+    [
+        pytest.param(ConfigError("bad config"), logging.WARNING, id="config_warning"),
+        pytest.param(ValidationError("bad field"), logging.WARNING, id="validation_warning"),
+        pytest.param(NotFoundError("no match"), logging.WARNING, id="not_found_warning"),
+        pytest.param(ConflictError("collision"), logging.ERROR, id="conflict_error"),
+        pytest.param(DatabaseUnavailableError("no database"), logging.ERROR, id="database_error"),
+        pytest.param(
+            MigrationMissingError("missing migration"), logging.ERROR, id="migration_error"
+        ),
+        pytest.param(DependencyMissingError("missing extra"), logging.ERROR, id="dependency_error"),
+        pytest.param(InternalError("server bug"), logging.ERROR, id="internal_error"),
+        pytest.param(CorpusError("base failure"), logging.ERROR, id="base_error"),
+    ],
+)
+async def test_taxonomy_failure_logs_at_class_level(
+    monkeypatch: Any, caplog: Any, exc: CorpusError, expected_level: int
+) -> None:
+    """Caller-input failures log warnings. Server-side failures log errors.
+    Each record names the method."""
+
+    async def fail(method: str, params: dict[str, Any]) -> dict[str, Any]:
+        raise exc
+
+    monkeypatch.setattr(socket_ops_module, "dispatch", fail)
+
+    raw = json.dumps({"jsonrpc": "2.0", "id": 6, "method": "any_method", "params": {}})
+    with caplog.at_level(logging.WARNING, logger="corpus_kb.api.socket"):
+        response = await _call(raw)
+
+    assert response["error"]["code"] == exc.socket_code
+    records = [r for r in caplog.records if r.name == "corpus_kb.api.socket"]
+    assert len(records) == 1
+    assert records[0].levelno == expected_level
+    assert "any_method" in records[0].getMessage()
 
 
 async def test_socket_unknown_method_stays_32601() -> None:

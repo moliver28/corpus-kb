@@ -38,6 +38,11 @@ from corpus_kb.errors import CorpusError
 
 logger = logging.getLogger(__name__)
 
+# Caller-input taxonomy classes log at WARNING; server-side classes log
+# at ERROR (momus fold, PR #308). The split rides the wire code, so the
+# level and the client-visible code can not drift apart.
+_CALLER_INPUT_CODES = frozenset({-32602, -32001})
+
 # Platform-specific socket path
 if sys.platform == "win32":
     DEFAULT_SOCKET_PATH = r"\\.\pipe\corpus-kb"
@@ -132,6 +137,10 @@ class JSONRPCServer:
             # Issue #304: every taxonomy class answers its own socket_code.
             # One failure class maps to one code (the ERROR_MAP contract).
             # Caller-input classes answer -32602 (issue #238 contract).
+            if exc.socket_code in _CALLER_INPUT_CODES:
+                logger.warning("RPC method %s rejected: %s", method, exc)
+            else:
+                logger.error("RPC method %s failed: %s", method, exc)
             return _error(exc.socket_code, str(exc), req_id)
         except Exception as exc:
             logger.error("RPC method %s failed: %s", method, exc)
