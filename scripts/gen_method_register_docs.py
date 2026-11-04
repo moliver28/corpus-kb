@@ -60,34 +60,63 @@ def _input_label(token: str) -> str:
     return "LLM" if token == "llm" else _code(token)
 
 
+_ROUTING_AXES_FIELDS = (
+    "task_type",
+    "comparison_structure",
+    "output_form",
+    "evidence_basis",
+    "statistical_rigor",
+    "cost_tier",
+)
+
+_ROUTING_PROSE_FIELDS = (
+    ("Assumes", "assumptions"),
+    ("Null check", "null_calibration"),
+    ("Watch for", "failure_modes"),
+    ("Limits", "scope_limits"),
+    ("Workload", "cost_scale"),
+)
+
+
 def _routing_lines(method: dict[str, Any]) -> list[str]:
     """The routing-axes bullets for one method (analysis-routing program).
 
     Renders nothing when the row carries no routing axes (all fields are
     optional), so old registers and test fixtures still generate cleanly.
+    A row with SOME axes but not all six is an authoring bug: it names the
+    method id and stops, instead of rendering a half-filled block.
     """
-    if not method.get("task_type"):
+    present = [name for name in _ROUTING_AXES_FIELDS if method.get(name)]
+    if not present:
         return []
+    if len(present) != len(_ROUTING_AXES_FIELDS):
+        raise SystemExit(
+            f"method {method.get('id')}: partial routing axes ({', '.join(present)}). "
+            "Set all six axes or none."
+        )
     axes = (
         f"  - Routing axes: task {_code(method['task_type'])}, comparison "
         f"{_code(method['comparison_structure'])}, output {_code(method['output_form'])}, "
         f"evidence {_code(method['evidence_basis'])}, rigor "
         f"{_code(method['statistical_rigor'])}, cost tier {_code(method['cost_tier'])}."
     )
+    lines = [axes]
+    for label, field_name in _ROUTING_PROSE_FIELDS:
+        value = method.get(field_name)
+        if value:
+            lines.append(f"  - {label}: {_prose(value)}")
     phrases = method.get("question_phrases") or []
-    sample = " / ".join(f'"{phrase}"' for phrase in phrases[:3])
-    follows = " / ".join(f'"{item}"' for item in method.get("suggests") or [])
-    return [
-        axes,
-        f"  - Assumes: {_prose(method['assumptions'])}",
-        f"  - Null check: {_prose(method['null_calibration'])}",
-        f"  - Watch for: {_prose(method['failure_modes'])}",
-        f"  - Limits: {_prose(method['scope_limits'])}",
-        f"  - Workload: {_prose(method['cost_scale'])}",
-        f"  - Ask it: {sample}",
-        f"  - Follow-ups: {follows}",
-        f"  - Evidence: {method['evidence_citation']}",
-    ]
+    if phrases:
+        sample = " / ".join(f'"{phrase}"' for phrase in phrases[:3])
+        lines.append(f"  - Ask it: {sample}")
+    follows = method.get("suggests") or []
+    if follows:
+        quoted = " / ".join('"' + item + '"' for item in follows)
+        lines.append(f"  - Follow-ups: {quoted}")
+    citation = method.get("evidence_citation")
+    if citation:
+        lines.append(f"  - Evidence: {citation}")
+    return lines
 
 
 def build_block(register: dict[str, Any]) -> str:

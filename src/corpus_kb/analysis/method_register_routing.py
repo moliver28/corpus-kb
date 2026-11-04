@@ -71,11 +71,13 @@ def _check_phrases(phrases: list[str] | None) -> None:
 
 
 def _check_suggests(suggests: list[str] | None) -> None:
-    """Follow-up questions: 1 to 3, each 20 words or fewer."""
+    """Follow-up questions: 1 to 3, non-empty, each 20 words or fewer."""
     if suggests is None:
         return
     if not 1 <= len(suggests) <= MAX_SUGGESTS:
         raise ValueError(f"suggests: {len(suggests)} questions found. List 1 to {MAX_SUGGESTS}.")
+    if any(not item.strip() for item in suggests):
+        raise ValueError("suggests: questions must be non-empty text.")
     for item in suggests:
         words = len(item.split())
         if words > MAX_SUGGEST_WORDS:

@@ -10,7 +10,7 @@ Chosen architecture (owner may override): cascade router — deterministic fast 
 
 ## What exists and is reused
 
-- Method register: `config/analysis_methods.yaml` (30 methods) with `MethodRecord` (23 axes) in `src/corpus_kb/analysis/method_register.py`; deterministic rubric `rank_methods` in `method_register_rubric.py`; op `analysis_select_method` in `src/corpus_kb/tools/method_select_tools.py` on all four surfaces.
+- Method register: `config/analysis_methods.yaml` (30 methods) with `MethodRecord` (37 axes) in `src/corpus_kb/analysis/method_register.py`; deterministic rubric `rank_methods` in `method_register_rubric.py`; op `analysis_select_method` in `src/corpus_kb/tools/method_select_tools.py` on all four surfaces.
 - Intent-classifier precedent: `src/corpus_kb/handlers/router_handler.py` (cosine to prototype centroids, confidence threshold, honest fallback).
 - Guided UI: `ui_src/src/pages/analyze/AdvisorCard.tsx` already renders rank, why, validation, permitted claims, and hands off via `onRunMethod(opId)`.
 - Calibrate machinery: `src/corpus_kb/eval/calibrate.py` (Holm-corrected paired tests) and recipe overrides in `eval/recipes.py`.
@@ -37,7 +37,7 @@ Extend `MethodRecord` with fields grounded in how the literature states conditio
 | `suggests` | follow-up question templates | Snowy/Foresight next-question pattern |
 | `evidence_citation` | source URL, tier, year | evidence field |
 
-`scripts/gen_method_register_docs.py` extends to render the new columns; `poe gen` stays the drift gate. Controlled vocabularies live beside the existing ones in `method_register.py`.
+`scripts/gen_method_register_docs.py` extends to render the new columns; `poe gen` stays the drift gate. The core vocabularies live beside the models in `method_register.py`; the six routing vocabularies and the routing checks live in `method_register_routing.py`.
 
 ## Question intent schema (wave 2)
 

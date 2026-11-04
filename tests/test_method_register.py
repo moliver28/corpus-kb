@@ -688,6 +688,9 @@ def test_suggests_reject_count_and_word_cap() -> None:
     record = _mutate(base, suggests=[" ".join(["word"] * 21)])
     with pytest.raises(ValueError, match="20 words"):
         MethodRegister.model_validate(_single_register(record))
+    record = _mutate(base, suggests=["   "])
+    with pytest.raises(ValueError, match="non-empty"):
+        MethodRegister.model_validate(_single_register(record))
 
 
 def test_evidence_citation_requires_url() -> None:
