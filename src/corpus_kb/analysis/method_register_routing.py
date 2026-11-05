@@ -1,6 +1,6 @@
 """Routing vocabularies and validation for the analysis method register.
 
-The question-routing program adds six controlled vocabularies and fourteen
+The question-routing program adds six controlled vocabularies and twelve
 optional routing fields to each ``MethodRecord`` row. This module holds the
 routing words and the checks behind them; the register model calls
 :func:`validate_routing_axes` after its core vocabulary checks. No pydantic
@@ -53,7 +53,6 @@ def validate_routing_axes(record: MethodRecord) -> None:
             )
     _check_phrases(record.question_phrases)
     _check_suggests(record.suggests)
-    _check_citation(record.evidence_citation)
 
 
 def _check_phrases(phrases: list[str] | None) -> None:
@@ -82,11 +81,3 @@ def _check_suggests(suggests: list[str] | None) -> None:
         words = len(item.split())
         if words > MAX_SUGGEST_WORDS:
             raise ValueError(f"suggests: {words} words. Use {MAX_SUGGEST_WORDS} words or fewer.")
-
-
-def _check_citation(citation: str | None) -> None:
-    """The evidence citation must carry a source URL."""
-    if citation is None:
-        return
-    if "http://" not in citation and "https://" not in citation:
-        raise ValueError("evidence_citation: add a source URL. Use an http or https link.")

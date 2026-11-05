@@ -57,7 +57,7 @@ footnotes. They have no register rows and no ops.
 4. Run `poe gen` again; this page's table updates from the YAML.
 
 <!-- amr-register:generated:start -->
-Register version: 1.1.0. Source: the research document named in `config/analysis_methods.yaml`.
+Register version: 2.0.0. Source: the research document named in `config/analysis_methods.yaml`.
 
 | Id | Method | Output family | Inputs | Calibration | Autonomy | Complexity | Status | Op |
 |----|--------|---------------|--------|-------------|----------|------------|--------|----|
@@ -104,7 +104,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; the check is analyst agreement and an audit trail, not a statistic.
   - Watch for: Selective attention and premature code closure can hide cases that do not fit.
   - Limits: Manual close reading wins for interpretive claims.
-  - Workload: Compute is minor; human reading hours set the practical ceiling.
   - Ask it: "How do I build a codebook for my interview study?" / "Can researchers hand code these transcripts step by step?" / "I want to define and apply my own codes carefully."
   - Follow-ups: "Which cases resist my current codes?" / "How do I record code changes over time?" / "Where do two codes overlap in one passage?"
   - Evidence: https://pmc.ncbi.nlm.nih.gov/articles/PMC11877799/ (Journal 2025)
@@ -118,7 +117,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; a second analyst reviews the matrix instead of a statistic.
   - Watch for: Template framing can compress answers and hide detail later analysis needs.
   - Limits: Answers stay bounded; read the original evidence before big decisions.
-  - Workload: Human summarization dominates the workload; compute is minor.
   - Ask it: "How do I compare interview cases on a fixed question set?" / "Show answers per case in a simple matrix view." / "Can I summarize each case against my study questions?"
   - Follow-ups: "Which cases disagree on this question?" / "Is the template missing an answer type?" / "Where do summaries need the original quote?"
   - Evidence: https://pmc.ncbi.nlm.nih.gov/articles/PMC11877799/ (Journal 2025)
@@ -132,7 +130,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; a pilot matrix is checked against source material by hand.
   - Watch for: Matrix reduction can weaken narrative and sequence information.
   - Limits: Deep interpretation beats the matrix when narrative sequence matters.
-  - Workload: Charting and interpretation hours dominate; compute is minor.
   - Ask it: "How do I chart coded evidence case by case?" / "I need a case by category matrix of my findings." / "Compare groups of participants across framework categories."
   - Follow-ups: "Which categories split the cases most cleanly?" / "What sits outside the framework columns?" / "How do two case groups compare on each category?"
   - Evidence: https://doi.org/10.1186/1471-2288-13-117 (Journal 2013)
@@ -146,7 +143,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; sampled matches and non-matches are inspected by hand.
   - Watch for: Negation and context flip matches; counts never prove implicit meaning.
   - Limits: Rule matches find explicit mentions; implicit meaning needs reading or models.
-  - Workload: One text scan over n records; no neural inference, fast at corpus scale.
   - Ask it: "Find every mention of these specific words or phrases." / "Can simple rules label records that name this issue?" / "I want pattern matching for known terms in the text."
   - Follow-ups: "Which rules over-match or under-match?" / "What do the unmatched records say?" / "Should an exclusion cover negated phrases?"
   - Evidence: https://docs.v1.argilla.io/en/v1.10.0/reference/webapp/features.html (Documentation)
@@ -160,7 +156,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; the top-ranked terms are reviewed by hand before use.
   - Watch for: Repeated boilerplate and rare words can outrank meaningful terms.
   - Limits: Distinctive wording only; themes need reading or topic models.
-  - Workload: One sparse matrix build and ranking over n units; CPU only.
   - Ask it: "What words come up most often across these documents?" / "Which terms stand out as unusual in this corpus?" / "Show the most distinctive wording in the collection."
   - Follow-ups: "Which top terms look meaningless here?" / "What rare words rank surprisingly high?" / "How does filtering change the ranked list?"
   - Evidence: https://scikit-learn.org/1.5/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html (Documentation)
@@ -174,7 +169,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; an output sample is reviewed against the documents.
   - Watch for: Model favoritism can rank trained-on language; scores are not importance.
   - Limits: Phrase previews only; not validated themes or importance ranking.
-  - Workload: One encoding pass for documents and phrases; caching cuts repeat work.
   - Ask it: "Which phrases best describe what each document says?" / "Suggest key phrases for a summary preview of documents." / "Find candidate phrases similar in meaning to the document."
   - Follow-ups: "Do these phrases match what the document argues?" / "How does a seed term change the ranking?" / "Which documents share the same key phrases?"
   - Evidence: https://maartengr.github.io/KeyBERT/guides/embeddings.html (Documentation)
@@ -188,7 +182,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; short and long texts are inspected separately.
   - Watch for: Short texts and filtering choices can change the ranked phrases.
   - Limits: Statistically salient phrases only; not research importance.
-  - Workload: Local statistics over n units; no transformer is required.
   - Ask it: "Give me a quick phrase list without any model." / "Extract salient phrases using text statistics alone." / "What are the top phrases by statistical salience?"
   - Follow-ups: "How does this list compare with embedding-based phrases?" / "Which phrases survive stricter filtering?" / "Do short texts rank differently here?"
   - Evidence: https://doi.org/10.1016/j.ins.2019.09.013 (Journal 2019)
@@ -202,7 +195,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; fits across settings are compared by hand.
   - Watch for: Frequent vocabulary and analyst-chosen topic counts shape every result.
   - Limits: Exploratory navigation only; never proof of a qualitative theme.
-  - Workload: Repeated sparse fitting over n documents; CPU only.
   - Ask it: "What topics run through this whole corpus?" / "Show topic word lists to explore the collection." / "I want to navigate themes across many documents."
   - Follow-ups: "How many topics fit this corpus best?" / "Which documents mix topics strongly?" / "What wording sits outside every topic?"
   - Evidence: https://www.jmlr.org/papers/v3/blei03a.html (Journal 2003)
@@ -216,7 +208,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; clusters and outlier records are inspected directly.
   - Watch for: Small or dispersed groups can be discarded as outliers.
   - Limits: Exploratory maps only; not validated research themes.
-  - Workload: One embedding pass plus CPU grouping; repeated model searches add cost.
   - Ask it: "Discover topics from embeddings and describe each group." / "What clusters of discussion appear in these records?" / "Build an exploratory topic map of the corpus."
   - Follow-ups: "Which clusters look like real topics?" / "What did the model treat as outliers?" / "How stable are topics across settings?"
   - Evidence: https://arxiv.org/abs/2203.05794 (Preprint 2022)
@@ -230,7 +221,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; guided output is compared against an unguided run.
   - Watch for: Seed vocabulary can create confirmation bias and incomplete discovery.
   - Limits: Seed-shaped exploration only; not complete or unbiased discovery.
-  - Workload: BERTopic workload plus seed comparisons over n text units.
   - Ask it: "Steer topic discovery toward my known subject areas." / "Can seed words focus the topics on my interests?" / "I want topics shaped by the concepts I supply."
   - Follow-ups: "How does the guided run differ from the unguided one?" / "Which seeds failed to shape a topic?" / "What topics formed outside my seeds?"
   - Evidence: https://maartengr.github.io/BERTopic/getting_started/guided/guided.html (Documentation)
@@ -244,7 +234,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; assigned and unassigned records are inspected directly.
   - Watch for: Familiar topics can absorb material that merits a different reading.
   - Limits: Similarity routing only; not NLI classification.
-  - Workload: One embedding pass, topic similarities, then grouping of the rest.
   - Ask it: "Route records onto my fixed list of topic descriptions." / "Match records to supplied topics and discover the rest." / "I have known topic names; sort records into them."
   - Follow-ups: "Which records landed on no supplied topic?" / "What new topics formed in the rest?" / "How sensitive is routing to the threshold?"
   - Evidence: https://maartengr.github.io/BERTopic/getting_started/zeroshot/zeroshot.html (Documentation)
@@ -258,7 +247,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Compare mean silhouette against a permutation null before trusting the group count.
   - Watch for: Convexity bias flattens non-round clusters; imbalance hides minority groups.
   - Limits: Exploratory groups only; semantic similarity is not research similarity.
-  - Workload: One embedding pass plus grouping; algorithm and corpus size matter.
   - Ask it: "Group similar comments together so I can review them." / "Cluster the embeddings and show example records per group." / "How can I organize thousands of records into groups?"
   - Follow-ups: "Which records sit between two groups?" / "How do groups change with different settings?" / "What makes each group's examples similar?"
   - Evidence: https://aclanthology.org/2026.nlp4dh-1.36.pdf (Workshop 2026)
@@ -272,7 +260,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Tune thresholds on separate data; report precision, recall, and abstention.
   - Watch for: One centroid can hide distinct subgroups inside a category.
   - Limits: A few concrete categories only; broad or many categories degrade fast.
-  - Workload: Encode n records once; compare against a small prototype set.
   - Ask it: "Classify records into a few categories from example averages." / "I have labeled examples; assign new records by similarity." / "Which category is each record closest to overall?"
   - Follow-ups: "Which categories attract the most abstentions?" / "Do any categories hide two subgroups?" / "How do thresholds move precision and recall?"
   - Evidence: https://ar5iv.labs.arxiv.org/html/2211.16285 (Preprint 2022)
@@ -286,7 +273,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Tune the neighbor count and rejection rules on held-out labels.
   - Watch for: Overrepresented examples dominate nearby votes; local label errors propagate.
   - Limits: Example-backed labels only; coverage stops where labels stop.
-  - Workload: Encode n records once; neighbor search scales with index and corpus size.
   - Ask it: "Label this record from its nearest labeled neighbors." / "Which known examples support each predicted category?" / "I want predictions that show their supporting examples."
   - Follow-ups: "Which predictions rest on weak neighbor support?" / "Where are labeled examples sparse?" / "Which records get the most disagreement among neighbors?"
   - Evidence: https://aclanthology.org/D19-1410/ (Conference 2019)
@@ -300,7 +286,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Measure baseline performance on independent test records.
   - Watch for: Vocabulary shift and shortcut words cut transfer; labels can attach to names.
   - Limits: Narrow categories on similar text; shifted vocabulary needs a new test.
-  - Workload: Sparse feature extraction plus a linear fit over n records; low infrastructure burden.
   - Ask it: "Train a cheap text classifier for my narrow categories." / "Set a baseline classifier on word features first." / "Which words drive this linear text classifier?"
   - Follow-ups: "Which words dominate each coefficient?" / "Which labels confuse the classifier most?" / "Does the baseline hold on shifted vocabulary?"
   - Evidence: https://scikit-learn.org/stable/auto_examples/text/plot_document_classification_20newsgroups.html (Documentation)
@@ -314,7 +299,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Measure category-level performance on a labeled evaluation set.
   - Watch for: A fixed encoder cannot learn distinctions it does not represent.
   - Limits: Bounded categories the representation already separates.
-  - Workload: One embedding pass plus a small classifier fit; embeddings are reused.
   - Ask it: "Train a small classifier on existing frozen embeddings." / "Classify with a linear head over fixed embeddings." / "I want to reuse cached embeddings for classification."
   - Follow-ups: "Which categories does the encoder separate least?" / "Where do classifier errors cluster?" / "Should the encoder stay frozen for new categories?"
   - Evidence: https://huggingface.co/papers/2209.11055 (Preprint 2022)
@@ -328,7 +312,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Compare against frozen embeddings and a lexical baseline on labeled data.
   - Watch for: Noisy or analyst-chosen few examples can amplify bias.
   - Limits: The tested categories and example set only; never a promised benchmark number.
-  - Workload: Encoder training plus inference over n records; more setup compute than frozen.
   - Ask it: "Improve classification with only a few labeled examples." / "Adapt the sentence encoder using labeled text pairs." / "Few shot learning for categories the baseline misses."
   - Follow-ups: "How few examples still move accuracy?" / "Which pairs improved the encoder most?" / "Does the adapted encoder transfer to sibling categories?"
   - Evidence: https://huggingface.co/papers/2209.11055 (Preprint 2022)
@@ -342,7 +325,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Tune thresholds on labeled data; test paraphrases and negation.
   - Watch for: Lexical overlap and syntax can flip support judgments.
   - Limits: Pilot triage only; scores are not established probabilities.
-  - Workload: Pair inference grows with record count and label count.
   - Ask it: "Test candidate labels before any labeled data exists." / "Does this text support the statement my label makes?" / "Score records against written label descriptions."
   - Follow-ups: "Which label statements overlap too much?" / "Where does negation flip the verdict?" / "Which categories need labeled examples next?"
   - Evidence: https://aclanthology.org/D19-1404/ (Conference 2019)
@@ -356,7 +338,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Evaluate on independent human labels; report coverage and conflicts.
   - Watch for: Correlated rules repeat one error; low coverage stays a problem.
   - Limits: Training labels only; label quality needs an independent evaluation set.
-  - Workload: Rule execution plus label-model fitting over n records; a classifier adds cost.
   - Ask it: "Turn my labeling rules into training labels at scale." / "Combine several imperfect rules into one label set." / "I have many weak rules; merge their votes."
   - Follow-ups: "Which rules conflict most often?" / "How much coverage do the rules miss?" / "Where do model labels disagree with humans?"
   - Evidence: https://link.springer.com/content/pdf/10.1007/s00778-019-00552-1.pdf (Journal 2019)
@@ -370,7 +351,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Compare each round against random sampling on the same budget.
   - Watch for: Uncertainty sampling chases noisy cases, not representative ones.
   - Limits: Annotation ordering only; the strategy need not beat random sampling.
-  - Workload: Repeated scoring and retraining; human annotation is the limiting resource.
   - Ask it: "Which records should I label next to save effort?" / "Pick the most useful examples for my annotation round." / "I want the classifier to choose what I label."
   - Follow-ups: "How much did accuracy move per batch?" / "Does this strategy beat random sampling here?" / "Which records stay uncertain after retraining?"
   - Evidence: https://burrsettles.com/pub/settles.activelearning.pdf (Survey 2009)
@@ -384,7 +364,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: None; the account is tested against close reading and alternative readings.
   - Watch for: Pattern selection can reinforce prior beliefs instead of testing them.
   - Limits: Manual close reading wins for interpretive claims; computation only assists.
-  - Workload: Several human analysis cycles; no simple runtime estimate exists.
   - Ask it: "Develop and test an explanation for these patterns." / "Combine computational pattern finding with human interpretation." / "I want theory driven analysis with computational help."
   - Follow-ups: "What evidence challenges my current explanation?" / "Which patterns survived the close reading test?" / "Should the next cycle test a rival reading?"
   - Evidence: https://doi.org/10.1177/0049124117729705 (Journal 2020)
@@ -398,7 +377,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Evaluate extraction coverage, grouping quality, and summary fidelity separately.
   - Watch for: Early extraction omissions cannot be repaired by later clustering or summaries.
   - Limits: A discovery aid only; not end-to-end accuracy claims.
-  - Workload: Extraction, encoding, grouping, and summarization over n spans; cache each stage.
   - Ask it: "Extract passages, group them, and summarize each group." / "Give me structured summaries built from source evidence." / "I want grouped evidence with short human readable summaries."
   - Follow-ups: "What did extraction drop that groups cannot recover?" / "Which summaries need the original passages?" / "How faithful is each summary to its group?"
   - Evidence: https://aclanthology.org/W04-3252/ (Workshop 2004)
@@ -412,7 +390,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Check known relevant passages and missed evidence across question variants.
   - Watch for: Question wording and reranker choice decide which evidence becomes visible.
   - Limits: Evidence lists only; retrieval scores are not answer truth.
-  - Workload: Index once over n records; rerank only a bounded candidate set.
   - Ask it: "Find passages that answer my question across the corpus." / "Retrieve the best evidence for this question." / "Search by meaning and keywords together, then rerank."
   - Follow-ups: "Which relevant passages did retrieval miss?" / "How do scores differ across retriever types?" / "What wording of the question finds counter evidence?"
   - Evidence: https://arxiv.org/abs/2104.08663 (Preprint 2021)
@@ -426,7 +403,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Test representative questions; inspect unsupported spans by hand.
   - Watch for: A plausible span can be wrong or unsupported.
   - Limits: Stated answers only; open questions need close reading.
-  - Workload: Question-passage pair inference; cost grows with candidate passages.
   - Ask it: "Which passage states the exact answer to my question?" / "Pull the answer span from the supplied passages." / "I want the source location for each stated answer."
   - Follow-ups: "Which answers rest on one passage only?" / "Where did no-answer handling refuse correctly?" / "Do answer spans hold under rephrased questions?"
   - Evidence: https://aclanthology.org/D16-1264/ (Conference 2016)
@@ -440,7 +416,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Label a span-level test set; tune thresholds against it.
   - Watch for: Entity boundaries, unfamiliar terms, and domain shift cut performance.
   - Limits: Span inventories only; matching names are not the same entity.
-  - Workload: Token or span inference over n records; batch short passages.
   - Ask it: "Find product names, organizations, and places in the text." / "Extract named entities with their types and offsets." / "I want an inventory of entities mentioned in records."
   - Follow-ups: "Which entity types confuse the extractor?" / "How do boundaries fail on unfamiliar names?" / "Which mentions never matched a declared type?"
   - Evidence: https://aclanthology.org/2024.emnlp-main.660/ (Conference 2024)
@@ -454,7 +429,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Label and test each category, including neutral and mixed cases.
   - Watch for: Indirect, mixed, and code-mixed language need task-specific tests.
   - Limits: Screening flags only; not a participant's internal state.
-  - Workload: A rule scan, one classifier pass, or NLI pairs over n records.
   - Ask it: "How positive or negative is the tone of these records?" / "Screen records for evaluative or emotional language." / "Which records express frustration or satisfaction?"
   - Follow-ups: "Which records look mixed or neutral?" / "Does tone match the words screened?" / "Which categories need their own test set?"
   - Evidence: https://aclanthology.org/2023.wassa-1.59/ (Workshop 2023)
@@ -468,7 +442,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Evaluate aspect extraction and target-linked sentiment separately, then jointly.
   - Watch for: Wrong target links flip sentiment; declared aspects exclude unlisted concerns.
   - Limits: Declared aspects only; uncovered aspects stay unmeasured.
-  - Workload: Extraction plus sentiment assignment over n records; stages may combine.
   - Ask it: "What do reviewers say about the battery life specifically?" / "Compare opinions about each product feature separately." / "I want sentiment linked to the aspect it targets."
   - Follow-ups: "Which aspects get conflicting sentiment?" / "What opinions fall outside declared aspects?" / "How do targets link across sentences?"
   - Evidence: https://aclanthology.org/S14-2004/ (Workshop 2014)
@@ -482,7 +455,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Test negation, time, and conditions on labeled statement pairs.
   - Watch for: Different times or conditions make apparent contradictions compatible.
   - Limits: A candidate queue for humans; model decisions never prove a claim false.
-  - Workload: Retrieval plus pair scoring over k candidates; never all pairs.
   - Ask it: "Find statements that contradict each other across records." / "Which claims conflict when compared pair by pair?" / "I want a review queue of possible contradictions."
   - Follow-ups: "Which pairs only differ by time or place?" / "Do flagged pairs survive reading the context?" / "Which speakers change position across records?"
   - Evidence: https://aclanthology.org/P19-1334/ (Conference 2019)
@@ -496,7 +468,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Measure pairwise precision and recall at the action threshold.
   - Watch for: Merging can erase independent speakers or minority wording.
   - Limits: Candidate pairs for human approval; never auto-merge.
-  - Workload: Hashing over n records plus neighbor search for semantic candidates.
   - Ask it: "Find duplicate or paraphrased records before analysis." / "Which records say nearly the same thing?" / "I want to merge near duplicates without losing speakers."
   - Follow-ups: "Which near duplicates are genuinely separate speakers?" / "How do thresholds split review from merge?" / "What paraphrases survived the exact-match pass?"
   - Evidence: https://aclanthology.org/D19-1410/ (Conference 2019)
@@ -510,7 +481,6 @@ Register version: 1.1.0. Source: the research document named in `config/analysis
   - Null check: Compare detector scores against the reference distribution before ranking.
   - Watch for: Minority language or rare experiences can look anomalous.
   - Limits: A ranked review list only; unusualness is not importance.
-  - Workload: Encode n records once; some neighbor detectors scale poorly.
   - Ask it: "Which records are unusual compared with the rest?" / "Rank the strangest records for my review." / "I want to find exceptions and possible data problems."
   - Follow-ups: "Which flagged records are rare but normal?" / "How does the detector change with the reference group?" / "What does the nearest ordinary example show?"
   - Evidence: https://scikit-learn.org/stable/modules/outlier_detection.html (Documentation)

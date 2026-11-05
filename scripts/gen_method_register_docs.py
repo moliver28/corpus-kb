@@ -74,7 +74,6 @@ _ROUTING_PROSE_FIELDS = (
     ("Null check", "null_calibration"),
     ("Watch for", "failure_modes"),
     ("Limits", "scope_limits"),
-    ("Workload", "cost_scale"),
 )
 
 
@@ -113,9 +112,10 @@ def _routing_lines(method: dict[str, Any]) -> list[str]:
     if follows:
         quoted = " / ".join('"' + item + '"' for item in follows)
         lines.append(f"  - Follow-ups: {quoted}")
-    citation = method.get("evidence_citation")
-    if citation:
-        lines.append(f"  - Evidence: {citation}")
+    # The primary source carries the venue annotation: "URL (Venue Year)".
+    sources = method.get("sources") or []
+    if sources:
+        lines.append(f"  - Evidence: {sources[0]}")
     return lines
 
 
