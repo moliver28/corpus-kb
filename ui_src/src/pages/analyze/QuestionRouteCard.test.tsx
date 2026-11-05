@@ -35,6 +35,12 @@ const RESOLVED: Record<string, unknown> = {
       why: "All axes are equal. The id order decides.",
       run_hint: { op: null, params: {} },
     },
+    {
+      method_id: "12",
+      name: "Cluster structure inspector",
+      why: "The rank rides the runner-up.",
+      run_hint: { op: "cluster_texts", params: {} },
+    },
   ],
   trace: {
     mode: "phrase",
@@ -183,15 +189,37 @@ describe("QuestionRouteCard", () => {
     // The reading restatements render in the ladder (ranked rows repeat
     // the names; the whys here are the ladder's own).
     expect(screen.getAllByText(READING_B.why).length).toBeGreaterThanOrEqual(1);
-    // The override picker is populated from the register listing (the
-    // stub's rows); clicking an id re-routes with that method_id.
-    fireEvent.click(screen.getByRole("button", { name: "01" }));
+    // The picker is a labelled group; each button names its method so
+    // the accessible text carries id AND name.
+    expect(screen.getByRole("group", { name: strings.routeOverrideLabel })).toBeTruthy();
+    // Clicking an id re-routes with that method_id...
+    fireEvent.click(screen.getByRole("button", { name: /^01 / }));
     await act(async () => {
       await Promise.resolve();
     });
     const sends = routeCalls();
     expect(sends.length).toBe(2);
     expect(sends[1].body).toContain('"method_id":"01"');
+    // Re-query: the re-render replaces the button node.
+    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    // ...and a plain re-route clears the stale override highlight.
+    // jsdom never finishes antd's loading-icon leave motion, so the
+    // accessible name keeps a stale "loading " prefix after the run;
+    // tolerate it (the click target is unambiguous either way).
+    fireEvent.click(
+      screen.getByRole("button", { name: /^(loading )?Route$/ }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const clears = routeCalls();
+    expect(clears.length).toBe(3);
+    expect(clears[2].body).not.toContain("method_id");
+    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
   });
 
   it("keeps the ambiguity ladder on a degraded envelope (addendum grammar)", async () => {
@@ -206,10 +234,24 @@ describe("QuestionRouteCard", () => {
     expect(screen.getAllByText(READING_B.why).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("marks a ranked row whose op is absent from the manifest as not wired", async () => {
+    stubBoth(RESOLVED);
+    render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
+    await ask("How do I find duplicate records in my corpus?");
+    // Row 12 carries a non-null op the manifest does not list.
+    expect(await screen.findByText(strings.analyzeMethodNotWired)).toBeTruthy();
+  });
+
   it("refuses to route an empty question", async () => {
     stubBoth(RESOLVED);
     render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
-    fireEvent.click(await screen.findByRole("button", { name: strings.routeQuestionAction }));
+    fireEvent.click(
+      await screen.findByRole(
+        "button",
+        { name: strings.routeQuestionAction },
+        { timeout: 5_000 },
+      ),
+    );
     expect(await screen.findByText(strings.routeQuestionRequired)).toBeTruthy();
     expect(routeCalls().length).toBe(0);
   });

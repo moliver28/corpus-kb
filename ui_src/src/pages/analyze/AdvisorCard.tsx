@@ -154,7 +154,7 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
           type={mode === "task" ? "primary" : "default"}
           onClick={() => setMode("task")}
         >
-          {strings.routeModeConstraints}
+          {strings.routeModeTaskForm}
         </Button>
         <Button
           aria-pressed={mode === "question"}
@@ -164,26 +164,28 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
           {strings.routeModeQuestion}
         </Button>
       </div>
-      {mode === "question" ? (
+      {/* Both branches stay mounted (hidden, not unmounted), so the
+          task text and the question text survive mode switches the same
+          way. Testing Library skips hidden subtrees in role queries. */}
+      <div hidden={mode !== "task"}>
+        <div className="ui-actions">
+          <Input
+            className="ui-narrow"
+            value={task}
+            onChange={(event) => setTask(event.target.value)}
+            placeholder={strings.analyzeAdvisorTaskLabel}
+            onPressEnter={() => void run()}
+          />
+          <Button type="primary" loading={advisor.running} onClick={() => void run()}>
+            {strings.analyzeAdvisorAction}
+          </Button>
+        </div>
+        {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
+        {body}
+      </div>
+      <div hidden={mode !== "question"}>
         <QuestionRouteCard onRunMethod={onRunMethod} />
-      ) : (
-        <>
-          <div className="ui-actions">
-            <Input
-              className="ui-narrow"
-              value={task}
-              onChange={(event) => setTask(event.target.value)}
-              placeholder={strings.analyzeAdvisorTaskLabel}
-              onPressEnter={() => void run()}
-            />
-            <Button type="primary" loading={advisor.running} onClick={() => void run()}>
-              {strings.analyzeAdvisorAction}
-            </Button>
-          </div>
-          {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
-          {body}
-        </>
-      )}
+      </div>
     </Card>
   );
 }

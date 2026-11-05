@@ -178,8 +178,9 @@ export interface Strings {
   analyzeAdvisorAction: string;
   analyzeAdvisorTaskRequired: string;
   analyzeAdvisorEmpty: string;
-  routeModeConstraints: string;
+  routeModeTaskForm: string;
   routeModeQuestion: string;
+  routeIntro: string;
   routeQuestionLabel: string;
   routeQuestionPlaceholder: string;
   routeQuestionAction: string;

@@ -43,7 +43,8 @@ describe("Analyze page", () => {
     render(<Analyze />, { wrapper: makeWrapper() });
     // The suite runs many jsdom files in parallel workers; the default
     // 1 s async timeout flakes under that load, so these waits are wide
-    // (15 s) — the finder fails immediately on a real regression anyway.
+    // (15 s). The honest trade: a real regression surfaces only after
+    // the finder's full budget, not in seconds.
     fireEvent.change(
       await screen.findByPlaceholderText(strings.analyzeAdvisorTaskLabel, {}, { timeout: 15_000 }),
       {
@@ -67,8 +68,14 @@ describe("Analyze page", () => {
     expect(
       screen.getByText("Descriptions of distinctive wording in the corpus."),
     ).toBeTruthy();
-    const sent = calls.find((c) => c.url.includes("/api/analysis/select-method"));
-    expect(sent?.body).toContain('"task_description":"find the recurring themes in the interviews"');
+    // The question card's hidden register listing rides the same op;
+    // assert the advisor's ranked call is among the select-methods.
+    const sent = calls.filter((c) => c.url.includes("/api/analysis/select-method"));
+    expect(
+      sent.some((c) =>
+        c.body.includes('"task_description":"find the recurring themes in the interviews"'),
+      ),
+    ).toBe(true);
     // "Run this method" pre-fills the runner with the row's manifest op.
     fireEvent.click(screen.getAllByRole("button", { name: strings.analyzeRunMethod })[0]);
     expect(

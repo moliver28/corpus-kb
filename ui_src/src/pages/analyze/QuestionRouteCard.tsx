@@ -7,7 +7,7 @@ import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
-import { isRouteEnvelope } from "./shapes";
+import { isAdvisorEnvelope, isRouteEnvelope } from "./shapes";
 import {
   REGISTER_TASK,
   STATUS_KIND,
@@ -40,16 +40,10 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
     void (async () => {
       const result = await runRegister({ task_description: REGISTER_TASK });
       if (!alive) return;
-      if (result.ok && result.data !== null && typeof result.data === "object") {
-        const rows = (result.data as { recommendations?: unknown }).recommendations;
-        if (Array.isArray(rows)) {
-          setMethods(
-            rows
-              .map((row) => row as Record<string, unknown>)
-              .filter((row) => typeof row.id === "string" && typeof row.name === "string")
-              .map((row) => ({ id: row.id as string, name: row.name as string })),
-          );
-        }
+      if (result.ok && isAdvisorEnvelope(result.data)) {
+        setMethods(
+          result.data.recommendations.map((row) => ({ id: row.id, name: row.name })),
+        );
       }
     })();
     return () => {
@@ -63,6 +57,11 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
       return;
     }
     setHint("");
+    if (methodId === undefined) {
+      // A plain re-route drops any picked override, so the stale
+      // highlight cannot outlive the answer it produced.
+      setOverride(undefined);
+    }
     route.reset();
     const body: Record<string, unknown> = { question: question.trim() };
     if (methodId !== undefined) {
@@ -111,16 +110,22 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
           )}
           {tracePanel(envelope)}
           <div className="ui-stack">
-            <Typography.Paragraph className="ui-flush" type="secondary">
+            <Typography.Paragraph
+              className="ui-flush"
+              type="secondary"
+              id="route-override-label"
+            >
               {strings.routeOverrideLabel}
             </Typography.Paragraph>
             {/* The Analyze runner's picker idiom: one aria-pressed button
-                per register id; clicking re-routes with that method_id. */}
-            <div className="ui-actions">
+                per register method; clicking re-routes with that id. The
+                group + labels let screen-reader users hear the names. */}
+            <div role="group" aria-labelledby="route-override-label" className="ui-actions">
               {methods.map((row) => (
                 <Button
                   key={row.id}
                   size="small"
+                  aria-label={`${row.id} ${row.name}`}
                   aria-pressed={override === row.id}
                   type={override === row.id ? "primary" : "default"}
                   onClick={() => {
@@ -149,7 +154,7 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
 
   return (
     <div className="ui-stack">
-      <Typography.Paragraph type="secondary">{strings.routeModeQuestion}</Typography.Paragraph>
+      <Typography.Paragraph type="secondary">{strings.routeIntro}</Typography.Paragraph>
       <div className="ui-actions">
         <Input.TextArea
           aria-label={strings.routeQuestionLabel}
