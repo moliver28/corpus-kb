@@ -23,17 +23,19 @@ export interface FormWrite {
    * One write: the body goes to the op path (path slots included). A
    * press while a write is already on the wire returns false and sends
    * nothing (the Enter path skips the button's loading gate). On ok the
-   * caller's refresh runs and the banner names the save; on error the
-   * message lands in `error` and the first control marked aria-invalid
-   * inside rootRef takes focus.
+   * caller's refresh runs, and the banner names the save when a saved
+   * word was given (a form that closes itself on ok passes none — no
+   * banner survives the unmount); on error the message lands in `error`
+   * and the first control marked aria-invalid inside rootRef takes
+   * focus.
    */
   submit(body: unknown, opts?: { pathParams?: Record<string, string> }): Promise<boolean>;
 }
 
 export function useFormWrite(
   opId: string,
-  savedMessage: string,
   refresh: () => void,
+  savedMessage?: string,
 ): FormWrite {
   const { run, running } = useOp(opId);
   const { rootRef, flag } = useFirstErrorFocus();
@@ -49,7 +51,9 @@ export function useFormWrite(
       setError(null);
       const result = await run(body, undefined, opts?.pathParams);
       if (result.ok) {
-        setSaved(savedMessage);
+        if (savedMessage !== undefined) {
+          setSaved(savedMessage);
+        }
         refresh();
         return true;
       }

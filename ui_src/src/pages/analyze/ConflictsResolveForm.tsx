@@ -36,17 +36,13 @@ export default function ConflictsResolveForm({
 }) {
   const [verdict, setVerdict] = useState<Verdict>("revision");
   const [reviewer, setReviewer] = useState("");
-  // The ok write closes this editor: the refreshed row shows the
-  // persisted verdict and reviewer name. The seam's saved word states
-  // the same outcome (the settle wording with the chosen verdict).
-  const { error, rootRef, submit } = useFormWrite(
-    "conflicts-resolve",
-    strings.analyzeConflictsResolved.replace("{verdict}", verdict),
-    () => {
-      refresh();
-      onDone();
-    },
-  );
+  // The ok write closes this editor (onDone unmounts it), so no saved
+  // banner can ever render — the refreshed row shows the persisted
+  // verdict and reviewer name; the record IS the audit trail.
+  const { error, rootRef, submit } = useFormWrite("conflicts-resolve", () => {
+    refresh();
+    onDone();
+  });
   const body = strings.analyzeConflictsResolveBody
     .replace("{a}", conflict.statement_a_id)
     .replace("{b}", conflict.statement_b_id)

@@ -22,7 +22,7 @@ let latest: FormWrite | null = null;
 let lastSubmitOk: boolean | null = null;
 
 function Harness({ onRefresh }: { onRefresh: () => void }) {
-  const write = useFormWrite("tag-document", strings.reviewTagAdded, onRefresh);
+  const write = useFormWrite("tag-document", onRefresh, strings.reviewTagAdded);
   const [tag, setTag] = useState("");
   const { running, error, saved, rootRef, submit } = write;
   useEffect(() => {

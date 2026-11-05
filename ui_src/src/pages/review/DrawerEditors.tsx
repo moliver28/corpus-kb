@@ -31,12 +31,12 @@ export function TagEditor({
     saved: addSaved,
     rootRef: addRootRef,
     submit: submitAddOp,
-  } = useFormWrite("tag-document", strings.reviewTagAdded, refresh);
+  } = useFormWrite("tag-document", refresh, strings.reviewTagAdded);
   const {
     error: removeError,
     saved: removeSaved,
     submit: submitUntagOp,
-  } = useFormWrite("untag-document", strings.reviewTagRemoved, refresh);
+  } = useFormWrite("untag-document", refresh, strings.reviewTagRemoved);
 
   function submitAdd(): void {
     const trimmed = name.trim();
@@ -118,7 +118,7 @@ export function MetadataEditor({ docId, refresh }: { docId: string; refresh: () 
     saved,
     rootRef,
     submit: submitOp,
-  } = useFormWrite("set-metadata", strings.reviewMetadataSaved, refresh);
+  } = useFormWrite("set-metadata", refresh, strings.reviewMetadataSaved);
 
   function submit(): void {
     if (key.trim() === "") {

@@ -27,7 +27,7 @@ interface BeliefsEnvelope {
 export function isBeliefsEnvelope(value: unknown): value is BeliefsEnvelope {
   if (typeof value !== "object" || value === null) return false;
   const rows = (value as Record<string, unknown>).beliefs;
-  return Array.isArray(rows) && rows.every(isBeliefRowShape) && rows.length >= 0;
+  return Array.isArray(rows) && rows.every(isBeliefRowShape);
 }
 
 interface CompareEnvelope {

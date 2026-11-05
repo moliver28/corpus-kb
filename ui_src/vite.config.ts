@@ -90,6 +90,15 @@ export default defineConfig({
     },
   },
   test: {
+    // Runner mode (the one place it is written down): the suite runs on
+    // vitest's standing defaults — default worker pool at full host
+    // parallelism, one fresh jsdom per test file. Nothing is overridden.
+    // Under that load some page tests can hit the 5 s per-test timeout,
+    // a VARYING set each run (Wave 2 saw 7 then 12 files under 36
+    // workers; it reproduces on the pre-wave base too, so it is host
+    // load, not code). Every failing file passes in isolation; a flaky
+    // run re-runs with `--maxWorkers=2` (the Wave 2 clean mode) before
+    // anyone hunts for a code cause.
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     // The Playwright smoke (e2e/) runs in its own runner, not vitest.
