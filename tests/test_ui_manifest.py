@@ -82,22 +82,34 @@ def test_manifest_json_is_sorted_and_complete() -> None:
 
 
 def test_every_manifest_path_exists_with_the_real_method() -> None:
-    """Route table cross-check: path present, manifest method served.
+    """Route table cross-check: path present, manifest method served, and
+    no undeclared method served on a manifest path.
 
     Phase-2 Wave 2: one path can serve two methods now (/api/metadata is
     the GET read plus the POST upsert; the document tags path is the GET
-    list plus the POST apply). The table unions the methods per path and
-    each manifest entry asserts its own method is served there.
+    list plus the POST apply). Each manifest entry asserts its own method
+    is served there, and the reverse pin holds the served method set at
+    every manifest path to exactly the declared set — a missing method
+    AND an extra method on a manifest path both fail here. Paths with no
+    manifest entry (OpenAPI docs, the compat routes) stay unpinned, as
+    before this test existed.
     """
     from corpus_kb.api.http import create_http_app
 
     route_table: dict[str, set[str]] = {}
     for route in create_http_app().routes:
         route_table.setdefault(route.path, set()).update(route.methods - {"HEAD"})
+    declared: dict[str, set[str]] = {}
     for entry in build_manifest(REPO):
-        method = str(entry["method"])
-        served = route_table.get(str(entry["path"]), set())
-        assert method in served, f"{entry['id']}: {method} not served at {entry['path']}"
+        path, method = str(entry["path"]), str(entry["method"])
+        served = route_table.get(path, set())
+        assert method in served, f"{entry['id']}: {method} not served at {path}"
+        declared.setdefault(path, set()).add(method)
+    for path, served in sorted(route_table.items()):
+        if path in declared:
+            assert served == declared[path], (
+                f"{path} serves {sorted(served)}; the manifest declares {sorted(declared[path])}"
+            )
 
 
 def test_manifest_entry_shape() -> None:
