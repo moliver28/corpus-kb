@@ -108,25 +108,25 @@ describe("Scale page", () => {
       ]);
       render(<Scale />, { wrapper: makeWrapper() });
       await flush();
-      // Two reads: the poll loop's first poll plus the re-embed watch's
-      // own mount read of the same ledger.
-      expect(ledgerCalls().length).toBe(2);
+      // One read on mount: the poll loop owns the ledger, and the
+      // re-embed watch rides its answer (no second fetch).
+      expect(ledgerCalls().length).toBe(1);
       expect(screen.getByText(strings.scaleLedgerPolling.replace("{sec}", "2"))).toBeTruthy();
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
-      expect(ledgerCalls().length).toBe(3);
+      expect(ledgerCalls().length).toBe(2);
       // Hidden: the loop parks on the visibilitychange wake — no fetches.
       setTabVisible(false);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(4000);
       });
-      expect(ledgerCalls().length).toBe(3);
+      expect(ledgerCalls().length).toBe(2);
       expect(screen.getByText(strings.scaleLedgerPaused)).toBeTruthy();
       // The wake event polls at once, and the backoff state is clean.
       setTabVisible(true);
       await flush();
-      expect(ledgerCalls().length).toBe(4);
+      expect(ledgerCalls().length).toBe(3);
       expect(screen.getByText(strings.scaleLedgerPolling.replace("{sec}", "2"))).toBeTruthy();
     } finally {
       vi.useRealTimers();
@@ -137,8 +137,8 @@ describe("Scale page", () => {
     vi.useFakeTimers();
     try {
       setTabVisible(true);
-      // The poll and the re-embed watch share the route: the first two
-      // status reads answer 503, everything after answers 200.
+      // The poll loop owns the ledger route: the first read answers 503,
+      // everything after answers 200.
       let statusReads = 0;
       const seqImpl = (
         url: string | URL,
@@ -148,15 +148,15 @@ describe("Scale page", () => {
         calls.push({ method, url: String(url), body: String(init?.body ?? "") });
         if (String(url).includes("/api/ingest/status")) {
           statusReads += 1;
-          const body = statusReads <= 2 ? unavailable503.response.body : ingestStatusOk.response.body;
-          return Promise.resolve(respond(statusReads <= 2 ? 503 : 200, body));
+          const body = statusReads <= 1 ? unavailable503.response.body : ingestStatusOk.response.body;
+          return Promise.resolve(respond(statusReads <= 1 ? 503 : 200, body));
         }
         return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
       };
       vi.stubGlobal("fetch", seqImpl as unknown as typeof fetch);
       render(<Scale />, { wrapper: makeWrapper() });
       await flush();
-      expect(ledgerCalls().length).toBe(2);
+      expect(ledgerCalls().length).toBe(1);
       expect(screen.getByText(strings.scaleLedgerBackoff)).toBeTruthy();
       // Spec F6: the server's own message shows beneath the backoff.
       // (The re-embed watch's unavailable panel repeats it — fine.)
@@ -167,11 +167,11 @@ describe("Scale page", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(2000);
       });
-      expect(ledgerCalls().length).toBe(2);
+      expect(ledgerCalls().length).toBe(1);
       await act(async () => {
         await vi.advanceTimersByTimeAsync(8000);
       });
-      expect(ledgerCalls().length).toBe(3);
+      expect(ledgerCalls().length).toBe(2);
       // The good poll clears the backoff state.
       expect(screen.queryByText(strings.scaleLedgerBackoff)).toBeNull();
       expect(screen.getByText(strings.scaleLedgerPolling.replace("{sec}", "2"))).toBeTruthy();
@@ -284,6 +284,57 @@ describe("Scale page", () => {
       fireEvent.click(all!);
     });
     expect(query).toBe("");
+  });
+
+  it("shows the honest no-runs banner on an empty ledger", async () => {
+    setTabVisible(true);
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/ingest/status",
+        reply: respond(200, {
+          status: "success",
+          ledger_present: true,
+          runs: [],
+          incomplete_runs: 0,
+          degraded: { chunks: 0, chunk_vectors: 0 },
+        }),
+      },
+    ]);
+    render(<Scale />, { wrapper: makeWrapper() });
+    expect(await screen.findByText(strings.scaleRunsNone)).toBeTruthy();
+    // A fresh install gets the banner, not a bare JSON panel alone.
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  it("pages the ledger table instead of rendering every run at once", async () => {
+    setTabVisible(true);
+    const manyRuns = {
+      status: "success",
+      ledger_present: true,
+      runs: Array.from({ length: 12 }, (_, index) => ({
+        run_id: `run-${String(index + 1).padStart(2, "0")}`,
+        status: "success",
+        started_at: "2026-01-05T10:05:00Z",
+        source_type: "upload",
+        project_id: `proj-${String(index + 1).padStart(2, "0")}`,
+      })),
+      incomplete_runs: 0,
+      degraded: { chunks: 0, chunk_vectors: 0 },
+    };
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, manyRuns) },
+    ]);
+    render(<Scale />, { wrapper: makeWrapper() });
+    await screen.findByRole("combobox");
+    const bodyText = (): string =>
+      document.querySelector(".ant-table-tbody")?.textContent ?? "";
+    // Page one carries the first ten rows; the rest wait behind the pager.
+    expect(bodyText()).toContain("proj-01");
+    expect(bodyText()).not.toContain("proj-11");
+    fireEvent.click(document.querySelector(".ant-pagination-item-2")!);
+    expect(bodyText()).toContain("proj-11");
+    expect(bodyText()).not.toContain("proj-01");
   });
 
   it("runs the research demo behind the gate and shows the narration", async () => {

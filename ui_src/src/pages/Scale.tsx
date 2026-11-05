@@ -9,12 +9,16 @@ import JsonViewer from "../components/JsonViewer";
 import ResearchIngestCard from "../components/ResearchIngestCard";
 import StatusBanner from "../components/StatusBanner";
 import { usePoll } from "../hooks/usePoll";
+import type { Poll } from "../hooks/usePoll";
 import { useQueryParam } from "../hooks/useQueryParam";
 import { strings } from "../strings";
 import CalibrateApplyCard from "./scale/CalibrateApplyCard";
 import ResearchDemoCard from "./scale/ResearchDemoCard";
 import { filterRuns, projectOptions, runsOf } from "./scale/runFilter";
 import type { LedgerRun } from "./scale/runFilter";
+
+/** One small page of ledger rows; the pager hides until it is needed. */
+const LEDGER_PAGE_SIZE = 10;
 
 /**
  * The project filter plus the narrowed run list (migration 036 link).
@@ -45,7 +49,7 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
     },
   ];
   if (runs.length === 0) {
-    return null;
+    return <StatusBanner kind="info">{strings.scaleRunsNone}</StatusBanner>;
   }
   return (
     <div className="ui-stack">
@@ -65,7 +69,11 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
         <Table<LedgerRun>
           size="small"
           rowKey="run_id"
-          pagination={false}
+          pagination={{
+            pageSize: LEDGER_PAGE_SIZE,
+            hideOnSinglePage: true,
+            showSizeChanger: false,
+          }}
           dataSource={visible}
           columns={columns}
         />
@@ -79,8 +87,7 @@ function dash(value: unknown): string {
 }
 
 /** The self-polling run ledger (spec F6): poll_ms, hidden pause, backoff. */
-function LedgerCard() {
-  const poll = usePoll("ingest-status");
+function LedgerCard({ poll }: { poll: Poll<unknown> }) {
   const runs = poll.result === null ? [] : runsOf(poll.result.data);
   let body: ReactNode;
   if (poll.result === null) {
@@ -119,20 +126,22 @@ function LedgerCard() {
 /**
  * The Scale stage — the run ledger, the bulk folder walk, the research
  * ingest with its force warning, the demo run, the calibration apply,
- * and the re-embed watch.
+ * and the re-embed watch. One poll loop owns the ledger read; every
+ * ledger consumer (the table and the degraded watch) rides its answer.
  */
 export default function Scale() {
+  const poll = usePoll("ingest-status");
   return (
     <div className="ui-stack">
       <Card title={strings.scaleTitle}>
         <p>{strings.scaleBody}</p>
       </Card>
-      <LedgerCard />
+      <LedgerCard poll={poll} />
       <DirectoryCard title={strings.scaleBulkTitle} />
       <ResearchIngestCard />
       <ResearchDemoCard />
       <CalibrateApplyCard />
-      <DegradedCard />
+      <DegradedCard ledger={poll.result} refreshLedger={poll.refresh} />
     </div>
   );
 }
