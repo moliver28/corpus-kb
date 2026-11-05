@@ -51,6 +51,9 @@ Keys and their contracts:
   (``analyze_run``). Off by default.
 - ``analysis.sentiment.*``: the lexicon preset screen (``enabled``,
   ``lexicon_path``). The path points at the bundled lexicon file.
+- ``analysis.routing.*``: the question-router decision knobs
+  (``confidence_threshold``, ``margin``). The wave-2 router reads the
+  block directly and applies these defaults when a key is absent.
 
 Determinism pins stay CODE CONSTANTS in the engines that follow (the
 ``research/inductive`` convention): only governance knobs live here.
@@ -75,6 +78,8 @@ DEFAULT_METHOD_REGISTER_PATH = "config/analysis_methods.yaml"
 DEFAULT_EECS_ENABLED = False
 DEFAULT_SENTIMENT_ENABLED = False
 DEFAULT_SENTIMENT_LEXICON = "config/sentiment_lexicon.yaml"
+DEFAULT_ROUTING_CONFIDENCE_THRESHOLD = 0.55
+DEFAULT_ROUTING_MARGIN = 0.10
 
 SUPPORTED_CLASSIFICATION_TIERS = frozenset({"head", "setfit"})
 SUPPORTED_UNDATED_POLICIES = frozenset({"drop", "report"})
@@ -110,6 +115,11 @@ SENTIMENT_CONFIG_DEFAULTS: dict[str, object] = {
     "lexicon_path": DEFAULT_SENTIMENT_LEXICON,
 }
 
+ROUTING_CONFIG_DEFAULTS: dict[str, object] = {
+    "confidence_threshold": DEFAULT_ROUTING_CONFIDENCE_THRESHOLD,
+    "margin": DEFAULT_ROUTING_MARGIN,
+}
+
 ANALYSIS_CONFIG_DEFAULTS: dict[str, object] = {
     "labeling": dict(LABELING_CONFIG_DEFAULTS),
     "classification": dict(CLASSIFICATION_CONFIG_DEFAULTS),
@@ -120,6 +130,7 @@ ANALYSIS_CONFIG_DEFAULTS: dict[str, object] = {
     "method_register_path": DEFAULT_METHOD_REGISTER_PATH,
     "eecs": dict(EECS_CONFIG_DEFAULTS),
     "sentiment": dict(SENTIMENT_CONFIG_DEFAULTS),
+    "routing": dict(ROUTING_CONFIG_DEFAULTS),
 }
 
 
