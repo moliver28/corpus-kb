@@ -13,12 +13,13 @@ can reuse them unchanged.
 from __future__ import annotations
 
 import json
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 from corpus_kb.analysis.method_register import MethodRegister
 from corpus_kb.analysis.method_register_loader import load_method_register
-from corpus_kb.analysis.question_router import route_question
+from corpus_kb.analysis.question_router import RoutingEmbedder, route_question
 from corpus_kb.analysis.settings import (
     DEFAULT_ROUTING_CONFIDENCE_THRESHOLD,
     DEFAULT_ROUTING_MARGIN,
@@ -97,7 +98,7 @@ def load_golden_rows(path: Path = GOLDEN_PATH) -> list[GoldenRow]:
 def run_bench(
     rows: list[GoldenRow],
     register: MethodRegister,
-    embedder: object | None = None,
+    embedder: RoutingEmbedder | None = None,
     settings: dict[str, object] | None = None,
 ) -> list[BenchOutcome]:
     """Route every row and return the outcomes in fixture order.
@@ -146,13 +147,15 @@ def _register() -> MethodRegister:
 
 
 def test_fixture_covers_each_method_exactly_twice() -> None:
-    """60 rows; every id 01-30 is expected[0] in exactly two rows."""
+    """60 rows; every id 01-30 is expected[0] in exactly two rows; no dupes."""
     rows = load_golden_rows()
     assert len(rows) == 60
     primaries = [row.expected_method_ids[0] for row in rows]
-    assert len(primaries) == len(set(primaries)) * 2
+    counts = Counter(primaries)
     expected_ids = {f"{index:02d}" for index in range(1, 31)}
-    assert set(primaries) == expected_ids
+    assert set(counts) == expected_ids
+    assert all(count == 2 for count in counts.values())
+    assert len({row.question for row in rows}) == 60
     for row in rows:
         assert row.question.strip()
         assert row.expected_method_ids
@@ -168,11 +171,14 @@ def test_phrase_path_accuracy_meets_the_recorded_floor() -> None:
 
 
 def test_bench_run_is_byte_identical_when_rerun() -> None:
-    """Same fixture, same register, two runs: byte-identical per-row output."""
+    """Two full runs, each with a fresh register load: byte-identical output.
+
+    A separate ``_register()`` per run pins load-time determinism (the
+    YAML parse and the phrase material), not just route determinism.
+    """
     rows = load_golden_rows()
-    register = _register()
-    first = outcome_blob(run_bench(rows, register))
-    second = outcome_blob(run_bench(rows, register))
+    first = outcome_blob(run_bench(rows, _register()))
+    second = outcome_blob(run_bench(rows, _register()))
     assert first == second
     assert len(first.splitlines()) == len(rows)
 
