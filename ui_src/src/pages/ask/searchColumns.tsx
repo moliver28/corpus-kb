@@ -7,17 +7,20 @@ import { scoreText, type SearchRow } from "./shapes";
 /**
  * One source cell: the label with its chunk id underneath. The id is
  * the value the verify tab's chunk field asks for, so a copy button
- * rides with it and shows a short note after the write lands.
+ * rides with it and says what happened — the copied note, or the
+ * honest unavailable note when the browser hides the clipboard.
  */
 function ChunkIdCell({
   source,
   chunkId,
   copied,
+  unavailable,
   onCopy,
 }: {
   source: string;
   chunkId: string;
   copied: boolean;
+  unavailable: boolean;
   onCopy: (chunkId: string) => void;
 }): ReactNode {
   return (
@@ -26,7 +29,11 @@ function ChunkIdCell({
       <div className="ui-row-id">
         <span>{chunkId}</span>
         <Button type="link" size="small" className="ui-row-copy" onClick={() => onCopy(chunkId)}>
-          {copied ? strings.copiedNote : strings.askCopyChunkId}
+          {unavailable
+            ? strings.copyUnavailable
+            : copied
+              ? strings.copiedNote
+              : strings.askCopyChunkId}
         </Button>
       </div>
     </div>
@@ -45,6 +52,7 @@ function expandRow(row: SearchRow): ReactNode {
  */
 export function columnsOf(
   copiedId: string | null,
+  copyUnavailable: boolean,
   onCopy: (chunkId: string) => void,
 ): ColumnsType<SearchRow> {
   return [
@@ -57,6 +65,7 @@ export function columnsOf(
           source={row.source}
           chunkId={row.chunk_id}
           copied={copiedId === row.chunk_id}
+          unavailable={copyUnavailable}
           onCopy={onCopy}
         />
       ),

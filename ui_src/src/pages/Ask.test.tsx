@@ -156,7 +156,7 @@ describe("Ask page", () => {
   it("searches and shows the degraded-excluded count", async () => {
     stubFetch([{ method: "POST", path: "/api/search", reply: respond(200, searchOk.response.body) }]);
     render(<Ask />, { wrapper: makeWrapper() });
-        const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
       target: { value: "storage" },
@@ -285,6 +285,26 @@ describe("Ask page", () => {
     fireEvent.click(copyButtons[0]);
     expect(writeText).toHaveBeenCalledWith("1111aaaa-2222-4bbb-8ccc-3333dddd4444");
     expect(await screen.findByText(strings.copiedNote)).toBeTruthy();
+  });
+
+  it("says the copy is unavailable when the browser hides the clipboard", async () => {
+    stubFetch([{ method: "POST", path: "/api/search", reply: respond(200, searchOk.response.body) }]);
+    // afterEach resets navigator.clipboard to undefined, so this row
+    // starts with no clipboard at all.
+    render(<Ask />, { wrapper: makeWrapper() });
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
+    fireEvent.click(switcher);
+    fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
+      target: { value: "storage" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
+    const copyButtons = await screen.findAllByRole("button", {
+      name: strings.askCopyChunkId,
+    });
+    fireEvent.click(copyButtons[0]);
+    // Every row's copy button carries the note while the flag is up.
+    const notes = await screen.findAllByText(strings.copyUnavailable);
+    expect(notes.length).toBe(copyButtons.length);
   });
 
   it("caps the search table page and expands a row for the full text", async () => {
@@ -552,7 +572,7 @@ describe("Ask page", () => {
   it("falls back to the search tab when the query word is unknown", async () => {
     stubFetch([]);
     render(<Ask />, { wrapper: makeWrapper(true, ["/ask?tab=bogus"]) });
-        const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     expect(switcher.getAttribute("aria-pressed")).toBe("true");
   });
 

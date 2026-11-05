@@ -23,8 +23,9 @@ describe("main boot composition", () => {
   // The dynamic import pulls the whole app graph, which can take
   // seconds on a busy test worker; the default 5 s is not enough.
   it("wraps the shell in the app boundary", { timeout: 30_000 }, async () => {
-    // main.tsx mounts into #root at import time; the boot config load
-    // must not hang the test, so its fetch answers with the defaults.
+    // main.tsx mounts into #root at import time. The stubbed fetch
+    // rejects; loadRuntimeConfig's own catch falls back to the cached
+    // defaults, exactly the absent-config path.
     document.body.innerHTML = '<div id="root"></div>';
     vi.stubGlobal(
       "fetch",

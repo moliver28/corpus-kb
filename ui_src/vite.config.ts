@@ -10,9 +10,10 @@ const BASE = "/app/";
 
 // The chrome fonts load up front (Plex Sans + Plex Mono, latin subset);
 // the evidence serif rides in the Ask stage chunk and is never
-// preloaded. Only the weights the app renders (400 and 600 — nothing
-// declares 500) go out as preloads; the 500 files stay declared and
-// unfetched. Emitted font names carry a build hash, so the preload
+// preloaded. Only the weights the app renders (400 and 600) go out
+// as preloads. The 500 faces ship as @font-face declarations, but no
+// rule asks for weight 500, so the browser never fetches those files.
+// Emitted font names carry a build hash, so the preload
 // links are injected from the build bundle, not hard-coded. They ride
 // at the end of the head: <meta charset> always comes first.
 const SHELL_FONT_RE =
