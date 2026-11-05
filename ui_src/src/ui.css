@@ -129,6 +129,13 @@ body {
   padding-left: 20px;
 }
 
+/* The unmet-gates list (BlockedPanel): a plain named list with its own
+   class — never the answer-citation treatment. */
+.ui-gate-list {
+  margin: 8px 0 0;
+  padding-left: 20px;
+}
+
 /* Hover-citation link: the hovered sentence raises itself (the deeper
    petrol wash) and every sentence citing the same source gets the
    lighter petrol wash; the source label of the hovered sentence is

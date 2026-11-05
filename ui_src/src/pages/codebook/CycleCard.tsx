@@ -14,6 +14,7 @@ import { strings } from "../../strings";
 
 interface CycleEnvelope {
   status: string;
+  exit_code: number;
   gate: unknown;
 }
 

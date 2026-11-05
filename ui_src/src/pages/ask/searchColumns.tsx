@@ -65,7 +65,9 @@ export function columnsOf(
     {
       title: strings.askColumnScore,
       key: "score",
-      render: (_value: unknown, row: SearchRow) => scoreText(row.score),
+      render: (_value: unknown, row: SearchRow) => (
+        <span className="ui-num">{scoreText(row.score)}</span>
+      ),
     },
   ];
 }

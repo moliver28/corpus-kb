@@ -36,7 +36,7 @@ export default function BlockedPanel({
       {unmet.length > 0 && (
         <>
           <Typography.Text strong>{strings.releaseBlockedGates}</Typography.Text>
-          <ul className="ui-citations">
+          <ul className="ui-gate-list">
             {unmet.map((gate) => (
               <li key={gate}>{gate}</li>
             ))}

@@ -99,12 +99,16 @@ export default function QueueTable({
     {
       title: strings.queueColumnAttempts,
       key: "attempts",
-      render: (_: unknown, record: QueueEntry) => attemptsOf(record),
+      render: (_: unknown, record: QueueEntry) => (
+        <span className="ui-num">{attemptsOf(record)}</span>
+      ),
     },
     {
       title: strings.queueColumnElapsed,
       key: "elapsed",
-      render: (_: unknown, record: QueueEntry) => elapsedOf(record),
+      render: (_: unknown, record: QueueEntry) => (
+        <span className="ui-num">{elapsedOf(record)}</span>
+      ),
     },
     {
       title: strings.queueColumnError,

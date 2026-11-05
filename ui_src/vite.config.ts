@@ -10,10 +10,13 @@ const BASE = "/app/";
 
 // The chrome fonts load up front (Plex Sans + Plex Mono, latin subset);
 // the evidence serif rides in the Ask stage chunk and is never
-// preloaded. Emitted font names carry a build hash, so the preload
-// links are injected from the build bundle, not hard-coded.
+// preloaded. Only the weights the app renders (400 and 600 — nothing
+// declares 500) go out as preloads; the 500 files stay declared and
+// unfetched. Emitted font names carry a build hash, so the preload
+// links are injected from the build bundle, not hard-coded. They ride
+// at the end of the head: <meta charset> always comes first.
 const SHELL_FONT_RE =
-  /ibm-plex-(sans|mono)-latin-(400|500|600)-normal-[A-Za-z0-9_-]+\.woff2$/;
+  /ibm-plex-(sans|mono)-latin-(400|600)-normal-[A-Za-z0-9_-]+\.woff2$/;
 
 function fontPreloads(): Plugin {
   return {
@@ -34,7 +37,7 @@ function fontPreloads(): Plugin {
             type: "font/woff2",
             crossorigin: "",
           },
-          injectTo: "head-prepend",
+          injectTo: "head",
         }));
     },
   };
@@ -49,7 +52,7 @@ export default defineConfig({
     sourcemap: false,
     // Raw-minified advisory only: the REAL budget gate is the gzip cap
     // (check-bundle.mjs, 350 kB initial route / per chunk). The
-    // grouped antd-core vendor chunk is ~780 kB raw by design, so the
+    // grouped antd-core vendor chunk is ~700 kB raw by design, so the
     // advisory sits above it and stays quiet.
     chunkSizeWarningLimit: 800,
     rollupOptions: {

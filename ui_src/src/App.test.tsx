@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { ConfigProvider } from "antd";
 import App from "./App";
 import AppErrorBoundary from "./components/AppErrorBoundary";
 import { strings } from "./strings";
+import { corpusKbTheme } from "./theme";
 
 // globals are off, so testing-library's auto-cleanup never registers.
 afterEach(cleanup);
@@ -14,12 +16,15 @@ function ThrowingCard(): never {
 }
 
 // The shell now mounts the real Setup screen, whose doctor card uses
-// react-query — the same provider wrap main.tsx applies.
+// react-query — the same provider wrap main.tsx applies, ConfigProvider
+// included (provider parity: the tests render the boot composition).
 function renderApp() {
   const client = new QueryClient();
   return render(
     <QueryClientProvider client={client}>
-      <App />
+      <ConfigProvider theme={corpusKbTheme}>
+        <App />
+      </ConfigProvider>
     </QueryClientProvider>,
   );
 }

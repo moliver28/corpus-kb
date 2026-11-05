@@ -160,4 +160,14 @@ describe("statusOpFor", () => {
     expect(statusOpFor("research-ingest-transcript")).toBeNull();
     expect(statusOpFor("no-such-op")).toBeNull();
   });
+
+  // The converse: every id the map answers for is longRunning, so a
+  // stray short-op key in api/ops.ts fails this row.
+  it("maps only longRunning ops to a status op", () => {
+    const mapped = Object.keys(OPS).filter((id) => statusOpFor(id) !== null);
+    expect(mapped.length).toBeGreaterThan(0);
+    for (const id of mapped) {
+      expect(OPS[id]?.longRunning).toBe(true);
+    }
+  });
 });
