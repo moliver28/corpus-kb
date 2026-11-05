@@ -4,8 +4,19 @@ import type { OpResult } from "../api/types";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 
-// Honest-envelope statuses that must never read as a completed run.
-const NOT_SUCCESS: ReadonlySet<string> = new Set(["disabled", "skipped"]);
+// Only the envelope's success family earns the "Done" receipt. Any word
+// outside the whitelist (disabled, skipped, a word the app does not
+// know) reads as not-success — honesty over optimism.
+const SUCCESS_WORDS: ReadonlySet<string> = new Set(["success", "ok"]);
+
+// The words headline() already names, so they need no reason banner.
+const KNOWN_STATES: ReadonlySet<string> = new Set([
+  "",
+  "empty",
+  "degraded",
+  "partial",
+  "abstained",
+]);
 
 /** Map the envelope status word to one plain headline (jargon defense). */
 function headline(status: string): string {
@@ -23,10 +34,7 @@ function headline(status: string): string {
     case "abstained":
       return strings.receiptAbstained;
     default:
-      if (NOT_SUCCESS.has(status)) {
-        return strings.receiptNotSuccess;
-      }
-      return strings.receiptDone;
+      return SUCCESS_WORDS.has(status) ? strings.receiptDone : strings.receiptNotSuccess;
   }
 }
 
@@ -37,7 +45,7 @@ export default function ReceiptCard({ result }: { result: OpResult }) {
     typeof result.data === "object" && result.data !== null
       ? (result.data as Record<string, unknown>)
       : {};
-  const note = NOT_SUCCESS.has(result.status);
+  const note = !SUCCESS_WORDS.has(result.status) && !KNOWN_STATES.has(result.status);
   const reason =
     typeof data.reason === "string" && data.reason !== ""
       ? data.reason

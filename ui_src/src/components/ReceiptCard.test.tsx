@@ -31,6 +31,18 @@ describe("ReceiptCard", () => {
     expect(screen.getByText(strings.receiptDone)).toBeTruthy();
   });
 
+  it("accepts the server's ok word as the success family", () => {
+    render(<ReceiptCard result={resultOf("ok")} />);
+    expect(screen.getByText(strings.receiptDone)).toBeTruthy();
+  });
+
+  it("defaults an unknown status word to not-success, never Done", () => {
+    render(<ReceiptCard result={resultOf("celebrated")} />);
+    // The headline and the reason banner share the honest words.
+    expect(screen.getAllByText(strings.receiptNotSuccess).length).toBeGreaterThan(0);
+    expect(screen.queryByText(strings.receiptDone)).toBeNull();
+  });
+
   it("never claims Done for disabled; it shows reason and remedy", () => {
     render(
       <ReceiptCard

@@ -96,7 +96,9 @@ export default function UploadCard() {
         <Upload beforeUpload={pick} onRemove={clear} maxCount={1}>
           <Button>{strings.setupUploadPick}</Button>
         </Upload>
-        <Button type="primary" loading={sending} disabled={file === null} onClick={() => void send()}>
+        {/* Enabled with a hint banner, like every other form: the empty
+            submit says what is missing instead of sleeping silently. */}
+        <Button type="primary" loading={sending} onClick={() => void send()}>
           {strings.setupUploadAction}
         </Button>
       </div>
