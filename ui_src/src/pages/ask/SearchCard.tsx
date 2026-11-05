@@ -2,6 +2,7 @@ import { Button, Card, Table } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { OpResult } from "../../api/types";
+import { pageConfig } from "../../api/table";
 import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
@@ -53,11 +54,7 @@ function resultBody(
         <Table<SearchRow>
           size="small"
           rowKey="chunk_id"
-          pagination={{
-            pageSize: SEARCH_PAGE_SIZE,
-            hideOnSinglePage: true,
-            showSizeChanger: false,
-          }}
+          pagination={pageConfig(SEARCH_PAGE_SIZE)}
           expandable={searchExpandable}
           dataSource={rows}
           columns={columnsOf(opts.copiedId, opts.onCopy)}

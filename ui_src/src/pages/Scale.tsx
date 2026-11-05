@@ -3,6 +3,7 @@ import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
 import { shortTimeText } from "../api/format";
 import { runtimeConfig } from "../api/runtimeConfig";
+import { pageConfig } from "../api/table";
 import DegradedCard from "../components/DegradedCard";
 import DirectoryCard from "../components/DirectoryCard";
 import JsonViewer from "../components/JsonViewer";
@@ -69,11 +70,7 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
         <Table<LedgerRun>
           size="small"
           rowKey="run_id"
-          pagination={{
-            pageSize: LEDGER_PAGE_SIZE,
-            hideOnSinglePage: true,
-            showSizeChanger: false,
-          }}
+          pagination={pageConfig(LEDGER_PAGE_SIZE)}
           dataSource={visible}
           columns={columns}
         />
@@ -141,7 +138,7 @@ export default function Scale() {
       <ResearchIngestCard />
       <ResearchDemoCard />
       <CalibrateApplyCard />
-      <DegradedCard ledger={poll.result} refreshLedger={poll.refresh} />
+      <DegradedCard ledger={{ result: poll.result, refresh: poll.refresh }} />
     </div>
   );
 }

@@ -53,12 +53,13 @@ function degradedCount(value: unknown): number {
  */
 export default function DegradedCard({
   ledger,
-  refreshLedger,
 }: {
-  /** The caller's ledger answer; undefined = the card reads it itself. */
-  ledger?: OpResult<unknown> | null;
-  /** Re-reads the caller's ledger (after the re-embed, on retry). */
-  refreshLedger?: () => void;
+  /**
+   * The caller's ledger read: its answer and its re-read. One atomic
+   * prop — a result without a refresh can never silently no-op.
+   * Undefined = the card reads the ledger itself.
+   */
+  ledger?: { result: OpResult<unknown> | null; refresh: () => void };
 } = {}) {
   const status = useOp("ingest-status");
   const reembed = useOp("ingest-reembed");
@@ -76,8 +77,8 @@ export default function DegradedCard({
   }, [shared, statusRun]);
 
   function refresh(): void {
-    if (shared) {
-      refreshLedger?.();
+    if (ledger !== undefined) {
+      ledger.refresh();
       return;
     }
     status.reset();
@@ -97,7 +98,7 @@ export default function DegradedCard({
     refresh();
   }
 
-  const result = shared ? ledger : status.result;
+  const result = shared ? ledger.result : status.result;
   let body: ReactNode;
   if (result === null) {
     body = <Skeleton active title={false} paragraph={{ rows: 2 }} />;

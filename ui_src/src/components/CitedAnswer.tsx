@@ -1,5 +1,5 @@
 import { Card } from "antd";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { VerifySummary } from "../api/verify";
 import BadgeLine from "./BadgeLine";
 import { strings } from "../strings";
@@ -41,6 +41,8 @@ export default function CitedAnswer({
   verify: VerifySummary | null;
 }) {
   const [hovered, setHovered] = useState<number | null>(null);
+  // Collision-proof id prefix for the sentence -> source description.
+  const idPrefix = useId();
   const activeSources =
     hovered === null ? null : new Set(citations[hovered]?.sources ?? []);
   return (
@@ -66,7 +68,7 @@ export default function CitedAnswer({
           // The focusable sentence carries its source as the accessible
           // description: a screen reader reads the sentence plus the
           // label, not a bare list item.
-          const sourceId = `ui-citation-source-${index}`;
+          const sourceId = `${idPrefix}-source-${index}`;
           return (
             <li
               key={`${index}-${citation.source}`}
