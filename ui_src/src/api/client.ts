@@ -26,11 +26,12 @@ async function send<T>(
 ): Promise<OpResult<T>> {
   const ctrl = new AbortController();
   const timer = timeoutMs === "none" ? null : setTimeout(() => ctrl.abort(), timeoutMs);
+  const onCallerAbort = (): void => ctrl.abort();
   if (signal?.aborted) {
     // A pre-aborted caller signal never fires its abort event.
     ctrl.abort();
   } else {
-    signal?.addEventListener("abort", () => ctrl.abort());
+    signal?.addEventListener("abort", onCallerAbort);
   }
   try {
     // The SPA talks to its own origin only. Building the URL from the
@@ -56,6 +57,9 @@ async function send<T>(
     return networkResult();
   } finally {
     if (timer) clearTimeout(timer);
+    // The caller-signal listener leaves with the call, so a long-lived
+    // AbortSignal never accumulates one listener per request.
+    signal?.removeEventListener("abort", onCallerAbort);
   }
 }
 

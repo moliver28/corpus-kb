@@ -48,8 +48,9 @@ export default function ReviewQueueCard() {
   }
 
   function pickReviewer(name: string): void {
+    // Keystrokes only move the state; the name persists on blur and on
+    // submit, never once per character.
     setReviewer(name);
-    saveReviewer(name);
   }
 
   async function send(row: AssignmentRow, kind: Decision, noteText: string): Promise<void> {
@@ -58,6 +59,7 @@ export default function ReviewQueueCard() {
       setNoteWarning(strings.reviewReviewerRequired);
       return;
     }
+    saveReviewer(reviewer.trim());
     // The server reviews the AGGREGATE (a UUID), not the int row id
     // (research/review_surface.py execute_review).
     const hook = kind === "accept" ? accept : overrideOp;
@@ -147,6 +149,7 @@ export default function ReviewQueueCard() {
             label={strings.reviewReviewerLabel}
             value={reviewer}
             onChange={pickReviewer}
+            onBlur={() => saveReviewer(reviewer.trim())}
             name="reviewer"
             widthClass="ui-narrow--name"
           />

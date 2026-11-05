@@ -70,6 +70,10 @@ export function usePoll<T>(opId: string, body?: unknown): Poll<T> {
         document.addEventListener("visibilitychange", onChange);
       });
     void (async () => {
+      // The last payload seen by THIS loop (the effect restarts on a new
+      // op, so a per-loop closure is the right scope). An unchanged
+      // answer skips setResult, so equal polls never re-render the card.
+      let lastPayload: string | null = null;
       while (!stopped) {
         if (document.hidden) {
           setPaused(true);
@@ -89,7 +93,11 @@ export function usePoll<T>(opId: string, body?: unknown): Poll<T> {
         if (stopped) {
           return;
         }
-        setResult(res);
+        const payload = JSON.stringify(res);
+        if (payload !== lastPayload) {
+          lastPayload = payload;
+          setResult(res);
+        }
         const backoff = res.httpStatus === 503 || res.kind === "unavailable";
         setBackingOff(backoff);
         // A refresh during the read asks for one more pass right away.

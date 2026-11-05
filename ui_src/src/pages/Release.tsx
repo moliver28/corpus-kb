@@ -96,7 +96,10 @@ function gateSummaryOf(result: OpResult): ReactNode {
  * execute dialog carries the last assess gate summary.
  */
 export default function Release() {
-  const [gateSummary, setGateSummary] = useState<ReactNode>(null);
+  // The raw assess answer is the state; the dialog summary derives from
+  // it during render (the React derived-state rule) — no rendered
+  // ReactNode ever sits in state.
+  const [lastAssess, setLastAssess] = useState<OpResult | null>(null);
   return (
     <div className="ui-stack">
       <Card title={strings.releaseTitle}>
@@ -108,7 +111,7 @@ export default function Release() {
         fields={[VERSION]}
         opId="release-assess"
         renderResult={renderAssess}
-        onResult={(res) => setGateSummary(gateSummaryOf(res))}
+        onResult={setLastAssess}
       />
       <IdFormCard
         title={strings.releaseRequestTitle}
@@ -141,7 +144,7 @@ export default function Release() {
         ]}
         opId="release-execute"
         gate
-        gateSummary={gateSummary}
+        gateSummary={lastAssess === null ? null : gateSummaryOf(lastAssess)}
       />
       <IdFormCard
         title={strings.releaseCompareTitle}

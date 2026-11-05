@@ -28,6 +28,8 @@ export interface LabeledFieldProps {
   widthClass?: string;
   /** Press Enter to submit (single line only). */
   onPressEnter?: () => void;
+  /** Runs when the control loses focus (blur-time persistence). */
+  onBlur?: () => void;
   /** Test hook for the page tests. */
   testId?: string;
 }
@@ -49,6 +51,7 @@ export default function LabeledField({
   name,
   widthClass = "ui-narrow",
   onPressEnter,
+  onBlur,
   testId,
 }: LabeledFieldProps) {
   const id = useId();
@@ -70,6 +73,7 @@ export default function LabeledField({
           className={widthClass}
           value={value}
           onChange={pick}
+          onBlur={onBlur}
           placeholder={label}
           aria-invalid={invalid || undefined}
           aria-describedby={invalid ? errorId : undefined}
@@ -85,6 +89,7 @@ export default function LabeledField({
           className={widthClass}
           value={value}
           onChange={pick}
+          onBlur={onBlur}
           placeholder={label}
           onPressEnter={onPressEnter}
           aria-invalid={invalid || undefined}

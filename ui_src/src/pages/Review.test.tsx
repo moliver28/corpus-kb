@@ -232,7 +232,7 @@ describe("Review page", () => {
   });
 
   it("disables the row actions while a decision is in flight", async () => {
-    window.localStorage.setItem("corpus-kb:reviewer", "Alex");
+    window.localStorage.setItem("corpus-kb:reviewer:v1", "Alex");
     let release!: (reply: MinimalResponse) => void;
     const gate = new Promise<MinimalResponse>((resolve) => {
       release = resolve;
@@ -274,7 +274,7 @@ describe("Review page", () => {
   });
 
   it("records an accept decision with the remembered reviewer", async () => {
-    window.localStorage.setItem("corpus-kb:reviewer", "Alex");
+    window.localStorage.setItem("corpus-kb:reviewer:v1", "Alex");
     stubFetch([
       ...reviewRoutes(),
       {
@@ -299,7 +299,7 @@ describe("Review page", () => {
   });
 
   it("blocks an override until the note is written", async () => {
-    window.localStorage.setItem("corpus-kb:reviewer", "Alex");
+    window.localStorage.setItem("corpus-kb:reviewer:v1", "Alex");
     stubFetch([
       ...reviewRoutes(),
       {

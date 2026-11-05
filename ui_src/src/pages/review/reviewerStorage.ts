@@ -1,7 +1,9 @@
 // Persisted non-sensitive UI state (F10): the reviewer name only, under
-// the corpus-kb: prefix. Private mode just does not persist the name.
+// the corpus-kb: prefix. The key carries its version (React rule 4.4),
+// so a format change starts fresh instead of reading stale bytes.
+// Private mode just does not persist the name.
 
-const REVIEWER_KEY = "corpus-kb:reviewer";
+const REVIEWER_KEY = "corpus-kb:reviewer:v1";
 
 /** The remembered reviewer name, or "" when none is stored. */
 export function loadReviewer(): string {
