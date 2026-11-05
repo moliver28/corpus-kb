@@ -129,7 +129,9 @@ describe("useServerWindow", () => {
     stubFetch([{ method: "GET", path: "/api/documents", reply: rowsReply(1) }]);
     fireEvent.click(screen.getByRole("button", { name: "remove only row" }));
     await waitFor(() => expect(latest?.page).toBe(1));
-    expect(calls.some((c) => c.url.includes("offset=0"))).toBe(true);
+    // Exactly one fetch: the page-state effect owns the step-back read.
+    expect(calls.filter((c) => c.url.includes("/api/documents?")).length).toBe(1);
+    expect(calls[0]?.url.includes("offset=0")).toBe(true);
   });
 
   it("rereads the same window when the deleted row was not the only one", async () => {
@@ -139,7 +141,7 @@ describe("useServerWindow", () => {
     clearCalls();
     stubFetch([{ method: "GET", path: "/api/documents", reply: rowsReply(2) }]);
     fireEvent.click(screen.getByRole("button", { name: "remove one of two" }));
-    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(calls.length).toBe(1));
     expect(latest?.page).toBe(1);
     expect(calls.every((c) => c.url.includes("offset=0"))).toBe(true);
   });
@@ -151,7 +153,7 @@ describe("useServerWindow", () => {
     clearCalls();
     stubFetch([{ method: "GET", path: "/api/documents", reply: rowsReply(1) }]);
     fireEvent.click(screen.getByRole("button", { name: "remove only row" }));
-    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
+    await waitFor(() => expect(calls.length).toBe(1));
     expect(latest?.page).toBe(1);
     expect(calls.every((c) => c.url.includes("offset=0"))).toBe(true);
   });

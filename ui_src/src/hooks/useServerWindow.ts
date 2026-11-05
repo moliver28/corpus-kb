@@ -71,9 +71,9 @@ export function useServerWindow<Row, Envelope extends { result: Row[] }>(
 
   function stepBackAfterDelete(shownCount: number): void {
     if (shownCount === 1 && page > 1) {
-      const prev = page - 1;
-      setPage(prev);
-      loadPage(prev);
+      // Only move the page: the page-state effect owns the fetch, so a
+      // step-back answers exactly one read (never a duplicate window).
+      setPage(page - 1);
       return;
     }
     refresh();
