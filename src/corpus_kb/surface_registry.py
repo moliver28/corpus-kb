@@ -498,6 +498,38 @@ SURFACES: tuple[Surface, ...] = (
         description="Read metadata rows by key or document (read-only).",
         http_route="/api/metadata",
     ),
+    # -- Phase-2 Wave 2 write ops: the drawer edits tags and metadata
+    #    through these manifest ops. The names match the catalogue op
+    #    names (test_catalogue_matches_surface_registry byte-matches the
+    #    columns). Write ops: NEVER add them to SERVER_AUTO_APPROVE. -----
+    Surface(
+        name="add-tag",
+        cli_path="add-tag",
+        mcp_tool="add_tag",
+        description="Create one tag in the tag vocabulary.",
+        http_route="/api/tags",
+    ),
+    Surface(
+        name="tag-document",
+        cli_path="tag-document",
+        mcp_tool="tag_document",
+        description="Apply one tag to a document; a missing tag is created first.",
+        http_route="/api/documents/{doc_id}/tags",
+    ),
+    Surface(
+        name="untag-document",
+        cli_path="untag-document",
+        mcp_tool="untag_document",
+        description="Remove one tag from a document; a missing link is a typed error.",
+        http_route="/api/documents/{doc_id}/tags/remove",
+    ),
+    Surface(
+        name="set-metadata",
+        cli_path="set-metadata",
+        mcp_tool="set_metadata",
+        description="Set one metadata key for a document; the write is an upsert.",
+        http_route="/api/metadata",
+    ),
     Surface(
         name="verify",
         cli_path="verify-answer",

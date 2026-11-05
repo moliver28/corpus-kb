@@ -30,6 +30,7 @@ Route families (the Route order below is the original single-file order):
                                GET  /api/graph/relations/{entity_id}
   api/routes_tags_metadata.py  POST /api/tags, /api/metadata  GET /api/metadata
                                POST+GET /api/documents/{doc_id}/tags
+                               POST /api/documents/{doc_id}/tags/remove
   api/research_http.py         research + release surfaces (U5/P7)
   api/routes_topics.py         POST /api/topics/build  GET /api/topics
                                POST /api/topics/trends
@@ -160,6 +161,7 @@ from corpus_kb.api.routes_tags_metadata import (
     get_metadata_route,
     set_metadata_route,
     tag_document_route,
+    untag_document_route,
 )
 from corpus_kb.api.routes_topics import (
     topics_build_route,
@@ -266,6 +268,7 @@ def create_http_app() -> FastAPI:
         Route("/api/tags", add_tag_route, methods=["POST"]),
         Route("/api/documents/{doc_id}/tags", tag_document_route, methods=["POST"]),
         Route("/api/documents/{doc_id}/tags", get_document_tags_route, methods=["GET"]),
+        Route("/api/documents/{doc_id}/tags/remove", untag_document_route, methods=["POST"]),
         Route("/api/metadata", set_metadata_route, methods=["POST"]),
         Route("/api/metadata", get_metadata_route, methods=["GET"]),
         Route("/api/versions", list_versions, methods=["GET"]),

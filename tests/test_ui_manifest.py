@@ -82,13 +82,22 @@ def test_manifest_json_is_sorted_and_complete() -> None:
 
 
 def test_every_manifest_path_exists_with_the_real_method() -> None:
-    """Route table cross-check: path present, method set equal (minus HEAD)."""
+    """Route table cross-check: path present, manifest method served.
+
+    Phase-2 Wave 2: one path can serve two methods now (/api/metadata is
+    the GET read plus the POST upsert; the document tags path is the GET
+    list plus the POST apply). The table unions the methods per path and
+    each manifest entry asserts its own method is served there.
+    """
     from corpus_kb.api.http import create_http_app
 
-    route_table = {route.path: route.methods - {"HEAD"} for route in create_http_app().routes}
+    route_table: dict[str, set[str]] = {}
+    for route in create_http_app().routes:
+        route_table.setdefault(route.path, set()).update(route.methods - {"HEAD"})
     for entry in build_manifest(REPO):
         method = str(entry["method"])
-        assert route_table[str(entry["path"])] == {method}, str(entry["id"])
+        served = route_table.get(str(entry["path"]), set())
+        assert method in served, f"{entry['id']}: {method} not served at {entry['path']}"
 
 
 def test_manifest_entry_shape() -> None:

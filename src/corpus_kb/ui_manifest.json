@@ -326,6 +326,26 @@
     "required": []
   },
   {
+    "description": "Apply one tag to a document; a missing tag is created first.",
+    "id": "tag-document",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/tags",
+    "required": []
+  },
+  {
+    "description": "Remove one tag from a document; a missing link is a typed error.",
+    "id": "untag-document",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/tags/remove",
+    "required": []
+  },
+  {
     "description": "Ingest the supported files under one directory in one walk.",
     "id": "ingest-directory",
     "longRunning": true,
@@ -420,6 +440,16 @@
     "id": "document-metadata",
     "longRunning": false,
     "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/metadata",
+    "required": []
+  },
+  {
+    "description": "Set one metadata key for a document; the write is an upsert.",
+    "id": "set-metadata",
+    "longRunning": false,
+    "method": "POST",
     "optional": [],
     "paramsKnown": false,
     "path": "/api/metadata",
@@ -777,6 +807,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/search/similar",
+    "required": []
+  },
+  {
+    "description": "Create one tag in the tag vocabulary.",
+    "id": "add-tag",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/tags",
     "required": []
   },
   {

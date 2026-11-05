@@ -38,6 +38,11 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "sql_tables",
         "get_document_tags",
         "get_metadata",
+        # Phase-2 Wave 2: the tag/metadata write ops (tools/tag_tools.py).
+        "add_tag",
+        "tag_document",
+        "untag_document",
+        "set_metadata",
         "query_document_stats",
         "sync_database",
         # -- research/coding surfaces (todos 11-18) --------------------------

@@ -743,6 +743,23 @@ async def _shared_get_metadata(ctx: dict[str, Any]) -> dict[str, Any]:
     return await tag_tools_module.get_metadata(ctx["pool"], key="parity")
 
 
+# -- Phase-2 Wave 2 write ops: the drawer's tag and metadata edits ------
+async def _shared_add_tag(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.add_tag(ctx["pool"], "parity")
+
+
+async def _shared_tag_document(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.tag_document(ctx["pool"], DOC_ID, "parity")
+
+
+async def _shared_untag_document(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.untag_document(ctx["pool"], DOC_ID, "parity")
+
+
+async def _shared_set_metadata(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await tag_tools_module.set_metadata(ctx["pool"], "parity", "parity-value", doc_id=DOC_ID)
+
+
 async def _shared_calibrate_apply(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.calibrate_tools import calibrate_apply
 
@@ -1333,6 +1350,31 @@ LEGS: dict[str, _Leg] = {
         _get("/api/metadata", {"key": "parity"}),
         _sock("get_metadata", {"key": "parity"}),
         _mcp({}),
+    ),
+    # -- Phase-2 Wave 2 write ops: the drawer's tag and metadata edits ------
+    "add_tag": _Leg(
+        _shared_add_tag,
+        _post("/api/tags", {"name": "parity"}),
+        _sock("add_tag", {"name": "parity"}),
+        _mcp({"name": "parity"}),
+    ),
+    "tag_document": _Leg(
+        _shared_tag_document,
+        _post(f"/api/documents/{DOC_ID}/tags", {"tag": "parity"}),
+        _sock("tag_document", {"doc_id": DOC_ID, "tag": "parity"}),
+        _mcp({"doc_id": DOC_ID, "tag": "parity"}),
+    ),
+    "untag_document": _Leg(
+        _shared_untag_document,
+        _post(f"/api/documents/{DOC_ID}/tags/remove", {"tag": "parity"}),
+        _sock("untag_document", {"doc_id": DOC_ID, "tag": "parity"}),
+        _mcp({"doc_id": DOC_ID, "tag": "parity"}),
+    ),
+    "set_metadata": _Leg(
+        _shared_set_metadata,
+        _post("/api/metadata", {"key": "parity", "value": "parity-value", "doc_id": DOC_ID}),
+        _sock("set_metadata", {"key": "parity", "value": "parity-value", "doc_id": DOC_ID}),
+        _mcp({"key": "parity", "value": "parity-value", "doc_id": DOC_ID}),
     ),
     "search_similar": _Leg(
         _shared_search_similar,
@@ -1986,6 +2028,29 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     ) -> list[Any]:
         return []
 
+    # Phase-2 Wave 2 write ops: the canned answers carry the ONE uniform
+    # envelope the handler really returns, so the raw HTTP passthrough,
+    # the tool layer, the socket arm, and the MCP tool all agree.
+    async def canned_add_tag(
+        self: Any, tenant_id: Any, name: Any, color: Any = None, description: Any = None
+    ) -> dict[str, Any]:
+        return {"status": "success", "tag_id": "00000000-0000-0000-0000-0000000000a1", "name": name}
+
+    async def canned_tag_document(
+        self: Any, tenant_id: Any, doc_id: Any, tag: Any
+    ) -> dict[str, Any]:
+        return {"status": "success", "doc_id": str(doc_id), "tag": tag}
+
+    async def canned_untag_document(
+        self: Any, tenant_id: Any, doc_id: Any, tag: Any
+    ) -> dict[str, Any]:
+        return {"status": "success", "doc_id": str(doc_id), "tag": tag}
+
+    async def canned_set_metadata(
+        self: Any, tenant_id: Any, key: Any, value: Any, doc_id: Any = None
+    ) -> dict[str, Any]:
+        return {"status": "success", "key": key, "value": value}
+
     monkeypatch.setattr(query_handler_module, "get_query_handler", fake_query_handler)
     monkeypatch.setattr(QueryHandler, "handle_search_with_meta", canned_search)
     monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
@@ -1999,6 +2064,12 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
         tag_handler_module.TagHandler, "handle_get_document_tags", canned_document_tags
     )
     monkeypatch.setattr(tag_handler_module.TagHandler, "handle_get_metadata", canned_metadata)
+    monkeypatch.setattr(tag_handler_module.TagHandler, "handle_add_tag", canned_add_tag)
+    monkeypatch.setattr(tag_handler_module.TagHandler, "handle_tag_document", canned_tag_document)
+    monkeypatch.setattr(
+        tag_handler_module.TagHandler, "handle_untag_document", canned_untag_document
+    )
+    monkeypatch.setattr(tag_handler_module.TagHandler, "handle_set_metadata", canned_set_metadata)
     monkeypatch.setattr(router_handler_module, "get_router_handler", _StubRouter)
 
     # Graph read ops: one canned store behind the handler singleton, so the
@@ -2365,6 +2436,11 @@ def test_catalogue_matches_surface_registry() -> None:
         "search_context",
         # Issue #200: the calibrate apply row byte-matches its registry row.
         "calibrate_apply",
+        # Phase-2 Wave 2: the tag/metadata write rows carry the op names.
+        "add_tag",
+        "tag_document",
+        "untag_document",
+        "set_metadata",
     } <= set(checked)
 
 

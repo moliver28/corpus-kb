@@ -202,6 +202,29 @@ _SPECS: dict[str, _Spec] = {
         positional=(_Opt("doc_id", "req"),),
     ),
     "get_metadata": _Spec(_TAG, "get_metadata", opts=(_Opt("key", "str"), _Opt("doc_id", "raw"))),
+    # -- Phase-2 Wave 2 write ops: the drawer's tag and metadata edits -----
+    "add_tag": _Spec(
+        _TAG,
+        "add_tag",
+        positional=(_Opt("name", "req"),),
+        opts=(_Opt("color", "str"), _Opt("description", "str")),
+    ),
+    "tag_document": _Spec(
+        _TAG,
+        "tag_document",
+        positional=(_Opt("doc_id", "req"), _Opt("tag", "req")),
+    ),
+    "untag_document": _Spec(
+        _TAG,
+        "untag_document",
+        positional=(_Opt("doc_id", "req"), _Opt("tag", "req")),
+    ),
+    "set_metadata": _Spec(
+        _TAG,
+        "set_metadata",
+        positional=(_Opt("key", "req"), _Opt("value", "req")),
+        opts=(_Opt("doc_id", "raw"),),
+    ),
     "get_entity_relations": _Spec(
         _GRAPH,
         "get_entity_relations",

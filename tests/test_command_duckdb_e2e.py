@@ -22,6 +22,7 @@ from corpus_kb._setup.migrate import run_duckdb_migrations
 from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.models import AddEntityCommand, RoutedQuery
+from corpus_kb.errors import NotFoundError
 from corpus_kb.handlers.command_handler import CommandHandler
 from corpus_kb.handlers.idempotency import IdempotencyChecker
 from corpus_kb.handlers.router_handler import RouterHandler
@@ -108,17 +109,26 @@ async def test_command_e2e_legs_on_duckdb(
     assert reloaded.chunk_count == 5
 
     # 4 TAG: create, dedupe, link to a projection row, read back ordered.
+    # Phase-2 Wave 2: add_tag answers the one uniform envelope (status,
+    # tag_id, name) and untag raises a typed error on a missing link.
     await _insert_document(gateway, doc.id)
     tags = TagHandler(gateway)
     first = await tags.handle_add_tag(TENANT, "zeta", color="#112233")
-    assert set(first) == {"tag_id", "name"}
+    assert set(first) == {"status", "tag_id", "name"}
+    assert first["status"] == "success"
     duplicate = await tags.handle_add_tag(TENANT, "zeta", color="#ffffff")
-    assert duplicate == {"name": "zeta", "status": "already_exists"}
+    assert duplicate == {"status": "already_exists", "name": "zeta"}
     for name in ("zeta", "alpha"):
         tagged = await tags.handle_tag_document(TENANT, doc.id, name)
         assert tagged == {"status": "success", "doc_id": str(doc.id), "tag": name}
     rows = await tags.handle_get_document_tags(TENANT, doc.id)
     assert [(r["name"], r["color"]) for r in rows] == [("alpha", None), ("zeta", "#112233")]
+    removed = await tags.handle_untag_document(TENANT, doc.id, "alpha")
+    assert removed == {"status": "success", "doc_id": str(doc.id), "tag": "alpha"}
+    with pytest.raises(NotFoundError):
+        await tags.handle_untag_document(TENANT, doc.id, "alpha")
+    saved = await tags.handle_set_metadata(TENANT, "reviewer", "parity", doc_id=doc.id)
+    assert saved == {"status": "success", "key": "reviewer", "value": "parity"}
 
     # 5 IDEMPOTENT REPLAY: same key twice → one effect, first result wins.
     checker = IdempotencyChecker(gateway)
@@ -150,6 +160,7 @@ async def test_command_e2e_legs_on_duckdb(
     from corpus_kb.domain.models import DeleteDocumentCommand
 
     await gateway.execute("DELETE FROM document_tags WHERE doc_id = ?", str(doc.id))
+    await gateway.execute("DELETE FROM metadata WHERE doc_id = ?", str(doc.id))
     deleted = await command_handler.handle_delete_document(
         DeleteDocumentCommand(doc_id=doc.id, tenant_id=TENANT)
     )

@@ -1,12 +1,14 @@
 """Tag + metadata route family (zero-drift split of api/http.py).
 
 POST /api/tags, /api/metadata            GET  /api/metadata
-POST+GET /api/documents/{doc_id}/tags
+POST+GET /api/documents/{doc_id}/tags    POST /api/documents/{doc_id}/tags/remove
 
 Thin adapters: parse JSON, call the shared handler layer, return
 JSONResponse. Every route runs through ``@route_errors`` (api._body) —
 ONE error path. Handler imports stay inside the route bodies so tests can
-monkeypatch the handler-module singletons.
+monkeypatch the handler-module singletons. The remove route is a
+body-carrying POST (not DELETE with the tag in the path): a gen-default
+POST is CORS-safe and keeps the tag name out of the URL.
 """
 
 from __future__ import annotations
@@ -45,6 +47,22 @@ async def tag_document_route(request: Request) -> JSONResponse:
     doc_id = request.path_params.get("doc_id")
     handler = get_tag_handler()
     result = await handler.handle_tag_document(
+        UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
+        UUID(doc_id),
+        body["tag"],
+    )
+    return JSONResponse(result)
+
+
+@route_errors
+async def untag_document_route(request: Request) -> JSONResponse:
+    """POST /api/documents/{doc_id}/tags/remove - remove one tag from a document."""
+    from corpus_kb.handlers.tag_handler import get_tag_handler
+
+    body = await parse_body(request)
+    doc_id = request.path_params.get("doc_id")
+    handler = get_tag_handler()
+    result = await handler.handle_untag_document(
         UUID(body.get("tenant_id", DEFAULT_TENANT_ID)),
         UUID(doc_id),
         body["tag"],

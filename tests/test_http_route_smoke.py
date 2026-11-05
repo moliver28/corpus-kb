@@ -449,6 +449,15 @@ _HANDLER_ROUTES = [
         id="POST /api/documents/{doc_id}/tags",
     ),
     pytest.param(
+        "POST",
+        f"/api/documents/{uuid4()}/tags/remove",
+        "tag",
+        "handle_untag_document",
+        "dict",
+        {"tag": "t"},
+        id="POST /api/documents/{doc_id}/tags/remove",
+    ),
+    pytest.param(
         "GET",
         f"/api/documents/{uuid4()}/tags",
         "tag",

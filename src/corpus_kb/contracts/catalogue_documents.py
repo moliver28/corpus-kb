@@ -92,6 +92,80 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 3),
     ),
+    # -- Phase-2 Wave 2 write ops: the drawer's tag and metadata edits. -----
+    # The untag row pins the body-carrying POST /tags/remove shape (gen-default
+    # POST, CORS-safe, no tag-name URL-encoding in the path). Untag of a tag
+    # the document does not carry is a typed not_found error, never a silent ok.
+    Operation(
+        name="add_tag",
+        family="documents",
+        description="Create one tag in the tag vocabulary.",
+        handler="corpus_kb.tools.tag_tools:add_tag",
+        params=(
+            ParamSpec("name", required=True),
+            ParamSpec("color"),
+            ParamSpec("description"),
+            _TENANT,
+        ),
+        envelope_keys=("status", "tag_id", "name"),
+        surfaces=(
+            SurfaceSpec(MCP, "add_tag"),
+            SurfaceSpec(CLI, "add-tag"),
+            SurfaceSpec(HTTP, "/api/tags", "POST"),
+            SurfaceSpec(SOCKET, "add_tag"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="tag_document",
+        family="documents",
+        description="Apply one tag to a document. A missing tag is created first.",
+        handler="corpus_kb.tools.tag_tools:tag_document",
+        params=(ParamSpec("doc_id", required=True), ParamSpec("tag", required=True), _TENANT),
+        envelope_keys=("status", "doc_id", "tag"),
+        surfaces=(
+            SurfaceSpec(MCP, "tag_document"),
+            SurfaceSpec(CLI, "tag-document"),
+            SurfaceSpec(HTTP, "/api/documents/{doc_id}/tags", "POST"),
+            SurfaceSpec(SOCKET, "tag_document"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="untag_document",
+        family="documents",
+        description="Remove one tag from a document. A missing link is a typed error.",
+        handler="corpus_kb.tools.tag_tools:untag_document",
+        params=(ParamSpec("doc_id", required=True), ParamSpec("tag", required=True), _TENANT),
+        envelope_keys=("status", "doc_id", "tag"),
+        surfaces=(
+            SurfaceSpec(MCP, "untag_document"),
+            SurfaceSpec(CLI, "untag-document"),
+            SurfaceSpec(HTTP, "/api/documents/{doc_id}/tags/remove", "POST"),
+            SurfaceSpec(SOCKET, "untag_document"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
+    Operation(
+        name="set_metadata",
+        family="documents",
+        description="Set one metadata key for a document. The write is an upsert.",
+        handler="corpus_kb.tools.tag_tools:set_metadata",
+        params=(
+            ParamSpec("key", required=True),
+            ParamSpec("value", required=True),
+            ParamSpec("doc_id"),
+            _TENANT,
+        ),
+        envelope_keys=("status", "key", "value"),
+        surfaces=(
+            SurfaceSpec(MCP, "set_metadata"),
+            SurfaceSpec(CLI, "set-metadata"),
+            SurfaceSpec(HTTP, "/api/metadata", "POST"),
+            SurfaceSpec(SOCKET, "set_metadata"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
     Operation(
         name="add_entity",
         family="graph",
