@@ -30,8 +30,8 @@ export interface LabeledFieldProps {
   onPressEnter?: () => void;
   /** Runs when the control loses focus (blur-time persistence). */
   onBlur?: () => void;
-  /** Test hook for the page tests. */
-  testId?: string;
+  /** The control id (label binding, label-based tests); unset mints one. */
+  id?: string;
 }
 
 /**
@@ -52,9 +52,10 @@ export default function LabeledField({
   widthClass = "ui-narrow",
   onPressEnter,
   onBlur,
-  testId,
+  id: idProp,
 }: LabeledFieldProps) {
-  const id = useId();
+  const minted = useId();
+  const id = idProp ?? minted;
   const errorId = `${id}-error`;
   const invalid = error !== undefined && error !== "";
   function pick(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>): void {
@@ -80,7 +81,6 @@ export default function LabeledField({
           aria-required={required || undefined}
           spellCheck={machine ? false : undefined}
           autoComplete={machine ? "off" : undefined}
-          data-testid={testId}
         />
       ) : (
         <Input
@@ -97,7 +97,6 @@ export default function LabeledField({
           aria-required={required || undefined}
           spellCheck={machine ? false : undefined}
           autoComplete={machine ? "off" : undefined}
-          data-testid={testId}
         />
       )}
       {invalid && (

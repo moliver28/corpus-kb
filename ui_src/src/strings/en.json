@@ -194,6 +194,7 @@
   "askColumnVerdict": "Verdict",
   "askColumnConfidence": "Confidence",
   "askNotebookProjectLabel": "Project id",
+  "askNotebookQuestionLabel": "Question for the notebook",
   "askNotebookAction": "Ask the notebook",
   "askNotebookProjectRequired": "Choose a project first.",
   "askNotebookRetrievalOnly": "Retrieval only (no LLM)",

@@ -41,6 +41,7 @@ export interface AskStrings {
   askColumnVerdict: string;
   askColumnConfidence: string;
   askNotebookProjectLabel: string;
+  askNotebookQuestionLabel: string;
   askNotebookAction: string;
   askNotebookProjectRequired: string;
   askNotebookRetrievalOnly: string;

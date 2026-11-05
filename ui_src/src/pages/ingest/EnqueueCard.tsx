@@ -92,7 +92,7 @@ export default function EnqueueCard({ onEnqueued }: { onEnqueued: () => void }) 
             machine
             name="path"
             widthClass="ui-narrow--form"
-            testId="queue-path"
+            id="queue-path"
           />
           <LabeledField
             label={strings.queueTitleLabel}
@@ -100,7 +100,7 @@ export default function EnqueueCard({ onEnqueued }: { onEnqueued: () => void }) 
             onChange={setTitle}
             name="title"
             widthClass="ui-narrow--small"
-            testId="queue-title"
+            id="queue-title"
           />
         </div>
         <div className="ui-actions">
@@ -111,7 +111,7 @@ export default function EnqueueCard({ onEnqueued }: { onEnqueued: () => void }) 
             machine
             name="profile"
             widthClass="ui-narrow--small"
-            testId="queue-profile"
+            id="queue-profile"
           />
           <LabeledField
             label={strings.queueConfigLabel}
@@ -122,7 +122,7 @@ export default function EnqueueCard({ onEnqueued }: { onEnqueued: () => void }) 
             multiline
             name="strategy_config"
             widthClass="ui-narrow--form"
-            testId="queue-config"
+            id="queue-config"
           />
         </div>
         <div className="ui-actions">

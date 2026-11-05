@@ -193,7 +193,7 @@ describe("Ingest page", () => {
     render(<Ingest />, { wrapper: makeWrapper() });
     openTab(strings.ingestTabQueue);
     expect(await screen.findByText(strings.queueFormTitle)).toBeTruthy();
-    expect(screen.getByTestId("queue-path")).toBeTruthy();
+    expect(screen.getByLabelText(strings.queuePathLabel, { exact: false })).toBeTruthy();
     // The status card answers the first poll with the active rows, and
     // the status tags carry plain words, not the server's enum words.
     expect(await screen.findByText("A History of Networks")).toBeTruthy();

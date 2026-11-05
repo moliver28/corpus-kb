@@ -113,7 +113,7 @@ export default function NotebookCard() {
         <div className="ui-actions">
           <ProjectField value={projectId} onChange={setProjectId} error={projectError} />
           <LabeledField
-            label={strings.askQueryLabel}
+            label={strings.askNotebookQuestionLabel}
             value={question}
             onChange={setQuestion}
             error={questionError}

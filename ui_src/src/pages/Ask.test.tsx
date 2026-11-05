@@ -368,8 +368,7 @@ describe("Ask page", () => {
     fireEvent.click(await screen.findByRole("button", { name: strings.askTabNotebook }));
     fireEvent.mouseDown(screen.getByRole("combobox"));
     fireEvent.click(await screen.findByText("Grid Interviews"));
-    const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
-    fireEvent.change(questionInputs[questionInputs.length - 1], {
+    fireEvent.change(screen.getByLabelText(strings.askNotebookQuestionLabel, { exact: false }), {
       target: { value: "what caused the outage?" },
     });
     fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));
@@ -475,10 +474,8 @@ describe("Ask page", () => {
     // The project comes from the picker, not a typed UUID.
     fireEvent.mouseDown(screen.getByRole("combobox"));
     fireEvent.click(await screen.findByText("Grid Interviews"));
-    // Two "Question" inputs exist now (the ask card and the notebook
-    // card); the notebook's is the second in the DOM.
-    const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
-    fireEvent.change(questionInputs[questionInputs.length - 1], {
+    // The notebook question carries its own label, unique on the page.
+    fireEvent.change(screen.getByLabelText(strings.askNotebookQuestionLabel, { exact: false }), {
       target: { value: "what caused the outage?" },
     });
     fireEvent.click(
@@ -510,8 +507,7 @@ describe("Ask page", () => {
     expect(screen.getByText(strings.askNotebookProjectRequired)).toBeTruthy();
     expect(screen.getByText(strings.askQueryRequired)).toBeTruthy();
     // Fill the question only and resubmit: the question's error must go.
-    const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
-    fireEvent.change(questionInputs[questionInputs.length - 1], {
+    fireEvent.change(screen.getByLabelText(strings.askNotebookQuestionLabel, { exact: false }), {
       target: { value: "what caused the outage?" },
     });
     fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));
@@ -538,8 +534,7 @@ describe("Ask page", () => {
     fireEvent.change(await screen.findByPlaceholderText(strings.askNotebookProjectLabel), {
       target: { value: "11111111-2222-4333-8444-555566667777" },
     });
-    const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
-    fireEvent.change(questionInputs[questionInputs.length - 1], {
+    fireEvent.change(screen.getByLabelText(strings.askNotebookQuestionLabel, { exact: false }), {
       target: { value: "what caused the outage?" },
     });
     fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));

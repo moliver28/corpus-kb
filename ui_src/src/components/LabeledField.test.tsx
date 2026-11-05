@@ -44,6 +44,15 @@ describe("LabeledField", () => {
     expect(input.getAttribute("name")).toBe("path");
   });
 
+  it("binds a caller id to the control and its label (no test hook)", () => {
+    render(
+      <LabeledField label="Server path" id="queue-path" value="" onChange={() => {}} />,
+    );
+    const input = screen.getByLabelText("Server path");
+    expect(input.getAttribute("id")).toBe("queue-path");
+    expect(document.querySelector('label[for="queue-path"]')).toBeTruthy();
+  });
+
   it("renders the error inline with role alert and flags the field", () => {
     render(<Harness />);
     expect(screen.queryByRole("alert")).toBeNull();
