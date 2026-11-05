@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch, stubFetchImpl } from "../test/testUtils";
@@ -213,6 +213,14 @@ describe("Review page", () => {
       ),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: strings.reviewDegradedAction }));
+    // The bulk write never starts bare: the gate repeats the counts.
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        strings.reviewDegradedConfirmBody.replace("{chunks}", "3").replace("{vectors}", "3"),
+      ),
+    ).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.confirmConfirm }));
     expect(
       await screen.findByText(
         strings.reviewDegradedDone
@@ -221,6 +229,48 @@ describe("Review page", () => {
           .replace("{failed}", "0"),
       ),
     ).toBeTruthy();
+  });
+
+  it("disables the row actions while a decision is in flight", async () => {
+    window.localStorage.setItem("corpus-kb:reviewer", "Alex");
+    let release!: (reply: MinimalResponse) => void;
+    const gate = new Promise<MinimalResponse>((resolve) => {
+      release = resolve;
+    });
+    const impl = (url: string | URL, init?: { method?: string }): Promise<MinimalResponse> => {
+      const target = String(url);
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url: target, body: "" });
+      if (method === "POST" && target.includes("/api/review/execute")) {
+        return gate;
+      }
+      const hit = reviewRoutes().find((r) => r.method === method && target.includes(r.path));
+      if (hit === undefined) {
+        return Promise.reject(new Error(`unexpected fetch: ${method} ${target}`));
+      }
+      return Promise.resolve(hit.reply);
+    };
+    vi.stubGlobal("fetch", impl as unknown as typeof fetch);
+    render(<Review />, { wrapper: makeWrapper() });
+    const acceptButtons = await screen.findAllByRole("button", { name: strings.reviewAccept });
+    expect((acceptButtons[0] as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(acceptButtons[0]);
+    // In flight: both actions on every row sleep, so a double-click
+    // cannot record the decision twice.
+    await waitFor(() => {
+      expect(
+        (screen.getAllByRole("button", { name: strings.reviewAccept })[0] as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+    });
+    expect(
+      (screen.getAllByRole("button", { name: strings.reviewOverride })[0] as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    release(respond(200, reviewExecuteOk.response.body));
+    await screen.findByText(strings.reviewDecisionDone);
+    const settled = await screen.findAllByRole("button", { name: strings.reviewAccept });
+    expect((settled[0] as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("records an accept decision with the remembered reviewer", async () => {

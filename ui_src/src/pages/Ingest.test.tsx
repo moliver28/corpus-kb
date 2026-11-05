@@ -65,6 +65,17 @@ describe("Ingest page", () => {
     expect(screen.getByRole("button", { name: strings.setupUploadAction })).toBeTruthy();
   });
 
+  it("answers an empty upload submit with the hint, never a dead button", async () => {
+    stubFetch([]);
+    render(<Ingest />, { wrapper: makeWrapper() });
+    const upload = await screen.findByRole("button", { name: strings.setupUploadAction });
+    // Enabled like every other form; the empty submit names the gap.
+    expect((upload as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(upload);
+    expect(await screen.findByText(strings.setupUploadPickFirst)).toBeTruthy();
+    expect(calls.some((c) => c.url.includes("/api/ingest/upload"))).toBe(false);
+  });
+
   it("ingests one web address, with the crawl toggle in the request", async () => {
     stubFetch([
       { method: "POST", path: "/api/ingest/url", reply: respond(200, ingestUrlOk.response.body) },
@@ -183,8 +194,45 @@ describe("Ingest page", () => {
     openTab(strings.ingestTabQueue);
     expect(await screen.findByText(strings.queueFormTitle)).toBeTruthy();
     expect(screen.getByTestId("queue-path")).toBeTruthy();
-    // The status card answers the first poll with the active rows.
+    // The status card answers the first poll with the active rows, and
+    // the status tags carry plain words, not the server's enum words.
     expect(await screen.findByText("A History of Networks")).toBeTruthy();
+    expect(screen.getAllByText(strings.queueStatusRunning).length).toBe(1);
+    expect(screen.getAllByText(strings.queueStatusPending).length).toBe(1);
+  });
+
+  it("keeps an unknown queue status word honest instead of guessing", async () => {
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/queue/status",
+        reply: respond(200, {
+          status: "success",
+          entries: [
+            {
+              id: "eeee4444-5555-4f66-9a77-88889999bbbb",
+              path: "/data/books/maps.pdf",
+              title: null,
+              status: "frozen",
+              attempts: 0,
+              max_attempts: 3,
+              last_error: null,
+              elapsed_seconds: null,
+              queued_at: "2026-10-28T12:00:00Z",
+              run_id: null,
+              project_id: null,
+              pages_done: null,
+              pages_total: null,
+              chunks: null,
+            },
+          ],
+          count: 1,
+        }),
+      },
+    ]);
+    render(<Ingest />, { wrapper: makeWrapper(true, ["/ingest?tab=queue"]) });
+    // A word the app cannot map renders itself — never a wrong plain word.
+    expect(await screen.findByText("frozen")).toBeTruthy();
   });
 
   it("loads the sample knowledge behind its confirm gate", async () => {

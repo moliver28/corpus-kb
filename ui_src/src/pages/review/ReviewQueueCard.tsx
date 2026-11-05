@@ -122,6 +122,7 @@ export default function ReviewQueueCard() {
         ) : (
           <AssignmentsTable
             rows={rows}
+            pending={accept.running || overrideOp.running}
             onAccept={(row) => void send(row, "accept", "")}
             onOverride={openOverride}
           />
