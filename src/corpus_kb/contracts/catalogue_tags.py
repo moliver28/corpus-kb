@@ -79,7 +79,7 @@ TAGS_OPERATIONS: tuple[Operation, ...] = (
     Operation(
         name="tag_document",
         family="documents",
-        description="Apply one tag to a document. A missing tag is created first.",
+        description="Apply one tag to a document; a missing tag is created first.",
         handler="corpus_kb.tools.tag_tools:tag_document",
         params=(ParamSpec("doc_id", required=True), ParamSpec("tag", required=True), _TENANT),
         envelope_keys=("status", "doc_id", "tag"),
@@ -94,7 +94,7 @@ TAGS_OPERATIONS: tuple[Operation, ...] = (
     Operation(
         name="untag_document",
         family="documents",
-        description="Remove one tag from a document. A missing link is a typed error.",
+        description="Remove one tag from a document; a missing link is a typed error.",
         handler="corpus_kb.tools.tag_tools:untag_document",
         params=(ParamSpec("doc_id", required=True), ParamSpec("tag", required=True), _TENANT),
         envelope_keys=("status", "doc_id", "tag"),
@@ -109,7 +109,7 @@ TAGS_OPERATIONS: tuple[Operation, ...] = (
     Operation(
         name="set_metadata",
         family="documents",
-        description="Set one metadata key for a document. The write is an upsert.",
+        description="Set one metadata key for a document; the write is an upsert.",
         handler="corpus_kb.tools.tag_tools:set_metadata",
         params=(
             ParamSpec("key", required=True),

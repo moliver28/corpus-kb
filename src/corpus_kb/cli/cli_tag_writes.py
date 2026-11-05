@@ -16,8 +16,8 @@ HONEST EXIT CODES (stable for scripting, documented in each command's
 help): ``0`` the command answered (an ``already_exists`` tag is still 0 —
 the tag vocabulary has the name), ``1`` the command failed (an untag of a
 tag the document does not carry fails with a typed error), ``3`` the
-database is unreachable (the shared ingest plumbing maps connection
-failures there). Every outcome is PRINTED or emitted as ``--json``.
+write failed at the database (the shared plumbing maps database errors
+there). Every outcome is PRINTED or emitted as ``--json``.
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def add_tag(
 
     A name the vocabulary already has is still exit 0 (the answer names
     it ``already_exists``). Exit codes: 0 answered, 1 failed, 3 the
-    database is unreachable.
+    write failed at the database.
     """
     from corpus_kb.tools.tag_tools import add_tag as tool
 
@@ -121,7 +121,7 @@ def tag_document(
 ) -> int:
     """Apply one tag to a document; a missing tag is created first.
 
-    Exit codes: 0 answered, 1 failed, 3 the database is unreachable.
+    Exit codes: 0 answered, 1 failed, 3 the write failed at the database.
     """
     from corpus_kb.tools.tag_tools import tag_document as tool
 
@@ -141,7 +141,7 @@ def untag_document(
 
     A tag the document does not carry is a typed error (exit 1) — the
     command never answers a fake success. Exit codes: 0 answered, 1
-    failed, 3 the database is unreachable.
+    failed, 3 the write failed at the database.
     """
     from corpus_kb.tools.tag_tools import untag_document as tool
 
@@ -160,7 +160,7 @@ def set_metadata(
 ) -> int:
     """Set one metadata key; the write is an upsert.
 
-    Exit codes: 0 answered, 1 failed, 3 the database is unreachable.
+    Exit codes: 0 answered, 1 failed, 3 the write failed at the database.
     """
     from corpus_kb.tools.tag_tools import set_metadata as tool
 
