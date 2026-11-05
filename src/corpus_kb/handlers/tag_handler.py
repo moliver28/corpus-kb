@@ -144,24 +144,33 @@ class TagHandler:
 def _metadata_select(
     tenant_id: UUID, key: str | None, doc_id: UUID | None
 ) -> tuple[str, tuple[Any, ...]]:
-    """The metadata read and its bound params, shared by both storages."""
+    """The metadata read and its bound params, shared by both storages.
+
+    ``doc_id`` reads back as text: the raw UUID object is not JSON
+    serializable, and the row travels unchanged through every surface
+    (the HTTP envelope, the MCP tool, the socket arm). Issue found by
+    the Phase-2 e2e: the read-after-write 400'd on the first row.
+    """
     if key and doc_id:
         return (
-            "SELECT key, value, doc_id FROM metadata WHERE key=$1 AND tenant_id=$2 AND doc_id=$3",
+            "SELECT key, value, doc_id::text AS doc_id FROM metadata"
+            " WHERE key=$1 AND tenant_id=$2 AND doc_id=$3",
             (key, str(tenant_id), str(doc_id)),
         )
     if key:
         return (
-            "SELECT key, value, doc_id FROM metadata WHERE key=$1 AND tenant_id=$2",
+            "SELECT key, value, doc_id::text AS doc_id FROM metadata"
+            " WHERE key=$1 AND tenant_id=$2",
             (key, str(tenant_id)),
         )
     if doc_id:
         return (
-            "SELECT key, value, doc_id FROM metadata WHERE tenant_id=$1 AND doc_id=$2",
+            "SELECT key, value, doc_id::text AS doc_id FROM metadata"
+            " WHERE tenant_id=$1 AND doc_id=$2",
             (str(tenant_id), str(doc_id)),
         )
     return (
-        "SELECT key, value, doc_id FROM metadata WHERE tenant_id=$1",
+        "SELECT key, value, doc_id::text AS doc_id FROM metadata WHERE tenant_id=$1",
         (str(tenant_id),),
     )
 

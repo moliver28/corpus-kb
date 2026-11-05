@@ -15,6 +15,7 @@ back only its own (deterministic order, rule 9).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -109,6 +110,24 @@ async def test_create_apply_remove_and_metadata_on_both_engines(store: TagHandle
     assert updated == {"status": "success", "key": f"k-{stem}", "value": "two"}
     meta = await store.handle_get_metadata(TENANT, key=f"k-{stem}", doc_id=doc_id)
     assert [(r["key"], r["value"]) for r in meta] == [(f"k-{stem}", "two")]
+
+
+async def test_metadata_rows_are_json_safe_on_both_engines(store: TagHandler) -> None:
+    """The read-after-write row must cross JSONResponse unchanged.
+
+    The Phase-2 e2e caught this: a non-empty read carried ``doc_id`` as
+    a raw asyncpg UUID, the HTTP envelope 400'd with "Object of type UUID
+    is not JSON serializable", and the drawer's refresh lost its saved
+    banner. The rows are text now, on both engines.
+    """
+    stem = uuid4().hex[:8]
+    doc_id = uuid4()
+    await _insert_document(store, doc_id, f"wave3-{stem}.md")
+    await store.handle_set_metadata(TENANT, f"k-{stem}", "v", doc_id=doc_id)
+    rows = await store.handle_get_metadata(TENANT, doc_id=doc_id)
+    assert len(rows) == 1
+    assert rows[0]["doc_id"] == str(doc_id)
+    json.dumps(rows[0])  # raises if any value is still a raw UUID
 
 
 async def test_doc_less_set_metadata_is_a_typed_error_on_both_engines(store: TagHandler) -> None:
