@@ -93,7 +93,9 @@ test.describe("SPA smoke on a live server", () => {
 });
 
 test.describe("accessibility (axe-core)", () => {
-  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale"]) {
+  // The whole shell: the ask page scans its focusable citation list,
+  // setup/review/codebook their dense tables and forms.
+  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook"]) {
     test(`no critical or serious violations on ${stage}`, async ({ page }) => {
       await page.goto(`/app/${stage}`);
       // Wait for the stage's first card, not a fixed sleep.
