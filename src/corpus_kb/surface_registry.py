@@ -560,6 +560,88 @@ SURFACES: tuple[Surface, ...] = (
         description="Copy a profile lock's proposed overrides into config.yaml.",
         http_route="/api/calibrate/apply",
     ),
+    # -- Phase-2 Wave 3: the corpus stats pair (catalogue rows first; the
+    #    GET routes predate the rows). The derived-analysis family rows
+    #    follow: reads over the projection-written statements, conflicts,
+    #    and beliefs. conflicts-resolve is a human WRITE: NEVER add it to
+    #    SERVER_AUTO_APPROVE. ------------------------------------------------
+    Surface(
+        name="stats",
+        cli_path="stats",
+        mcp_tool="stats",
+        description="Count the corpus rows: documents, chunks, vectors, graph, tags.",
+        http_route="/api/stats",
+    ),
+    Surface(
+        name="document-stats",
+        cli_path="document-stats",
+        mcp_tool="document_stats",
+        description="Aggregate the document statistics: totals plus per-source-type rows.",
+        http_route="/api/document-stats",
+    ),
+    Surface(
+        name="statements-list",
+        cli_path="statements-list",
+        mcp_tool="statements_list",
+        description="List statement atoms newest-first (read-only).",
+        http_route="/api/statements/list",
+    ),
+    Surface(
+        name="statements-timeline",
+        cli_path="statements-timeline",
+        mcp_tool="statements_timeline",
+        description="Chronological statement history for one text query (read-only).",
+        http_route="/api/statements/timeline",
+    ),
+    Surface(
+        name="conflicts-scan",
+        cli_path="conflicts-scan",
+        mcp_tool="conflicts_scan",
+        description="Run the contradiction cascade over live statements and record flags.",
+        http_route="/api/conflicts/scan",
+    ),
+    Surface(
+        name="conflicts-list",
+        cli_path="conflicts-list",
+        mcp_tool="conflicts_list",
+        description="List recorded conflict flags newest-first (read-only).",
+        http_route="/api/conflicts/list",
+    ),
+    Surface(
+        name="conflicts-resolve",
+        cli_path="conflicts-resolve",
+        mcp_tool="conflicts_resolve",
+        description="Finalize one conflict flag; a confirmed revision supersedes the older claim.",
+        http_route="/api/conflicts/resolve",
+    ),
+    Surface(
+        name="beliefs-current",
+        cli_path="beliefs-current",
+        mcp_tool="beliefs_current",
+        description="Current belief posteriors, recomputed from the statements (read-only).",
+        http_route="/api/beliefs/current",
+    ),
+    Surface(
+        name="beliefs-timeline",
+        cli_path="beliefs-timeline",
+        mcp_tool="beliefs_timeline",
+        description="Era history for one belief with the exact posterior on top (read-only).",
+        http_route="/api/beliefs/timeline",
+    ),
+    Surface(
+        name="beliefs-predict",
+        cli_path="beliefs-predict",
+        mcp_tool="beliefs_predict",
+        description="Posterior predictive for one belief with its credible interval (read-only).",
+        http_route="/api/beliefs/predict",
+    ),
+    Surface(
+        name="beliefs-compare",
+        cli_path="beliefs-compare",
+        mcp_tool="beliefs_compare",
+        description="Side-by-side belief posteriors for one subject across objects (read-only).",
+        http_route="/api/beliefs/compare",
+    ),
 )
 
 # --------------------------------------------------------------------------

@@ -36,6 +36,7 @@ _MEMBED = "corpus_kb.tools.meta_embed_tools"
 _ASK = "corpus_kb.tools.ask_tools"
 _GRAPH = "corpus_kb.tools.graph_read_tools"
 _SEARCH = "corpus_kb.tools.search_tools"
+_VERSIONING = "corpus_kb.tools.versioning_tools"
 
 # Mechanical arms: pool fetch + strict coercion, said once in _spec_arm.
 _SPECS: dict[str, _Spec] = {
@@ -155,6 +156,9 @@ _SPECS: dict[str, _Spec] = {
         opts=(_Opt("subject", "str"), _Opt("relation", "str"), _Opt("object", "str")),
     ),
     "beliefs_compare": _Spec(_BELIEFS, "beliefs_compare", opts=(_Opt("subject", "str"),)),
+    # Phase-2 Wave 3: the corpus stats pair (tools/versioning_tools.py).
+    "stats": _Spec(_VERSIONING, "stats"),
+    "document_stats": _Spec(_VERSIONING, "document_stats"),
     "queue_enqueue": _Spec(
         _QUEUE,
         "queue_enqueue",

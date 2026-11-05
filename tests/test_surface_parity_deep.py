@@ -104,6 +104,7 @@ import corpus_kb.tools.statements_tools as statements_tools_module
 import corpus_kb.tools.tag_tools as tag_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
+import corpus_kb.tools.versioning_tools as versioning_tools_module
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.contracts import OPERATIONS, SKIPPED_OPERATIONS
@@ -764,6 +765,19 @@ async def _shared_calibrate_apply(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.calibrate_tools import calibrate_apply
 
     return await calibrate_apply("parity", write=True, config=ctx["config"])
+
+
+# -- Phase-2 Wave 3: the corpus stats pair. The stub pool answers 0 for
+#    every COUNT probe and [] for the source-type grouping, so both legs
+#    return the real zero-count success envelopes.
+
+
+async def _shared_stats(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await versioning_tools_module.stats(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_document_stats(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await versioning_tools_module.document_stats(ctx["pool"], config=ctx["config"])
 
 
 async def _shared_add_entity(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1620,6 +1634,20 @@ LEGS: dict[str, _Leg] = {
         _sock("research_demo", {}),
         mcp=_mcp({}),
     ),
+    # -- Phase-2 Wave 3: the corpus stats pair (GET legs; the routes
+    #    predate the catalogue rows and now route through the tools). ------
+    "stats": _Leg(
+        _shared_stats,
+        _get("/api/stats", {}),
+        _sock("stats", {}),
+        mcp=_mcp({}),
+    ),
+    "document_stats": _Leg(
+        _shared_document_stats,
+        _get("/api/document-stats", {}),
+        _sock("document_stats", {}),
+        mcp=_mcp({}),
+    ),
 }
 
 
@@ -2441,6 +2469,19 @@ def test_catalogue_matches_surface_registry() -> None:
         "tag_document",
         "untag_document",
         "set_metadata",
+        # Phase-2 Wave 3: the stats pair plus the derived-analysis family
+        # rows (the op names ARE the registry ids, dash for underscore).
+        "stats",
+        "document_stats",
+        "statements_list",
+        "statements_timeline",
+        "conflicts_scan",
+        "conflicts_list",
+        "conflicts_resolve",
+        "beliefs_current",
+        "beliefs_timeline",
+        "beliefs_predict",
+        "beliefs_compare",
     } <= set(checked)
 
 

@@ -131,10 +131,13 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # get_document_tags, get_metadata),
     # +1 for the #200 calibrate apply op (calibrate_apply),
     # +4 for the Phase-2 Wave 2 tag/metadata writes (add_tag, tag_document,
-    # untag_document, set_metadata)
-    # == 90. The set under the pin is the catalogue/registry UNION, so a
+    # untag_document, set_metadata),
+    # +2 for the Phase-2 Wave 3 stats pair (stats, document_stats; the nine
+    # derived-analysis registry rows name tools the catalogue already
+    # registered, so they add nothing to the union)
+    # == 92. The set under the pin is the catalogue/registry UNION, so a
     # tool added without a row (or dropped without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 90
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 92
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

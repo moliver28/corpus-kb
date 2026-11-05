@@ -117,6 +117,20 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "active_learn_next",
         # -- calibrate family (issue #200, tools/calibrate_tools.py) ---------
         "calibrate_apply",
+        # -- Phase-2 Wave 3: the corpus stats pair plus the derived-analysis
+        #    family rows (statements/conflicts/beliefs) that gained registry
+        #    rows ------------------------------------------------------------
+        "stats",
+        "document_stats",
+        "statements_list",
+        "statements_timeline",
+        "conflicts_scan",
+        "conflicts_list",
+        "conflicts_resolve",
+        "beliefs_current",
+        "beliefs_timeline",
+        "beliefs_predict",
+        "beliefs_compare",
     }
 )
 

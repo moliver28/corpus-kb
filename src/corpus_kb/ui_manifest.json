@@ -150,6 +150,46 @@
     "required": []
   },
   {
+    "description": "Side-by-side belief posteriors for one subject across objects (read-only).",
+    "id": "beliefs-compare",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/compare",
+    "required": []
+  },
+  {
+    "description": "Current belief posteriors, recomputed from the statements (read-only).",
+    "id": "beliefs-current",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/current",
+    "required": []
+  },
+  {
+    "description": "Posterior predictive for one belief with its credible interval (read-only).",
+    "id": "beliefs-predict",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/predict",
+    "required": []
+  },
+  {
+    "description": "Era history for one belief with the exact posterior on top (read-only).",
+    "id": "beliefs-timeline",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/beliefs/timeline",
+    "required": []
+  },
+  {
     "description": "Copy a profile lock's proposed overrides into config.yaml.",
     "id": "calibrate-apply",
     "longRunning": false,
@@ -276,6 +316,36 @@
     ]
   },
   {
+    "description": "List recorded conflict flags newest-first (read-only).",
+    "id": "conflicts-list",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/conflicts/list",
+    "required": []
+  },
+  {
+    "description": "Finalize one conflict flag; a confirmed revision supersedes the older claim.",
+    "id": "conflicts-resolve",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/conflicts/resolve",
+    "required": []
+  },
+  {
+    "description": "Run the contradiction cascade over live statements and record flags.",
+    "id": "conflicts-scan",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/conflicts/scan",
+    "required": []
+  },
+  {
     "description": "Load the bundled sample corpus through the standard ingest pipeline.",
     "id": "demo-load",
     "longRunning": true,
@@ -293,6 +363,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/doctor",
+    "required": []
+  },
+  {
+    "description": "Aggregate the document statistics: totals plus per-source-type rows.",
+    "id": "document-stats",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/document-stats",
     "required": []
   },
   {
@@ -807,6 +887,36 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/search/similar",
+    "required": []
+  },
+  {
+    "description": "List statement atoms newest-first (read-only).",
+    "id": "statements-list",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/statements/list",
+    "required": []
+  },
+  {
+    "description": "Chronological statement history for one text query (read-only).",
+    "id": "statements-timeline",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/statements/timeline",
+    "required": []
+  },
+  {
+    "description": "Count the corpus rows: documents, chunks, vectors, graph, tags.",
+    "id": "stats",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/stats",
     "required": []
   },
   {

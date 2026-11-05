@@ -13,7 +13,8 @@ family), and the analysis program families
 the analysis method register program's twelve method ops),
 ``contracts.catalogue_queue`` (the textbook program's ingest queue),
 ``contracts.catalogue_search_reads`` (the issue #182 search read pair),
-and ``contracts.catalogue_calibrate`` (the issue #200 calibrate apply op).
+``contracts.catalogue_calibrate`` (the issue #200 calibrate apply op),
+and ``contracts.catalogue_versioning`` (the Phase-2 Wave 3 stats pair).
 This package assembles the FINAL catalogue: ``OPERATIONS`` is
 the tuple every consumer (the parity gate, ``corpus-kb operations``)
 iterates, so the test and the inventory can never diverge.
@@ -41,6 +42,7 @@ from corpus_kb.contracts.catalogue_statements import STATEMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_tags import TAGS_OPERATIONS
 from corpus_kb.contracts.catalogue_topics import TOPICS_OPERATIONS
 from corpus_kb.contracts.catalogue_tune import EXTRACTION_TUNE_OPERATIONS
+from corpus_kb.contracts.catalogue_versioning import VERSIONING_OPERATIONS
 from corpus_kb.contracts.model import (
     DEFAULT_TENANT_ID,
     ERROR_MAP,
@@ -70,6 +72,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *QUEUE_OPERATIONS,
     *SEARCH_READ_OPERATIONS,
     *CALIBRATE_OPERATIONS,
+    *VERSIONING_OPERATIONS,
 )
 
 __all__ = [

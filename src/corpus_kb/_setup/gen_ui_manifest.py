@@ -63,6 +63,9 @@ GET_SURFACE_NAMES = frozenset(
         "documents-list",
         "document-tags",
         "document-metadata",
+        # Phase-2 Wave 3: the corpus stats pair (GET routes predate the rows).
+        "stats",
+        "document-stats",
     }
 )
 

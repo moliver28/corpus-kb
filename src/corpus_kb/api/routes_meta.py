@@ -71,13 +71,11 @@ async def list_versions(request: Request) -> JSONResponse:
 
 @route_errors
 async def get_stats(request: Request) -> JSONResponse:
-    """GET /api/stats - get database statistics."""
-    from corpus_kb.handlers.versioning_handler import get_versioning_handler
+    """GET /api/stats — the corpus stats op (Phase-2 Wave 3 catalogue row)."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.versioning_tools import stats
 
-    handler = get_versioning_handler()
-    result = await handler.handle_get_stats(
-        UUID(DEFAULT_TENANT_ID),
-    )
+    result = await stats(await research_pool())
     return JSONResponse(result)
 
 
@@ -95,13 +93,11 @@ async def sql_tables(request: Request) -> JSONResponse:
 
 @route_errors
 async def document_stats(request: Request) -> JSONResponse:
-    """GET /api/document-stats - aggregate document statistics."""
-    from corpus_kb.handlers.versioning_handler import get_versioning_handler
+    """GET /api/document-stats — the document-stats op (Wave 3 catalogue row)."""
+    from corpus_kb.api.research_http import research_pool
+    from corpus_kb.tools.versioning_tools import document_stats
 
-    handler = get_versioning_handler()
-    result = await handler.handle_query_document_stats(
-        UUID(DEFAULT_TENANT_ID),
-    )
+    result = await document_stats(await research_pool())
     return JSONResponse(result)
 
 

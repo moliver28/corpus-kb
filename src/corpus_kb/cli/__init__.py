@@ -179,6 +179,12 @@ from corpus_kb.cli.cli_migrate import register as register_migrate_data  # noqa:
 
 register_migrate_data(app)
 
+# Phase-2 Wave 3 corpus stats front doors: cli_versioning mirrors
+# cli_statements (same cli_ingest plumbing, no corpus_kb.cli import).
+from corpus_kb.cli.cli_versioning import register as register_versioning_commands  # noqa: E402
+
+register_versioning_commands(app)
+
 
 def _version_callback(value: bool) -> None:
     if value:
