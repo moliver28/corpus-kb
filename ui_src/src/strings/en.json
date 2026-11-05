@@ -260,7 +260,6 @@
   "analyzeDormant": "This feature is off in the loaded config.",
   "analyzeDormantConfigKey": "Config key",
   "analyzeCopyYaml": "Copy YAML",
-  "analyzeYamlCopied": "Copied.",
   "ingestTitle": "Load data into the corpus",
   "ingestBody": "Pick a tab. Every tab runs the standard ingest pipeline.",
   "ingestTabFiles": "Files",

@@ -41,8 +41,10 @@ export default function ProjectField({
   }, [run]);
 
   function retry(): void {
+    // The retry asks for the same window as the mount read, so the
+    // capped note can never sit over a larger list.
     projects.reset();
-    void run();
+    void run(undefined, { limit: String(PROJECT_CAP) });
   }
 
   /** The typed-id path, only when the list itself failed. */

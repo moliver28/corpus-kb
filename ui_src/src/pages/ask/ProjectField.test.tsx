@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../../test/testUtils";
+import type { MinimalResponse } from "../../test/testUtils";
 import ProjectField from "./ProjectField";
 
 /**
@@ -59,5 +60,43 @@ describe("ProjectField", () => {
     stubFetch([projectsRoute(many)]);
     render(<ProjectField value="" onChange={() => {}} error="" />, { wrapper: makeWrapper() });
     expect(await screen.findByText(strings.askProjectsCapped)).toBeTruthy();
+  });
+  it("retries with the same capped window, not the server default", async () => {
+    // First read fails (503), the user hits retry: the refetch must
+    // carry limit=50 again, or the capped note would sit over a larger
+    // list than the one it names.
+    const impl = (url: string | URL): Promise<MinimalResponse> => {
+      const target = String(url);
+      calls.push({ method: "GET", url: target, body: "" });
+      if (target.includes("/api/projects")) {
+        if (!target.includes("limit=50")) {
+          return Promise.reject(new Error(`retry lost the window: ${target}`));
+        }
+        return Promise.resolve(
+          respond(200, { status: "success", result: [{ project_id: UUID_A, name: "Grid Interviews" }] }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${target}`));
+    };
+    let failing = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string | URL) => {
+        if (failing) {
+          failing = false;
+          return Promise.resolve(
+            respond(503, { status: "unavailable", message: "The server is down." }),
+          );
+        }
+        return impl(url);
+      }) as unknown as typeof fetch,
+    );
+    render(<ProjectField value="" onChange={() => {}} error="" />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.retryLabel }));
+    expect(await screen.findByRole("combobox")).toBeTruthy();
+    // Only the retry lands in the log (the failed mount read predates
+    // it), and it names the capped window.
+    const retryCall = calls.find((c) => c.url.includes("/api/projects"));
+    expect(retryCall?.url).toContain("limit=50");
   });
 });
