@@ -106,8 +106,9 @@ body {
 
 /* Evidence voice: answers and cited sentences are retrieved source
    text, so they carry the serif (one step larger than the sans around
-   them); the answer prose caps at 72 characters. */
-.ui-answer {
+   them). .ui-prose is THE measure class: every long-form prose
+   container caps at 72 characters through it. */
+.ui-prose {
   max-width: 72ch;
   font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
   font-size: 16px;

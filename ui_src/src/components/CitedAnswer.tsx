@@ -45,7 +45,7 @@ export default function CitedAnswer({
     hovered === null ? null : new Set(citations[hovered]?.sources ?? []);
   return (
     <Card title={strings.citedAnswerTitle}>
-      <p className="ui-answer">{answer}</p>
+      <p className="ui-prose">{answer}</p>
       {/* The generated policy thresholds ride in (the one numeric-policy
           source); a missing or invalid threshold still degrades the badge. */}
       <BadgeLine verify={verify} />

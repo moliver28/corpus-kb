@@ -54,12 +54,8 @@ export function reviewStateWord(status: string): string {
   return STATE_WORDS[status] ?? strings.reviewStateUnknown;
 }
 
-/** One confidence cell -> "82%" (a number cell only; anything else reads ""). */
-export function confidenceText(value: unknown): string {
-  return typeof value === "number" && Number.isFinite(value)
-    ? `${Math.round(value * 100)}%`
-    : "";
-}
+// The confidence and timestamp cells format through api/format.ts (the
+// one shared copy); review keeps only its own row shapes below.
 
 /** One topics row (topics/writer.py read_topics). */
 interface TopicPayload {
@@ -196,28 +192,4 @@ export function metadataText(value: unknown): string {
 /** The server tag color for an antd Tag, or undefined unless it is a hex word. */
 export function tagColor(color: unknown): string | undefined {
   return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? color : undefined;
-}
-
-/**
- * One Date from the server's timestamp word. The live arms ship
- * "2026-01-05 10:12:00+00:00" (Postgres str(datetime)) and
- * "2026-01-05 10:12:00+00" (DuckDB VARCHAR cast) — both space
- * separated; Safari refuses the space form, so the word crosses to the
- * ISO T form and a bare +HH offset gains its minutes before parsing.
- */
-export function parseServerTime(value: string): Date {
-  const normalized = value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
-  return new Date(normalized);
-}
-
-/** One "added" date word from a server timestamp (fixed locale, UTC). */
-export function dateText(iso: string): string {
-  const when = parseServerTime(iso);
-  if (Number.isNaN(when.getTime())) return "";
-  return new Intl.DateTimeFormat("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    timeZone: "UTC",
-  }).format(when);
 }

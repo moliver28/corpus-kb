@@ -1,8 +1,8 @@
 import { Button, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { dateText } from "../../api/format";
 import ConfirmGate from "../../components/ConfirmGate";
 import { strings } from "../../strings";
-import { dateText } from "./shapes";
 import type { DocumentRow } from "./shapes";
 
 /**

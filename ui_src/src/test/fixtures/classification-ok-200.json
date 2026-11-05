@@ -1,0 +1,33 @@
+{
+  "name": "classification-ok-200",
+  "source": "canonical",
+  "note": "GET /api/classification listing shape (tools/classification_tools.py classification_list + classification/store.py read_predictions). Re-record against a running server after a classification build.",
+  "request": { "method": "GET", "path": "/api/classification" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "prediction_count": 2,
+      "predictions": [
+        {
+          "chunk_id": "0f0a1b2c-3d4e-4f50-8a1b-2c3d4e5f6a7b",
+          "set_id": "4d3c2b1a-0f9e-48d7-8c6b-5a4b3c2d1e0f",
+          "label": "method_quality",
+          "probability": 0.91,
+          "calibrated_probability": 0.88,
+          "tier": "tier_a",
+          "review": false
+        },
+        {
+          "chunk_id": "1a0b1c2d-3e4f-4a50-9b2c-3d4e5f6a7b8c",
+          "set_id": "4d3c2b1a-0f9e-48d7-8c6b-5a4b3c2d1e0f",
+          "label": "outcome_report",
+          "probability": 0.55,
+          "calibrated_probability": null,
+          "tier": "tier_b",
+          "review": true
+        }
+      ]
+    }
+  }
+}

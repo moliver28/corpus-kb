@@ -5,6 +5,8 @@ import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";
 import ActionCard from "../components/ActionCard";
+import ClassificationCard from "./analyze/ClassificationCard";
+import LabelingCard from "./analyze/LabelingCard";
 import NotWiredCard from "../components/NotWiredCard";
 
 /** The honest not-wired rows for the analysis families (op id, line). */
@@ -106,6 +108,8 @@ export default function Analyze() {
       {GUIDED.map((card) => (
         <ActionCard key={card.opId} {...card} />
       ))}
+      <LabelingCard />
+      <ClassificationCard />
       <NotWiredCard title={strings.analyzeNotWiredTitle} items={NOT_WIRED} />
     </div>
   );

@@ -5,8 +5,10 @@ import { useLocation } from "react-router";
 import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import type { Call, MinimalResponse } from "../test/testUtils";
+import calibrateOk from "../test/fixtures/calibrate-apply-ok-200.json";
 import ingestStatusOk from "../test/fixtures/ingest-status-ok-200.json";
 import ok200 from "../test/fixtures/ok-200.json";
+import researchDemoOk from "../test/fixtures/research-demo-ok-200.json";
 import unavailable503 from "../test/fixtures/unavailable-503.json";
 import Scale from "./Scale";
 
@@ -282,5 +284,85 @@ describe("Scale page", () => {
       fireEvent.click(all!);
     });
     expect(query).toBe("");
+  });
+
+  it("runs the research demo behind the gate and shows the narration", async () => {
+    setTabVisible(true);
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, ingestStatusOk.response.body) },
+      { method: "POST", path: "/api/research/demo", reply: respond(200, researchDemoOk.response.body) },
+    ]);
+    render(<Scale />, { wrapper: makeWrapper() });
+    const demoCard = cardOf(strings.scaleDemoTitle);
+    fireEvent.click(
+      within(demoCard).getByRole("button", { name: strings.scaleDemoAction }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.confirmConfirm }));
+    expect(await within(demoCard).findByText(strings.scaleDemoCompleted)).toBeTruthy();
+    expect(within(demoCard).getByText(/Step 1: loaded the sample corpus/)).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/research/demo"));
+    expect(sent?.method).toBe("POST");
+  });
+
+  it("previews the calibration diff and gates the config write", async () => {
+    setTabVisible(true);
+    // The apply op answers the dry-run first, then the write run.
+    const writeBody = {
+      status: "success",
+      result: {
+        ...calibrateOk.response.body.result,
+        mode: "write",
+        applied_count: 1,
+      },
+    };
+    let applyCalls = 0;
+    const impl = (
+      url: string | URL,
+      init?: { method?: string; body?: unknown },
+    ): Promise<MinimalResponse> => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url: String(url), body: String(init?.body ?? "") });
+      if (String(url).includes("/api/ingest/status")) {
+        return Promise.resolve(respond(200, ingestStatusOk.response.body));
+      }
+      if (String(url).includes("/api/calibrate/apply")) {
+        applyCalls += 1;
+        return Promise.resolve(
+          respond(200, applyCalls === 1 ? calibrateOk.response.body : writeBody),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
+    };
+    vi.stubGlobal("fetch", impl as unknown as typeof fetch);
+    render(<Scale />, { wrapper: makeWrapper() });
+    const calibrateCard = cardOf(strings.scaleCalibrateTitle);
+    fireEvent.change(
+      within(calibrateCard).getByPlaceholderText(strings.scaleCalibrateProfileLabel),
+      { target: { value: "default" } },
+    );
+    fireEvent.click(
+      within(calibrateCard).getByRole("button", { name: strings.scaleCalibratePreview }),
+    );
+    // The dry run shows the lock's diff and its winner, and writes nothing.
+    expect(
+      await within(calibrateCard).findByText(strings.scaleCalibrateChosen.replace("{chosen}", "bm25-tight")),
+    ).toBeTruthy();
+    expect(within(calibrateCard).getByText("retrieval.candidate_floor")).toBeTruthy();
+    expect(within(calibrateCard).getByText("0.25")).toBeTruthy();
+    // The write is a separate gated run; the confirm dialog names the count.
+    fireEvent.click(
+      within(calibrateCard).getByRole("button", { name: strings.scaleCalibrateApply }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/Changed lines: 1/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.confirmConfirm }));
+    expect(
+      await within(calibrateCard).findByText(
+        strings.scaleCalibrateWritten.replace("{count}", "1"),
+      ),
+    ).toBeTruthy();
+    const write = calls.filter((c) => c.url.includes("/api/calibrate/apply"))[1];
+    expect(write.body).toContain('"write":true');
   });
 });

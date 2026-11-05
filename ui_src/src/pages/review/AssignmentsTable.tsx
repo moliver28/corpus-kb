@@ -1,7 +1,8 @@
 import { Button, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
+import { percentText } from "../../api/format";
 import { strings } from "../../strings";
-import { confidenceText, reviewStateWord } from "./shapes";
+import { reviewStateWord } from "./shapes";
 import type { AssignmentRow } from "./shapes";
 
 /** The coding queue rows: one accept and one override action per row. */
@@ -26,7 +27,7 @@ export default function AssignmentsTable({
     {
       title: strings.reviewColumnConfidence,
       key: "confidence",
-      render: (_value: unknown, row: AssignmentRow) => confidenceText(row.confidence),
+      render: (_value: unknown, row: AssignmentRow) => percentText(row.confidence),
     },
     {
       title: strings.reviewColumnActions,

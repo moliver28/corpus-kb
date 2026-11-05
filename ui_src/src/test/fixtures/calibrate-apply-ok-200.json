@@ -1,0 +1,24 @@
+{
+  "name": "calibrate-apply-ok-200",
+  "source": "canonical",
+  "note": "POST /api/calibrate/apply dry-run shape (tools/calibrate_tools.py calibrate_apply, issue #200): the lock's diff, nothing written. The write run answers the same shape with mode 'write' and applied_count set.",
+  "request": { "method": "POST", "path": "/api/calibrate/apply" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": {
+        "profile": "default",
+        "outcome": "success",
+        "chosen": "bm25-tight",
+        "mode": "dry_run",
+        "config_path": "config.yaml",
+        "changes": [
+          { "key": "retrieval.candidate_floor", "current": 0.2, "proposed": 0.25, "changed": true },
+          { "key": "retrieval.rerank_top", "current": 12, "proposed": 12, "changed": false }
+        ],
+        "applied_count": 0
+      }
+    }
+  }
+}

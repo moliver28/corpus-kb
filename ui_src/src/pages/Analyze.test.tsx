@@ -3,6 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import type { MinimalResponse } from "../test/testUtils";
+import classificationOk from "../test/fixtures/classification-ok-200.json";
+import labelingGoldOk from "../test/fixtures/labeling-gold-ok-200.json";
+import labelingListOk from "../test/fixtures/labeling-list-ok-200.json";
+import labelingLfsOk from "../test/fixtures/labeling-lfs-ok-200.json";
+import labelingTriageInsufficient from "../test/fixtures/labeling-triage-insufficient-200.json";
+import labelingTriageOk from "../test/fixtures/labeling-triage-ok-200.json";
 import ok200 from "../test/fixtures/ok-200.json";
 import selectMethodOk from "../test/fixtures/select-method-ok-200.json";
 import topicsBuildDisabled from "../test/fixtures/topics-build-disabled-200.json";
@@ -181,5 +187,121 @@ describe("Analyze page", () => {
     expect(screen.getByText(strings.analyzeBeliefsNotWired)).toBeTruthy();
     expect(screen.getByText(strings.analyzeEmbedMetaNotWired)).toBeTruthy();
     expect(screen.getByText(strings.analyzeExtractionTuneNotWired)).toBeTruthy();
+  });
+
+  it("reads the built labels and the LF registry in the labeling card", async () => {
+    stubFetch([
+      // The lfs route rides under the /api/labeling prefix, so it must
+      // come first: the stub matches the first path hit.
+      { method: "GET", path: "/api/labeling/lfs", reply: respond(200, labelingLfsOk.response.body) },
+      { method: "GET", path: "/api/labeling", reply: respond(200, labelingListOk.response.body) },
+      { method: "GET", path: "/api/classification", reply: respond(200, classificationOk.response.body) },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    const labelingCard = cardOf(strings.analyzeLabelingCardTitle);
+    expect(await within(labelingCard).findByText("method_quality")).toBeTruthy();
+    expect(within(labelingCard).getByText("87%")).toBeTruthy();
+    expect(within(labelingCard).getAllByText("Jan 05, 2026").length).toBe(2);
+    // The LF registry tab loads on first activation: names, coverage,
+    // and the honest "not scored" cell for the stat-less row.
+    fireEvent.click(within(labelingCard).getByRole("tab", { name: strings.analyzeLabelingTabLfs }));
+    expect(await within(labelingCard).findByText("keyword_method")).toBeTruthy();
+    expect(within(labelingCard).getByText("42%")).toBeTruthy();
+    expect(within(labelingCard).getByText(strings.analyzeLfsNoStats)).toBeTruthy();
+  });
+
+  it("shows the honest empty label state when nothing is built", async () => {
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/labeling",
+        reply: respond(200, { status: "success", label_count: 0, labels: [] }),
+      },
+      {
+        method: "GET",
+        path: "/api/classification",
+        reply: respond(200, { status: "success", prediction_count: 0, predictions: [] }),
+      },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    expect(await screen.findByText(strings.analyzeLabelsEmpty)).toBeTruthy();
+    expect(screen.getByText(strings.analyzeClassificationEmpty)).toBeTruthy();
+  });
+
+  it("runs the triage ranking and keeps it read-only advice", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/labeling", reply: respond(200, { status: "success", label_count: 0, labels: [] }) },
+      { method: "GET", path: "/api/classification", reply: respond(200, { status: "success", prediction_count: 0, predictions: [] }) },
+      { method: "POST", path: "/api/labeling/triage", reply: respond(200, labelingTriageOk.response.body) },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    const labelingCard = cardOf(strings.analyzeLabelingCardTitle);
+    fireEvent.click(within(labelingCard).getByRole("tab", { name: strings.analyzeLabelingTabTriage }));
+    fireEvent.click(await within(labelingCard).findByRole("button", { name: strings.analyzeTriageAction }));
+    // The queue rows carry the assigned and runner-up label names; the
+    // runner-up word repeats across rows, so the assert counts matches.
+    expect(
+      (await within(labelingCard).findAllByText("outcome_report")).length,
+    ).toBeGreaterThan(0);
+    // The bounded head line: the server flagged 3, the queue shows 2.
+    expect(within(labelingCard).getByText("2 of 3 flagged labels show here.")).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/labeling/triage"));
+    expect(sent?.body).toBe("{}");
+  });
+
+  it("names the reason and remedy when triage lacks the data", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/labeling", reply: respond(200, { status: "success", label_count: 0, labels: [] }) },
+      { method: "GET", path: "/api/classification", reply: respond(200, { status: "success", prediction_count: 0, predictions: [] }) },
+      { method: "POST", path: "/api/labeling/triage", reply: respond(200, labelingTriageInsufficient.response.body) },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    const labelingCard = cardOf(strings.analyzeLabelingCardTitle);
+    fireEvent.click(within(labelingCard).getByRole("tab", { name: strings.analyzeLabelingTabTriage }));
+    fireEvent.click(await within(labelingCard).findByRole("button", { name: strings.analyzeTriageAction }));
+    expect(
+      await within(labelingCard).findByText(/holds only 2 of the needed 5 labeled units/),
+    ).toBeTruthy();
+    expect(within(labelingCard).getByText("Label more chunks, then retry.")).toBeTruthy();
+  });
+
+  it("checks the gold set: required path, validations, both numbers", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/labeling", reply: respond(200, { status: "success", label_count: 0, labels: [] }) },
+      { method: "GET", path: "/api/classification", reply: respond(200, { status: "success", prediction_count: 0, predictions: [] }) },
+      { method: "POST", path: "/api/labeling/gold-check", reply: respond(200, labelingGoldOk.response.body) },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    const labelingCard = cardOf(strings.analyzeLabelingCardTitle);
+    fireEvent.click(within(labelingCard).getByRole("tab", { name: strings.analyzeLabelingTabGold }));
+    // The empty path blocks the run at the field, never at the server.
+    fireEvent.click(within(labelingCard).getByRole("button", { name: strings.analyzeGoldAction }));
+    expect(within(labelingCard).getByText(strings.analyzeGoldFileRequired)).toBeTruthy();
+    fireEvent.change(within(labelingCard).getByPlaceholderText(strings.analyzeGoldFileLabel), {
+      target: { value: "/data/gold-dev.json" },
+    });
+    fireEvent.click(within(labelingCard).getByRole("button", { name: strings.analyzeGoldAction }));
+    expect(await within(labelingCard).findByText("method_quality")).toBeTruthy();
+    // Both numbers per class: raw agreement and the corrected estimate.
+    expect(within(labelingCard).getByText("83%")).toBeTruthy();
+    expect(within(labelingCard).getByText("79%")).toBeTruthy();
+    expect(within(labelingCard).getByText("61% - 90%")).toBeTruthy();
+    expect(within(labelingCard).getByText("16 gold chunks matched the build; 1 ignored.")).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/labeling/gold-check"));
+    expect(sent?.body).toContain('"gold_file":"/data/gold-dev.json"');
+  });
+
+  it("lists the built classifications with both probabilities", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/labeling", reply: respond(200, { status: "success", label_count: 0, labels: [] }) },
+      { method: "GET", path: "/api/classification", reply: respond(200, classificationOk.response.body) },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    const card = cardOf(strings.analyzeClassificationReadTitle);
+    expect(await within(card).findByText("tier_a")).toBeTruthy();
+    expect(within(card).getByText("91%")).toBeTruthy();
+    expect(within(card).getByText("88%")).toBeTruthy();
+    // The uncalibrated row reads "-", never a fake number.
+    expect(within(card).getByText(strings.analyzeClassificationReviewTag)).toBeTruthy();
   });
 });

@@ -1,0 +1,14 @@
+{
+  "name": "research-demo-ok-200",
+  "source": "canonical",
+  "note": "POST /api/research/demo receipt shape (tools/demo_tools.py research_demo): the exit code maps to the status word and the captured narration rides the envelope. Long-running. Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/research/demo" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "completed",
+      "exit_code": 0,
+      "narration": "Step 1: loaded the sample corpus.\nStep 2: ran the research stages.\nDemo complete."
+    }
+  }
+}

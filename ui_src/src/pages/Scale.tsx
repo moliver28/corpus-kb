@@ -10,6 +10,8 @@ import StatusBanner from "../components/StatusBanner";
 import { usePoll } from "../hooks/usePoll";
 import { useQueryParam } from "../hooks/useQueryParam";
 import { strings } from "../strings";
+import CalibrateApplyCard from "./scale/CalibrateApplyCard";
+import ResearchDemoCard from "./scale/ResearchDemoCard";
 import { filterRuns, projectOptions, runsOf } from "./scale/runFilter";
 import type { LedgerRun } from "./scale/runFilter";
 
@@ -119,7 +121,8 @@ function LedgerCard() {
 
 /**
  * The Scale stage — the run ledger, the bulk folder walk, the research
- * ingest with its force warning, and the re-embed watch.
+ * ingest with its force warning, the demo run, the calibration apply,
+ * and the re-embed watch.
  */
 export default function Scale() {
   return (
@@ -130,6 +133,8 @@ export default function Scale() {
       <LedgerCard />
       <DirectoryCard title={strings.scaleBulkTitle} />
       <ResearchIngestCard />
+      <ResearchDemoCard />
+      <CalibrateApplyCard />
       <DegradedCard />
     </div>
   );
