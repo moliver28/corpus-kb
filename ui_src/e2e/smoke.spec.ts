@@ -123,10 +123,56 @@ test.describe("SPA smoke on a live server", () => {
   });
 });
 
+  test("the graph workbench creates, finds, inspects, and links an entity", async ({
+    page,
+  }) => {
+    const unique = Date.now().toString();
+    const first = `aaa-e2e-${unique}-a`;
+    const second = `aaa-e2e-${unique}-b`;
+    await page.goto("/app/#/graph");
+    const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
+    // CREATE: two entities through the form; each ok banner names the
+    // save and the window re-reads (the write op is add-entity).
+    for (const name of [first, second]) {
+      await entities.getByPlaceholder("Name").fill(name);
+      await entities.getByPlaceholder("Type").fill(`e2e-${unique}`);
+      await entities.getByRole("button", { name: "Create an entity" }).click();
+      await expect(page.getByText("Entity created.")).toBeVisible({ timeout: 60_000 });
+    }
+    // FIND: the type filter narrows the window read to this run.
+    await entities.getByPlaceholder("Only this type").fill(`e2e-${unique}`);
+    await entities.getByPlaceholder("Only this type").press("Enter");
+    await expect(entities.getByText(first)).toBeVisible({ timeout: 60_000 });
+    // INSPECT: the drawer reads relations and neighbors for the row.
+    await entities.getByRole("button", { name: "Details" }).first().click();
+    const drawer = page.getByRole("dialog");
+    await expect(
+      drawer.getByText("No relations yet. Link this entity with the form below."),
+    ).toBeVisible({ timeout: 60_000 });
+    await drawer.getByRole("button", { name: "Close" }).click();
+    // LINK: both endpoints picked from the entity picker, never typed.
+    const relation = page.locator(".ant-card").filter({ hasText: "Link two entities" });
+    await relation.getByRole("combobox").first().click();
+    await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
+      .getByText(first, { exact: false })
+      .first()
+      .click();
+    await relation.getByRole("combobox").nth(1).click();
+    await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
+      .getByText(second, { exact: false })
+      .first()
+      .click();
+    await relation.getByRole("button", { name: "Link two entities" }).click();
+    await expect(page.getByText("Relation created.")).toBeVisible({ timeout: 60_000 });
+    // The relation read answers in the drawer of the source entity.
+    await entities.getByRole("button", { name: "Details" }).first().click();
+    await expect(drawer.getByText(first)).toBeVisible({ timeout: 60_000 });
+  });
+
 test.describe("accessibility (axe-core)", () => {
   // The whole shell: the ask page scans its focusable citation list,
   // setup/review/codebook their dense tables and forms.
-  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook"]) {
+  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook", "#/graph"]) {
     test(`no critical or serious violations on ${stage}`, async ({ page }) => {
       await page.goto(`/app/${stage}`);
       // Wait for the stage's first card, not a fixed sleep.
