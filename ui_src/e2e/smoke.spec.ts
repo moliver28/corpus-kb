@@ -90,6 +90,37 @@ test.describe("SPA smoke on a live server", () => {
     await expect(ledger.getByRole("columnheader", { name: "Project" })).toBeVisible();
     await expect(ledger.getByRole("cell").first()).toBeVisible();
   });
+
+  test("the document drawer adds a tag and edits metadata through the manifest ops", async ({
+    page,
+  }) => {
+    await page.goto("/app/#/review");
+    const docs = page.locator(".ant-card").filter({ hasText: "Documents" });
+    await expect(docs.getByRole("cell").first()).toBeVisible({ timeout: 60_000 });
+    await docs.getByRole("button", { name: "Details" }).first().click();
+    // The drawer is the document dialog; the reads land first and the
+    // two editors render under their headings.
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByRole("heading", { name: "Tags" })).toBeVisible();
+    await expect(drawer.getByRole("heading", { name: "Metadata" })).toBeVisible();
+    // Write one tag through the tag-document op; the ok banner names
+    // the save and the re-read shows the tag chip.
+    const unique = `e2e-${Date.now()}`;
+    await drawer.getByPlaceholder("Add a tag").fill(unique);
+    await drawer.getByRole("button", { name: "Add", exact: true }).click();
+    await expect(drawer.getByText("Tag added.")).toBeVisible({ timeout: 60_000 });
+    await expect(drawer.getByText(unique)).toBeVisible();
+    // Remove it again through the untag-document op behind its confirm
+    // (the Popconfirm renders in a portal next to the dialog).
+    await drawer.getByRole("button", { name: `Remove tag ${unique}` }).click();
+    await page.getByRole("button", { name: "Remove", exact: true }).click();
+    await expect(drawer.getByText("Tag removed.")).toBeVisible({ timeout: 60_000 });
+    // Save one metadata key through the set-metadata op.
+    await drawer.getByPlaceholder("Key").fill("e2e-check");
+    await drawer.getByPlaceholder("Value").fill("wave2");
+    await drawer.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(drawer.getByText("Metadata saved.")).toBeVisible({ timeout: 60_000 });
+  });
 });
 
 test.describe("accessibility (axe-core)", () => {
