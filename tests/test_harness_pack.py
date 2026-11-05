@@ -67,6 +67,8 @@ def test_active_wrappers_after_p7() -> None:
         "corpus-analysis",
         # Analysis method register program (wave 2 method cards).
         "corpus-analysis-select-method",
+        # Analysis question-routing program (wave 3 question front door).
+        "corpus-analysis-route",
         "corpus-keyphrases-extract",
         "corpus-lexical-classify",
         "corpus-neighbors-classify",
@@ -80,7 +82,7 @@ def test_active_wrappers_after_p7() -> None:
         "corpus-active-learn-next",
     ]
     assert [w.name for w in reg.WRAPPERS if w.planned] == []
-    assert len(reg.WRAPPERS) == 25
+    assert len(reg.WRAPPERS) == 26
 
 
 def test_wrapper_bodies_are_invocation_guidance_only() -> None:

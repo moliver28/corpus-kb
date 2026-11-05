@@ -1,0 +1,49 @@
+{
+  "name": "route-ok-200",
+  "source": "canonical",
+  "note": "POST /api/analysis/route resolved answer, transcribed from the wave-3 handler's envelope grammar (tools/analysis_route_tools.py): status resolved, intent resolved with a null note, ranked rows from the rubric join with run_hint ops, trace in phrase mode. Row 04 rides a null op for the human-led note. Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/analysis/route" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "resolved",
+      "intent": {
+        "question": "how do i find duplicate records in my corpus?",
+        "status": "resolved",
+        "confidence": 0.9,
+        "method_id": "29",
+        "axes": {
+          "task_type": null,
+          "comparison_structure": null,
+          "output_form": null,
+          "evidence_basis": null,
+          "statistical_rigor": null,
+          "cost_tier": null
+        },
+        "ranked_method_ids": ["29", "04"],
+        "readings": [],
+        "note": null
+      },
+      "ranked": [
+        {
+          "method_id": "29",
+          "name": "Near-duplicate and paraphrase detection",
+          "why": "Find duplicate or paraphrased records before analysis.",
+          "run_hint": { "op": "duplicates_screen", "params": {} }
+        },
+        {
+          "method_id": "04",
+          "name": "Dictionary or rule-based classification",
+          "why": "All axes are equal. The id order decides.",
+          "run_hint": { "op": null, "params": {} }
+        }
+      ],
+      "trace": {
+        "mode": "phrase",
+        "threshold": 0.55,
+        "margin": 0.1,
+        "scores": [{ "method_id": "29", "score": 0.9 }]
+      }
+    }
+  }
+}

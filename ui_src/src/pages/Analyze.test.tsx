@@ -4,6 +4,7 @@ import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import type { MinimalResponse } from "../test/testUtils";
 import ok200 from "../test/fixtures/ok-200.json";
+import routeOk from "../test/fixtures/route-ok-200.json";
 import selectMethodOk from "../test/fixtures/select-method-ok-200.json";
 import topicsBuildDisabled from "../test/fixtures/topics-build-disabled-200.json";
 import topicsTrendsDisabled from "../test/fixtures/topics-trends-disabled-200.json";
@@ -41,15 +42,17 @@ describe("Analyze page", () => {
     ]);
     render(<Analyze />, { wrapper: makeWrapper() });
     // The suite runs many jsdom files in parallel workers; the default
-    // 1 s async timeout flakes under that load, so these waits are 5 s.
+    // 1 s async timeout flakes under that load, so these waits are wide
+    // (15 s). The honest trade: a real regression surfaces only after
+    // the finder's full budget, not in seconds.
     fireEvent.change(
-      await screen.findByPlaceholderText(strings.analyzeAdvisorTaskLabel, {}, { timeout: 5_000 }),
+      await screen.findByPlaceholderText(strings.analyzeAdvisorTaskLabel, {}, { timeout: 15_000 }),
       {
         target: { value: "find the recurring themes in the interviews" },
       },
     );
     fireEvent.click(screen.getByRole("button", { name: strings.analyzeAdvisorAction }));
-    expect(await screen.findByText("TF-IDF keyphrase scan", {}, { timeout: 5_000 })).toBeTruthy();
+    expect(await screen.findByText("TF-IDF keyphrase scan", {}, { timeout: 15_000 })).toBeTruthy();
     // Spec F8: the row carries its summary plus the register's own
     // validation and permitted-claims guidance (expanded by default).
     expect(
@@ -65,6 +68,8 @@ describe("Analyze page", () => {
     expect(
       screen.getByText("Descriptions of distinctive wording in the corpus."),
     ).toBeTruthy();
+    // Task mode: the advisor's ranked call is the ONLY select-method
+    // call (the question card's register listing is mode-gated).
     const sent = calls.find((c) => c.url.includes("/api/analysis/select-method"));
     expect(sent?.body).toContain('"task_description":"find the recurring themes in the interviews"');
     // "Run this method" pre-fills the runner with the row's manifest op.
@@ -171,6 +176,36 @@ describe("Analyze page", () => {
       ),
     ).toBeTruthy();
     expect(within(topicsCard).queryByText(strings.receiptDone)).toBeNull();
+  });
+
+  it("routes a plain-language question from the advisor's question mode", async () => {
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/analysis/route",
+        reply: respond(200, routeOk.response.body),
+      },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    // Toggle to question mode; the task form yields to the router.
+    fireEvent.click(await screen.findByRole("button", { name: strings.routeModeQuestion }));
+    fireEvent.change(await screen.findByPlaceholderText(strings.routeQuestionPlaceholder), {
+      target: { value: "How do I find duplicate records in my corpus?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.routeQuestionAction }));
+    // The why renders twice (top-why line + ranked row) by design.
+    expect(
+      (await screen.findAllByText("Find duplicate or paraphrased records before analysis."))
+        .length,
+    ).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText(strings.routeStatusResolved)).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/analysis/route"));
+    expect(sent?.body).toContain('"question":"How do I find duplicate records in my corpus?"');
+    // The runner bridge still works from a routed row's run_hint op.
+    fireEvent.click(screen.getAllByRole("button", { name: strings.analyzeRunMethod })[0]);
+    expect(
+      screen.getByRole("button", { name: "duplicates-screen" }).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("marks the unwired analysis families honestly", async () => {

@@ -42,6 +42,8 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     # Taxonomy names.
     "config_error": (400, -32602, 3),
     "validation_error": (400, -32602, 1),
+    "question_too_short": (400, -32602, 1),
+    "no_method_matches": (400, -32602, 1),
     "payload_too_large": (413, -32602, 1),
     "unsupported_media_type": (415, -32602, 1),
     "not_found": (404, -32001, 1),
@@ -130,6 +132,22 @@ class ValidationError(CorpusError):
     error_type = "validation_error"
     http_status, socket_code, cli_exit = ERROR_MAP["validation_error"]
     remediation = "Fix the request fields. Then send the request again."
+
+
+class QuestionTooShortError(CorpusError):
+    """The question is too short to route to a method."""
+
+    error_type = "question_too_short"
+    http_status, socket_code, cli_exit = ERROR_MAP["question_too_short"]
+    remediation = "Type the full question. Then send it again."
+
+
+class NoMethodMatchesError(CorpusError):
+    """No register method matches the question."""
+
+    error_type = "no_method_matches"
+    http_status, socket_code, cli_exit = ERROR_MAP["no_method_matches"]
+    remediation = "Try other words, or pick a method with analysis-select-method."
 
 
 class PayloadTooLargeError(CorpusError):

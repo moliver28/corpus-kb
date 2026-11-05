@@ -110,6 +110,16 @@
     "required": []
   },
   {
+    "description": "Route a plain-language question to the right analysis method.",
+    "id": "analysis-route",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/analysis/route",
+    "required": []
+  },
+  {
     "description": "Rank the register's methods for a stated task (pure registry logic).",
     "id": "analysis-select-method",
     "longRunning": false,

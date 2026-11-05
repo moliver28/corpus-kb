@@ -8,7 +8,9 @@ trends into one deterministic, snapshot-able report.
 
 The twelve AMR rows (analysis method register program, wave 2) register
 the register-backed methods: the selector plus the keyphrase, lexical,
-vector-space, NLI, sentiment, and active-learning ops of wave 1. Their
+vector-space, NLI, sentiment, and active-learning ops of wave 1. The
+routing row ``analysis_route`` (question-routing program, wave 3) is the
+question front door over the same register. Their
 handlers are real; the honest guard paths (``disabled``/``unavailable``/
 ``empty``) carry the same contract keys. ``clusters_inspect`` also
 returns a ``params`` record on success (the reduction that ran, the
@@ -40,6 +42,10 @@ ANALYZE_ENVELOPE = ("status", "sections")
 
 # AMR envelopes: guaranteed-on-success keys only (the envelopes.py rule).
 SELECT_ENVELOPE = ("status", "register_version", "recommendations")
+# analysis_route: ``interpretations`` is conditional (ambiguous answers
+# only), so it stays off the guaranteed tuple and rides the shared
+# envelope instead (the envelopes.py rule: guaranteed keys only).
+ROUTE_ENVELOPE = ("status", "intent", "ranked", "trace")
 KEYPHRASES_ENVELOPE = ("status", "keyphrases", "variant", "screened_count")
 PREDICTIONS_ENVELOPE = ("status", "predictions", "screened_count")
 NLI_PREDICTIONS_ENVELOPE = ("status", "predictions", "model", "screened_count")
@@ -111,6 +117,30 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(CLI, "analysis-select-method"),
             SurfaceSpec(HTTP, "/api/analysis/select-method", "POST"),
             SurfaceSpec(SOCKET, "analysis_select_method"),
+        ),
+        exit_codes=(0, 1, 2, 3),
+    ),
+    # -- analysis routing program (wave 3): the question front door ---------
+    Operation(
+        name="analysis_route",
+        family="analysis",
+        description=(
+            "Route one plain-language question to an analysis method. "
+            "Deterministic cascade: phrase rules, then embedding cosine. "
+            "An ambiguous answer lists the top readings."
+        ),
+        handler="corpus_kb.tools.analysis_route_tools:analysis_route",
+        params=(
+            ParamSpec("question", required=True),
+            ParamSpec("method_id", default=None),
+            _TENANT,
+        ),
+        envelope_keys=ROUTE_ENVELOPE,
+        surfaces=(
+            SurfaceSpec(MCP, "analysis_route"),
+            SurfaceSpec(CLI, "analysis-route"),
+            SurfaceSpec(HTTP, "/api/analysis/route", "POST"),
+            SurfaceSpec(SOCKET, "analysis_route"),
         ),
         exit_codes=(0, 1, 2, 3),
     ),

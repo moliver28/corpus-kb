@@ -20,6 +20,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "neighbors-classify": { path: "/api/analysis/neighbors-classify", method: "POST", longRunning: false },
   "nli-classify": { path: "/api/analysis/nli-classify", method: "POST", longRunning: false },
   "outliers-rank": { path: "/api/analysis/outliers-rank", method: "POST", longRunning: false },
+  "analysis-route": { path: "/api/analysis/route", method: "POST", longRunning: false },
   "analysis-select-method": { path: "/api/analysis/select-method", method: "POST", longRunning: false },
   "sentiment-screen": { path: "/api/analysis/sentiment-screen", method: "POST", longRunning: false },
   "analyze-run": { path: "/api/analyze", method: "POST", longRunning: true },

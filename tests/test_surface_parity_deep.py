@@ -75,6 +75,7 @@ import corpus_kb.research.promote_code as promote_code_module
 import corpus_kb.research.report_runner as report_runner_module
 import corpus_kb.research.review_surface as review_surface_module
 import corpus_kb.tools.active_learn_tools as active_learn_tools_module
+import corpus_kb.tools.analysis_route_tools as analysis_route_tools_module
 import corpus_kb.tools.analysis_tools as analysis_tools_module
 import corpus_kb.tools.beliefs_tools as beliefs_tools_module
 import corpus_kb.tools.centroid_tools as centroid_tools_module
@@ -409,6 +410,27 @@ async def _shared_analysis_select_method(ctx: dict[str, Any]) -> dict[str, Any]:
         output_family="labels",
         inputs_available=["embeddings", "labels"],
         max_complexity_tier="standard",
+    )
+
+
+# The route leg stacks four authored phrases of method 29, so the phrase
+# path (CI, embedder unavailable) scores 4/6 and resolves the intent;
+# the embedding path (Ollama up) resolves on the centroid cosine. Both
+# modes answer the same guaranteed key set, so the leg is stable in
+# every environment.
+_ROUTE_QUESTION = (
+    "Find duplicate or paraphrased records before analysis. "
+    "Which records say nearly the same thing? "
+    "I want to merge near duplicates without losing speakers. "
+    "Detect repeated submissions and rephrased copies."
+)
+
+
+async def _shared_analysis_route(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await analysis_route_tools_module.analysis_route(
+        ctx["pool"],
+        config=ctx["config"],
+        question=_ROUTE_QUESTION,
     )
 
 
@@ -1087,6 +1109,13 @@ LEGS: dict[str, _Leg] = {
                 "max_complexity_tier": "standard",
             }
         ),
+    ),
+    # -- analysis question-routing program (wave 3): the question front door -
+    "analysis_route": _Leg(
+        _shared_analysis_route,
+        _post("/api/analysis/route", {"question": _ROUTE_QUESTION}),
+        _sock("analysis_route", {"question": _ROUTE_QUESTION}),
+        _mcp({"question": _ROUTE_QUESTION}),
     ),
     "keyphrases_extract": _Leg(
         _shared_keyphrases_extract,
@@ -2339,6 +2368,8 @@ def test_catalogue_matches_surface_registry() -> None:
         "analyze_run",
         # Analysis method register program (wave 2 method rows).
         "analysis_select_method",
+        # Analysis question-routing program (wave 3 question front door).
+        "analysis_route",
         "keyphrases_extract",
         "lexical_classify",
         "neighbors_classify",
