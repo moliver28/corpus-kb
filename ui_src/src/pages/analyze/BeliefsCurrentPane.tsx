@@ -14,15 +14,23 @@ export default function CurrentPane() {
   const [subject, setSubject] = useState("");
   const current = useOp("beliefs-current");
   const { run, reset } = current;
+  // The empty box means "every subject": the key is OMITTED so the
+  // store's `$2 IS NULL OR subject = $2` branch runs. Sending `""`
+  // would filter subject = '' and hide every row.
   const load = useCallback((): void => {
     reset();
-    void run({ subject, limit: 50 });
+    void run(subject === "" ? { limit: 50 } : { subject, limit: 50 });
   }, [run, reset, subject]);
-  // The landing read: the current posteriors load on mount, then follow
-  // the typed subject through the Show button.
+  // The landing read runs ONCE on mount (stable deps — `run`/`reset`
+  // never change). Keystrokes never POST; a typed subject goes through
+  // the Show button only, whose read is `load` above.
+  const landingLoad = useCallback((): void => {
+    reset();
+    void run({ limit: 50 });
+  }, [run, reset]);
   useEffect(() => {
-    load();
-  }, [load]);
+    landingLoad();
+  }, [landingLoad]);
   const result = current.result;
   const ok = result !== null && isBeliefsEnvelope(result.data);
   return (

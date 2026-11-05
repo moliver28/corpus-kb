@@ -155,7 +155,7 @@ describe("ConflictsCard", () => {
 });
 
 describe("BeliefsCard", () => {
-  it("shows the current posteriors with percents and evidence counts", async () => {
+  it("reads the current posteriors on mount with no subject key, then through Show", async () => {
     stubFetch([
       { method: "POST", path: "/api/beliefs/current", reply: respond(200, beliefsCurrentOk.response.body) },
     ]);
@@ -164,6 +164,24 @@ describe("BeliefsCard", () => {
     // alpha 3, beta 1 -> 75%; the second row reads 33%.
     expect(screen.getByText("75%")).toBeTruthy();
     expect(screen.getByText("33%")).toBeTruthy();
+    // The mount read carries NO subject key: the store's empty-subject
+    // branch needs SQL NULL (a literal "" would filter subject = ''
+    // and hide every row).
+    const currentReads = () => calls.filter((c) => c.url.includes("/api/beliefs/current"));
+    expect(currentReads().length).toBe(1);
+    expect(currentReads()[0]?.body).toBe('{"limit":50}');
+    // Keystrokes never POST: the read does not refire on the typed
+    // subject (a full rebuild per character was the defect).
+    fireEvent.change(screen.getByLabelText(strings.analyzeBeliefsSubjectLabel), {
+      target: { value: "weekly syncs" },
+    });
+    expect(currentReads().length).toBe(1);
+    // The Show button carries the typed subject in its request body.
+    fireEvent.click(screen.getByRole("button", { name: strings.analyzeBeliefsRunLabel }));
+    await waitFor(() => {
+      expect(currentReads().length).toBe(2);
+    });
+    expect(currentReads()[1]?.body).toBe('{"subject":"weekly syncs","limit":50}');
   });
 
   it("runs the era history and the predict view from the triple", async () => {
