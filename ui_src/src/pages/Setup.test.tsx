@@ -143,6 +143,5 @@ describe("Setup page", () => {
     expect(
       screen.queryByText(strings.setupUploadCap.replace("{mb}", "50")),
     ).toBeNull();
-    expect(screen.queryByText(strings.setupIngestTitle)).toBeNull();
   });
 });

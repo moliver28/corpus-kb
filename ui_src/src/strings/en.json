@@ -91,7 +91,6 @@
   "setupUploadAction": "Upload",
   "setupUploadTooLarge": "That file is over the {mb} MB cap. Pick a smaller file.",
   "setupUploadPickFirst": "Pick a file first.",
-  "setupIngestTitle": "Ingest from the server or the web",
   "setupIngestDirBody": "Ingest every supported file under one folder. The folder must exist on the machine that runs corpus-kb.",
   "setupIngestUrlTitle": "Ingest a website",
   "setupIngestUrlBody": "Fetch one web page, or crawl pages on the same domain.",

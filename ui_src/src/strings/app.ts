@@ -93,7 +93,6 @@ export interface AppStrings {
   setupUploadAction: string;
   setupUploadTooLarge: string;
   setupUploadPickFirst: string;
-  setupIngestTitle: string;
   setupIngestDirBody: string;
   setupIngestUrlTitle: string;
   setupIngestUrlBody: string;
