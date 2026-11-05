@@ -128,6 +128,8 @@ export interface Strings {
   reviewDegradedNone: string;
   reviewDegradedCounts: string;
   reviewDegradedAction: string;
+  reviewDegradedConfirmTitle: string;
+  reviewDegradedConfirmBody: string;
   reviewDegradedDone: string;
   reviewQueueTitle: string;
   reviewQueueBody: string;
@@ -171,6 +173,8 @@ export interface Strings {
   askEvidenceHeading: string;
   askHistoryTitle: string;
   askHistoryEmpty: string;
+  askHistoryClear: string;
+  askCopyChunkId: string;
   askTabSearch: string;
   askTabVerify: string;
   askTabNotebook: string;
@@ -245,6 +249,19 @@ export interface Strings {
   analyzeAnalyzeBody: string;
   analyzeDatesTitle: string;
   analyzeDatesBody: string;
+  analyzeOpActiveLearn: string;
+  analyzeOpBackfillDates: string;
+  analyzeOpCentroids: string;
+  analyzeOpClusters: string;
+  analyzeOpContradictions: string;
+  analyzeOpDuplicates: string;
+  analyzeOpKeyphrases: string;
+  analyzeOpLexical: string;
+  analyzeOpNeighbors: string;
+  analyzeOpNli: string;
+  analyzeOpOutliers: string;
+  analyzeOpSentiment: string;
+  analyzeOpTopics: string;
   analyzeDormant: string;
   analyzeDormantConfigKey: string;
   analyzeCopyYaml: string;
@@ -285,6 +302,11 @@ export interface Strings {
   queueEmpty: string;
   queueColumnFile: string;
   queueColumnStatus: string;
+  queueStatusPending: string;
+  queueStatusRunning: string;
+  queueStatusDone: string;
+  queueStatusFailed: string;
+  queueStatusCancelled: string;
   queueColumnProgress: string;
   queueColumnAttempts: string;
   queueColumnElapsed: string;
@@ -363,6 +385,7 @@ export interface Strings {
   codebookOverlapBody: string;
   codebookGovernanceTitle: string;
   codebookGovernanceBody: string;
+  codebookGovernanceStale: string;
   codebookLevelNovice: string;
   codebookLevelExpert: string;
   codebookCycleTitle: string;
@@ -411,6 +434,7 @@ export interface Strings {
   scaleRunsFilterLabel: string;
   scaleRunsAll: string;
   scaleRunsEmpty: string;
+  scaleRunsNone: string;
   scaleRunsColumnStarted: string;
   scaleRunsColumnSource: string;
   scaleRunsColumnStatus: string;

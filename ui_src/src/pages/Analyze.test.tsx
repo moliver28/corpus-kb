@@ -73,11 +73,16 @@ describe("Analyze page", () => {
     ).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/analysis/select-method"));
     expect(sent?.body).toContain('"task_description":"find the recurring themes in the interviews"');
-    // "Run this method" pre-fills the runner with the row's manifest op.
+    // "Run this method" pre-fills the runner with the row's manifest op
+    // and moves focus to the runner card heading, so the handoff lands.
     fireEvent.click(screen.getAllByRole("button", { name: strings.analyzeRunMethod })[0]);
-    expect(
-      screen.getByRole("button", { name: "keyphrases-extract" }).getAttribute("aria-pressed"),
-    ).toBe("true");
+    const picker = screen.getByRole("button", {
+      name: strings.analyzeOpKeyphrases,
+    });
+    expect(picker.getAttribute("aria-pressed")).toBe("true");
+    // The human name carries the raw op id in its tooltip.
+    expect(picker.getAttribute("title")).toBe("keyphrases-extract");
+    expect(document.activeElement?.textContent).toBe(strings.analyzeRunnerTitle);
   });
 
   it("runs a picked method through the seeded, editable runner", async () => {
@@ -89,7 +94,7 @@ describe("Analyze page", () => {
       },
     ]);
     render(<Analyze />, { wrapper: makeWrapper() });
-    fireEvent.click(await screen.findByRole("button", { name: "sentiment-screen" }));
+    fireEvent.click(await screen.findByRole("button", { name: strings.analyzeOpSentiment }));
     const runnerCard = cardOf(strings.analyzeRunnerTitle);
     fireEvent.change(within(runnerCard).getByRole("textbox"), {
       target: { value: '{"lexicon": "preset"}' },

@@ -1,5 +1,5 @@
 import { Button, Card, Typography } from "antd";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { strings } from "../strings";
 import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
@@ -57,6 +57,27 @@ const GUIDED = [
 ] as const;
 
 /**
+ * The advisor register's human name per manifest op (the register ranks
+ * methods, and several methods share one op, so the picker names ops).
+ * A manifest op missing here falls back to its raw id — never a blank.
+ */
+const METHOD_NAMES: Record<string, string> = {
+  "active-learn-next": strings.analyzeOpActiveLearn,
+  "analysis-backfill-dates": strings.analyzeOpBackfillDates,
+  "centroids-classify": strings.analyzeOpCentroids,
+  "clusters-inspect": strings.analyzeOpClusters,
+  "contradictions-screen": strings.analyzeOpContradictions,
+  "duplicates-screen": strings.analyzeOpDuplicates,
+  "keyphrases-extract": strings.analyzeOpKeyphrases,
+  "lexical-classify": strings.analyzeOpLexical,
+  "neighbors-classify": strings.analyzeOpNeighbors,
+  "nli-classify": strings.analyzeOpNli,
+  "outliers-rank": strings.analyzeOpOutliers,
+  "sentiment-screen": strings.analyzeOpSentiment,
+  "topics-build": strings.analyzeOpTopics,
+};
+
+/**
  * The manifest's generic analysis methods: every /api/analysis/* op
  * except the advisor itself (spec F8's eleven methods). Derived, so a
  * manifest change updates the picker without a code edit.
@@ -73,6 +94,9 @@ const METHODS: string[] = Object.entries(OPS)
 export default function Analyze() {
   const [method, setMethod] = useState<string>("keyphrases-extract");
   const [seed, setSeed] = useState<unknown>({});
+  // The runner heading takes focus on an advisor handoff, so the click
+  // visibly lands on the card it drives (never a silent state swap).
+  const runnerHeading = useRef<HTMLSpanElement | null>(null);
   return (
     <div className="ui-stack">
       <Card title={strings.analyzeTitle}>
@@ -82,9 +106,16 @@ export default function Analyze() {
         onRunMethod={(opId) => {
           setMethod(opId);
           setSeed({});
+          runnerHeading.current?.focus();
         }}
       />
-      <Card title={strings.analyzeRunnerTitle}>
+      <Card
+        title={
+          <span ref={runnerHeading} tabIndex={-1}>
+            {strings.analyzeRunnerTitle}
+          </span>
+        }
+      >
         <Typography.Paragraph type="secondary">
           {strings.analyzeRunnerBody}
         </Typography.Paragraph>
@@ -93,11 +124,12 @@ export default function Analyze() {
             <Button
               key={id}
               size="small"
+              title={id}
               aria-pressed={method === id}
               type={method === id ? "primary" : "default"}
               onClick={() => setMethod(id)}
             >
-              {id}
+              {METHOD_NAMES[id] ?? id}
             </Button>
           ))}
         </div>
