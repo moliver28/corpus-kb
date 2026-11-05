@@ -159,8 +159,7 @@ def _metadata_select(
         )
     if key:
         return (
-            "SELECT key, value, doc_id::text AS doc_id FROM metadata"
-            " WHERE key=$1 AND tenant_id=$2",
+            "SELECT key, value, doc_id::text AS doc_id FROM metadata WHERE key=$1 AND tenant_id=$2",
             (key, str(tenant_id)),
         )
     if doc_id:
