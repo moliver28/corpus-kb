@@ -235,4 +235,37 @@ describe("Codebook page", () => {
     fireEvent.click(within(card).getByText(strings.codebookLevelNovice));
     expect(within(card).queryByText(stale(strings.codebookLevelExpert))).toBeNull();
   });
+  it("renders the uncoded-units receipt as Done", async () => {
+    stubFetch([
+      ...codebookRoutes(),
+      {
+        method: "POST",
+        path: "/api/notebook/uncoded",
+        reply: respond(200, { status: "success", result: { rank: [] } }),
+      },
+    ]);
+    render(<Codebook />, { wrapper: makeWrapper() });
+    const card = cardOf(strings.codebookUncodedTitle);
+    fireEvent.click(within(card).getByRole("button", { name: strings.runnerRunLabel }));
+    expect(await within(card).findByText(strings.receiptDone)).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/notebook/uncoded"));
+    expect(sent?.method).toBe("POST");
+  });
+
+  it("renders the code-overlap receipt as Done", async () => {
+    stubFetch([
+      ...codebookRoutes(),
+      {
+        method: "POST",
+        path: "/api/notebook/overlap",
+        reply: respond(200, { status: "success", result: { pairs: [] } }),
+      },
+    ]);
+    render(<Codebook />, { wrapper: makeWrapper() });
+    const card = cardOf(strings.codebookOverlapTitle);
+    fireEvent.click(within(card).getByRole("button", { name: strings.runnerRunLabel }));
+    expect(await within(card).findByText(strings.receiptDone)).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/notebook/overlap"));
+    expect(sent?.method).toBe("POST");
+  });
 });

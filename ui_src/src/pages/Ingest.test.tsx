@@ -276,4 +276,63 @@ describe("Ingest page", () => {
     openTab(strings.ingestTabFiles);
     expect(query).toBe("");
   });
+  /** Drop one fake file into the Upload card's hidden file input. */
+  function pickFile(name: string, sizeOverride?: number): void {
+    const file = new File(["content"], name, { type: "text/plain" });
+    if (sizeOverride !== undefined) {
+      Object.defineProperty(file, "size", { value: sizeOverride });
+    }
+    const input = document.querySelector('input[type="file"]');
+    if (input === null) {
+      throw new Error("no file input rendered");
+    }
+    Object.defineProperty(input, "files", { value: [file] });
+    fireEvent.change(input);
+  }
+
+  it("uploads the picked file and shows the ingest receipt", async () => {
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/ingest/upload",
+        reply: respond(200, { status: "success", result: { chunks: 4 } }),
+      },
+    ]);
+    render(<Ingest />, { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: strings.setupUploadAction });
+    pickFile("notes.txt");
+    fireEvent.click(screen.getByRole("button", { name: strings.setupUploadAction }));
+    expect(await screen.findByText(strings.receiptDone)).toBeTruthy();
+    const sent = calls.find((c) => c.url.includes("/api/ingest/upload"));
+    expect(sent?.method).toBe("POST");
+    expect(sent?.body.length).toBeGreaterThan(0);
+  });
+
+  it("refuses an over-cap file with the exact hint and no call", async () => {
+    stubFetch([]);
+    render(<Ingest />, { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: strings.setupUploadAction });
+    pickFile("big.bin", 51 * 1024 * 1024 + 1);
+    fireEvent.click(screen.getByRole("button", { name: strings.setupUploadAction }));
+    expect(
+      await screen.findByText(strings.setupUploadTooLarge.replace("{mb}", "50")),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.url.includes("/api/ingest/upload"))).toBe(false);
+  });
+
+  it("lands a failed upload on the error panel with its message", async () => {
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/ingest/upload",
+        reply: respond(500, { status: "error", message: "The write failed." }),
+      },
+    ]);
+    render(<Ingest />, { wrapper: makeWrapper() });
+    await screen.findByRole("button", { name: strings.setupUploadAction });
+    pickFile("notes.txt");
+    fireEvent.click(screen.getByRole("button", { name: strings.setupUploadAction }));
+    expect(await screen.findByText(strings.errorTitle)).toBeTruthy();
+    expect(await screen.findByText("The write failed.")).toBeTruthy();
+  });
 });
