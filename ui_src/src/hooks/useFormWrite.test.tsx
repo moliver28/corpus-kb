@@ -4,7 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import LabeledField from "../components/LabeledField";
 import StatusBanner from "../components/StatusBanner";
 import { strings } from "../strings";
-import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import { calls, clearCalls, makeWrapper, respond, stubFetch, stubFetchImpl } from "../test/testUtils";
+import type { MinimalResponse } from "../test/testUtils";
 import { useFormWrite } from "./useFormWrite";
 import type { FormWrite } from "./useFormWrite";
 
@@ -112,23 +113,27 @@ describe("useFormWrite", () => {
     );
   });
 
-  it("clear drops the banner and the inline error", async () => {
-    stubFetch([
-      {
-        method: "POST",
-        path: "/api/documents/d1/tags",
-        reply: respond(200, { status: "success", doc_id: "d1", tag: "energy" }),
-      },
-    ]);
+  it("sends one write when a second press lands while the first is on the wire", async () => {
+    // The answer is held so the overlap is real: the second press fires
+    // while the first write is still pending (the Enter path skips the
+    // button's loading gate, so the hook owns this guard).
+    const held: ((reply: MinimalResponse) => void)[] = [];
+    stubFetchImpl((url: string | URL, init?: { method?: string }) => {
+      calls.push({ method: (init?.method ?? "GET").toUpperCase(), url: String(url), body: "" });
+      return new Promise<MinimalResponse>((resolve) => held.push(resolve));
+    });
     render(<Harness onRefresh={() => undefined} />, { wrapper: makeWrapper(false) });
     fireEvent.change(screen.getByLabelText(strings.reviewTagAddLabel), {
       target: { value: "energy" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "write" }));
-    expect(await screen.findByText(strings.reviewTagAdded)).toBeTruthy();
-    latest?.clear();
-    await waitFor(() => expect(screen.queryByText(strings.reviewTagAdded)).toBeNull());
-    expect(latest?.saved).toBeNull();
-    expect(latest?.error).toBeNull();
+    const button = screen.getByRole("button", { name: "write" });
+    fireEvent.click(button);
+    await waitFor(() => expect(latest?.running).toBe(true));
+    fireEvent.click(button);
+    await waitFor(() => expect(lastSubmitOk).toBe(false)); // the re-entry answered at once
+    held[0](respond(200, { status: "success", doc_id: "d1", tag: "energy" }));
+    await waitFor(() => expect(lastSubmitOk).toBe(true));
+    const posts = calls.filter((c) => c.method === "POST");
+    expect(posts.length).toBe(1);
   });
 });

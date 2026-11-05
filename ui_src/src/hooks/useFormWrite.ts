@@ -20,17 +20,14 @@ export interface FormWrite {
   /** Attach to the element that wraps every field of the form. */
   rootRef: RefObject<HTMLDivElement | null>;
   /**
-   * One write: the body goes to the op path (path slots and query pairs
-   * included). On ok the caller's refresh runs and the banner names the
-   * save; on error the message lands in `error` and the first control
-   * marked aria-invalid inside rootRef takes focus.
+   * One write: the body goes to the op path (path slots included). A
+   * press while a write is already on the wire returns false and sends
+   * nothing (the Enter path skips the button's loading gate). On ok the
+   * caller's refresh runs and the banner names the save; on error the
+   * message lands in `error` and the first control marked aria-invalid
+   * inside rootRef takes focus.
    */
-  submit(
-    body: unknown,
-    opts?: { query?: Record<string, string>; pathParams?: Record<string, string> },
-  ): Promise<boolean>;
-  /** Drop the banner and the inline error (the caller edits again). */
-  clear(): void;
+  submit(body: unknown, opts?: { pathParams?: Record<string, string> }): Promise<boolean>;
 }
 
 export function useFormWrite(
@@ -45,9 +42,12 @@ export function useFormWrite(
 
   const submit = useCallback<FormWrite["submit"]>(
     async (body, opts) => {
+      if (running) {
+        return false; // one write on the wire; the re-entry sends nothing
+      }
       setSaved(null);
       setError(null);
-      const result = await run(body, opts?.query, opts?.pathParams);
+      const result = await run(body, undefined, opts?.pathParams);
       if (result.ok) {
         setSaved(savedMessage);
         refresh();
@@ -57,13 +57,8 @@ export function useFormWrite(
       flag();
       return false;
     },
-    [run, savedMessage, refresh, flag],
+    [run, running, savedMessage, refresh, flag],
   );
 
-  const clear = useCallback(() => {
-    setSaved(null);
-    setError(null);
-  }, []);
-
-  return { running, error, saved, rootRef, submit, clear };
+  return { running, error, saved, rootRef, submit };
 }

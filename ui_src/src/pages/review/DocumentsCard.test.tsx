@@ -94,6 +94,9 @@ describe("DocumentsCard", () => {
     fireEvent.click(detailsButtons[0]);
     const input = await screen.findByLabelText(strings.reviewTagAddLabel);
     fireEvent.change(input, { target: { value: "grid" } });
+    // Only the write's calls count now: the drawer-open reads must not
+    // mask the post-write re-read.
+    clearCalls();
     fireEvent.click(screen.getByRole("button", { name: strings.reviewTagAddButton }));
     expect(await screen.findByText(strings.reviewTagAdded)).toBeTruthy();
     const docId = documentsOk.response.body.result[0].doc_id;
@@ -102,13 +105,16 @@ describe("DocumentsCard", () => {
     );
     expect(sent).toBeTruthy();
     expect(JSON.parse(sent?.body ?? "{}")).toEqual({ tag: "grid" });
-    // The ok answer re-reads the document's tag rows.
-    expect(
-      calls.some(
-        (c) =>
-          c.method === "GET" && c.url.includes(`/api/documents/${docId}/tags`) === true,
-      ),
-    ).toBe(true);
+    // The ok answer re-reads the document's tag rows (a fresh GET after
+    // the write, not a leftover from opening the drawer).
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) =>
+            c.method === "GET" && c.url.includes(`/api/documents/${docId}/tags`) === true,
+        ),
+      ).toBe(true),
+    );
   });
 
   it("removes a tag only through the named popconfirm", async () => {
