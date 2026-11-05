@@ -105,7 +105,7 @@ export interface DocumentRow {
   created_at: string;
 }
 
-interface DocumentsEnvelope {
+export interface DocumentsEnvelope {
   status: string;
   result: DocumentRow[];
 }

@@ -2,6 +2,7 @@ import { Button, Table } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { dateText } from "../../api/format";
 import ConfirmGate from "../../components/ConfirmGate";
+import { windowPagerTotal } from "../../hooks/useServerWindow";
 import { strings } from "../../strings";
 import type { DocumentRow } from "./shapes";
 
@@ -67,9 +68,10 @@ export default function DocumentsTable({
     },
   ];
   // The read op has no total count, so the window writes the pager
-  // size: one row over the page size means a next page exists. No
-  // size changer: the server window is the page size.
-  const total = (page - 1) * pageSize + rows.length + (hasMore ? 1 : 0);
+  // size (the seam's windowPagerTotal): one row over the page size
+  // means a next page exists. No size changer: the server window is
+  // the page size.
+  const total = windowPagerTotal(page, pageSize, rows.length, hasMore);
   return (
     <Table<DocumentRow>
       size="small"
