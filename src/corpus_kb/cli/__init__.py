@@ -153,6 +153,7 @@ from corpus_kb.cli.cli_graph_hops import register as register_graph_hops_command
 from corpus_kb.cli.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
 from corpus_kb.cli.cli_query import register as register_query_commands  # noqa: E402
 from corpus_kb.cli.cli_quickstart import register as register_quickstart  # noqa: E402
+from corpus_kb.cli.cli_tag_writes import register as register_tag_write_commands  # noqa: E402
 from corpus_kb.cli.cli_tags import register as register_tag_commands  # noqa: E402
 
 register_graph_commands(app)
@@ -160,6 +161,7 @@ register_graph_hops_commands(app)
 register_ingest_text_command(app)
 register_query_commands(app)
 register_tag_commands(app)
+register_tag_write_commands(app)
 
 # Novice first-run lifecycle command (setup/doctor family): cli_quickstart
 # imports corpus_kb.cli nowhere, so this import stays acyclic.

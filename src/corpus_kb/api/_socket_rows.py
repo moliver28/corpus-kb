@@ -8,6 +8,7 @@ module holds no behavior.
 
 from __future__ import annotations
 
+from corpus_kb.api._socket_rows_tags import TAG_SPECS
 from corpus_kb.api._socket_specs import _Opt, _Spec
 
 # Lazy-import targets for the spec rows (one short name per tool module).
@@ -35,7 +36,6 @@ _MEMBED = "corpus_kb.tools.meta_embed_tools"
 _ASK = "corpus_kb.tools.ask_tools"
 _GRAPH = "corpus_kb.tools.graph_read_tools"
 _SEARCH = "corpus_kb.tools.search_tools"
-_TAG = "corpus_kb.tools.tag_tools"
 
 # Mechanical arms: pool fetch + strict coercion, said once in _spec_arm.
 _SPECS: dict[str, _Spec] = {
@@ -196,35 +196,9 @@ _SPECS: dict[str, _Spec] = {
         positional=(_Opt("query", "sdef", ""),),
         opts=(_Opt("k", "int", 5), _Opt("context_chunks", "int", 2)),
     ),
-    "get_document_tags": _Spec(
-        _TAG,
-        "get_document_tags",
-        positional=(_Opt("doc_id", "req"),),
-    ),
-    "get_metadata": _Spec(_TAG, "get_metadata", opts=(_Opt("key", "str"), _Opt("doc_id", "raw"))),
-    # -- Phase-2 Wave 2 write ops: the drawer's tag and metadata edits -----
-    "add_tag": _Spec(
-        _TAG,
-        "add_tag",
-        positional=(_Opt("name", "req"),),
-        opts=(_Opt("color", "str"), _Opt("description", "str")),
-    ),
-    "tag_document": _Spec(
-        _TAG,
-        "tag_document",
-        positional=(_Opt("doc_id", "req"), _Opt("tag", "req")),
-    ),
-    "untag_document": _Spec(
-        _TAG,
-        "untag_document",
-        positional=(_Opt("doc_id", "req"), _Opt("tag", "req")),
-    ),
-    "set_metadata": _Spec(
-        _TAG,
-        "set_metadata",
-        positional=(_Opt("key", "req"), _Opt("value", "req")),
-        opts=(_Opt("doc_id", "raw"),),
-    ),
+    # The tag/metadata arms (reads: issue #182; writes: Phase-2 Wave 2)
+    # are pure data rows too — they live in _socket_rows_tags (the
+    # 250-line rule) and merge into _SPECS right below.
     "get_entity_relations": _Spec(
         _GRAPH,
         "get_entity_relations",
@@ -255,3 +229,7 @@ _SPECS: dict[str, _Spec] = {
         ),
     ),
 }
+
+# The tag/metadata rows merge here (the socket method table stays one
+# dict; the split module keeps this file under the 250-line rule).
+_SPECS.update(TAG_SPECS)

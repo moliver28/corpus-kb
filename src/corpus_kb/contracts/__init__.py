@@ -38,6 +38,7 @@ from corpus_kb.contracts.catalogue_research import (
 )
 from corpus_kb.contracts.catalogue_search_reads import SEARCH_READ_OPERATIONS
 from corpus_kb.contracts.catalogue_statements import STATEMENTS_OPERATIONS
+from corpus_kb.contracts.catalogue_tags import TAGS_OPERATIONS
 from corpus_kb.contracts.catalogue_topics import TOPICS_OPERATIONS
 from corpus_kb.contracts.catalogue_tune import EXTRACTION_TUNE_OPERATIONS
 from corpus_kb.contracts.model import (
@@ -54,6 +55,7 @@ from corpus_kb.contracts.model import (
 OPERATIONS: tuple[Operation, ...] = (
     *CORE_OPERATIONS,
     *DOCUMENTS_OPERATIONS,
+    *TAGS_OPERATIONS,
     *RELEASE_OPERATIONS,
     *RESEARCH_OPERATIONS,
     *TOPICS_OPERATIONS,
