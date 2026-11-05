@@ -45,13 +45,14 @@ function BoundaryFallback({
   onRetry: () => void;
 }) {
   const { copiedKey, unavailable, copy } = useCopy();
+  const blob = diagnosticBlob(error, componentStack);
   return (
     <div className="ui-stack" role="alert">
       <StatusBanner kind="error">{strings.boundaryTitle}</StatusBanner>
       <p>{strings.boundaryBody}</p>
-      <JsonViewer value={diagnosticBlob(error, componentStack)} />
+      <JsonViewer value={blob} />
       <div className="ui-actions">
-        <Button onClick={() => copy(JSON.stringify(diagnosticBlob(error, componentStack), null, 2))}>
+        <Button onClick={() => copy(JSON.stringify(blob, null, 2))}>
           {unavailable
             ? strings.copyUnavailable
             : copiedKey === "self"
