@@ -7,10 +7,21 @@ import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
 import { strings } from "../strings";
 
+/** The drift block: the honest warn plus the raw JSON, one click deep. */
+export function DriftView({ data }: { data: unknown }): ReactNode {
+  return (
+    <div>
+      <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
+      <JsonViewer value={data} />
+    </div>
+  );
+}
+
 /**
  * The one honest body for a settled read: load, network, unavailable,
- * drift (warn plus the raw JSON), then the caller's rows. Every card
- * that reads one op dispatches through this component; the kind
+ * failure, drift (warn plus the raw JSON), then the caller's rows. A
+ * card whose failures need the full error panel passes `failure`; the
+ * default renders the drift block for a failed call. The kind
  * vocabulary lives in api/errors.ts, the panels stay theirs.
  */
 export default function OpBody({
@@ -19,6 +30,7 @@ export default function OpBody({
   retry,
   opId,
   skeletonRows = 4,
+  failure,
   children,
 }: {
   result: OpResult<unknown> | null;
@@ -27,6 +39,8 @@ export default function OpBody({
   retry: () => void;
   opId: string;
   skeletonRows?: number;
+  /** Replaces the default drift block on a failed call (not a drift). */
+  failure?: (result: OpResult<unknown>) => ReactNode;
   children: ReactNode;
 }) {
   if (result === null) {
@@ -38,13 +52,11 @@ export default function OpBody({
   if (result.kind === "unavailable") {
     return <UnavailablePanel result={result} onRetry={retry} />;
   }
+  if (!result.ok) {
+    return failure !== undefined ? <>{failure(result)}</> : <DriftView data={result.data} />;
+  }
   if (!ok) {
-    return (
-      <div>
-        <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-        <JsonViewer value={result.data} />
-      </div>
-    );
+    return <DriftView data={result.data} />;
   }
   return <>{children}</>;
 }

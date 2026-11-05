@@ -6,12 +6,10 @@ import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import ConfirmGate from "./ConfirmGate";
 import ErrorPanel from "./ErrorPanel";
-import JsonViewer from "./JsonViewer";
 import LabeledField, { useFirstErrorFocus } from "./LabeledField";
 import LongOpControls from "./LongOpControls";
+import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
-import StatusBanner from "./StatusBanner";
-import UnavailablePanel from "./UnavailablePanel";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
 import { strings } from "../strings";
@@ -107,24 +105,6 @@ export default function PathCard({
 
   const settled: OpResult | null = isLong ? long.result : short.result;
   const running = isLong ? long.running : short.running;
-  let resultView: ReactNode = null;
-  if (settled !== null && !running) {
-    if (settled.kind === "unavailable") {
-      resultView = <UnavailablePanel result={settled} onRetry={retry} />;
-    } else if (settled.kind === "unknown") {
-      // A 200 with no status word is not a receipt.
-      resultView = (
-        <div>
-          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-          <JsonViewer value={settled.data} />
-        </div>
-      );
-    } else if (settled.ok && settled.kind !== "network") {
-      resultView = <ReceiptCard result={settled} />;
-    } else {
-      resultView = <ErrorPanel result={settled} onRetry={retry} opId={opId} />;
-    }
-  }
 
   return (
     <Card title={title}>
@@ -160,7 +140,17 @@ export default function PathCard({
       </div>
       {children}
       <LongOpControls op={long} onRetry={requestRun} />
-      {resultView}
+      {settled !== null && !running && (
+        <OpBody
+          result={settled}
+          ok={settled.ok && settled.kind !== "unknown"}
+          retry={retry}
+          opId={opId}
+          failure={(failed) => <ErrorPanel result={failed} onRetry={retry} opId={opId} />}
+        >
+          <ReceiptCard result={settled} />
+        </OpBody>
+      )}
     </Card>
   );
 }

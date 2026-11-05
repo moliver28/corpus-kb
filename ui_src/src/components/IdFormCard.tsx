@@ -3,12 +3,10 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import type { OpResult } from "../api/types";
 import BlockedPanel from "./BlockedPanel";
-import JsonViewer from "./JsonViewer";
 import LabeledField, { useFirstErrorFocus } from "./LabeledField";
 import ErrorPanel from "./ErrorPanel";
+import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
-import StatusBanner from "./StatusBanner";
-import UnavailablePanel from "./UnavailablePanel";
 import { useOp } from "../hooks/useOp";
 import { strings } from "../strings";
 
@@ -131,24 +129,26 @@ export default function IdFormCard({
   let resultView: ReactNode = null;
   if (op.result !== null && !op.running) {
     const result = op.result;
-    if (result.kind === "unavailable") {
-      resultView = <UnavailablePanel result={result} onRetry={() => void run()} />;
-    } else if (result.kind === "blocked" || result.status === "blocked") {
-      // A blocked refusal carries its own remediation (the gates); a
-      // retry button would just re-submit the same failing release.
-      resultView = <BlockedPanel result={result} />;
-    } else if (result.ok && result.kind !== "network") {
-      resultView = renderResult !== undefined ? renderResult(result) : <ReceiptCard result={result} />;
-    } else if (result.kind === "unknown") {
-      resultView = (
-        <div>
-          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-          <JsonViewer value={result.data} />
-        </div>
-      );
-    } else {
-      resultView = <ErrorPanel result={result} onRetry={() => void run()} opId={opId} />;
-    }
+    resultView = (
+      <OpBody
+        result={result}
+        ok={result.ok && result.kind !== "unknown"}
+        retry={() => void run()}
+        opId={opId}
+        failure={(failed) =>
+          failed.kind === "blocked" || failed.status === "blocked" ? (
+            // A blocked refusal carries its own remediation (the gates);
+            // a retry button would just re-submit the same failing
+            // release.
+            <BlockedPanel result={failed} />
+          ) : (
+            <ErrorPanel result={failed} onRetry={() => void run()} opId={opId} />
+          )
+        }
+      >
+        {renderResult !== undefined ? renderResult(result) : <ReceiptCard result={result} />}
+      </OpBody>
+    );
   }
 
   return (

@@ -1,12 +1,11 @@
 import { Button, Card, Skeleton, Typography } from "antd";
-import type { ReactNode } from "react";
 import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
+import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
 import StatusBanner from "./StatusBanner";
 import ConfirmGate from "./ConfirmGate";
 import LongOpControls from "./LongOpControls";
-import UnavailablePanel from "./UnavailablePanel";
 import { callOp } from "../api/client";
 import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
@@ -44,20 +43,9 @@ function DormantNote({ hint }: { hint: DormantHint }) {
   );
 }
 
-/** The receipt side of a settled run, shared by both paths. */
-function SettledView({
-  result,
-  dormant,
-  onRetry,
-}: {
-  result: OpResult;
-  dormant?: DormantHint;
-  onRetry: () => void;
-}) {
-  if (result.kind === "unavailable") {
-    return <UnavailablePanel result={result} onRetry={onRetry} />;
-  }
-  if (result.ok && typeof result.data === "object" && result.data !== null) {
+/** The receipt side of a settled run: the ok envelope only. */
+function SettledOk({ result, dormant }: { result: OpResult; dormant?: DormantHint }) {
+  if (typeof result.data === "object" && result.data !== null) {
     const data = result.data as Record<string, unknown>;
     if (data.status === "disabled" && dormant !== undefined) {
       return <DormantNote hint={dormant} />;
@@ -87,10 +75,7 @@ function SettledView({
       );
     }
   }
-  if (result.ok && result.kind !== "network") {
-    return <ReceiptCard result={result} />;
-  }
-  return <ErrorPanel result={result} onRetry={onRetry} />;
+  return <ReceiptCard result={result} />;
 }
 
 interface ActionCardProps {
@@ -135,27 +120,6 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
 
   const settled: OpResult | null = isLong ? long.result : short.result;
   const running = isLong ? long.running : short.running;
-  let resultView: ReactNode = null;
-  if (settled !== null) {
-    if (settled.kind === "unknown" && settled.ok) {
-      resultView = (
-        <div>
-          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-          <JsonViewer value={settled.data} />
-        </div>
-      );
-    } else if (running) {
-      resultView = null;
-    } else {
-      resultView = (
-        <SettledView
-          result={settled}
-          dormant={dormant}
-          onRetry={retry}
-        />
-      );
-    }
-  }
 
   return (
     <Card title={title}>
@@ -178,7 +142,17 @@ export default function ActionCard({ opId, title, body, dormant }: ActionCardPro
         )}
       </div>
       <LongOpControls op={long} onRetry={retry} />
-      {resultView}
+      {settled !== null && !running && (
+        <OpBody
+          result={settled}
+          ok={settled.ok && settled.kind !== "unknown"}
+          retry={retry}
+          opId={opId}
+          failure={(failed) => <ErrorPanel result={failed} onRetry={retry} opId={opId} />}
+        >
+          <SettledOk result={settled} dormant={dormant} />
+        </OpBody>
+      )}
     </Card>
   );
 }

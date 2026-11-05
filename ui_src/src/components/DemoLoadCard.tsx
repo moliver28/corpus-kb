@@ -1,12 +1,10 @@
 import { Button, Card, Typography } from "antd";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../components/ErrorPanel";
-import JsonViewer from "../components/JsonViewer";
 import LongOpControls from "../components/LongOpControls";
+import OpBody from "../components/OpBody";
 import ReceiptCard from "../components/ReceiptCard";
-import StatusBanner from "../components/StatusBanner";
 import ConfirmGate from "../components/ConfirmGate";
-import UnavailablePanel from "../components/UnavailablePanel";
 import { callOp } from "../api/client";
 import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
@@ -34,38 +32,11 @@ export default function DemoLoadCard() {
     await long.start();
   }
 
-  const settled: OpResult | null = long.result;
-  let resultView = null;
-  if (settled !== null) {
-    if (settled.kind === "unavailable") {
-      resultView = <UnavailablePanel result={settled} onRetry={() => void run()} />;
-    } else if (settled.kind === "unknown") {
-      // An envelope without a status word is not a receipt: show the
-      // honest unreadable panel, never a "Done" headline.
-      resultView = (
-        <div>
-          <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-          <JsonViewer value={settled.data} />
-        </div>
-      );
-    } else if (settled.ok && settled.kind !== "network") {
-      resultView = (
-        <div className="ui-stack">
-          <ReceiptCard result={settled} />
-          {/* The jump only shows on a clean run; a partial run keeps the
-              viewer on the receipt with its failure list. */}
-          {settled.status === "success" && (
-            <Button type="primary" onClick={() => navigate("/ask")}>
-              {strings.setupDemoNext}
-            </Button>
-          )}
-        </div>
-      );
-    } else {
-      resultView = <ErrorPanel result={settled} onRetry={() => void run()} />;
-    }
+  function retry(): void {
+    void run();
   }
 
+  const settled: OpResult | null = long.result;
   return (
     <Card title={strings.setupDemoTitle}>
       <Typography.Paragraph type="secondary">{strings.setupDemoBody}</Typography.Paragraph>
@@ -78,8 +49,27 @@ export default function DemoLoadCard() {
           onConfirm={() => void run()}
         />
       </div>
-      <LongOpControls op={long} onRetry={() => void run()} />
-      {resultView}
+      <LongOpControls op={long} onRetry={retry} />
+      {settled !== null && (
+        <OpBody
+          result={settled}
+          ok={settled.ok && settled.kind !== "unknown"}
+          retry={retry}
+          opId="demo-load"
+          failure={(failed) => <ErrorPanel result={failed} onRetry={retry} />}
+        >
+          <div className="ui-stack">
+            <ReceiptCard result={settled} />
+            {/* The jump only shows on a clean run; a partial run keeps the
+                viewer on the receipt with its failure list. */}
+            {settled.status === "success" && (
+              <Button type="primary" onClick={() => navigate("/ask")}>
+                {strings.setupDemoNext}
+              </Button>
+            )}
+          </div>
+        </OpBody>
+      )}
     </Card>
   );
 }

@@ -11,18 +11,30 @@ import { useOp } from "../hooks/useOp";
 import ConfirmGate from "./ConfirmGate";
 import ErrorPanel from "./ErrorPanel";
 import LongOpControls from "./LongOpControls";
+import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
-import UnavailablePanel from "./UnavailablePanel";
 
-/** Dispatch one settled result to the right panel. */
-function ResultView({ result, onRetry }: { result: OpResult; onRetry: () => void }) {
-  if (result.kind === "unavailable") {
-    return <UnavailablePanel result={result} onRetry={onRetry} />;
-  }
-  if (result.ok && result.kind !== "network") {
-    return <ReceiptCard result={result} />;
-  }
-  return <ErrorPanel result={result} onRetry={onRetry} />;
+/** Dispatch one settled result through the one honest body. */
+function ResultView({
+  result,
+  onRetry,
+  opId,
+}: {
+  result: OpResult;
+  onRetry: () => void;
+  opId: string;
+}) {
+  return (
+    <OpBody
+      result={result}
+      ok={result.ok && result.kind !== "unknown"}
+      retry={onRetry}
+      opId={opId}
+      failure={(failed) => <ErrorPanel result={failed} onRetry={onRetry} opId={opId} />}
+    >
+      <ReceiptCard result={result} />
+    </OpBody>
+  );
 }
 
 /**
@@ -145,6 +157,7 @@ export default function OpRunner({
           <ResultView
             result={settled}
             onRetry={op.longRunning ? () => void runLong() : () => void runSimple()}
+            opId={opId}
           />
         </div>
       )}
