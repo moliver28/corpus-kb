@@ -11,7 +11,8 @@ const KIND_WORD: Record<BannerKind, string> = {
   error: strings.bannerKindError,
 };
 
-/** One status line: a kind word plus the message. */
+/** One status line: a kind word plus the message. An error is urgent
+ * (role alert), the rest are calm live-region updates (role status). */
 export default function StatusBanner({
   kind,
   children,
@@ -20,7 +21,7 @@ export default function StatusBanner({
   children: ReactNode;
 }) {
   return (
-    <div className={`ui-banner ui-banner--${kind}`} role="status">
+    <div className={`ui-banner ui-banner--${kind}`} role={kind === "error" ? "alert" : "status"}>
       <span className="ui-banner__kind">{KIND_WORD[kind]}:</span>
       <span>{children}</span>
     </div>
