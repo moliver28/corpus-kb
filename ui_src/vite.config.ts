@@ -28,6 +28,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // The suite runs many jsdom files in parallel workers; the default
+    // 5 s per-test budget tips over under that load as the suite grows
+    // (finder waits already run wide). A real failure still fails fast:
+    // the finders poll, so a missing element surfaces in seconds.
+    testTimeout: 15_000,
     // The Playwright smoke (e2e/) runs in its own runner, not vitest.
     exclude: ["e2e/**", ...defaultExclude],
   },
