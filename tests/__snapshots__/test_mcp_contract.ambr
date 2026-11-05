@@ -706,6 +706,13 @@
       }),
     }),
     'corpus_kb.tools.tag_tools': dict({
+      'add_tag': dict({
+        'color': 'POSITIONAL_OR_KEYWORD',
+        'description': 'POSITIONAL_OR_KEYWORD',
+        'name': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
       'get_document_tags': dict({
         'doc_id': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
@@ -715,6 +722,25 @@
         'doc_id': 'POSITIONAL_OR_KEYWORD',
         'key': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'set_metadata': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'key': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'value': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'tag_document': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tag': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'untag_document': dict({
+        'doc_id': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tag': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
