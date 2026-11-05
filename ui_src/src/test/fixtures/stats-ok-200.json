@@ -1,0 +1,21 @@
+{
+  "name": "stats-ok-200",
+  "source": "canonical",
+  "note": "GET /api/stats shape (tools/versioning_tools.py stats over versioning_handler.handle_get_stats). Re-record against a running server.",
+  "request": { "method": "GET", "path": "/api/stats" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "stats": {
+        "documents": 5,
+        "chunks": 42,
+        "chunks_vectors": 42,
+        "entities": 18,
+        "relations": 27,
+        "tags": 4,
+        "total_events": 310
+      }
+    }
+  }
+}

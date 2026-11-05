@@ -5,10 +5,12 @@ import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/test
 import type { MinimalResponse } from "../test/testUtils";
 import assignmentsOk from "../test/fixtures/assignments-ok-200.json";
 import documentDeleteOk from "../test/fixtures/document-delete-ok-200.json";
+import documentStatsOk from "../test/fixtures/document-stats-ok-200.json";
 import documentsOk from "../test/fixtures/documents-ok-200.json";
 import ingestStatusOk from "../test/fixtures/ingest-status-ok-200.json";
 import reembedOk from "../test/fixtures/reembed-ok-200.json";
 import reviewExecuteOk from "../test/fixtures/review-execute-ok-200.json";
+import statsOk from "../test/fixtures/stats-ok-200.json";
 import topicsOk from "../test/fixtures/topics-ok-200.json";
 import Review from "./Review";
 
@@ -39,6 +41,9 @@ function reviewRoutes(): { method: string; path: string; reply: MinimalResponse 
     { method: "GET", path: "/api/ingest/status", reply: respond(200, ingestStatusOk.response.body) },
     { method: "GET", path: "/api/coding/assignments", reply: respond(200, assignmentsOk.response.body) },
     { method: "GET", path: "/api/topics", reply: respond(200, topicsOk.response.body) },
+    // The Wave 3 stats strip rides the health area and reads on mount.
+    { method: "GET", path: "/api/stats", reply: respond(200, statsOk.response.body) },
+    { method: "GET", path: "/api/document-stats", reply: respond(200, documentStatsOk.response.body) },
   ];
 }
 

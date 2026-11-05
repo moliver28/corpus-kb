@@ -1,0 +1,18 @@
+{
+  "name": "conflicts-resolve-ok-200",
+  "source": "canonical",
+  "note": "POST /api/conflicts/resolve shape (tools/conflicts_tools.py conflicts_resolve). The flag keeps the reviewer name on the record (the audit trail). Re-record against a running server.",
+  "request": {
+    "method": "POST",
+    "path": "/api/conflicts/resolve",
+    "body": { "conflict_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", "resolved_verdict": "revision", "resolved_by": "parity-reviewer" }
+  },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "conflict_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "resolved_verdict": "revision"
+    }
+  }
+}

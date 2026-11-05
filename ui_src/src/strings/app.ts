@@ -148,4 +148,11 @@ export interface AppStrings {
   setupRerankerOn: string;
   setupRerankerBackendAuto: string;
   setupRerankerOff: string;
+  statsWordDocuments: string;
+  statsWordChunks: string;
+  statsWordVectors: string;
+  statsWordEntities: string;
+  statsWordRelations: string;
+  statsWordTags: string;
+  statsWordEvents: string;
 }

@@ -1,0 +1,15 @@
+{
+  "name": "conflicts-scan-ok-200",
+  "source": "canonical",
+  "note": "POST /api/conflicts/scan shape (tools/conflicts_tools.py conflicts_scan). Re-record against a running server.",
+  "request": { "method": "POST", "path": "/api/conflicts/scan", "body": {} },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "scanned": 12,
+      "flagged": 3,
+      "verdicts": { "conflict": 1, "uncertain": 2 }
+    }
+  }
+}

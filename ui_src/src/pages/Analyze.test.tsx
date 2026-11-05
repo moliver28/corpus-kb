@@ -184,13 +184,10 @@ describe("Analyze page", () => {
     expect(within(topicsCard).queryByText(strings.receiptDone)).toBeNull();
   });
 
-  it("marks the unwired analysis families honestly", async () => {
+  it("marks the unwired analysis ops honestly (the two with no surfaces)", async () => {
     stubFetch([]);
     render(<Analyze />, { wrapper: makeWrapper() });
-    expect(await screen.findByText(strings.analyzeStatementsNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.analyzeConflictsNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.analyzeBeliefsNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.analyzeEmbedMetaNotWired)).toBeTruthy();
+    expect(await screen.findByText(strings.analyzeEmbedMetaNotWired)).toBeTruthy();
     expect(screen.getByText(strings.analyzeExtractionTuneNotWired)).toBeTruthy();
   });
 
@@ -316,7 +313,9 @@ describe("Analyze page", () => {
   });
   it("keeps a drifted labels payload on the warn-plus-raw path", async () => {
     // The guard fails on a row without its fields: the honest unreadable
-    // banner and the raw JSON, never a broken table.
+    // banner and the raw JSON, never a broken table. The Wave 3 family
+    // cards reject their reads on this stub, so the assertions scope to
+    // the labeling card.
     stubFetch([
       {
         method: "GET",
@@ -330,8 +329,9 @@ describe("Analyze page", () => {
       },
     ]);
     render(<Analyze />, { wrapper: makeWrapper() });
-    expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
-    expect(screen.getByText(strings.receiptRaw)).toBeTruthy();
+    const labelsCard = cardOf(strings.analyzeLabelingCardTitle);
+    expect(await within(labelsCard).findByText(strings.unreadableResponse)).toBeTruthy();
+    expect(within(labelsCard).getAllByText(strings.receiptRaw).length).toBeGreaterThan(0);
   });
 
   it("keeps a drifted classifications payload on the warn-plus-raw path", async () => {
@@ -348,7 +348,8 @@ describe("Analyze page", () => {
       },
     ]);
     render(<Analyze />, { wrapper: makeWrapper() });
-    expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
-    expect(screen.getByText(strings.receiptRaw)).toBeTruthy();
+    const classCard = cardOf(strings.analyzeClassificationReadTitle);
+    expect(await within(classCard).findByText(strings.unreadableResponse)).toBeTruthy();
+    expect(within(classCard).getAllByText(strings.receiptRaw).length).toBeGreaterThan(0);
   });
 });

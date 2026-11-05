@@ -5,15 +5,17 @@ import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";
 import ActionCard from "../components/ActionCard";
+import BeliefsCard from "./analyze/BeliefsCard";
 import ClassificationCard from "./analyze/ClassificationCard";
+import ConflictsCard from "./analyze/ConflictsCard";
 import LabelingCard from "./analyze/LabelingCard";
 import NotWiredCard from "../components/NotWiredCard";
+import StatementsCard from "./analyze/StatementsCard";
 
-/** The honest not-wired rows for the analysis families (op id, line). */
+/** The honest not-wired rows for the analysis families (op id, line).
+ * Phase-2 Wave 3 wired the statements, conflicts, and beliefs families;
+ * only the two ops with no surfaces stay honest here. */
 const NOT_WIRED = [
-  { opId: "statements-list", text: strings.analyzeStatementsNotWired },
-  { opId: "conflicts-scan", text: strings.analyzeConflictsNotWired },
-  { opId: "beliefs-current", text: strings.analyzeBeliefsNotWired },
   { opId: "analysis-embed-meta", text: strings.analyzeEmbedMetaNotWired },
   { opId: "extraction-tune", text: strings.analyzeExtractionTuneNotWired },
 ];
@@ -140,6 +142,9 @@ export default function Analyze() {
       {GUIDED.map((card) => (
         <ActionCard key={card.opId} {...card} />
       ))}
+      <StatementsCard />
+      <ConflictsCard />
+      <BeliefsCard />
       <LabelingCard />
       <ClassificationCard />
       <NotWiredCard title={strings.analyzeNotWiredTitle} items={NOT_WIRED} />

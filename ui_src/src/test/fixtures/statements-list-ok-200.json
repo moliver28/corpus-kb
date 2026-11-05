@@ -1,0 +1,51 @@
+{
+  "name": "statements-list-ok-200",
+  "source": "canonical",
+  "note": "POST /api/statements/list shape (statements/store.py LIST_SQL). Re-record against a running server after a corpus analysis writes statements.",
+  "request": { "method": "POST", "path": "/api/statements/list", "body": { "limit": 50 } },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "statements": [
+        {
+          "statement_id": "11111111-1111-4111-8111-111111111111",
+          "chunk_id": "0f0a1b2c-3d4e-4f50-8a1b-2c3d4e5f6a7b",
+          "document_id": "a1b2c3d4-0000-4000-8000-000000000001",
+          "statement_hash": "hash-one",
+          "text": "Participants described the weekly syncs as the main source of project clarity.",
+          "template_id": "sentiment-positive",
+          "template_version": 1,
+          "start_char": 12,
+          "end_char": 90,
+          "entities": [],
+          "exchange_id": null,
+          "valid_at": "2026-01-05 10:00:00+00:00",
+          "observed_at": "2026-01-06 10:00:00+00:00",
+          "confidence": 0.92,
+          "superseded_by": null,
+          "metadata": {}
+        },
+        {
+          "statement_id": "22222222-2222-4222-8222-222222222222",
+          "chunk_id": "1a0b1c2d-3e4f-4a50-9b2c-3d4e5f6a7b8c",
+          "document_id": "a1b2c3d4-0000-4000-8000-000000000001",
+          "statement_hash": "hash-two",
+          "text": "The tooling rollout was delayed by one sprint.",
+          "template_id": "event-delay",
+          "template_version": 1,
+          "start_char": 4,
+          "end_char": 52,
+          "entities": [],
+          "exchange_id": null,
+          "valid_at": "2026-01-02 09:00:00+00:00",
+          "observed_at": "2026-01-03 09:00:00+00:00",
+          "confidence": 0.81,
+          "superseded_by": "33333333-3333-4333-8333-333333333333",
+          "metadata": {}
+        }
+      ],
+      "count": 2
+    }
+  }
+}
