@@ -254,10 +254,10 @@ the textbooks"). Enqueue lands rows; a worker drains them.
 
 ### `analysis.routing`
 
-The question router's decision knobs (`analysis_route`;
-`src/corpus_kb/analysis/question_router.py` is the reader). The router
-resolves a question when the top score clears the confidence threshold
-and beats the runner-up score by the margin.
+The question router's decision knobs. The reader is
+`src/corpus_kb/analysis/question_router.py`; the operation is
+`analysis_route`. The router resolves a question when the top score
+clears the threshold and beats the runner-up by the margin.
 
 | Key | Default | Description |
 |-----|---------|-------------|
