@@ -13,7 +13,8 @@ sees, and these tools are handed a pool explicitly).
 Envelopes: ``stats`` returns ``{"status", "stats"}`` — one row count per
 key. ``document_stats`` returns ``{"status", "totals", "by_source_type"}``
 — the named totals plus one row per source type. Both keep the handler's
-deterministic key order, so harness snapshots stay stable.
+deterministic key order, and the ``by_source_type`` rows sort by
+``source_type`` (rule 9), so harness snapshots stay stable.
 """
 
 from __future__ import annotations
@@ -56,6 +57,7 @@ async def document_stats(
     Delegates to ``VersioningHandler.handle_query_document_stats`` and
     wraps the answer in the shared envelope:
     ``{"status": "success", "totals": {...}, "by_source_type": [...]}``.
+    The rows sort by ``source_type``, so the answer snapshots stably.
     """
     from corpus_kb.handlers.versioning_handler import VersioningHandler
 

@@ -71,13 +71,15 @@ def _close_event_apps():
     reset_app()
 
 
-async def _insert_document(gw: DuckDbGateway, doc_id: UUID) -> None:
+async def _insert_document(
+    gw: DuckDbGateway, doc_id: UUID, source_type: str = "markdown", source: str = "e2e.md"
+) -> None:
     await gw.execute(
         "INSERT INTO documents (doc_id, tenant_id, source, source_type) VALUES (?, ?, ?, ?)",
         str(doc_id),
         str(TENANT),
-        "e2e.md",
-        "markdown",
+        source,
+        source_type,
     )
 
 
@@ -194,6 +196,23 @@ async def test_versioning_stats_on_duckdb(gateway: DuckDbGateway) -> None:
     assert names == sorted(names)
     assert "documents" in names and "chunks" in names
     assert all(row["owner"] == "duckdb" for row in tables)
+
+
+async def test_document_stats_source_rows_sort_on_duckdb(gateway: DuckDbGateway) -> None:
+    # Rule 9: the by_source_type rows sort by source_type whatever the
+    # insert order was (here deliberately non-alphabetical), so the
+    # snapshot-facing answer stays deterministic.
+    for i, source_type in enumerate(("web", "code", "markdown")):
+        await _insert_document(
+            gateway, uuid4(), source_type, f"doc-{i}-{source_type}.md"
+        )
+    doc_stats = await VersioningHandler(gateway).handle_query_document_stats(TENANT)
+    assert [row["source_type"] for row in doc_stats["by_source_type"]] == [
+        "code",
+        "markdown",
+        "web",
+    ]
+    assert [row["count"] for row in doc_stats["by_source_type"]] == [1, 1, 1]
 
 
 class _StubEmbedder:
