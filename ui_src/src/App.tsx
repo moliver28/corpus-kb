@@ -11,6 +11,7 @@ const Ingest = lazy(() => import("./pages/Ingest"));
 const Review = lazy(() => import("./pages/Review"));
 const Ask = lazy(() => import("./pages/Ask"));
 const Analyze = lazy(() => import("./pages/Analyze"));
+const Graph = lazy(() => import("./pages/Graph"));
 const Codebook = lazy(() => import("./pages/Codebook"));
 const Scale = lazy(() => import("./pages/Scale"));
 const Release = lazy(() => import("./pages/Release"));
@@ -26,7 +27,8 @@ function StagePlaceholder() {
   );
 }
 
-/** The eight lifecycle stages, in order. Routes are hash-based (`#/setup`). */
+/** The eight lifecycle stages, then the graph domain view (Wave 4).
+    Routes are hash-based (`#/setup`). */
 const STAGES: RailStage[] = [
   { key: "setup", label: strings.stageSetup },
   { key: "ingest", label: strings.stageIngest },
@@ -34,6 +36,7 @@ const STAGES: RailStage[] = [
   { key: "scale", label: strings.stageScale },
   { key: "ask", label: strings.stageAsk },
   { key: "analyze", label: strings.stageAnalyze },
+  { key: "graph", label: strings.stageGraph },
   { key: "codebook", label: strings.stageCodebook },
   { key: "release", label: strings.stageRelease },
 ];
@@ -67,6 +70,7 @@ function StageShell() {
               <Route path="/review" element={<Review />} />
               <Route path="/ask" element={<Ask />} />
               <Route path="/analyze" element={<Analyze />} />
+              <Route path="/graph" element={<Graph />} />
               <Route path="/codebook" element={<Codebook />} />
               <Route path="/scale" element={<Scale />} />
               <Route path="/release" element={<Release />} />

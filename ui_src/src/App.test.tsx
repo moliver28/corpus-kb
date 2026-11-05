@@ -37,7 +37,7 @@ function renderApp() {
 }
 
 describe("App stage shell", () => {
-  it("shows all eight lifecycle stages", () => {
+  it("shows all eight lifecycle stages and the graph domain view", () => {
     renderApp();
     const stageLabels = [
       strings.stageSetup,
@@ -46,6 +46,7 @@ describe("App stage shell", () => {
       strings.stageScale,
       strings.stageAsk,
       strings.stageAnalyze,
+      strings.stageGraph,
       strings.stageCodebook,
       strings.stageRelease,
     ];

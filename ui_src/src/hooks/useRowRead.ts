@@ -14,12 +14,14 @@ export interface RowRead {
  * A read that follows a row the user can switch quickly. Every read
  * tags its result with the row id it asked for; only a still-current
  * row may land in state, so a slow answer for a document the user
- * already left can never render under the new row's title.
+ * already left can never render under the new row's title. A POST read
+ * (the graph neighbors op) carries its body alongside the tag.
  */
 export function useRowRead(opId: string): {
   read: (
     rowId: string,
     opts?: {
+      body?: unknown;
       query?: Record<string, string>;
       pathParams?: Record<string, string>;
     },
@@ -34,13 +36,14 @@ export function useRowRead(opId: string): {
     (
       rowId: string,
       opts?: {
+        body?: unknown;
         query?: Record<string, string>;
         pathParams?: Record<string, string>;
       },
     ): void => {
       latestRef.current = rowId;
       void (async () => {
-        const result = await run(undefined, opts?.query, opts?.pathParams);
+        const result = await run(opts?.body, opts?.query, opts?.pathParams);
         if (latestRef.current === rowId) {
           setState({ rowId, result });
         }

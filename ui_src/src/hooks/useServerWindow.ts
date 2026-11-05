@@ -25,10 +25,18 @@ export interface ServerWindow<Row> {
   result: OpResult<unknown> | null;
   /** True when the settled payload passed the caller's guard. */
   okEnvelope: boolean;
+  /** The extra query pairs every window read carries (a filter). */
+  extraQuery: Record<string, string> | undefined;
   /** Show another window (the pager's onChange). */
   goto(page: number): void;
   /** Drop the current answer and read this window again. */
   refresh(): void;
+  /**
+   * Narrow the read: the pairs ride every window from now on, and the
+   * table returns to the first window (the filtered first page is the
+   * truth).
+   */
+  setFilter(extraQuery?: Record<string, string>): void;
   /**
    * After a delete: when the removed row was this window's only row,
    * step back one window, so the pager never rests on an empty page;
@@ -43,17 +51,22 @@ export function useServerWindow<Row, Envelope extends { result: Row[] }>(
   isEnvelope: EnvelopeGuard<Envelope>,
 ): ServerWindow<Row> {
   const [page, setPage] = useState(1);
+  const [extraQuery, setExtraQuery] = useState<Record<string, string> | undefined>(undefined);
   const list = useOp(opId);
   const { run: runList } = list;
+  // The filter rides every window read (an entity-type narrowing); its
+  // content, not its object identity, owns the effect key.
+  const filterKey = JSON.stringify(extraQuery ?? {});
 
   const loadPage = useCallback(
     (next: number): void => {
       void runList(undefined, {
         limit: String(windowSize + 1),
         offset: String((next - 1) * windowSize),
+        ...(filterKey === "{}" ? {} : (JSON.parse(filterKey) as Record<string, string>)),
       });
     },
-    [runList, windowSize],
+    [runList, windowSize, filterKey],
   );
 
   useEffect(() => {
@@ -67,6 +80,11 @@ export function useServerWindow<Row, Envelope extends { result: Row[] }>(
   function refresh(): void {
     list.reset();
     loadPage(page);
+  }
+
+  function setFilter(next?: Record<string, string>): void {
+    setExtraQuery(next);
+    setPage(1);
   }
 
   function stepBackAfterDelete(shownCount: number): void {
@@ -91,8 +109,10 @@ export function useServerWindow<Row, Envelope extends { result: Row[] }>(
     hasMore,
     result,
     okEnvelope: data !== null,
+    extraQuery,
     goto,
     refresh,
+    setFilter,
     stepBackAfterDelete,
   };
 }
