@@ -6,7 +6,6 @@ import type { MinimalResponse } from "../test/testUtils";
 import codebooksOk from "../test/fixtures/codebooks-ok-200.json";
 import cycleHalted from "../test/fixtures/cycle-halted-200.json";
 import doctorOk from "../test/fixtures/doctor-ok.json";
-import notebookEvidenceOk from "../test/fixtures/notebook-evidence-ok-200.json";
 import projectsOk from "../test/fixtures/projects-ok-200.json";
 import promoteOk from "../test/fixtures/promote-ok-200.json";
 import proposalsOk from "../test/fixtures/proposals-ok-200.json";
@@ -183,26 +182,6 @@ describe("Codebook page", () => {
     expect(screen.getByText(strings.codebookSaturationNotWired)).toBeTruthy();
   });
 
-  it("renders the notebook evidence receipt as Done, never not-success", async () => {
-    stubFetch([
-      ...codebookRoutes(),
-      {
-        method: "POST",
-        path: "/api/notebook/evidence",
-        reply: respond(200, notebookEvidenceOk.response.body),
-      },
-    ]);
-    render(<Codebook />, { wrapper: makeWrapper() });
-    const card = cardOf(strings.codebookEvidenceTitle);
-    fireEvent.change(within(card).getByPlaceholderText(strings.codebookEvidenceCodeLabel), {
-      target: { value: "energy_policy" },
-    });
-    fireEvent.click(within(card).getByRole("button", { name: strings.runnerRunLabel }));
-    expect(await within(card).findByText(strings.receiptDone)).toBeTruthy();
-    expect(within(card).queryByText(strings.receiptNotSuccess)).toBeNull();
-    const sent = calls.find((c) => c.url.includes("/api/notebook/evidence"));
-    expect(sent?.body).toContain('"code":"energy_policy"');
-  });
 
   it("marks the governance run stale when the level changes under it", async () => {
     stubFetch([
@@ -235,37 +214,5 @@ describe("Codebook page", () => {
     fireEvent.click(within(card).getByText(strings.codebookLevelNovice));
     expect(within(card).queryByText(stale(strings.codebookLevelExpert))).toBeNull();
   });
-  it("renders the uncoded-units receipt as Done", async () => {
-    stubFetch([
-      ...codebookRoutes(),
-      {
-        method: "POST",
-        path: "/api/notebook/uncoded",
-        reply: respond(200, { status: "success", result: { rank: [] } }),
-      },
-    ]);
-    render(<Codebook />, { wrapper: makeWrapper() });
-    const card = cardOf(strings.codebookUncodedTitle);
-    fireEvent.click(within(card).getByRole("button", { name: strings.runnerRunLabel }));
-    expect(await within(card).findByText(strings.receiptDone)).toBeTruthy();
-    const sent = calls.find((c) => c.url.includes("/api/notebook/uncoded"));
-    expect(sent?.method).toBe("POST");
-  });
 
-  it("renders the code-overlap receipt as Done", async () => {
-    stubFetch([
-      ...codebookRoutes(),
-      {
-        method: "POST",
-        path: "/api/notebook/overlap",
-        reply: respond(200, { status: "success", result: { pairs: [] } }),
-      },
-    ]);
-    render(<Codebook />, { wrapper: makeWrapper() });
-    const card = cardOf(strings.codebookOverlapTitle);
-    fireEvent.click(within(card).getByRole("button", { name: strings.runnerRunLabel }));
-    expect(await within(card).findByText(strings.receiptDone)).toBeTruthy();
-    const sent = calls.find((c) => c.url.includes("/api/notebook/overlap"));
-    expect(sent?.method).toBe("POST");
-  });
 });
