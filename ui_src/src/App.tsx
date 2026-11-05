@@ -1,6 +1,8 @@
 import { Suspense, lazy } from "react";
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "react-router";
-import { Layout, Menu, Spin } from "antd";
+import { Layout, Spin } from "antd";
+import DeskRail from "./components/DeskRail";
+import type { RailStage } from "./components/DeskRail";
 import { strings } from "./strings";
 
 // One lazy chunk per stage, so one stage never loads another's code.
@@ -25,7 +27,7 @@ function StagePlaceholder() {
 }
 
 /** The eight lifecycle stages, in order. Routes are hash-based (`#/setup`). */
-const STAGES = [
+const STAGES: RailStage[] = [
   { key: "setup", label: strings.stageSetup },
   { key: "ingest", label: strings.stageIngest },
   { key: "review", label: strings.stageReview },
@@ -34,7 +36,7 @@ const STAGES = [
   { key: "analyze", label: strings.stageAnalyze },
   { key: "codebook", label: strings.stageCodebook },
   { key: "release", label: strings.stageRelease },
-] as const;
+];
 
 function StageShell() {
   const location = useLocation();
@@ -42,37 +44,39 @@ function StageShell() {
   const selected = STAGES.find((stage) => `/${stage.key}` === location.pathname)?.key;
   return (
     <Layout className="ui-shell">
+      {/* The 48px bar carries the app title only — the stage sequence
+          lives in the Desk rail, never back in a horizontal menu. */}
       <Layout.Header className="ui-header">
         {/* The app title is the page's only h1; card sections are h2. */}
         <h1 className="ui-header__title">{strings.appTitle}</h1>
-        <Menu
-          mode="horizontal"
-          className="ui-header__menu"
-          selectedKeys={selected ? [selected] : []}
-          items={STAGES.map((stage) => ({ key: stage.key, label: stage.label }))}
-          onClick={({ key }) => {
+      </Layout.Header>
+      <Layout>
+        <DeskRail
+          stages={STAGES}
+          selected={selected}
+          onSelect={(key) => {
             navigate(`/${key}`);
           }}
         />
-      </Layout.Header>
-      <Layout.Content className="ui-content">
-        <Suspense fallback={<Spin />}>
-          <Routes>
-            <Route path="/" element={<Navigate to="/setup" replace />} />
-            <Route path="/setup" element={<Setup />} />
-            <Route path="/ingest" element={<Ingest />} />
-            <Route path="/review" element={<Review />} />
-            <Route path="/ask" element={<Ask />} />
-            <Route path="/analyze" element={<Analyze />} />
-            <Route path="/codebook" element={<Codebook />} />
-            <Route path="/scale" element={<Scale />} />
-            <Route path="/release" element={<Release />} />
-            {/* Stages without screens yet (Tasks 6-7) land above this
-                catch-all; until then each shows the same placeholder. */}
-            <Route path="*" element={<StagePlaceholder />} />
-          </Routes>
-        </Suspense>
-      </Layout.Content>
+        <Layout.Content className="ui-content">
+          <Suspense fallback={<Spin />}>
+            <Routes>
+              <Route path="/" element={<Navigate to="/setup" replace />} />
+              <Route path="/setup" element={<Setup />} />
+              <Route path="/ingest" element={<Ingest />} />
+              <Route path="/review" element={<Review />} />
+              <Route path="/ask" element={<Ask />} />
+              <Route path="/analyze" element={<Analyze />} />
+              <Route path="/codebook" element={<Codebook />} />
+              <Route path="/scale" element={<Scale />} />
+              <Route path="/release" element={<Release />} />
+              {/* Stages without screens yet (Tasks 6-7) land above this
+                  catch-all; until then each shows the same placeholder. */}
+              <Route path="*" element={<StagePlaceholder />} />
+            </Routes>
+          </Suspense>
+        </Layout.Content>
+      </Layout>
     </Layout>
   );
 }

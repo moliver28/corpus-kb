@@ -10,6 +10,17 @@ export interface AppStrings {
   stageAnalyze: string;
   stageCodebook: string;
   stageRelease: string;
+  railCorpusName: string;
+  railSwitcherNotWired: string;
+  railHealthTitle: string;
+  railHealthDb: string;
+  railHealthModels: string;
+  railHealthOk: string;
+  railHealthDown: string;
+  railHealthWaiting: string;
+  railStatePending: string;
+  railStateActive: string;
+  railStateDone: string;
   setupTitle: string;
   setupBody: string;
   unreadableResponse: string;

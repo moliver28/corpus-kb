@@ -81,8 +81,8 @@ body {
   overflow: auto;
 }
 
-/* App shell (App.tsx): layout-only classes. The header separates with
-   a 1px border, never a shadow. */
+/* App shell (App.tsx + DeskRail.tsx): layout-only classes. The header
+   separates with a 1px border, never a shadow; so does the rail. */
 .ui-shell {
   min-height: 100vh;
 }
@@ -101,16 +101,126 @@ body {
   color: var(--ckb-color-text-heading);
 }
 
-.ui-header__menu {
-  flex: 1;
-  min-width: 0;
-}
-
 .ui-content {
   padding: 24px;
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
+}
+
+/* The Desk rail: corpus label and switcher slot up top, the stage
+   Menu in the middle, the health strip at the bottom. The rail's own
+   ground is Field (theme siderBg); it separates from the working
+   panel with a 1px border. */
+.ui-rail {
+  border-right: 1px solid var(--ckb-color-border-secondary);
+}
+
+.ui-rail .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.ui-rail__corpus {
+  padding: 16px 16px 4px;
+}
+
+.ui-rail__corpus-name {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ckb-color-text-heading);
+}
+
+.ui-rail__switcher {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ckb-color-text-description);
+}
+
+.ui-rail__menu {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ui-rail__health {
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--ckb-color-border-secondary);
+}
+
+.ui-rail__health-title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ckb-color-text-heading);
+}
+
+.ui-rail__health-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--ckb-color-text-description);
+}
+
+/* Collapsed rail (narrow viewports): the dot column stays reachable
+   through the Menu's tooltips; the text blocks step aside. */
+.ant-layout-sider-collapsed .ui-rail__corpus,
+.ant-layout-sider-collapsed .ui-rail__health {
+  display: none;
+}
+
+/* Stage state dots: a ring is pending, a disc is active, a ringed
+   disc is done — the glyph shape carries the state, never color
+   alone. antd adds .ant-menu-item-icon to the same span, so the dot
+   rides the Menu's icon slot. */
+.ui-dot {
+  box-sizing: border-box;
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.ui-dot--pending {
+  border: 1.5px solid var(--ckb-color-text-description);
+}
+
+.ui-dot--active {
+  background: var(--ckb-color-primary);
+}
+
+.ui-dot--done {
+  border: 1.5px solid var(--ckb-color-primary);
+  position: relative;
+}
+
+.ui-dot--done::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background: var(--ckb-color-primary);
+}
+
+/* Health-strip dots: the probe state behind a plain word. */
+.ui-health-dot {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.ui-health-dot--ok {
+  background: var(--ckb-color-success);
+}
+
+.ui-health-dot--down {
+  background: var(--ckb-color-error);
 }
 
 /* Evidence voice: answers and cited sentences are retrieved source

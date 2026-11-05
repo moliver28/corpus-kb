@@ -4,11 +4,15 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ConfigProvider } from "antd";
 import App from "./App";
 import AppErrorBoundary from "./components/AppErrorBoundary";
+import { stubFetch } from "./test/testUtils";
 import { strings } from "./strings";
 import { corpusKbTheme } from "./theme";
 
 // globals are off, so testing-library's auto-cleanup never registers.
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 /** A card whose render always throws (the boundary test's crash). */
 function ThrowingCard(): never {
@@ -18,7 +22,10 @@ function ThrowingCard(): never {
 // The shell now mounts the real Setup screen, whose doctor card uses
 // react-query — the same provider wrap main.tsx applies, ConfigProvider
 // included (provider parity: the tests render the boot composition).
+// The shell's own polls (doctor, ingest-status) must not open real
+// sockets, so every fetch here fails at once through the shared stub.
 function renderApp() {
+  stubFetch([]);
   const client = new QueryClient();
   return render(
     <QueryClientProvider client={client}>
@@ -52,6 +59,16 @@ describe("App stage shell", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: strings.appTitle }),
     ).toBeTruthy();
+  });
+
+  it("keeps the corpus switcher an honest not-wired row in the rail", () => {
+    renderApp();
+    expect(screen.getByText(strings.railSwitcherNotWired)).toBeTruthy();
+  });
+
+  it("shows the rail health strip as not checked until the doctor answers", async () => {
+    renderApp();
+    expect(await screen.findByText(strings.railHealthWaiting)).toBeTruthy();
   });
 
   it("lands on the Setup stage", async () => {
