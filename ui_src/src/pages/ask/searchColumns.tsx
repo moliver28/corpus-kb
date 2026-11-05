@@ -4,9 +4,6 @@ import type { ReactNode } from "react";
 import { strings } from "../../strings";
 import { scoreText, type SearchRow } from "./shapes";
 
-/** How long the row's "Copied." note stays before it resets. */
-export const COPY_FEEDBACK_MS = 2000;
-
 /**
  * One source cell: the label with its chunk id underneath. The id is
  * the value the verify tab's chunk field asks for, so a copy button
@@ -29,7 +26,7 @@ function ChunkIdCell({
       <div className="ui-row-id">
         <span>{chunkId}</span>
         <Button type="link" size="small" className="ui-row-copy" onClick={() => onCopy(chunkId)}>
-          {copied ? strings.errorCopied : strings.askCopyChunkId}
+          {copied ? strings.copiedNote : strings.askCopyChunkId}
         </Button>
       </div>
     </div>

@@ -8,10 +8,11 @@ import JsonViewer from "../../components/JsonViewer";
 import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
+import { useCopy } from "../../hooks/useCopy";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
 import { excludedCount, isSearchEnvelope, type SearchRow } from "./shapes";
-import { COPY_FEEDBACK_MS, SEARCH_PAGE_SIZE, columnsOf, searchExpandable } from "./searchColumns";
+import { SEARCH_PAGE_SIZE, columnsOf, searchExpandable } from "./searchColumns";
 
 type Mode = "text" | "similar" | "context";
 
@@ -32,7 +33,7 @@ const OP_IDS: Record<Mode, string> = {
 /** One mode's result body: the same table for all three search routes. */
 function resultBody(
   result: OpResult<unknown> | null,
-  opts: { opId: string; retry: () => void; copiedId: string | null; onCopy: (id: string) => void },
+  opts: { opId: string; retry: () => void; copiedKey: string | null; onCopy: (id: string) => void },
 ): ReactNode {
   if (result === null) return null;
   if (result.kind === "unavailable") {
@@ -57,7 +58,7 @@ function resultBody(
           pagination={pageConfig(SEARCH_PAGE_SIZE)}
           expandable={searchExpandable}
           dataSource={rows}
-          columns={columnsOf(opts.copiedId, opts.onCopy)}
+          columns={columnsOf(opts.copiedKey, opts.onCopy)}
         />
       </div>
     );
@@ -85,8 +86,10 @@ export default function SearchCard() {
   const [query, setQuery] = useState("");
   const [chunkId, setChunkId] = useState("");
   const [error, setError] = useState("");
-  const [copiedId, setCopiedId] = useState<string | null>(null);
   const { rootRef, flag } = useFirstErrorFocus();
+  // One shared copy hook: the row's chunk id is its own key, so two
+  // rows never share a "Copied." note and the timer never outlives us.
+  const { copiedKey, copy } = useCopy();
   const text = useOp("search");
   const similar = useOp("search-similar");
   const context = useOp("search-context");
@@ -94,23 +97,6 @@ export default function SearchCard() {
   function pick(next: Mode): void {
     setMode(next);
     setError("");
-  }
-
-  function copyChunkId(id: string): void {
-    // The narrow view keeps the clipboard optional at run time.
-    const clipboard = (navigator as { clipboard?: Clipboard }).clipboard;
-    if (clipboard === undefined) return;
-    void clipboard.writeText(id).then(
-      () => {
-        setCopiedId(id);
-        // The note clears itself; a copy of another row wins the state.
-        window.setTimeout(
-          () => setCopiedId((current) => (current === id ? null : current)),
-          COPY_FEEDBACK_MS,
-        );
-      },
-      () => setCopiedId(null),
-    );
   }
 
   function validate(value: string, message: string): boolean {
@@ -193,8 +179,8 @@ export default function SearchCard() {
         {resultBody(active.result, {
           opId: OP_IDS[mode],
           retry,
-          copiedId,
-          onCopy: copyChunkId,
+          copiedKey,
+          onCopy: (id: string) => copy(id, id),
         })}
       </div>
     </Card>

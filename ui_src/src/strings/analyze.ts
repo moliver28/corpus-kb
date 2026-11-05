@@ -54,7 +54,6 @@ export interface AnalyzeStrings {
   analyzeDormant: string;
   analyzeDormantConfigKey: string;
   analyzeCopyYaml: string;
-  analyzeYamlCopied: string;
   analyzeRefresh: string;
   analyzeLabelingCardTitle: string;
   analyzeLabelingCardBody: string;

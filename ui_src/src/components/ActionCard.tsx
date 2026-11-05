@@ -1,6 +1,5 @@
 import { Button, Card, Skeleton, Typography } from "antd";
 import type { ReactNode } from "react";
-import { useState } from "react";
 import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
 import ReceiptCard from "./ReceiptCard";
@@ -11,6 +10,7 @@ import UnavailablePanel from "./UnavailablePanel";
 import { callOp } from "../api/client";
 import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
+import { useCopy } from "../hooks/useCopy";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
 import { strings } from "../strings";
@@ -22,13 +22,7 @@ interface DormantHint {
 
 /** A dormant (config-off) answer: the exact key + a copyable YAML snippet. */
 function DormantNote({ hint }: { hint: DormantHint }) {
-  const [copied, setCopied] = useState(false);
-  function copy(): void {
-    navigator.clipboard
-      ?.writeText(hint.yaml)
-      .then(() => setCopied(true))
-      .catch(() => undefined);
-  }
+  const { copiedKey, unavailable, copy } = useCopy();
   return (
     <div className="ui-stack">
       <StatusBanner kind="info">{strings.analyzeDormant}</StatusBanner>
@@ -38,7 +32,13 @@ function DormantNote({ hint }: { hint: DormantHint }) {
       </p>
       <pre className="ui-json-yaml">{hint.yaml}</pre>
       <div className="ui-actions">
-        <Button onClick={copy}>{copied ? strings.analyzeYamlCopied : strings.analyzeCopyYaml}</Button>
+        <Button onClick={() => copy(hint.yaml)}>
+          {unavailable
+            ? strings.copyUnavailable
+            : copiedKey === "self"
+              ? strings.copiedNote
+              : strings.analyzeCopyYaml}
+        </Button>
       </div>
     </div>
   );

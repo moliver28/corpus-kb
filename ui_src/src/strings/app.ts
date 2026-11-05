@@ -98,7 +98,8 @@ export interface AppStrings {
   setupIngestUrlTitle: string;
   setupIngestUrlBody: string;
   errorCopyDiagnostic: string;
-  errorCopied: string;
+  copiedNote: string;
+  copyUnavailable: string;
   boundaryTitle: string;
   boundaryBody: string;
   formFieldRequired: string;

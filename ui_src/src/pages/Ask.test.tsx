@@ -306,7 +306,7 @@ describe("Ask page", () => {
     expect(copyButtons.length).toBeGreaterThan(0);
     fireEvent.click(copyButtons[0]);
     expect(writeText).toHaveBeenCalledWith("1111aaaa-2222-4bbb-8ccc-3333dddd4444");
-    expect(await screen.findByText(strings.errorCopied)).toBeTruthy();
+    expect(await screen.findByText(strings.copiedNote)).toBeTruthy();
   });
 
   it("caps the search table page and expands a row for the full text", async () => {

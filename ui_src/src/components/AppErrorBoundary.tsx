@@ -1,14 +1,8 @@
 import { Button } from "antd";
-import {
-  Component,
-  useEffect,
-  useRef,
-  useState,
-  type ErrorInfo,
-  type ReactNode,
-} from "react";
+import { Component, type ErrorInfo, type ReactNode } from "react";
 import pkg from "../../package.json";
 import { strings } from "../strings";
+import { useCopy } from "../hooks/useCopy";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 
@@ -50,39 +44,19 @@ function BoundaryFallback({
   componentStack: string | null;
   onRetry: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
-  const timerRef = useRef<number | null>(null);
-
-  // The copied label flips back on its own; the timer never survives us.
-  useEffect(
-    () => () => {
-      if (timerRef.current !== null) {
-        window.clearTimeout(timerRef.current);
-      }
-    },
-    [],
-  );
-
-  function copy(): void {
-    // jsdom and hardened browsers expose no clipboard: the button stays
-    // honest (never promises what it cannot do) and never throws.
-    navigator.clipboard
-      ?.writeText(JSON.stringify(diagnosticBlob(error, componentStack), null, 2))
-      .then(() => {
-        setCopied(true);
-        timerRef.current = window.setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(() => undefined);
-  }
-
+  const { copiedKey, unavailable, copy } = useCopy();
   return (
     <div className="ui-stack" role="alert">
       <StatusBanner kind="error">{strings.boundaryTitle}</StatusBanner>
       <p>{strings.boundaryBody}</p>
       <JsonViewer value={diagnosticBlob(error, componentStack)} />
       <div className="ui-actions">
-        <Button onClick={copy}>
-          {copied ? strings.errorCopied : strings.errorCopyDiagnostic}
+        <Button onClick={() => copy(JSON.stringify(diagnosticBlob(error, componentStack), null, 2))}>
+          {unavailable
+            ? strings.copyUnavailable
+            : copiedKey === "self"
+              ? strings.copiedNote
+              : strings.errorCopyDiagnostic}
         </Button>
         <Button onClick={onRetry}>{strings.retryLabel}</Button>
       </div>
