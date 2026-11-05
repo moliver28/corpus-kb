@@ -8,6 +8,11 @@ import type { MetadataRow, DocumentRow } from "./shapes";
 import { MetadataEditor, TagEditor } from "./DrawerEditors";
 
 function metadataWords(rows: MetadataRow[]) {
+  if (rows.length === 0) {
+    return (
+      <Typography.Text type="secondary">{strings.reviewMetadataEmpty}</Typography.Text>
+    );
+  }
   return (
     <Descriptions size="small" column={1}>
       {rows.map((row) => (
@@ -88,7 +93,12 @@ export default function DocumentDetailDrawer({
           retry={refreshTags}
         >
           {tagRows === null || row === null ? null : (
-            <TagEditor docId={row.doc_id} rows={tagRows} refresh={refreshTags} />
+            <div className="ui-stack">
+              {tagRows.length === 0 && (
+                <Typography.Text type="secondary">{strings.reviewTagsEmpty}</Typography.Text>
+              )}
+              <TagEditor docId={row.doc_id} rows={tagRows} refresh={refreshTags} />
+            </div>
           )}
         </OpBody>
         <Typography.Title level={5} className="ui-flush">
