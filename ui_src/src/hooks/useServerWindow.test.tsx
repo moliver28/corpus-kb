@@ -56,6 +56,7 @@ function Harness() {
   return (
     <div>
       <button onClick={() => win.goto(2)}>next</button>
+      <button onClick={() => win.refresh()}>reload</button>
       <button onClick={() => win.stepBackAfterDelete(1)}>remove only row</button>
       <button onClick={() => win.stepBackAfterDelete(2)}>remove one of two</button>
       <ul>
@@ -141,6 +142,32 @@ describe("useServerWindow", () => {
     await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
     expect(latest?.page).toBe(1);
     expect(calls.every((c) => c.url.includes("offset=0"))).toBe(true);
+  });
+
+  it("falls to a same-window refresh when a lone row is deleted on page 1", async () => {
+    stubFetch([{ method: "GET", path: "/api/documents", reply: rowsReply(WINDOW) }]);
+    renderProbe();
+    await waitFor(() => expect(latest?.rows.length).toBe(WINDOW));
+    clearCalls();
+    stubFetch([{ method: "GET", path: "/api/documents", reply: rowsReply(1) }]);
+    fireEvent.click(screen.getByRole("button", { name: "remove only row" }));
+    await waitFor(() => expect(calls.length).toBeGreaterThanOrEqual(1));
+    expect(latest?.page).toBe(1);
+    expect(calls.every((c) => c.url.includes("offset=0"))).toBe(true);
+  });
+
+  it("rereads the current window on a direct refresh call", async () => {
+    stubFetch([{ method: "GET", path: "/api/documents", reply: rowsReply(WINDOW + 1) }]);
+    renderProbe();
+    await waitFor(() => expect(latest?.rows.length).toBe(WINDOW));
+    fireEvent.click(screen.getByRole("button", { name: "next" }));
+    await waitFor(() => expect(latest?.page).toBe(2));
+    clearCalls();
+    stubFetch([{ method: "GET", path: "/api/documents", reply: rowsReply(WINDOW) }]);
+    fireEvent.click(screen.getByRole("button", { name: "reload" }));
+    await waitFor(() => expect(calls.some((c) => c.url.includes("offset=3"))).toBe(true));
+    expect(latest?.page).toBe(2);
+    await waitFor(() => expect(latest?.rows.length).toBe(WINDOW));
   });
 
   it("windowPagerTotal adds the sentinel row only when a next window exists", () => {
