@@ -575,3 +575,10 @@ OFF
 ADVISORY
 ENFORCE
 CALIBRATE
+
+# Question routing (analysis-routing program, wave 2): the intent's ranked
+# id list is audit data the wave-3 envelope surfaces, and route_question's
+# callers are the bench and router tests plus the wave-3 op layer; vulture
+# scans src only and sees no caller in either case.
+ranked_method_ids
+route_question
