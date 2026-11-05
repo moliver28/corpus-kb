@@ -64,7 +64,7 @@ export const corpusKbTheme: ThemeConfig = {
       // The rail's selected stage: antd derives itemSelectedBg from the
       // primary, and petrol's derived tint lands mid-grey (#929c9b) —
       // petrol text there reads 3:1. This hand-mixed wash (12% petrol
-      // over white) keeps the petrol text at 7.3:1, AA and above.
+      // over white) keeps the petrol text at 7.15:1, AA and above.
       itemSelectedBg: "#E3EEEE",
       itemSelectedColor: "#14555B",
     },

@@ -58,9 +58,9 @@ function HealthRow({ label, ok }: { label: string; ok: boolean }) {
  * the honest not-wired switcher row up top, then the eight stages in
  * order with their state dots, then the health strip at the bottom.
  * Two polls feed it: doctor (corpus label + probes) and ingest-status
- * (the ingest dot). Under a narrow viewport the Sider collapses to the
- * dot column; the tooltips keep the stage names reachable.
- */
+   * (the ingest dot). Under a narrow viewport the Sider collapses to the
+   * dot column; the dot's own hover hint keeps the stage names reachable.
+   */
 export default function DeskRail({
   stages,
   selected,
@@ -112,11 +112,14 @@ export default function DeskRail({
         )}
         <p className="ui-rail__switcher">{strings.railSwitcherNotWired}</p>
       </div>
+      {/* One hover hint per dot: the dot's own title. antd's collapsed
+          Tooltip is off, so a collapsed hover shows one hint, not two. */}
       <Menu
         mode="inline"
         className="ui-rail__menu"
         selectedKeys={selected ? [selected] : []}
         items={items}
+        tooltip={false}
         onClick={({ key }) => onSelect(key)}
       />
       <div className="ui-rail__health">
