@@ -4,25 +4,24 @@ import type { OpResult } from "../api/types";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 
-// Only the envelope's success family earns the "Done" receipt. Any word
-// outside the whitelist (disabled, skipped, a word the app does not
-// know) reads as not-success — honesty over optimism.
-const SUCCESS_WORDS: ReadonlySet<string> = new Set(["success", "ok"]);
+// The server's closed neutral family: words that did not run or did not
+// finish whole. Each carries its own honest headline, so they never ride
+// the open completion classification.
+const NOT_RUN: ReadonlySet<string> = new Set(["disabled", "skipped"]);
 
-// The words headline() already names, so they need no reason banner.
-const KNOWN_STATES: ReadonlySet<string> = new Set([
-  "",
-  "empty",
-  "degraded",
-  "partial",
-  "abstained",
-]);
-
-/** Map the envelope status word to one plain headline (jargon defense). */
-function headline(status: string): string {
-  switch (status) {
+/**
+ * Map the envelope to one plain headline (jargon defense). The neutral
+ * words above name themselves; the open completion family (success, ok,
+ * review_packet, requested, compared, released, evidence, answer, and
+ * words the server coins later) rides ONE classification point: the
+ * shared normalizer's ok (api/errors.ts) — never a hand word-list.
+ */
+function headline(result: OpResult): string {
+  switch (result.status) {
     case "":
-      // A status-less artifact (e.g. the governance report) is not a
+    case "unknown":
+      // A status-less artifact (e.g. the governance report; the
+      // normalizer rewrites an absent status to "unknown") is not a
       // completed op — never claim "Done" for it.
       return strings.receiptEmpty;
     case "empty":
@@ -33,8 +32,11 @@ function headline(status: string): string {
       return strings.receiptPartial;
     case "abstained":
       return strings.receiptAbstained;
+    case "disabled":
+    case "skipped":
+      return strings.receiptNotSuccess;
     default:
-      return SUCCESS_WORDS.has(status) ? strings.receiptDone : strings.receiptNotSuccess;
+      return result.ok ? strings.receiptDone : strings.receiptNotSuccess;
   }
 }
 
@@ -45,7 +47,7 @@ export default function ReceiptCard({ result }: { result: OpResult }) {
     typeof result.data === "object" && result.data !== null
       ? (result.data as Record<string, unknown>)
       : {};
-  const note = !SUCCESS_WORDS.has(result.status) && !KNOWN_STATES.has(result.status);
+  const note = NOT_RUN.has(result.status) || !result.ok;
   const reason =
     typeof data.reason === "string" && data.reason !== ""
       ? data.reason
@@ -68,7 +70,7 @@ export default function ReceiptCard({ result }: { result: OpResult }) {
     ? data.dedup_dropped.length
     : 0;
   return (
-    <Card title={headline(result.status)} size="small">
+    <Card title={headline(result)} size="small">
       {result.status === "degraded" && (
         <StatusBanner kind="warn">{strings.receiptDegraded}</StatusBanner>
       )}
