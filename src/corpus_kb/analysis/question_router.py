@@ -22,7 +22,12 @@ from typing import Protocol
 from corpus_kb.analysis.method_register import MethodRecommendation, MethodRegister
 from corpus_kb.analysis.method_register_rubric import rank_methods
 from corpus_kb.analysis.question_intent import QuestionIntent
-from corpus_kb.analysis.question_router_centroids import centroids_for, cosine
+from corpus_kb.analysis.question_router_centroids import (
+    centroids_for,
+    cosine,
+    phrase_scores,
+    usable_vector,
+)
 from corpus_kb.analysis.settings import (
     DEFAULT_ROUTING_CONFIDENCE_THRESHOLD,
     DEFAULT_ROUTING_MARGIN,
@@ -107,27 +112,14 @@ def route_question(
             status="insufficient", degraded=False, intent=intent, ranked=[], trace=trace
         )
 
-    degraded = embedder is None
     question_vector: list[float] | None = None
     if embedder is not None:
-        question_vector = embedder.embed(normalized)
-        if not question_vector or all(value == 0.0 for value in question_vector):
-            degraded = True
-            question_vector = None
-
-    scores: dict[str, float]
-    if embedder is not None and question_vector is not None:
-        dims = len(question_vector)
-        centroids = centroids_for(register, embedder, dims, candidate_ids)
-        scores = {
-            method_id: cosine(question_vector, centroids.get(method_id, [0.0] * dims))
-            for method_id in candidate_ids
-        }
+        question_vector = usable_vector(embedder.embed(normalized))
+    degraded = question_vector is None
+    if embedder is None or question_vector is None:
+        scores = phrase_scores(candidate_ids, hits, phrase_counts)
     else:
-        scores = {
-            method_id: len(hits.get(method_id, [])) / phrase_counts[method_id]
-            for method_id in candidate_ids
-        }
+        scores = _embedding_scores(register, embedder, candidate_ids, question_vector)
 
     ordered = sorted(scores, key=lambda method_id: (-scores[method_id], method_id))
     top_score = scores[ordered[0]]
@@ -137,17 +129,7 @@ def route_question(
     )
     status = "resolved" if resolved else "ambiguous"
 
-    readings: list[dict[str, str]] = []
-    if not resolved:
-        for method_id in ordered[:TOP_READINGS]:
-            matched = hits.get(method_id)
-            readings.append(
-                {
-                    "method_id": method_id,
-                    "method_name": names[method_id],
-                    "why": matched[0] if matched else names[method_id],
-                }
-            )
+    readings = [] if resolved else _build_readings(ordered, hits, names)
 
     candidate_set = set(candidate_ids)
     ranked = [rec for rec in rank_methods(register) if rec.id in candidate_set][:RANKED_CAP]
@@ -160,7 +142,53 @@ def route_question(
         readings=readings,
         note=DEGRADED_NOTE if degraded else None,
     )
-    trace = RoutingTrace(
+    trace = _build_trace(degraded, threshold, margin, scores, ordered)
+    return RouteResult(status=status, degraded=degraded, intent=intent, ranked=ranked, trace=trace)
+
+
+def _embedding_scores(
+    register: MethodRegister,
+    embedder: RoutingEmbedder,
+    candidate_ids: list[str],
+    question_vector: list[float],
+) -> dict[str, float]:
+    """Cosine from the question vector to each candidate's phrase centroid."""
+    dims = len(question_vector)
+    centroids = centroids_for(register, embedder, dims, candidate_ids)
+    return {
+        method_id: cosine(question_vector, centroids.get(method_id, [0.0] * dims))
+        for method_id in candidate_ids
+    }
+
+
+def _build_readings(
+    ordered: list[str],
+    hits: dict[str, list[str]],
+    names: dict[str, str],
+) -> list[dict[str, str]]:
+    """The top candidate restatements for an ambiguous answer."""
+    readings: list[dict[str, str]] = []
+    for method_id in ordered[:TOP_READINGS]:
+        matched = hits.get(method_id)
+        readings.append(
+            {
+                "method_id": method_id,
+                "method_name": names[method_id],
+                "why": matched[0] if matched else names[method_id],
+            }
+        )
+    return readings
+
+
+def _build_trace(
+    degraded: bool,
+    threshold: float,
+    margin: float,
+    scores: dict[str, float],
+    ordered: list[str],
+) -> RoutingTrace:
+    """The stable score trace: top rows, score desc then id asc."""
+    return RoutingTrace(
         mode="phrase" if degraded else "embedding",
         threshold=threshold,
         margin=margin,
@@ -169,7 +197,6 @@ def route_question(
             for method_id in ordered[:TOP_SCORE_ROWS]
         ],
     )
-    return RouteResult(status=status, degraded=degraded, intent=intent, ranked=ranked, trace=trace)
 
 
 def _phrase_pass(

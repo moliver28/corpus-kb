@@ -76,6 +76,29 @@ def normalized(vector: list[float]) -> list[float]:
     return [value / norm for value in vector]
 
 
+def usable_vector(vector: list[float]) -> list[float] | None:
+    """The question vector, or ``None`` when it is empty or all zero.
+
+    A zero-vector embedding is the degraded-embedder signal; it never
+    fakes confidence.
+    """
+    if vector and not all(value == 0.0 for value in vector):
+        return vector
+    return None
+
+
+def phrase_scores(
+    candidate_ids: list[str],
+    hits: dict[str, list[str]],
+    phrase_counts: dict[str, int],
+) -> dict[str, float]:
+    """Hit share over the authored phrase count (the degraded mode)."""
+    return {
+        method_id: len(hits.get(method_id, [])) / phrase_counts[method_id]
+        for method_id in candidate_ids
+    }
+
+
 def cosine(question_vector: list[float], centroid: list[float]) -> float:
     """Cosine of two unit vectors: their plain dot product."""
     return sum(left * right for left, right in zip(question_vector, centroid, strict=True))
