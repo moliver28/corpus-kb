@@ -99,6 +99,8 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "analyze_run",
         # -- analysis method register program (wave 2, tools/*_tools.py) -----
         "analysis_select_method",
+        # -- analysis question-routing program (wave 3, question front door) -
+        "analysis_route",
         "keyphrases_extract",
         "lexical_classify",
         "neighbors_classify",

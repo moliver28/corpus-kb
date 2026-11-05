@@ -30,6 +30,7 @@ from typing import Any
 from corpus_kb.api._socket_arms import (
     _add_entity,
     _add_relation,
+    _analysis_route,
     _analysis_select_method,
     _extraction_tune,
     _ingest_file,
@@ -56,6 +57,7 @@ _HAND_ARMS: dict[str, Arm] = {
     "ingest_text": _ingest_text,
     "labeling_triage": _labeling_triage,
     "analysis_select_method": _analysis_select_method,
+    "analysis_route": _analysis_route,
     "extraction_tune": _extraction_tune,
     "nli_classify": _nli_classify,
     "search": _search,

@@ -299,6 +299,7 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-analysis` | `corpus-kb analysis-backfill-dates` | `analysis_backfill_dates` | Backfill documents.document_date from chunk metadata (idempotent). |
 | `corpus-analysis` | `corpus-kb analyze-run` | `analyze_run` | Run the composed corpus analysis and write the report. |
 | `corpus-analysis-select-method` | `corpus-kb analysis-select-method` | `analysis_select_method` | Rank the register's methods for a stated task (pure registry logic). |
+| `corpus-analysis-route` | `corpus-kb analysis-route` | `analysis_route` | Route a plain-language question to the right analysis method. |
 | `corpus-keyphrases-extract` | `corpus-kb keyphrases-extract` | `keyphrases_extract` | Rank keyphrase candidates (tfidf, embedding, or llm variant). |
 | `corpus-lexical-classify` | `corpus-kb lexical-classify` | `lexical_classify` | TF-IDF + logistic labels trained on the stored weak labels. |
 | `corpus-neighbors-classify` | `corpus-kb neighbors-classify` | `neighbors_classify` | kNN vote labels over the labeled chunks, neighbors listed. |

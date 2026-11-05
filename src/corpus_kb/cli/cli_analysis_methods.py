@@ -2,7 +2,8 @@
 
 Top-level commands registered on the main app (see ``register``): the
 twelve register-backed method ops, kebab-case, one handler each — the
-same shared function the MCP + HTTP + socket surfaces call.
+same shared function the MCP + HTTP + socket surfaces call. The question
+router rides its own module (``cli_analysis_route``, routing W3).
 
 HONEST EXIT CODES (stable for scripting): ``0`` the command answered
 (including the honest no-op outcomes: disabled flag, empty corpus,

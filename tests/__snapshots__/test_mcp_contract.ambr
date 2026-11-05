@@ -10,6 +10,15 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.analysis_route_tools': dict({
+      'analysis_route': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'method_id': 'KEYWORD_ONLY',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'question': 'KEYWORD_ONLY',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.analysis_tools': dict({
       'analysis_backfill_dates': dict({
         'config': 'POSITIONAL_OR_KEYWORD',

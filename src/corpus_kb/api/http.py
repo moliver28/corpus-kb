@@ -75,6 +75,7 @@ from corpus_kb.api.routes_analysis_methods import (
     outliers_rank_route,
     sentiment_screen_route,
 )
+from corpus_kb.api.routes_analysis_route import analysis_route_route
 from corpus_kb.api.routes_ask import ask
 from corpus_kb.api.routes_beliefs import (
     beliefs_compare_route,
@@ -205,6 +206,8 @@ def create_http_app() -> FastAPI:
         Route("/api/analyze", analyze_run_route, methods=["POST"]),
         # Analysis method register program (wave 2): the method ops.
         Route("/api/analysis/select-method", analysis_select_method_route, methods=["POST"]),
+        # Analysis question-routing program (wave 3): the question front door.
+        Route("/api/analysis/route", analysis_route_route, methods=["POST"]),
         Route("/api/analysis/keyphrases-extract", keyphrases_extract_route, methods=["POST"]),
         Route("/api/analysis/lexical-classify", lexical_classify_route, methods=["POST"]),
         Route("/api/analysis/neighbors-classify", neighbors_classify_route, methods=["POST"]),

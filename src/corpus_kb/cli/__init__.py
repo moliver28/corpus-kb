@@ -89,6 +89,14 @@ from corpus_kb.cli.cli_analysis_methods import (  # noqa: E402
 
 register_analysis_method_commands(app)
 
+# Analysis question-routing program (wave 3) front door: cli_analysis_route
+# mirrors cli_analysis_methods (same plumbing, no corpus_kb.cli import).
+from corpus_kb.cli.cli_analysis_route import (  # noqa: E402
+    register as register_analysis_route_commands,
+)
+
+register_analysis_route_commands(app)
+
 # Living Corpus W2 statement-atom front doors: cli_statements mirrors
 # cli_analysis_methods (same cli_ingest plumbing, no corpus_kb.cli import).
 from corpus_kb.cli.cli_statements import (  # noqa: E402
