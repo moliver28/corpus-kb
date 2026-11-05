@@ -17,8 +17,8 @@ Route one plain-language question to the right analysis method.
   corpus-kb analysis-route "<question>" --method-id <id>
   ```
 
-- The status says resolved, ambiguous, or degraded. Degraded means the
-  embedder was down; the phrase rules still answered, and the trace says
+- The status says resolved, ambiguous, or degraded. Degraded means no
+  embedder ran; the phrase rules still answered, and the trace says
   which mode ran.
 - The trace records the mode, the threshold, the margin, and the scores.
 - Exit codes: 0 answered, 1 failed, 3 unavailable.

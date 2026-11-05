@@ -47,6 +47,21 @@ def _route_emit(result: dict[str, object], json_output: bool) -> None:
             why = top.get("why")
             if why:
                 print(f"  why: {why}")
+    _print_readings(result)
+
+
+def _print_readings(result: dict[str, object]) -> None:
+    """The ambiguity ladder: these ids are what --method-id accepts."""
+    readings = result.get("interpretations")
+    if not isinstance(readings, list) or not readings:
+        return
+    print("  readings:")
+    for row in readings:
+        if isinstance(row, dict):
+            method_id = row.get("method_id")
+            method_name = row.get("method_name")
+            why = row.get("why")
+            print(f"  - {method_id} ({method_name}): {why}")
 
 
 def analysis_route(

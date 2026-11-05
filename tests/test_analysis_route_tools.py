@@ -131,12 +131,18 @@ async def test_non_string_question_rejected() -> None:
     assert excinfo.value.remediation
 
 
-@pytest.mark.parametrize("question", ["", "   ", "short", "  abc  "])
+@pytest.mark.parametrize("question", ["", "   ", "short", "  abc  ", "7 chars"])
 async def test_short_question_rejected(question: str) -> None:
     with pytest.raises(QuestionTooShortError) as excinfo:
         await _run(question=question)
     assert str(excinfo.value) == "Ask a question of at least 8 characters."
     assert excinfo.value.remediation
+
+
+async def test_exact_minimum_question_accepted() -> None:
+    """Eight characters after strip pass the gate (off-by-one freeze)."""
+    result = await _run(question="8 chars!")
+    assert set(result) >= {"status", "intent", "ranked", "trace"}
 
 
 async def test_unknown_override_rejected() -> None:
