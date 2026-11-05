@@ -134,7 +134,6 @@ export function isDocumentsEnvelope(value: unknown): value is DocumentsEnvelope 
 export interface TagRow {
   name: string;
   color: unknown;
-  description: unknown;
 }
 
 interface TagsEnvelope {

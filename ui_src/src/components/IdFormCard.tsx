@@ -79,8 +79,13 @@ export default function IdFormCard({
         continue;
       }
       if (field.json === true) {
-        // Query pairs carry flat strings, so JSON fields ride a body only.
-        if (via === "query") continue;
+        // Query pairs carry flat strings, so JSON fields ride a body
+        // only. A query form refuses the field by name instead of
+        // dropping the text the user typed.
+        if (via === "query") {
+          errors[field.key] = strings.formFieldBodyOnly.replace("{field}", field.label);
+          continue;
+        }
         try {
           body[field.key] = JSON.parse(raw) as unknown;
         } catch {

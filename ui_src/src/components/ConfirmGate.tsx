@@ -1,5 +1,5 @@
 import { Button, Modal } from "antd";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { strings } from "../strings";
 
 /**
@@ -37,6 +37,14 @@ export default function ConfirmGate(props: ConfirmGateProps) {
   const { title, description, onConfirm, open, onOpenChange } = props;
   const [innerOpen, setInnerOpen] = useState(false);
   const isOpen = open ?? innerOpen;
+  // One confirm per open cycle: a second OK while the caller keeps the
+  // dialog open (the request still in flight) is refused.
+  const confirmedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      confirmedRef.current = false;
+    }
+  }, [isOpen]);
   const setOpen = (next: boolean): void => {
     if (open === undefined) {
       setInnerOpen(next);
@@ -68,6 +76,10 @@ export default function ConfirmGate(props: ConfirmGateProps) {
         title={title}
         open={isOpen}
         onOk={() => {
+          if (confirmedRef.current) {
+            return;
+          }
+          confirmedRef.current = true;
           setOpen(false);
           onConfirm();
         }}

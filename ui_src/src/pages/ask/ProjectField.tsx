@@ -1,4 +1,4 @@
-import { Select } from "antd";
+import { Select, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useEffect, useId } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
@@ -9,11 +9,15 @@ import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
 import { isProjectsEnvelope } from "./shapes";
 
+/** The read window; a full window says more projects may exist. */
+const PROJECT_CAP = 50;
+
 /**
  * The notebook project picker: one Select fed by the projects-list op.
  * Loading shows the picker's spinner; an empty ledger shows an honest
  * banner; a failed or unreadable read shows the error panel and keeps
- * the hand-typed id field alive, so the ask never dead-ends.
+ * the hand-typed id field alive, so the ask never dead-ends. Duplicate
+ * names gain a short id suffix, so two same-named projects stay apart.
  */
 export default function ProjectField({
   value,
@@ -33,7 +37,7 @@ export default function ProjectField({
   // One GET on mount. useOp's run holds a stable identity, so the
   // effect never re-fires.
   useEffect(() => {
-    void run();
+    void run(undefined, { limit: String(PROJECT_CAP) });
   }, [run]);
 
   function retry(): void {
@@ -77,6 +81,19 @@ export default function ProjectField({
   }
 
   const rows = result !== null && isProjectsEnvelope(result.data) ? result.data.result : [];
+  // Same names collide in a picker; the short id suffix tells them apart.
+  const nameCounts = new Map<string, number>();
+  for (const row of rows) {
+    nameCounts.set(row.name, (nameCounts.get(row.name) ?? 0) + 1);
+  }
+  const options = rows.map((row) => ({
+    value: row.project_id,
+    label:
+      (nameCounts.get(row.name) ?? 0) > 1
+        ? `${row.name} (${row.project_id.slice(0, 8)})`
+        : row.name,
+  }));
+  const capped = rows.length >= PROJECT_CAP;
   let control: ReactNode;
   if (result === null) {
     control = <Select id={id} className="ui-narrow--short" loading options={[]} />;
@@ -98,9 +115,10 @@ export default function ProjectField({
             onChange(next);
           }
         }}
-        options={rows.map((row) => ({ value: row.project_id, label: row.name }))}
+        options={options}
         aria-invalid={invalid || undefined}
         aria-describedby={invalid ? errorId : undefined}
+        aria-required="true"
       />
     );
   }
@@ -111,6 +129,11 @@ export default function ProjectField({
         {strings.askNotebookProjectLabel} *
       </label>
       {control}
+      {capped && (
+        <Typography.Text type="secondary" className="ui-flush">
+          {strings.askProjectsCapped}
+        </Typography.Text>
+      )}
       {invalid && (
         <div className="ui-field-error" id={errorId} role="alert">
           {error}

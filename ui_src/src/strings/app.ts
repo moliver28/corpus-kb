@@ -104,6 +104,7 @@ export interface AppStrings {
   boundaryBody: string;
   formFieldRequired: string;
   formInvalidJson: string;
+  formFieldBodyOnly: string;
   releaseTitle: string;
   releaseBody: string;
   releaseAssessTitle: string;

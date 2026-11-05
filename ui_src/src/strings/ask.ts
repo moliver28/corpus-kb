@@ -46,6 +46,7 @@ export interface AskStrings {
   askNotebookProjectRequired: string;
   askNotebookRetrievalOnly: string;
   askProjectsEmpty: string;
+  askProjectsCapped: string;
   askProjectsFallback: string;
   askColumnSource: string;
   askColumnText: string;
