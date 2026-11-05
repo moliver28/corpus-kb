@@ -1,11 +1,9 @@
-import { Button, Card, Skeleton } from "antd";
-import type { ReactNode } from "react";
+import { Button, Card } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import ErrorPanel from "../../components/ErrorPanel";
-import JsonViewer from "../../components/JsonViewer";
+import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
-import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
 import DocumentDetailDrawer from "./DocumentDetailDrawer";
@@ -71,60 +69,46 @@ export default function DocumentsCard() {
     refresh();
   }
 
-  let body: ReactNode;
   const result = list.result;
-  const rows =
-    result !== null && isDocumentsEnvelope(result.data) ? result.data.result : [];
+  const guarded =
+    result !== null && isDocumentsEnvelope(result.data) ? result.data : null;
+  const okEnvelope = guarded !== null;
+  const rows = guarded?.result ?? [];
   const shown = rows.slice(0, PAGE_SIZE);
   const hasMore = rows.length > PAGE_SIZE;
-  if (result === null) {
-    body = <Skeleton active title={false} paragraph={{ rows: 4 }} />;
-  } else if (result.kind === "network") {
-    body = <ErrorPanel result={result} onRetry={refresh} opId="documents-list" />;
-  } else if (result.kind === "unavailable") {
-    body = <UnavailablePanel result={result} onRetry={refresh} />;
-  } else if (!isDocumentsEnvelope(result.data)) {
-    body = (
-      <div>
-        <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-        <JsonViewer value={result.data} />
-      </div>
-    );
-  } else if (rows.length === 0 && page > 1) {
-    // The window emptied under us (deletes elsewhere); the first page
-    // is the truth, one click away.
-    body = (
-      <div className="ui-stack">
-        <StatusBanner kind="info">{strings.reviewDocsEmpty}</StatusBanner>
-        <div className="ui-actions">
-          <Button onClick={() => setPage(1)}>{strings.reviewDocsBackToFirst}</Button>
+  const body = (
+    <OpBody result={result} ok={okEnvelope} retry={refresh} opId="documents-list">
+      {rows.length === 0 && page > 1 ? (
+        // The window emptied under us (deletes elsewhere); the first
+        // page is the truth, one click away.
+        <div className="ui-stack">
+          <StatusBanner kind="info">{strings.reviewDocsEmpty}</StatusBanner>
+          <div className="ui-actions">
+            <Button onClick={() => setPage(1)}>{strings.reviewDocsBackToFirst}</Button>
+          </div>
         </div>
-      </div>
-    );
-  } else if (rows.length === 0) {
-    body = (
-      <div className="ui-stack">
-        <StatusBanner kind="info">{strings.reviewDocsEmpty}</StatusBanner>
-        <div className="ui-actions">
-          <Button type="primary" onClick={() => navigate("/ingest")}>
-            {strings.reviewDocsIngest}
-          </Button>
+      ) : rows.length === 0 ? (
+        <div className="ui-stack">
+          <StatusBanner kind="info">{strings.reviewDocsEmpty}</StatusBanner>
+          <div className="ui-actions">
+            <Button type="primary" onClick={() => navigate("/ingest")}>
+              {strings.reviewDocsIngest}
+            </Button>
+          </div>
         </div>
-      </div>
-    );
-  } else {
-    body = (
-      <DocumentsTable
-        rows={shown}
-        page={page}
-        pageSize={PAGE_SIZE}
-        hasMore={hasMore}
-        onPage={setPage}
-        onDetails={setDetail}
-        onDelete={(row) => void removeRow(row)}
-      />
-    );
-  }
+      ) : (
+        <DocumentsTable
+          rows={shown}
+          page={page}
+          pageSize={PAGE_SIZE}
+          hasMore={hasMore}
+          onPage={setPage}
+          onDetails={setDetail}
+          onDelete={(row) => void removeRow(row)}
+        />
+      )}
+    </OpBody>
+  );
 
   return (
     <Card title={strings.reviewDocsTitle}>

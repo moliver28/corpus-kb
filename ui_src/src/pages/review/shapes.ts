@@ -198,9 +198,21 @@ export function tagColor(color: unknown): string | undefined {
   return typeof color === "string" && /^#[0-9a-fA-F]{6}$/.test(color) ? color : undefined;
 }
 
-/** One "added" date word from an ISO timestamp (fixed locale, UTC). */
+/**
+ * One Date from the server's timestamp word. The live arms ship
+ * "2026-01-05 10:12:00+00:00" (Postgres str(datetime)) and
+ * "2026-01-05 10:12:00+00" (DuckDB VARCHAR cast) — both space
+ * separated; Safari refuses the space form, so the word crosses to the
+ * ISO T form and a bare +HH offset gains its minutes before parsing.
+ */
+export function parseServerTime(value: string): Date {
+  const normalized = value.replace(" ", "T").replace(/([+-]\d{2})$/, "$1:00");
+  return new Date(normalized);
+}
+
+/** One "added" date word from a server timestamp (fixed locale, UTC). */
 export function dateText(iso: string): string {
-  const when = new Date(iso);
+  const when = parseServerTime(iso);
   if (Number.isNaN(when.getTime())) return "";
   return new Intl.DateTimeFormat("en-US", {
     year: "numeric",

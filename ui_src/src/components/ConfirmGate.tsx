@@ -2,31 +2,39 @@ import { Button, Modal } from "antd";
 import { useState, type ReactNode } from "react";
 import { strings } from "../strings";
 
-/** The gate before a long or destructive op: the run starts only on confirm. */
-export default function ConfirmGate({
-  title,
-  description,
-  confirmLabel,
-  loading = false,
-  disabled = false,
-  trigger,
-  onConfirm,
-  open,
-  onOpenChange,
-}: {
+/**
+ * The gate props split on the opener: with a trigger the caller owns
+ * the opener control (its loading and disabled state included), so the
+ * default-button props would be silent dead weight on a destructive op
+ * — the never-typed members turn that misuse into a compile error.
+ */
+type ConfirmGateProps = {
   title: string;
   description: string;
-  confirmLabel?: string;
-  loading?: boolean;
-  disabled?: boolean;
-  /** The caller's opener (a row button); it replaces the default button. */
-  trigger?: ReactNode;
   onConfirm: () => void;
   /** Controlled open state; leave unset and the gate owns it. */
   open?: boolean;
   /** Reports every open change (open button, OK, cancel). */
   onOpenChange?: (open: boolean) => void;
-}) {
+} & (
+  | {
+      /** The caller's opener (a row button); it replaces the default button. */
+      trigger: ReactNode;
+      confirmLabel?: never;
+      loading?: never;
+      disabled?: never;
+    }
+  | {
+      trigger?: undefined;
+      confirmLabel?: string;
+      loading?: boolean;
+      disabled?: boolean;
+    }
+);
+
+/** The gate before a long or destructive op: the run starts only on confirm. */
+export default function ConfirmGate(props: ConfirmGateProps) {
+  const { title, description, onConfirm, open, onOpenChange } = props;
   const [innerOpen, setInnerOpen] = useState(false);
   const isOpen = open ?? innerOpen;
   const setOpen = (next: boolean): void => {
@@ -36,19 +44,19 @@ export default function ConfirmGate({
     onOpenChange?.(next);
   };
   const opener =
-    trigger === undefined ? (
+    props.trigger === undefined ? (
       <Button
         type="primary"
-        loading={loading}
-        disabled={disabled}
+        loading={props.loading ?? false}
+        disabled={props.disabled ?? false}
         onClick={() => setOpen(true)}
       >
-        {confirmLabel ?? strings.runnerRunLabel}
+        {props.confirmLabel ?? strings.runnerRunLabel}
       </Button>
     ) : (
       // The opener control (normally an antd Button) keeps its own
       // keyboard activation; the click bubbles to this span.
-      <span onClick={() => setOpen(true)}>{trigger}</span>
+      <span onClick={() => setOpen(true)}>{props.trigger}</span>
     );
   return (
     <>

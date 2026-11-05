@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
-import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import { calls, clearCalls, makeWrapper, respond, stubFetch, stubFetchImpl } from "../test/testUtils";
 import type { MinimalResponse } from "../test/testUtils";
 import assignmentsOk from "../test/fixtures/assignments-ok-200.json";
 import documentDeleteOk from "../test/fixtures/document-delete-ok-200.json";
@@ -113,6 +113,49 @@ describe("Review page", () => {
     fireEvent.click(await screen.findByRole("button", { name: strings.confirmCancel }));
     expect(screen.queryByText(strings.reviewDocsDeleted)).toBeNull();
     expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("never renders a slow tag answer for the document the user left", async () => {
+    // The two tags reads are held and released by hand: the second
+    // document's answer lands first, the first document's lands late.
+    const held: ((reply: MinimalResponse) => void)[] = [];
+    stubFetchImpl((url: string | URL, init?: { method?: string }) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const u = String(url);
+      const hit = reviewRoutes().find((r) => r.method === method && u.includes(r.path));
+      if (hit !== undefined && u.includes("/tags")) {
+        return new Promise<MinimalResponse>((resolve) => held.push(resolve));
+      }
+      calls.push({ method, url: u, body: "" });
+      if (hit !== undefined) return Promise.resolve(hit.reply);
+      return Promise.reject(new Error(`unexpected fetch: ${method} ${u}`));
+    });
+    render(<Review />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    await waitFor(() => expect(held.length).toBe(1));
+    fireEvent.click(detailsButtons[1]);
+    await waitFor(() => expect(held.length).toBe(2));
+    // The second document's answer lands first and renders.
+    held[1](
+      respond(200, {
+        status: "success",
+        result: [{ name: "fresh-b", color: null, description: null }],
+      }),
+    );
+    expect(await screen.findByText("fresh-b")).toBeTruthy();
+    // The first document's late answer may not touch the open drawer.
+    held[0](
+      respond(200, {
+        status: "success",
+        result: [{ name: "stale-a", color: null, description: null }],
+      }),
+    );
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    expect(screen.queryByText("stale-a")).toBeNull();
+    expect(screen.getByText("fresh-b")).toBeTruthy();
   });
 
   it("falls back on a drifted documents payload", async () => {

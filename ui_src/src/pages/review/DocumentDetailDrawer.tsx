@@ -1,12 +1,8 @@
-import { Descriptions, Drawer, Skeleton, Tag, Typography } from "antd";
+import { Descriptions, Drawer, Tag, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
-import type { OpResult } from "../../api/types";
-import ErrorPanel from "../../components/ErrorPanel";
-import JsonViewer from "../../components/JsonViewer";
-import StatusBanner from "../../components/StatusBanner";
-import UnavailablePanel from "../../components/UnavailablePanel";
-import { useOp } from "../../hooks/useOp";
+import OpBody from "../../components/OpBody";
+import { useRowRead } from "../../hooks/useRowRead";
 import { strings } from "../../strings";
 import {
   isMetadataEnvelope,
@@ -15,38 +11,6 @@ import {
   tagColor,
 } from "./shapes";
 import type { DocumentRow, MetadataRow, TagRow } from "./shapes";
-
-/**
- * One read's honest body: load, network, unavailable, drift, then the
- * caller's rows. The dispatch mirrors the card pattern (ReviewQueueCard)
- * without a second error vocabulary.
- */
-function readBody(
-  result: OpResult<unknown> | null,
-  ok: boolean,
-  retry: () => void,
-  opId: string,
-  rows: ReactNode,
-): ReactNode {
-  if (result === null) {
-    return <Skeleton active title={false} paragraph={{ rows: 2 }} />;
-  }
-  if (result.kind === "network") {
-    return <ErrorPanel result={result} onRetry={retry} opId={opId} />;
-  }
-  if (result.kind === "unavailable") {
-    return <UnavailablePanel result={result} onRetry={retry} />;
-  }
-  if (!ok) {
-    return (
-      <div>
-        <StatusBanner kind="warn">{strings.unreadableResponse}</StatusBanner>
-        <JsonViewer value={result.data} />
-      </div>
-    );
-  }
-  return rows;
-}
 
 function tagWords(rows: TagRow[]): ReactNode {
   if (rows.length === 0) {
@@ -82,8 +46,10 @@ function metadataWords(rows: MetadataRow[]): ReactNode {
 
 /**
  * The one document's tags and metadata rows, in a drawer. Both reads
- * are manifest ops (document-tags, document-metadata); the writes are
- * not yet manifest ops, so the drawer stays read-only by design.
+ * are manifest ops (document-tags, document-metadata) through the
+ * row-tagged read hook — the newest document wins, so a slow answer for
+ * a document the user already left never renders. The writes are not
+ * yet manifest ops, so the drawer stays read-only by design.
  */
 export default function DocumentDetailDrawer({
   row,
@@ -92,61 +58,64 @@ export default function DocumentDetailDrawer({
   row: DocumentRow | null;
   onClose: () => void;
 }) {
-  const tags = useOp("document-tags");
-  const meta = useOp("document-metadata");
-  const { run: runTags, reset: resetTags } = tags;
-  const { run: runMeta, reset: resetMeta } = meta;
+  const { read: readTags, state: tagsState } = useRowRead("document-tags");
+  const { read: readMeta, state: metaState } = useRowRead("document-metadata");
 
   // One read pair per opened document: tags by path slot, metadata by
-  // query pair. The run identities are stable, so the effect fires once
-  // per row change.
+  // query pair. The read identities are stable, so the effect fires
+  // once per row change.
   useEffect(() => {
     if (row === null) {
       return;
     }
-    resetTags();
-    resetMeta();
-    void runTags(undefined, undefined, { doc_id: row.doc_id });
-    void runMeta(undefined, { doc_id: row.doc_id });
-  }, [row, runTags, runMeta, resetTags, resetMeta]);
+    readTags(row.doc_id, { pathParams: { doc_id: row.doc_id } });
+    readMeta(row.doc_id, { query: { doc_id: row.doc_id } });
+  }, [row, readTags, readMeta]);
 
+  // Only a read addressed to the open document may render.
+  const tagsShown =
+    tagsState !== null && row !== null && tagsState.rowId === row.doc_id
+      ? tagsState.result
+      : null;
+  const metaShown =
+    metaState !== null && row !== null && metaState.rowId === row.doc_id
+      ? metaState.result
+      : null;
+  const tagRows = tagsShown !== null && isTagsEnvelope(tagsShown.data) ? tagsShown.data.result : null;
+  const metaRows =
+    metaShown !== null && isMetadataEnvelope(metaShown.data) ? metaShown.data.result : null;
   const open = row !== null;
   return (
-    <Drawer
-      title={open ? row.source : ""}
-      open={open}
-      onClose={onClose}
-      destroyOnHidden
-    >
+    <Drawer title={open ? row.source : ""} open={open} onClose={onClose} destroyOnHidden>
       <div className="ui-stack">
         <Typography.Title level={5} className="ui-flush">
           {strings.reviewTagsTitle}
         </Typography.Title>
-        {readBody(
-          tags.result,
-          tags.result !== null && isTagsEnvelope(tags.result.data),
-          () => {
-            if (row !== null) void runTags(undefined, undefined, { doc_id: row.doc_id });
-          },
-          "document-tags",
-          tags.result !== null && isTagsEnvelope(tags.result.data)
-            ? tagWords(tags.result.data.result)
-            : null,
-        )}
+        <OpBody
+          result={tagsShown}
+          ok={tagRows !== null}
+          skeletonRows={2}
+          opId="document-tags"
+          retry={() => {
+            if (row !== null) readTags(row.doc_id, { pathParams: { doc_id: row.doc_id } });
+          }}
+        >
+          {tagRows === null ? null : tagWords(tagRows)}
+        </OpBody>
         <Typography.Title level={5} className="ui-flush">
           {strings.reviewMetadataTitle}
         </Typography.Title>
-        {readBody(
-          meta.result,
-          meta.result !== null && isMetadataEnvelope(meta.result.data),
-          () => {
-            if (row !== null) void runMeta(undefined, { doc_id: row.doc_id });
-          },
-          "document-metadata",
-          meta.result !== null && isMetadataEnvelope(meta.result.data)
-            ? metadataWords(meta.result.data.result)
-            : null,
-        )}
+        <OpBody
+          result={metaShown}
+          ok={metaRows !== null}
+          skeletonRows={2}
+          opId="document-metadata"
+          retry={() => {
+            if (row !== null) readMeta(row.doc_id, { query: { doc_id: row.doc_id } });
+          }}
+        >
+          {metaRows === null ? null : metadataWords(metaRows)}
+        </OpBody>
       </div>
     </Drawer>
   );
