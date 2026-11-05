@@ -252,6 +252,22 @@ the textbooks"). Enqueue lands rows; a worker drains them.
 | `stale_lease_seconds` | `600` | How long a running row's heartbeat may go quiet before the worker may reclaim it. Positive int |
 | `max_attempts` | `3` | Retry cap per row. Each failed run or reclaimed stale lease costs one attempt; the row lands on `failed` past the cap. Positive int |
 
+### `analysis.routing`
+
+The question router's decision knobs (`analysis_route`;
+`src/corpus_kb/analysis/question_router.py` is the reader). The router
+resolves a question when the top score clears the confidence threshold
+and beats the runner-up score by the margin.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `confidence_threshold` | `0.55` | The top score must reach this value to resolve |
+| `margin` | `0.10` | The top score must beat the runner-up score by this much |
+
+This block is not the top-level `routing:` block. The top-level block
+drives query routing in retrieval and carries its own
+`confidence_threshold` (`0.35`). The two blocks never mix.
+
 ### Environment variables
 
 Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set variable is NOT in this table. That variable is dead for this version: remove it, or set the config key instead.
