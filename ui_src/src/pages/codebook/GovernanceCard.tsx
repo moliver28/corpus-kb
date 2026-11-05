@@ -1,4 +1,4 @@
-import { Button, Card, Typography } from "antd";
+import { Button, Card, Segmented, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import ErrorPanel from "../../components/ErrorPanel";
@@ -33,16 +33,25 @@ function lightKind(level: unknown): "ok" | "warn" | "error" {
 /**
  * The governance report: one schema-pinned artifact per level. The
  * novice view's traffic lights and next actions render as banners when
- * present; the raw artifact stays one click away (ReceiptCard).
+ * present; the raw artifact stays one click away (ReceiptCard). The
+ * level is a selection, the run is the action — and a report from the
+ * other level says so instead of posing as current.
  */
 export default function GovernanceCard() {
   const [expert, setExpert] = useState(false);
+  const [ranLevel, setRanLevel] = useState<"novice" | "expert" | null>(null);
   const report = useOp("research-report");
 
   async function run(): Promise<void> {
     report.reset();
+    setRanLevel(expert ? "expert" : "novice");
     await report.run({ level: expert ? "expert" : "novice" });
   }
+
+  // The shown report is stale when the level moved after the run.
+  const currentLevel = expert ? "expert" : "novice";
+  const stale = ranLevel !== null && ranLevel !== currentLevel;
+  const staleLevel = expert ? strings.codebookLevelExpert : strings.codebookLevelNovice;
 
   let body: ReactNode = null;
   const result = report.result;
@@ -64,6 +73,11 @@ export default function GovernanceCard() {
         : [];
       body = (
         <div className="ui-stack">
+          {stale && (
+            <StatusBanner kind="warn">
+              {strings.codebookGovernanceStale.replace("{level}", staleLevel)}
+            </StatusBanner>
+          )}
           {lights.map(([name, light]) => (
             <StatusBanner key={name} kind={lightKind(light.level)}>
               <strong>{name}: </strong>
@@ -94,20 +108,17 @@ export default function GovernanceCard() {
     <Card title={strings.codebookGovernanceTitle}>
       <Typography.Paragraph type="secondary">{strings.codebookGovernanceBody}</Typography.Paragraph>
       <div className="ui-actions">
-        <Button
-          aria-pressed={!expert}
-          type={expert ? "default" : "primary"}
-          onClick={() => setExpert(false)}
-        >
-          {strings.codebookLevelNovice}
-        </Button>
-        <Button
-          aria-pressed={expert}
-          type={expert ? "primary" : "default"}
-          onClick={() => setExpert(true)}
-        >
-          {strings.codebookLevelExpert}
-        </Button>
+        {/* The level is a segmented selection; the Run button is the one
+            action, so selection and action never share a look. */}
+        <Segmented
+          aria-label={strings.codebookGovernanceTitle}
+          options={[
+            { label: strings.codebookLevelNovice, value: "novice" },
+            { label: strings.codebookLevelExpert, value: "expert" },
+          ]}
+          value={currentLevel}
+          onChange={(value) => setExpert(value === "expert")}
+        />
         <Button type="primary" loading={report.running} onClick={() => void run()}>
           {strings.runnerRunLabel}
         </Button>
