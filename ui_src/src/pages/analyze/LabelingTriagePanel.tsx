@@ -44,7 +44,6 @@ export default function LabelingTriagePanel() {
   const result = triage.result;
   const data = result !== null && isTriageEnvelope(result.data) ? result.data : null;
   const note = envelopeNote(result?.data);
-  const flagged = data?.n_flagged ?? 0;
   const shown = data?.queue.length ?? 0;
   return (
     <div className="ui-stack-gap">
@@ -69,11 +68,10 @@ export default function LabelingTriagePanel() {
           <StatusBanner kind="info">{strings.analyzeTriageEmpty}</StatusBanner>
         ) : data !== null ? (
           <div className="ui-stack">
-            {flagged > shown && (
-              <StatusBanner kind="info">
-                {strings.analyzeTriageHead.replace("{count}", String(shown)).replace("{total}", String(flagged))}
-              </StatusBanner>
-            )}
+            {/* The server's own success reason (the gold panel's one
+                treatment): it names the flagged total and the advisory
+                contract, so the panel computes no line of its own. */}
+            {note.reason !== "" && <StatusBanner kind="info">{note.reason}</StatusBanner>}
             <Table<TriageRow>
               size="small"
               rowKey="chunk_id"

@@ -1,6 +1,7 @@
 import { Card, Select, Skeleton, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
+import { shortTimeText } from "../api/format";
 import { runtimeConfig } from "../api/runtimeConfig";
 import DegradedCard from "../components/DegradedCard";
 import DirectoryCard from "../components/DirectoryCard";
@@ -29,7 +30,7 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
     {
       title: strings.scaleRunsColumnStarted,
       dataIndex: "started_at",
-      render: (value: unknown) => short(value),
+      render: (value: unknown) => shortTimeText(value),
     },
     {
       title: strings.scaleRunsColumnSource,
@@ -71,10 +72,6 @@ function RunFilterView({ runs }: { runs: LedgerRun[] }) {
       )}
     </div>
   );
-}
-
-function short(value: unknown): string {
-  return typeof value === "string" && value.length >= 19 ? value.slice(0, 19) : "-";
 }
 
 function dash(value: unknown): string {

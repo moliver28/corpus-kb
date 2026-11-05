@@ -437,7 +437,6 @@ export interface Strings {
   analyzeTriageBody: string;
   analyzeTriageAction: string;
   analyzeTriageEmpty: string;
-  analyzeTriageHead: string;
   analyzeTriageColumnChunk: string;
   analyzeTriageColumnAssigned: string;
   analyzeTriageColumnSupport: string;
@@ -473,6 +472,7 @@ export interface Strings {
   scaleCalibrateApplyBody: string;
   scaleCalibrateNoChanges: string;
   scaleCalibrateWritten: string;
+  scaleCalibrateWrittenUnknown: string;
   scaleCalibrateChosen: string;
   scaleCalibrateColumnKey: string;
   scaleCalibrateColumnCurrent: string;

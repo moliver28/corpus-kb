@@ -28,7 +28,7 @@
       "cv_folds": 5,
       "flag_threshold": 0.2,
       "classes": ["method_quality", "outcome_report"],
-      "reason": "2 of 3 flagged labels show in the bounded head."
+      "reason": "3/40 units below out-of-sample support 0.2; queue is advisory - never auto-relabel"
     }
   }
 }

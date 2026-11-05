@@ -7,12 +7,12 @@
 
 import { percentText } from "../../api/format";
 
-/** One built chunk label (labeling/writer.py read_labels). */
+/** One built chunk label (labeling/writer.py read_labels; iso_or_none may answer null). */
 export interface LabelRow {
   chunk_id: string;
   label: string;
   probability: number;
-  created_at: string;
+  created_at: string | null;
 }
 
 interface LabelsEnvelope {
@@ -33,7 +33,8 @@ export function isLabelsEnvelope(value: unknown): value is LabelsEnvelope {
         typeof r.chunk_id === "string" &&
         typeof r.label === "string" &&
         typeof r.probability === "number" &&
-        Number.isFinite(r.probability)
+        Number.isFinite(r.probability) &&
+        (r.created_at === null || typeof r.created_at === "string")
       );
     })
   );

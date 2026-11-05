@@ -30,3 +30,12 @@ export function percentText(value: unknown): string {
     ? `${Math.round(value * 100)}%`
     : "";
 }
+
+/**
+ * One run-ledger "started" cell: the server word's first 19 characters
+ * (the second precision of "2026-01-05 10:12:00..."), "-" when the word
+ * is too short to carry it.
+ */
+export function shortTimeText(value: unknown): string {
+  return typeof value === "string" && value.length >= 19 ? value.slice(0, 19) : "-";
+}

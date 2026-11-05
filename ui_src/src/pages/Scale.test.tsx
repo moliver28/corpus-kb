@@ -365,4 +365,48 @@ describe("Scale page", () => {
     const write = calls.filter((c) => c.url.includes("/api/calibrate/apply"))[1];
     expect(write.body).toContain('"write":true');
   });
+
+  it("never invents a changed-line count when the write answer drifts", async () => {
+    setTabVisible(true);
+    // The write run answers a status-only success: no result object, so
+    // the count is unknown — the banner must say so, never "0".
+    let applyCalls = 0;
+    const impl = (
+      url: string | URL,
+      init?: { method?: string; body?: unknown },
+    ): Promise<MinimalResponse> => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      calls.push({ method, url: String(url), body: String(init?.body ?? "") });
+      if (String(url).includes("/api/ingest/status")) {
+        return Promise.resolve(respond(200, ingestStatusOk.response.body));
+      }
+      if (String(url).includes("/api/calibrate/apply")) {
+        applyCalls += 1;
+        return Promise.resolve(
+          respond(200, applyCalls === 1 ? calibrateOk.response.body : { status: "success" }),
+        );
+      }
+      return Promise.reject(new Error(`unexpected fetch: ${method} ${String(url)}`));
+    };
+    vi.stubGlobal("fetch", impl as unknown as typeof fetch);
+    render(<Scale />, { wrapper: makeWrapper() });
+    const calibrateCard = cardOf(strings.scaleCalibrateTitle);
+    fireEvent.change(
+      within(calibrateCard).getByPlaceholderText(strings.scaleCalibrateProfileLabel),
+      { target: { value: "default" } },
+    );
+    fireEvent.click(
+      within(calibrateCard).getByRole("button", { name: strings.scaleCalibratePreview }),
+    );
+    await within(calibrateCard).findByText("retrieval.candidate_floor");
+    fireEvent.click(
+      within(calibrateCard).getByRole("button", { name: strings.scaleCalibrateApply }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.confirmConfirm }));
+    expect(
+      await within(calibrateCard).findByText(strings.scaleCalibrateWrittenUnknown),
+    ).toBeTruthy();
+    expect(within(calibrateCard).queryByText("Changed lines: 0")).toBeNull();
+  });
 });

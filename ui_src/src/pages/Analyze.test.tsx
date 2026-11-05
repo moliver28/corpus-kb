@@ -243,8 +243,13 @@ describe("Analyze page", () => {
     expect(
       (await within(labelingCard).findAllByText("outcome_report")).length,
     ).toBeGreaterThan(0);
-    // The bounded head line: the server flagged 3, the queue shows 2.
-    expect(within(labelingCard).getByText("2 of 3 flagged labels show here.")).toBeTruthy();
+    // The server's own success reason shows (the gold panel's one
+    // treatment): flagged total plus the advisory contract.
+    expect(
+      within(labelingCard).getByText(
+        "3/40 units below out-of-sample support 0.2; queue is advisory - never auto-relabel",
+      ),
+    ).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/labeling/triage"));
     expect(sent?.body).toBe("{}");
   });

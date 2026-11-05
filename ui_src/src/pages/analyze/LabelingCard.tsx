@@ -30,7 +30,7 @@ const LABEL_COLUMNS: ColumnsType<LabelRow> = [
     title: strings.analyzeLabelsColumnAdded,
     key: "added",
     render: (_value: unknown, row: LabelRow) => (
-      <span className="ui-num">{dateText(row.created_at)}</span>
+      <span className="ui-num">{row.created_at === null ? "" : dateText(row.created_at)}</span>
     ),
   },
 ];

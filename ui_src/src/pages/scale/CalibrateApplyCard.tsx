@@ -89,7 +89,7 @@ export default function CalibrateApplyCard() {
   const apply = useOp("calibrate-apply");
   const [profile, setProfile] = useState("");
   const [error, setError] = useState("");
-  const [written, setWritten] = useState<number | null>(null);
+  const [written, setWritten] = useState<number | "unknown" | null>(null);
   const { rootRef, flag } = useFirstErrorFocus();
   const bodyRef = useRef<Record<string, unknown>>({});
 
@@ -103,8 +103,10 @@ export default function CalibrateApplyCard() {
     bodyRef.current = write ? { profile: profile.trim(), write: true } : { profile: profile.trim() };
     const res = await apply.run(bodyRef.current);
     if (res.ok && write) {
+      // A drifted write answer never invents a count: the banner says
+      // the count is unknown instead of fabricating zero.
       const env = isApplyBody(res.data) ? res.data.result : null;
-      setWritten(env === null ? 0 : env.applied_count);
+      setWritten(env === null ? "unknown" : env.applied_count);
     }
   }
 
@@ -184,7 +186,9 @@ export default function CalibrateApplyCard() {
       </div>
       {written !== null && (
         <StatusBanner kind="ok">
-          {strings.scaleCalibrateWritten.replace("{count}", String(written))}
+          {written === "unknown"
+            ? strings.scaleCalibrateWrittenUnknown
+            : strings.scaleCalibrateWritten.replace("{count}", String(written))}
         </StatusBanner>
       )}
       {body}
