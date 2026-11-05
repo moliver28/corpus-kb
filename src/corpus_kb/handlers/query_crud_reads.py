@@ -15,6 +15,7 @@ apply here unchanged (same acquire shape: gateway ``transaction`` scope or
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 import asyncpg
@@ -87,10 +88,20 @@ def _entities(rows: list[Any]) -> list[EntityResult]:
             entity_id=row["entity_id"],
             name=row["name"],
             entity_type=row["entity_type"],
-            metadata=dict(row["metadata"]) if row["metadata"] else {},
+            metadata=_metadata_of(row["metadata"]),
         )
         for row in rows
     ]
+
+
+def _metadata_of(raw: Any) -> dict[str, Any]:
+    """One metadata value from the row: JSONB text (asyncpg) or a dict."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 async def verify_answer(
