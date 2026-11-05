@@ -128,6 +128,7 @@ class ListEntitiesQuery(BaseModel):
     tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
     entity_type: str | None = None
     limit: int = 100
+    offset: int = 0
 
 
 class SearchSimilarQuery(BaseModel):

@@ -134,10 +134,13 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # untag_document, set_metadata),
     # +2 for the Phase-2 Wave 3 stats pair (stats, document_stats; the nine
     # derived-analysis registry rows name tools the catalogue already
+    # registered, so they add nothing to the union),
+    # +1 for the Phase-2 Wave 4 entity read (list_entities; the four §5.1
+    # graph reads and the two graph writes name tools the catalogue already
     # registered, so they add nothing to the union)
-    # == 92. The set under the pin is the catalogue/registry UNION, so a
+    # == 93. The set under the pin is the catalogue/registry UNION, so a
     # tool added without a row (or dropped without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 92
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 93
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

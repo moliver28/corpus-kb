@@ -642,6 +642,61 @@ SURFACES: tuple[Surface, ...] = (
         description="Side-by-side belief posteriors for one subject across objects (read-only).",
         http_route="/api/beliefs/compare",
     ),
+    # -- Phase-2 Wave 4: the graph C+R surfaces. The four §5.1 graph reads
+    #    and the two graph writes carry catalogue rows (the reads since the
+    #    §5.1 births, the writes since the full-parity wave); these rows
+    #    make them manifest ops the SPA can call. add-entity and
+    #    add-relation are WRITE ops: NEVER add them to SERVER_AUTO_APPROVE.
+    #    ------------------------------------------------------------------
+    Surface(
+        name="list-entities",
+        cli_path="list-entities",
+        mcp_tool="list_entities",
+        description="List graph entities, one name-ordered window (read-only).",
+        http_route="/api/entities",
+    ),
+    Surface(
+        name="search-graph",
+        cli_path="search-graph",
+        mcp_tool="search_graph",
+        description="Search graph entities by name (read-only).",
+        http_route="/api/graph/search",
+    ),
+    Surface(
+        name="get-entity-relations",
+        cli_path="get-entity-relations",
+        mcp_tool="get_entity_relations",
+        description="List one entity's relations (read-only).",
+        http_route="/api/graph/relations/{entity_id}",
+    ),
+    Surface(
+        name="graph-neighbors",
+        cli_path="graph-neighbors",
+        mcp_tool="graph_neighbors",
+        description="List entities within 1 to 3 hops of one entity (read-only).",
+        http_route="/api/graph/neighbors",
+    ),
+    Surface(
+        name="graph-traverse",
+        cli_path="graph-traverse",
+        mcp_tool="graph_traverse",
+        description="Walk the graph from one entity up to the depth cap (read-only).",
+        http_route="/api/graph/traverse",
+    ),
+    Surface(
+        name="add-entity",
+        cli_path="add-entity",
+        mcp_tool="add_entity",
+        description="Add one entity to the knowledge graph.",
+        http_route="/api/entities",
+    ),
+    Surface(
+        name="add-relation",
+        cli_path="add-relation",
+        mcp_tool="add_relation",
+        description="Add one relation between two entities.",
+        http_route="/api/relations",
+    ),
 )
 
 # --------------------------------------------------------------------------

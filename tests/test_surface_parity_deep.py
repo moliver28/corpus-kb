@@ -829,6 +829,12 @@ async def _shared_graph_traverse(ctx: dict[str, Any]) -> dict[str, Any]:
     return await graph_traverse(ctx["pool"], ENTITY_A, max_depth=2, config=ctx["config"])
 
 
+async def _shared_list_entities(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.entity_read_tools import list_entities
+
+    return await list_entities(ctx["pool"], config=ctx["config"])
+
+
 def _release_leg(
     fn_name: str, http: str, body: dict[str, Any], mcp_args: dict[str, Any], **tool_kwargs: Any
 ) -> Any:
@@ -1471,6 +1477,12 @@ LEGS: dict[str, _Leg] = {
         _sock("graph_traverse", {"entity_id": ENTITY_A, "max_depth": 2}),
         _mcp({"entity_id": ENTITY_A, "max_depth": 2}),
     ),
+    "list_entities": _Leg(
+        _shared_list_entities,
+        _get("/api/entities", {"limit": "50", "offset": "0"}),
+        _sock("list_entities", {"limit": 50}),
+        _mcp({"limit": 50}),
+    ),
     "release_assess": _Leg(
         **_release_leg(
             "release_assess",
@@ -2039,6 +2051,9 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     async def canned_list_documents(self: Any, query: Any) -> list[Any]:
         return []
 
+    async def canned_list_entities(self: Any, query: Any) -> list[Any]:
+        return []
+
     # Issue #182 read ops: the similar/context searches answer through the
     # same canned QueryHandler; the tag/metadata reads answer through the
     # same canned TagHandler singleton.
@@ -2083,6 +2098,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     monkeypatch.setattr(QueryHandler, "handle_search_with_meta", canned_search)
     monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
     monkeypatch.setattr(QueryHandler, "handle_list_documents", canned_list_documents)
+    monkeypatch.setattr(QueryHandler, "handle_list_entities", canned_list_entities)
     monkeypatch.setattr(QueryHandler, "handle_search_similar", canned_search_similar)
     monkeypatch.setattr(QueryHandler, "handle_search_context", canned_search_context)
     monkeypatch.setattr(
@@ -2482,6 +2498,15 @@ def test_catalogue_matches_surface_registry() -> None:
         "beliefs_timeline",
         "beliefs_predict",
         "beliefs_compare",
+        # Phase-2 Wave 4: the graph reads and writes byte-match their
+        # registry rows (list_entities was handler-only before Wave 4).
+        "add_entity",
+        "add_relation",
+        "search_graph",
+        "get_entity_relations",
+        "graph_neighbors",
+        "graph_traverse",
+        "list_entities",
     } <= set(checked)
 
 

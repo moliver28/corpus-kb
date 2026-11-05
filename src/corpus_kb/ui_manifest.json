@@ -426,6 +426,66 @@
     "required": []
   },
   {
+    "description": "List graph entities, one name-ordered window (read-only).",
+    "id": "list-entities",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities",
+    "required": []
+  },
+  {
+    "description": "Add one entity to the knowledge graph.",
+    "id": "add-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities",
+    "required": []
+  },
+  {
+    "description": "List entities within 1 to 3 hops of one entity (read-only).",
+    "id": "graph-neighbors",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/neighbors",
+    "required": []
+  },
+  {
+    "description": "List one entity's relations (read-only).",
+    "id": "get-entity-relations",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/relations/{entity_id}",
+    "required": []
+  },
+  {
+    "description": "Search graph entities by name (read-only).",
+    "id": "search-graph",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/search",
+    "required": []
+  },
+  {
+    "description": "Walk the graph from one entity up to the depth cap (read-only).",
+    "id": "graph-traverse",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/traverse",
+    "required": []
+  },
+  {
     "description": "Ingest the supported files under one directory in one walk.",
     "id": "ingest-directory",
     "longRunning": true,
@@ -646,6 +706,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/queue/status",
+    "required": []
+  },
+  {
+    "description": "Add one relation between two entities.",
+    "id": "add-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations",
     "required": []
   },
   {

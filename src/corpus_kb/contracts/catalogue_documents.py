@@ -188,4 +188,24 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 3),
     ),
+    Operation(
+        name="list_entities",
+        family="graph",
+        description="List graph entities, one name-ordered window. Rows carry name and type.",
+        handler="corpus_kb.tools.entity_read_tools:list_entities",
+        params=(
+            ParamSpec("entity_type"),
+            ParamSpec("limit", default=100),
+            ParamSpec("offset", default=0),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "list_entities"),
+            SurfaceSpec(CLI, "list-entities"),
+            SurfaceSpec(HTTP, "/api/entities", "GET"),
+            SurfaceSpec(SOCKET, "list_entities"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
 )

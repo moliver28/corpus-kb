@@ -149,6 +149,16 @@
         'config': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.entity_read_tools': dict({
+      'list_entities': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'entity_type': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'offset': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.extraction_tune_tools': dict({
       'extraction_tune': dict({
         'config': 'POSITIONAL_OR_KEYWORD',

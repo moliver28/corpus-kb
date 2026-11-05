@@ -52,24 +52,26 @@ async def list_entities(
     pool: asyncpg.Pool | SqlGateway, query: ListEntitiesQuery
 ) -> list[EntityResult]:
     """List entities, optionally filtered by type."""
+    # The name ties break on the id, so two entities with one name hold
+    # one total order (deterministic output, program rule 9).
     if query.entity_type:
         sql = """
             SELECT entity_id, name, entity_type, metadata
             FROM entities
             WHERE tenant_id = $1 AND entity_type = $2
-            ORDER BY name ASC
-            LIMIT $3
+            ORDER BY name ASC, entity_id ASC
+            LIMIT $3 OFFSET $4
             """
-        args = (str(query.tenant_id), query.entity_type, query.limit)
+        args = (str(query.tenant_id), query.entity_type, query.limit, query.offset)
     else:
         sql = """
             SELECT entity_id, name, entity_type, metadata
             FROM entities
             WHERE tenant_id = $1
-            ORDER BY name ASC
-            LIMIT $2
+            ORDER BY name ASC, entity_id ASC
+            LIMIT $2 OFFSET $3
             """
-        args = (str(query.tenant_id), query.limit)
+        args = (str(query.tenant_id), query.limit, query.offset)
     if is_gateway(pool):
         async with pool.transaction(str(query.tenant_id)) as reader:
             rows = await reader.fetch(sql, *args)
