@@ -99,7 +99,7 @@ export default function VerifyCard() {
             <BadgeLine verify={env.result} />
             <Table<ClaimVerdictRow>
               size="small"
-              rowKey={(_row: ClaimVerdictRow, index?: number) => String(index ?? 0)}
+              rowKey={(row: ClaimVerdictRow) => `${row.claim}-${row.label}`}
               pagination={false}
               dataSource={env.result.verdicts}
               columns={VERDICT_COLUMNS}

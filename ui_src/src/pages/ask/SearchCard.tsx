@@ -1,4 +1,4 @@
-import { Button, Card, Table } from "antd";
+import { Button, Card, Table, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { OpResult } from "../../api/types";
@@ -176,6 +176,10 @@ export default function SearchCard() {
             {strings.askSearchAction}
           </Button>
         </div>
+        {/* The one honest scope note: the result table pages its hits. */}
+        <Typography.Paragraph type="secondary" className="ui-flush">
+          {strings.askSearchCapHint}
+        </Typography.Paragraph>
         {resultBody(active.result, {
           opId: OP_IDS[mode],
           retry,

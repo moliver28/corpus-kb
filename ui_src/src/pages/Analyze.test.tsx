@@ -314,4 +314,41 @@ describe("Analyze page", () => {
     // The uncalibrated row reads "-", never a fake number.
     expect(within(card).getByText(strings.analyzeClassificationReviewTag)).toBeTruthy();
   });
+  it("keeps a drifted labels payload on the warn-plus-raw path", async () => {
+    // The guard fails on a row without its fields: the honest unreadable
+    // banner and the raw JSON, never a broken table.
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/labeling",
+        reply: respond(200, { status: "success", labels: [{ chunk_id: 7 }] }),
+      },
+      {
+        method: "GET",
+        path: "/api/classification",
+        reply: respond(200, { status: "success", predictions: [] }),
+      },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
+    expect(screen.getByText(strings.receiptRaw)).toBeTruthy();
+  });
+
+  it("keeps a drifted classifications payload on the warn-plus-raw path", async () => {
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/labeling",
+        reply: respond(200, { status: "success", labels: [] }),
+      },
+      {
+        method: "GET",
+        path: "/api/classification",
+        reply: respond(200, { status: "success", predictions: [{ set_id: 1 }] }),
+      },
+    ]);
+    render(<Analyze />, { wrapper: makeWrapper() });
+    expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
+    expect(screen.getByText(strings.receiptRaw)).toBeTruthy();
+  });
 });

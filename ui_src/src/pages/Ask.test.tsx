@@ -156,17 +156,12 @@ describe("Ask page", () => {
   it("searches and shows the degraded-excluded count", async () => {
     stubFetch([{ method: "POST", path: "/api/search", reply: respond(200, searchOk.response.body) }]);
     render(<Ask />, { wrapper: makeWrapper() });
-    // The switcher and the pane's submit share the "Search" name; the
-    // switcher renders first, the submit last.
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+        const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
       target: { value: "storage" },
     });
-    const searchButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(searchButtons[searchButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     expect(
       await screen.findByText("The plan installs battery storage at two substations."),
     ).toBeTruthy();
@@ -190,15 +185,12 @@ describe("Ask page", () => {
       { method: "POST", path: "/api/search", reply: respond(200, searchOk.response.body) },
     ]);
     render(<Ask />, { wrapper: makeWrapper() });
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
       target: { value: "storage" },
     });
-    const searchButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(searchButtons[searchButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     expect(
       await screen.findByText("The plan installs battery storage at two substations."),
     ).toBeTruthy();
@@ -209,8 +201,7 @@ describe("Ask page", () => {
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchChunkLabel), {
       target: { value: "7777cccc-8888-4ddd-9eee-5555ffff6666" },
     });
-    const similarButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(similarButtons[similarButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     expect(await screen.findByText("Crews restored the feeder after the storm.")).toBeTruthy();
     expect(screen.getByText("0.88")).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/search/similar"));
@@ -226,16 +217,13 @@ describe("Ask page", () => {
       },
     ]);
     render(<Ask />, { wrapper: makeWrapper() });
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     fireEvent.click(screen.getByRole("button", { name: strings.askSearchModeContext }));
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
       target: { value: "storage" },
     });
-    const contextButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(contextButtons[contextButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     expect(
       await screen.findByText("The grid plan adds storage before the winter peak."),
     ).toBeTruthy();
@@ -252,33 +240,26 @@ describe("Ask page", () => {
       },
     ]);
     render(<Ask />, { wrapper: makeWrapper() });
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     fireEvent.click(screen.getByRole("button", { name: strings.askSearchModeSimilar }));
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchChunkLabel), {
       target: { value: "7777cccc-8888-4ddd-9eee-5555ffff6666" },
     });
-    const similarButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(similarButtons[similarButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     expect(await screen.findByText(strings.askSearchEmpty)).toBeTruthy();
   });
 
   it("refuses a similar search without a chunk id", async () => {
     stubFetch([]);
     render(<Ask />, { wrapper: makeWrapper() });
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     // The empty search text names its own field, never the ask question.
-    const textButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(textButtons[textButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     expect(await screen.findByText(strings.askSearchQueryRequired)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: strings.askSearchModeSimilar }));
-    const similarButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(similarButtons[similarButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     expect(await screen.findByText(strings.askSearchChunkRequired)).toBeTruthy();
     expect(calls.some((c) => c.url.includes("/api/search/similar"))).toBe(false);
   });
@@ -291,15 +272,12 @@ describe("Ask page", () => {
       configurable: true,
     });
     render(<Ask />, { wrapper: makeWrapper() });
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
       target: { value: "storage" },
     });
-    const searchButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(searchButtons[searchButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     const copyButtons = await screen.findAllByRole("button", {
       name: strings.askCopyChunkId,
     });
@@ -324,15 +302,12 @@ describe("Ask page", () => {
       },
     ]);
     render(<Ask />, { wrapper: makeWrapper() });
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+    const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     fireEvent.click(switcher);
     fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
       target: { value: "storage" },
     });
-    const searchButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
-    fireEvent.click(searchButtons[searchButtons.length - 1]);
+    fireEvent.click(screen.getByRole("button", { name: strings.askSearchAction }));
     await screen.findByText("chunk-01");
     // Page one only: the rest wait behind the pager.
     expect(screen.queryByText("chunk-11")).toBeNull();
@@ -577,11 +552,7 @@ describe("Ask page", () => {
   it("falls back to the search tab when the query word is unknown", async () => {
     stubFetch([]);
     render(<Ask />, { wrapper: makeWrapper(true, ["/ask?tab=bogus"]) });
-    // The switcher and the pane's submit share the "Search" name; the
-    // switcher renders first.
-    const switcher = (
-      await screen.findAllByRole("button", { name: strings.askTabSearch })
-    )[0];
+        const switcher = await screen.findByRole("button", { name: strings.askTabSearch });
     expect(switcher.getAttribute("aria-pressed")).toBe("true");
   });
 

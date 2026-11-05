@@ -460,4 +460,49 @@ describe("Scale page", () => {
     ).toBeTruthy();
     expect(within(calibrateCard).queryByText("Changed lines: 0")).toBeNull();
   });
+  it("keeps a drifted demo receipt on the warn-plus-raw path", async () => {
+    setTabVisible(true);
+    // A known envelope with an unknown status word is not a receipt:
+    // the honest unreadable banner and the raw JSON, never a narration.
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, ingestStatusOk.response.body) },
+      {
+        method: "POST",
+        path: "/api/research/demo",
+        reply: respond(200, { status: "mystery", exit_code: 0, narration: "Step 1." }),
+      },
+    ]);
+    render(<Scale />, { wrapper: makeWrapper() });
+    const demoCard = cardOf(strings.scaleDemoTitle);
+    fireEvent.click(
+      within(demoCard).getByRole("button", { name: strings.scaleDemoAction }),
+    );
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: strings.confirmConfirm }));
+    expect(await within(demoCard).findByText(strings.unreadableResponse)).toBeTruthy();
+    expect(within(demoCard).getByText(strings.receiptRaw)).toBeTruthy();
+  });
+
+  it("keeps a drifted calibration preview on the warn-plus-raw path", async () => {
+    setTabVisible(true);
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, ingestStatusOk.response.body) },
+      {
+        method: "POST",
+        path: "/api/calibrate/apply",
+        reply: respond(200, { status: "success", result: { wrong: true } }),
+      },
+    ]);
+    render(<Scale />, { wrapper: makeWrapper() });
+    const calibrateCard = cardOf(strings.scaleCalibrateTitle);
+    fireEvent.change(
+      within(calibrateCard).getByPlaceholderText(strings.scaleCalibrateProfileLabel),
+      { target: { value: "default" } },
+    );
+    fireEvent.click(
+      within(calibrateCard).getByRole("button", { name: strings.scaleCalibratePreview }),
+    );
+    expect(await within(calibrateCard).findByText(strings.unreadableResponse)).toBeTruthy();
+    expect(within(calibrateCard).getByText(strings.receiptRaw)).toBeTruthy();
+  });
 });

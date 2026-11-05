@@ -20,6 +20,7 @@ export interface AskStrings {
   askSearchAction: string;
   askSearchQueryLabel: string;
   askSearchEmpty: string;
+  askSearchCapHint: string;
   askSearchQueryRequired: string;
   askSearchModeText: string;
   askSearchModeSimilar: string;
