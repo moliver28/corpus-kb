@@ -102,7 +102,8 @@ export interface RouteEnvelope {
   status: string;
   intent: RouteIntentShape;
   ranked: RouteRanked[];
-  interpretations?: RouteReading[];
+  /** Null rides as absent (the guard lets it through). */
+  interpretations?: RouteReading[] | null;
   trace?: RouteTraceShape;
 }
 

@@ -109,11 +109,15 @@ async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dic
 
 async def _analysis_route(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
+    from corpus_kb.config import load_config
     from corpus_kb.tools.analysis_route_tools import analysis_route
 
     question = params.get("question")
+    # The startup config rides along: the routing knobs and the embedding
+    # provider must behave the same on the socket as on MCP and the CLI.
     return await analysis_route(
         await research_pool(),
+        config=load_config(),
         tenant_id=tenant_id,
         # The raw value passes through: a non-string question must reach
         # the handler and come back as its typed error.

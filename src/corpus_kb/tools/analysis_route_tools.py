@@ -126,12 +126,14 @@ def _row(record: MethodRecord, why: str) -> dict[str, object]:
 
 def _ranked_rows(question: str, ranked: list[MethodRecommendation]) -> list[dict[str, object]]:
     """Ranked rows: the top row carries the matched phrase, the rest the
-    rubric's ``rank_reason``."""
+    rubric's ``rank_reason``. With no phrase hit (the fallback pool), the
+    top why is the rubric reason too — a name is never a reason."""
     rows: list[dict[str, object]] = []
     for index, record in enumerate(ranked):
         if index == 0:
             matched = _matched_phrase(question, record)
-            rows.append(_row(record, matched if matched is not None else record.name))
+            why = matched if matched is not None else record.rank_reason
+            rows.append(_row(record, why))
         else:
             rows.append(_row(record, record.rank_reason))
     return rows

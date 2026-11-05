@@ -68,14 +68,10 @@ describe("Analyze page", () => {
     expect(
       screen.getByText("Descriptions of distinctive wording in the corpus."),
     ).toBeTruthy();
-    // The question card's hidden register listing rides the same op;
-    // assert the advisor's ranked call is among the select-methods.
-    const sent = calls.filter((c) => c.url.includes("/api/analysis/select-method"));
-    expect(
-      sent.some((c) =>
-        c.body.includes('"task_description":"find the recurring themes in the interviews"'),
-      ),
-    ).toBe(true);
+    // Task mode: the advisor's ranked call is the ONLY select-method
+    // call (the question card's register listing is mode-gated).
+    const sent = calls.find((c) => c.url.includes("/api/analysis/select-method"));
+    expect(sent?.body).toContain('"task_description":"find the recurring themes in the interviews"');
     // "Run this method" pre-fills the runner with the row's manifest op.
     fireEvent.click(screen.getAllByRole("button", { name: strings.analyzeRunMethod })[0]);
     expect(

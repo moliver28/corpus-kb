@@ -186,9 +186,11 @@ describe("QuestionRouteCard", () => {
     expect(await screen.findByText(strings.routeStatusAmbiguous)).toBeTruthy();
     expect(screen.getByText(strings.routeReadingsTitle)).toBeTruthy();
     expect(screen.getByText(strings.routeReadingsHint)).toBeTruthy();
-    // The reading restatements render in the ladder (ranked rows repeat
-    // the names; the whys here are the ladder's own).
-    expect(screen.getAllByText(READING_B.why).length).toBeGreaterThanOrEqual(1);
+    // Exact counts pin the layout: the why renders once on the
+    // top-why line, once on its ranked row, once in the ladder (A);
+    // B renders on its ranked row and in the ladder (2).
+    expect(screen.getAllByText(READING_A.why).length).toBe(3);
+    expect(screen.getAllByText(READING_B.why).length).toBe(2);
     // The picker is a labelled group; each button names its method so
     // the accessible text carries id AND name.
     expect(screen.getByRole("group", { name: strings.routeOverrideLabel })).toBeTruthy();
@@ -228,10 +230,11 @@ describe("QuestionRouteCard", () => {
     await ask("How do I group and code these records?");
     expect(await screen.findByText(strings.routeStatusDegraded)).toBeTruthy();
     expect(screen.getByText(strings.routeDegradedNote)).toBeTruthy();
-    // Degraded + ambiguous: the ladder stays (keyed off intent.status).
+    // Degraded + ambiguous: the ladder stays (keyed off intent.status);
+    // same three-two split as the plain ambiguous envelope.
     expect(screen.getByText(strings.routeReadingsTitle)).toBeTruthy();
-    expect(screen.getAllByText(READING_A.why).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText(READING_B.why).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(READING_A.why).length).toBe(3);
+    expect(screen.getAllByText(READING_B.why).length).toBe(2);
   });
 
   it("marks a ranked row whose op is absent from the manifest as not wired", async () => {
@@ -240,6 +243,27 @@ describe("QuestionRouteCard", () => {
     await ask("How do I find duplicate records in my corpus?");
     // Row 12 carries a non-null op the manifest does not list.
     expect(await screen.findByText(strings.analyzeMethodNotWired)).toBeTruthy();
+  });
+
+  it("does not light the override highlight when the guard trips", async () => {
+    // Clear-textarea-then-click-override: the empty-question guard runs
+    // BEFORE the highlight moves, so nothing lights up and nothing sends.
+    stubBoth(RESOLVED);
+    render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
+    await ask("How do I find duplicate records in my corpus?");
+    await screen.findByText(strings.routeStatusResolved);
+    fireEvent.change(screen.getByLabelText(strings.routeQuestionLabel), {
+      target: { value: "" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^01 / }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(routeCalls().length).toBe(1);
+    expect(screen.getByText(strings.routeQuestionRequired)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
   });
 
   it("refuses to route an empty question", async () => {

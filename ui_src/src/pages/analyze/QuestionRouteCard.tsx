@@ -24,7 +24,15 @@ import {
  * (read-only in this wave); the analyst can override with any register
  * method. The SPA never re-routes; the server's answer renders as-is.
  */
-export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId: string) => void }) {
+export default function QuestionRouteCard({
+  onRunMethod,
+  active = true,
+}: {
+  onRunMethod: (opId: string) => void;
+  /** True while the card is the advisor's active mode; gates the one
+      register listing (a hidden card must not spend the call). */
+  active?: boolean;
+}) {
   const [question, setQuestion] = useState("");
   const [hint, setHint] = useState("");
   const [methods, setMethods] = useState<RegisterRow[]>([]);
@@ -32,10 +40,13 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
   const route = useOp("analysis-route");
   const { run: runRegister } = useOp("analysis-select-method");
 
-  // The override select's source: one unconstrained register listing,
-  // loaded once per card mount (entering question mode). runRegister
-  // holds a stable identity (the useOp contract), so this fires once.
+  // The override picker's source: one unconstrained register listing,
+  // loaded when the card becomes the active mode. runRegister holds a
+  // stable identity (the useOp contract), so this fires once per entry.
   useEffect(() => {
+    if (!active) {
+      return;
+    }
     let alive = true;
     void (async () => {
       const result = await runRegister({ task_description: REGISTER_TASK });
@@ -49,7 +60,7 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
     return () => {
       alive = false;
     };
-  }, [runRegister]);
+  }, [active, runRegister]);
 
   async function routeWith(methodId?: string): Promise<void> {
     if (question.trim() === "") {
@@ -57,11 +68,10 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
       return;
     }
     setHint("");
-    if (methodId === undefined) {
-      // A plain re-route drops any picked override, so the stale
-      // highlight cannot outlive the answer it produced.
-      setOverride(undefined);
-    }
+    // The highlight follows the answer: a plain re-route drops any
+    // picked override, and a guard-tripped click (empty question)
+    // never lights one up.
+    setOverride(methodId);
     route.reset();
     const body: Record<string, unknown> = { question: question.trim() };
     if (methodId !== undefined) {
@@ -94,11 +104,17 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
             </div>
           )}
           {envelope.ranked.map((row) => rankedRow(row, onRunMethod))}
-          {envelope.interpretations !== undefined && envelope.interpretations.length > 0 && (
+          {(() => {
+            // null rides as absent (the guard lets it through).
+            const readings = envelope.interpretations ?? [];
+            if (readings.length === 0) {
+              return null;
+            }
+            return (
             <div className="ui-stack">
               <strong>{strings.routeReadingsTitle}</strong>
               <Typography.Text type="secondary">{strings.routeReadingsHint}</Typography.Text>
-              {envelope.interpretations.map((reading) => (
+              {readings.map((reading) => (
                 <div key={reading.method_id}>
                   <div>
                     {reading.method_id} — {reading.method_name}
@@ -107,7 +123,8 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
                 </div>
               ))}
             </div>
-          )}
+            );
+          })()}
           {tracePanel(envelope)}
           <div className="ui-stack">
             <Typography.Paragraph
@@ -128,10 +145,7 @@ export default function QuestionRouteCard({ onRunMethod }: { onRunMethod: (opId:
                   aria-label={`${row.id} ${row.name}`}
                   aria-pressed={override === row.id}
                   type={override === row.id ? "primary" : "default"}
-                  onClick={() => {
-                    setOverride(row.id);
-                    void routeWith(row.id);
-                  }}
+                  onClick={() => void routeWith(row.id)}
                 >
                   {row.id}
                 </Button>

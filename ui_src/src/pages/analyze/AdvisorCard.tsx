@@ -184,7 +184,7 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
         {body}
       </div>
       <div hidden={mode !== "question"}>
-        <QuestionRouteCard onRunMethod={onRunMethod} />
+        <QuestionRouteCard onRunMethod={onRunMethod} active={mode === "question"} />
       </div>
     </Card>
   );

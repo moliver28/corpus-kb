@@ -17,6 +17,8 @@ import asyncpg
 import pytest
 
 from corpus_kb.analysis.method_register import MethodRegister
+from corpus_kb.analysis.method_register_loader import load_method_register
+from corpus_kb.analysis.method_register_rubric import rank_methods
 from corpus_kb.errors import (
     ERROR_MAP,
     NoMethodMatchesError,
@@ -288,6 +290,100 @@ async def test_pgml_provider_takes_the_phrase_path() -> None:
     result = await _run(config=_PGML)
     trace = cast("dict[str, object]", result["trace"])
     assert trace["mode"] == "phrase"
+
+
+# -- Adapter config flow (fix round 3): the routing knobs must reach the
+#    handler on EVERY surface, not only MCP and the CLI. The pgml provider
+#    keeps the phrase path, so the stacked QUESTION scores 4/6 = 0.667:
+#    a 0.9 threshold must flip the intent to ambiguous, a 0.2 threshold
+#    must leave it resolved. monkeypatched load_config = startup config.
+
+
+async def _http_route_with_config(
+    monkeypatch: pytest.MonkeyPatch, threshold: float
+) -> dict[str, object]:
+    from starlette.testclient import TestClient
+
+    import corpus_kb.api.research_http as research_http
+    import corpus_kb.config as config_module
+    from corpus_kb.api.http import create_http_app
+
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: _threshold_config(threshold),
+    )
+    research_http.set_research_pool(object())  # identity-only; reads no data
+    try:
+        client = TestClient(create_http_app())
+        response = client.post("/api/analysis/route", json={"question": QUESTION})
+        assert response.status_code == 200, response.text
+        envelope: dict[str, object] = response.json()
+        return envelope
+    finally:
+        research_http.set_research_pool(None)
+
+
+def _threshold_config(threshold: float) -> dict[str, object]:
+    return {
+        "embedding": {"provider": "pgml"},
+        "analysis": {"routing": {"confidence_threshold": threshold}},
+    }
+
+
+async def test_http_adapter_passes_the_routing_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = await _http_route_with_config(monkeypatch, 0.9)
+    intent = cast("dict[str, object]", envelope["intent"])
+    assert intent["status"] == "ambiguous"
+
+
+async def test_http_adapter_default_threshold_resolves(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    envelope = await _http_route_with_config(monkeypatch, 0.2)
+    intent = cast("dict[str, object]", envelope["intent"])
+    assert intent["status"] == "resolved"
+
+
+async def test_socket_adapter_passes_the_routing_threshold(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import corpus_kb.api.research_http as research_http
+    import corpus_kb.config as config_module
+    from corpus_kb.api.socket import JSONRPCServer
+
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: _threshold_config(0.9),
+    )
+    research_http.set_research_pool(object())
+    try:
+        server = JSONRPCServer()
+        rpc = await server._process_request(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "analysis_route",
+                    "params": {"question": QUESTION},
+                }
+            )
+        )
+    finally:
+        research_http.set_research_pool(None)
+    assert "result" in rpc, rpc
+    intent = cast("dict[str, object]", rpc["result"]["intent"])
+    assert intent["status"] == "ambiguous"
+
+
+def test_rank_reason_never_masquerades_as_a_name() -> None:
+    """No phrase hit: the top why is the rubric reason, not the name."""
+    register = load_method_register({})
+    top = rank_methods(register)[0]
+    assert top.rank_reason != top.name
 
 
 async def test_error_triples_match_the_error_map() -> None:

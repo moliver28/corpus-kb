@@ -29,13 +29,18 @@ async def _pool() -> Any:
 @route_errors
 async def analysis_route_route(request: Request) -> JSONResponse:
     """POST /api/analysis/route — route one plain-language question."""
+    from corpus_kb.config import load_config
     from corpus_kb.tools.analysis_route_tools import analysis_route
 
     body = await parse_body(request)
     question = body.get("question")
     method_id = body.get("method_id")
+    # The startup config rides along (routes_v1 convention): the routing
+    # knobs and the embedding provider must behave the same on HTTP as
+    # they do on MCP and the CLI.
     result = await analysis_route(
         await _pool(),
+        config=load_config(),
         tenant_id=body.get("tenant_id", _TENANT_DEFAULT),
         question="" if question is None else question,
         method_id=str(method_id) if method_id is not None else None,
