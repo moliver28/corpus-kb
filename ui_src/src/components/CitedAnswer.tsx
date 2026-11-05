@@ -63,17 +63,23 @@ export default function CitedAnswer({
             (active ? " ui-citation--active" : "") +
             (linked ? " ui-citation--linked" : "");
           const shown = displaySources(cited);
+          // The focusable sentence carries its source as the accessible
+          // description: a screen reader reads the sentence plus the
+          // label, not a bare list item.
+          const sourceId = `ui-citation-source-${index}`;
           return (
             <li
               key={`${index}-${citation.source}`}
               className={className}
               tabIndex={0}
+              aria-describedby={sourceId}
               onMouseEnter={() => setHovered(index)}
               onFocus={() => setHovered(index)}
               onBlur={() => setHovered(null)}
             >
               <span className="ui-citation-text">{citation.text}</span>{" "}
               <span
+                id={sourceId}
                 title={shown.full}
                 className={
                   active ? "ui-citation-source ui-citation-source--active" : "ui-citation-source"

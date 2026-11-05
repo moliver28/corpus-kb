@@ -1,5 +1,4 @@
 import { Button, Card, Table } from "antd";
-import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import type { OpResult } from "../../api/types";
@@ -10,29 +9,8 @@ import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
-import { excludedCount, isSearchEnvelope, scoreText, type SearchRow } from "./shapes";
-
-const COLUMNS: ColumnsType<SearchRow> = [
-  {
-    title: strings.askColumnSource,
-    dataIndex: "source",
-    key: "source",
-    // The chunk id rides under the source: it is the value the verify
-    // tab's chunk field asks for (T8 builds the copy affordance on it).
-    render: (_value: unknown, row: SearchRow) => (
-      <div>
-        {row.source}
-        <div className="ui-row-id">{row.chunk_id}</div>
-      </div>
-    ),
-  },
-  { title: strings.askColumnText, dataIndex: "text", key: "text" },
-  {
-    title: strings.askColumnScore,
-    key: "score",
-    render: (_value: unknown, row: SearchRow) => scoreText(row.score),
-  },
-];
+import { excludedCount, isSearchEnvelope, type SearchRow } from "./shapes";
+import { COPY_FEEDBACK_MS, SEARCH_PAGE_SIZE, columnsOf, searchExpandable } from "./searchColumns";
 
 type Mode = "text" | "similar" | "context";
 
@@ -53,7 +31,7 @@ const OP_IDS: Record<Mode, string> = {
 /** One mode's result body: the same table for all three search routes. */
 function resultBody(
   result: OpResult<unknown> | null,
-  opts: { opId: string; retry: () => void },
+  opts: { opId: string; retry: () => void; copiedId: string | null; onCopy: (id: string) => void },
 ): ReactNode {
   if (result === null) return null;
   if (result.kind === "unavailable") {
@@ -75,9 +53,14 @@ function resultBody(
         <Table<SearchRow>
           size="small"
           rowKey="chunk_id"
-          pagination={false}
+          pagination={{
+            pageSize: SEARCH_PAGE_SIZE,
+            hideOnSinglePage: true,
+            showSizeChanger: false,
+          }}
+          expandable={searchExpandable}
           dataSource={rows}
-          columns={COLUMNS}
+          columns={columnsOf(opts.copiedId, opts.onCopy)}
         />
       </div>
     );
@@ -105,6 +88,7 @@ export default function SearchCard() {
   const [query, setQuery] = useState("");
   const [chunkId, setChunkId] = useState("");
   const [error, setError] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const { rootRef, flag } = useFirstErrorFocus();
   const text = useOp("search");
   const similar = useOp("search-similar");
@@ -113,6 +97,23 @@ export default function SearchCard() {
   function pick(next: Mode): void {
     setMode(next);
     setError("");
+  }
+
+  function copyChunkId(id: string): void {
+    // The narrow view keeps the clipboard optional at run time.
+    const clipboard = (navigator as { clipboard?: Clipboard }).clipboard;
+    if (clipboard === undefined) return;
+    void clipboard.writeText(id).then(
+      () => {
+        setCopiedId(id);
+        // The note clears itself; a copy of another row wins the state.
+        window.setTimeout(
+          () => setCopiedId((current) => (current === id ? null : current)),
+          COPY_FEEDBACK_MS,
+        );
+      },
+      () => setCopiedId(null),
+    );
   }
 
   function validate(value: string, message: string): boolean {
@@ -195,6 +196,8 @@ export default function SearchCard() {
         {resultBody(active.result, {
           opId: OP_IDS[mode],
           retry,
+          copiedId,
+          onCopy: copyChunkId,
         })}
       </div>
     </Card>

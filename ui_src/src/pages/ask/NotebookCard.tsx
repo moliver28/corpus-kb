@@ -90,9 +90,9 @@ export default function NotebookCard() {
       } else if (env.status === "empty") {
         body = <StatusBanner kind="warn">{message || strings.askEmptyState}</StatusBanner>;
       } else {
-        // The server's "error" status (a filter value it rejects) and any
-        // unknown status word are notes about the request, never a
-        // scary error banner — the server message carries the reason.
+        // A server "error" status never lands here: the shared normalizer
+        // routes it to the error panel (api/errors.ts). This branch is
+        // for an unknown status word — a calm note with the message.
         body = <StatusBanner kind="info">{message || strings.receiptEmpty}</StatusBanner>;
       }
     } else if (result.ok) {

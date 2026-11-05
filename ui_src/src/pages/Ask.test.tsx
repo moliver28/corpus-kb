@@ -46,6 +46,11 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   window.sessionStorage.clear();
+  // The clipboard stub rides on navigator; reset it for the next row.
+  Object.defineProperty(navigator, "clipboard", {
+    value: undefined,
+    configurable: true,
+  });
   clearCalls();
   query = "";
 });
@@ -276,6 +281,113 @@ describe("Ask page", () => {
     fireEvent.click(similarButtons[similarButtons.length - 1]);
     expect(await screen.findByText(strings.askSearchChunkRequired)).toBeTruthy();
     expect(calls.some((c) => c.url.includes("/api/search/similar"))).toBe(false);
+  });
+
+  it("copies a row's chunk id with a visible note, then resets it", async () => {
+    stubFetch([{ method: "POST", path: "/api/search", reply: respond(200, searchOk.response.body) }]);
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+    render(<Ask />, { wrapper: makeWrapper() });
+    const switcher = (
+      await screen.findAllByRole("button", { name: strings.askTabSearch })
+    )[0];
+    fireEvent.click(switcher);
+    fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
+      target: { value: "storage" },
+    });
+    const searchButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
+    fireEvent.click(searchButtons[searchButtons.length - 1]);
+    const copyButtons = await screen.findAllByRole("button", {
+      name: strings.askCopyChunkId,
+    });
+    expect(copyButtons.length).toBeGreaterThan(0);
+    fireEvent.click(copyButtons[0]);
+    expect(writeText).toHaveBeenCalledWith("1111aaaa-2222-4bbb-8ccc-3333dddd4444");
+    expect(await screen.findByText(strings.errorCopied)).toBeTruthy();
+  });
+
+  it("caps the search table page and expands a row for the full text", async () => {
+    const rows = Array.from({ length: 12 }, (_, index) => ({
+      chunk_id: `chunk-${String(index + 1).padStart(2, "0")}`,
+      source: `/data/doc-${String(index + 1).padStart(2, "0")}.md`,
+      text: `Sentence ${String(index + 1).padStart(2, "0")} about storage.`,
+      score: 0.5,
+    }));
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/search",
+        reply: respond(200, { status: "success", result: rows }),
+      },
+    ]);
+    render(<Ask />, { wrapper: makeWrapper() });
+    const switcher = (
+      await screen.findAllByRole("button", { name: strings.askTabSearch })
+    )[0];
+    fireEvent.click(switcher);
+    fireEvent.change(await screen.findByPlaceholderText(strings.askSearchQueryLabel), {
+      target: { value: "storage" },
+    });
+    const searchButtons = screen.getAllByRole("button", { name: strings.askSearchAction });
+    fireEvent.click(searchButtons[searchButtons.length - 1]);
+    await screen.findByText("chunk-01");
+    // Page one only: the rest wait behind the pager.
+    expect(screen.queryByText("chunk-11")).toBeNull();
+    // The long text previews with an ellipsis; the full text rides the
+    // cell's title and the row expands on demand.
+    const preview = document.querySelector(".ant-table-tbody .ant-table-cell-ellipsis");
+    expect(preview?.getAttribute("title")).toBe("Sentence 01 about storage.");
+    const expandIcon = document.querySelector(".ant-table-row-expand-icon");
+    expect(expandIcon?.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(document.querySelector(".ant-pagination-item-2")!);
+    expect(screen.getByText("chunk-11")).toBeTruthy();
+    // Back to page one: paging remounts the rows, so re-query the icon.
+    fireEvent.click(document.querySelector(".ant-pagination-item-1")!);
+    const rowIcon = document.querySelector(".ant-table-row-expand-icon");
+    fireEvent.click(rowIcon!);
+    expect(rowIcon?.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("routes the notebook's error envelope to the error panel, not info", async () => {
+    stubFetch([
+      {
+        method: "GET",
+        path: "/api/projects",
+        reply: respond(200, projectsOk.response.body),
+      },
+      {
+        method: "POST",
+        path: "/api/notebook/ask",
+        reply: respond(200, { status: "error", message: "The project id is unknown." }),
+      },
+    ]);
+    render(<Ask />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.askTabNotebook }));
+    fireEvent.mouseDown(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByText("Grid Interviews"));
+    const questionInputs = screen.getAllByPlaceholderText(strings.askQueryLabel);
+    fireEvent.change(questionInputs[questionInputs.length - 1], {
+      target: { value: "what caused the outage?" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.askNotebookAction }));
+    // The typed error surface names the failure; the message never
+    // dresses up as an information banner.
+    expect(await screen.findByText(strings.errorTitle)).toBeTruthy();
+    expect(screen.getByText("The project id is unknown.").closest(".ui-banner")).toBeNull();
+  });
+
+  it("clears the question history from the card", async () => {
+    stubFetch(askRoutes(respond(200, askSuccess.response.body)));
+    render(<Ask />, { wrapper: makeWrapper() });
+    await askQuestion("what does the grid plan do?");
+    expect(await screen.findByText("what does the grid plan do?")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: strings.askHistoryClear }));
+    expect(screen.queryByText("what does the grid plan do?")).toBeNull();
+    expect(screen.getByText(strings.askHistoryEmpty)).toBeTruthy();
+    expect(window.sessionStorage.getItem("corpus-kb:ask-history")).toBe("[]");
   });
 
   it("checks an answer and shows the verdicts with the badge", async () => {

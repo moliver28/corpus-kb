@@ -24,6 +24,15 @@ body {
   margin-bottom: 0;
 }
 
+/* A heading with its action (AskCard: the history Clear button) on one
+   baseline-aligned row. */
+.ui-heading-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .ui-banner {
   display: flex;
   gap: 8px;
@@ -222,6 +231,14 @@ body {
   color: var(--ckb-color-text-description);
   font-size: 12px;
   font-family: var(--ckb-font-family-code);
+}
+
+/* The chunk-id copy affordance rides the id line; the note text keeps
+   the code size so the row height never jumps. */
+.ui-row-id .ui-row-copy {
+  padding: 0;
+  font-size: 12px;
+  margin-left: 8px;
 }
 
 .ui-flush { margin-bottom: 0; }

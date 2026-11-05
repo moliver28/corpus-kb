@@ -81,6 +81,11 @@ export default function AskCard() {
     ask.cancel();
   }
 
+  function clearHistory(): void {
+    setHistory([]);
+    saveHistory([]);
+  }
+
   function retry(): void {
     void run();
   }
@@ -183,7 +188,14 @@ export default function AskCard() {
       {ask.running && <Skeleton active title={false} paragraph={{ rows: 3 }} />}
       <LongOpControls op={ask} onRetry={retry} onCancel={stopWaiting} />
       {resultView}
-      <h2 className="ui-heading">{strings.askHistoryTitle}</h2>
+      <div className="ui-heading-row">
+        <h2 className="ui-heading">{strings.askHistoryTitle}</h2>
+        {history.length > 0 && (
+          <Button type="text" size="small" onClick={clearHistory}>
+            {strings.askHistoryClear}
+          </Button>
+        )}
+      </div>
       {history.length === 0 ? (
         <Typography.Text type="secondary">{strings.askHistoryEmpty}</Typography.Text>
       ) : (
