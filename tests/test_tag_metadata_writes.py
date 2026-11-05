@@ -21,7 +21,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from corpus_kb._setup.migrate import run_duckdb_migrations
-from corpus_kb.errors import NotFoundError
+from corpus_kb.errors import NotFoundError, ValidationError
 from corpus_kb.handlers.tag_handler import TagHandler
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
 from corpus_kb.storage.gateway import is_gateway
@@ -109,3 +109,22 @@ async def test_create_apply_remove_and_metadata_on_both_engines(store: TagHandle
     assert updated == {"status": "success", "key": f"k-{stem}", "value": "two"}
     meta = await store.handle_get_metadata(TENANT, key=f"k-{stem}", doc_id=doc_id)
     assert [(r["key"], r["value"]) for r in meta] == [(f"k-{stem}", "two")]
+
+
+async def test_doc_less_set_metadata_is_a_typed_error_on_both_engines(store: TagHandler) -> None:
+    """The metadata PK keys every row to one document, so a doc-less
+    write can never commit — the handler answers the typed validation
+    error, not a raw constraint failure."""
+    with pytest.raises(ValidationError) as bad:
+        await store.handle_set_metadata(TENANT, f"k-{uuid4().hex[:8]}", "v")
+    assert "document" in str(bad.value).lower()
+
+
+async def test_blank_tag_name_is_a_typed_error_on_both_engines(store: TagHandler) -> None:
+    """The schema accepts a blank name, so the handler guards it — the
+    create and the apply ops answer the typed error, never a blank row."""
+    for name in ("", "   "):
+        with pytest.raises(ValidationError):
+            await store.handle_add_tag(TENANT, name)
+        with pytest.raises(ValidationError):
+            await store.handle_tag_document(TENANT, uuid4(), name)

@@ -11,7 +11,9 @@ plus link in ``handle_tag_document`` commits as ONE transaction on both
 storages. ``handle_untag_document`` reads the link and deletes it in the
 same transaction; a missing link raises :class:`~corpus_kb.errors.NotFoundError`
 — untag is never a silent ok. The tags read answers in name order on
-both storages (rule 9).
+both storages (rule 9). A blank tag name and a doc-less metadata write
+cannot commit, so both raise :class:`~corpus_kb.errors.ValidationError`
+before the database sees them.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from uuid import UUID
 
 import asyncpg
 
-from corpus_kb.errors import InternalError, NotFoundError
+from corpus_kb.errors import InternalError, NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.storage.gateway import SqlConn, SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
@@ -50,6 +52,12 @@ _SET_METADATA_SQL = """INSERT INTO metadata (key, value, doc_id, tenant_id)
    ON CONFLICT (key, tenant_id, doc_id) DO UPDATE SET value = $2"""
 
 
+def _require_tag_name(name: str) -> None:
+    """The schema accepts a blank name, so the handler rejects it first."""
+    if name.strip() == "":
+        raise ValidationError("The tag name is empty. Give a name with at least one character.")
+
+
 class TagHandler:
     """Handles tags and metadata for documents."""
 
@@ -63,6 +71,7 @@ class TagHandler:
         color: str | None = None,
         description: str | None = None,
     ) -> dict[str, Any]:
+        _require_tag_name(name)
         args = (str(tenant_id), name, color, description)
         async with tenant_connection(self._pool, tenant_id) as conn:
             row = await conn.fetchrow(_ADD_TAG_SQL, *args)
@@ -71,6 +80,7 @@ class TagHandler:
             return {"status": "already_exists", "name": name}
 
     async def handle_tag_document(self, tenant_id: UUID, doc_id: UUID, tag: str) -> dict[str, Any]:
+        _require_tag_name(tag)  # this op creates a missing tag too
         args = (str(tenant_id), tag)
         async with tenant_connection(self._pool, tenant_id) as conn:
             tag_id = await self._tag_id(conn, args)
@@ -111,7 +121,13 @@ class TagHandler:
     async def handle_set_metadata(
         self, tenant_id: UUID, key: str, value: str, doc_id: UUID | None = None
     ) -> dict[str, Any]:
-        args = (key, value, str(doc_id) if doc_id else None, str(tenant_id))
+        # The metadata PK is (key, tenant_id, doc_id), so a doc-less write
+        # can never commit — answer the typed error, not a constraint 500.
+        if doc_id is None:
+            raise ValidationError(
+                "A metadata write needs a document. Give the document id and try again."
+            )
+        args = (key, value, str(doc_id), str(tenant_id))
         async with tenant_connection(self._pool, tenant_id) as conn:
             await conn.execute(_SET_METADATA_SQL, *args)
         return {"status": "success", "key": key, "value": value}
