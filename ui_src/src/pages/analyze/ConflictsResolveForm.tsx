@@ -4,7 +4,7 @@ import ConfirmGate from "../../components/ConfirmGate";
 import LabeledField from "../../components/LabeledField";
 import { useFormWrite } from "../../hooks/useFormWrite";
 import { strings } from "../../strings";
-import type { ConflictRow } from "./derivedShapes";
+import type { ConflictRow } from "./conflictsShapes";
 
 const VERDICTS = ["conflict", "revision", "dismissed"] as const;
 

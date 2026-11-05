@@ -6,7 +6,7 @@ import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
-import { isStatementsEnvelope, type StatementRow } from "./derivedShapes";
+import { isStatementsEnvelope, type StatementRow } from "./statementsShapes";
 
 const STATEMENT_COLUMNS: ColumnsType<StatementRow> = [
   {

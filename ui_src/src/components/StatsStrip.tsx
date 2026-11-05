@@ -7,7 +7,7 @@ import {
   isDocumentStatsEnvelope,
   isStatsEnvelope,
   type SourceTypeRow,
-} from "../pages/analyze/derivedShapes";
+} from "./statsShapes";
 
 /** The count keys in the handler's own order, with their plain words. */
 const COUNT_WORDS: ReadonlyArray<[string, string]> = [

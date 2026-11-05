@@ -7,7 +7,7 @@ import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
 import ConflictsResolveForm from "./ConflictsResolveForm";
-import { isConflictsEnvelope, isScanEnvelope, type ConflictRow } from "./derivedShapes";
+import { isConflictsEnvelope, isScanEnvelope, type ConflictRow } from "./conflictsShapes";
 
 /**
  * The conflicts family in one card: the cascade scan, the flag list,
