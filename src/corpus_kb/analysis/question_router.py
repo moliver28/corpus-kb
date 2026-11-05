@@ -23,9 +23,16 @@ from corpus_kb.analysis.method_register import MethodRecommendation, MethodRegis
 from corpus_kb.analysis.method_register_rubric import rank_methods
 from corpus_kb.analysis.question_intent import QuestionIntent
 from corpus_kb.analysis.question_router_centroids import centroids_for, cosine
+from corpus_kb.analysis.settings import (
+    DEFAULT_ROUTING_CONFIDENCE_THRESHOLD,
+    DEFAULT_ROUTING_MARGIN,
+)
 
-DEFAULT_CONFIDENCE_THRESHOLD = 0.55
-DEFAULT_MARGIN = 0.10
+DEFAULT_CONFIDENCE_THRESHOLD = DEFAULT_ROUTING_CONFIDENCE_THRESHOLD
+DEFAULT_MARGIN = DEFAULT_ROUTING_MARGIN
+# Exact-arithmetic gap equality (say 7/10 - 6/10 = 0.10) must pass the
+# margin check; float subtraction lands just below, so allow this slack.
+_MARGIN_EPS = 1e-9
 TOP_SCORE_ROWS = 10
 TOP_READINGS = 3
 RANKED_CAP = 5
@@ -87,10 +94,11 @@ def route_question(
     hits, phrase_counts, names = _phrase_pass(normalized, register)
     candidate_ids = list(hits) or list(phrase_counts)
     if not candidate_ids:
-        # No row carries phrases, so nothing can score. Honest dead end.
+        # No row carries phrases, so nothing can score. Honest dead end;
+        # nothing was embedded either, so the trace stays in phrase mode.
         intent = QuestionIntent(question=normalized, status="insufficient")
         trace = RoutingTrace(
-            mode="phrase" if embedder is None else "embedding",
+            mode="phrase",
             threshold=threshold,
             margin=margin,
             scores=[],
@@ -125,7 +133,7 @@ def route_question(
     top_score = scores[ordered[0]]
     second_score = scores[ordered[1]] if len(ordered) > 1 else None
     resolved = top_score >= threshold and (
-        second_score is None or top_score - second_score >= margin
+        second_score is None or top_score - second_score >= margin - _MARGIN_EPS
     )
     status = "resolved" if resolved else "ambiguous"
 
@@ -194,7 +202,10 @@ def _setting(settings: dict[str, object] | None, key: str, default: float) -> fl
         return default
     value = settings.get(key, default)
     if isinstance(value, bool | int | float | str):
-        return float(value)
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
     return default
 
 

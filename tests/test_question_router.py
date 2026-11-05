@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict
+from typing import cast
 
 import pytest
 
@@ -135,7 +136,11 @@ class TestIntentSchema:
             QuestionIntent(question="q", status="degraded")
 
     def test_axes_passthrough_without_vocab_check(self) -> None:
-        """Axis validation lives in the register; the intent accepts values as-is."""
+        """Axis validation lives in the register; the intent accepts values as-is.
+
+        The envelope still carries all six pinned keys: a partial axes dict
+        merges over the defaults when ``to_envelope`` runs.
+        """
         intent = QuestionIntent(
             question="q",
             status="resolved",
@@ -143,7 +148,10 @@ class TestIntentSchema:
             method_id="05",
             axes={"task_type": "not_a_vocab_value"},
         )
-        assert intent.to_envelope()["axes"] == {"task_type": "not_a_vocab_value"}
+        envelope_axes = intent.to_envelope()["axes"]
+        assert envelope_axes["task_type"] == "not_a_vocab_value"
+        assert set(envelope_axes) == set(ROUTING_VOCAB_FIELDS)
+        assert all(value is None for key, value in envelope_axes.items() if key != "task_type")
 
     def test_envelope_field_order_is_stable(self) -> None:
         envelope = QuestionIntent(question="q", status="resolved").to_envelope()
@@ -260,6 +268,17 @@ class TestPhrasePath:
         assert result.intent.ranked_method_ids == []
         assert result.trace.scores == []
         assert result.intent.confidence == 0.0
+        assert result.trace.mode == "phrase"
+
+    def test_insufficient_with_an_embedder_reports_the_phrase_mode(self) -> None:
+        """Nothing was scored, so the trace must not claim embedding mode."""
+        register = _register(_record("05", "Manual method"), _record("06", "Other method"))
+        result = route_question(
+            "How do I cluster my documents by theme?", register, ZeroEmbedder(), None
+        )
+        assert result.status == "insufficient"
+        assert result.trace.mode == "phrase"
+        assert result.trace.scores == []
 
     def test_row_without_question_phrases_is_skipped_from_scoring(self) -> None:
         """Review-Focus #4: a phrase-less row never crashes and never scores."""
@@ -286,7 +305,7 @@ class TestPhrasePath:
     def test_non_string_question_raises_type_error(self) -> None:
         register = _cluster_register()
         with pytest.raises(TypeError, match="question"):
-            route_question(123, register, None, None)  # type: ignore[arg-type]
+            route_question(cast(str, 123), register, None, None)
 
 
 # --------------------------------------------------------------------------
@@ -314,6 +333,31 @@ class TestDegradedEmbedding:
         register = _cluster_register()
         result = route_question("Which cluster structure fits these records?", register, None, None)
         assert result.trace.scores[0]["score"] == pytest.approx(0.5)
+
+    def test_margin_boundary_passes_at_exact_arithmetic_equality(self) -> None:
+        """Seven hits versus six hits out of ten phrases: the exact gap is 0.10.
+
+        Float subtraction yields 0.09999999999999998, so the decision must
+        hold the comparison to within a small tolerance (review round 1).
+        """
+        phrases_a = [
+            f"Cluster question number {index} for the suite here?" for index in range(1, 11)
+        ]
+        phrases_b = [
+            f"Codebook question number {index} for the suite here?" for index in range(1, 11)
+        ]
+        register = _register(
+            _record("05", "Cluster method", phrases_a),
+            _record("06", "Codebook assist", phrases_b),
+        )
+        question = " ".join(phrases_a[:7] + phrases_b[:6])
+        result = route_question(question, register, None, None)
+        assert result.trace.margin == 0.10
+        scores = {row["method_id"]: row["score"] for row in result.trace.scores}
+        assert scores["05"] == pytest.approx(0.7)
+        assert scores["06"] == pytest.approx(0.6)
+        assert result.status == "resolved"
+        assert result.intent.method_id == "05"
 
 
 # --------------------------------------------------------------------------
@@ -444,6 +488,19 @@ class TestSettings:
         )
         assert strict_result.status == "ambiguous"
         assert strict_result.trace.margin == 0.25
+
+    def test_unusable_setting_value_falls_back_to_the_default(self) -> None:
+        """A non-numeric knob value falls back; the route never crashes."""
+        register = _cluster_register()
+        result = route_question(
+            "How do I cluster my documents by theme?",
+            register,
+            None,
+            {"confidence_threshold": 0.55, "margin": "tight"},
+        )
+        assert result.trace.margin == 0.10
+        assert result.trace.threshold == 0.55
+        assert result.status in ROUTING_OUTCOMES
 
 
 # --------------------------------------------------------------------------

@@ -47,5 +47,11 @@ class QuestionIntent:
             raise ValueError(f"status: {self.status!r} is not supported. Use one of: {allowed}.")
 
     def to_envelope(self) -> dict[str, object]:
-        """The JSON-ready form. Field order is stable for snapshots."""
-        return asdict(self)
+        """The JSON-ready form. Field order is stable for snapshots.
+
+        The axes always carry all six pinned keys: a partially built
+        intent merges its axes over the defaults here.
+        """
+        envelope = asdict(self)
+        envelope["axes"] = {**_default_axes(), **self.axes}
+        return envelope
