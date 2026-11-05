@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import LabeledField from "../components/LabeledField";
 import StatusBanner from "../components/StatusBanner";
@@ -23,26 +23,30 @@ let lastSubmitOk: boolean | null = null;
 function Harness({ onRefresh }: { onRefresh: () => void }) {
   const write = useFormWrite("tag-document", strings.reviewTagAdded, onRefresh);
   const [tag, setTag] = useState("");
-  latest = write;
+  const { running, error, saved, rootRef, submit } = write;
+  useEffect(() => {
+    latest = write;
+  });
   return (
-    <div ref={write.rootRef}>
+    <div ref={rootRef}>
       <LabeledField
         label={strings.reviewTagAddLabel}
         value={tag}
         onChange={setTag}
-        error={write.error ?? undefined}
+        error={error ?? undefined}
       />
       <button
         onClick={() => {
           lastSubmitOk = null;
-          void write.submit({ tag }, { pathParams: { doc_id: "d1" } }).then((ok) => {
+          void submit({ tag }, { pathParams: { doc_id: "d1" } }).then((ok) => {
             lastSubmitOk = ok;
           });
         }}
       >
         write
       </button>
-      {write.saved !== null && <StatusBanner kind="ok">{write.saved}</StatusBanner>}
+      {saved !== null && <StatusBanner kind="ok">{saved}</StatusBanner>}
+      <span hidden>{running ? "busy" : "idle"}</span>
     </div>
   );
 }
