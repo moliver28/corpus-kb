@@ -23,13 +23,30 @@ afterEach(() => {
 });
 
 function documentRoutes(): { method: string; path: string; reply: MinimalResponse }[] {
+  const docId = documentsOk.response.body.result[0].doc_id;
   return [
-    // The per-document reads name a longer path than the list read, so
-    // they must sit before the list route in this table.
+    // The per-document reads name a longer path than the list read, and
+    // the remove route is longer than the tag path — longer paths sit
+    // before the shorter prefixes in this table.
+    {
+      method: "POST",
+      path: `/api/documents/${docId}/tags/remove`,
+      reply: respond(200, { status: "success", doc_id: docId, tag: "energy" }),
+    },
+    {
+      method: "POST",
+      path: `/api/documents/${docId}/tags`,
+      reply: respond(200, { status: "success", doc_id: docId, tag: "grid" }),
+    },
     {
       method: "GET",
-      path: `/api/documents/${documentsOk.response.body.result[0].doc_id}/tags`,
+      path: `/api/documents/${docId}/tags`,
       reply: respond(200, documentTagsOk.response.body),
+    },
+    {
+      method: "POST",
+      path: "/api/metadata",
+      reply: respond(200, { status: "success", key: "k", value: "v" }),
     },
     { method: "GET", path: "/api/metadata", reply: respond(200, metadataOk.response.body) },
     {
@@ -66,6 +83,113 @@ describe("DocumentsCard", () => {
     const docId = documentsOk.response.body.result[0].doc_id;
     expect(calls.some((c) => c.url.includes(`/api/documents/${docId}/tags`))).toBe(true);
     expect(calls.some((c) => c.url.includes(`/api/metadata?doc_id=${docId}`))).toBe(true);
+  });
+
+  it("adds a tag through the manifest op and rereads the tags", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    const input = await screen.findByLabelText(strings.reviewTagAddLabel);
+    fireEvent.change(input, { target: { value: "grid" } });
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewTagAddButton }));
+    expect(await screen.findByText(strings.reviewTagAdded)).toBeTruthy();
+    const docId = documentsOk.response.body.result[0].doc_id;
+    const sent = calls.find(
+      (c) => c.method === "POST" && c.url.includes(`/api/documents/${docId}/tags`),
+    );
+    expect(sent).toBeTruthy();
+    expect(JSON.parse(sent?.body ?? "{}")).toEqual({ tag: "grid" });
+    // The ok answer re-reads the document's tag rows.
+    expect(
+      calls.some(
+        (c) =>
+          c.method === "GET" && c.url.includes(`/api/documents/${docId}/tags`) === true,
+      ),
+    ).toBe(true);
+  });
+
+  it("removes a tag only through the named popconfirm", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    const removeButton = await screen.findByRole("button", {
+      name: strings.reviewTagRemoveButton.replace("{tag}", "energy"),
+    });
+    fireEvent.click(removeButton);
+    // The confirm names the tag before any call goes out.
+    expect(
+      await screen.findByText(strings.reviewTagRemoveTitle.replace("{tag}", "energy")),
+    ).toBeTruthy();
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewTagRemoveConfirm }));
+    expect(await screen.findByText(strings.reviewTagRemoved)).toBeTruthy();
+    const docId = documentsOk.response.body.result[0].doc_id;
+    const sent = calls.find((c) => c.method === "POST" && c.url.includes("/tags/remove"));
+    expect(sent?.url).toContain(`/api/documents/${docId}/tags/remove`);
+    expect(JSON.parse(sent?.body ?? "{}")).toEqual({ tag: "energy" });
+  });
+
+  it("saves document metadata through the manifest op", async () => {
+    stubFetch(documentRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    fireEvent.change(await screen.findByLabelText(strings.reviewMetadataKeyLabel), {
+      target: { value: "reviewer" },
+    });
+    fireEvent.change(screen.getByLabelText(strings.reviewMetadataValueLabel), {
+      target: { value: "J. Doe" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewMetadataSaveButton }));
+    expect(await screen.findByText(strings.reviewMetadataSaved)).toBeTruthy();
+    const sent = calls.find((c) => c.method === "POST" && c.url.includes("/api/metadata"));
+    expect(sent).toBeTruthy();
+    const docId = documentsOk.response.body.result[0].doc_id;
+    expect(JSON.parse(sent?.body ?? "{}")).toEqual({
+      key: "reviewer",
+      value: "J. Doe",
+      doc_id: docId,
+    });
+  });
+
+  it("shows a typed untag error inline instead of a fake success", async () => {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    const routes = documentRoutes().map((r) =>
+      r.path === `/api/documents/${docId}/tags/remove`
+        ? {
+            ...r,
+            reply: respond(404, {
+              status: "error",
+              error: "This document does not carry the tag 'energy'.",
+              error_type: "not_found",
+            }),
+          }
+        : r,
+    );
+    stubFetch(routes);
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const detailsButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsDetails,
+    });
+    fireEvent.click(detailsButtons[0]);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: strings.reviewTagRemoveButton.replace("{tag}", "energy"),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: strings.reviewTagRemoveConfirm }));
+    expect(
+      await screen.findByText("This document does not carry the tag 'energy'."),
+    ).toBeTruthy();
+    expect(screen.queryByText(strings.reviewTagRemoved)).toBeNull();
   });
 
   it("deletes a document only through the named confirm gate", async () => {

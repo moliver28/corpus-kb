@@ -1,38 +1,13 @@
-import { Descriptions, Drawer, Tag, Typography } from "antd";
-import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { Descriptions, Drawer, Typography } from "antd";
+import { useCallback, useEffect } from "react";
 import OpBody from "../../components/OpBody";
 import { useRowRead } from "../../hooks/useRowRead";
 import { strings } from "../../strings";
-import {
-  isMetadataEnvelope,
-  isTagsEnvelope,
-  metadataText,
-  tagColor,
-} from "./shapes";
-import type { DocumentRow, MetadataRow, TagRow } from "./shapes";
+import { isMetadataEnvelope, isTagsEnvelope, metadataText } from "./shapes";
+import type { MetadataRow, DocumentRow } from "./shapes";
+import { MetadataEditor, TagEditor } from "./DrawerEditors";
 
-function tagWords(rows: TagRow[]): ReactNode {
-  if (rows.length === 0) {
-    return <Typography.Text type="secondary">{strings.reviewTagsEmpty}</Typography.Text>;
-  }
-  return (
-    <div className="ui-actions">
-      {rows.map((row) => (
-        <Tag key={row.name} color={tagColor(row.color)}>
-          {row.name}
-        </Tag>
-      ))}
-    </div>
-  );
-}
-
-function metadataWords(rows: MetadataRow[]): ReactNode {
-  if (rows.length === 0) {
-    return (
-      <Typography.Text type="secondary">{strings.reviewMetadataEmpty}</Typography.Text>
-    );
-  }
+function metadataWords(rows: MetadataRow[]) {
   return (
     <Descriptions size="small" column={1}>
       {rows.map((row) => (
@@ -45,11 +20,13 @@ function metadataWords(rows: MetadataRow[]): ReactNode {
 }
 
 /**
- * The one document's tags and metadata rows, in a drawer. Both reads
- * are manifest ops (document-tags, document-metadata) through the
+ * One document's tags and metadata, editable in place. The reads are
+ * manifest ops (document-tags, document-metadata) through the
  * row-tagged read hook — the newest document wins, so a slow answer for
- * a document the user already left never renders. The writes are not
- * yet manifest ops, so the drawer stays read-only by design.
+ * a document the user already left never renders. The writes are the
+ * Phase-2 Wave 2 manifest ops (tag-document, untag-document,
+ * set-metadata) through the form-to-write seam hook; every ok answer
+ * re-reads this document's rows.
  */
 export default function DocumentDetailDrawer({
   row,
@@ -71,6 +48,18 @@ export default function DocumentDetailDrawer({
     readTags(row.doc_id, { pathParams: { doc_id: row.doc_id } });
     readMeta(row.doc_id, { query: { doc_id: row.doc_id } });
   }, [row, readTags, readMeta]);
+
+  const refreshTags = useCallback(() => {
+    if (row !== null) {
+      readTags(row.doc_id, { pathParams: { doc_id: row.doc_id } });
+    }
+  }, [row, readTags]);
+
+  const refreshMeta = useCallback(() => {
+    if (row !== null) {
+      readMeta(row.doc_id, { query: { doc_id: row.doc_id } });
+    }
+  }, [row, readMeta]);
 
   // Only a read addressed to the open document may render.
   const tagsShown =
@@ -96,11 +85,11 @@ export default function DocumentDetailDrawer({
           ok={tagRows !== null}
           skeletonRows={2}
           opId="document-tags"
-          retry={() => {
-            if (row !== null) readTags(row.doc_id, { pathParams: { doc_id: row.doc_id } });
-          }}
+          retry={refreshTags}
         >
-          {tagRows === null ? null : tagWords(tagRows)}
+          {tagRows === null || row === null ? null : (
+            <TagEditor docId={row.doc_id} rows={tagRows} refresh={refreshTags} />
+          )}
         </OpBody>
         <Typography.Title level={5} className="ui-flush">
           {strings.reviewMetadataTitle}
@@ -110,11 +99,14 @@ export default function DocumentDetailDrawer({
           ok={metaRows !== null}
           skeletonRows={2}
           opId="document-metadata"
-          retry={() => {
-            if (row !== null) readMeta(row.doc_id, { query: { doc_id: row.doc_id } });
-          }}
+          retry={refreshMeta}
         >
-          {metaRows === null ? null : metadataWords(metaRows)}
+          {metaRows === null || row === null ? null : (
+            <div className="ui-stack">
+              {metadataWords(metaRows)}
+              <MetadataEditor docId={row.doc_id} refresh={refreshMeta} />
+            </div>
+          )}
         </OpBody>
       </div>
     </Drawer>
