@@ -110,6 +110,19 @@ describe("ConflictsCard", () => {
     expect(sent?.method).toBe("POST");
   });
 
+  it("answers a scan that never reaches the server", async () => {
+    // No scan route in the stub: the fetch rejects, so the scan lands
+    // on the network arm of the failure model.
+    stubFetch([
+      { method: "POST", path: "/api/conflicts/list", reply: respond(200, conflictsListOk.response.body) },
+    ]);
+    render(<ConflictsCard />, { wrapper: makeWrapper() });
+    fireEvent.click(await screen.findByRole("button", { name: strings.analyzeConflictsScanButton }));
+    // A failed scan always answers the user — the network arm too (the
+    // server-not-answering word), never a silent button.
+    expect(await screen.findByText(strings.serverNotAnswering)).toBeTruthy();
+  });
+
   it("gates the resolve write and names the pair in the dialog", async () => {
     stubFetch([
       { method: "POST", path: "/api/conflicts/list", reply: respond(200, conflictsListOk.response.body) },

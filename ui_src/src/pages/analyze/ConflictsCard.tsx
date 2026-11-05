@@ -105,7 +105,9 @@ export default function ConflictsCard() {
         </Button>
         <ScanSummary scan={scan} />
       </div>
-      {scan.result !== null && !scan.result.ok && scan.result.kind !== "network" && (
+      {/* A failed scan always answers the user — the network arm too
+          (the server-not-answering word), never a silent button. */}
+      {scan.result !== null && !scan.result.ok && (
         <StatusBanner kind="error">{scan.result.message}</StatusBanner>
       )}
       <OpBody result={result} ok={ok} retry={load} opId="conflicts-list">
