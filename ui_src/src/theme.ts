@@ -66,6 +66,10 @@ export const corpusKbTheme: ThemeConfig = {
       cellPaddingInlineSM: 8,
       fontSizeSM: 12,
       headerBg: "#F7F9F7",
+      // Empty-table placeholder rows ride the map token colorTextDisabled
+      // (antd default rgba(0,0,0,.25) = #bfbfbf fails AA at 1.83:1). Empty
+      // text is real content, so it gets the Graphite tone, not a faint one.
+      colorTextDisabled: "#55605D",
     },
   },
 };
