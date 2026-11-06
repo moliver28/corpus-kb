@@ -34,6 +34,11 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "search_graph",
         "graph_neighbors",
         "graph_traverse",
+        # Phase-2 Wave 4: the entity list read (tools/entity_read_tools.py)
+        # and the graph writes' registry rows (tools/graph_tools.py).
+        "list_entities",
+        "add_entity",
+        "add_relation",
         "sql_query",
         "sql_tables",
         "get_document_tags",
