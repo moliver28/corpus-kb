@@ -35,12 +35,14 @@ def test_connect_prints_valid_mcp_config() -> None:
     assert isinstance(server["command"], str) and server["command"]
 
 
-def test_status_reports_missing_engine_honestly(tmp_path: Path) -> None:
-    """No engine anywhere: status says so and exits non-zero."""
+def test_status_reports_missing_cli_honestly(tmp_path: Path) -> None:
+    """Dev checkout found but no corpus-kb CLI anywhere: status says so and
+    exits non-zero. This is the branch CI exercises (the repo checkout has
+    no installed venv and PATH is scrubbed)."""
     import shutil
 
     if shutil.which("corpus-kb"):
-        # A corpus-kb on PATH (dev machine) makes the missing-engine path
+        # A corpus-kb on PATH (dev machine) makes the missing-CLI path
         # unreachable; the connect test above already covers the contract.
         return
     env = {
@@ -60,7 +62,7 @@ def test_status_reports_missing_engine_honestly(tmp_path: Path) -> None:
         cwd=str(PLUGIN),
     )
     assert result.returncode == 1
-    assert "not found" in result.stdout.lower()
+    assert "no corpus-kb command" in result.stdout
 
 
 def test_status_uses_dev_checkout(tmp_path: Path) -> None:
