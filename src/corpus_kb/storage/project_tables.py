@@ -54,7 +54,9 @@ def raw_table_name(slug: str) -> str:
     return check_identifier(f"raw_{clean.replace('-', '_')}")
 
 
-async def _table_exists(gw: SqlGateway, backend: str, name: str) -> bool:
+async def _table_exists(
+    gw: asyncpg.Connection | SqlGateway, backend: str, name: str
+) -> bool:
     """True when the physical table exists on this backend."""
     if backend == "postgres":
         found = await gw.fetchval("SELECT to_regclass($1)", f"public.{name}")
@@ -222,7 +224,8 @@ async def drop_project_table(
             )
         dropped_rows = 0
         if await _table_exists(conn, backend, table):
-            dropped_rows = int(await conn.fetchval(f"SELECT COUNT(*) FROM {quoted}"))
+            count = await conn.fetchval(f"SELECT COUNT(*) FROM {quoted}")
+            dropped_rows = int(count or 0)
             await conn.execute(f"DROP TABLE IF EXISTS {quoted}")
         await conn.execute(f"DELETE FROM {_REGISTRY_TABLE} WHERE id = $1", registry_id)
     return {"table": table, "dropped_rows": dropped_rows}

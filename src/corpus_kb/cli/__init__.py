@@ -132,6 +132,11 @@ from corpus_kb.cli.cli_queue import register as register_queue_commands  # noqa:
 
 register_queue_commands(app)
 
+# Track C project-table front doors: cli_project mirrors cli_queue.
+from corpus_kb.cli.cli_project import register as register_project_commands  # noqa: E402
+
+register_project_commands(app)
+
 # Textbook-ingestion program (Wave 2C) scan front door: cli_textbook
 # imports corpus_kb.cli nowhere, so this import stays acyclic.
 from corpus_kb.cli.cli_textbook import register as register_textbook_commands  # noqa: E402

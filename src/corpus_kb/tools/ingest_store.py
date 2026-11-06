@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 
 import asyncpg
 
@@ -41,7 +41,7 @@ from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 from ..analysis.dates import parse_date_value
 from ..errors import ConfigError
-from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
+from ..storage.gateway import SqlGateway
 from ..utils.models import Chunk, Document, Entity, Relation
 from . import ingest_batch
 from .ingest_batch import entity_persisted_metadata

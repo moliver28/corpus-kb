@@ -506,6 +506,36 @@
     "required": []
   },
   {
+    "description": "Drop one project raw table and its registry row.",
+    "id": "project-drop",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/project/drop",
+    "required": []
+  },
+  {
+    "description": "List provisioned project raw tables with row counts.",
+    "id": "project-list",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/project/list",
+    "required": []
+  },
+  {
+    "description": "Create the raw table for one project slug (idempotent).",
+    "id": "project-provision",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/project/provision",
+    "required": []
+  },
+  {
     "description": "List research projects, newest first (read-only).",
     "id": "projects-list",
     "longRunning": false,
