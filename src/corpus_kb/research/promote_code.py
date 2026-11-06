@@ -30,7 +30,7 @@ import asyncpg
 import numpy as np
 
 from corpus_kb.research.prototypes import build_view_prototypes
-from corpus_kb.storage.gateway import SqlConn
+from corpus_kb.storage.gateway import SqlConn, SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 TAU_DUP_DEFAULT = 0.85
@@ -89,7 +89,7 @@ def duplicate_gate(
 
 
 async def promote_proposal(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     proposed_id: int,
     name: str,
@@ -196,7 +196,7 @@ async def promote_proposal(
 
 
 async def _mint_version(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     handler: Any,
     tenant_id: UUID,
     name: str,
@@ -248,7 +248,7 @@ def handler_create_sha(codes: list[dict[str, Any]]) -> str:
     return hashlib.sha256(repr(sorted(str(c) for c in codes)).encode()).hexdigest()
 
 
-async def _count_versions(pool: asyncpg.Pool, tenant_id: UUID) -> int:
+async def _count_versions(pool: asyncpg.Pool | SqlGateway, tenant_id: UUID) -> int:
     async with tenant_connection(pool, tenant_id) as conn:
         value = await conn.fetchval(
             "SELECT COUNT(*) FROM codebook_versions WHERE tenant_id = $1",
@@ -258,7 +258,7 @@ async def _count_versions(pool: asyncpg.Pool, tenant_id: UUID) -> int:
 
 
 async def _member_text_sha256s(
-    pool: asyncpg.Pool, tenant_id: UUID, unit_ids: list[int]
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, unit_ids: list[int]
 ) -> list[str]:
     async with tenant_connection(pool, tenant_id) as conn:
         rows = await conn.fetch(

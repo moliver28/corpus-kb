@@ -37,7 +37,9 @@ from corpus_kb.errors import (
     DependencyMissingError,
     InternalError,
     MigrationMissingError,
+    NoMethodMatchesError,
     NotFoundError,
+    QuestionTooShortError,
     ValidationError,
     error_status,
 )
@@ -45,6 +47,8 @@ from corpus_kb.errors import (
 TAXONOMY = [
     ConfigError,
     ValidationError,
+    QuestionTooShortError,
+    NoMethodMatchesError,
     NotFoundError,
     ConflictError,
     DatabaseUnavailableError,

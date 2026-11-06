@@ -75,6 +75,7 @@ import corpus_kb.research.promote_code as promote_code_module
 import corpus_kb.research.report_runner as report_runner_module
 import corpus_kb.research.review_surface as review_surface_module
 import corpus_kb.tools.active_learn_tools as active_learn_tools_module
+import corpus_kb.tools.analysis_route_tools as analysis_route_tools_module
 import corpus_kb.tools.analysis_tools as analysis_tools_module
 import corpus_kb.tools.beliefs_tools as beliefs_tools_module
 import corpus_kb.tools.centroid_tools as centroid_tools_module
@@ -95,6 +96,7 @@ import corpus_kb.tools.method_select_tools as method_select_tools_module
 import corpus_kb.tools.neighbor_tools as neighbor_tools_module
 import corpus_kb.tools.nli_tools as nli_tools_module
 import corpus_kb.tools.notebook_tools as notebook_tools_module
+import corpus_kb.tools.project_tools as project_tools_module
 import corpus_kb.tools.queue_tools as queue_tools_module
 import corpus_kb.tools.release_tools as release_tools_module
 import corpus_kb.tools.research_tools as research_tools_module
@@ -105,6 +107,7 @@ import corpus_kb.tools.tag_tools as tag_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
 import corpus_kb.tools.versioning_tools as versioning_tools_module
+from corpus_kb.analysis.method_register_loader import load_method_register
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.contracts import OPERATIONS, SKIPPED_OPERATIONS
@@ -413,6 +416,27 @@ async def _shared_analysis_select_method(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+# The route leg stacks four authored phrases of method 29, so the phrase
+# path (CI, embedder unavailable) scores 4/6 and resolves the intent;
+# the embedding path (Ollama up) resolves on the centroid cosine. Both
+# modes answer the same guaranteed key set, so the leg is stable in
+# every environment.
+_ROUTE_QUESTION = (
+    "Find duplicate or paraphrased records before analysis. "
+    "Which records say nearly the same thing? "
+    "I want to merge near duplicates without losing speakers. "
+    "Detect repeated submissions and rephrased copies."
+)
+
+
+async def _shared_analysis_route(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await analysis_route_tools_module.analysis_route(
+        ctx["pool"],
+        config=ctx["config"],
+        question=_ROUTE_QUESTION,
+    )
+
+
 async def _shared_keyphrases_extract(ctx: dict[str, Any]) -> dict[str, Any]:
     return await keyphrase_tools_module.keyphrases_extract(ctx["pool"], config=ctx["config"])
 
@@ -540,6 +564,23 @@ async def _shared_queue_cancel(ctx: dict[str, Any]) -> dict[str, Any]:
     return await queue_tools_module.queue_cancel(
         ctx["pool"], config=ctx["config"], queue_id=_QUEUE_ID
     )
+
+
+# -- Track C: the per-project raw-table ops. The stub pool answers the
+#    "already provisioned" shape for provision (fetchval 0 is not None),
+#    an empty registry for list, and a registered table for drop.
+
+
+async def _shared_project_provision(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_provision(ctx["pool"], slug="parity-notes")
+
+
+async def _shared_project_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_list(ctx["pool"])
+
+
+async def _shared_project_drop(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_drop(ctx["pool"], slug="parity-notes")
 
 
 _SEED_BELIEF = {"subject": "speaker:777", "relation": "preference", "object": "ice cream"}
@@ -962,6 +1003,8 @@ _GOLD_PATH = "gold_path"
 DOC_ID = "00000000-0000-0000-0000-00000000000d"
 _QUEUE_ID = "00000000-0000-0000-0000-0000000000e1"
 
+_PROJECT_SLUG = "parity-notes"
+
 LEGS: dict[str, _Leg] = {
     "ingest_text": _Leg(
         _shared_ingest_text,
@@ -1119,6 +1162,13 @@ LEGS: dict[str, _Leg] = {
             }
         ),
     ),
+    # -- analysis question-routing program (wave 3): the question front door -
+    "analysis_route": _Leg(
+        _shared_analysis_route,
+        _post("/api/analysis/route", {"question": _ROUTE_QUESTION}),
+        _sock("analysis_route", {"question": _ROUTE_QUESTION}),
+        _mcp({"question": _ROUTE_QUESTION}),
+    ),
     "keyphrases_extract": _Leg(
         _shared_keyphrases_extract,
         _post("/api/analysis/keyphrases-extract", {}),
@@ -1217,6 +1267,25 @@ LEGS: dict[str, _Leg] = {
         _post("/api/queue/cancel", {"queue_id": _QUEUE_ID}),
         _sock("queue_cancel", {"queue_id": _QUEUE_ID}),
         _mcp({"queue_id": _QUEUE_ID}),
+    ),
+    # -- Track C: the per-project raw-table ops. --
+    "project_provision": _Leg(
+        _shared_project_provision,
+        _post("/api/project/provision", {"slug": _PROJECT_SLUG}),
+        _sock("project_provision", {"slug": _PROJECT_SLUG}),
+        _mcp({"slug": _PROJECT_SLUG}),
+    ),
+    "project_list": _Leg(
+        _shared_project_list,
+        _post("/api/project/list", {}),
+        _sock("project_list", {}),
+        _mcp({}),
+    ),
+    "project_drop": _Leg(
+        _shared_project_drop,
+        _post("/api/project/drop", {"slug": _PROJECT_SLUG}),
+        _sock("project_drop", {"slug": _PROJECT_SLUG}),
+        _mcp({"slug": _PROJECT_SLUG}),
     ),
     # -- Living Corpus W6: the meta-embed build (document kind only; the
     #    profile kind would call the real embedder — env-dependent).
@@ -2438,6 +2507,8 @@ def test_catalogue_matches_surface_registry() -> None:
         "analyze_run",
         # Analysis method register program (wave 2 method rows).
         "analysis_select_method",
+        # Analysis question-routing program (wave 3 question front door).
+        "analysis_route",
         "keyphrases_extract",
         "lexical_classify",
         "neighbors_classify",
@@ -2482,6 +2553,10 @@ def test_catalogue_matches_surface_registry() -> None:
         "beliefs_timeline",
         "beliefs_predict",
         "beliefs_compare",
+        # Track C: the per-project raw-table op rows byte-match.
+        "project_provision",
+        "project_list",
+        "project_drop",
     } <= set(checked)
 
 
@@ -2548,6 +2623,59 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
         allowed["mcp"] = set()
 
     _assert_parity(op.name, keys, allowed)
+
+
+async def test_analysis_route_suggestions_parity(parity_env: dict[str, Any]) -> None:
+    """The next-question suggestions ride the shared handler on all legs.
+
+    Every leg answers deterministically: the fixture patches
+    ``corpus_kb.config.load_config`` to the offline pgml config, so the
+    HTTP and socket adapters take the phrase path too, and the leg
+    question resolves to method 29. That row authors three ``suggests``
+    strings, so all four legs must carry exactly those strings verbatim.
+    A surface that drops, rewords, or re-sources them fails.
+    """
+    ctx = parity_env
+    leg = LEGS["analysis_route"]
+    shared = await leg.shared(ctx)
+
+    client: TestClient = ctx["client"]
+    response = client.post("/api/analysis/route", json={"question": _ROUTE_QUESTION})
+    assert response.status_code == 200, response.text
+    http_env: dict[str, Any] = response.json()
+
+    server: JSONRPCServer = ctx["server"]
+    rpc = await server._process_request(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "analysis_route",
+                "params": {"question": _ROUTE_QUESTION},
+            }
+        )
+    )
+    assert "result" in rpc, rpc
+    socket_env: dict[str, Any] = rpc["result"]
+
+    mcp_env = await _call_mcp_tool(
+        ctx["mcp_server"], "analysis_route", {"question": _ROUTE_QUESTION}
+    )
+
+    register = load_method_register({})
+    chosen = next(row for row in register.methods if row.id == "29")
+    expected = list(chosen.suggests or [])[:3]
+    assert len(expected) == 3, "the leg method must author three suggestions"
+
+    for name, envelope in (
+        ("shared", shared),
+        ("http", http_env),
+        ("socket", socket_env),
+        ("mcp", mcp_env),
+    ):
+        assert envelope["suggestions"] == expected, name
+        intent = envelope["intent"]
+        assert intent["method_id"] == "29", name
 
 
 async def _call_mcp_tool(

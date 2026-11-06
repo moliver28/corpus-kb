@@ -217,14 +217,25 @@ class TestBackendMixErrors:
 
 
 class TestLoadConfigGate:
-    def test_duckdb_default_selection_raises_with_age_remedy(self, tmp_path: Path):
-        # Defaults still select the age graph store, so a bare duckdb
-        # switch fails fast with the first (age) remediation. The default
-        # extraction backend is "ml" (issue #246 owner decision), so only
-        # the age mix fires — an explicitly configured pgml backend still
-        # trips its own error (test below).
+    def test_duckdb_default_selection_follows_duckdb(self, tmp_path: Path):
+        # Issue #330: an UNCHOSEN graph.backend follows the database
+        # backend — a bare duckdb switch loads cleanly and the graph store
+        # follows duckdb. An EXPLICIT graph.backend: age still trips the
+        # AGE mix refusal (test below).
         path = tmp_path / "config.yaml"
         path.write_text(yaml.safe_dump({"database": {"backend": "duckdb"}}), encoding="utf-8")
+        cfg = load_config(str(path))
+        assert cfg["graph"]["backend"] == "duckdb"
+
+    def test_duckdb_explicit_age_still_raises_with_age_remedy(self, tmp_path: Path):
+        # An operator-chosen age graph store on duckdb is refused at load
+        # with the age remediation — the follow rule never overrides an
+        # explicit choice.
+        path = tmp_path / "config.yaml"
+        path.write_text(
+            yaml.safe_dump({"database": {"backend": "duckdb"}, "graph": {"backend": "age"}}),
+            encoding="utf-8",
+        )
         with pytest.raises(ValueError) as excinfo:
             load_config(str(path))
         assert AGE_ON_DUCKDB_ERROR in str(excinfo.value)

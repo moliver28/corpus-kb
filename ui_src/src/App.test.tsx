@@ -74,8 +74,11 @@ describe("App stage shell", () => {
   it("lands on the Setup stage", async () => {
     renderApp();
     // The stage screens are lazy chunks; the stage title appears after
-    // the chunk resolves.
-    expect(await screen.findByText(strings.setupTitle)).toBeTruthy();
+    // the chunk resolves. Under full-suite worker load that resolve can
+    // outwait the library's 1 s default, so the wait runs wide (15 s).
+    expect(
+      await screen.findByText(strings.setupTitle, {}, { timeout: 15_000 }),
+    ).toBeTruthy();
   });
 
   it("degrades a throwing card to the boundary fallback, not a white screen", () => {

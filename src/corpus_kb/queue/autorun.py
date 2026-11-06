@@ -25,6 +25,8 @@ from .worker import QueueWorker
 if TYPE_CHECKING:
     import asyncpg
 
+    from corpus_kb.storage.gateway import SqlGateway
+
 logger = logging.getLogger(__name__)
 
 #: How long a shutdown waits for the current book before the cancel. A
@@ -91,7 +93,7 @@ async def _drain_forever(worker: QueueWorker) -> None:
 
 
 def start_queue_autorun(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | None,
     config: dict[str, object],
     *,
     tenant_id: str = DEFAULT_AUTORUN_TENANT,
@@ -99,10 +101,10 @@ def start_queue_autorun(
     """Start one background drain task when ``queue.autorun`` is true.
 
     Returns None — with no task started — when the flag is off (the
-    default) or the worker refuses the database backend. The caller
-    keeps the returned handle for its shutdown path.
+    default), the store is absent, or the worker refuses the backend.
+    The caller keeps the returned handle for its shutdown path.
     """
-    if not mapping_section(config, "queue").get("autorun", False):
+    if pool is None or not mapping_section(config, "queue").get("autorun", False):
         return None
     try:
         worker = QueueWorker(pool=pool, tenant_id=tenant_id, config=config)

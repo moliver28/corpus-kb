@@ -9,6 +9,32 @@ export interface AnalyzeStrings {
   analyzeAdvisorAction: string;
   analyzeAdvisorTaskRequired: string;
   analyzeAdvisorEmpty: string;
+  // -- Question routing (the analysis_route front door, merged from the
+  //    routing program): mode toggle, question form, readings ladder,
+  //    suggestions, and the trace read-out.
+  routeModeTaskForm: string;
+  routeModeQuestion: string;
+  routeIntro: string;
+  routeQuestionLabel: string;
+  routeQuestionPlaceholder: string;
+  routeQuestionAction: string;
+  routeQuestionRequired: string;
+  routeEmpty: string;
+  routeStatusResolved: string;
+  routeStatusAmbiguous: string;
+  routeStatusDegraded: string;
+  routeDegradedNote: string;
+  routeOverrideNote: string;
+  routeReadingsTitle: string;
+  routeReadingsHint: string;
+  routeReadingsPickLabel: string;
+  routeUseReading: string;
+  routeSuggestionsTitle: string;
+  routeSuggestionsHint: string;
+  routeOverrideLabel: string;
+  routeTopWhyLabel: string;
+  routeTraceSummary: string;
+  routeScoresEmpty: string;
   analyzeRankColumn: string;
   analyzeMethodColumn: string;
   analyzeWhyColumn: string;

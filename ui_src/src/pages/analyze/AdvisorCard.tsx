@@ -10,6 +10,7 @@ import UnavailablePanel from "../../components/UnavailablePanel";
 import { getOp } from "../../api/ops";
 import { useOp } from "../../hooks/useOp";
 import { strings } from "../../strings";
+import QuestionRouteCard from "./QuestionRouteCard";
 import {
   isAdvisorEnvelope,
   manifestOpId,
@@ -76,12 +77,14 @@ function guidanceRow(record: Row): ReactNode {
  * The method advisor: one select-method call, the register's ranking
  * with validation and permitted claims, and a per-row action that hands
  * the method to the op runner. The SPA never re-ranks; the rows render
- * in the server's order.
+ * in the server's order. The mode toggle switches between the task
+ * form and the plain-language question router (routing program W3).
  */
 export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: string) => void }) {
   const [task, setTask] = useState("");
   const [error, setError] = useState("");
   const { rootRef, flag } = useFirstErrorFocus();
+  const [mode, setMode] = useState<"task" | "question">("task");
   const advisor = useOp("analysis-select-method");
 
   async function run(): Promise<void> {
@@ -148,22 +151,46 @@ export default function AdvisorCard({ onRunMethod }: { onRunMethod: (opId: strin
   return (
     <Card title={strings.analyzeAdvisorTitle}>
       <Typography.Paragraph type="secondary">{strings.analyzeAdvisorBody}</Typography.Paragraph>
-      <div className="ui-actions" ref={rootRef}>
-        <LabeledField
-          label={strings.analyzeAdvisorTaskLabel}
-          value={task}
-          onChange={setTask}
-          error={error}
-          required
-          name="task_description"
-          widthClass="ui-narrow"
-          onPressEnter={() => void run()}
-        />
-        <Button type="primary" loading={advisor.running} onClick={() => void run()}>
-          {strings.analyzeAdvisorAction}
+      <div className="ui-actions">
+        <Button
+          aria-pressed={mode === "task"}
+          type={mode === "task" ? "primary" : "default"}
+          onClick={() => setMode("task")}
+        >
+          {strings.routeModeTaskForm}
+        </Button>
+        <Button
+          aria-pressed={mode === "question"}
+          type={mode === "question" ? "primary" : "default"}
+          onClick={() => setMode("question")}
+        >
+          {strings.routeModeQuestion}
         </Button>
       </div>
-      {body}
+      {/* Both branches stay mounted (hidden, not unmounted), so the
+          task text and the question text survive mode switches the same
+          way. Testing Library skips hidden subtrees in role queries. */}
+      <div hidden={mode !== "task"}>
+        <div className="ui-actions" ref={rootRef}>
+          <LabeledField
+            label={strings.analyzeAdvisorTaskLabel}
+            value={task}
+            onChange={setTask}
+            error={error}
+            required
+            name="task_description"
+            widthClass="ui-narrow"
+            onPressEnter={() => void run()}
+          />
+          <Button type="primary" loading={advisor.running} onClick={() => void run()}>
+            {strings.analyzeAdvisorAction}
+          </Button>
+        </div>
+        {body}
+      </div>
+      <div hidden={mode !== "question"}>
+        <QuestionRouteCard onRunMethod={onRunMethod} active={mode === "question"} />
+      </div>
     </Card>
   );
 }

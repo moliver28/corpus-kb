@@ -40,13 +40,14 @@ class LabelRow:
 
 
 async def labeling_tables_present(pg_pool: asyncpg.Pool) -> bool:
-    """True when migration 028 has run (``to_regclass`` probe, no GUC).
+    """True when migration 028 has run (engine probe, no GUC).
 
     Migration 028 creates both tables in one file, so one probe covers
     the family (the topics writer's convention).
     """
-    async with pg_pool.acquire() as conn:
-        return await conn.fetchval("SELECT to_regclass('public.chunk_labels')") is not None
+    from corpus_kb.storage.schema_probe import tables_exist
+
+    return await tables_exist(pg_pool, "chunk_labels")
 
 
 async def write_build(

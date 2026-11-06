@@ -108,12 +108,14 @@ def _demo_files() -> list[Path]:
 
 
 async def _open_pool(cfg: dict[str, Any]) -> asyncpg.Pool:
-    """One pool for a CLI-shaped call (closed by the caller's finally)."""
-    from corpus_kb.server_wiring import initialize_postgres_pool
+    """One store for a CLI-shaped call (closed by the caller's finally).
 
-    db_cfg = cast(dict[str, Any], cfg.get("database", {}) or {})
-    dsn = str(db_cfg.get("connection_string", ""))
-    return await initialize_postgres_pool(dsn)
+    The declared type stays ``asyncpg.Pool`` for the pipeline signatures;
+    a duckdb config yields the gateway at runtime (issue #330).
+    """
+    from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
+
+    return await open_pool_typed_store(config_conn_str(cfg))
 
 
 def _envelope(

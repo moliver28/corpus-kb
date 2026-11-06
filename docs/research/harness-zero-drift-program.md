@@ -59,6 +59,15 @@ Confirmed defects, worst first. Evidence is `file:line` on master `2632368`.
   `scripts/gen_harness_pack.py --check` stays green in CI.
 - **Behavior-preserving splits** in Wave 3: pure moves. SQL moves byte-identical.
   Tests may change only where they pinned a defect.
+- **One dynamic-DDL seam (sanctioned 2026-11-06, owner ruling)**: each
+  research project gets its own physical raw table (`raw_<slug>`). This is
+  the ONLY allowed runtime DDL outside migrations. Rules for the seam:
+  `storage/project_tables.py` is the single factory; identifiers pass
+  through `storage/sql_ident.py` only; every runtime table gets one row in
+  the static `project_tables` registry migration table, so schema-parity,
+  doctor, backup, and migrate-data enumerate them. The registry migration
+  itself is static DDL; the raw tables are runtime DDL created by the
+  factory. No other module may run dynamic DDL.
 
 ## UI SPA program amendments (D17, 2026-10-25)
 
@@ -259,6 +268,8 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Size ratchet | `poe size-ratchet` (`scripts/size_ratchet.py`, stdlib): counts ruff `PLR0915` findings and `src/` files over the 250-line soft limit and compares them with `scripts/quality-baselines.json`. Above baseline fails; at or below passes (report-only ratchet — lower the numbers in the PR that shrinks the code, never raise them) | ci.yml / lint | PR-F |
 | Coverage floor | `poe cover-floor` (`scripts/coverage_floor.py`, stdlib): overall line rate from `coverage.xml` must stay at or above `coverage_floor` in `scripts/quality-baselines.json` (set 0.5 points under the measured value at adoption). Runs after the same ubuntu suite run that feeds `cover-diff` | ci.yml / test-ubuntu | PR-F |
 | Pytest warnings ratchet | `poe warning-ratchet` (`scripts/warning_ratchet.py`): the live suite's warning count, taken through pytest's own `pytest_warning_recorded` hook (pytest 9 dropped the junit warnings attribute), must stay at or below `pytest_warnings` in `scripts/quality-baselines.json` (ceiling 0, measured in the pinned environment: `.[dev,duckdb,inductive]` + Ollama UP, re-measured 2026-11-04). Above the ceiling fails the PR. The CI job runs in the pinned extras env (dev+duckdb+inductive), with the same Postgres service the ubuntu test leg uses and Ollama served best-effort, so the measured population matches the suite, not a skip-heavy subset | ci.yml / warning-ratchet | W11 (#294) |
+| Marketplace manifest | `poe plugin-manifest` (`scripts/plugin_manifest_gate.py`, stdlib): `.claude-plugin/marketplace.json` structure per the marketplace reference (name rules, reserved names, `./` source paths, descriptions, semver) plus version lockstep with `plugins/corpus-rag/.claude-plugin/plugin.json` once the plugin tree lands (issue 331 step 1); before the import the gate prints one note line and passes. This repo is the plugin marketplace (owner directive 2026-11-05, issue 331 M1–M4) | ci.yml / plugin-manifest | 331 |
+| Plugin suite | `poe plugin-tests` (stdlib pytest under `plugins/corpus-rag/tests/` — hook fire/no-fire matrix, marks rate limit, engine-path resolution, manifest lockstep; the plugin's own `pytest.ini` isolates it from the engine config). The plugin is built fresh in-tree (owner directive 2026-11-06, issue 331) | ci.yml / plugin-tests | 331 |
 
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate

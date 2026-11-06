@@ -30,6 +30,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.research.release.consensus import Candidate, ConsensusResult, aggregate_runs
+from corpus_kb.storage.gateway import SqlGateway
 
 CONSENSUS_CONFIG_DEFAULTS: dict[str, object] = {
     "runs": 3,
@@ -120,7 +121,7 @@ class ProposalSeed:
 
 
 async def load_proposal_seeds(
-    pool: asyncpg.Pool, tenant_id: UUID, run_ids: list[str]
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, run_ids: list[str]
 ) -> list[ProposalSeed]:
     """Load the proposed codes of the given inductive runs (tenant-scoped)."""
     from corpus_kb.projections.research._embed import _parse_pg_vector
@@ -189,7 +190,7 @@ def _empty_consensus(settings: ConsensusSettings, n_runs: int) -> ConsensusResul
 
 
 async def run_inductive_consensus(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     cfg: dict[str, Any],
     project_id: UUID | None,

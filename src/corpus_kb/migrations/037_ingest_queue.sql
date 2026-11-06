@@ -19,7 +19,9 @@
 --
 -- Idempotent: CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS +
 -- DROP POLICY IF EXISTS. Parameterized DDL only — no dynamic DDL beyond
--- the 022 policy block.
+-- the 022 policy block and the one sanctioned seam (per-project raw
+-- tables; storage/project_tables.py + the project_tables registry,
+-- see the zero-drift program, 2026-11-06 owner ruling).
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS ingest_queue (

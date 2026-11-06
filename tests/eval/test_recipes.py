@@ -23,10 +23,32 @@ def test_allowed_overrides_are_the_query_time_knobs() -> None:
                 "reranking.enabled",
                 "reranking.over_retrieve_n",
                 "reranking.score_floor",
+                "analysis.routing.confidence_threshold",
+                "analysis.routing.margin",
             }
         )
         == ALLOWED_OVERRIDES
     )
+
+
+def test_apply_overrides_nests_two_level_paths() -> None:
+    """Routing knobs land inside analysis.routing, siblings untouched."""
+    base: dict[str, object] = {
+        "analysis": {"routing": {"confidence_threshold": 0.55, "margin": 0.10}},
+    }
+    merged = apply_overrides(
+        base,
+        {"analysis.routing.confidence_threshold": 0.45, "analysis.routing.margin": 0.05},
+    )
+    analysis = merged["analysis"]
+    assert isinstance(analysis, dict)
+    routing = analysis["routing"]
+    assert routing == {"confidence_threshold": 0.45, "margin": 0.05}
+    base_analysis = base["analysis"]
+    assert isinstance(base_analysis, dict)
+    base_routing = base_analysis["routing"]
+    assert isinstance(base_routing, dict)
+    assert base_routing["confidence_threshold"] == 0.55
 
 
 def test_apply_overrides_sets_dot_paths_on_a_copy() -> None:

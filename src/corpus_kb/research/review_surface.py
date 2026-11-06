@@ -35,6 +35,7 @@ from corpus_kb.research.review_routing import (
     next_review_batch,
     route_for_review,
 )
+from corpus_kb.storage.gateway import SqlGateway
 
 __all__ = [
     "DECISIONS",
@@ -67,7 +68,7 @@ RUBRIC_VERDICTS = (
 
 
 async def execute_review(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     tenant_id: UUID,
     conn_str: str,
     assignment_aggregate_id: UUID,
@@ -143,7 +144,7 @@ def aggregate_rubric(reviews: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 async def execute_rubric_review(
-    pool: asyncpg.Pool | None,
+    pool: asyncpg.Pool | SqlGateway | None,
     tenant_id: UUID,
     conn_str: str,
     codebook_version_id: UUID,
@@ -197,7 +198,7 @@ def _now_iso() -> str:
 
 
 async def _advance_assignments(
-    pool: asyncpg.Pool, tenant_id: UUID, conn_str: str
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, conn_str: str
 ) -> dict[str, Any]:
     """Apply NEW CodingAssignment.Reviewed events through the projector.
 
@@ -216,7 +217,17 @@ async def _advance_assignments(
     from corpus_kb.projections.research_projection import RESEARCH_PROJECTION_NAME
 
     app = get_app(conn_str)
-    reader = EventReader(pool, app.mapper, events_table_name(app))
+    # Issue #330: on the DuckDB gateway the events live in the SQLite
+    # sidecar, so the reader walks the app's recorder, never the store.
+    from corpus_kb.storage.gateway import is_gateway
+
+    on_gateway = is_gateway(pool)
+    reader = EventReader(
+        None if on_gateway else pool,
+        app.mapper,
+        events_table_name(app),
+        recorder=app.recorder if on_gateway else None,
+    )
     checkpoint = CheckpointManager(pool)
     cp = await checkpoint.get_checkpoint(RESEARCH_PROJECTION_NAME, DEFAULT_TENANT)
     last_sequence = int(cp["last_sequence"]) if cp and cp["last_sequence"] else 0

@@ -89,6 +89,15 @@ ALLOWED_DRIFT: dict[tuple[str, str, str], str] = {
     ("sequence", "", "sources_id_seq"): (
         "Orphan: DuckDB 001 mirrors the pg serial name; sources.id uses gen_random_uuid()."
     ),
+    # -- entities.source_document_id FK (issue #330): Postgres drops it in
+    # -- its 040 via ALTER TABLE DROP CONSTRAINT, which the static fold
+    # -- cannot see; the DuckDB rebuild (041) lands the same end state.
+    # -- storage.duckdb_cascade owns the SET NULL action on both engines.
+    ("fk", "entities", "source_document_id"): (
+        "Dropped by pg 040 (ALTER DROP CONSTRAINT is invisible to the fold);"
+        " DuckDB 041 rebuilds entities without it. The cascade module owns"
+        " the SET NULL action."
+    ),
 }
 
 
@@ -121,8 +130,11 @@ def migration_files(root: Path) -> tuple[list[tuple[Path, str]], list[tuple[Path
     for path in sorted((root / PG_MIGRATIONS).glob("[0-9]*.sql")):
         rel = path.relative_to(root)
         pg.append((path, rel.as_posix()))
+    # The mirror set folds forward files only (glob ``[0-9]*.sql`` skips the
+    # rollback twins), the same rule the Postgres side follows — rollback
+    # files run operator-side and never shape the applied schema state.
     duck: list[tuple[Path, str]] = []
-    for path in sorted((root / DUCK_MIGRATIONS).glob("*.sql")):
+    for path in sorted((root / DUCK_MIGRATIONS).glob("[0-9]*.sql")):
         rel = path.relative_to(root)
         duck.append((path, rel.as_posix()))
     return pg, duck

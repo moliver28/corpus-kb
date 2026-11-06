@@ -22,6 +22,7 @@ _ANALYSIS = "corpus_kb.tools.analysis_tools"
 _STMT = "corpus_kb.tools.statements_tools"
 _CONF = "corpus_kb.tools.conflicts_tools"
 _QUEUE = "corpus_kb.tools.queue_tools"
+_PROJECT = "corpus_kb.tools.project_tools"
 _BELIEFS = "corpus_kb.tools.beliefs_tools"
 _KEY = "corpus_kb.tools.keyphrase_tools"
 _LEX = "corpus_kb.tools.lexical_tools"
@@ -174,6 +175,14 @@ _SPECS: dict[str, _Spec] = {
         _QUEUE, "queue_status", opts=(_Opt("queue_id", "str"), _Opt("limit", "int", 50))
     ),
     "queue_cancel": _Spec(_QUEUE, "queue_cancel", opts=(_Opt("queue_id", "sdef", ""),)),
+    # -- Track C: the per-project raw-table ops --
+    "project_provision": _Spec(
+        _PROJECT,
+        "project_provision",
+        opts=(_Opt("slug", "sdef", ""), _Opt("project_id", "str")),
+    ),
+    "project_list": _Spec(_PROJECT, "project_list"),
+    "project_drop": _Spec(_PROJECT, "project_drop", opts=(_Opt("slug", "sdef", ""),)),
     "ask": _Spec(
         _ASK,
         "ask",

@@ -17,6 +17,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
+from corpus_kb.storage.tenant_conn import tenant_connection
+
 if TYPE_CHECKING:
     import asyncpg
 
@@ -49,8 +51,7 @@ async def mine_exemplars(
     min_confidence: float = _MIN_CONFIDENCE,
 ) -> list[dict[str, object]]:
     """High-confidence relation exemplars as LangExtract example dicts."""
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
+    async with tenant_connection(pool, tenant_id) as conn:
         rows = await conn.fetch(_MINE_SQL, tenant_id, min_confidence, limit)
     exemplars: list[dict[str, object]] = []
     for row in rows:

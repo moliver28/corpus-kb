@@ -4,7 +4,7 @@ Everything the CLI command modules need that is not a command itself:
 the asyncio runner + error mapper (``_run_async``/``_cli_error_exit``),
 the cycle approval boundary (``_cli_approve``), the canonical tenant id
 (imported from ``corpus_kb.contracts.model``), UUID coercions, the
-``wired_pool`` bootstrap every coroutine shares, and payload shaping
+engine-aware store bootstrap every coroutine shares (cli_store), and payload shaping
 (``cast_dict``/``cast_list``) for the printers.
 
 Import-light on purpose (typer + contracts only): heavy imports (asyncpg,
@@ -14,19 +14,14 @@ lazy-import discipline cli.py documents.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, NamedTuple, cast
+from typing import TYPE_CHECKING, cast
 
 import typer
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    import asyncpg
-
-    from corpus_kb.projections.research._embed import ResearchEmbedder
+    pass
 
 # The canonical placeholder tenant (RLS default). contracts.model is the
 # single source; cli.py keeps a ``_DEFAULT_TENANT`` alias of this name for
@@ -173,49 +168,6 @@ def _run_async(coro: object) -> int:
     if code:
         raise typer.Exit(code=code)
     return code
-
-
-class Wired(NamedTuple):
-    """What one CLI coroutine gets from the wired bootstrap."""
-
-    pool: asyncpg.Pool
-    cfg: dict[str, object]
-    conn_str: str
-    embedder: ResearchEmbedder | None
-
-
-@asynccontextmanager
-async def wired_pool(
-    *, embedder: bool = False, cfg: dict[str, object] | None = None
-) -> AsyncIterator[Wired]:
-    """One bootstrap for every CLI coroutine: config, pool, (opt) embedder.
-
-    load_config -> connection_string -> asyncpg.create_pool -> optional
-    ``ResearchEmbedder(pool, create_embedder(cfg, pool))`` -> yield ->
-    pool.close. The research ingest path prints its detection summary
-    BEFORE the pool opens, so it passes ``cfg`` pre-loaded; ask and
-    uncoded pass ``embedder=True``. Every other coroutine uses the
-    defaults. The pool closes on exit, success or error.
-    """
-    import asyncpg
-
-    from corpus_kb.config import load_config
-
-    if cfg is None:
-        cfg = load_config()
-    db = cast(dict[str, object], cfg.get("database") or {})
-    conn_str = str(db.get("connection_string", ""))
-    pool = await asyncpg.create_pool(conn_str)
-    try:
-        research_embedder: ResearchEmbedder | None = None
-        if embedder:
-            from corpus_kb.projections.research._embed import ResearchEmbedder
-            from corpus_kb.rag import create_embedder
-
-            research_embedder = ResearchEmbedder(pool, create_embedder(cfg, pool))
-        yield Wired(pool=pool, cfg=cfg, conn_str=conn_str, embedder=research_embedder)
-    finally:
-        await pool.close()
 
 
 def cast_dict(payload: object) -> dict[str, object]:

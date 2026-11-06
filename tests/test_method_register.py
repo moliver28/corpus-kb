@@ -15,9 +15,15 @@ from typing import Any, cast
 import pytest
 import yaml
 
-from corpus_kb.analysis.method_register import (
-    MethodRegister,
-    load_method_register,
+from corpus_kb.analysis.method_register import MethodRegister
+from corpus_kb.analysis.method_register_loader import load_method_register
+from corpus_kb.analysis.method_register_routing import (
+    COMPARISON_STRUCTURES,
+    COST_TIERS,
+    EVIDENCE_BASES,
+    OUTPUT_FORMS,
+    STATISTICAL_RIGOR_LEVELS,
+    TASK_TYPES,
 )
 from corpus_kb.analysis.method_register_rubric import rank_methods
 from corpus_kb.api._body import error_response
@@ -135,7 +141,7 @@ def register() -> MethodRegister:
 
 
 def test_loads_with_defaults_and_header(register: MethodRegister) -> None:
-    assert register.register_version == "1.0.0"
+    assert register.register_version == "2.0.0"
     assert register.source_document.title
     assert register.source_document.path_note
     assert len(register.selection_rules) == 4
@@ -178,13 +184,13 @@ def test_packaged_fallback_when_repo_file_missing(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     register = load_method_register({})
-    assert register.register_version == "1.0.0"
+    assert register.register_version == "2.0.0"
     assert len(register.methods) == 30
 
 
 def test_missing_register_file_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "corpus_kb.analysis.method_register._packaged_register_path",
+        "corpus_kb.analysis.method_register_loader._packaged_register_path",
         lambda _name: None,
     )
     monkeypatch.chdir(tmp_path)
@@ -546,3 +552,189 @@ def test_loader_enforces_full_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyP
     config = {"analysis": {"method_register_path": str(path)}}
     with pytest.raises(ValidationError, match="01 to 30"):
         load_method_register(config)
+
+
+# ---------------------------------------------------------------------------
+# Routing axes (analysis-routing program, wave 1)
+# ---------------------------------------------------------------------------
+
+ROUTING_FIELD_NAMES = (
+    "task_type",
+    "comparison_structure",
+    "output_form",
+    "evidence_basis",
+    "statistical_rigor",
+    "cost_tier",
+    "question_phrases",
+    "assumptions",
+    "null_calibration",
+    "failure_modes",
+    "scope_limits",
+    "suggests",
+)
+
+
+def test_routing_vocab_tuples_are_pinned() -> None:
+    """The six routing vocabularies match the program plan verbatim."""
+    assert TASK_TYPES == (
+        "representation",
+        "discovery",
+        "measurement",
+        "prediction",
+        "causal_inference",
+    )
+    assert COMPARISON_STRUCTURES == (
+        "none",
+        "subset_vs_subset",
+        "paired",
+        "temporal",
+        "cross_corpus",
+        "model_vs_model",
+    )
+    assert OUTPUT_FORMS == (
+        "point_answer",
+        "ranked_list",
+        "statistic",
+        "cluster_map",
+        "graph",
+        "narrative",
+    )
+    assert EVIDENCE_BASES == ("vector", "lexical", "claims", "graph", "labels")
+    assert STATISTICAL_RIGOR_LEVELS == (
+        "descriptive",
+        "inferential_null",
+        "inferential_calibrated",
+    )
+    assert COST_TIERS == ("interactive", "batch")
+
+
+def _routing_record() -> dict[str, Any]:
+    """One valid record carrying all 12 routing fields."""
+    record = _valid_record()
+    record.update(
+        {
+            "task_type": "discovery",
+            "comparison_structure": "none",
+            "output_form": "ranked_list",
+            "evidence_basis": "lexical",
+            "statistical_rigor": "descriptive",
+            "cost_tier": "interactive",
+            "question_phrases": ["What words come up most often in these documents?"],
+            "assumptions": "Document boundaries and filtering stay fixed.",
+            "null_calibration": "None; review the top terms by hand.",
+            "failure_modes": "Repeated boilerplate can outrank meaningful terms.",
+            "scope_limits": "Distinctive wording only; themes need reading.",
+            "suggests": ["Which top terms look meaningless here?", "What rare words rank high?"],
+        }
+    )
+    return record
+
+
+@pytest.mark.parametrize("field", ROUTING_FIELD_NAMES)
+def test_routing_fields_default_to_none(field: str) -> None:
+    register = MethodRegister.model_validate(_single_register(_valid_record()))
+    assert getattr(register.methods[0], field) is None
+
+
+@pytest.mark.parametrize(
+    ("field", "bad", "allowed"),
+    [
+        ("task_type", "causal", "causal_inference"),
+        ("comparison_structure", "versus", "paired"),
+        ("output_form", "table", "cluster_map"),
+        ("evidence_basis", "vibes", "vector"),
+        ("statistical_rigor", "strong", "descriptive"),
+        ("cost_tier", "cheap", "interactive"),
+    ],
+)
+def test_routing_vocab_rejection_names_allowed_values(field: str, bad: str, allowed: str) -> None:
+    record = _routing_record()
+    record[field] = bad
+    with pytest.raises(ValueError) as excinfo:
+        MethodRegister.model_validate(_single_register(record))
+    message = str(excinfo.value)
+    assert field in message
+    assert allowed in message
+
+
+def test_question_phrases_reject_bad_shapes() -> None:
+    base = _routing_record()
+    record = _mutate(base, question_phrases=[])
+    with pytest.raises(ValueError, match="question_phrases"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(base, question_phrases=[f"distinct phrase number {n}" for n in range(11)])
+    with pytest.raises(ValueError, match="1 to 10"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(base, question_phrases=["   "])
+    with pytest.raises(ValueError, match="non-empty"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(
+        base,
+        question_phrases=["same words repeated here", "same words repeated here"],
+    )
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_suggests_reject_count_and_word_cap() -> None:
+    base = _routing_record()
+    record = _mutate(base, suggests=["one", "two", "three", "four"])
+    with pytest.raises(ValueError, match="1 to 3"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(base, suggests=[" ".join(["word"] * 21)])
+    with pytest.raises(ValueError, match="20 words"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(base, suggests=["   "])
+    with pytest.raises(ValueError, match="non-empty"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_dropped_routing_fields_rejected() -> None:
+    """cost_scale and evidence_citation left the schema at 2.0.0 (extra=forbid)."""
+    record = _mutate(_routing_record(), cost_scale="One sparse scan over the corpus; CPU only.")
+    with pytest.raises(ValueError, match="cost_scale"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(
+        _routing_record(),
+        evidence_citation="https://example.org/tfidf (Documentation 2024)",
+    )
+    with pytest.raises(ValueError, match="evidence_citation"):
+        MethodRegister.model_validate(_single_register(record))
+
+
+def test_full_routing_record_round_trips_json() -> None:
+    register = MethodRegister.model_validate(_single_register(_routing_record()))
+    dump = register.model_dump(mode="json")
+    again = MethodRegister.model_validate(dump)
+    assert again == register
+    assert register.methods[0].question_phrases == [
+        "What words come up most often in these documents?"
+    ]
+    assert register.methods[0].suggests == [
+        "Which top terms look meaningless here?",
+        "What rare words rank high?",
+    ]
+
+
+def test_routing_axes_populated_on_every_row(register: MethodRegister) -> None:
+    """Every real row carries populated routing fields within the authoring bounds."""
+    seen: dict[str, str] = {}
+    for record in register.methods:
+        for name in ROUTING_FIELD_NAMES:
+            assert getattr(record, name), f"{record.id} missing {name}"
+        phrases = record.question_phrases or []
+        assert 5 <= len(phrases) <= 10, f"{record.id} phrase count {len(phrases)}"
+        assert all(6 <= len(p.split()) <= 14 for p in phrases), f"{record.id} phrase words"
+        suggests = record.suggests or []
+        assert 2 <= len(suggests) <= 3, f"{record.id} suggests count"
+        assert all(len(s.split()) <= 20 for s in suggests), f"{record.id} suggests words"
+        primary = record.sources[0]
+        assert " (" in primary and primary.endswith(")"), f"{record.id} primary source annotation"
+        for phrase in phrases:
+            assert phrase not in seen, f"phrase reused by {record.id} and {seen[phrase]}"
+            seen[phrase] = record.id
+
+
+def test_register_version_bumped_for_routing_schema(register: MethodRegister) -> None:
+    """The slimmed routing schema bumps the register to 2.0.0 (W2 caches per version)."""
+    assert register.register_version == "2.0.0"

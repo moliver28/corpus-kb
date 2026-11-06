@@ -40,12 +40,13 @@ async def _resolve_router_handler(cfg: dict[str, Any], pool: asyncpg.Pool) -> Ro
     documented Age→Postgres fallback, embedder-carrying query handler,
     versioning). One singleton per process, exactly like the server.
     """
+    from corpus_kb.errors import InternalError
     from corpus_kb.handlers.router_handler import get_router_handler, set_router_handler
 
     try:
         return get_router_handler()
-    except RuntimeError:
-        pass
+    except (RuntimeError, InternalError):
+        pass  # no server wired the singleton; build the stack over this store
 
     from corpus_kb.handlers.graph_handler import GraphHandler
     from corpus_kb.handlers.query_handler import QueryHandler
@@ -94,13 +95,14 @@ async def query(
 
     cfg = load_config_or_pass(config)
     with span(SPAN_ROUTE):
+        from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
+
         own_pool: asyncpg.Pool | None = None
         pool = pg_pool
         if pool is None:
-            import asyncpg as _asyncpg
-
-            dsn = str((cfg.get("database", {}) or {}).get("connection_string", ""))
-            pool = own_pool = await _asyncpg.create_pool(dsn)
+            # One opener for both engines (issue #330): the tools dispatch
+            # pool-or-gateway at runtime with is_gateway.
+            pool = own_pool = await open_pool_typed_store(config_conn_str(cfg))
         try:
             router = await _resolve_router_handler(cfg, pool)
             routed = RoutedQuery(tenant_id=UUID(tenant_id), query=query, k=k)

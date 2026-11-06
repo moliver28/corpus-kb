@@ -9,7 +9,6 @@ from uuid import UUID
 import asyncpg
 import pytest
 
-from corpus_kb.errors import DatabaseUnavailableError
 from corpus_kb.tools.pipeline.calibrate_sweep_engine import ScratchTenantEngine, tenant_for
 
 _CFG: dict[str, object] = {"database": {"backend": "postgres"}}
@@ -24,11 +23,32 @@ def test_tenant_for_is_stable_per_profile_and_golden() -> None:
     assert isinstance(first, UUID)
 
 
-async def test_duckdb_backend_refused_before_any_connection() -> None:
-    cfg: dict[str, object] = {"database": {"backend": "duckdb", "connection_string": "unused"}}
+async def test_duckdb_backend_opens_the_gateway(tmp_path: Path) -> None:
+    """Issue #330 inversion: the sweep opens the DuckDB gateway, not a refusal."""
+    pytest.importorskip("duckdb")  # the validation-gate job installs no duckdb extra
+    from corpus_kb.storage.gateway import DuckDbGateway, is_gateway
+
+    cfg: dict[str, object] = {
+        "database": {
+            "backend": "duckdb",
+            "connection_string": f"duckdb:///{(tmp_path / 'sweep.duckdb').as_posix()}",
+        },
+        # CI pulls nomic-embed-text only; the packaged default (qwen3) 404s
+        # there and the open() probe would raise instead of degrade. The
+        # dimensions travel with the model (768) so the probe validates.
+        "embedding": {
+            "provider": "ollama",
+            "model": "nomic-embed-text",
+            "dimensions": 768,
+        },
+    }
     engine = ScratchTenantEngine(cfg, tenant_for("starter", "a" * 64), min_overlap=0.5)
-    with pytest.raises(DatabaseUnavailableError, match="Postgres"):
-        await engine.open()
+    await engine.open()
+    try:
+        assert is_gateway(engine._pool)
+        assert isinstance(engine._pool, DuckDbGateway)
+    finally:
+        await engine.close()
 
 
 class _StubHandler:

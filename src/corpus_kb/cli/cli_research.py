@@ -20,6 +20,7 @@ from corpus_kb.cli.cli_research_ask import register as register_ask
 from corpus_kb.cli.cli_research_ingest import register as register_ingest
 from corpus_kb.cli.cli_research_report import register as register_report
 from corpus_kb.cli.cli_research_views import register as register_views
+from corpus_kb.cli.cli_store import wired_store
 from corpus_kb.cli.cli_support import (
     _cli_approve,
     _cli_approve_no,
@@ -27,7 +28,6 @@ from corpus_kb.cli.cli_support import (
     _pid,
     _run_async,
     _tenant,
-    wired_pool,
 )
 from corpus_kb.research.cycle_gates import (
     EXIT_APPROVAL_DENIED,
@@ -172,7 +172,7 @@ def _cycle_coroutine(
     from corpus_kb.research.cycle_state import watch_cycle
 
     async def _run() -> int:
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             kwargs: dict[str, Any] = {
                 "mode": mode,
                 "project_id": _pid(project_id),
@@ -185,8 +185,8 @@ def _cycle_coroutine(
                 "cfg": wired.cfg,
             }
             if watch:
-                return await watch_cycle(wired.pool, _tenant(), watch, **kwargs)
-            return await run_cycle(wired.pool, _tenant(), **kwargs)
+                return await watch_cycle(wired.store, _tenant(), watch, **kwargs)
+            return await run_cycle(wired.store, _tenant(), **kwargs)
 
     return _run()
 

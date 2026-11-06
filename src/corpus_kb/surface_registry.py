@@ -353,6 +353,14 @@ SURFACES: tuple[Surface, ...] = (
         description="Rank the register's methods for a stated task (pure registry logic).",
         http_route="/api/analysis/select-method",
     ),
+    # -- analysis question-routing program (wave 3): the question front door -
+    Surface(
+        name="analysis-route",
+        cli_path="analysis-route",
+        mcp_tool="analysis_route",
+        description="Route a plain-language question to the right analysis method.",
+        http_route="/api/analysis/route",
+    ),
     Surface(
         name="keyphrases-extract",
         cli_path="keyphrases-extract",
@@ -466,6 +474,28 @@ SURFACES: tuple[Surface, ...] = (
         mcp_tool="queue_cancel",
         description="Cancel one pending or running queue row.",
         http_route="/api/queue/cancel",
+    ),
+    # -- Track C: the per-project raw-table ops. -------------------------
+    Surface(
+        name="project-provision",
+        cli_path="project-provision",
+        mcp_tool="project_provision",
+        description="Create the raw table for one project slug (idempotent).",
+        http_route="/api/project/provision",
+    ),
+    Surface(
+        name="project-list",
+        cli_path="project-list",
+        mcp_tool="project_list",
+        description="List provisioned project raw tables with row counts.",
+        http_route="/api/project/list",
+    ),
+    Surface(
+        name="project-drop",
+        cli_path="project-drop",
+        mcp_tool="project_drop",
+        description="Drop one project raw table and its registry row.",
+        http_route="/api/project/drop",
     ),
     # -- UI manifest self-upgrade reads (issue #182): the Review and Ask
     #    screens resolve these ids through getOp; the names follow the
@@ -1061,6 +1091,30 @@ _SELECT_BODY = _amr_body(
     validation="read the top rows' validation_required and permitted_claims before you pick one.",
     claims="a ranked shortlist with the register version recorded.",
 )
+_ROUTE_BODY = """# corpus-analysis-route — question front door
+
+Route one plain-language question to the right analysis method.
+
+- Ask the question; read the method, the one-line why, and the run hint:
+
+  ```
+  corpus-kb analysis-route "<question>"
+  ```
+
+- An ambiguous answer lists readings. Re-run with your pick:
+
+  ```
+  corpus-kb analysis-route "<question>" --method-id <id>
+  ```
+
+- The status says resolved, ambiguous, or degraded. Degraded means no
+  embedder ran; the phrase rules still answered, and the trace says
+  which mode ran.
+- The trace records the mode, the threshold, the margin, and the scores.
+- Exit codes: 0 answered, 1 failed, 3 unavailable.
+- All flags: `corpus-kb analysis-route --help`
+- Method rows: docs/ANALYSIS-METHODS.md (the register is the source).
+"""
 _KEYPHRASES_BODY = _amr_body(
     "keyphrases-extract",
     family="themes (methods 05, 06, 07)",
@@ -1333,6 +1387,14 @@ WRAPPERS: tuple[Wrapper, ...] = (
         argument_hint="<task> [--output-family <fam>] [--input <kind>] [--max-tier <tier>]",
         body=_SELECT_BODY,
         covers=("analysis-select-method",),
+    ),
+    Wrapper(
+        name="corpus-analysis-route",
+        title="corpus-analysis-route",
+        description="Route a plain-language question to an analysis method (the front door)",
+        argument_hint="<question> [--method-id <id>]",
+        body=_ROUTE_BODY,
+        covers=("analysis-route",),
     ),
     Wrapper(
         name="corpus-keyphrases-extract",

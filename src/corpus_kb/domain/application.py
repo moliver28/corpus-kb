@@ -188,13 +188,15 @@ def get_app_for_config(cfg: dict[str, Any] | None) -> CorpusApplication:
     return get_app()
 
 
-def get_app(connection_string: str | None = None, backend: str = "postgres") -> CorpusApplication:
+def get_app(connection_string: str | None = None, backend: str | None = None) -> CorpusApplication:
     """Get or create the CorpusApplication cached under (backend, conn_str).
 
     Args:
         connection_string: backend DSN or file path. If None, loads from
             CORPUS_KB_DATABASE_URL or config.
-        backend: 'postgres' (default) or 'duckdb' (sqlite event store).
+        backend: 'postgres' or 'duckdb' (sqlite event store). None (the
+            default) follows the DSN scheme: a duckdb:/// DSN selects the
+            sqlite sidecar, anything else selects Postgres (issue #330).
 
     Returns:
         CorpusApplication for this cache key.
@@ -206,6 +208,9 @@ def get_app(connection_string: str | None = None, backend: str = "postgres") -> 
             "Database connection string is empty. "
             "Set CORPUS_KB_DATABASE_URL or configure database.connection_string."
         )
+    from corpus_kb.storage.connect import resolve_event_backend
+
+    backend = resolve_event_backend(connection_string, backend)
     key = (backend, connection_string)
     with _apps_lock:
         app = _apps.get(key)

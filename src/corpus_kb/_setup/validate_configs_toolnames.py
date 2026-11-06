@@ -78,6 +78,10 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "queue_enqueue",
         "queue_status",
         "queue_cancel",
+        # -- Track C: the per-project raw-table ops ------------------------
+        "project_provision",
+        "project_list",
+        "project_drop",
         # -- lifecycle UI ops (UI SPA Task 5b, issue #176): registry rows over
         #    the demo loader and the doctor probes ---------------------------
         "demo_load",
@@ -104,6 +108,8 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "analyze_run",
         # -- analysis method register program (wave 2, tools/*_tools.py) -----
         "analysis_select_method",
+        # -- analysis question-routing program (wave 3, question front door) -
+        "analysis_route",
         "keyphrases_extract",
         "lexical_classify",
         "neighbors_classify",

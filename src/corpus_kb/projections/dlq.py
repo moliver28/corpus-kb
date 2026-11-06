@@ -32,7 +32,11 @@ class DLQHandler:
     the statements that need it run in ONE transaction (the gateway scope).
     """
 
-    def __init__(self, pool: asyncpg.Pool | None = None, gateway: SqlGateway | None = None) -> None:
+    def __init__(
+        self,
+        pool: asyncpg.Pool | SqlGateway | None = None,
+        gateway: SqlGateway | None = None,
+    ) -> None:
         self._gateway = resolve_gateway(pool, gateway)
 
     async def record_failure(

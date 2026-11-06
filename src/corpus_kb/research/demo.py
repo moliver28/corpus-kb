@@ -90,7 +90,17 @@ def _wiring(pool: Any, cfg: dict[str, Any], conn_str: str) -> tuple[Any, ...]:
     from corpus_kb.rag import create_embedder
 
     app = _get_app(conn_str)
-    reader = EventReader(pool, app.mapper, events_table_name(app))
+    # Issue #330: on the DuckDB gateway the events live in the SQLite
+    # sidecar, so the reader walks the app's recorder, never the store.
+    from corpus_kb.storage.gateway import is_gateway
+
+    on_gateway = is_gateway(pool)
+    reader = EventReader(
+        None if on_gateway else pool,
+        app.mapper,
+        events_table_name(app),
+        recorder=app.recorder if on_gateway else None,
+    )
     # A per-run handler (not the process-wide singleton): run_demo owns this
     # pool's lifecycle, and a singleton created by an earlier command in the
     # same process would hold an already-closed pool. The DSN binds the
@@ -124,7 +134,10 @@ def _default_tenant() -> UUID:
 
 
 def _conn_str(cfg: dict[str, Any]) -> str:
-    return str((cfg.get("database", {}) or {}).get("connection_string", ""))
+    """The config DSN, duckdb-prefixed when the backend is duckdb."""
+    from corpus_kb.storage.connect import config_conn_str
+
+    return config_conn_str(cfg)
 
 
 async def _resolve_exemplar_shas(
@@ -442,7 +455,6 @@ async def _demo_ask_stage(run: _DemoRun) -> None:
 
 async def run_demo(cfg: dict[str, Any] | None = None) -> int:
     """Execute the narrated pipeline; returns the process exit code."""
-    import asyncpg
 
     from corpus_kb.config import load_config
 
@@ -458,7 +470,9 @@ async def run_demo(cfg: dict[str, Any] | None = None) -> int:
         demo_stages()
     )
 
-    pool = await asyncpg.create_pool(conn_str)
+    from corpus_kb.storage.connect import open_pool_typed_store
+
+    pool = await open_pool_typed_store(conn_str)
     try:
         if await _embedder_gate(pool, cfg):
             print(f"ERROR: {guide_copy.DEMO_NO_EMBEDDINGS}")

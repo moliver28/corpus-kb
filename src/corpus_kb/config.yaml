@@ -280,6 +280,18 @@ analysis:
     enabled: false
     # Lexicon source for the rule-based scorer.
     lexicon_path: config/sentiment_lexicon.yaml
+  # Question routing (src/corpus_kb/analysis/question_router.py is the
+  # reader). The router resolves a question when the top score clears
+  # confidence_threshold and beats the runner-up score by margin.
+  routing:
+    confidence_threshold: 0.55
+    margin: 0.10
+    # The ask-op LLM fallback for an ambiguous tie (routing W5). Off by
+    # default: the deterministic router answers alone. When true, one
+    # gated LLM attempt may resolve the tie. Every attempt lands in the
+    # JSONL log file.
+    llm_fallback_enabled: false
+    fallback_log_path: "analysis_routing_fallbacks.jsonl"
 
 # Browser UI (UI SPA program Task 3, src/corpus_kb/ui/spa.py): the
 # lifecycle SPA (React, built by Vite into src/corpus_kb/ui_dist/) is

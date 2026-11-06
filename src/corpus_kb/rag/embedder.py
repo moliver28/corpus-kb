@@ -23,6 +23,7 @@ from ollama import Client
 from ollama._types import EmbedResponse
 
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
+from corpus_kb.storage.gateway import SqlGateway
 
 from ..config import load_config
 from ..errors import ConfigError
@@ -424,7 +425,7 @@ DEFAULT_EMBEDDING_PROVIDER = "ollama"
 
 def create_embedder(
     config: dict[str, Any] | None = None,
-    pool: asyncpg.Pool | None = None,
+    pool: asyncpg.Pool | SqlGateway | None = None,
 ) -> OllamaEmbedder | PgmlEmbedder:
     """Return the embedder selected by ``embedding.provider`` in config.
 
@@ -435,6 +436,9 @@ def create_embedder(
 
     Raises ``ValueError`` for any other provider.
     """
+    from corpus_kb.storage.connect import pg_pool_of
+
+    pool = pg_pool_of(pool)
     cfg = config or load_config()
     embedding = cast(dict[str, Any], cfg.get("embedding", {}))
     provider = _str_or_default(embedding, "provider", DEFAULT_EMBEDDING_PROVIDER)

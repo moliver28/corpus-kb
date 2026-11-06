@@ -67,6 +67,7 @@ from corpus_kb.research.inductive_store import (
     upsert_proposal,
 )
 from corpus_kb.research.promote_code import TAU_DUP_DEFAULT
+from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,7 @@ def all_noise_note(n_clusters: int, noise_units: int) -> str | None:
 
 
 async def run_inductive(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     project_id: UUID | None = None,
     llm: SummaryChatClient | None = None,
@@ -199,7 +200,7 @@ async def run_inductive(
 
 
 async def _execute(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     handler: ResearchHandler,
     tenant_id: UUID,
     run_id: UUID,
@@ -524,7 +525,7 @@ def _grow_checkpoint(
 
 
 async def _grow(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     handler: ResearchHandler,
     tenant_id: UUID,
     run_id: UUID,

@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 class CheckpointManager:
     """Manages projection_checkpoints table for catch-up subscriptions."""
 
-    def __init__(self, pool: asyncpg.Pool | None = None, gateway: SqlGateway | None = None) -> None:
+    def __init__(
+        self,
+        pool: asyncpg.Pool | SqlGateway | None = None,
+        gateway: SqlGateway | None = None,
+    ) -> None:
         self._gateway = resolve_gateway(pool, gateway)
 
     async def get_checkpoint(self, projection_name: str, tenant_id: UUID) -> dict[str, Any] | None:

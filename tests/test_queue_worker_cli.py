@@ -103,9 +103,15 @@ def test_queue_run_exits_zero_when_a_retry_goes_back_to_pending(
     assert "pending 1" in result.output
 
 
-def test_queue_run_refuses_the_duckdb_backend_typed(
+def test_queue_run_starts_the_duckdb_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Issue #330 inversion: queue-run builds the worker on DuckDB.
+
+    The old typed refusal is gone; the drain starts and a Ctrl-C style
+    interrupt ends it. The worker's own backend gate only refuses unknown
+    backends now, so this pins the CLI wiring rather than a refusal.
+    """
     pool = FakeQueuePool()
 
     async def _open(cfg: dict[str, object]) -> FakeQueuePool:
@@ -117,9 +123,8 @@ def test_queue_run_refuses_the_duckdb_backend_typed(
     monkeypatch.setattr("corpus_kb.cli.cli_ingest._open_pool", _open)
     monkeypatch.setattr("corpus_kb.cli.cli_ingest._load_config", _cfg)
     result = runner.invoke(app, ["queue-run"])
-    assert result.exit_code == 3
-    assert "ERROR" in result.output
-    assert "Postgres" in result.output
+    assert result.exit_code != 3  # the taxonomy refusal exit code is gone
+    assert "0 rows handled" in result.output  # the drain ran, empty queue
 
 
 def test_queue_run_watch_ends_on_the_stop(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:

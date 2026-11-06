@@ -71,3 +71,8 @@ ui_src/playwright-report/
 coverage.xml
 htmlcov/
 pytest_w7_full.log
+
+# Plugin state artifacts (issue 331; the root __pycache__/.pytest_cache
+# patterns already cover these - kept explicit per the issue step 1).
+plugins/corpus-rag/**/.pytest_cache/
+plugins/corpus-rag/**/__pycache__/

@@ -18,16 +18,20 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.research import guide_copy
+from corpus_kb.storage.gateway import SqlGateway
 
 
-async def _last_cycle_run(pool: asyncpg.Pool, tenant_id: UUID) -> dict[str, Any] | None:
+async def _last_cycle_run(
+    pool: asyncpg.Pool | SqlGateway,
+    tenant_id: UUID,
+) -> dict[str, Any] | None:
     """The newest cycle run's identity + last checkpoint (resume anchor)."""
     from corpus_kb.storage.tenant_conn import tenant_connection
 
     async with tenant_connection(pool, tenant_id) as conn:
         row = await conn.fetchrow(
             "SELECT run_id, checkpoint FROM research_runs "
-            "WHERE tenant_id = $1 AND params->>'kind' = 'cycle' "
+            "WHERE tenant_id = $1 AND (params->>'kind') = 'cycle' "
             "ORDER BY started_at DESC, run_id DESC LIMIT 1",
             tenant_id,
         )
@@ -55,13 +59,16 @@ def resume_point(last: dict[str, Any] | None) -> tuple[str | None, str | None]:
     return None, None
 
 
-async def last_cycle_checkpoint(pool: asyncpg.Pool, tenant_id: UUID) -> dict[str, object]:
+async def last_cycle_checkpoint(
+    pool: asyncpg.Pool | SqlGateway,
+    tenant_id: UUID,
+) -> dict[str, object]:
     """The newest cycle run's final checkpoint (MCP receipt / diagnostics)."""
     last = await _last_cycle_run(pool, tenant_id)
     return dict(last["checkpoint"]) if last else {}
 
 
-async def pending_files(pool: asyncpg.Pool, tenant_id: UUID, directory: Path) -> int:
+async def pending_files(pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, directory: Path) -> int:
     from corpus_kb.research.dynamic_ingest import plan_file, scan_path
 
     pending = 0
@@ -73,7 +80,7 @@ async def pending_files(pool: asyncpg.Pool, tenant_id: UUID, directory: Path) ->
 
 
 async def watch_cycle(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     tenant_id: UUID,
     directory: str,
     *,

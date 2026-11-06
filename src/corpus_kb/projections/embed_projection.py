@@ -65,7 +65,7 @@ class EmbedChunksProjection:
 
     def __init__(
         self,
-        pool: asyncpg.Pool | None,
+        pool: asyncpg.Pool | SqlGateway | None,
         embedder: OllamaEmbedder | PgmlEmbedder,
         checkpoint: CheckpointManager,
         dlq: DLQHandler,

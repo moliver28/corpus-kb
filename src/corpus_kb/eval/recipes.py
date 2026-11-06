@@ -8,7 +8,9 @@ depths, reranker on/off). ``retrieval.*`` paths reach
 ``research.retrieval.ranked_children``; ``reranking.enabled`` toggles the
 reranker argument of the same seam. ``reranking.over_retrieve_n`` and
 ``reranking.score_floor`` are accepted for config consistency; the rank
-seam itself does not read them.
+seam itself does not read them. ``analysis.routing.*`` paths serve the
+routing calibration sweep (``eval.calibrate.run_routing_calibration``);
+the rank seam never reads them.
 """
 
 from __future__ import annotations
@@ -28,6 +30,8 @@ ALLOWED_OVERRIDES: frozenset[str] = frozenset(
         "reranking.enabled",
         "reranking.over_retrieve_n",
         "reranking.score_floor",
+        "analysis.routing.confidence_threshold",
+        "analysis.routing.margin",
     }
 )
 
@@ -58,13 +62,20 @@ def validate_candidates(candidates: Mapping[str, Mapping[str, object]]) -> None:
 def apply_overrides(
     base_config: Mapping[str, object], overrides: Mapping[str, object]
 ) -> dict[str, object]:
-    """Deep-copy ``base_config`` and set each dot-path key to its value."""
+    """Deep-copy ``base_config`` and set each dot-path key to its value.
+
+    A dot path may nest (``analysis.routing.margin``): the walk creates
+    missing intermediate blocks and never touches sibling keys.
+    """
     _reject_unknown_keys("recipe", overrides)
     merged: dict[str, object] = deepcopy(dict(base_config))
     for dot_path, value in overrides.items():
-        block_name, _, key = dot_path.partition(".")
-        block = merged.get(block_name)
-        typed: dict[str, object] = dict(block) if isinstance(block, Mapping) else {}
-        typed[key] = value
-        merged[block_name] = typed
+        parts = dot_path.split(".")
+        block = merged
+        for part in parts[:-1]:
+            nested = block.get(part)
+            child: dict[str, object] = dict(nested) if isinstance(nested, Mapping) else {}
+            block[part] = child
+            block = child
+        block[parts[-1]] = value
     return merged

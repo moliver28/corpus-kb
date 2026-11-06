@@ -676,14 +676,19 @@ def test_page_count_for_answers_none_for_a_probe_note(monkeypatch: pytest.Monkey
 # ---------------------------------------------------------------------------
 
 
-def test_duckdb_backend_is_refused_typed() -> None:
-    with pytest.raises(ConfigError) as excinfo:
-        QueueWorker(
-            pool=FakeQueuePool(),
-            tenant_id=TENANT,
-            config={"database": {"backend": "duckdb"}},
-        )
-    assert "Postgres" in str(excinfo.value)
+def test_duckdb_backend_builds_the_worker() -> None:
+    """Issue #330 inversion: the queue worker drains DuckDB too.
+
+    The DuckDB claim twin drops SKIP LOCKED (one writer, one worker), so
+    a duckdb backend constructs instead of raising the old Postgres
+    refusal. Unknown backends still refuse (test below).
+    """
+    worker = QueueWorker(
+        pool=FakeQueuePool(),
+        tenant_id=TENANT,
+        config={"database": {"backend": "duckdb"}},
+    )
+    assert worker.poll_seconds > 0
 
 
 def test_unknown_backend_is_refused_typed() -> None:
@@ -714,3 +719,41 @@ def test_install_stop_signals_maps_sigint_onto_the_flag() -> None:
         handler(signal.SIGINT, None)
     # Leave the suite with the default handler (no cross-test bleed).
     signal.signal(signal.SIGINT, signal.default_int_handler)
+
+
+# ---------------------------------------------------------------------------
+# Track C: the queue row's project id reaches the pipeline
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_row_project_id_reaches_ingest_book(monkeypatch: pytest.MonkeyPatch) -> None:
+    row = queue_row(project_id="00000000-0000-0000-0000-0000000000f1")
+    pool = FakeQueuePool([row])
+    seen: list[str | None] = []
+
+    async def fake(
+        pool: Any, config: Any, tenant_id: str, path: str, project_id: str | None = None
+    ) -> dict[str, Any]:
+        seen.append(project_id)
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    report = await _worker(pool).drain_once()
+    assert seen == ["00000000-0000-0000-0000-0000000000f1"]
+    assert report.counts() == {"done": 1, "failed": 0, "pending": 0}
+
+
+@pytest.mark.asyncio
+async def test_row_without_project_id_keeps_the_old_call_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A project-less row must not pass a project kwarg (fake seams stay)."""
+    pool = FakeQueuePool([queue_row()])
+
+    async def fake(pool: Any, config: Any, tenant_id: str, path: str) -> dict[str, Any]:
+        return _success()
+
+    _patch_ingest(monkeypatch, fake)
+    report = await _worker(pool).drain_once()
+    assert report.counts() == {"done": 1, "failed": 0, "pending": 0}

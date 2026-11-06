@@ -32,10 +32,6 @@ _ROLLBACK = re.compile(r"^rollback_\d+_(.+)\.sql$")
 # Declared one-sided names: (kind, side, name) -> one-line why. ``side``
 # is the side that holds the file. A row with no live asymmetry is STALE
 # and fails the gate, so this list cannot outlive its drift.
-_PRE_OFFSET_ROLLBACK = (
-    "DuckDB keeps rollbacks only for the offset-zone files. Rollbacks are"
-    " operator-run SQL; the runner never applies them (issue #230)."
-)
 ALLOWED_NAME_ASYMMETRY: dict[tuple[str, str, str], str] = {
     # -- Forward: DuckDB-only files.
     ("forward", "duckdb", "base_schema"): (
@@ -49,25 +45,6 @@ ALLOWED_NAME_ASYMMETRY: dict[tuple[str, str, str], str] = {
         "DuckDB-only ledger migration (030). No Postgres twin, and no"
         " rollback in either tree (issue #230)."
     ),
-    # -- Rollback: pg 012-029 rollbacks have no DuckDB twin yet (#230).
-    ("rollback", "pg", "coding_schema"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "force_rls_coding"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "codebook_versions_unique"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "chunk_signals_upsert"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "research_domain"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "inductive_engine"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "keyword_synthesis"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "codebook_releases"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "exact_result_cache"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "shadow_vectors"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "ingest_integrity"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "qa_context"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "rrf_fusion_tiebreak"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "halfvec_2560"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "topics"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "document_dates"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "labeling"): _PRE_OFFSET_ROLLBACK,
-    ("rollback", "pg", "classification"): _PRE_OFFSET_ROLLBACK,
 }
 
 

@@ -38,6 +38,7 @@ from corpus_kb.research.cycle_gates import (
     GateFinding,
 )
 from corpus_kb.research.cycle_stages import _catch_up_all as _catch_up_stacks
+from corpus_kb.storage.gateway import SqlGateway
 
 GATE_GUIDE: dict[str, tuple[str, str, str]] = {
     GATE_CODEBOOK_PROMOTION: (
@@ -133,7 +134,7 @@ async def halt(
     stack: tuple[Any, ...],
     recorder: CycleRecorder,
     guide_mode: bool,
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     run_id: UUID,
     stage: str,
@@ -214,7 +215,7 @@ async def approval(
 
 
 async def proposal_lines(
-    pool: asyncpg.Pool, tenant_id: UUID, run_id: UUID, per_proposal: int = 3
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, run_id: UUID, per_proposal: int = 3
 ) -> list[str]:
     """Taught-block decision context: pending proposals + example units."""
     from corpus_kb.storage.tenant_conn import tenant_connection

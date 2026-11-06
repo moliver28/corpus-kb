@@ -55,6 +55,7 @@ async def run_pipeline(
     is_file: bool = False,
     strategy_name: str | None = None,
     validate_mode: str | None = None,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the full ingest pipeline: resolve strategy, build chunks, embed,
     extract, store.
@@ -90,14 +91,12 @@ async def run_pipeline(
         config: Pipeline config dict.
         pg_pool: asyncpg pool (Postgres) or SqlGateway (either backend).
         tenant_id: Tenant ID for RLS.
-        is_file: True if path points to a file; False if path is raw text source ID.
-        strategy_name: Optional explicit ingestion-strategy override (a
-            registered strategy name). Unknown names raise UnknownStrategyError.
+        strategy_name: Optional explicit strategy override (a registered
+            strategy name). Unknown names raise UnknownStrategyError.
         validate_mode: Optional validation gate (unified-ingestion Wave 4):
-            ``off``, ``advisory``, ``enforce``, or ``calibrate``. None (the
-            default) falls back to the active profile's ``validate`` value
-            (Wave 6), then to ``off``. Per-mode semantics: the docstring of
-            ``_validation_gate`` in ``pipeline.gate`` has them.
+            ``off``, ``advisory``, ``enforce``, or ``calibrate``. None falls
+            back to the active profile's ``validate`` value, then ``off``.
+        project_id: Optional research project link (migrations 016/036).
 
     Returns:
         Result dict with keys: status ("success" when every stage was clean,
@@ -226,6 +225,7 @@ async def run_pipeline(
                 validation_report=validation_report,
                 validation_mode=mode,
                 calibration_summary=calibration_summary,
+                project_id=project_id,
             )
             # Strategy provenance (plan Section 0): which seam produced the
             # chunks. Attached here because resolution/plan live in this scope.

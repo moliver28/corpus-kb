@@ -194,7 +194,14 @@ def _diff(
 
 
 def _leaf(config: Mapping[str, object], block: str, key: str) -> object:
-    raw = config.get(block)
-    if not isinstance(raw, Mapping):
+    """One config leaf by dotted key; ``key`` may nest into child blocks."""
+    node = config.get(block)
+    if not isinstance(node, Mapping):
         return None
-    return raw.get(key)
+    parts = key.split(".")
+    for part in parts[:-1]:
+        child = node.get(part)
+        if not isinstance(child, Mapping):
+            return None
+        node = child
+    return node.get(parts[-1])

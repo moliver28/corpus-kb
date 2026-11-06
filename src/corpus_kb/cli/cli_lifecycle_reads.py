@@ -22,7 +22,8 @@ from typing import Any
 
 import typer
 
-from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, _tenant, wired_pool
+from corpus_kb.cli.cli_store import wired_store
+from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, _tenant
 
 __all__ = ["register_coding", "register_research"]
 
@@ -43,9 +44,9 @@ def _read_coroutine(fn: Any, kwargs: dict[str, Any]):
     """One shared read runner: wired pool, default tenant, JSON out."""
 
     async def _run() -> int:
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             kwargs.setdefault("tenant_id", _tenant() or DEFAULT_TENANT)
-            return _print_envelope(await fn(wired.pool, **kwargs))
+            return _print_envelope(await fn(wired.store, **kwargs))
 
     return _run()
 

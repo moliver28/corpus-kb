@@ -15,6 +15,7 @@ registration helper there is private plumbing) and is re-exported here so the
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 from uuid import UUID
 
 import asyncpg
@@ -22,7 +23,7 @@ import asyncpg
 from ..ingest_watch import WATCH_SUFFIXES
 from ..ingestion.registry import strategy_names
 from ..research.batching import gather_bounded
-from ..storage.gateway import SqlGateway
+from ..storage.gateway import DuckDbGateway, SqlGateway
 from .ingest_common import (
     DEFAULT_TENANT_ID,
     file_ingest_concurrency,
@@ -66,6 +67,7 @@ async def ingest_file(
     tenant_id: str = DEFAULT_TENANT_ID,
     source_type: str | None = None,
     validate: str | None = None,
+    project_id: str | None = None,
 ) -> dict[str, object]:
     """Ingest a single file (auto-detects type).
 
@@ -97,6 +99,7 @@ async def ingest_file(
         is_file=True,
         strategy_name=source_type,
         validate_mode=validate,
+        project_id=project_id,
     )
 
 
@@ -222,20 +225,40 @@ async def delete_document(
     ingest audit, so audited and unaudited callers share one delete truth.
     """
     is_duckdb = gateway_backend(as_gateway(pg_pool)) == "duckdb"
+    if is_duckdb:
+        # Issue #330: DuckDB checks FKs against the last committed state,
+        # so the Postgres single-statement delete cannot cascade here —
+        # the in-code cascade owns the ON DELETE rules, one committed
+        # stage at a time, the documents row last (resumable).
+        from corpus_kb.storage.duckdb_cascade import delete_document_cascade
+        from corpus_kb.storage.gateway import is_gateway
+
+        gateway = cast("DuckDbGateway", pg_pool) if is_gateway(pg_pool) else None
+        if gateway is None:
+            return {
+                "status": "error",
+                "message": (
+                    f"Could not delete document {document_id}. "
+                    "The DuckDB delete needs the gateway, not a pool."
+                ),
+            }
+        try:
+            await delete_document_cascade(gateway, tenant_id, document_id)
+        except Exception:
+            return {
+                "status": "error",
+                "message": (
+                    f"Could not delete document {document_id}. "
+                    "Check the document ID and tenant, then retry."
+                ),
+            }
+        return {"status": "success", "document_id": document_id}
     try:
         async with as_gateway(pg_pool).transaction(tenant_id) as tx:
-            if is_duckdb:
-                # No RLS on DuckDB: the tenant predicate IS the isolation.
-                await tx.execute(
-                    "DELETE FROM documents WHERE doc_id = $1 AND tenant_id = $2",
-                    document_id,
-                    tenant_id,
-                )
-            else:
-                await tx.execute(
-                    "DELETE FROM documents WHERE doc_id = $1",
-                    document_id,
-                )
+            await tx.execute(
+                "DELETE FROM documents WHERE doc_id = $1",
+                document_id,
+            )
     except Exception:
         return {
             "status": "error",

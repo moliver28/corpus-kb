@@ -554,6 +554,7 @@ async def test_ingest_file_forwards_known_strategy(
         is_file=False,
         strategy_name=None,
         validate_mode="off",
+        project_id=None,
     ):
         captured["strategy_name"] = strategy_name
         captured["source_type"] = source_type
@@ -595,6 +596,7 @@ async def test_ingest_text_accepts_transcript_source_type(
         is_file=False,
         strategy_name=None,
         validate_mode="off",
+        project_id=None,
     ):
         captured["source_type"] = source_type
         return {"status": "success"}
