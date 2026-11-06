@@ -37,15 +37,17 @@ async def _tables_present(con: Any, is_postgres: bool) -> bool:
     return bool(row and row[0])
 
 
-def _read_state(con: Any, is_postgres: bool) -> tuple[list[str], list[str], list[str]]:
+async def _read_state(con: Any, is_postgres: bool) -> tuple[list[str], list[str], list[str]]:
     """(registered, orphans, missing) table-name lists, sorted.
 
     DuckDB's ``execute`` answers the connection itself, so every read
     fetches rows explicitly; asyncpg's ``fetch`` already returns them.
     """
     if is_postgres:
-        registered_rows = con.fetch(f"SELECT table_name FROM {_REGISTRY_TABLE} ORDER BY table_name")
-        present_rows = con.fetch(
+        registered_rows = await con.fetch(
+            f"SELECT table_name FROM {_REGISTRY_TABLE} ORDER BY table_name"
+        )
+        present_rows = await con.fetch(
             "SELECT table_name FROM information_schema.tables "
             "WHERE table_name LIKE 'raw%' ORDER BY table_name"
         )
@@ -86,7 +88,7 @@ async def project_tables_check(config: dict[str, Any], conn_str: str) -> Researc
                         fix="Run the migrations, then provision projects.",
                         doc=DOC_ADMIN,
                     )
-                registered, orphans, missing = _read_state(con, is_postgres=False)
+                registered, orphans, missing = await _read_state(con, is_postgres=False)
             finally:
                 con.close()
         else:
@@ -111,7 +113,7 @@ async def project_tables_check(config: dict[str, Any], conn_str: str) -> Researc
                         "SELECT set_config('app.current_tenant_id', $1, true)",
                         DEFAULT_TENANT_ID,
                     )
-                    registered, orphans, missing = _read_state(con, is_postgres=True)
+                    registered, orphans, missing = await _read_state(con, is_postgres=True)
             finally:
                 await con.close()
     except Exception as exc:

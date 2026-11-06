@@ -94,3 +94,27 @@ async def test_shared_handlers_round_trip_on_postgres(pool: Any) -> None:
     assert listed["count"] >= 1
     dropped = await project_drop(pool, slug="pg-ops", tenant_id=TENANT)
     assert dropped == {"status": "success", "table": "raw_pg_ops", "dropped_rows": 0}
+
+
+async def test_doctor_probe_pg_branch_is_warning_free(pool: Any) -> None:
+    """The PG probe awaits every read: no leaked-coroutine RuntimeWarnings."""
+    import warnings
+
+    from corpus_kb._setup.doctor_project_tables import _read_state, _tables_present
+
+    await project_provision(pool, slug="pg-doctor", tenant_id=TENANT)
+    try:
+        async with pool.acquire() as conn:
+            # The registry FORCEs RLS: set the tenant GUC like the probe does.
+            async with conn.transaction():
+                await conn.execute(
+                    "SELECT set_config('app.current_tenant_id', $1, true)", TENANT
+                )
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", RuntimeWarning)
+                    assert await _tables_present(conn, is_postgres=True) is True
+                    registered, orphans, missing = await _read_state(conn, is_postgres=True)
+        assert "raw_pg_doctor" in registered
+        assert orphans == [] and missing == []
+    finally:
+        await project_drop(pool, slug="pg-doctor", tenant_id=TENANT)
