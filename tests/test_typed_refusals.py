@@ -9,7 +9,7 @@ bare RuntimeError that maps to 500. Hermetic: no server, no database.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
@@ -61,5 +61,5 @@ async def test_research_pool_opens_the_duckdb_gateway(
         assert is_gateway(store)
         assert isinstance(store, DuckDbGateway)
     finally:
-        await store.close()
+        await cast("DuckDbGateway", store).close()
         monkeypatch.setattr(research_http, "_pool", None)
