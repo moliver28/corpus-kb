@@ -66,5 +66,5 @@ python scripts/plugin_manifest_gate.py   # from the repo root
 ```
 
 From the repo root: `poe plugin-tests` runs both. The engine gates (ruff,
-pyright, size ratchet, and friends) do not scan this plugin; it keeps its own
+pyright, size ratchet, and friends) do not scan this plugin. It keeps its own
 conventions and its own CI job.
