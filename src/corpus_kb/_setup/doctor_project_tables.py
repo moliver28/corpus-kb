@@ -78,7 +78,7 @@ async def project_tables_check(config: dict[str, Any], conn_str: str) -> Researc
 
             con = duckdb.connect(duckdb_conn_string_to_path(conn_str), read_only=True)
             try:
-                if not _tables_present(con, is_postgres=False):
+                if not await _tables_present(con, is_postgres=False):
                     return ResearchCheck(
                         name=name,
                         status=STATUS_INFO,
