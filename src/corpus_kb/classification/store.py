@@ -34,11 +34,10 @@ class PredictionRow:
 
 
 async def classification_tables_present(pg_pool: asyncpg.Pool) -> bool:
-    """True when migration 029 has run (``to_regclass`` probes, no GUC)."""
-    async with pg_pool.acquire() as conn:
-        label_sets = await conn.fetchval("SELECT to_regclass('public.label_sets')")
-        predictions = await conn.fetchval("SELECT to_regclass('public.chunk_predictions')")
-    return label_sets is not None and predictions is not None
+    """True when migration 029 has run (engine probes, no GUC)."""
+    from corpus_kb.storage.schema_probe import tables_exist
+
+    return await tables_exist(pg_pool, "label_sets", "chunk_predictions")
 
 
 async def write_build(

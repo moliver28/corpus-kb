@@ -33,9 +33,10 @@ class TopicRow:
 
 
 async def topics_tables_present(pg_pool: asyncpg.Pool) -> bool:
-    """True when migration 026 has run (``to_regclass`` probe, no GUC)."""
-    async with pg_pool.acquire() as conn:
-        return await conn.fetchval("SELECT to_regclass('public.topics')") is not None
+    """True when migration 026 has run (engine probe, no GUC)."""
+    from corpus_kb.storage.schema_probe import tables_exist
+
+    return await tables_exist(pg_pool, "topics")
 
 
 async def write_build(

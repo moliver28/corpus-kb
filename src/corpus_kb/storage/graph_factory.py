@@ -37,6 +37,8 @@ from corpus_kb.storage.graph_store import GraphStore
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
+    from corpus_kb.storage.gateway import DuckDbGateway
+
 logger = logging.getLogger(__name__)
 
 __all__ = ["create_graph_store", "open_duckdb_connection"]
@@ -65,10 +67,16 @@ async def open_duckdb_connection(conn_string: str) -> DuckDBPyConnection:
 
 async def _duckdb_graph_store(
     cfg: dict[str, Any],
-    source: asyncpg.Pool | DuckDBPyConnection | None,
+    source: asyncpg.Pool | DuckDBPyConnection | DuckDbGateway | None,
     traversal_engine: str = "cte",
 ) -> DuckDbGraphStore:
-    """Select the DuckDB graph store; open the configured file when ungiven."""
+    """Select the DuckDB graph store; open the configured file when ungiven.
+
+    A ``DuckDbGateway`` source (issue #330 server wiring) lends a cursor on
+    its own database instance — no second file lock.
+    """
+    if isinstance(source, DuckDbGateway):
+        return DuckDbGraphStore(source.duplicate_connection(), traversal_engine=traversal_engine)
     if source is not None:
         return DuckDbGraphStore(
             cast("DuckDBPyConnection", source), traversal_engine=traversal_engine
@@ -87,7 +95,7 @@ async def _duckdb_graph_store(
 
 async def create_graph_store(
     cfg: dict[str, Any],
-    source: asyncpg.Pool | DuckDBPyConnection | None = None,
+    source: asyncpg.Pool | DuckDBPyConnection | DuckDbGateway | None = None,
     backend: str | None = None,
 ) -> GraphStore:
     """Instantiate the configured GraphStore backend.

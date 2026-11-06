@@ -219,12 +219,11 @@ def get_query_handler(pool: asyncpg.Pool | SqlGateway | None = None) -> QueryHan
     global _query_handler
     if _query_handler is None:
         if pool is None:
-            # Typed refusal (zero-drift rule 4): server_wiring_duckdb leaves
-            # the handler unset, so the query routes fail with the taxonomy
-            # class, never a bare RuntimeError -> 500.
+            # Typed refusal (zero-drift rule 4): the query routes fail with
+            # the taxonomy class, never a bare RuntimeError -> 500.
             raise DependencyMissingError(
-                "The query handler is not ported to the DuckDB backend.",
-                remediation="Run the server on the Postgres backend for query routes.",
+                "The query handler is not initialized.",
+                remediation="Start the server (corpus-kb serve), or pass a store to the caller.",
             )
         _query_handler = QueryHandler(pool)
     return _query_handler

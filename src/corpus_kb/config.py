@@ -204,6 +204,21 @@ def load_config(path: str | None = None) -> dict[str, Any]:
 
     apply_extraction_backend_alias(config)
 
+    # Issue #330: an UNCHOSEN graph.backend follows the database backend.
+    # The shipped default 'age' is a Postgres preference, so a duckdb
+    # database whose operator never picked a graph store follows duckdb
+    # instead of tripping the AGE mix refusal. An explicit graph.backend
+    # in the config file (or CORPUS_KB_GRAPH_BACKEND) keeps the mix gate.
+    if str(_section_dict(config, "database").get("backend") or "postgres") == "duckdb":
+        graph_cfg = _section_dict(config, "graph")
+        chosen = "graph" in file_config and "backend" in _section_dict(file_config, "graph")
+        if (
+            graph_cfg.get("backend") == "age"
+            and not chosen
+            and "CORPUS_KB_GRAPH_BACKEND" not in os.environ
+        ):
+            graph_cfg["backend"] = "duckdb"
+
     # Storage-portability backend truth: Postgres-only engine selections are
     # refused while database.backend is duckdb (the mix gate runs AFTER the
     # alias layers, so it sees the effective extraction backend).

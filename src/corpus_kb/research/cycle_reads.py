@@ -38,7 +38,7 @@ from corpus_kb.storage.gateway import SqlGateway
 async def gate_findings_for(
     stage: str,
     receipt: dict[str, Any],
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     cfg: dict[str, Any] | None = None,
 ) -> list[GateFinding]:
@@ -108,7 +108,7 @@ def _agreement_threshold(cfg: dict[str, Any] | None) -> float | None:
 async def _agreement_finding(
     receipt: dict[str, Any],
     run_ids: list[str],
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     cfg: dict[str, Any] | None,
 ) -> GateFinding | None:
@@ -142,7 +142,7 @@ async def _agreement_finding(
     )
 
 
-async def latest_version_id(pool: asyncpg.Pool, tenant_id: UUID) -> UUID | None:
+async def latest_version_id(pool: asyncpg.Pool | SqlGateway, tenant_id: UUID) -> UUID | None:
     from corpus_kb.storage.tenant_conn import tenant_connection
 
     async with tenant_connection(pool, tenant_id) as conn:
@@ -154,7 +154,7 @@ async def latest_version_id(pool: asyncpg.Pool, tenant_id: UUID) -> UUID | None:
     return UUID(str(row["version_id"])) if row else None
 
 
-async def pending_proposals(pool: asyncpg.Pool, tenant_id: UUID, run_id: UUID) -> int:
+async def pending_proposals(pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, run_id: UUID) -> int:
     from corpus_kb.storage.tenant_conn import tenant_connection
 
     async with tenant_connection(pool, tenant_id) as conn:
@@ -167,7 +167,7 @@ async def pending_proposals(pool: asyncpg.Pool, tenant_id: UUID, run_id: UUID) -
     return int(value or 0)
 
 
-async def pending_reviews(pool: asyncpg.Pool, tenant_id: UUID) -> int:
+async def pending_reviews(pool: asyncpg.Pool | SqlGateway, tenant_id: UUID) -> int:
     """UNRESOLVED review-queue items (status='review'), the F-7 gate input.
 
     Tenant-scoped on purpose: escalations from earlier runs stay unresolved
@@ -184,7 +184,11 @@ async def pending_reviews(pool: asyncpg.Pool, tenant_id: UUID) -> int:
     return int(value or 0)
 
 
-async def pending_review_ids(pool: asyncpg.Pool, tenant_id: UUID, limit: int = 10) -> list[str]:
+async def pending_review_ids(
+    pool: asyncpg.Pool | SqlGateway,
+    tenant_id: UUID,
+    limit: int = 10,
+) -> list[str]:
     """Capped assignment UUIDs still awaiting a decision (halt listing).
 
     The gray-zone halt prints these with the exact accept/override command so
@@ -203,7 +207,11 @@ async def pending_review_ids(pool: asyncpg.Pool, tenant_id: UUID, limit: int = 1
     return [str(row["id"]) for row in rows]
 
 
-async def version_codes(pool: asyncpg.Pool, tenant_id: UUID, version_id: UUID) -> list[dict]:
+async def version_codes(
+    pool: asyncpg.Pool | SqlGateway,
+    tenant_id: UUID,
+    version_id: UUID,
+) -> list[dict]:
     from corpus_kb.research.run_inputs import load_codes
     from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -228,7 +236,7 @@ async def run_checkpoint(
 
 
 async def run_label_blocks(
-    pool: asyncpg.Pool, tenant_id: UUID, run_ids: list[str]
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, run_ids: list[str]
 ) -> list[dict[str, str]]:
     """Per-run unit label blocks ({unit_id: label}) from the inductive proposals.
 
@@ -259,7 +267,7 @@ async def run_label_blocks(
     return [blocks[rid] for rid in run_ids if rid in blocks]
 
 
-async def routed_unit_ids(pool: asyncpg.Pool, tenant_id: UUID) -> list[str]:
+async def routed_unit_ids(pool: asyncpg.Pool | SqlGateway, tenant_id: UUID) -> list[str]:
     """Unit ids currently in the gray-zone review queue (status='review')."""
     from corpus_kb.storage.tenant_conn import tenant_connection
 

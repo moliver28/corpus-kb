@@ -91,6 +91,16 @@ class DuckDbGateway:
     async def close(self) -> None:
         await self._run_sync(lambda conn: conn.close())
 
+    def duplicate_connection(self) -> duckdb.DuckDBPyConnection:
+        """A cursor on the SAME database instance (no second file lock).
+
+        The graph store rides its own connection so its locks never
+        interleave with gateway statements; ``cursor()`` attaches to the
+        already-open database, so the one-writer posture stands (a second
+        ``duckdb.connect`` on the file would fail the file lock).
+        """
+        return self._conn.cursor()
+
     async def fetch(self, sql: str, *args: Any) -> list[Row]:
         # The one guard choke point: fetch serves fetch/fetchrow/fetchval,
         # execute serves DML+DDL. Qualified SQL dies here, before any lock.
@@ -226,7 +236,7 @@ class DuckDbGateway:
 
         return await asyncio.to_thread(_locked)
 
-    def _rows(self, conn: duckdb.DuckDBPyConnection, sql: str, args: tuple[Any, ...]) -> list[_Row]:
+    def _rows(self, conn: duckdb.DuckDBPyConnection, sql: str, args: Sequence[Any]) -> list[_Row]:
         conn.execute(sql, list(args) or None)
         description = conn.description
         fetched = conn.fetchall()
@@ -235,6 +245,6 @@ class DuckDbGateway:
         names = [column[0] for column in description]
         return [_Row(zip(names, row, strict=True)) for row in fetched]
 
-    def _tag(self, conn: duckdb.DuckDBPyConnection, sql: str, args: tuple[Any, ...]) -> str:
+    def _tag(self, conn: duckdb.DuckDBPyConnection, sql: str, args: Sequence[Any]) -> str:
         conn.execute(sql, list(args) or None)
         return _status_tag(sql, conn)

@@ -40,20 +40,21 @@ logger = logging.getLogger(__name__)
 
 MIN_CENTROID_NORM = 1e-6
 
-# One SELECT per mapping (tenant GUC applied by tenant_connection).
-# Every read carries a deterministic ORDER BY: the centroid mean is
-# floating-point order-sensitive, so read order is part of the contract.
+# One SELECT per mapping, the tenant bound as $1::uuid (issue #330: no
+# session GUC — a bound parameter serves both engines). Every read
+# carries a deterministic ORDER BY: the centroid mean is floating-point
+# order-sensitive, so read order is part of the contract.
 _DOC_OF_CHUNK_SQL = (
     "SELECT c.chunk_id::text AS chunk_id, c.doc_id::text AS doc_id, d.source AS label"
     " FROM chunks c JOIN documents d ON d.doc_id = c.doc_id"
-    " WHERE c.tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
+    " WHERE c.tenant_id = $1::uuid"
     " ORDER BY c.chunk_id"
 )
 _TOPIC_OF_CHUNK_SQL = (
     "SELECT ct.chunk_id::text AS chunk_id, t.topic_id::text AS topic_id,"
     " t.label AS label FROM chunk_topics ct"
     " JOIN topics t ON t.topic_id = ct.topic_id"
-    " WHERE ct.tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
+    " WHERE ct.tenant_id = $1::uuid"
     " ORDER BY ct.chunk_id, t.topic_id"
 )
 # Many-to-many through belief_revisions: one chunk may feed several
@@ -64,7 +65,7 @@ _BELIEF_CHUNKS_SQL = (
     " FROM belief_revisions br"
     " JOIN beliefs b ON b.belief_id = br.belief_id AND b.tenant_id = br.tenant_id"
     " JOIN statements s ON s.statement_id = br.statement_id"
-    " WHERE br.tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid"
+    " WHERE br.tenant_id = $1::uuid"
     " AND br.statement_id IS NOT NULL"
     " ORDER BY br.belief_id, s.chunk_id"
 )
@@ -166,11 +167,11 @@ async def _load_mappings(
     topics: dict[str, tuple[str, str]] = {}
     beliefs: list[tuple[str, str, str]] = []
     async with tenant_connection(pool, tenant_id) as conn:
-        for row in await conn.fetch(_DOC_OF_CHUNK_SQL):
+        for row in await conn.fetch(_DOC_OF_CHUNK_SQL, tenant_id):
             docs[str(row["chunk_id"])] = (str(row["doc_id"]), str(row["label"] or ""))
-        for row in await conn.fetch(_TOPIC_OF_CHUNK_SQL):
+        for row in await conn.fetch(_TOPIC_OF_CHUNK_SQL, tenant_id):
             topics[str(row["chunk_id"])] = (str(row["topic_id"]), str(row["label"] or ""))
-        for row in await conn.fetch(_BELIEF_CHUNKS_SQL):
+        for row in await conn.fetch(_BELIEF_CHUNKS_SQL, tenant_id):
             label = f"{row['subject']} {row['relation']} {row['object']}"
             beliefs.append((str(row["belief_id"]), label, str(row["chunk_id"])))
     return docs, topics, beliefs

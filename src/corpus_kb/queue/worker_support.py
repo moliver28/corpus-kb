@@ -36,7 +36,7 @@ __all__ = [
     "page_count_for",
     "positive_float",
     "positive_int",
-    "require_postgres_backend",
+    "require_queue_backend",
 ]
 
 
@@ -77,25 +77,21 @@ class StopFlag:
         return self._requested
 
 
-def require_postgres_backend(config: dict[str, object]) -> str:
+def require_queue_backend(config: dict[str, object]) -> str:
     """The database backend, typed-refused when the worker cannot drain it.
 
-    The queue store rides the asyncpg pool (Wave 1 seam). DuckDB is a
-    sole-writer engine and its queue port has not landed, so a duckdb
-    selection stops here instead of failing deep inside the pool.
+    Both engines drain now (issue #330): Postgres claims race safely under
+    SKIP LOCKED, DuckDB is a sole-writer file so one worker runs at a time
+    and its claim twin needs no lock clause. Anything else stops here
+    instead of failing deep inside the store.
     """
     database = mapping_section(config, "database")
     backend = str(database.get("backend") or "postgres")
-    if backend == "postgres":
+    if backend in ("postgres", "duckdb"):
         return backend
-    if backend == "duckdb":
-        raise ConfigError(
-            "The queue worker needs the Postgres backend. DuckDB allows one writer.",
-            remediation="Set database.backend to postgres. Then run the worker again.",
-        )
     raise ConfigError(
         f"The database backend must be postgres or duckdb, not {backend}.",
-        remediation="Set database.backend to postgres. Then run the worker again.",
+        remediation="Set database.backend to postgres or duckdb. Then run the worker again.",
     )
 
 

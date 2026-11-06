@@ -67,8 +67,15 @@ async def wired_store(
 
     if cfg is None:
         cfg = load_config()
-    db = cast(dict[str, object], cfg.get("database") or {})
-    conn_str = str(db.get("connection_string", ""))
+    # The reported DSN is the OPENED one: config_conn_str prefixes a bare
+    # path when the backend is duckdb, so app/event-store resolution and
+    # the handler DSNs follow the same file the store opened (issue #330).
+    from corpus_kb.storage.connect import config_conn_str
+
+    conn_str = config_conn_str(cfg)
+    if not conn_str:
+        db = cast(dict[str, object], cfg.get("database") or {})
+        conn_str = str(db.get("connection_string", ""))
     research_embedder: ResearchEmbedder | None = None
     if conn_str.startswith(DUCKDB_DSN_PREFIX):
         from corpus_kb.storage.gateway import DuckDbGateway

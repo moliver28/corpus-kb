@@ -18,7 +18,8 @@ from typing import TYPE_CHECKING, Any
 import typer
 
 from corpus_kb.cli._plumbing import _RESEARCH_VALIDATE_OPT, ValidateMode, validate_kwargs
-from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, _tenant, wired_pool
+from corpus_kb.cli.cli_store import wired_store
+from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, _tenant
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -97,8 +98,8 @@ def _ingest_coroutine(
             _print_override_notice(source_type)
         elif Path(path).is_file():
             _print_detection_summary(Path(path), cfg)
-        async with wired_pool(cfg=cfg) as wired:
-            pool = wired.pool
+        async with wired_store(cfg=cfg) as wired:
+            pool = wired.store
             if watch:
                 from pathlib import Path
 

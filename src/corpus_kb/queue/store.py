@@ -18,10 +18,13 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from corpus_kb.errors import ConflictError
+from corpus_kb.storage.gateway import is_gateway
+from corpus_kb.storage.tenant_conn import tenant_connection
 
 from .sql import (
     CANCEL_SQL,
     CLAIM_SQL,
+    CLAIM_SQL_DUCKDB,
     FAIL_SQL,
     FIND_ACTIVE_SQL,
     FINISH_SQL,
@@ -31,15 +34,19 @@ from .sql import (
     LIST_ACTIVE_SQL,
     PAGES_TOTAL_SQL,
     RECLAIM_STALE_SQL,
+    RECLAIM_STALE_SQL_DUCKDB,
     RELEASE_SQL,
 )
 
 if TYPE_CHECKING:
     import asyncpg
 
+    from corpus_kb.storage.gateway import SqlGateway
+
 __all__ = [
     "CANCEL_SQL",
     "CLAIM_SQL",
+    "CLAIM_SQL_DUCKDB",
     "FAIL_SQL",
     "FIND_ACTIVE_SQL",
     "FINISH_SQL",
@@ -49,17 +56,25 @@ __all__ = [
     "LIST_ACTIVE_SQL",
     "PAGES_TOTAL_SQL",
     "RECLAIM_STALE_SQL",
+    "RECLAIM_STALE_SQL_DUCKDB",
     "RELEASE_SQL",
     "IngestQueueStore",
 ]
 
 
 class IngestQueueStore:
-    """Queue writes, reads, and the cancel path over one asyncpg pool."""
+    """Queue writes, reads, and the cancel path over the pool or the gateway.
 
-    def __init__(self, pool: asyncpg.Pool, tenant_id: str) -> None:
+    The engine dispatch is per statement (issue #330): DuckDB runs its own
+    claim/stale-lease twins and its scope comes from the gateway's
+    transaction, Postgres keeps the tenant GUC inside an asyncpg
+    transaction. Reads stay deterministically ordered on both engines.
+    """
+
+    def __init__(self, pool: asyncpg.Pool | SqlGateway, tenant_id: str) -> None:
         self._pool = pool
         self._tenant_id = tenant_id
+        self._duck = is_gateway(pool)
 
     async def enqueue(
         self,
@@ -81,10 +96,7 @@ class IngestQueueStore:
         existing = await self._fetch_one(FIND_ACTIVE_SQL, self._tenant_id, content_hash)
         if existing is not None:
             return existing, True
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             inserted = await conn.fetchrow(
                 INSERT_SQL,
                 self._tenant_id,
@@ -126,13 +138,14 @@ class IngestQueueStore:
     # --- Wave 2C worker ops --------------------------------------------------
 
     async def claim(self, claimed_by: str, *, claimed_before: datetime) -> dict[str, Any] | None:
-        """Claim the oldest pending row (FOR UPDATE SKIP LOCKED), or None.
+        """Claim the oldest pending row (SKIP LOCKED on Postgres), or None.
 
         ``claimed_before`` is the pass watermark: a row first claimed at
         or after it waits for a later pass, so one drain pass gives each
         row one attempt.
         """
-        return await self._fetch_one(CLAIM_SQL, self._tenant_id, claimed_by, claimed_before)
+        sql = CLAIM_SQL_DUCKDB if self._duck else CLAIM_SQL
+        return await self._fetch_one(sql, self._tenant_id, claimed_by, claimed_before)
 
     async def reclaim_stale(self, stale_lease_seconds: float) -> list[dict[str, Any]]:
         """Rows back to pending when their heartbeat went quiet.
@@ -141,7 +154,8 @@ class IngestQueueStore:
         Rows answer oldest queued first (the worker re-sorts the RETURNING
         set, which PostgreSQL does not order).
         """
-        rows = await self._fetch_many(RECLAIM_STALE_SQL, self._tenant_id, stale_lease_seconds)
+        sql = RECLAIM_STALE_SQL_DUCKDB if self._duck else RECLAIM_STALE_SQL
+        rows = await self._fetch_many(sql, self._tenant_id, stale_lease_seconds)
         return sorted(rows, key=lambda r: (str(r.get("queued_at")), str(r.get("id"))))
 
     async def heartbeat(self, queue_id: str, claimed_by: str) -> bool:
@@ -198,17 +212,11 @@ class IngestQueueStore:
     # --- connection scope ----------------------------------------------------
 
     async def _fetch_one(self, sql: str, *args: object) -> dict[str, Any] | None:
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             row = await conn.fetchrow(sql, *args)
         return dict(row) if row is not None else None
 
     async def _fetch_many(self, sql: str, *args: object) -> list[dict[str, Any]]:
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)", self._tenant_id
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             rows = await conn.fetch(sql, *args)
         return [dict(row) for row in rows]

@@ -14,7 +14,7 @@ before interpolation — no caller text reaches the SQL.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from corpus_kb.storage.gateway import is_gateway
 from corpus_kb.storage.sql_ident import check_identifier, sql_literal
@@ -22,10 +22,10 @@ from corpus_kb.storage.sql_ident import check_identifier, sql_literal
 if TYPE_CHECKING:
     import asyncpg
 
-    from corpus_kb.storage.gateway import SqlGateway
+    from corpus_kb.storage.gateway import SqlConn
 
 
-async def tables_exist(store: asyncpg.Pool | SqlGateway, *tables: str) -> bool:
+async def tables_exist(store: asyncpg.Pool | asyncpg.Connection | SqlConn, *tables: str) -> bool:
     """True when EVERY named table exists on the connected engine.
 
     One engine probe for the whole set: feature modules probe their table
@@ -42,12 +42,19 @@ async def tables_exist(store: asyncpg.Pool | SqlGateway, *tables: str) -> bool:
             f"WHERE table_schema = current_schema() AND table_name IN ({literals})"
         )
         return bool(await store.fetchval(sql))
-    async with store.acquire() as conn:
-        probes = ", ".join(f"to_regclass('public.{name}') IS NOT NULL" for name in names)
-        return bool(await conn.fetchval(f"SELECT {probes}"))
+    if hasattr(store, "acquire"):
+        pool = cast("asyncpg.Pool", store)
+        async with pool.acquire() as conn:
+            probes = ", ".join(f"to_regclass('public.{name}') IS NOT NULL" for name in names)
+            return bool(await conn.fetchval(f"SELECT {probes}"))
+    conn = cast("asyncpg.Connection", store)
+    probes = ", ".join(f"to_regclass('public.{name}') IS NOT NULL" for name in names)
+    return bool(await conn.fetchval(f"SELECT {probes}"))
 
 
-async def column_exists(store: asyncpg.Pool | SqlGateway, table: str, column: str) -> bool:
+async def column_exists(
+    store: asyncpg.Pool | asyncpg.Connection | SqlConn, table: str, column: str
+) -> bool:
     """True when one column exists on the connected engine."""
     table_name = check_identifier(table)
     column_name = check_identifier(column)
@@ -66,5 +73,9 @@ async def column_exists(store: asyncpg.Pool | SqlGateway, table: str, column: st
         f"   AND table_name = {sql_literal(table_name)}"
         f"   AND column_name = {sql_literal(column_name)})"
     )
-    async with store.acquire() as conn:
-        return bool(await conn.fetchval(sql))
+    if hasattr(store, "acquire"):
+        pool = cast("asyncpg.Pool", store)
+        async with pool.acquire() as conn:
+            return bool(await conn.fetchval(sql))
+    conn = cast("asyncpg.Connection", store)
+    return bool(await conn.fetchval(sql))

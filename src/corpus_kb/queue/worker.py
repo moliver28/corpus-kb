@@ -10,7 +10,8 @@ Success fills the run id and counters; failure retries under max_attempts.
 
 One drain pass gives each row one attempt (the pass watermark), so a
 failing book waits for the next pass, not a tight retry loop. Postgres
-claims run under ``FOR UPDATE SKIP LOCKED``; duckdb is refused typed.
+claims run under ``FOR UPDATE SKIP LOCKED``; the DuckDB twin drops the
+clause (one writer, one worker).
 A lost lease is per-book: the worker drops that book's result and the
 drain continues. The stop flag is only for a signal or a shutdown; it
 finishes the current book and releases an unstarted claim.
@@ -45,11 +46,13 @@ from .worker_support import (
     heartbeat,
     positive_float,
     positive_int,
-    require_postgres_backend,
+    require_queue_backend,
 )
 
 if TYPE_CHECKING:
     import asyncpg
+
+    from corpus_kb.storage.gateway import SqlGateway
 
 __all__ = ["QueueWorker", "ingest_book"]
 
@@ -57,7 +60,7 @@ _HEARTBEAT_SLICES = 3
 
 
 async def ingest_book(
-    pool: asyncpg.Pool, config: dict[str, object], tenant_id: str, path: str
+    pool: asyncpg.Pool | SqlGateway, config: dict[str, object], tenant_id: str, path: str
 ) -> dict[str, object]:
     """The ONE pipeline entry, called the way the ingest tools call it."""
     from corpus_kb.tools.ingest_tools import ingest_file
@@ -71,7 +74,7 @@ class QueueWorker:
     def __init__(
         self,
         *,
-        pool: asyncpg.Pool,
+        pool: asyncpg.Pool | SqlGateway,
         tenant_id: str,
         config: dict[str, object],
         identity: WorkerIdentity | None = None,
@@ -84,7 +87,7 @@ class QueueWorker:
         self._identity = identity or WorkerIdentity.for_this_process()
         self._beat_override = beat_interval
         self._pass_watermark = datetime.now(UTC)
-        require_postgres_backend(config)
+        require_queue_backend(config)
         queue_cfg = mapping_section(config, "queue")
         self.poll_seconds = positive_float(queue_cfg.get("poll_seconds"), 20.0)
         self.stale_lease_seconds = positive_float(queue_cfg.get("stale_lease_seconds"), 600.0)

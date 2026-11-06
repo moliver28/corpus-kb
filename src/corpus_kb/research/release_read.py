@@ -17,6 +17,8 @@ from uuid import UUID
 
 import asyncpg
 
+from corpus_kb.storage.gateway import SqlGateway
+
 RELEASED_STATE = "released"
 
 ACTIVE_RELEASE_SQL = """
@@ -80,7 +82,7 @@ async def active_release_for_conn(
 
 
 async def resolve_active_release(
-    pool: asyncpg.Pool, tenant_id: UUID, codebook_version_id: UUID
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, codebook_version_id: UUID
 ) -> ActiveRelease | None:
     """Resolve the release row for one version via the release read tables."""
     from typing import cast

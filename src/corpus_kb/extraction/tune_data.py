@@ -15,6 +15,8 @@ from typing import Any
 
 import asyncpg
 
+from corpus_kb.storage.tenant_conn import tenant_connection
+
 from .icl import _locate
 
 # Statements that survived a human resolve: revision-resolved pairs keep
@@ -41,8 +43,7 @@ async def mine_confirmed_statements(
     min_confidence: float = 0.0,
 ) -> list[dict[str, Any]]:
     """Statement texts plus their anchored entities from resolved reviews."""
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
+    async with tenant_connection(pool, tenant_id) as conn:
         rows = await conn.fetch(_CONFIRMED_SQL, tenant_id, float(min_confidence), limit)
     out: list[dict[str, Any]] = []
     for row in rows:

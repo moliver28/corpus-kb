@@ -27,7 +27,6 @@ from corpus_kb.handlers.query_integrity import REASON_RERANK_MODE_GENERATIVE
 from corpus_kb.rag.rerank_settings import RerankSettings
 from corpus_kb.rag.reranker import RERANK_MODE_GENERATIVE_BINARY
 from corpus_kb.research.retrieval_settings import RetrievalSettings
-from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.search_backend import SearchOutcome
 from corpus_kb.utils.tracing import (
     ATTR_CANDIDATES_IN,
@@ -202,13 +201,6 @@ async def maybe_expand_to_parent(
     contract as the U21 selectivity probe).
     """
     if not retrieval_settings.expand_to_parent or not results:
-        return results
-    if isinstance(pool, DuckDbGateway):
-        # §13 sp-duckdb-search: the shadow-parent probe SQL is
-        # Postgres-only (`metadata->>'…'`, `ANY($n::text[])`). The
-        # DuckDB port skips it at dispatch instead of tripping the
-        # fail-open warning on every query; expansion parity is a
-        # Wave-E follow-up.
         return results
     from corpus_kb.rag.parent_expand import ParentPool, expand_to_parent
 

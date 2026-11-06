@@ -31,6 +31,7 @@ from corpus_kb.research.transcript_parser import (
     infer_source_type,
     parse_transcript,
 )
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 logger = logging.getLogger(__name__)
@@ -68,7 +69,7 @@ def file_sha256(path: Path) -> str:
 
 
 async def ledger_state(
-    pool: asyncpg.Pool, tenant_id: UUID, path: Path
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, path: Path
 ) -> tuple[str | None, datetime | None, int | None]:
     async with tenant_connection(pool, tenant_id) as conn:
         row = await conn.fetchrow(
@@ -136,7 +137,7 @@ def turn_text_shas(turns_text: list[str]) -> list[str]:
 
 
 async def plan_file(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     path: Path,
     force: bool = False,
@@ -158,7 +159,7 @@ async def plan_file(
 
 
 async def watch_once(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     directory: Path,
     ingest_file: Callable[[Path], Awaitable[object]],
@@ -181,7 +182,7 @@ async def watch_once(
 
 
 async def watch(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     directory: Path,
     interval_s: int = DEFAULT_WATCH_INTERVAL_S,

@@ -1,4 +1,4 @@
-"""Chunk-hash extraction cache (asyncpg, RLS-enforced).
+"""Chunk-hash extraction cache (tenant-scoped on both engines).
 
 Keyed by ``(tenant_id, chunk_hash, backend, model_version,
 prompt_version)``. A hit skips the model pass for that chunk and is
@@ -20,6 +20,8 @@ from ..utils.models import Entity, Relation
 if TYPE_CHECKING:
     import asyncpg
 
+from corpus_kb.storage.tenant_conn import tenant_connection
+
 logger = logging.getLogger(__name__)
 
 _GET_SQL = """
@@ -35,15 +37,12 @@ WHERE chunk_hash = ANY($1::text[]) AND backend = $2
   AND model_version = $3 AND prompt_version = $4
 """
 
-_CACHE_COLUMNS = [
-    "tenant_id",
-    "chunk_hash",
-    "backend",
-    "model_version",
-    "prompt_version",
-    "entities",
-    "relations",
-]
+_PUT_SQL = """
+INSERT INTO extraction_cache (tenant_id, chunk_hash, backend, model_version,
+    prompt_version, entities, relations)
+VALUES ($1::uuid, $2, $3, $4, $5, $6::jsonb, $7::jsonb)
+ON CONFLICT DO NOTHING
+"""
 
 
 def _payload(value: list[Entity] | list[Relation]) -> str:
@@ -68,11 +67,7 @@ class ExtractionCache:
         """Cached results keyed by chunk hash; absent hashes are misses."""
         if not chunk_hashes:
             return {}
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             rows = await conn.fetch(_GET_SQL, chunk_hashes, backend, model_version, prompt_version)
         hits: dict[str, tuple[list[Entity], list[Relation]]] = {}
         for row in rows:
@@ -104,27 +99,26 @@ class ExtractionCache:
         if not entries:
             return 0
         hashes = list(entries)
-        async with self._pool.acquire() as conn, conn.transaction():
-            await conn.execute(
-                "SELECT set_config('app.current_tenant_id', $1, true)",
-                self._tenant_id,
-            )
+        async with tenant_connection(self._pool, self._tenant_id) as conn:
             stored = await conn.fetch(_EXISTING_SQL, hashes, backend, model_version, prompt_version)
             fresh = [h for h in hashes if h not in {r["chunk_hash"] for r in stored}]
-            records = [
-                (
-                    self._tenant_id,
-                    chunk_hash,
-                    backend,
-                    model_version,
-                    prompt_version,
-                    _payload(entries[chunk_hash][0]),
-                    _payload(entries[chunk_hash][1]),
+            if fresh:
+                # executemany over the shared INSERT (issue #330): asyncpg's
+                # copy_records_to_table has no gateway arm, and the gateway
+                # binds every parameter tuple the same way the pool does.
+                await conn.executemany(
+                    _PUT_SQL,
+                    [
+                        [
+                            self._tenant_id,
+                            chunk_hash,
+                            backend,
+                            model_version,
+                            prompt_version,
+                            _payload(entries[chunk_hash][0]),
+                            _payload(entries[chunk_hash][1]),
+                        ]
+                        for chunk_hash in fresh
+                    ],
                 )
-                for chunk_hash in fresh
-            ]
-            if records:
-                await conn.copy_records_to_table(
-                    "extraction_cache", records=records, columns=_CACHE_COLUMNS
-                )
-        return len(records)
+        return len(fresh)

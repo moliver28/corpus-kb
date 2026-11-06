@@ -46,7 +46,7 @@ from corpus_kb.research.report_sections import (
     candidate_missing_codes,
     residual_full_section,
 )
-from corpus_kb.storage.gateway import SqlConn
+from corpus_kb.storage.gateway import SqlConn, SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
@@ -135,7 +135,7 @@ async def _analyze_candidates(
 
 
 async def build_report(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     codebook_version_id: UUID | None = None,
     *,

@@ -16,6 +16,7 @@ import asyncpg
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 from corpus_kb.handlers.research_handler import get_research_handler
 from corpus_kb.projections.catchup import advance_all_projections
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.tools._uuid_input import uuid_arg
 
 __all__ = [
@@ -31,7 +32,7 @@ __all__ = [
 
 async def research_ingest_transcript(
     file_path: str,
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway | SqlGateway | SqlGateway | SqlGateway,
     project_id: str | None = None,
     title: str | None = None,
     tenant_id: str = DEFAULT_TENANT,
@@ -58,7 +59,7 @@ async def research_ingest_transcript(
 
 async def research_ingest(
     path: str,
-    pg_pool: asyncpg.Pool,
+    pg_pool: asyncpg.Pool | SqlGateway | SqlGateway,
     project_id: str | None = None,
     tenant_id: str = DEFAULT_TENANT,
     force: bool = False,
@@ -88,7 +89,7 @@ def supported_suffixes() -> set[str]:
 
 
 async def coding_run(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     codebook_version_id: str,
     project_id: str | None = None,
     tenant_id: str = DEFAULT_TENANT,
@@ -116,7 +117,7 @@ async def coding_run(
 
 
 async def inductive_run(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     project_id: str | None = None,
     tenant_id: str = DEFAULT_TENANT,
 ) -> dict[str, object]:
@@ -148,7 +149,7 @@ async def inductive_run(
 
 
 async def codebook_promote(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     proposed_id: int,
     name: str,
     definition: str,
@@ -189,7 +190,7 @@ async def codebook_promote(
 
 
 async def research_report(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     codebook_version_id: str | None = None,
     project_id: str | None = None,
     tenant_id: str = DEFAULT_TENANT,
@@ -221,7 +222,7 @@ async def research_report(
 
 
 async def review_execute(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     assignment_id: str,
     decision: str,
     reviewer: str,

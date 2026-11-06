@@ -10,7 +10,7 @@ import typer
 
 # Zero-drift Wave 3B split: the research/coding/codebook commands live in
 # cli_research* / cli_coding (the 250-line limit per file), the shared CLI
-# plumbing in cli_support (wired_pool, _run_async, the approval boundary,
+# plumbing in cli_support (_run_async, the approval boundary,
 # the canonical tenant id from contracts.model). None of them imports
 # corpus_kb.cli, so these imports stay acyclic. cli.py re-exports the moved
 # helper names so tests and cli_release keep their import paths.
@@ -37,6 +37,7 @@ from corpus_kb.cli.cli_release import release_app
 from corpus_kb.cli.cli_research import research_app
 from corpus_kb.cli.cli_research_ingest import _print_detection_summary, _print_override_notice
 from corpus_kb.cli.cli_research_report import _print_report
+from corpus_kb.cli.cli_store import wired_store
 from corpus_kb.cli.cli_support import (
     DEFAULT_TENANT,
     _cli_approve,
@@ -48,7 +49,6 @@ from corpus_kb.cli.cli_support import (
     _tenant,
     cast_dict,
     cast_list,
-    wired_pool,
 )
 
 # Backward-compatible alias: cli.py owned the tenant constant as a private
@@ -358,9 +358,9 @@ def _review_command(decision: str):
 
             from corpus_kb.research.review_surface import execute_review
 
-            async with wired_pool() as wired:
+            async with wired_store() as wired:
                 result = await execute_review(
-                    wired.pool,
+                    wired.store,
                     _tenant(),
                     wired.conn_str,
                     UUID(assignment_id),
@@ -404,5 +404,5 @@ __all__ = [
     "release_app",
     "research_app",
     "review_app",
-    "wired_pool",
+    "wired_store",
 ]

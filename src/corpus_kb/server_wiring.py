@@ -46,6 +46,7 @@ if TYPE_CHECKING:
     from corpus_kb.projections.embed_projection import EmbedChunksProjection
     from corpus_kb.projections.event_reader import EventReader
     from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
+    from corpus_kb.storage.gateway import DuckDbGateway
     from corpus_kb.storage.llamaindex_backend import LlamaIndexPostgresBackend
 
 logger = logging.getLogger(__name__)
@@ -141,14 +142,16 @@ def _setup_tracing(cfg: dict[str, Any]) -> None:
 
 
 async def _wire_query_stack(
-    cfg: dict[str, Any], pool: asyncpg.Pool
+    cfg: dict[str, Any], pool: asyncpg.Pool | DuckDbGateway
 ) -> tuple[OllamaEmbedder | PgmlEmbedder, QueryHandler, CommandHandler]:
     """Step 3: the shared embedder and the query-side singletons.
 
     The shared embedder: the query side needs it for vector search, the
     embed projection needs it to backfill vectors. Without it here,
     handle_search silently skips vector search and degrades to full-text
-    only.
+    only. The pool-driven factories take ``pg_pool_of(pool)`` — None on
+    the gateway, which builds the Ollama embedder and no pool-backed
+    reranker (issue #330: one wiring shape, both engines).
     """
     from corpus_kb.handlers.command_handler import get_command_handler
     from corpus_kb.handlers.idempotency import IdempotencyChecker, set_idempotency_checker
@@ -157,9 +160,11 @@ async def _wire_query_stack(
     from corpus_kb.rag.judge import OllamaJudge
     from corpus_kb.rag.reranker import create_reranker
     from corpus_kb.rag.self_query import SelfQueryParser
+    from corpus_kb.storage.connect import pg_pool_of
 
-    embedder = create_embedder(cfg, pool)
-    reranker = create_reranker(cfg, pool)
+    pg_pool = pg_pool_of(pool)
+    embedder = create_embedder(cfg, pg_pool)
+    reranker = create_reranker(cfg, pg_pool)
     self_query_parser = (
         SelfQueryParser(cfg)
         if (cfg.get("search", {}) or {}).get("self_query", {}).get("enabled", False)
@@ -183,7 +188,7 @@ async def _wire_query_stack(
 
 async def _wire_aux_handlers(
     cfg: dict[str, Any],
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | DuckDbGateway,
     backend: str,
     embedder: OllamaEmbedder | PgmlEmbedder,
     query_handler: QueryHandler,
@@ -234,7 +239,7 @@ class HandlerWiring:
 
 
 async def _wire_handlers(
-    cfg: dict[str, Any], pool: asyncpg.Pool, conn_str: str, backend: str
+    cfg: dict[str, Any], pool: asyncpg.Pool | DuckDbGateway, conn_str: str, backend: str
 ) -> HandlerWiring:
     """Steps 2-3d: the eventsourcing app and every handler singleton."""
     from corpus_kb.domain.application import get_app
@@ -452,11 +457,11 @@ async def run_all(services: dict[str, Any]) -> None:
 
     # Queue autorun (textbook program Wave 3): ONE background drain task
     # when queue.autorun is true; the default false starts nothing. The
-    # worker's typed refusal covers DuckDB, and a refusal logs one line
-    # while the server continues.
+    # worker runs on the pool or the gateway (issue #330 queue twins); a
+    # typed refusal logs one line while the server continues.
     from corpus_kb.queue.autorun import start_queue_autorun
 
-    queue_autorun = start_queue_autorun(services["pool"], config)
+    queue_autorun = start_queue_autorun(services["pool"] or services.get("gateway"), config)
 
     # Start HTTP server via uvicorn
     config_obj = uvicorn.Config(
@@ -491,6 +496,9 @@ async def shutdown(services: dict[str, Any]) -> None:
     pool = services["pool"]
     if isinstance(pool, asyncpg.Pool):
         await pool.close()
+    gateway = services.get("gateway")
+    if gateway is not None:
+        await gateway.close()
     # Observability (UX program Wave 4): flush pending spans on the way out.
     # Best-effort and safe when tracing was never enabled.
     from corpus_kb.utils.tracing import shutdown_tracing

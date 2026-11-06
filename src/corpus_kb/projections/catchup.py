@@ -19,7 +19,7 @@ from corpus_kb.storage.gateway import SqlGateway
 
 
 async def advance_all_projections(
-    pool: asyncpg.Pool, tenant_id: UUID, gateway: SqlGateway | None = None
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, gateway: SqlGateway | None = None
 ) -> None:
     """Advance research + documents + embeds projections to the event head.
 

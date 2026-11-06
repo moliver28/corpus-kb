@@ -48,27 +48,19 @@ def set_research_pool(pool: Any) -> None:
 
 
 async def research_pool() -> Any:
-    """The shared asyncpg pool for research routes (created on first use)."""
+    """The shared research store (created on first use): pool or gateway.
+
+    The store opens through :func:`storage.connect.open_store`, so a
+    ``database.backend: duckdb`` config hands the routes the DuckDB
+    gateway and the tools dispatch the engine at runtime (issue #330).
+    """
     global _pool
     if _pool is None:
-        import asyncpg
-
         from corpus_kb.config import load_config
-        from corpus_kb.errors import DependencyMissingError
+        from corpus_kb.storage.connect import config_conn_str, open_store
 
         cfg = load_config()
-        db = cfg.get("database") or {}
-        if str((db or {}).get("backend") or "postgres") == "duckdb":
-            # Typed refusal (zero-drift rule 4): creating an asyncpg pool on
-            # a DuckDB file path fails raw; name the real requirement first.
-            raise DependencyMissingError(
-                "The research routes need the Postgres pool.",
-                remediation=(
-                    "Run the server on the Postgres backend."
-                    " The DuckDB port for these routes is pending."
-                ),
-            )
-        _pool = await asyncpg.create_pool(str(db.get("connection_string", "")))
+        _pool = await open_store(config_conn_str(cfg))
     return _pool
 
 

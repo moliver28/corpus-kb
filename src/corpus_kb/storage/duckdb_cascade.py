@@ -17,10 +17,8 @@ constraints, for one document at a time:
   first: one committed pass per descendant level, deepest first, with a
   cycle guard.
 
-The FK graph is read from ``duckdb_constraints()`` at call time, so a new
-child table needs no code change. A multi-column FK is refused with
-``InternalError`` — none exists in the mirror; a future one must be
-modeled here before it ships.
+The stage SQL and the doomed-set order come from
+:mod:`storage.duckdb_cascade_plan` (the static half, 250-line split).
 
 Tenant scope: DuckDB has no row-level security, so every stage carries the
 explicit ``doc_id = $1 AND tenant_id = $2`` predicate — the tenant
@@ -33,6 +31,16 @@ import logging
 from typing import TYPE_CHECKING
 
 from corpus_kb.errors import InternalError
+from corpus_kb.storage.duckdb_cascade_plan import (
+    ANCHOR_PRED,
+    SET_NULL_LINKS,
+    doomed_pred,
+    doomed_tables,
+    fk_edges,
+    self_reference,
+    set_null_sql,
+    tag_count,
+)
 from corpus_kb.storage.sql_ident import quoted_identifier
 
 if TYPE_CHECKING:
@@ -40,24 +48,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-#: (table, column, parent table, parent column) links that Postgres keeps
-#: through ON DELETE SET NULL when a document dies. ``entities`` and
-#: ``relations`` rows survive a document delete; ``research_units`` rows
-#: die with the document, so their speaker link is nulled first. The
-#: ``entities`` link has no FK in the mirror after the 040 rebuild — it is
-#: declared here, not discovered.
-SET_NULL_LINKS: tuple[tuple[str, str, str, str], ...] = (
-    ("entities", "source_document_id", "documents", "doc_id"),
-    ("relations", "chunk_id", "chunks", "chunk_id"),
-    ("research_units", "speaker_id", "research_speakers", "speaker_id"),
-)
-
-_ANCHOR_PRED = "doc_id = $1 AND tenant_id = $2"
-
-_CASCADE_MODELED = (
-    "A multi-column foreign key needs a modeled delete cascade."
-    " Model the table in storage.duckdb_cascade before it ships."
-)
+__all__ = ["SET_NULL_LINKS", "delete_document_cascade"]
 
 
 async def delete_document_cascade(
@@ -69,146 +60,33 @@ async def delete_document_cascade(
     Returns the per-table deleted-row counts (set-NULL stages keyed
     ``table.column``) so callers can report what moved.
     """
-    edges = _edges_to_rows(await _fk_edge_rows(gateway))
-    doomed = _doomed_tables(edges)
-    doomed_set = set(doomed) | {"documents"}
+    edges = await fk_edges(gateway)
+    doomed = doomed_tables(edges)
     counts: dict[str, int] = {}
 
     # Stage 1: SET NULL links, one committed transaction. Committed before
     # any delete, so a stopped run leaves consistent links behind.
     async with gateway.transaction(tenant_id):
         for table, column, parent, parent_col in SET_NULL_LINKS:
-            sql = _set_null_sql(table, column, parent, parent_col, edges, doomed_set)
-            tag = await gateway.execute(sql, doc_id, tenant_id)
-            counts[f"{table}.{column}"] = _tag_count(tag)
+            tag = await gateway.execute(
+                set_null_sql(table, column, parent, parent_col, edges), doc_id, tenant_id
+            )
+            counts[f"{table}.{column}"] = tag_count(tag)
 
     # Stage k: one committed stage per doomed table, children first. The
     # documents row goes last.
     for table in doomed:
         counts[table] = await _delete_table(gateway, tenant_id, doc_id, table, edges)
     tag = await gateway.execute(
-        f"DELETE FROM {quoted_identifier('documents')} WHERE {_ANCHOR_PRED}",
+        f"DELETE FROM {quoted_identifier('documents')} WHERE {ANCHOR_PRED}",
         doc_id,
         tenant_id,
     )
-    counts["documents"] = _tag_count(tag)
+    counts["documents"] = tag_count(tag)
     logger.info(
         "Document %s deleted on duckdb: %s", doc_id, {k: v for k, v in sorted(counts.items()) if v}
     )
     return counts
-
-
-# --- doomed-set discovery ----------------------------------------------------
-
-
-async def _fk_edge_rows(gateway: DuckDbGateway) -> list[dict]:
-    """Every FOREIGN KEY edge in the live catalog, as raw rows."""
-    return list(
-        await gateway.fetch(
-            "SELECT table_name, constraint_column_names, referenced_table,"
-            " referenced_column_names"
-            " FROM duckdb_constraints()"
-            " WHERE constraint_type = 'FOREIGN KEY'"
-            "   AND database_name = current_database()"
-            "   AND schema_name = current_schema()"
-        )
-    )
-
-
-def _edges_to_rows(rows: list[dict]) -> list[tuple[str, str, str, str]]:
-    """Typed (child, child_col, parent, parent_col) edges; no multi-column FK."""
-    edges: list[tuple[str, str, str, str]] = []
-    for row in rows:
-        cols = list(row["constraint_column_names"])
-        ref_cols = list(row["referenced_column_names"])
-        if len(cols) != 1 or len(ref_cols) != 1:
-            raise InternalError(
-                f"Multi-column foreign key on table {row['table_name']!r}.",
-                remediation=_CASCADE_MODELED,
-            )
-        edges.append((str(row["table_name"]), cols[0], str(row["referenced_table"]), ref_cols[0]))
-    return edges
-
-
-def _doomed_tables(edges: list[tuple[str, str, str, str]]) -> list[str]:
-    """Descendant tables of ``documents``, children first, self-FKs excluded.
-
-    Depth-first post-order over the live FK graph: every table appears
-    after the tables that reference it, so a stage deletes into already
-    committed state (the only state DuckDB's FK checks can see). SET NULL
-    edges never propagate doom — the referencing row SURVIVES the parent's
-    delete with a NULL link (``relations`` via ``chunks`` is the live case).
-    """
-    set_null_edges = {(table, column) for table, column, _p, _pc in SET_NULL_LINKS}
-    by_parent: dict[str, list[str]] = {}
-    for child, child_col, parent, _parent_col in edges:
-        if child == parent or (child, child_col) in set_null_edges:
-            continue  # self-reference / survivor link: no doom propagates
-        children = by_parent.setdefault(parent, [])
-        if child not in children:
-            children.append(child)
-
-    order: list[str] = []
-    seen: set[str] = set()
-
-    def visit(table: str) -> None:
-        for child in sorted(by_parent.get(table, [])):
-            if child not in seen:
-                seen.add(child)
-                visit(child)
-                order.append(child)
-
-    visit("documents")
-    return order
-
-
-def _doomed_pred(
-    table: str,
-    edges: list[tuple[str, str, str, str]],
-    doomed: set[str] | None = None,
-    depth: int = 0,
-) -> str:
-    """SQL predicate selecting the doomed rows of one table.
-
-    Anchored at ``documents`` (``doc_id = $1 AND tenant_id = $2``); a child
-    table's rows are doomed when an FK column names a doomed parent row.
-    Edges to parents OUTSIDE the doomed set are skipped (a doomed table can
-    also reference a survivor, e.g. chunk_predictions -> label_sets), and
-    SET NULL edges never doom (the referencing row survives with a NULL).
-    Self-referencing edges are excluded (the level pass owns them); the
-    depth cap turns an unforeseen cycle into a typed error.
-    """
-    if table == "documents":
-        return _ANCHOR_PRED
-    if depth > len(edges):
-        raise InternalError(
-            "The delete cascade could not resolve its table graph.",
-            remediation="Check the foreign key graph on this database file.",
-        )
-    set_null_edges = {(t, c) for t, c, _p, _pc in SET_NULL_LINKS}
-    parts: list[str] = []
-    for child, child_col, parent, parent_col in sorted(edges):
-        if child != table or parent == table:
-            continue
-        if (child, child_col) in set_null_edges:
-            continue
-        if doomed is not None and parent != "documents" and parent not in doomed:
-            continue
-        inner = _doomed_pred(parent, edges, doomed, depth + 1)
-        parts.append(
-            f"{quoted_identifier(child_col)} IN ("
-            f"SELECT {quoted_identifier(parent_col)} FROM {quoted_identifier(parent)}"
-            f" WHERE {inner})"
-        )
-    if not parts:
-        raise InternalError(
-            f"Table {table!r} is marked doomed but has no modeled link to the document.",
-            remediation=_CASCADE_MODELED,
-        )
-    return "(" + " OR ".join(parts) + ")"
-
-
-# --- stage execution ---------------------------------------------------------
 
 
 async def _delete_table(
@@ -216,30 +94,17 @@ async def _delete_table(
     tenant_id: str,
     doc_id: str,
     table: str,
-    edges: list[tuple[str, str, str, str]],
+    edges: list,
 ) -> int:
     """Delete one doomed table's rows; committed per stage (FK visibility)."""
-    pred = _doomed_pred(table, edges, set(_doomed_tables(edges)) | {"documents"})
-    self_ref = _self_reference(edges, table)
+    pred = doomed_pred(table, edges, set(doomed_tables(edges)) | {"documents"})
+    self_ref = self_reference(edges, table)
     if self_ref is not None:
         return await _delete_self_referencing(gateway, tenant_id, doc_id, table, self_ref, pred)
     tag = await gateway.execute(
         f"DELETE FROM {quoted_identifier(table)} WHERE {pred}", doc_id, tenant_id
     )
-    return _tag_count(tag)
-
-
-def _self_reference(edges: list[tuple[str, str, str, str]], table: str) -> tuple[str, str] | None:
-    """(pk col, referencing col) when the table references itself, else None.
-
-    For a self-FK the REFERENCED column is the pk (``shadow_chunks.
-    shadow_chunk_id``) and the referencing column is the link
-    (``parent_id``) — the reverse of the edge tuple's order.
-    """
-    for child, child_col, parent, parent_col in edges:
-        if child == table == parent:
-            return (parent_col, child_col)
-    return None
+    return tag_count(tag)
 
 
 async def _delete_self_referencing(
@@ -304,7 +169,7 @@ async def _delete_self_referencing(
                 f" list_contains($1::VARCHAR[], {quoted_identifier(pk_col)})",
                 ready,
             )
-            total += _tag_count(tag)
+            total += tag_count(tag)
         for pk in ready:
             remaining.discard(pk)
             parent = parent_of.get(pk)
@@ -346,33 +211,3 @@ async def _descendants(
                 doomed.add(pk)
                 frontier.append(pk)
     return sorted(doomed)
-
-
-# --- SQL text ----------------------------------------------------------------
-
-
-def _set_null_sql(
-    table: str,
-    column: str,
-    parent: str,
-    parent_col: str,
-    edges: list[tuple[str, str, str, str]],
-    doomed: set[str],
-) -> str:
-    """One SET NULL stage statement (identifiers quoted, values bound)."""
-    inner = _doomed_pred(parent, edges, doomed)
-    return (
-        f"UPDATE {quoted_identifier(table)} SET {quoted_identifier(column)} = NULL"
-        f" WHERE {quoted_identifier(column)} IN ("
-        f"SELECT {quoted_identifier(parent_col)} FROM {quoted_identifier(parent)}"
-        f" WHERE {inner})"
-    )
-
-
-def _tag_count(tag: str) -> int:
-    """The row count from a PG-format status tag ("DELETE 3")."""
-    _verb, _, count = tag.partition(" ")
-    try:
-        return int(count)
-    except ValueError:
-        return 0

@@ -17,7 +17,7 @@ from uuid import UUID
 import asyncpg
 
 from corpus_kb.errors import ConfigError
-from corpus_kb.storage.gateway import PostgresGateway, SqlGateway
+from corpus_kb.storage.gateway import PostgresGateway, SqlGateway, is_gateway
 
 T = TypeVar("T")
 
@@ -36,11 +36,17 @@ class ReplayableGateway(Protocol):
     ) -> T: ...
 
 
-def resolve_gateway(pool: asyncpg.Pool | None, gateway: SqlGateway | None) -> SqlGateway:
-    """The injected gateway, else the Postgres driver over the pool."""
+def resolve_gateway(
+    pool: asyncpg.Pool | SqlGateway | None, gateway: SqlGateway | None = None
+) -> SqlGateway:
+    """The injected gateway, the store itself when it IS a gateway, else the
+    Postgres driver over the pool (issue #330: the projections port hands
+    the DuckDB gateway through the pool argument)."""
     if gateway is not None:
         return gateway
     if pool is not None:
+        if is_gateway(pool):
+            return pool
         return PostgresGateway(pool)
     raise ConfigError("Projections need a SqlGateway or an asyncpg pool.")
 

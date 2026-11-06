@@ -28,9 +28,10 @@ from uuid import UUID, uuid5
 
 import asyncpg
 
-from corpus_kb.errors import DatabaseUnavailableError, InternalError, ValidationError
+from corpus_kb.errors import InternalError
 from corpus_kb.eval.labels import ChunkEntry, LabelIndex
 from corpus_kb.eval.scoring import IngestedDoc
+from corpus_kb.storage.gateway import DuckDbGateway
 
 __all__ = ["ScratchTenantEngine", "tenant_for"]
 
@@ -62,25 +63,10 @@ def tenant_for(profile_name: str, golden_sha256: str) -> UUID:
 
 
 def _connection_string(cfg: Mapping[str, object]) -> str:
-    """The user's Postgres DSN from config (env overrides already applied)."""
-    raw = cfg.get("database")
-    database: Mapping[str, object] = raw if isinstance(raw, Mapping) else {}
-    dsn = database.get("connection_string")
-    if isinstance(dsn, str) and dsn:
-        return dsn
-    from corpus_kb.config import load_config
+    """The user's DSN from config, duckdb-prefixed when the backend is duckdb."""
+    from corpus_kb.storage.connect import config_conn_str
 
-    loaded = load_config()
-    loaded_database = loaded.get("database")
-    loaded_dsn = (
-        loaded_database.get("connection_string") if isinstance(loaded_database, Mapping) else None
-    )
-    if isinstance(loaded_dsn, str) and loaded_dsn:
-        return loaded_dsn
-    raise ValidationError(
-        "No Postgres connection string found for the calibration sweep.",
-        remediation="Set database.connection_string in config.yaml or CORPUS_KB_DATABASE_URL.",
-    )
+    return config_conn_str(dict(cfg))
 
 
 class ScratchTenantEngine:
@@ -95,27 +81,13 @@ class ScratchTenantEngine:
         self._ingested: dict[Path, IngestedDoc] = {}
 
     async def open(self) -> None:
-        self._require_postgres()
         from corpus_kb.rag import create_embedder
         from corpus_kb.rag.embedder import aembed_batch
+        from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
 
-        self._pool = await asyncpg.create_pool(_connection_string(self._cfg))
+        self._pool = await open_pool_typed_store(config_conn_str(self._cfg))
         vectors = await aembed_batch(create_embedder(self._cfg, self._pool), ["calibration probe"])
         self._degraded = not vectors or all(not any(vector) for vector in vectors)
-
-    def _require_postgres(self) -> None:
-        """Refuse the DuckDB backend before any connection opens."""
-        raw = self._cfg.get("database")
-        database: Mapping[str, object] = raw if isinstance(raw, Mapping) else {}
-        if database.get("backend") == "duckdb":
-            raise DatabaseUnavailableError(
-                "The calibration sweep needs Postgres; the research rank"
-                " seam runs pgvector and SQL fusion.",
-                remediation=(
-                    "Set database.backend to postgres, or point"
-                    " database.connection_string at a Postgres database."
-                ),
-            )
 
     def _pool_or_raise(self) -> asyncpg.Pool:
         if self._pool is None:
@@ -221,16 +193,51 @@ class ScratchTenantEngine:
         """Delete this tenant's rows; the documents cascade takes the rest."""
         if self._pool is None:
             return
+        from corpus_kb.storage.gateway import is_gateway
+
+        if is_gateway(self._pool):
+            await self._cleanup_gateway()
+            return
         from corpus_kb.storage.tenant_conn import tenant_connection
 
-        # The engine's pool is always asyncpg, so the yielded connection is
-        # the asyncpg one; the SqlGateway branch of the helper never occurs.
         async with tenant_connection(self._pool, str(self._tenant)) as conn:
             pg_conn = cast("asyncpg.Connection", conn)
             async with pg_conn.transaction():
                 for table in _AUX_TABLES:
                     await pg_conn.execute(f"DELETE FROM {table} WHERE tenant_id = $1", self._tenant)
                 await pg_conn.execute("DELETE FROM documents WHERE tenant_id = $1", self._tenant)
+
+    async def _cleanup_gateway(self) -> None:
+        """The DuckDB cleanup (issue #330): no bulk document delete.
+
+        Append-only tables skip their delete when the tenant has no rows
+        (the gateway rejects the delete itself), and the documents go one
+        by one through the in-code cascade — DuckDB checks FKs against the
+        last committed state, so a bulk delete cannot order itself.
+        """
+        from corpus_kb.storage.duckdb_cascade import delete_document_cascade
+        from corpus_kb.storage.duckdb_support import APPEND_ONLY_TABLES
+        from corpus_kb.storage.tenant_conn import tenant_connection
+
+        tenant = str(self._tenant)
+        pool = self._pool
+        assert pool is not None
+        async with tenant_connection(pool, tenant) as conn:
+            for table in _AUX_TABLES:
+                if table.lower() in APPEND_ONLY_TABLES:
+                    n = await conn.fetchval(
+                        f"SELECT count(*) FROM {table} WHERE tenant_id = $1", tenant
+                    )
+                    if not n:
+                        continue
+                await conn.execute(f"DELETE FROM {table} WHERE tenant_id = $1", tenant)
+            docs = await conn.fetch(
+                "SELECT doc_id::uuid AS d FROM documents WHERE tenant_id = $1 ORDER BY doc_id",
+                tenant,
+            )
+        gateway = cast("DuckDbGateway", self._pool)
+        for row in docs:
+            await delete_document_cascade(gateway, tenant, str(row["d"]))
 
     async def close(self) -> None:
         if self._pool is not None:

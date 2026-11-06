@@ -27,7 +27,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 from ..errors import DatabaseUnavailableError, MigrationMissingError
-from ..utils.models import Entity, Relation
+from ..utils.models import Chunk, Document, Entity, Relation
 from .duckpgq import ensure_duckpgq, merge_min_depth_rows, traversal_statements
 from .graph_sql import (
     MAX_NEIGHBOR_HOPS,
@@ -451,6 +451,60 @@ class DuckDbGraphStore(GraphStore):
             rows = await self._fetch(sql, args)
             return [traversal_row(row) for row in rows]
         return [traversal_row(row) for row in merge_min_depth_rows(rows, limit, exclude=entity_id)]
+
+    # -- provenance (issue #330: same contract as the Postgres store) --------
+
+    async def add_document(self, document: Document) -> str:
+        """Upsert a document row; same envelope as the Postgres store."""
+        row = await self._execute(
+            """
+            INSERT INTO documents (doc_id, tenant_id, source, source_type,
+                chunk_count, file_size, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (tenant_id, source) DO UPDATE
+            SET chunk_count = $5, file_size = $6, updated_at = now()
+            RETURNING doc_id::text AS doc_id
+            """,
+            [
+                document.document_id,
+                self._tenant_id,
+                document.path,
+                document.source_type,
+                document.chunk_count,
+                document.size_bytes,
+                json.dumps(document.metadata),
+            ],
+        )
+        return str(row["doc_id"]) if row else document.document_id
+
+    async def add_chunk(self, chunk: Chunk) -> str:
+        """Insert a chunk row; same envelope as the Postgres store."""
+        chunk_index = chunk.sibling_order if chunk.sibling_order is not None else 0
+        row = await self._execute(
+            """
+            INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index,
+                text, source_type, entity_name, heading_path, file_path,
+                start_line, end_line, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            ON CONFLICT (tenant_id, doc_id, chunk_index) DO NOTHING
+            RETURNING chunk_id::text AS chunk_id
+            """,
+            [
+                chunk.chunk_id,
+                self._tenant_id,
+                chunk.document_id,
+                chunk_index,
+                chunk.text,
+                chunk.source_type,
+                chunk.entity_name,
+                json.dumps(chunk.heading_path) if chunk.heading_path else None,
+                chunk.metadata.get("file_path") if chunk.metadata else None,
+                chunk.start_line,
+                chunk.end_line,
+                json.dumps(chunk.metadata),
+            ],
+        )
+        return str(row["chunk_id"]) if row else chunk.chunk_id
 
     # -- lifecycle -----------------------------------------------------------
 
