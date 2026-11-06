@@ -141,7 +141,7 @@ def register() -> MethodRegister:
 
 
 def test_loads_with_defaults_and_header(register: MethodRegister) -> None:
-    assert register.register_version == "1.1.0"
+    assert register.register_version == "2.0.0"
     assert register.source_document.title
     assert register.source_document.path_note
     assert len(register.selection_rules) == 4
@@ -184,7 +184,7 @@ def test_packaged_fallback_when_repo_file_missing(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     register = load_method_register({})
-    assert register.register_version == "1.1.0"
+    assert register.register_version == "2.0.0"
     assert len(register.methods) == 30
 
 
@@ -570,9 +570,7 @@ ROUTING_FIELD_NAMES = (
     "null_calibration",
     "failure_modes",
     "scope_limits",
-    "cost_scale",
     "suggests",
-    "evidence_citation",
 )
 
 
@@ -611,7 +609,7 @@ def test_routing_vocab_tuples_are_pinned() -> None:
 
 
 def _routing_record() -> dict[str, Any]:
-    """One valid record carrying all 14 routing fields."""
+    """One valid record carrying all 12 routing fields."""
     record = _valid_record()
     record.update(
         {
@@ -626,9 +624,7 @@ def _routing_record() -> dict[str, Any]:
             "null_calibration": "None; review the top terms by hand.",
             "failure_modes": "Repeated boilerplate can outrank meaningful terms.",
             "scope_limits": "Distinctive wording only; themes need reading.",
-            "cost_scale": "One sparse scan over the corpus; CPU only.",
             "suggests": ["Which top terms look meaningless here?", "What rare words rank high?"],
-            "evidence_citation": "https://example.org/tfidf (Documentation 2024)",
         }
     )
     return record
@@ -693,9 +689,16 @@ def test_suggests_reject_count_and_word_cap() -> None:
         MethodRegister.model_validate(_single_register(record))
 
 
-def test_evidence_citation_requires_url() -> None:
-    record = _mutate(_routing_record(), evidence_citation="RouterBench, ICML 2024")
-    with pytest.raises(ValueError, match="URL"):
+def test_dropped_routing_fields_rejected() -> None:
+    """cost_scale and evidence_citation left the schema at 2.0.0 (extra=forbid)."""
+    record = _mutate(_routing_record(), cost_scale="One sparse scan over the corpus; CPU only.")
+    with pytest.raises(ValueError, match="cost_scale"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(
+        _routing_record(),
+        evidence_citation="https://example.org/tfidf (Documentation 2024)",
+    )
+    with pytest.raises(ValueError, match="evidence_citation"):
         MethodRegister.model_validate(_single_register(record))
 
 
@@ -725,12 +728,13 @@ def test_routing_axes_populated_on_every_row(register: MethodRegister) -> None:
         suggests = record.suggests or []
         assert 2 <= len(suggests) <= 3, f"{record.id} suggests count"
         assert all(len(s.split()) <= 20 for s in suggests), f"{record.id} suggests words"
-        assert "http" in (record.evidence_citation or ""), f"{record.id} citation URL"
+        primary = record.sources[0]
+        assert " (" in primary and primary.endswith(")"), f"{record.id} primary source annotation"
         for phrase in phrases:
             assert phrase not in seen, f"phrase reused by {record.id} and {seen[phrase]}"
             seen[phrase] = record.id
 
 
 def test_register_version_bumped_for_routing_schema(register: MethodRegister) -> None:
-    """The additive routing schema bumps the register to 1.1.0 (W2 caches per version)."""
-    assert register.register_version == "1.1.0"
+    """The slimmed routing schema bumps the register to 2.0.0 (W2 caches per version)."""
+    assert register.register_version == "2.0.0"

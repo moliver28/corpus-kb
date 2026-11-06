@@ -95,9 +95,7 @@ class MethodRecord(BaseModel):
     null_calibration: str | None = None
     failure_modes: str | None = None
     scope_limits: str | None = None
-    cost_scale: str | None = None
     suggests: list[str] | None = None
-    evidence_citation: str | None = None
 
     @field_validator("id")
     @classmethod

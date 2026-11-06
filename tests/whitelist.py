@@ -513,9 +513,7 @@ assumptions
 null_calibration
 failure_modes
 scope_limits
-cost_scale
 suggests
-evidence_citation
 axis
 seed_topic_list
 zeroshot_topic_list

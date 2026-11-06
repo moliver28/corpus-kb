@@ -44,9 +44,8 @@ def _full_method() -> dict[str, Any]:
         "null_calibration": "None; terms are reviewed by hand.",
         "failure_modes": "Boilerplate can outrank meaningful terms.",
         "scope_limits": "Distinctive wording only.",
-        "cost_scale": "One sparse scan; CPU only.",
         "suggests": ["Which top terms look meaningless here?"],
-        "evidence_citation": "https://example.org/tfidf (Documentation)",
+        "sources": ["https://example.org/tfidf (Documentation)"],
     }
 
 
@@ -75,6 +74,14 @@ def test_routing_lines_render_full_block() -> None:
     lines = gen._routing_lines(_full_method())
     assert lines[0].startswith("  - Routing axes: task `discovery`")
     assert "cost tier `interactive`" in lines[0]
-    assert "  - Ask it:" in lines[6]
-    assert lines[8].startswith("  - Evidence: https://example.org/tfidf")
-    assert len(lines) == 9
+    assert "  - Ask it:" in lines[5]
+    assert lines[7].startswith("  - Evidence: https://example.org/tfidf (Documentation)")
+    assert len(lines) == 8
+
+
+def test_routing_lines_evidence_uses_annotated_primary_source() -> None:
+    """The Evidence line renders the annotated primary source, never a bare URL."""
+    method = _full_method()
+    method["sources"] = ["https://example.org/tfidf (Documentation)", "https://example.org/extra"]
+    lines = gen._routing_lines(method)
+    assert lines[-1] == "  - Evidence: https://example.org/tfidf (Documentation)"
