@@ -59,6 +59,15 @@ Confirmed defects, worst first. Evidence is `file:line` on master `2632368`.
   `scripts/gen_harness_pack.py --check` stays green in CI.
 - **Behavior-preserving splits** in Wave 3: pure moves. SQL moves byte-identical.
   Tests may change only where they pinned a defect.
+- **One dynamic-DDL seam (sanctioned 2026-11-06, owner ruling)**: each
+  research project gets its own physical raw table (`raw_<slug>`). This is
+  the ONLY allowed runtime DDL outside migrations. Rules for the seam:
+  `storage/project_tables.py` is the single factory; identifiers pass
+  through `storage/sql_ident.py` only; every runtime table gets one row in
+  the static `project_tables` registry migration table, so schema-parity,
+  doctor, backup, and migrate-data enumerate them. The registry migration
+  itself is static DDL; the raw tables are runtime DDL created by the
+  factory. No other module may run dynamic DDL.
 
 ## UI SPA program amendments (D17, 2026-10-25)
 

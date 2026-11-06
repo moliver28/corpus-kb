@@ -78,24 +78,17 @@ _DUCKDB_DEPENDENT_TABLES = (
 
 
 def gateway_backend(gateway: SqlGateway) -> str:
-    """The backend a gateway drives: ``duckdb`` for DuckDbGateway, else postgres.
+    """The backend a gateway drives (moved home: storage.gateway)."""
+    from corpus_kb.storage.gateway import gateway_backend as _impl
 
-    The gateway IS the backend choice — one object, one truth — so statement
-    variants key off the driver type, not a parallel config read.
-    """
-    return "duckdb" if isinstance(gateway, DuckDbGateway) else "postgres"
+    return _impl(gateway)
 
 
 def as_gateway(source: asyncpg.Pool | SqlGateway) -> SqlGateway:
-    """The one pool/gateway coercion: gateways pass through, pools wrap.
+    """The one pool/gateway coercion (moved home: storage.gateway)."""
+    from corpus_kb.storage.gateway import as_gateway as _impl
 
-    The Postgres driver is a thin asyncpg wrapper, so a test double with an
-    ``acquire()`` flows through it unchanged — historical fake-pool tests
-    keep working.
-    """
-    if isinstance(source, (PostgresGateway, DuckDbGateway)):
-        return source
-    return PostgresGateway(cast("asyncpg.Pool", source))
+    return _impl(source)
 
 
 async def assert_vector_column_width(
