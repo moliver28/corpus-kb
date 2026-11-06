@@ -152,8 +152,14 @@ def _envelope(question: str, result: RouteResult) -> dict[str, object]:
     }
     if result.intent.status == "ambiguous":
         envelope["interpretations"] = result.intent.readings[:_READINGS_CAP]
-    top = result.ranked[0] if result.ranked else None
-    attach_suggestions(envelope, top)
+    # The chips ride the CHOSEN method (the score winner), not the
+    # rubric-top row: ``ranked`` is rubric-ordered and blind to scores,
+    # so the two orders diverge whenever more than one method scored.
+    chosen = next(
+        (rec for rec in result.ranked if rec.id == result.intent.method_id),
+        None,
+    )
+    attach_suggestions(envelope, chosen)
     envelope["trace"] = asdict(result.trace)
     return envelope
 

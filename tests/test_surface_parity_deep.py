@@ -2468,13 +2468,12 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
 async def test_analysis_route_suggestions_parity(parity_env: dict[str, Any]) -> None:
     """The next-question suggestions ride the shared handler on all legs.
 
-    The leg question resolves to method 29 on the phrase path (the pgml
-    config passes no sync embedder), and that row authors three
-    ``suggests`` strings, so the deterministic legs carry those strings
-    verbatim. The ambient-config legs (HTTP and socket re-parse the
-    startup config) may route through the embedding mode here, so they
-    pin presence and shape only — no value coupling to the live
-    embedder. A surface that drops the key fails.
+    Every leg answers deterministically: the fixture patches
+    ``corpus_kb.config.load_config`` to the offline pgml config, so the
+    HTTP and socket adapters take the phrase path too, and the leg
+    question resolves to method 29. That row authors three ``suggests``
+    strings, so all four legs must carry exactly those strings verbatim.
+    A surface that drops, rewords, or re-sources them fails.
     """
     ctx = parity_env
     leg = LEGS["analysis_route"]
@@ -2508,13 +2507,15 @@ async def test_analysis_route_suggestions_parity(parity_env: dict[str, Any]) -> 
     expected = list(chosen.suggests or [])[:3]
     assert len(expected) == 3, "the leg method must author three suggestions"
 
-    assert shared["suggestions"] == expected, "shared"
-    assert mcp_env["suggestions"] == expected, "mcp"
-    assert mcp_env["suggestions"] == shared["suggestions"], "mcp vs shared"
-    for name, envelope in (("http", http_env), ("socket", socket_env)):
-        rows = envelope["suggestions"]
-        assert isinstance(rows, list) and 1 <= len(rows) <= 3, name
-        assert all(isinstance(row, str) and row != "" for row in rows), name
+    for name, envelope in (
+        ("shared", shared),
+        ("http", http_env),
+        ("socket", socket_env),
+        ("mcp", mcp_env),
+    ):
+        assert envelope["suggestions"] == expected, name
+        intent = envelope["intent"]
+        assert intent["method_id"] == "29", name
 
 
 async def _call_mcp_tool(

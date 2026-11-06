@@ -32,9 +32,10 @@ def _suggestions_for(record: MethodRecord) -> list[str]:
 def attach_suggestions(envelope: dict[str, object], record: MethodRecord | None) -> None:
     """Attach the chosen method's suggestions when a method was decided.
 
-    The caller passes the record whose strings ride: the router's
-    top-ranked row on the automatic path, the override record on the
-    override path. The intent inside the envelope decides presence.
+    The caller passes the record whose strings ride: the row matching
+    the intent's chosen id on the automatic path (the score winner, not
+    the rubric-top row), the override record on the override path. The
+    intent inside the envelope decides presence.
     """
     intent = envelope["intent"]
     if not isinstance(intent, dict):

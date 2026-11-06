@@ -271,6 +271,46 @@ async def test_healthy_resolved_envelope_carries_the_chosen_suggestions(
     assert result["suggestions"] == cluster_suggests
 
 
+async def test_suggestions_follow_the_chosen_method_not_the_rubric_top(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Score winner and rubric order can disagree: chips follow the score.
+
+    The question phrase-hits a phrase of each row, so both ride the
+    candidate set. Both rows share every rubric axis, so the rubric
+    sorts 01 first; the embedding scores pick 05. The chips ride 05 —
+    the intent's choice — never the rubric-top row.
+    """
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _SplitEmbedder())
+    cluster_suggests = [
+        "Which cluster count fits these interviews?",
+        "How stable are the themes across runs?",
+    ]
+    codebook_suggests = ["Which first codes anchor the book?"]
+    register = _register(
+        _record(
+            "01",
+            "Codebook method",
+            [_TIE_B, "Can a method help me code these transcripts?"],
+            suggests=codebook_suggests,
+        ),
+        _record(
+            "05",
+            "Cluster method",
+            [_TIE_A, "Which cluster structure fits these records?"],
+            suggests=cluster_suggests,
+        ),
+    )
+    monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
+    result = await _run(question=f"{_TIE_A} {_TIE_B}", config={})
+    assert result["status"] == "resolved"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["method_id"] == "05"
+    ranked = cast("list[dict[str, object]]", result["ranked"])
+    assert ranked[0]["method_id"] == "01"
+    assert result["suggestions"] == cluster_suggests
+
+
 async def test_ambiguous_envelope_omits_suggestions(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ambiguous: no method is chosen yet, so no chips — even when every
     candidate row authors suggestions. The ladder is the answer."""
