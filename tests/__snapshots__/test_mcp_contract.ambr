@@ -264,6 +264,7 @@
         'config': 'POSITIONAL_OR_KEYWORD',
         'file_path': 'POSITIONAL_OR_KEYWORD',
         'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
         'source_type': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
         'validate': 'POSITIONAL_OR_KEYWORD',
@@ -508,6 +509,23 @@
         'project_id': 'POSITIONAL_OR_KEYWORD',
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
         'version_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.project_tools': dict({
+      'project_drop': dict({
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'slug': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'project_list': dict({
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'project_provision': dict({
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'project_id': 'POSITIONAL_OR_KEYWORD',
+        'slug': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
     'corpus_kb.tools.query_tools': dict({
