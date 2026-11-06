@@ -142,6 +142,36 @@ async def test_drop_unknown_slug_is_not_found(duckdb_with_registry) -> None:
         await drop_project_table(duckdb_with_registry, TENANT, "never-made")
 
 
+async def test_doctor_probe_reports_registered_tables(duckdb_path: Path) -> None:
+    """The doctor probe sees the registry and names orphans honestly.
+
+    The probe opens the file read-only, so the read-write gateway is
+    closed before each probe (duckdb allows one writer configuration).
+    """
+    from corpus_kb._setup.doctor_project_tables import project_tables_check
+    from corpus_kb._setup.doctor_research import STATUS_OK, STATUS_WARN
+    from corpus_kb.storage.duckdb_support import duckdb_conn_string_to_path
+    from corpus_kb.storage.gateway import DuckDbGateway
+
+    conn_str = duckdb_conn_string_to_path(str(duckdb_path))
+    run_duckdb_migrations(f"{DUCKDB_DSN_PREFIX}{duckdb_path.as_posix()}")
+    gateway = await DuckDbGateway.connect(str(duckdb_path))
+    await create_project_table(gateway, TENANT, PROJECT, "alpha")
+    await gateway.close()
+    ok = await project_tables_check({"database": {"backend": "duckdb"}}, conn_str)
+    assert ok.status == STATUS_OK
+
+    # An orphan raw table (no registry row) turns the check into a warn.
+    gateway = await DuckDbGateway.connect(str(duckdb_path))
+    await gateway.execute(
+        "CREATE TABLE raw_orphan (id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid())"
+    )
+    await gateway.close()
+    warned = await project_tables_check({"database": {"backend": "duckdb"}}, conn_str)
+    assert warned.status == STATUS_WARN
+    assert "raw_orphan" in warned.detail
+
+
 async def test_slugs_are_tenant_scoped(duckdb_with_registry) -> None:
     gateway = duckdb_with_registry
     other = "00000000-0000-0000-0000-000000000003"

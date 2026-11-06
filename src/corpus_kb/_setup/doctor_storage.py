@@ -26,6 +26,7 @@ from corpus_kb._setup.doctor_engine import (
     pg_chunk_count,
     resolved_backend,
 )
+from corpus_kb._setup.doctor_project_tables import project_tables_check
 from corpus_kb._setup.doctor_research import (
     STATUS_FAIL,
     STATUS_INFO,
@@ -154,7 +155,10 @@ async def storage_checks(
         ]
     if backend != "duckdb":
         count = await pg_chunk_count(conn_str) if postgres_ok and conn_str else None
-        return [engine_fit_check("postgres", count)]
+        checks = [engine_fit_check("postgres", count)]
+        if postgres_ok and conn_str:
+            checks.append(await project_tables_check(config, conn_str))
+        return checks
 
     if not conn_str.startswith("duckdb:"):
         fail = ResearchCheck(
@@ -198,6 +202,7 @@ async def storage_checks(
         checks.extend(extension_load_check(scratch))
     checks.append(events_sidecar_check(conn_str))
     checks.append(engine_fit_check("duckdb", count))
+    checks.append(await project_tables_check(config, conn_str))
     return checks
 
 
