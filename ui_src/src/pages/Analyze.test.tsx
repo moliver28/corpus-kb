@@ -212,10 +212,11 @@ describe("Analyze page", () => {
     expect(await screen.findByText(strings.routeStatusResolved)).toBeTruthy();
     const sent = calls.find((c) => c.url.includes("/api/analysis/route"));
     expect(sent?.body).toContain('"question":"How do I find duplicate records in my corpus?"');
-    // The runner bridge still works from a routed row's run_hint op.
+    // The runner bridge still works from a routed row's run_hint op. The
+    // picker names methods in plain words, so select by the human name.
     fireEvent.click(screen.getAllByRole("button", { name: strings.analyzeRunMethod })[0]);
     expect(
-      screen.getByRole("button", { name: "duplicates-screen" }).getAttribute("aria-pressed"),
+      screen.getByRole("button", { name: strings.analyzeOpDuplicates }).getAttribute("aria-pressed"),
     ).toBe("true");
   });
 
