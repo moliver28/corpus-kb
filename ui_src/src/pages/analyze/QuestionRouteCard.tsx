@@ -14,15 +14,20 @@ import {
   STATUS_WORD,
   noteLines,
   rankedRow,
+  readingsPicker,
+  suggestionChips,
   tracePanel,
   type RegisterRow,
 } from "./routeParts";
 
 /**
  * The question card: one plain-language question in, the routed method
- * with its one-line why out. Ambiguous answers list their readings
- * (read-only in this wave); the analyst can override with any register
- * method. The SPA never re-routes; the server's answer renders as-is.
+ * with its one-line why out. Ambiguous answers offer a single-choice
+ * picker over their readings; using one re-routes with that method. A
+ * decided answer suggests next questions; a chip fills the question box
+ * and the analyst still presses Route. The analyst can also override
+ * with any register method. The SPA never re-routes on its own; the
+ * server's answer renders as-is.
  */
 export default function QuestionRouteCard({
   onRunMethod,
@@ -37,6 +42,7 @@ export default function QuestionRouteCard({
   const [hint, setHint] = useState("");
   const [methods, setMethods] = useState<RegisterRow[]>([]);
   const [override, setOverride] = useState<string | undefined>(undefined);
+  const [picked, setPicked] = useState<string | undefined>(undefined);
   const route = useOp("analysis-route");
   const { run: runRegister } = useOp("analysis-select-method");
 
@@ -68,10 +74,11 @@ export default function QuestionRouteCard({
       return;
     }
     setHint("");
-    // The highlight follows the answer: a plain re-route drops any
-    // picked override, and a guard-tripped click (empty question)
-    // never lights one up.
+    // The highlights follow the answer: a plain re-route drops any
+    // picked override and any stale reading pick, and a guard-tripped
+    // click (empty question) never lights one up.
     setOverride(methodId);
+    setPicked(undefined);
     route.reset();
     const body: Record<string, unknown> = { question: question.trim() };
     if (methodId !== undefined) {
@@ -104,27 +111,8 @@ export default function QuestionRouteCard({
             </div>
           )}
           {envelope.ranked.map((row) => rankedRow(row, onRunMethod))}
-          {(() => {
-            // null rides as absent (the guard lets it through).
-            const readings = envelope.interpretations ?? [];
-            if (readings.length === 0) {
-              return null;
-            }
-            return (
-            <div className="ui-stack">
-              <strong>{strings.routeReadingsTitle}</strong>
-              <Typography.Text type="secondary">{strings.routeReadingsHint}</Typography.Text>
-              {readings.map((reading) => (
-                <div key={reading.method_id}>
-                  <div>
-                    {reading.method_id} — {reading.method_name}
-                  </div>
-                  <Typography.Text type="secondary">{reading.why}</Typography.Text>
-                </div>
-              ))}
-            </div>
-            );
-          })()}
+          {readingsPicker(envelope, picked, setPicked, () => void routeWith(picked))}
+          {suggestionChips(envelope, setQuestion)}
           {tracePanel(envelope)}
           <div className="ui-stack">
             <Typography.Paragraph

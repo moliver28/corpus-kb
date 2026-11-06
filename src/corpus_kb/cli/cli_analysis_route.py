@@ -47,7 +47,19 @@ def _route_emit(result: dict[str, object], json_output: bool) -> None:
             why = top.get("why")
             if why:
                 print(f"  why: {why}")
+    _print_suggestions(result)
     _print_readings(result)
+
+
+def _print_suggestions(result: dict[str, object]) -> None:
+    """The chosen method's follow-up questions, as the envelope carries them."""
+    suggestions = result.get("suggestions")
+    if not isinstance(suggestions, list) or not suggestions:
+        return
+    print("  next questions:")
+    for row in suggestions:
+        if isinstance(row, str):
+            print(f"  - {row}")
 
 
 def _print_readings(result: dict[str, object]) -> None:

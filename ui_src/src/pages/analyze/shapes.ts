@@ -104,6 +104,8 @@ export interface RouteEnvelope {
   ranked: RouteRanked[];
   /** Null rides as absent (the guard lets it through). */
   interpretations?: RouteReading[] | null;
+  /** The chosen method's next questions, verbatim; null rides as absent. */
+  suggestions?: string[] | null;
   trace?: RouteTraceShape;
 }
 
@@ -144,6 +146,11 @@ export function isRouteEnvelope(value: unknown): value is RouteEnvelope {
       return false;
     }
   }
+  if (v.suggestions !== undefined && v.suggestions !== null) {
+    if (!Array.isArray(v.suggestions) || !v.suggestions.every((row) => typeof row === "string")) {
+      return false;
+    }
+  }
   return true;
 }
 
@@ -163,4 +170,11 @@ export function routeScores(trace: RouteTraceShape | undefined): RouteScore[] {
 /** The intent note ("degraded" | "expert_override"), or "" when absent. */
 export function routeNote(envelope: RouteEnvelope): string {
   return textOf(envelope.intent?.note);
+}
+
+/** The chosen method's next questions, or [] when absent or unreadable. */
+export function routeSuggestions(envelope: RouteEnvelope): string[] {
+  const rows = envelope.suggestions;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter((row): row is string => typeof row === "string");
 }

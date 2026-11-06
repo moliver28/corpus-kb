@@ -3,7 +3,15 @@ import type { ReactNode } from "react";
 import StatusBanner from "../../components/StatusBanner";
 import { getOp } from "../../api/ops";
 import { strings } from "../../strings";
-import { manifestOpId, routeNote, routeScores, textOf, type RouteEnvelope, type RouteRanked } from "./shapes";
+import {
+  manifestOpId,
+  routeNote,
+  routeScores,
+  routeSuggestions,
+  textOf,
+  type RouteEnvelope,
+  type RouteRanked,
+} from "./shapes";
 
 // The question card's render parts (route program W3). Pure functions
 // over one route envelope; the card owns state and the op calls. Split
@@ -84,6 +92,80 @@ export function noteLines(envelope: RouteEnvelope): ReactNode {
     );
   }
   return lines;
+}
+
+/**
+ * The ambiguity ladder as a single-choice picker (routing W4). One radio
+ * per reading (the labelled group carries the pick state); "Use this
+ * reading" re-routes with the picked method. Confirm-then-run: the pick
+ * alone sends nothing.
+ */
+export function readingsPicker(
+  envelope: RouteEnvelope,
+  picked: string | undefined,
+  onPick: (methodId: string) => void,
+  onUse: () => void,
+): ReactNode {
+  const readings = envelope.interpretations ?? [];
+  if (readings.length === 0) {
+    return null;
+  }
+  return (
+    <div className="ui-stack">
+      <strong>{strings.routeReadingsTitle}</strong>
+      <Typography.Text type="secondary">{strings.routeReadingsHint}</Typography.Text>
+      <Typography.Paragraph className="ui-flush" type="secondary" id="route-readings-label">
+        {strings.routeReadingsPickLabel}
+      </Typography.Paragraph>
+      <div role="radiogroup" aria-labelledby="route-readings-label" className="ui-stack">
+        {readings.map((reading) => (
+          <div key={reading.method_id} className="ui-stack">
+            <Button
+              size="small"
+              role="radio"
+              aria-checked={picked === reading.method_id}
+              aria-label={`${reading.method_id} ${reading.method_name}`}
+              type={picked === reading.method_id ? "primary" : "default"}
+              onClick={() => onPick(reading.method_id)}
+            >
+              {reading.method_id} — {reading.method_name}
+            </Button>
+            <Typography.Text type="secondary">{reading.why}</Typography.Text>
+          </div>
+        ))}
+      </div>
+      <div>
+        <Button size="small" type="primary" disabled={picked === undefined} onClick={onUse}>
+          {strings.routeUseReading}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** The chosen method's next questions as chips that fill the question
+    box. A chip never sends; the analyst still presses Route. */
+export function suggestionChips(
+  envelope: RouteEnvelope,
+  onPickQuestion: (question: string) => void,
+): ReactNode {
+  const suggestions = routeSuggestions(envelope);
+  if (suggestions.length === 0) {
+    return null;
+  }
+  return (
+    <div className="ui-stack">
+      <strong>{strings.routeSuggestionsTitle}</strong>
+      <Typography.Text type="secondary">{strings.routeSuggestionsHint}</Typography.Text>
+      <div className="ui-actions">
+        {suggestions.map((question) => (
+          <Button key={question} size="small" onClick={() => onPickQuestion(question)}>
+            {question}
+          </Button>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** The collapsed trace: one summary line, scores on expand. */

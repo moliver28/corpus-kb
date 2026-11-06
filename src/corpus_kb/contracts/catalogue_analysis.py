@@ -42,9 +42,14 @@ ANALYZE_ENVELOPE = ("status", "sections")
 
 # AMR envelopes: guaranteed-on-success keys only (the envelopes.py rule).
 SELECT_ENVELOPE = ("status", "register_version", "recommendations")
-# analysis_route: ``interpretations`` is conditional (ambiguous answers
-# only), so it stays off the guaranteed tuple and rides the shared
-# envelope instead (the envelopes.py rule: guaranteed keys only).
+# analysis_route: ``interpretations`` and ``suggestions`` are conditional
+# shared-baseline keys, so both stay off the guaranteed tuple and ride
+# the shared envelope on every surface (the envelopes.py rule:
+# guaranteed keys only). ``interpretations`` rides ambiguous answers
+# only; ``suggestions`` is present iff the intent resolved and a method
+# was chosen, and omitted otherwise. Conditional keys never take
+# per-surface extras: the shared handler answers all surfaces alike,
+# and extras are for surface-ADDED keys only.
 ROUTE_ENVELOPE = ("status", "intent", "ranked", "trace")
 KEYPHRASES_ENVELOPE = ("status", "keyphrases", "variant", "screened_count")
 PREDICTIONS_ENVELOPE = ("status", "predictions", "screened_count")

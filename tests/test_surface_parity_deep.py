@@ -105,6 +105,7 @@ import corpus_kb.tools.statements_tools as statements_tools_module
 import corpus_kb.tools.tag_tools as tag_tools_module
 import corpus_kb.tools.topics_tools as topics_tools_module
 import corpus_kb.tools.vector_screen_tools as vector_screen_tools_module
+from corpus_kb.analysis.method_register_loader import load_method_register
 from corpus_kb.api.http import create_http_app
 from corpus_kb.api.socket import JSONRPCServer
 from corpus_kb.contracts import OPERATIONS, SKIPPED_OPERATIONS
@@ -2462,6 +2463,59 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
         allowed["mcp"] = set()
 
     _assert_parity(op.name, keys, allowed)
+
+
+async def test_analysis_route_suggestions_parity(parity_env: dict[str, Any]) -> None:
+    """The next-question suggestions ride the shared handler on all legs.
+
+    Every leg answers deterministically: the fixture patches
+    ``corpus_kb.config.load_config`` to the offline pgml config, so the
+    HTTP and socket adapters take the phrase path too, and the leg
+    question resolves to method 29. That row authors three ``suggests``
+    strings, so all four legs must carry exactly those strings verbatim.
+    A surface that drops, rewords, or re-sources them fails.
+    """
+    ctx = parity_env
+    leg = LEGS["analysis_route"]
+    shared = await leg.shared(ctx)
+
+    client: TestClient = ctx["client"]
+    response = client.post("/api/analysis/route", json={"question": _ROUTE_QUESTION})
+    assert response.status_code == 200, response.text
+    http_env: dict[str, Any] = response.json()
+
+    server: JSONRPCServer = ctx["server"]
+    rpc = await server._process_request(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "analysis_route",
+                "params": {"question": _ROUTE_QUESTION},
+            }
+        )
+    )
+    assert "result" in rpc, rpc
+    socket_env: dict[str, Any] = rpc["result"]
+
+    mcp_env = await _call_mcp_tool(
+        ctx["mcp_server"], "analysis_route", {"question": _ROUTE_QUESTION}
+    )
+
+    register = load_method_register({})
+    chosen = next(row for row in register.methods if row.id == "29")
+    expected = list(chosen.suggests or [])[:3]
+    assert len(expected) == 3, "the leg method must author three suggestions"
+
+    for name, envelope in (
+        ("shared", shared),
+        ("http", http_env),
+        ("socket", socket_env),
+        ("mcp", mcp_env),
+    ):
+        assert envelope["suggestions"] == expected, name
+        intent = envelope["intent"]
+        assert intent["method_id"] == "29", name
 
 
 async def _call_mcp_tool(

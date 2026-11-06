@@ -193,6 +193,10 @@ export interface Strings {
   routeOverrideNote: string;
   routeReadingsTitle: string;
   routeReadingsHint: string;
+  routeReadingsPickLabel: string;
+  routeUseReading: string;
+  routeSuggestionsTitle: string;
+  routeSuggestionsHint: string;
   routeOverrideLabel: string;
   routeTopWhyLabel: string;
   routeTraceSummary: string;
