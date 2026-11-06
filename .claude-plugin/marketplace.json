@@ -1,0 +1,19 @@
+{
+  "name": "corpus-kb",
+  "description": "Plugins for the Corpus-KB local RAG engine. Install corpus-rag to ingest, search, and study your documents from Claude Code.",
+  "owner": {
+    "name": "Michael Oliver",
+    "url": "https://github.com/moliver28/corpus-kb"
+  },
+  "version": "1.0.0",
+  "plugins": [
+    {
+      "name": "corpus-rag",
+      "source": "./plugins/corpus-rag",
+      "version": "0.5.2",
+      "description": "Local RAG study plugin for the corpus-kb engine. Ingest documents, search them, and codify findings with a study registry.",
+      "keywords": ["rag", "search", "local", "knowledge", "research"],
+      "tags": ["rag", "search", "local-first", "knowledge-base", "research"]
+    }
+  ]
+}

@@ -747,6 +747,14 @@ help = "MCP config + runtime config consistency gate (ci.yml validate-configs jo
 cmd = "pnpm -C ui_src exec jscpd --config ../.jscpd.json --threshold 1.59 ../src"
 help = "jscpd duplication gate over src/ (threshold 1.59, config .jscpd.json)"
 
+[tool.poe.tasks.plugin-manifest]
+# Marketplace manifest gate (issue 331 M3, owner directive 2026-11-05;
+# rule 10: poe target + ci.yml plugin-manifest job + CI-map row). Stdlib
+# only. Structure checks always run; the plugin.json lockstep check
+# activates when the plugin tree lands (issue 331 step 1).
+cmd = "python scripts/plugin_manifest_gate.py"
+help = "Validate .claude-plugin/marketplace.json and its version lockstep with the plugin"
+
 [tool.poe.tasks.audit-deps]
 # Dependency CVE gate (PR-F, rule 10). uv-native audit of the COMMITTED
 # lockfile: --locked audits exactly what uv.lock pins and fails when the

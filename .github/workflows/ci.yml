@@ -1064,3 +1064,26 @@ jobs:
         env:
           PYTHONUNBUFFERED: "1"
         run: poe warning-ratchet
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Marketplace manifest gate (issue 331 M3, owner directive 2026-11-05,
+  # zero-drift rule 10: poe target + CI job + map row). Stdlib only: the
+  # gate script needs no project install. Structure checks always run;
+  # the plugin.json lockstep check activates when the plugin tree lands.
+  # ─────────────────────────────────────────────────────────────────────
+  plugin-manifest:
+    name: "plugin-manifest (marketplace.json gate)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install poethepoet
+        run: pip install poethepoet
+
+      - name: Marketplace manifest gate
+        run: poe plugin-manifest
