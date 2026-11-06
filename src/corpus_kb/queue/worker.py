@@ -156,13 +156,13 @@ class QueueWorker:
             self._store, queue_id, self._identity.claimed_by, self._beat_interval(), _mark_lost
         ):
             try:
-                result = await ingest_book(
-                    self._pool,
-                    book_config,
-                    self._tenant_id,
-                    path,
-                    project_id=row_project_id(row),
-                )
+                book_project = row_project_id(row)
+                if book_project is None:
+                    result = await ingest_book(self._pool, book_config, self._tenant_id, path)
+                else:
+                    result = await ingest_book(
+                        self._pool, book_config, self._tenant_id, path, project_id=book_project
+                    )
             except Exception as exc:
                 return await self._record_failure(
                     row, queue_id, str(exc), time.monotonic() - started
