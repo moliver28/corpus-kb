@@ -104,16 +104,13 @@ async def test_doctor_probe_pg_branch_is_warning_free(pool: Any) -> None:
 
     await project_provision(pool, slug="pg-doctor", tenant_id=TENANT)
     try:
-        async with pool.acquire() as conn:
+        async with pool.acquire() as conn, conn.transaction():
             # The registry FORCEs RLS: set the tenant GUC like the probe does.
-            async with conn.transaction():
-                await conn.execute(
-                    "SELECT set_config('app.current_tenant_id', $1, true)", TENANT
-                )
-                with warnings.catch_warnings():
-                    warnings.simplefilter("error", RuntimeWarning)
-                    assert await _tables_present(conn, is_postgres=True) is True
-                    registered, orphans, missing = await _read_state(conn, is_postgres=True)
+            await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", TENANT)
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", RuntimeWarning)
+                assert await _tables_present(conn, is_postgres=True) is True
+                registered, orphans, missing = await _read_state(conn, is_postgres=True)
         assert "raw_pg_doctor" in registered
         assert orphans == [] and missing == []
     finally:
