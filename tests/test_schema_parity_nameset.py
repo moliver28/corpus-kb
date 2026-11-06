@@ -53,7 +53,9 @@ def test_real_migration_name_sets_pass() -> None:
         "base_schema",
         "ingest_runs_source",
     }
-    assert "coding_schema" in set(result.pg_rollback) - set(result.duck_rollback)
+    # Issue #330 added the pre-offset rollback twins: the rollback sets
+    # now pair completely.
+    assert set(result.pg_rollback) == set(result.duck_rollback)
 
 
 def test_forward_mismatch_names_the_offender(tmp_path: Path) -> None:

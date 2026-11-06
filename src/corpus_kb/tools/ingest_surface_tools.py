@@ -108,8 +108,8 @@ def _status_sql(is_duckdb: bool) -> dict[str, str]:
                 "SELECT count(*) FROM ingest_runs WHERE tenant_id = $1 AND status = 'running'"
             ),
             "degraded_present": (
-                "SELECT count(*) FROM duckdb_columns() WHERE table_name IN "
-                "('chunks', 'chunks_vectors') AND column_name = 'degraded'"
+                "SELECT count(*) FROM duckdb_columns() WHERE "
+                "list_contains($1::VARCHAR[], table_name) AND column_name = 'degraded'"
             ),
             "degraded_chunks": (
                 "SELECT count(*) FROM chunks WHERE tenant_id = $1 AND degraded = TRUE"

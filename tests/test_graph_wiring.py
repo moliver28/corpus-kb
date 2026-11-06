@@ -446,14 +446,18 @@ class TestCreateGraphStoreDuckDb:
         assert 'if backend != "postgres":' in source
 
     @pytest.mark.asyncio
-    async def test_startup_on_duckdb_wires_the_research_ecosystem(self, tmp_path) -> None:
-        """A duckdb startup builds the gateway research deps (sp-research-port).
+    async def test_startup_on_duckdb_wires_the_full_stack(self, tmp_path) -> None:
+        """A duckdb startup wires EVERY surface (issue #330).
 
         The event store is the SQLite recorder, the SQL components ride the
-        one gateway, and the not-yet-ported handler surfaces stay unset
-        (they fail typed per route, never at startup).
+        one gateway, and the command/query/router handlers come back wired
+        exactly like the Postgres startup returns them.
         """
+        from corpus_kb.handlers.command_handler import CommandHandler
+        from corpus_kb.handlers.query_handler import QueryHandler
+        from corpus_kb.handlers.router_handler import RouterHandler
         from corpus_kb.server_wiring import startup
+        from corpus_kb.storage.duckdb_rag import DuckDbRagBackend
         from corpus_kb.storage.gateway import DuckDbGateway
 
         cfg: dict[str, object] = {
@@ -470,7 +474,10 @@ class TestCreateGraphStoreDuckDb:
             assert services["docs_projection"] is not None
             assert services["embed_projection"] is not None
             assert services["http_app"] is not None
-            assert services.get("query_handler") is None
+            assert isinstance(services["command_handler"], CommandHandler)
+            assert isinstance(services["query_handler"], QueryHandler)
+            assert isinstance(services["router_handler"], RouterHandler)
+            assert isinstance(services["rag_backend"], DuckDbRagBackend)
         finally:
             gateway = services["gateway"]
             if isinstance(gateway, DuckDbGateway):

@@ -308,6 +308,19 @@ class _FakeDuckDbGateway:
         del conn_str
         return cls()
 
+    def duplicate_connection(self) -> object:
+        """The graph store's cursor seam (issue #330); never opened here."""
+        return object()
+
+    async def execute(self, sql: str, *args: object) -> str:
+        """The RAG mirror's initialize DDL; answers the INSERT tag shape."""
+        del sql, args
+        return "OK"
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, object]]:
+        del sql, args
+        return []
+
 
 async def test_duckdb_startup_mounts_the_spa_through_the_same_seam(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -75,7 +75,9 @@ async def _duckdb_graph_store(
     A ``DuckDbGateway`` source (issue #330 server wiring) lends a cursor on
     its own database instance — no second file lock.
     """
-    if isinstance(source, DuckDbGateway):
+    from corpus_kb.storage.gateway import DuckDbGateway as _Gateway
+
+    if isinstance(source, _Gateway):
         return DuckDbGraphStore(source.duplicate_connection(), traversal_engine=traversal_engine)
     if source is not None:
         return DuckDbGraphStore(
