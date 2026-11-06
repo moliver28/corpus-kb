@@ -34,10 +34,12 @@ jobs:
           # every engine scanner: it keeps its own conventions and has its
           # own CI job. Without this exclude, the imported plugin (issue 331
           # step 1) would open untriaged code-scanning alerts that can red
-          # the PR. Syntax per GitHub docs (workflow configuration options
-          # for code scanning) and the codeql-action init inputs.
-          paths-ignore:
-            - "plugins/**"
+          # the PR. init@v3 takes path config through the inline `config`
+          # input (same format as a config file); it has no direct
+          # paths-ignore input.
+          config: |
+            paths-ignore:
+              - "plugins/**"
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
