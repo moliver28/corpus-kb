@@ -351,6 +351,39 @@ describe("QuestionRouteCard", () => {
     expect(routeCalls().length).toBe(0);
   });
 
+  it("clears the stale override highlight on a plain re-route", async () => {
+    stubBoth(AMBIGUOUS);
+    render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
+    await ask("How do I group and code these records?");
+    expect(await screen.findByText(strings.routeStatusAmbiguous)).toBeTruthy();
+    // The 30-method override picker lights its picked button...
+    expect(screen.getByRole("group", { name: strings.routeOverrideLabel })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /^01 / }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const sends = routeCalls();
+    expect(sends.length).toBe(2);
+    expect(sends[1].body).toContain('"method_id":"01"');
+    // Re-query: the re-render replaces the button node (R14).
+    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    // ...and a plain Route press (no method_id) clears the highlight.
+    // jsdom never finishes antd's loading-icon leave motion, so the
+    // accessible name keeps a stale "loading " prefix (R13).
+    fireEvent.click(screen.getByRole("button", { name: /^(loading )?Route$/ }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const clears = routeCalls();
+    expect(clears.length).toBe(3);
+    expect(clears[2].body).not.toContain("method_id");
+    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+  });
+
   it("fills the question box from a suggestion chip without sending", async () => {
     stubBoth(RESOLVED);
     render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });

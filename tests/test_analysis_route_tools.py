@@ -61,6 +61,17 @@ _PGML = {"embedding": {"provider": "pgml"}}
 _TIE_A = "How do I cluster my documents by theme?"
 _TIE_B = "How do I build a codebook for my interviews?"
 
+# Two filler phrases per id for the six-row fallback-pool fixture: none
+# may contain "cluster" (the pool winner's direction) or overlap the
+# pool question ("I want a cluster breakdown of my interview notes.").
+_FILLER_PHRASES = {
+    "01": ("Which first codes anchor the book?", "How do codes split by speaker?"),
+    "02": ("What themes recur across the interviews?", "Which quotes carry the theme?"),
+    "03": ("How do the topics drift over time?", "Which months shift the topic mix?"),
+    "04": ("What errors repeat in the transcripts?", "Which mistakes recur weekly?"),
+    "05": ("How do the speakers contradict each other?", "Which pairs disagree most?"),
+}
+
 
 def _record(
     id_: str,
@@ -308,6 +319,54 @@ async def test_suggestions_follow_the_chosen_method_not_the_rubric_top(
     assert intent["method_id"] == "05"
     ranked = cast("list[dict[str, object]]", result["ranked"])
     assert ranked[0]["method_id"] == "01"
+    assert result["suggestions"] == cluster_suggests
+
+
+async def test_suggestions_survive_a_fallback_pool_bigger_than_the_ranked_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The score winner can sit outside the capped ranked list.
+
+    No phrase hits, so the fallback pool is every phrased row (six).
+    The rubric sorts by id, so ranked caps out at 01-05; the embedding
+    scores pick 06. The chips must still ride 06 — sourced from the
+    register, never from the capped list.
+    """
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _SplitEmbedder())
+    cluster_suggests = [
+        "Which cluster count fits these interviews?",
+        "How do the near matches split?",
+    ]
+    register = _register(
+        *[
+            _record(
+                id_,
+                f"Filler method {id_}",
+                [_FILLER_PHRASES[id_][0], _FILLER_PHRASES[id_][1]],
+            )
+            for id_ in ("01", "02", "03", "04", "05")
+        ],
+        _record(
+            "06",
+            "Cluster method",
+            [
+                "Which cluster count fits these interviews?",
+                "How stable are the themes across runs?",
+            ],
+            suggests=cluster_suggests,
+        ),
+    )
+    monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
+    result = await _run(question="I want a cluster breakdown of my interview notes.", config={})
+    assert result["status"] == "resolved"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["method_id"] == "06"
+    ranked_ids = [
+        cast("dict[str, object]", row)["method_id"]
+        for row in cast("list[dict[str, object]]", result["ranked"])
+    ]
+    assert ranked_ids == ["01", "02", "03", "04", "05"]
+    assert "06" not in ranked_ids
     assert result["suggestions"] == cluster_suggests
 
 

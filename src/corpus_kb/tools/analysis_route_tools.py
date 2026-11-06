@@ -143,7 +143,7 @@ def _ranked_rows(question: str, ranked: list[MethodRecommendation]) -> list[dict
     return rows
 
 
-def _envelope(question: str, result: RouteResult) -> dict[str, object]:
+def _envelope(question: str, register: MethodRegister, result: RouteResult) -> dict[str, object]:
     """The shared envelope: stable key order, deterministic bytes."""
     envelope: dict[str, object] = {
         "status": "degraded" if result.degraded else result.status,
@@ -152,12 +152,14 @@ def _envelope(question: str, result: RouteResult) -> dict[str, object]:
     }
     if result.intent.status == "ambiguous":
         envelope["interpretations"] = result.intent.readings[:_READINGS_CAP]
-    # The chips ride the CHOSEN method (the score winner), not the
-    # rubric-top row: ``ranked`` is rubric-ordered and blind to scores,
-    # so the two orders diverge whenever more than one method scored.
-    chosen = next(
-        (rec for rec in result.ranked if rec.id == result.intent.method_id),
-        None,
+    # The chips ride the CHOSEN method (the score winner), looked up in
+    # the register by id: ``ranked`` is rubric-ordered, score-blind, and
+    # capped at five, so the winner can sit outside it (the no-phrase-
+    # hit pool is every phrased row).
+    chosen = (
+        _record_for(register, result.intent.method_id)
+        if result.intent.method_id is not None
+        else None
     )
     attach_suggestions(envelope, chosen)
     envelope["trace"] = asdict(result.trace)
@@ -226,4 +228,4 @@ async def analysis_route(
         return _override_envelope(question, result, override)
     if result.status == "insufficient":
         raise NoMethodMatchesError(_NO_MATCH_MESSAGE)
-    return _envelope(question, result)
+    return _envelope(question, register, result)

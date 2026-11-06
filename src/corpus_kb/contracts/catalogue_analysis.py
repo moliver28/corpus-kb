@@ -43,11 +43,13 @@ ANALYZE_ENVELOPE = ("status", "sections")
 # AMR envelopes: guaranteed-on-success keys only (the envelopes.py rule).
 SELECT_ENVELOPE = ("status", "register_version", "recommendations")
 # analysis_route: ``interpretations`` and ``suggestions`` are conditional
-# (ambiguous answers list readings; a decided answer suggests next
-# questions), so both stay off the guaranteed tuple and ride the shared
-# envelope instead (the envelopes.py rule: guaranteed keys only). The
-# per-surface extras declare ``suggestions`` so one surface carrying it
-# over the shared leg is drift-checked, not silent.
+# shared-baseline keys, so both stay off the guaranteed tuple and ride
+# the shared envelope on every surface (the envelopes.py rule:
+# guaranteed keys only). ``interpretations`` rides ambiguous answers
+# only; ``suggestions`` is present iff the intent resolved and a method
+# was chosen, and omitted otherwise. Conditional keys never take
+# per-surface extras: the shared handler answers all surfaces alike,
+# and extras are for surface-ADDED keys only.
 ROUTE_ENVELOPE = ("status", "intent", "ranked", "trace")
 KEYPHRASES_ENVELOPE = ("status", "keyphrases", "variant", "screened_count")
 PREDICTIONS_ENVELOPE = ("status", "predictions", "screened_count")
@@ -139,8 +141,6 @@ ANALYSIS_OPERATIONS: tuple[Operation, ...] = (
             _TENANT,
         ),
         envelope_keys=ROUTE_ENVELOPE,
-        http_extra=frozenset({"suggestions"}),
-        socket_extra=frozenset({"suggestions"}),
         surfaces=(
             SurfaceSpec(MCP, "analysis_route"),
             SurfaceSpec(CLI, "analysis-route"),
