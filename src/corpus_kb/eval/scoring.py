@@ -19,7 +19,7 @@ from corpus_kb.eval.golden import GoldenRecord
 if TYPE_CHECKING:
     from corpus_kb.analysis.method_register import MethodRegister
     from corpus_kb.analysis.question_router import RoutingEmbedder
-    from corpus_kb.eval.routing_calibrate import RoutingGoldenRow
+    from corpus_kb.eval.routing_bench_types import RoutingGoldenRow
 from corpus_kb.eval.labels import LabelIndex, resolve_relevance
 from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 

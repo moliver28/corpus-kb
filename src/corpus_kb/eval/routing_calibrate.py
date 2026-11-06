@@ -24,7 +24,6 @@ calibration. Callers skip when the embedder is down.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
 from corpus_kb.analysis.method_register import MethodRegister
@@ -33,10 +32,11 @@ from corpus_kb.errors import ValidationError
 from corpus_kb.eval.calibrate import CalibrationResult
 from corpus_kb.eval.lockfile import write_routing_lock
 from corpus_kb.eval.recipes import MAX_CANDIDATES, validate_candidates
+from corpus_kb.eval.routing_bench_types import RoutingGoldenRow
 from corpus_kb.eval.scoring import CandidateScore, QueryScore, route_family
 from corpus_kb.eval.stats import compare_all
 
-__all__ = ["ROUTING_GRID", "RoutingGoldenRow", "run_routing_calibration"]
+__all__ = ["ROUTING_GRID", "run_routing_calibration"]
 
 # The sweep's default family: the pinned defaults are the baseline, the
 # challengers walk the threshold and the margin around them. Eight
@@ -55,14 +55,6 @@ ROUTING_GRID: tuple[tuple[float, float], ...] = (
 _THRESHOLD_KEY = "analysis.routing.confidence_threshold"
 _MARGIN_KEY = "analysis.routing.margin"
 _RULE = "primary accuracy on the routing golden bench"
-
-
-@dataclass(frozen=True)
-class RoutingGoldenRow:
-    """One routing golden row: the question and the acceptable methods."""
-
-    question: str
-    expected_method_ids: tuple[str, ...]
 
 
 def _grid_name(point: tuple[float, float]) -> str:

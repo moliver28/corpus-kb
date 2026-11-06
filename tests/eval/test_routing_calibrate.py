@@ -17,7 +17,8 @@ import pytest
 
 from corpus_kb.analysis.method_register import MethodRegister
 from corpus_kb.errors import ValidationError
-from corpus_kb.eval.routing_calibrate import RoutingGoldenRow, run_routing_calibration
+from corpus_kb.eval.routing_bench_types import RoutingGoldenRow
+from corpus_kb.eval.routing_calibrate import run_routing_calibration
 
 # Method 05 owns the cluster direction (vector e1), method 01 the
 # codebook direction (e2). The tie question sits at cosine 0.50 / 0.45:
