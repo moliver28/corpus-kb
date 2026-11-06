@@ -389,6 +389,11 @@ corpus_kb = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# The plugin tree (plugins/corpus-rag, issue 331) keeps its own conventions
+# and stays outside every engine gate. Discovery-level exclude so a bare
+# ruff check . / ruff format . never scans it; the poe gates pass explicit
+# src/ tests/ paths either way.
+extend-exclude = ["plugins"]
 
 [tool.ruff.lint]
 select = [
@@ -545,6 +550,11 @@ DEP003 = ["httpx"]
 DEP004 = ["duckdb"]
 
 [tool.pytest.ini_options]
+# The plugin tree (plugins/corpus-rag, issue 331) owns its test layout and
+# runs under the plugin-tests job, never the engine suite. Pin collection to
+# tests/ so a bare pytest at the repo root scans the same tree as before the
+# import (no test_*.py exists outside tests/ today).
+testpaths = ["tests"]
 # The ONE marker registry (issue 235): every marker lives here, nowhere
 # else. The conftest skip hook (pytest_runtest_setup) consumes
 # requires_hi_res/requires_postgres; it no longer registers markers.
@@ -736,6 +746,21 @@ help = "MCP config + runtime config consistency gate (ci.yml validate-configs jo
 # number down in the same PR that removes a clone family.
 cmd = "pnpm -C ui_src exec jscpd --config ../.jscpd.json --threshold 1.59 ../src"
 help = "jscpd duplication gate over src/ (threshold 1.59, config .jscpd.json)"
+
+[tool.poe.tasks.plugin-manifest]
+# Marketplace manifest gate (issue 331 M3, owner directive 2026-11-05;
+# rule 10: poe target + ci.yml plugin-manifest job + CI-map row). Stdlib
+# only. Structure checks always run; the plugin.json lockstep check
+# activates when the plugin tree lands (issue 331 step 1).
+cmd = "python scripts/plugin_manifest_gate.py"
+help = "Validate .claude-plugin/marketplace.json and its version lockstep with the plugin"
+
+[tool.poe.tasks.plugin-tests]
+# Fresh plugin suite (issue 331 rebuild, owner directive 2026-11-06; rule
+# 10: poe target + ci.yml plugin-tests job + CI-map row). Stdlib only; the
+# plugin's own pytest.ini isolates it from the engine pytest config.
+shell = "cd plugins/corpus-rag && python -m pytest tests/ -q --tb=short"
+help = "corpus-rag plugin suite (hooks, engine paths, manifest lockstep)"
 
 [tool.poe.tasks.audit-deps]
 # Dependency CVE gate (PR-F, rule 10). uv-native audit of the COMMITTED

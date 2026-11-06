@@ -1,0 +1,25 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/session-nudge.sh\"; [ -f \"$f\" ] || exit 0; \"$f\""
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/prompt-nudge.sh\"; [ -f \"$f\" ] || exit 0; \"$f\""
+          }
+        ]
+      }
+    ]
+  }
+}
