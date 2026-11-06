@@ -103,8 +103,14 @@ async def parity_store(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
         "  backend: duckdb\n"
         "extraction:\n"
         "  backend: regex\n"
+        # CI pulls nomic-embed-text only; the packaged default (qwen3) 404s
+        # there. Dimensions travel with the model (768) so the embedder's
+        # width validation passes, and a width-mismatched vector arm fails
+        # open into the degraded lexical arm (the search contract).
         "embedding:\n"
-        "  provider: ollama\n",
+        "  provider: ollama\n"
+        "  model: nomic-embed-text\n"
+        "  dimensions: 768\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("CORPUS_KB_CONFIG", str(cfg_path))
