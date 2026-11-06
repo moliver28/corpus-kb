@@ -15,10 +15,7 @@ corrected bar and ONLY then is the lock written.
 nothing, too few scored queries, or a missing p-value (the sign-test
 path without ranx) — those numbers would be fake, so no lock is written.
 Orchestration only: scoring lives in ``scoring``, stats in ``stats``,
-the engine is injected, so tests run hermetically. The routing sweep
-(``analysis.routing.*`` recipes over the golden bench) shares this
-structure from ``routing_calibrate.py`` — this file sits at the
-250-line limit, so the routing family hosts beside it, not inside it.
+the engine is injected, so tests run hermetically.
 """
 
 from __future__ import annotations
