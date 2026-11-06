@@ -25,10 +25,11 @@ __all__ = ["project_tables_check"]
 _REGISTRY_TABLE = "project_tables"
 
 
-def _tables_present(con: Any, is_postgres: bool) -> bool:
+async def _tables_present(con: Any, is_postgres: bool) -> bool:
     """True when the registry table exists on this database."""
     if is_postgres:
-        return bool(con.fetchval("SELECT to_regclass('public.project_tables')"))
+        found = await con.fetchval("SELECT to_regclass('public.project_tables')")
+        return found is not None
     row = con.execute(
         "SELECT COUNT(*) FROM information_schema.tables "
         "WHERE table_schema = 'main' AND table_name = 'project_tables'"
@@ -95,7 +96,7 @@ async def project_tables_check(config: dict[str, Any], conn_str: str) -> Researc
 
             con = await asyncpg.connect(conn_str)
             try:
-                if not _tables_present(con, is_postgres=True):
+                if not await _tables_present(con, is_postgres=True):
                     return ResearchCheck(
                         name=name,
                         status=STATUS_INFO,
