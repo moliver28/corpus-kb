@@ -11,6 +11,12 @@
 # `run --all-files` of those rewrote hundreds of files in one sweep (they
 # do not match the committed tree's line-ending state), which is exactly
 # the mass churn a zero-drift wave must not produce.
+#
+# The plugin tree (plugins/corpus-rag, issue 331) keeps its own conventions
+# and stays outside every engine gate. Without this exclude, the ruff hook
+# (which passes files explicitly, bypassing pyproject discovery excludes,
+# with --fix) would rewrite plugin code to engine style.
+exclude: ^plugins/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v4.6.0

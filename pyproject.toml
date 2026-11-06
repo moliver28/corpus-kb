@@ -389,6 +389,11 @@ corpus_kb = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# The plugin tree (plugins/corpus-rag, issue 331) keeps its own conventions
+# and stays outside every engine gate. Discovery-level exclude so a bare
+# ruff check . / ruff format . never scans it; the poe gates pass explicit
+# src/ tests/ paths either way.
+extend-exclude = ["plugins"]
 
 [tool.ruff.lint]
 select = [
@@ -545,6 +550,11 @@ DEP003 = ["httpx"]
 DEP004 = ["duckdb"]
 
 [tool.pytest.ini_options]
+# The plugin tree (plugins/corpus-rag, issue 331) owns its test layout and
+# runs under the plugin-tests job, never the engine suite. Pin collection to
+# tests/ so a bare pytest at the repo root scans the same tree as before the
+# import (no test_*.py exists outside tests/ today).
+testpaths = ["tests"]
 # The ONE marker registry (issue 235): every marker lives here, nowhere
 # else. The conftest skip hook (pytest_runtest_setup) consumes
 # requires_hi_res/requires_postgres; it no longer registers markers.
