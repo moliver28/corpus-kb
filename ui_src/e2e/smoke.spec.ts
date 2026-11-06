@@ -131,12 +131,13 @@ test.describe("SPA smoke on a live server", () => {
     const second = `aaa-e2e-${unique}-b`;
     await page.goto("/app/#/graph");
     const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
+    const createForm = page.locator(".ant-card").filter({ hasText: "Create an entity" });
     // CREATE: two entities through the form; each ok banner names the
     // save and the window re-reads (the write op is add-entity).
     for (const name of [first, second]) {
-      await entities.getByPlaceholder("Name").fill(name);
-      await entities.getByPlaceholder("Type").fill(`e2e-${unique}`);
-      await entities.getByRole("button", { name: "Create an entity" }).click();
+      await createForm.getByPlaceholder("Name").fill(name);
+      await createForm.getByPlaceholder("Type").fill(`e2e-${unique}`);
+      await createForm.getByRole("button", { name: "Create an entity" }).click();
       await expect(page.getByText("Entity created.")).toBeVisible({ timeout: 60_000 });
     }
     // FIND: the type filter narrows the window read to this run.
