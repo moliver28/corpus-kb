@@ -23,6 +23,7 @@ async def test_tool_signatures_unchanged() -> None:
             "tenant_id",
             "source_type",
             "validate",
+            "project_id",
         },
         "ingest_text": {
             "text",

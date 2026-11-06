@@ -67,6 +67,7 @@ async def ingest_file(
     tenant_id: str = DEFAULT_TENANT_ID,
     source_type: str | None = None,
     validate: str | None = None,
+    project_id: str | None = None,
 ) -> dict[str, object]:
     """Ingest a single file (auto-detects type).
 
@@ -98,6 +99,7 @@ async def ingest_file(
         is_file=True,
         strategy_name=source_type,
         validate_mode=validate,
+        project_id=project_id,
     )
 
 

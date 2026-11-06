@@ -475,6 +475,28 @@ SURFACES: tuple[Surface, ...] = (
         description="Cancel one pending or running queue row.",
         http_route="/api/queue/cancel",
     ),
+    # -- Track C: the per-project raw-table ops. -------------------------
+    Surface(
+        name="project-provision",
+        cli_path="project-provision",
+        mcp_tool="project_provision",
+        description="Create the raw table for one project slug (idempotent).",
+        http_route="/api/project/provision",
+    ),
+    Surface(
+        name="project-list",
+        cli_path="project-list",
+        mcp_tool="project_list",
+        description="List provisioned project raw tables with row counts.",
+        http_route="/api/project/list",
+    ),
+    Surface(
+        name="project-drop",
+        cli_path="project-drop",
+        mcp_tool="project_drop",
+        description="Drop one project raw table and its registry row.",
+        http_route="/api/project/drop",
+    ),
     # -- UI manifest self-upgrade reads (issue #182): the Review and Ask
     #    screens resolve these ids through getOp; the names follow the
     #    manifest ids the shipped screens already reference. --------------

@@ -96,6 +96,7 @@ import corpus_kb.tools.method_select_tools as method_select_tools_module
 import corpus_kb.tools.neighbor_tools as neighbor_tools_module
 import corpus_kb.tools.nli_tools as nli_tools_module
 import corpus_kb.tools.notebook_tools as notebook_tools_module
+import corpus_kb.tools.project_tools as project_tools_module
 import corpus_kb.tools.queue_tools as queue_tools_module
 import corpus_kb.tools.release_tools as release_tools_module
 import corpus_kb.tools.research_tools as research_tools_module
@@ -564,6 +565,23 @@ async def _shared_queue_cancel(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+# -- Track C: the per-project raw-table ops. The stub pool answers the
+#    "already provisioned" shape for provision (fetchval 0 is not None),
+#    an empty registry for list, and a registered table for drop.
+
+
+async def _shared_project_provision(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_provision(ctx["pool"], slug="parity-notes")
+
+
+async def _shared_project_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_list(ctx["pool"])
+
+
+async def _shared_project_drop(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await project_tools_module.project_drop(ctx["pool"], slug="parity-notes")
+
+
 _SEED_BELIEF = {"subject": "speaker:777", "relation": "preference", "object": "ice cream"}
 
 
@@ -954,6 +972,8 @@ _GOLD_PATH = "gold_path"
 DOC_ID = "00000000-0000-0000-0000-00000000000d"
 _QUEUE_ID = "00000000-0000-0000-0000-0000000000e1"
 
+_PROJECT_SLUG = "parity-notes"
+
 LEGS: dict[str, _Leg] = {
     "ingest_text": _Leg(
         _shared_ingest_text,
@@ -1216,6 +1236,25 @@ LEGS: dict[str, _Leg] = {
         _post("/api/queue/cancel", {"queue_id": _QUEUE_ID}),
         _sock("queue_cancel", {"queue_id": _QUEUE_ID}),
         _mcp({"queue_id": _QUEUE_ID}),
+    ),
+    # -- Track C: the per-project raw-table ops. --
+    "project_provision": _Leg(
+        _shared_project_provision,
+        _post("/api/project/provision", {"slug": _PROJECT_SLUG}),
+        _sock("project_provision", {"slug": _PROJECT_SLUG}),
+        _mcp({"slug": _PROJECT_SLUG}),
+    ),
+    "project_list": _Leg(
+        _shared_project_list,
+        _post("/api/project/list", {}),
+        _sock("project_list", {}),
+        _mcp({}),
+    ),
+    "project_drop": _Leg(
+        _shared_project_drop,
+        _post("/api/project/drop", {"slug": _PROJECT_SLUG}),
+        _sock("project_drop", {"slug": _PROJECT_SLUG}),
+        _mcp({"slug": _PROJECT_SLUG}),
     ),
     # -- Living Corpus W6: the meta-embed build (document kind only; the
     #    profile kind would call the real embedder — env-dependent).
@@ -2397,6 +2436,10 @@ def test_catalogue_matches_surface_registry() -> None:
         "search_context",
         # Issue #200: the calibrate apply row byte-matches its registry row.
         "calibrate_apply",
+        # Track C: the per-project raw-table op rows byte-match.
+        "project_provision",
+        "project_list",
+        "project_drop",
     } <= set(checked)
 
 

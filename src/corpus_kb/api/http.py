@@ -137,6 +137,11 @@ from corpus_kb.api.routes_meta import (
     sql_tables,
 )
 from corpus_kb.api.routes_meta_embed import analysis_embed_meta_route
+from corpus_kb.api.routes_project import (
+    project_drop_route,
+    project_list_route,
+    project_provision_route,
+)
 from corpus_kb.api.routes_queue import (
     queue_cancel_route,
     queue_enqueue_route,
@@ -238,6 +243,10 @@ def create_http_app() -> FastAPI:
         Route("/api/queue/enqueue", queue_enqueue_route, methods=["POST"]),
         Route("/api/queue/status", queue_status_route, methods=["POST"]),
         Route("/api/queue/cancel", queue_cancel_route, methods=["POST"]),
+        # Track C: the per-project raw-table ops.
+        Route("/api/project/provision", project_provision_route, methods=["POST"]),
+        Route("/api/project/list", project_list_route, methods=["POST"]),
+        Route("/api/project/drop", project_drop_route, methods=["POST"]),
         Route("/api/beliefs/compare", beliefs_compare_route, methods=["POST"]),
         Route("/api/search", search, methods=["POST"]),
         Route("/api/search/similar", search_similar, methods=["POST"]),

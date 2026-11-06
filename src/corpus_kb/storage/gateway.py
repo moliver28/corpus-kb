@@ -92,6 +92,28 @@ def is_gateway(
     return not hasattr(store, "acquire") and hasattr(store, "transaction")
 
 
+def as_gateway(source: asyncpg.Pool | SqlGateway) -> SqlGateway:
+    """The one pool/gateway coercion: gateways pass through, pools wrap.
+
+    The Postgres driver is a thin asyncpg wrapper, so a test double with
+    an ``acquire()`` flows through it unchanged — historical fake-pool
+    tests keep working. (Home moved here from tools.ingest_store, the
+    storage layer owns the seam; tools re-import from here.)
+    """
+    if isinstance(source, (PostgresGateway, DuckDbGateway)):
+        return source
+    return PostgresGateway(cast("asyncpg.Pool", source))
+
+
+def gateway_backend(gateway: SqlGateway) -> str:
+    """The backend a gateway drives: ``duckdb`` for DuckDbGateway, else postgres.
+
+    The gateway IS the backend choice — one object, one truth — so statement
+    variants key off the driver type, not a parallel config read.
+    """
+    return "duckdb" if isinstance(gateway, DuckDbGateway) else "postgres"
+
+
 class PostgresGateway:
     """Thin asyncpg wrapper. SQL text and status tags stay byte-identical."""
 

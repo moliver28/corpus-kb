@@ -32,7 +32,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from typing import Any, cast
+from typing import Any
 
 import asyncpg
 
@@ -41,7 +41,7 @@ from corpus_kb.dimensions import EMBEDDING_DIMENSIONS
 
 from ..analysis.dates import parse_date_value
 from ..errors import ConfigError
-from ..storage.gateway import DuckDbGateway, PostgresGateway, SqlGateway
+from ..storage.gateway import SqlGateway
 from ..utils.models import Chunk, Document, Entity, Relation
 from . import ingest_batch
 from .ingest_batch import entity_persisted_metadata
@@ -78,24 +78,17 @@ _DUCKDB_DEPENDENT_TABLES = (
 
 
 def gateway_backend(gateway: SqlGateway) -> str:
-    """The backend a gateway drives: ``duckdb`` for DuckDbGateway, else postgres.
+    """The backend a gateway drives (moved home: storage.gateway)."""
+    from corpus_kb.storage.gateway import gateway_backend as _impl
 
-    The gateway IS the backend choice — one object, one truth — so statement
-    variants key off the driver type, not a parallel config read.
-    """
-    return "duckdb" if isinstance(gateway, DuckDbGateway) else "postgres"
+    return _impl(gateway)
 
 
 def as_gateway(source: asyncpg.Pool | SqlGateway) -> SqlGateway:
-    """The one pool/gateway coercion: gateways pass through, pools wrap.
+    """The one pool/gateway coercion (moved home: storage.gateway)."""
+    from corpus_kb.storage.gateway import as_gateway as _impl
 
-    The Postgres driver is a thin asyncpg wrapper, so a test double with an
-    ``acquire()`` flows through it unchanged — historical fake-pool tests
-    keep working.
-    """
-    if isinstance(source, (PostgresGateway, DuckDbGateway)):
-        return source
-    return PostgresGateway(cast("asyncpg.Pool", source))
+    return _impl(source)
 
 
 async def assert_vector_column_width(
@@ -319,6 +312,23 @@ class PostgresIngestStore:
             logger.warning(
                 "Could not link ingest run %s to project %s: %s", run_id, project_id, exc
             )
+
+    async def set_document_project(self, doc_id: str, project_id: str) -> None:
+        """Attach a project to the document row (migration 016). Best effort: never raises.
+
+        Mirrors ``set_run_project``: a missing row, column, or database is
+        a warning, never an ingest failure.
+        """
+        try:
+            async with self._gateway.transaction(self._tenant_id) as tx:
+                await tx.execute(
+                    self._sql.set_document_project_sql,
+                    doc_id,
+                    project_id,
+                    self._tenant_id,
+                )
+        except Exception as exc:
+            logger.warning("Could not link document %s to project %s: %s", doc_id, project_id, exc)
 
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
         """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding.

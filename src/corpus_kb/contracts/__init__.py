@@ -30,6 +30,7 @@ from corpus_kb.contracts.catalogue_classification import CLASSIFICATION_OPERATIO
 from corpus_kb.contracts.catalogue_conflicts import CONFLICTS_OPERATIONS
 from corpus_kb.contracts.catalogue_documents import DOCUMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_labeling import LABELING_OPERATIONS
+from corpus_kb.contracts.catalogue_project import PROJECT_OPERATIONS
 from corpus_kb.contracts.catalogue_queue import QUEUE_OPERATIONS
 from corpus_kb.contracts.catalogue_release import RELEASE_OPERATIONS
 from corpus_kb.contracts.catalogue_research import (
@@ -66,6 +67,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *BELIEFS_OPERATIONS,
     *EXTRACTION_TUNE_OPERATIONS,
     *QUEUE_OPERATIONS,
+    *PROJECT_OPERATIONS,
     *SEARCH_READ_OPERATIONS,
     *CALIBRATE_OPERATIONS,
 )

@@ -131,9 +131,9 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # get_document_tags, get_metadata),
     # +1 for the #200 calibrate apply op (calibrate_apply),
     # +1 for the question front door (analysis_route, routing wave 3)
-    # == 87. The set under the pin is the catalogue/registry UNION, so a
+    # == 90. The set under the pin is the catalogue/registry UNION, so a
     # tool added without a row (or dropped without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 87
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 90
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

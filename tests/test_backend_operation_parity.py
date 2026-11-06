@@ -23,7 +23,8 @@ from test_surface_parity_deep import DOC_ID, LEGS, TENANT
 
 ParityLegs = tuple[str, ...]
 
-#: The 27 operations issue #330 names for the DuckDB parity proof.
+#: The 27 operations issue #330 names for the DuckDB parity proof,
+#: plus the three Track C project-table ops.
 PARITY_OPS: ParityLegs = (
     "topics_list",
     "labeling_list",
@@ -54,6 +55,10 @@ PARITY_OPS: ParityLegs = (
     "notebook_uncoded",
     "notebook_overlap",
     "delete_document",
+    # Track C: the per-project raw-table ops (provision before drop).
+    "project_provision",
+    "project_list",
+    "project_drop",
 )
 
 
@@ -152,7 +157,7 @@ async def _seed_document(gateway: Any, tenant: str, doc_id: str) -> None:
 async def test_all_parity_operations_run_on_duckdb(
     parity_store: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Drive the 27 shared legs on one migrated file; collect every failure.
+    """Drive the 30 shared legs on one migrated file; collect every failure.
 
     ``queue_enqueue`` books a real row (its content hash names a tmp file,
     so a second run would deduplicate), and ``delete_document`` runs LAST
@@ -202,6 +207,6 @@ def _file_path_key() -> str:
 
 
 def test_parity_op_list_is_exact() -> None:
-    """The 27 named operations exist as shared legs (catalogue drift pin)."""
+    """Every named operation exists as a shared leg (catalogue drift pin)."""
     missing = [op for op in PARITY_OPS if op not in LEGS]
     assert not missing, f"legs missing for: {missing}"

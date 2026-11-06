@@ -39,7 +39,7 @@ fi
 
 # Lane: files that want ingesting.
 if printf '%s' "$prompt" | grep -iqE 'ingest|\.pdf|\.vtt|\.srt|transcript'; then
-  offer ingest 'Add files to your corpus with: corpus-kb ingest <path>. The corpus-ingest skill has the details.'
+  offer ingest 'Add transcripts, meeting notes, websites, PDF, PPTX, or DOCX files with: corpus-kb ingest <path>. Google Slides: export to .pptx first, then ingest. The corpus-ingest skill has the details.'
 fi
 
 # Lane: questions (a registered study means the corpus can answer with sources).

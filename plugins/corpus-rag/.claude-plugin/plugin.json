@@ -1,6 +1,6 @@
 {
   "name": "corpus-rag",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Ask cited questions, search your corpus, and ingest documents with the Corpus-KB engine.",
   "author": "moliver28",
   "repository": "https://github.com/moliver28/corpus-kb"

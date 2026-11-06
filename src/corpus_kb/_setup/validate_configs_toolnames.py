@@ -73,6 +73,10 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "queue_enqueue",
         "queue_status",
         "queue_cancel",
+        # -- Track C: the per-project raw-table ops ------------------------
+        "project_provision",
+        "project_list",
+        "project_drop",
         # -- lifecycle UI ops (UI SPA Task 5b, issue #176): registry rows over
         #    the demo loader and the doctor probes ---------------------------
         "demo_load",

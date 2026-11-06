@@ -75,6 +75,13 @@ WATCH_SUFFIXES = {
     ".pptx",
     ".txt",
     ".csv",
+    # Track C3: the project drop-dir modalities. PDF routes through the
+    # textbook page gate or the queue; docx/vtt/srt ride transcript
+    # strategy detection.
+    ".pdf",
+    ".docx",
+    ".vtt",
+    ".srt",
 }
 
 # Cap on the exponential heal backoff so a long outage does not sleep days.

@@ -49,6 +49,8 @@ from .ingest_sql_text import (
     RUN_INSERT_SQL,
     SCAN_SQL_DUCKDB,
     SCAN_SQL_PG,
+    SET_DOCUMENT_PROJECT_DUCKDB_SQL,
+    SET_DOCUMENT_PROJECT_PG_SQL,
     UNCHANGED_DOC_DUCKDB_SQL,
 )
 
@@ -91,6 +93,7 @@ class IngestSql:
     finish_run_sql: str
     fail_run_sql: str
     set_run_project_sql: str
+    set_document_project_sql: str
     vector_insert_sql: str
 
     @property
@@ -117,6 +120,7 @@ def ingest_sql_for(backend: str) -> IngestSql:
             set_run_project_sql=(
                 "UPDATE ingest_runs SET project_id = $2 WHERE run_id = $1 AND tenant_id = $3"
             ),
+            set_document_project_sql=SET_DOCUMENT_PROJECT_DUCKDB_SQL,
             vector_insert_sql=_VECTOR_INSERT.format(
                 embedding=f"$3::FLOAT[{EMBEDDING_DIMENSIONS}]",
                 v1024=f"$4::FLOAT[{RESEARCH_EMBEDDING_DIMENSIONS}]",
@@ -139,6 +143,7 @@ def ingest_sql_for(backend: str) -> IngestSql:
             "UPDATE ingest_runs SET project_id = $2::uuid"
             " WHERE run_id = $1::uuid AND tenant_id = $3"
         ),
+        set_document_project_sql=SET_DOCUMENT_PROJECT_PG_SQL,
         vector_insert_sql=_VECTOR_INSERT.format(embedding="$3::halfvec", v1024="$4::vector"),
     )
 

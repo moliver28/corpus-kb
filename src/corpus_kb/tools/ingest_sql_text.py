@@ -54,6 +54,17 @@ RUN_INSERT_DUCKDB_SQL = """
     RETURNING run_id::text
 """
 
+# The project link on the document row (migration 016). Postgres casts the
+# uuid text; DuckDB stores the uuid text in VARCHAR. Best-effort writes only:
+# the callers treat a mismatch as a warning, never an ingest failure.
+SET_DOCUMENT_PROJECT_PG_SQL = (
+    "UPDATE documents SET project_id = $2::uuid WHERE doc_id = $1::uuid AND tenant_id = $3"
+)
+
+SET_DOCUMENT_PROJECT_DUCKDB_SQL = (
+    "UPDATE documents SET project_id = $2 WHERE doc_id = $1 AND tenant_id = $3"
+)
+
 _ENTITY_UPSERT_SQL = """
     INSERT INTO entities (entity_id, tenant_id, name, entity_type,
         source_document_id, metadata)

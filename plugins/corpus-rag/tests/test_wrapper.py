@@ -86,3 +86,21 @@ def test_status_uses_dev_checkout(tmp_path: Path) -> None:
     config = json.loads(result.stdout[start:])
     command = config["mcpServers"]["corpus-kb"]["command"]
     assert command == "corpus-kb" or "corpus-kb" in Path(command).name
+
+
+def test_provision_reports_missing_engine_honestly() -> None:
+    """No engine reachable: provision says so and exits non-zero."""
+    import shutil
+
+    if shutil.which("corpus-kb"):
+        # A corpus-kb on PATH (dev machine) makes the missing-engine path
+        # unreachable; the wrapper contract is covered by the other tests.
+        return
+    result = run_wrapper("provision", "meeting-notes")
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "not found" in result.stdout.lower()
+
+
+def test_provision_requires_a_slug() -> None:
+    result = run_wrapper("provision")
+    assert result.returncode != 0
