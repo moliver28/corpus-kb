@@ -31,6 +31,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mappi
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from corpus_kb.storage.duckdb_params import bind_params, map_pg_casts
 from corpus_kb.storage.duckdb_support import (
     _BACKOFF_SECONDS,
     _MAX_PLACEHOLDERS,
@@ -93,9 +94,13 @@ class DuckDbGateway:
     async def fetch(self, sql: str, *args: Any) -> list[Row]:
         # The one guard choke point: fetch serves fetch/fetchrow/fetchval,
         # execute serves DML+DDL. Qualified SQL dies here, before any lock.
+        # map_pg_casts + bind_params let Postgres-flavored statements and
+        # uuid binds run unchanged (issue #330: the one translation site).
         _reject_corpus_qualified(sql)
+        sql = map_pg_casts(sql)
+        params = bind_params(args)
         async with self._statement_gate():
-            rows = await self._run_sync(lambda conn: self._rows(conn, sql, args))
+            rows = await self._run_sync(lambda conn: self._rows(conn, sql, params))
         return cast("list[Row]", rows)
 
     async def fetchrow(self, sql: str, *args: Any) -> Row | None:
@@ -109,20 +114,24 @@ class DuckDbGateway:
     async def execute(self, sql: str, *args: Any) -> str:
         _check_append_only(sql)
         _reject_corpus_qualified(sql)
+        sql = map_pg_casts(sql)
+        params = bind_params(args)
         async with self._statement_gate():
-            return await self._run_sync(lambda conn: self._tag(conn, sql, args))
+            return await self._run_sync(lambda conn: self._tag(conn, sql, params))
 
     def executemany(self, query: str, args: Sequence[Sequence[Any]]) -> Coroutine[Any, Any, None]:
         """Bulk write with execute's guards: one statement, many tuples."""
         _check_append_only(query)
         _reject_corpus_qualified(query)
+        query = map_pg_casts(query)
+        rows = [bind_params(row) for row in args]
 
         async def run() -> None:
             async with self._statement_gate():
                 await self._run_sync(
                     lambda conn: conn.executemany(
                         query,
-                        [tuple(row) for row in args],
+                        [tuple(row) for row in rows],
                     )
                 )
 
@@ -149,6 +158,7 @@ class DuckDbGateway:
                 chunk = rows[start : start + per_chunk]
                 sql = head + ", ".join([row_sql] * len(chunk))
                 params = [row[column] for row in chunk for column in columns]
+                params = bind_params(params)
                 await self._run_sync(lambda conn, s=sql, p=params: conn.execute(s, p))
 
     def transaction(self, tenant_id: str) -> AbstractAsyncContextManager[DuckDbGateway]:

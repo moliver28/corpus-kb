@@ -207,6 +207,37 @@ def _fold_do_body(text: str, dialect: str, state: SchemaState, at: Origin) -> No
             _fold_alter(inner, state, at)
 
 
+def _index_name(node: exp.Create) -> str:
+    """The declared name of a CREATE INDEX statement."""
+    idx = node.args["this"]
+    name = idx.args.get("this")
+    return name.name if name is not None else ""
+
+
+def _fold_drop(node: exp.Drop, state: SchemaState, at: Origin) -> None:
+    """Fold DROP TABLE / DROP INDEX (the 040/041 rebuild-and-drop files).
+
+    DROP TABLE removes the table and every index that targets it; DROP
+    INDEX removes the named index from the role map and the name map.
+    Other DROP kinds (SCHEMA, FUNCTION, ...) carry no folded state. The
+    targets sit in ``tables`` (sqlglot 30.x); ``expressions`` is the
+    fallback shape.
+    """
+    kind = (node.args.get("kind") or "").upper()
+    targets = node.args.get("tables") or node.args.get("expressions") or []
+    for target in targets:
+        if kind == "TABLE":
+            name = target.name
+            if name:
+                state.drop_table(name)
+        elif kind == "INDEX":
+            name = target.name
+            if name:
+                state.drop_index(name)
+            else:
+                print(f"Schema parity fold: {at.where()}: DROP INDEX without a name; skipped.")
+
+
 def fold_file(path: Path, dialect: str, display: str, state: SchemaState) -> SchemaState:
     """Fold one SQL file into the shared state, in place.
 
@@ -231,6 +262,7 @@ def fold_file(path: Path, dialect: str, display: str, state: SchemaState) -> Sch
                 if spec is None:
                     continue
                 state.indexes[spec.role] = spec
+                state.index_names[_index_name(node)] = spec
                 target = state.tables.get(spec.table) if spec.unique else None
                 if target is not None:
                     target.uniques.add(spec.columns)
@@ -238,6 +270,8 @@ def fold_file(path: Path, dialect: str, display: str, state: SchemaState) -> Sch
                 _fold_create(node, state, at)
             elif isinstance(node, exp.Alter):
                 _fold_alter(node, state, at)
+            elif isinstance(node, exp.Drop):
+                _fold_drop(node, state, at)
             elif isinstance(node, exp.Command) and text.lstrip()[:2].upper() == "DO":
                 _fold_do_body(text, dialect, state, at)
     # pg SERIAL/IDENTITY imply sequences without a CREATE SEQUENCE

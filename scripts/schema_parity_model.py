@@ -77,12 +77,34 @@ class SchemaState:
 
     tables: dict[str, TableSpec] = field(default_factory=dict)
     indexes: dict[tuple[str, tuple[str, ...], bool], IndexSpec] = field(default_factory=dict)
+    # index name -> spec. Names are not compared (roles are); they let the
+    # fold resolve DROP INDEX, which names the object, not the role.
+    index_names: dict[str, IndexSpec] = field(default_factory=dict)
     sequences: dict[str, SequenceSpec] = field(default_factory=dict)
 
     def merge(self, other: SchemaState) -> None:
         self.tables.update(other.tables)
         self.indexes.update(other.indexes)
+        self.index_names.update(other.index_names)
         self.sequences.update(other.sequences)
+
+    def drop_index(self, name: str) -> None:
+        """Remove one index by name (DROP INDEX): role map and name map."""
+        spec = self.index_names.pop(name, None)
+        if spec is not None:
+            self.indexes.pop(spec.role, None)
+            if spec.unique:
+                table = self.tables.get(spec.table)
+                if table is not None:
+                    table.uniques.discard(spec.columns)
+
+    def drop_table(self, name: str) -> None:
+        """Remove one table (DROP TABLE) and every index that targets it."""
+        self.tables.pop(name, None)
+        for idx_name, spec in list(self.index_names.items()):
+            if spec.table == name:
+                self.index_names.pop(idx_name, None)
+                self.indexes.pop(spec.role, None)
 
 
 # ---------------------------------------------------------------------------
