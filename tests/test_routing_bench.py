@@ -276,13 +276,16 @@ def test_embedding_path_regret_meets_the_recorded_ceiling() -> None:
 
 @pytest.mark.skipif(not _ollama_up(), reason="Ollama not reachable")
 def test_embedding_path_run_is_byte_identical_when_rerun() -> None:
-    """Two full embedding-mode runs with fresh register loads: same bytes."""
+    """Two full embedding-mode runs, fresh register AND embedder: same bytes.
+
+    A fresh embedder per run keeps the SHA256 cache out of the claim:
+    determinism is measured end-to-end, not between cache hits.
+    """
     rows = load_golden_rows()
-    embedder = _nomic_embedder()
-    outcomes = run_bench(rows, _register(), embedder=embedder)
+    outcomes = run_bench(rows, _register(), embedder=_nomic_embedder())
     # A degraded status would mean the zero-vector fallback ran, not the
     # embedding path under test.
     assert {outcome.status for outcome in outcomes} <= {"resolved", "ambiguous"}
     first = outcome_blob(outcomes)
-    second = outcome_blob(run_bench(rows, _register(), embedder=embedder))
+    second = outcome_blob(run_bench(rows, _register(), embedder=_nomic_embedder()))
     assert first == second

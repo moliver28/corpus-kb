@@ -7,7 +7,11 @@ shows ``intent.note == "degraded"``; the ambiguous ladder rides
 ``suggestions``: up to three verbatim next questions from the chosen
 method's register row. An expert override forces ``resolved`` with
 ``intent.note == "expert_override"``; its suggestions ride the override
-record.
+record. Routing W5's flag-on LLM fallback is the one note exception: a
+degraded run whose tie the fallback resolved shows envelope status
+``degraded`` with ``intent.note == "llm_fallback"`` — the status
+describes the run, the note describes how the intent resolved, and the
+chips ride the resolved intent.
 
 Both builders are pure: register lookups and dataclass reshapes only —
 no embedder, no LLM, no config. Stable key order keeps the bytes

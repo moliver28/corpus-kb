@@ -468,3 +468,52 @@ def test_apply_to_text_creates_a_missing_nested_block() -> None:
     assert out == (
         "retrieval:\n  rrf_k: 60\nanalysis:\n  routing:\n    confidence_threshold: 0.5\n"
     )
+
+
+def test_apply_to_text_ignores_a_deeper_same_name_block() -> None:
+    """A deeper-nested sibling (labeling.routing) never hijacks the edit.
+
+    Child headers must sit at the parent block's member column: a
+    ``routing:`` block two levels deeper is not ``analysis.routing``,
+    so the edit CREATES the missing chain instead.
+    """
+    text = (
+        "analysis:\n"
+        "  labeling:\n"
+        "    routing:\n"
+        "      confidence_threshold: 0.9\n"
+        "    enabled: false\n"
+    )
+    out = apply_keys_to_text(text, {"analysis.routing.confidence_threshold": 0.45})
+    assert out == (
+        "analysis:\n"
+        "  labeling:\n"
+        "    routing:\n"
+        "      confidence_threshold: 0.9\n"
+        "    enabled: false\n"
+        "  routing:\n"
+        "    confidence_threshold: 0.45\n"
+    )
+
+
+def test_apply_to_text_edits_only_the_exact_column_key() -> None:
+    """A deeper key with the same name is not the edit target.
+
+    The scan anchors to the block's member column: a same-named key one
+    level deeper (and earlier in the file) keeps its value.
+    """
+    text = (
+        "analysis:\n"
+        "  routing:\n"
+        "    deeper:\n"
+        "      confidence_threshold: 9\n"
+        "    confidence_threshold: 0.55\n"
+    )
+    out = apply_keys_to_text(text, {"analysis.routing.confidence_threshold": 0.45})
+    assert out == (
+        "analysis:\n"
+        "  routing:\n"
+        "    deeper:\n"
+        "      confidence_threshold: 9\n"
+        "    confidence_threshold: 0.45\n"
+    )

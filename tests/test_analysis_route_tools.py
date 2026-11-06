@@ -953,3 +953,61 @@ async def test_flag_on_override_skips_the_fallback(
     assert intent["note"] == "expert_override"
     assert chat.calls == 0
     assert not log_path.exists()
+
+
+async def test_flag_on_unknown_axis_names_log_as_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Junk axis NAMES ride the audit row, never the intent; gate unchanged.
+
+    An answer may carry keys outside the six tuples: they are dropped
+    from the intent and their names land in the log's ``ignored_axes``
+    (an omitted axis and junk the model sent stop looking alike).
+    """
+    log_path = tmp_path / "fallbacks.jsonl"
+    axes = dict(_AXES_OK)
+    axes["spiritual_rank"] = "high"
+    chat = _ScriptedChat(content=_answer("01", axes))
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "resolved"
+    intent = cast("dict[str, object]", result["intent"])
+    axes_out = cast("dict[str, object]", intent["axes"])
+    assert axes_out["task_type"] == "measurement"
+    assert "spiritual_rank" not in axes_out
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "resolved"
+    assert rows[0]["ignored_axes"] == ["spiritual_rank"]
+
+
+async def test_degraded_tie_resolved_by_the_llm_keeps_the_degraded_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The status describes the run; the note describes the decision.
+
+    A zero-vector embedder degrades the run, yet a passing LLM attempt
+    still resolves the intent: envelope status stays ``degraded``,
+    ``intent.note == "llm_fallback"``, and the chips ride the resolved
+    record (full functionality rides intent resolution, W4 precedent).
+    """
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content=_answer("01", _AXES_OK))
+    monkeypatch.setattr(
+        analysis_route_tools, "load_method_register", lambda _cfg: _ambiguous_register()
+    )
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _ZeroEmbedder())
+    monkeypatch.setattr(analysis_route_tools, "_route_llm", lambda _cfg: chat)
+    result = await analysis_route(
+        cast("asyncpg.Pool", None),
+        config=_fallback_config(log_path, enabled=True),
+        question=_TIE_QUESTION,
+    )
+    assert result["status"] == "degraded"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["status"] == "resolved"
+    assert intent["note"] == "llm_fallback"
+    assert intent["method_id"] == "01"
+    assert result["suggestions"] == ["Which first codes anchor the book?"]
+    assert "interpretations" not in result
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "resolved"
+    assert "ignored_axes" not in rows[0]

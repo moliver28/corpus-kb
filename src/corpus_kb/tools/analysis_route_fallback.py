@@ -68,13 +68,17 @@ class FallbackAttempt:
 
     ``proposed_method_id`` records what the model named, even when the
     sanity gate refused it, so the audit shows the model's intent.
-    ``intent`` is set only on a pass.
+    ``intent`` is set only on a pass. ``ignored_axes`` names the answer
+    keys outside the six vocab tuples: they never reach the intent, and
+    the log records them so an omitted axis and junk the model sent stop
+    looking alike.
     """
 
     raw_text: str
     proposed_method_id: str | None
     outcome: str
     intent: QuestionIntent | None
+    ignored_axes: tuple[str, ...] = ()
 
 
 def fallback_settings(routing: dict[str, object]) -> tuple[bool, str]:
@@ -127,7 +131,7 @@ async def attempt_fallback(
         return FallbackAttempt(
             raw_text=raw, proposed_method_id=proposed_id, outcome="failed", intent=None
         )
-    method_id, axes = sane
+    method_id, axes, ignored = sane
     intent = replace(
         base,
         status="resolved",
@@ -139,7 +143,11 @@ async def attempt_fallback(
         axes=axes,
     )
     return FallbackAttempt(
-        raw_text=raw, proposed_method_id=method_id, outcome="resolved", intent=intent
+        raw_text=raw,
+        proposed_method_id=method_id,
+        outcome="resolved",
+        intent=intent,
+        ignored_axes=ignored,
     )
 
 
@@ -157,6 +165,8 @@ def append_fallback_log(path: str, *, question: str, attempt: FallbackAttempt) -
     }
     if attempt.proposed_method_id is not None:
         row["chosen_method_id"] = attempt.proposed_method_id
+    if attempt.ignored_axes:
+        row["ignored_axes"] = list(attempt.ignored_axes)
     try:
         with Path(path).open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row, sort_keys=True) + "\n")
@@ -194,12 +204,14 @@ def _json_object(text: str) -> dict[str, object] | None:
 
 def _sane_answer(
     parsed: dict[str, object], register: MethodRegister
-) -> tuple[str, dict[str, str | None]] | None:
-    """The ``(method id, filled axes)`` pair, or ``None`` at any gate miss.
+) -> tuple[str, dict[str, str | None], tuple[str, ...]] | None:
+    """The ``(method id, filled axes, ignored names)`` triple, or ``None``.
 
     The gate checks exactly two things: the method id sits in the
     register, and every axis value sits inside its vocabulary tuple.
-    An absent or empty axis stays ``None`` — no invented value.
+    An absent or empty axis stays ``None`` — no invented value. Keys
+    outside the six tuples are dropped (the tuples are the only axis
+    check); their names come back third for the audit row.
     """
     method_id = parsed.get("method_id")
     if not isinstance(method_id, str) or not any(row.id == method_id for row in register.methods):
@@ -209,6 +221,7 @@ def _sane_answer(
         raw_axes = {}
     if not isinstance(raw_axes, dict):
         return None
+    ignored = tuple(sorted(set(raw_axes) - set(ROUTING_VOCAB_FIELDS)))
     filled: dict[str, str | None] = {}
     for name, allowed in ROUTING_VOCAB_FIELDS.items():
         value = raw_axes.get(name)
@@ -219,4 +232,4 @@ def _sane_answer(
             filled[name] = value
             continue
         return None
-    return method_id, filled
+    return method_id, filled, ignored

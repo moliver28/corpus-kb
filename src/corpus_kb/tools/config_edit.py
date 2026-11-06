@@ -75,7 +75,9 @@ def _set_nested_key(lines: list[str], top: str, mid: str, key: str, value: objec
 
     The walk reuses the top-level helpers at each level: a missing
     top block gains the whole chain; a missing mid block grows inside
-    the top block; an existing mid block takes the edit in place.
+    the top block; an existing mid block takes the edit in place. The
+    mid header must sit at the top block's member column, so a block
+    of the same name nested DEEPER elsewhere never hijacks the edit.
     """
     token = _scalar_token(value)
     head_idx = _block_header(lines, top)
@@ -105,8 +107,13 @@ def _block_header(lines: list[str], block: str) -> int | None:
 
 
 def _child_header(lines: list[str], header: int, end: int, name: str) -> int | None:
-    """The ``name:`` member header inside one block's range, or None."""
-    child = re.compile(rf"^(\s+){re.escape(name)}:[ \t]*(#.*)?$")
+    """The ``name:`` member header at the block's member column, or None.
+
+    The pattern anchors to the FIRST member's exact indent, so a same
+    named block nested deeper inside another child never matches.
+    """
+    member_indent = _member_indent(lines, header, end)
+    child = re.compile(rf"^{member_indent}{re.escape(name)}:[ \t]*(#.*)?$")
     return next(
         (i for i in range(header + 1, end) if child.match(lines[i].rstrip("\n"))),
         None,
@@ -134,21 +141,24 @@ def _child_block_end(lines: list[str], header: int, limit: int) -> int:
 def _set_key_in_block(
     lines: list[str], head_idx: int, end: int, key: str, value: object
 ) -> list[str]:
-    """One key set inside one already-located block: replace or insert."""
+    """One key set inside one already-located block: replace or insert.
+
+    The key pattern anchors to the block's member column, so a deeper
+    same-named key inside a grandchild block never matches first.
+    """
     token = _scalar_token(value)
-    key_re = re.compile(rf"^( +){re.escape(key)}:[ \t]*.*?$")
+    indent = _member_indent(lines, head_idx, end)
+    key_re = re.compile(rf"^{indent}{re.escape(key)}:[ \t]*.*?$")
     for i in range(head_idx + 1, end):
         line = lines[i].rstrip("\n")
-        match = key_re.match(line)
-        if match:
+        if key_re.match(line):
             comment = _trailing_comment(line)
             newline = lines[i][len(line) :]
             return [
                 *lines[:i],
-                f"{match.group(1)}{key}: {token}{comment}{newline}",
+                f"{indent}{key}: {token}{comment}{newline}",
                 *lines[i + 1 :],
             ]
-    indent = _member_indent(lines, head_idx, end)
     return [*lines[:end], f"{indent}{key}: {token}\n", *lines[end:]]
 
 
