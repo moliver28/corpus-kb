@@ -54,6 +54,12 @@ Keys and their contracts:
 - ``analysis.routing.*``: the question-router decision knobs
   (``confidence_threshold``, ``margin``). The wave-2 router reads the
   block directly and applies these defaults when a key is absent.
+- ``analysis.routing.llm_fallback_enabled``: the ask-op LLM fallback
+  for an ambiguous tie (routing W5). Ships ``False``: the deterministic
+  router alone is the default. When true, one gated LLM attempt may
+  resolve the tie; every attempt is logged.
+- ``analysis.routing.fallback_log_path``: the JSONL audit file for the
+  LLM fallback attempts. One row per attempt, pass or fail.
 
 Determinism pins stay CODE CONSTANTS in the engines that follow (the
 ``research/inductive`` convention): only governance knobs live here.
@@ -80,6 +86,8 @@ DEFAULT_SENTIMENT_ENABLED = False
 DEFAULT_SENTIMENT_LEXICON = "config/sentiment_lexicon.yaml"
 DEFAULT_ROUTING_CONFIDENCE_THRESHOLD = 0.55
 DEFAULT_ROUTING_MARGIN = 0.10
+DEFAULT_ROUTING_LLM_FALLBACK_ENABLED = False
+DEFAULT_ROUTING_FALLBACK_LOG_PATH = "analysis_routing_fallbacks.jsonl"
 
 SUPPORTED_CLASSIFICATION_TIERS = frozenset({"head", "setfit"})
 SUPPORTED_UNDATED_POLICIES = frozenset({"drop", "report"})
@@ -118,6 +126,8 @@ SENTIMENT_CONFIG_DEFAULTS: dict[str, object] = {
 ROUTING_CONFIG_DEFAULTS: dict[str, object] = {
     "confidence_threshold": DEFAULT_ROUTING_CONFIDENCE_THRESHOLD,
     "margin": DEFAULT_ROUTING_MARGIN,
+    "llm_fallback_enabled": DEFAULT_ROUTING_LLM_FALLBACK_ENABLED,
+    "fallback_log_path": DEFAULT_ROUTING_FALLBACK_LOG_PATH,
 }
 
 ANALYSIS_CONFIG_DEFAULTS: dict[str, object] = {
@@ -286,6 +296,14 @@ def analysis_settings_error(config: dict[str, object]) -> str | None:
     lexicon = sentiment.get("lexicon_path", DEFAULT_SENTIMENT_LEXICON)
     if lexicon is not None and not isinstance(lexicon, str):
         return f"analysis.sentiment.lexicon_path: must be a path string or null; got {lexicon!r}"
+
+    routing = _child_block(analysis, "routing")
+    flag = routing.get("llm_fallback_enabled", DEFAULT_ROUTING_LLM_FALLBACK_ENABLED)
+    if not isinstance(flag, bool):
+        return f"analysis.routing.llm_fallback_enabled: must be true or false; got {flag!r}"
+    log_path = routing.get("fallback_log_path", DEFAULT_ROUTING_FALLBACK_LOG_PATH)
+    if not isinstance(log_path, str):
+        return f"analysis.routing.fallback_log_path: must be a path string; got {log_path!r}"
     return None
 
 
