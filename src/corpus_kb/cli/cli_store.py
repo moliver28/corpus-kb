@@ -7,10 +7,10 @@ resolves to an ``asyncpg`` pool (Postgres — byte-identical to the legacy
 stays storage-blind: commands hand ``wired.store`` to the shared handlers
 and render the payload.
 
-``wired_pool`` (``cli_support.py``) keeps serving the research-cycle
-commands unchanged; the legs that are ported move here. The research
-embedder rides the Postgres pool path only — the DuckDB embedder port
-lives with the research-store work package.
+``wired_store`` is THE bootstrap now (issue #330): every CLI coroutine
+opens its store here, and the research embedder still rides the Postgres
+pool path only (the config mix gate refuses pgml on DuckDB, so the
+Ollama embedder serves there).
 """
 
 from __future__ import annotations

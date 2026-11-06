@@ -30,7 +30,26 @@ class _FakeConn:
             return self._execute
         if name == "fetch":
             return self._fetch
+        if name == "executemany":
+            return self._executemany
         raise AttributeError(name)
+
+    async def _executemany(self, sql: object, rows: object) -> None:
+        # Issue #330: the cache write goes through executemany on the
+        # gateway; the fake materializes the same records the old
+        # copy_records_to_table path stored.
+        columns = (
+            "tenant_id",
+            "chunk_hash",
+            "backend",
+            "model_version",
+            "prompt_version",
+            "entities",
+            "relations",
+        )
+        stored = self._store.setdefault("records", [])
+        for row in rows or []:
+            stored.append(dict(zip(columns, row, strict=True)))
 
     def transaction(self) -> _FakeConn:
         return self

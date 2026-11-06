@@ -676,14 +676,19 @@ def test_page_count_for_answers_none_for_a_probe_note(monkeypatch: pytest.Monkey
 # ---------------------------------------------------------------------------
 
 
-def test_duckdb_backend_is_refused_typed() -> None:
-    with pytest.raises(ConfigError) as excinfo:
-        QueueWorker(
-            pool=FakeQueuePool(),
-            tenant_id=TENANT,
-            config={"database": {"backend": "duckdb"}},
-        )
-    assert "Postgres" in str(excinfo.value)
+def test_duckdb_backend_builds_the_worker() -> None:
+    """Issue #330 inversion: the queue worker drains DuckDB too.
+
+    The DuckDB claim twin drops SKIP LOCKED (one writer, one worker), so
+    a duckdb backend constructs instead of raising the old Postgres
+    refusal. Unknown backends still refuse (test below).
+    """
+    worker = QueueWorker(
+        pool=FakeQueuePool(),
+        tenant_id=TENANT,
+        config={"database": {"backend": "duckdb"}},
+    )
+    assert worker.poll_seconds > 0
 
 
 def test_unknown_backend_is_refused_typed() -> None:

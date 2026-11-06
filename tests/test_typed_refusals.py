@@ -55,11 +55,14 @@ async def test_research_pool_opens_the_duckdb_gateway(
         encoding="utf-8",
     )
     monkeypatch.setenv("CORPUS_KB_CONFIG", str(cfg))
-    monkeypatch.setattr(research_http, "_pool", None)
+    # Clear the module global BEFORE and AFTER: a prior test's store must
+    # not leak in, and the freshly opened gateway must not leak out (a
+    # later research_pool() call would hand back this closed gateway).
+    research_http._pool = None
     store = await research_http.research_pool()
     try:
         assert is_gateway(store)
         assert isinstance(store, DuckDbGateway)
     finally:
         await cast("DuckDbGateway", store).close()
-        monkeypatch.setattr(research_http, "_pool", None)
+        research_http._pool = None

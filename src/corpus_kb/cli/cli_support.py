@@ -4,7 +4,7 @@ Everything the CLI command modules need that is not a command itself:
 the asyncio runner + error mapper (``_run_async``/``_cli_error_exit``),
 the cycle approval boundary (``_cli_approve``), the canonical tenant id
 (imported from ``corpus_kb.contracts.model``), UUID coercions, the
-``wired_pool`` bootstrap every coroutine shares, and payload shaping
+engine-aware store bootstrap every coroutine shares (cli_store), and payload shaping
 (``cast_dict``/``cast_list``) for the printers.
 
 Import-light on purpose (typer + contracts only): heavy imports (asyncpg,
@@ -14,7 +14,6 @@ lazy-import discipline cli.py documents.
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, cast
 
 import typer
@@ -22,9 +21,7 @@ import typer
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
-
-    from corpus_kb.cli.cli_store import StoreWired
+    pass
 
 # The canonical placeholder tenant (RLS default). contracts.model is the
 # single source; cli.py keeps a ``_DEFAULT_TENANT`` alias of this name for
@@ -171,24 +168,6 @@ def _run_async(coro: object) -> int:
     if code:
         raise typer.Exit(code=code)
     return code
-
-
-@asynccontextmanager
-async def wired_pool(
-    *, embedder: bool = False, cfg: dict[str, object] | None = None
-) -> AsyncIterator[StoreWired]:
-    """One bootstrap for every CLI coroutine: config, store, (opt) embedder.
-
-    Delegates to :func:`cli_store.wired_store` — the ONE engine-aware
-    bootstrap (issue #330): a ``duckdb:///`` DSN yields the DuckDB
-    gateway, anything else the asyncpg pool. The research ingest path
-    prints its detection summary BEFORE the store opens, so it passes
-    ``cfg`` pre-loaded; ask and uncoded pass ``embedder=True``.
-    """
-    from corpus_kb.cli.cli_store import wired_store
-
-    async with wired_store(embedder=embedder, cfg=cfg) as wired:
-        yield wired
 
 
 def cast_dict(payload: object) -> dict[str, object]:
