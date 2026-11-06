@@ -233,9 +233,7 @@ class TestLoadConfigGate:
         # explicit choice.
         path = tmp_path / "config.yaml"
         path.write_text(
-            yaml.safe_dump(
-                {"database": {"backend": "duckdb"}, "graph": {"backend": "age"}}
-            ),
+            yaml.safe_dump({"database": {"backend": "duckdb"}, "graph": {"backend": "age"}}),
             encoding="utf-8",
         )
         with pytest.raises(ValueError) as excinfo:
