@@ -755,6 +755,13 @@ help = "jscpd duplication gate over src/ (threshold 1.59, config .jscpd.json)"
 cmd = "python scripts/plugin_manifest_gate.py"
 help = "Validate .claude-plugin/marketplace.json and its version lockstep with the plugin"
 
+[tool.poe.tasks.plugin-tests]
+# Fresh plugin suite (issue 331 rebuild, owner directive 2026-11-06; rule
+# 10: poe target + ci.yml plugin-tests job + CI-map row). Stdlib only; the
+# plugin's own pytest.ini isolates it from the engine pytest config.
+shell = "cd plugins/corpus-rag && python -m pytest tests/ -q --tb=short"
+help = "corpus-rag plugin suite (hooks, engine paths, manifest lockstep)"
+
 [tool.poe.tasks.audit-deps]
 # Dependency CVE gate (PR-F, rule 10). uv-native audit of the COMMITTED
 # lockfile: --locked audits exactly what uv.lock pins and fails when the

@@ -1087,3 +1087,25 @@ jobs:
 
       - name: Marketplace manifest gate
         run: poe plugin-manifest
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Plugin suite (issue 331 rebuild, zero-drift rule 10: poe target +
+  # CI job + map row). Python 3.11 stdlib only; the plugin's own
+  # pytest.ini isolates it from the engine pytest config.
+  # ─────────────────────────────────────────────────────────────────────
+  plugin-tests:
+    name: "plugin-tests (corpus-rag plugin)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install poethepoet and pytest
+        run: pip install poethepoet pytest
+
+      - name: Plugin suite
+        run: poe plugin-tests
