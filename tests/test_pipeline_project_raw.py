@@ -148,3 +148,73 @@ async def test_row_project_id_coerces_honestly() -> None:
     assert row_project_id({"project_id": ""}) is None
     assert row_project_id({"project_id": None}) is None
     assert row_project_id({}) is None
+
+
+# ---------------------------------------------------------------------------
+# attach_project_raw: the file branch and the honest failure paths
+# ---------------------------------------------------------------------------
+
+
+async def test_attach_stores_file_bytes_with_a_content_type(
+    duckdb_gateway: DuckDbGateway, tmp_path: Path
+) -> None:
+    from corpus_kb.tools.pipeline.project_raw import attach_project_raw
+
+    await create_project_table(duckdb_gateway, TENANT, PROJECT, "pdfs")
+    source = tmp_path / "paper.pdf"
+    source.write_bytes(b"%PDF-1.4 body")
+    result: dict[str, Any] = {"status": "success"}
+    await attach_project_raw(
+        result, "ignored text", str(source), True, duckdb_gateway, TENANT, PROJECT
+    )
+    assert result["raw_table"] == "raw_pdfs"
+    assert result["raw_stored"]["bytes"] == len(b"%PDF-1.4 body")
+    assert result["raw_stored"]["text"] == 0
+    row = await duckdb_gateway.fetchrow("SELECT content_type, raw_text FROM raw_pdfs")
+    assert row is not None
+    assert row["content_type"] == "application/pdf"
+    assert row["raw_text"] is None
+
+
+async def test_attach_records_a_missing_file_as_a_stage_error(
+    duckdb_gateway: DuckDbGateway, tmp_path: Path
+) -> None:
+    from corpus_kb.tools.pipeline.project_raw import attach_project_raw
+
+    await create_project_table(duckdb_gateway, TENANT, PROJECT, "pdfs")
+    result: dict[str, Any] = {"status": "success", "errors": []}
+    await attach_project_raw(
+        result, "", str(tmp_path / "gone.pdf"), True, duckdb_gateway, TENANT, PROJECT
+    )
+    assert "raw_table" not in result
+    assert result["errors"] and result["errors"][0].startswith("ProjectRawError:")
+
+
+async def test_attach_records_a_write_failure_as_a_stage_error(
+    duckdb_gateway: DuckDbGateway, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from corpus_kb.storage import project_tables
+    from corpus_kb.tools.pipeline.project_raw import attach_project_raw
+
+    await create_project_table(duckdb_gateway, TENANT, PROJECT, "notes")
+
+    async def boom(*args: Any, **kwargs: Any) -> str:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(project_tables, "store_raw_content", boom)
+    result: dict[str, Any] = {"status": "success"}
+    await attach_project_raw(result, "text", "n.txt", False, duckdb_gateway, TENANT, PROJECT)
+    assert "raw_table" not in result
+    assert result["errors"] == ["ProjectRawError: disk full"]
+
+
+async def test_attach_warns_and_skips_when_the_registry_is_unreadable(
+    duckdb_gateway: DuckDbGateway,
+) -> None:
+    """Before migration 043 the registry is absent: no keys, no raise."""
+    from corpus_kb.tools.pipeline.project_raw import attach_project_raw
+
+    await duckdb_gateway.execute("DROP TABLE project_tables")
+    result: dict[str, Any] = {"status": "success"}
+    await attach_project_raw(result, "text", "n.txt", False, duckdb_gateway, TENANT, PROJECT)
+    assert result == {"status": "success"}

@@ -179,3 +179,24 @@ async def test_slugs_are_tenant_scoped(duckdb_with_registry) -> None:
     await create_project_table(gateway, other, PROJECT, "shared")
     assert len(await list_project_tables(gateway, TENANT)) == 1
     assert len(await list_project_tables(gateway, other)) == 1
+
+
+async def test_handlers_reject_a_blank_slug(duckdb_with_registry) -> None:
+    from corpus_kb.tools.project_tools import project_drop, project_provision
+
+    with pytest.raises(ValidationError):
+        await project_provision(duckdb_with_registry, slug="   ")
+    with pytest.raises(ValidationError):
+        await project_drop(duckdb_with_registry, slug="")
+
+
+async def test_set_document_project_never_raises(duckdb_with_registry, caplog) -> None:
+    """A document link that cannot be written is a warning, not a failure."""
+    from dataclasses import replace
+
+    from corpus_kb.tools.ingest_store import PostgresIngestStore
+
+    store = PostgresIngestStore(duckdb_with_registry, TENANT)
+    store._sql = replace(store._sql, set_document_project_sql="UPDATE no_such_table SET x = 1")
+    await store.set_document_project("not-a-doc", PROJECT)
+    assert any("Could not link document" in rec.message for rec in caplog.records)

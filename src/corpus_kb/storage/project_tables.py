@@ -83,24 +83,26 @@ async def create_project_table(
     table = raw_table_name(slug)
     gw = as_gateway(store)
     backend = gateway_backend(gw)
-    existing = await gw.fetchval(
-        f"SELECT id FROM {_REGISTRY_TABLE} WHERE tenant_id = $1 AND table_name = $2",
-        tenant_id,
-        table,
-    )
-    if existing is not None:
-        return {
-            "table": table,
-            "registry_id": existing,
-            "backend": backend,
-            "already_provisioned": True,
-        }
     columns = raw_columns_for(backend)
     quoted = quoted_identifier(table)
     statements = [f"CREATE TABLE IF NOT EXISTS {quoted} ({columns})"]
     if backend == "postgres":
         statements.extend(rls_statements(table))
+    # Every registry read and write rides the tenant scope: the registry
+    # FORCEs row security on Postgres, so a bare pool read sees nothing.
     async with tenant_connection(gw, tenant_id) as conn:
+        existing = await conn.fetchval(
+            f"SELECT id FROM {_REGISTRY_TABLE} WHERE tenant_id = $1 AND table_name = $2",
+            tenant_id,
+            table,
+        )
+        if existing is not None:
+            return {
+                "table": table,
+                "registry_id": existing,
+                "backend": backend,
+                "already_provisioned": True,
+            }
         for statement in statements:
             await conn.execute(statement)
         registry_id = await conn.fetchval(
@@ -132,26 +134,26 @@ async def list_project_tables(
     """
     gw = as_gateway(store)
     backend = gateway_backend(gw)
-    rows = await gw.fetch(
-        f"SELECT id, project_id, table_name, created_at FROM {_REGISTRY_TABLE} "
-        "WHERE tenant_id = $1 ORDER BY created_at, table_name",
-        tenant_id,
-    )
     out: list[dict[str, Any]] = []
-    for row in rows:
-        name = str(row["table_name"])
-        entry: dict[str, Any] = {
-            "registry_id": row["id"],
-            "project_id": row["project_id"],
-            "table": name,
-            "created_at": row["created_at"],
-            "row_count": None,
-        }
-        if await _table_exists(gw, backend, name):
-            entry["row_count"] = int(
-                await gw.fetchval(f"SELECT COUNT(*) FROM {quoted_identifier(name)}")
-            )
-        out.append(entry)
+    async with tenant_connection(gw, tenant_id) as conn:
+        rows = await conn.fetch(
+            f"SELECT id, project_id, table_name, created_at FROM {_REGISTRY_TABLE} "
+            "WHERE tenant_id = $1 ORDER BY created_at, table_name",
+            tenant_id,
+        )
+        for row in rows:
+            name = str(row["table_name"])
+            entry: dict[str, Any] = {
+                "registry_id": row["id"],
+                "project_id": row["project_id"],
+                "table": name,
+                "created_at": row["created_at"],
+                "row_count": None,
+            }
+            if await _table_exists(conn, backend, name):
+                count = await conn.fetchval(f"SELECT COUNT(*) FROM {quoted_identifier(name)}")
+                entry["row_count"] = int(count or 0)
+            out.append(entry)
     return out
 
 
