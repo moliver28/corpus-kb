@@ -30,6 +30,14 @@ jobs:
         with:
           languages: python
           queries: security-extended,security-and-quality
+          # The plugin tree (plugins/corpus-rag, issue 331) stays outside
+          # every engine scanner: it keeps its own conventions and has its
+          # own CI job. Without this exclude, the imported plugin (issue 331
+          # step 1) would open untriaged code-scanning alerts that can red
+          # the PR. Syntax per GitHub docs (workflow configuration options
+          # for code scanning) and the codeql-action init inputs.
+          paths-ignore:
+            - "plugins/**"
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
