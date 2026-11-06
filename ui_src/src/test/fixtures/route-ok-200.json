@@ -1,7 +1,7 @@
 {
   "name": "route-ok-200",
   "source": "canonical",
-  "note": "POST /api/analysis/route resolved answer, transcribed from the wave-3 handler's envelope grammar (tools/analysis_route_tools.py): status resolved, intent resolved with a null note, ranked rows from the rubric join with run_hint ops, trace in phrase mode. Row 04 rides a null op for the human-led note. Re-record against a running server.",
+  "note": "POST /api/analysis/route resolved answer, transcribed from the wave-4 handler's envelope grammar (tools/analysis_route_tools.py): status resolved, intent resolved with a null note, ranked rows from the rubric join with run_hint ops, verbatim next-question suggestions from the chosen register row, trace in phrase mode. Row 04 rides a null op for the human-led note. Re-record against a running server.",
   "request": { "method": "POST", "path": "/api/analysis/route" },
   "response": {
     "httpStatus": 200,
@@ -43,7 +43,12 @@
         "threshold": 0.55,
         "margin": 0.1,
         "scores": [{ "method_id": "29", "score": 0.9 }]
-      }
+      },
+      "suggestions": [
+        "Which near duplicates are genuinely separate speakers?",
+        "How do thresholds split review from merge?",
+        "What paraphrases survived the exact-match pass?"
+      ]
     }
   }
 }

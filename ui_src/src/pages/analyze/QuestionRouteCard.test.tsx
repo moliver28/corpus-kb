@@ -1,7 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../../strings";
-import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../../test/testUtils";
+import {
+  calls,
+  clearCalls,
+  makeWrapper,
+  respond,
+  stubFetch,
+  stubFetchImpl,
+} from "../../test/testUtils";
 import QuestionRouteCard from "./QuestionRouteCard";
 
 /**
@@ -48,6 +55,11 @@ const RESOLVED: Record<string, unknown> = {
     margin: 0.1,
     scores: [{ method_id: "29", score: 0.9 }],
   },
+  suggestions: [
+    "Which near duplicates are genuinely separate speakers?",
+    "How do thresholds split review from merge?",
+    "What paraphrases survived the exact-match pass?",
+  ],
 };
 
 const READING_A = {
@@ -89,6 +101,36 @@ const DEGRADED_AMBIGUOUS: Record<string, unknown> = {
   intent: { status: "ambiguous", note: "degraded", method_id: null },
 };
 
+/** The override answer a picked reading routes to (the pick's method_id). */
+const OVERRIDE_05: Record<string, unknown> = {
+  status: "resolved",
+  intent: {
+    question: "how do i group and code these records?",
+    status: "resolved",
+    confidence: 0.0,
+    method_id: "05",
+    note: "expert_override",
+    readings: [],
+    ranked_method_ids: ["05", "01"],
+  },
+  ranked: [
+    {
+      method_id: "05",
+      name: "Cluster method",
+      why: "Set by the analyst.",
+      run_hint: { op: "cluster_texts", params: {} },
+    },
+    {
+      method_id: "01",
+      name: "Codebook method",
+      why: READING_B.why,
+      run_hint: { op: null, params: {} },
+    },
+  ],
+  suggestions: ["Which cluster count fits these interviews?"],
+  trace: { mode: "phrase", threshold: 0.55, margin: 0.1, scores: [] },
+};
+
 /** Thirty minimal register rows (the override select's source). */
 function methodList(count = 30): Record<string, unknown> {
   return {
@@ -111,6 +153,30 @@ function stubBoth(routeBody: Record<string, unknown>): void {
     { method: "POST", path: "/api/analysis/route", reply: respond(200, routeBody) },
     { method: "POST", path: "/api/analysis/select-method", reply: respond(200, methodList()) },
   ]);
+}
+
+/** First route post answers `first`, later ones answer `second` (the
+    pick's re-route lands as a different envelope shape). */
+function stubSequential(
+  first: Record<string, unknown>,
+  second: Record<string, unknown>,
+): void {
+  let routePosts = 0;
+  stubFetchImpl((url: string | URL, init?: { method?: string; body?: unknown }) => {
+    const method = (init?.method ?? "GET").toUpperCase();
+    const path = String(url);
+    const known =
+      method === "POST" && (path.includes("/api/analysis/route") || path.includes("/api/analysis/select-method"));
+    if (!known) {
+      return Promise.reject(new Error(`unexpected fetch: ${method} ${path}`));
+    }
+    calls.push({ method, url: path, body: String(init?.body ?? "") });
+    if (path.includes("/api/analysis/select-method")) {
+      return Promise.resolve(respond(200, methodList()));
+    }
+    routePosts += 1;
+    return Promise.resolve(respond(200, routePosts === 1 ? first : second));
+  });
 }
 
 function routeCalls(): { url: string; body: string }[] {
@@ -178,50 +244,55 @@ describe("QuestionRouteCard", () => {
     expect(within(panel as HTMLElement).getByText("0.9")).toBeTruthy();
   });
 
-  it("lists the readings read-only and re-calls with the picked method_id", async () => {
-    stubBoth(AMBIGUOUS);
+  it("picks a reading, re-calls with its method_id, and renders the override answer", async () => {
+    stubSequential(AMBIGUOUS, OVERRIDE_05);
     const onRun = vi.fn();
     render(<QuestionRouteCard onRunMethod={onRun} />, { wrapper: makeWrapper(false) });
     await ask("How do I group and code these records?");
     expect(await screen.findByText(strings.routeStatusAmbiguous)).toBeTruthy();
+    // Ambiguous: no method is chosen, so the chips stay absent and the
+    // ladder is the answer.
+    expect(screen.queryByText(strings.routeSuggestionsTitle)).toBeNull();
     expect(screen.getByText(strings.routeReadingsTitle)).toBeTruthy();
     expect(screen.getByText(strings.routeReadingsHint)).toBeTruthy();
     // Exact counts pin the layout: the why renders once on the
-    // top-why line, once on its ranked row, once in the ladder (A);
-    // B renders on its ranked row and in the ladder (2).
+    // top-why line, once on its ranked row, once in the picker (A);
+    // B renders on its ranked row and in the picker (2).
     expect(screen.getAllByText(READING_A.why).length).toBe(3);
     expect(screen.getAllByText(READING_B.why).length).toBe(2);
-    // The picker is a labelled group; each button names its method so
-    // the accessible text carries id AND name.
-    expect(screen.getByRole("group", { name: strings.routeOverrideLabel })).toBeTruthy();
-    // Clicking an id re-routes with that method_id...
-    fireEvent.click(screen.getByRole("button", { name: /^01 / }));
+    // The picker is a labelled radiogroup; each radio names its method
+    // so the accessible text carries id AND name.
+    const group = screen.getByRole("radiogroup", { name: strings.routeReadingsPickLabel });
+    const radio05 = within(group).getByRole("radio", { name: /^05 / });
+    expect(radio05.getAttribute("aria-checked")).toBe("false");
+    // Confirm-then-run: the pick alone sends nothing.
+    fireEvent.click(radio05);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(routeCalls().length).toBe(1);
+    // Re-query after the flush: a re-render replaces the button node.
+    expect(screen.getByRole("radio", { name: /^05 / }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    // The "Use this reading" action re-calls the op with the pick.
+    fireEvent.click(screen.getByRole("button", { name: strings.routeUseReading }));
     await act(async () => {
       await Promise.resolve();
     });
     const sends = routeCalls();
     expect(sends.length).toBe(2);
-    expect(sends[1].body).toContain('"method_id":"01"');
-    // Re-query: the re-render replaces the button node.
-    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-    // ...and a plain re-route clears the stale override highlight.
-    // jsdom never finishes antd's loading-icon leave motion, so the
-    // accessible name keeps a stale "loading " prefix after the run;
-    // tolerate it (the click target is unambiguous either way).
-    fireEvent.click(
-      screen.getByRole("button", { name: /^(loading )?Route$/ }),
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-    const clears = routeCalls();
-    expect(clears.length).toBe(3);
-    expect(clears[2].body).not.toContain("method_id");
-    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
-      "false",
-    );
+    expect(sends[1].body).toContain('"method_id":"05"');
+    // The re-route lands as an override answer, rendered honestly.
+    expect(await screen.findByText(strings.routeStatusResolved)).toBeTruthy();
+    expect(screen.getByText(strings.routeOverrideNote)).toBeTruthy();
+    expect(screen.getAllByText("Set by the analyst.").length).toBeGreaterThanOrEqual(1);
+    // The chosen method's chips replace the ladder.
+    expect(screen.getByText(strings.routeSuggestionsTitle)).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Which cluster count fits these interviews?" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("radiogroup", { name: strings.routeReadingsPickLabel })).toBeNull();
   });
 
   it("keeps the ambiguity ladder on a degraded envelope (addendum grammar)", async () => {
@@ -278,5 +349,25 @@ describe("QuestionRouteCard", () => {
     );
     expect(await screen.findByText(strings.routeQuestionRequired)).toBeTruthy();
     expect(routeCalls().length).toBe(0);
+  });
+
+  it("fills the question box from a suggestion chip without sending", async () => {
+    stubBoth(RESOLVED);
+    render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
+    await ask("How do I find duplicate records in my corpus?");
+    expect(await screen.findByText(strings.routeSuggestionsTitle)).toBeTruthy();
+    expect(screen.getByText(strings.routeSuggestionsHint)).toBeTruthy();
+    // The chip's accessible name is the suggestion text itself.
+    const chip = screen.getByRole("button", {
+      name: "How do thresholds split review from merge?",
+    });
+    fireEvent.click(chip);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // The chip fills the persisted box; the analyst still presses Route.
+    const box = screen.getByLabelText(strings.routeQuestionLabel) as HTMLTextAreaElement;
+    expect(box.value).toBe("How do thresholds split review from merge?");
+    expect(routeCalls().length).toBe(1);
   });
 });

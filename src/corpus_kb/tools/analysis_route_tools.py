@@ -10,8 +10,11 @@ The envelope grammar (spec: docs/research/analysis-question-routing-
 program.md): ``status`` is ``resolved | ambiguous | degraded``; a
 degraded answer also shows ``intent.note == "degraded"``; the ambiguous
 ladder rides ``intent.status == "ambiguous"`` (degraded or not), so
-``interpretations`` appear exactly then. An expert override forces
-``resolved`` with ``intent.note == "expert_override"``.
+``interpretations`` appear exactly then. A decided answer carries
+``suggestions``: up to three verbatim next questions from the chosen
+method's register row. An expert override forces ``resolved`` with
+``intent.note == "expert_override"``; its suggestions ride the override
+record.
 
 ``pg_pool`` is accepted for the house handler signature; routing reads
 no database. The embedder follows ``embedding.provider``: the ``ollama``
@@ -36,6 +39,7 @@ from ..analysis.method_register_loader import load_method_register
 from ..analysis.question_router import RouteResult, RoutingEmbedder, route_question
 from ..errors import NoMethodMatchesError, QuestionTooShortError, ValidationError
 from ..utils.config_sections import mapping_section
+from .analysis_route_suggestions import attach_suggestions
 from .ingest_common import DEFAULT_TENANT_ID
 
 __all__ = ["analysis_route"]
@@ -148,6 +152,8 @@ def _envelope(question: str, result: RouteResult) -> dict[str, object]:
     }
     if result.intent.status == "ambiguous":
         envelope["interpretations"] = result.intent.readings[:_READINGS_CAP]
+    top = result.ranked[0] if result.ranked else None
+    attach_suggestions(envelope, top)
     envelope["trace"] = asdict(result.trace)
     return envelope
 
@@ -181,6 +187,9 @@ def _override_envelope(
         "intent": intent.to_envelope(),
         "ranked": rows,
     }
+    # The override forced the intent resolved with this method's id, so
+    # the chips ride the override record's own suggestions.
+    attach_suggestions(envelope, record)
     envelope["trace"] = asdict(result.trace)
     return envelope
 
@@ -196,7 +205,8 @@ async def analysis_route(
     """Route one plain-language question to an analysis method.
 
     Returns ``{status, intent, ranked, trace}``; an ambiguous intent adds
-    ``interpretations``. Status is ``resolved``, ``ambiguous``, or
+    ``interpretations``, and a decided intent adds ``suggestions`` from
+    the chosen method. Status is ``resolved``, ``ambiguous``, or
     ``degraded``. Deterministic: same question, same register, same bytes.
     """
     del pg_pool, tenant_id  # accepted for the house signature; reads no database
