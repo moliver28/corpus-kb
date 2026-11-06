@@ -12,18 +12,25 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from corpus_kb.eval.golden import GoldenRecord
+
+if TYPE_CHECKING:
+    from corpus_kb.analysis.method_register import MethodRegister
+    from corpus_kb.analysis.question_router import RoutingEmbedder
+    from corpus_kb.eval.routing_calibrate import RoutingGoldenRow
 from corpus_kb.eval.labels import LabelIndex, resolve_relevance
 from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 
 __all__ = [
+    "ROUTING_DEGRADED_REFUSAL",
     "CandidateScore",
     "EngineFactory",
     "IngestedDoc",
     "QueryScore",
     "SweepEngine",
+    "route_family",
     "score_candidate",
 ]
 
@@ -150,3 +157,69 @@ async def score_candidate(
         ndcg_at_10=round(sum(ndcgs) / queries, METRIC_DECIMALS) if queries else 0.0,
     )
     return score, rows, None
+
+
+# The zero-vector fallback makes every calibration number fake; the
+# routing sweep refuses on the first phrase-mode row (honest refusal).
+ROUTING_DEGRADED_REFUSAL = (
+    "embedding degraded: the zero-vector fallback ran, so calibration "
+    "numbers would be fake. Bring the embedder up and retry."
+)
+
+
+def route_family(
+    golden: Sequence[RoutingGoldenRow],
+    register: MethodRegister,
+    embedder: RoutingEmbedder,
+    family: Sequence[str],
+    recipes: Mapping[str, Mapping[str, object]],
+) -> tuple[list[CandidateScore], list[QueryScore], str | None]:
+    """Route every golden row once per grid point; a degraded row refuses.
+
+    The routing sweep's scorer (mirrors ``score_candidate`` for the
+    ingest family): one candidate is one ``(threshold, margin)`` point.
+    One recipe maps to the router settings block it names.
+    """
+    from corpus_kb.analysis.question_router import route_question
+
+    scored: list[CandidateScore] = []
+    query_rows: list[QueryScore] = []
+    settings: dict[str, object] = {}
+    for name in family:
+        recipe = recipes[name]
+        settings["confidence_threshold"] = recipe["analysis.routing.confidence_threshold"]
+        settings["margin"] = recipe["analysis.routing.margin"]
+        hits: list[float] = []
+        rows: list[QueryScore] = []
+        for record in golden:
+            result = route_question(record.question, register, embedder, settings)
+            if result.trace.mode == "phrase":
+                return [], [], ROUTING_DEGRADED_REFUSAL
+            chosen = result.intent.method_id
+            hit = 1.0 if chosen == record.expected_method_ids[0] else 0.0
+            hits.append(hit)
+            rows.append(
+                QueryScore(
+                    candidate=name,
+                    query=record.question,
+                    recall_at_k=hit,
+                    mrr=hit,
+                    ndcg_at_10=hit,
+                    relevant=frozenset(record.expected_method_ids),
+                    ranked=(chosen,) if chosen is not None else (),
+                )
+            )
+        queries = len(hits)
+        mean = round(sum(hits) / queries, METRIC_DECIMALS) if queries else 0.0
+        scored.append(
+            CandidateScore(
+                candidate=name,
+                queries=queries,
+                skipped=0,
+                recall_at_k=mean,
+                mrr=mean,
+                ndcg_at_10=mean,
+            )
+        )
+        query_rows.extend(rows)
+    return scored, query_rows, None

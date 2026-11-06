@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from corpus_kb.eval.scoring import CandidateScore
     from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 
-__all__ = ["build_lock", "check_profile_lock", "profile_file_sha256"]
+__all__ = ["build_lock", "check_profile_lock", "profile_file_sha256", "write_routing_lock"]
 
 
 def profile_file_sha256(path: Path) -> str:
@@ -136,3 +136,67 @@ def build_lock(
         "versions": {"corpus-kb": package_version, "python": sys.version.split()[0]},
         "date": datetime.now(UTC).isoformat(timespec="seconds"),
     }
+
+
+def write_routing_lock(
+    *,
+    scored: Sequence[CandidateScore],
+    chosen: str,
+    winner_overrides: Mapping[str, object],
+    family: Sequence[str],
+    recipes: Mapping[str, Mapping[str, object]],
+    cfg: Mapping[str, object],
+    golden_sha256: str,
+    lock_path: Path,
+    profile_name: str | None,
+    profile_sha256: str | None,
+    alpha: float,
+    min_queries: int,
+) -> dict[str, object]:
+    """Build, mark, and write the ROUTING sweep's lock atomically.
+
+    The routing sweep reuses ``build_lock`` with an empty sample (routing
+    ingests nothing) and adds two marks on top of the shared shape:
+    ``sweep: "routing"`` and ``metric``. Enforcement reads only
+    ``profile_sha256``, so the marks never break the apply flow.
+    """
+    from corpus_kb.eval.calibrate import _reranker_active
+    from corpus_kb.profiles.calibrate_spec import CalibrateSpec
+
+    if profile_name is None or profile_sha256 is None:
+        raise ValidationError(
+            "Writing a routing lock needs the profile name and hash.",
+            remediation="Pass profile_name and profile_sha256, or drop lock_path.",
+        )
+    spec = CalibrateSpec(
+        candidates=tuple(family),
+        recipes={name: dict(recipe) for name, recipe in recipes.items()},
+        baseline=family[0],
+        sample="(routing sweeps ingest no sample)",
+        golden="(the routing golden bench)",
+        k=1,
+        min_queries=min_queries,
+    )
+    lock = build_lock(
+        spec=spec,
+        rows=scored,
+        chosen=chosen,
+        cfg=cfg,
+        profile_name=profile_name,
+        profile_sha256=profile_sha256,
+        golden_sha256=golden_sha256,
+        sample_paths=(),
+        baseline=family[0],
+        alpha=alpha,
+        min_queries=min_queries,
+        outcome="success",
+        proposed_overrides=winner_overrides,
+        reranker_active=_reranker_active(cfg, winner_overrides),
+    )
+    lock["sweep"] = "routing"
+    lock["metric"] = "primary accuracy"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = lock_path.with_suffix(lock_path.suffix + ".tmp")
+    tmp_path.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp_path.replace(lock_path)
+    return {key: value for key, value in lock.items() if key != "date"}
