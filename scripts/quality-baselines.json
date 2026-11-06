@@ -1,8 +1,9 @@
 {
-  "_readme": "Checked-in ratchet baselines (zero-drift rule 10, PR-F). Each number is a CEILING, not a target: poe size-ratchet fails when the live count is ABOVE the baseline, and passes when the code shrinks. Ratchet-down procedure: after a PR removes duplication or splits long files, measure the new counts (poe size-ratchet prints them), lower the numbers here in that same PR, and commit. Never raise a number to make a failing PR pass. coverage_floor is a FLOOR for overall line coverage (measured by poe test-cov, read from coverage.xml); it was set 0.5 points under the value measured at adoption so normal drift does not flake. Raise it in the same PR that adds tests. routing_phrase_accuracy is a FLOOR for the golden routing bench (tests/test_routing_bench.py, embedder=None); it holds the honest measured value and moves up only when the bench improves.",
+  "_readme": "Checked-in ratchet baselines (zero-drift rule 10, PR-F). Each number is a CEILING, not a target: poe size-ratchet fails when the live count is ABOVE the baseline, and passes when the code shrinks. Ratchet-down procedure: after a PR removes duplication or splits long files, measure the new counts (poe size-ratchet prints them), lower the numbers here in that same PR, and commit. Never raise a number to make a failing PR pass. coverage_floor is a FLOOR for overall line coverage (measured by poe test-cov, read from coverage.xml); it was set 0.5 points under the value measured at adoption so normal drift does not flake. Raise it in the same PR that adds tests. routing_phrase_accuracy is a FLOOR for the golden routing bench (tests/test_routing_bench.py, embedder=None); it holds the honest measured value and moves up only when the bench improves. routing_regret_mean is a CEILING for the same bench on the embedding path (live embedder; the test skips when Ollama is down). 0.0 is perfect routing: every chosen id ranks first in its expected list.",
   "plr0915": 16,
   "files_over_250": 75,
   "coverage_floor": 87.5,
   "pytest_warnings": 0,
-  "routing_phrase_accuracy": 1.0
+  "routing_phrase_accuracy": 1.0,
+  "routing_regret_mean": 0.0
 }

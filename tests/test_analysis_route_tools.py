@@ -11,6 +11,7 @@ loader owns the 01-30 ledger; these rows skip it).
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import cast
 
 import asyncpg
@@ -684,3 +685,329 @@ async def test_error_triples_match_the_error_map() -> None:
     assert NoMethodMatchesError.error_type == "no_method_matches"
     assert (QuestionTooShortError.http_status, QuestionTooShortError.socket_code) == (400, -32602)
     assert (NoMethodMatchesError.http_status, NoMethodMatchesError.socket_code) == (400, -32602)
+
+
+# -- LLM fallback (routing W5): an ambiguous answer with the flag on asks
+#    the ask-op LLM seam once, sanity-gates the answer against the register
+#    and the six vocab tuples, and logs every attempt to a JSONL file.
+#    Flag off: the envelope stays byte-identical to W4 and nothing logs.
+
+
+class _ScriptedChat:
+    """The ask-op chat seam stub: one scripted reply, a call counter."""
+
+    def __init__(self, content: str = "", error: str | None = None) -> None:
+        self.calls = 0
+        self.script = content
+        self._error = error
+
+    async def chat(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        options: dict[str, object] | None = None,
+    ) -> dict[str, object]:
+        self.calls += 1
+        if self._error is not None:
+            return {"error": self._error, "model": "stub"}
+        return {"message": {"content": self.script}, "model": "stub"}
+
+
+_TIE_QUESTION = f"{_TIE_A} {_TIE_B}"
+
+
+def _ambiguous_register() -> MethodRegister:
+    """Two phrased rows; the flat embedder ties them into an ambiguity."""
+    return _register(
+        _record(
+            "05",
+            "Cluster method",
+            [_TIE_A, "Which cluster structure fits these records?"],
+            suggests=["Which cluster count fits these interviews?"],
+        ),
+        _record(
+            "01",
+            "Codebook method",
+            [_TIE_B, "Can a method help me code these transcripts?"],
+            suggests=["Which first codes anchor the book?"],
+        ),
+    )
+
+
+async def _ambiguous_run(
+    monkeypatch: pytest.MonkeyPatch,
+    chat: _ScriptedChat,
+    config: dict[str, object],
+    method_id: str | None = None,
+) -> dict[str, object]:
+    """One ambiguous route with the flag on and the chat seam stubbed."""
+    monkeypatch.setattr(
+        analysis_route_tools, "load_method_register", lambda _cfg: _ambiguous_register()
+    )
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _FlatEmbedder())
+    monkeypatch.setattr(analysis_route_tools, "_route_llm", lambda _cfg: chat)
+    return await analysis_route(
+        cast("asyncpg.Pool", None),
+        config=config,
+        question=_TIE_QUESTION,
+        method_id=method_id,
+    )
+
+
+def _fallback_config(log_path: object, *, enabled: bool) -> dict[str, object]:
+    return {
+        "embedding": {"provider": "pgml"},
+        "analysis": {
+            "routing": {
+                "llm_fallback_enabled": enabled,
+                "fallback_log_path": str(log_path),
+            }
+        },
+    }
+
+
+_AXES_OK = {
+    "task_type": "measurement",
+    "comparison_structure": "none",
+    "output_form": "statistic",
+    "evidence_basis": "claims",
+    "statistical_rigor": "descriptive",
+    "cost_tier": "interactive",
+}
+
+
+def _answer(method_id: str, axes: dict[str, object] | None) -> str:
+    payload: dict[str, object] = {"method_id": method_id}
+    if axes is not None:
+        payload["axes"] = axes
+    return json.dumps(payload)
+
+
+def _read_log(log_path: object) -> list[dict[str, object]]:
+    text = Path(str(log_path)).read_text(encoding="utf-8")
+    return [dict(json.loads(line)) for line in text.splitlines() if line.strip()]
+
+
+async def test_default_config_carries_the_fallback_keys_off() -> None:
+    """The fallback ships dormant: flag false, log path set, lockstep rows."""
+    from corpus_kb.config import get_default_config
+
+    routing = cast(
+        "dict[str, object]",
+        cast("dict[str, object]", get_default_config()["analysis"])["routing"],
+    )
+    assert routing["llm_fallback_enabled"] is False
+    assert routing["fallback_log_path"] == "analysis_routing_fallbacks.jsonl"
+
+
+async def test_flag_off_ambiguous_envelope_is_byte_identical_and_logs_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Flag off: same bytes as a config with no routing block; no log file."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    register = _register(
+        _record("05", "Cluster method", [_TIE_A, "Which cluster structure fits these records?"]),
+        _record("01", "Codebook method", [_TIE_B, "Can a method help me code these transcripts?"]),
+    )
+    monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _FlatEmbedder())
+    with_log = json.dumps(
+        await analysis_route(
+            cast("asyncpg.Pool", None),
+            config=_fallback_config(log_path, enabled=False),
+            question=_TIE_A,
+        ),
+        sort_keys=True,
+    )
+    without_log = json.dumps(
+        await analysis_route(cast("asyncpg.Pool", None), config={}, question=_TIE_A),
+        sort_keys=True,
+    )
+    assert with_log == without_log
+    assert not log_path.exists()
+
+
+async def test_flag_on_llm_resolution_resolves_and_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sane answer resolves the tie: note, axes, chips, one log row."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content=_answer("01", _AXES_OK))
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "resolved"
+    assert "interpretations" not in result
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["status"] == "resolved"
+    assert intent["note"] == "llm_fallback"
+    assert intent["method_id"] == "01"
+    axes = cast("dict[str, object]", intent["axes"])
+    assert axes["task_type"] == "measurement"
+    assert result["suggestions"] == ["Which first codes anchor the book?"]
+    rows = _read_log(log_path)
+    assert len(rows) == 1
+    row = rows[0]
+    assert set(row) == {"ts", "question", "attempt", "outcome", "chosen_method_id"}
+    assert row["outcome"] == "resolved"
+    assert row["chosen_method_id"] == "01"
+    assert row["question"] == _TIE_QUESTION
+    assert row["attempt"] == chat.script
+
+
+async def test_flag_on_unknown_method_id_fails_and_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An id outside the register fails the sanity gate and stays ambiguous."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content=_answer("99", None))
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "ambiguous"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["note"] is None
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "failed"
+    assert rows[0]["chosen_method_id"] == "99"
+
+
+async def test_flag_on_axis_outside_vocabulary_fails_and_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An axis value outside its tuple fails the gate; the tuples are the check."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content=_answer("01", {"task_type": "tarot"}))
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "ambiguous"
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "failed"
+    assert rows[0]["chosen_method_id"] == "01"
+
+
+async def test_flag_on_seam_error_fails_and_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A down model is a logged failed attempt, never a raise."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(error="Ollama request failed: connection refused")
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "ambiguous"
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "failed"
+    assert "chosen_method_id" not in rows[0]
+    assert rows[0]["attempt"] == ""
+
+
+async def test_flag_on_unparseable_answer_fails_and_logs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Prose instead of JSON is a failed attempt; the tie stays."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content="I cannot answer that question.")
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "ambiguous"
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "failed"
+
+
+async def test_flag_on_fenced_json_answer_parses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fenced JSON answer parses: the slice from brace to brace."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    fenced = "```json\n" + _answer("01", {"task_type": "representation"}) + "\n```"
+    chat = _ScriptedChat(content=fenced)
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "resolved"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["method_id"] == "01"
+
+
+async def test_flag_on_resolved_route_never_calls_the_llm(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A decided route spends no LLM call and writes no log row."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content=_answer("01", None))
+    register = _register(
+        _record("05", "Cluster method", [_TIE_A, "Which cluster structure fits these records?"]),
+    )
+    monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _SplitEmbedder())
+    monkeypatch.setattr(analysis_route_tools, "_route_llm", lambda _cfg: chat)
+    result = await analysis_route(
+        cast("asyncpg.Pool", None), config=_fallback_config(log_path, enabled=True), question=_TIE_A
+    )
+    assert result["status"] == "resolved"
+    assert chat.calls == 0
+    assert not log_path.exists()
+
+
+async def test_flag_on_override_skips_the_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The analyst's choice wins before the LLM is ever asked."""
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content=_answer("01", None))
+    result = await _ambiguous_run(
+        monkeypatch, chat, _fallback_config(log_path, enabled=True), method_id="01"
+    )
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["note"] == "expert_override"
+    assert chat.calls == 0
+    assert not log_path.exists()
+
+
+async def test_flag_on_unknown_axis_names_log_as_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Junk axis NAMES ride the audit row, never the intent; gate unchanged.
+
+    An answer may carry keys outside the six tuples: they are dropped
+    from the intent and their names land in the log's ``ignored_axes``
+    (an omitted axis and junk the model sent stop looking alike).
+    """
+    log_path = tmp_path / "fallbacks.jsonl"
+    axes = dict(_AXES_OK)
+    axes["spiritual_rank"] = "high"
+    chat = _ScriptedChat(content=_answer("01", axes))
+    result = await _ambiguous_run(monkeypatch, chat, _fallback_config(log_path, enabled=True))
+    assert result["status"] == "resolved"
+    intent = cast("dict[str, object]", result["intent"])
+    axes_out = cast("dict[str, object]", intent["axes"])
+    assert axes_out["task_type"] == "measurement"
+    assert "spiritual_rank" not in axes_out
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "resolved"
+    assert rows[0]["ignored_axes"] == ["spiritual_rank"]
+
+
+async def test_degraded_tie_resolved_by_the_llm_keeps_the_degraded_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The status describes the run; the note describes the decision.
+
+    A zero-vector embedder degrades the run, yet a passing LLM attempt
+    still resolves the intent: envelope status stays ``degraded``,
+    ``intent.note == "llm_fallback"``, and the chips ride the resolved
+    record (full functionality rides intent resolution, W4 precedent).
+    """
+    log_path = tmp_path / "fallbacks.jsonl"
+    chat = _ScriptedChat(content=_answer("01", _AXES_OK))
+    monkeypatch.setattr(
+        analysis_route_tools, "load_method_register", lambda _cfg: _ambiguous_register()
+    )
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _ZeroEmbedder())
+    monkeypatch.setattr(analysis_route_tools, "_route_llm", lambda _cfg: chat)
+    result = await analysis_route(
+        cast("asyncpg.Pool", None),
+        config=_fallback_config(log_path, enabled=True),
+        question=_TIE_QUESTION,
+    )
+    assert result["status"] == "degraded"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["status"] == "resolved"
+    assert intent["note"] == "llm_fallback"
+    assert intent["method_id"] == "01"
+    assert result["suggestions"] == ["Which first codes anchor the book?"]
+    assert "interpretations" not in result
+    rows = _read_log(log_path)
+    assert rows[0]["outcome"] == "resolved"
+    assert "ignored_axes" not in rows[0]

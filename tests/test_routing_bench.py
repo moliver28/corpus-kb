@@ -16,6 +16,12 @@ import json
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+import pytest
+
+if TYPE_CHECKING:
+    from corpus_kb.rag.embedder import OllamaEmbedder
 
 from corpus_kb.analysis.method_register import MethodRegister
 from corpus_kb.analysis.method_register_loader import load_method_register
@@ -193,3 +199,93 @@ def test_every_row_resolves_to_its_primary_method() -> None:
         if not outcome.primary_hit
     ]
     assert misses == []
+
+
+# -- Routing W5: the regret metric and the embedding-path legs. The
+#    phrase path keeps its floor (the canary); the embedding path gains
+#    a regret ceiling, additive in quality-baselines.json. Live legs
+#    skip when Ollama is down, so CI never fails on an outage.
+
+OLLAMA_URL = "http://localhost:11434"
+
+
+def _ollama_up() -> bool:
+    import socket
+
+    try:
+        with socket.create_connection(("localhost", 11434), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
+def _nomic_embedder() -> OllamaEmbedder:
+    """The live embedder the CI jobs pull: nomic-embed-text, 768 dims."""
+    from corpus_kb.rag.embedder import OllamaEmbedder
+
+    return OllamaEmbedder(
+        {
+            "embedding": {
+                "provider": "ollama",
+                "model": "nomic-embed-text",
+                "base_url": OLLAMA_URL,
+                "batch_size": 8,
+                "dimensions": 768,
+            }
+        }
+    )
+
+
+def rank_distance(outcome: BenchOutcome) -> int:
+    """The chosen id's zero-based rank inside expected; a miss or an
+    ambiguity costs ``len(expected)`` — worse than the worst in-list rank."""
+    if outcome.chosen_method_id in outcome.expected_method_ids:
+        return outcome.expected_method_ids.index(outcome.chosen_method_id)
+    return len(outcome.expected_method_ids)
+
+
+def regret_mean(outcomes: list[BenchOutcome]) -> float:
+    """Mean rank distance over the rows; 0.0 is perfect routing."""
+    if not outcomes:
+        return 0.0
+    return sum(rank_distance(outcome) for outcome in outcomes) / len(outcomes)
+
+
+def read_regret_ceiling(baselines_path: Path = BASELINES_PATH) -> float:
+    """The recorded ``routing_regret_mean`` ceiling."""
+    data = json.loads(baselines_path.read_text(encoding="utf-8"))
+    return float(data["routing_regret_mean"])
+
+
+def test_phrase_path_regret_is_zero() -> None:
+    """Perfect phrase routing means every chosen id ranks first: regret 0."""
+    rows = load_golden_rows()
+    outcomes = run_bench(rows, _register())
+    assert regret_mean(outcomes) == 0.0
+
+
+@pytest.mark.skipif(not _ollama_up(), reason="Ollama not reachable")
+def test_embedding_path_regret_meets_the_recorded_ceiling() -> None:
+    """The live embedding path must stay at or under the additive ceiling."""
+    rows = load_golden_rows()
+    outcomes = run_bench(rows, _register(), embedder=_nomic_embedder())
+    measured = regret_mean(outcomes)
+    ceiling = read_regret_ceiling()
+    assert measured <= ceiling, f"embedding-path regret {measured} above the ceiling {ceiling}"
+
+
+@pytest.mark.skipif(not _ollama_up(), reason="Ollama not reachable")
+def test_embedding_path_run_is_byte_identical_when_rerun() -> None:
+    """Two full embedding-mode runs, fresh register AND embedder: same bytes.
+
+    A fresh embedder per run keeps the SHA256 cache out of the claim:
+    determinism is measured end-to-end, not between cache hits.
+    """
+    rows = load_golden_rows()
+    outcomes = run_bench(rows, _register(), embedder=_nomic_embedder())
+    # A degraded status would mean the zero-vector fallback ran, not the
+    # embedding path under test.
+    assert {outcome.status for outcome in outcomes} <= {"resolved", "ambiguous"}
+    first = outcome_blob(outcomes)
+    second = outcome_blob(run_bench(rows, _register(), embedder=_nomic_embedder()))
+    assert first == second

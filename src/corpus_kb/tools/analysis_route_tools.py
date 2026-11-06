@@ -4,17 +4,9 @@
 :func:`corpus_kb.analysis.question_router.route_question`. It validates
 the question, loads the register through the one loader, routes, and
 builds the shared envelope. The router outcome ``insufficient`` never
-reaches the envelope: it raises :class:`NoMethodMatchesError`.
-
-The envelope grammar (spec: docs/research/analysis-question-routing-
-program.md): ``status`` is ``resolved | ambiguous | degraded``; a
-degraded answer also shows ``intent.note == "degraded"``; the ambiguous
-ladder rides ``intent.status == "ambiguous"`` (degraded or not), so
-``interpretations`` appear exactly then. A decided answer carries
-``suggestions``: up to three verbatim next questions from the chosen
-method's register row. An expert override forces ``resolved`` with
-``intent.note == "expert_override"``; its suggestions ride the override
-record.
+reaches the envelope: it raises :class:`NoMethodMatchesError`. The
+envelope grammar itself (status, ladder, suggestions, override) lives
+in ``analysis_route_envelope.py``.
 
 ``pg_pool`` is accepted for the house handler signature; routing reads
 no database. The embedder follows ``embedding.provider``: the ``ollama``
@@ -22,33 +14,39 @@ provider rides the sync ``OllamaEmbedder`` (its zero-vector fallback
 keeps an outage honest — the envelope falls back to phrase mode), and
 every other provider passes ``None`` today, so those envelopes take the
 phrase path and say so in the trace.
+
+Routing W5 adds the config-gated LLM fallback (flag OFF by default):
+when the route lands ambiguous AND ``analysis.routing.llm_fallback_enabled``
+is true, the ask-op chat seam gets ONE sanity-gated attempt to resolve
+the tie; every attempt lands in the ``fallback_log_path`` JSONL audit
+file. With the flag off the envelopes stay byte-identical to the W4
+grammar; the fallback seam lives in ``analysis_route_fallback.py`` and
+the router modules stay pure.
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict, replace
+from dataclasses import replace
 
 import asyncpg
 
-from ..analysis.method_register import (
-    MethodRecommendation,
-    MethodRecord,
-    MethodRegister,
-)
+from ..analysis.method_register import MethodRecord, MethodRegister
 from ..analysis.method_register_loader import load_method_register
 from ..analysis.question_router import RouteResult, RoutingEmbedder, route_question
 from ..errors import NoMethodMatchesError, QuestionTooShortError, ValidationError
 from ..utils.config_sections import mapping_section
-from .analysis_route_suggestions import attach_suggestions
+from .analysis_route_envelope import build_envelope, build_override_envelope, record_for
+from .analysis_route_fallback import (
+    RouteChat,
+    append_fallback_log,
+    attempt_fallback,
+    fallback_settings,
+)
 from .ingest_common import DEFAULT_TENANT_ID
 
 __all__ = ["analysis_route"]
 
 _MIN_QUESTION_CHARS = 8
-_READINGS_CAP = 3
-_RANKED_CAP = 5
-_OVERRIDE_NOTE = "expert_override"
-_OVERRIDE_WHY = "Set by the analyst."
 _SHORT_MESSAGE = "Ask a question of at least 8 characters."
 _NO_MATCH_MESSAGE = "No analysis method matches the question. Try other words."
 
@@ -64,14 +62,6 @@ def _check_question(question: object) -> None:
         raise QuestionTooShortError(_SHORT_MESSAGE)
 
 
-def _record_for(register: MethodRegister, method_id: str) -> MethodRecord | None:
-    """The register row with this id, or ``None``."""
-    for record in register.methods:
-        if record.id == method_id:
-            return record
-    return None
-
-
 def _check_override(method_id: object, register: MethodRegister) -> MethodRecord | None:
     """The validated override record, or ``None`` when the caller set none.
 
@@ -80,7 +70,7 @@ def _check_override(method_id: object, register: MethodRegister) -> MethodRecord
     """
     if method_id is None:
         return None
-    record = _record_for(register, method_id) if isinstance(method_id, str) else None
+    record = record_for(register, method_id) if isinstance(method_id, str) else None
     if record is None:
         raise ValidationError(
             f"method_id: {method_id!r} is not in the register.",
@@ -104,102 +94,41 @@ def _router_embedder(config: dict[str, object]) -> RoutingEmbedder | None:
     return OllamaEmbedder(config)
 
 
-def _normalized(text: str) -> str:
-    """Casefold and collapse whitespace runs to single spaces."""
-    return " ".join(text.split()).casefold()
+def _route_llm(config: dict[str, object]) -> RouteChat:
+    """The chat seam for the LLM fallback: the ask-op ``LlmHandler``.
 
-
-def _matched_phrase(question: str, record: MethodRecord) -> str | None:
-    """The first authored phrase the question contains (authored order)."""
-    normalized = _normalized(question)
-    for phrase in record.question_phrases or []:
-        if _normalized(phrase) in normalized:
-            return phrase
-    return None
-
-
-def _row(record: MethodRecord, why: str) -> dict[str, object]:
-    """One ranked row: id, name, why, and the run hint."""
-    return {
-        "method_id": record.id,
-        "name": record.name,
-        "why": why,
-        "run_hint": {"op": record.op, "params": {}},
-    }
-
-
-def _ranked_rows(question: str, ranked: list[MethodRecommendation]) -> list[dict[str, object]]:
-    """Ranked rows: the top row carries the matched phrase, the rest the
-    rubric's ``rank_reason``. With no phrase hit (the fallback pool), the
-    top why is the rubric reason too — a name is never a reason."""
-    rows: list[dict[str, object]] = []
-    for index, record in enumerate(ranked):
-        if index == 0:
-            matched = _matched_phrase(question, record)
-            why = matched if matched is not None else record.rank_reason
-            rows.append(_row(record, why))
-        else:
-            rows.append(_row(record, record.rank_reason))
-    return rows
-
-
-def _envelope(question: str, register: MethodRegister, result: RouteResult) -> dict[str, object]:
-    """The shared envelope: stable key order, deterministic bytes."""
-    envelope: dict[str, object] = {
-        "status": "degraded" if result.degraded else result.status,
-        "intent": result.intent.to_envelope(),
-        "ranked": _ranked_rows(question, result.ranked),
-    }
-    if result.intent.status == "ambiguous":
-        envelope["interpretations"] = result.intent.readings[:_READINGS_CAP]
-    # The chips ride the CHOSEN method (the score winner), looked up in
-    # the register by id: ``ranked`` is rubric-ordered, score-blind, and
-    # capped at five, so the winner can sit outside it (the no-phrase-
-    # hit pool is every phrased row).
-    chosen = (
-        _record_for(register, result.intent.method_id)
-        if result.intent.method_id is not None
-        else None
-    )
-    attach_suggestions(envelope, chosen)
-    envelope["trace"] = asdict(result.trace)
-    return envelope
-
-
-def _override_envelope(
-    question: str, result: RouteResult, record: MethodRecord
-) -> dict[str, object]:
-    """The override envelope: the chosen method first, status ``resolved``.
-
-    The trace stays the automatic pass, so the audit shows what the
-    cascade scored before the analyst chose. The intent claims no router
-    confidence: the analyst decided, so ``confidence`` stays at ``0.0``.
+    Lazy import, same convention as ``_router_embedder``. The handler
+    never raises; a failure comes back as an error dict.
     """
-    rest = [rec for rec in result.ranked if rec.id != record.id][: _RANKED_CAP - 1]
-    rows = [_row(record, _OVERRIDE_WHY)]
-    rows.extend(_row(rec, rec.rank_reason) for rec in rest)
-    intent = replace(
-        result.intent,
-        status="resolved",
-        confidence=0.0,
-        method_id=record.id,
-        ranked_method_ids=[
-            record.id,
-            *[mid for mid in result.intent.ranked_method_ids if mid != record.id],
-        ],
-        readings=[],
-        note=_OVERRIDE_NOTE,
-    )
-    envelope: dict[str, object] = {
-        "status": "resolved",
-        "intent": intent.to_envelope(),
-        "ranked": rows,
-    }
-    # The override forced the intent resolved with this method's id, so
-    # the chips ride the override record's own suggestions.
-    attach_suggestions(envelope, record)
-    envelope["trace"] = asdict(result.trace)
-    return envelope
+    from ..handlers.llm_handler import LlmHandler  # lazy: keeps module load light
+
+    return LlmHandler(config)
+
+
+async def _maybe_llm_fallback(
+    cfg: dict[str, object],
+    settings: dict[str, object] | None,
+    question: str,
+    register: MethodRegister,
+    result: RouteResult,
+) -> RouteResult:
+    """The flag-gated LLM attempt on an ambiguous tie. Best-effort, logged.
+
+    Flag off (or no routing block): the result passes through untouched,
+    no seam is built, no file is written. Flag on: exactly one attempt;
+    a pass swaps the intent, a fail keeps the ladder. The audit row
+    lands either way.
+    """
+    if settings is None:
+        return result
+    enabled, log_path = fallback_settings(settings)
+    if not enabled:
+        return result
+    attempt = await attempt_fallback(_route_llm(cfg), question, register, result.intent)
+    append_fallback_log(log_path, question=question, attempt=attempt)
+    if attempt.intent is not None:
+        return replace(result, intent=attempt.intent, status="resolved")
+    return result
 
 
 async def analysis_route(
@@ -225,7 +154,9 @@ async def analysis_route(
     settings = dict(mapping_section(mapping_section(cfg, "analysis"), "routing")) or None
     result = route_question(question, register, _router_embedder(cfg), settings)
     if override is not None:
-        return _override_envelope(question, result, override)
+        return build_override_envelope(question, result, override)
     if result.status == "insufficient":
         raise NoMethodMatchesError(_NO_MATCH_MESSAGE)
-    return _envelope(question, register, result)
+    if result.status == "ambiguous":
+        result = await _maybe_llm_fallback(cfg, settings, question, register, result)
+    return build_envelope(question, register, result)

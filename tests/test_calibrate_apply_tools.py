@@ -360,3 +360,160 @@ def test_apply_to_text_is_deterministic() -> None:
     one = apply_keys_to_text(CONFIG_TEXT, updates)
     two = apply_keys_to_text(CONFIG_TEXT, dict(reversed(list(updates.items()))))
     assert one == two
+
+
+# ---------------------------------------------------------------------------
+# Routing locks (W5): two-level dot paths through the SAME apply flow
+# ---------------------------------------------------------------------------
+
+ROUTING_OVERRIDES: dict[str, Any] = {
+    "analysis.routing.confidence_threshold": 0.45,
+    "analysis.routing.margin": 0.05,
+}
+ROUTING_CONFIG_TEXT = (
+    "# user config\n"
+    "analysis:\n"
+    "  # question router knobs\n"
+    "  routing:\n"
+    "    confidence_threshold: 0.55\n"
+    "    margin: 0.10\n"
+    "retrieval:\n"
+    "  rrf_k: 60\n"
+)
+
+
+@pytest.fixture
+def routing_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    """One profile + routing lock + a nested routing block in config.yaml."""
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    (profiles / "parity.yaml").write_text(PROFILE_YAML, encoding="utf-8")
+    _write_lock(
+        profiles,
+        chosen="t045_m05",
+        proposed_overrides=dict(ROUTING_OVERRIDES),
+    )
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(ROUTING_CONFIG_TEXT, encoding="utf-8")
+
+    from corpus_kb import config as config_module
+
+    monkeypatch.setattr(config_module, "config_file_path", lambda: config_path)
+    monkeypatch.setattr(config_module, "load_config", lambda: {"profiles": {"dir": str(profiles)}})
+    return {"profiles": profiles, "config": config_path}
+
+
+async def test_routing_lock_dry_run_diffs_the_nested_leaves(
+    routing_world: dict[str, Path],
+) -> None:
+    """The diff reads the nested current values; a dry run writes nothing."""
+    before = routing_world["config"].read_bytes()
+    envelope = await calibrate_apply("parity")
+    assert routing_world["config"].read_bytes() == before
+    body = envelope["result"]
+    changes = body["changes"]
+    assert isinstance(changes, list)
+    assert changes == [
+        {
+            "key": "analysis.routing.confidence_threshold",
+            "current": 0.55,
+            "proposed": 0.45,
+            "changed": True,
+        },
+        {"key": "analysis.routing.margin", "current": 0.10, "proposed": 0.05, "changed": True},
+    ]
+
+
+async def test_routing_lock_write_edits_only_the_nested_lines(
+    routing_world: dict[str, Path],
+) -> None:
+    """The write moves the two leaf lines; every other byte survives."""
+    envelope = await calibrate_apply("parity", write=True)
+    body = envelope["result"]
+    assert body["applied_count"] == 2
+    text = routing_world["config"].read_text(encoding="utf-8")
+    assert text == (
+        "# user config\n"
+        "analysis:\n"
+        "  # question router knobs\n"
+        "  routing:\n"
+        "    confidence_threshold: 0.45\n"
+        "    margin: 0.05\n"
+        "retrieval:\n"
+        "  rrf_k: 60\n"
+    )
+
+
+def test_apply_to_text_edits_a_nested_block_in_place() -> None:
+    """Two-level keys: the leaf edits inside the inner block, not flat."""
+    out = apply_keys_to_text(ROUTING_CONFIG_TEXT, dict(ROUTING_OVERRIDES))
+    assert out == (
+        "# user config\n"
+        "analysis:\n"
+        "  # question router knobs\n"
+        "  routing:\n"
+        "    confidence_threshold: 0.45\n"
+        "    margin: 0.05\n"
+        "retrieval:\n"
+        "  rrf_k: 60\n"
+    )
+
+
+def test_apply_to_text_creates_a_missing_nested_block() -> None:
+    """A config without analysis.routing gains the whole nested chain."""
+    out = apply_keys_to_text(
+        "retrieval:\n  rrf_k: 60\n",
+        {"analysis.routing.confidence_threshold": 0.5},
+    )
+    assert out == (
+        "retrieval:\n  rrf_k: 60\nanalysis:\n  routing:\n    confidence_threshold: 0.5\n"
+    )
+
+
+def test_apply_to_text_ignores_a_deeper_same_name_block() -> None:
+    """A deeper-nested sibling (labeling.routing) never hijacks the edit.
+
+    Child headers must sit at the parent block's member column: a
+    ``routing:`` block two levels deeper is not ``analysis.routing``,
+    so the edit CREATES the missing chain instead.
+    """
+    text = (
+        "analysis:\n"
+        "  labeling:\n"
+        "    routing:\n"
+        "      confidence_threshold: 0.9\n"
+        "    enabled: false\n"
+    )
+    out = apply_keys_to_text(text, {"analysis.routing.confidence_threshold": 0.45})
+    assert out == (
+        "analysis:\n"
+        "  labeling:\n"
+        "    routing:\n"
+        "      confidence_threshold: 0.9\n"
+        "    enabled: false\n"
+        "  routing:\n"
+        "    confidence_threshold: 0.45\n"
+    )
+
+
+def test_apply_to_text_edits_only_the_exact_column_key() -> None:
+    """A deeper key with the same name is not the edit target.
+
+    The scan anchors to the block's member column: a same-named key one
+    level deeper (and earlier in the file) keeps its value.
+    """
+    text = (
+        "analysis:\n"
+        "  routing:\n"
+        "    deeper:\n"
+        "      confidence_threshold: 9\n"
+        "    confidence_threshold: 0.55\n"
+    )
+    out = apply_keys_to_text(text, {"analysis.routing.confidence_threshold": 0.45})
+    assert out == (
+        "analysis:\n"
+        "  routing:\n"
+        "    deeper:\n"
+        "      confidence_threshold: 9\n"
+        "    confidence_threshold: 0.45\n"
+    )
