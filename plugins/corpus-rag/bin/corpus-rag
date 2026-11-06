@@ -1,0 +1,92 @@
+#!/usr/bin/env python3
+"""Thin ``corpus-rag`` CLI for the corpus-rag plugin.
+
+Two commands, stdlib only:
+
+``status``   Resolve the engine and run ``corpus-kb doctor``. Print a short
+             verdict and a fix hint when the engine is missing or unhealthy.
+``connect``  Print the MCP server config JSON to paste into a client config.
+
+The engine keeps the real functionality (``corpus-kb ...``). This wrapper only
+helps you check the connection.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PLUGIN_ROOT))
+
+from engine_paths import engine_cli, engine_root  # noqa: E402
+
+NOT_FOUND = (
+    "Corpus-KB engine not found. Searched $CORPUS_KB_REPO, a dev checkout "
+    "two folders up, and <state>/engine. See docs/PLUGIN.md in the "
+    "repository for install steps."
+)
+
+
+def cmd_status(_args: argparse.Namespace) -> int:
+    root = engine_root()
+    if root is None:
+        print(NOT_FOUND)
+        return 1
+    cli = engine_cli(root)
+    if cli is None:
+        print(f"Engine checkout found at {root}, but no corpus-kb command in it or on PATH.")
+        print("Fix: run `uv sync --frozen --extra dev` inside that checkout.")
+        return 1
+    print(f"Engine: {root}")
+    print(f"Command: {cli}")
+    result = subprocess.run(
+        [cli, "doctor"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+    output = (result.stdout or result.stderr).strip()
+    if result.returncode == 0:
+        print("ok: corpus-kb doctor completed without errors.")
+        if output:
+            tail = "\n".join(output.splitlines()[-6:])
+            print(tail)
+        return 0
+    print("not ok: corpus-kb doctor reported a problem.")
+    if output:
+        tail = "\n".join(output.splitlines()[-10:])
+        print(tail)
+    print("Fix: read the lines above, or run corpus-kb doctor directly for detail.")
+    return 1
+
+
+def cmd_connect(_args: argparse.Namespace) -> int:
+    root = engine_root()
+    cli = engine_cli(root) if root is not None else None
+    command = cli if cli else "corpus-kb"
+    config = {"mcpServers": {"corpus-kb": {"command": command, "args": ["--transport", "stdio"]}}}
+    if cli is None:
+        print(NOT_FOUND, file=sys.stderr)
+        print("Printing a config that expects `corpus-kb` on PATH.")
+    print(json.dumps(config, indent=2))
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="corpus-rag", description="Corpus-KB plugin helper.")
+    subs = parser.add_subparsers(dest="command", required=True)
+    subs.add_parser("status", help="Check the engine connection with corpus-kb doctor.")
+    subs.add_parser("connect", help="Print the MCP config JSON for this engine.")
+    args = parser.parse_args(argv)
+    if args.command == "status":
+        return cmd_status(args)
+    return cmd_connect(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
