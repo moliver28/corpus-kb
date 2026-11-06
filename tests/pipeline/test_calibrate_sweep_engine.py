@@ -25,6 +25,7 @@ def test_tenant_for_is_stable_per_profile_and_golden() -> None:
 
 async def test_duckdb_backend_opens_the_gateway(tmp_path: Path) -> None:
     """Issue #330 inversion: the sweep opens the DuckDB gateway, not a refusal."""
+    pytest.importorskip("duckdb")  # the validation-gate job installs no duckdb extra
     from corpus_kb.storage.gateway import DuckDbGateway, is_gateway
 
     cfg: dict[str, object] = {
