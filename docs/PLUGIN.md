@@ -1,24 +1,30 @@
 # Corpus-Rag Plugin
 
-The corpus-rag plugin adds Corpus-KB to Claude Code. It adds study commands, skills, and hooks.
-This repository hosts the engine and the plugin. It is also the plugin marketplace. The plugin
-lives at `plugins/corpus-rag/`. The marketplace manifest is `.claude-plugin/marketplace.json`.
+The corpus-rag plugin connects Claude Code or ZCode to a local Corpus-KB
+engine. You ingest documents, then ask questions and get answers with
+citations. The plugin lives at `plugins/corpus-rag/` in this repository. This
+repository is also the plugin marketplace. The manifest is
+`.claude-plugin/marketplace.json`.
+
+The plugin is built fresh in this repository. It has no older code inside.
+One tag, `corpus-rag-v<version>`, marks the engine commit for each release.
 
 ## Requirements
 
-- Claude Code.
-- Python 3.11 or newer.
-- `git` and `uv` on your PATH.
-- Ollama with the `nomic-embed-text` model. See [INSTALL.md](INSTALL.md) for the engine install.
+- Claude Code or ZCode.
+- A Corpus-KB engine install. See [INSTALL.md](INSTALL.md). You need Python
+  3.11 or newer, and Ollama with the `nomic-embed-text` model.
 
 ## Step 1: Add the marketplace
+
+Claude Code:
 
 ```bash
 claude plugin marketplace add moliver28/corpus-kb
 ```
 
-The command clones this repository. It reads `.claude-plugin/marketplace.json` and registers the
-marketplace under the name `corpus-kb`.
+ZCode: add this repository as a marketplace in the ZCode plugin settings
+(`marketplaces`), then sync. Restart your agent after you add it.
 
 ## Step 2: Install the plugin
 
@@ -26,53 +32,105 @@ marketplace under the name `corpus-kb`.
 claude plugin install corpus-rag@corpus-kb
 ```
 
-Restart Claude Code after the install.
+Restart your agent after the install. ZCode reads the same plugin layout and
+reloads it on restart.
 
-## Step 3: Install the engine
+## Step 3: Connect the engine
 
-The plugin drives the engine. It does not ship the engine. Install the engine before your first
-study session:
-
-```bash
-corpus-rag engine
-```
-
-The command clones this repository at the release tag into `~/.corpus-kb/engine/<version>/`. It
-installs the locked dependencies there. The engine then matches your plugin version. Use
-`corpus-rag engine --force` to install the same version again.
-
-## Step 4: First run
-
-Run these commands in this order. They set up a study and prove the install works.
+The plugin drives the `corpus-kb` CLI and MCP server. Check the connection:
 
 ```bash
-corpus-rag setup --questions
-corpus-rag provision <slug>
-corpus-rag ingest <file> -p <slug>
-corpus-rag status -p <slug>
-corpus-rag search "<query>" -p <slug>
-corpus-rag op list_documents -p <slug>
-corpus-rag backup <slug>
-corpus-rag plugin-doctor
+corpus-rag status
 ```
 
-`plugin-doctor` prints `ok: true` when the plugin, the engine, and the state folder all agree.
-A non-zero answer means a broken install. Fix it before you ingest real documents.
+This runs `corpus-kb doctor` and prints a short verdict. If it reports no
+engine, finish the engine install first ([INSTALL.md](INSTALL.md)), or set
+`CORPUS_KB_REPO` to your engine checkout.
 
-## Update
+To wire the engine into a client, print the MCP config and paste it:
 
 ```bash
-claude plugin update corpus-rag@corpus-kb
-corpus-rag engine
+corpus-rag connect
 ```
 
-Then restart Claude Code. The update installs the new plugin version. The `corpus-rag engine`
-command installs the matching engine version beside the old one. Older engine folders stay on
-disk, so you can roll back.
+## Three flows
 
-## Notes
+### Ask with citations
 
-- The install needs this repository to be public. It is public.
-- The plugin keeps its marks and study list in `~/.corpus-kb/`. An update keeps that data.
-- One tag, `corpus-rag-v<version>`, marks the engine commit for each plugin release.
-- Engine install help: [INSTALL.md](INSTALL.md). Daily operation help: [OPERATIONS.md](OPERATIONS.md).
+You want an answer from your own files.
+
+```bash
+corpus-kb ask "<your question>"
+```
+
+The answer arrives with citations. Use `/corpus-ask` in your agent, or run
+the command yourself. If the question is vague, search first:
+
+```bash
+corpus-kb search "<topic words>"
+```
+
+### Pick an analysis
+
+You have a research question but no method in mind. Use `/corpus-analyze`,
+or run:
+
+```bash
+corpus-kb analysis-select-method
+```
+
+It names a method and says why it fits. The skill explains the choice in
+plain English and offers to run it.
+
+### Ingest documents
+
+You want new files in the corpus. Use `/corpus-ingest`, or run:
+
+```bash
+corpus-kb ingest "<path or folder>"
+corpus-kb ingest-url "<url>"
+corpus-kb ingest-status
+```
+
+PDF, DOCX, PPTX, HTML, and text work directly. `.vtt` and `.srt` transcripts
+ingest as text. Google Slides: export to `.pptx` first, then ingest.
+
+## Nudges
+
+The plugin suggests the right command at the right moment.
+
+- Session start: inside a `Research/<project>` folder with no registered
+  study, it suggests starting one. Once per project per day.
+- Prompt: with a registered study, it may suggest `ask`, `analysis`, or
+  `ingest` when your prompt matches. Once per lane per day.
+
+Each nudge is one short message. It never blocks your work. Every hook fails
+open: a broken hook cannot stop your session.
+
+To silence hints, create mark files in the plugin state folder
+(`~/.corpus-kb/plugin/marks/`):
+
+- `declined-session` — no more study hints.
+- `declined-ask`, `declined-analyze`, `declined-ingest` — no more hints on
+  that lane.
+
+To mark a study as registered (stops the session hint), see the
+corpus-ingest skill.
+
+## ZCode notes
+
+- ZCode loads plugin hooks from `hooks/hooks.json` and supports the events
+  this plugin uses: `SessionStart` and `UserPromptSubmit`.
+- Hook scripts stay POSIX `sh`, so the same files work on Windows, Linux,
+  and macOS.
+- Restart your agent after a plugin update; hooks and skills reload then.
+
+## Development
+
+```bash
+poe plugin-tests      # from the repo root: plugin suite + gate
+pytest tests/         # from plugins/corpus-rag: suite only
+```
+
+The engine gates (ruff, pyright, size ratchet) do not scan the plugin. The
+plugin keeps its own tests, its own pytest config, and its own CI job.
