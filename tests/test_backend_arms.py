@@ -385,3 +385,30 @@ async def test_document_dates_present_answers_true_after_027(migrated: Any) -> N
     # The migrated mirror carries the 027 column, so the engine probe
     # answers True (the False arm is covered by the schema probes above).
     assert await document_dates_present(migrated) is True
+
+
+# --- shutdown + embedder-abstain arms -------------------------------------------
+
+
+async def test_shutdown_closes_the_gateway() -> None:
+    """The duckdb services dict closes its gateway at shutdown."""
+    from corpus_kb.server_wiring import shutdown
+
+    class _Gateway:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    gateway = _Gateway()
+    await shutdown({"pool": None, "gateway": gateway})
+    assert gateway.closed is True
+
+
+async def test_embedder_abstains_when_pgml_has_no_pool(migrated: Any) -> None:
+    """The pgml provider on the gateway cannot embed: abstain."""
+    from corpus_kb.research.cycle import _embedder_abstains
+
+    abstains = await _embedder_abstains(migrated, {"embedding": {"provider": "pgml"}})
+    assert abstains is True
