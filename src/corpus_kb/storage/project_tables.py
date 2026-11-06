@@ -24,6 +24,7 @@ import asyncpg
 
 from corpus_kb.errors import NotFoundError, ValidationError
 from corpus_kb.storage.gateway import SqlGateway, as_gateway, gateway_backend
+from corpus_kb.storage.project_tables_sql import raw_columns_for, rls_statements
 from corpus_kb.storage.sql_ident import check_identifier, quoted_identifier
 from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -54,9 +55,7 @@ def raw_table_name(slug: str) -> str:
     return check_identifier(f"raw_{clean.replace('-', '_')}")
 
 
-async def _table_exists(
-    gw: asyncpg.Connection | SqlGateway, backend: str, name: str
-) -> bool:
+async def _table_exists(gw: asyncpg.Connection | SqlGateway, backend: str, name: str) -> bool:
     """True when the physical table exists on this backend."""
     if backend == "postgres":
         found = await gw.fetchval("SELECT to_regclass($1)", f"public.{name}")
@@ -67,47 +66,6 @@ async def _table_exists(
         name,
     )
     return bool(int(found or 0))
-
-
-_RAW_COLUMNS_PG = """
-    id BIGSERIAL PRIMARY KEY,
-    tenant_id UUID NOT NULL,
-    project_id UUID NOT NULL,
-    source_path TEXT,
-    source_hash CHAR(64) NOT NULL,
-    content_type TEXT,
-    raw_bytes BYTEA,
-    raw_text TEXT,
-    ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (tenant_id, source_hash)
-"""
-
-_RAW_COLUMNS_DUCKDB = """
-    id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-    tenant_id VARCHAR NOT NULL,
-    project_id VARCHAR NOT NULL,
-    source_path VARCHAR,
-    source_hash VARCHAR NOT NULL,
-    content_type VARCHAR,
-    raw_bytes BLOB,
-    raw_text VARCHAR,
-    ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (tenant_id, source_hash)
-"""
-
-
-def _rls_statements(table: str) -> tuple[str, ...]:
-    """The 022-convention tenant RLS policy for one runtime table."""
-    quoted = quoted_identifier(table)
-    return (
-        f"ALTER TABLE {quoted} ENABLE ROW LEVEL SECURITY",
-        f"DROP POLICY IF EXISTS raw_table_tenant_isolation ON {quoted}",
-        f"CREATE POLICY raw_table_tenant_isolation ON {quoted} "
-        f"USING (tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::UUID) "
-        f"WITH CHECK (tenant_id = "
-        f"NULLIF(current_setting('app.current_tenant_id', true), '')::UUID)",
-        f"ALTER TABLE {quoted} FORCE ROW LEVEL SECURITY",
-    )
 
 
 async def create_project_table(
@@ -137,11 +95,11 @@ async def create_project_table(
             "backend": backend,
             "already_provisioned": True,
         }
-    columns = _RAW_COLUMNS_PG if backend == "postgres" else _RAW_COLUMNS_DUCKDB
+    columns = raw_columns_for(backend)
     quoted = quoted_identifier(table)
     statements = [f"CREATE TABLE IF NOT EXISTS {quoted} ({columns})"]
     if backend == "postgres":
-        statements.extend(_rls_statements(table))
+        statements.extend(rls_statements(table))
     async with tenant_connection(gw, tenant_id) as conn:
         for statement in statements:
             await conn.execute(statement)

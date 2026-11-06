@@ -313,6 +313,23 @@ class PostgresIngestStore:
                 "Could not link ingest run %s to project %s: %s", run_id, project_id, exc
             )
 
+    async def set_document_project(self, doc_id: str, project_id: str) -> None:
+        """Attach a project to the document row (migration 016). Best effort: never raises.
+
+        Mirrors ``set_run_project``: a missing row, column, or database is
+        a warning, never an ingest failure.
+        """
+        try:
+            async with self._gateway.transaction(self._tenant_id) as tx:
+                await tx.execute(
+                    self._sql.set_document_project_sql,
+                    doc_id,
+                    project_id,
+                    self._tenant_id,
+                )
+        except Exception as exc:
+            logger.warning("Could not link document %s to project %s: %s", doc_id, project_id, exc)
+
     async def store_chunks(self, chunks: list[Chunk]) -> set[str]:
         """Insert/update/tombstone chunks. Returns chunk_ids needing (re-)embedding.
 

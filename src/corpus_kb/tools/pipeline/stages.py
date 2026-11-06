@@ -149,6 +149,7 @@ async def _run_document_stages(
     validation_report: dict[str, Any] | None = None,
     validation_mode: str = "off",
     calibration_summary: dict[str, Any] | None = None,
+    project_id: str | None = None,
 ) -> dict[str, Any]:
     """Pipeline stages under the advisory lock: open the ledger, store, close.
 
@@ -158,7 +159,12 @@ async def _run_document_stages(
     identical. ``doc.strategy`` (the resolved strategy name) only feeds the
     shadow hierarchy's boundary adapter choice.
     """
-    ingest_sink: IngestSink = ChunkSink(_ic().PostgresIngestStore(pg_pool, tenant_id))
+    ingest_store = _ic().PostgresIngestStore(pg_pool, tenant_id)
+    ingest_sink: IngestSink = ChunkSink(ingest_store)
+    if project_id:
+        # The project link (migrations 016/036) rides metadata into the
+        # document row's JSON, next to the column stamps below (Track C3).
+        doc.document.metadata["project_id"] = project_id
     # The per-book title (issue #222): documents.title is the durable
     # channel — the store upsert reads it behind a COALESCE guard — while
     # metadata["title"] is the transport into that upsert. One read, one
@@ -172,6 +178,12 @@ async def _run_document_stages(
         return _skipped_envelope(doc, unchanged_doc)
 
     document_id, run_id = await ingest_sink.begin_run(doc.document, doc.file_hash)
+    if project_id:
+        # The project link (migrations 016/036) for ALL pipeline paths:
+        # the ledger row and the document row both carry it. Both writes
+        # are best effort — the link can never fail an ingest.
+        await ingest_store.set_run_project(run_id, project_id)
+        await ingest_store.set_document_project(document_id, project_id)
     try:
         errors: list[str] = []
         artifacts = await _produce_artifacts(
@@ -189,7 +201,16 @@ async def _run_document_stages(
         # error; failed with the error text otherwise.
         await ingest_sink.finish_run(run_id, doc.file_hash, stages, errors)
 
-        return _envelope_from(doc, artifacts, errors, run_id, title)
+        envelope = _envelope_from(doc, artifacts, errors, run_id, title)
+        if project_id and envelope.get("status") in ("success", "partial"):
+            # Track C3: raw content-addressed storage into the project's
+            # raw table, with honest envelope keys.
+            from .project_raw import attach_project_raw
+
+            await attach_project_raw(
+                envelope, doc.text, doc.path, doc.is_file, pg_pool, tenant_id, project_id
+            )
+        return envelope
     except BaseException as exc:
         # BaseException, not Exception: asyncio.CancelledError (watch-mode
         # Ctrl-C) is a BaseException in 3.11+ and must still close the

@@ -59,13 +59,24 @@ __all__ = ["QueueWorker", "ingest_book"]
 _HEARTBEAT_SLICES = 3
 
 
+def row_project_id(row: dict[str, object]) -> str | None:
+    """The queue row's project id, or None when absent or blank."""
+    value = row.get("project_id")
+    text = str(value).strip() if value else ""
+    return text or None
+
+
 async def ingest_book(
-    pool: asyncpg.Pool | SqlGateway, config: dict[str, object], tenant_id: str, path: str
+    pool: asyncpg.Pool | SqlGateway,
+    config: dict[str, object],
+    tenant_id: str,
+    path: str,
+    project_id: str | None = None,
 ) -> dict[str, object]:
     """The ONE pipeline entry, called the way the ingest tools call it."""
     from corpus_kb.tools.ingest_tools import ingest_file
 
-    return await ingest_file(path, pool, config, tenant_id)
+    return await ingest_file(path, pool, config, tenant_id, project_id=project_id)
 
 
 class QueueWorker:
@@ -145,7 +156,13 @@ class QueueWorker:
             self._store, queue_id, self._identity.claimed_by, self._beat_interval(), _mark_lost
         ):
             try:
-                result = await ingest_book(self._pool, book_config, self._tenant_id, path)
+                result = await ingest_book(
+                    self._pool,
+                    book_config,
+                    self._tenant_id,
+                    path,
+                    project_id=row_project_id(row),
+                )
             except Exception as exc:
                 return await self._record_failure(
                     row, queue_id, str(exc), time.monotonic() - started
