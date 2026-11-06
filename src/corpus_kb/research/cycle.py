@@ -59,6 +59,7 @@ from corpus_kb.research.cycle_stages import (
 )
 from corpus_kb.research.cycle_state import _last_cycle_run, resume_point
 from corpus_kb.research.monitoring import Alarm, alarms_from_findings
+from corpus_kb.storage.gateway import SqlGateway
 
 STAGES: tuple[str, ...] = ("ingest", "inductive", "deductive", "keywords", "report", "notebook")
 MODES: frozenset[str] = frozenset({"in", "on", "out"})
@@ -89,7 +90,7 @@ def _configured_halt_on(cfg: dict[str, Any]) -> list[str]:
 
 
 async def _propose_alarms(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     handler: Any,
     tenant_id: UUID,
     version_id: UUID | None,
@@ -165,7 +166,7 @@ async def _propose_alarms(
     return receipt
 
 
-async def _embedder_abstains(pool: asyncpg.Pool, config: dict[str, Any]) -> bool:
+async def _embedder_abstains(pool: asyncpg.Pool | SqlGateway, config: dict[str, Any]) -> bool:
     """The demo's fail-fast gate: refuse to limp through an abstaining embedder."""
     from typing import cast
 
@@ -174,7 +175,12 @@ async def _embedder_abstains(pool: asyncpg.Pool, config: dict[str, Any]) -> bool
     pgml_installed: bool | None = None
     embedding_cfg = cast(dict[str, Any], config.get("embedding") or {})
     if str(embedding_cfg.get("provider", "")) == "pgml":
-        async with pool.acquire() as conn:
+        from corpus_kb.storage.connect import pg_pool_of
+
+        pg_pool = pg_pool_of(pool)
+        if pg_pool is None:
+            return True
+        async with pg_pool.acquire() as conn:
             present = await conn.fetchval(
                 "SELECT count(*) FROM pg_extension WHERE extname = 'pgml'"
             )
@@ -183,7 +189,7 @@ async def _embedder_abstains(pool: asyncpg.Pool, config: dict[str, Any]) -> bool
 
 
 async def _start_run(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     cfg: dict[str, Any],
     mode: str,
@@ -272,7 +278,7 @@ async def _abort_unavailable_stage(
 
 
 async def _post_stage_mode_stop(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     handler: Any,
     stack: tuple[Any, ...],
     recorder: CycleRecorder,
@@ -350,7 +356,7 @@ class _CycleSession:
 
 
 async def run_cycle(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     tenant_id: UUID,
     *,
     mode: str = "out",
@@ -386,7 +392,7 @@ async def run_cycle(
 
 
 async def _run_cycle(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     options: CycleOptions,
 ) -> int:
@@ -441,7 +447,7 @@ async def _run_cycle(
 
 async def _advance_stage(
     stage: str,
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     session: _CycleSession,
     tenant_id: UUID,
     options: CycleOptions,
@@ -495,7 +501,7 @@ async def _advance_stage(
 
 async def _run_stage(
     stage: str,
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     stack: tuple[Any, ...],
     tenant_id: UUID,
     cfg: dict[str, Any],
@@ -528,7 +534,7 @@ async def _run_stage(
 
 async def _run_stage_or_consensus(
     stage: str,
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     stack: tuple[Any, ...],
     tenant_id: UUID,
     cfg: dict[str, Any],

@@ -73,24 +73,11 @@ __all__ = [
 
 async def storage_ready(pg_pool: asyncpg.Pool) -> bool:
     """True when the topics tables (026) AND the date column (027) exist."""
-    async with pg_pool.acquire() as conn:
-        tables = await conn.fetchval(
-            "SELECT to_regclass('public.topics') IS NOT NULL"
-            " AND to_regclass('public.chunk_topics') IS NOT NULL"
-        )
-        if not tables:
-            return False
-        column = await conn.fetchval(
-            """
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = 'documents'
-                  AND column_name = 'document_date'
-            )
-            """
-        )
-    return bool(column)
+    from corpus_kb.storage.schema_probe import column_exists, tables_exist
+
+    if not await tables_exist(pg_pool, "topics", "chunk_topics"):
+        return False
+    return await column_exists(pg_pool, "documents", "document_date")
 
 
 def effective_date(chunk: StoredChunk) -> datetime | None:

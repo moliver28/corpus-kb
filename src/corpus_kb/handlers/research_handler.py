@@ -41,6 +41,7 @@ from corpus_kb.research.dynamic_ingest import (
 from corpus_kb.research.linking import link_exchanges
 from corpus_kb.research.roles import map_roles, speaker_role_basis
 from corpus_kb.research.transcript_parser import parse_transcript
+from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.tools.ingest_common import file_ingest_concurrency
 from corpus_kb.tools.ingest_store import PostgresIngestStore
 from corpus_kb.tools.pipeline.research_units import research_document
@@ -67,7 +68,7 @@ class ResearchHandler:
 
     def __init__(
         self,
-        pool: asyncpg.Pool,
+        pool: asyncpg.Pool | SqlGateway,
         embed_fn: Callable[[str], list[float]] | None = None,
         dsn: str | None = None,
     ) -> None:
@@ -389,7 +390,7 @@ _handler = SingletonSlot[ResearchHandler]("ResearchHandler requires an asyncpg p
 
 
 def get_research_handler(
-    pool: asyncpg.Pool | None = None,
+    pool: asyncpg.Pool | SqlGateway | None = None,
     embed_fn: Callable[[str], list[float]] | None = None,
 ) -> ResearchHandler:
     if pool is None:

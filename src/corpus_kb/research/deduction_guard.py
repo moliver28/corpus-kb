@@ -51,6 +51,7 @@ from corpus_kb.research.release_read import (  # noqa: F401  (re-export)
     active_release_from_row,
     resolve_active_release,
 )
+from corpus_kb.storage.gateway import SqlGateway
 
 UNRELEASED_DRAFT_LABEL = "unreleased_draft"
 RELEASED_LABEL = "released"
@@ -160,7 +161,7 @@ def decide_guard(
 
 
 async def guard_deductive_run(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     codebook_version_id: UUID,
     config: dict[str, Any],

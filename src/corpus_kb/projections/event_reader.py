@@ -40,6 +40,7 @@ import asyncpg
 from eventsourcing.persistence import StoredEvent
 
 from corpus_kb.errors import InternalError
+from corpus_kb.storage.gateway import SqlGateway
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,7 @@ class EventReader:
 
     def __init__(
         self,
-        pool: asyncpg.Pool | None,
+        pool: asyncpg.Pool | SqlGateway | None,
         mapper: Any,
         events_table: str,
         *,

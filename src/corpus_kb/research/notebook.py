@@ -80,7 +80,7 @@ def validate_notebook_filters(min_confidence: str | None, review_status: str | N
 
 
 async def resolve_code(
-    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, code: str
+    pool: asyncpg.Pool | SqlGateway | SqlGateway, tenant_id: UUID, code: str
 ) -> dict[str, object] | None:
     """Resolve a code NAME or UUID against the newest codebook version."""
     try:
@@ -114,7 +114,7 @@ async def resolve_code(
 
 
 async def notebook_ask(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway | SqlGateway,
     embedder: ResearchEmbedder,
     llm: object,
     q: NotebookQuery,
@@ -173,7 +173,7 @@ async def notebook_ask(
 
 
 async def enrich_citations(
-    pool: asyncpg.Pool, tenant_id: UUID, citations: list[Citation]
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID, citations: list[Citation]
 ) -> list[dict[str, object]]:
     """Attach speaker pseudonyms + turn/timestamp locators to each citation."""
     doc_ids = sorted({str(c.doc_id) for c in citations})

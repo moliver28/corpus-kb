@@ -31,6 +31,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Coroutine, Mappi
 from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
+from corpus_kb.storage.duckdb_params import bind_params, map_pg_casts
 from corpus_kb.storage.duckdb_support import (
     _BACKOFF_SECONDS,
     _MAX_PLACEHOLDERS,
@@ -90,12 +91,26 @@ class DuckDbGateway:
     async def close(self) -> None:
         await self._run_sync(lambda conn: conn.close())
 
+    def duplicate_connection(self) -> duckdb.DuckDBPyConnection:
+        """A cursor on the SAME database instance (no second file lock).
+
+        The graph store rides its own connection so its locks never
+        interleave with gateway statements; ``cursor()`` attaches to the
+        already-open database, so the one-writer posture stands (a second
+        ``duckdb.connect`` on the file would fail the file lock).
+        """
+        return self._conn.cursor()
+
     async def fetch(self, sql: str, *args: Any) -> list[Row]:
         # The one guard choke point: fetch serves fetch/fetchrow/fetchval,
         # execute serves DML+DDL. Qualified SQL dies here, before any lock.
+        # map_pg_casts + bind_params let Postgres-flavored statements and
+        # uuid binds run unchanged (issue #330: the one translation site).
         _reject_corpus_qualified(sql)
+        sql = map_pg_casts(sql)
+        params = bind_params(args)
         async with self._statement_gate():
-            rows = await self._run_sync(lambda conn: self._rows(conn, sql, args))
+            rows = await self._run_sync(lambda conn: self._rows(conn, sql, params))
         return cast("list[Row]", rows)
 
     async def fetchrow(self, sql: str, *args: Any) -> Row | None:
@@ -109,20 +124,24 @@ class DuckDbGateway:
     async def execute(self, sql: str, *args: Any) -> str:
         _check_append_only(sql)
         _reject_corpus_qualified(sql)
+        sql = map_pg_casts(sql)
+        params = bind_params(args)
         async with self._statement_gate():
-            return await self._run_sync(lambda conn: self._tag(conn, sql, args))
+            return await self._run_sync(lambda conn: self._tag(conn, sql, params))
 
     def executemany(self, query: str, args: Sequence[Sequence[Any]]) -> Coroutine[Any, Any, None]:
         """Bulk write with execute's guards: one statement, many tuples."""
         _check_append_only(query)
         _reject_corpus_qualified(query)
+        query = map_pg_casts(query)
+        rows = [bind_params(row) for row in args]
 
         async def run() -> None:
             async with self._statement_gate():
                 await self._run_sync(
                     lambda conn: conn.executemany(
                         query,
-                        [tuple(row) for row in args],
+                        [tuple(row) for row in rows],
                     )
                 )
 
@@ -149,6 +168,7 @@ class DuckDbGateway:
                 chunk = rows[start : start + per_chunk]
                 sql = head + ", ".join([row_sql] * len(chunk))
                 params = [row[column] for row in chunk for column in columns]
+                params = bind_params(params)
                 await self._run_sync(lambda conn, s=sql, p=params: conn.execute(s, p))
 
     def transaction(self, tenant_id: str) -> AbstractAsyncContextManager[DuckDbGateway]:
@@ -216,7 +236,7 @@ class DuckDbGateway:
 
         return await asyncio.to_thread(_locked)
 
-    def _rows(self, conn: duckdb.DuckDBPyConnection, sql: str, args: tuple[Any, ...]) -> list[_Row]:
+    def _rows(self, conn: duckdb.DuckDBPyConnection, sql: str, args: Sequence[Any]) -> list[_Row]:
         conn.execute(sql, list(args) or None)
         description = conn.description
         fetched = conn.fetchall()
@@ -225,6 +245,6 @@ class DuckDbGateway:
         names = [column[0] for column in description]
         return [_Row(zip(names, row, strict=True)) for row in fetched]
 
-    def _tag(self, conn: duckdb.DuckDBPyConnection, sql: str, args: tuple[Any, ...]) -> str:
+    def _tag(self, conn: duckdb.DuckDBPyConnection, sql: str, args: Sequence[Any]) -> str:
         conn.execute(sql, list(args) or None)
         return _status_tag(sql, conn)

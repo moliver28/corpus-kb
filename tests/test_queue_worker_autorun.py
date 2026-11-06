@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from corpus_kb.contracts.model import DEFAULT_TENANT_ID as DEFAULT_TENANT
 from corpus_kb.queue.autorun import QueueAutorun, _drain_forever, start_queue_autorun
 from corpus_kb.queue.report import DrainReport
 from corpus_kb.queue.worker_support import StopFlag
@@ -67,12 +68,21 @@ async def test_autorun_on_starts_one_task_and_stops_it(
     assert pool.rows[0]["status"] == "done"
 
 
-def test_autorun_duckdb_refusal_stays_none() -> None:
+def test_autorun_accepts_the_duckdb_worker() -> None:
+    """Issue #330 inversion: the worker drains DuckDB too.
+
+    The old typed refusal is gone; the duckdb backend builds a worker
+    (its claim twin needs no SKIP LOCKED clause). The task itself needs a
+    running loop, so this pin covers only the constructor path.
+    """
+    from corpus_kb.queue.worker import QueueWorker
+
     cfg: dict[str, Any] = {
         "database": {"backend": "duckdb"},
         "queue": {"autorun": True, "poll_seconds": 0.01},
     }
-    assert start_queue_autorun(FakeQueuePool(), cfg) is None
+    worker = QueueWorker(pool=FakeQueuePool(), tenant_id=DEFAULT_TENANT, config=cfg)
+    assert worker.poll_seconds == 0.01
 
 
 @pytest.mark.asyncio
@@ -128,5 +138,7 @@ def test_run_all_starts_and_stops_the_autorun() -> None:
     # Source-inspection pin (the uvicorn seam is too heavy for the unit
     # tier): run_all starts the drain after the browser task and stops it
     # first in the shutdown path, before projections and the pool close.
-    assert 'start_queue_autorun(services["pool"], config)' in SERVER_WIRING
+    assert 'start_queue_autorun(services["pool"] or services.get("gateway"), config)' in (
+        SERVER_WIRING
+    )
     assert "await queue_autorun.stop()" in SERVER_WIRING

@@ -8,7 +8,7 @@ Moved byte-identical from cli.py (the 250-line limit):
 
 The Typer sub-apps are created here and attached by cli.py; the command
 registration order inside each sub-app is unchanged (run, inductive /
-promote). Shared plumbing (``_run_async``, ``wired_pool``, the tenant id)
+promote). Shared plumbing (``_run_async``, ``wired_store``, the tenant id)
 comes from cli_support; the heavy research imports stay inside the
 functions.
 """
@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import typer
 
-from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async, wired_pool
+from corpus_kb.cli.cli_store import wired_store
+from corpus_kb.cli.cli_support import DEFAULT_TENANT, _run_async
 
 coding_app = typer.Typer(help="Coding subsystem: deductive coding runs")
 codebook_app = typer.Typer(help="Codebook governance: human-gated promotion")
@@ -50,11 +51,11 @@ def _coding_run_coroutine(codebook_version_id: str, project_id: str | None, alph
     async def _run() -> int:
         import json
 
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             # The shared tool advances ALL projections (research + documents
             # + embeds) — the same post-condition every other surface gets.
             summary = await coding_run_tool(
-                wired.pool,
+                wired.store,
                 codebook_version_id,
                 project_id=project_id,
                 tenant_id=DEFAULT_TENANT,
@@ -80,9 +81,9 @@ def _inductive_coroutine(project_id: str | None):
     async def _run() -> int:
         import json
 
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             summary = await inductive_run_tool(
-                wired.pool,
+                wired.store,
                 project_id=project_id,
                 tenant_id=DEFAULT_TENANT,
             )
@@ -126,11 +127,11 @@ def _promote_coroutine(
     async def _run() -> int:
         import json
 
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             # tau_dup None means "calibrated/config default" — the shared
             # tool resolves it exactly as the MCP/HTTP surfaces do.
             result = await promote_tool(
-                wired.pool,
+                wired.store,
                 proposed_id,
                 name,
                 definition,

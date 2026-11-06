@@ -6,10 +6,12 @@ reclaim, heartbeat, release, finish, fail). All SQL is parameterized,
 tenant-scoped by the session GUC the store sets, and deterministically
 ordered (``ORDER BY queued_at, id``) so harnesses can snapshot reads.
 
-The claim uses ``FOR UPDATE SKIP LOCKED``: many workers can drain one
-Postgres queue; each claim takes exactly one row. DuckDB has no such
-clause and allows one writer, so the worker refuses the duckdb backend
-instead of racing (see ``queue.worker``).
+The claim uses ``FOR UPDATE SKIP LOCKED`` on Postgres: many workers can
+drain one queue; each claim takes exactly one row. DuckDB has no such
+clause and allows one writer (the server holds the file lock), so its
+claim twin drops the clause — one worker at a time still claims exactly
+one row (issue #330). The stale-lease twin swaps ``make_interval`` (a
+function DuckDB does not have) for ``to_seconds``.
 """
 
 from __future__ import annotations
@@ -87,6 +89,15 @@ WHERE q.id = (
 RETURNING {_ROW_COLUMNS}
 """
 
+#: The DuckDB claim twin: the same statement WITHOUT ``FOR UPDATE SKIP
+#: LOCKED`` (the engine parses no such clause). DuckDB allows one writer,
+#: so claims cannot race across processes; the subquery's ORDER BY keeps
+#: the oldest-pending-first pick, and ``$3::timestamptz`` stays (DuckDB
+#: casts TIMESTAMPTZ natively).
+CLAIM_SQL_DUCKDB = chr(10).join(
+    line for line in CLAIM_SQL.splitlines() if "FOR UPDATE SKIP LOCKED" not in line
+)
+
 #: A running row whose heartbeat went quiet goes back to pending, and the
 #: reclaim costs one attempt: a dead worker is a spent try, so the
 #: max_attempts cap fires even when every run dies with its process. A row
@@ -105,6 +116,13 @@ WHERE tenant_id = $1 AND status = 'running'
   AND heartbeat_at < now() - make_interval(secs => $2)
 RETURNING {_ROW_COLUMNS}
 """
+
+#: The DuckDB stale-lease twin: ``to_seconds(CAST($2 AS DOUBLE))`` instead
+#: of ``make_interval`` (a function DuckDB does not have). Same semantics:
+#: one counted attempt, the retries spent at the cap.
+RECLAIM_STALE_SQL_DUCKDB = RECLAIM_STALE_SQL.replace(
+    "make_interval(secs => $2)", "to_seconds(CAST($2 AS DOUBLE))"
+)
 
 #: One live heartbeat per book. No row back means the claim was lost (a
 #: cancel or a reclaim): the row is no longer ours, the worker drops the

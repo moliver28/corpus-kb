@@ -37,12 +37,13 @@ __all__ = [
 
 async def _resolve_graph_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> GraphHandler:
     """Return the wired graph handler, or build one over this pool."""
+    from corpus_kb.errors import InternalError
     from corpus_kb.handlers.graph_handler import get_graph_handler
 
     try:
         return get_graph_handler()
-    except RuntimeError:
-        pass
+    except (RuntimeError, InternalError):
+        pass  # no server wired the singleton; build over the given store
 
     from corpus_kb.handlers.graph_handler import GraphHandler
     from corpus_kb.storage.graph_factory import create_graph_store

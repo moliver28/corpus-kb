@@ -88,16 +88,6 @@ def plan_document_date(chunk_metadatas: Iterable[Mapping[str, object]]) -> datet
     return best
 
 
-_DOCUMENT_DATE_COLUMN_SQL = """
-    SELECT to_regclass('public.documents') IS NOT NULL
-       AND EXISTS (
-           SELECT 1 FROM information_schema.columns
-           WHERE table_schema = 'public'
-             AND table_name = 'documents'
-             AND column_name = 'document_date'
-       )
-"""
-
 # The malformed-value guard runs per value under an exception handler, so
 # one bad string degrades to NULL for that candidate and the UPDATE never
 # aborts (the migration 027 comment's contract). The helper is a session-
@@ -162,8 +152,11 @@ class BackfillResult:
 
 async def document_dates_present(pg_pool: asyncpg.Pool) -> bool:
     """True when migration 027 has run (the ``document_date`` column exists)."""
-    async with pg_pool.acquire() as conn:
-        return bool(await conn.fetchval(_DOCUMENT_DATE_COLUMN_SQL))
+    from corpus_kb.storage.schema_probe import column_exists, tables_exist
+
+    if not await tables_exist(pg_pool, "documents"):
+        return False
+    return await column_exists(pg_pool, "documents", "document_date")
 
 
 async def run_document_date_backfill(pg_pool: asyncpg.Pool, tenant_id: str) -> BackfillResult:

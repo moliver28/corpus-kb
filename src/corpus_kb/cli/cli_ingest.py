@@ -97,12 +97,6 @@ def _load_config() -> dict[str, object]:
     return load_config()
 
 
-def _conn_str(cfg: dict[str, object]) -> str:
-    db = cfg.get("database")
-    db_map = db if isinstance(db, dict) else {}
-    return str(db_map.get("connection_string", ""))
-
-
 def _strategy_names() -> list[str]:
     from corpus_kb.ingestion.registry import strategy_names
 
@@ -142,9 +136,14 @@ def _ingest_exit_code(results: list[dict[str, object]]) -> int:
 
 
 async def _open_pool(cfg: dict[str, object]) -> asyncpg.Pool:
-    import asyncpg
+    """The configured store, typed for the pipeline signatures.
 
-    return await asyncpg.create_pool(_conn_str(cfg))
+    One opener for both engines (issue #330): a duckdb backend yields the
+    gateway through the same call the server wiring uses.
+    """
+    from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
+
+    return await open_pool_typed_store(config_conn_str(cfg))
 
 
 # ---------------------------------------------------------------------------

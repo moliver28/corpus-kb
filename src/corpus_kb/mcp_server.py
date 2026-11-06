@@ -25,7 +25,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
-from typing import cast
 
 import asyncpg
 from mcp.server.mcpserver import MCPServer
@@ -66,22 +65,22 @@ def build_mcp_server(pg_pool: asyncpg.Pool, config: dict[str, object] | None = N
 
 
 async def _serve_stdio() -> None:
-    """One event loop for the pool and the protocol: config, pool, serve."""
+    """One event loop for the store and the protocol: config, open, serve."""
     from corpus_kb.config import load_config
+    from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
 
     cfg = load_config()
-    db = cast(dict[str, object], cfg.get("database") or {})
-    conn_str = str(db.get("connection_string", ""))
+    conn_str = config_conn_str(cfg)
     if not conn_str:
         raise ConfigError(
             "No database connection string. Set CORPUS_KB_DATABASE_URL or "
             "configure database.connection_string in config.yaml."
         )
     try:
-        pool = await asyncpg.create_pool(conn_str)
+        pool = await open_pool_typed_store(conn_str)
     except Exception as exc:
         raise DatabaseUnavailableError(
-            f"Failed to connect to Postgres at {conn_str}: {exc}",
+            f"Failed to connect to the database at {conn_str}: {exc}",
             remediation="Run corpus-kb setup. Check the DSN and credentials.",
         ) from exc
     try:
@@ -90,7 +89,7 @@ async def _serve_stdio() -> None:
         await server.run_stdio_async()
     finally:
         await pool.close()
-        logger.info("MCP stdio server stopped; pool closed")
+        logger.info("MCP stdio server stopped; store closed")
 
 
 def run_stdio_server() -> int:

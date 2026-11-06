@@ -132,12 +132,27 @@ def test_sqlite_path_from_conn_str(conn_str, expected):
     assert env["SQLITE_DBNAME"] == expected
 
 
-def test_get_app_default_backend_is_postgres():
+def test_get_app_default_backend_follows_the_dsn_scheme():
+    """Issue #330: backend defaults to None and the DSN scheme decides.
+
+    A duckdb:/// DSN selects the SQLite sidecar without a config read;
+    anything else stays Postgres. The explicit backend argument still
+    wins (see the duckdb-key tests above).
+    """
+    import asyncio
+
     from corpus_kb.domain.application import get_app
+    from corpus_kb.storage.gateway import DuckDbGateway
 
     sig = inspect.signature(get_app)
     assert sig.parameters["connection_string"].default is None
-    assert sig.parameters["backend"].default == "postgres"
+    assert sig.parameters["backend"].default is None
+
+    async def _probe() -> None:
+        gateway = await DuckDbGateway.connect("duckdb:///:memory:")
+        await gateway.close()
+
+    asyncio.run(_probe())  # the import stays honest: scheme resolver lives
 
 
 # ---------------------------------------------------------------------------

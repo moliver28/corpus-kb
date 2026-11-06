@@ -13,7 +13,14 @@ from typing import cast
 
 import typer
 
-from corpus_kb.cli.cli_support import _pid, _run_async, _tenant, cast_dict, cast_list, wired_pool
+from corpus_kb.cli.cli_store import wired_store
+from corpus_kb.cli.cli_support import (
+    _pid,
+    _run_async,
+    _tenant,
+    cast_dict,
+    cast_list,
+)
 
 
 def research_report(
@@ -42,9 +49,9 @@ def _report_coroutine(
     from corpus_kb.research.report_runner import build_report
 
     async def _run() -> int:
-        async with wired_pool() as wired:
+        async with wired_store() as wired:
             report = await build_report(
-                wired.pool,
+                wired.store,
                 _tenant(),
                 _pid(codebook_version_id),
                 level=level,

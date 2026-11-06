@@ -32,6 +32,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+from collections.abc import Awaitable
 from typing import Any, Protocol
 
 from corpus_kb.dimensions import NOMIC_EMBEDDING_DIMENSIONS
@@ -48,14 +49,14 @@ _ZERO_SENTINEL = -2.0
 class EmbedsText(Protocol):
     """Minimal embedder surface (sync or async ``embed``)."""
 
-    def embed(self, text: str) -> list[float]: ...
+    def embed(self, text: str) -> list[float] | Awaitable[list[float]]: ...
 
 
 async def _embed_text(embedder: EmbedsText, text: str) -> list[float]:
-    if inspect.iscoroutinefunction(embedder.embed):
-        embedded = await embedder.embed(text)
-        return list(embedded)
-    return list(embedder.embed(text))
+    embedded = embedder.embed(text)
+    if inspect.isawaitable(embedded):
+        embedded = await embedded
+    return list(embedded)
 
 
 def _vector_sql(table: str, dimensions: int, where: str, limit_param: int) -> str:

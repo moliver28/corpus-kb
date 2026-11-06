@@ -177,15 +177,17 @@ async def default_health_probe(config: dict[str, object], pool: asyncpg.Pool | N
 
 
 async def ledger_available(pool: asyncpg.Pool, tenant_id: str) -> bool:
-    """True when the ``ingest_runs`` ledger exists (to_regclass guard).
+    """True when the ``ingest_runs`` ledger exists (engine probe).
 
-    Runs the probe inside a tenant-GUC transaction: ``FORCE RLS`` makes
+    Postgres keeps the tenant-GUC transaction: ``FORCE RLS`` makes
     GUC-less reads return zero rows silently, so the GUC is set on the same
     connection before probing (the doctor/db-checks pattern).
     """
-    async with pool.acquire() as conn, conn.transaction():
-        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", tenant_id)
-        return await conn.fetchval("SELECT to_regclass('public.ingest_runs')") is not None
+    from corpus_kb.storage.schema_probe import tables_exist
+    from corpus_kb.storage.tenant_conn import tenant_connection
+
+    async with tenant_connection(pool, tenant_id) as conn:
+        return await tables_exist(conn, "ingest_runs")
 
 
 async def watch_directory(

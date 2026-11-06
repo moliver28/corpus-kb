@@ -63,8 +63,13 @@ class SqlConn(Protocol):
         ...
 
 
-def dialect_of(store: Store) -> Dialect:
-    """The SQL dialect of the injected store (gateway = DuckDB, pool = PG)."""
+def dialect_of(store: Store | SqlConn) -> Dialect:
+    """The SQL dialect of the injected store or session.
+
+    The gateway answers DuckDB; a pool, a gateway, or a held session
+    (``SqlConn`` — the tenant_scope yield) resolves through the same
+    dispatch, so helpers can ask inside a scope too (issue #330).
+    """
     return DUCKDB if isinstance(store, DuckDbGateway) else POSTGRES
 
 

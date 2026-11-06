@@ -54,7 +54,7 @@ class CommandHandler:
     def __init__(
         self,
         config: dict[str, Any] | None = None,
-        pool: asyncpg.Pool | None = None,
+        pool: asyncpg.Pool | SqlGateway | None = None,
         gateway: SqlGateway | None = None,
     ) -> None:
         self._config = load_config_or_pass(config)
@@ -74,7 +74,8 @@ class CommandHandler:
             self._app = get_app_for_config(self._config)
         return self._app
 
-    def _require_pool(self) -> asyncpg.Pool:
+    def _require_pool(self) -> asyncpg.Pool | SqlGateway:
+        """The wired store: the pool on Postgres, the gateway on DuckDB."""
         if self._pool is None:
             raise InternalError("CommandHandler requires an asyncpg.Pool for ingest.")
         return self._pool
@@ -240,13 +241,14 @@ _command_handler = SingletonSlot[CommandHandler]("CommandHandler not initialized
 
 def get_command_handler(
     config: dict[str, Any] | None = None,
-    pool: asyncpg.Pool | None = None,
+    pool: asyncpg.Pool | SqlGateway | None = None,
     gateway: SqlGateway | None = None,
 ) -> CommandHandler:
     """Get or create the singleton CommandHandler.
 
     Passing ``pool`` on an existing singleton updates its pool, so a
-    lazily wired surface always sees the live pool server_wiring created.
+    lazily wired surface always sees the live store server_wiring created
+    (the pool on Postgres, the gateway on DuckDB).
     """
     handler = _command_handler.get_or_create(lambda: CommandHandler(config, pool, gateway))
     if pool is not None:

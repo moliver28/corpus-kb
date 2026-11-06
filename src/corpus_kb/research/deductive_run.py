@@ -43,7 +43,7 @@ from corpus_kb.research.exhaustiveness import exhaustiveness_block
 from corpus_kb.research.prototypes import build_view_prototypes
 from corpus_kb.research.run_inputs import UnitViews, load_codes, load_gold_views, load_unit_views
 from corpus_kb.research.scoring import SCORING_BATCH_ROWS, stream_scores
-from corpus_kb.storage.gateway import SqlConn
+from corpus_kb.storage.gateway import SqlConn, SqlGateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 
 
@@ -217,7 +217,7 @@ def _record_assignments(
 
 
 async def run_deductive(
-    pool: asyncpg.Pool,
+    pool: asyncpg.Pool | SqlGateway,
     tenant_id: UUID,
     codebook_version_id: UUID,
     project_id: UUID | None = None,

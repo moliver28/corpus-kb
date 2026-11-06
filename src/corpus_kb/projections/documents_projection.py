@@ -43,7 +43,7 @@ class DocumentsProjection:
 
     def __init__(
         self,
-        pool: asyncpg.Pool | None,
+        pool: asyncpg.Pool | SqlGateway | None,
         checkpoint: CheckpointManager,
         dlq: DLQHandler,
         gateway: SqlGateway | None = None,

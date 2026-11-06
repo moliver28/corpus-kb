@@ -12,7 +12,8 @@ from uuid import UUID
 
 import typer
 
-from corpus_kb.cli.cli_support import _pid, _run_async, _tenant, wired_pool
+from corpus_kb.cli.cli_store import wired_store
+from corpus_kb.cli.cli_support import _pid, _run_async, _tenant
 
 if TYPE_CHECKING:
     from corpus_kb.projections.research._embed import ResearchEmbedder
@@ -79,10 +80,10 @@ def _ask_coroutine(
         from corpus_kb.handlers.llm_handler import LlmHandler
         from corpus_kb.research.notebook import NotebookQuery, notebook_ask
 
-        async with wired_pool(embedder=True) as wired:
+        async with wired_store(embedder=True) as wired:
             llm = None if retrieval_only else LlmHandler(wired.cfg)
             result = await notebook_ask(
-                wired.pool,
+                wired.store,
                 cast("ResearchEmbedder", wired.embedder),
                 llm,
                 NotebookQuery(

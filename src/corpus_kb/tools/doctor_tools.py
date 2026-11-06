@@ -17,8 +17,15 @@ import os
 from dataclasses import asdict
 from typing import Any, cast
 
+from corpus_kb._setup.doctor_duckdb import DUCKDB_SETUP_FIX
 from corpus_kb._setup.doctor_env import env_var_check
-from corpus_kb._setup.doctor_research import ResearchCheck, embedder_check, research_checks
+from corpus_kb._setup.doctor_research import (
+    DOC_GETTING_STARTED,
+    STATUS_INFO,
+    ResearchCheck,
+    embedder_check,
+    research_checks,
+)
 from corpus_kb._setup.doctor_storage import storage_checks
 from corpus_kb.rag.rerank_settings import load_rerank_settings
 from corpus_kb.tools.ingest_common import load_config_or_pass
@@ -61,17 +68,38 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
     recommended_model = str(profile.get("model", "nomic-embed-text"))
 
     conn_str = _connection_string(cfg)
-    postgres_ok, postgres_msg = (
-        await check_postgres(conn_str) if conn_str else (False, "no connection string")
-    )
-    extensions = await check_extensions(conn_str) if postgres_ok else None
+    on_duckdb = str((cfg.get("database") or {}).get("backend") or "postgres") == "duckdb"
+    if on_duckdb:
+        # Issue #330 doctor contract: on the DuckDB backend Postgres and its
+        # extensions are NOT USED, the hint names the duckdb setup, and the
+        # research section carries one INFO check instead of PG probes.
+        postgres_ok, postgres_msg = False, "not used: the DuckDB backend serves this study"
+        extensions = None
+    else:
+        postgres_ok, postgres_msg = (
+            await check_postgres(conn_str) if conn_str else (False, "no connection string")
+        )
+        extensions = await check_extensions(conn_str) if postgres_ok else None
 
     emb_cfg = cfg.get("embedding") or {}
     ollama_url = str(emb_cfg.get("base_url", DEFAULT_OLLAMA_URL))
     ollama_ok, ollama_msg = await check_ollama(ollama_url)
 
     research: list[ResearchCheck] | None = None
-    if postgres_ok:
+    if on_duckdb:
+        research = [
+            ResearchCheck(
+                name="research checks (DuckDB)",
+                status=STATUS_INFO,
+                detail=(
+                    "The DuckDB backend serves this study. The Postgres research"
+                    " probes do not run; the storage section holds the DuckDB health."
+                ),
+                fix=DUCKDB_SETUP_FIX,
+                doc=DOC_GETTING_STARTED,
+            )
+        ]
+    elif postgres_ok:
         research = await research_checks(conn_str, cfg, extensions, ollama_ok=ollama_ok)
     storage = await storage_checks(cfg, conn_str, postgres_ok)
     env = env_var_check()
