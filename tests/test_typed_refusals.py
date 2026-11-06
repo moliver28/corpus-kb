@@ -55,6 +55,10 @@ async def test_research_pool_opens_the_duckdb_gateway(
         encoding="utf-8",
     )
     monkeypatch.setenv("CORPUS_KB_CONFIG", str(cfg))
+    # The env DSN overrides the file's connection_string (load_config
+    # priority), so pin it to the same duckdb file: a leaked
+    # CORPUS_KB_DATABASE_URL from another fixture would otherwise win.
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", f"{tmp_path.as_posix()}/kb.duckdb")
     # Clear the module global BEFORE and AFTER: a prior test's store must
     # not leak in, and the freshly opened gateway must not leak out (a
     # later research_pool() call would hand back this closed gateway).

@@ -32,7 +32,15 @@ async def test_duckdb_backend_opens_the_gateway(tmp_path: Path) -> None:
         "database": {
             "backend": "duckdb",
             "connection_string": f"duckdb:///{(tmp_path / 'sweep.duckdb').as_posix()}",
-        }
+        },
+        # CI pulls nomic-embed-text only; the packaged default (qwen3) 404s
+        # there and the open() probe would raise instead of degrade. The
+        # dimensions travel with the model (768) so the probe validates.
+        "embedding": {
+            "provider": "ollama",
+            "model": "nomic-embed-text",
+            "dimensions": 768,
+        },
     }
     engine = ScratchTenantEngine(cfg, tenant_for("starter", "a" * 64), min_overlap=0.5)
     await engine.open()

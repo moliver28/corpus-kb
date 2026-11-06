@@ -108,6 +108,10 @@ async def parity_store(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
         encoding="utf-8",
     )
     monkeypatch.setenv("CORPUS_KB_CONFIG", str(cfg_path))
+    # Pin the env DSN too: it overrides the file's connection_string, and
+    # a leaked CORPUS_KB_DATABASE_URL from another fixture would point the
+    # boot at the wrong database.
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", dsn)
 
     cfg = cast("dict[str, Any]", yaml.safe_load(cfg_path.read_text(encoding="utf-8")))
     services = await startup_duckdb(cfg, dsn)
