@@ -653,6 +653,8 @@
   "graphTargetRequired": "Pick the target entity.",
   "graphRelationTypeRequired": "Give the relation a type.",
   "graphPickerEmpty": "No entities yet. Create one first.",
-  "graphPickerCapped": "Showing the first 50 entities.",
+  "graphPickerCapped": "Showing the first 50 entities. Type in the box to search all of them.",
+  "graphPickerSearchCapped": "Showing the first 50 matches. Type more of the name to narrow the list.",
+  "graphPickerNoMatch": "Nothing matches that text.",
   "graphDrawerEmptyMeta": "This entity carries no metadata."
 }

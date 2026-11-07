@@ -144,16 +144,16 @@ describe("Graph stage", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: strings.graphCreateTitle }));
     await waitFor(() => expect(screen.getByText(strings.graphCreateSaved)).toBeTruthy());
-    // Picker reads ride limit=50 (the window read is limit=51); the
-    // create must be followed by one fresh read per picker.
-    const pickerReadsAfter = (log: { method: string; url: string }[]): number => {
+    // The create must be followed by one fresh window read plus one
+    // fresh read per picker (3 GET /api/entities calls; the picker and
+    // the window both fetch one row past their cap since P3-6).
+    const readsAfter = (log: { method: string; url: string }[]): number => {
       const postAt = log.findIndex((c) => c.method === "POST");
       expect(postAt).toBeGreaterThan(-1);
-      return log
-        .slice(postAt + 1)
-        .filter((c) => c.method === "GET" && c.url.includes("limit=50")).length;
+      return log.slice(postAt + 1).filter((c) => c.method === "GET" && c.url.includes("/api/entities"))
+        .length;
     };
-    await waitFor(() => expect(pickerReadsAfter(seen)).toBe(2));
+    await waitFor(() => expect(readsAfter(seen)).toBe(3));
     // The created entity is selectable in the source picker dropdown.
     fireEvent.mouseDown(screen.getAllByRole("combobox")[0]!);
     const openOptions = (): Element[] => {
@@ -166,6 +166,50 @@ describe("Graph stage", () => {
       const pick = openOptions().find((el) => el.textContent === "Gamma (concept)");
       if (pick === undefined) {
         throw new Error("created entity not in the open dropdown yet");
+      }
+    });
+  });
+
+  it("searches the server when the picker text narrows the list", async () => {
+    // P2-3 (Wave-4 review): the picker feeds from search-graph on query,
+    // so a corpus past the first window stays linkable. The search
+    // answer replaces the window rows in the open dropdown.
+    stubFetch([
+      entitiesRoute(),
+      { method: "POST", path: "/api/graph/search", reply: respond(200, {
+        status: "success",
+        result: [
+          {
+            entity_id: "00000000-0000-0000-0000-00000000new0",
+            name: "Gamma",
+            entity_type: "concept",
+            metadata: {},
+          },
+        ],
+      }) },
+    ]);
+    render(<Graph />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeTruthy());
+    const combo = screen.getAllByRole("combobox")[0]!;
+    fireEvent.mouseDown(combo);
+    fireEvent.change(combo, { target: { value: "Gam" } });
+    await waitFor(() => {
+      const posted = calls.find((c) => c.method === "POST" && c.url.includes("/api/graph/search"));
+      if (posted === undefined) {
+        throw new Error("the picker search has not fired yet");
+      }
+      expect(posted.body).toContain('"query":"Gam"');
+    });
+    const openOptions = (): Element[] => {
+      const dropdown = document.querySelector(
+        ".ant-select-dropdown:not(.ant-select-dropdown-hidden):not(.ant-slide-up-leave)",
+      );
+      return dropdown ? Array.from(dropdown.querySelectorAll(".ant-select-item-option")) : [];
+    };
+    await waitFor(() => {
+      const pick = openOptions().find((el) => el.textContent === "Gamma (concept)");
+      if (pick === undefined) {
+        throw new Error("search answer not in the open dropdown yet");
       }
     });
   });

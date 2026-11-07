@@ -37,4 +37,6 @@ export interface GraphStrings {
   graphRelationTypeRequired: string;
   graphPickerEmpty: string;
   graphPickerCapped: string;
+  graphPickerSearchCapped: string;
+  graphPickerNoMatch: string;
 }
