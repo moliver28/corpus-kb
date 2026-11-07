@@ -16,6 +16,9 @@ Short map:
 ``list`` / ``use`` / ``serve`` / ``stop``  Registry and server lifecycle.
 ``ingest`` / ``search`` / ``similar`` / ``ask`` / ``sql`` / ``events``
              One op each, through the op runner.
+``drain``    Send the study folder's pending queue. Every other command
+             auto-drains it first when the folder's ``auto_ingest`` is on
+             (except list, provision, migrate, backup, stop).
 ``doctor`` / ``migrate`` / ``reembed`` / ``backup``  Study maintenance.
 ``ops`` / ``op``  The live inventory, and any op through the runner.
 ``engine install``  Clone the engine at the release tag into <state>.
@@ -33,6 +36,7 @@ import cli_spec  # noqa: E402
 import engine_install  # noqa: E402
 import op_client  # noqa: E402
 import op_runner  # noqa: E402
+import study_queue  # noqa: E402
 import study_registry  # noqa: E402
 import study_server  # noqa: E402
 from study_commands import CommandError  # noqa: E402
@@ -51,6 +55,10 @@ def cmd_engine_install(args) -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = cli_spec.build_parser()
     args = parser.parse_args(argv)
+    if args.command not in study_queue.AUTO_DRAIN_SKIP:
+        # Every command but the skip set drains the folder queue first.
+        # Silent and fail-open: a drain problem never blocks the command.
+        study_queue.auto_drain()
     if args.command == "engine":
         return cmd_engine_install(args)
     try:

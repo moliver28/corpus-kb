@@ -12,6 +12,7 @@ import argparse
 import study_admin
 import study_commands
 import study_maintenance
+import study_queue
 import study_query
 
 
@@ -108,6 +109,16 @@ def build_parser() -> argparse.ArgumentParser:
     ops = subs.add_parser("ops", help="The live op inventory.")
     ops.add_argument("--family", default=None, help="Only this family")
 
+    drain = subs.add_parser(
+        "drain", help="Send the study folder's pending ingest queue."
+    )
+    drain.add_argument("-p", "--study-slug", default=None, help="The study slug")
+    drain.add_argument(
+        "--approve",
+        action="store_true",
+        help="Drain even when auto_ingest is off for this study",
+    )
+
     op = subs.add_parser("op", help="Run any op against the study server.")
     op.add_argument("name", help="The op name from corpus-rag ops")
     op.add_argument("pairs", nargs="*", default=[], help="key=value arguments")
@@ -147,4 +158,5 @@ HANDLERS = {
     "backup": study_maintenance.cmd_backup,
     "ops": study_maintenance.cmd_ops,
     "op": study_maintenance.cmd_op,
+    "drain": study_queue.cmd_drain,
 }
