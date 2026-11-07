@@ -57,6 +57,14 @@ def seed_install(state: Path, version: str) -> Path:
     return target
 
 
+def backup_folders(state: Path) -> list[Path]:
+    """Everything kept under <state>/engine-versions, sorted by name."""
+    versions = state / "engine-versions"
+    if not versions.is_dir():
+        return []
+    return sorted(versions.iterdir())
+
+
 def allow_uv(monkeypatch: pytest.MonkeyPatch, mod: ModuleType) -> None:
     monkeypatch.setattr(mod.shutil, "which", lambda name: "/fake/uv" if name == "uv" else None)
 
@@ -173,6 +181,26 @@ def test_missing_tag_lists_nearest_tags_and_never_clones(
     assert not (state / "engine").exists()
 
 
+def test_missing_tag_with_prior_install_leaves_it_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tag check runs before anything moves, so a working install survives."""
+    state = set_state(monkeypatch, tmp_path)
+    seed_install(state, "0.7.0")
+    mod = load()
+    allow_uv(monkeypatch, mod)
+    runner = fake_run(mod, monkeypatch, make_plan(["corpus-rag-v0.6.0"]))
+
+    with pytest.raises(mod.EngineInstallError):
+        mod.run_install(version="0.7.1")
+
+    target = state / "engine"
+    assert mod.installed_version(target) == "0.7.0"
+    assert (target / "placeholder.txt").exists()
+    assert backup_folders(state) == []
+    assert all(c[:2] != ["git", "clone"] for c in runner.calls)
+
+
 def test_no_release_tags_at_all_is_a_clear_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -207,7 +235,7 @@ def test_already_installed_is_a_no_op_without_force(
     assert (state / "engine" / "placeholder.txt").exists()
 
 
-def test_force_reinstalls_and_keeps_old_version_folder(
+def test_force_reinstalls_and_keeps_rollback_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = set_state(monkeypatch, tmp_path)
@@ -220,9 +248,9 @@ def test_force_reinstalls_and_keeps_old_version_folder(
     message = mod.run_install(force=True)
 
     assert message.startswith("ok:")
-    backup = state / "engine-versions" / version
-    assert backup.is_dir()
-    assert (backup / "placeholder.txt").exists()
+    backups = [p for p in backup_folders(state) if p.name.startswith(f"{version}-")]
+    assert len(backups) == 1
+    assert (backups[0] / "placeholder.txt").exists()
     assert any(c[:2] == ["git", "clone"] for c in runner.calls)
     marker = json.loads(
         (state / "engine" / ".corpus-rag-engine.json").read_text(encoding="utf-8")
@@ -242,9 +270,32 @@ def test_upgrade_keeps_older_version_folder(
     message = mod.run_install()
 
     assert message.startswith("ok:")
-    old = state / "engine-versions" / "0.0.1"
-    assert old.is_dir()
-    assert (old / "placeholder.txt").exists()
+    backups = [p for p in backup_folders(state) if p.name.startswith("0.0.1-")]
+    assert len(backups) == 1
+    assert (backups[0] / "placeholder.txt").exists()
+
+
+def test_backup_move_oserror_surfaces_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A locked old install (OSError on move) is a typed error, not a crash."""
+    state = set_state(monkeypatch, tmp_path)
+    seed_install(state, "0.7.0")
+    mod = load()
+    allow_uv(monkeypatch, mod)
+    fake_run(mod, monkeypatch, make_plan(["corpus-rag-v0.7.1"]))
+
+    def deny_move(src: object, dst: object) -> None:
+        raise PermissionError(13, "file held open")
+
+    monkeypatch.setattr(mod.shutil, "move", deny_move)
+
+    with pytest.raises(mod.EngineInstallError) as excinfo:
+        mod.run_install(version="0.7.1")
+
+    assert "Could not move the old install" in str(excinfo.value)
+    assert (state / "engine" / "placeholder.txt").exists()
+    assert backup_folders(state) == []
 
 
 def test_install_over_unmarked_folder_keeps_it_as_unknown(
@@ -270,7 +321,7 @@ def test_install_over_unmarked_folder_keeps_it_as_unknown(
 # --- failure surfacing -----------------------------------------------------
 
 
-def test_uv_sync_failure_surfaces_and_keeps_clone(
+def test_uv_sync_failure_removes_the_clone(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     state = set_state(monkeypatch, tmp_path)
@@ -288,9 +339,56 @@ def test_uv_sync_failure_surfaces_and_keeps_clone(
     message = str(excinfo.value)
     assert "uv sync failed" in message
     assert "lockfile out of date" in message
-    target = state / "engine"
-    assert target.is_dir()
-    assert not (target / ".corpus-rag-engine.json").exists()
+    assert "removed" in message
+    assert not (state / "engine").exists()
+
+
+def test_failure_after_backup_points_at_the_backup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When a step fails after the old install moved, the message says where it is."""
+    state = set_state(monkeypatch, tmp_path)
+    seed_install(state, "0.7.0")
+    mod = load()
+    allow_uv(monkeypatch, mod)
+    fake_run(
+        mod,
+        monkeypatch,
+        make_plan(["corpus-rag-v0.7.1"], sync_code=1, sync_err="no space left"),
+    )
+
+    with pytest.raises(mod.EngineInstallError) as excinfo:
+        mod.run_install(version="0.7.1")
+
+    message = str(excinfo.value)
+    assert "The previous install is safe at" in message
+    backups = [p for p in backup_folders(state) if p.name.startswith("0.7.0-")]
+    assert len(backups) == 1
+    assert (backups[0] / "placeholder.txt").exists()
+
+
+def test_failed_sync_retry_does_not_accumulate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Retries after a failed sync re-clone cleanly; no unknown-* copies pile up."""
+    state = set_state(monkeypatch, tmp_path)
+    mod = load()
+    allow_uv(monkeypatch, mod)
+    failing = fake_run(
+        mod, monkeypatch, make_plan(["corpus-rag-v0.7.1"], sync_code=1, sync_err="transient")
+    )
+    with pytest.raises(mod.EngineInstallError):
+        mod.run_install(version="0.7.1")
+    assert not (state / "engine").exists()
+    assert len(failing.calls) > 0
+
+    working = fake_run(mod, monkeypatch, make_plan(["corpus-rag-v0.7.1"]))
+    message = mod.run_install(version="0.7.1")
+
+    assert message.startswith("ok:")
+    assert (state / "engine" / ".corpus-rag-engine.json").exists()
+    assert backup_folders(state) == []
+    assert any(c[:2] == ["git", "clone"] for c in working.calls)
 
 
 def test_missing_uv_fails_before_any_git_call(

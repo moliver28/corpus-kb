@@ -64,10 +64,28 @@ corpus-rag engine install
 This clones this repository at the tag `corpus-rag-v<plugin version>` into
 `<state>/engine/`, then runs `uv sync --frozen --no-dev` there. The state
 folder is `CORPUS_KB_STATE_DIR`, else `~/.corpus-kb`. Add `--force` to
-reinstall. The old install then moves to `<state>/engine-versions/<version>/`
-for rollback. The command never falls back to another branch or tag. When the
-release tag does not exist yet, it prints the nearest tags and stops. Wait for
-the release, or install the engine by hand ([INSTALL.md](INSTALL.md)).
+reinstall. The old install then moves to
+`<state>/engine-versions/<version>-<timestamp>/` for rollback. Nothing is
+deleted. The command checks the tag before it moves anything. It never falls
+back to another branch or tag. When the release tag does not exist yet, it
+prints the nearest tags and stops. Wait for the release, or install the engine
+by hand ([INSTALL.md](INSTALL.md)). A clone whose sync fails is removed, so
+retries do not pile up broken copies. If a later step fails, the message says
+where the old install is.
+
+### Roll back to an older engine
+
+Every install keeps the previous copy in `<state>/engine-versions/`. To roll
+back, swap the folders:
+
+```bash
+cd ~/.corpus-kb    # or the folder in CORPUS_KB_STATE_DIR
+mv engine engine-current
+mv engine-versions/0.7.0-20261106T101530123456 engine
+```
+
+Then run `corpus-rag status` to check it. Delete `engine-current` when the
+older version works for you.
 
 ## Three flows
 

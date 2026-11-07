@@ -8,10 +8,16 @@ already resolves that folder; this module is its producer.
 Rules:
 
 - Never rewrite lockfiles: the sync runs with ``--frozen``.
+- Checks run before anything moves. A missing release tag is a typed
+  error that lists the nearest available tags; it never falls back to
+  another branch or tag.
 - ``--force`` reinstalls. The previous install moves to
-  ``<state>/engine-versions/<version>/`` for rollback. Nothing is deleted.
-- A missing release tag is a typed error that lists the nearest
-  available tags. It never falls back to another branch or tag.
+  ``<state>/engine-versions/<version>-<timestamp>/`` for rollback.
+  Nothing is deleted.
+- A fresh clone whose clone or sync step fails is removed, so failed
+  retries never pile up broken copies.
+- OS-level faults (locked files, full disks) surface as the same typed
+  error, and the message says where each folder ended up.
 
 Stdlib only. State lives under the engine state dir
 (``CORPUS_KB_STATE_DIR``, else ``~/.corpus-kb``).
@@ -73,7 +79,7 @@ def install_target() -> Path:
 
 
 def versions_dir() -> Path:
-    """Rollback folder: one subfolder per kept older version."""
+    """Rollback folder: one timestamped subfolder per kept older install."""
     return state_dir() / VERSIONS_DIRNAME
 
 
@@ -148,22 +154,63 @@ def available_tags(repo_url: str) -> list[str]:
 
 
 def _backup_existing(target: Path, old_version: str | None) -> Path:
-    name = old_version
-    if not name:
-        now = datetime.datetime.now(datetime.UTC)
-        name = f"unknown-{now:%Y%m%dT%H%M%S}"
-    backup = versions_dir() / name
-    backup.parent.mkdir(parents=True, exist_ok=True)
-    if backup.exists():
-        shutil.rmtree(backup)
-    shutil.move(str(target), str(backup))
+    """Move the current install into the rollback folder. Nothing is deleted."""
+    now = datetime.datetime.now(datetime.UTC)
+    base = f"{old_version or 'unknown'}-{now:%Y%m%dT%H%M%S%f}"
+    backup = versions_dir() / base
+    counter = 0
+    while backup.exists():  # same-microsecond collision guard
+        counter += 1
+        backup = versions_dir() / f"{base}-{counter}"
+    try:
+        backup.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(target), str(backup))
+    except OSError as exc:
+        raise EngineInstallError(
+            f"Could not move the old install to {backup}. "
+            "Close programs that use it, then run this command again."
+        ) from exc
     return backup
 
 
 def _write_marker(target: Path, version: str, tag: str) -> None:
     now = datetime.datetime.now(datetime.UTC)
     payload = {"version": version, "tag": tag, "installed_at": now.isoformat(timespec="seconds")}
-    (target / MARKER_NAME).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    try:
+        (target / MARKER_NAME).write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    except OSError as exc:
+        raise EngineInstallError(f"Could not write the install marker in {target}.") from exc
+
+
+def _discard_clone(target: Path) -> bool:
+    """Remove a broken fresh clone. Return True when removal worked."""
+    try:
+        shutil.rmtree(target)
+    except OSError:
+        return False
+    return True
+
+
+def _fail_after_clone(head: str, result: subprocess.CompletedProcess[str], target: Path) -> None:
+    """Surface a clone/sync failure after removing the useless fresh clone."""
+    message = _tail(head, result)
+    if _discard_clone(target):
+        message += (
+            f"\nThe failed clone was removed from {target}.\n"
+            "Fix the problem, then run this command again."
+        )
+    else:
+        message += (
+            f"\nThe broken clone is still at {target}.\n"
+            "Remove it by hand, then run this command again."
+        )
+    raise EngineInstallError(message)
+
+
+def _attach_backup_note(message: str, backup: Path | None) -> str:
+    if backup is None:
+        return message
+    return f"{message}\nThe previous install is safe at {backup}."
 
 
 def run_install(force: bool = False, version: str | None = None) -> str:
@@ -182,7 +229,7 @@ def run_install(force: bool = False, version: str | None = None) -> str:
             "then run this command again."
         )
 
-    note = ""
+    old: str | None = None
     if target.exists():
         old = installed_version(target)
         if old == resolved and not force:
@@ -190,10 +237,8 @@ def run_install(force: bool = False, version: str | None = None) -> str:
                 f"ok: engine {resolved} is already installed at {target}. "
                 "Run with --force to reinstall."
             )
-        backup = _backup_existing(target, old)
-        note = f"Kept the old install at {backup}."
 
-    tags = available_tags(url)
+    tags = available_tags(url)  # nothing has moved yet
     if tag not in tags:
         if tags:
             near = ", ".join(nearest_tags(tags, tag))
@@ -207,22 +252,30 @@ def run_install(force: bool = False, version: str | None = None) -> str:
             "Install the engine by hand; see docs/PLUGIN.md."
         )
 
-    target.parent.mkdir(parents=True, exist_ok=True)
-    clone = _run(
-        ["git", "clone", "--depth", "1", "--branch", tag, url, str(target)], timeout=CLONE_TIMEOUT
-    )
-    if clone.returncode != 0:
-        raise EngineInstallError(_tail(f"Could not clone tag {tag}.", clone))
+    backup: Path | None = None
+    if target.exists():
+        backup = _backup_existing(target, old)
 
-    sync = _run(["uv", "sync", "--frozen", "--no-dev"], cwd=target, timeout=SYNC_TIMEOUT)
-    if sync.returncode != 0:
-        raise EngineInstallError(
-            _tail(f"uv sync failed in {target}. The clone stays in place.", sync)
-            + "\nFix the problem, then run this command again with --force."
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        clone = _run(
+            ["git", "clone", "--depth", "1", "--branch", tag, url, str(target)],
+            timeout=CLONE_TIMEOUT,
         )
+        if clone.returncode != 0:
+            _fail_after_clone(f"Could not clone tag {tag}.", clone, target)
+        sync = _run(["uv", "sync", "--frozen", "--no-dev"], cwd=target, timeout=SYNC_TIMEOUT)
+        if sync.returncode != 0:
+            _fail_after_clone("uv sync failed.", sync, target)
+        _write_marker(target, resolved, tag)
+    except EngineInstallError as exc:
+        raise EngineInstallError(_attach_backup_note(str(exc), backup)) from exc
+    except OSError as exc:
+        raise EngineInstallError(
+            _attach_backup_note(f"Install failed in {target}: {exc}", backup)
+        ) from exc
 
-    _write_marker(target, resolved, tag)
     message = f"ok: engine {resolved} installed at {target} from tag {tag}."
-    if note:
-        message += f"\n{note}"
+    if backup is not None:
+        message += f"\nKept the previous install at {backup}."
     return message
