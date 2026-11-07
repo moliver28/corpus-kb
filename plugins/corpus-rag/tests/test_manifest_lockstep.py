@@ -18,7 +18,19 @@ def _read(path: Path) -> dict[str, object]:
 def test_plugin_json_is_valid() -> None:
     meta = _read(PLUGIN / ".claude-plugin" / "plugin.json")
     assert meta["name"] == "corpus-rag"
-    assert meta["version"] == "0.7.1"
+    assert meta["version"] == "0.8.0"
+
+
+def test_user_config_keys_are_declared() -> None:
+    """The study-registry userConfig keys (issue #351) ship in lockstep."""
+    meta = _read(PLUGIN / ".claude-plugin" / "plugin.json")
+    config = meta["userConfig"]
+    for key in ("engine_root", "app_dsn_template", "superuser_dsn", "base_port",
+                "default_backend"):
+        assert key in config, f"missing userConfig key: {key}"
+    assert config["app_dsn_template"]["sensitive"] is True
+    assert config["superuser_dsn"]["sensitive"] is True
+    assert "{database}" in config["app_dsn_template"]["default"]
 
 
 def test_manifest_entry_matches_plugin_json() -> None:
