@@ -63,6 +63,8 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     "ConnectionError": (503, -32003, 3),
     "OSError": (503, -32003, 3),
     "TimeoutError": (503, -32003, 3),
+    # unstructured raises this when no parser matches the input file.
+    "UnsupportedFileFormatError": (415, -32602, 1),
     # asyncpg class names surfaced through legacy envelopes.
     "CannotConnectNowError": (503, -32003, 3),
     "ConnectionDoesNotExistError": (503, -32003, 3),
