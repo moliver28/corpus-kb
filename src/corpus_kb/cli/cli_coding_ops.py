@@ -66,7 +66,7 @@ def _run_tool(fn: Any, kwargs: dict[str, Any], csv_out: bool = False) -> Corouti
     """One shared runner: wired pool, default tenant, printed envelope."""
 
     async def _run() -> int:
-        kwargs.setdefault("tenant_id", _tenant() or DEFAULT_TENANT)
+        kwargs.setdefault("tenant_id", str(_tenant() or DEFAULT_TENANT))
         async with wired_store() as wired:
             envelope = await fn(wired.store, **kwargs)
         return _print_csv(envelope) if csv_out else _print_envelope(envelope)
@@ -161,8 +161,9 @@ def register_ops(coding_app: typer.Typer) -> None:
 
         parsed = _read_json(labels, "labels")
         if not isinstance(parsed, dict):
+            # Honest exit: typer ignores plain int returns, so non-zero raises.
             print("ERROR: labels file must hold a JSON object")
-            return _EXIT_ERROR
+            raise typer.Exit(_EXIT_ERROR)
         return _run_async(_run_tool(coding_calibrate_floors, {**parsed, "min_pos": min_pos}))
 
     @coding_app.command("saturation")
@@ -203,8 +204,9 @@ def register_ops(coding_app: typer.Typer) -> None:
 
         csv_out = fmt == "csv"
         if not csv_out and fmt != "json":
+            # Honest exit: typer ignores plain int returns, so non-zero raises.
             print(f"ERROR: unknown format {fmt!r}. Use json or csv.")
-            return _EXIT_ERROR
+            raise typer.Exit(_EXIT_ERROR)
         return _run_async(
             _run_tool(coding_export, {"limit": limit, "offset": offset}, csv_out=csv_out)
         )
