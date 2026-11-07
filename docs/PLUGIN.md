@@ -229,6 +229,13 @@ corpus-rag use interview-study
 | `codify status [-p]` | Coding corpus counts, coverage by disposition, routes. |
 | `codify export [-p] [--format csv]` | Accepted codes joined with chunk text and document source. |
 | `codify cells [-p] --coder <id> [--limit N] [--out cells.json]` | Build the next cells file: uncoded chunks with at most five candidate codes each, read-only SQL. |
+| `setup --questions [--backend postgres\|duckdb]` | Preflight and the PII scan, then print the question payload as JSON. Exit 1 with fix commands on a hard preflight failure. Changes nothing. |
+| `setup --apply --answers '<json>\|@file'` | Run the four journaled steps. A retry skips finished steps. Prints a verify list. |
+| `setup --off [--all]` | Undo the allow rules and the autorun change, stop the server, set `enabled: false`, decline the offer. The database and the journal stay. `--all` covers every folder setup enabled. |
+| `snooze [--days 7]` / `decline` | Hide the setup offer in this folder for N days, or for good. |
+| `pause` / `resume` | Stop the server and set `enabled: false`, or remove the flag. Nothing else changes. |
+| `signals` | Print the folder's signal-scan counts (files, transcripts, interview summaries). |
+| `plugin-doctor [--bundle]` | Plugin health: versions, hook files, trigger file, folder state, this folder's last 10 hook errors. Exit 0 only when hooks and triggers are good. `--bundle` writes a redacted JSON file for a bug report. |
 | `status`, `connect`, `engine install` | Kept from 0.7.x; `status` is per study now, `connect` prints one MCP entry per study. |
 
 ### Servers and ports
@@ -291,7 +298,7 @@ The hooks, one per event:
 | Event | What it does |
 |---|---|
 | SessionStart (`startup\|compact\|clear`) | Prints the study block: slug, document count, last ingest date, the evidence rules, and the skill list. Returns `watchPaths` so file changes fire. Engine down: says `Run corpus-rag status`. |
-| UserPromptSubmit | Queues files added outside a tool call (300 files, depth 4). Keeps the ask, analyze, and ingest lane nudges, keyed per study. |
+| UserPromptSubmit | Queues files added outside a tool call (300 files, depth 4). Keeps the ask, analyze, and ingest lane nudges, keyed per study. In a research folder, runs the setup offer when the prompt matches the trigger list. |
 | SubagentStart | Gives the subagent three lines: search first, the study slug, what counts as evidence. |
 | PreToolUse (`Read\|Grep\|Bash`) | Nudges `corpus-rag search` when the agent reads a watched transcript by hand. Never blocks. 3 per session. |
 | PostToolUse (`Write\|Edit`) | Queues the written file in a watch folder. |
@@ -307,16 +314,71 @@ normalized copy is made.
 For five events (UserPromptSubmit, SubagentStart, PreToolUse, PostToolUse,
 FileChanged) a shell guard walks up from the working folder for
 `.claude/corpus.json` and exits 0 before Python starts when the file is
-absent or holds `"enabled": false`. Hook cost outside study folders stays
-near zero. SessionStart always runs (the daily prune), and Stop exits fast
-when no session record exists. Every hook fails open: a broken hook cannot
-stop your session.
+absent or holds `"enabled": false`. UserPromptSubmit also passes when a
+walk-up level holds the research sentinel, so the setup offer can run.
+Hook cost outside study folders stays near zero. SessionStart always runs
+(the daily prune), and Stop exits fast when no session record exists.
+Every hook fails open: a broken hook cannot stop your session.
 
-A folder with transcripts but no corpus.json gets the setup offer once a
-day. To silence a prompt lane for good, create a mark file in the plugin
-state folder (`~/.corpus-kb/plugin/marks/`): `declined-ask`,
-`declined-analyze`, or `declined-ingest`. To decline one folder, create
-`marks/declined-folder-<checksum>`; the corpus-ingest skill shows the flow.
+A folder with transcripts but no corpus.json gets the guided setup offer
+(see the next section). To silence a prompt lane for good, create a mark
+file in the plugin state folder (`~/.corpus-kb/plugin/marks/`):
+`declined-ask`, `declined-analyze`, or `declined-ingest`. To decline the
+setup offer in one folder, run `corpus-rag decline`.
+
+## Guided folder setup
+
+When you open a folder of interview transcripts, the plugin offers to
+set a study up once per session. The offer fires on SessionStart
+(`startup` only) and on UserPromptSubmit when the prompt matches the
+trigger list in `hooks/triggers.json` (research nouns plus analysis
+frames, minus exclusions such as "interview script" or "embedding").
+The offer text tells the agent to finish your current request first and
+then ask one question: set up now, not now (`corpus-rag snooze`, 7
+days), or never here (`corpus-rag decline`).
+
+The offer only fires when the folder holds no `corpus.json`, is not the
+engine repository, is not declined or snoozed, and the signal scan
+finds transcripts or interview summaries (depth 2, 0.6 s budget,
+hidden folders, `node_modules`, `__pycache__`, and `venv` skipped).
+After the first offer the plugin leaves a `.claude/corpus-research`
+sentinel so the prompt hook can reach Python in this folder without a
+scan. `decline` and `setup --off` remove it.
+
+If you say yes, the agent runs the `setup` skill:
+
+1. `corpus-rag setup --questions` — preflight (hard checks stop setup
+   with fix commands; Ollama and the embedding model only warn), a PII
+   scan (per-file counts of email addresses and person-like names —
+   paths, kinds, counts; never text; role labels skipped), and the
+   question payload (AskUserQuestion, four per call): study name,
+   watch folders, backend, cloud-model consent, auto ingest, allow
+   rules, queue autorun.
+2. `corpus-rag setup --apply --answers '<json>'` — four journaled steps
+   in `.claude/corpus.setup.json`:
+
+   | Step | Does | Undo on `--off` |
+   |---|---|---|
+   | `database` | `corpus-rag provision <slug>` | never (data stays) |
+   | `allow_rules` | Adds `Bash(corpus-rag search:*)`, `Bash(corpus-rag ask:*)`, `Bash(corpus-rag status:*)` (plus `Bash(uxr insights:*)` in a UXR study) to `.claude/settings.json` | removes them |
+   | `engine_override` | Sets `queue.autorun: true` in the config overlay when chosen (global for all studies) | restores the prior overlay text |
+   | `config` | Writes `.claude/corpus.json`, seed-ingests the smallest watched file, queues the rest | never |
+
+   A failed step records `failed_step`; re-run `setup --apply` to resume
+   (finished steps are skipped), or `setup --off` to undo.
+
+The study slug comes from your answer, else the folder name. When
+another folder owns that slug, six hex characters of the folder path's
+SHA-1 are appended. A "No" on the cloud-model question stores
+`local_only: true` in the gate state; no transcript text reaches a
+cloud model.
+
+The gate state lives at `${CLAUDE_PLUGIN_DATA}/gate-state.json` with one
+entry per folder (`declined`, `snoozed_until`, `slug`,
+`enabled_by_setup`, `local_only`), written atomically behind a lock. A
+0.7.0 `study-registered` mark and old `declined-*` mark files are read
+once and removed when the gate state is first used, so a prior
+"declined" choice carries over.
 
 ## The ingest queue
 
@@ -345,8 +407,10 @@ blocks the command.
 State lives in `${CLAUDE_PLUGIN_DATA}` (or `~/.corpus-kb/plugin/`):
 
 - `sessions/<id>.json` — one record per session (turn count, reads,
-  nudge count), behind a `.lock` sidecar with an atomic write. Windows
-  uses `msvcrt.locking`; other systems use `flock`.
+  nudge count, setup-offer flag), behind a `.lock` sidecar with an
+  atomic write. Windows uses `msvcrt.locking`; other systems use `flock`.
+- `gate-state.json` — the setup gate state, one entry per folder
+  (issue #353), atomic write behind a lock.
 - `hook-errors.jsonl` — one line per swallowed hook failure.
 - `telemetry.jsonl` — one line per manual-read turn.
 - `ingest-log/` — one JSONL per study, one row per drained file.

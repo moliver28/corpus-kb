@@ -1,4 +1,4 @@
-"""SessionStart hook behavior: the study block, watchPaths, prune (issue #352).
+"""SessionStart hook behavior: the study block, watchPaths, prune (#352, #353).
 
 The block prints slug, document count, last ingest date, the evidence
 rules, and the skill list. The count query probes the study port with a
@@ -6,8 +6,9 @@ rules, and the skill list. The count query probes the study port with a
 down engine degrades to "Run `corpus-rag status`". The output carries
 ``watchPaths`` so FileChanged fires for the watch folders.
 
-Research folders (transcripts, no corpus.json) get the setup offer once
-per day. Every call prunes state once per day: sessions older than 30
+Research folders (transcripts, no corpus.json) get the guided setup
+offer on the ``startup`` event, once per session, gate-checked (issue
+#353). Every call prunes state once per day: sessions older than 30
 days out, the two jsonl logs capped at 1 MB. The same event dedups
 within 5 s.
 
@@ -18,14 +19,13 @@ from __future__ import annotations
 
 import json
 import socket
-import time
-import zlib
 from pathlib import Path
 
 import folder_state
 import hook_events
 import hook_state
 import op_client
+import setup_offer
 import study_registry
 
 CONNECT_TIMEOUT_S = 1.0
@@ -38,14 +38,7 @@ EVIDENCE_RULES = (
     "Cite every claim as [S:<source-slug>].",
     "analysis/, deliverables/, and *-summary.md are not evidence.",
 )
-SKILL_LIST = "Skills: /corpus-ask, /corpus-analyze, /corpus-ingest, /corpus-admin"
-
-RESEARCH_OFFER = (
-    "This folder holds interview transcripts but has no corpus study yet.\n"
-    "Run `corpus-rag provision <slug>` to start one, then ingest the\n"
-    "transcripts with `corpus-rag ingest <folder>`. The corpus-ingest skill\n"
-    "has the exact steps. Run `corpus-rag use <slug>` once to set it active."
-)
+SKILL_LIST = "Skills: /corpus-ask, /corpus-analyze, /corpus-ingest, /corpus-admin, /setup"
 
 
 def probe_connect(port: int, timeout: float = CONNECT_TIMEOUT_S) -> bool:
@@ -123,10 +116,5 @@ def run_session_start(data: dict) -> str | None:
         hook_events.ensure_session(data, fs)
         return session_start_output(fs)
     if fs.state == folder_state.RESEARCH:
-        day = time.strftime("%Y%m%d")
-        mark = f"research-offer-{zlib.crc32(str(fs.root).encode('utf-8'))}-{day}"
-        if hook_state.mark_exists(mark):
-            return None
-        hook_state.touch_mark(mark)
-        return RESEARCH_OFFER
+        return setup_offer.offer_for_session_start(data, fs.root)
     return None

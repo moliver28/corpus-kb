@@ -5,10 +5,12 @@ to print, or None to stay silent (issue #352). Every failure path leaves
 the session untouched: the hook bodies in ``hooks/`` catch and record.
 
 UserPromptSubmit queues files added outside a tool call (watch-folder
-scan, 300 files, depth 4) and keeps the 0.7.0 lane nudges (ask, analyze,
-ingest), now keyed per study: one lane per prompt, once per study per
-day, unless a lane is declined. It also starts a new turn, which resets
-the per-turn read and corpus-call bookkeeping.
+scan, 300 files, depth 4) and keeps the lane nudges (ask, analyze,
+ingest), keyed per study: one lane per prompt, once per study per day,
+unless a lane is declined. It also starts a new turn, which resets the
+per-turn read and corpus-call bookkeeping. In a research folder that
+holds the setup sentinel (issue #353), it runs the setup offer when the
+prompt matches the trigger list.
 
 SubagentStart gives the subagent three lines and marks the session, so
 PreToolUse can skip subagent tool calls.
@@ -29,6 +31,7 @@ from pathlib import Path
 import folder_state
 import hook_state
 import ingest_queue
+import setup_offer
 import transcripts
 
 
@@ -106,21 +109,25 @@ def scan_queue(fs: folder_state.FolderState) -> None:
 
 def run_prompt_submit(data: dict) -> str | None:
     cwd = Path(str(data.get("cwd") or Path.cwd()))
-    fs = folder_state.folder_state(cwd)
-    if fs.state != folder_state.CORPUS:
-        return None
-    scan_queue(fs)
-    found = ensure_session(data, fs)
-    if found is not None:
-        sid, session = found
-        session["turn"] = int(session.get("turn") or 0) + 1
-        session["turn_reads"] = []
-        session["first_read_at"] = None
-        session["corpus_called_at"] = None
-        session["corpus_turn"] = None
-        session["subagent"] = False
-        hook_state.save_session(sid, session)
-    return lane_nudge(str(data.get("prompt") or ""), fs)
+    fs = folder_state.folder_state(cwd, scan=False)
+    if fs.state == folder_state.CORPUS:
+        scan_queue(fs)
+        found = ensure_session(data, fs)
+        if found is not None:
+            sid, session = found
+            session["turn"] = int(session.get("turn") or 0) + 1
+            session["turn_reads"] = []
+            session["first_read_at"] = None
+            session["corpus_called_at"] = None
+            session["corpus_turn"] = None
+            session["subagent"] = False
+            hook_state.save_session(sid, session)
+        return lane_nudge(str(data.get("prompt") or ""), fs)
+    if fs.state == folder_state.NONE:
+        root = setup_offer.find_sentinel(cwd)
+        if root is not None:
+            return setup_offer.offer_for_prompt(data, root, str(data.get("prompt") or ""))
+    return None
 
 
 def lane_nudge(prompt: str, fs: folder_state.FolderState) -> str | None:

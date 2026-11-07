@@ -101,7 +101,7 @@ def test_session_start_block_is_exact(tmp_path: Path, monkeypatch) -> None:
         "Search the corpus before reading transcripts by hand.\n"
         "Cite every claim as [S:<source-slug>].\n"
         "analysis/, deliverables/, and *-summary.md are not evidence.\n"
-        "Skills: /corpus-ask, /corpus-analyze, /corpus-ingest, /corpus-admin"
+        "Skills: /corpus-ask, /corpus-analyze, /corpus-ingest, /corpus-admin, /setup"
     )
 
 
@@ -163,17 +163,33 @@ def test_session_start_dedup_is_per_event(tmp_path: Path, monkeypatch) -> None:
     assert hook_session.run_session_start({"cwd": str(root), "hook_event_name": "compact"})
 
 
-def test_session_start_research_offer_once_per_day(tmp_path: Path, monkeypatch) -> None:
+def test_session_start_research_offer_startup_only(tmp_path: Path, monkeypatch) -> None:
     setup_data(tmp_path, monkeypatch)
     folder = tmp_path / "plain"
     (folder / "interviews").mkdir(parents=True)
     (folder / "interviews" / "p1.md").write_text(
         "P1: Hello.\nP2: Hi.\nP1: Next.\nP2: Go.\n", encoding="utf-8"
     )
-    first = hook_session.run_session_start({"cwd": str(folder)})
-    second = hook_session.run_session_start({"cwd": str(folder)})
-    assert first is not None and "corpus" in first.lower()
-    assert second is None
+    base = {"cwd": str(folder), "session_id": "s1"}
+    startup = hook_session.run_session_start({**base, "hook_event_name": "startup"})
+    assert startup is not None and "corpus" in startup.lower()
+    assert "snooze" in startup and "decline" in startup
+    # compact and clear never offer; startup was offered this session anyway.
+    assert hook_session.run_session_start({**base, "hook_event_name": "compact"}) is None
+
+
+def test_session_start_research_offer_silent_when_declined(tmp_path: Path, monkeypatch) -> None:
+    setup_data(tmp_path, monkeypatch)
+    folder = tmp_path / "plain"
+    (folder / "interviews").mkdir(parents=True)
+    (folder / "interviews" / "p1.md").write_text(
+        "P1: Hello.\nP2: Hi.\nP1: Next.\nP2: Go.\n", encoding="utf-8"
+    )
+    import gate_state
+
+    gate_state.decline(folder)
+    data = {"cwd": str(folder), "session_id": "s1", "hook_event_name": "startup"}
+    assert hook_session.run_session_start(data) is None
 
 
 def test_session_start_prunes_state_once_a_day(tmp_path: Path, monkeypatch) -> None:
@@ -765,3 +781,87 @@ def test_pre_tool_use_starts_python_inside_study_folder(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert marker.exists()
+
+
+# ---------------------------------------------------------------------------
+# Shell level: the research sentinel lets UserPromptSubmit through (issue #353)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(SH is None, reason="sh not available")
+def test_guard_prompt_submit_no_python_in_plain_folder(tmp_path: Path) -> None:
+    fake = write_fake_python(tmp_path)
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    marker = tmp_path / "marker"
+    result = subprocess.run(
+        [str(SH), str(HOOKS / "dispatch.sh"), "prompt_submit"],
+        input=json.dumps({"cwd": str(plain)}),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "CLAUDE_PLUGIN_DATA": str(tmp_path / "plugin-data"),
+            "CORPUS_KB_HOOK_PYTHON": str(fake),
+            "FAKE_PYTHON_MARKER": str(marker),
+        },
+        cwd=str(plain),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(SH is None, reason="sh not available")
+def test_guard_prompt_submit_passes_with_research_sentinel(tmp_path: Path) -> None:
+    fake = write_fake_python(tmp_path)
+    folder = tmp_path / "research"
+    (folder / ".claude").mkdir(parents=True)
+    (folder / ".claude" / "corpus-research").write_text("", encoding="utf-8")
+    marker = tmp_path / "marker"
+    result = subprocess.run(
+        [str(SH), str(HOOKS / "dispatch.sh"), "prompt_submit"],
+        input=json.dumps({"cwd": str(folder)}),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "CLAUDE_PLUGIN_DATA": str(tmp_path / "plugin-data"),
+            "CORPUS_KB_HOOK_PYTHON": str(fake),
+            "FAKE_PYTHON_MARKER": str(marker),
+        },
+        cwd=str(folder),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert marker.exists()
+
+
+@pytest.mark.skipif(SH is None, reason="sh not available")
+def test_guard_prompt_submit_sentinel_requires_walk_up_levels(tmp_path: Path) -> None:
+    """A sentinel in a sibling branch never opens this folder."""
+    fake = write_fake_python(tmp_path)
+    (tmp_path / "other" / ".claude").mkdir(parents=True)
+    (tmp_path / "other" / ".claude" / "corpus-research").write_text("", encoding="utf-8")
+    here = tmp_path / "here"
+    here.mkdir()
+    marker = tmp_path / "marker"
+    result = subprocess.run(
+        [str(SH), str(HOOKS / "dispatch.sh"), "prompt_submit"],
+        input=json.dumps({"cwd": str(here)}),
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+        env={
+            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+            "CLAUDE_PLUGIN_DATA": str(tmp_path / "plugin-data"),
+            "CORPUS_KB_HOOK_PYTHON": str(fake),
+            "FAKE_PYTHON_MARKER": str(marker),
+        },
+        cwd=str(here),
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not marker.exists()

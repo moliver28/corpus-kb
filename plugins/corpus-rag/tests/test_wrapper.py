@@ -12,7 +12,8 @@ PLUGIN = Path(__file__).resolve().parents[1]
 
 
 def run_wrapper(*args: str) -> subprocess.CompletedProcess[str]:
-    env = {k: v for k, v in os.environ.items() if k not in ("CORPUS_KB_REPO", "CORPUS_KB_STATE_DIR")}
+    skip = ("CORPUS_KB_REPO", "CORPUS_KB_STATE_DIR")
+    env = {k: v for k, v in os.environ.items() if k not in skip}
     return subprocess.run(
         [sys.executable, str(PLUGIN / "bin" / "corpus-rag"), *args],
         capture_output=True,

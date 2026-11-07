@@ -1,7 +1,8 @@
 {
   "name": "corpus-rag",
-  "version": "0.9.1",
-  "description": "Ask cited questions, search your corpus, ingest documents, and run chunk coding with the Corpus-KB engine, one study at a time.",
+  "version": "0.10.0",
+  "description": "Ask cited questions, search your corpus, ingest documents, run chunk coding, and set studies up in research folders with the Corpus-KB engine, one study at a time.",
+
   "author": "moliver28",
   "repository": "https://github.com/moliver28/corpus-kb",
   "userConfig": {

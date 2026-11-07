@@ -22,6 +22,7 @@ import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import gate_state
 import study_registry
 import transcripts
 from engine_paths import plugin_data_dir
@@ -70,8 +71,11 @@ def declined_mark_name(folder: Path) -> str:
 
 
 def is_declined(folder: Path) -> bool:
+    """Declined via the mark file or the setup gate state (issue #353)."""
     marks = plugin_data_dir() / "marks"
-    return (marks / declined_mark_name(folder)).is_file()
+    if (marks / declined_mark_name(folder)).is_file():
+        return True
+    return gate_state.is_declined(folder)
 
 
 def read_corpus_json(start: Path) -> Path | None:

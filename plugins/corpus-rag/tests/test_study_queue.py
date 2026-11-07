@@ -165,8 +165,23 @@ def test_auto_drain_swallows_engine_errors(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_auto_drain_skip_set_matches_the_issue() -> None:
+    # The setup-wave controls (issue #353) must not drain before they run.
     assert frozenset(
-        {"drain", "list", "provision", "migrate", "backup", "stop"}
+        {
+            "drain",
+            "list",
+            "provision",
+            "migrate",
+            "backup",
+            "stop",
+            "setup",
+            "snooze",
+            "decline",
+            "pause",
+            "resume",
+            "signals",
+            "plugin-doctor",
+        }
     ) == study_queue.AUTO_DRAIN_SKIP
 
 

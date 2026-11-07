@@ -4,8 +4,11 @@
 queue. ``auto_ingest: false`` needs ``--approve``. Every other command
 first drains the folder queue when ``auto_ingest`` is on — except
 ``drain`` itself plus ``list``, ``provision``, ``migrate``, ``backup``,
-and ``stop``. An auto-drain failure never blocks the command and never
-prints, so it records into hook-errors.jsonl instead.
+``stop``, and the setup-wave controls (``setup``, ``snooze``,
+``decline``, ``pause``, ``resume``, ``signals``, ``plugin-doctor``),
+which must not mutate the queue before they run. An auto-drain failure
+never blocks the command and never prints, so it records into
+hook-errors.jsonl instead.
 
 Stdlib only.
 """
@@ -24,7 +27,23 @@ import study_commands
 import study_registry
 import study_server
 
-AUTO_DRAIN_SKIP = frozenset({"drain", "list", "provision", "migrate", "backup", "stop"})
+AUTO_DRAIN_SKIP = frozenset(
+    {
+        "drain",
+        "list",
+        "provision",
+        "migrate",
+        "backup",
+        "stop",
+        "setup",
+        "snooze",
+        "decline",
+        "pause",
+        "resume",
+        "signals",
+        "plugin-doctor",
+    }
+)
 
 
 def _sender(cli: str, study: dict, inventory: dict) -> ingest_queue.Sender:

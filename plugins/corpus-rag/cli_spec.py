@@ -1,10 +1,12 @@
-"""The ``corpus-rag`` argument parser and command map (issues #351, #354).
+"""The ``corpus-rag`` argument parser and command map (issues #351, #353, #354).
 
 ``bin/corpus-rag`` stays thin: build the parser, dispatch to one command
 body. Every per-study command takes ``-p <slug>``; the 4-step selection
 lives in ``study_registry.resolve_study``. The ``codify`` group holds
 the chunk-coding commands (issue #354); each sends one coding op through
-the op runner.
+the op runner. The setup-wave commands (``setup``, ``snooze``,
+``decline``, ``pause``, ``resume``, ``signals``, ``plugin-doctor``) run
+from the folder they act on.
 """
 
 from __future__ import annotations
@@ -12,6 +14,8 @@ from __future__ import annotations
 import argparse
 
 import codify_commands
+import setup_commands
+import setup_controls
 import study_admin
 import study_commands
 import study_maintenance
@@ -266,6 +270,45 @@ def build_parser() -> argparse.ArgumentParser:
     ccells.add_argument("--out", default="cells.json", help="Where to write the file")
     ccells.add_argument("-p", "--study-slug", default=None, help="The study slug")
 
+    setup = subs.add_parser(
+        "setup", help="Guided folder setup: questions, journaled apply, and undo."
+    )
+    setup.add_argument(
+        "--questions",
+        action="store_true",
+        help="Preflight, PII scan, question payload. Changes nothing.",
+    )
+    setup.add_argument(
+        "--backend",
+        choices=("postgres", "duckdb"),
+        default=None,
+        help="Pre-answer the backend question (with --questions) and scope its checks",
+    )
+    setup.add_argument("--apply", action="store_true", help="Run or resume the journaled steps.")
+    setup.add_argument(
+        "--answers",
+        default=None,
+        help="Answers JSON keyed by question header, or @file",
+    )
+    setup.add_argument("--off", action="store_true", help="Undo this folder's setup steps.")
+    setup.add_argument(
+        "--all", action="store_true", help="With --off: every folder setup enabled."
+    )
+
+    snooze = subs.add_parser("snooze", help="Hide the setup offer here for N days.")
+    snooze.add_argument("--days", type=int, default=7, help="Days to hide the offer (default 7)")
+
+    subs.add_parser("decline", help="Never offer setup in this folder.")
+    subs.add_parser("pause", help="Stop the study server and silence this folder's hooks.")
+    subs.add_parser("resume", help="Run this folder's hooks again.")
+    subs.add_parser("signals", help="Print the folder's signal-scan counts.")
+
+    plugindoctor = subs.add_parser(
+        "plugin-doctor", help="Plugin health: versions, hooks, triggers, folder state."
+    )
+    plugindoctor.add_argument(
+        "--bundle", action="store_true", help="Write a redacted JSON file for a bug report."
+    )
     return parser
 
 
@@ -292,4 +335,11 @@ HANDLERS = {
     "op": study_maintenance.cmd_op,
     "drain": study_queue.cmd_drain,
     "codify": codify_commands.cmd_codify,
+    "setup": setup_commands.cmd_setup,
+    "snooze": setup_controls.cmd_snooze,
+    "decline": setup_controls.cmd_decline,
+    "pause": setup_controls.cmd_pause,
+    "resume": setup_controls.cmd_resume,
+    "signals": setup_controls.cmd_signals,
+    "plugin-doctor": setup_controls.cmd_plugin_doctor,
 }
