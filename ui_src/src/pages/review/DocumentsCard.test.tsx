@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch, stubFetchImpl } from "../../test/testUtils";
 import type { MinimalResponse } from "../../test/testUtils";
+import chunksOk from "../../test/fixtures/chunks-ok-200.json";
 import documentDeleteOk from "../../test/fixtures/document-delete-ok-200.json";
 import documentTagsOk from "../../test/fixtures/document-tags-ok-200.json";
 import documentsOk from "../../test/fixtures/documents-ok-200.json";
@@ -319,5 +320,74 @@ describe("DocumentsCard", () => {
     await waitFor(() =>
       expect(calls.some((c) => c.url.includes("offset=50"))).toBe(true),
     );
+  });
+
+  // -- Phase-2 Wave 5: the NLP deep link (the hash query param) -----------
+
+  function analyzeRoutes(): { method: string; path: string; reply: MinimalResponse }[] {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    // The chunks path names a longer prefix than the list read, so it
+    // sits before the shorter /api/documents entry in this table.
+    return [
+      {
+        method: "GET",
+        path: `/api/documents/${docId}/chunks`,
+        reply: respond(200, chunksOk.response.body),
+      },
+      ...documentRoutes(),
+    ];
+  }
+
+  it("opens the drawer on the NLP panel from the Analyze row action", async () => {
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const analyzeButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsAnalyze,
+    });
+    fireEvent.click(analyzeButtons[0]);
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    // The panel scopes its runs with THIS document's chunk window.
+    const docId = documentsOk.response.body.result[0].doc_id;
+    expect(
+      calls.some((c) => c.url.includes(`/api/documents/${docId}/chunks?limit=51&offset=0`)),
+    ).toBe(true);
+    expect(
+      await screen.findByText(strings.reviewAnalyzeScopeAll.replace("{n}", "2")),
+    ).toBeTruthy();
+  });
+
+  it("restores the NLP drawer from the analyze param after a reload", async () => {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, {
+      wrapper: makeWrapper(true, [`/?analyze=${docId}`]),
+    });
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    expect(
+      calls.some((c) => c.url.includes(`/api/documents/${docId}/chunks?limit=51&offset=0`)),
+    ).toBe(true);
+  });
+
+  it("keeps a param for a row outside the served window absent", async () => {
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, {
+      wrapper: makeWrapper(true, [`/?analyze=00000000-0000-4000-8000-000000000000`]),
+    });
+    // The unknown id reads as absent: no drawer, and no chunk read.
+    expect(await screen.findByText("corpus/renewable-energy-policy.md")).toBeTruthy();
+    expect(screen.queryByText(strings.reviewAnalyzeTitle)).toBeNull();
+    expect(calls.some((c) => c.url.includes("/chunks"))).toBe(false);
+  });
+
+  it("closes the NLP drawer back to the plain table", async () => {
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, { wrapper: makeWrapper() });
+    const analyzeButtons = await screen.findAllByRole("button", {
+      name: strings.reviewDocsAnalyze,
+    });
+    fireEvent.click(analyzeButtons[0]);
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByText(strings.reviewAnalyzeTitle)).toBeNull();
   });
 });

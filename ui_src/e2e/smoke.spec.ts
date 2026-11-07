@@ -122,6 +122,31 @@ test.describe("SPA smoke on a live server", () => {
     await expect(drawer.getByText("Metadata saved.")).toBeVisible({ timeout: 60_000 });
   });
 
+  test("the drawer NLP panel runs a scoped analysis on one document", async ({ page }) => {
+    // Phase-2 Wave 5 done-when: from ONE document, a novice launches a
+    // scoped analysis and reads the result WITHOUT leaving the drawer.
+    await page.goto("/app/#/review");
+    const docs = page.locator(".ant-card").filter({ hasText: "Documents" });
+    await expect(docs.getByRole("cell").first()).toBeVisible({ timeout: 60_000 });
+    await docs.getByRole("button", { name: "Analyze" }).first().click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByText("Analyze this document")).toBeVisible();
+    // The chunk window read pre-fills the scope (the demo corpus carries
+    // chunked documents), then the sentiment screen answers inline —
+    // the receipt, or its honest no-run note, stays inside the drawer.
+    await expect(drawer.getByText(/chunks of this document/).first()).toBeVisible({
+      timeout: 60_000,
+    });
+    await drawer.getByRole("button", { name: "Run", exact: true }).click();
+    // Every settled headline is honest: the receipt word for a run that
+    // finished whole, the panel copy when the server cannot run it.
+    await expect(
+      drawer
+        .getByText(/^(Done|Nothing to show|Finished, with gaps|Partly done|No answer given|Not available right now)$/)
+        .first(),
+    ).toBeVisible({ timeout: 120_000 });
+  });
+
   test("the graph workbench creates, finds, inspects, and links an entity", async ({
     page,
   }) => {
@@ -208,4 +233,33 @@ test.describe("accessibility (axe-core)", () => {
       expect(blocking).toEqual([]);
     });
   }
+
+  test("no critical or serious violations with the drawer NLP panel open", async ({ page }) => {
+    // The Wave-5 drawer path: the dialog, its tabs, the picker, and the
+    // run controls scan with the panel open (the canvas never carries
+    // the only path to data — the drawer is a dialog over the table).
+    await page.goto("/app/#/review");
+    const docs = page.locator(".ant-card").filter({ hasText: "Documents" });
+    await expect(docs.getByRole("cell").first()).toBeVisible({ timeout: 60_000 });
+    await docs.getByRole("button", { name: "Analyze" }).first().click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByText("Analyze this document")).toBeVisible();
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa"])
+      .analyze();
+    const blocking = results.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    if (blocking.length > 0) {
+      console.error(
+        "axe violations:",
+        JSON.stringify(
+          blocking.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.length })),
+          null,
+          2,
+        ),
+      );
+    }
+    expect(blocking).toEqual([]);
+  });
 });

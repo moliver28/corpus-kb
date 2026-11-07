@@ -1,0 +1,32 @@
+{
+  "name": "chunks-ok-200",
+  "source": "canonical",
+  "note": "GET /api/documents/{doc_id}/chunks shape (handlers/query_crud_reads.py list_document_chunks rows: chunk_id, doc_id, chunk_index, text, chunk_type, start_line, end_line).",
+  "request": { "method": "GET", "path": "/api/documents/d1d11111-2222-4333-8444-555566667777/chunks?limit=51&offset=0" },
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "status": "success",
+      "result": [
+        {
+          "chunk_id": "c0000000-0000-4000-8000-000000000001",
+          "doc_id": "d1d11111-2222-4333-8444-555566667777",
+          "chunk_index": 0,
+          "text": "The grid upgrade plan covers the northern corridor.",
+          "chunk_type": "NarrativeText",
+          "start_line": 1,
+          "end_line": 12
+        },
+        {
+          "chunk_id": "c0000000-0000-4000-8000-000000000002",
+          "doc_id": "d1d11111-2222-4333-8444-555566667777",
+          "chunk_index": 1,
+          "text": "Battery storage lowers the peak demand charge.",
+          "chunk_type": "NarrativeText",
+          "start_line": 13,
+          "end_line": 24
+        }
+      ]
+    }
+  }
+}

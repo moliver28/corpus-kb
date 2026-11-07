@@ -177,6 +177,41 @@ export function isMetadataEnvelope(value: unknown): value is MetadataEnvelope {
   );
 }
 
+// -- Chunk window shapes (Phase-2 Wave 5, the chunks-list read the
+//    drawer's NLP panel scopes its runs with). Same drift rule as above.
+
+/** One chunk row of a document (the DocumentChunkResult dump). */
+export interface ChunkRow {
+  chunk_id: string;
+  doc_id: string;
+  chunk_index: number;
+  text: string;
+}
+
+interface ChunksEnvelope {
+  status: string;
+  result: ChunkRow[];
+}
+
+export function isChunksEnvelope(value: unknown): value is ChunksEnvelope {
+  if (typeof value !== "object" || value === null) return false;
+  const rows = (value as Record<string, unknown>).result;
+  return (
+    Array.isArray(rows) &&
+    rows.every((row) => {
+      if (typeof row !== "object" || row === null) return false;
+      const r = row as Record<string, unknown>;
+      return (
+        typeof r.chunk_id === "string" &&
+        typeof r.doc_id === "string" &&
+        typeof r.chunk_index === "number" &&
+        Number.isFinite(r.chunk_index) &&
+        typeof r.text === "string"
+      );
+    })
+  );
+}
+
 /** One word for a metadata value: strings pass; anything else is JSON. */
 export function metadataText(value: unknown): string {
   if (typeof value === "string") return value;

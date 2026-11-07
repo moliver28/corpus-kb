@@ -1,4 +1,4 @@
-import { Descriptions, Drawer, Typography } from "antd";
+import { Descriptions, Drawer, Tabs, Typography } from "antd";
 import { useCallback, useEffect } from "react";
 import OpBody from "../../components/OpBody";
 import { useRowRead } from "../../hooks/useRowRead";
@@ -6,6 +6,10 @@ import { strings } from "../../strings";
 import { isMetadataEnvelope, isTagsEnvelope, metadataText } from "./shapes";
 import type { MetadataRow, DocumentRow } from "./shapes";
 import { MetadataEditor, TagEditor } from "./DrawerEditors";
+import DrawerAnalyze from "./DrawerAnalyze";
+
+/** The drawer's two panels: the record's fields and its NLP runs. */
+export type DrawerPanel = "details" | "analyze";
 
 function metadataWords(rows: MetadataRow[]) {
   if (rows.length === 0) {
@@ -25,20 +29,28 @@ function metadataWords(rows: MetadataRow[]) {
 }
 
 /**
- * One document's tags and metadata, editable in place. The reads are
- * manifest ops (document-tags, document-metadata) through the
- * row-tagged read hook — the newest document wins, so a slow answer for
- * a document the user already left never renders. The writes are the
- * Phase-2 Wave 2 manifest ops (tag-document, untag-document,
- * set-metadata) through the form-to-write seam hook; every ok answer
- * re-reads this document's rows.
+ * One document's tags and metadata, editable in place, plus the NLP
+ * panel (Phase-2 Wave 5): the six chunk-scoped analysis methods run
+ * here, so a novice launches a scoped analysis and reads the answer
+ * without leaving the drawer. The reads are manifest ops (document-tags,
+ * document-metadata, chunks-list) through the row-tagged read hook —
+ * the newest document wins, so a slow answer for a document the user
+ * already left never renders. The writes are the Phase-2 Wave 2
+ * manifest ops (tag-document, untag-document, set-metadata) through the
+ * form-to-write seam hook; every ok answer re-reads this document's
+ * rows. The active panel is the parent's state (the deep link opens the
+ * drawer straight on the NLP panel), never local.
  */
 export default function DocumentDetailDrawer({
   row,
   onClose,
+  panel,
+  onPanelChange,
 }: {
   row: DocumentRow | null;
   onClose: () => void;
+  panel: DrawerPanel;
+  onPanelChange: (panel: DrawerPanel) => void;
 }) {
   const { read: readTags, state: tagsState } = useRowRead("document-tags");
   const { read: readMeta, state: metaState } = useRowRead("document-metadata");
@@ -79,46 +91,60 @@ export default function DocumentDetailDrawer({
   const metaRows =
     metaShown !== null && isMetadataEnvelope(metaShown.data) ? metaShown.data.result : null;
   const open = row !== null;
+  const details = (
+    <div className="ui-stack">
+      <Typography.Title level={5} className="ui-flush">
+        {strings.reviewTagsTitle}
+      </Typography.Title>
+      <OpBody
+        result={tagsShown}
+        ok={tagRows !== null}
+        skeletonRows={2}
+        opId="document-tags"
+        retry={refreshTags}
+      >
+        {tagRows === null || row === null ? null : (
+          <div className="ui-stack">
+            {tagRows.length === 0 && (
+              <Typography.Text type="secondary">{strings.reviewTagsEmpty}</Typography.Text>
+            )}
+            <TagEditor docId={row.doc_id} rows={tagRows} refresh={refreshTags} />
+          </div>
+        )}
+      </OpBody>
+      <Typography.Title level={5} className="ui-flush">
+        {strings.reviewMetadataTitle}
+      </Typography.Title>
+      <OpBody
+        result={metaShown}
+        ok={metaRows !== null}
+        skeletonRows={2}
+        opId="document-metadata"
+        retry={refreshMeta}
+      >
+        {metaRows === null || row === null ? null : (
+          <div className="ui-stack">
+            {metadataWords(metaRows)}
+            <MetadataEditor docId={row.doc_id} refresh={refreshMeta} />
+          </div>
+        )}
+      </OpBody>
+    </div>
+  );
   return (
     <Drawer title={open ? row.source : ""} open={open} onClose={onClose} destroyOnHidden>
-      <div className="ui-stack">
-        <Typography.Title level={5} className="ui-flush">
-          {strings.reviewTagsTitle}
-        </Typography.Title>
-        <OpBody
-          result={tagsShown}
-          ok={tagRows !== null}
-          skeletonRows={2}
-          opId="document-tags"
-          retry={refreshTags}
-        >
-          {tagRows === null || row === null ? null : (
-            <div className="ui-stack">
-              {tagRows.length === 0 && (
-                <Typography.Text type="secondary">{strings.reviewTagsEmpty}</Typography.Text>
-              )}
-              <TagEditor docId={row.doc_id} rows={tagRows} refresh={refreshTags} />
-            </div>
-          )}
-        </OpBody>
-        <Typography.Title level={5} className="ui-flush">
-          {strings.reviewMetadataTitle}
-        </Typography.Title>
-        <OpBody
-          result={metaShown}
-          ok={metaRows !== null}
-          skeletonRows={2}
-          opId="document-metadata"
-          retry={refreshMeta}
-        >
-          {metaRows === null || row === null ? null : (
-            <div className="ui-stack">
-              {metadataWords(metaRows)}
-              <MetadataEditor docId={row.doc_id} refresh={refreshMeta} />
-            </div>
-          )}
-        </OpBody>
-      </div>
+      <Tabs
+        activeKey={panel}
+        onChange={(key) => onPanelChange(key === "analyze" ? "analyze" : "details")}
+        items={[
+          { key: "details", label: strings.reviewDetailsTab, children: details },
+          {
+            key: "analyze",
+            label: strings.reviewAnalyzeTab,
+            children: row !== null ? <DrawerAnalyze docId={row.doc_id} /> : null,
+          },
+        ]}
+      />
     </Drawer>
   );
 }

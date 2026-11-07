@@ -5,9 +5,11 @@ import ErrorPanel from "../../components/ErrorPanel";
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
+import { useQueryParam } from "../../hooks/useQueryParam";
 import { useServerWindow } from "../../hooks/useServerWindow";
 import { strings } from "../../strings";
 import DocumentDetailDrawer from "./DocumentDetailDrawer";
+import type { DrawerPanel } from "./DocumentDetailDrawer";
 import DocumentsTable from "./DocumentsTable";
 import { isDocumentsEnvelope } from "./shapes";
 import type { DocumentsEnvelope, DocumentRow } from "./shapes";
@@ -17,13 +19,22 @@ const PAGE_SIZE = 50;
 
 /**
  * The corpus document list: the documents-list window table, the
- * per-document tag/metadata drawer, and the delete gate. The window
- * state, the limit+1 fetch, and the pager live in the shared
- * server-window seam (hooks/useServerWindow), not in this card.
+ * per-document tag/metadata drawer (plus its NLP panel), and the delete
+ * gate. The window state, the limit+1 fetch, and the pager live in the
+ * shared server-window seam (hooks/useServerWindow), not in this card.
+ *
+ * The NLP deep link rides the hash query (`#/review?analyze=<doc_id>`,
+ * the useQueryParam seam): the Analyze row action writes it, a reload
+ * or a shared link restores it, and closing the drawer clears it — the
+ * drawer state stays coherent. The drawer state is DERIVED while the
+ * param names a row of the served window (no effect, no drift): a param
+ * for a row outside the window reads as absent, so a stale id can never
+ * open a wrong drawer.
  */
 export default function DocumentsCard() {
   const navigate = useNavigate();
-  const [detail, setDetail] = useState<DocumentRow | null>(null);
+  const [manualDetail, setManualDetail] = useState<DocumentRow | null>(null);
+  const [manualPanel, setManualPanel] = useState<DrawerPanel>("details");
   const [deleteRow, setDeleteRow] = useState<DocumentRow | null>(null);
   const [deleted, setDeleted] = useState(false);
   const win = useServerWindow<DocumentRow, DocumentsEnvelope>(
@@ -33,6 +44,45 @@ export default function DocumentsCard() {
   );
   const remove = useOp("document-delete");
   const { run: runDelete, reset: resetDelete } = remove;
+  // The deep-link param: allowed = this window's doc ids (an unknown id
+  // reads as absent, so the unknown word can never crash the page).
+  const [analyzeParam, setAnalyzeParam] = useQueryParam(
+    "analyze",
+    win.rows.map((row) => row.doc_id),
+  );
+  // While the param names a served row, the drawer answers to the URL:
+  // that row, NLP panel. The Details action (and the tab switch back)
+  // clears the param and hands control to the manual state.
+  const paramRow =
+    analyzeParam === null
+      ? undefined
+      : win.rows.find((candidate) => candidate.doc_id === analyzeParam);
+  const detail = paramRow !== undefined ? paramRow : manualDetail;
+  const panel: DrawerPanel = paramRow !== undefined ? "analyze" : manualPanel;
+
+  function openDetails(row: DocumentRow): void {
+    setAnalyzeParam(null);
+    setManualDetail(row);
+    setManualPanel("details");
+  }
+
+  function openAnalyze(row: DocumentRow): void {
+    setManualDetail(row);
+    setAnalyzeParam(row.doc_id);
+  }
+
+  function changePanel(next: DrawerPanel): void {
+    setManualPanel(next);
+    if (next === "details") {
+      setAnalyzeParam(null);
+    }
+  }
+
+  function closeDrawer(): void {
+    setAnalyzeParam(null);
+    setManualDetail(null);
+    setManualPanel("details");
+  }
 
   async function removeRow(row: DocumentRow): Promise<void> {
     resetDelete();
@@ -74,7 +124,8 @@ export default function DocumentsCard() {
           pageSize={win.windowSize}
           hasMore={win.hasMore}
           onPage={win.goto}
-          onDetails={setDetail}
+          onDetails={openDetails}
+          onAnalyze={openAnalyze}
           onDelete={(row) => void removeRow(row)}
         />
       )}
@@ -94,7 +145,12 @@ export default function DocumentsCard() {
         )}
         {body}
       </div>
-      <DocumentDetailDrawer row={detail} onClose={() => setDetail(null)} />
+      <DocumentDetailDrawer
+        row={detail}
+        onClose={closeDrawer}
+        panel={panel}
+        onPanelChange={changePanel}
+      />
     </Card>
   );
 }

@@ -9,7 +9,8 @@ import type { DocumentRow } from "./shapes";
 /**
  * The corpus document rows: one window of the server's pages (the read
  * op answers limit/offset windows, never the whole corpus). Delete is a
- * per-row confirm gate; Details opens the tag/metadata drawer.
+ * per-row confirm gate; Details opens the tag/metadata drawer; Analyze
+ * opens the drawer straight on its NLP panel (Phase-2 Wave 5).
  */
 export default function DocumentsTable({
   rows,
@@ -18,6 +19,7 @@ export default function DocumentsTable({
   hasMore,
   onPage,
   onDetails,
+  onAnalyze,
   onDelete,
 }: {
   rows: DocumentRow[];
@@ -26,6 +28,7 @@ export default function DocumentsTable({
   hasMore: boolean;
   onPage: (page: number) => void;
   onDetails: (row: DocumentRow) => void;
+  onAnalyze: (row: DocumentRow) => void;
   onDelete: (row: DocumentRow) => void;
 }) {
   const columns: ColumnsType<DocumentRow> = [
@@ -52,6 +55,9 @@ export default function DocumentsTable({
         <div className="ui-actions">
           <Button size="small" onClick={() => onDetails(row)}>
             {strings.reviewDocsDetails}
+          </Button>
+          <Button size="small" onClick={() => onAnalyze(row)}>
+            {strings.reviewDocsAnalyze}
           </Button>
           <ConfirmGate
             title={strings.reviewDocsDeleteTitle}

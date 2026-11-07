@@ -65,4 +65,15 @@ export interface ReviewStrings {
   reviewStateOverridden: string;
   reviewStateUnknown: string;
   reviewTopicsTitle: string;
+  reviewDocsAnalyze: string;
+  reviewDetailsTab: string;
+  reviewAnalyzeTab: string;
+  reviewAnalyzeTitle: string;
+  reviewAnalyzeBody: string;
+  reviewAnalyzePickLabel: string;
+  reviewAnalyzeScopeAll: string;
+  reviewAnalyzeScopeCapped: string;
+  reviewAnalyzeNoChunks: string;
+  reviewAnalyzeLabelsLabel: string;
+  reviewAnalyzeLabelsRequired: string;
 }
