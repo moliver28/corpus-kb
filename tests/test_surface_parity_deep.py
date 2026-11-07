@@ -824,7 +824,7 @@ async def _shared_document_stats(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_add_entity(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import AddEntityCommand
 
-    return command_handler_module.get_command_handler().handle_add_entity(
+    return await command_handler_module.get_command_handler().handle_add_entity(
         AddEntityCommand(
             tenant_id=UUID(TENANT), name="parity-entity", entity_type="concept", metadata={}
         )
@@ -834,7 +834,7 @@ async def _shared_add_entity(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_add_relation(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import AddRelationCommand
 
-    return command_handler_module.get_command_handler().handle_add_relation(
+    return await command_handler_module.get_command_handler().handle_add_relation(
         AddRelationCommand(
             tenant_id=UUID(TENANT),
             source_entity_id=UUID(ENTITY_A),

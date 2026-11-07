@@ -47,7 +47,7 @@ async def add_entity(
         metadata=metadata or {},
     )
     handler = CommandHandler(load_config_or_pass(config), pg_pool)
-    return handler.handle_add_entity(cmd)
+    return await handler.handle_add_entity(cmd)
 
 
 async def add_relation(
@@ -79,4 +79,4 @@ async def add_relation(
         metadata=metadata or {},
     )
     handler = CommandHandler(load_config_or_pass(config), pg_pool)
-    return handler.handle_add_relation(cmd)
+    return await handler.handle_add_relation(cmd)

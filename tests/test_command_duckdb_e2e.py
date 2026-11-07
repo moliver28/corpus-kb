@@ -89,7 +89,7 @@ async def test_command_e2e_legs_on_duckdb(
     event_store_path: str,
 ) -> None:
     # 1 CREATE: an entity command persists through the duckdb event store.
-    created = command_handler.handle_add_entity(
+    created = await command_handler.handle_add_entity(
         AddEntityCommand(tenant_id=TENANT, name="UserService", entity_type="class")
     )
     assert created["status"] == "success"

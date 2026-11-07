@@ -224,8 +224,8 @@ def test_error_response_from_unmapped_string_defaults_to_500() -> None:
 class _Raiser:
     """Handler stub whose every method raises the same exception.
 
-    ``sync=True`` matches the sync handler methods (handle_add_entity and
-    friends): the exception must fire at call time, not at await time.
+    ``sync=True`` raises at call time instead of await time, for any
+    handler seam a route still calls without awaiting.
     """
 
     def __init__(self, exc: BaseException, *, sync: bool = False) -> None:

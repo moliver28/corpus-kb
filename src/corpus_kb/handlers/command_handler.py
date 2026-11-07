@@ -134,8 +134,13 @@ class CommandHandler:
                 )
         return result
 
-    def handle_add_entity(self, cmd: AddEntityCommand) -> dict[str, Any]:
-        """Add an entity to the knowledge graph via aggregate."""
+    async def handle_add_entity(self, cmd: AddEntityCommand) -> dict[str, Any]:
+        """Add an entity to the knowledge graph via aggregate.
+
+        The projection drains before the answer, so the created row is
+        readable the moment the caller sees the envelope
+        (read-your-writes; the Wave-4 review's P1-2).
+        """
         entity = Entity(
             tenant_id=cmd.tenant_id,
             name=cmd.name,
@@ -143,6 +148,7 @@ class CommandHandler:
             metadata=cmd.metadata,
         )
         self.app.save(entity)
+        await self._materialize(cmd.tenant_id)
         logger.info("Created entity %s (%s)", cmd.name, cmd.entity_type)
         return {
             "status": "success",
@@ -151,8 +157,12 @@ class CommandHandler:
             "entity_type": cmd.entity_type,
         }
 
-    def handle_add_relation(self, cmd: AddRelationCommand) -> dict[str, Any]:
-        """Add a relation between two entities via aggregate."""
+    async def handle_add_relation(self, cmd: AddRelationCommand) -> dict[str, Any]:
+        """Add a relation between two entities via aggregate.
+
+        The projection drains before the answer, exactly like
+        :meth:`handle_add_entity`.
+        """
         relation = Relation(
             tenant_id=cmd.tenant_id,
             source_entity_id=cmd.source_entity_id,
@@ -162,6 +172,7 @@ class CommandHandler:
             metadata=cmd.metadata,
         )
         self.app.save(relation)
+        await self._materialize(cmd.tenant_id)
         logger.info(
             "Created relation %s -> %s (%s)",
             cmd.source_entity_id,
@@ -173,6 +184,38 @@ class CommandHandler:
             "relation_id": str(relation.id),
             "relation_type": cmd.relation_type,
         }
+
+    async def _materialize(self, tenant_id: UUID) -> None:
+        """Drain DocumentsProjection for the tenant so the write reads back.
+
+        The background loop catches up within its poll interval; a write
+        must be readable the moment its 200 leaves (the Wave-4 review's
+        P1-2). The drain shares the projection checkpoint with that loop,
+        and the row writes are idempotent (``ON CONFLICT DO NOTHING`` /
+        delete-plus-insert under the tenant lock), so a drain that races
+        the loop never duplicates rows. A failed drain keeps the pre-fix
+        posture — the aggregate is saved, the loop drains later — so the
+        caller never sees a failure for a write that landed.
+        """
+        store = self._pool if self._pool is not None else self._gateway
+        if store is None:
+            logger.warning(
+                "No store wired on CommandHandler; the read model drains on its loop."
+            )
+            return
+        try:
+            from corpus_kb.domain.application import events_table_name
+            from corpus_kb.projections.checkpoint import CheckpointManager
+            from corpus_kb.projections.documents_projection import DocumentsProjection
+            from corpus_kb.projections.dlq import DLQHandler
+            from corpus_kb.projections.event_reader import EventReader
+
+            app = self.app
+            reader = EventReader(None, app.mapper, events_table_name(app), recorder=app.recorder)
+            projection = DocumentsProjection(store, CheckpointManager(store), DLQHandler(store))
+            await projection.catch_up(reader, tenant_id)
+        except Exception as exc:  # degradation, not a response path (see docstring)
+            logger.warning("Projection catch-up after a graph write failed: %s", exc)
 
     async def handle_delete_document(self, cmd: DeleteDocumentCommand) -> dict[str, Any]:
         """Delete one document through the ONE shared tool implementation.

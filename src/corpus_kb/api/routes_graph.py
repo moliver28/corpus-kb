@@ -35,7 +35,7 @@ async def add_entity(request: Request) -> JSONResponse:
         metadata=body.get("metadata", {}),
     )
     handler = get_command_handler()
-    result = handler.handle_add_entity(cmd)
+    result = await handler.handle_add_entity(cmd)
     return JSONResponse(result)
 
 
@@ -54,7 +54,7 @@ async def add_relation(request: Request) -> JSONResponse:
         metadata=body.get("metadata", {}),
     )
     handler = get_command_handler()
-    result = handler.handle_add_relation(cmd)
+    result = await handler.handle_add_relation(cmd)
     return JSONResponse(result)
 
 

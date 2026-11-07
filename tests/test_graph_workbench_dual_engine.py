@@ -191,3 +191,38 @@ async def test_create_find_inspect_link_on_both_engines(env: dict[str, Any]) -> 
     walked = await graph_traverse(pool, alpha["entity_id"], config=read_cfg, max_depth=2)
     assert walked["status"] == "success"
     assert any(r["name"] == f"Beta-{run}" for r in walked["result"])
+
+
+async def test_created_rows_read_back_without_catch_up(env: dict[str, Any]) -> None:
+    """Read-your-writes (Wave-4 review P1-2): a graph write answers only
+    after the projection drains, so the created rows read back with NO
+    explicit catch-up between the write and the read — on both engines.
+    """
+    from corpus_kb.tools.entity_read_tools import list_entities
+    from corpus_kb.tools.graph_read_tools import get_entity_relations
+    from corpus_kb.tools.graph_tools import add_entity, add_relation
+
+    run = uuid4().hex[:8]
+    etype = f"ryw-{run}"
+    pool = env["pool"]
+    read_cfg = env["read_cfg"]
+    write_cfg = env["write_cfg"]
+
+    alpha = await add_entity(pool, f"Ryw-{run}", config=write_cfg, entity_type=etype)
+    listed = await list_entities(pool, config=read_cfg, entity_type=etype, limit=10, offset=0)
+    assert [row["name"] for row in listed["result"]] == [f"Ryw-{run}"]
+
+    beta = await add_entity(pool, f"Ryw2-{run}", config=write_cfg, entity_type=etype)
+    await add_relation(
+        pool,
+        alpha["entity_id"],
+        beta["entity_id"],
+        config=write_cfg,
+        relation_type="links",
+    )
+    relations = await get_entity_relations(pool, alpha["entity_id"], config=read_cfg)
+    assert relations["status"] == "success"
+    assert len(relations["result"]) == 1
+    assert relations["result"][0]["relation_type"] == "links"
+    row = relations["result"][0]
+    assert {row.get("source_name"), row.get("target_name")} == {f"Ryw-{run}", f"Ryw2-{run}"}

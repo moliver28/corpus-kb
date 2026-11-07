@@ -194,7 +194,7 @@ class TestE2EIntegration:
         reset_command_handler()
         handler = get_command_handler()
 
-        result = handler.handle_add_entity(
+        result = await handler.handle_add_entity(
             AddEntityCommand(
                 name="UserService",
                 entity_type="class",

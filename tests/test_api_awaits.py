@@ -43,12 +43,12 @@ class _FakeCommandHandler:
         self.called.append("ingest_directory")
         return {"status": "success", "handler": "ingest_directory"}
 
-    def handle_add_entity(self, cmd: Any) -> dict[str, object]:
+    async def handle_add_entity(self, cmd: Any) -> dict[str, object]:
         self.called.append("add_entity")
         self.entities.append(cmd)
         return {"status": "success", "handler": "add_entity"}
 
-    def handle_add_relation(self, cmd: Any) -> dict[str, object]:
+    async def handle_add_relation(self, cmd: Any) -> dict[str, object]:
         self.called.append("add_relation")
         self.relations.append(cmd)
         return {"status": "success", "handler": "add_relation"}

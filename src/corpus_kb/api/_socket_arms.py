@@ -185,7 +185,7 @@ async def _add_entity(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
         entity_type=params.get("entity_type", "concept"),
         metadata=params.get("metadata", {}),
     )
-    return get_command_handler().handle_add_entity(cmd)
+    return await get_command_handler().handle_add_entity(cmd)
 
 
 async def _verify_answer(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
@@ -216,4 +216,4 @@ async def _add_relation(params: dict[str, Any], tenant_id: str) -> dict[str, Any
         weight=params.get("weight", 1.0),
         metadata=params.get("metadata", {}),
     )
-    return get_command_handler().handle_add_relation(cmd)
+    return await get_command_handler().handle_add_relation(cmd)
