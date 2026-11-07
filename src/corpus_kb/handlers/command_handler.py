@@ -199,15 +199,13 @@ class CommandHandler:
         """
         store = self._pool if self._pool is not None else self._gateway
         if store is None:
-            logger.warning(
-                "No store wired on CommandHandler; the read model drains on its loop."
-            )
+            logger.warning("No store wired on CommandHandler; the read model drains on its loop.")
             return
         try:
             from corpus_kb.domain.application import events_table_name
             from corpus_kb.projections.checkpoint import CheckpointManager
-            from corpus_kb.projections.documents_projection import DocumentsProjection
             from corpus_kb.projections.dlq import DLQHandler
+            from corpus_kb.projections.documents_projection import DocumentsProjection
             from corpus_kb.projections.event_reader import EventReader
 
             app = self.app

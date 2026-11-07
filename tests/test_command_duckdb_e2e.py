@@ -203,9 +203,7 @@ async def test_document_stats_source_rows_sort_on_duckdb(gateway: DuckDbGateway)
     # insert order was (here deliberately non-alphabetical), so the
     # snapshot-facing answer stays deterministic.
     for i, source_type in enumerate(("web", "code", "markdown")):
-        await _insert_document(
-            gateway, uuid4(), source_type, f"doc-{i}-{source_type}.md"
-        )
+        await _insert_document(gateway, uuid4(), source_type, f"doc-{i}-{source_type}.md")
     doc_stats = await VersioningHandler(gateway).handle_query_document_stats(TENANT)
     assert [row["source_type"] for row in doc_stats["by_source_type"]] == [
         "code",
