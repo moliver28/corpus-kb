@@ -155,17 +155,20 @@ test.describe("SPA smoke on a live server", () => {
     ).toBeVisible({ timeout: 60_000 });
     await drawer.getByRole("button", { name: "Close" }).click();
     // LINK: both endpoints picked from the entity picker, never typed.
+    // AntD repeats the option text in a visually hidden aria mirror, so
+    // click the option element a user sees, inside the dropdown that is
+    // neither hidden nor still leaving (the Scale smoke's own pattern).
+    const openPicker = page.locator(
+      ".ant-select-dropdown:not(.ant-select-dropdown-hidden):not(.ant-slide-up-leave)",
+    );
+    const pickOption = async (name: string): Promise<void> => {
+      await openPicker.locator(".ant-select-item-option").filter({ hasText: name }).first().click();
+    };
     const relation = page.locator(".ant-card").filter({ hasText: "Link two entities" });
     await relation.getByRole("combobox").first().click();
-    await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
-      .getByText(first, { exact: false })
-      .first()
-      .click();
+    await pickOption(first);
     await relation.getByRole("combobox").nth(1).click();
-    await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")
-      .getByText(second, { exact: false })
-      .first()
-      .click();
+    await pickOption(second);
     await relation.getByRole("button", { name: "Link two entities" }).click();
     await expect(page.getByText("Relation created.")).toBeVisible({ timeout: 60_000 });
     // The relation read answers in the drawer of the source entity.
