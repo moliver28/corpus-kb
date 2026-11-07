@@ -15,6 +15,7 @@ apply here unchanged (same acquire shape: gateway ``transaction`` scope or
 
 from __future__ import annotations
 
+import json
 from typing import Any, cast
 
 import asyncpg
@@ -52,24 +53,26 @@ async def list_entities(
     pool: asyncpg.Pool | SqlGateway, query: ListEntitiesQuery
 ) -> list[EntityResult]:
     """List entities, optionally filtered by type."""
+    # The name ties break on the id, so two entities with one name hold
+    # one total order (deterministic output, program rule 9).
     if query.entity_type:
         sql = """
             SELECT entity_id, name, entity_type, metadata
             FROM entities
             WHERE tenant_id = $1 AND entity_type = $2
-            ORDER BY name ASC
-            LIMIT $3
+            ORDER BY name ASC, entity_id ASC
+            LIMIT $3 OFFSET $4
             """
-        args = (str(query.tenant_id), query.entity_type, query.limit)
+        args = (str(query.tenant_id), query.entity_type, query.limit, query.offset)
     else:
         sql = """
             SELECT entity_id, name, entity_type, metadata
             FROM entities
             WHERE tenant_id = $1
-            ORDER BY name ASC
-            LIMIT $2
+            ORDER BY name ASC, entity_id ASC
+            LIMIT $2 OFFSET $3
             """
-        args = (str(query.tenant_id), query.limit)
+        args = (str(query.tenant_id), query.limit, query.offset)
     if is_gateway(pool):
         async with pool.transaction(str(query.tenant_id)) as reader:
             rows = await reader.fetch(sql, *args)
@@ -85,10 +88,20 @@ def _entities(rows: list[Any]) -> list[EntityResult]:
             entity_id=row["entity_id"],
             name=row["name"],
             entity_type=row["entity_type"],
-            metadata=dict(row["metadata"]) if row["metadata"] else {},
+            metadata=_metadata_of(row["metadata"]),
         )
         for row in rows
     ]
+
+
+def _metadata_of(raw: Any) -> dict[str, Any]:
+    """One metadata value from the row: JSONB text (asyncpg) or a dict."""
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str) and raw:
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 async def verify_answer(

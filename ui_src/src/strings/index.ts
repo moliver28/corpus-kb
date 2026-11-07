@@ -3,6 +3,7 @@ import type { AnalyzeStrings } from "./analyze";
 import type { AppStrings } from "./app";
 import type { AskStrings } from "./ask";
 import type { CodebookStrings } from "./codebook";
+import type { GraphStrings } from "./graph";
 import type { IngestStrings } from "./ingest";
 import type { ReviewStrings } from "./review";
 
@@ -15,6 +16,7 @@ export interface Strings
     AskStrings,
     AnalyzeStrings,
     CodebookStrings,
+    GraphStrings,
     IngestStrings,
     ReviewStrings {}
 

@@ -66,6 +66,10 @@ GET_SURFACE_NAMES = frozenset(
         # Phase-2 Wave 3: the corpus stats pair (GET routes predate the rows).
         "stats",
         "document-stats",
+        # Phase-2 Wave 4: the graph reads the workbench tables call (the
+        # relations read answers GET by entity id; the entity list window).
+        "get-entity-relations",
+        "list-entities",
     }
 )
 

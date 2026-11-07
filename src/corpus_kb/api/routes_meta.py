@@ -49,6 +49,7 @@ async def list_entities(request: Request) -> JSONResponse:
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
         entity_type=request.query_params.get("entity_type"),
         limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
+        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
     )
     handler = get_query_handler()
     results = await handler.handle_list_entities(query)

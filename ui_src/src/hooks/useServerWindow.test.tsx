@@ -57,6 +57,8 @@ function Harness() {
     <div>
       <button onClick={() => win.goto(2)}>next</button>
       <button onClick={() => win.refresh()}>reload</button>
+      <button onClick={() => win.setFilter({ entity_type: "idea" })}>filter</button>
+      <button onClick={() => win.setFilter(undefined)}>clear filter</button>
       <button onClick={() => win.stepBackAfterDelete(1)}>remove only row</button>
       <button onClick={() => win.stepBackAfterDelete(2)}>remove one of two</button>
       <ul>
@@ -170,6 +172,44 @@ describe("useServerWindow", () => {
     await waitFor(() => expect(calls.some((c) => c.url.includes("offset=3"))).toBe(true));
     expect(latest?.page).toBe(2);
     await waitFor(() => expect(latest?.rows.length).toBe(WINDOW));
+  });
+
+  it("rides the filter on every window read and returns to page 1", async () => {
+    stubFetch([
+      { method: "GET", path: "/api/documents", reply: rowsReply(WINDOW + 1) },
+      { method: "GET", path: "/api/documents", reply: rowsReply(WINDOW) },
+      { method: "GET", path: "/api/documents", reply: rowsReply(WINDOW) },
+    ]);
+    renderProbe();
+    await waitFor(() => expect(latest?.rows.length).toBe(WINDOW));
+    // Page 2 first: the filter must bring the table back to page 1.
+    fireEvent.click(screen.getByText("next"));
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.includes("offset=3&")) || calls.some((c) => c.url.endsWith("offset=3"))).toBe(true),
+    );
+    fireEvent.click(screen.getByText("filter"));
+    await waitFor(() => expect(latest?.extraQuery).toEqual({ entity_type: "idea" }));
+    await waitFor(() => {
+      const filtered = calls.filter(
+        (c) => c.url.includes("/api/documents") && c.url.includes("entity_type=idea"),
+      );
+      if (filtered.length === 0) {
+        throw new Error("no filtered read yet");
+      }
+      expect(filtered[0]?.url).toContain("offset=0");
+    });
+    // Clearing rides the same reset: one unfiltered first-window read.
+    const filteredCount = calls.filter((c) => c.url.includes("entity_type=idea")).length;
+    fireEvent.click(screen.getByText("clear filter"));
+    await waitFor(() => expect(latest?.extraQuery).toBeUndefined());
+    await waitFor(() => {
+      const after = calls.filter((c) => c.url.includes("/api/documents"));
+      const unfiltered = after.filter((c) => !c.url.includes("entity_type=idea"));
+      if (unfiltered.length === 0) {
+        throw new Error("no unfiltered read yet");
+      }
+    });
+    expect(calls.filter((c) => c.url.includes("entity_type=idea")).length).toBe(filteredCount);
   });
 
   it("windowPagerTotal adds the sentinel row only when a next window exists", () => {
