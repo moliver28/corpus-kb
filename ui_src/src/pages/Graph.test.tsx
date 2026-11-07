@@ -1,7 +1,14 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
-import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import {
+  calls,
+  clearCalls,
+  makeWrapper,
+  respond,
+  stubFetch,
+  stubFetchImpl,
+} from "../test/testUtils";
 import Graph from "./Graph";
 
 /**
@@ -100,6 +107,67 @@ describe("Graph stage", () => {
     expect(write).toBeDefined();
     expect(write?.body).toContain('"name":"Gamma"');
     expect(entitiesCalls()).toBeGreaterThan(before);
+  });
+
+  it("re-reads the pickers after an entity create and offers the new entity", async () => {
+    // P1-1 (Wave-4 review): the write epoch lives on the page, so an
+    // entity create re-reads BOTH pickers — the created entity is
+    // pickable without a page reload. The stub serves a growing row
+    // list, so the post-create picker read really carries Gamma.
+    const rows = entitiesOk.result.map((row) => ({ ...row }));
+    const seen: { method: string; url: string }[] = [];
+    stubFetchImpl((url: string | URL, init?: { method?: string }) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      seen.push({ method, url: String(url) });
+      if (method === "POST") {
+        rows.push({
+          entity_id: "00000000-0000-0000-0000-00000000new0",
+          name: "Gamma",
+          entity_type: "concept",
+          metadata: {},
+        });
+        return Promise.resolve(
+          respond(200, {
+            status: "success",
+            entity_id: "00000000-0000-0000-0000-00000000new0",
+            name: "Gamma",
+            entity_type: "concept",
+          }),
+        );
+      }
+      return Promise.resolve(respond(200, { status: "success", result: rows }));
+    });
+    render(<Graph />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeTruthy());
+    fireEvent.change(screen.getByLabelText(`${strings.graphEntityNameLabel} *`), {
+      target: { value: "Gamma" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: strings.graphCreateTitle }));
+    await waitFor(() => expect(screen.getByText(strings.graphCreateSaved)).toBeTruthy());
+    // Picker reads ride limit=50 (the window read is limit=51); the
+    // create must be followed by one fresh read per picker.
+    const pickerReadsAfter = (log: { method: string; url: string }[]): number => {
+      const postAt = log.findIndex((c) => c.method === "POST");
+      expect(postAt).toBeGreaterThan(-1);
+      return log
+        .slice(postAt + 1)
+        .filter((c) => c.method === "GET" && c.url.includes("limit=50")).length;
+    };
+    await waitFor(() => expect(pickerReadsAfter(seen)).toBe(2));
+    // The created entity is selectable in the source picker dropdown.
+    fireEvent.mouseDown(screen.getAllByRole("combobox")[0]!);
+    const openOptions = (): Element[] => {
+      const dropdown = document.querySelector(
+        ".ant-select-dropdown:not(.ant-select-dropdown-hidden):not(.ant-slide-up-leave)",
+      );
+      return dropdown ? Array.from(dropdown.querySelectorAll(".ant-select-item-option")) : [];
+    };
+    await waitFor(() => {
+      const pick = openOptions().find((el) => el.textContent === "Gamma (concept)");
+      if (pick === undefined) {
+        throw new Error("created entity not in the open dropdown yet");
+      }
+    });
   });
 
   it("reads the drawer's relations and neighbors for one entity", async () => {

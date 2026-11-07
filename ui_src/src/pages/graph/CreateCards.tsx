@@ -10,8 +10,10 @@ import EntityPicker from "./EntityPicker";
  * The workbench's two create forms (Phase-2 Wave 4): one entity, one
  * relation. Both writes run through the form-to-write seam hook
  * (useFormWrite) over the add-entity / add-relation manifest ops, and
- * every ok answer refreshes the caller's window. The relation's
- * endpoints are picked through the entity picker — never typed.
+ * every ok answer refreshes the caller's window. The page owns the
+ * write epoch, so the pickers re-read after an entity create too (the
+ * Wave-4 review's P1-1). The relation's endpoints are picked through
+ * the entity picker — never typed.
  */
 
 /** The default entity type the catalogue row pins. */
@@ -92,7 +94,14 @@ export function CreateEntityCard({ refresh }: { refresh: () => void }) {
   );
 }
 
-export function CreateRelationCard({ refresh }: { refresh: () => void }) {
+export function CreateRelationCard({
+  refresh,
+  reloadKey = 0,
+}: {
+  refresh: () => void;
+  /** Bumped by the page after every ok write; the pickers re-read. */
+  reloadKey?: number;
+}) {
   const [sourceId, setSourceId] = useState("");
   const [targetId, setTargetId] = useState("");
   const [relationType, setRelationType] = useState(DEFAULT_RELATION_TYPE);
@@ -104,9 +113,6 @@ export function CreateRelationCard({ refresh }: { refresh: () => void }) {
     refresh,
     strings.graphRelationSaved,
   );
-  // A created entity must become pickable: the epoch re-reads the
-  // pickers' list after one ok write.
-  const [pickerEpoch, setPickerEpoch] = useState(0);
 
   async function onSubmit(): Promise<void> {
     const trimmedType = relationType.trim();
@@ -128,7 +134,6 @@ export function CreateRelationCard({ refresh }: { refresh: () => void }) {
       setSourceId("");
       setTargetId("");
       setRelationType(DEFAULT_RELATION_TYPE);
-      setPickerEpoch((epoch) => epoch + 1);
     }
   }
 
@@ -147,7 +152,7 @@ export function CreateRelationCard({ refresh }: { refresh: () => void }) {
               }
             }}
             error={sourceError}
-            reloadKey={pickerEpoch}
+            reloadKey={reloadKey}
           />
           <EntityPicker
             label={strings.graphTargetLabel}
@@ -160,7 +165,7 @@ export function CreateRelationCard({ refresh }: { refresh: () => void }) {
             }}
             error={targetError}
             excludeId={sourceId === "" ? undefined : sourceId}
-            reloadKey={pickerEpoch}
+            reloadKey={reloadKey}
           />
           <LabeledField
             label={strings.graphRelationTypeLabel}
