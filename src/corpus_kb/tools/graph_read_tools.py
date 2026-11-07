@@ -51,14 +51,9 @@ async def _resolve_graph_handler(cfg: dict[str, object], pool: asyncpg.Pool) -> 
     from corpus_kb.handlers.graph_handler import GraphHandler
     from corpus_kb.storage.graph_factory import create_graph_store
 
-    # Postgres hands the factory the pool; DuckDB lets the factory open
-    # the configured file (the gateway is not a raw connection).
-    database = cfg.get("database")
-    is_duckdb = isinstance(database, dict) and str(database.get("backend") or "") == "duckdb"
-    if is_duckdb:
-        graph_store = await create_graph_store(cfg)
-    else:
-        graph_store = await create_graph_store(cfg, pool)
+    # Both backends hand the factory the pool (Postgres pool or DuckDB
+    # gateway); the factory opens its own store over that source.
+    graph_store = await create_graph_store(cfg, pool)
     return GraphHandler(graph_store, cfg)
 
 
