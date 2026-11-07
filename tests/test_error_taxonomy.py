@@ -645,12 +645,22 @@ async def test_load_run_wrong_aggregate_type_raises_validation(
 
 
 def test_command_handler_requires_a_pool_for_ingest() -> None:
+    """No pool AND no gateway stays a 500 InternalError with the new text."""
     from corpus_kb.handlers.command_handler import CommandHandler
 
     handler = CommandHandler(pool=None, gateway=None)
-    with pytest.raises(InternalError, match="requires an asyncpg") as excinfo:
+    with pytest.raises(InternalError, match="pool or a gateway for ingest") as excinfo:
         handler._require_pool()
     _assert_triple(excinfo.value, 500, -32603, 1)
+
+
+def test_command_handler_ingest_falls_back_to_the_gateway() -> None:
+    """DuckDB wiring passes the gateway only; ingest must read it."""
+    from corpus_kb.handlers.command_handler import CommandHandler
+
+    gateway = cast(Any, object())
+    handler = CommandHandler(pool=None, gateway=gateway)
+    assert handler._require_pool() is gateway
 
 
 async def test_command_handler_delete_needs_a_pool_or_gateway() -> None:

@@ -23,11 +23,13 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import pytest
 
 pytest.importorskip("duckdb")
 
+import corpus_kb.handlers.command_handler as command_handler_module
 from corpus_kb._setup.migrate import run_migrations
 from corpus_kb.extraction import ExtractStats
 from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string, vector_literal
@@ -487,3 +489,46 @@ async def test_reembed_repairs_degraded_chunk_on_duckdb(
         "SELECT degraded, embedding_model FROM chunks_vectors WHERE chunk_id = ?", good
     )
     assert dict(healthy) == {"degraded": False, "embedding_model": "stale-model"}
+
+
+async def test_command_handler_ingests_through_the_duckdb_gateway(
+    duckdb_ingest_gateway: DuckDbGateway,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The HTTP ingest path works on DuckDB (issue #356 regression pin).
+
+    ``server_wiring_duckdb`` builds ``CommandHandler`` with the gateway
+    only, so the ingest handlers must read the gateway when the pool is
+    ``None``. The stub embedder keeps the run offline; the assertion is
+    the document row the Postgres path would have written.
+    """
+    from corpus_kb.domain.models import IngestFileCommand
+
+    _stub_stages(monkeypatch)
+
+    class _App:
+        """Eventsourcing stub: the event store is not under test here."""
+
+        def save(self, _aggregate: object) -> None:
+            return None
+
+    monkeypatch.setattr(command_handler_module, "get_app_for_config", lambda _cfg: _App())
+
+    target = tmp_path / DOC_PATH
+    target.write_text(DOC_TEXT, encoding="utf-8")
+    handler = command_handler_module.CommandHandler(
+        config=_pipeline_config(), gateway=duckdb_ingest_gateway
+    )
+
+    result = await handler.handle_ingest_file(
+        IngestFileCommand(tenant_id=UUID(TENANT), file_path=str(target))
+    )
+
+    assert result["status"] == "success"
+    docs = await duckdb_ingest_gateway.fetch(
+        "SELECT doc_id FROM documents WHERE tenant_id = $1 AND source = $2",
+        TENANT,
+        str(target),
+    )
+    assert len(docs) == 1
