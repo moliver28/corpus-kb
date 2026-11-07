@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """Thin ``corpus-rag`` CLI for the corpus-rag plugin.
 
-Two commands, stdlib only:
+Stdlib only:
 
-``status``   Resolve the engine and run ``corpus-kb doctor``. Print a short
-             verdict and a fix hint when the engine is missing or unhealthy.
-``connect``    Print the MCP server config JSON to paste into a client config.
-``provision``  Create the per-project raw table through the engine's
-               project-provision operation (works on Postgres and DuckDB).
+``status``         Resolve the engine and run ``corpus-kb doctor``. Print a
+                   short verdict and a fix hint when the engine is missing or
+                   unhealthy.
+``connect``        Print the MCP server config JSON to paste into a client
+                   config.
+``provision``      Create the per-project raw table through the engine's
+                   project-provision operation (works on Postgres and DuckDB).
+``engine install`` Clone this repository at tag ``corpus-rag-v<version>``
+                   into ``<state>/engine`` and sync it with uv. ``--force``
+                   reinstalls and keeps the old folder for rollback.
 
 The engine keeps the real functionality (``corpus-kb ...``). This wrapper only
-helps you check the connection.
+helps you check the connection and install it.
 """
 
 from __future__ import annotations
@@ -24,6 +29,7 @@ from pathlib import Path
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT))
 
+import engine_install  # noqa: E402
 from engine_paths import engine_cli, engine_root  # noqa: E402
 
 NOT_FOUND = (
@@ -113,6 +119,16 @@ def cmd_provision(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_engine_install(args: argparse.Namespace) -> int:
+    """Install the engine from the release tag into the state folder."""
+    try:
+        print(engine_install.run_install(force=args.force))
+        return 0
+    except engine_install.EngineInstallError as exc:
+        print(f"not ok: {exc}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="corpus-rag", description="Corpus-KB plugin helper.")
     subs = parser.add_subparsers(dest="command", required=True)
@@ -123,11 +139,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     prov.add_argument("slug", help="The project slug, like meeting-notes")
     prov.add_argument("--project-id", default=None, help="Research project id")
+    engine = subs.add_parser("engine", help="Manage the engine install in the state folder.")
+    engine_subs = engine.add_subparsers(dest="engine_command", required=True)
+    inst = engine_subs.add_parser(
+        "install",
+        help="Clone the engine at tag corpus-rag-v<version> and sync it with uv.",
+    )
+    inst.add_argument(
+        "--force", action="store_true", help="Reinstall, even when this version is already present."
+    )
     args = parser.parse_args(argv)
     if args.command == "status":
         return cmd_status(args)
     if args.command == "provision":
         return cmd_provision(args)
+    if args.command == "engine" and args.engine_command == "install":
+        return cmd_engine_install(args)
     return cmd_connect(args)
 
 

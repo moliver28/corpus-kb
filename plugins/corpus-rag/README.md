@@ -25,7 +25,14 @@ Then restart your agent. Full steps: [docs/PLUGIN.md](../../docs/PLUGIN.md).
 
 ## Engine connection
 
-The plugin drives the `corpus-kb` CLI and MCP server. Check the connection:
+The plugin drives the `corpus-kb` CLI and MCP server. No engine yet? Install
+one from the release tag (`--force` reinstalls and keeps the old folder):
+
+```bash
+corpus-rag engine install
+```
+
+Check the connection:
 
 ```bash
 corpus-rag status

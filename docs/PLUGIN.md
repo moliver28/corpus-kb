@@ -53,6 +53,22 @@ To wire the engine into a client, print the MCP config and paste it:
 corpus-rag connect
 ```
 
+### Install the engine from a release tag
+
+No engine yet? Install one into the plugin state folder:
+
+```bash
+corpus-rag engine install
+```
+
+This clones this repository at the tag `corpus-rag-v<plugin version>` into
+`<state>/engine/`, then runs `uv sync --frozen --no-dev` there. The state
+folder is `CORPUS_KB_STATE_DIR`, else `~/.corpus-kb`. Add `--force` to
+reinstall. The old install then moves to `<state>/engine-versions/<version>/`
+for rollback. The command never falls back to another branch or tag. When the
+release tag does not exist yet, it prints the nearest tags and stops. Wait for
+the release, or install the engine by hand ([INSTALL.md](INSTALL.md)).
+
 ## Three flows
 
 ### Ask with citations
