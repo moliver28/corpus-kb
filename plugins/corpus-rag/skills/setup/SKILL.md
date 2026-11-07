@@ -7,8 +7,8 @@ disable-model-invocation: true
 # Setup a Corpus Study in This Folder
 
 Turn this folder of transcripts into a working study: a database, a
-seed file the user can search right away, and the rest of the files
-queued. Every step is journaled in `.claude/corpus.setup.json` and can
+seed file the user can search right away. The rest of the files wait
+in the queue. Every step is journaled in `.claude/corpus.setup.json` and can
 be undone with `corpus-rag setup --off`.
 
 ## Steps
@@ -36,7 +36,7 @@ be undone with `corpus-rag setup --off`.
 - `queue autorun` is global for all studies on this machine; the
   question says so. Ask it unchanged.
 - A "No" on the cloud-model question keeps the study local only
-  (`local_only` in the gate state); no transcript text reaches a cloud
+  (`local_only` in the gate state). No transcript text reaches a cloud
   model.
 - `corpus-rag setup --off` undoes the allow rules and the autorun
   change, stops the server, and silences the folder. The database and

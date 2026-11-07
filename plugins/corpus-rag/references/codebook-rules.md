@@ -71,19 +71,19 @@ A minimal one-code book:
 ## Worked example
 
 A researcher studies interviews about a software vendor. In an early
-read, three chunks mention missed deadlines, one mentions a strong
+read, three chunks mention missed deadlines. One mentions a strong
 sales relationship, and one praises the product's speed.
 
-- "Missed deadlines" becomes a code: inclusion covers schedule
-  commitments and their breaches; exclusion covers product quality
+- "Missed deadlines" becomes a code. Inclusion covers schedule
+  commitments and their breaches. Exclusion covers product quality
   complaints that never mention time.
 - "Strong sales relationship" becomes a different code, not a second
-  name for trust: the inclusion criteria talk about people and
-  responsiveness, and the exclusion criteria fence out delivery
-  promises, which belong to the first code.
+  name for trust. The inclusion criteria talk about people and
+  responsiveness. The exclusion criteria fence out delivery promises,
+  which belong to the first code.
 - "Praises the product's speed" matches neither code. The researcher
-  parks it as a possible new code after the inductive pass, rather
-  than stretching an existing code to catch it.
+  parks it as a possible new code after the inductive pass. Do not
+  stretch an existing code to catch it.
 
 The loaded book answers with a version id. Every later stage (pool,
 cells, code, reliability, export) hangs off that version id.

@@ -19,7 +19,7 @@ Rules the report follows:
 
 - Promotion halts when a code sits below 0.667. The number is a floor,
   not a suggestion.
-- Alpha collapses on rare codes even at high agreement; read a rare
+- Alpha collapses on rare codes even at high agreement. Read a rare
   code's alpha beside its prevalence note instead of panicking at it.
 - More double-coded units is the fix for a tentative code. Reliability
   on three shared cells is noise; on thirty it is a measurement.
@@ -37,7 +37,7 @@ Rules the report follows:
 
 Cut across the bands: a failed quote gate becomes `manual_review`,
 and a provisional (unquoted) assign is capped at mid and marked
-`provisional-hold`. `codify status` shows the route counts; a healthy
+`provisional-hold`. `codify status` shows the route counts. A healthy
 run has most rows in accept routes and a review queue you can actually
 read.
 
@@ -66,6 +66,6 @@ of silently entering the accepted set.
   already made.
 - Routing (bands) decides where a single decision goes before anyone
   aggregates anything.
-- A run can route cleanly and still disagree with itself; a run can
+- A run can route cleanly and still disagree with itself. A run can
   agree with itself and still be wrong together. Report both, with the
   caution, and let the human judgment stay where it belongs.

@@ -5,8 +5,8 @@ description: Report and export coding results. Use when the user says "alpha rep
 
 # Corpus Codify Export
 
-Write up chunk-coding results: the reliability report with its caution,
-saturation as a provisional signal, and the coded evidence as CSV.
+Write up chunk-coding results: the reliability report with its caution
+and the coded evidence as CSV. Report saturation as a provisional signal.
 
 ## Steps
 
@@ -18,15 +18,16 @@ saturation as a provisional signal, and the coded evidence as CSV.
 
    Show this caution beside every alpha or kappa number in the report:
 
-> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, whether the quotes are honest, or whether the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
+> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, the quotes are honest, or the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
 
    Read the numbers against the thresholds in
-   `../../references/reliability-and-routing.md`: at or above 0.800 is
-   reliable, 0.667 to 0.800 is tentative, below 0.667 halts promotion.
+   `../../references/reliability-and-routing.md`. At or above 0.800 is
+   reliable, 0.667 to 0.800 is tentative, and below 0.667 halts
+   promotion.
 
 2. Handle the reflexive refusal honestly. When the command refuses
    because the study is reflexive, report that the study does not use
-   inter-coder reliability, and describe the coding evidence by other
+   inter-coder reliability. Describe the coding evidence by other
    means: coverage, saturation, and the researcher's own audit. Do not
    compute agreement numbers on the side.
 

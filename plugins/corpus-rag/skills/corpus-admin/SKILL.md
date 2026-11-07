@@ -62,8 +62,8 @@ corpus-rag ops --family search  # one family
 corpus-rag op <name> -p <slug> key=value ...
 ```
 
-`op` validates the name and arguments against the live inventory, sends
-one HTTP call to the study's server, and prints the result envelope.
+`op` validates the name and arguments against the live inventory. It
+sends one HTTP call to the study's server and prints the result envelope.
 Long ingest ops get a 7200 second timeout.
 
 ## Evidence rule

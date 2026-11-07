@@ -6,7 +6,7 @@ command prints the same sentence without the blockquote mark. Do not
 reword it, shorten it, or summarize it: the identical wording is what
 lets a reader recognize it everywhere.
 
-> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, whether the quotes are honest, or whether the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
+> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, the quotes are honest, or the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
 
 ## Why the caution exists
 

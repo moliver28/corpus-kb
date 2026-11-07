@@ -21,7 +21,7 @@ in the corpus-codify-code skill.
    emerge while reading; coders are expected to differ, so agreement
    numbers do not apply. Show this caution when the user weighs them:
 
-> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, whether the quotes are honest, or whether the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
+> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, the quotes are honest, or the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
 
 3. Provision with the paradigm:
 
@@ -50,8 +50,8 @@ in the corpus-codify-code skill.
    interview in `../../references/codebook-rules.md`: one code at a
    time, all six MacQueen fields, with a worked example. Write the
    codebook JSON, show it to the user, and load it as in step 5.
-7. Say what is on record before you stop: the study slug, the paradigm,
-   the ingest counts, and the codebook version id.
+7. Say what is on record before you stop. Name the study slug, the
+   paradigm, the ingest counts, and the codebook version id.
 
 ## Notes
 

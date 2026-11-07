@@ -1,9 +1,9 @@
 # Corpus-Rag Plugin
 
 The corpus-rag plugin connects Claude Code or ZCode to a local Corpus-KB
-engine. You register studies, ingest documents into them, then ask
-questions and get answers with citations — one database and one server
-per study. The plugin lives at `plugins/corpus-rag/` in this repository.
+engine. You register studies and ingest documents into them. Then you ask
+questions and get answers with citations. Each study has one database
+and one server. The plugin lives at `plugins/corpus-rag/` in this repository.
 This repository is also the plugin marketplace. The manifest is
 `.claude-plugin/marketplace.json`.
 
@@ -151,9 +151,9 @@ thematic analysis rejects inter-coder reliability. The reliability
 output carries the epistemological caution; the skills show the same
 caution beside every alpha or kappa.
 
-The event-sourced research pipeline (themes, codebook promotion,
-deductive runs, review, reports, releases) runs through the op runner;
-the `/corpus-research` skill maps each stage to its op.
+The event-sourced research pipeline runs through the op runner. It
+covers themes, codebook promotion, deductive runs, review, reports,
+and releases. The `/corpus-research` skill maps each stage to its op.
 
 ## Skills
 
@@ -189,9 +189,13 @@ Create one study (or adopt an existing database or file):
 corpus-rag provision interview-study --backend postgres
 ```
 
-Every command picks its study in this order: `-p <slug>` when you pass
-it; the slug in the folder's `.claude/corpus.json` (searched upward);
-the active study; else the command stops and asks you to name one. Set
+Every command picks its study in this order:
+
+- `-p <slug>` when you pass it.
+- The slug in the folder's `.claude/corpus.json`, searched upward.
+- The active study.
+
+With no match, the command stops and asks you to name one. Set
 the active study once per machine:
 
 ```bash
@@ -239,7 +243,7 @@ corpus-rag use interview-study
 | `plugin-doctor [--bundle]` | Plugin health: versions, hook files, trigger file, folder state, this folder's last 10 hook errors. Exit 0 only when hooks and triggers are good. `--bundle` writes a redacted JSON file for a bug report. |
 | `status`, `connect`, `engine install` | Kept from 0.7.x; `status` is per study now, `connect` prints one MCP entry per study. |
 | `uxr consent [-p]` | Report the setup consent answer. Exit 1 means local only. Unknown means local only. |
-| `uxr ingest-plan --spec UX1-N.spec.json [-p]` | Store the study and its question ids (RQn by position, Hn from the label prefix, An by position), keyed by a 16-char SHA-256 of the spec. |
+| `uxr ingest-plan --spec UX1-N.spec.json [-p]` | Store the study and its question ids, keyed by a 16-char SHA-256 of the spec. Ids: RQn by position, Hn from the label prefix, An by position. |
 | `uxr classify --dir <path> [--roster F] [--staff F] [-p]` | Sort files into `participant_session`, `internal_meeting`, `plan`, `derived`, `excluded`, `unmatched`. No model call. `unmatched` files go to the researcher; never guessed. |
 | `uxr confirm-classes '<json>'\|@file [-p]` | Store confirmed classes. Only `participant_session` and `internal_meeting` reach the source list. |
 | `uxr stubs --dir <path> [-p]` | Write `sources/corpus/<slug>.md` per source so `[S:slug]` cites resolve. Never overwrite. |
@@ -254,10 +258,10 @@ corpus-rag use interview-study
 
 ### Servers and ports
 
-Commands turn the study's server up when they need it, on the study's
-port (first free port from `base_port`, stored in the registry). Health
-probes run once a second for up to 90 s; a failed start prints the log
-path (`<data>/logs/<slug>.log`) and its last lines. Every command marks
+Commands turn the study's server up when they need it. The port is
+the first free port from `base_port`, stored in the registry. Health
+probes run once a second for up to 90 s. A failed start prints the
+log path (`<data>/logs/<slug>.log`) and its last lines. Every command marks
 use; other studies' servers idle over 30 minutes stop, and the current
 study's server never stops mid-command. On DuckDB studies the server
 stops (and waits up to 30 s) before `migrate`, `reembed`, `doctor`, and
@@ -320,16 +324,17 @@ The hooks, one per event:
 | FileChanged | Queues the changed file; ignores `unlink`. |
 | Stop | Logs a turn that read a transcript before any corpus call. Prints nothing. |
 
-A transcript is a `.vtt` or `.srt` file; or a name with "transcript" and a
-`.md`, `.txt`, or `.docx` suffix; or one of those whose first 4096 bytes
-hold 3 or more speaker labels with one repeated. Bold labels
+A transcript is a `.vtt` or `.srt` file. Or it is a file with
+"transcript" in the name and a `.md`, `.txt`, or `.docx` suffix. Or it
+is one of those files whose first 4096 bytes hold 3 or more speaker
+labels with one repeated. Bold labels
 (`**P1:** text`) parse like plain labels; the engine reads both, so no
 normalized copy is made.
 
-For five events (UserPromptSubmit, SubagentStart, PreToolUse, PostToolUse,
-FileChanged) a shell guard walks up from the working folder for
-`.claude/corpus.json` and exits 0 before Python starts when the file is
-absent or holds `"enabled": false`. UserPromptSubmit also passes when a
+For five events (UserPromptSubmit, SubagentStart, PreToolUse,
+PostToolUse, FileChanged) a shell guard runs before Python starts. It
+walks up from the working folder for `.claude/corpus.json`. When the
+file is absent or holds `"enabled": false`, the guard exits 0. UserPromptSubmit also passes when a
 walk-up level holds the research sentinel, so the setup offer can run.
 Hook cost outside study folders stays near zero. SessionStart always runs
 (the daily prune), and Stop exits fast when no session record exists.
@@ -346,29 +351,34 @@ setup offer in one folder, run `corpus-rag decline`.
 When you open a folder of interview transcripts, the plugin offers to
 set a study up once per session. The offer fires on SessionStart
 (`startup` only) and on UserPromptSubmit when the prompt matches the
-trigger list in `hooks/triggers.json` (research nouns plus analysis
-frames, minus exclusions such as "interview script" or "embedding").
+trigger list in `hooks/triggers.json`. The list holds research nouns
+plus analysis frames, minus exclusions such as "interview script" or
+"embedding".
 The offer text tells the agent to finish your current request first and
-then ask one question: set up now, not now (`corpus-rag snooze`, 7
-days), or never here (`corpus-rag decline`).
+then ask one question. The choices: set up now, not now
+(`corpus-rag snooze`, 7 days), or never here (`corpus-rag decline`).
 
-The offer only fires when the folder holds no `corpus.json`, is not the
-engine repository, is not declined or snoozed, and the signal scan
-finds transcripts or interview summaries (depth 2, 0.6 s budget,
-hidden folders, `node_modules`, `__pycache__`, and `venv` skipped).
+The offer only fires under real conditions. The folder must hold no
+`corpus.json`, must not be the engine repository, and must not be
+declined or snoozed. The signal scan must find transcripts or
+interview summaries. The scan runs at depth 2 inside a 0.6 s budget.
+It skips hidden folders, `node_modules`, `__pycache__`, and `venv`.
 After the first offer the plugin leaves a `.claude/corpus-research`
-sentinel so the prompt hook can reach Python in this folder without a
-scan. `decline` and `setup --off` remove it.
+sentinel. It lets the prompt hook reach Python in this folder without
+a scan. `decline` and `setup --off` remove it.
 
 If you say yes, the agent runs the `setup` skill:
 
-1. `corpus-rag setup --questions` — preflight (hard checks stop setup
-   with fix commands; Ollama and the embedding model only warn), a PII
-   scan (per-file counts of email addresses and person-like names —
-   paths, kinds, counts; never text; role labels skipped), and the
-   question payload (AskUserQuestion, four per call): study name,
-   watch folders, backend, cloud-model consent, auto ingest, allow
-   rules, queue autorun.
+1. `corpus-rag setup --questions` — three checks, then the questions:
+
+   - Preflight. Hard checks stop setup with fix commands. Ollama and
+     the embedding model only warn.
+   - A PII scan: per-file counts of email addresses and person-like
+     names. It reports paths, kinds, and counts. It never reports
+     text. Role labels are skipped.
+   - The question payload (AskUserQuestion, four per call): study
+     name, watch folders, backend, cloud-model consent, auto ingest,
+     allow rules, queue autorun.
 2. `corpus-rag setup --apply --answers '<json>'` — four journaled steps
    in `.claude/corpus.setup.json`:
 
@@ -392,14 +402,14 @@ The gate state lives at `${CLAUDE_PLUGIN_DATA}/gate-state.json` with one
 entry per folder (`declined`, `snoozed_until`, `slug`,
 `enabled_by_setup`, `local_only`), written atomically behind a lock. A
 0.7.0 `study-registered` mark and old `declined-*` mark files are read
-once and removed when the gate state is first used, so a prior
-"declined" choice carries over.
+once, then removed. This happens when the gate state is first used, so
+a prior "declined" choice carries over.
 
 ## The ingest queue
 
 New and changed files in a watch folder queue in
-`<folder>/.claude/corpus-pending.jsonl` (one line per path, dedup on path
-and mtime, guarded by a `.lock`). A transcript routes to
+`<folder>/.claude/corpus-pending.jsonl`. The queue holds one line per
+path, skips repeats by path and mtime, and is guarded by a `.lock`. A transcript routes to
 `research_ingest_transcript` and then `ingest_file`, so it reaches the
 research tables and plain search. Other files route to `queue_enqueue`.
 
@@ -439,7 +449,7 @@ Storage is one SQLite file per study, `uxr/<slug>.sqlite` under
 documents by `doc_id`, read through `corpus-rag sql`.
 
 A study counts as a UXR study when its `.claude/corpus.json` has
-`uxr.ticket`, or `00-overview.md` names a ticket, or a
+`uxr.ticket`. Or `00-overview.md` names a ticket, or a
 `<PREFIX>-N.spec.json` file sits at the folder root. UXR studies get
 three extras:
 
@@ -453,9 +463,10 @@ three extras:
 - After `corpus-rag search`, up to three stored rows print under
   "Derived insights (model output, not evidence):".
 
-The search line runs through a small generic extension point:
-`post-search.json` under the plugin data folder lists commands that run
-after every search with the study slug and the query. `corpus-rag` knows
+The search line runs through a small generic extension point.
+`post-search.json` under the plugin data folder lists commands that
+run after every search. Each command gets the study slug and the
+query. `corpus-rag` knows
 nothing about the registered commands; `uxr post-search` is the one this
 plugin ships. A command that fails or prints nothing stays silent.
 

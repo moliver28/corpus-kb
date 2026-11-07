@@ -54,7 +54,7 @@ arguments; do not guess parameter names.
    - the release approver;
    - whether to continue past a halted cycle gate.
 3. Read the envelope `status` on every answer. When it says `degraded`,
-   say the word "degraded" out loud to the user and name the missing
+   say the word "degraded" out loud to the user. Name the missing
    piece (usually the embedding service).
 4. Never edit the read tables. The engine owns every write through its
    handlers.
@@ -85,7 +85,7 @@ human decision on a real codebook version.
 `research_report` answers with kappa and alpha fields. Show this
 caution beside every agreement number you report:
 
-> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, whether the quotes are honest, or whether the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
+> **Caution:** alpha and kappa measure how much coders agree. They do not say whether a code is true, the quotes are honest, or the codebook fits the corpus. A high number can hide a shared mistake; a low number can mean the material is rich. Treat the number as one input; the judgment stays with you.
 
 For the chunk-coding path (pool, cells, reliability, export) use the
 corpus-codify skills instead. They share this caution.
