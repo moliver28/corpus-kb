@@ -86,5 +86,5 @@ def auto_drain() -> None:
             return
         with contextlib.redirect_stdout(io.StringIO()):
             _drain_queued(folder, None)
-    except Exception as exc:  # noqa: BLE001 - a drain failure blocks nothing
+    except Exception as exc:
         hook_state.record_error("auto_drain", repr(exc))
