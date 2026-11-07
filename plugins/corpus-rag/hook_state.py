@@ -22,6 +22,7 @@ import contextlib
 import json
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import registry_io
@@ -86,12 +87,32 @@ def save_session(session_id: str, data: dict) -> None:
     """One session record: lock, temp file, atomic rename."""
     if not session_id:
         return
-    path = session_path(session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    session_path(session_id).parent.mkdir(parents=True, exist_ok=True)
     with exclusive_session_lock(session_id):
-        tmp = Path(f"{path}.tmp")
-        tmp.write_text(json.dumps(data, sort_keys=True) + "\n", encoding="utf-8")
-        registry_io.replace_with_retry(tmp, path)
+        _write_session(session_id, data)
+
+
+def _write_session(session_id: str, data: dict) -> None:
+    """The unlocked write step behind ``save_session`` (caller holds the lock)."""
+    path = session_path(session_id)
+    tmp = Path(f"{path}.tmp")
+    tmp.write_text(json.dumps(data, sort_keys=True) + "\n", encoding="utf-8")
+    registry_io.replace_with_retry(tmp, path)
+
+
+def mutate_session(session_id: str, mutate: Callable[[dict | None], dict]) -> None:
+    """Load, change, and save one session under one held lock.
+
+    The lock spans the read and the write, so two runs cannot lose one
+    change (a lost ``setup_offered`` flag, for example). The mutate
+    function receives ``None`` for a missing session and returns the
+    record to save.
+    """
+    if not session_id:
+        return
+    session_path(session_id).parent.mkdir(parents=True, exist_ok=True)
+    with exclusive_session_lock(session_id):
+        _write_session(session_id, mutate(load_session(session_id)))
 
 
 def fresh_session(slug: str, folder: Path) -> dict:

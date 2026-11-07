@@ -174,3 +174,51 @@ def test_allocate_port_skips_taken_and_study_ports() -> None:
 def test_set_active_unknown_study_fails() -> None:
     with pytest.raises(study_registry.RegistryError):
         study_registry.set_active(study_registry.empty_registry(), "ghost")
+
+
+# ---------------------------------------------------------------------------
+# Locked read-modify-write
+# ---------------------------------------------------------------------------
+
+
+def test_mutate_registry_holds_the_lock_across_load_and_save(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registry = study_registry.empty_registry()
+    study_registry.register_study(registry, "alpha", "postgresql://x/a", 8010, "postgres")
+    study_registry.save_registry(registry)
+    events: list[str] = []
+    real_acquire = study_registry.registry_io.acquire_lock
+    real_release = study_registry.registry_io.release_lock
+
+    def acquire(lock: Path, wait: float = 10.0) -> None:
+        events.append("acquire")
+        real_acquire(lock, wait)
+
+    def release(lock: Path) -> None:
+        real_release(lock)
+        events.append("release")
+
+    monkeypatch.setattr(study_registry.registry_io, "acquire_lock", acquire)
+    monkeypatch.setattr(study_registry.registry_io, "release_lock", release)
+    monkeypatch.setattr(
+        study_registry,
+        "_read_registry",
+        lambda path: events.append("read") or study_registry.empty_registry(),
+    )
+    monkeypatch.setattr(study_registry, "_write_registry", lambda data: events.append("write"))
+    study_registry.mutate_registry(lambda data: events.append("mutate"))
+    assert events == ["acquire", "read", "mutate", "write", "release"]
+
+
+def test_mutate_registry_sees_the_previous_writers_change() -> None:
+    def add_alpha(data: dict) -> None:
+        study_registry.register_study(data, "alpha", "postgresql://x/a", 8010, "postgres")
+
+    def mark_pid(data: dict) -> None:
+        data["studies"]["alpha"]["pid"] = 42
+
+    study_registry.mutate_registry(add_alpha)
+    study_registry.mutate_registry(mark_pid)
+    loaded = study_registry.load_registry()
+    assert loaded["studies"]["alpha"]["pid"] == 42

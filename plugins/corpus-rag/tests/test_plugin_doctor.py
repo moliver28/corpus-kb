@@ -109,6 +109,14 @@ def test_hook_errors_for_this_folder(tmp_path: Path, monkeypatch) -> None:
     assert errors[0]["where"] == "prompt_submit"
 
 
+def test_redact_replaces_the_folder_before_home(tmp_path: Path, monkeypatch) -> None:
+    isolate(tmp_path, monkeypatch)
+    folder = Path.cwd()  # under the home folder on CI and dev machines
+    out = plugin_doctor.redact(f"logged in {folder}", folder)
+    assert out == "logged in <folder>"
+    assert "~" not in out
+
+
 def test_bundle_is_redacted(tmp_path: Path, monkeypatch, capsys) -> None:
     isolate(tmp_path, monkeypatch)
     folder = Path.cwd()
@@ -138,6 +146,9 @@ def test_bundle_is_redacted(tmp_path: Path, monkeypatch, capsys) -> None:
     assert str(Path.home()) not in blob
     assert str(folder) not in blob
     assert "<folder>" in blob
+    detail = bundle["hook_errors"][0]["detail"]  # the path here sits under home
+    assert "<folder>" in detail
+    assert detail.endswith("from <folder>")
 
 
 def test_engine_report_carries_the_minimum(tmp_path: Path, monkeypatch) -> None:

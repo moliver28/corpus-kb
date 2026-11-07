@@ -37,9 +37,10 @@ def _cleanup_hint(backend: str, slug: str) -> str:
             "Cleanup: delete the created files if any: "
             f"{db_file} (and {db_file}.wal, {db_file}.events.db)."
         )
+    dsn = study_commands.mask_dsn(study_config.superuser_dsn())
     return (
         "Cleanup: drop the database with:\n"
-        f'  psql "{study_config.superuser_dsn()}" '
+        f'  psql "{dsn}" '
         f"-c 'DROP DATABASE IF EXISTS {study_registry.database_name(slug)};'"
     )
 
@@ -172,11 +173,14 @@ def _migrate_one(cli: str, args, slug: str, study: dict) -> int:
     command = [cli, "migrate", "--json"]
     if getattr(args, "reset_embeddings", False):
         command.append("--reset-embeddings")
+    env = study_config.study_env(slug, study)
     if str(study.get("backend", "postgres")) == "postgres":
-        command += ["--superuser-dsn", study_config.superuser_dsn()]
+        # The engine reads this fallback; argv would show the DSN to every
+        # process list for the whole (up to 30 minute) migration.
+        env["CORPUS_KB_SUPERUSER_DSN"] = study_config.superuser_dsn()
     result = subprocess.run(
         command,
-        env=study_config.study_env(slug, study),
+        env=env,
         capture_output=True,
         text=True,
         timeout=MIGRATE_TIMEOUT,

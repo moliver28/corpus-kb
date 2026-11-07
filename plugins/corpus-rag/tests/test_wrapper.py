@@ -89,17 +89,35 @@ def test_status_uses_dev_checkout(tmp_path: Path) -> None:
     assert command == "corpus-kb" or "corpus-kb" in Path(command).name
 
 
-def test_provision_reports_missing_engine_honestly() -> None:
-    """No engine reachable: provision says so and exits non-zero."""
-    import shutil
+def test_provision_reports_missing_engine_honestly(tmp_path: Path) -> None:
+    """An engine root with no corpus-kb CLI: provision says so, exits 1.
 
-    if shutil.which("corpus-kb"):
-        # A corpus-kb on PATH (dev machine) makes the missing-engine path
-        # unreachable; the wrapper contract is covered by the other tests.
-        return
-    result = run_wrapper("provision", "meeting-notes")
+    A fake ``CORPUS_KB_REPO`` and a scrubbed ``PATH`` pin the resolution
+    chain, so the same honest message prints on every machine. Without
+    the pin, a checkout two folders up (CI) or a CLI on PATH (a dev
+    machine) picks a different branch of the chain.
+    """
+    fake_repo = tmp_path / "empty-engine"
+    fake_repo.mkdir()
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("CORPUS_KB_STATE_DIR", "CLAUDE_PLUGIN_OPTION_ENGINE_ROOT")
+    }
+    env["PATH"] = ""
+    env["CORPUS_KB_REPO"] = str(fake_repo)
+    env["CORPUS_KB_STATE_DIR"] = str(tmp_path / "state")
+    result = subprocess.run(
+        [sys.executable, str(PLUGIN / "bin" / "corpus-rag"), "provision", "meeting-notes"],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        env=env,
+        cwd=str(PLUGIN),
+    )
     assert result.returncode == 1, result.stdout + result.stderr
-    assert "not found" in result.stdout.lower()
+    assert "no corpus-kb command" in result.stdout
 
 
 def test_provision_requires_a_slug() -> None:

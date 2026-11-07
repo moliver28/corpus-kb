@@ -200,3 +200,31 @@ def test_search_calls_the_post_search_point(tmp_path: Path, monkeypatch) -> None
     with contextlib.redirect_stdout(io.StringIO()):
         study_query.cmd_search(args)
     assert calls == [("x", "export")]
+
+
+def test_register_holds_one_lock_across_read_and_write(
+    tmp_path: Path, monkeypatch
+) -> None:
+    setup(tmp_path, monkeypatch)
+    events: list[str] = []
+    real_exclusive = post_search.exclusive
+    real_save = post_search._save
+
+    @contextlib.contextmanager
+    def spy_exclusive(path, wait=5.0):
+        events.append("lock")
+        with real_exclusive(path, wait=wait):
+            yield
+        events.append("unlock")
+
+    def spy_save(data: dict) -> None:
+        events.append("save")
+        real_save(data)
+
+    monkeypatch.setattr(post_search, "exclusive", spy_exclusive)
+    monkeypatch.setattr(post_search, "_save", spy_save)
+    assert post_search.register("uxr post-search") is True
+    assert events == ["lock", "save", "unlock"]
+    post_search.register("second command")
+    post_search.unregister("uxr post-search")
+    assert post_search.commands() == ["second command"]

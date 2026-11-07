@@ -44,10 +44,10 @@ NO_PARADIGM_REFUSAL = (
 )
 CAUTION = (
     "**Caution:** alpha and kappa measure how much coders agree. They do "
-    "not say whether a code is true, whether the quotes are honest, or "
-    "whether the codebook fits the corpus. A high number can hide a "
-    "shared mistake; a low number can mean the material is rich. Treat "
-    "the number as one input; the judgment stays with you."
+    "not say whether a code is true, the quotes are honest, or the "
+    "codebook fits the corpus. A high number can hide a shared "
+    "mistake; a low number can mean the material is rich. Treat the "
+    "number as one input; the judgment stays with you."
 )
 
 
@@ -95,17 +95,19 @@ def cmd_codify_provision(args) -> int:
     if args.paradigm not in PARADIGMS:
         print("not ok: --paradigm must be codebook or reflexive.")
         return 2
-    registry = study_registry.load_registry()
     slug = study_registry.slugify(args.slug)
+    registry = study_registry.load_registry()
     if slug not in registry.get("studies", {}):
         code = study_admin._provision_study(args)
         if code != 0:
             return code
-        registry = study_registry.load_registry()
     else:
         print(f"A study named '{slug}' already exists; recording the paradigm.")
-    registry["studies"][slug]["paradigm"] = args.paradigm
-    study_registry.save_registry(registry)
+
+    def record(registry: dict) -> None:
+        registry["studies"][slug]["paradigm"] = args.paradigm
+
+    study_registry.mutate_registry(record)
     print(f"ok: study '{slug}' records the {args.paradigm} paradigm.")
     if args.paradigm == "reflexive":
         print("`corpus-rag codify reliability` will refuse for this study.")

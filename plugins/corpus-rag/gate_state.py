@@ -84,11 +84,17 @@ def _write(data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lock = Path(str(path) + LOCK_SUFFIX)
     with exclusive(lock, wait=5.0):
-        tmp = Path(str(path) + TMP_SUFFIX)
-        tmp.write_text(
-            json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
-        registry_io.replace_with_retry(tmp, path)
+        _write_unlocked(data)
+
+
+def _write_unlocked(data: dict) -> None:
+    """The unlocked write step behind ``_write`` (caller holds the lock)."""
+    path = gate_state_path()
+    tmp = Path(str(path) + TMP_SUFFIX)
+    tmp.write_text(
+        json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    registry_io.replace_with_retry(tmp, path)
 
 
 def _retire_070(data: dict) -> dict:
@@ -147,14 +153,25 @@ def folder_entry(folder: Path, data: dict | None = None) -> dict:
 
 
 def update_folder(folder: Path, fields: dict, data: dict | None = None) -> dict:
-    """Merge ``fields`` into one folder's entry and save. Returns the state."""
-    if data is None:
-        data = load_state()
-    key = folder_key(folder)
-    entry = data.setdefault("folders", {}).setdefault(key, {})
-    entry.update(fields)
-    save_state(data)
-    return data
+    """Merge ``fields`` into one folder's entry and save. Returns the state.
+
+    With no state passed, one lock spans the read and the write, so two
+    writers cannot lose one field. A pending one-time retirement lands
+    in the same write.
+    """
+    if data is not None:
+        entry = data.setdefault("folders", {}).setdefault(folder_key(folder), {})
+        entry.update(fields)
+        save_state(data)
+        return data
+    with exclusive(Path(str(gate_state_path()) + LOCK_SUFFIX), wait=5.0):
+        state = _read()
+        if not state.get(RETIRE_FLAG):
+            state = _retire_070(state)
+        entry = state.setdefault("folders", {}).setdefault(folder_key(folder), {})
+        entry.update(fields)
+        _write_unlocked(state)
+        return state
 
 
 def is_declined(folder: Path, data: dict | None = None) -> bool:

@@ -458,6 +458,26 @@ def test_provision_records_paradigm_on_an_existing_study_without_reprovisioning(
     assert registry["studies"]["alpha"]["paradigm"] == "reflexive"
 
 
+def test_codify_provision_records_the_paradigm_through_the_locked_mutate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _registry_with_paradigms()
+    seen: dict = {}
+    real = study_registry.mutate_registry
+
+    def spy(mutate):
+        seen["called"] = True
+        return real(mutate)
+
+    monkeypatch.setattr(study_registry, "mutate_registry", spy)
+    code = codify_commands.cmd_codify(
+        Args(codify_command="provision", slug="alpha", paradigm="codebook", backend=None)
+    )
+    assert code == 0
+    assert seen["called"] is True
+    assert study_registry.load_registry()["studies"]["alpha"]["paradigm"] == "codebook"
+
+
 def test_provision_refuses_an_unknown_paradigm(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -26,6 +26,7 @@ import json
 import re
 import socket
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import registry_io
@@ -80,15 +81,8 @@ def duckdb_file(slug: str) -> Path:
     return data_dir() / "duckdb" / f"{database_name(slug)}.duckdb"
 
 
-def load_registry() -> dict:
-    """Read the registry; import a 0.6.0 ``projects.json`` on first run."""
-    path = registry_path()
-    if not path.is_file():
-        imported = _import_legacy()
-        if imported is not None:
-            save_registry(imported)
-            return imported
-        return empty_registry()
+def _read_registry(path: Path) -> dict:
+    """Parse and validate one registry file."""
     try:
         registry = json.loads(registry_io.read_with_retry(path))
     except ValueError as exc:
@@ -100,6 +94,18 @@ def load_registry() -> dict:
     registry.setdefault("active", None)
     registry.setdefault("studies", {})
     return registry
+
+
+def load_registry() -> dict:
+    """Read the registry; import a 0.6.0 ``projects.json`` on first run."""
+    path = registry_path()
+    if not path.is_file():
+        imported = _import_legacy()
+        if imported is not None:
+            save_registry(imported)
+            return imported
+        return empty_registry()
+    return _read_registry(path)
 
 
 def _import_legacy() -> dict | None:
@@ -139,11 +145,43 @@ def save_registry(registry: dict) -> None:
     with _process_lock:
         try:
             registry_io.acquire_lock(lock)
-            tmp = Path(str(path) + TMP_SUFFIX)
-            tmp.write_text(
-                json.dumps(registry, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-            )
-            registry_io.replace_with_retry(tmp, path)
+            _write_registry(registry)
+        except registry_io.LockBusyError as exc:
+            raise RegistryError(str(exc)) from exc
+        finally:
+            registry_io.release_lock(lock)
+
+
+def _write_registry(registry: dict) -> None:
+    """The unlocked write step behind ``save_registry``."""
+    tmp = Path(str(registry_path()) + TMP_SUFFIX)
+    tmp.write_text(
+        json.dumps(registry, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    registry_io.replace_with_retry(tmp, registry_path())
+
+
+def mutate_registry(mutate: Callable[[dict], object]) -> dict:
+    """Load, change, and save the registry under one held lock.
+
+    The lock file spans the read and the write, so two runs cannot lose
+    one change (a stale ``pid`` row, for example). A pending 0.6.0
+    import lands inside the same span; it never re-locks.
+    """
+    path = registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock = Path(str(path) + LOCK_SUFFIX)
+    with _process_lock:
+        try:
+            registry_io.acquire_lock(lock)
+            if path.is_file():
+                registry = _read_registry(path)
+            else:
+                imported = _import_legacy()
+                registry = imported if imported is not None else empty_registry()
+            mutate(registry)
+            _write_registry(registry)
+            return registry
         except registry_io.LockBusyError as exc:
             raise RegistryError(str(exc)) from exc
         finally:

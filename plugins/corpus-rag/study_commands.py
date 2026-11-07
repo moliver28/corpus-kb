@@ -97,9 +97,10 @@ def cmd_list(_args) -> int:
 
 
 def cmd_use(args) -> int:
-    registry = study_registry.load_registry()
-    study_registry.set_active(registry, args.slug)
-    study_registry.save_registry(registry)
+    def activate(registry: dict) -> None:
+        study_registry.set_active(registry, args.slug)
+
+    study_registry.mutate_registry(activate)
     print(f"Active study: {args.slug}")
     return 0
 
@@ -163,13 +164,13 @@ def _run_doctor_json(cli: str, slug: str, study: dict) -> subprocess.CompletedPr
 
 
 def _print_hook_errors() -> None:
-    errors_dir = plugin_data_dir() / "hook-errors"
+    log = plugin_data_dir() / "hook-errors.jsonl"
     try:
-        count = len([p for p in errors_dir.iterdir() if p.is_file()])
+        count = len(log.read_text(encoding="utf-8").splitlines())
     except OSError:
         return
     if count:
-        print(f"New hook errors: {count} (see {errors_dir}).")
+        print(f"New hook errors: {count} (see {log}).")
 
 
 def _print_since_last_status() -> None:

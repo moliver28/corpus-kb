@@ -137,6 +137,26 @@ def test_status_without_study_prints_the_hint(
     assert study_registry.NO_STUDY_MESSAGE in str(excinfo.value)
 
 
+def test_use_sets_the_active_study_through_the_locked_mutate(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _registry_with("alpha")
+    seen: dict = {}
+    real = study_registry.mutate_registry
+
+    def spy(mutate):
+        seen["called"] = True
+        return real(mutate)
+
+    monkeypatch.setattr(study_registry, "mutate_registry", spy)
+    code = study_commands.cmd_use(Args(slug="alpha"))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert seen["called"] is True
+    assert study_registry.load_registry()["active"] == "alpha"
+    assert "Active study: alpha" in out
+
+
 def test_sql_passes_the_refusal_through(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -207,6 +227,25 @@ def test_ingest_missing_path_is_honest(
     assert "not ok" in capsys.readouterr().out
 
 
+def test_hook_errors_count_the_jsonl_lines(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    log = tmp_path / "data" / "hook-errors.jsonl"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(
+        json.dumps({"ts": 1, "where": "stop", "detail": "a"}) + "\n"
+        + json.dumps({"ts": 2, "where": "stop", "detail": "b"}) + "\n",
+        encoding="utf-8",
+    )
+    study_commands._print_hook_errors()
+    out = capsys.readouterr().out
+    assert "New hook errors: 2" in out
+    assert "hook-errors.jsonl" in out
+    log.unlink()
+    study_commands._print_hook_errors()
+    assert capsys.readouterr().out == ""
+
+
 def test_provision_project_id_keeps_0_7_x_behavior(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict = {}
     monkeypatch.setattr(
@@ -248,6 +287,55 @@ def test_provision_failure_prints_cleanup_command(
     assert code == 1
     assert "Cleanup:" in out
     assert "DROP DATABASE IF EXISTS corpus_kb_alpha" in out
+
+
+def test_cleanup_hint_masks_the_superuser_dsn(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_OPTION_SUPERUSER_DSN",
+        "postgresql://su:s3kret@localhost:5432/postgres",
+    )
+    monkeypatch.setattr(study_commands, "require_engine", lambda: "corpus-kb")
+    monkeypatch.setattr(
+        subprocess, "run", lambda *a, **kw: _fake_completed(1, stderr="connection refused")
+    )
+    code = study_admin.cmd_provision(Args(slug="alpha", backend="postgres"))
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "s3kret" not in out
+    assert "Cleanup:" in out
+    assert "DROP DATABASE IF EXISTS corpus_kb_alpha" in out
+
+
+def test_migrate_postgres_moves_the_superuser_dsn_to_the_env(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_OPTION_SUPERUSER_DSN",
+        "postgresql://su:s3kret@localhost:5432/postgres",
+    )
+    _registry_with("alpha", backend="postgres")
+    monkeypatch.setattr(study_commands, "require_engine", lambda: "corpus-kb")
+    monkeypatch.setattr(study_server, "stop_before", lambda *a, **kw: False)
+    seen: dict = {}
+
+    def fake_run(command, **kw):
+        seen["command"] = list(command)
+        seen["env"] = kw["env"]
+        return _fake_completed(0, stdout='{"applied_now": [], "pending": []}')
+
+    monkeypatch.setattr(
+        study_admin, "subprocess", type("S", (), {"run": staticmethod(fake_run)})
+    )
+    code = study_admin.cmd_migrate(Args(all=False, reset_embeddings=False))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "--superuser-dsn" not in seen["command"]
+    assert "s3kret" not in " ".join(seen["command"])
+    dsn = seen["env"]["CORPUS_KB_SUPERUSER_DSN"]
+    assert dsn == "postgresql://su:s3kret@localhost:5432/postgres"
+    assert "alpha: applied now 0; pending 0." in out
 
 
 def test_migrate_stops_duckdb_server_before_the_engine_run(

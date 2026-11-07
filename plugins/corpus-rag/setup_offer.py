@@ -189,9 +189,13 @@ def mark_offered(data: dict, folder: Path) -> None:
         mark = f"setup-offer-{zlib.crc32(str(folder).encode('utf-8'))}-{day}"
         hook_state.touch_mark(mark)
         return
-    session = hook_state.load_session(sid) or hook_state.fresh_session("", folder)
-    session["setup_offered"] = True
-    hook_state.save_session(sid, session)
+
+    def mark(session: dict | None) -> dict:
+        session = session or hook_state.fresh_session("", folder)
+        session["setup_offered"] = True
+        return session
+
+    hook_state.mutate_session(sid, mark)
 
 
 # ---------------------------------------------------------------------------

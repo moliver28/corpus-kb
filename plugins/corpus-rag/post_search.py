@@ -16,13 +16,16 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import hook_state
 import registry_io
 from engine_paths import plugin_data_dir
+from file_locks import exclusive
 
 FILENAME = "post-search.json"
+LOCK_SUFFIX = ".lock"
 
 
 def registry_path():
@@ -43,15 +46,31 @@ def commands() -> list[str]:
 
 def register(name: str) -> bool:
     """Add one command. False when it was already registered."""
-    current = commands()
-    if name in current:
-        return False
-    _save({"commands": [*current, name]})
-    return True
+    added = False
+
+    def add(current: list[str]) -> list[str]:
+        nonlocal added
+        if name in current:
+            return current
+        added = True
+        return [*current, name]
+
+    mutate(add)
+    return added
 
 
 def unregister(name: str) -> None:
-    _save({"commands": [row for row in commands() if row != name]})
+    mutate(lambda current: [row for row in current if row != name])
+
+
+def mutate(change: Callable[[list[str]], list[str]]) -> None:
+    """Change the command list under one lock held across read and write.
+
+    The lock spans the read and the save, so two registering runs cannot
+    lose one command. ``_save`` runs inside the span; it never re-locks.
+    """
+    with exclusive(Path(str(registry_path()) + LOCK_SUFFIX)):
+        _save({"commands": change(commands())})
 
 
 def _save(data: dict) -> None:

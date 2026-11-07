@@ -153,12 +153,15 @@ def report(cwd: Path) -> dict:
 
 
 def redact(text: str, folder: Path) -> str:
-    """Machine paths, DSN passwords, and emails out of one string."""
-    home = str(Path.home())
-    text = text.replace(home, "~")
-    data = str(engine_paths.plugin_data_dir())
-    text = text.replace(data, "<data>")
+    """Machine paths, DSN passwords, and emails out of one string.
+
+    Most specific first: the folder, then the plugin data folder, then
+    the home folder. Home first erases the longer prefixes, so folder
+    and data-dir names leak.
+    """
     text = text.replace(str(folder), "<folder>")
+    text = text.replace(str(engine_paths.plugin_data_dir()), "<data>")
+    text = text.replace(str(Path.home()), "~")
     text = DSN_PASSWORD_RE.sub(r"\1***\2", text)
     return EMAIL_RE.sub("<email>", text)
 

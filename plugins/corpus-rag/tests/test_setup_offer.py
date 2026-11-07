@@ -7,6 +7,7 @@ list decides the UserPromptSubmit lane. The signal scan runs inside its
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 import time
@@ -71,6 +72,39 @@ def test_offer_marks_the_session_record(tmp_path: Path, monkeypatch) -> None:
     setup_offer.offer_for_session_start(startup_data(folder), folder)
     session = hook_state.load_session("s1")
     assert session is not None and session.get("setup_offered") is True
+
+
+def test_mark_offered_holds_one_lock_across_read_and_write(
+    tmp_path: Path, monkeypatch
+) -> None:
+    setup_state(tmp_path, monkeypatch)
+    folder = research_folder(tmp_path)
+    events: list[str] = []
+    real_lock = hook_state.exclusive_session_lock
+    real_load = hook_state.load_session
+    real_write = hook_state._write_session
+
+    @contextlib.contextmanager
+    def spy_lock(sid: str):
+        events.append("lock")
+        with real_lock(sid):
+            yield
+        events.append("unlock")
+
+    def spy_load(sid: str):
+        events.append("read")
+        return real_load(sid)
+
+    def spy_write(sid: str, data: dict) -> None:
+        events.append("write")
+        real_write(sid, data)
+
+    monkeypatch.setattr(hook_state, "exclusive_session_lock", spy_lock)
+    monkeypatch.setattr(hook_state, "load_session", spy_load)
+    monkeypatch.setattr(hook_state, "_write_session", spy_write)
+    setup_offer.mark_offered({"session_id": "s1"}, folder)
+    assert events == ["lock", "read", "write", "unlock"]
+    assert hook_state.load_session("s1")["setup_offered"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ retirement that carries a prior "declined" choice over.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import sys
 import threading
@@ -154,3 +155,42 @@ def test_entry_declined_survives_without_marks(tmp_path: Path, monkeypatch) -> N
     gate_state.decline(folder)
     assert not (gate_state.marks_dir() / folder_state.declined_mark_name(folder)).exists()
     assert folder_state.is_declined(folder) is True
+
+
+# ---------------------------------------------------------------------------
+# Locked read-modify-write
+# ---------------------------------------------------------------------------
+
+
+def test_update_folder_holds_one_lock_across_read_and_write(
+    tmp_path: Path, monkeypatch
+) -> None:
+    setup_state(tmp_path, monkeypatch)
+    folder = tmp_path / "Study"
+    folder.mkdir()
+    events: list[str] = []
+    real_exclusive = gate_state.exclusive
+    real_read = gate_state._read
+    real_write = gate_state._write_unlocked
+
+    @contextlib.contextmanager
+    def spy_exclusive(path, wait=5.0):
+        events.append("lock")
+        with real_exclusive(path, wait=wait):
+            yield
+        events.append("unlock")
+
+    def spy_read():
+        events.append("read")
+        return real_read()
+
+    def spy_write(data: dict) -> None:
+        events.append("write")
+        real_write(data)
+
+    monkeypatch.setattr(gate_state, "exclusive", spy_exclusive)
+    monkeypatch.setattr(gate_state, "_read", spy_read)
+    monkeypatch.setattr(gate_state, "_write_unlocked", spy_write)
+    gate_state.update_folder(folder, {"declined": True})
+    assert events == ["lock", "read", "write", "unlock"]
+    assert gate_state.folder_entry(folder).get("declined") is True
