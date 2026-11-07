@@ -68,12 +68,10 @@ Source: `src/tools/search_tools.py`
 
 Source: `src/tools/graph_tools.py`
 
-### Database / SQL (11 tools)
+### Database / SQL (9 tools)
 
 | Tool | Description |
 |------|-------------|
-| `sql_query` | Run a SQL SELECT query over relational tables. Full SQL: JOIN, CTE, GROUP BY, window functions, subqueries, UNION |
-| `sql_execute` | Execute INSERT/UPDATE/DELETE with safety rails (blocks DROP and bare DELETE/UPDATE) |
 | `sql_tables` | List all relational tables with their column schemas |
 | `add_tag` | Create a new tag for categorizing documents |
 | `tag_document` | Apply a tag to a document (creates tag if missing) |

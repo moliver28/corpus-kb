@@ -41,6 +41,7 @@ from corpus_kb.errors import (
     NotFoundError,
     QuestionTooShortError,
     ValidationError,
+    WriteRefusedError,
     error_status,
 )
 
@@ -49,6 +50,7 @@ TAXONOMY = [
     ValidationError,
     QuestionTooShortError,
     NoMethodMatchesError,
+    WriteRefusedError,
     NotFoundError,
     ConflictError,
     DatabaseUnavailableError,

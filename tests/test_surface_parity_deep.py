@@ -2729,6 +2729,65 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
     _assert_parity(op.name, keys, allowed)
 
 
+# ---------------------------------------------------------------------------
+# Issue #349: the SQL query route refuses writes, on every surface
+# ---------------------------------------------------------------------------
+
+
+_SQL_REFUSAL_CASES = [
+    pytest.param("SELECT 1", True, id="select-ok"),
+    pytest.param("DELETE FROM documents", False, id="delete-plain"),
+    pytest.param(
+        "WITH x AS (DELETE FROM chunks RETURNING 1) SELECT * FROM x", False, id="cte-delete"
+    ),
+    pytest.param("SELECT 1; DROP TABLE tags", False, id="two-statements"),
+]
+
+
+@pytest.mark.parametrize(("sql", "allowed"), _SQL_REFUSAL_CASES)
+async def test_sql_route_write_refusal_on_http_and_socket(
+    sql: str, allowed: bool, parity_env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The three Check refusals + the happy path, on the HTTP leg, and the
+    typed error's ONE socket code on the socket leg.
+
+    The route is HTTP-only (no catalogue row, no socket method), so the
+    socket leg pins the error-class contract instead of a dispatch: the
+    ``WriteRefusedError`` that the shared handler raises must reach
+    ``JSONRPCServer._process_request`` and answer exactly its taxonomy
+    socket code there, the same failure class the HTTP leg answers 400
+    with ``error_type: write_refused``.
+    """
+    client: TestClient = parity_env["client"]
+    response = client.post("/api/query/sql", json={"sql": sql})
+    if allowed:
+        assert response.status_code == 200, response.text
+        assert response.json() == {"status": "success", "result": []}
+    else:
+        assert response.status_code == 400, response.text
+        body = response.json()
+        assert body["status"] == "error"
+        assert body["error_type"] == "write_refused"
+        assert body["error"]
+
+    # The socket surface answers the same failure class with its ONE code.
+    import corpus_kb.handlers.query_handler as query_handler_module
+    from corpus_kb.errors import ERROR_MAP, WriteRefusedError
+
+    class _Refuser:
+        async def handle_verify_answer(self, _query: object) -> object:
+            raise WriteRefusedError("The SQL route accepts read statements only.")
+
+    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda *a, **k: _Refuser())
+    server: JSONRPCServer = parity_env["server"]
+    rpc = await server._process_request(
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "verify_answer", "params": {}})
+    )
+    assert "error" in rpc, rpc
+    assert rpc["error"]["code"] == ERROR_MAP["write_refused"][1]
+    assert rpc["error"]["message"]
+
+
 async def test_analysis_route_suggestions_parity(parity_env: dict[str, Any]) -> None:
     """The next-question suggestions ride the shared handler on all legs.
 
