@@ -876,6 +876,12 @@ async def _shared_list_entities(ctx: dict[str, Any]) -> dict[str, Any]:
     return await list_entities(ctx["pool"], config=ctx["config"])
 
 
+async def _shared_chunks_list(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.chunk_read_tools import chunks_list
+
+    return await chunks_list(ctx["pool"], DOC_ID, config=ctx["config"])
+
+
 def _release_leg(
     fn_name: str, http: str, body: dict[str, Any], mcp_args: dict[str, Any], **tool_kwargs: Any
 ) -> Any:
@@ -1552,6 +1558,13 @@ LEGS: dict[str, _Leg] = {
         _sock("list_entities", {"limit": 50}),
         _mcp({"limit": 50}),
     ),
+    # -- Phase-2 Wave 5: the drawer NLP panel's chunk window read -----------
+    "chunks_list": _Leg(
+        _shared_chunks_list,
+        _get(f"/api/documents/{DOC_ID}/chunks", {"limit": "50", "offset": "0"}),
+        _sock("chunks_list", {"doc_id": DOC_ID, "limit": 50}),
+        _mcp({"doc_id": DOC_ID, "limit": 50}),
+    ),
     "release_assess": _Leg(
         **_release_leg(
             "release_assess",
@@ -2123,6 +2136,11 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     async def canned_list_entities(self: Any, query: Any) -> list[Any]:
         return []
 
+    # Phase-2 Wave 5: the chunk window read answers through the same
+    # canned QueryHandler singleton.
+    async def canned_list_document_chunks(self: Any, query: Any) -> list[Any]:
+        return []
+
     # Issue #182 read ops: the similar/context searches answer through the
     # same canned QueryHandler; the tag/metadata reads answer through the
     # same canned TagHandler singleton.
@@ -2168,6 +2186,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
     monkeypatch.setattr(QueryHandler, "handle_list_documents", canned_list_documents)
     monkeypatch.setattr(QueryHandler, "handle_list_entities", canned_list_entities)
+    monkeypatch.setattr(QueryHandler, "handle_list_document_chunks", canned_list_document_chunks)
     monkeypatch.setattr(QueryHandler, "handle_search_similar", canned_search_similar)
     monkeypatch.setattr(QueryHandler, "handle_search_context", canned_search_context)
     monkeypatch.setattr(
@@ -2582,6 +2601,9 @@ def test_catalogue_matches_surface_registry() -> None:
         "graph_neighbors",
         "graph_traverse",
         "list_entities",
+        # Phase-2 Wave 5: the chunk window read byte-matches its registry
+        # row (the op name IS the registry id, dash for underscore).
+        "chunks_list",
     } <= set(checked)
 
 

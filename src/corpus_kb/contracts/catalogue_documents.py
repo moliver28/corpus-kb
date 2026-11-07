@@ -43,6 +43,29 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 3),
     ),
+    # -- Phase-2 Wave 5: the drawer's NLP panel scopes its analysis runs
+    #    to one document's chunks. Read-only window read; the registry id
+    #    is the UI manifest id (chunks-list). --------------------------------
+    Operation(
+        name="chunks_list",
+        family="documents",
+        description="List one document's chunks in ingest order (read-only).",
+        handler="corpus_kb.tools.chunk_read_tools:chunks_list",
+        params=(
+            ParamSpec("doc_id", required=True),
+            ParamSpec("limit", default=100),
+            ParamSpec("offset", default=0),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "chunks_list"),
+            SurfaceSpec(CLI, "chunks-list"),
+            SurfaceSpec(HTTP, "/api/documents/{doc_id}/chunks", "GET"),
+            SurfaceSpec(SOCKET, "chunks_list"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
     Operation(
         name="delete_document",
         family="documents",

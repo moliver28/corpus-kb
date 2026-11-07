@@ -20,7 +20,33 @@ from starlette.responses import JSONResponse
 
 from corpus_kb.api._body import opt_int, route_errors
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
-from corpus_kb.domain.models import ListDocumentsQuery, ListEntitiesQuery
+from corpus_kb.domain.models import (
+    ListDocumentChunksQuery,
+    ListDocumentsQuery,
+    ListEntitiesQuery,
+)
+
+
+@route_errors
+async def list_document_chunks(request: Request) -> JSONResponse:
+    """GET /api/documents/{doc_id}/chunks — one document's chunk window.
+
+    Phase-2 Wave 5: the drawer's NLP panel scopes its analysis runs to
+    these chunk ids. Rows ride the ingest order (chunk_index, chunk_id).
+    """
+    from corpus_kb.handlers.query_handler import get_query_handler
+
+    query = ListDocumentChunksQuery(
+        tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
+        doc_id=UUID(request.path_params.get("doc_id", "")),
+        limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
+        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
+    )
+    handler = get_query_handler()
+    results = await handler.handle_list_document_chunks(query)
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )
 
 
 @route_errors

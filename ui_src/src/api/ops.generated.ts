@@ -46,6 +46,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "document-stats": { path: "/api/document-stats", method: "GET", longRunning: false },
   "documents-list": { path: "/api/documents", method: "GET", longRunning: false },
   "document-delete": { path: "/api/documents/{doc_id}", method: "DELETE", longRunning: false },
+  "chunks-list": { path: "/api/documents/{doc_id}/chunks", method: "GET", longRunning: false },
   "document-tags": { path: "/api/documents/{doc_id}/tags", method: "GET", longRunning: false },
   "tag-document": { path: "/api/documents/{doc_id}/tags", method: "POST", longRunning: false },
   "untag-document": { path: "/api/documents/{doc_id}/tags/remove", method: "POST", longRunning: false },

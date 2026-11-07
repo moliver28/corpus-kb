@@ -22,7 +22,9 @@ from typing import Any, cast
 import asyncpg
 
 from corpus_kb.domain.models import (
+    DocumentChunkResult,
     EntityResult,
+    ListDocumentChunksQuery,
     ListEntitiesQuery,
     SQLQuery,
     VerifyAnswerQuery,
@@ -83,6 +85,49 @@ async def list_entities(
     async with tenant_connection(pool, str(query.tenant_id)) as conn:
         rows = await conn.fetch(sql, *args)
         return _entities(rows)
+
+
+async def list_document_chunks(
+    pool: asyncpg.Pool | SqlGateway, query: ListDocumentChunksQuery
+) -> list[DocumentChunkResult]:
+    """List one document's chunks, one window (Phase-2 Wave 5).
+
+    The order is the ingest order: ``(chunk_index, chunk_id)`` — the
+    index is unique per document (the table's UNIQUE constraint), so two
+    reads of one window answer in one total order (program rule 9).
+    Tombstoned chunks (the source content was removed) do not answer:
+    the NLP panel scopes its runs to live chunks.
+    """
+    sql = """
+        SELECT chunk_id, doc_id, chunk_index, text, chunk_type, start_line, end_line
+        FROM chunks
+        WHERE tenant_id = $1 AND doc_id = $2 AND tombstoned_at IS NULL
+        ORDER BY chunk_index ASC, chunk_id ASC
+        LIMIT $3 OFFSET $4
+        """
+    args = (str(query.tenant_id), str(query.doc_id), query.limit, query.offset)
+    if is_gateway(pool):
+        async with pool.transaction(str(query.tenant_id)) as reader:
+            rows = await reader.fetch(sql, *args)
+        return _chunks(rows)
+    async with tenant_connection(pool, str(query.tenant_id)) as conn:
+        rows = await conn.fetch(sql, *args)
+        return _chunks(rows)
+
+
+def _chunks(rows: list[Any]) -> list[DocumentChunkResult]:
+    return [
+        DocumentChunkResult(
+            chunk_id=row["chunk_id"],
+            doc_id=row["doc_id"],
+            chunk_index=row["chunk_index"],
+            text=row["text"],
+            chunk_type=row["chunk_type"],
+            start_line=row["start_line"],
+            end_line=row["end_line"],
+        )
+        for row in rows
+    ]
 
 
 def _entities(rows: list[Any]) -> list[EntityResult]:

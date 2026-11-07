@@ -8,6 +8,7 @@ module holds no behavior.
 
 from __future__ import annotations
 
+from corpus_kb.api._socket_rows_chunks import CHUNK_SPECS
 from corpus_kb.api._socket_rows_entities import ENTITY_SPECS
 from corpus_kb.api._socket_rows_tags import TAG_SPECS
 from corpus_kb.api._socket_specs import _Opt, _Spec
@@ -248,3 +249,4 @@ _SPECS: dict[str, _Spec] = {
 # dict; the split modules keep this file under the 250-line rule).
 _SPECS.update(TAG_SPECS)
 _SPECS.update(ENTITY_SPECS)
+_SPECS.update(CHUNK_SPECS)

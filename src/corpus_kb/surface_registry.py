@@ -521,6 +521,16 @@ SURFACES: tuple[Surface, ...] = (
         description="List one document's tags (read-only).",
         http_route="/api/documents/{doc_id}/tags",
     ),
+    # -- Phase-2 Wave 5: the drawer's NLP panel scopes its analysis runs
+    #    to one document's chunks through this read. Read-only: safe to
+    #    serve from every surface; NEVER a write-op row. --------------------
+    Surface(
+        name="chunks-list",
+        cli_path="chunks-list",
+        mcp_tool="chunks_list",
+        description="List one document's chunks in ingest order (read-only).",
+        http_route="/api/documents/{doc_id}/chunks",
+    ),
     Surface(
         name="document-metadata",
         cli_path="get-metadata",

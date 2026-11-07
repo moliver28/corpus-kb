@@ -131,6 +131,15 @@ class ListEntitiesQuery(BaseModel):
     offset: int = 0
 
 
+class ListDocumentChunksQuery(BaseModel):
+    """List one document's chunks, one window (Phase-2 Wave 5)."""
+
+    tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
+    doc_id: UUID
+    limit: int = 100
+    offset: int = 0
+
+
 class SearchSimilarQuery(BaseModel):
     """Find chunks similar to a given chunk via vector distance."""
 
@@ -196,6 +205,18 @@ class DocumentResult(BaseModel):
     source_type: str
     chunk_count: int
     created_at: str
+
+
+class DocumentChunkResult(BaseModel):
+    """One chunk of one document in the chunks-list window (Wave 5)."""
+
+    chunk_id: UUID
+    doc_id: UUID
+    chunk_index: int
+    text: str
+    chunk_type: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
 
 
 class EntityResult(BaseModel):

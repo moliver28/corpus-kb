@@ -28,8 +28,10 @@ import asyncpg
 
 from corpus_kb.config import load_config
 from corpus_kb.domain.models import (
+    DocumentChunkResult,
     DocumentResult,
     EntityResult,
+    ListDocumentChunksQuery,
     ListDocumentsQuery,
     ListEntitiesQuery,
     SearchContextQuery,
@@ -183,6 +185,14 @@ class QueryHandler:
     async def handle_list_entities(self, query: ListEntitiesQuery) -> list[EntityResult]:
         """List entities, optionally filtered by type."""
         return await query_crud_reads.list_entities(
+            cast("asyncpg.Pool | SqlGateway", self._pool), query
+        )
+
+    async def handle_list_document_chunks(
+        self, query: ListDocumentChunksQuery
+    ) -> list[DocumentChunkResult]:
+        """List one document's chunks, one window (Phase-2 Wave 5)."""
+        return await query_crud_reads.list_document_chunks(
             cast("asyncpg.Pool | SqlGateway", self._pool), query
         )
 
