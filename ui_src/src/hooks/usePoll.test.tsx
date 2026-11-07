@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import { subscribePoll } from "./pollCache";
 import { usePoll } from "./usePoll";
 import type { Poll } from "./usePoll";
 
@@ -42,6 +43,7 @@ async function flush(): Promise<void> {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.useRealTimers();
   clearCalls();
@@ -213,5 +215,90 @@ describe("the shared poll cache", () => {
     // identical ticks add none.
     expect(afterFirst).toBe(2);
     expect(renders).toBe(2);
+  });
+
+  it("backs off ten seconds after a 503 and says so", async () => {
+    // P2-5 (Wave-4 review): the loop's failure paths moved into
+    // pollCache.ts with the wave; each arm below pins one of them.
+    vi.useFakeTimers();
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(503, { status: "unavailable" }) },
+    ]);
+    render(<Probe opId="ingest-status" tag="a" />, { wrapper: makeWrapper(false) });
+    await flush();
+    expect(callsTo("/api/ingest/status")).toBe(1);
+    expect(latest.get("a")?.backingOff).toBe(true);
+    // The next pass waits out the backoff, not the regular interval.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(callsTo("/api/ingest/status")).toBe(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    expect(callsTo("/api/ingest/status")).toBe(2);
+  });
+
+  it("keeps polling after an op error lands mid-poll", async () => {
+    vi.useFakeTimers();
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(500, { status: "error", error: "boom" }) },
+    ]);
+    render(<Probe opId="ingest-status" tag="a" />, { wrapper: makeWrapper(false) });
+    await flush();
+    expect(latest.get("a")?.result?.ok).toBe(false);
+    expect(latest.get("a")?.result?.kind).toBe("error");
+    // An error answer parks nothing: the loop stays on its cadence.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    expect(callsTo("/api/ingest/status")).toBe(2);
+  });
+
+  it("parks while the tab is hidden and wakes on visibility", async () => {
+    vi.useFakeTimers();
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, { status: "success", result: [] }) },
+    ]);
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true);
+    render(<Probe opId="ingest-status" tag="a" />, { wrapper: makeWrapper(false) });
+    await flush();
+    // Hidden: no fetch goes out, and the consumer knows it is paused.
+    expect(callsTo("/api/ingest/status")).toBe(0);
+    expect(latest.get("a")?.paused).toBe(true);
+    hidden.mockReturnValue(false);
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(callsTo("/api/ingest/status")).toBe(1);
+    expect(latest.get("a")?.paused).toBe(false);
+  });
+
+  it("serves two joins with one loop and stops on the last release", async () => {
+    vi.useFakeTimers();
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, { status: "success", result: [] }) },
+    ]);
+    const seen: unknown[] = [];
+    const first = subscribePoll("ingest-status", undefined, (s) => seen.push(s));
+    const second = subscribePoll("ingest-status", undefined, (s) => seen.push(s));
+    await flush();
+    // One fetch for both joins; the no-op gate means each join saw
+    // exactly the one answer (the per-pass paused patch never applies).
+    expect(callsTo("/api/ingest/status")).toBe(1);
+    expect(seen.length).toBe(2);
+    first.release();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    // The loop lives for the remaining join.
+    expect(callsTo("/api/ingest/status")).toBe(2);
+    second.release();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    // The last release stopped it.
+    expect(callsTo("/api/ingest/status")).toBe(2);
   });
 });
