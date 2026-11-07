@@ -2,11 +2,11 @@
   "hooks": {
     "SessionStart": [
       {
-        "matcher": "startup|resume|compact",
+        "matcher": "startup|compact|clear",
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/session-nudge.sh\"; [ -f \"$f\" ] || exit 0; \"$f\""
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/dispatch.sh\"; [ -f \"$f\" ] || exit 0; \"$f\" session_start"
           }
         ]
       }
@@ -16,7 +16,59 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/prompt-nudge.sh\"; [ -f \"$f\" ] || exit 0; \"$f\""
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/dispatch.sh\"; [ -f \"$f\" ] || exit 0; \"$f\" prompt_submit"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/dispatch.sh\"; [ -f \"$f\" ] || exit 0; \"$f\" subagent_start"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|Grep|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/dispatch.sh\"; [ -f \"$f\" ] || exit 0; \"$f\" pre_tool_use"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/dispatch.sh\"; [ -f \"$f\" ] || exit 0; \"$f\" post_tool_use"
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/dispatch.sh\"; [ -f \"$f\" ] || exit 0; \"$f\" file_changed"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PLUGIN_ROOT/hooks/dispatch.sh\"; [ -f \"$f\" ] || exit 0; \"$f\" stop"
           }
         ]
       }

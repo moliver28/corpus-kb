@@ -1,7 +1,42 @@
 {
   "name": "corpus-rag",
-  "version": "0.7.0",
-  "description": "Ask cited questions, search your corpus, and ingest documents with the Corpus-KB engine.",
+  "version": "0.11.0",
+  "description": "Ask cited questions, search your corpus, ingest documents, run chunk coding, run the UX research study layer, and set studies up in research folders with the Corpus-KB engine, one study at a time.",
+
   "author": "moliver28",
-  "repository": "https://github.com/moliver28/corpus-kb"
+  "repository": "https://github.com/moliver28/corpus-kb",
+  "userConfig": {
+    "engine_root": {
+      "type": "string",
+      "description": "Corpus-KB engine checkout folder. Leave empty to use the plugin's resolution chain.",
+      "default": ""
+    },
+    "app_dsn_template": {
+      "type": "string",
+      "description": "Postgres DSN template for study databases; {database} is replaced with the study's database name.",
+      "default": "postgresql://corpus_user:<password>@localhost:5432/{database}",
+      "sensitive": true
+    },
+    "superuser_dsn": {
+      "type": "string",
+      "description": "Postgres superuser DSN for provision, migrate, and backup.",
+      "default": "postgresql:///postgres",
+      "sensitive": true
+    },
+    "base_port": {
+      "type": "number",
+      "description": "First port to try for study servers.",
+      "default": 8010
+    },
+    "default_backend": {
+      "type": "string",
+      "description": "Storage backend for new studies: postgres or duckdb.",
+      "default": "postgres"
+    },
+    "uxr_report_tool": {
+      "type": "string",
+      "description": "Report tool command line for the UXR contract test, like 'python tools/report.py'. Leave empty to use --evidence-file.",
+      "default": ""
+    }
+  }
 }

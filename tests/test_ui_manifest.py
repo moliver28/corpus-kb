@@ -133,6 +133,11 @@ def test_long_running_flags_match_the_spec() -> None:
             "ingest-directory",
             "ingest-url",
             "demo-load",
+            # Issue #350: the chunk-coding ops that embed, pool, or code a
+            # batch can run minutes on a real corpus.
+            "coding-embed-codebook",
+            "coding-pool",
+            "coding-code-batch",
         }
     )
     flagged = {str(e["id"]) for e in build_manifest(REPO) if e["longRunning"]}

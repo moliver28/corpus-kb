@@ -238,6 +238,39 @@ def test_http_ingest_file_is_binary_safe(tmp_path: Path, monkeypatch: pytest.Mon
     assert response.json()["status"] == "success"
 
 
+def test_http_ingest_file_unsupported_type_is_415(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file no parser accepts is the CALLER's fault: HTTP 415, not a 500
+    (issue #359). The partition failure maps through ERROR_MAP, so no
+    surface logs an unhandled exception for this case. The partition step
+    is stubbed to raise unstructured's exact failure, so libmagic is not
+    needed."""
+    from unstructured.partition.auto import UnsupportedFileFormatError
+
+    import corpus_kb.ingestion.strategies.default as default_strategy_module
+
+    _install_stubs(monkeypatch)
+    target = tmp_path / "blob.bin"
+    target.write_bytes(b"\xff\xfe\x00\x01 not utf-8 \x9c")
+
+    def raise_unsupported(_path: Path) -> list[object]:
+        raise UnsupportedFileFormatError(
+            "Partitioning is not supported for the FileType.UNK file type.", "UNK"
+        )
+
+    monkeypatch.setattr(default_strategy_module, "unstructured_partition", raise_unsupported)
+
+    client = TestClient(create_http_app())
+    response = client.post("/api/ingest/file", json={"file_path": str(target)})
+
+    assert response.status_code == 415
+    body = response.json()
+    assert body["status"] == "error"
+    assert "Partitioning is not supported" in str(body["error"])
+    assert body["error_type"] == "UnsupportedFileFormatError"
+
+
 def test_http_ingest_file_missing_path_is_an_error_envelope(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

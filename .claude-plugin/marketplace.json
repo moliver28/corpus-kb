@@ -10,8 +10,8 @@
     {
       "name": "corpus-rag",
       "source": "./plugins/corpus-rag",
-      "version": "0.7.0",
-      "description": "Local RAG study plugin for the corpus-kb engine. Ingest documents, search them, and codify findings with a study registry.",
+      "version": "0.11.0",
+      "description": "Local RAG study plugin for the corpus-kb engine. One database and one server per study: provision, guided folder setup, ingest, search, ask, migrate, back up, chunk-code studies, and run the UX research study layer from a registry.",
       "keywords": ["rag", "search", "local", "knowledge", "research"],
       "tags": ["rag", "search", "local-first", "knowledge-base", "research"]
     }

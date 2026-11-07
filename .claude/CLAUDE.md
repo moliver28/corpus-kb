@@ -27,7 +27,7 @@ Default config is in `config.yaml` at the project root. On first run, data is st
 | stdio | `corpus-kb` (or `python -m src.server`) | Editor agents (OpenCode, Claude Code, Cursor, Codex) |
 | SSE | `corpus-kb --transport sse --port 8000` | Multi-user / remote |
 
-The entry point is `src/server.py`, module `server:main`. Config is loaded from `config.yaml` in `$CWD`, `./corpus-kb/config.yaml`, or `~/.corpus-kb/config.yaml`. Override with `--config <path>` or `CORPUS_KB_CONFIG` env var.
+The entry point is `src/corpus_kb/server_wiring.py`, module `server_wiring:main`. Config discovery: `CORPUS_KB_CONFIG` (absolute path), then `config.yaml` in `$CWD`, then the packaged default inside the package. There is no `--config` flag. Overlays: `CORPUS_KB_CONFIG_OVERLAY` holds `os.pathsep`-split YAML paths, deep-merged in order after the main file and before env overrides (issue #348).
 
 ## MCP Tools Reference
 
@@ -68,12 +68,10 @@ Source: `src/tools/search_tools.py`
 
 Source: `src/tools/graph_tools.py`
 
-### Database / SQL (11 tools)
+### Database / SQL (9 tools)
 
 | Tool | Description |
 |------|-------------|
-| `sql_query` | Run a SQL SELECT query over relational tables. Full SQL: JOIN, CTE, GROUP BY, window functions, subqueries, UNION |
-| `sql_execute` | Execute INSERT/UPDATE/DELETE with safety rails (blocks DROP and bare DELETE/UPDATE) |
 | `sql_tables` | List all relational tables with their column schemas |
 | `add_tag` | Create a new tag for categorizing documents |
 | `tag_document` | Apply a tag to a document (creates tag if missing) |
@@ -311,4 +309,13 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-contradictions-screen` | `corpus-kb contradictions-screen` | `contradictions_screen` | Candidate pairs the NLI model marks CONTRADICT, for human review. |
 | `corpus-sentiment-screen` | `corpus-kb sentiment-screen` | `sentiment_screen` | Preset lexicon sentiment screen (vote aggregation, honest note). |
 | `corpus-active-learn-next` | `corpus-kb active-learn-next` | `active_learn_next` | Rank stored predictions for the next human-labeling batch. |
+| `corpus-coding-ops` | `corpus-kb coding embed-codebook` | `coding_embed_codebook` | Validate, embed, and load one codebook; answers its version id. |
+| `corpus-coding-ops` | `corpus-kb coding pool` | `coding_pool` | Run pooling (keyword hits, similarity) and coverage reconciliation. |
+| `corpus-coding-ops` | `corpus-kb coding code-batch` | `coding_code_batch` | Code a batch of (chunk, code) cells with confidence routing. |
+| `corpus-coding-ops` | `corpus-kb coding reliability` | `coding_reliability` | Sample the coded corpus and compute alpha/kappa reliability. |
+| `corpus-coding-ops` | `corpus-kb coding calibrate-floors` | `coding_calibrate_floors` | Calibrate one code's pool/residual floors from labeled chunks. |
+| `corpus-coding-ops` | `corpus-kb coding saturation` | `coding_saturation` | Report the ISR saturation signal and the batch stop rule. |
+| `corpus-coding-ops` | `corpus-kb coding status` | `coding_status` | Corpus counts, saturation ratio, coverage by disposition, routes. |
+| `corpus-coding-ops` | `corpus-kb coding export` | `coding_export` | Accepted codes joined with chunk text and document source, as rows. |
+| `corpus-events` | `corpus-kb events` | `events_summary` | Event counts by topic, latest notification id, checkpoints, dead letters, recent ingest runs (read-only). |
 <!-- corpus-harness:research-commands:end -->

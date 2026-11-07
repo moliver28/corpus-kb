@@ -899,8 +899,12 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
     # The storage-portability program added database.backend, graph.max_hops,
     # and the two DuckDB-side retrieval knobs (docs/research/
     # storage-portability-program.md §3).
+    # Issue #348 added the per-server socket keys (server.socket_path and
+    # server.socket_port).
     assert {
         "extraction.backend": str,
+        "server.socket_path": str,
+        "server.socket_port": int,
         "embedding.mrl_trained": bool,
         "embedding.late_chunking": bool,
         "embedding.query_instruction": bool,

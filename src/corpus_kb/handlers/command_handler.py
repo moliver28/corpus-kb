@@ -76,9 +76,10 @@ class CommandHandler:
 
     def _require_pool(self) -> asyncpg.Pool | SqlGateway:
         """The wired store: the pool on Postgres, the gateway on DuckDB."""
-        if self._pool is None:
-            raise InternalError("CommandHandler requires an asyncpg.Pool for ingest.")
-        return self._pool
+        store = self._pool if self._pool is not None else self._gateway
+        if store is None:
+            raise InternalError("CommandHandler needs an asyncpg pool or a gateway for ingest.")
+        return store
 
     async def handle_ingest_file(self, cmd: IngestFileCommand) -> dict[str, Any]:
         """Ingest a file: shared tool pipeline → Document aggregate → events."""

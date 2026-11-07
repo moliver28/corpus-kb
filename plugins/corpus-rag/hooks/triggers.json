@@ -1,0 +1,25 @@
+{
+  "nouns": [
+    "transcript*",
+    "participant*",
+    "interview*",
+    "quote*",
+    "insight*",
+    "codebook*",
+    "research question",
+    "hypothes*"
+  ],
+  "frames": [
+    "analy*",
+    "synthes*",
+    "summarize",
+    "saturation",
+    "what did ... say"
+  ],
+  "exclusions": [
+    "interview script",
+    "discussion guide",
+    "embedding",
+    "repo"
+  ]
+}

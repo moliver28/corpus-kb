@@ -21,6 +21,7 @@ import yaml
 
 from corpus_kb.config_aliases import apply_legacy_aliases
 from corpus_kb.dimensions import EMBEDDING_DIMENSIONS, RESEARCH_EMBEDDING_DIMENSIONS
+from corpus_kb.errors import ConfigError
 
 
 def _deep_update(base: dict[str, object], overlay: dict[str, object]) -> None:
@@ -103,6 +104,7 @@ def apply_env_overrides(config: dict[str, Any]) -> None:
         ("database", "backend"): "CORPUS_KB_DATABASE_BACKEND",
         ("server", "transport"): "CORPUS_KB_TRANSPORT",
         ("server", "port"): "CORPUS_KB_PORT",
+        ("server", "socket_path"): "CORPUS_KB_SOCKET_PATH",
         ("server", "openai_compat"): "CORPUS_KB_OPENAI_COMPAT",
         ("database", "connection_string"): "CORPUS_KB_DATABASE_URL",
         ("observability", "otlp_endpoint"): "CORPUS_KB_OTLP_ENDPOINT",
@@ -139,6 +141,8 @@ def config_file_path() -> Path | None:
     ``./config.yaml`` in the current working directory. The packaged
     default shipped inside the package is NOT a user file, so it is never
     returned: callers that WRITE config must treat None as a refusal.
+    Overlay paths (``CORPUS_KB_CONFIG_OVERLAY``) are reported separately
+    by :func:`config_overlay_paths`.
     """
     env_path = os.environ.get("CORPUS_KB_CONFIG")
     if env_path:
@@ -149,6 +153,20 @@ def config_file_path() -> Path | None:
     if cwd_config.exists():
         return cwd_config
     return None
+
+
+def config_overlay_paths(environ: dict[str, str] | None = None) -> list[Path]:
+    """The overlay YAML paths from ``CORPUS_KB_CONFIG_OVERLAY``, in order.
+
+    The variable holds one or more paths split on ``os.pathsep`` (on
+    Windows ``;``, elsewhere ``:``), so one variable can name several
+    study overlays. Empty entries are dropped. The paths are returned as
+    configured — existence is checked at load time, where a missing file
+    is an error (never a silent skip). Pure: no IO.
+    """
+    env = os.environ if environ is None else environ
+    raw = env.get("CORPUS_KB_CONFIG_OVERLAY", "")
+    return [Path(part) for part in raw.split(os.pathsep) if part.strip()]
 
 
 def load_config(path: str | None = None) -> dict[str, Any]:
@@ -165,6 +183,12 @@ def load_config(path: str | None = None) -> dict[str, Any]:
         2. CORPUS_KB_CONFIG environment variable
         3. ./config.yaml in the current working directory
         4. Packaged default config.yaml shipped with corpus_kb
+
+    Overlays (issue #348): every path in ``CORPUS_KB_CONFIG_OVERLAY``
+    (``os.pathsep``-split, merged in order) deep-merges AFTER the main
+    file and BEFORE the env overrides, so one study overlay can change a
+    few keys without a full config copy. A missing overlay file is an
+    error, never a silent skip.
     """
     config = get_default_config()
 
@@ -193,6 +217,24 @@ def load_config(path: str | None = None) -> dict[str, Any]:
             with Path(packaged_path).open() as f:
                 file_config = cast(dict[str, object], yaml.safe_load(f) or {})
             _deep_update(config, file_config)
+
+    # Issue #348 overlays: deep-merge IN ORDER after the main file, before
+    # the alias and env layers. `file_config` stays the MAIN file's tree —
+    # _follow_graph_backend's "did the operator choose a graph backend"
+    # question is about the main file, not the overlays.
+    for overlay_path in config_overlay_paths():
+        if not overlay_path.is_file():
+            raise ConfigError(
+                f"Config overlay file not found: {overlay_path}. "
+                "Fix the path in CORPUS_KB_CONFIG_OVERLAY."
+            )
+        with overlay_path.open() as f:
+            overlay_config = cast(dict[str, object], yaml.safe_load(f) or {})
+        if not isinstance(overlay_config, dict):
+            raise ConfigError(
+                f"Config overlay {overlay_path} must hold a YAML mapping of settings."
+            )
+        _deep_update(config, overlay_config)
 
     # Legacy namespace aliases (search.* / ingest.hierarchy.* / contextual.*):
     # copied into the canonical keys when the canonical key is absent, with a
@@ -309,6 +351,9 @@ KNOWN_CORPUS_KB_ENV_VARS: frozenset[str] = frozenset(
         "CORPUS_KB_GRAPH_BACKEND",
         "CORPUS_KB_TRANSPORT",
         "CORPUS_KB_PORT",
+        "CORPUS_KB_SOCKET_PATH",
+        "CORPUS_KB_CONFIG_OVERLAY",
+        "CORPUS_KB_SUPERUSER_DSN",
         "CORPUS_KB_OPENAI_COMPAT",
         "CORPUS_KB_LLM_TIMEOUT_S",
         "CORPUS_KB_OTLP_ENDPOINT",
@@ -459,6 +504,16 @@ def get_default_config() -> dict[str, object]:
             # Gates the OpenAI-compatible /v1 adapter (api/routes_v1.py);
             # on by default so chat frontends work out of the box.
             "openai_compat": True,
+            # JSON-RPC socket file (POSIX). Empty = derive from the port:
+            # /tmp/corpus-kb.sock on the default port 8010, else
+            # /tmp/corpus-kb-<port>.sock (issue #348: one path per study
+            # server, so a second server never takes the first one over).
+            # Windows ignores the path and uses socket_port (below).
+            "socket_path": "",
+            # JSON-RPC TCP port (Windows only). 0 = derive: 8011 when the
+            # server port is 8010, else port + 1000. Study ports count up
+            # from 8010, so port + 1 would clash with the next study.
+            "socket_port": 0,
         },
         "graph": {
             "backend": "age",

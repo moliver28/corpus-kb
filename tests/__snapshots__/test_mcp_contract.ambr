@@ -112,6 +112,70 @@
         'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
+    'corpus_kb.tools.coding_tools': dict({
+      'coding_calibrate_floors': dict({
+        'code_id': 'POSITIONAL_OR_KEYWORD',
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'global_fallback': 'POSITIONAL_OR_KEYWORD',
+        'min_pos': 'POSITIONAL_OR_KEYWORD',
+        'negative_chunk_ids': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'positive_chunk_ids': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'coding_code_batch': dict({
+        'bands': 'POSITIONAL_OR_KEYWORD',
+        'batch_id': 'POSITIONAL_OR_KEYWORD',
+        'cells': 'POSITIONAL_OR_KEYWORD',
+        'coder': 'POSITIONAL_OR_KEYWORD',
+        'coding_pass': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'model': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'coding_embed_codebook': dict({
+        'codebook': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'coding_export': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'limit': 'POSITIONAL_OR_KEYWORD',
+        'offset': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'coding_pool': dict({
+        'codebook_version_id': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'coding_reliability': dict({
+        'code_universe': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'per_code_min': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'seed': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'coding_saturation': dict({
+        'batch_id': 'POSITIONAL_OR_KEYWORD',
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'min_samples': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+        'threshold': 'POSITIONAL_OR_KEYWORD',
+      }),
+      'coding_status': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
     'corpus_kb.tools.conflicts_tools': dict({
       'conflicts_list': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
@@ -156,6 +220,13 @@
     'corpus_kb.tools.doctor_tools': dict({
       'doctor_snapshot': dict({
         'config': 'POSITIONAL_OR_KEYWORD',
+      }),
+    }),
+    'corpus_kb.tools.events_tools': dict({
+      'events_summary': dict({
+        'config': 'POSITIONAL_OR_KEYWORD',
+        'pg_pool': 'POSITIONAL_OR_KEYWORD',
+        'tenant_id': 'POSITIONAL_OR_KEYWORD',
       }),
     }),
     'corpus_kb.tools.extraction_tune_tools': dict({

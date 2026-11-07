@@ -24,7 +24,7 @@ from test_surface_parity_deep import DOC_ID, LEGS, TENANT
 ParityLegs = tuple[str, ...]
 
 #: The 27 operations issue #330 names for the DuckDB parity proof,
-#: plus the three Track C project-table ops.
+#: the three Track C project-table ops, and the issue #350 reads.
 PARITY_OPS: ParityLegs = (
     "topics_list",
     "labeling_list",
@@ -59,6 +59,12 @@ PARITY_OPS: ParityLegs = (
     "project_provision",
     "project_list",
     "project_drop",
+    # Issue #350: the coding reads + the event-store health read (the
+    # status/export SQL variants and the events sidecar resolution are
+    # exactly what the duckdb backend must answer).
+    "coding_status",
+    "coding_export",
+    "events_summary",
 )
 
 

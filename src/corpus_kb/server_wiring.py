@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, cast
 import asyncpg
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
-from corpus_kb.errors import ConfigError, DatabaseUnavailableError
+from corpus_kb.errors import ConfigError, CorpusError, DatabaseUnavailableError
 from corpus_kb.storage.graph_factory import create_graph_store
 
 if TYPE_CHECKING:
@@ -332,12 +332,16 @@ def _wire_http(cfg: dict[str, Any]) -> HttpWiring:
     """
     from corpus_kb.api.http import create_http_app
     from corpus_kb.api.socket import get_socket_server
+    from corpus_kb.api.socket_target import resolve_socket_target
     from corpus_kb.ui.spa import mount_spa
 
     http_app = create_http_app()
     ui_mounted = mount_spa(http_app, cfg)
     notebooks_mounted = wire_notebooks(http_app, cfg)
-    socket_server = get_socket_server()
+    # Issue #348: one socket endpoint per server — derived from the port
+    # (or set with server.socket_path / CORPUS_KB_SOCKET_PATH), never the
+    # shared default, so two study servers cannot take each other over.
+    socket_server = get_socket_server(resolve_socket_target(cfg))
     return HttpWiring(
         http_app=http_app,
         socket_server=socket_server,
@@ -590,6 +594,12 @@ def main(argv: list[str] | None = None) -> None:
             asyncio.run(_run())
         except KeyboardInterrupt:
             logger.info("Server interrupted by user")
+        except CorpusError as exc:
+            # Issue #348: a refused socket takeover (and every other typed
+            # failure) exits with one clear line and the taxonomy's exit
+            # code — never a traceback and never a silent takeover.
+            print(f"ERROR: {exc}", file=sys.stderr)
+            sys.exit(exc.cli_exit)
 
 
 if __name__ == "__main__":

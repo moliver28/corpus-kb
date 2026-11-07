@@ -26,8 +26,9 @@ from corpus_kb.domain.models import (
     VerifyAnswerQuery,
     VerifyAnswerResult,
 )
+from corpus_kb.handlers.query_sql_guard import refuse_non_read, refuse_writes_duckdb
 from corpus_kb.rag.judge import OllamaJudge
-from corpus_kb.storage.gateway import SqlGateway, is_gateway
+from corpus_kb.storage.gateway import SqlGateway, gateway_backend, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.utils.json_safe import json_safe
 
@@ -38,12 +39,25 @@ _VERIFY_CHUNKS_SQL_GATEWAY = (
 
 
 async def sql_query(pool: asyncpg.Pool | SqlGateway, query: SQLQuery) -> list[dict[str, Any]]:
-    """Execute a read-only SQL query."""
+    """Execute a read-only SQL query (issue #349).
+
+    The statement gate refuses a write, and a call with more than one
+    statement, BEFORE any connection opens: the typed ``WriteRefusedError``
+    reaches every surface with its one status/code/exit triple. The
+    Postgres pool arm then runs the query in a READ ONLY transaction, so
+    the engine rejects writes the text gate cannot see (a write inside a
+    function body). The DuckDB gateway arm gets DuckDB's own parser
+    verdict first; its transaction scope then stays read-write (the
+    parser gate is the DuckDB enforcement).
+    """
+    refuse_non_read(query.sql)
     if is_gateway(pool):
+        if gateway_backend(pool) == "duckdb":
+            refuse_writes_duckdb(query.sql)
         async with pool.transaction(str(query.tenant_id)) as reader:
             rows = await reader.fetch(query.sql, *query.params.values())
         return [json_safe(dict(row)) for row in rows]
-    async with tenant_connection(pool, str(query.tenant_id)) as conn:
+    async with tenant_connection(pool, str(query.tenant_id), readonly=True) as conn:
         rows = await conn.fetch(query.sql, *query.params.values())
         return [json_safe(dict(row)) for row in rows]
 

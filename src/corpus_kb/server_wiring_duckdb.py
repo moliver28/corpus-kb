@@ -210,13 +210,16 @@ def _wire_http(cfg: dict[str, Any]):
     """The HTTP app, the SPA and notebooks mounts, the socket."""
     from corpus_kb.api.http import create_http_app
     from corpus_kb.api.socket import get_socket_server
+    from corpus_kb.api.socket_target import resolve_socket_target
     from corpus_kb.server_wiring import HttpWiring, wire_notebooks
     from corpus_kb.ui.spa import mount_spa
 
     http_app = create_http_app()
     ui_mounted = mount_spa(http_app, cfg)
     notebooks_mounted = wire_notebooks(http_app, cfg)
-    socket_server = get_socket_server()
+    # Issue #348: one socket endpoint per server (same rule as the
+    # Postgres wiring) — derived from the port, never the shared default.
+    socket_server = get_socket_server(resolve_socket_target(cfg))
     return HttpWiring(
         http_app=http_app,
         socket_server=socket_server,

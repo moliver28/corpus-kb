@@ -257,6 +257,46 @@
     "required": []
   },
   {
+    "description": "Calibrate one code's pool/residual floors from labeled chunks.",
+    "id": "coding-calibrate-floors",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/calibrate-floors",
+    "required": []
+  },
+  {
+    "description": "Code a batch of (chunk, code) cells with confidence routing.",
+    "id": "coding-code-batch",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/code-batch",
+    "required": []
+  },
+  {
+    "description": "Validate, embed, and load one codebook; answers its version id.",
+    "id": "coding-embed-codebook",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/embed-codebook",
+    "required": []
+  },
+  {
+    "description": "Accepted codes joined with chunk text and document source, as rows.",
+    "id": "coding-export",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/export",
+    "required": []
+  },
+  {
     "description": "Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
     "id": "coding-inductive",
     "longRunning": true,
@@ -267,6 +307,26 @@
     ],
     "paramsKnown": false,
     "path": "/api/coding/inductive",
+    "required": []
+  },
+  {
+    "description": "Run pooling (keyword hits, similarity) and coverage reconciliation.",
+    "id": "coding-pool",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/pool",
+    "required": []
+  },
+  {
+    "description": "Sample the coded corpus and compute alpha/kappa reliability.",
+    "id": "coding-reliability",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/reliability",
     "required": []
   },
   {
@@ -284,6 +344,26 @@
     "required": [
       "codebook_version_id"
     ]
+  },
+  {
+    "description": "Report the ISR saturation signal and the batch stop rule.",
+    "id": "coding-saturation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/saturation",
+    "required": []
+  },
+  {
+    "description": "Corpus counts, saturation ratio, coverage by disposition, routes.",
+    "id": "coding-status",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/status",
+    "required": []
   },
   {
     "description": "Load the bundled sample corpus through the standard ingest pipeline.",
@@ -333,6 +413,16 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/documents/{doc_id}/tags",
+    "required": []
+  },
+  {
+    "description": "Event counts by topic, latest notification id, checkpoints, dead letters, recent ingest runs (read-only).",
+    "id": "events-summary",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/events/summary",
     "required": []
   },
   {

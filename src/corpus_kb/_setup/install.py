@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import inspect
+import json
 import logging
 import os
 import platform
@@ -33,8 +34,11 @@ import sys
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 import psutil
+
+from corpus_kb._setup.doctor_engine import resolved_backend
 
 # NOTE: platform/shutil/subprocess/psutil are imported (not used directly) because the
 # installer tests patch them as attributes of THIS module
@@ -51,6 +55,7 @@ from corpus_kb._setup.install_state import (
     reset_install_state,
     save_install_state,
 )
+from corpus_kb._setup.migrate import DUCKDB_DSN_PREFIX
 from corpus_kb._setup.profiles import (
     _detect_gpu_vram_gb,
     load_installer_profiles,
@@ -133,6 +138,11 @@ def print_doctor_report(
             print(f"    fix: {env_check.fix}")
         if env_check.doc:
             print(f"    docs: {env_check.doc}")
+        # Issue #348: report the config file and the overlay paths, so a
+        # client never has to parse config.yaml to know what is in force.
+        print(f"  Config file: {info.get('config_file', 'packaged default')}")
+        overlays = info.get("overlay_paths") or []
+        print(f"  Overlays: {', '.join(overlays) if overlays else 'none'}")
     if research is None:
         print("\nResearch subsystem: SKIPPED (Postgres unreachable; run corpus-kb setup)")
     else:
@@ -150,12 +160,118 @@ def print_doctor_report(
     print("========================\n")
 
 
-async def doctor_cmd(config: dict[str, Any]) -> int:
-    """Read-only diagnostic command."""
+# ResearchCheck statuses (lowercase) to the doctor --json levels (issue #348).
+_LEVEL_BY_STATUS = {"ok": "OK", "warn": "WARN", "fail": "FAIL", "info": "INFO", "skipped": "INFO"}
+
+
+def _check_entry(check: Any) -> dict[str, str]:
+    """One JSON check entry: name, level, detail, plus fix and doc when set."""
+    status = str(getattr(check, "status", ""))
+    entry = {
+        "name": str(getattr(check, "name", "")),
+        "level": _LEVEL_BY_STATUS.get(status.lower(), status.upper()),
+        "detail": str(getattr(check, "detail", "")),
+    }
+    fix = getattr(check, "fix", "")
+    if fix:
+        entry["fix"] = str(fix)
+    doc = getattr(check, "doc", "")
+    if doc:
+        entry["doc"] = str(doc)
+    return entry
+
+
+def _database_display_name(backend: str, conn_str: str) -> str:
+    """The database name (Postgres) or file path (DuckDB) for the JSON report."""
+    if backend == "duckdb":
+        if conn_str.startswith(DUCKDB_DSN_PREFIX):
+            return conn_str[len(DUCKDB_DSN_PREFIX) :]
+        return conn_str
+    try:
+        path = urlsplit(conn_str).path
+    except ValueError:
+        return ""
+    return unquote(path.lstrip("/"))
+
+
+def _resolved_config_summary(config: dict[str, Any], conn_str: str) -> dict[str, Any]:
+    """The resolved config values a client needs (issue #348): backend,
+    database name, embedding model, chat model, overlay paths."""
+    from corpus_kb.config import config_overlay_paths
+
+    backend = resolved_backend(config)
+    emb_cfg = config.get("embedding") or {}
+    llm_cfg = config.get("llm") or {}
+    return {
+        "backend": backend,
+        "database": _database_display_name(backend, conn_str),
+        "embedding_model": str(emb_cfg.get("model", "")) if isinstance(emb_cfg, dict) else "",
+        "chat_model": str(llm_cfg.get("model", "")) if isinstance(llm_cfg, dict) else "",
+        "config_overlays": [str(overlay) for overlay in config_overlay_paths()],
+    }
+
+
+def doctor_json_report(
+    info: dict[str, Any],
+    env_check: Any | None,
+    research: list[Any] | None,
+    storage: list[Any] | None,
+    config: dict[str, Any],
+    conn_str: str,
+) -> dict[str, Any]:
+    """The machine-readable doctor report (issue #348).
+
+    Every check carries its name, level (OK, INFO, WARN, FAIL) and fix
+    text; the config block carries the resolved values a client needs, so
+    clients stop parsing config.yaml or the text output.
+    """
+    checks: list[dict[str, str]] = [
+        {
+            "name": "Postgres",
+            "level": "OK" if info["postgres_ok"] else "FAIL",
+            "detail": str(info["postgres_msg"]),
+        }
+    ]
+    if not info["postgres_ok"]:
+        checks[0]["fix"] = "run: corpus-kb setup"
+    checks.append(
+        {
+            "name": "Ollama",
+            "level": "OK" if info["ollama_ok"] else "WARN",
+            "detail": str(info["ollama_msg"]),
+        }
+    )
+    if not info["ollama_ok"]:
+        checks[-1]["fix"] = "install Ollama, then run: ollama serve"
+    if env_check is not None:
+        checks.append(_check_entry(env_check))
+    for group in (research, storage):
+        for check in group or []:
+            checks.append(_check_entry(check))
+    return {
+        "checks": checks,
+        "config": _resolved_config_summary(config, conn_str),
+    }
+
+
+async def doctor_cmd(config: dict[str, Any], json_output: bool = False) -> int:
+    """Read-only diagnostic command.
+
+    Issue #348 exit rule: 3 when the configured database is unreachable
+    (the same meaning exit 3 has for ``ask``), 0 when the database
+    answered — even when warnings fired. ``--json`` prints one
+    machine-readable report and keeps the same exit code.
+    """
     info = detect_profile()
     profiles = load_installer_profiles(config)
     profile = profiles.get(info["profile"], {})
     info["recommended_model"] = profile.get("model", "nomic-embed-text")
+
+    from corpus_kb.config import config_file_path, config_overlay_paths
+
+    config_file = config_file_path()
+    info["config_file"] = str(config_file) if config_file else "packaged default"
+    info["overlay_paths"] = [str(overlay) for overlay in config_overlay_paths()]
 
     # Offline configuration-truth check (runs even without Postgres): warns
     # about CORPUS_KB_* variables this version does not read.
@@ -192,12 +308,18 @@ async def doctor_cmd(config: dict[str, Any]) -> int:
 
     # Storage-portability section (program §9): the engine line plus the
     # DuckDB health checks. Read-only; never flips the exit code.
+    from corpus_kb._setup.doctor_engine import database_reachable
     from corpus_kb._setup.doctor_storage import storage_checks
 
     storage = await storage_checks(config, conn_str, bool(info["postgres_ok"]))
 
-    print_doctor_report(info, research, env_check=env_check, storage=storage)
-    return 0
+    reachable = database_reachable(resolved_backend(config), bool(info["postgres_ok"]), storage)
+    if json_output:
+        report = doctor_json_report(info, env_check, research, storage, config, conn_str)
+        print(json.dumps(report, indent=2))
+    else:
+        print_doctor_report(info, research, env_check=env_check, storage=storage)
+    return 0 if reachable else 3
 
 
 async def install_cmd(config: dict[str, Any], apply: bool, force: bool) -> int:
@@ -539,7 +661,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Corpus-KB installer")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("doctor", help="Read-only system diagnostics")
+    doctor_parser = subparsers.add_parser("doctor", help="Read-only system diagnostics")
+    doctor_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print one machine-readable report (checks + resolved config values)",
+    )
 
     install_parser = subparsers.add_parser("install", help="Install Corpus-KB")
     install_parser.add_argument(
@@ -600,7 +727,7 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config()
 
     if args.command == "doctor":
-        return asyncio.run(doctor_cmd(config))
+        return asyncio.run(doctor_cmd(config, json_output=args.json))
     if args.command == "install":
         return asyncio.run(install_cmd(config, args.apply, args.force))
     if args.command == "setup":

@@ -11,6 +11,7 @@ monkeypatch the handler-module singletons.
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from starlette.requests import Request
@@ -115,5 +116,41 @@ async def coding_saturation(request: Request) -> JSONResponse:
         batch_id=body.get("batch_id"),
         threshold=opt_float(body.get("threshold"), 0.05, name="threshold"),
         min_samples=opt_int(body.get("min_samples"), 50, name="min_samples"),
+    )
+    return JSONResponse(result)
+
+
+# -- Issue #350 reads: thin adapters over the ONE shared tool functions
+#    (the statements-routes shape), so MCP/socket/CLI answer the same
+#    envelope the HTTP surface does. -------------------------------
+
+
+async def _pool() -> Any:
+    from corpus_kb.api.research_http import research_pool
+
+    return await research_pool()
+
+
+@route_errors
+async def coding_status_route(request: Request) -> JSONResponse:
+    """GET /api/coding/status — counts, saturation ratio, coverage, routes."""
+    from corpus_kb.tools.coding_tools import coding_status
+
+    tenant_id = request.query_params.get("tenant_id", DEFAULT_TENANT_ID)
+    result = await coding_status(await _pool(), tenant_id=tenant_id)
+    return JSONResponse(result)
+
+
+@route_errors
+async def coding_export_route(request: Request) -> JSONResponse:
+    """POST /api/coding/export — accepted codes with chunk text, as rows."""
+    from corpus_kb.tools.coding_tools import coding_export
+
+    body = await parse_body(request)
+    result = await coding_export(
+        await _pool(),
+        tenant_id=str(body.get("tenant_id", DEFAULT_TENANT_ID)),
+        limit=opt_int(body.get("limit"), 1000, name="limit"),
+        offset=opt_int(body.get("offset"), 0, name="offset"),
     )
     return JSONResponse(result)

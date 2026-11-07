@@ -29,11 +29,17 @@ from corpus_kb.storage.gateway import SqlGateway, is_gateway
 
 @asynccontextmanager
 async def tenant_connection(
-    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID | str
+    pool: asyncpg.Pool | SqlGateway, tenant_id: UUID | str, *, readonly: bool = False
 ) -> AsyncIterator[asyncpg.Connection | SqlGateway]:
     """Acquire a pooled connection with RLS tenant context set for one transaction.
 
     A SqlGateway passes through its own tenant-scoped transaction scope.
+
+    ``readonly`` opens the Postgres transaction READ ONLY (issue #349):
+    ``SET TRANSACTION READ ONLY`` runs as the transaction's first
+    statement, before the tenant GUC, so the engine rejects every write
+    the caller's statement gate could not see. The gateway arm ignores
+    the flag — its gate refuses the write before the scope opens.
 
     Usage:
         async with tenant_connection(pool, tenant_id) as conn:
@@ -45,6 +51,8 @@ async def tenant_connection(
         return
     async with pool.acquire() as acquired, acquired.transaction():
         conn = cast("asyncpg.Connection", acquired)
+        if readonly:
+            await conn.execute("SET TRANSACTION READ ONLY")
         await conn.execute(
             "SELECT set_config('app.current_tenant_id', $1, true)",
             str(tenant_id),

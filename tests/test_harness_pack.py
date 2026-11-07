@@ -80,9 +80,12 @@ def test_active_wrappers_after_p7() -> None:
         "corpus-contradictions-screen",
         "corpus-sentiment-screen",
         "corpus-active-learn-next",
+        # Issue #350: the chunk-coding ops card + the event-store health read.
+        "corpus-coding-ops",
+        "corpus-events",
     ]
     assert [w.name for w in reg.WRAPPERS if w.planned] == []
-    assert len(reg.WRAPPERS) == 26
+    assert len(reg.WRAPPERS) == 28
 
 
 def test_wrapper_bodies_are_invocation_guidance_only() -> None:

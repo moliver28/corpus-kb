@@ -31,7 +31,12 @@ def _minimal_config(data_dir: Path | None = None) -> dict:
 
 @pytest.mark.asyncio
 async def test_doctor_cpu_only() -> None:
-    """A low-RAM, no-GPU machine is recommended the minimal profile."""
+    """A low-RAM, no-GPU machine is recommended the minimal profile.
+
+    The database probe is patched unreachable, so the doctor exits 3
+    (issue #348: only an unreachable database flips the exit code). The
+    profile advice still prints.
+    """
     stdout_capture = StringIO()
     with (
         patch.object(sys, "stdout", stdout_capture),
@@ -42,7 +47,7 @@ async def test_doctor_cpu_only() -> None:
         patch.object(install_module, "check_ollama", return_value=(False, "no server")),
     ):
         result = await install_module.doctor_cmd({"installer": {}})
-        assert result == 0
+        assert result == 3
 
     output = stdout_capture.getvalue()
     assert "Profile:      minimal" in output
@@ -162,7 +167,10 @@ async def test_doctor_reports_extensions_missing_with_remediation() -> None:
 
 @pytest.mark.asyncio
 async def test_doctor_extensions_unknown_when_postgres_unreachable() -> None:
-    """Unreachable Postgres => extensions UNKNOWN, never reported OK."""
+    """Unreachable Postgres => extensions UNKNOWN, never reported OK.
+
+    Issue #348: the unreachable database makes the doctor exit 3.
+    """
     stdout_capture = StringIO()
     patches = _doctor_patches(stdout_capture, None)
     with (
@@ -175,7 +183,7 @@ async def test_doctor_extensions_unknown_when_postgres_unreachable() -> None:
         patch.object(install_module, "check_postgres", return_value=(False, "no server")),
     ):
         result = await install_module.doctor_cmd({"installer": {}})
-        assert result == 0
+        assert result == 3
 
     output = stdout_capture.getvalue()
     lowered = output.lower()
