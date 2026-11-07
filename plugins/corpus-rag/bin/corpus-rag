@@ -1,125 +1,44 @@
 #!/usr/bin/env python3
-"""Thin ``corpus-rag`` CLI for the corpus-rag plugin.
+"""Thin ``corpus-rag`` CLI for the corpus-rag plugin (issue #351).
 
-Stdlib only:
+Stdlib only. Every subcommand is one thin surface over the study
+registry, the per-study server manager, the op runner, or one engine
+CLI command. The parser and the command map live in ``cli_spec.py``;
+command bodies live in the ``study_*.py`` modules.
 
-``status``         Resolve the engine and run ``corpus-kb doctor``. Print a
-                   short verdict and a fix hint when the engine is missing or
-                   unhealthy.
-``connect``        Print the MCP server config JSON to paste into a client
-                   config.
-``provision``      Create the per-project raw table through the engine's
-                   project-provision operation (works on Postgres and DuckDB).
-``engine install`` Clone this repository at tag ``corpus-rag-v<version>``
-                   into ``<state>/engine`` and sync it with uv. ``--force``
-                   reinstalls and keeps the old folder for rollback.
+Short map:
 
-The engine keeps the real functionality (``corpus-kb ...``). This wrapper only
-helps you check the connection and install it.
+``status``   Per-study status; the study's doctor decides the verdict.
+``connect``  One MCP entry per study with its env.
+``provision``  Create, migrate, and register one study. ``--project-id``
+             keeps the 0.7.x raw-table behavior (same as raw-provision).
+``raw-provision``  The 0.7.x Track C raw table.
+``list`` / ``use`` / ``serve`` / ``stop``  Registry and server lifecycle.
+``ingest`` / ``search`` / ``similar`` / ``ask`` / ``sql`` / ``events``
+             One op each, through the op runner.
+``doctor`` / ``migrate`` / ``reembed`` / ``backup``  Study maintenance.
+``ops`` / ``op``  The live inventory, and any op through the runner.
+``engine install``  Clone the engine at the release tag into <state>.
 """
 
 from __future__ import annotations
 
-import argparse
-import json
-import subprocess
 import sys
 from pathlib import Path
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PLUGIN_ROOT))
 
+import cli_spec  # noqa: E402
 import engine_install  # noqa: E402
-from engine_paths import engine_cli, engine_root  # noqa: E402
-
-NOT_FOUND = (
-    "Corpus-KB engine not found. Searched $CORPUS_KB_REPO, a dev checkout "
-    "two folders up, and <state>/engine. See docs/PLUGIN.md in the "
-    "repository for install steps."
-)
+import op_client  # noqa: E402
+import op_runner  # noqa: E402
+import study_registry  # noqa: E402
+import study_server  # noqa: E402
+from study_commands import CommandError  # noqa: E402
 
 
-def cmd_status(_args: argparse.Namespace) -> int:
-    root = engine_root()
-    if root is None:
-        print(NOT_FOUND)
-        return 1
-    cli = engine_cli(root)
-    if cli is None:
-        print(f"Engine checkout found at {root}, but no corpus-kb command in it or on PATH.")
-        print("Fix: run `uv sync --frozen --extra dev` inside that checkout.")
-        return 1
-    print(f"Engine: {root}")
-    print(f"Command: {cli}")
-    result = subprocess.run(
-        [cli, "doctor"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
-    output = (result.stdout or result.stderr).strip()
-    if result.returncode == 0:
-        print("ok: corpus-kb doctor completed without errors.")
-        if output:
-            tail = "\n".join(output.splitlines()[-6:])
-            print(tail)
-        return 0
-    print("not ok: corpus-kb doctor reported a problem.")
-    if output:
-        tail = "\n".join(output.splitlines()[-10:])
-        print(tail)
-    print("Fix: read the lines above, or run corpus-kb doctor directly for detail.")
-    return 1
-
-
-def cmd_connect(_args: argparse.Namespace) -> int:
-    root = engine_root()
-    cli = engine_cli(root) if root is not None else None
-    command = cli if cli else "corpus-kb"
-    config = {"mcpServers": {"corpus-kb": {"command": command, "args": ["--transport", "stdio"]}}}
-    if cli is None:
-        print(NOT_FOUND, file=sys.stderr)
-        print("Printing a config that expects `corpus-kb` on PATH.")
-    print(json.dumps(config, indent=2))
-    return 0
-
-
-def cmd_provision(args: argparse.Namespace) -> int:
-    """Create the raw table for one project slug through the engine.
-
-    The engine's project-provision operation answers one envelope for both
-    storage backends; this wrapper only runs it and prints the result.
-    """
-    root = engine_root()
-    cli = engine_cli(root) if root is not None else None
-    if cli is None:
-        print(NOT_FOUND)
-        return 1
-    command = [cli, "project-provision", args.slug, "--json"]
-    if args.project_id:
-        command += ["--project-id", args.project_id]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=120, check=False)
-    output = (result.stdout or result.stderr).strip()
-    if result.returncode != 0:
-        print("not ok: project-provision failed.")
-        if output:
-            print(output)
-        print("Fix: run `corpus-kb doctor` and read the lines above.")
-        return 1
-    try:
-        envelope = json.loads(output[output.index("{") :])
-    except (ValueError, IndexError):
-        print(output)
-        return 0
-    backend = envelope.get("backend", "unknown")
-    print(f"ok: raw table {envelope.get('table')} ready on the {backend} backend.")
-    if envelope.get("already_provisioned"):
-        print("This project already had its raw table; nothing changed.")
-    return 0
-
-
-def cmd_engine_install(args: argparse.Namespace) -> int:
+def cmd_engine_install(args) -> int:
     """Install the engine from the release tag into the state folder."""
     try:
         print(engine_install.run_install(force=args.force))
@@ -130,32 +49,30 @@ def cmd_engine_install(args: argparse.Namespace) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="corpus-rag", description="Corpus-KB plugin helper.")
-    subs = parser.add_subparsers(dest="command", required=True)
-    subs.add_parser("status", help="Check the engine connection with corpus-kb doctor.")
-    subs.add_parser("connect", help="Print the MCP config JSON for this engine.")
-    prov = subs.add_parser(
-        "provision", help="Create the raw table for one project slug (both backends)."
-    )
-    prov.add_argument("slug", help="The project slug, like meeting-notes")
-    prov.add_argument("--project-id", default=None, help="Research project id")
-    engine = subs.add_parser("engine", help="Manage the engine install in the state folder.")
-    engine_subs = engine.add_subparsers(dest="engine_command", required=True)
-    inst = engine_subs.add_parser(
-        "install",
-        help="Clone the engine at tag corpus-rag-v<version> and sync it with uv.",
-    )
-    inst.add_argument(
-        "--force", action="store_true", help="Reinstall, even when this version is already present."
-    )
+    parser = cli_spec.build_parser()
     args = parser.parse_args(argv)
-    if args.command == "status":
-        return cmd_status(args)
-    if args.command == "provision":
-        return cmd_provision(args)
-    if args.command == "engine" and args.engine_command == "install":
+    if args.command == "engine":
         return cmd_engine_install(args)
-    return cmd_connect(args)
+    try:
+        return cli_spec.HANDLERS[args.command](args)
+    except CommandError as exc:
+        print(exc)
+        return 1
+    except study_registry.RegistryError as exc:
+        print(f"not ok: {exc}")
+        return 1
+    except study_server.ServerError as exc:
+        print(f"not ok: {exc}")
+        return 1
+    except op_runner.OpError as exc:
+        print(f"not ok: {exc}")
+        return 2
+    except op_client.HttpError as exc:
+        print(f"not ok: {exc}")
+        return 1
+    except KeyboardInterrupt:
+        print("Interrupted.")
+        return 130
 
 
 if __name__ == "__main__":
