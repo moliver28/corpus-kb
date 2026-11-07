@@ -16,6 +16,7 @@ apply here unchanged (same acquire shape: gateway ``transaction`` scope or
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, cast
 
 import asyncpg
@@ -31,6 +32,8 @@ from corpus_kb.rag.judge import OllamaJudge
 from corpus_kb.storage.gateway import SqlGateway, is_gateway
 from corpus_kb.storage.tenant_conn import tenant_connection
 from corpus_kb.utils.json_safe import json_safe
+
+logger = logging.getLogger(__name__)
 
 _VERIFY_CHUNKS_SQL = "SELECT chunk_id, text FROM chunks WHERE tenant_id = $1 AND chunk_id = ANY($2)"
 _VERIFY_CHUNKS_SQL_GATEWAY = (
@@ -95,11 +98,20 @@ def _entities(rows: list[Any]) -> list[EntityResult]:
 
 
 def _metadata_of(raw: Any) -> dict[str, Any]:
-    """One metadata value from the row: JSONB text (asyncpg) or a dict."""
+    """One metadata value from the row: JSONB text (asyncpg) or a dict.
+
+    A malformed JSONB cell reads as empty metadata (the Wave-4 review's
+    P3-2): one unreadable cell never fails the whole row read, and the
+    warning names the posture.
+    """
     if isinstance(raw, dict):
         return raw
     if isinstance(raw, str) and raw:
-        parsed = json.loads(raw)
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("A row's metadata cell is not valid JSON; read as empty.")
+            return {}
         return parsed if isinstance(parsed, dict) else {}
     return {}
 

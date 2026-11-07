@@ -121,11 +121,14 @@ test.describe("SPA smoke on a live server", () => {
     await drawer.getByRole("button", { name: "Save", exact: true }).click();
     await expect(drawer.getByText("Metadata saved.")).toBeVisible({ timeout: 60_000 });
   });
-});
 
   test("the graph workbench creates, finds, inspects, and links an entity", async ({
     page,
   }) => {
+    // The picker re-read (P1-1) and the server-side read-your-writes
+    // (P1-2) make every step answer in seconds; a hung step now costs
+    // three minutes, not the suite-wide 15 (P3-5).
+    test.setTimeout(180_000);
     const unique = Date.now().toString();
     const first = `aaa-e2e-${unique}-a`;
     const second = `aaa-e2e-${unique}-b`;
@@ -169,6 +172,7 @@ test.describe("SPA smoke on a live server", () => {
     await entities.getByRole("button", { name: "Details" }).first().click();
     await expect(drawer.getByText(first)).toBeVisible({ timeout: 60_000 });
   });
+});
 
 test.describe("accessibility (axe-core)", () => {
   // The whole shell: the ask page scans its focusable citation list,

@@ -33,7 +33,7 @@ from corpus_kb.storage.duckdb_support import duckdb_path_to_conn_string
 
 TENANT = UUID("00000000-0000-0000-0000-000000000001")
 
-_DUCKDB_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test"
+_PG_TEST_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb_test"
 
 
 async def _catch_up(handler: CommandHandler, projection: DocumentsProjection, tenant: UUID) -> None:
@@ -86,8 +86,8 @@ async def duckdb_env(tmp_path: Path):
 def postgres_env(pg_pool, monkeypatch: pytest.MonkeyPatch):  # pg_pool skips when Postgres is down
     # get_app() resolves the Postgres DSN from the environment (never from
     # the passed config), so pin it to the SAME database pg_pool opened.
-    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _DUCKDB_DSN)
-    cfg = {"database": {"backend": "postgres", "connection_string": _DUCKDB_DSN}}
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _PG_TEST_DSN)
+    cfg = {"database": {"backend": "postgres", "connection_string": _PG_TEST_DSN}}
     handler = CommandHandler(cfg, pool=pg_pool)
     projection = DocumentsProjection(pg_pool, CheckpointManager(pg_pool), DLQHandler(pg_pool))
     # Postgres keeps events and analytics in one database: one config.
