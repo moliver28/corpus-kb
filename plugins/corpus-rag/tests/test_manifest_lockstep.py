@@ -18,7 +18,15 @@ def _read(path: Path) -> dict[str, object]:
 def test_plugin_json_is_valid() -> None:
     meta = _read(PLUGIN / ".claude-plugin" / "plugin.json")
     assert meta["name"] == "corpus-rag"
-    assert meta["version"] == "0.10.0"
+    assert meta["version"] == "0.11.0"
+
+
+def test_uxr_report_tool_user_config_key_is_declared() -> None:
+    """The UXR contract-test tool path ships as a userConfig option (#355)."""
+    meta = _read(PLUGIN / ".claude-plugin" / "plugin.json")
+    key = meta["userConfig"]["uxr_report_tool"]
+    assert key["type"] == "string"
+    assert key.get("sensitive") is not True
 
 
 def test_user_config_keys_are_declared() -> None:

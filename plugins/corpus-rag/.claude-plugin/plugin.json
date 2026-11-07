@@ -1,7 +1,7 @@
 {
   "name": "corpus-rag",
-  "version": "0.10.0",
-  "description": "Ask cited questions, search your corpus, ingest documents, run chunk coding, and set studies up in research folders with the Corpus-KB engine, one study at a time.",
+  "version": "0.11.0",
+  "description": "Ask cited questions, search your corpus, ingest documents, run chunk coding, run the UX research study layer, and set studies up in research folders with the Corpus-KB engine, one study at a time.",
 
   "author": "moliver28",
   "repository": "https://github.com/moliver28/corpus-kb",
@@ -32,6 +32,11 @@
       "type": "string",
       "description": "Storage backend for new studies: postgres or duckdb.",
       "default": "postgres"
+    },
+    "uxr_report_tool": {
+      "type": "string",
+      "description": "Report tool command line for the UXR contract test, like 'python tools/report.py'. Leave empty to use --evidence-file.",
+      "default": ""
     }
   }
 }

@@ -33,6 +33,7 @@ import hook_state
 import ingest_queue
 import setup_offer
 import transcripts
+import uxr_hooks
 
 
 def declined_mark_for(folder: Path) -> str:
@@ -122,6 +123,15 @@ def run_prompt_submit(data: dict) -> str | None:
             session["corpus_turn"] = None
             session["subagent"] = False
             hook_state.save_session(sid, session)
+        uxr = uxr_hooks.prompt_nudge(
+            str(data.get("prompt") or ""),
+            fs.slug,
+            fs.root,
+            session_id_of(data),
+            fs.data,
+        )
+        if uxr:
+            return uxr
         return lane_nudge(str(data.get("prompt") or ""), fs)
     if fs.state == folder_state.NONE:
         root = setup_offer.find_sentinel(cwd)

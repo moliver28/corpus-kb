@@ -27,6 +27,7 @@ import hook_state
 import op_client
 import setup_offer
 import study_registry
+import uxr_hooks
 
 CONNECT_TIMEOUT_S = 1.0
 STATEMENT_TIMEOUT_S = 0.2
@@ -89,7 +90,14 @@ def counts_line(study: dict | None) -> str:
 def study_block(fs: folder_state.FolderState) -> str:
     registry = study_registry.load_registry()
     study = registry.get("studies", {}).get(fs.slug or "")
-    lines = [f"Study: {fs.slug}", counts_line(study), *EVIDENCE_RULES, SKILL_LIST]
+    lines = [f"Study: {fs.slug}", counts_line(study), *EVIDENCE_RULES]
+    ticket = uxr_hooks.is_uxr(fs.root, fs.data)
+    if ticket:
+        # UXR study (issue #355): the block gains the UXR lines and skill.
+        lines.extend(uxr_hooks.session_lines(ticket))
+        lines.append(uxr_hooks.extend_skill_list(SKILL_LIST))
+    else:
+        lines.append(SKILL_LIST)
     return "\n".join(lines)
 
 

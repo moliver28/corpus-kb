@@ -21,6 +21,8 @@ import study_commands
 import study_maintenance
 import study_query
 import study_queue
+import uxr_analysis
+import uxr_common
 
 PARADIGMS = ("codebook", "reflexive")
 
@@ -73,9 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subs.add_parser("connect", help="Print the MCP config JSON: one entry per study.")
 
-    prov = subs.add_parser(
-        "provision", help="Create, migrate, and register one study."
-    )
+    prov = subs.add_parser("provision", help="Create, migrate, and register one study.")
     prov.add_argument("slug", help="The study slug, like interview-study")
     prov.add_argument(
         "--backend", default=None, help="postgres or duckdb (default: the userConfig value)"
@@ -162,9 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
     ops = subs.add_parser("ops", help="The live op inventory.")
     ops.add_argument("--family", default=None, help="Only this family")
 
-    drain = subs.add_parser(
-        "drain", help="Send the study folder's pending ingest queue."
-    )
+    drain = subs.add_parser("drain", help="Send the study folder's pending ingest queue.")
     drain.add_argument("-p", "--study-slug", default=None, help="The study slug")
     drain.add_argument(
         "--approve",
@@ -291,9 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Answers JSON keyed by question header, or @file",
     )
     setup.add_argument("--off", action="store_true", help="Undo this folder's setup steps.")
-    setup.add_argument(
-        "--all", action="store_true", help="With --off: every folder setup enabled."
-    )
+    setup.add_argument("--all", action="store_true", help="With --off: every folder setup enabled.")
 
     snooze = subs.add_parser("snooze", help="Hide the setup offer here for N days.")
     snooze.add_argument("--days", type=int, default=7, help="Days to hide the offer (default 7)")
@@ -302,6 +298,8 @@ def build_parser() -> argparse.ArgumentParser:
     subs.add_parser("pause", help="Stop the study server and silence this folder's hooks.")
     subs.add_parser("resume", help="Run this folder's hooks again.")
     subs.add_parser("signals", help="Print the folder's signal-scan counts.")
+
+    uxr_common.add_uxr_subparser(subs)
 
     plugindoctor = subs.add_parser(
         "plugin-doctor", help="Plugin health: versions, hooks, triggers, folder state."
@@ -342,4 +340,5 @@ HANDLERS = {
     "resume": setup_controls.cmd_resume,
     "signals": setup_controls.cmd_signals,
     "plugin-doctor": setup_controls.cmd_plugin_doctor,
+    "uxr": uxr_analysis.cmd_uxr,
 }

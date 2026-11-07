@@ -25,6 +25,11 @@ Short map:
              pool, code, reliability, calibrate-floors, saturation,
              status, export, cells (issue #354). ``reliability`` refuses
              for reflexive studies before any server call.
+``uxr``      The UXR study layer (issue #355): consent, ingest-plan,
+             classify, confirm-classes, stubs, check-quote,
+             validate-rows, rollup, contract-test, write-themes,
+             apply-summary, insights, import. Storage is one SQLite
+             file per study; a study database is never written.
 ``engine install``  Clone the engine at the release tag into <state>.
 """
 

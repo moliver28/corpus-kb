@@ -16,6 +16,7 @@ from pathlib import Path
 
 import op_client
 import op_runner
+import post_search
 import study_commands
 import study_server
 from engine_paths import plugin_data_dir
@@ -127,7 +128,12 @@ def cmd_search(args) -> int:
         print(f"not ok: {exc}")
         return 1
     print(f"Search '{slug}':")
-    return _print_hits(envelope)
+    code = _print_hits(envelope)
+    # The generic post_search extension point (issue #355): registered
+    # commands may print more, like derived insights. Fail-open and quiet
+    # when nothing is registered or the study is not theirs.
+    post_search.run_registered(slug, args.query)
+    return code
 
 
 def cmd_similar(args) -> int:

@@ -157,7 +157,7 @@ the `/corpus-research` skill maps each stage to its op.
 
 ## Skills
 
-The plugin ships eight skills. Each one walks an agent through one job
+The plugin ships nine skills. Each one walks an agent through one job
 with the plain-English rules that job needs.
 
 | Skill | Use it for |
@@ -170,6 +170,7 @@ with the plain-English rules that job needs.
 | `corpus-codify-study` | Starting a coding study: paradigm, provision, ingest, codebook. |
 | `corpus-codify-code` | Running the coder: pool, cells, batches, floors, saturation, reliability. |
 | `corpus-codify-export` | Reporting and exporting coding results with the caution. |
+| `corpus-uxr` | The UX research study layer, from new transcripts to `themes.md`. |
 
 The four coding references live in `plugins/corpus-rag/references/`:
 codebook rules, coding rules, the epistemological caution, and
@@ -237,6 +238,19 @@ corpus-rag use interview-study
 | `signals` | Print the folder's signal-scan counts (files, transcripts, interview summaries). |
 | `plugin-doctor [--bundle]` | Plugin health: versions, hook files, trigger file, folder state, this folder's last 10 hook errors. Exit 0 only when hooks and triggers are good. `--bundle` writes a redacted JSON file for a bug report. |
 | `status`, `connect`, `engine install` | Kept from 0.7.x; `status` is per study now, `connect` prints one MCP entry per study. |
+| `uxr consent [-p]` | Report the setup consent answer. Exit 1 means local only. Unknown means local only. |
+| `uxr ingest-plan --spec UX1-N.spec.json [-p]` | Store the study and its question ids (RQn by position, Hn from the label prefix, An by position), keyed by a 16-char SHA-256 of the spec. |
+| `uxr classify --dir <path> [--roster F] [--staff F] [-p]` | Sort files into `participant_session`, `internal_meeting`, `plan`, `derived`, `excluded`, `unmatched`. No model call. `unmatched` files go to the researcher; never guessed. |
+| `uxr confirm-classes '<json>'\|@file [-p]` | Store confirmed classes. Only `participant_session` and `internal_meeting` reach the source list. |
+| `uxr stubs --dir <path> [-p]` | Write `sources/corpus/<slug>.md` per source so `[S:slug]` cites resolve. Never overwrite. |
+| `uxr check-quote --quote '<q>' (--unit-text '<t>'\|--unit-file F)` | `exact`, `near_miss`, or `fail`; exit 1 on fail. NFKC, lowercase, punctuation to space. Near miss: `difflib` ratio 0.90 or more on a sliding window. |
+| `uxr validate-rows '<json>'\|@file [--store] [-p]` | Check stance enum, unit ids, evidence, and each quote. Failed rows store as `unverified`; near misses are logged. |
+| `uxr rollup [--max-unverified 0.1] [--dir <path>] [-p]` | Count stances per question from verified rows; researcher lines from `interviews/*-summary.md` win. Exit 1 when the unverified share is over the limit. |
+| `uxr contract-test [--evidence-file F] [--dir <path>] [-p]` | Compare the rollup with the report tool's `evidence-weight` output. Exit 1 on any difference. |
+| `uxr write-themes --narrative-file F [--dir <path>] [-p]` | Write only between the `corpus:begin` and `corpus:end` markers in `analysis/themes.md`. Never opens `analysis/codes.md`. |
+| `uxr apply-summary [--dir <path>] [-p]` | Write a marked block into each `interviews/<stem>-summary.md`. Skips question ids a researcher line covers. Byte-stable on a second run. |
+| `uxr insights [--question ID] [--stance S] [--session S] [--format text\|json] [-p]` | Stored rows with rationale, checked quotes, unit ids, `[S:slug]` source, rollup, and ingested vs analyzed counts. |
+| `uxr import [-p]` | One-time copy from a 0.6.0 `uxr` schema. Read-only on the engine side. |
 
 ### Servers and ports
 
@@ -261,6 +275,7 @@ as `CLAUDE_PLUGIN_OPTION_<KEY>`:
 | `superuser_dsn` | `postgresql:///postgres` (peer auth) | provision, migrate, backup |
 | `base_port` | `8010` | port allocation |
 | `default_backend` | `postgres` | provision |
+| `uxr_report_tool` | empty | report tool command line for `uxr contract-test`; empty means use `--evidence-file` |
 
 The password-bearing keys are marked sensitive; the plugin never prints
 an unmasked DSN.
@@ -402,6 +417,57 @@ Every `corpus-rag` command except `drain`, `list`, `provision`, `migrate`,
 on. `codify provision` counts as `provision` here. A drain failure never
 blocks the command.
 
+## UX research studies
+
+The `uxr` command group and the `corpus-uxr` skill run one UX research
+study, such as the tickets `UX1-275`. The layer ships as a module inside
+corpus-rag (owner decision on issue #355), not a second plugin.
+
+Three rules hold everywhere:
+
+- No UXR code ever writes to a study database. The only engine reads go
+  through the read-only `corpus-rag sql` route.
+- Stance rows are model output. A row counts only after its quote checks
+  against the unit text (`exact`, or `near_miss` at 0.90 or more). Rows
+  that fail store as `unverified` and the rollup reports them.
+- Analysis output lands only between `corpus:begin` and `corpus:end`
+  markers. `write-themes` never opens `analysis/codes.md`.
+
+Storage is one SQLite file per study, `uxr/<slug>.sqlite` under
+`${CLAUDE_PLUGIN_DATA}`, with the tables `study`, `question`, `source`,
+`session_insight`, and `schema_version`. A study joins to engine
+documents by `doc_id`, read through `corpus-rag sql`.
+
+A study counts as a UXR study when its `.claude/corpus.json` has
+`uxr.ticket`, or `00-overview.md` names a ticket, or a
+`<PREFIX>-N.spec.json` file sits at the folder root. UXR studies get
+three extras:
+
+- SessionStart adds the UXR lines and the `corpus-uxr` skill to the
+  study block.
+- UserPromptSubmit nudges once per session when files sit in the queue
+  (`corpus-rag drain`) or when ingested sessions have no stored analysis.
+  A UXR phrase ("what did we learn", "is H1 supported") injects the
+  `corpus-uxr` skill path once per session. A hook never runs the
+  analysis.
+- After `corpus-rag search`, up to three stored rows print under
+  "Derived insights (model output, not evidence):".
+
+The search line runs through a small generic extension point:
+`post-search.json` under the plugin data folder lists commands that run
+after every search with the study slug and the query. `corpus-rag` knows
+nothing about the registered commands; `uxr post-search` is the one this
+plugin ships. A command that fails or prints nothing stays silent.
+
+`contract-test` compares the rollup with the report tool's
+`evidence-weight` output. Set the tool command line in the
+`uxr_report_tool` userConfig option, or pass `--evidence-file` with a
+file that holds the JSON. Exit 1 means the report must not be written.
+
+`consent` reads the setup answer from the gate state (issue #353).
+`local_only` blocks every cloud-model path in the `corpus-uxr` skill: no
+transcript text goes to a cloud model.
+
 ## Hook state files
 
 State lives in `${CLAUDE_PLUGIN_DATA}` (or `~/.corpus-kb/plugin/`):
@@ -411,6 +477,8 @@ State lives in `${CLAUDE_PLUGIN_DATA}` (or `~/.corpus-kb/plugin/`):
   atomic write. Windows uses `msvcrt.locking`; other systems use `flock`.
 - `gate-state.json` — the setup gate state, one entry per folder
   (issue #353), atomic write behind a lock.
+- `post-search.json` — the post_search command registry (issue #355).
+- `uxr/<slug>.sqlite` — one UXR store per study (issue #355).
 - `hook-errors.jsonl` — one line per swallowed hook failure.
 - `telemetry.jsonl` — one line per manual-read turn.
 - `ingest-log/` — one JSONL per study, one row per drained file.
