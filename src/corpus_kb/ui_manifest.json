@@ -406,6 +406,16 @@
     "required": []
   },
   {
+    "description": "List one document's chunks in ingest order (read-only).",
+    "id": "chunks-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/chunks",
+    "required": []
+  },
+  {
     "description": "List one document's tags (read-only).",
     "id": "document-tags",
     "longRunning": false,

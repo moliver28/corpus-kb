@@ -1,6 +1,5 @@
 [
   {
-    "description": "Rank stored predictions for the next human-labeling batch.",
     "id": "active-learn-next",
     "longRunning": false,
     "method": "POST",
@@ -10,7 +9,6 @@
     "required": []
   },
   {
-    "description": "Backfill documents.document_date from chunk metadata (idempotent).",
     "id": "analysis-backfill-dates",
     "longRunning": false,
     "method": "POST",
@@ -20,7 +18,6 @@
     "required": []
   },
   {
-    "description": "Nearest-centroid labels with recorded abstentions.",
     "id": "centroids-classify",
     "longRunning": false,
     "method": "POST",
@@ -30,7 +27,6 @@
     "required": []
   },
   {
-    "description": "Cluster structure report: sizes, noise, exemplar chunk ids.",
     "id": "clusters-inspect",
     "longRunning": false,
     "method": "POST",
@@ -40,7 +36,6 @@
     "required": []
   },
   {
-    "description": "Candidate pairs the NLI model marks CONTRADICT, for human review.",
     "id": "contradictions-screen",
     "longRunning": false,
     "method": "POST",
@@ -50,7 +45,6 @@
     "required": []
   },
   {
-    "description": "Near-duplicate candidate pairs at a cosine threshold.",
     "id": "duplicates-screen",
     "longRunning": false,
     "method": "POST",
@@ -60,7 +54,6 @@
     "required": []
   },
   {
-    "description": "Rank keyphrase candidates (tfidf, embedding, or llm variant).",
     "id": "keyphrases-extract",
     "longRunning": false,
     "method": "POST",
@@ -70,7 +63,6 @@
     "required": []
   },
   {
-    "description": "TF-IDF + logistic labels trained on the stored weak labels.",
     "id": "lexical-classify",
     "longRunning": false,
     "method": "POST",
@@ -80,7 +72,6 @@
     "required": []
   },
   {
-    "description": "kNN vote labels over the labeled chunks, neighbors listed.",
     "id": "neighbors-classify",
     "longRunning": false,
     "method": "POST",
@@ -90,7 +81,6 @@
     "required": []
   },
   {
-    "description": "Zero-shot labels via entailment judgments per hypothesis.",
     "id": "nli-classify",
     "longRunning": false,
     "method": "POST",
@@ -100,7 +90,6 @@
     "required": []
   },
   {
-    "description": "Chunks ranked by distance to the k-th nearest neighbor.",
     "id": "outliers-rank",
     "longRunning": false,
     "method": "POST",
@@ -110,7 +99,6 @@
     "required": []
   },
   {
-    "description": "Route a plain-language question to the right analysis method.",
     "id": "analysis-route",
     "longRunning": false,
     "method": "POST",
@@ -120,7 +108,6 @@
     "required": []
   },
   {
-    "description": "Rank the register's methods for a stated task (pure registry logic).",
     "id": "analysis-select-method",
     "longRunning": false,
     "method": "POST",
@@ -130,7 +117,6 @@
     "required": []
   },
   {
-    "description": "Preset lexicon sentiment screen (vote aggregation, honest note).",
     "id": "sentiment-screen",
     "longRunning": false,
     "method": "POST",
@@ -140,7 +126,6 @@
     "required": []
   },
   {
-    "description": "Run the composed corpus analysis and write the report.",
     "id": "analyze-run",
     "longRunning": true,
     "method": "POST",
@@ -150,7 +135,6 @@
     "required": []
   },
   {
-    "description": "Answer a question from retrieved evidence with cited sentences.",
     "id": "ask",
     "longRunning": false,
     "method": "POST",
@@ -160,7 +144,6 @@
     "required": []
   },
   {
-    "description": "Side-by-side belief posteriors for one subject across objects (read-only).",
     "id": "beliefs-compare",
     "longRunning": false,
     "method": "POST",
@@ -170,7 +153,6 @@
     "required": []
   },
   {
-    "description": "Current belief posteriors, recomputed from the statements (read-only).",
     "id": "beliefs-current",
     "longRunning": false,
     "method": "POST",
@@ -180,7 +162,6 @@
     "required": []
   },
   {
-    "description": "Posterior predictive for one belief with its credible interval (read-only).",
     "id": "beliefs-predict",
     "longRunning": false,
     "method": "POST",
@@ -190,7 +171,6 @@
     "required": []
   },
   {
-    "description": "Era history for one belief with the exact posterior on top (read-only).",
     "id": "beliefs-timeline",
     "longRunning": false,
     "method": "POST",
@@ -200,7 +180,6 @@
     "required": []
   },
   {
-    "description": "Copy a profile lock's proposed overrides into config.yaml.",
     "id": "calibrate-apply",
     "longRunning": false,
     "method": "POST",
@@ -214,7 +193,6 @@
     ]
   },
   {
-    "description": "List the built chunk predictions, bounded by limit.",
     "id": "classification-list",
     "longRunning": false,
     "method": "GET",
@@ -224,7 +202,6 @@
     "required": []
   },
   {
-    "description": "Fit the few-shot classifier against a seed set; write predictions.",
     "id": "classification-build",
     "longRunning": true,
     "method": "POST",
@@ -234,7 +211,6 @@
     "required": []
   },
   {
-    "description": "Promote a proposed code into a NEW codebook version (human gate).",
     "id": "codebook-promote",
     "longRunning": false,
     "method": "POST",
@@ -254,7 +230,6 @@
     ]
   },
   {
-    "description": "List proposed codes for the promote gate (read-only).",
     "id": "codebook-proposals",
     "longRunning": false,
     "method": "GET",
@@ -268,7 +243,6 @@
     "required": []
   },
   {
-    "description": "List codebook versions with labels, hashes, and dates (read-only).",
     "id": "codebooks-list",
     "longRunning": false,
     "method": "GET",
@@ -281,7 +255,6 @@
     "required": []
   },
   {
-    "description": "List coding assignments for the review queue, with filters (read-only).",
     "id": "coding-assignments",
     "longRunning": false,
     "method": "GET",
@@ -297,7 +270,6 @@
     "required": []
   },
   {
-    "description": "Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
     "id": "coding-inductive",
     "longRunning": true,
     "method": "POST",
@@ -310,7 +282,6 @@
     "required": []
   },
   {
-    "description": "Deductive run (v5 §8): three-view scoring, calibrated tau, conformal.",
     "id": "coding-run",
     "longRunning": true,
     "method": "POST",
@@ -326,7 +297,6 @@
     ]
   },
   {
-    "description": "List recorded conflict flags newest-first (read-only).",
     "id": "conflicts-list",
     "longRunning": false,
     "method": "POST",
@@ -336,7 +306,6 @@
     "required": []
   },
   {
-    "description": "Finalize one conflict flag; a confirmed revision supersedes the older claim.",
     "id": "conflicts-resolve",
     "longRunning": false,
     "method": "POST",
@@ -346,7 +315,6 @@
     "required": []
   },
   {
-    "description": "Run the contradiction cascade over live statements and record flags.",
     "id": "conflicts-scan",
     "longRunning": false,
     "method": "POST",
@@ -356,7 +324,6 @@
     "required": []
   },
   {
-    "description": "Load the bundled sample corpus through the standard ingest pipeline.",
     "id": "demo-load",
     "longRunning": true,
     "method": "POST",
@@ -366,7 +333,6 @@
     "required": []
   },
   {
-    "description": "Read-only diagnostics: profile, Postgres, Ollama, env vars, checks.",
     "id": "doctor",
     "longRunning": false,
     "method": "GET",
@@ -376,7 +342,6 @@
     "required": []
   },
   {
-    "description": "Aggregate the document statistics: totals plus per-source-type rows.",
     "id": "document-stats",
     "longRunning": false,
     "method": "GET",
@@ -386,7 +351,6 @@
     "required": []
   },
   {
-    "description": "List ingested documents with chunk counts (read-only).",
     "id": "documents-list",
     "longRunning": false,
     "method": "GET",
@@ -396,7 +360,6 @@
     "required": []
   },
   {
-    "description": "Delete one document by ID; chunks and vectors cascade.",
     "id": "document-delete",
     "longRunning": false,
     "method": "DELETE",
@@ -406,7 +369,15 @@
     "required": []
   },
   {
-    "description": "List one document's tags (read-only).",
+    "id": "chunks-list",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/documents/{doc_id}/chunks",
+    "required": []
+  },
+  {
     "id": "document-tags",
     "longRunning": false,
     "method": "GET",
@@ -416,7 +387,6 @@
     "required": []
   },
   {
-    "description": "Apply one tag to a document; a missing tag is created first.",
     "id": "tag-document",
     "longRunning": false,
     "method": "POST",
@@ -426,7 +396,6 @@
     "required": []
   },
   {
-    "description": "Remove one tag from a document; a missing link is a typed error.",
     "id": "untag-document",
     "longRunning": false,
     "method": "POST",
@@ -436,7 +405,6 @@
     "required": []
   },
   {
-    "description": "List graph entities, one name-ordered window (read-only).",
     "id": "list-entities",
     "longRunning": false,
     "method": "GET",
@@ -446,7 +414,6 @@
     "required": []
   },
   {
-    "description": "Add one entity to the knowledge graph.",
     "id": "add-entity",
     "longRunning": false,
     "method": "POST",
@@ -456,7 +423,6 @@
     "required": []
   },
   {
-    "description": "List entities within 1 to 3 hops of one entity (read-only).",
     "id": "graph-neighbors",
     "longRunning": false,
     "method": "POST",
@@ -466,7 +432,6 @@
     "required": []
   },
   {
-    "description": "List one entity's relations (read-only).",
     "id": "get-entity-relations",
     "longRunning": false,
     "method": "GET",
@@ -476,7 +441,6 @@
     "required": []
   },
   {
-    "description": "Search graph entities by name (read-only).",
     "id": "search-graph",
     "longRunning": false,
     "method": "POST",
@@ -486,7 +450,6 @@
     "required": []
   },
   {
-    "description": "Walk the graph from one entity up to the depth cap (read-only).",
     "id": "graph-traverse",
     "longRunning": false,
     "method": "POST",
@@ -496,7 +459,6 @@
     "required": []
   },
   {
-    "description": "Ingest the supported files under one directory in one walk.",
     "id": "ingest-directory",
     "longRunning": true,
     "method": "POST",
@@ -506,7 +468,6 @@
     "required": []
   },
   {
-    "description": "Re-embed degraded (zero-vector) chunks once the provider is back.",
     "id": "ingest-reembed",
     "longRunning": false,
     "method": "POST",
@@ -516,7 +477,6 @@
     "required": []
   },
   {
-    "description": "Recent ingest_runs ledger entries + degraded-chunk counts (honest history).",
     "id": "ingest-status",
     "longRunning": false,
     "method": "GET",
@@ -526,7 +486,6 @@
     "required": []
   },
   {
-    "description": "Fetch (or crawl) a website and ingest its HTML pages.",
     "id": "ingest-url",
     "longRunning": true,
     "method": "POST",
@@ -536,7 +495,6 @@
     "required": []
   },
   {
-    "description": "List the built chunk labels with probabilities.",
     "id": "labeling-list",
     "longRunning": false,
     "method": "GET",
@@ -546,7 +504,6 @@
     "required": []
   },
   {
-    "description": "Score the labeling functions and write the aggregated chunk labels.",
     "id": "labeling-build",
     "longRunning": true,
     "method": "POST",
@@ -556,7 +513,6 @@
     "required": []
   },
   {
-    "description": "Score built labels against a gold dev set (PPI-corrected).",
     "id": "labeling-gold-check",
     "longRunning": false,
     "method": "POST",
@@ -566,7 +522,6 @@
     "required": []
   },
   {
-    "description": "List the registered labeling functions with kinds and coverage.",
     "id": "labeling-lfs",
     "longRunning": false,
     "method": "GET",
@@ -576,7 +531,6 @@
     "required": []
   },
   {
-    "description": "Rank built labels with weak support into a human review queue.",
     "id": "labeling-triage",
     "longRunning": false,
     "method": "POST",
@@ -586,7 +540,6 @@
     "required": []
   },
   {
-    "description": "Read metadata rows by key or document (read-only).",
     "id": "document-metadata",
     "longRunning": false,
     "method": "GET",
@@ -596,7 +549,6 @@
     "required": []
   },
   {
-    "description": "Set one metadata key for a document; the write is an upsert.",
     "id": "set-metadata",
     "longRunning": false,
     "method": "POST",
@@ -606,7 +558,6 @@
     "required": []
   },
   {
-    "description": "Grounded Q&A: cited sentences; retrieval-only mode = zero LLM calls.",
     "id": "notebook-ask",
     "longRunning": false,
     "method": "POST",
@@ -630,7 +581,6 @@
     ]
   },
   {
-    "description": "Evidence for one code: ranked units with flags + conformal sizes.",
     "id": "notebook-evidence",
     "longRunning": false,
     "method": "POST",
@@ -647,7 +597,6 @@
     ]
   },
   {
-    "description": "Code overlap: flagged pairs, confusion, borderline-margin units.",
     "id": "notebook-overlap",
     "longRunning": false,
     "method": "POST",
@@ -661,7 +610,6 @@
     "required": []
   },
   {
-    "description": "Uncoded units ranked by nearest-code margin (the no-missing-clusters radar).",
     "id": "notebook-uncoded",
     "longRunning": false,
     "method": "POST",
@@ -676,7 +624,6 @@
     "required": []
   },
   {
-    "description": "Drop one project raw table and its registry row.",
     "id": "project-drop",
     "longRunning": false,
     "method": "POST",
@@ -686,7 +633,6 @@
     "required": []
   },
   {
-    "description": "List provisioned project raw tables with row counts.",
     "id": "project-list",
     "longRunning": false,
     "method": "POST",
@@ -696,7 +642,6 @@
     "required": []
   },
   {
-    "description": "Create the raw table for one project slug (idempotent).",
     "id": "project-provision",
     "longRunning": false,
     "method": "POST",
@@ -706,7 +651,6 @@
     "required": []
   },
   {
-    "description": "List research projects, newest first (read-only).",
     "id": "projects-list",
     "longRunning": false,
     "method": "GET",
@@ -719,7 +663,6 @@
     "required": []
   },
   {
-    "description": "Cancel one pending or running queue row.",
     "id": "queue-cancel",
     "longRunning": false,
     "method": "POST",
@@ -729,7 +672,6 @@
     "required": []
   },
   {
-    "description": "Queue one file for ingestion; repeat calls answer the existing row.",
     "id": "queue-enqueue",
     "longRunning": false,
     "method": "POST",
@@ -739,7 +681,6 @@
     "required": []
   },
   {
-    "description": "Show one queue row, or the pending and running rows.",
     "id": "queue-status",
     "longRunning": false,
     "method": "POST",
@@ -749,7 +690,6 @@
     "required": []
   },
   {
-    "description": "Add one relation between two entities.",
     "id": "add-relation",
     "longRunning": false,
     "method": "POST",
@@ -759,7 +699,6 @@
     "required": []
   },
   {
-    "description": "Compose every release gate over current evidence; WRITES NO RELEASE.",
     "id": "release-assess",
     "longRunning": false,
     "method": "POST",
@@ -775,7 +714,6 @@
     ]
   },
   {
-    "description": "Diff two releases' manifests (codes, definitions, methods, metrics).",
     "id": "release-compare",
     "longRunning": false,
     "method": "POST",
@@ -791,7 +729,6 @@
     ]
   },
   {
-    "description": "Evaluate + record gates, apply waivers, execute the release (approver).",
     "id": "release-execute",
     "longRunning": false,
     "method": "POST",
@@ -809,7 +746,6 @@
     ]
   },
   {
-    "description": "Open a draft release pinned to the current codebook content hash.",
     "id": "release-request",
     "longRunning": false,
     "method": "POST",
@@ -827,7 +763,6 @@
     ]
   },
   {
-    "description": "Review packet: evidence, failing/not_evaluable gates, waivers, next actions.",
     "id": "release-review",
     "longRunning": false,
     "method": "POST",
@@ -842,7 +777,6 @@
     ]
   },
   {
-    "description": "Stage, release state, blockers, sufficiency flags, the next command.",
     "id": "release-status",
     "longRunning": false,
     "method": "GET",
@@ -856,7 +790,6 @@
     ]
   },
   {
-    "description": "Research cycle: full pipeline with halt gates; long-running, synchronous on every surface (promotion is human-gated).",
     "id": "research-cycle",
     "longRunning": true,
     "method": "POST",
@@ -876,7 +809,6 @@
     "required": []
   },
   {
-    "description": "Narrated demo pipeline on the bundled demo corpus; long-running.",
     "id": "research-demo",
     "longRunning": true,
     "method": "POST",
@@ -886,7 +818,6 @@
     "required": []
   },
   {
-    "description": "Dynamic ingest of file/dir/glob with dedup; --watch tails a drop dir.",
     "id": "research-ingest",
     "longRunning": true,
     "method": "POST",
@@ -903,7 +834,6 @@
     ]
   },
   {
-    "description": "Ingest ONE transcript (txt/vtt/srt/csv/docx): turns, roles, exchanges.",
     "id": "research-ingest-transcript",
     "longRunning": false,
     "method": "POST",
@@ -921,7 +851,6 @@
     ]
   },
   {
-    "description": "Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3.",
     "id": "research-report",
     "longRunning": false,
     "method": "POST",
@@ -936,7 +865,6 @@
     "required": []
   },
   {
-    "description": "Confirm the model's assignment for one CodingAssignment (human review).",
     "id": "review-accept",
     "longRunning": false,
     "method": "POST",
@@ -953,7 +881,6 @@
     ]
   },
   {
-    "description": "Overrule the model's assignment for one CodingAssignment.",
     "id": "review-override",
     "longRunning": false,
     "method": "POST",
@@ -970,7 +897,6 @@
     ]
   },
   {
-    "description": "Hybrid vector + full-text search with the degraded envelope.",
     "id": "search",
     "longRunning": false,
     "method": "POST",
@@ -980,7 +906,6 @@
     "required": []
   },
   {
-    "description": "Search with the surrounding context chunks attached.",
     "id": "search-context",
     "longRunning": false,
     "method": "POST",
@@ -990,7 +915,6 @@
     "required": []
   },
   {
-    "description": "Find chunks similar to one stored chunk (vector distance).",
     "id": "search-similar",
     "longRunning": false,
     "method": "POST",
@@ -1000,7 +924,6 @@
     "required": []
   },
   {
-    "description": "List statement atoms newest-first (read-only).",
     "id": "statements-list",
     "longRunning": false,
     "method": "POST",
@@ -1010,7 +933,6 @@
     "required": []
   },
   {
-    "description": "Chronological statement history for one text query (read-only).",
     "id": "statements-timeline",
     "longRunning": false,
     "method": "POST",
@@ -1020,7 +942,6 @@
     "required": []
   },
   {
-    "description": "Count the corpus rows: documents, chunks, vectors, graph, tags.",
     "id": "stats",
     "longRunning": false,
     "method": "GET",
@@ -1030,7 +951,6 @@
     "required": []
   },
   {
-    "description": "Create one tag in the tag vocabulary.",
     "id": "add-tag",
     "longRunning": false,
     "method": "POST",
@@ -1040,7 +960,6 @@
     "required": []
   },
   {
-    "description": "List the built topics with sizes, labels, and keywords.",
     "id": "topics-list",
     "longRunning": false,
     "method": "GET",
@@ -1050,7 +969,6 @@
     "required": []
   },
   {
-    "description": "Cluster stored chunk embeddings into topics (offline BERTopic).",
     "id": "topics-build",
     "longRunning": true,
     "method": "POST",
@@ -1060,7 +978,6 @@
     "required": []
   },
   {
-    "description": "Per-topic frequency series over binned document dates.",
     "id": "topics-trends",
     "longRunning": false,
     "method": "POST",
@@ -1070,7 +987,6 @@
     "required": []
   },
   {
-    "description": "Check each answer claim against the cited chunks.",
     "id": "verify",
     "longRunning": false,
     "method": "POST",

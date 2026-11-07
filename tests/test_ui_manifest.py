@@ -4,7 +4,8 @@ The manifest is the ONE op table the SPA talks through (zero-drift rule 1).
 Three pins:
 
 (a) Fresh generation reproduces every committed artifact byte for byte —
-    the JSON manifest AND both generated TypeScript modules (``poe gen``
+    the repo JSON manifest, the browser-bundled copy (descriptions
+    stripped), and both generated TypeScript modules (``poe gen``
     runs the same comparison in ``--check`` mode);
 (b) Every manifest path exists in ``create_http_app()`` with the manifest's
     method — a route rename or method change anywhere fails here;
@@ -26,6 +27,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 EXPECTED_ARTIFACTS = (
     "src/corpus_kb/ui_manifest.json",
+    "ui_src/src/api/manifest.json",
     "ui_src/src/api/ops.generated.ts",
     "ui_src/src/api/thresholds.generated.ts",
 )
@@ -54,19 +56,26 @@ def test_check_mode_reports_a_missing_artifact_cleanly(monkeypatch, capsys) -> N
     assert "not-there.generated.ts" in err
 
 
-def test_ui_src_manifest_copy_matches_the_generated_source() -> None:
-    """The SPA's importable copy byte-matches the generated manifest.
+def test_ui_src_manifest_copy_is_the_stripped_bundle_copy() -> None:
+    """The SPA's importable copy carries every manifest entry MINUS the
+    descriptions (the bundle-headroom lever); the repo copy keeps them.
 
-    The pnpm pre-hooks copy the file, but they are not a guarantee: a
-    stale copy must fail here. On drift run ``poe gen`` (or
-    ``pnpm -C ui_src run copy-manifest``).
+    The generator writes both copies (one writer, no drift), and the
+    fresh-generation test byte-compares them. This pin holds the LEVER
+    itself: a description in the bundled copy, or a stripped repo copy,
+    fails here. On drift run ``poe gen``.
     """
-    source = (REPO / "src/corpus_kb/ui_manifest.json").read_bytes()
-    copy = (REPO / "ui_src/src/api/manifest.json").read_bytes()
-    assert copy == source, (
-        "ui_src/src/api/manifest.json is stale — run: poe gen "
-        "(or: pnpm -C ui_src run copy-manifest)"
-    )
+    import json
+
+    source = json.loads((REPO / "src/corpus_kb/ui_manifest.json").read_text(encoding="utf-8"))
+    bundled = json.loads((REPO / "ui_src/src/api/manifest.json").read_text(encoding="utf-8"))
+    assert source, "the repo manifest must not be empty"
+    assert bundled, "the bundled manifest must not be empty"
+    assert len(source) == len(bundled)
+    for full, slim in zip(source, bundled, strict=True):
+        assert full.get("description"), full.get("id")
+        assert "description" not in slim, slim.get("id")
+        assert {k: v for k, v in full.items() if k != "description"} == slim, full.get("id")
 
 
 def test_manifest_json_is_sorted_and_complete() -> None:
