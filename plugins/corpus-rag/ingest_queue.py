@@ -21,13 +21,13 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 import registry_io
 import transcripts
-from file_locks import exclusive
 from engine_paths import plugin_data_dir
+from file_locks import exclusive
 
 QUEUE_DIRNAME = ".claude"
 QUEUE_FILENAME = "corpus-pending.jsonl"
@@ -171,7 +171,7 @@ def _send_row(row: dict, sender: Sender) -> tuple[str, str]:
             return "research_ingest_transcript+ingest_file", "ok"
         sender("queue_enqueue", [f"path={path}"])
         return "queue_enqueue", "ok"
-    except Exception as exc:  # noqa: BLE001 - one bad row must not stop the drain
+    except Exception as exc:
         detail = f"{type(exc).__name__}: {exc}"[:200]
         return "none", f"failed: {detail}"
 
@@ -186,7 +186,7 @@ def log_ingest(slug: str, path: str, route: str, result: str) -> None:
     try:
         log = ingest_log_path(slug)
         log.parent.mkdir(parents=True, exist_ok=True)
-        with open(log, "a", encoding="utf-8") as handle:
+        with log.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row, sort_keys=True) + "\n")
     except OSError:
         pass

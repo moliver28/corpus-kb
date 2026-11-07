@@ -4,6 +4,6 @@
 import hook_main
 
 if __name__ == "__main__":
-    import hook_events
+    import hook_session
 
-    raise SystemExit(hook_main.run_event("session_start", hook_events.run_session_start))
+    raise SystemExit(hook_main.run_event("SessionStart", hook_session.run_session_start))

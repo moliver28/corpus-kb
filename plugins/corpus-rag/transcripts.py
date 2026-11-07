@@ -101,7 +101,7 @@ def head_text(path: Path) -> str:
     try:
         if path.suffix.lower() == ".docx":
             return _docx_head(path)
-        with open(path, "rb") as handle:
+        with path.open("rb") as handle:
             return handle.read(HEAD_BYTES).decode("utf-8", errors="replace")
     except (OSError, zipfile.BadZipFile, KeyError):
         return ""

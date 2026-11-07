@@ -4,7 +4,7 @@ The hook state files and the ingest queue are shared by several runs
 (hooks, CLI commands) on one machine. Locks live on a ``.lock`` sidecar
 and use one locked byte at position 0. A holder blocks other holders
 until release; a caller that cannot take the lock inside its wait window
-gets ``LockBusy`` (issue #352).
+gets ``LockBusyError`` (issue #352).
 
 Stdlib only.
 """
@@ -14,8 +14,8 @@ from __future__ import annotations
 import contextlib
 import os
 import time
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 if os.name == "nt":
     import msvcrt
@@ -26,7 +26,7 @@ WAIT_SECONDS_DEFAULT = 5.0
 RETRY_SLEEP = 0.02
 
 
-class LockBusy(Exception):
+class LockBusyError(Exception):
     """Another run holds the lock and kept it past the wait window."""
 
 
@@ -57,17 +57,17 @@ def _unlock(handle: object) -> None:
 
 @contextlib.contextmanager
 def exclusive(path: Path, wait: float = WAIT_SECONDS_DEFAULT) -> Iterator[None]:
-    """Hold an exclusive lock on ``path``'s sidecar, or raise ``LockBusy``.
+    """Hold an exclusive lock on ``path``'s sidecar, or raise ``LockBusyError``.
 
     The sidecar file is created when missing. Holders must keep the
     critical section short: hooks wait at most a few seconds.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + wait
-    with open(path, "a+b") as handle:
+    with path.open("a+b") as handle:
         while not _try_lock(handle):
             if time.monotonic() >= deadline:
-                raise LockBusy(f"Another run holds the lock at {path}.")
+                raise LockBusyError(f"Another run holds the lock at {path}.")
             time.sleep(RETRY_SLEEP)
         try:
             yield

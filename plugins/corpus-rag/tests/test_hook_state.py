@@ -18,7 +18,6 @@ if PLUGIN not in sys.path:
     sys.path.insert(0, PLUGIN)
 
 import hook_state  # noqa: E402
-from engine_paths import plugin_data_dir  # noqa: E402
 
 
 def setup_state(tmp_path: Path, monkeypatch) -> Path:
@@ -151,7 +150,7 @@ def test_prune_caps_jsonl_at_one_mb(tmp_path: Path, monkeypatch) -> None:
     data.mkdir(parents=True)
     path = data / "telemetry.jsonl"
     row = json.dumps({"pad": "x" * 200}) + "\n"
-    with open(path, "w", encoding="utf-8") as handle:
+    with path.open("w", encoding="utf-8") as handle:
         handle.write(row * 8000)  # ~1.6 MB
     hook_state.prune_once(today="20261107")
     size = path.stat().st_size

@@ -12,8 +12,8 @@ import argparse
 import study_admin
 import study_commands
 import study_maintenance
-import study_queue
 import study_query
+import study_queue
 
 
 def build_parser() -> argparse.ArgumentParser:

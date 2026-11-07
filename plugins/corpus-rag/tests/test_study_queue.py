@@ -50,8 +50,8 @@ def corpus_folder(tmp_path: Path, monkeypatch, auto_ingest=True) -> Path:
 
 
 def patch_scope(monkeypatch, calls: list[str]) -> None:
-    import study_commands
     import op_runner
+    import study_commands
 
     def fake_scoped(slug_arg, ensure_server=True):
         calls.append(f"scoped:{slug_arg}")
@@ -165,9 +165,9 @@ def test_auto_drain_swallows_engine_errors(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_auto_drain_skip_set_matches_the_issue() -> None:
-    assert study_queue.AUTO_DRAIN_SKIP == frozenset(
+    assert frozenset(
         {"drain", "list", "provision", "migrate", "backup", "stop"}
-    )
+    ) == study_queue.AUTO_DRAIN_SKIP
 
 
 def test_cli_spec_has_drain_and_skip_commands() -> None:
@@ -226,5 +226,6 @@ def test_skip_commands_are_real_commands(command: str) -> None:
     import cli_spec
 
     parser = cli_spec.build_parser()
-    parsed = parser.parse_args([command] + (["some-slug"] if command in ("provision", "backup") else []))
+    extra = ["some-slug"] if command in ("provision", "backup") else []
+    parsed = parser.parse_args([command, *extra])
     assert parsed.command == command

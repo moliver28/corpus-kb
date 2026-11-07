@@ -4,6 +4,6 @@
 import hook_main
 
 if __name__ == "__main__":
-    import hook_watch
+    import hook_turn
 
-    raise SystemExit(hook_main.run_event("file_changed", hook_watch.run_file_changed))
+    raise SystemExit(hook_main.run_event("FileChanged", hook_turn.run_file_changed))

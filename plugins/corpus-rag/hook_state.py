@@ -157,7 +157,7 @@ def append_jsonl(path: Path, row: dict) -> None:
     """One JSON line at the end of a log file, best effort."""
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as handle:
+        with path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(row, sort_keys=True) + "\n")
     except OSError:
         pass

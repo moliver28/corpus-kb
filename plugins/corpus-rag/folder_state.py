@@ -146,7 +146,9 @@ def folder_state(
     if slug not in registry.get("studies", {}):
         return FolderState(NONE, root, data, slug=slug)
     exclude = data.get("exclude")
-    patterns = exclude if isinstance(exclude, list) and exclude else list(transcripts.DEFAULT_EXCLUDES)
+    patterns = exclude if isinstance(exclude, list) and exclude else list(
+        transcripts.DEFAULT_EXCLUDES
+    )
     auto = data.get("auto_ingest")
     return FolderState(
         CORPUS,

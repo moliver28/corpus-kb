@@ -13,8 +13,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
-
 PLUGIN = str(Path(__file__).resolve().parents[1])
 if PLUGIN not in sys.path:
     sys.path.insert(0, PLUGIN)

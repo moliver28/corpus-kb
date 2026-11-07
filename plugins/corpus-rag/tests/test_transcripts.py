@@ -98,7 +98,9 @@ def test_docx_head_comes_from_word_document_xml(tmp_path: Path) -> None:
 def test_docx_without_labels_is_not_transcript(tmp_path: Path) -> None:
     path = tmp_path / "plain.docx"
     with zipfile.ZipFile(path, "w") as archive:
-        archive.writestr("word/document.xml", "<w:document><w:body><w:t>hello</w:t></w:body></w:document>")
+        archive.writestr(
+            "word/document.xml", "<w:document><w:body><w:t>hello</w:t></w:body></w:document>"
+        )
     assert not transcripts.is_transcript(path)
 
 

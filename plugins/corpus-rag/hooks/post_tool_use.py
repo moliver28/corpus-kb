@@ -4,6 +4,6 @@
 import hook_main
 
 if __name__ == "__main__":
-    import hook_watch
+    import hook_turn
 
-    raise SystemExit(hook_main.run_event("post_tool_use", hook_watch.run_post_tool_use))
+    raise SystemExit(hook_main.run_event("PostToolUse", hook_turn.run_post_tool_use))

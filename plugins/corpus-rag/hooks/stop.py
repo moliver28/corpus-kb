@@ -4,6 +4,6 @@
 import hook_main
 
 if __name__ == "__main__":
-    import hook_watch
+    import hook_turn
 
-    raise SystemExit(hook_main.run_event("stop", hook_watch.run_stop))
+    raise SystemExit(hook_main.run_event("Stop", hook_turn.run_stop))

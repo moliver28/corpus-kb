@@ -6,4 +6,4 @@ import hook_main
 if __name__ == "__main__":
     import hook_watch
 
-    raise SystemExit(hook_main.run_event("pre_tool_use", hook_watch.run_pre_tool_use))
+    raise SystemExit(hook_main.run_event("PreToolUse", hook_watch.run_pre_tool_use))

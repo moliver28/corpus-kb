@@ -6,4 +6,4 @@ import hook_main
 if __name__ == "__main__":
     import hook_events
 
-    raise SystemExit(hook_main.run_event("prompt_submit", hook_events.run_prompt_submit))
+    raise SystemExit(hook_main.run_event("UserPromptSubmit", hook_events.run_prompt_submit))

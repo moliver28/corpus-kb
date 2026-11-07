@@ -28,7 +28,9 @@ if PLUGIN not in sys.path:
     sys.path.insert(0, PLUGIN)
 
 import hook_events  # noqa: E402
+import hook_session  # noqa: E402
 import hook_state  # noqa: E402
+import hook_turn  # noqa: E402
 import hook_watch  # noqa: E402
 import ingest_queue  # noqa: E402
 
@@ -60,7 +62,10 @@ def corpus_root(tmp_path: Path, monkeypatch, slug: str = "q3", **keys) -> Path:
     (data / "studies.json").parent.mkdir(parents=True, exist_ok=True)
     (data / "studies.json").write_text(
         json.dumps(
-            {"active": None, "studies": {slug: {"database_url": "x", "port": 8010, "backend": "postgres"}}}
+            {
+                "active": None,
+                "studies": {slug: {"database_url": "x", "port": 8010, "backend": "postgres"}},
+            }
         ),
         encoding="utf-8",
     )
@@ -70,10 +75,12 @@ def corpus_root(tmp_path: Path, monkeypatch, slug: str = "q3", **keys) -> Path:
 
 def counts_stub(monkeypatch, documents=12, last="2026-11-05T10:00:00", down=False):
     if down:
-        monkeypatch.setattr(hook_events, "fetch_counts", lambda study: None)
+        monkeypatch.setattr(hook_session, "fetch_counts", lambda study: None)
     else:
         monkeypatch.setattr(
-            hook_events, "fetch_counts", lambda study: {"documents": documents, "last_ingest": last}
+            hook_session,
+            "fetch_counts",
+            lambda study: {"documents": documents, "last_ingest": last},
         )
 
 
@@ -85,7 +92,7 @@ def counts_stub(monkeypatch, documents=12, last="2026-11-05T10:00:00", down=Fals
 def test_session_start_block_is_exact(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     counts_stub(monkeypatch)
-    out = hook_events.run_session_start({"cwd": str(root), "session_id": "s1"})
+    out = hook_session.run_session_start({"cwd": str(root), "session_id": "s1"})
     payload = json.loads(out)
     block = payload["hookSpecificOutput"]["additionalContext"]
     assert block == (
@@ -101,14 +108,14 @@ def test_session_start_block_is_exact(tmp_path: Path, monkeypatch) -> None:
 def test_session_start_watchpaths_are_the_watch_folders(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     counts_stub(monkeypatch)
-    payload = json.loads(hook_events.run_session_start({"cwd": str(root)}))
+    payload = json.loads(hook_session.run_session_start({"cwd": str(root)}))
     assert payload["watchPaths"] == [str(root / "interviews")]
 
 
 def test_session_start_engine_down_line(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     counts_stub(monkeypatch, down=True)
-    payload = json.loads(hook_events.run_session_start({"cwd": str(root)}))
+    payload = json.loads(hook_session.run_session_start({"cwd": str(root)}))
     block = payload["hookSpecificOutput"]["additionalContext"]
     assert "Engine down. Run `corpus-rag status`." in block
     assert "Study: q3" in block
@@ -118,13 +125,13 @@ def test_session_start_silent_without_corpus(tmp_path: Path, monkeypatch) -> Non
     setup_data(tmp_path, monkeypatch)
     plain = tmp_path / "plain"
     plain.mkdir()
-    assert hook_events.run_session_start({"cwd": str(plain)}) is None
+    assert hook_session.run_session_start({"cwd": str(plain)}) is None
 
 
 def test_session_start_silent_when_declined(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     hook_state.touch_mark(hook_events.declined_mark_for(root))
-    assert hook_events.run_session_start({"cwd": str(root)}) is None
+    assert hook_session.run_session_start({"cwd": str(root)}) is None
 
 
 def test_session_start_silent_when_unregistered(tmp_path: Path, monkeypatch) -> None:
@@ -132,19 +139,19 @@ def test_session_start_silent_when_unregistered(tmp_path: Path, monkeypatch) -> 
     (Path(os.environ["CLAUDE_PLUGIN_DATA"]) / "studies.json").write_text(
         json.dumps({"active": None, "studies": {}}), encoding="utf-8"
     )
-    assert hook_events.run_session_start({"cwd": str(root)}) is None
+    assert hook_session.run_session_start({"cwd": str(root)}) is None
 
 
 def test_session_start_silent_when_enabled_false(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch, enabled=False)
-    assert hook_events.run_session_start({"cwd": str(root)}) is None
+    assert hook_session.run_session_start({"cwd": str(root)}) is None
 
 
 def test_session_start_dedup_same_event_within_5s(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     counts_stub(monkeypatch)
-    first = hook_events.run_session_start({"cwd": str(root), "hook_event_name": "startup"})
-    second = hook_events.run_session_start({"cwd": str(root), "hook_event_name": "startup"})
+    first = hook_session.run_session_start({"cwd": str(root), "hook_event_name": "startup"})
+    second = hook_session.run_session_start({"cwd": str(root), "hook_event_name": "startup"})
     assert first is not None
     assert second is None
 
@@ -152,8 +159,8 @@ def test_session_start_dedup_same_event_within_5s(tmp_path: Path, monkeypatch) -
 def test_session_start_dedup_is_per_event(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     counts_stub(monkeypatch)
-    assert hook_events.run_session_start({"cwd": str(root), "hook_event_name": "startup"})
-    assert hook_events.run_session_start({"cwd": str(root), "hook_event_name": "compact"})
+    assert hook_session.run_session_start({"cwd": str(root), "hook_event_name": "startup"})
+    assert hook_session.run_session_start({"cwd": str(root), "hook_event_name": "compact"})
 
 
 def test_session_start_research_offer_once_per_day(tmp_path: Path, monkeypatch) -> None:
@@ -163,8 +170,8 @@ def test_session_start_research_offer_once_per_day(tmp_path: Path, monkeypatch) 
     (folder / "interviews" / "p1.md").write_text(
         "P1: Hello.\nP2: Hi.\nP1: Next.\nP2: Go.\n", encoding="utf-8"
     )
-    first = hook_events.run_session_start({"cwd": str(folder)})
-    second = hook_events.run_session_start({"cwd": str(folder)})
+    first = hook_session.run_session_start({"cwd": str(folder)})
+    second = hook_session.run_session_start({"cwd": str(folder)})
     assert first is not None and "corpus" in first.lower()
     assert second is None
 
@@ -173,7 +180,7 @@ def test_session_start_prunes_state_once_a_day(tmp_path: Path, monkeypatch) -> N
     setup_data(tmp_path, monkeypatch)
     root = corpus_root(tmp_path, monkeypatch)
     counts_stub(monkeypatch)
-    hook_events.run_session_start({"cwd": str(root)})
+    hook_session.run_session_start({"cwd": str(root)})
     assert hook_state.mark_exists(".pruned-marker") or (
         Path(os.environ["CLAUDE_PLUGIN_DATA"]) / ".pruned"
     ).is_file()
@@ -400,7 +407,12 @@ def test_pre_tool_use_ignores_plain_bash_and_other_files(tmp_path: Path, monkeyp
         ("Read", {"file_path": str(notes)}),
         ("Read", {"file_path": str(root / "elsewhere" / "p1.md")}),
     ):
-        data = {"cwd": str(root), "session_id": "s1", "tool_name": tool_name, "tool_input": tool_input}
+        data = {
+            "cwd": str(root),
+            "session_id": "s1",
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+        }
         assert hook_watch.run_pre_tool_use(data) is None, (tool_name, tool_input)
 
 
@@ -446,7 +458,7 @@ def test_post_tool_use_queues_written_file(tmp_path: Path, monkeypatch) -> None:
         "tool_name": "Write",
         "tool_input": {"file_path": str(file)},
     }
-    hook_watch.run_post_tool_use(data)
+    hook_turn.run_post_tool_use(data)
     assert queued_names(root) == [file.name]
 
 
@@ -464,7 +476,7 @@ def test_post_tool_use_skips_junk_paths(tmp_path: Path, monkeypatch) -> None:
         path.write_text("P1: a\nP2: b\nP1: c\nP2: d\n", encoding="utf-8")
     for path in junk:
         data = {"cwd": str(root), "tool_name": "Edit", "tool_input": {"file_path": str(path)}}
-        hook_watch.run_post_tool_use(data)
+        hook_turn.run_post_tool_use(data)
     assert queued_names(root) == []
 
 
@@ -474,22 +486,22 @@ def test_post_tool_use_skips_excluded_paths(tmp_path: Path, monkeypatch) -> None
     file.parent.mkdir(parents=True)
     file.write_text("notes", encoding="utf-8")
     data = {"cwd": str(root), "tool_name": "Write", "tool_input": {"file_path": str(file)}}
-    hook_watch.run_post_tool_use(data)
+    hook_turn.run_post_tool_use(data)
     assert ingest_queue.queue_rows(root) == []
 
 
 def test_file_changed_queues_and_ignores_unlink(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     file = make_transcript(root / "interviews")
-    hook_watch.run_file_changed({"cwd": str(root), "path": str(file), "kind": "change"})
+    hook_turn.run_file_changed({"cwd": str(root), "path": str(file), "kind": "change"})
     assert queued_names(root) == [file.name]
-    hook_watch.run_file_changed({"cwd": str(root), "path": str(file), "kind": "unlink"})
+    hook_turn.run_file_changed({"cwd": str(root), "path": str(file), "kind": "unlink"})
     assert queued_names(root) == [file.name]
 
 
 def test_file_changed_ignores_missing_file(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
-    hook_watch.run_file_changed({"cwd": str(root), "path": str(root / "ghost.md")})
+    hook_turn.run_file_changed({"cwd": str(root), "path": str(root / "ghost.md")})
     assert ingest_queue.queue_rows(root) == []
 
 
@@ -497,7 +509,7 @@ def test_queue_never_queues_itself(tmp_path: Path, monkeypatch) -> None:
     root = corpus_root(tmp_path, monkeypatch)
     queue_file = root / ".claude" / "corpus-pending.jsonl"
     queue_file.write_text("", encoding="utf-8")
-    hook_watch.run_file_changed({"cwd": str(root), "path": str(queue_file)})
+    hook_turn.run_file_changed({"cwd": str(root), "path": str(queue_file)})
     assert ingest_queue.queue_rows(root) == []
 
 
@@ -513,7 +525,7 @@ def test_stop_logs_manual_read_before_corpus_call(tmp_path: Path, monkeypatch) -
     session["turn_reads"] = [str(file)]
     session["first_read_at"] = 100.0
     hook_state.save_session("s1", session)
-    assert hook_watch.run_stop({"cwd": str(root), "session_id": "s1"}) is None
+    assert hook_turn.run_stop({"cwd": str(root), "session_id": "s1"}) is None
     log = Path(os.environ["CLAUDE_PLUGIN_DATA"]) / "telemetry.jsonl"
     rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
@@ -528,7 +540,7 @@ def test_stop_silent_when_corpus_call_came_first(tmp_path: Path, monkeypatch) ->
     session["first_read_at"] = 100.0
     session["corpus_called_at"] = 90.0  # corpus call happened before the read
     hook_state.save_session("s1", session)
-    hook_watch.run_stop({"cwd": str(root), "session_id": "s1"})
+    hook_turn.run_stop({"cwd": str(root), "session_id": "s1"})
     log = Path(os.environ["CLAUDE_PLUGIN_DATA"]) / "telemetry.jsonl"
     assert not log.exists()
 
@@ -538,7 +550,7 @@ def test_stop_resets_the_turn_and_subagent(tmp_path: Path, monkeypatch) -> None:
     session = hook_state.fresh_session("q3", root)
     session.update({"turn_reads": ["x"], "first_read_at": 1.0, "subagent": True})
     hook_state.save_session("s1", session)
-    hook_watch.run_stop({"cwd": str(root), "session_id": "s1"})
+    hook_turn.run_stop({"cwd": str(root), "session_id": "s1"})
     after = hook_state.load_session("s1")
     assert after["turn_reads"] == []
     assert after["first_read_at"] is None
@@ -547,7 +559,7 @@ def test_stop_resets_the_turn_and_subagent(tmp_path: Path, monkeypatch) -> None:
 
 def test_stop_is_cheap_without_a_session(tmp_path: Path, monkeypatch) -> None:
     setup_data(tmp_path, monkeypatch)
-    assert hook_watch.run_stop({"cwd": str(tmp_path), "session_id": "ghost"}) is None
+    assert hook_turn.run_stop({"cwd": str(tmp_path), "session_id": "ghost"}) is None
 
 
 # ---------------------------------------------------------------------------
@@ -648,7 +660,9 @@ def test_guard_enabled_false_silences_five_events(tmp_path: Path, name: str) -> 
     fake = write_fake_python(tmp_path)
     root = tmp_path / "study"
     (root / ".claude").mkdir(parents=True)
-    (root / ".claude" / "corpus.json").write_text('{"slug": "q3", "enabled": false}', encoding="utf-8")
+    (root / ".claude" / "corpus.json").write_text(
+        '{"slug": "q3", "enabled": false}', encoding="utf-8"
+    )
     marker = tmp_path / f"marker-{name}"
     result = subprocess.run(
         [str(SH), str(HOOKS / "dispatch.sh"), name],
