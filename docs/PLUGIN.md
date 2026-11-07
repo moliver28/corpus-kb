@@ -210,32 +210,97 @@ The plugin passes a config overlay to every engine run through
 `<data>/config.overlay.yaml` when present. Write plain YAML there; the
 plugin never parses it.
 
-## Nudges
+## Study folders and hooks
 
-The plugin suggests the right command at the right moment.
+A study folder is a folder whose `.claude/corpus.json` names a registered
+study. Inside one, the plugin works without being asked twice. The file
+holds these keys:
 
-- Session start: inside a `Research/<project>` folder with no registered
-  study, it suggests starting one. Once per project per day.
-- Prompt: with a registered study, it may suggest `ask`, `analysis`, or
-  `ingest` when your prompt matches. Once per lane per day.
+| Key | Meaning |
+|---|---|
+| `slug` | The study slug. Required. |
+| `watch` | Folders to scan, relative to the folder. Default: the folder itself. |
+| `exclude` | Glob list that replaces the defaults (see below). |
+| `auto_ingest` | Drain the queue on every command. Default true. |
+| `enabled` | Set `false` to silence every hook in this folder. |
+| `uxr.ticket` | Free-form note for the UXR layer. |
 
-Each nudge is one short message. It never blocks your work. Every hook fails
-open: a broken hook cannot stop your session.
+Default exclude globs: `interviews/participant-key.md`,
+`**/raw-transcripts/**`, `analysis/**`, `deliverables/**`,
+`**/*-summary.md`, `**/*-key-points.md`. The first two keep identity keys
+and raw recordings out of the engine.
 
-To silence hints, create mark files in the plugin state folder
-(`~/.corpus-kb/plugin/marks/`):
+The hooks, one per event:
 
-- `declined-session` — no more study hints.
-- `declined-ask`, `declined-analyze`, `declined-ingest` — no more hints on
-  that lane.
+| Event | What it does |
+|---|---|
+| SessionStart (`startup\|compact\|clear`) | Prints the study block: slug, document count, last ingest date, the evidence rules, and the skill list. Returns `watchPaths` so file changes fire. Engine down: says `Run corpus-rag status`. |
+| UserPromptSubmit | Queues files added outside a tool call (300 files, depth 4). Keeps the ask, analyze, and ingest lane nudges, keyed per study. |
+| SubagentStart | Gives the subagent three lines: search first, the study slug, what counts as evidence. |
+| PreToolUse (`Read\|Grep\|Bash`) | Nudges `corpus-rag search` when the agent reads a watched transcript by hand. Never blocks. 3 per session. |
+| PostToolUse (`Write\|Edit`) | Queues the written file in a watch folder. |
+| FileChanged | Queues the changed file; ignores `unlink`. |
+| Stop | Logs a turn that read a transcript before any corpus call. Prints nothing. |
 
-To mark a study as registered (stops the session hint), see the
-corpus-ingest skill.
+A transcript is a `.vtt` or `.srt` file; or a name with "transcript" and a
+`.md`, `.txt`, or `.docx` suffix; or one of those whose first 4096 bytes
+hold 3 or more speaker labels with one repeated. Bold labels
+(`**P1:** text`) parse like plain labels; the engine reads both, so no
+normalized copy is made.
+
+For five events (UserPromptSubmit, SubagentStart, PreToolUse, PostToolUse,
+FileChanged) a shell guard walks up from the working folder for
+`.claude/corpus.json` and exits 0 before Python starts when the file is
+absent or holds `"enabled": false`. Hook cost outside study folders stays
+near zero. SessionStart always runs (the daily prune), and Stop exits fast
+when no session record exists. Every hook fails open: a broken hook cannot
+stop your session.
+
+A folder with transcripts but no corpus.json gets the setup offer once a
+day. To silence a prompt lane for good, create a mark file in the plugin
+state folder (`~/.corpus-kb/plugin/marks/`): `declined-ask`,
+`declined-analyze`, or `declined-ingest`. To decline one folder, create
+`marks/declined-folder-<checksum>`; the corpus-ingest skill shows the flow.
+
+## The ingest queue
+
+New and changed files in a watch folder queue in
+`<folder>/.claude/corpus-pending.jsonl` (one line per path, dedup on path
+and mtime, guarded by a `.lock`). A transcript routes to
+`research_ingest_transcript` and then `ingest_file`, so it reaches the
+research tables and plain search. Other files route to `queue_enqueue`.
+
+```bash
+corpus-rag drain [-p <slug>] [--approve]
+```
+
+Drain sends each row, keeps failed rows, and drops rows for deleted files
+with no engine call. Rows added while the drain runs stay queued. When
+`auto_ingest` is false, only `--approve` drains. Every result lands in
+`ingest-log/<slug>.jsonl` (ts, path, route, result).
+
+Every `corpus-rag` command except `drain`, `list`, `provision`, `migrate`,
+`backup`, and `stop` first drains the folder queue when `auto_ingest` is
+on. A drain failure never blocks the command.
+
+## Hook state files
+
+State lives in `${CLAUDE_PLUGIN_DATA}` (or `~/.corpus-kb/plugin/`):
+
+- `sessions/<id>.json` — one record per session (turn count, reads,
+  nudge count), behind a `.lock` sidecar with an atomic write. Windows
+  uses `msvcrt.locking`; other systems use `flock`.
+- `hook-errors.jsonl` — one line per swallowed hook failure.
+- `telemetry.jsonl` — one line per manual-read turn.
+- `ingest-log/` — one JSONL per study, one row per drained file.
+- `.pruned` — the last prune date. Once a day, SessionStart removes
+  sessions older than 30 days and caps the two logs at 1 MB.
 
 ## ZCode notes
 
 - ZCode loads plugin hooks from `hooks/hooks.json` and supports the events
-  this plugin uses: `SessionStart` and `UserPromptSubmit`.
+  this plugin uses: `SessionStart`, `UserPromptSubmit`, `SubagentStart`,
+  `PreToolUse`, `PostToolUse`, `FileChanged`, and `Stop`.
 - Hook scripts stay POSIX `sh`, so the same files work on Windows, Linux,
   and macOS.
 - Restart your agent after a plugin update; hooks and skills reload then.
