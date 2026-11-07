@@ -214,6 +214,52 @@ describe("Graph stage", () => {
     });
   });
 
+  it("keeps the picked label after the search text clears (Wave-4 rider)", async () => {
+    // The Wave-4 re-review label edge: an entity picked from the search
+    // answer sits outside the first window, so the cleared query (back
+    // to the window rows) must not strip its visible label — the raw
+    // UUID never becomes the control's label.
+    stubFetch([
+      entitiesRoute(),
+      { method: "POST", path: "/api/graph/search", reply: respond(200, {
+        status: "success",
+        result: [
+          {
+            entity_id: "00000000-0000-0000-0000-00000000new0",
+            name: "Gamma",
+            entity_type: "concept",
+            metadata: {},
+          },
+        ],
+      }) },
+    ]);
+    render(<Graph />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeTruthy());
+    const combo = screen.getAllByRole("combobox")[0]!;
+    fireEvent.mouseDown(combo);
+    fireEvent.change(combo, { target: { value: "Gam" } });
+    const openOptions = (): Element[] => {
+      const dropdown = document.querySelector(
+        ".ant-select-dropdown:not(.ant-select-dropdown-hidden):not(.ant-slide-up-leave)",
+      );
+      return dropdown ? Array.from(dropdown.querySelectorAll(".ant-select-item-option")) : [];
+    };
+    await waitFor(() => {
+      const pick = openOptions().find((el) => el.textContent === "Gamma (concept)");
+      if (pick === undefined) {
+        throw new Error("search answer not in the open dropdown yet");
+      }
+    });
+    await act(async () => {
+      fireEvent.click(openOptions().find((el) => el.textContent === "Gamma (concept)")!);
+    });
+    // The query clears on pick (back to the window rows); the kept
+    // label still names the picked row (antd 6 renders it in
+    // .ant-select-content).
+    const selection = document.querySelector(".ant-select-content");
+    expect(selection?.textContent).toBe("Gamma (concept)");
+  });
+
   it("reads the drawer's relations and neighbors for one entity", async () => {
     stubFetch([
       entitiesRoute(),

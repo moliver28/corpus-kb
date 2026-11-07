@@ -51,6 +51,13 @@ export default function EntityPicker({
   const invalid = error !== "";
   // The typed search text; empty means the first-window list.
   const [query, setQuery] = useState("");
+  // The picked row's visible label, kept past the search/window changes.
+  const [picked, setPicked] = useState<{ value: string; label: string } | null>(null);
+  // A cleared value (the parent reset the form) drops the kept label —
+  // the documented render-time derived-state adjustment (OpRunner rule).
+  if (value === "" && picked !== null) {
+    setPicked(null);
+  }
 
   // One GET on mount, one more per reload bump (a fresh write makes a
   // new entity pickable); useOp's run holds a stable identity.
@@ -130,6 +137,14 @@ export default function EntityPicker({
       value: row.entity_id,
       label: `${row.name} (${row.entity_type})`,
     }));
+  // The picked row's label rides in state (the Wave-4 re-review rider):
+  // an entity picked from the search answer keeps its visible name after
+  // the query clears or the list window changes — the raw UUID must
+  // never surface as the control's label.
+  const pickerOptions =
+    picked !== null && !options.some((option) => option.value === picked.value)
+      ? [picked, ...options]
+      : options;
 
   return (
     <div className="ui-field">
@@ -157,11 +172,13 @@ export default function EntityPicker({
           onSearch={(text) => setQuery(text.trim())}
           onChange={(next) => {
             if (next !== null) {
+              const found = options.find((option) => option.value === next);
+              setPicked(found !== undefined ? { value: next, label: found.label } : null);
               onChange(next);
               setQuery("");
             }
           }}
-          options={options}
+          options={pickerOptions}
           aria-invalid={invalid || undefined}
           aria-describedby={invalid ? errorId : undefined}
           aria-required="true"
