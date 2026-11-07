@@ -171,9 +171,13 @@ test.describe("SPA smoke on a live server", () => {
     await pickOption(second);
     await relation.getByRole("button", { name: "Link two entities" }).click();
     await expect(page.getByText("Relation created.")).toBeVisible({ timeout: 60_000 });
-    // The relation read answers in the drawer of the source entity.
+    // The relation read answers in the drawer of the source entity: the
+    // row names source, relation, and target (the title also carries the
+    // source name, so the bare name would match twice).
     await entities.getByRole("button", { name: "Details" }).first().click();
-    await expect(drawer.getByText(first)).toBeVisible({ timeout: 60_000 });
+    await expect(drawer.getByText(`${first} related_to ${second}`)).toBeVisible({
+      timeout: 60_000,
+    });
   });
 });
 
