@@ -42,6 +42,8 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     # (graph.extractor is the accepted legacy alias — see
     # corpus_kb.extraction.extraction_backend_name).
     "extraction.backend": str,
+    "server.socket_path": str,
+    "server.socket_port": int,
     "embedding.mrl_trained": bool,
     "embedding.late_chunking": bool,
     "embedding.query_instruction": bool,

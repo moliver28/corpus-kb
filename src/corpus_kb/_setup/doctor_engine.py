@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING, Any
 
-from corpus_kb._setup.doctor_research import STATUS_INFO, ResearchCheck
+from corpus_kb._setup.doctor_research import STATUS_FAIL, STATUS_INFO, ResearchCheck
 
 if TYPE_CHECKING:  # function-local at runtime (program rule 9)
     pass
@@ -29,6 +29,31 @@ def resolved_backend(config: dict[str, Any], environ: dict[str, str] | None = No
         (config.get("database") or {}).get("backend") or ""
     )
     return raw or "postgres"
+
+
+# The checks whose FAIL means "the configured database did not answer"
+# (issue #348 doctor exit rule). Any other FAIL (events sidecar, engine
+# fit) keeps the exit code at 0 — doctor exits 3 ONLY for an unreachable
+# database, never for warnings.
+_DB_REACHABILITY_CHECK_NAMES = frozenset(
+    {"DuckDB file lock", "DuckDB file read", "database config pair"}
+)
+
+
+def database_reachable(backend: str, postgres_ok: bool, checks: list[ResearchCheck]) -> bool:
+    """Whether the configured database answered (issue #348 exit rule).
+
+    Postgres: the doctor's probe result. DuckDB: no FAIL among the file
+    reachability checks — a WARN ("no file yet, run setup") and an INFO
+    (package missing) keep exit 0, a FAIL (locked, unreadable, wrong
+    config pair) means unreachable.
+    """
+    if backend != "duckdb":
+        return postgres_ok
+    return not any(
+        check.status == STATUS_FAIL and check.name in _DB_REACHABILITY_CHECK_NAMES
+        for check in checks
+    )
 
 
 def engine_fit_check(backend: str, chunk_count: int | None) -> ResearchCheck:
@@ -77,4 +102,10 @@ async def pg_chunk_count(conn_str: str) -> int | None:
         await conn.close()
 
 
-__all__ = ["SWEET_SPOT_CHUNKS", "engine_fit_check", "pg_chunk_count", "resolved_backend"]
+__all__ = [
+    "SWEET_SPOT_CHUNKS",
+    "database_reachable",
+    "engine_fit_check",
+    "pg_chunk_count",
+    "resolved_backend",
+]

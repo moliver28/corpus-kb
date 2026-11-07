@@ -282,6 +282,9 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` | `load_config` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` | `load_config` |
 | `CORPUS_KB_PORT` | `server.port` | `load_config` |
+| `CORPUS_KB_SOCKET_PATH` | `server.socket_path` (JSON-RPC socket file; POSIX) | `load_config` |
+| `CORPUS_KB_CONFIG_OVERLAY` | (no config key; `os.pathsep`-split overlay YAML paths, deep-merged in order after the main file, before env overrides) | `config.load_config` |
+| `CORPUS_KB_SUPERUSER_DSN` | (no config key; superuser DSN for `corpus-kb migrate --superuser-dsn`) | `cli.cli_migrate` |
 | `CORPUS_KB_OPENAI_COMPAT` | `server.openai_compat` | `load_config` |
 | `CORPUS_KB_OTLP_ENDPOINT` | `observability.otlp_endpoint` | `load_config` |
 | `CORPUS_KB_LLM_TIMEOUT_S` | `llm.timeout_s` (seconds per chat/generate call, default 120) | `load_config`, `handlers.llm_handler` |
@@ -347,15 +350,38 @@ Schema changes are managed through idempotent SQL migrations in `src/corpus_kb/m
 # Run migrations. Native-Postgres path (port 5432). The bundled compose
 # stack publishes 5433 instead — see OPERATIONS.md, "Ports".
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
-python src/corpus_kb/_setup/migrate.py
+corpus-kb migrate
 
-# Or use the installer (compose path; no export needed)
-corpus-kb setup
+# List what would run, apply nothing
+corpus-kb migrate --dry-run
+
+# Machine-readable report
+corpus-kb migrate --json
 ```
+
+`python src/corpus_kb/_setup/migrate.py` still works (it reads `CORPUS_KB_DATABASE_URL`). The installer (`corpus-kb setup`, compose path) runs migrations for you.
 
 Re-running is safe — already-applied migrations are skipped.
 
 On the DuckDB backend the same runner applies `src/corpus_kb/migrations_duckdb/`. It tracks them in the database file's own `schema_migrations` table. `corpus-kb setup --backend duckdb` runs it for you.
+
+#### Migrate flags for large or locked-down studies
+
+```bash
+# Session settings for heavy migrations (migration 015's dedupe is
+# quadratic on large studies; 0.6.0 needed work_mem=1GB)
+corpus-kb migrate --work-mem 1GB --maintenance-work-mem 1GB
+
+# Run privileged steps as a superuser, then hand ownership and grants
+# to the app role (the user in the configured DSN)
+corpus-kb migrate --superuser-dsn postgresql://postgres:...@localhost:5432/corpus_kb
+
+# Accept that migration 025 discards embeddings stored in the old
+# vector column (the model changed; re-embed after the run)
+corpus-kb migrate --reset-embeddings
+```
+
+`--superuser-dsn` also reads `CORPUS_KB_SUPERUSER_DSN`. Without it, migrations run as the configured role.
 
 ### Projection tables
 

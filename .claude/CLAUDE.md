@@ -27,7 +27,7 @@ Default config is in `config.yaml` at the project root. On first run, data is st
 | stdio | `corpus-kb` (or `python -m src.server`) | Editor agents (OpenCode, Claude Code, Cursor, Codex) |
 | SSE | `corpus-kb --transport sse --port 8000` | Multi-user / remote |
 
-The entry point is `src/server.py`, module `server:main`. Config is loaded from `config.yaml` in `$CWD`, `./corpus-kb/config.yaml`, or `~/.corpus-kb/config.yaml`. Override with `--config <path>` or `CORPUS_KB_CONFIG` env var.
+The entry point is `src/corpus_kb/server_wiring.py`, module `server_wiring:main`. Config discovery: `CORPUS_KB_CONFIG` (absolute path), then `config.yaml` in `$CWD`, then the packaged default inside the package. There is no `--config` flag. Overlays: `CORPUS_KB_CONFIG_OVERLAY` holds `os.pathsep`-split YAML paths, deep-merged in order after the main file and before env overrides (issue #348).
 
 ## MCP Tools Reference
 

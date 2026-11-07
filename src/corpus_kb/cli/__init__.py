@@ -294,11 +294,29 @@ def setup(
 
 
 @app.command("doctor")
-def doctor() -> int:
-    """Read-only system diagnostics."""
+def doctor(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Print one machine-readable report (checks + resolved config values)",
+    ),
+) -> int:
+    """Read-only system diagnostics.
+
+    Exits 3 when the configured database is unreachable (issue #348);
+    warnings keep exit 0.
+    """
     from corpus_kb._setup.install import main as install_main
 
-    return install_main(["doctor"])
+    argv = ["doctor"]
+    if json_output:
+        argv.append("--json")
+    code = install_main(argv)
+    # Honest exit: typer ignores plain int returns, so non-zero must raise
+    # (the cli_ingest._finish rule).
+    if code:
+        raise typer.Exit(code=code)
+    return 0
 
 
 @app.command()

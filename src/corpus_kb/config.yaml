@@ -8,6 +8,16 @@ server:
   # Gates the OpenAI-compatible /v1 adapter (POST /v1/chat/completions,
   # POST /v1/embeddings, GET /v1/models).
   openai_compat: true
+  # JSON-RPC socket file (POSIX). Empty = derive from the port:
+  # /tmp/corpus-kb.sock on the default port 8010, else
+  # /tmp/corpus-kb-<port>.sock (issue #348: one path per study server,
+  # so a second server never takes the first one over). Windows ignores
+  # the path and uses socket_port below.
+  socket_path: ""
+  # JSON-RPC TCP port (Windows only). 0 = derive: 8011 when the server
+  # port is 8010, else port + 1000. Study ports count up from 8010, so
+  # port + 1 would clash with the next study.
+  socket_port: 0
 
 embedding:
   # ollama serves the 4B embedder; pgml cannot host a model of this size.
