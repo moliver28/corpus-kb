@@ -63,6 +63,9 @@ GET_SURFACE_NAMES = frozenset(
         "documents-list",
         "document-tags",
         "document-metadata",
+        # Issue #350: the coding status read and the event-store health read.
+        "coding-status",
+        "events-summary",
     }
 )
 
@@ -87,6 +90,11 @@ LONG_RUNNING_OP_IDS = frozenset(
         # UI SPA Task 5b (issue #176): the sample-corpus load embeds every
         # file on a cold host, so the SPA shows the elapsed-time state.
         "demo-load",
+        # Issue #350: the chunk-coding ops that embed, pool, or code a
+        # batch can run minutes on a real corpus.
+        "coding-embed-codebook",
+        "coding-pool",
+        "coding-code-batch",
     }
 )
 

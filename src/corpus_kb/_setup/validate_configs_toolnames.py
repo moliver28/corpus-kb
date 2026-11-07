@@ -118,6 +118,17 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "active_learn_next",
         # -- calibrate family (issue #200, tools/calibrate_tools.py) ---------
         "calibrate_apply",
+        # -- chunk-coding ops (issue #350, tools/coding_tools.py) ------------
+        "coding_embed_codebook",
+        "coding_pool",
+        "coding_code_batch",
+        "coding_reliability",
+        "coding_calibrate_floors",
+        "coding_saturation",
+        "coding_status",
+        "coding_export",
+        # -- event-store health (issue #350, tools/events_tools.py) ----------
+        "events_summary",
     }
 )
 

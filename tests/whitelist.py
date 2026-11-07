@@ -580,3 +580,7 @@ CALIBRATE
 # scans src only and sees no caller in either case.
 ranked_method_ids
 route_question
+
+# coding ops CLI (cli_coding_ops.py, issue #350): typer command callback
+# bound by its decorator; vulture sees no direct caller.
+calibrate_floors

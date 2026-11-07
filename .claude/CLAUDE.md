@@ -311,4 +311,13 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-contradictions-screen` | `corpus-kb contradictions-screen` | `contradictions_screen` | Candidate pairs the NLI model marks CONTRADICT, for human review. |
 | `corpus-sentiment-screen` | `corpus-kb sentiment-screen` | `sentiment_screen` | Preset lexicon sentiment screen (vote aggregation, honest note). |
 | `corpus-active-learn-next` | `corpus-kb active-learn-next` | `active_learn_next` | Rank stored predictions for the next human-labeling batch. |
+| `corpus-coding-ops` | `corpus-kb coding embed-codebook` | `coding_embed_codebook` | Validate, embed, and load one codebook; answers its version id. |
+| `corpus-coding-ops` | `corpus-kb coding pool` | `coding_pool` | Run pooling (keyword hits, similarity) and coverage reconciliation. |
+| `corpus-coding-ops` | `corpus-kb coding code-batch` | `coding_code_batch` | Code a batch of (chunk, code) cells with confidence routing. |
+| `corpus-coding-ops` | `corpus-kb coding reliability` | `coding_reliability` | Sample the coded corpus and compute alpha/kappa reliability. |
+| `corpus-coding-ops` | `corpus-kb coding calibrate-floors` | `coding_calibrate_floors` | Calibrate one code's pool/residual floors from labeled chunks. |
+| `corpus-coding-ops` | `corpus-kb coding saturation` | `coding_saturation` | Report the ISR saturation signal and the batch stop rule. |
+| `corpus-coding-ops` | `corpus-kb coding status` | `coding_status` | Corpus counts, saturation ratio, coverage by disposition, routes. |
+| `corpus-coding-ops` | `corpus-kb coding export` | `coding_export` | Accepted codes joined with chunk text and document source, as rows. |
+| `corpus-events` | `corpus-kb events` | `events_summary` | Event counts by topic, latest notification id, checkpoints, dead letters, recent ingest runs (read-only). |
 <!-- corpus-harness:research-commands:end -->

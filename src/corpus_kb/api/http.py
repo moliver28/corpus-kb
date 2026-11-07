@@ -91,9 +91,11 @@ from corpus_kb.api.routes_coding import (
     coding_calibrate_floors,
     coding_code_batch,
     coding_embed_codebook,
+    coding_export_route,
     coding_pool,
     coding_reliability,
     coding_saturation,
+    coding_status_route,
 )
 from corpus_kb.api.routes_conflicts import (
     conflicts_list_route,
@@ -101,6 +103,7 @@ from corpus_kb.api.routes_conflicts import (
     conflicts_scan_route,
 )
 from corpus_kb.api.routes_demo import demo_load
+from corpus_kb.api.routes_events import events_summary_route
 from corpus_kb.api.routes_graph import (
     add_entity,
     add_relation,
@@ -265,6 +268,10 @@ def create_http_app() -> FastAPI:
         Route("/api/coding/reliability", coding_reliability, methods=["POST"]),
         Route("/api/coding/calibrate-floors", coding_calibrate_floors, methods=["POST"]),
         Route("/api/coding/saturation", coding_saturation, methods=["POST"]),
+        # Issue #350: the two coding reads + the event-store health read.
+        Route("/api/coding/status", coding_status_route, methods=["GET"]),
+        Route("/api/coding/export", coding_export_route, methods=["POST"]),
+        Route("/api/events/summary", events_summary_route, methods=["GET"]),
         Route("/api/documents", list_documents, methods=["GET"]),
         Route("/api/entities", list_entities, methods=["GET"]),
         Route("/api/entities", add_entity, methods=["POST"]),

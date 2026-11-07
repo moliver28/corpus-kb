@@ -8,6 +8,7 @@ module holds no behavior.
 
 from __future__ import annotations
 
+from corpus_kb.api._socket_rows_coding import CODING_SPECS, EVENTS_SPECS
 from corpus_kb.api._socket_specs import _Opt, _Spec
 
 # Lazy-import targets for the spec rows (one short name per tool module).
@@ -241,3 +242,8 @@ _SPECS: dict[str, _Spec] = {
         ),
     ),
 }
+
+# Issue #350: the chunk-coding ops + the event-store health read (the
+# split module keeps this file under the 250-line rule).
+_SPECS.update(CODING_SPECS)
+_SPECS.update(EVENTS_SPECS)
