@@ -195,26 +195,26 @@ describe("the shared poll cache", () => {
     stubFetch([
       { method: "GET", path: "/api/ingest/status", reply: respond(200, { status: "success", result: [] }) },
     ]);
-    let renders = 0;
+    let commits = 0;
     function CountProbe(): ReactNode {
       const poll = usePoll("ingest-status");
-      renders += 1;
       useEffect(() => {
+        commits += 1;
         latest.set("count", poll);
       });
       return <span>{poll.result === null ? "wait" : poll.result.ok ? "ok" : "down"}</span>;
     }
     render(<CountProbe />, { wrapper: makeWrapper(false) });
     await flush();
-    const afterFirst = renders;
+    const afterFirst = commits;
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4500); // two more ticks, same answer
     });
     expect(callsTo("/api/ingest/status")).toBe(3);
-    // Render one (mount) + render two (the first real answer); the two
+    // Commit one (mount) + commit two (the first real answer); the two
     // identical ticks add none.
     expect(afterFirst).toBe(2);
-    expect(renders).toBe(2);
+    expect(commits).toBe(2);
   });
 
   it("backs off ten seconds after a 503 and says so", async () => {
