@@ -55,18 +55,23 @@ database.
 - The plugin starts the study's server when it is down; the first
   command may take a few seconds longer.
 
-## Register the study
+## Point a study folder at the study
 
-The session hint stops once a study is registered. After your first
-successful ingest, create the marker:
+Inside a study folder, the plugin hooks do the work for you: they print
+the study block at session start, queue new and changed files for
+ingest, and nudge toward `corpus-rag search` instead of reading
+transcripts by hand. A folder counts as a study folder when it holds a
+`.claude/corpus.json` that names a registered study:
 
 ```bash
-mkdir -p ~/.corpus-kb/plugin
-touch ~/.corpus-kb/plugin/study-registered
+mkdir -p .claude
+printf '{"slug": "my-study", "watch": ["interviews"]}' > .claude/corpus.json
+corpus-rag provision my-study
 ```
 
-On Windows use `%USERPROFILE%\.corpus-kb\plugin` in place of
-`~/.corpus-kb/plugin`.
+The keys: `slug`, `watch` (folders to scan), `exclude` (glob list that
+replaces the defaults), `auto_ingest` (default true), `enabled`
+(set false to silence every hook in this folder).
 
 Do not call bare `corpus-kb ingest`. It hits the default database, not
 the study, and a stale `corpus-kb` can sit first on PATH.

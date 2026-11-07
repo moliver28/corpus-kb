@@ -94,6 +94,23 @@ def save_session(session_id: str, data: dict) -> None:
         registry_io.replace_with_retry(tmp, path)
 
 
+def fresh_session(slug: str, folder: Path) -> dict:
+    """The shape of a new session record."""
+    stamp = now()
+    return {
+        "created": stamp,
+        "last": stamp,
+        "slug": slug,
+        "folder": str(folder),
+        "turn": 0,
+        "turn_reads": [],
+        "first_read_at": None,
+        "corpus_called_at": None,
+        "nudges": 0,
+        "subagent": False,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Marks and dedup
 # ---------------------------------------------------------------------------

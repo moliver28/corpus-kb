@@ -52,23 +52,37 @@ corpus-rag connect
 userConfig (`CLAUDE_PLUGIN_OPTION_ENGINE_ROOT`), `$CORPUS_KB_REPO`, a dev
 checkout two folders up, then `<state>/engine`.
 
-## Nudges
+## Study folders and hooks
 
-- Session start: if you work inside a `Research/<project>` folder with no
-  registered study, the plugin suggests starting one. Once per project per
-  day.
-- Prompt: with a registered study, it may suggest `corpus-kb ask`,
-  `corpus-kb analysis-select-method`, or `corpus-kb ingest` when your prompt
-  matches. Once per lane per day.
+Inside a study folder (a folder with a `.claude/corpus.json` that names a
+registered study), the hooks work for you:
 
-To silence a lane for good, create a mark file in the plugin state folder:
+- Session start prints the study block: slug, document count, last ingest
+  date, the evidence rules, and the skill list. It also returns the watch
+  folders, so file changes fire.
+- Every new or changed file in a watch folder queues for ingest. The next
+  `corpus-rag` command sends the queue; a transcript reaches the research
+  tables and plain search.
+- Reading a transcript by hand nudges you toward `corpus-rag search`
+  (3 nudges per session at most). Subagents get the evidence rules.
+- A turn that read a transcript before any corpus call lands in the
+  telemetry log, so `status` can tell you.
+- Outside study folders the hooks exit before Python starts. A folder
+  with transcripts but no corpus gets the setup offer once a day.
+
+See `docs/PLUGIN.md` for the `.claude/corpus.json` keys, the queue, and
+`corpus-rag drain`.
+
+To silence a prompt lane for good, create a mark file in the plugin state
+folder:
 
 ```bash
 mkdir -p ~/.corpus-kb/plugin/marks
-touch ~/.corpus-kb/plugin/marks/declined-session   # or declined-ask, declined-analyze, declined-ingest
+touch ~/.corpus-kb/plugin/marks/declined-ask   # or declined-analyze, declined-ingest
 ```
 
-All hooks fail open. A broken hook never blocks your session.
+Set `"enabled": false` in `.claude/corpus.json` to silence every hook in
+one folder. All hooks fail open. A broken hook never blocks your session.
 
 ## Development
 
