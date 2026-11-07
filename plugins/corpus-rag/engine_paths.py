@@ -33,9 +33,29 @@ def state_dir() -> Path:
     return Path.home() / ".corpus-kb"
 
 
+def plugin_data_dir() -> Path:
+    """Plugin state dir: ``CLAUDE_PLUGIN_DATA`` or ``~/.corpus-kb/plugin``.
+
+    The registry, logs, servers marks, sockets, backups, and the DuckDB
+    study files live here (issue #351).
+    """
+    env = os.environ.get("CLAUDE_PLUGIN_DATA", "")
+    if env:
+        return Path(env)
+    return Path.home() / ".corpus-kb" / "plugin"
+
+
 def engine_root(plugin_root: Path | None = None) -> Path | None:
-    """Return the engine repository root, or ``None`` when not found."""
+    """Return the engine repository root, or ``None`` when not found.
+
+    The plugin's ``engine_root`` userConfig (exported as
+    ``CLAUDE_PLUGIN_OPTION_ENGINE_ROOT``) wins over the chain below.
+    """
     root = plugin_root if plugin_root is not None else PLUGIN_ROOT
+
+    option = os.environ.get("CLAUDE_PLUGIN_OPTION_ENGINE_ROOT", "")
+    if option and Path(option).is_dir():
+        return Path(option)
 
     env = os.environ.get("CORPUS_KB_REPO", "")
     if env and Path(env).is_dir():
