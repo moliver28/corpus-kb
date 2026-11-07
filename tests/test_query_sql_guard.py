@@ -105,6 +105,59 @@ def test_write_refused_error_is_one_taxonomy_row() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The masking edge cases and the DuckDB net's refusals (issue #349 legs).
+# ---------------------------------------------------------------------------
+
+
+def test_headless_masked_body_is_refused() -> None:
+    """A statement with no readable head has nothing to prove."""
+    with pytest.raises(WriteRefusedError) as excinfo:
+        refuse_non_read("123")
+    assert "needs one read statement" in str(excinfo.value)
+
+
+def test_nested_block_comments_stay_masked() -> None:
+    """Postgres-style nested comments hide writes; the read still passes."""
+    refuse_non_read("SELECT /* outer /* inner DROP TABLE t */ 1 */ 1")  # no raise
+
+
+def test_doubled_quote_escape_keeps_one_string() -> None:
+    """'' inside a string is an escape; the semicolon inside stays data."""
+    refuse_non_read("SELECT 'a''b; DROP TABLE t' AS note")  # no raise
+
+
+def test_unterminated_string_consumes_the_tail() -> None:
+    """An unterminated string never runs half a statement; head rules."""
+    refuse_non_read("SELECT 'abc")  # no raise: the head proves the read
+    with pytest.raises(WriteRefusedError):
+        refuse_non_read("DELETE 'abc")
+
+
+def test_duckdb_net_refuses_unprovable_sql() -> None:
+    """DuckDB's own parser is the second net: junk is refused, not run."""
+    import duckdb  # noqa: F401  (the extra is installed for this leg)
+
+    from corpus_kb.handlers.query_sql_guard import refuse_writes_duckdb
+
+    with pytest.raises(WriteRefusedError) as excinfo:
+        refuse_writes_duckdb("SELEC nope nope nope")
+    assert "could not prove" in str(excinfo.value)
+
+
+def test_duckdb_net_refuses_two_statements_and_writes() -> None:
+    """Two statements and a write both trip DuckDB's own statement list."""
+    from corpus_kb.handlers.query_sql_guard import refuse_writes_duckdb
+
+    with pytest.raises(WriteRefusedError) as multi:
+        refuse_writes_duckdb("SELECT 1; SELECT 2")
+    assert "one statement per call" in str(multi.value)
+
+    with pytest.raises(WriteRefusedError) as writes:
+        refuse_writes_duckdb("DELETE FROM documents")
+    assert "read statements only" in str(writes.value)
+
+
+# ---------------------------------------------------------------------------
 # The handler arms: refusal happens before any statement runs
 # ---------------------------------------------------------------------------
 

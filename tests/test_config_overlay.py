@@ -62,6 +62,16 @@ def test_missing_overlay_is_an_error(isolated: Path, monkeypatch: Any) -> None:
     assert str(missing) in str(excinfo.value)
 
 
+def test_non_mapping_overlay_is_an_error(isolated: Path, monkeypatch: Any) -> None:
+    """An overlay that is a YAML scalar or list is a config error."""
+    overlay = isolated / "flat.yaml"
+    overlay.write_text("just-a-string\n", encoding="utf-8")
+    monkeypatch.setenv("CORPUS_KB_CONFIG_OVERLAY", str(overlay))
+    with pytest.raises(ConfigError) as excinfo:
+        load_config()
+    assert "must hold a YAML mapping" in str(excinfo.value)
+
+
 def test_overlay_deep_merges_nested_blocks(isolated: Path, monkeypatch: Any) -> None:
     overlay = _write(
         isolated / "overlay.yaml", {"retrieval": {"self_query": {"model": "qwen3:8b"}}}

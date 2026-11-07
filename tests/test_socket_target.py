@@ -183,3 +183,79 @@ async def test_stale_socket_file_is_reclaimed() -> None:
     finally:
         await second.stop()
         _drop_unix_path(target)
+
+
+# ---------------------------------------------------------------------------
+# The Windows TCP leg: the branch is platform-switched, not platform-bound —
+# the derivation resolves a TCP port there, and asyncio serves it everywhere.
+# Patching sys.platform exercises the branch honestly on every runner.
+# ---------------------------------------------------------------------------
+
+
+async def test_windows_tcp_branch_starts_and_refuses_a_live_port(monkeypatch: Any) -> None:
+    """The Windows branch binds TCP; a live port is never taken over."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    target = 9040
+    first = JSONRPCServer(target)
+    second = JSONRPCServer(target)
+    try:
+        await first.start()
+        with pytest.raises(ConflictError) as excinfo:
+            await second.start()
+        assert "TCP port 9040" in str(excinfo.value)
+        reply = await _rpc_round_trip(target)  # the first server still answers
+        assert reply["error"]["code"] == -32601
+    finally:
+        await first.stop()
+
+
+async def test_windows_legacy_string_target_keeps_port_8011(monkeypatch: Any) -> None:
+    """A bare string target (legacy construction) still serves TCP 8011."""
+    import corpus_kb.api.socket as socket_mod
+
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    async def live(target: str | int) -> bool:
+        return True
+
+    monkeypatch.setattr(socket_mod, "_probe_live", live)
+    server = JSONRPCServer(socket_mod.DEFAULT_SOCKET_PATH)
+    with pytest.raises(ConflictError) as excinfo:
+        await server.start()
+    assert "TCP port 8011" in str(excinfo.value)
+
+
+async def test_windows_bind_failure_maps_to_conflict(monkeypatch: Any) -> None:
+    """A refused bind answers the typed conflict, never a traceback."""
+    import corpus_kb.api.socket as socket_mod
+
+    monkeypatch.setattr(sys, "platform", "win32")
+
+    async def free(target: str | int) -> bool:
+        return False
+
+    async def refuse(*args: Any, **kwargs: Any) -> None:
+        raise OSError("address already in use")
+
+    monkeypatch.setattr(socket_mod, "_probe_live", free)
+    monkeypatch.setattr(socket_mod.asyncio, "start_server", refuse)
+    server = JSONRPCServer(9041)
+    with pytest.raises(ConflictError) as excinfo:
+        await server.start()
+    assert "Cannot listen on TCP port 9041" in str(excinfo.value)
+
+
+def test_wiring_main_maps_typed_refusal_to_exit(monkeypatch: Any, capsys: Any) -> None:
+    """main() answers a typed refusal with one stderr line and exit 3."""
+    import corpus_kb.server_wiring as wiring
+
+    async def refused(cfg: dict[str, Any] | None) -> dict[str, Any]:
+        raise ConflictError("Another Corpus-KB server is already listening on the endpoint.")
+
+    monkeypatch.setattr(wiring, "startup", refused)
+    # The env port keeps _run from loading a config; the fake refuses first.
+    monkeypatch.setenv("CORPUS_KB_PORT", "8010")
+    with pytest.raises(SystemExit) as excinfo:
+        wiring.main(["--transport", "http", "--port", "8010"])
+    assert excinfo.value.code == 3
+    assert "already listening" in capsys.readouterr().err

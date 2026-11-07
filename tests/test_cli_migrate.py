@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import asyncpg
 import pytest
 from typer.testing import CliRunner
 
@@ -88,6 +89,66 @@ def test_cli_migrate_rejects_bad_session_setting(tmp_path: Path, monkeypatch: An
     assert "Invalid migration session setting" in result.output
 
 
+# ---------------------------------------------------------------------------
+# The human report and the honest exit codes (issue #348 adapter legs).
+# ---------------------------------------------------------------------------
+
+
+def test_cli_migrate_human_report_applies_then_answers_up_to_date(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    """The default report is human text; a second run says so honestly."""
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _duckdb_dsn(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["migrate", "--maintenance-work-mem", "1MB"])
+    assert result.exit_code == 0, result.output
+    assert "Backend: duckdb" in result.output
+    assert "Applied now:" in result.output
+
+    result = runner.invoke(app, ["migrate"])
+    assert result.exit_code == 0, result.output
+    assert "Nothing to apply. The database is up to date." in result.output
+
+
+def test_cli_migrate_dry_run_human_report_lists_pending(tmp_path: Path, monkeypatch: Any) -> None:
+    """The human dry run lists the pending set and applies nothing."""
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _duckdb_dsn(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["migrate", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "Pending:" in result.output
+    assert "Dry run. Nothing was applied." in result.output
+
+
+def test_cli_migrate_without_any_database_exits_3(tmp_path: Path, monkeypatch: Any) -> None:
+    """No env DSN and no configured string: one clear line, exit 3."""
+    monkeypatch.delenv("CORPUS_KB_DATABASE_URL", raising=False)
+    monkeypatch.chdir(tmp_path)
+    import corpus_kb.config as config_mod
+
+    monkeypatch.setattr(config_mod, "load_config", lambda: {"database": {}})
+    result = runner.invoke(app, ["migrate"])
+    assert result.exit_code == 3
+    assert "No database found" in result.output
+
+
+def test_cli_migrate_typed_failure_maps_its_exit_code(tmp_path: Path, monkeypatch: Any) -> None:
+    """A taxonomy failure from the runner exits with the taxonomy's code."""
+    import corpus_kb._setup.migrate as migrate_mod
+    from corpus_kb.errors import ConfigError
+
+    monkeypatch.setenv("CORPUS_KB_DATABASE_URL", _duckdb_dsn(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    async def boom(*args: Any, **kwargs: Any) -> None:
+        raise ConfigError("the scratch migration runner failed on purpose")
+
+    monkeypatch.setattr(migrate_mod, "run_migrations", boom)
+    result = runner.invoke(app, ["migrate"])
+    assert result.exit_code == 3
+    assert "the scratch migration runner failed on purpose" in result.output
+
+
 class _FakeGuardConn:
     """Stand-in for the guard's one probe: count of non-null old vectors."""
 
@@ -111,6 +172,103 @@ async def test_025_guard_refuses_stored_vectors() -> None:
     await refuse_025_with_embeddings(_FakeGuardConn(42), [], False)
     await refuse_025_with_embeddings(_FakeGuardConn(0), ["025_halfvec_2560.sql"], False)
     await refuse_025_with_embeddings(_FakeGuardConn(7), ["025_halfvec_2560.sql"], True)
+
+
+class _NoOldColumnConn:
+    """Guard probe double: the pre-025 table itself is gone."""
+
+    def __init__(self) -> None:
+        self.probes = 0
+
+    async def fetchval(self, _sql: str) -> int:
+        self.probes += 1
+        raise asyncpg.PostgresError('relation "chunks_vectors" does not exist')
+
+
+async def test_025_guard_probes_a_missing_table_silently() -> None:
+    """No old vector table: the guard moves on instead of crashing."""
+    from corpus_kb._setup.migrate_admin import refuse_025_with_embeddings
+
+    conn = _NoOldColumnConn()
+    await refuse_025_with_embeddings(conn, ["025_halfvec_2560.sql"], False)
+    assert conn.probes == 1
+
+
+class _RecordingAdminConn:
+    """The superuser-connection contract of hand_over_to_app_role."""
+
+    def __init__(self, su_oid: int | None, app_oid: int | None) -> None:
+        self._oids = {"corpus_super": su_oid, "corpus_user": app_oid}
+        self.executed: list[str] = []
+        self.objects = [
+            {"obj": "public.documents", "relkind": "r"},
+            {"obj": "public.documents_doc_id_seq", "relkind": "S"},
+            {"obj": "corpus.chunk_stats", "relkind": "v"},
+        ]
+        self.functions = [{"obj": "public.refresh_stats()"}]
+
+    async def fetchval(self, sql: str, *args: object) -> int | None:
+        if "pg_roles" in sql:
+            return self._oids.get(str(args[0]))
+        return None
+
+    async def fetch(self, sql: str, *args: object) -> list[dict[str, Any]]:
+        if "regclass" in sql:
+            return list(self.objects)
+        if "regprocedure" in sql:
+            return list(self.functions)
+        return []
+
+    async def execute(self, sql: str) -> None:
+        self.executed.append(sql)
+
+
+async def test_hand_over_moves_objects_and_grants() -> None:
+    """Every object kind gets its ALTER verb; grants cover both schemas."""
+    from corpus_kb._setup.migrate_admin import hand_over_to_app_role
+
+    conn = _RecordingAdminConn(su_oid=10, app_oid=11)
+    await hand_over_to_app_role(conn, "corpus_super", "corpus_user")
+    verbs = [sql.split()[0] + " " + sql.split()[1] for sql in conn.executed]
+    assert verbs[0] == "ALTER TABLE"
+    assert verbs[1] == "ALTER SEQUENCE"
+    assert verbs[2] == "ALTER VIEW"
+    assert "ALTER FUNCTION public.refresh_stats() OWNER TO" in conn.executed[3]
+    grants = [
+        sql for sql in conn.executed if sql.startswith("GRANT") or "DEFAULT PRIVILEGES" in sql
+    ]
+    assert len(grants) == 10  # 2 schemas x (usage + tables + sequences + 2 defaults)
+    assert 'GRANT USAGE ON SCHEMA "public" TO "corpus_user"' in conn.executed
+
+
+async def test_hand_over_answers_silently_without_an_app_role() -> None:
+    """An empty app role moves nothing and runs no SQL."""
+    from corpus_kb._setup.migrate_admin import hand_over_to_app_role
+
+    conn = _RecordingAdminConn(su_oid=10, app_oid=None)
+    await hand_over_to_app_role(conn, "corpus_super", "")
+    assert conn.executed == []
+
+
+async def test_dsn_role_reads_the_user_and_survives_junk() -> None:
+    """The DSN user drives the hand-over roles; junk answers empty."""
+    from corpus_kb._setup.migrate_admin import dsn_role
+
+    assert dsn_role("postgresql://corpus_user:pw@localhost:5432/corpus_kb") == "corpus_user"
+    assert dsn_role("postgresql://corpus%2Bops:pw@localhost/db") == "corpus+ops"
+    assert dsn_role("postgresql://localhost/db") == ""
+    assert dsn_role("postgresql://[::1:5432/db") == ""  # unparseable bracket
+
+
+def test_session_setting_names_are_strictly_shaped() -> None:
+    """The allow-list refuses names and values outside its shape."""
+    from corpus_kb._setup.migrate_admin import validate_session_settings
+
+    validate_session_settings({"work_mem": "1GB"})  # no raise
+    with pytest.raises(ConfigError):
+        validate_session_settings({"work mem": "1GB"})
+    with pytest.raises(ConfigError):
+        validate_session_settings({"work_mem": "1GB; DROP SCHEMA"})
 
 
 # ---------------------------------------------------------------------------
