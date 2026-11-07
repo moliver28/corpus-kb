@@ -13,6 +13,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,23 @@ IS_WIN = sys.platform == "win32"
 
 def _cfg(**server: Any) -> dict[str, Any]:
     return {"server": server}
+
+
+def _bindable_unix_path(name: str) -> str:
+    """A short unix socket path under /tmp.
+
+    macOS caps unix socket paths at 104 bytes, and the pytest tmp dir on
+    a macOS runner can exceed that cap ("AF_UNIX path too long"). /tmp
+    stays short on every unix.
+    """
+    base = Path("/tmp") / f"corpus-kb-sock-tests-{os.getpid()}"
+    base.mkdir(parents=True, exist_ok=True)
+    return str(base / name)
+
+
+def _drop_unix_path(target: str) -> None:
+    """Remove the socket file and the pid-scoped dir around it."""
+    shutil.rmtree(Path(target).parent, ignore_errors=True)
 
 
 class TestResolveSocketTarget:
@@ -129,9 +148,9 @@ async def test_two_servers_on_8020_and_8021_both_answer() -> None:
                 Path(str(target)).unlink(missing_ok=True)
 
 
-async def test_second_server_refuses_a_live_endpoint(tmp_path: Path) -> None:
+async def test_second_server_refuses_a_live_endpoint() -> None:
     """A live socket is never taken over: one clear line, typed refusal."""
-    target: str | int = 9030 if IS_WIN else str(tmp_path / "study.sock")
+    target: str | int = 9030 if IS_WIN else _bindable_unix_path("study.sock")
     first = JSONRPCServer(target)
     second = JSONRPCServer(target)
     try:
@@ -146,13 +165,13 @@ async def test_second_server_refuses_a_live_endpoint(tmp_path: Path) -> None:
     finally:
         await first.stop()
         if not IS_WIN:
-            Path(str(target)).unlink(missing_ok=True)
+            _drop_unix_path(str(target))
 
 
 @pytest.mark.skipif(IS_WIN, reason="stale-file recovery is a unix-socket mechanic")
-async def test_stale_socket_file_is_reclaimed(tmp_path: Path) -> None:
+async def test_stale_socket_file_is_reclaimed() -> None:
     """A socket file with no live server behind it does not block a start."""
-    target = str(tmp_path / "stale.sock")
+    target = _bindable_unix_path("stale.sock")
     first = JSONRPCServer(target)
     await first.start()
     await first.stop()  # the file remains; nothing listens behind it
@@ -163,4 +182,4 @@ async def test_stale_socket_file_is_reclaimed(tmp_path: Path) -> None:
         assert reply["error"]["code"] == -32601
     finally:
         await second.stop()
-        Path(target).unlink(missing_ok=True)
+        _drop_unix_path(target)

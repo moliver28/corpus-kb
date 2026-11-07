@@ -13,8 +13,8 @@ import { EvidenceCard, OverlapCard, UncodedCard } from "./codebook/NotebookCards
 const NOT_WIRED = [
   { opId: "coding-embed-codebook", text: strings.codebookEmbedNotWired },
   { opId: "coding-pool", text: strings.codebookPoolNotWired },
-  { opId: "coding-batch", text: strings.codebookBatchNotWired },
-  { opId: "coding-calibrate", text: strings.codebookCalibrateNotWired },
+  { opId: "coding-code-batch", text: strings.codebookBatchNotWired },
+  { opId: "coding-calibrate-floors", text: strings.codebookCalibrateNotWired },
   { opId: "coding-reliability", text: strings.codebookReliabilityNotWired },
   { opId: "coding-saturation", text: strings.codebookSaturationNotWired },
 ];
@@ -22,7 +22,8 @@ const NOT_WIRED = [
 /**
  * The Codebook stage — pre-flight, the two wired coding steps, the
  * promote gate, the notebook views, the governance report, and the
- * one-stage-per-click cycle wizard. The unwired pipeline steps say so.
+ * one-stage-per-click cycle wizard. A pipeline step whose op is still
+ * missing from the manifest says so.
  */
 export default function Codebook() {
   return (

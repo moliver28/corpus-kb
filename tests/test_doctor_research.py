@@ -4,7 +4,8 @@ Offline tests cover the pure checks (extras, embedder sanity, printer).
 DB-backed tests run against the shared throwaway research database
 (requires_postgres, auto-skipped in CI) and include the QA failure scenario:
 a HALF-APPLIED install must name the SPECIFIC missing migration (never a
-stack trace), while doctor keeps its exit-0 contract.
+stack trace), while a research failure never flips the doctor exit code
+(issue #348: only an unreachable database exits 3).
 """
 
 from __future__ import annotations
