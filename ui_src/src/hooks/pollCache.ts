@@ -52,7 +52,15 @@ function loopKey(opId: string, body: unknown): string {
 
 function broadcast(loop: Loop, patch: Partial<PollSnapshot<unknown>>): void {
   const base = loop.snapshot ?? { result: null, paused: false, backingOff: false };
-  const next: PollSnapshot<unknown> = { ...base, ...patch };
+  const paused = patch.paused ?? base.paused;
+  const backingOff = patch.backingOff ?? base.backingOff;
+  const result = patch.result ?? base.result;
+  // The no-op gate (Wave-4 review P2-2): an equal patch keeps the old
+  // snapshot object, so subscribers do not re-render on identity alone.
+  if (paused === base.paused && backingOff === base.backingOff && result === base.result) {
+    return;
+  }
+  const next: PollSnapshot<unknown> = { result, paused, backingOff };
   loop.snapshot = next;
   for (const sub of loop.subscribers) {
     sub.apply(next);
@@ -64,11 +72,14 @@ function broadcast(loop: Loop, patch: Partial<PollSnapshot<unknown>>): void {
  * subscriber releases, the loop stops and its key is dropped, so a
  * later subscriber starts a fresh loop with an immediate first read.
  */
-function startLoop(opId: string): Loop {
+function startLoop(opId: string, body: unknown): Loop {
   const op = getOp(opId);
   const loop: Loop = {
     subscribers: new Set(),
-    bodyRef: { current: undefined },
+    // The first tick can fetch synchronously inside this call, so the
+    // body must be pinned BEFORE the loop starts (P2-1: POST polls
+    // carry their body, not undefined).
+    bodyRef: { current: body },
     dirty: false,
     wake: null,
     stopped: false,
@@ -158,8 +169,12 @@ export function subscribePoll<T>(
   const key = loopKey(opId, body);
   let loop = loops.get(key);
   if (loop === undefined) {
-    loop = startLoop(opId);
+    loop = startLoop(opId, body);
     loops.set(key, loop);
+  } else {
+    // A re-join re-pins the body (same key = same content; the loop
+    // reads the ref at every tick).
+    loop.bodyRef.current = body;
   }
   const sub: Subscriber = { apply: apply as (snapshot: PollSnapshot<unknown>) => void };
   loop.subscribers.add(sub);

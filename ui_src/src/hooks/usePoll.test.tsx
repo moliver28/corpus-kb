@@ -1,5 +1,6 @@
 import { act, cleanup, render } from "@testing-library/react";
 import { useEffect } from "react";
+import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import { usePoll } from "./usePoll";
@@ -160,5 +161,57 @@ describe("the shared poll cache", () => {
     await flush();
     expect(callsTo("/api/ingest/status")).toBe(1);
     expect(callsTo("/api/doctor")).toBe(1);
+  });
+
+  it("sends the poll body on POST ops (the bodyRef contract)", async () => {
+    // P2-1 (Wave-4 review): subscribePoll must write the body into the
+    // loop before the first tick, or the first POST poll loses it.
+    vi.useFakeTimers();
+    stubFetch([
+      { method: "POST", path: "/api/graph/search", reply: respond(200, { status: "success", result: [] }) },
+    ]);
+    function BodyProbe(): ReactNode {
+      const poll = usePoll<unknown>("search-graph", { query: "abc" });
+      useEffect(() => {
+        latest.set("body", poll);
+      });
+      return <span>{poll.result === null ? "wait" : poll.result.ok ? "ok" : "down"}</span>;
+    }
+    render(<BodyProbe />, { wrapper: makeWrapper(false) });
+    await flush();
+    expect(latest.get("body")?.result?.ok).toBe(true);
+    const posted = calls.find((c) => c.method === "POST" && c.url.includes("/api/graph/search"));
+    expect(posted).toBeDefined();
+    expect(posted?.body).toContain('"query":"abc"');
+  });
+
+  it("does not re-render consumers when a tick changes nothing", async () => {
+    // P2-2 (Wave-4 review): identical polls and the per-pass paused /
+    // backoff patches keep the old snapshot, so unchanged consumers do
+    // not re-render 2-3x per tick.
+    vi.useFakeTimers();
+    stubFetch([
+      { method: "GET", path: "/api/ingest/status", reply: respond(200, { status: "success", result: [] }) },
+    ]);
+    let renders = 0;
+    function CountProbe(): ReactNode {
+      const poll = usePoll("ingest-status");
+      renders += 1;
+      useEffect(() => {
+        latest.set("count", poll);
+      });
+      return <span>{poll.result === null ? "wait" : poll.result.ok ? "ok" : "down"}</span>;
+    }
+    render(<CountProbe />, { wrapper: makeWrapper(false) });
+    await flush();
+    const afterFirst = renders;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500); // two more ticks, same answer
+    });
+    expect(callsTo("/api/ingest/status")).toBe(3);
+    // Render one (mount) + render two (the first real answer); the two
+    // identical ticks add none.
+    expect(afterFirst).toBe(2);
+    expect(renders).toBe(2);
   });
 });
