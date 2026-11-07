@@ -21,6 +21,10 @@ Short map:
              (except list, provision, migrate, backup, stop).
 ``doctor`` / ``migrate`` / ``reembed`` / ``backup``  Study maintenance.
 ``ops`` / ``op``  The live inventory, and any op through the runner.
+``codify``   Chunk coding: provision with a paradigm, load-codebook,
+             pool, code, reliability, calibrate-floors, saturation,
+             status, export, cells (issue #354). ``reliability`` refuses
+             for reflexive studies before any server call.
 ``engine install``  Clone the engine at the release tag into <state>.
 """
 
@@ -53,11 +57,14 @@ def cmd_engine_install(args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = cli_spec.build_parser()
-    args = parser.parse_args(argv)
-    if args.command not in study_queue.AUTO_DRAIN_SKIP:
+    args = cli_spec.parse_argv(sys.argv[1:] if argv is None else argv)
+    command = getattr(args, "codify_command", None)
+    if command is None:
+        command = args.command
+    if command not in study_queue.AUTO_DRAIN_SKIP:
         # Every command but the skip set drains the folder queue first.
         # Silent and fail-open: a drain problem never blocks the command.
+        # codify provision counts as provision (issue #354 resolution).
         study_queue.auto_drain()
     if args.command == "engine":
         return cmd_engine_install(args)

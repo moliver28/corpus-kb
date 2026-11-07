@@ -158,7 +158,8 @@ def cmd_migrate(args) -> int:
             print("No studies to migrate. Create one: corpus-rag provision <slug>")
             return 1
     else:
-        targets = [study_commands.scoped_study_off(args.study_slug)]
+        slug_arg = args.study_slug or getattr(args, "study_slug_flag", None)
+        targets = [study_commands.scoped_study_off(slug_arg)]
     worst = 0
     for slug, study in targets:
         code = _migrate_one(cli, args, slug, study)

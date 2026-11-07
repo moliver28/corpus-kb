@@ -1,19 +1,61 @@
-"""The ``corpus-rag`` argument parser and command map (issue #351).
+"""The ``corpus-rag`` argument parser and command map (issues #351, #354).
 
 ``bin/corpus-rag`` stays thin: build the parser, dispatch to one command
 body. Every per-study command takes ``-p <slug>``; the 4-step selection
-lives in ``study_registry.resolve_study``.
+lives in ``study_registry.resolve_study``. The ``codify`` group holds
+the chunk-coding commands (issue #354); each sends one coding op through
+the op runner.
 """
 
 from __future__ import annotations
 
 import argparse
 
+import codify_commands
 import study_admin
 import study_commands
 import study_maintenance
 import study_query
 import study_queue
+
+PARADIGMS = ("codebook", "reflexive")
+
+# argparse cannot resume a ``nargs="*"`` positional after an optional,
+# so `op <name> -p <slug> key=value` fails as written. The op command's
+# own flags move to the front before parsing (issue #354 skill test).
+_OP_FLAGS_WITH_VALUE = ("-p", "--study-slug", "--json")
+_OP_FLAGS_SELF_VALUED = ("--study-slug=", "--json=")
+
+
+def _op_normalized(argv: list[str]) -> list[str] | None:
+    """The ``op`` tokens reordered (optionals first), or None when not ``op``."""
+    if not argv or argv[0] != "op" or any(t in ("-h", "--help") for t in argv):
+        return None
+    options: list[str] = []
+    bare: list[str] = []
+    i = 1
+    while i < len(argv):
+        token = argv[i]
+        if token in _OP_FLAGS_WITH_VALUE:
+            options.append(token)
+            if i + 1 < len(argv):
+                i += 1
+                options.append(argv[i])
+        elif token.startswith(_OP_FLAGS_SELF_VALUED):
+            options.append(token)
+        else:
+            bare.append(token)
+        i += 1
+    return ["op", *options, *bare]
+
+
+def parse_argv(
+    argv: list[str], parser: argparse.ArgumentParser | None = None
+) -> argparse.Namespace:
+    """The real entry parse: ``op`` optionals may sit between the pairs."""
+    parser = parser or build_parser()
+    ordered = _op_normalized(argv)
+    return parser.parse_args(ordered if ordered is not None else argv)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,6 +135,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     migrate = subs.add_parser("migrate", help="Apply pending migrations per study.")
     migrate.add_argument("study_slug", nargs="?", default=None, help="A study slug")
+    migrate.add_argument(
+        "-p",
+        "--study-slug",
+        dest="study_slug_flag",
+        default=None,
+        help="The study slug (same as the positional)",
+    )
     migrate.add_argument("--all", action="store_true", help="Every registered study")
     migrate.add_argument(
         "--reset-embeddings", action="store_true", help="Accept that heavy migrations drop vectors"
@@ -134,6 +183,89 @@ def build_parser() -> argparse.ArgumentParser:
     inst.add_argument(
         "--force", action="store_true", help="Reinstall, even when this version is already present."
     )
+
+    codify = subs.add_parser(
+        "codify",
+        help="Chunk coding: provision with a paradigm, pool, code, reliability, export.",
+    )
+    codify_subs = codify.add_subparsers(dest="codify_command", required=True)
+
+    cprov = codify_subs.add_parser(
+        "provision", help="Provision a study (when new) and record its paradigm."
+    )
+    cprov.add_argument("slug", help="The study slug, like interview-study")
+    cprov.add_argument(
+        "--paradigm", required=True, choices=PARADIGMS, help="codebook (deductive) or reflexive"
+    )
+    cprov.add_argument(
+        "--backend", default=None, help="postgres or duckdb (default: the userConfig value)"
+    )
+
+    cload = codify_subs.add_parser(
+        "load-codebook", help="Validate, embed, and load one codebook; prints its version id."
+    )
+    cload.add_argument("file", help="The codebook JSON file")
+    cload.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    cpool = codify_subs.add_parser(
+        "pool", help="Pool keyword and vector candidates for the codebook."
+    )
+    cpool.add_argument(
+        "--codebook-version", default=None, help="A version id (default: the latest)"
+    )
+    cpool.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    ccode = codify_subs.add_parser("code", help="Code one batch of cells.")
+    ccode.add_argument("--cells", required=True, help="The cells JSON file")
+    ccode.add_argument("--coder", default=None, help="The coder tag, like gpt-x")
+    ccode.add_argument("--model", default=None, help="The model tag")
+    ccode.add_argument("--batch-id", default=None, help="A batch label for the ledger")
+    ccode.add_argument("--coding-pass", type=int, default=None, help="The coding pass number")
+    ccode.add_argument(
+        "--bands", default=None, help='Routing bands JSON, e.g. {"high":0.9,"mid":0.7,"low":0.5}'
+    )
+    ccode.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    crel = codify_subs.add_parser(
+        "reliability", help="Alpha and kappa reliability (codebook studies only)."
+    )
+    crel.add_argument("--per-code-min", type=int, default=5, help="Sampled rows per code")
+    crel.add_argument("--seed", type=int, default=17, help="Sampling seed")
+    crel.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    ccal = codify_subs.add_parser(
+        "calibrate-floors", help="Calibrate one code's floors from a labels file."
+    )
+    ccal.add_argument("labels", help="The labels JSON file (code id plus chunk ids)")
+    ccal.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    csat = codify_subs.add_parser(
+        "saturation", help="The saturation signal and the batch stop rule."
+    )
+    csat.add_argument("--batch-id", default=None, help="The batch for the stop rule")
+    csat.add_argument("--threshold", type=float, default=0.05, help="Stop-rule threshold")
+    csat.add_argument("--min-samples", type=int, default=50, help="Stop-rule sample floor")
+    csat.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    cstat = codify_subs.add_parser(
+        "status", help="Coding corpus counts, coverage by disposition, routes."
+    )
+    cstat.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    cexp = codify_subs.add_parser(
+        "export", help="Accepted codes joined with chunk text and document source."
+    )
+    cexp.add_argument("--format", choices=("json", "csv"), default="json", help="Output format")
+    cexp.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
+    ccells = codify_subs.add_parser(
+        "cells", help="Build the next cells file for one coder (up to five candidates per cell)."
+    )
+    ccells.add_argument("--coder", required=True, help="The coder tag the cells are for")
+    ccells.add_argument("--limit", type=int, default=None, help="Cap on chunks (default 100)")
+    ccells.add_argument("--out", default="cells.json", help="Where to write the file")
+    ccells.add_argument("-p", "--study-slug", default=None, help="The study slug")
+
     return parser
 
 
@@ -159,4 +291,5 @@ HANDLERS = {
     "ops": study_maintenance.cmd_ops,
     "op": study_maintenance.cmd_op,
     "drain": study_queue.cmd_drain,
+    "codify": codify_commands.cmd_codify,
 }

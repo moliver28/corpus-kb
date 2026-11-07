@@ -10,8 +10,8 @@
     {
       "name": "corpus-rag",
       "source": "./plugins/corpus-rag",
-      "version": "0.9.0",
-      "description": "Local RAG study plugin for the corpus-kb engine. One database and one server per study: provision, ingest, search, ask, migrate, and back up studies from a registry.",
+      "version": "0.9.1",
+      "description": "Local RAG study plugin for the corpus-kb engine. One database and one server per study: provision, ingest, search, ask, migrate, back up, and chunk-code studies from a registry.",
       "keywords": ["rag", "search", "local", "knowledge", "research"],
       "tags": ["rag", "search", "local-first", "knowledge-base", "research"]
     }

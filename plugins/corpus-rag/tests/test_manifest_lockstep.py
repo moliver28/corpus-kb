@@ -18,7 +18,7 @@ def _read(path: Path) -> dict[str, object]:
 def test_plugin_json_is_valid() -> None:
     meta = _read(PLUGIN / ".claude-plugin" / "plugin.json")
     assert meta["name"] == "corpus-rag"
-    assert meta["version"] == "0.9.0"
+    assert meta["version"] == "0.9.1"
 
 
 def test_user_config_keys_are_declared() -> None:

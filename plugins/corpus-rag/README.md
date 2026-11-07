@@ -3,7 +3,7 @@
 The Corpus-KB plugin for Claude Code and ZCode. It connects your agent to a
 local Corpus-KB engine: one database and one server per study, with a study
 registry, per-study servers, and an op runner. Ingest, search, ask, migrate,
-and back up each study by slug.
+back up, and chunk-code each study by slug.
 
 This plugin is built fresh in this repository. The repository is both the
 engine and the plugin marketplace. One tag, `corpus-rag-v<version>`, marks the
@@ -11,11 +11,14 @@ engine commit for each plugin release.
 
 ## What it adds
 
-- Skills: `corpus-ask`, `corpus-admin`, `corpus-analyze`, `corpus-ingest`.
+- Skills: `corpus-ask`, `corpus-admin`, `corpus-analyze`, `corpus-ingest`,
+  `corpus-research`, `corpus-codify-study`, `corpus-codify-code`,
+  `corpus-codify-export`.
 - Commands: `/corpus-ask`, `/corpus-analyze`, `/corpus-ingest`.
 - CLI: `corpus-rag` — `provision`, `list`, `use`, `serve`, `stop`, `ingest`,
   `search`, `similar`, `ask`, `sql`, `status`, `events`, `doctor`, `migrate`,
-  `reembed`, `backup`, `ops`, `op`, `connect`, `raw-provision`, `engine install`.
+  `reembed`, `backup`, `ops`, `op`, `connect`, `raw-provision`, `codify`,
+  `engine install`.
 - Hooks: small nudges that point at the right command at the right moment.
 
 ## Install

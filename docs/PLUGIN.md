@@ -129,6 +129,52 @@ corpus-rag op ingest_url -p <slug> url="<url>"
 PDF, DOCX, PPTX, HTML, and text work directly. `.vtt` and `.srt` transcripts
 ingest as text. Google Slides: export to `.pptx` first, then ingest.
 
+### Code chunks in a study
+
+You want to code the study's chunks against a codebook and measure how
+well the coding holds up. The `codify` command group drives the engine's
+coding ops. Use the three `/corpus-codify-*` skills for a guided walk:
+
+```bash
+corpus-rag codify provision interview-study --paradigm codebook
+corpus-rag codify load-codebook codebook.json -p interview-study
+corpus-rag codify pool -p interview-study
+corpus-rag codify cells -p interview-study --coder gpt-x
+corpus-rag codify code --cells cells.json -p interview-study --coder gpt-x
+corpus-rag codify reliability -p interview-study
+corpus-rag codify export -p interview-study --format csv
+```
+
+`codify provision` records the study's paradigm. `codify reliability`
+refuses for reflexive studies before it calls the server: reflexive
+thematic analysis rejects inter-coder reliability. The reliability
+output carries the epistemological caution; the skills show the same
+caution beside every alpha or kappa.
+
+The event-sourced research pipeline (themes, codebook promotion,
+deductive runs, review, reports, releases) runs through the op runner;
+the `/corpus-research` skill maps each stage to its op.
+
+## Skills
+
+The plugin ships eight skills. Each one walks an agent through one job
+with the plain-English rules that job needs.
+
+| Skill | Use it for |
+|---|---|
+| `corpus-ask` | Cited answers from one study's corpus. |
+| `corpus-ingest` | Loading files, folders, and web pages into a study. |
+| `corpus-admin` | Provision, migrate, re-embed, back up, events, doctor. |
+| `corpus-analyze` | Picking the right analysis for a question. |
+| `corpus-research` | The research pipeline: ingest, themes, promote, code, review, report, notebook, release. |
+| `corpus-codify-study` | Starting a coding study: paradigm, provision, ingest, codebook. |
+| `corpus-codify-code` | Running the coder: pool, cells, batches, floors, saturation, reliability. |
+| `corpus-codify-export` | Reporting and exporting coding results with the caution. |
+
+The four coding references live in `plugins/corpus-rag/references/`:
+codebook rules, coding rules, the epistemological caution, and
+reliability and routing.
+
 ## Studies
 
 A study is one slug with one database, one port, and one server. The
@@ -173,6 +219,16 @@ corpus-rag use interview-study
 | `backup <slug>` | `pg_dump -Fc` (excludes `ag_catalog`, runs as the superuser), or a DuckDB file copy. Prints the restore command. |
 | `ops [--family F]` | The live op inventory with the live count. |
 | `op <name> [-p] key=value ... [--json '{...}']` | Run any op; validated against the inventory first. Long ingest ops get a 7200 s timeout. |
+| `codify provision <slug> --paradigm codebook\|reflexive` | Provision the study (when new) and record its paradigm in the registry. |
+| `codify load-codebook <file.json> [-p]` | Validate, embed, and load one codebook; prints its version id. |
+| `codify pool [-p] [--codebook-version ID]` | Pool keyword and vector candidates; defaults to the latest version. |
+| `codify code --cells <file> [-p] [--coder] [--model] [--batch-id] [--coding-pass N] [--bands JSON]` | Code one batch of cells. The file holds a bare list or `{"cells": [...]}`. Bands accept only `high`, `mid`, `low`. |
+| `codify reliability [-p] [--per-code-min 5] [--seed 17]` | Alpha and kappa reliability. Refuses for reflexive studies before any server call. |
+| `codify calibrate-floors <labels.json> [-p]` | Calibrate one code's pool and residual floors from labeled chunks. |
+| `codify saturation [-p] [--batch-id] [--threshold 0.05] [--min-samples 50]` | The saturation signal and the batch stop rule. |
+| `codify status [-p]` | Coding corpus counts, coverage by disposition, routes. |
+| `codify export [-p] [--format csv]` | Accepted codes joined with chunk text and document source. |
+| `codify cells [-p] --coder <id> [--limit N] [--out cells.json]` | Build the next cells file: uncoded chunks with at most five candidate codes each, read-only SQL. |
 | `status`, `connect`, `engine install` | Kept from 0.7.x; `status` is per study now, `connect` prints one MCP entry per study. |
 
 ### Servers and ports
@@ -281,7 +337,8 @@ with no engine call. Rows added while the drain runs stay queued. When
 
 Every `corpus-rag` command except `drain`, `list`, `provision`, `migrate`,
 `backup`, and `stop` first drains the folder queue when `auto_ingest` is
-on. A drain failure never blocks the command.
+on. `codify provision` counts as `provision` here. A drain failure never
+blocks the command.
 
 ## Hook state files
 
