@@ -129,7 +129,8 @@ def quickstart(
     superuser_dsn: str = typer.Option(
         None,
         "--superuser-dsn",
-        help="Superuser DSN used to create a missing role and database",
+        help="Superuser DSN used to create a missing role and database."
+        " Default: CORPUS_KB_SUPERUSER_DSN.",
     ),
     no_write: bool = typer.Option(
         False,
