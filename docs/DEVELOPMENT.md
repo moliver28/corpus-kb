@@ -257,7 +257,7 @@ export POSTGRES_SUPERUSER_PASSWORD=""
 export CORPUS_KB_DATABASE_URL="postgresql://$(whoami)@localhost:5432/corpus_kb_test"
 ```
 
-Homebrew Postgres makes your OS user the superuser and has no `postgres` role, so the export above is what its users need. When the admin role cannot log in, the gated tests now skip with a reason that names these variables. As an alternative, run the CI Postgres image locally; it needs no environment variables.
+Homebrew Postgres makes your OS user the superuser and has no `postgres` role. Use the export above on it. When the admin role cannot log in, the gated tests now skip with a reason that names these variables. As an alternative, run the CI Postgres image locally; it needs no environment variables.
 
 ## Conventions
 
