@@ -116,12 +116,19 @@ class Document(Aggregate):
         file_size: int | None,
         file_hash: str | None,
         metadata: dict[str, object],
+        replace: bool = False,
     ) -> None:
         """Re-state the document facts on a re-ingest of the same source.
 
         One stream per source (issue #363): the reused aggregate appends this
         fact so the documents read row carries the new parse's facts (hash,
         size, metadata) without a second row or a second stream.
+
+        ``replace=True`` marks a re-transcription (close-out F-2): the
+        projector drops the document's derived rows on THIS event, so the
+        marker does not depend on a TurnsParsed batch existing — a re-parse
+        that yields zero turns still clears the old units. Older streams
+        without the field default to False (no drop).
         """
         self.source = source
         self.source_type = source_type
