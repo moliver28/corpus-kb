@@ -81,7 +81,14 @@ async def test_socket_adapter_passes_the_register_path(
     try:
         server = JSONRPCServer()
         rpc = await server._process_request(
-            json.dumps({"jsonrpc": "2.0", "id": 1, "method": "analysis_select_method", "params": _BODY})
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "analysis_select_method",
+                    "params": _BODY,
+                }
+            )
         )
     finally:
         set_research_pool(None)
@@ -100,10 +107,12 @@ async def test_mcp_surface_passes_the_register_path(tmp_path: Path) -> None:
 
     server = build_mcp_server(cast("asyncpg.Pool", object()), load_config(str(config_path)))
     transport = InMemoryTransport(server)
-    async with transport as (read_stream, write_stream):
-        async with ClientSession(read_stream, write_stream) as session:
-            await session.initialize()
-            result = await session.call_tool("analysis_select_method", _BODY)
+    async with (
+        transport as (read_stream, write_stream),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        await session.initialize()
+        result = await session.call_tool("analysis_select_method", _BODY)
     assert not result.is_error, result.content[0].text
     envelope = json.loads(result.content[0].text)
     assert envelope["register_version"] == CUSTOM_VERSION
