@@ -232,6 +232,7 @@ def test_flag_superuser_dsn_beats_env(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setenv("CORPUS_KB_SUPERUSER_DSN", "postgresql://other@localhost/other")
     result = _run_machine(stack, superuser_dsn=SUPER_DSN)
+    assert result.outcome.exit_code == 0
     assert stack.provisioned == [(SUPER_DSN, "corpus_kb")]
 
 

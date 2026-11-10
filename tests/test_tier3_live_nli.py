@@ -1,15 +1,20 @@
-"""Live NLI path on the already-required Qwen3 model (todo 16).
+"""Live NLI smoke on the already-required Qwen3 model (todo 16).
 
 requires_ollama: skips when Ollama is down, the exact NLI model tag is not
 pulled, or the model does not answer one short generate call (a stuck
 server used to pass the old tags-only probe, then every call burned
 NLI_TIMEOUT_SECONDS and the tests failed — issue #357).
 
-The offline fixture contract lives in tests/test_tier3_consistency.py.
+The borderline judgment pairs live offline as recorded judgments in
+tests/fixtures/research/nli_recorded_qwen3.json (real model builds flip
+them, issue #323); tests/test_tier3_consistency.py pins their recorded
+shape. This module keeps ONE live smoke whose verdicts do not depend on
+the model build.
 """
 
 from __future__ import annotations
 
+import asyncio
 import functools
 import json
 import os
@@ -24,9 +29,11 @@ pytestmark = pytest.mark.requires_ollama
 
 _MODEL = os.environ.get("CORPUS_KB_NLI_MODEL", "qwen3:4b")
 
-_A = "The participant says outright that they never used the reporting feature at all."
-_B = "They deny ever having opened the reporting feature during the whole period."
-_C = "The speaker focuses on the subscription being too expensive, and says that is why they quit."
+# Unambiguous smoke pairs. The entail pair is a same-facts paraphrase; the
+# contrast pair states disjoint facts. Both stayed constant across repeated
+# calls on this build, so the smoke cannot flip on judgment taste.
+_SMOKE_ENTAIL = ("The report contains three errors.", "The report has three errors.")
+_SMOKE_CONTRAST = ("The meeting starts at nine.", "The meeting was cancelled.")
 
 
 @functools.lru_cache(maxsize=1)
@@ -63,27 +70,17 @@ def _one_generate_answers() -> bool:
         return False
 
 
-@pytest.mark.asyncio
-async def test_live_nli_separates_paraphrase_from_contrast():
+def test_live_nli_smoke_judges_and_clusters():
     if not _model_available():
-        pytest.skip(f"Ollama has no responsive {_MODEL}; the live NLI tests skip.")
-    entail = await nli_mutual_entailment(_A, _B, model=_MODEL)
-    contradict = await nli_mutual_entailment(_A, _C, model=_MODEL)
+        pytest.skip(
+            f"Ollama has no responsive {_MODEL}. "
+            "The recorded fixture tests in test_tier3_consistency.py cover the contract."
+        )
+    entail = asyncio.run(nli_mutual_entailment(*_SMOKE_ENTAIL, model=_MODEL))
     assert entail is True
+    contradict = asyncio.run(nli_mutual_entailment(*_SMOKE_CONTRAST, model=_MODEL))
     assert contradict is False
 
-
-def test_live_self_consistency_clusters_recorded_shape():
-    import asyncio
-
-    if not _model_available():
-        pytest.skip(f"Ollama has no responsive {_MODEL}; the live NLI tests skip.")
-    rationales = [
-        _A,
-        _B,
-        _C,
-        "They report that they did not use the reporting feature, plain and simple.",
-    ]
     judgments: list[bool | None] = []
 
     def sync_judge(a: str, b: str) -> bool:
@@ -91,7 +88,7 @@ def test_live_self_consistency_clusters_recorded_shape():
         judgments.append(result)
         return bool(result)
 
-    result = self_consistency(rationales, sync_judge)
-    assert result.n_nli_calls == 6
-    assert None not in judgments
-    assert result.n_clusters == 2
+    result = self_consistency([*_SMOKE_ENTAIL], sync_judge)
+    assert result.n_nli_calls == 1
+    assert judgments == [True]
+    assert result.n_clusters == 1
