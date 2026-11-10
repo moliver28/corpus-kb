@@ -284,7 +284,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_PORT` | `server.port` | `load_config` |
 | `CORPUS_KB_SOCKET_PATH` | `server.socket_path` (JSON-RPC socket file; POSIX) | `load_config` |
 | `CORPUS_KB_CONFIG_OVERLAY` | (no config key; `os.pathsep`-split overlay YAML paths, deep-merged in order after the main file, before env overrides) | `config.load_config` |
-| `CORPUS_KB_SUPERUSER_DSN` | (no config key; superuser DSN for `corpus-kb migrate --superuser-dsn`) | `cli.cli_migrate` |
+| `CORPUS_KB_SUPERUSER_DSN` | (no config key; superuser DSN for `corpus-kb migrate --superuser-dsn` and `corpus-kb quickstart --superuser-dsn`) | `cli.cli_migrate`, `_setup.quickstart` |
 | `CORPUS_KB_OPENAI_COMPAT` | `server.openai_compat` | `load_config` |
 | `CORPUS_KB_OTLP_ENDPOINT` | `observability.otlp_endpoint` | `load_config` |
 | `CORPUS_KB_LLM_TIMEOUT_S` | `llm.timeout_s` (seconds per chat/generate call, default 120) | `load_config`, `handlers.llm_handler` |

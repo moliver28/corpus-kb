@@ -209,6 +209,33 @@ def test_missing_database_provisions_via_superuser() -> None:
     assert stack.applied == [DSN_5433]
 
 
+def test_env_superuser_dsn_provisions_without_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The env var provisions when --superuser-dsn is absent (issue #364)."""
+    stack = FakeStack(
+        probes={
+            DSN_5433: PgProbe(False, 'database "corpus_kb" does not exist', database_missing=True)
+        }
+    )
+    monkeypatch.setenv("CORPUS_KB_SUPERUSER_DSN", SUPER_DSN)
+    result = _run_machine(stack)
+    assert result.outcome.exit_code == 0
+    assert stack.provisioned == [(SUPER_DSN, "corpus_kb")]
+    assert result.outcome.adopted_dsn == DSN_5433
+
+
+def test_flag_superuser_dsn_beats_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An explicit --superuser-dsn wins over the env var."""
+    stack = FakeStack(
+        probes={
+            DSN_5433: PgProbe(False, 'database "corpus_kb" does not exist', database_missing=True)
+        }
+    )
+    monkeypatch.setenv("CORPUS_KB_SUPERUSER_DSN", "postgresql://other@localhost/other")
+    result = _run_machine(stack, superuser_dsn=SUPER_DSN)
+    assert result.outcome.exit_code == 0
+    assert stack.provisioned == [(SUPER_DSN, "corpus_kb")]
+
+
 def test_auth_failure_provisions_too() -> None:
     stack = FakeStack(
         probes={DSN_5433: PgProbe(False, "password authentication failed", auth_failed=True)}

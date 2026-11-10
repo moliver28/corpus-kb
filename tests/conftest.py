@@ -61,6 +61,69 @@ def _postgres_reachable() -> bool:
         return False
 
 
+@functools.lru_cache(maxsize=1)
+def _postgres_superuser_reason() -> str | None:
+    """None when the admin role can log in, else a skip reason that guides.
+
+    The research-domain and migration tests create databases and extensions
+    through the admin role (tests/research_db.py). The role defaults match
+    the CI service image; a local server often uses different roles. This
+    probe tries the admin DSN once per session and names the variables to
+    set when it cannot connect (issue #358).
+    """
+    import asyncio
+
+    import research_db
+
+    async def _connect() -> None:
+        conn = await asyncpg.connect(research_db.SUPER_DSN, timeout=5)
+        await conn.close()
+
+    try:
+        asyncio.run(_connect())
+    except Exception as exc:
+        return (
+            f"Postgres admin role unreachable ({type(exc).__name__}). "
+            "Set POSTGRES_SUPERUSER, POSTGRES_SUPERUSER_PASSWORD, and "
+            "CORPUS_KB_DATABASE_URL for your server. "
+            "See docs/DEVELOPMENT.md, section 'Local test database'."
+        )
+    return None
+
+
+def _ollama_base_url() -> str:
+    """The configured Ollama base URL (``embedding.base_url``)."""
+    from corpus_kb.config import load_config
+
+    try:
+        embedding = load_config().get("embedding")
+    except Exception:
+        return "http://localhost:11434"
+    base = embedding.get("base_url") if isinstance(embedding, dict) else None
+    return str(base) if base else "http://localhost:11434"
+
+
+@functools.lru_cache(maxsize=1)
+def _ollama_available() -> bool:
+    """One cached ``/api/version`` probe against the configured Ollama.
+
+    The ``requires_ollama`` marker (issue #340) skips live-model legs on a
+    host where Ollama is down, instead of letting them fail on unreachable
+    embeds. The probe is cached, so one HTTP hit serves the whole session.
+    """
+    import httpx
+
+    try:
+        response = httpx.get(f"{_ollama_base_url()}/api/version", timeout=2.0)
+    except Exception:
+        return False
+    return response.status_code == 200
+
+
+def _ollama_skip_reason() -> str:
+    return f"Ollama is not reachable at {_ollama_base_url()}. This test is marked requires_ollama."
+
+
 def pytest_runtest_setup(item: pytest.Item) -> None:
     """Skip tests that require capabilities unavailable on the current host."""
     if "requires_hi_res" in item.keywords:
@@ -70,8 +133,14 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
             importlib.import_module("detectron2")
         except ImportError:
             pytest.skip("hi_res requires detectron2")
-    if "requires_postgres" in item.keywords and not _postgres_reachable():
-        pytest.skip("Postgres not reachable")
+    if "requires_postgres" in item.keywords:
+        if not _postgres_reachable():
+            pytest.skip("Postgres not reachable")
+        reason = _postgres_superuser_reason()
+        if reason is not None:
+            pytest.skip(reason)
+    if "requires_ollama" in item.keywords and not _ollama_available():
+        pytest.skip(_ollama_skip_reason())
 
 
 @pytest.fixture
@@ -121,6 +190,9 @@ def research_dsn():
 
     import research_db
 
+    reason = _postgres_superuser_reason()
+    if reason is not None:
+        pytest.skip(reason)
     dsn = asyncio.run(research_db.create_research_db())
     saved = os.environ.get("CORPUS_KB_DATABASE_URL")
     saved_snapshot = os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD")

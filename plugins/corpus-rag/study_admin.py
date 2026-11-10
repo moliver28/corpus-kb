@@ -69,14 +69,16 @@ def _provision_study(args) -> int:
             "quickstart",
             "--dsn",
             database_url,
-            "--superuser-dsn",
-            study_config.superuser_dsn(),
             "--no-write",
             "--json",
         ]
     env = study_config.study_env(
         slug, {"database_url": database_url, "backend": backend}
     )
+    if backend == "postgres":
+        # The engine reads this fallback; argv would show the DSN to every
+        # process list for the whole provisioning run.
+        env["CORPUS_KB_SUPERUSER_DSN"] = study_config.superuser_dsn()
     print(f"Provisioning study '{slug}' on the {backend} backend (port {port})...")
     result = subprocess.run(
         command, env=env, capture_output=True, text=True,

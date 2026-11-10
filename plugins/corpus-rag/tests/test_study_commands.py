@@ -308,6 +308,35 @@ def test_cleanup_hint_masks_the_superuser_dsn(
     assert "DROP DATABASE IF EXISTS corpus_kb_alpha" in out
 
 
+def test_provision_postgres_moves_the_superuser_dsn_to_the_env(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The quickstart child gets the superuser DSN by env, never argv."""
+    monkeypatch.setenv(
+        "CLAUDE_PLUGIN_OPTION_SUPERUSER_DSN",
+        "postgresql://su:s3kret@localhost:5432/postgres",
+    )
+    monkeypatch.setattr(study_commands, "require_engine", lambda: "corpus-kb")
+    seen: dict = {}
+
+    def fake_run(command, **kw):
+        seen["command"] = list(command)
+        seen["env"] = kw["env"]
+        return _fake_completed(0, stdout="ok")
+
+    monkeypatch.setattr(
+        study_admin, "subprocess", type("S", (), {"run": staticmethod(fake_run)})
+    )
+    code = study_admin.cmd_provision(Args(slug="alpha", backend="postgres"))
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "--superuser-dsn" not in seen["command"]
+    assert "s3kret" not in " ".join(seen["command"])
+    dsn = seen["env"]["CORPUS_KB_SUPERUSER_DSN"]
+    assert dsn == "postgresql://su:s3kret@localhost:5432/postgres"
+    assert "study 'alpha' is ready" in out
+
+
 def test_migrate_postgres_moves_the_superuser_dsn_to_the_env(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
