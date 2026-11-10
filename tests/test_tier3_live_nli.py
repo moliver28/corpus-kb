@@ -1,17 +1,18 @@
 """Live NLI path on the already-required Qwen3 model (todo 16).
 
-requires_ollama: skips when the Ollama service is down OR the configured NLI
-model tag is not pulled (CI installs the service but not qwen3:4b — the
-degrade contract returns None there, so a capability probe must gate the
-assertions). The offline fixture contract lives in
-tests/test_tier3_consistency.py.
+requires_ollama: skips when Ollama is down, the exact NLI model tag is not
+pulled, or the model does not answer one short generate call (a stuck
+server used to pass the old tags-only probe, then every call burned
+NLI_TIMEOUT_SECONDS and the tests failed — issue #357).
+
+The offline fixture contract lives in tests/test_tier3_consistency.py.
 """
 
 from __future__ import annotations
 
+import functools
 import json
 import os
-import socket
 import urllib.request
 
 import pytest
@@ -28,23 +29,44 @@ _B = "They deny ever having opened the reporting feature during the whole period
 _C = "The speaker focuses on the subscription being too expensive, and says that is why they quit."
 
 
+@functools.lru_cache(maxsize=1)
 def _model_available() -> bool:
+    """True only when the exact NLI tag answers one short generate call.
+
+    The old probe read /api/tags and accepted any tag with the same base
+    name, so qwen3:8b passed for qwen3:4b and the real call 404-ed; a
+    stuck server passed too. This probe asks the exact model for a capped
+    reply (30 s) and retries once for a cold model load.
+    """
+    return any(_one_generate_answers() for _ in range(2))
+
+
+def _one_generate_answers() -> bool:
+    body = json.dumps(
+        {
+            "model": _MODEL,
+            "prompt": "Reply with one word: ENTAIL",
+            "stream": False,
+            "think": False,
+            "options": {"num_predict": 4},
+        }
+    ).encode("utf-8")
+    request = urllib.request.Request(
+        "http://localhost:11434/api/generate",
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
     try:
-        with (
-            socket.create_connection(("localhost", 11434), timeout=2),
-            urllib.request.urlopen("http://localhost:11434/api/tags", timeout=5) as resp,
-        ):
-            tags = json.loads(resp.read().decode("utf-8"))
-    except (OSError, ValueError):
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.status == 200
+    except OSError:
         return False
-    names = {m.get("name", "") for m in tags.get("models", [])}
-    return _MODEL in names or any(n.split(":")[0] == _MODEL.split(":")[0] for n in names)
 
 
 @pytest.mark.asyncio
 async def test_live_nli_separates_paraphrase_from_contrast():
     if not _model_available():
-        pytest.skip(f"NLI model not available on this host: {_MODEL}")
+        pytest.skip(f"Ollama has no responsive {_MODEL}; the live NLI tests skip.")
     entail = await nli_mutual_entailment(_A, _B, model=_MODEL)
     contradict = await nli_mutual_entailment(_A, _C, model=_MODEL)
     assert entail is True
@@ -55,7 +77,7 @@ def test_live_self_consistency_clusters_recorded_shape():
     import asyncio
 
     if not _model_available():
-        pytest.skip(f"NLI model not available on this host: {_MODEL}")
+        pytest.skip(f"Ollama has no responsive {_MODEL}; the live NLI tests skip.")
     rationales = [
         _A,
         _B,
