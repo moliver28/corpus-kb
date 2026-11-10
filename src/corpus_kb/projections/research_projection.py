@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 _HANDLED_EVENTS: frozenset[str] = frozenset(
     {
         "Document.Ingested",
+        "Document.Reingested",
         "Document.TurnsParsed",
         "Document.ExchangesLinked",
         "CodebookVersion.Created",
@@ -113,7 +114,9 @@ class ResearchProjection:
 
     async def _dispatch(self, notification: Any, payload: dict[str, Any], tenant_id: UUID) -> None:
         event_type = notification.event_type
-        if event_type == "Document.Ingested":
+        if event_type in ("Document.Ingested", "Document.Reingested"):
+            # A re-ingest re-states the same facts on the SAME stream (issue
+            # #363), so both legs upsert the one documents row in place.
             await self._project.on_ingested(notification)
             await self._exchange.on_ingested(notification)
         elif event_type == "Document.TurnsParsed":

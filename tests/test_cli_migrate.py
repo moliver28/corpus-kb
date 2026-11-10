@@ -2,7 +2,7 @@
 
 The DuckDB scratch file proves apply-once idempotence end to end with no
 server. The Postgres leg (``requires_postgres``) replays the issue's
-check on a scratch pre-043 database: 037..043 apply once, a second run
+check on a scratch pre-043 database: 037..044 apply once, a second run
 applies nothing, and the superuser handover leaves every table owned by
 the app role.
 """
@@ -347,8 +347,8 @@ async def _bootstrap_pre_043(db_name: str) -> str:
 
 
 @pytest.mark.requires_postgres
-async def test_pre043_scratch_applies_037_to_043_once() -> None:
-    """The issue Check: 037..043 apply, a second run applies nothing."""
+async def test_pre043_scratch_applies_037_to_044_once() -> None:
+    """The issue Check: 037..044 apply, a second run applies nothing."""
     from tests.research_db import DB_NAME, drop_research_db
 
     app_dsn = await _bootstrap_pre_043(DB_NAME)
@@ -361,6 +361,7 @@ async def test_pre043_scratch_applies_037_to_043_once() -> None:
             "040_entities_doc_link_no_fk.sql",
             "041_inplace_update_indexes.sql",
             "043_project_tables_registry.sql",
+            "044_ingest_ledger_doc_repair.sql",
         ]
         assert first.applied_now == first.pending
         second = await run_migrations(app_dsn)

@@ -25,6 +25,7 @@ from typing import Any, cast
 from uuid import UUID
 
 import asyncpg
+from eventsourcing.application import AggregateNotFoundError
 
 from corpus_kb.config import load_config
 from corpus_kb.domain.aggregates import Document
@@ -35,6 +36,7 @@ from corpus_kb.errors import NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
+    ledger_last_doc_id,
     plan_file,
     scan_path,
 )
@@ -172,27 +174,53 @@ class ResearchHandler:
         sink = UnitSink(self._pool, tenant_id)
         await sink.store_turn_texts(texts_by_sha, media_type=parsed.source_type)
 
-        doc = Document(
-            tenant_id=tenant_id,
-            source=str(file_path.resolve()),
-            source_type="transcript",
-            file_size=file_path.stat().st_size,
-            file_hash=decision.file_sha256,
-            metadata={
-                "project_id": str(project_id) if project_id else None,
-                "title": title or file_path.stem,
-                "source_hash": decision.file_sha256,
-                "parser_name": "research.transcript_parser",
-                "parser_version": "1",
-                "parser_format": parsed.format_name,
-                "parse_quality": parsed.parse_quality,
-                "project_name": title or file_path.stem,
-                "role_basis": speaker_role_basis(parsed.turns),
-                "role_mapping": role_mapping,
-            },
-        )
+        metadata: dict[str, Any] = {
+            "project_id": str(project_id) if project_id else None,
+            "title": title or file_path.stem,
+            "source_hash": decision.file_sha256,
+            "parser_name": "research.transcript_parser",
+            "parser_version": "1",
+            "parser_format": parsed.format_name,
+            "parse_quality": parsed.parse_quality,
+            "project_name": title or file_path.stem,
+            "role_basis": speaker_role_basis(parsed.turns),
+            "role_mapping": role_mapping,
+        }
+        # ONE STREAM PER SOURCE (issue #363): the ledger's previous doc id
+        # names the aggregate this path already owns. Reuse it, so the
+        # documents row, the child rows, and the ledger agree on one id.
+        # Minting a second aggregate orphans the new copy into the DLQ and
+        # re-points the ledger at a phantom id. Mint only on a first ingest,
+        # or when the ledger names a stream the event store lost.
+        previous_doc_id = await ledger_last_doc_id(self._pool, tenant_id, file_path)
+        doc = self._reused_document(previous_doc_id) if previous_doc_id is not None else None
+        reused = doc is not None
+        if doc is None:
+            doc = Document(
+                tenant_id=tenant_id,
+                source=str(file_path.resolve()),
+                source_type="transcript",
+                file_size=file_path.stat().st_size,
+                file_hash=decision.file_sha256,
+                metadata=metadata,
+            )
+        else:
+            doc.reingest(
+                tenant_id=tenant_id,
+                source=str(doc.source),
+                source_type="transcript",
+                file_size=file_path.stat().st_size,
+                file_hash=decision.file_sha256,
+                metadata=metadata,
+            )
+        first_batch = True
         for batch in _batches(parsed.turns, MAX_TURNS_PER_EVENT):
-            doc.add_turn_batch(tenant_id=tenant_id, turns=[turn.to_payload() for turn in batch])
+            doc.add_turn_batch(
+                tenant_id=tenant_id,
+                turns=[turn.to_payload() for turn in batch],
+                replace=reused and first_batch,
+            )
+            first_batch = False
         for batch in _batches(exchanges, MAX_EXCHANGES_PER_EVENT):
             doc.add_exchange_batch(tenant_id=tenant_id, exchanges=[e.to_payload() for e in batch])
         self.app.save(doc)
@@ -380,6 +408,24 @@ class ResearchHandler:
         if not isinstance(run, CodingRun):
             raise ValidationError(f"aggregate {run_id} is not a CodingRun")
         return run
+
+    def _reused_document(self, doc_id: UUID) -> Document | None:
+        """Rehydrate the Document stream the ledger names, or None to mint.
+
+        None covers a ledger row whose stream the event store does not hold
+        (the pre-fix phantom ids, issue #363): the caller then mints a new
+        document, exactly like a first ingest.
+        """
+        try:
+            aggregate = self.app.repository.get(doc_id)
+        except AggregateNotFoundError:
+            logger.warning(
+                "The ledger names document %s, but its event stream is missing. "
+                "Ingest makes a new document.",
+                doc_id,
+            )
+            return None
+        return aggregate if isinstance(aggregate, Document) else None
 
 
 def _batches(items: list, size: int) -> list[list]:

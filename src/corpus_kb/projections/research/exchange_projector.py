@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from corpus_kb.projections.research._common import (
+    drop_derived_rows,
     event_payload,
     lookup_turn_texts,
     opt_str,
@@ -92,6 +93,8 @@ class ExchangeProjector:
         texts = await lookup_turn_texts(self._store, tenant_id, shas)
 
         async with self._store.transaction(str(tenant_id)) as conn:
+            if payload.get("replace"):
+                await drop_derived_rows(conn, tenant_id, doc_id)
             # The Ingested stage stored project_id on the documents row;
             # TurnsParsed carries no metadata, so resolve it there — together
             # with the deterministic-prefix context (todo-12, v5 5.2).

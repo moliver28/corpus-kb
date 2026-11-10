@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 
 import asyncpg
@@ -23,7 +24,9 @@ MIGRATION_020 = MIGRATIONS / "020_exact_result_cache.sql"
 ROLLBACK_020 = MIGRATIONS / "rollback_020_exact_result_cache.sql"
 
 BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
-DB_NAME = "corpus_kb_m020_test"
+# Per-process name: two live sessions sharing one fixed name force-drop
+# each other's database mid-run (issue #327, the research_db.py precedent).
+DB_NAME = f"corpus_kb_m020_{os.getpid() % 100000}_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
 SUPER_DSN = f"{BASE_DSN}/postgres"
 

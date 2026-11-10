@@ -19,6 +19,7 @@ Auto-skips when Postgres is unreachable.
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
 import asyncpg
@@ -33,7 +34,9 @@ MIGRATION_025 = MIGRATIONS / "025_halfvec_2560.sql"
 ROLLBACK_025 = MIGRATIONS / "rollback_025_halfvec_2560.sql"
 
 BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
-DB_NAME = "corpus_kb_mig025_test"
+# Per-process name: two live sessions sharing one fixed name force-drop
+# each other's database mid-run (issue #327, the research_db.py precedent).
+DB_NAME = f"corpus_kb_mig025_{os.getpid() % 100000}_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
 SUPER_DSN = f"{BASE_DSN}/postgres"
 TENANT = "00000000-0000-0000-0000-000000000001"
