@@ -15,6 +15,7 @@ import asyncpg
 import pytest
 from research_db import TEST_TENANT
 
+from corpus_kb.errors import ConflictError
 from corpus_kb.handlers.research_handler import get_research_handler
 from corpus_kb.projections.checkpoint import CheckpointManager
 from corpus_kb.projections.dlq import DLQHandler
@@ -412,3 +413,179 @@ async def test_edited_file_reingest_lands_new_units(research_pool, tmp_path):
         await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
     )
     assert new_dlq == [], f"edited re-ingest must not DLQ rows: {new_dlq}"
+
+
+# ---------------------------------------------------------------------------
+# Close-out review findings on merged #366 (F-1, F-2, F-3, F-4)
+# ---------------------------------------------------------------------------
+
+# Prose with no speaker labels at all: the labelled parser drops every
+# line, so ZERO turns is an anticipated parse outcome (unverified quality).
+_PROSE_ONLY = (
+    "# Field notes\n"
+    "\n"
+    "Plain prose with no speaker labels lives in this text.\n"
+    "The parser drops unlabelled lines when no turn exists yet.\n"
+)
+
+
+async def test_reingest_reuses_aggregate_across_path_spellings(
+    research_pool, tmp_path, monkeypatch
+):
+    """F-1: one file under two path spellings keeps ONE aggregate.
+
+    The ledger probe, the ledger write, and the documents upsert must key
+    on the same resolved identity. A spelling change that misses the probe
+    mints a phantom aggregate, and the #363 corruption returns (DLQ
+    orphans, a ledger row on a phantom id, stale units).
+    """
+    reader, projection, handler, _ = await _wire(research_pool)
+    baseline_dlq = {
+        str(r["dlq_id"]) for r in await _tenant_counts(research_pool, TENANT, "projection_dlq")
+    }
+    target = tmp_path / "spelling_sample.md"
+    target.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    first = await handler.ingest_transcript(TENANT, "spelling_sample.md")
+    assert first["status"] == "success"
+    await projection.catch_up(reader)
+    doc_id = UUID(str(first["doc_id"]))
+
+    second = await handler.ingest_transcript(TENANT, str(target), force=True)
+    assert second["status"] == "success"
+    await projection.catch_up(reader)
+
+    assert UUID(str(second["doc_id"])) == doc_id, "the second spelling must reuse, not mint"
+    docs = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "documents"), doc_id)
+    assert len(docs) == 1, "one documents row carries the resolved source"
+    ledger = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "ingested_files"), doc_id)
+    assert len(ledger) == 1, "one ledger row names the reused document"
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
+    assert len(units) == int(second["n_turns"]), "the read rows follow the reused id"
+    new_dlq = _new_dlq_rows(
+        await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
+    )
+    assert new_dlq == [], f"a second spelling must not DLQ rows: {new_dlq}"
+
+
+async def test_zero_turn_reparse_drops_previous_units(research_pool, tmp_path):
+    """F-2: a re-parse that yields zero turns still clears the old units."""
+    reader, projection, handler, _ = await _wire(research_pool)
+    baseline_dlq = {
+        str(r["dlq_id"]) for r in await _tenant_counts(research_pool, TENANT, "projection_dlq")
+    }
+    transcript = _write_transcript(tmp_path, _TRANSCRIPT_V1)
+    first = await handler.ingest_transcript(TENANT, transcript)
+    assert int(first["n_turns"]) > 0
+    await projection.catch_up(reader)
+    doc_id = UUID(str(first["doc_id"]))
+
+    Path(transcript).write_text(_PROSE_ONLY, encoding="utf-8")
+    second = await handler.ingest_transcript(TENANT, transcript)
+    assert second["status"] == "success"
+    assert int(second["n_turns"]) == 0, "the prose-only re-parse yields no turns"
+    await projection.catch_up(reader)
+
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
+    assert units == [], "a zero-turn re-parse must drop the previous units"
+    exchanges = _rows_for_doc(
+        await _tenant_counts(research_pool, TENANT, "research_exchanges"), doc_id
+    )
+    assert exchanges == [], "a zero-turn re-parse must drop the previous exchanges"
+    docs = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "documents"), doc_id)
+    assert len(docs) == 1
+    assert str(docs[0]["file_hash"]) == second["file_sha256"], "the row must carry the new parse"
+    ledger = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "ingested_files"), doc_id)
+    assert len(ledger) == 1
+    assert UUID(str(ledger[0]["doc_id"])) == doc_id
+    new_dlq = _new_dlq_rows(
+        await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
+    )
+    assert new_dlq == [], f"the zero-turn re-parse must not DLQ rows: {new_dlq}"
+
+
+async def test_concurrent_reingest_maps_stream_conflict_to_typed_error(
+    research_pool, tmp_path, monkeypatch
+):
+    """F-3: a lost save race surfaces as the taxonomy's ConflictError."""
+    import corpus_kb.handlers.research_handler as handler_module
+    from corpus_kb.domain.application import get_app
+
+    reader, projection, handler, _ = await _wire(research_pool)
+    transcript = _write_transcript(tmp_path, _TRANSCRIPT_V1)
+    first = await handler.ingest_transcript(TENANT, transcript)
+    doc_id = UUID(str(first["doc_id"]))
+    real_app = get_app()
+
+    # The copy this handler is about to reuse, captured before a
+    # concurrent writer advances the same stream.
+    stale = real_app.repository.get(doc_id)
+    winner = real_app.repository.get(doc_id)
+    winner.reingest(
+        tenant_id=TENANT,
+        source=str(winner.source),
+        source_type="transcript",
+        file_size=1,
+        file_hash="9" * 64,
+        metadata={},
+        replace=True,
+    )
+    real_app.save(winner)
+
+    class _StaleRepository:
+        """Serves the pre-race copy, exactly as a lost race would hold."""
+
+        def __init__(self, aggregate):
+            self._aggregate = aggregate
+
+        def get(self, aggregate_id):
+            return self._aggregate
+
+    class _StaleApp:
+        """Real saves, a stale rehydrate."""
+
+        def __init__(self, real, aggregate):
+            self._real = real
+            self.repository = _StaleRepository(aggregate)
+
+        def save(self, aggregate):
+            return self._real.save(aggregate)
+
+    monkeypatch.setattr(
+        handler_module, "get_app", lambda *args, **kwargs: _StaleApp(real_app, stale)
+    )
+    with pytest.raises(ConflictError):
+        await handler.ingest_transcript(TENANT, transcript, force=True)
+    await projection.catch_up(reader)
+
+
+async def test_reingest_to_fewer_turns_drops_stale_tail(research_pool, tmp_path):
+    """F-4: units past the new seq range disappear when the parse shrinks."""
+    reader, projection, handler, _ = await _wire(research_pool)
+    baseline_dlq = {
+        str(r["dlq_id"]) for r in await _tenant_counts(research_pool, TENANT, "projection_dlq")
+    }
+    transcript = _write_transcript(tmp_path, _TRANSCRIPT_V2)
+    first = await handler.ingest_transcript(TENANT, transcript)
+    assert int(first["n_turns"]) == 6
+    await projection.catch_up(reader)
+    doc_id = UUID(str(first["doc_id"]))
+
+    Path(transcript).write_text(_TRANSCRIPT_V1, encoding="utf-8")
+    second = await handler.ingest_transcript(TENANT, transcript)
+    assert int(second["n_turns"]) == 4
+    await projection.catch_up(reader)
+
+    assert UUID(str(second["doc_id"])) == doc_id, "the shrink re-ingest reuses the aggregate"
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
+    assert sorted(int(u["seq"]) for u in units) == [0, 1, 2, 3], "the stale tail must be gone"
+    assert all("No, that is all." not in str(u["text"]) for u in units)
+    exchanges = _rows_for_doc(
+        await _tenant_counts(research_pool, TENANT, "research_exchanges"), doc_id
+    )
+    assert len(exchanges) == int(second["n_exchanges"])
+    new_dlq = _new_dlq_rows(
+        await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
+    )
+    assert new_dlq == [], f"the shrink re-ingest must not DLQ rows: {new_dlq}"

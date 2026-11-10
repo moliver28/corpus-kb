@@ -10,7 +10,10 @@
 -- Repair: the ledger follows the documents row for the same (tenant_id,
 -- source). Rows whose stored path string differs from the documents
 -- source (a caller passed a relative path) cannot be matched and stay
--- as they are; the next ingest of such a path makes a fresh document.
+-- as they are. Such a row still names a phantom id. The ingest boundary
+-- now resolves paths, so the next ingest of that file keys the resolved
+-- spelling; its ledger probe misses once, then the new resolved row
+-- keeps every later ingest on one aggregate.
 --
 -- Idempotent: the join matches nothing once the ids agree.
 --

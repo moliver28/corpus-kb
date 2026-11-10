@@ -82,6 +82,13 @@ class ExchangeProjector:
                 str(payload.get("source", "")),
                 opt_str(payload.get("file_hash")),
             )
+            if payload.get("replace"):
+                # Re-ingest drop (issue #363, close-out F-2): the Reingested
+                # event is the guaranteed-first event of a reused stream, so
+                # a re-parse that yields zero turns still clears the old
+                # derived rows. TurnsParsed keeps honoring the batch-carried
+                # marker that pre-F-2 streams used.
+                await drop_derived_rows(conn, tenant_id, payload["aggregate_id"])
 
     async def on_turns_parsed(self, notification: Any) -> None:
         payload = event_payload(notification)

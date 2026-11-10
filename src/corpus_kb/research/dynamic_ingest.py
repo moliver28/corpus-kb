@@ -162,6 +162,10 @@ async def plan_file(
     force: bool = False,
 ) -> IngestDecision:
     """Decide whether a file needs (re)ingestion: file-hash ledger first."""
+    # ONE IDENTITY PER SOURCE: the ledger keys the RESOLVED path, so two
+    # spellings of one file (relative vs absolute, .. segments) probe and
+    # write the same row (issue #363, close-out F-1).
+    path = path.resolve()
     sha = file_sha256(path)
     if not force:
         seen_sha, _, _ = await ledger_state(pool, tenant_id, path)
