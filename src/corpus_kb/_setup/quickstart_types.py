@@ -23,6 +23,17 @@ RERANKER_HEADER = "Ollama has no rerank endpoint, so qwen3-reranker models canno
 RERANKER_SERVE = "Serve the GGUF with llama-server, then point reranking.base_url at it:"
 LLAMA_SERVER_HINT = "  llama-server -hf Mungert/Qwen3-Reranker-4B-GGUF --port 8011"
 
+#: The postgres step's failure hints, with and without Docker (issue #364
+#: added the environment-variable mention to the no-Docker pair).
+DOCKER_HINTS = (
+    "Docker is available: run `corpus-kb setup` to start the compose stack,",
+    "then re-run `corpus-kb quickstart`.",
+)
+NO_DOCKER_HINTS = (
+    "Install Postgres, pass --dsn, or run `corpus-kb setup` with Docker.",
+    "To provision a missing role/database, pass --superuser-dsn or set CORPUS_KB_SUPERUSER_DSN.",
+)
+
 
 @dataclass
 class StepResult:

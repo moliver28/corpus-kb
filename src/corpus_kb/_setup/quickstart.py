@@ -26,6 +26,8 @@ import os
 
 from corpus_kb._setup.db_provision import DsnParts, fallback_dsn, parse_dsn
 from corpus_kb._setup.quickstart_types import (
+    DOCKER_HINTS,
+    NO_DOCKER_HINTS,
     STATE_FAIL,
     STATE_FIX,
     STATE_OK,
@@ -51,9 +53,8 @@ class QuickstartRunner:
         self.outcome = QuickstartOutcome()
         self._configured = runtime_dsn(deps.config)
         self._adopted: str | None = None
-        # Provisioning takes --superuser-dsn, or the CORPUS_KB_SUPERUSER_DSN
-        # environment variable when the flag is absent (issue #364). The flag
-        # wins, and an empty variable value counts as absent.
+        # Provisioning takes --superuser-dsn, or CORPUS_KB_SUPERUSER_DSN when
+        # the flag is absent (issue #364); the flag wins, empty env is absent.
         self._superuser_dsn = (
             opts.superuser_dsn or os.environ.get("CORPUS_KB_SUPERUSER_DSN") or None
         )
@@ -138,15 +139,8 @@ class QuickstartRunner:
 
     def _hints(self) -> tuple[str, ...]:
         if self._deps.docker_available():
-            return (
-                "Docker is available: run `corpus-kb setup` to start the compose stack,",
-                "then re-run `corpus-kb quickstart`.",
-            )
-        return (
-            "Install Postgres, pass --dsn, or run `corpus-kb setup` with Docker.",
-            "To provision a missing role/database, pass --superuser-dsn"
-            " or set CORPUS_KB_SUPERUSER_DSN.",
-        )
+            return DOCKER_HINTS
+        return NO_DOCKER_HINTS
 
     async def _provision_and_adopt(self, dsn: str, parts: DsnParts, superuser: str) -> None:
         report = await self._deps.provision(superuser, parts)
