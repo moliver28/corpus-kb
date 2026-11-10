@@ -19,6 +19,11 @@ _FIXTURE_DIR = Path(__file__).with_name("fixtures") / "langextract_recorded"
 _SAMPLE_MD = Path(__file__).with_name("fixtures") / "ontology_sample.md"
 _ONTOLOGY_PATH = Path("config/ontology.yaml")
 
+# Provenance written by the relation tests below. The values are unique to
+# this file, so residue purge statements can target exactly these rows.
+_REL_MODEL_VERSION = "test-model-v1"
+_REL_PROMPT_VERSION = "test-prompt-v1"
+
 
 def _build_config() -> dict[str, object]:
     config = load_config()
@@ -46,6 +51,54 @@ async def _delete_document(pg_pool, source: str) -> None:
             str(DEFAULT_TENANT_ID),
             source,
         )
+
+
+async def _purge_stranded_relations(pg_pool) -> None:
+    """Delete this file's relation rows that a document delete strands.
+
+    Deleting a document sets ``relations.chunk_id`` to NULL (migration 008
+    keeps relation rows by design). On a persistent test database those
+    orphan rows keep the relation_id of an earlier run. A later ingest that
+    replays them from the extraction cache then hits ``relations_pkey`` and
+    lands as ``partial`` (issue #360). Each relation test purges its own
+    orphan rows, identified by the provenance values unique to this file.
+    """
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
+        await conn.execute(
+            "DELETE FROM relations WHERE chunk_id IS NULL "
+            "AND model_version = $1 AND prompt_version = $2",
+            _REL_MODEL_VERSION,
+            _REL_PROMPT_VERSION,
+        )
+
+
+async def _purge_extraction_cache(pg_pool) -> None:
+    """Delete the cache rows for this file's relation fixture.
+
+    A cache hit replays stored relation ids, so the relation tests purge
+    their cache rows and re-run the recorded extraction each time. The
+    cache key folds the mode and backend names into ``model_version``
+    (see ``tools/pipeline/extract.py``), hence the prefix match.
+    """
+    async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
+        await conn.execute(
+            "DELETE FROM extraction_cache WHERE model_version LIKE $1 "
+            "AND prompt_version = $2",
+            f"{_REL_MODEL_VERSION}|%",
+            _REL_PROMPT_VERSION,
+        )
+
+
+async def _purge_relation_residue(pg_pool, source: str) -> None:
+    """Remove every row an earlier run of a relation test leaves behind.
+
+    The order matters: the document delete first strands its relations
+    (ON DELETE SET NULL), then the orphan rows are removable by
+    provenance. Call this before the first ingest of a relation test.
+    """
+    await _delete_document(pg_pool, source)
+    await _purge_stranded_relations(pg_pool)
+    await _purge_extraction_cache(pg_pool)
 
 
 @pytest.mark.asyncio
@@ -149,7 +202,7 @@ async def test_stored_relations_have_provenance(pg_pool) -> None:
     from corpus_kb.tools.ingest_common import ingest_text
 
     source = "test-relation-provenance"
-    await _delete_document(pg_pool, source)
+    await _purge_relation_residue(pg_pool, source)
     config = {
         "graph": {
             "extract_entities": True,
@@ -183,3 +236,39 @@ async def test_stored_relations_have_provenance(pg_pool) -> None:
     assert row["chunk_id"] is not None
     assert row["model_version"] == "test-model-v1"
     assert row["prompt_version"] == "test-prompt-v1"
+
+
+@pytest.mark.asyncio
+async def test_relation_reingest_twice_is_idempotent(pg_pool) -> None:
+    """Re-ingesting on a persistent database must succeed twice (issue #360).
+
+    corpus_kb_test outlives the suite. Run one seeds the extraction cache
+    and its relation rows; the document delete between the runs strands
+    those relations with a NULL chunk link. Run two replays the cached
+    relation ids, so orphan rows from run one must be gone or the insert
+    hits ``relations_pkey`` and the run lands as ``partial``.
+    """
+    from corpus_kb.tools.ingest_common import ingest_text
+
+    source = "test-relation-reingest-twice"
+    config = {
+        "graph": {
+            "extract_entities": True,
+            "extractor": "langextract",
+            "fixture_dir": "tests/fixtures/langextract_recorded",
+            "live_fallback": False,
+            "model_version": "test-model-v1",
+            "prompt_version": "test-prompt-v1",
+        },
+    }
+    text = "ServiceA depends on ServiceB for auth."
+    await _purge_relation_residue(pg_pool, source)
+    first = await ingest_text(
+        text=text, pg_pool=pg_pool, source_type="text", config=config, source=source
+    )
+    assert first["status"] == "success"
+    await _delete_document(pg_pool, source)
+    second = await ingest_text(
+        text=text, pg_pool=pg_pool, source_type="text", config=config, source=source
+    )
+    assert second["status"] == "success"
