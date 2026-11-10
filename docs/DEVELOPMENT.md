@@ -247,6 +247,18 @@ Tests that need Ollama degrade to the zero-vector fallback when it is down. The 
 
 The research-suite throwaway database gets a per-process name by default. Two pytest sessions can then run at once, and neither drops the other's database. Set `CORPUS_KB_TEST_DB` to pin one shared name on purpose (see `tests/research_db.py`).
 
+### Local test database
+
+The Postgres test legs use two roles. The app role connects with `CORPUS_KB_DATABASE_URL`. The admin role creates the throwaway databases and extensions; it defaults to `postgres`/`postgres` (the CI service image settings). On a local server with different roles, export the three variables before the run:
+
+```bash
+export POSTGRES_SUPERUSER="$(whoami)"
+export POSTGRES_SUPERUSER_PASSWORD=""
+export CORPUS_KB_DATABASE_URL="postgresql://$(whoami)@localhost:5432/corpus_kb_test"
+```
+
+Homebrew Postgres makes your OS user the superuser and has no `postgres` role, so the export above is what its users need. When the admin role cannot log in, the gated tests now skip with a reason that names these variables. As an alternative, run the CI Postgres image locally; it needs no environment variables.
+
 ## Conventions
 
 - Python 3.11+ only.

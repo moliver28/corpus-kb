@@ -61,6 +61,36 @@ def _postgres_reachable() -> bool:
         return False
 
 
+@functools.lru_cache(maxsize=1)
+def _postgres_superuser_reason() -> str | None:
+    """None when the admin role can log in, else a skip reason that guides.
+
+    The research-domain and migration tests create databases and extensions
+    through the admin role (tests/research_db.py). The role defaults match
+    the CI service image; a local server often uses different roles. This
+    probe tries the admin DSN once per session and names the variables to
+    set when it cannot connect (issue #358).
+    """
+    import asyncio
+
+    import research_db
+
+    async def _connect() -> None:
+        conn = await asyncpg.connect(research_db.SUPER_DSN, timeout=5)
+        await conn.close()
+
+    try:
+        asyncio.run(_connect())
+    except Exception as exc:
+        return (
+            f"Postgres admin role unreachable ({type(exc).__name__}). "
+            "Set POSTGRES_SUPERUSER, POSTGRES_SUPERUSER_PASSWORD, and "
+            "CORPUS_KB_DATABASE_URL for your server. "
+            "See docs/DEVELOPMENT.md, section 'Local test database'."
+        )
+    return None
+
+
 def pytest_runtest_setup(item: pytest.Item) -> None:
     """Skip tests that require capabilities unavailable on the current host."""
     if "requires_hi_res" in item.keywords:
@@ -70,8 +100,12 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
             importlib.import_module("detectron2")
         except ImportError:
             pytest.skip("hi_res requires detectron2")
-    if "requires_postgres" in item.keywords and not _postgres_reachable():
-        pytest.skip("Postgres not reachable")
+    if "requires_postgres" in item.keywords:
+        if not _postgres_reachable():
+            pytest.skip("Postgres not reachable")
+        reason = _postgres_superuser_reason()
+        if reason is not None:
+            pytest.skip(reason)
 
 
 @pytest.fixture
@@ -121,6 +155,9 @@ def research_dsn():
 
     import research_db
 
+    reason = _postgres_superuser_reason()
+    if reason is not None:
+        pytest.skip(reason)
     dsn = asyncio.run(research_db.create_research_db())
     saved = os.environ.get("CORPUS_KB_DATABASE_URL")
     saved_snapshot = os.environ.get("CORPUS_KB_SNAPSHOT_PERIOD")
