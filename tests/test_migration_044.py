@@ -15,17 +15,25 @@ repair:
 
 The seed inserts run with the tenant GUC set (documents is FORCE RLS,
 011); the migration itself runs as the bare owner, so it also proves the
-NO FORCE dance inside the file works. Auto-skips when Postgres is down.
+FORCE-state restore inside the file works.
+
+Credentials follow the storage portability program rule 20: admin and app
+DSNs come from tests/research_db.py (POSTGRES_* env; the CI service image
+makes the bootstrap role itself the superuser). No role names or passwords
+are hardcoded here. Auto-skips when no Postgres admin connection resolves,
+never failing on the environment (the test_migration_027 precedent).
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 from uuid import uuid4
 
 import asyncpg
 import pytest
+import research_db
 
 pytestmark = pytest.mark.requires_postgres
 
@@ -35,10 +43,10 @@ SCHEMA_SQL = REPO / "src" / "corpus_kb" / "storage" / "schema.sql"
 MIGRATION_044 = MIGRATIONS / "044_ingest_ledger_doc_repair.sql"
 ROLLBACK_044 = MIGRATIONS / "rollback_044_ingest_ledger_doc_repair.sql"
 
-BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
+# Env-derived seams (tests/research_db.py): the app role owns the scratch
+# database; the admin role creates and drops it.
 DB_NAME = f"corpus_kb_mig044_{os.getpid() % 100000}_test"
-DSN = f"{BASE_DSN}/{DB_NAME}"
-SUPER_DSN = f"{BASE_DSN}/postgres"
+DSN = f"{research_db.BASE_DSN}/{DB_NAME}"
 
 TENANT = "00000000-0000-0000-0000-000000000001"
 OTHER_TENANT = "00000000-0000-0000-0000-000000000002"
@@ -47,15 +55,24 @@ _EXTENSION_GATED = {"004_enable_age.sql", "005_enable_pgml.sql"}
 _SKIP_AT_BOOTSTRAP = _EXTENSION_GATED | {"044_ingest_ledger_doc_repair.sql"}
 
 
-async def _bootstrap() -> None:
-    admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
+async def _drop_db() -> None:
+    """Best-effort drop through the admin DSN; never masks a skip."""
+    admin = await asyncpg.connect(research_db.super_dsn_for("postgres"))
     try:
         await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
+    finally:
+        await admin.close()
+
+
+async def _bootstrap() -> None:
+    await _drop_db()
+    admin = await asyncpg.connect(research_db.super_dsn_for("postgres"))
+    try:
         await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
     finally:
         await admin.close()
 
-    superconn = await asyncpg.connect(DSN, user="postgres", password="postgres")
+    superconn = await asyncpg.connect(research_db.super_dsn_for(DB_NAME))
     try:
         await superconn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         await superconn.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp"')
@@ -135,9 +152,13 @@ async def _force_flags(conn: asyncpg.Connection) -> dict[str, bool]:
 
 
 async def test_ledger_repair_repoints_and_is_idempotent() -> None:
-    await _bootstrap()
+    try:
+        await _bootstrap()
+    except (OSError, asyncpg.PostgresError) as exc:
+        pytest.skip(f"Postgres unavailable for the migration 044 scratch DB: {exc}")
+
     conn = await asyncpg.connect(DSN)
-    superconn = await asyncpg.connect(DSN, user="postgres", password="postgres")
+    superconn = await asyncpg.connect(research_db.super_dsn_for(DB_NAME))
     try:
         ids = await _seed(conn)
         before = await _ledger_doc_ids(superconn)
@@ -169,8 +190,5 @@ async def test_ledger_repair_repoints_and_is_idempotent() -> None:
     finally:
         await conn.close()
         await superconn.close()
-        admin = await asyncpg.connect(SUPER_DSN, user="postgres", password="postgres")
-        try:
-            await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
-        finally:
-            await admin.close()
+        with contextlib.suppress(OSError, asyncpg.PostgresError):
+            await _drop_db()
