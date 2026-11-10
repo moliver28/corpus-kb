@@ -26,13 +26,14 @@ from uuid import UUID
 
 import asyncpg
 from eventsourcing.application import AggregateNotFoundError
+from eventsourcing.persistence import IntegrityError
 
 from corpus_kb.config import load_config
 from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
-from corpus_kb.errors import NotFoundError, ValidationError
+from corpus_kb.errors import ConflictError, NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
@@ -134,6 +135,11 @@ class ResearchHandler:
         file_path = Path(path)
         if not file_path.exists():
             raise NotFoundError(path)
+        # ONE IDENTITY PER SOURCE (issue #363, close-out F-1): resolve ONCE
+        # here. The ledger probe, the ledger write, and the documents upsert
+        # all key on this string, so two spellings of one file share one
+        # aggregate instead of minting a phantom stream.
+        file_path = file_path.resolve()
         decision = await plan_file(self._pool, tenant_id, file_path, force=force)
         if decision.skipped:
             return {
@@ -194,7 +200,6 @@ class ResearchHandler:
         # or when the ledger names a stream the event store lost.
         previous_doc_id = await ledger_last_doc_id(self._pool, tenant_id, file_path)
         doc = self._reused_document(previous_doc_id) if previous_doc_id is not None else None
-        reused = doc is not None
         if doc is None:
             doc = Document(
                 tenant_id=tenant_id,
@@ -205,6 +210,10 @@ class ResearchHandler:
                 metadata=metadata,
             )
         else:
+            # The replace marker rides the Reingested event (close-out F-2):
+            # it is the guaranteed-first event of a reused stream, so the
+            # projector drops the old derived rows even when the new parse
+            # yields zero turns and emits no TurnsParsed batch.
             doc.reingest(
                 tenant_id=tenant_id,
                 source=str(doc.source),
@@ -212,18 +221,25 @@ class ResearchHandler:
                 file_size=file_path.stat().st_size,
                 file_hash=decision.file_sha256,
                 metadata=metadata,
+                replace=True,
             )
-        first_batch = True
         for batch in _batches(parsed.turns, MAX_TURNS_PER_EVENT):
             doc.add_turn_batch(
                 tenant_id=tenant_id,
                 turns=[turn.to_payload() for turn in batch],
-                replace=reused and first_batch,
             )
-            first_batch = False
         for batch in _batches(exchanges, MAX_EXCHANGES_PER_EVENT):
             doc.add_exchange_batch(tenant_id=tenant_id, exchanges=[e.to_payload() for e in batch])
-        self.app.save(doc)
+        try:
+            self.app.save(doc)
+        except IntegrityError as exc:
+            # Concurrent re-ingest of one source: the second save hits the
+            # stream-version conflict (close-out F-3). Map it through the
+            # taxonomy instead of surfacing a raw 500-class failure.
+            raise ConflictError(
+                "Another ingest of this source saved first. Retry the ingest.",
+                remediation="Wait for the running ingest to finish. Then try again.",
+            ) from exc
 
         await sink.record_ledger(
             file_path,
