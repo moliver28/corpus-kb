@@ -95,10 +95,12 @@ export function noteLines(envelope: RouteEnvelope): ReactNode {
 }
 
 /**
- * The ambiguity ladder as a single-choice picker (routing W4). One radio
- * per reading (the labelled group carries the pick state); "Use this
- * reading" re-routes with the picked method. Confirm-then-run: the pick
- * alone sends nothing.
+ * The ambiguity ladder as a toggle group (routing W4, the override
+ * picker idiom). One aria-pressed button per reading inside the
+ * labelled group; "Use this reading" re-routes with the picked method.
+ * Confirm-then-run: the pick alone sends nothing. Native buttons keep
+ * the keyboard model honest: Tab reaches each pick, and Enter or Space
+ * activates it; the group role makes no radio keyboard promise.
  */
 export function readingsPicker(
   envelope: RouteEnvelope,
@@ -117,14 +119,13 @@ export function readingsPicker(
       <Typography.Paragraph className="ui-flush" type="secondary" id="route-readings-label">
         {strings.routeReadingsPickLabel}
       </Typography.Paragraph>
-      <div role="radiogroup" aria-labelledby="route-readings-label" className="ui-stack">
+      <div role="group" aria-labelledby="route-readings-label" className="ui-stack">
         {readings.map((reading) => (
           <div key={reading.method_id} className="ui-stack">
             <Button
               size="small"
-              role="radio"
-              aria-checked={picked === reading.method_id}
               aria-label={`${reading.method_id} ${reading.method_name}`}
+              aria-pressed={picked === reading.method_id}
               type={picked === reading.method_id ? "primary" : "default"}
               onClick={() => onPick(reading.method_id)}
             >
@@ -158,8 +159,8 @@ export function suggestionChips(
       <strong>{strings.routeSuggestionsTitle}</strong>
       <Typography.Text type="secondary">{strings.routeSuggestionsHint}</Typography.Text>
       <div className="ui-actions">
-        {suggestions.map((question) => (
-          <Button key={question} size="small" onClick={() => onPickQuestion(question)}>
+        {suggestions.map((question, index) => (
+          <Button key={`${index}-${question}`} size="small" onClick={() => onPickQuestion(question)}>
             {question}
           </Button>
         ))}

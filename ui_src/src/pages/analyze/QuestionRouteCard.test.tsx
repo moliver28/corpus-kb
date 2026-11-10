@@ -260,21 +260,26 @@ describe("QuestionRouteCard", () => {
     // B renders on its ranked row and in the picker (2).
     expect(screen.getAllByText(READING_A.why).length).toBe(3);
     expect(screen.getAllByText(READING_B.why).length).toBe(2);
-    // The picker is a labelled radiogroup; each radio names its method
-    // so the accessible text carries id AND name.
-    const group = screen.getByRole("radiogroup", { name: strings.routeReadingsPickLabel });
-    const radio05 = within(group).getByRole("radio", { name: /^05 / });
-    expect(radio05.getAttribute("aria-checked")).toBe("false");
+    // The picker is a labelled group of native toggle buttons (the
+    // override-picker idiom): each names its method, so the accessible
+    // text carries id AND name. Native buttons are tab stops and
+    // Enter or Space activates the focused one, so the keyboard model
+    // matches what the group role promises.
+    const group = screen.getByRole("group", { name: strings.routeReadingsPickLabel });
+    const pick05 = within(group).getByRole("button", { name: /^05 / });
+    expect(pick05 instanceof HTMLButtonElement).toBe(true);
+    expect(pick05.getAttribute("aria-pressed")).toBe("false");
     // Confirm-then-run: the pick alone sends nothing.
-    fireEvent.click(radio05);
+    fireEvent.click(pick05);
     await act(async () => {
       await Promise.resolve();
     });
     expect(routeCalls().length).toBe(1);
     // Re-query after the flush: a re-render replaces the button node.
-    expect(screen.getByRole("radio", { name: /^05 / }).getAttribute("aria-checked")).toBe(
-      "true",
-    );
+    const regroup = screen.getByRole("group", { name: strings.routeReadingsPickLabel });
+    expect(
+      within(regroup).getByRole("button", { name: /^05 / }).getAttribute("aria-pressed"),
+    ).toBe("true");
     // The "Use this reading" action re-calls the op with the pick.
     fireEvent.click(screen.getByRole("button", { name: strings.routeUseReading }));
     await act(async () => {
@@ -292,7 +297,51 @@ describe("QuestionRouteCard", () => {
     expect(
       screen.getByRole("button", { name: "Which cluster count fits these interviews?" }),
     ).toBeTruthy();
-    expect(screen.queryByRole("radiogroup", { name: strings.routeReadingsPickLabel })).toBeNull();
+    expect(screen.queryByRole("group", { name: strings.routeReadingsPickLabel })).toBeNull();
+  });
+
+  it("gives every reading control native button semantics for keyboard use", async () => {
+    stubBoth(AMBIGUOUS);
+    render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
+    await ask("How do I group and code these records?");
+    const group = await screen.findByRole("group", { name: strings.routeReadingsPickLabel });
+    const controls = within(group).getAllByRole("button");
+    expect(controls.length).toBe(2);
+    // A native button is a tab stop, and the browser synthesizes a
+    // click on Enter or Space. That native model is the keyboard
+    // contract the toggle-group idiom promises; a div with a role
+    // would need hand-rolled key handling to keep the same promise.
+    for (const control of controls) {
+      expect(control instanceof HTMLButtonElement).toBe(true);
+    }
+  });
+
+  it("renders two identical suggestion chips without a key collision", async () => {
+    const duplicated: Record<string, unknown> = {
+      ...RESOLVED,
+      suggestions: [
+        "What comes after this screening step?",
+        "What comes after this screening step?",
+      ],
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      stubBoth(duplicated);
+      render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
+      await ask("How do I find duplicate records in my corpus?");
+      const chips = await screen.findAllByRole("button", {
+        name: "What comes after this screening step?",
+      });
+      expect(chips.length).toBe(2);
+      // Both chips share their display text, so React must not see a
+      // duplicate key (the composite key carries the index).
+      const keyWarnings = errorSpy.mock.calls.filter((call) =>
+        call.some((arg) => typeof arg === "string" && /same key|duplicate keys/i.test(arg)),
+      );
+      expect(keyWarnings).toEqual([]);
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 
   it("keeps the ambiguity ladder on a degraded envelope (addendum grammar)", async () => {
@@ -356,9 +405,12 @@ describe("QuestionRouteCard", () => {
     render(<QuestionRouteCard onRunMethod={vi.fn()} />, { wrapper: makeWrapper(false) });
     await ask("How do I group and code these records?");
     expect(await screen.findByText(strings.routeStatusAmbiguous)).toBeTruthy();
-    // The 30-method override picker lights its picked button...
-    expect(screen.getByRole("group", { name: strings.routeOverrideLabel })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /^01 / }));
+    // The 30-method override picker lights its picked button. Scope to
+    // the override group: the reading ladder's toggle buttons share the
+    // /^01 / accessible name, so an unscoped query matches twice.
+    const overrideGroup = () =>
+      within(screen.getByRole("group", { name: strings.routeOverrideLabel }));
+    fireEvent.click(overrideGroup().getByRole("button", { name: /^01 / }));
     await act(async () => {
       await Promise.resolve();
     });
@@ -366,7 +418,7 @@ describe("QuestionRouteCard", () => {
     expect(sends.length).toBe(2);
     expect(sends[1].body).toContain('"method_id":"01"');
     // Re-query: the re-render replaces the button node (R14).
-    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
+    expect(overrideGroup().getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
       "true",
     );
     // ...and a plain Route press (no method_id) clears the highlight.
@@ -379,7 +431,7 @@ describe("QuestionRouteCard", () => {
     const clears = routeCalls();
     expect(clears.length).toBe(3);
     expect(clears[2].body).not.toContain("method_id");
-    expect(screen.getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
+    expect(overrideGroup().getByRole("button", { name: /^01 / }).getAttribute("aria-pressed")).toBe(
       "false",
     );
   });

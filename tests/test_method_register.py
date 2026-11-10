@@ -689,6 +689,14 @@ def test_suggests_reject_count_and_word_cap() -> None:
         MethodRegister.model_validate(_single_register(record))
 
 
+def test_suggests_reject_duplicates() -> None:
+    """Two identical chip strings collide in the UI; the schema rejects them."""
+    base = _routing_record()
+    record = _mutate(base, suggests=["Ask the same thing twice?", "Ask the same thing twice?"])
+    with pytest.raises(ValueError, match="duplicate"):
+        MethodRegister.model_validate(_single_register(record))
+
+
 def test_dropped_routing_fields_rejected() -> None:
     """cost_scale and evidence_citation left the schema at 2.0.0 (extra=forbid)."""
     record = _mutate(_routing_record(), cost_scale="One sparse scan over the corpus; CPU only.")
