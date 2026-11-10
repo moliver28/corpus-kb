@@ -10,6 +10,7 @@ and skips when Postgres is unreachable.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from pathlib import Path
 
@@ -68,7 +69,9 @@ def test_rollback_drops_indexes_and_column() -> None:
 # ---------------------------------------------------------------------------
 
 BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
-DB_NAME = "corpus_kb_m023_test"
+# Per-process name: two live sessions sharing one fixed name force-drop
+# each other's database mid-run (issue #327, the research_db.py precedent).
+DB_NAME = f"corpus_kb_m023_{os.getpid() % 100000}_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
 SUPER_DSN = f"{BASE_DSN}/postgres"
 

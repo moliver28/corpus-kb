@@ -9,9 +9,9 @@ semantics that need no database are pinned offline in
 test_cycle_offline.py.
 
 Provisioning: the conftest session fixture builds the throwaway database
-through tests/research_db.py. Its name is corpus_kb_t11_test; set
-CORPUS_KB_TEST_DB to run two pytest sessions at once, or one session
-force-drops the other's database mid-run. Each test rebinds the
+through tests/research_db.py. Its name is process-unique by default, so
+two pytest sessions never share; set CORPUS_KB_TEST_DB to pin one shared
+name on purpose. Each test rebinds the
 eventsourcing app through fresh_research_app. That fixture pins the DSN
 env var for the test body, so codebook_promote reads the throwaway
 database. A bare config read would target config.yaml's compose DSN and
