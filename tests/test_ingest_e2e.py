@@ -82,8 +82,7 @@ async def _purge_extraction_cache(pg_pool) -> None:
     """
     async with tenant_connection(pg_pool, DEFAULT_TENANT_ID) as conn:
         await conn.execute(
-            "DELETE FROM extraction_cache WHERE model_version LIKE $1 "
-            "AND prompt_version = $2",
+            "DELETE FROM extraction_cache WHERE model_version LIKE $1 AND prompt_version = $2",
             f"{_REL_MODEL_VERSION}|%",
             _REL_PROMPT_VERSION,
         )
@@ -101,6 +100,7 @@ async def _purge_relation_residue(pg_pool, source: str) -> None:
     await _purge_extraction_cache(pg_pool)
 
 
+@pytest.mark.requires_ollama
 @pytest.mark.asyncio
 async def test_ontology_ingest_markdown_fixture(pg_pool) -> None:
     """Ingest the ontology sample fixture and verify the full pipeline."""
@@ -140,6 +140,7 @@ async def test_entity_chunk_fk_rejected(pg_pool) -> None:
     assert result is not None
 
 
+@pytest.mark.requires_ollama
 @pytest.mark.asyncio
 async def test_reingest_unchanged_is_skipped(pg_pool) -> None:
     from corpus_kb.tools.ingest_common import ingest_text
@@ -161,6 +162,7 @@ async def test_reingest_unchanged_is_skipped(pg_pool) -> None:
     assert second["status"] == "skipped"
 
 
+@pytest.mark.requires_ollama
 @pytest.mark.asyncio
 async def test_edit_and_reingest_supersedes_changed_chunk(pg_pool) -> None:
     from corpus_kb.tools.ingest_common import ingest_text
@@ -197,6 +199,7 @@ async def test_edit_and_reingest_supersedes_changed_chunk(pg_pool) -> None:
     assert row["tombstoned_at"] is None
 
 
+@pytest.mark.requires_ollama
 @pytest.mark.asyncio
 async def test_stored_relations_have_provenance(pg_pool) -> None:
     from corpus_kb.tools.ingest_common import ingest_text
@@ -238,6 +241,7 @@ async def test_stored_relations_have_provenance(pg_pool) -> None:
     assert row["prompt_version"] == "test-prompt-v1"
 
 
+@pytest.mark.requires_ollama
 @pytest.mark.asyncio
 async def test_relation_reingest_twice_is_idempotent(pg_pool) -> None:
     """Re-ingesting on a persistent database must succeed twice (issue #360).

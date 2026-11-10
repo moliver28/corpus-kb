@@ -251,6 +251,7 @@ async def test_handle_search_returns_provenance_fields() -> None:
     assert results[0].start_line == 10
 
 
+@pytest.mark.requires_ollama
 @pytest.mark.asyncio
 async def test_handle_search_filters_tombstoned_and_superseded(pg_pool) -> None:
     """handle_search's dedup predicate must genuinely exclude a tombstoned

@@ -91,6 +91,39 @@ def _postgres_superuser_reason() -> str | None:
     return None
 
 
+def _ollama_base_url() -> str:
+    """The configured Ollama base URL (``embedding.base_url``)."""
+    from corpus_kb.config import load_config
+
+    try:
+        embedding = load_config().get("embedding")
+    except Exception:
+        return "http://localhost:11434"
+    base = embedding.get("base_url") if isinstance(embedding, dict) else None
+    return str(base) if base else "http://localhost:11434"
+
+
+@functools.lru_cache(maxsize=1)
+def _ollama_available() -> bool:
+    """One cached ``/api/version`` probe against the configured Ollama.
+
+    The ``requires_ollama`` marker (issue #340) skips live-model legs on a
+    host where Ollama is down, instead of letting them fail on unreachable
+    embeds. The probe is cached, so one HTTP hit serves the whole session.
+    """
+    import httpx
+
+    try:
+        response = httpx.get(f"{_ollama_base_url()}/api/version", timeout=2.0)
+    except Exception:
+        return False
+    return response.status_code == 200
+
+
+def _ollama_skip_reason() -> str:
+    return f"Ollama is not reachable at {_ollama_base_url()}. This test is marked requires_ollama."
+
+
 def pytest_runtest_setup(item: pytest.Item) -> None:
     """Skip tests that require capabilities unavailable on the current host."""
     if "requires_hi_res" in item.keywords:
@@ -106,6 +139,8 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
         reason = _postgres_superuser_reason()
         if reason is not None:
             pytest.skip(reason)
+    if "requires_ollama" in item.keywords and not _ollama_available():
+        pytest.skip(_ollama_skip_reason())
 
 
 @pytest.fixture
