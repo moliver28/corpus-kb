@@ -355,6 +355,7 @@ async def test_tenant_contract_on_all_document_events(pool, reader_and_app):
     notifications = await reader.read_since(0, limit=1000)
     research_topics = {
         "Document.Ingested",
+        "Document.Reingested",
         "Document.TurnsParsed",
         "Document.ExchangesLinked",
         "CodebookVersion.Created",

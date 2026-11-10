@@ -132,7 +132,18 @@ async def upsert_unit(
                 (SELECT speaker_id FROM research_speakers
                  WHERE tenant_id = $1 AND doc_id = $2 AND raw_label = $4),
                 $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        ON CONFLICT (tenant_id, doc_id, seq) DO NOTHING
+        ON CONFLICT (tenant_id, doc_id, seq) DO UPDATE SET
+            project_id = EXCLUDED.project_id,
+            speaker_id = EXCLUDED.speaker_id,
+            t_start = EXCLUDED.t_start,
+            t_end = EXCLUDED.t_end,
+            text = EXCLUDED.text,
+            text_sha256 = EXCLUDED.text_sha256,
+            role_in_exchange = EXCLUDED.role_in_exchange,
+            is_codable = EXCLUDED.is_codable,
+            turn_type = EXCLUDED.turn_type,
+            start_char = EXCLUDED.start_char,
+            end_char = EXCLUDED.end_char
         """,
         str(tenant_id),
         str(doc_id),
@@ -149,6 +160,23 @@ async def upsert_unit(
         turn.get("start_char"),
         turn.get("end_char"),
     )
+
+
+async def drop_derived_rows(conn: Any, tenant_id: UUID, doc_id: UUID) -> None:
+    """Drop one document's unit and exchange rows before a re-transcription.
+
+    Runs on the FIRST TurnsParsed batch of a re-ingest (issue #363), on the
+    caller's transaction, so the re-parse replaces the old rows exactly: no
+    stale tail survives past the new seq range. Speaker rows stay (they keep
+    pseudonyms; the upsert refreshes roles). Assignment, signal, and example
+    rows cascade with their units. The content-addressed text is untouched.
+    """
+    for table in ("research_units", "research_exchanges"):
+        await conn.execute(
+            f"DELETE FROM {table} WHERE tenant_id = $1 AND doc_id = $2",
+            str(tenant_id),
+            str(doc_id),
+        )
 
 
 # List-membership over BIGINT ids: asyncpg binds the list for ``ANY``;

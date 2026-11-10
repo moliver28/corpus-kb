@@ -311,3 +311,104 @@ async def test_concurrent_assignment_dispatch_no_contention(research_pool):
     # before/after DLQ snapshot would wrongly attribute these rows
     # (documented combo flake - DLQ them here, where they belong).
     await projection.catch_up(reader)
+
+
+# ---------------------------------------------------------------------------
+# Re-ingest of the same source replaces in place (issue #363)
+# ---------------------------------------------------------------------------
+
+# A transcript the research parser handles: labeled speakers, q/a pairs.
+_TRANSCRIPT_V1 = (
+    "# Sample interview\n"
+    "\n"
+    "Moderator: How did onboarding feel?\n"
+    "P1 Dana: Rough. The docs were stale.\n"
+    "Moderator: What was stale?\n"
+    "P1 Dana: The API reference. Endpoints moved.\n"
+)
+_TRANSCRIPT_V2 = _TRANSCRIPT_V1 + ("Moderator: Anything else?\nP1 Dana: No, that is all.\n")
+
+
+def _write_transcript(tmp_path: Path, text: str) -> str:
+    target = tmp_path / "reingest_sample.md"
+    target.write_text(text, encoding="utf-8")
+    return str(target)
+
+
+def _new_dlq_rows(rows, baseline) -> list:
+    return [r for r in rows if str(r["dlq_id"]) not in baseline]
+
+
+def _rows_for_doc(rows, doc_id: UUID) -> list:
+    """Scope tenant-wide rows to THIS test's document (the tenant is shared)."""
+    return [r for r in rows if UUID(str(r["doc_id"])) == doc_id]
+
+
+async def test_force_reingest_replaces_in_place(research_pool, tmp_path):
+    reader, projection, handler, _ = await _wire(research_pool)
+    baseline_dlq = {
+        str(r["dlq_id"]) for r in await _tenant_counts(research_pool, TENANT, "projection_dlq")
+    }
+    transcript = _write_transcript(tmp_path, _TRANSCRIPT_V1)
+
+    first = await handler.ingest_transcript(TENANT, transcript)
+    assert first["status"] == "success"
+    await projection.catch_up(reader)
+    doc_id = UUID(str(first["doc_id"]))
+
+    second = await handler.ingest_transcript(TENANT, transcript, force=True)
+    assert second["status"] == "success"
+    await projection.catch_up(reader)
+
+    # The aggregate id is stable: one stream, one documents row, one ledger row.
+    assert UUID(str(second["doc_id"])) == doc_id, "re-ingest must reuse the document id"
+    docs = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "documents"), doc_id)
+    assert len(docs) == 1, f"expected one documents row, got {len(docs)}"
+    ledger = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "ingested_files"), doc_id)
+    assert len(ledger) == 1, "the ledger must point at the real document"
+    assert UUID(str(ledger[0]["doc_id"])) == doc_id
+
+    # The re-parse fully replaced the read rows for the doc.
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
+    assert len(units) == int(second["n_turns"]), "unit count must match the new parse"
+    exchanges = _rows_for_doc(
+        await _tenant_counts(research_pool, TENANT, "research_exchanges"), doc_id
+    )
+    assert len(exchanges) == int(second["n_exchanges"])
+
+    new_dlq = _new_dlq_rows(
+        await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
+    )
+    assert new_dlq == [], f"force re-ingest must not DLQ rows: {new_dlq}"
+
+
+async def test_edited_file_reingest_lands_new_units(research_pool, tmp_path):
+    reader, projection, handler, _ = await _wire(research_pool)
+    baseline_dlq = {
+        str(r["dlq_id"]) for r in await _tenant_counts(research_pool, TENANT, "projection_dlq")
+    }
+    transcript = _write_transcript(tmp_path, _TRANSCRIPT_V1)
+
+    first = await handler.ingest_transcript(TENANT, transcript)
+    assert first["status"] == "success"
+    await projection.catch_up(reader)
+    doc_id = UUID(str(first["doc_id"]))
+
+    edited = Path(transcript)
+    edited.write_text(_TRANSCRIPT_V2, encoding="utf-8")
+    second = await handler.ingest_transcript(TENANT, transcript)
+    assert second["status"] == "success", "changed content must not be skipped"
+    await projection.catch_up(reader)
+
+    assert UUID(str(second["doc_id"])) == doc_id, "re-ingest must reuse the document id"
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
+    assert len(units) == int(second["n_turns"]), "unit count must match the edited parse"
+    assert any("No, that is all." in str(u["text"]) for u in units), "new unit text never landed"
+
+    ledger = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "ingested_files"), doc_id)
+    assert len(ledger) == 1
+    assert UUID(str(ledger[0]["doc_id"])) == doc_id
+    new_dlq = _new_dlq_rows(
+        await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
+    )
+    assert new_dlq == [], f"edited re-ingest must not DLQ rows: {new_dlq}"

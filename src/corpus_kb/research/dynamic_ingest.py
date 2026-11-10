@@ -132,6 +132,25 @@ async def ledger_doc_id(pool: Store, tenant_id: UUID, path: Path, sha: str) -> U
     return UUID(str(row["doc_id"]))
 
 
+async def ledger_last_doc_id(pool: Store, tenant_id: UUID, path: Path) -> UUID | None:
+    """The document id the ledger currently names for this path, or None.
+
+    Path-scoped, ANY content (unlike :func:`ledger_doc_id`, which compares
+    the hash): the reuse probe behind in-place re-ingest (issue #363). A
+    changed file still belongs to the same source stream, so the previous
+    doc id is what the handler rehydrates.
+    """
+    async with tenant_connection(pool, tenant_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT doc_id FROM ingested_files WHERE tenant_id = $1 AND path = $2",
+            str(tenant_id),
+            str(path),
+        )
+    if row is None or row["doc_id"] is None:
+        return None
+    return UUID(str(row["doc_id"]))
+
+
 def turn_text_shas(turns_text: list[str]) -> list[str]:
     return [text_sha256(normalize_turn_text(t)) for t in turns_text]
 
