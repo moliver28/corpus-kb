@@ -245,7 +245,7 @@ pytest --cov=corpus_kb --cov-report=term-missing
 
 Tests that need Ollama degrade to the zero-vector fallback when it is down. The suite then runs without a model server. Tests that need Unstructured `hi_res` mode are skipped on Windows because detectron2 is unavailable.
 
-The research-suite throwaway database gets a per-process name by default, so two pytest sessions can run at once without force-dropping each other's database. Set `CORPUS_KB_TEST_DB` to pin one shared name on purpose (see `tests/research_db.py`).
+The research-suite throwaway database gets a per-process name by default. Two pytest sessions can then run at once, and neither drops the other's database. Set `CORPUS_KB_TEST_DB` to pin one shared name on purpose (see `tests/research_db.py`).
 
 ## Conventions
 
