@@ -7,6 +7,7 @@ Ollama is needed; the live-model path is covered separately (requires_ollama).
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -626,3 +627,225 @@ async def test_reingest_to_fewer_turns_drops_stale_tail(research_pool, tmp_path)
         await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
     )
     assert new_dlq == [], f"the shrink re-ingest must not DLQ rows: {new_dlq}"
+
+
+# ---------------------------------------------------------------------------
+# Documents-source fallback for a missed ledger probe (#370)
+# ---------------------------------------------------------------------------
+
+
+async def test_pre366_ledger_spelling_falls_back_to_documents_row(research_pool, tmp_path):
+    """#370: a ledger row under a non-resolved spelling must not mint.
+
+    Pre-#366 ingests keyed the ledger on the caller's path string, while
+    the documents row keyed the resolved source. The resolved-spelling
+    ledger probe then missed, the next ingest minted a second aggregate,
+    and the documents row kept the old id.
+    """
+    reader, projection, handler, _ = await _wire(research_pool)
+    baseline_dlq = {
+        str(r["dlq_id"]) for r in await _tenant_counts(research_pool, TENANT, "projection_dlq")
+    }
+    target = tmp_path / "legacy_spelling.md"
+    target.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+
+    first = await handler.ingest_transcript(TENANT, str(target))
+    assert first["status"] == "success"
+    doc_id = UUID(str(first["doc_id"]))
+    await projection.catch_up(reader)
+
+    # Simulate the pre-#366 row: the ledger keys a NON-resolved spelling
+    # and names the aggregate the documents row carries.
+    async with research_pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+        await conn.execute(
+            "DELETE FROM ingested_files WHERE tenant_id = $1 AND path = $2",
+            str(TENANT),
+            str(target),
+        )
+        await conn.execute(
+            "INSERT INTO ingested_files (tenant_id, path, file_sha256, source_type, doc_id) "
+            "VALUES ($1, $2, $3, 'transcript', $4)",
+            str(TENANT),
+            "legacy_spelling.md",
+            first["file_sha256"],
+            str(doc_id),
+        )
+
+    second = await handler.ingest_transcript(TENANT, str(target))
+    assert second["status"] == "success"
+    await projection.catch_up(reader)
+
+    assert UUID(str(second["doc_id"])) == doc_id, (
+        "the documents row must answer the missed ledger probe"
+    )
+    docs = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "documents"), doc_id)
+    assert len(docs) == 1, "one documents row carries the resolved source"
+    async with research_pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+        resolved_row = await conn.fetchrow(
+            "SELECT doc_id FROM ingested_files WHERE tenant_id = $1 AND path = $2",
+            str(TENANT),
+            str(target),
+        )
+    assert resolved_row is not None, "the resolved spelling must gain a ledger row"
+    assert UUID(str(resolved_row["doc_id"])) == doc_id
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
+    assert len(units) == int(second["n_turns"]), "the read rows follow the reused id"
+    new_dlq = _new_dlq_rows(
+        await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
+    )
+    assert new_dlq == [], f"the fallback reuse must not DLQ rows: {new_dlq}"
+
+
+async def test_documents_probe_scopes_to_research_transcript_rows(research_pool):
+    """#370 scope: the documents probe only answers research transcript rows.
+
+    documents.source is shared with the corpus ingestion path, which also
+    mints Document aggregates. A corpus-shaped row at the same source must
+    never answer the research fallback probe.
+    """
+    from corpus_kb.research.dynamic_ingest import documents_source_doc_id
+
+    corpus_id, research_id = uuid4(), uuid4()
+    async with research_pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+        await conn.execute(
+            "INSERT INTO documents (doc_id, tenant_id, source, source_type) "
+            "VALUES ($1, $2, $3, 'text')",
+            str(corpus_id),
+            str(TENANT),
+            "/parity/corpus_source.md",
+        )
+        await conn.execute(
+            "INSERT INTO documents (doc_id, tenant_id, source, source_type, parser_name) "
+            "VALUES ($1, $2, $3, 'transcript', 'research.transcript_parser')",
+            str(research_id),
+            str(TENANT),
+            "/parity/research_source.md",
+        )
+    try:
+        assert (
+            await documents_source_doc_id(research_pool, TENANT, "/parity/corpus_source.md") is None
+        ), "a corpus-shaped documents row must not answer the probe"
+        found = await documents_source_doc_id(research_pool, TENANT, "/parity/research_source.md")
+        assert found == research_id, "a research transcript documents row answers the probe"
+    finally:
+        async with research_pool.acquire() as conn, conn.transaction():
+            await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+            await conn.execute(
+                "DELETE FROM documents WHERE tenant_id = $1 AND source IN ($2, $3)",
+                str(TENANT),
+                "/parity/corpus_source.md",
+                "/parity/research_source.md",
+            )
+
+
+# ---------------------------------------------------------------------------
+# Typed per-file conflict entries in batch ingest (#371)
+# ---------------------------------------------------------------------------
+
+
+async def test_batch_same_source_conflict_entry_is_typed(research_pool, tmp_path, monkeypatch):
+    """#371: a same-source conflict inside a batch stays a typed entry.
+
+    Two batch members resolving to one source fight over one stream. The
+    lost save must not abort the batch, and its error entry must carry the
+    taxonomy class.
+    """
+    import corpus_kb.handlers.research_handler as handler_module
+    from corpus_kb.domain.application import get_app
+
+    reader, projection, handler, _ = await _wire(research_pool)
+    file_a = tmp_path / "batch_a.md"
+    file_a.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+
+    first = await handler.ingest_transcript(TENANT, str(file_a))
+    doc_id = UUID(str(first["doc_id"]))
+    await projection.catch_up(reader)
+
+    # Both members are dirty and probe ONE stream: two spellings of one
+    # source share one ledger row after #366.
+    file_a.write_text(_TRANSCRIPT_V2, encoding="utf-8")
+    file_b = tmp_path / "batch_b.md"
+    file_b.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+
+    async def same_stream(pool, tenant_id, path):
+        return doc_id
+
+    monkeypatch.setattr(handler_module, "ledger_last_doc_id", same_stream)
+
+    # Serve the pre-race copy, exactly as a lost race would hold: the first
+    # save advances the stream, the second save collides on the version.
+    # Each rehydrate gets its own copy, so both carry the stale version.
+    real_app = get_app()
+    stale = real_app.repository.get(doc_id)
+
+    class _StaleRepository:
+        """Serves a fresh pre-race copy to every rehydrate."""
+
+        def __init__(self, aggregate):
+            self._aggregate = aggregate
+
+        def get(self, aggregate_id):
+            return copy.deepcopy(self._aggregate)
+
+    class _StaleApp:
+        """Real saves, a stale rehydrate."""
+
+        def __init__(self, real, aggregate):
+            self._real = real
+            self.repository = _StaleRepository(aggregate)
+
+        def save(self, aggregate):
+            return self._real.save(aggregate)
+
+    monkeypatch.setattr(
+        handler_module, "get_app", lambda *args, **kwargs: _StaleApp(real_app, stale)
+    )
+
+    batch = await handler.ingest_path(TENANT, str(tmp_path))
+    await projection.catch_up(reader)
+
+    assert batch["status"] == "success", "the batch envelope must hold"
+    assert batch["files_found"] == 2
+    failed = [r for r in batch["results"] if r.get("status") == "error"]
+    assert len(failed) == 1, f"exactly one member loses the save race: {batch}"
+    assert failed[0]["error_type"] == "conflict", "the lost save must carry its taxonomy class"
+    assert failed[0]["error"] == "Another ingest of this source saved first. Retry the ingest."
+    succeeded = [r for r in batch["results"] if r.get("status") == "success"]
+    assert len(succeeded) == 1, "the winning member still succeeds"
+
+
+async def test_batch_maps_raw_integrity_error_to_conflict(research_pool, tmp_path, monkeypatch):
+    """#371: a raw stream-version conflict maps to the taxonomy class.
+
+    The loop applies the same mapping the single-file path applies
+    (close-out F-3), and the batch envelope keeps its error entries.
+    """
+    from eventsourcing.persistence import IntegrityError
+
+    reader, projection, handler, _ = await _wire(research_pool)
+    file_a = tmp_path / "raw_a.md"
+    file_a.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+    file_b = tmp_path / "raw_b.md"
+    file_b.write_text(_TRANSCRIPT_V2, encoding="utf-8")
+
+    real_ingest = handler.ingest_transcript
+
+    async def conflicted(tenant_id, path, *args, **kwargs):
+        if Path(path).name == "raw_b.md":
+            raise IntegrityError("stream version conflict")
+        return await real_ingest(tenant_id, path, *args, **kwargs)
+
+    monkeypatch.setattr(handler, "ingest_transcript", conflicted)
+
+    batch = await handler.ingest_path(TENANT, str(tmp_path))
+    await projection.catch_up(reader)
+
+    assert batch["status"] == "success", "the batch envelope must hold"
+    failed = [r for r in batch["results"] if r.get("status") == "error"]
+    assert len(failed) == 1
+    assert failed[0]["error_type"] == "conflict", "the raw conflict must map to the taxonomy"
+    succeeded = [r for r in batch["results"] if r.get("status") == "success"]
+    assert len(succeeded) == 1 and succeeded[0]["path"].endswith("raw_a.md")
