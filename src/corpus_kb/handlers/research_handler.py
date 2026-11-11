@@ -33,7 +33,7 @@ from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
-from corpus_kb.errors import ConflictError, NotFoundError, ValidationError
+from corpus_kb.errors import ConflictError, CorpusError, NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
@@ -244,10 +244,7 @@ class ResearchHandler:
             # Concurrent re-ingest of one source: the second save hits the
             # stream-version conflict (close-out F-3). Map it through the
             # taxonomy instead of surfacing a raw 500-class failure.
-            raise ConflictError(
-                "Another ingest of this source saved first. Retry the ingest.",
-                remediation="Wait for the running ingest to finish. Then try again.",
-            ) from exc
+            raise _save_conflict() from exc
 
         await sink.record_ledger(
             file_path,
@@ -290,7 +287,7 @@ class ResearchHandler:
                 )
             except Exception as exc:
                 logger.warning("ingest failed for %s: %s", file_path, exc)
-                return {"status": "error", "path": str(file_path), "error": str(exc)}
+                return _error_entry(file_path, exc)
 
         results = await gather_bounded(files, _ingest_one, concurrency)
         return {
@@ -454,6 +451,30 @@ class ResearchHandler:
 
 def _batches(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _save_conflict() -> ConflictError:
+    """The taxonomy conflict for a lost same-source save race (close-out F-3)."""
+    return ConflictError(
+        "Another ingest of this source saved first. Retry the ingest.",
+        remediation="Wait for the running ingest to finish. Then try again.",
+    )
+
+
+def _error_entry(file_path: Path, exc: Exception) -> dict[str, Any]:
+    """One batch error entry; one file's failure never aborts the batch.
+
+    A raw stream-version conflict maps to the taxonomy's ConflictError.
+    That is the same mapping the single-file path applies (issue #371).
+    Typed failures carry their taxonomy class in ``error_type``. Other
+    failures keep the plain entry shape.
+    """
+    if isinstance(exc, IntegrityError):
+        exc = _save_conflict()
+    entry: dict[str, Any] = {"status": "error", "path": str(file_path), "error": str(exc)}
+    if isinstance(exc, CorpusError):
+        entry["error_type"] = exc.error_type
+    return entry
 
 
 _handler = SingletonSlot[ResearchHandler]("ResearchHandler requires an asyncpg pool")

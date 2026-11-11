@@ -7,6 +7,7 @@ Ollama is needed; the live-model path is covered separately (requires_ollama).
 
 from __future__ import annotations
 
+import copy
 import json
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -701,3 +702,113 @@ async def test_documents_probe_scopes_to_research_transcript_rows(research_pool)
                 "/parity/corpus_source.md",
                 "/parity/research_source.md",
             )
+
+
+# ---------------------------------------------------------------------------
+# Typed per-file conflict entries in batch ingest (#371)
+# ---------------------------------------------------------------------------
+
+
+async def test_batch_same_source_conflict_entry_is_typed(research_pool, tmp_path, monkeypatch):
+    """#371: a same-source conflict inside a batch stays a typed entry.
+
+    Two batch members resolving to one source fight over one stream. The
+    lost save must not abort the batch, and its error entry must carry the
+    taxonomy class.
+    """
+    import corpus_kb.handlers.research_handler as handler_module
+    from corpus_kb.domain.application import get_app
+
+    reader, projection, handler, _ = await _wire(research_pool)
+    file_a = tmp_path / "batch_a.md"
+    file_a.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+
+    first = await handler.ingest_transcript(TENANT, str(file_a))
+    doc_id = UUID(str(first["doc_id"]))
+    await projection.catch_up(reader)
+
+    # Both members are dirty and probe ONE stream: two spellings of one
+    # source share one ledger row after #366.
+    file_a.write_text(_TRANSCRIPT_V2, encoding="utf-8")
+    file_b = tmp_path / "batch_b.md"
+    file_b.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+
+    async def same_stream(pool, tenant_id, path):
+        return doc_id
+
+    monkeypatch.setattr(handler_module, "ledger_last_doc_id", same_stream)
+
+    # Serve the pre-race copy, exactly as a lost race would hold: the first
+    # save advances the stream, the second save collides on the version.
+    # Each rehydrate gets its own copy, so both carry the stale version.
+    real_app = get_app()
+    stale = real_app.repository.get(doc_id)
+
+    class _StaleRepository:
+        """Serves a fresh pre-race copy to every rehydrate."""
+
+        def __init__(self, aggregate):
+            self._aggregate = aggregate
+
+        def get(self, aggregate_id):
+            return copy.deepcopy(self._aggregate)
+
+    class _StaleApp:
+        """Real saves, a stale rehydrate."""
+
+        def __init__(self, real, aggregate):
+            self._real = real
+            self.repository = _StaleRepository(aggregate)
+
+        def save(self, aggregate):
+            return self._real.save(aggregate)
+
+    monkeypatch.setattr(
+        handler_module, "get_app", lambda *args, **kwargs: _StaleApp(real_app, stale)
+    )
+
+    batch = await handler.ingest_path(TENANT, str(tmp_path))
+    await projection.catch_up(reader)
+
+    assert batch["status"] == "success", "the batch envelope must hold"
+    assert batch["files_found"] == 2
+    failed = [r for r in batch["results"] if r.get("status") == "error"]
+    assert len(failed) == 1, f"exactly one member loses the save race: {batch}"
+    assert failed[0]["error_type"] == "conflict", "the lost save must carry its taxonomy class"
+    assert failed[0]["error"] == "Another ingest of this source saved first. Retry the ingest."
+    succeeded = [r for r in batch["results"] if r.get("status") == "success"]
+    assert len(succeeded) == 1, "the winning member still succeeds"
+
+
+async def test_batch_maps_raw_integrity_error_to_conflict(research_pool, tmp_path, monkeypatch):
+    """#371: a raw stream-version conflict maps to the taxonomy class.
+
+    The loop applies the same mapping the single-file path applies
+    (close-out F-3), and the batch envelope keeps its error entries.
+    """
+    from eventsourcing.persistence import IntegrityError
+
+    reader, projection, handler, _ = await _wire(research_pool)
+    file_a = tmp_path / "raw_a.md"
+    file_a.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+    file_b = tmp_path / "raw_b.md"
+    file_b.write_text(_TRANSCRIPT_V2, encoding="utf-8")
+
+    real_ingest = handler.ingest_transcript
+
+    async def conflicted(tenant_id, path, *args, **kwargs):
+        if Path(path).name == "raw_b.md":
+            raise IntegrityError("stream version conflict")
+        return await real_ingest(tenant_id, path, *args, **kwargs)
+
+    monkeypatch.setattr(handler, "ingest_transcript", conflicted)
+
+    batch = await handler.ingest_path(TENANT, str(tmp_path))
+    await projection.catch_up(reader)
+
+    assert batch["status"] == "success", "the batch envelope must hold"
+    failed = [r for r in batch["results"] if r.get("status") == "error"]
+    assert len(failed) == 1
+    assert failed[0]["error_type"] == "conflict", "the raw conflict must map to the taxonomy"
+    succeeded = [r for r in batch["results"] if r.get("status") == "success"]
+    assert len(succeeded) == 1 and succeeded[0]["path"].endswith("raw_a.md")
