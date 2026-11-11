@@ -109,6 +109,9 @@ def cluster_embeddings(
         n_jobs=1,
         random_state=random_state,
         transform_seed=transform_seed,
+        # umap 0.6 changed the default layout pipeline. True keeps the
+        # 0.5.x pipeline, so stored clusters stay stable.
+        compatibility_layout=True,
     )
     reduced = reducer.fit_transform(matrix)
 

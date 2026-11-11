@@ -157,6 +157,7 @@ class UmapModule(Protocol):
         metric: str,
         n_neighbors: int = ...,
         n_jobs: int = ...,
+        compatibility_layout: bool = ...,
     ) -> UmapInstance: ...
 
 
@@ -456,6 +457,9 @@ def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapI
             # random_state pins umap to serial anyway; saying so here skips
             # its "n_jobs overridden" UserWarning.
             n_jobs=1,
+            # umap 0.6 changed the default layout pipeline. True keeps the
+            # 0.5.x pipeline, so stored topics stay stable.
+            compatibility_layout=True,
         )
     return umap_module.UMAP(
         random_state=UMAP_RANDOM_STATE,
@@ -463,6 +467,9 @@ def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapI
         n_components=5,
         min_dist=0.0,
         metric="cosine",
+        # umap 0.6 changed the default layout pipeline. True keeps the
+        # 0.5.x pipeline, so inspect output stays stable.
+        compatibility_layout=True,
         n_jobs=1,
     )
 
