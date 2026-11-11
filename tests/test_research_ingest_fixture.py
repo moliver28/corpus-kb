@@ -85,6 +85,7 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
     assert result["status"] == "success"
     assert result["n_turns"] == labels["expected_turn_count"]
     assert result["parse_quality"] == "verified"
+    doc_id = UUID(str(result["doc_id"]))
 
     await projection.catch_up(reader)
 
@@ -94,7 +95,10 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
         assert by_label.get(speaker) == role, f"role mismatch for {speaker}"
     assert all(r["role_confirmed"] is False for r in speakers)
 
-    units = await _tenant_counts(research_pool, TENANT, "research_units")
+    # Tests share one throwaway database and one tenant. Count only the rows
+    # this document created (issue #367); leftover rows from other files are
+    # not this run's business.
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
     assert len(units) == labels["expected_turn_count"]
     assert all(r["text"] for r in units), "unit text not resolved from content store"
     assert all(
@@ -105,7 +109,10 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
     ]
     assert all(not r["is_codable"] for r in moderator_units)
 
-    exchanges = await _tenant_counts(research_pool, TENANT, "research_exchanges")
+    exchanges = _rows_for_doc(
+        await _tenant_counts(research_pool, TENANT, "research_exchanges"), doc_id
+    )
+    exchanges.sort(key=lambda r: r["seq"])
     assert len(exchanges) == labels["expected_exchange_count"]
     for expected_method, row in zip(labels["exchange_link_methods"], exchanges, strict=False):
         assert row["link_method"] == expected_method
@@ -159,11 +166,13 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
         )
     await projection.catch_up(reader)
 
-    signals = await _tenant_counts(research_pool, TENANT, "research_signals")
+    signals = _rows_for_run(await _tenant_counts(research_pool, TENANT, "research_signals"), run_id)
     assert signals, "SignalRecorded produced no research_signals row (M1)"
     assert all(s["unit_id"] != 0 for s in signals), "signal rows carry unit_id=0"
 
-    assignments = await _tenant_counts(research_pool, TENANT, "research_assignments")
+    assignments = _rows_for_run(
+        await _tenant_counts(research_pool, TENANT, "research_assignments"), run_id
+    )
     assert len(assignments) == 3
     qdep = [a for a in assignments if a["evidence_basis"] == "question_dependent"]
     assert qdep, "fixture missing question-dependent case"
@@ -188,6 +197,18 @@ async def test_fixture_e2e_event_stream_and_read_tables(research_pool, fixture_d
 
 async def test_rebuild_zero_embedder_calls_beyond_cache(research_pool, fixture_dir):
     reader, projection, handler, embedder = await _wire(research_pool)
+    # Other tests in this process leave events in the shared event log.
+    # Baseline the replay at THIS test's first event (issue #367): the
+    # rebuild must drain only what the ingest below wrote. catch_up reads
+    # its position from the (name, DEFAULT_TENANT) checkpoint row and
+    # follows last_sequence only.
+    from corpus_kb.contracts.model import DEFAULT_TENANT_ID
+    from corpus_kb.domain.application import get_app
+
+    events_table = get_app().recorder.events_table_name
+    baseline_seq = await research_pool.fetchval(
+        f"SELECT COALESCE(MAX(notification_id), 0) FROM public.{events_table}"
+    )
     result = await handler.ingest_transcript(
         TENANT, str(fixture_dir / "exchange_fixture_interview.md")
     )
@@ -201,6 +222,17 @@ async def test_rebuild_zero_embedder_calls_beyond_cache(research_pool, fixture_d
     try:
         await conn.execute(
             "DELETE FROM projection_checkpoints WHERE projection_name='ResearchProjection'"
+        )
+        # Restart the replay AT the baseline, not at zero: events below it
+        # belong to other tests in this shared process.
+        await conn.execute(
+            """
+            INSERT INTO projection_checkpoints
+            (projection_name, tenant_id, last_event_id, last_event_timestamp, last_sequence)
+            VALUES ('ResearchProjection', $1, gen_random_uuid(), NOW(), $2)
+            """,
+            DEFAULT_TENANT_ID,
+            baseline_seq,
         )
         await conn.execute(
             "TRUNCATE research_reviews, research_signals, research_assignments, "
@@ -343,6 +375,11 @@ def _new_dlq_rows(rows, baseline) -> list:
 def _rows_for_doc(rows, doc_id: UUID) -> list:
     """Scope tenant-wide rows to THIS test's document (the tenant is shared)."""
     return [r for r in rows if UUID(str(r["doc_id"])) == doc_id]
+
+
+def _rows_for_run(rows, run_id: UUID) -> list:
+    """Scope tenant-wide rows to THIS test's coding run (the tenant is shared)."""
+    return [r for r in rows if UUID(str(r["run_id"])) == run_id]
 
 
 async def test_force_reingest_replaces_in_place(research_pool, tmp_path):
