@@ -386,6 +386,10 @@ MountableApp
 # n_jobs=1 explicitly (skips umap's "n_jobs overridden" warning). The real
 # library consumes it as a keyword, so vulture sees no name read.
 n_jobs
+# compatibility_layout: both UMAP Protocols grew the keyword for umap-learn
+# 0.6. Call sites pass True to keep the 0.5.x layout pipeline. The real
+# library consumes it as a keyword, so vulture sees no name read.
+compatibility_layout
 
 # Corpus analysis program (analysis/settings.py, Wave 0 skeleton): the
 # typed-reader field the WP-3 engine reads (the seed floor) and the
