@@ -37,6 +37,7 @@ from corpus_kb.errors import ConflictError, NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
+    documents_source_doc_id,
     ledger_last_doc_id,
     plan_file,
     scan_path,
@@ -199,6 +200,13 @@ class ResearchHandler:
         # re-points the ledger at a phantom id. Mint only on a first ingest,
         # or when the ledger names a stream the event store lost.
         previous_doc_id = await ledger_last_doc_id(self._pool, tenant_id, file_path)
+        if previous_doc_id is None:
+            # FALLBACK (issue #370): a pre-#366 ledger row can key a
+            # non-resolved spelling, while the documents row keys the
+            # resolved source. Reuse that document id, so the stale row
+            # cannot mint a phantom stream. The probe only matches the
+            # research transcript rows this path owns.
+            previous_doc_id = await documents_source_doc_id(self._pool, tenant_id, str(file_path))
         doc = self._reused_document(previous_doc_id) if previous_doc_id is not None else None
         if doc is None:
             doc = Document(

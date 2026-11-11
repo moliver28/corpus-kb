@@ -589,3 +589,115 @@ async def test_reingest_to_fewer_turns_drops_stale_tail(research_pool, tmp_path)
         await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
     )
     assert new_dlq == [], f"the shrink re-ingest must not DLQ rows: {new_dlq}"
+
+
+# ---------------------------------------------------------------------------
+# Documents-source fallback for a missed ledger probe (#370)
+# ---------------------------------------------------------------------------
+
+
+async def test_pre366_ledger_spelling_falls_back_to_documents_row(research_pool, tmp_path):
+    """#370: a ledger row under a non-resolved spelling must not mint.
+
+    Pre-#366 ingests keyed the ledger on the caller's path string, while
+    the documents row keyed the resolved source. The resolved-spelling
+    ledger probe then missed, the next ingest minted a second aggregate,
+    and the documents row kept the old id.
+    """
+    reader, projection, handler, _ = await _wire(research_pool)
+    baseline_dlq = {
+        str(r["dlq_id"]) for r in await _tenant_counts(research_pool, TENANT, "projection_dlq")
+    }
+    target = tmp_path / "legacy_spelling.md"
+    target.write_text(_TRANSCRIPT_V1, encoding="utf-8")
+
+    first = await handler.ingest_transcript(TENANT, str(target))
+    assert first["status"] == "success"
+    doc_id = UUID(str(first["doc_id"]))
+    await projection.catch_up(reader)
+
+    # Simulate the pre-#366 row: the ledger keys a NON-resolved spelling
+    # and names the aggregate the documents row carries.
+    async with research_pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+        await conn.execute(
+            "DELETE FROM ingested_files WHERE tenant_id = $1 AND path = $2",
+            str(TENANT),
+            str(target),
+        )
+        await conn.execute(
+            "INSERT INTO ingested_files (tenant_id, path, file_sha256, source_type, doc_id) "
+            "VALUES ($1, $2, $3, 'transcript', $4)",
+            str(TENANT),
+            "legacy_spelling.md",
+            first["file_sha256"],
+            str(doc_id),
+        )
+
+    second = await handler.ingest_transcript(TENANT, str(target))
+    assert second["status"] == "success"
+    await projection.catch_up(reader)
+
+    assert UUID(str(second["doc_id"])) == doc_id, (
+        "the documents row must answer the missed ledger probe"
+    )
+    docs = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "documents"), doc_id)
+    assert len(docs) == 1, "one documents row carries the resolved source"
+    async with research_pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+        resolved_row = await conn.fetchrow(
+            "SELECT doc_id FROM ingested_files WHERE tenant_id = $1 AND path = $2",
+            str(TENANT),
+            str(target),
+        )
+    assert resolved_row is not None, "the resolved spelling must gain a ledger row"
+    assert UUID(str(resolved_row["doc_id"])) == doc_id
+    units = _rows_for_doc(await _tenant_counts(research_pool, TENANT, "research_units"), doc_id)
+    assert len(units) == int(second["n_turns"]), "the read rows follow the reused id"
+    new_dlq = _new_dlq_rows(
+        await _tenant_counts(research_pool, TENANT, "projection_dlq"), baseline_dlq
+    )
+    assert new_dlq == [], f"the fallback reuse must not DLQ rows: {new_dlq}"
+
+
+async def test_documents_probe_scopes_to_research_transcript_rows(research_pool):
+    """#370 scope: the documents probe only answers research transcript rows.
+
+    documents.source is shared with the corpus ingestion path, which also
+    mints Document aggregates. A corpus-shaped row at the same source must
+    never answer the research fallback probe.
+    """
+    from corpus_kb.research.dynamic_ingest import documents_source_doc_id
+
+    corpus_id, research_id = uuid4(), uuid4()
+    async with research_pool.acquire() as conn, conn.transaction():
+        await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+        await conn.execute(
+            "INSERT INTO documents (doc_id, tenant_id, source, source_type) "
+            "VALUES ($1, $2, $3, 'text')",
+            str(corpus_id),
+            str(TENANT),
+            "/parity/corpus_source.md",
+        )
+        await conn.execute(
+            "INSERT INTO documents (doc_id, tenant_id, source, source_type, parser_name) "
+            "VALUES ($1, $2, $3, 'transcript', 'research.transcript_parser')",
+            str(research_id),
+            str(TENANT),
+            "/parity/research_source.md",
+        )
+    try:
+        assert (
+            await documents_source_doc_id(research_pool, TENANT, "/parity/corpus_source.md") is None
+        ), "a corpus-shaped documents row must not answer the probe"
+        found = await documents_source_doc_id(research_pool, TENANT, "/parity/research_source.md")
+        assert found == research_id, "a research transcript documents row answers the probe"
+    finally:
+        async with research_pool.acquire() as conn, conn.transaction():
+            await conn.execute("SELECT set_config('app.current_tenant_id', $1, true)", str(TENANT))
+            await conn.execute(
+                "DELETE FROM documents WHERE tenant_id = $1 AND source IN ($2, $3)",
+                str(TENANT),
+                "/parity/corpus_source.md",
+                "/parity/research_source.md",
+            )

@@ -151,6 +151,28 @@ async def ledger_last_doc_id(pool: Store, tenant_id: UUID, path: Path) -> UUID |
     return UUID(str(row["doc_id"]))
 
 
+async def documents_source_doc_id(pool: Store, tenant_id: UUID, source: str) -> UUID | None:
+    """The research transcript document keyed on this resolved source, or None.
+
+    Read-side fallback for the reuse probe (issue #370). Pre-#366 ledger
+    rows can key a non-resolved path spelling. The documents row keys the
+    resolved source. The parser filter keeps the probe on the research
+    transcript path. Corpus documents keep their own aggregates.
+    """
+    async with tenant_connection(pool, tenant_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT doc_id FROM documents "
+            "WHERE tenant_id = $1 AND source = $2 "
+            "AND source_type = 'transcript' "
+            "AND parser_name = 'research.transcript_parser'",
+            str(tenant_id),
+            source,
+        )
+    if row is None or row["doc_id"] is None:
+        return None
+    return UUID(str(row["doc_id"]))
+
+
 def turn_text_shas(turns_text: list[str]) -> list[str]:
     return [text_sha256(normalize_turn_text(t)) for t in turns_text]
 
