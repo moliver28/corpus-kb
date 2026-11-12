@@ -56,6 +56,15 @@ async def test_tool_signatures_unchanged() -> None:
         # S5: ingest front door surfaces (tools/ingest_surface_tools.py).
         "ingest_status": {"pg_pool", "config", "tenant_id", "limit", "project_id"},
         "ingest_reembed": {"pg_pool", "config", "tenant_id", "limit", "doc_id"},
+        # U3 (#202): the bulk re-embed surface (tools/ingest_reingest.py).
+        "ingest_reingest": {
+            "pg_pool",
+            "config",
+            "tenant_id",
+            "project_id",
+            "dry_run",
+            "batch_size",
+        },
     }
 
     for name, params in expected.items():
