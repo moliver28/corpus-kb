@@ -200,6 +200,13 @@ SURFACES: tuple[Surface, ...] = (
         description="Re-embed degraded (zero-vector) chunks once the provider is back.",
         http_route="/api/ingest/reembed",
     ),
+    Surface(
+        name="ingest-reingest",
+        cli_path="ingest-reingest",
+        mcp_tool="ingest_reingest",
+        description="Bulk re-embed for a model switch; dry-run plan, resume, ledger row.",
+        http_route="/api/ingest/reingest",
+    ),
     # -- pipeline ingest ops (UI SPA Task 5a): the manifest gap closed -------
     Surface(
         name="ingest-directory",
@@ -874,6 +881,14 @@ run-ledger surfaces.
   corpus-kb ingest-status
   corpus-kb ingest-reembed [--limit N] [--doc-id <uuid>]
   ```
+
+- After an embedding-model change, re-embed every stored chunk in one
+  batched pass (no re-partition, no re-extract). Dry-run first for the
+  size; a re-run skips chunks the target model already wrote:
+
+  ```
+  corpus-kb ingest-reingest [--dry-run] [--project-id <uuid>]
+  ```
 """
 
 _TOPICS_BODY = """# corpus-topics — the topic layer (Wave 4)
@@ -1353,7 +1368,7 @@ WRAPPERS: tuple[Wrapper, ...] = (
         description="Top-level ingest front door: files/dirs, watch auto-heal, status, reembed",
         argument_hint="<path> [--watch] [--source-type <strategy>] [--reembed]",
         body=_FRONT_DOOR_BODY,
-        covers=("ingest-status", "ingest-reembed"),
+        covers=("ingest-status", "ingest-reembed", "ingest-reingest"),
     ),
     Wrapper(
         name="corpus-topics",
@@ -1562,9 +1577,11 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "get_metadata",
     "query_document_stats",
     "sync_database",
-    # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py)
+    # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py,
+    # tools/ingest_reingest.py for the #202 bulk re-embed)
     "ingest_status",
     "ingest_reembed",
+    "ingest_reingest",
     # Wave 4 topics layer (tools/topics_tools.py)
     "topics_build",
     "topics_list",

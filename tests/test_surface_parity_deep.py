@@ -87,6 +87,7 @@ import corpus_kb.tools.conflicts_tools as conflicts_tools_module
 import corpus_kb.tools.events_tools as events_tools_module
 import corpus_kb.tools.extraction_tune_tools as extraction_tune_tools_module
 import corpus_kb.tools.ingest_common as ingest_common_module
+import corpus_kb.tools.ingest_reingest as ingest_reingest_module
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools_module
 import corpus_kb.tools.ingest_url_tools as ingest_url_tools_module
 import corpus_kb.tools.keyphrase_tools as keyphrase_tools_module
@@ -393,6 +394,10 @@ async def _shared_ingest_status(ctx: dict[str, Any]) -> dict[str, Any]:
 
 async def _shared_ingest_reembed(ctx: dict[str, Any]) -> dict[str, Any]:
     return await ingest_surface_tools_module.ingest_reembed(ctx["pool"], config=ctx["config"])
+
+
+async def _shared_ingest_reingest(ctx: dict[str, Any]) -> dict[str, Any]:
+    return await ingest_reingest_module.ingest_reingest(ctx["pool"], config=ctx["config"])
 
 
 async def _shared_topics_build(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1127,6 +1132,12 @@ LEGS: dict[str, _Leg] = {
         _shared_ingest_reembed,
         _post("/api/ingest/reembed", {}),
         _sock("ingest_reembed", {}),
+        mcp=_mcp({}),
+    ),
+    "ingest_reingest": _Leg(
+        _shared_ingest_reingest,
+        _post("/api/ingest/reingest", {}),
+        _sock("ingest_reingest", {}),
         mcp=_mcp({}),
     ),
     "topics_build": _Leg(
@@ -2603,6 +2614,8 @@ def test_catalogue_matches_surface_registry() -> None:
         "ingest_status",
         "ingest_directory",
         "ingest_url",
+        # U3 (#202): the bulk re-embed row byte-matches its registry row.
+        "ingest_reingest",
         "topics_build",
         "topics_list",
         # Analysis program Wave 0 (the registry skeleton rows).
