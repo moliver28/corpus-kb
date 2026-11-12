@@ -19,18 +19,32 @@ from ._gliner2_types import GlinerBatchModel, GlinerModel, GlinerSpan
 logger = logging.getLogger(__name__)
 
 
+def unwrap_entities(raw: dict[str, object]) -> dict[str, list[object]]:
+    """The ``{label: [span, ...]}`` map inside a gliner2 payload.
+
+    gliner2 2.1.0 wraps the buckets in a top-level ``entities`` key;
+    older payloads were flat. Both shapes are accepted.
+    """
+    entities = raw.get("entities")
+    if isinstance(entities, dict):
+        return cast(dict[str, list[object]], entities)
+    return cast(dict[str, list[object]], raw)
+
+
 def normalize_spans(raw: dict[str, list[object]]) -> list[GlinerSpan]:
     """Flatten a ``{label: [span, ...]}`` payload into normalized spans.
 
     gliner2 span payloads have been observed as both plain dicts
-    (``{"text", "start", "end", "score", "label"}``) and small objects with
-    those attributes; both are handled here.
+    (``{"text", "start", "end", "confidence"|"score", "label"}``) and
+    small objects with those attributes; both are handled here. The
+    bucket key is the label of last resort: gliner2 2.1.0 span dicts
+    carry no ``label`` of their own.
     """
     spans: list[GlinerSpan] = []
-    for bucket in raw.values():
+    for label, bucket in raw.items():
         for item in bucket:
             if isinstance(item, dict):
-                spans.append(_DictSpan(cast(dict[str, object], item)))
+                spans.append(_DictSpan(cast(dict[str, object], item), str(label)))
             else:
                 spans.append(cast(GlinerSpan, item))
     return spans
@@ -46,12 +60,14 @@ class _DictSpan:
 
     __slots__ = ("end", "label", "score", "start", "text")
 
-    def __init__(self, data: dict[str, object]) -> None:
+    def __init__(self, data: dict[str, object], bucket_label: str) -> None:
         self.text = str(data.get("text", ""))
         self.start = _as_int(data.get("start"))
         self.end = _as_int(data.get("end"))
-        self.score = _as_float(data.get("score"))
-        self.label = str(data.get("label", data.get("entity_group", "")))
+        # gliner2 2.1.0 emits ``confidence``; ``score`` stays the fallback.
+        self.score = _as_float(data.get("confidence", data.get("score")))
+        label_value = data.get("label") or data.get("entity_group") or bucket_label
+        self.label = str(label_value)
 
 
 def _as_int(value: object) -> int:
@@ -69,11 +85,18 @@ def _as_float(value: object) -> float:
 
 
 class GlinerPredictor:
-    """Per-text span prediction; the batch path is earned, not assumed."""
+    """Per-text span prediction; the batch path is earned, not assumed.
 
-    def __init__(self, model: GlinerModel, schema: dict[str, str]) -> None:
+    ``threshold`` is forwarded to the model so the backend's pinned
+    operating point (not gliner2's default) governs which spans arrive.
+    Span and confidence flags are always on: without them gliner2 2.1.0
+    returns bare strings with no offsets or scores.
+    """
+
+    def __init__(self, model: GlinerModel, schema: dict[str, str], threshold: float = 0.5) -> None:
         self._model = model
         self._schema = schema
+        self._threshold = threshold
         self._batch_ok: bool | None = None
 
     def predict(self, texts: list[str]) -> list[list[GlinerSpan]]:
@@ -97,8 +120,14 @@ class GlinerPredictor:
         return batched
 
     def _predict_one(self, text: str) -> list[GlinerSpan]:
-        raw = self._model.extract_entities(text, self._schema)
-        return normalize_spans(raw)
+        raw = self._model.extract_entities(
+            text,
+            self._schema,
+            threshold=self._threshold,
+            include_spans=True,
+            include_confidence=True,
+        )
+        return normalize_spans(unwrap_entities(raw))
 
     def _batch_predict(self, texts: list[str]) -> list[list[GlinerSpan]] | None:
         """One batched call, or None when the model has no batch API."""
@@ -108,14 +137,20 @@ class GlinerPredictor:
         if not isinstance(model, GlinerBatchModel):
             return None
         try:
-            raw_list = model.batch_extract_entities(texts, self._schema)
+            raw_list = model.batch_extract_entities(
+                texts,
+                self._schema,
+                threshold=self._threshold,
+                include_spans=True,
+                include_confidence=True,
+            )
         except Exception as exc:
             logger.warning("gliner batch call failed (%s); using per-text", exc)
             return None
         if len(raw_list) != len(texts):
             logger.warning("gliner batch returned %d of %d results", len(raw_list), len(texts))
             return None
-        return [normalize_spans(raw) for raw in raw_list]
+        return [normalize_spans(unwrap_entities(raw)) for raw in raw_list]
 
 
 def _equal(batched: list[list[GlinerSpan]], per_text: list[list[GlinerSpan]]) -> bool:

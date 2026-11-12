@@ -27,7 +27,9 @@ def build_ontology() -> Ontology:
 
 
 class _FakeGliner2Model:
-    def extract_entities(self, text: str, schema: dict[str, str]) -> dict[str, list[object]]:
+    def extract_entities(
+        self, text: str, schema: dict[str, str], **kwargs: object
+    ) -> dict[str, object]:
         return {
             "person": [{"text": "Elena", "start": 0, "end": 5, "score": 0.92, "label": "person"}]
         }

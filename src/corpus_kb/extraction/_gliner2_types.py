@@ -6,16 +6,19 @@ same lazy importlib string-import pattern as ``_langextract_types.py`` —
 so this module imports cleanly on a bare install and pyright type-checks
 against the Protocols below, never the real package.
 
-API assumption (pinned): ``gliner2 >= 2.1`` exposes
-``GLiNER2.from_pretrained(model_id, revision=...)`` returning a model
-whose ``extract_entities(text, schema)`` takes a ``dict[str, str]`` of
-``{label: one-line description}`` and returns
-``{label: [span, ...]}`` where each span carries ``text``, ``start``,
-``end`` and ``score``. Spans are normalized defensively: mapping-like
-and attribute-like span objects are both accepted. If the installed
-gliner2 deviates, the raised exception propagates to
-``extract_with_fallback``, which records it honestly and falls back —
-no silent success is possible.
+API assumption (verified against gliner2 2.1.0 on 2026-11-12):
+``gliner2 >= 2.1`` exposes ``GLiNER2.from_pretrained(model_id,
+revision=...)`` returning a model whose ``extract_entities(text, schema,
+*, threshold, include_spans, include_confidence)`` takes a
+``dict[str, str]`` of ``{label: one-line description}`` and returns
+``{"entities": {label: [span, ...]}}`` where each span carries ``text``,
+``start``, ``end`` and ``confidence``. The span flags are REQUIRED: with
+them off, gliner2 2.1.0 returns bare strings with no offsets or scores.
+Spans are normalized defensively: mapping-like and attribute-like span
+objects are both accepted, and ``score`` is read as a fallback for
+``confidence``. If the installed gliner2 deviates, the raised exception
+propagates to ``extract_with_fallback``, which records it honestly and
+falls back — no silent success is possible.
 """
 
 from __future__ import annotations
@@ -39,7 +42,15 @@ class GlinerSpan(Protocol):
 class GlinerModel(Protocol):
     """Schema-conditioned entity extraction model."""
 
-    def extract_entities(self, text: str, schema: dict[str, str]) -> dict[str, list[object]]: ...
+    def extract_entities(
+        self,
+        text: str,
+        schema: dict[str, str],
+        *,
+        threshold: float = 0.5,
+        include_spans: bool = False,
+        include_confidence: bool = False,
+    ) -> dict[str, object]: ...
 
 
 @runtime_checkable
@@ -52,8 +63,14 @@ class GlinerBatchModel(Protocol):
     """
 
     def batch_extract_entities(
-        self, texts: list[str], schema: dict[str, str]
-    ) -> list[dict[str, list[object]]]: ...
+        self,
+        texts: list[str],
+        schema: dict[str, str],
+        *,
+        threshold: float = 0.5,
+        include_spans: bool = False,
+        include_confidence: bool = False,
+    ) -> list[dict[str, object]]: ...
 
 
 class Gliner2Factory(Protocol):
