@@ -4,6 +4,9 @@ Generalizes the notebook pipeline's shape (``research/notebook.py``) to
 the whole knowledge base: hybrid retrieval, numbered evidence blocks,
 temperature-0 generation with [n] citations, sentence-level citation
 filtering, and optional claim verification via the config-driven judge.
+The shared steps (retrieval, citation rule, verification) live in
+``ask/steps.py``; the streaming twin that reuses them is
+``ask/streaming.py``.
 
 Every step on the way to an answer is an HONEST envelope, never a raise:
 
@@ -22,12 +25,18 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Protocol, cast
+from typing import cast
 from uuid import UUID
 
+from corpus_kb.ask.steps import (
+    SearchHandler,
+    abstain,
+    evidence_blocks,
+    retrieve_evidence,
+    verify_claims,
+    verify_with_span,
+)
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID
-from corpus_kb.domain.models import SearchQuery, SearchResult
-from corpus_kb.handlers.query_integrity import SearchEnvelope
 from corpus_kb.research.notebook import cite_sentences
 
 # The honest-status vocabulary for the ask operation.
@@ -52,11 +61,26 @@ ASK_SYSTEM_PROMPT = (
 # never a call in an argument default).
 DEFAULT_TENANT_UUID = UUID(DEFAULT_TENANT_ID)
 
-
-class SearchHandler(Protocol):
-    """The retrieval seam: exactly what ``compose_answer`` needs."""
-
-    async def handle_search_with_meta(self, query: SearchQuery) -> SearchEnvelope: ...
+__all__ = [
+    "ASK_SYSTEM_PROMPT",
+    "DEFAULT_TENANT_UUID",
+    "GENERATION_UNAVAILABLE",
+    "NO_CITABLE_SENTENCES",
+    "NO_EVIDENCE",
+    "STATUS_DEGRADED",
+    "STATUS_EMPTY",
+    "STATUS_SUCCESS",
+    "AnswerBundle",
+    "SearchHandler",
+    "abstain",
+    "build_prompt",
+    "compose_answer",
+    "evidence_blocks",
+    "model_name",
+    "retrieve_evidence",
+    "verify_claims",
+    "verify_with_span",
+]
 
 
 @dataclass(frozen=True)
@@ -95,33 +119,11 @@ class AnswerBundle:
         }
 
 
-def evidence_blocks(results: list[SearchResult]) -> list[dict[str, object]]:
-    """Numbered evidence blocks: chunk id, source, text, score, provenance."""
-    return [
-        {
-            "n": index + 1,
-            "chunk_id": str(result.chunk_id),
-            "doc_id": str(result.doc_id),
-            "source": result.source,
-            "text": result.text,
-            "score": result.score,
-            "file_path": result.file_path,
-            "heading_path": list(result.heading_path) if result.heading_path else [],
-        }
-        for index, result in enumerate(results)
-    ]
-
-
-def _abstain() -> dict[str, object]:
-    """The honest abstention verdict set (no judge, or nothing to check)."""
-    return {"groundedness": 0.0, "verdicts": [], "abstained": True}
-
-
-def _model_name(llm: object) -> str:
+def model_name(llm: object) -> str:
     return str(getattr(llm, "model", "") or "")
 
 
-def _build_prompt(question: str, sources: list[dict[str, object]]) -> str:
+def build_prompt(question: str, sources: list[dict[str, object]]) -> str:
     blocks = [f"[{src['n']}] ({src['source']})\n{str(src['text']).strip()}" for src in sources]
     return (
         f"Question: {question}\n\nEvidence:\n" + "\n\n".join(blocks) + "\n\n"
@@ -139,7 +141,7 @@ async def _generate(
     LlmHandler degrade contract), and an empty response — the caller
     degrades to evidence-only in every case.
     """
-    model = _model_name(llm)
+    model = model_name(llm)
     raw_chat = getattr(llm, "chat", None)
     if not callable(raw_chat):
         return "", model, True
@@ -148,7 +150,7 @@ async def _generate(
         response = await chat(
             [
                 {"role": "system", "content": ASK_SYSTEM_PROMPT},
-                {"role": "user", "content": _build_prompt(question, sources)},
+                {"role": "user", "content": build_prompt(question, sources)},
             ],
             options={"temperature": 0},
         )
@@ -166,43 +168,6 @@ async def _generate(
     return text, model, not text.strip()
 
 
-def verify_claims(
-    judge: object, answer: str, sources: list[dict[str, object]]
-) -> dict[str, object]:
-    """Decompose + entail per claim; abstain without a judge or claims.
-
-    Mirrors the judge's own never-raises contract: a broken judge yields
-    an abstention, never a fabricated groundedness score.
-    """
-    if judge is None:
-        return _abstain()
-    decompose = getattr(judge, "decompose", None)
-    entail = getattr(judge, "entail", None)
-    if not callable(decompose) or not callable(entail):
-        return _abstain()
-    entail_fn = cast("Callable[..., tuple[str, float]]", entail)
-    try:
-        claims = decompose(answer)
-    except Exception:
-        return _abstain()
-    if not isinstance(claims, list) or not claims:
-        return _abstain()
-    cited = [str(source["text"]) for source in sources]
-    verdicts: list[dict[str, object]] = []
-    for claim in claims:
-        try:
-            label, confidence = entail_fn(str(claim), cited)
-        except Exception:
-            label, confidence = "unsupported", 0.0
-        verdicts.append({"claim": str(claim), "label": str(label), "confidence": float(confidence)})
-    entailed = sum(1 for verdict in verdicts if verdict["label"] == "entailed")
-    return {
-        "groundedness": entailed / len(verdicts),
-        "verdicts": verdicts,
-        "abstained": False,
-    }
-
-
 async def compose_answer(
     question: str,
     handler: SearchHandler,
@@ -218,30 +183,15 @@ async def compose_answer(
     carries ONLY sentences whose [n] index resolves to retrieved evidence
     (the grounded contract); everything else is dropped.
     """
-    from corpus_kb.utils.tracing import (
-        ATTR_CLAIMS,
-        ATTR_GROUNDEDNESS,
-        ATTR_MODEL,
-        ATTR_ROW_COUNT,
-        SPAN_ASK_GENERATE,
-        SPAN_ASK_RETRIEVE,
-        SPAN_ASK_VERIFY,
-        span,
-    )
+    from corpus_kb.utils.tracing import ATTR_MODEL, SPAN_ASK_GENERATE, span
 
-    with span(SPAN_ASK_RETRIEVE) as current:
-        envelope = await handler.handle_search_with_meta(
-            SearchQuery(tenant_id=tenant_id, query=question, k=k)
-        )
-        current.set_attribute(ATTR_ROW_COUNT, len(envelope.results))
-    sources = evidence_blocks(envelope.results)
-    degraded = envelope.degraded_excluded.to_dict()
+    envelope, sources, degraded = await retrieve_evidence(question, handler, tenant_id, k)
     # Issue #136 receipt: the multi-query rewrites, when the flag ran.
     rewrites = envelope.query_rewrites
-    model = _model_name(llm)
+    model = model_name(llm)
     if not sources:
         return AnswerBundle(
-            STATUS_EMPTY, "", [], sources, _abstain(), model, NO_EVIDENCE, degraded, rewrites
+            STATUS_EMPTY, "", [], sources, abstain(), model, NO_EVIDENCE, degraded, rewrites
         )
     with span(SPAN_ASK_GENERATE) as current:
         text, gen_model, failed = await _generate(llm, question, sources)
@@ -253,7 +203,7 @@ async def compose_answer(
             "",
             [],
             sources,
-            _abstain(),
+            abstain(),
             model,
             GENERATION_UNAVAILABLE,
             degraded,
@@ -266,22 +216,14 @@ async def compose_answer(
             "",
             [],
             sources,
-            _abstain(),
+            abstain(),
             model,
             NO_CITABLE_SENTENCES,
             degraded,
             rewrites,
         )
     answer = " ".join(str(sentence["text"]) for sentence in sentences)
-    with span(SPAN_ASK_VERIFY) as current:
-        verify = verify_claims(judge, answer, sources)
-        verdicts = verify.get("verdicts")
-        groundedness = verify.get("groundedness")
-        current.set_attribute(ATTR_CLAIMS, len(verdicts) if isinstance(verdicts, list) else 0)
-        current.set_attribute(
-            ATTR_GROUNDEDNESS,
-            float(groundedness) if isinstance(groundedness, (int, float)) else 0.0,
-        )
+    verify = await verify_with_span(judge, answer, sources)
     return AnswerBundle(
         STATUS_SUCCESS,
         answer,

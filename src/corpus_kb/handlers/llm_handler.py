@@ -11,7 +11,9 @@ callers can continue operating in degraded mode.
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import AsyncIterator
 from typing import Any, cast
 
 import httpx
@@ -65,6 +67,76 @@ class LlmHandler:
         if options:
             payload["options"] = options
         return await self._post(f"{self.base_url}/api/chat", payload, use_model)
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, str]],
+        model: str | None = None,
+        options: dict[str, object] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Stream the chat completion for ``messages`` via /api/chat.
+
+        Ollama answers NDJSON (one JSON object per line). Each content
+        piece is yielded as ``{"message": {"content": <piece>},
+        "done": False}``; the final ``done: true`` line ends the stream.
+        The never-raises contract holds: any failure yields one terminal
+        ``{"error": ..., "model": ...}`` event instead. Pieces may arrive
+        before a failure, so a consumer must treat the error event as the
+        only honest end signal.
+        """
+        use_model = model or self.model
+        input_error = _validate_messages(messages)
+        if input_error is not None:
+            logger.warning("LlmHandler.chat_stream rejected input: %s", input_error)
+            yield {"error": input_error, "model": use_model}
+            return
+        payload: dict[str, Any] = {"model": use_model, "messages": messages, "stream": True}
+        if options:
+            payload["options"] = options
+        url = f"{self.base_url}/api/chat"
+        try:
+            async with (
+                httpx.AsyncClient(timeout=self._timeout) as client,
+                client.stream("POST", url, json=payload) as response,
+            ):
+                if response.status_code != 200:
+                    detail = (await response.aread()).decode("utf-8", "replace")[:200]
+                    logger.warning(
+                        "Ollama returned status %s at %s: %s",
+                        response.status_code,
+                        url,
+                        detail,
+                    )
+                    yield {
+                        "error": f"Ollama returned status {response.status_code}: {detail}",
+                        "model": use_model,
+                    }
+                    return
+                async for line in response.aiter_lines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = cast(dict[str, Any], json.loads(line))
+                    except ValueError:
+                        logger.warning("Ollama returned malformed JSON from %s", url)
+                        yield {"error": "Ollama returned malformed JSON", "model": use_model}
+                        return
+                    if event.get("error"):
+                        yield {"error": str(event["error"]), "model": use_model}
+                        return
+                    message = event.get("message")
+                    piece = message.get("content", "") if isinstance(message, dict) else ""
+                    if isinstance(piece, str) and piece:
+                        yield {
+                            "message": {"role": "assistant", "content": piece},
+                            "done": False,
+                        }
+                    if event.get("done") is True:
+                        return
+        except (httpx.HTTPError, OSError) as exc:
+            logger.warning("Ollama request failed at %s: %s", url, exc)
+            yield {"error": f"Ollama request failed: {exc}", "model": use_model}
 
     async def generate(
         self,
