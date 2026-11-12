@@ -252,7 +252,12 @@ def _pseudo_entity(
         source_end_char=span[1],
         confidence=score,
         extractor_id="relex",
-        metadata={"extractor": "relex", "pseudo": True, "confidence": score},
+        metadata={
+            "extractor": "relex",
+            "pseudo": True,
+            "confidence": score,
+            "gliner_type": hint,
+        },
     )
 
 
