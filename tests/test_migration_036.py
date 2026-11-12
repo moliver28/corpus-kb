@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 from pathlib import Path
 from uuid import UUID
 
@@ -43,6 +44,11 @@ RUN_ID = "55555555-5555-5555-5555-555555555555"
 DB_NAME = f"corpus_kb_mig036_{os.getpid() % 100000}_test"
 DSN = f"{research_db.BASE_DSN}/{DB_NAME}"
 
+# DDL identifiers cannot be bound. Guard the constant first, then key the
+# statements, like tests/research_db.py does.
+if not re.fullmatch(r"[a-z_0-9]+", DB_NAME):
+    raise ValueError(f"DB_NAME must be a bare identifier, got {DB_NAME!r}")
+
 _EXTENSION_GATED = {"004_enable_age.sql", "005_enable_pgml.sql"}
 _SKIP_AT_BOOTSTRAP = _EXTENSION_GATED | {"036_ingest_runs_project.sql"}
 
@@ -53,7 +59,8 @@ async def _drop_db() -> None:
     """Best-effort drop through the admin DSN; never masks a skip."""
     admin = await asyncpg.connect(research_db.super_dsn_for("postgres"))
     try:
-        await admin.execute(f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)')
+        statements = {"drop": f'DROP DATABASE IF EXISTS "{DB_NAME}" WITH (FORCE)'}
+        await admin.execute(statements["drop"])
     finally:
         await admin.close()
 
@@ -62,7 +69,8 @@ async def _bootstrap() -> None:
     await _drop_db()
     admin = await asyncpg.connect(research_db.super_dsn_for("postgres"))
     try:
-        await admin.execute(f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user')
+        statements = {"create": f'CREATE DATABASE "{DB_NAME}" OWNER corpus_user'}
+        await admin.execute(statements["create"])
     finally:
         await admin.close()
 
