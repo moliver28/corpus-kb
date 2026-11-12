@@ -10,6 +10,7 @@ behavior and the call order are unchanged.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast
 
@@ -104,6 +105,7 @@ async def post_fusion(
     retrieval_settings: RetrievalSettings,
     outcome: SearchOutcome,
     run: ArmRun,
+    extra_outcomes: Sequence[SearchOutcome] = (),
 ) -> list[SearchResult]:
     """RRF fusion (the determinism pin region), rerank, parent expansion.
 
@@ -112,9 +114,19 @@ async def post_fusion(
     the SQL function). The rerank stage runs outside the handler's
     connection so a max_size=1 pool cannot deadlock on the reranker's
     own acquire.
+
+    Issue #136: ``extra_outcomes`` are the multi-query rewrite legs
+    (primary first, then one per rewrite); they ride the N-leg fusion.
+    The no-rewrite path keeps the two-leg ``fuse_arm_rows`` call — the
+    flag-off fusion is byte-identical to the pre-multi-query pipeline.
     """
     k = run.query.k if run.query.k is not None else rerank_settings.return_top_k
-    fused_results = query_stages.fuse_arm_rows(outcome, k, retrieval_settings.rrf_k)
+    if extra_outcomes:
+        fused_results = query_stages.fuse_outcome_legs(
+            [outcome, *extra_outcomes], k, retrieval_settings.rrf_k
+        )
+    else:
+        fused_results = query_stages.fuse_arm_rows(outcome, k, retrieval_settings.rrf_k)
     return await query_stages.post_fuse(
         reranker,
         rerank_settings,
@@ -130,9 +142,16 @@ async def post_fusion(
 
 
 def final_envelope(
-    outcome: SearchOutcome, results: list[SearchResult], run: ArmRun
+    outcome: SearchOutcome,
+    results: list[SearchResult],
+    run: ArmRun,
+    query_rewrites: list[str] | None = None,
 ) -> SearchEnvelope:
-    """Attach the degraded-honesty accounting to the final results."""
+    """Attach the degraded-honesty accounting to the final results.
+
+    ``query_rewrites`` (issue #136) rides only when multi-query fusion
+    ran; None keeps the envelope byte-identical to the single-query path.
+    """
     return finalize_envelope(
         results,
         run.reasons,
@@ -142,4 +161,5 @@ def final_envelope(
         vector_index_note=outcome.vector_index_note,
         lexical_index_note=outcome.lexical_index_note,
         meta_hits=[dict(row) for row in outcome.meta_rows],
+        query_rewrites=query_rewrites,
     )
