@@ -396,6 +396,55 @@ def test_classification_rows_round_trip(migrated_dsn: str) -> None:
         con.close()
 
 
+def test_ingest_runs_project_link_round_trip(migrated_dsn: str) -> None:
+    """The ledger project link (duckdb 037) mirrors the Postgres pair.
+
+    Proves the pair of pg 036 on the live mirror: the nullable VARCHAR
+    column, the (tenant_id, project_id) index, the NULL default on rows
+    with no link, and a plain stamp update.
+    """
+    con = _connect(migrated_dsn)
+    try:
+        column = con.execute(
+            "SELECT data_type FROM duckdb_columns()"
+            " WHERE table_name = 'ingest_runs' AND column_name = 'project_id'"
+        ).fetchone()
+        assert column is not None and column[0] == "VARCHAR", (
+            "duckdb 037 must add ingest_runs.project_id as VARCHAR"
+        )
+        index = con.execute(
+            "SELECT index_name FROM duckdb_indexes()"
+            " WHERE table_name = 'ingest_runs'"
+            " AND index_name = 'idx_ingest_runs_tenant_project'"
+        ).fetchone()
+        assert index is not None, "the (tenant_id, project_id) index must land"
+
+        tenant = "00000000-0000-0000-0000-000000000001"
+        run_id = "55555555-5555-5555-5555-555555555555"
+        con.execute("BEGIN TRANSACTION")
+        con.execute(
+            "INSERT INTO ingest_runs (run_id, tenant_id, source_type) VALUES (?, ?, ?)",
+            [run_id, tenant, "transcript"],
+        )
+        con.execute("COMMIT")
+        linked = con.execute(
+            "SELECT project_id FROM ingest_runs WHERE run_id = ?", [run_id]
+        ).fetchone()
+        assert linked == (None,), "a row with no link must read NULL"
+
+        project_id = "66666666-6666-6666-6666-666666666666"
+        con.execute(
+            "UPDATE ingest_runs SET project_id = ? WHERE run_id = ?",
+            [project_id, run_id],
+        )
+        stamped = con.execute(
+            "SELECT project_id FROM ingest_runs WHERE run_id = ?", [run_id]
+        ).fetchone()
+        assert stamped == (project_id,)
+    finally:
+        con.close()
+
+
 # ---------------------------------------------------------------------------
 # Schema mirror completeness (seed of the schema-parity manifest)
 # ---------------------------------------------------------------------------
