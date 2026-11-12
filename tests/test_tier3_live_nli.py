@@ -28,6 +28,7 @@ from corpus_kb.coding.uncertainty.tier3_consistency import self_consistency
 pytestmark = pytest.mark.requires_ollama
 
 _MODEL = os.environ.get("CORPUS_KB_NLI_MODEL", "qwen3:4b")
+_OLLAMA_BASE = "http://localhost:11434"
 
 # Unambiguous smoke pairs. The entail pair is a same-facts paraphrase; the
 # contrast pair states disjoint facts. Both stayed constant across repeated
@@ -49,6 +50,12 @@ def _model_available() -> bool:
 
 
 def _one_generate_answers() -> bool:
+    from tests.live_services import loopback_service_url
+
+    # The guard keeps the probe on the local dev server; None means skip.
+    url = loopback_service_url(_OLLAMA_BASE, "/api/generate")
+    if url is None:
+        return False
     body = json.dumps(
         {
             "model": _MODEL,
@@ -59,7 +66,7 @@ def _one_generate_answers() -> bool:
         }
     ).encode("utf-8")
     request = urllib.request.Request(
-        "http://localhost:11434/api/generate",
+        url,
         data=body,
         headers={"Content-Type": "application/json"},
     )

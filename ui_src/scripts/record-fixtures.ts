@@ -38,6 +38,10 @@ if (resolved.address !== "127.0.0.1" && resolved.address !== "::1") {
     `CORPUS_KB_BASE_URL must resolve to a loopback address; got ${resolved.address}`,
   );
 }
+// Fetches always go to this validated URL object, never to the raw env
+// string; the env string could parse differently than the value checked
+// above.
+const validatedBase = parsedBase;
 
 const PROBES: Probe[] = [
   {
@@ -52,9 +56,14 @@ const PROBES: Probe[] = [
 ];
 
 for (const probe of PROBES) {
+  const url = new URL(probe.path, validatedBase.href);
+  // Boundary check at the request site: the probe URL must stay inside
+  // the validated loopback origin.
+  if (url.origin !== validatedBase.origin) {
+    throw new Error(`probe path ${probe.path} escapes the validated base origin`);
+  }
   let response: Response;
   try {
-    const url = new URL(probe.path, base);
     response = await fetch(url, {
       method: probe.method,
       headers: { "Content-Type": "application/json" },

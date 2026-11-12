@@ -125,13 +125,13 @@ async def test_rrf_k_config_flows_into_fusion_call(
     mock_pool.acquire.return_value.__aexit__ = AsyncMock(return_value=False)
 
     fusion_calls: list[dict] = []
-    real_fuse = qh.rrf_fuse
+    real_fuse = qh.rrf_fuse_legs
 
     def recording_fuse(*args: object, **kwargs: object) -> object:
         fusion_calls.append({"args": args, "kwargs": kwargs})
         return real_fuse(*args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr(qh, "rrf_fuse", recording_fuse)
+    monkeypatch.setattr(qh, "rrf_fuse_legs", recording_fuse)
 
     embedder = MagicMock()
     embedder.embed.return_value = [0.0] * 768
@@ -147,11 +147,14 @@ async def test_rrf_k_config_flows_into_fusion_call(
     kwargs = fusion_calls[0]["kwargs"]
     assert kwargs["rrf_k"] == 42  # was hardcoded 60
     assert kwargs["k"] == 1  # query.k unchanged
-    # Both legs reached the fusion, dense leg first (the SQL UNION ALL order).
-    dense_ids = [str(row["chunk_id"]) for row in kwargs["dense"]]
-    lexical_ids = [str(row["chunk_id"]) for row in kwargs["lexical"]]
-    assert dense_ids == [str(cid)]
-    assert lexical_ids == [str(cid)]
+    # Both legs reached the fusion with the chunk at rank 1. The caller's
+    # fixed leg order is pinned in test_query_fusion.py; this test pins
+    # the config flow and the math.
+    legs = fusion_calls[0]["args"][0]
+    assert len(legs) == 2
+    for leg in legs:
+        leg_ids = [str(row["chunk_id"]) for row in leg]
+        assert leg_ids == [str(cid)]
     # The 42 shows up in the math too: the chunk hit both legs at rank 1,
     # so the fused score is 1/43 + 1/43.
     assert len(results) == 1

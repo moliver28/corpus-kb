@@ -10,15 +10,19 @@ three routes share:
     envelope (api/_body.py); these routes bypass ``@route_errors``;
   * the ask-envelope -> content mapping (answer + portable ``Sources:``
     block; honest no-evidence sentence when retrieval found nothing);
-  * the SSE chunk generator (valid ``chat.completion.chunk`` frames for
-    the COMPLETE answer, then ``data: [DONE]`` — no token streaming yet).
+  * the SSE machinery (``ChunkFramer`` + ``sse_body``): valid
+    ``chat.completion.chunk`` frames streamed from the ask operation's
+    delta events (issue #131), then ``data: [DONE]``. Content frames
+    carry grounded sentences as they complete; the Sources block lands
+    with the envelope; degraded-after-content emits the OpenAI error
+    frame and stops — never a fake completion.
 """
 
 from __future__ import annotations
 
 import json
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import Any
 from uuid import uuid4
 
@@ -28,6 +32,7 @@ from starlette.responses import JSONResponse
 
 _DONE = "[DONE]"
 _NO_EVIDENCE_CONTENT = "No evidence matched this question in the knowledge base."
+SSE_MEDIA_TYPE = "text/event-stream"
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +142,7 @@ def completion_content(envelope: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# SSE frames — honest streaming of the COMPLETE answer
+# SSE machinery — delta frames over the ask operation's stream events
 # ---------------------------------------------------------------------------
 
 
@@ -155,25 +160,84 @@ async def split_pieces(text: str, limit: int = 40) -> AsyncIterator[str]:
         yield piece
 
 
-async def sse_frames(content: str, model: str) -> AsyncIterator[str]:
-    """Valid OpenAI chunk frames for the COMPLETE answer, then ``[DONE]``.
+class ChunkFramer:
+    """One stream's ``chat.completion.chunk`` frame factory.
 
-    Honest streaming: every frame is emitted only after generation ended.
+    Stable per-stream ``id`` and ``created`` (one completion, one identity),
+    deterministic frame text. ``raw()`` lets a house surface add one
+    non-OpenAI frame (the /api/ask envelope frame) on the same SSE wire.
     """
-    completion_id = f"chatcmpl-{uuid4()}"
-    created = int(time.time())
 
-    def frame(delta: dict[str, Any], finish_reason: str | None) -> str:
+    def __init__(self, model: str) -> None:
+        self.model = model
+        self.completion_id = f"chatcmpl-{uuid4()}"
+        self.created = int(time.time())
+
+    def frame(self, delta: dict[str, Any], finish_reason: str | None) -> str:
         body = {
-            "id": completion_id,
+            "id": self.completion_id,
             "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
+            "created": self.created,
+            "model": self.model,
             "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
         }
-        return f"data: {json.dumps(body)}\n\n"
+        return self.raw(body)
 
-    async for piece in split_pieces(content):
-        yield frame({"content": piece}, None)
-    yield frame({}, "stop")
-    yield f"data: {_DONE}\n\n"
+    def raw(self, payload: dict[str, Any]) -> str:
+        return f"data: {json.dumps(payload)}\n\n"
+
+    def content(self, text: str) -> str:
+        return self.frame({"content": text}, None)
+
+    def stop(self) -> str:
+        return self.frame({}, "stop")
+
+    def error(self, message: str, err_type: str, code: str | None) -> str:
+        return self.raw({"error": {"message": message, "type": err_type, "code": code}})
+
+    def done(self) -> str:
+        return f"data: {_DONE}\n\n"
+
+
+async def sse_body(events: AsyncGenerator[Any, None], first: Any, model: str) -> AsyncIterator[str]:
+    """The /v1 SSE body over the ask stream events, then ``[DONE]``.
+
+    ``first`` is the event the route already awaited (it decides between
+    this stream and an error response before headers start). Content
+    frames carry the grounded sentences as they complete; the Sources
+    block lands once the final envelope is known. A degraded envelope
+    after content frames emits the OpenAI error frame and stops — the
+    mid-stream error convention: no fake completion, no ``[DONE]``.
+    """
+    from corpus_kb.ask.composer import STATUS_DEGRADED, STATUS_EMPTY, STATUS_SUCCESS
+    from corpus_kb.ask.streaming import AskStreamDelta, AskStreamFinal
+
+    framer = ChunkFramer(model)
+    content_seen = False
+    try:
+        event: Any = first
+        while event is not None:
+            if isinstance(event, AskStreamDelta):
+                content_seen = True
+                yield framer.content(event.text)
+            elif isinstance(event, AskStreamFinal):
+                bundle = event.bundle
+                if bundle.status == STATUS_SUCCESS:
+                    async for piece in split_pieces(sources_block(bundle.sources)):
+                        yield framer.content(piece)
+                    yield framer.stop()
+                elif bundle.status == STATUS_EMPTY:
+                    yield framer.content(_NO_EVIDENCE_CONTENT)
+                    yield framer.stop()
+                elif bundle.status == STATUS_DEGRADED and content_seen:
+                    note = str(bundle.note or "generation unavailable")
+                    yield framer.error(note, "service_unavailable", "service_unavailable")
+                    return
+            event = await anext(events, None)
+    except Exception as exc:  # the seam never raises by contract; belt and braces
+        yield framer.error(f"internal error: {exc}", "internal_error", "internal_error")
+        return
+    finally:
+        # A client disconnect must still close the seam (its pool with it).
+        await events.aclose()
+    yield framer.done()

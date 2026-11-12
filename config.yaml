@@ -176,6 +176,19 @@ retrieval:
     model: qwen3:4b
     base_url: http://localhost:11434
     timeout_seconds: 8
+  # Issue #136 multi-query rewriting, OFF by default: query expansion has
+  # limited benefit for precise numerical queries, so the corpus owner
+  # opts in. On, one LLM call rewrites the query into `variants` diverse
+  # rewrites (a paraphrase, sub-questions, a keyword variant) and their
+  # legs fuse with the original's through the existing RRF fusion. The
+  # rewriter fails open: a down model means the single-query path with a
+  # degraded note.
+  multi_query:
+    enabled: false
+    variants: 3
+    model: qwen3:4b
+    base_url: http://localhost:11434
+    timeout_seconds: 8
   matryoshka_enabled: false
   matryoshka_dim: 1024
   # U20: transaction-local HNSW settings (SET LOCAL inside the retrieval

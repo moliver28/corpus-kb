@@ -74,6 +74,11 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `matryoshka_dim` | `1024` | Front-slice width for the matryoshka arm |
 | `candidate_multiplier` | `8` | Matryoshka candidate fan-out (candidates = k * multiplier) |
 | `self_query.*` | (block) | Predicate parser sub-settings |
+| `multi_query.enabled` | `false` | Multi-query rewriting (issue #136): rewrite the query into diverse rewrites and fuse all legs through the RRF fusion. Opt-in: expansion has limited benefit for precise numerical queries. A down rewriter means the single-query path plus a degraded note |
+| `multi_query.variants` | `3` | Rewrite count (1-10). Fusion runs (variants + 1) x 2 ranked lists; latency is one LLM call plus one extra retrieval pass per rewrite |
+| `multi_query.model` | `qwen3:4b` | Chat model for the rewriter |
+| `multi_query.base_url` | `http://localhost:11434` | Ollama API URL for the rewriter |
+| `multi_query.timeout_seconds` | `8` | Timeout for the rewriter call |
 | `hnsw.*` | (block) | `m`/`ef_construction` (index DDL, mirrored by migration 025) plus the scan trio |
 
 ### `reranking`
@@ -262,6 +267,8 @@ clears the threshold and beats the runner-up by the margin.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `confidence_threshold` | `0.55` | The top score must reach this value to resolve |
+| `fallback_log_path` | `analysis_routing_fallbacks.jsonl` | JSONL audit file for unresolved routes. The default is a relative path: it resolves against the server process working directory. Use an absolute path for services |
+| `llm_fallback_enabled` | `false` | Send ambiguous routes to the LLM handler. A fallback call inherits the LLM timeout (120 s default; `CORPUS_KB_LLM_TIMEOUT_S` tunes it) |
 | `margin` | `0.10` | The top score must beat the runner-up score by this much |
 
 This block is not the top-level `routing:` block. The top-level block

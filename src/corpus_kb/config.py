@@ -652,6 +652,19 @@ def get_default_config() -> dict[str, object]:
                 "base_url": "http://localhost:11434",
                 "timeout_seconds": 8,
             },
+            # Issue #136 multi-query rewriting: OFF by default (query
+            # expansion gives limited benefit for precise numerical
+            # queries — the corpus owner opts in). On, one LLM call
+            # rewrites the query into `variants` diverse rewrites; their
+            # legs fuse with the original's through the existing RRF
+            # fusion.
+            "multi_query": {
+                "enabled": False,
+                "variants": 3,
+                "model": "qwen3:4b",
+                "base_url": "http://localhost:11434",
+                "timeout_seconds": 8,
+            },
             "matryoshka_enabled": False,
             "matryoshka_dim": RESEARCH_EMBEDDING_DIMENSIONS,
         },

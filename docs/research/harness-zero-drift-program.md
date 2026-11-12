@@ -271,6 +271,15 @@ PR is not done until its job is green on GitHub Actions. CI calls the same
 | Marketplace manifest | `poe plugin-manifest` (`scripts/plugin_manifest_gate.py`, stdlib): `.claude-plugin/marketplace.json` structure per the marketplace reference (name rules, reserved names, `./` source paths, descriptions, semver) plus version lockstep with `plugins/corpus-rag/.claude-plugin/plugin.json` once the plugin tree lands (issue 331 step 1); before the import the gate prints one note line and passes. This repo is the plugin marketplace (owner directive 2026-11-05, issue 331 M1–M4) | ci.yml / plugin-manifest | 331 |
 | Plugin suite | `poe plugin-tests` (stdlib pytest under `plugins/corpus-rag/tests/` — hook fire/no-fire matrix, marks rate limit, engine-path resolution, manifest lockstep; the plugin's own `pytest.ini` isolates it from the engine config). The plugin is built fresh in-tree (owner directive 2026-11-06, issue 331) | ci.yml / plugin-tests | 331 |
 
+Warning-ratchet environment note (#321): a non-pinned Python can print one
+`google.api_core` `FutureWarning` during the suite run. It is an environment
+notice, not a `corpus_kb` warning: it enters through the `google` library
+import chain (upstream `google-api-core` warns on import once the running
+Python is within a year of its end of life; the 3.11 window opened
+2026-10-24). The pinned measurement environment does not show it, so the
+`pytest_warnings` ceiling stays 0. Do not add a `filterwarnings` ignore for
+it: a message-matched filter would hide real `api_core` warnings.
+
 Rule for future waves: every new gate is (a) a `poe` target and (b) called by
 a CI job. It is also (c) documented in this table and in `AGENTS.md`. A gate
 that exists only locally is not a gate.

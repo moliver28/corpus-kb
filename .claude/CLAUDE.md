@@ -284,6 +284,7 @@ by `scripts/gen_harness_pack.py`. Bodies live in `.claude/commands/` and
 | `corpus-release` | `corpus-kb release compare` | `release_compare` | Diff two releases' manifests (codes, definitions, methods, metrics). |
 | `corpus-ingest-front-door` | `corpus-kb ingest-status` | `ingest_status` | Recent ingest_runs ledger entries + degraded-chunk counts (honest history). |
 | `corpus-ingest-front-door` | `corpus-kb ingest-reembed` | `ingest_reembed` | Re-embed degraded (zero-vector) chunks once the provider is back. |
+| `corpus-ingest-front-door` | `corpus-kb ingest-reingest` | `ingest_reingest` | Bulk re-embed for a model switch; dry-run plan, resume, ledger row. |
 | `corpus-topics` | `corpus-kb topics-build` | `topics_build` | Cluster stored chunk embeddings into topics (offline BERTopic). |
 | `corpus-topics` | `corpus-kb topics-list` | `topics_list` | List the built topics with sizes, labels, and keywords. |
 | `corpus-topics` | `corpus-kb topics-trends` | `topics_trends` | Per-topic frequency series over binned document dates. |

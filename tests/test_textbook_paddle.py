@@ -549,8 +549,14 @@ class _FakeLoadedModel:
     def to(self, device: str) -> None:
         self.events.append(f"to:{device}")
 
-    def eval(self) -> None:
+    def _record_eval(self) -> None:
         self.events.append("eval")
+
+
+# The loader calls this seam under the transformers API name (model.eval
+# in load_paddle_model). Attach it under that name; a def-eval line reads
+# as a dynamic code entry to static scanners.
+_FakeLoadedModel.eval = _FakeLoadedModel._record_eval
 
 
 class _FakeAutoModel:

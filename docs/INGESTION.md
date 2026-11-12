@@ -976,6 +976,11 @@ cleanly.
 | `retrieval.self_query.model` | `qwen3:4b` | Chat model for self-query parsing |
 | `retrieval.self_query.base_url` | `http://localhost:11434` | Ollama API URL for self-query |
 | `retrieval.self_query.timeout_seconds` | `8` | Timeout for self-query LLM calls |
+| `retrieval.multi_query.enabled` | `false` | Multi-query rewriting (issue #136): one LLM call rewrites the query into diverse rewrites; all legs fuse through the RRF fusion. Off by default — expansion has limited benefit for precise numerical queries. A down rewriter degrades to the single-query path with a note |
+| `retrieval.multi_query.variants` | `3` | Rewrite count (1-10); fusion runs (variants + 1) x 2 ranked lists |
+| `retrieval.multi_query.model` | `qwen3:4b` | Chat model for the rewriter |
+| `retrieval.multi_query.base_url` | `http://localhost:11434` | Ollama API URL for the rewriter |
+| `retrieval.multi_query.timeout_seconds` | `8` | Timeout for rewriter LLM calls |
 | `retrieval.hnsw.m` | `16` | HNSW index m (migration 025 DDL; doctor warns on drift) |
 | `retrieval.hnsw.ef_construction` | `128` | HNSW index `ef_construction` (same) |
 | `retrieval.hnsw.iterative_scan` | `strict_order` | Transaction-local pgvector iterative scan mode (off/relaxed_order/strict_order; needs pgvector >= 0.8) |
