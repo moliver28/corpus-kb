@@ -44,6 +44,10 @@ from _lloom_engine import (
     run_loop,
 )
 
+# Concept is a re-export: the tests pin this module's surface (lloom.*),
+# so the moved name stays imported here.
+__all__ = ["Concept"]
+
 DEFAULT_SEED = 20261012
 DEFAULT_MAX_ITERATIONS = 8
 DEFAULT_SAMPLE_SIZE = 4

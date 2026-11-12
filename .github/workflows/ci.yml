@@ -720,9 +720,24 @@ jobs:
         # proof) fail loudly instead, which is the honest signal.
         continue-on-error: true
         run: |
-          ollama pull nomic-embed-text
-          ollama pull qwen3-embedding:4b
-          ollama pull qwen3-embedding:8b-q8_0
+          # Three attempts per model with a pause: the Ollama registry
+          # occasionally answers 503 mid-pull, and a failed pull leaves the
+          # suite an up-but-model-less server whose 404s herd dozens of
+          # unrelated tests red.
+          for model in nomic-embed-text qwen3-embedding:4b qwen3-embedding:8b-q8_0; do
+            pulled=false
+            for attempt in 1 2 3; do
+              if ollama pull "$model"; then
+                pulled=true
+                break
+              fi
+              echo "pull $model failed (attempt $attempt/3); pausing before retry"
+              sleep 15
+            done
+            if [ "$pulled" != true ]; then
+              echo "::warning::ollama pull $model failed after 3 attempts"
+            fi
+          done
 
       - name: Verify Ollama
         run: |
@@ -1042,9 +1057,24 @@ jobs:
       - name: Pull embedding models
         continue-on-error: true
         run: |
-          ollama pull nomic-embed-text
-          ollama pull qwen3-embedding:4b
-          ollama pull qwen3-embedding:8b-q8_0
+          # Three attempts per model with a pause: the Ollama registry
+          # occasionally answers 503 mid-pull, and a failed pull leaves the
+          # suite an up-but-model-less server whose 404s herd dozens of
+          # unrelated tests red.
+          for model in nomic-embed-text qwen3-embedding:4b qwen3-embedding:8b-q8_0; do
+            pulled=false
+            for attempt in 1 2 3; do
+              if ollama pull "$model"; then
+                pulled=true
+                break
+              fi
+              echo "pull $model failed (attempt $attempt/3); pausing before retry"
+              sleep 15
+            done
+            if [ "$pulled" != true ]; then
+              echo "::warning::ollama pull $model failed after 3 attempts"
+            fi
+          done
 
       - name: Verify Ollama
         run: |

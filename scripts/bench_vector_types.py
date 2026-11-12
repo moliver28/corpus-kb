@@ -49,6 +49,23 @@ from _bench_vector_metrics import (
     seeded_unit_vectors,
 )
 
+__all__ = [
+    "MIN_MATERIAL_GAIN_RATIO",
+    "RECALL_TOLERANCE_POINTS",
+    "SCRATCH_SCHEMA",
+    "Decision",
+    "_mrl_256",
+    "adoption_decision",
+    "build_indexes",
+    "exact_topk",
+    "latency_percentiles",
+    "measure_arms",
+    "recall_at_k",
+    "seed_items",
+    "seeded_queries",
+    "seeded_unit_vectors",
+]
+
 # hnsw.iterative_scan takes fixed words; the map keeps them out of f-strings.
 _SCAN_MODE_SQL = {
     "relaxed_order": "SET LOCAL hnsw.iterative_scan = 'relaxed_order'",

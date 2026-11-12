@@ -11,13 +11,20 @@ from __future__ import annotations
 import math
 from collections import Counter
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from _inductive_common import Document
+from typing import Protocol
 
 
-def tfidf_vectors(docs: Sequence[Document]) -> list[dict[str, float]]:
+class _Tokenized(Protocol):
+    """Structural view of a document: these metrics only read its tokens.
+
+    Declared here instead of importing ``_inductive_common.Document`` so
+    the dependency edge stays one-way (common imports metrics).
+    """
+
+    tokens: tuple[str, ...]
+
+
+def tfidf_vectors(docs: Sequence[_Tokenized]) -> list[dict[str, float]]:
     """Pure-Python TF-IDF: log(1 + tf) * idf, L2-normalized per document."""
     doc_count: Counter[str] = Counter()
     for doc in docs:
@@ -82,8 +89,8 @@ def greedy_agglomerative(vectors: Sequence[dict[str, float]], threshold: float) 
 
 
 def distinctive_keywords(
-    members: Sequence[Document],
-    background: Sequence[Document],
+    members: Sequence[_Tokenized],
+    background: Sequence[_Tokenized],
     top_k: int,
     min_member_docs: int = 1,
 ) -> list[str]:

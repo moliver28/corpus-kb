@@ -22,7 +22,8 @@ COVERAGE_PLATEAU = 0.01
 class ConceptHypothesizer(Protocol):
     """Pluggable hypothesis stage (an LLM-backed one would go here)."""
 
-    def __call__(self, sample: Sequence[Document], corpus: Sequence[Document]) -> list[Concept]: ...
+    def __call__(self, sample: Sequence[Document], corpus: Sequence[Document]) -> list[Concept]:
+        """Score ``sample`` against ``corpus``; return the concept hypotheses."""
 
 
 @dataclass(frozen=True)
