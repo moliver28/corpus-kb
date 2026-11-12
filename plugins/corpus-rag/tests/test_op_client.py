@@ -2,9 +2,10 @@
 
 The client sends to operator-configured base URLs; the checks refuse
 anything that is not a plain http(s) endpoint before the request starts:
-no other schemes, no credentials, a named host, and a loopback host name
-that must resolve loopback. No test opens a real socket; ``urlopen`` and
-resolution are replaced.
+no other schemes, no credentials, a host inside the allowlist (loopback
+by default, plus the hosts a caller passes as ``allowed_hosts``), and a
+loopback name that must resolve loopback. No test opens a real socket;
+``urlopen`` and resolution are replaced.
 """
 
 from __future__ import annotations
@@ -55,9 +56,10 @@ def _no_network(*args: object, **kwargs: object) -> None:
         "file:///etc/hosts",
         "http://user:pw@127.0.0.1:8010/api/stats",
         "http:///api/stats",
+        "http://engine.internal:8010/api/stats",
     ],
 )
-def test_refuses_non_plain_endpoints(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_refuses_urls_outside_the_allowlist(url: str, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(op_client.urllib.request, "urlopen", _no_network)
     with pytest.raises(op_client.HttpError):
         op_client.get_json(url)
@@ -72,7 +74,9 @@ def test_sends_to_the_documented_default(monkeypatch: pytest.MonkeyPatch) -> Non
     assert seen == ["http://127.0.0.1:8010/api/stats"]
 
 
-def test_sends_to_a_configured_host_without_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sends_to_a_configured_host_passed_by_the_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     seen: list[str] = []
 
     def must_not_resolve(*args: object, **kwargs: object) -> list[tuple]:
@@ -80,7 +84,12 @@ def test_sends_to_a_configured_host_without_dns(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(op_client.socket, "getaddrinfo", must_not_resolve)
     monkeypatch.setattr(op_client.urllib.request, "urlopen", _sink_recorder(seen))
-    body = op_client.get_json("http://engine.internal:8010/api/stats", timeout=5.0)
+    body = op_client.request_json(
+        "http://engine.internal:8010/api/stats",
+        payload={"q": 1},
+        timeout=5.0,
+        allowed_hosts=frozenset({"engine.internal"}),
+    )
     assert body == {"ok": True}
     assert seen == ["http://engine.internal:8010/api/stats"]
 

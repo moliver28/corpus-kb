@@ -14,6 +14,12 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+# The documented default endpoint is the local engine (http://127.0.0.1
+# plus the study port). Callers that target a configured remote host add
+# that host to the allowlist at the call site; the default stays loopback.
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "::1")
+_DEFAULT_ALLOWED_HOSTS = frozenset(_LOOPBACK_HOSTS)
+
 
 class HttpError(Exception):
     """A user-facing HTTP failure (bad status or no connection)."""
@@ -24,20 +30,22 @@ def request_json(
     method: str = "GET",
     payload: dict | list | None = None,
     timeout: float = 120.0,
+    allowed_hosts: frozenset[str] | None = None,
 ) -> dict:
     """Send one JSON request and return the parsed JSON body.
 
     The URL checks run here, in the same body as the request, and refuse
     anything that is not a plain http(s) endpoint before it starts: no
-    other schemes, no credentials, a named host, and a loopback host
-    name that must resolve to a loopback address. The base URL is
-    operator configuration, so a configured non-loopback host is legal.
-    The request then goes to the URL rebuilt from the checked parts, so
-    the bytes on the wire cannot differ from what was validated. The
-    checks mirror ``tests/live_services.py::loopback_service_url`` in
-    the engine repo; this module is stdlib-only, so the twin is inlined
-    here on purpose.
+    other schemes, no credentials, and a host inside the allowlist (the
+    loopback default, plus the hosts a caller passes as
+    ``allowed_hosts``). A loopback name must also resolve to a loopback
+    address. A refused URL raises before any bytes leave the process.
+    The request goes to the URL rebuilt from the checked parts, so the
+    bytes on the wire cannot differ from what was validated.
     """
+    allowed = _DEFAULT_ALLOWED_HOSTS
+    if allowed_hosts is not None:
+        allowed = allowed | frozenset(allowed_hosts)
     try:
         parsed = urllib.parse.urlsplit(url)
     except ValueError as exc:
@@ -46,12 +54,11 @@ def request_json(
         raise HttpError(f"Refused URL {url!r}: the scheme must be http or https.")
     if parsed.username is not None or parsed.password is not None:
         raise HttpError(f"Refused URL {url!r}: it must not carry credentials.")
-    host = (parsed.hostname or "").strip("[]").lower()
-    if host == "":
-        raise HttpError(f"Refused URL {url!r}: it names no host.")
-    if host == "localhost" or host == "127.0.0.1" or host == "::1":
+    if parsed.hostname is None or parsed.hostname not in allowed:
+        raise HttpError(f"Refused URL {url!r}: the host is not an allowed target.")
+    if parsed.hostname in _LOOPBACK_HOSTS:
         try:
-            infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+            infos = socket.getaddrinfo(parsed.hostname, None, proto=socket.IPPROTO_TCP)
         except OSError as exc:
             raise HttpError(f"Cannot reach {url}: the host does not resolve.") from exc
         for info in infos:
