@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from corpus_kb.storage.sql_ident import quoted_identifier
 
-__all__ = ["raw_columns_for", "rls_statements"]
+__all__ = ["drop_statement", "raw_columns_for", "rls_statements"]
 
 
 def raw_columns_for(backend: str) -> str:
@@ -42,6 +42,15 @@ _RAW_COLUMNS_DUCKDB = """
     ingested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (tenant_id, source_hash)
 """
+
+
+def drop_statement(table: str) -> str:
+    """The DROP statement for one runtime raw table.
+
+    The name passes through ``quoted_identifier`` here, next to the other
+    DDL fragments; the executor never composes destructive SQL itself.
+    """
+    return f"DROP TABLE IF EXISTS {quoted_identifier(table)}"
 
 
 def rls_statements(table: str) -> tuple[str, ...]:
