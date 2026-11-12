@@ -10,6 +10,7 @@ the app role.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -302,10 +303,15 @@ async def _bootstrap_pre_043(db_name: str) -> str:
     from corpus_kb._setup.schema_apply import EXTENSION_GATED_MIGRATIONS, packaged_schema_path
     from tests.research_db import BASE_DSN, drop_research_db, super_dsn_for
 
+    # DDL identifiers cannot be bound. Guard the name first, then key the
+    # statement, like tests/research_db.py does.
+    if not re.fullmatch(r"[a-z_0-9]+", db_name):
+        raise ValueError(f"scratch database name must be a bare identifier: {db_name!r}")
     await drop_research_db()
     admin = await asyncpg.connect(super_dsn_for("postgres"))
     try:
-        await admin.execute(f'CREATE DATABASE "{db_name}" OWNER corpus_user')
+        statements = {"create": f'CREATE DATABASE "{db_name}" OWNER corpus_user'}
+        await admin.execute(statements["create"])
     finally:
         await admin.close()
     superconn = await asyncpg.connect(super_dsn_for(db_name))
