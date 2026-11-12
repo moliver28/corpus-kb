@@ -471,8 +471,15 @@ GATE_UNRELEASED_DRAFT_ACTION = (
 CYCLE_APPROVAL_STAGE_HEADER = "STAGE COMPLETE: {stage}"
 CYCLE_APPROVAL_PROMPT = "Continue to the next stage? [y/N] "
 CYCLE_APPROVAL_DENIED = (
-    "Stopped at your request. Progress is recorded; re-run corpus-kb "
-    "research cycle --mode on to continue from here."
+    "Stopped at your request. Progress is recorded. Re-run corpus-kb "
+    "research cycle --mode on to run this stage again and decide again."
+)
+CYCLE_APPROVAL_REPROMPTED = (
+    "This stage was denied in an earlier run. The denial is cleared. Decide again."
+)
+CYCLE_REPROMPT_RESUME = (
+    "Re-running denied stage: {stage} (cycle run {run_id}). "
+    "You decide again at the approval boundary."
 )
 CYCLE_RESUME_HINT = "Resuming after stage: {stage} (cycle run {run_id})"
 CYCLE_WATCH_IDLE = "watch: no new transcripts; sleeping {interval}s (Ctrl-C to stop)"

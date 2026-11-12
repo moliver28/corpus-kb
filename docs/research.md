@@ -166,15 +166,18 @@ with a distinct per-gate exit code (10-17). `codebook_promotion` is
 hard-floored: config may add gates to `halt_on` but can never remove the
 floor, and promotion itself always runs through
 `corpus-kb codebook promote`. A denied on-mode approval exits 20 (a
-closed stdin counts as a denial). A cycle that cannot proceed (for
-example, no codebook version yet) exits 2. The full exit-code table
-lives in [OPERATIONS.md](OPERATIONS.md).
+closed stdin counts as a denial). An explicit re-run of the flow clears
+that denial: the denied stage runs again, and the approval prompt asks
+again. The `--watch` arms are automatic. They never clear a denial. A
+cycle that cannot proceed (for example, no codebook version yet) exits
+2. The full exit-code table lives in [OPERATIONS.md](OPERATIONS.md).
 
 Progress is event-sourced: the cycle is a `CodingRun` with
 `params.kind='cycle'`, and each stage boundary lands a checkpoint. To
 resume, act on the gate, then re-run the same command. The new cycle
-run continues after the last checkpoint. It never re-halts on the SAME
-gate it halted on.
+run continues after the last checkpoint. A cleared denial is the one
+exception: that run starts again at the denied stage. It never re-halts
+on the SAME gate it halted on.
 
 The `gray_zone_escalation` gate is convergent. It fires on review-queue
 items that still await a decision, plus conformal-coverage violations

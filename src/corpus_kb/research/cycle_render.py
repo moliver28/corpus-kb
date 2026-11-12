@@ -18,6 +18,7 @@ import asyncpg
 from corpus_kb.research import guide_copy
 from corpus_kb.research.cycle_events import (
     EVENT_APPROVAL_DENIED,
+    EVENT_APPROVAL_REPROMPTED,
     EVENT_AWAITING_APPROVAL,
     EVENT_CYCLE_HALTED,
     EVENT_GATE_RAISED,
@@ -200,8 +201,17 @@ async def approval(
     run_id: UUID,
     stage: str,
     approve: Callable[[str], Awaitable[bool]] | None,
+    *,
+    reprompt: bool = False,
 ) -> int | None:
-    """One on-mode approval boundary; returns a stop exit code or None."""
+    """One on-mode approval boundary; returns a stop exit code or None.
+
+    ``reprompt`` marks the stage whose earlier denial an explicit re-run
+    cleared (issue 306): an ``approval_reprompted`` event lands before
+    the ask, so the trail shows both the re-ask and its outcome.
+    """
+    if reprompt:
+        recorder.emit(EVENT_APPROVAL_REPROMPTED, run_id=str(run_id), stage=stage)
     if approve is None:
         recorder.emit(EVENT_AWAITING_APPROVAL, run_id=str(run_id), stage=stage)
         handler.stop_coding_run(tenant_id, run_id)
