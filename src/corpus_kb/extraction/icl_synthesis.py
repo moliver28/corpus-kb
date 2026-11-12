@@ -68,11 +68,6 @@ def ontology_fingerprint(ontology: Ontology) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def clear_examples_cache() -> None:
-    """Drop all cached example batches (call after an ontology reload)."""
-    _CACHE.clear()
-
-
 def _predicate_phrase(ontology: Ontology, relation: str) -> str:
     """The relation's predicate text: its description, else its name."""
     description = ontology.relation_descriptions.get(relation, "")

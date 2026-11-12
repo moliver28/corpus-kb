@@ -12,8 +12,8 @@ import pytest
 
 from corpus_kb.extraction._langextract_types import build_prompt_description
 from corpus_kb.extraction.icl_synthesis import (
+    _CACHE,
     _adopt_batch,
-    clear_examples_cache,
     few_shot_examples,
     ontology_fingerprint,
     static_exemplar_dicts,
@@ -42,9 +42,9 @@ def _small_ontology() -> Ontology:
 
 @pytest.fixture(autouse=True)
 def _isolated_cache() -> None:
-    clear_examples_cache()
+    _CACHE.clear()
     yield
-    clear_examples_cache()
+    _CACHE.clear()
 
 
 # ---------------------------------------------------------------------------
