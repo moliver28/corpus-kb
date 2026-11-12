@@ -277,3 +277,148 @@ def test_cite_sentences_invalid_index_drops_whole_sentence() -> None:
 def test_cite_sentences_edges(text: str, expected: list[list[int]]) -> None:
     out = cite_sentences(text, 1)
     assert [s["citations"] for s in out] == expected
+
+
+# ---------------------------------------------------------------------------
+# The streaming twin (ask/streaming.py) — same envelope, grounded deltas
+# ---------------------------------------------------------------------------
+
+
+class _StreamingLlm:
+    """Canned chat_stream pieces (the LlmHandler.chat_stream contract)."""
+
+    model = "fake-model"
+
+    def __init__(self, pieces: list[str], error: str | None = None) -> None:
+        self.pieces = pieces
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    def chat_stream(
+        self, messages: list[dict[str, str]], model: str | None = None, options: object = None
+    ) -> object:
+        self.calls.append({"messages": messages, "options": options})
+
+        async def gen() -> object:
+            for piece in self.pieces:
+                yield {"message": {"role": "assistant", "content": piece}, "done": False}
+            if self.error:
+                yield {"error": self.error, "model": self.model}
+
+        return gen()
+
+
+class _BatchOnlyLlm:
+    """A seam WITHOUT chat_stream: the streaming twin must degrade honestly."""
+
+    model = "fake-model"
+
+    async def chat(
+        self, messages: list[dict[str, str]], model: str | None = None, options: object = None
+    ) -> dict[str, object]:
+        return {"message": {"content": "Stored fact [1]."}}
+
+
+async def _collect_stream(
+    handler: _FakeHandler, llm: object, judge: object | None = None
+) -> tuple[list[str], object]:
+    from corpus_kb.ask.streaming import AskStreamDelta, compose_answer_stream
+
+    deltas: list[str] = []
+    final: object = None
+    async for event in compose_answer_stream("why does it fail?", handler, llm, judge=judge):
+        if isinstance(event, AskStreamDelta):
+            deltas.append(event.text)
+        else:
+            final = event
+    return deltas, final
+
+
+async def test_stream_deltas_join_to_the_batch_answer_exactly() -> None:
+    """The money property: streamed deltas == the batch envelope's answer."""
+    from corpus_kb.ask.streaming import AskStreamFinal
+
+    text = "Startup works in stages [1]"
+    pieces = ["Startup", " works", " in", " stages [1]"]
+    evidence = _envelope([_result("Startup works in stages")])
+    batch = await compose_answer("q", _FakeHandler(evidence), _FakeLlm(text=text))
+    deltas, final = await _collect_stream(_FakeHandler(evidence), _StreamingLlm(pieces))
+
+    assert "".join(deltas) == batch.answer == text
+    assert isinstance(final, AskStreamFinal)
+    assert final.bundle.to_payload() == batch.to_payload(), "full envelope parity with the batch"
+
+
+async def test_stream_drops_ungrounded_sentences_like_the_batch_path() -> None:
+    from corpus_kb.ask.streaming import AskStreamFinal
+
+    text = "Grounded fact [1]. Uncited rumor without citation. Grounded tail [1]."
+    pieces = ["Grounded fac", "t [1]. Uncited rumor", " without citation. Grounded tail [1]."]
+    evidence = _envelope([_result("Grounded fact")])
+    batch = await compose_answer("q", _FakeHandler(evidence), _FakeLlm(text=text))
+    deltas, final = await _collect_stream(_FakeHandler(evidence), _StreamingLlm(pieces))
+
+    assert "Uncited rumor" not in "".join(deltas)
+    assert isinstance(final, AskStreamFinal)
+    assert final.bundle.to_payload() == batch.to_payload()
+    assert final.bundle.sentences == batch.sentences
+
+
+async def test_stream_empty_yields_one_final_and_no_deltas() -> None:
+    from corpus_kb.ask.composer import STATUS_EMPTY
+    from corpus_kb.ask.streaming import AskStreamFinal
+
+    deltas, final = await _collect_stream(_FakeHandler(_envelope([])), _StreamingLlm(["unused"]))
+
+    assert deltas == []
+    assert isinstance(final, AskStreamFinal)
+    assert final.bundle.status == STATUS_EMPTY
+    assert final.bundle.note == NO_EVIDENCE
+
+
+async def test_stream_without_chat_stream_degrades_to_evidence_only() -> None:
+    from corpus_kb.ask.composer import GENERATION_UNAVAILABLE, STATUS_DEGRADED
+    from corpus_kb.ask.streaming import AskStreamFinal
+
+    deltas, final = await _collect_stream(
+        _FakeHandler(_envelope([_result("stored fact")])),
+        _BatchOnlyLlm(),
+    )
+
+    assert deltas == []
+    assert isinstance(final, AskStreamFinal)
+    assert final.bundle.status == STATUS_DEGRADED
+    assert final.bundle.note == GENERATION_UNAVAILABLE
+    assert final.bundle.sources, "the degraded envelope still ships the evidence"
+
+
+async def test_stream_midstream_failure_keeps_deltas_then_degrades() -> None:
+    from corpus_kb.ask.composer import STATUS_DEGRADED
+    from corpus_kb.ask.streaming import AskStreamFinal
+
+    deltas, final = await _collect_stream(
+        _FakeHandler(_envelope([_result("stored fact")])),
+        _StreamingLlm(
+            ["Stored fact [1]. More", " words arrived"], error="Ollama request failed: boom"
+        ),
+    )
+
+    assert deltas == ["Stored fact [1]."], "complete grounded sentences before the break stay"
+    assert isinstance(final, AskStreamFinal)
+    assert final.bundle.status == STATUS_DEGRADED
+    assert "boom" not in (final.bundle.note or ""), "the note stays within the short-note contract"
+
+
+async def test_stream_uncitable_generation_degrades_without_deltas() -> None:
+    from corpus_kb.ask.composer import NO_CITABLE_SENTENCES, STATUS_DEGRADED
+    from corpus_kb.ask.streaming import AskStreamFinal
+
+    deltas, final = await _collect_stream(
+        _FakeHandler(_envelope([_result("stored fact")])),
+        _StreamingLlm(["Nothing cited here."]),
+    )
+
+    assert deltas == []
+    assert isinstance(final, AskStreamFinal)
+    assert final.bundle.status == STATUS_DEGRADED
+    assert final.bundle.note == NO_CITABLE_SENTENCES
