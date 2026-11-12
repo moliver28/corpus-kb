@@ -92,7 +92,7 @@ class RelexExtractor:
             text = chunk.text
             if not text or not text.strip():
                 continue
-            for triplet in _predict(model, text, pairs, self._types, self._threshold):
+            for triplet in _predict(model, text, pairs, self._threshold):
                 requested += 1
                 score = _as_float(_field(triplet, "score"))
                 if score < self._threshold:
@@ -182,11 +182,55 @@ def _predict(
     model: RelexModel,
     text: str,
     pairs: list[tuple[str, str]],
-    types: list[str],
     threshold: float,
-) -> list[Any]:
-    raw = model.predict_relations(text, labels=pairs, entities=types, threshold=threshold)
-    return list(raw) if raw else []
+) -> list[dict[str, Any]]:
+    """One relation pass over the verified gliner 0.2.29 API.
+
+    gliner 0.2.29 returns ``(entities, relations)`` where each relation
+    carries head/tail span dicts keyed ``type`` and the relation name
+    under ``relation``. The extraction loop consumes the backend's own
+    triplet shape, so this bridge maps keys here instead of at every
+    consumer.
+    """
+    labels = {mention: TYPE_DEFINITIONS.get(mention, mention) for mention, _natural in pairs}
+    relation_names = list(dict.fromkeys(natural for _mention, natural in pairs))
+    _entities, raw = model.predict_relations(
+        text,
+        labels,
+        relation_names,
+        threshold=threshold,
+        relation_threshold=threshold,
+    )
+    return [_bridge_triplet(item) for item in (raw or [])]
+
+
+def _bridge_triplet(relation: Any) -> dict[str, Any]:
+    """One gliner relation dict -> the backend's triplet dict shape."""
+    mapped: dict[str, Any] = {}
+    for side in ("head", "tail"):
+        span = _side_dict(_field(relation, side))
+        mapped[side] = {
+            "start": span.get("start"),
+            "end": span.get("end"),
+            "text": str(span.get("text", "")),
+            "label": str(span.get("type", span.get("label", ""))),
+        }
+    mapped["label"] = str(_field(relation, "relation") or _field(relation, "label") or "")
+    mapped["score"] = _as_float(_field(relation, "score"))
+    return mapped
+
+
+def _side_dict(value: Any) -> dict[str, Any]:
+    """A head/tail payload as a dict, from mapping- or attribute-shaped."""
+    if isinstance(value, dict):
+        return value
+    if value is None:
+        return {}
+    return {
+        key: getattr(value, key)
+        for key in ("start", "end", "text", "type", "label")
+        if hasattr(value, key)
+    }
 
 
 def _field(triplet: Any, name: str) -> Any:

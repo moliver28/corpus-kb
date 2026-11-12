@@ -43,22 +43,43 @@ class _FakeGliner2Module:
 
 
 class _FakeRelexModel:
+    """Real gliner 0.2.29 shape: (entities, relations) with typed heads."""
+
     def predict_relations(
         self,
         text: str,
-        labels: list[tuple[str, str]],
-        entities: list[str] | None = None,
+        labels: object,
+        relations: list[str],
         threshold: float = 0.5,
-    ) -> list[object]:
+        relation_threshold: float | None = None,
+    ) -> tuple[list[object], list[object]]:
         assert labels
-        return [
-            {
-                "head": {"text": "Elena", "start": 0, "end": 5, "label": "person"},
-                "tail": {"text": "ice cream", "start": 18, "end": 28, "label": "product"},
-                "label": "likes",
-                "score": 0.88,
-            }
-        ]
+        assert relations
+        return (
+            [
+                {"text": "Elena", "start": 0, "end": 5, "label": "person", "score": 0.99},
+                {
+                    "text": "ice cream",
+                    "start": 18,
+                    "end": 28,
+                    "label": "product",
+                    "score": 0.99,
+                },
+            ],
+            [
+                {
+                    "head": {"text": "Elena", "start": 0, "end": 5, "type": "person"},
+                    "tail": {
+                        "text": "ice cream",
+                        "start": 18,
+                        "end": 28,
+                        "type": "product",
+                    },
+                    "relation": "likes",
+                    "score": 0.88,
+                }
+            ],
+        )
 
 
 class _FakeGlinerModule:
