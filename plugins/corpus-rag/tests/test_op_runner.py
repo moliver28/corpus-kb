@@ -49,8 +49,9 @@ def test_unknown_op_fails_with_inventory_hint() -> None:
 
 def test_unknown_arg_fails() -> None:
     with pytest.raises(op_runner.OpError) as excinfo:
-        op_runner.run_op("corpus-kb", "search", ["query=x", "bogus=1"], "http://x",
-                         inventory=INVENTORY)
+        op_runner.run_op(
+            "corpus-kb", "search", ["query=x", "bogus=1"], "http://x", inventory=INVENTORY
+        )
     assert "bogus" in str(excinfo.value)
 
 
@@ -115,13 +116,16 @@ def test_long_ops_get_7200_seconds() -> None:
 def test_run_op_happy_path_post(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict = {}
 
-    def fake_request(url, method="GET", payload=None, timeout=120.0):
+    def fake_request(url, method="GET", payload=None, timeout=120.0, **kwargs):
         seen.update(url=url, method=method, payload=payload, timeout=timeout)
         return {"status": "success"}
 
     monkeypatch.setattr(op_client, "request_json", fake_request)
     envelope = op_runner.run_op(
-        "corpus-kb", "search", ["query=hello", "k=2"], "http://127.0.0.1:8010",
+        "corpus-kb",
+        "search",
+        ["query=hello", "k=2"],
+        "http://127.0.0.1:8010",
         inventory=INVENTORY,
     )
     assert envelope["status"] == "success"
@@ -134,21 +138,26 @@ def test_run_op_happy_path_post(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_run_op_get_query_and_long_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict = {}
 
-    def fake_request(url, method="GET", payload=None, timeout=120.0):
+    def fake_request(url, method="GET", payload=None, timeout=120.0, **kwargs):
         seen.update(url=url, method=method, timeout=timeout)
         return {"status": "success"}
 
     monkeypatch.setattr(op_client, "request_json", fake_request)
-    op_runner.run_op("corpus-kb", "ingest_status", ["limit=7"], "http://127.0.0.1:8010/",
-                     inventory={
-                         "operations": [{
-                             "name": "ingest_status",
-                             "params": [{"name": "limit", "default": 20}],
-                             "surfaces": [
-                                 {"kind": "http", "route": "/api/ingest/status", "method": "GET"}
-                             ],
-                         }]
-                     })
+    op_runner.run_op(
+        "corpus-kb",
+        "ingest_status",
+        ["limit=7"],
+        "http://127.0.0.1:8010/",
+        inventory={
+            "operations": [
+                {
+                    "name": "ingest_status",
+                    "params": [{"name": "limit", "default": 20}],
+                    "surfaces": [{"kind": "http", "route": "/api/ingest/status", "method": "GET"}],
+                }
+            ]
+        },
+    )
     assert seen["url"] == "http://127.0.0.1:8010/api/ingest/status?limit=7"
     assert seen["timeout"] == 7200  # the ingest family is long
 
@@ -156,22 +165,27 @@ def test_run_op_get_query_and_long_timeout(monkeypatch: pytest.MonkeyPatch) -> N
 def test_run_op_json_blob_merges_under_pairs(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict = {}
 
-    def fake_request(url, method="GET", payload=None, timeout=120.0):
+    def fake_request(url, method="GET", payload=None, timeout=120.0, **kwargs):
         seen.update(payload=payload)
         return {"status": "success"}
 
     monkeypatch.setattr(op_client, "request_json", fake_request)
     op_runner.run_op(
-        "corpus-kb", "search", ["k=2"], "http://x",
-        json_blob='{"query": "from json"}', inventory=INVENTORY,
+        "corpus-kb",
+        "search",
+        ["k=2"],
+        "http://x",
+        json_blob='{"query": "from json"}',
+        inventory=INVENTORY,
     )
     assert seen["payload"] == {"query": "from json", "k": 2}
 
 
 def test_run_op_bad_json_blob_and_bad_pair() -> None:
     with pytest.raises(op_runner.OpError):
-        op_runner.run_op("corpus-kb", "search", [], "http://x",
-                         json_blob="{broken", inventory=INVENTORY)
+        op_runner.run_op(
+            "corpus-kb", "search", [], "http://x", json_blob="{broken", inventory=INVENTORY
+        )
     with pytest.raises(op_runner.OpError):
         op_runner.run_op("corpus-kb", "search", ["noequals"], "http://x", inventory=INVENTORY)
 
@@ -179,7 +193,7 @@ def test_run_op_bad_json_blob_and_bad_pair() -> None:
 def test_run_op_tilde_expands_path_args(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict = {}
 
-    def fake_request(url, method="GET", payload=None, timeout=120.0):
+    def fake_request(url, method="GET", payload=None, timeout=120.0, **kwargs):
         seen.update(payload=payload)
         return {"status": "success"}
 
@@ -191,8 +205,13 @@ def test_run_op_tilde_expands_path_args(monkeypatch: pytest.MonkeyPatch) -> None
         "params": [{"name": "file_path", "required": True}],
         "surfaces": [{"kind": "http", "route": "/api/ingest/file", "method": "POST"}],
     }
-    op_runner.run_op("corpus-kb", "ingest_file", ["file_path=~/notes.txt"], "http://x",
-                     inventory={"operations": [row]})
+    op_runner.run_op(
+        "corpus-kb",
+        "ingest_file",
+        ["file_path=~/notes.txt"],
+        "http://x",
+        inventory={"operations": [row]},
+    )
     assert Path(seen["payload"]["file_path"]) == Path("~/notes.txt").expanduser()
 
 
