@@ -1091,3 +1091,15 @@ test runs without calling the LLM API.
 
 Contextual retrieval uses the same fixture pattern with plain-text `.txt`
 files in `contextual.fixture_dir`.
+
+### Synthesized few-shot examples
+
+On a live call, the langextract backend builds its few-shot examples from
+the ontology itself (`extraction/icl_synthesis.py`). Each relation type
+gets one synthetic entity-pair example. The same ontology content always
+produces the same prompt. A cache keyed on an ontology hash reuses the
+examples across runs. A degenerate batch falls back to a static example
+set. The extract stats carry a receipt note that says which path produced
+the examples: built, reused, or static. Recorded fixtures bypass the
+examples entirely, so the fixture files never change when the prompt
+logic changes.
