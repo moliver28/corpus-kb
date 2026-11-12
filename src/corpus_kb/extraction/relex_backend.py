@@ -21,14 +21,21 @@ from typing import Any
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
 from ._gliner_types import RelexModel, import_gliner
-from .gliner_backend import TYPE_DEFINITIONS, _map_mention_type
-from .protocol import ExtractStats, OntologyViolationError, Timer
+from .gliner_backend import TYPE_DEFINITIONS
+from .protocol import ExtractStats, Timer
+from .relex_spans import (
+    as_float,
+    bridge_triplet,
+    field,
+    link,
+    pseudo_entity,
+    span,
+)
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_RELEX_MODEL = "knowledgator/gliner-relex-large-v1.0"
 MIN_RELATION_CONFIDENCE = 0.5
-MIN_SPAN_OVERLAP = 0.5
 
 
 class RelexExtractor:
@@ -94,29 +101,29 @@ class RelexExtractor:
                 continue
             for triplet in _predict(model, text, pairs, self._threshold):
                 requested += 1
-                score = _as_float(_field(triplet, "score"))
+                score = as_float(field(triplet, "score"))
                 if score < self._threshold:
                     dropped_by_confidence += 1
                     continue
-                head = _span(_field(triplet, "head"))
-                tail = _span(_field(triplet, "tail"))
+                head = span(field(triplet, "head"))
+                tail = span(field(triplet, "tail"))
                 if head is None or tail is None:
                     dropped_by_other += 1
                     continue
-                raw_label = str(_field(triplet, "label")).upper().replace(" ", "_")
+                raw_label = str(field(triplet, "label")).upper().replace(" ", "_")
                 rel_type = label_map.get(raw_label, raw_label)
                 if rel_type not in ontology.relation_types:
                     dropped_by_other += 1
                     continue
                 chunk_entities = by_chunk.get(chunk.chunk_id or "", [])
-                source = _link(head, chunk_entities)
-                target = _link(tail, chunk_entities)
+                source = link(head, chunk_entities)
+                target = link(tail, chunk_entities)
                 if source is None:
-                    source = _pseudo_entity(head, chunk, ontology, source_document_id, score)
+                    source = pseudo_entity(head, chunk, ontology, source_document_id, score)
                     emitted_entities.append(source)
                     pseudo_entities += 1
                 if target is None:
-                    target = _pseudo_entity(tail, chunk, ontology, source_document_id, score)
+                    target = pseudo_entity(tail, chunk, ontology, source_document_id, score)
                     emitted_entities.append(target)
                     pseudo_entities += 1
                 relations.append(
@@ -201,111 +208,4 @@ def _predict(
         threshold=threshold,
         relation_threshold=threshold,
     )
-    return [_bridge_triplet(item) for item in (raw or [])]
-
-
-def _bridge_triplet(relation: Any) -> dict[str, Any]:
-    """One gliner relation dict -> the backend's triplet dict shape."""
-    mapped: dict[str, Any] = {}
-    for side in ("head", "tail"):
-        span = _side_dict(_field(relation, side))
-        mapped[side] = {
-            "start": span.get("start"),
-            "end": span.get("end"),
-            "text": str(span.get("text", "")),
-            "label": str(span.get("type", span.get("label", ""))),
-        }
-    mapped["label"] = str(_field(relation, "relation") or _field(relation, "label") or "")
-    mapped["score"] = _as_float(_field(relation, "score"))
-    return mapped
-
-
-def _side_dict(value: Any) -> dict[str, Any]:
-    """A head/tail payload as a dict, from mapping- or attribute-shaped."""
-    if isinstance(value, dict):
-        return value
-    if value is None:
-        return {}
-    return {
-        key: getattr(value, key)
-        for key in ("start", "end", "text", "type", "label")
-        if hasattr(value, key)
-    }
-
-
-def _field(triplet: Any, name: str) -> Any:
-    if isinstance(triplet, dict):
-        return triplet.get(name)
-    return getattr(triplet, name, None)
-
-
-def _span(value: Any) -> tuple[int, int, str, str] | None:
-    """(start, end, text, label) from a mapping- or attribute-like span."""
-    if value is None:
-        return None
-    if isinstance(value, dict):
-        start, end = value.get("start"), value.get("end")
-        text = value.get("text", "")
-        label = value.get("label", "")
-    else:
-        start, end = getattr(value, "start", None), getattr(value, "end", None)
-        text = getattr(value, "text", "")
-        label = getattr(value, "label", "")
-    if start is None or end is None:
-        return None
-    return int(start), int(end), str(text), str(label)
-
-
-def _link(span: tuple[int, int, str, str], candidates: list[Entity]) -> Entity | None:
-    """Best entity whose span overlaps >= MIN_SPAN_OVERLAP of the smaller."""
-    best: tuple[float, Entity] | None = None
-    for entity in candidates:
-        if entity.source_start_char is None or entity.source_end_char is None:
-            continue
-        inter_start = max(span[0], entity.source_start_char)
-        inter_end = min(span[1], entity.source_end_char)
-        if inter_end <= inter_start:
-            continue
-        smaller = min(span[1] - span[0], entity.source_end_char - entity.source_start_char)
-        overlap = (inter_end - inter_start) / smaller if smaller > 0 else 0.0
-        if overlap >= MIN_SPAN_OVERLAP and (best is None or overlap > best[0]):
-            best = (overlap, entity)
-    return best[1] if best else None
-
-
-def _pseudo_entity(
-    span: tuple[int, int, str, str],
-    chunk: Chunk,
-    ontology: Ontology,
-    source_document_id: str,
-    score: float,
-) -> Entity:
-    """Thin entity from a triplet span so the relation endpoint resolves."""
-    hint = span[3].lower() if span[3] else "person"
-    try:
-        entity_type = _map_mention_type(hint, ontology)
-    except OntologyViolationError:
-        entity_type = ontology.entity_types[0]
-    return Entity(
-        name=span[2],
-        entity_type=entity_type,
-        source_type=chunk.source_type,
-        source_document_id=source_document_id,
-        chunk_id=chunk.chunk_id,
-        source_start_char=span[0],
-        source_end_char=span[1],
-        confidence=score,
-        extractor_id="relex",
-        metadata={
-            "extractor": "relex",
-            "pseudo": True,
-            "confidence": score,
-            "gliner_type": hint,
-        },
-    )
-
-
-def _as_float(value: Any) -> float:
-    if isinstance(value, (int, float)):
-        return float(value)
-    return 0.0
+    return [bridge_triplet(item) for item in (raw or [])]
