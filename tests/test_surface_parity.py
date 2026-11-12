@@ -2,16 +2,19 @@
 
 The release lifecycle ops (``assess``/``request``/``review``/``release``/
 ``status``/``compare``) and every research surface MUST be reachable on ALL
-THREE transports: CLI (real registered commands), MCP (names validated in
-``validate_configs.VALID_TOOL_NAMES`` + real tool functions), and HTTP
-(real routes in ``create_http_app()``). A missing surface anywhere fails
-this suite.
+THREE declared transports: CLI (real registered commands), MCP (names
+validated in ``validate_configs.VALID_TOOL_NAMES`` + real tool functions),
+and HTTP (real routes in ``create_http_app()``). A missing declared
+surface anywhere fails this suite.
 
-Since the full-surface-parity wave the registry is complete:
-``research-cycle`` and ``research-demo`` gained their MCP + HTTP legs as
-synchronous long-running calls, and ``TRANSPORT_ALLOWLIST`` is empty. The
-tests below pin that end state — no exceptions left behind, and the
-allowlist mechanism stays available (empty) for a future honest gap.
+Since the full-surface-parity wave the registry is complete on declared
+transports: ``research-cycle`` and ``research-demo`` gained their MCP +
+HTTP legs as synchronous long-running calls, ``TRANSPORT_ALLOWLIST`` is
+empty, and each row's per-op surface set states its transports (the
+default is the full trio; the multipart upload row declares HTTP only —
+owner ruling 4a). The tests below pin that end state — no undeclared
+gaps left behind, and the allowlist mechanism stays available (empty)
+for a future honest gap.
 """
 
 from __future__ import annotations
@@ -128,7 +131,7 @@ def test_full_parity_holds_everywhere() -> None:
     assert TRANSPORT_ALLOWLIST == {}
     assert surface_coverage_gaps(reg.SURFACES, TRANSPORT_ALLOWLIST) == []
     assert_parity_outside_allowlist(reg.SURFACES)  # must not raise
-    assert_full_surface_parity(reg.SURFACES)  # the raw contract now holds
+    assert_full_surface_parity(reg.SURFACES)  # declared-transports contract holds
 
 
 def test_allowlist_stays_empty_and_referenceable() -> None:

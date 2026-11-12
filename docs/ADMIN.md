@@ -267,6 +267,8 @@ clears the threshold and beats the runner-up by the margin.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `confidence_threshold` | `0.55` | The top score must reach this value to resolve |
+| `fallback_log_path` | `analysis_routing_fallbacks.jsonl` | JSONL audit file for unresolved routes. The default is a relative path: it resolves against the server process working directory. Use an absolute path for services |
+| `llm_fallback_enabled` | `false` | Send ambiguous routes to the LLM handler. A fallback call inherits the LLM timeout (120 s default; `CORPUS_KB_LLM_TIMEOUT_S` tunes it) |
 | `margin` | `0.10` | The top score must beat the runner-up score by this much |
 
 This block is not the top-level `routing:` block. The top-level block

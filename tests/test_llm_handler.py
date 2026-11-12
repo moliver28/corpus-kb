@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from collections.abc import AsyncIterator
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -242,3 +244,117 @@ class TestLlmHandlerDegradation:
         assert "error" in result
         assert "response" not in result
         assert any("Ollama" in r.message for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# chat_stream — the NDJSON delta iterator (issue #131)
+# ---------------------------------------------------------------------------
+
+
+class _FakeStream:
+    """httpx streaming-context double with canned NDJSON lines."""
+
+    def __init__(self, lines: list[str], status_code: int = 200, body: bytes = b"") -> None:
+        self._lines = lines
+        self.status_code = status_code
+        self._body = body
+
+    async def __aenter__(self) -> _FakeStream:
+        return self
+
+    async def __aexit__(self, *exc: object) -> bool:
+        return False
+
+    async def aiter_lines(self) -> AsyncIterator[str]:
+        for line in self._lines:
+            yield line
+
+    async def aread(self) -> bytes:
+        return self._body
+
+
+def _chat_line(content: str, done: bool = False) -> str:
+    return json.dumps(
+        {
+            "model": "qwen3:4b",
+            "created_at": "2026-01-01T00:00:00Z",
+            "message": {"role": "assistant", "content": content},
+            "done": done,
+        }
+    )
+
+
+class TestLlmHandlerChatStream:
+    async def test_stream_yields_content_pieces_then_ends_on_done(self) -> None:
+        handler = LlmHandler(_CONFIG)
+        stream = _FakeStream([_chat_line("Hel"), _chat_line("lo"), _chat_line("", True)])
+        open_mock = MagicMock(return_value=stream)
+
+        with patch.object(httpx.AsyncClient, "stream", open_mock):
+            events = [event async for event in handler.chat_stream(_MESSAGES)]
+
+        assert events == [
+            {"message": {"role": "assistant", "content": "Hel"}, "done": False},
+            {"message": {"role": "assistant", "content": "lo"}, "done": False},
+        ]
+        assert open_mock.call_args.kwargs["json"]["stream"] is True
+
+    async def test_stream_stops_at_the_done_line(self) -> None:
+        handler = LlmHandler(_CONFIG)
+        stream = _FakeStream([_chat_line("only", True), _chat_line("never")])
+        open_mock = MagicMock(return_value=stream)
+
+        with patch.object(httpx.AsyncClient, "stream", open_mock):
+            events = [event async for event in handler.chat_stream(_MESSAGES)]
+
+        assert events == [{"message": {"role": "assistant", "content": "only"}, "done": False}]
+
+    async def test_stream_non_200_yields_one_error_event(self) -> None:
+        handler = LlmHandler(_CONFIG)
+        stream = _FakeStream([], status_code=500, body=b"model missing")
+        open_mock = MagicMock(return_value=stream)
+
+        with patch.object(httpx.AsyncClient, "stream", open_mock):
+            events = [event async for event in handler.chat_stream(_MESSAGES)]
+
+        assert len(events) == 1
+        assert "status 500" in events[0]["error"]
+        assert events[0]["model"] == "qwen3:4b"
+
+    async def test_stream_malformed_line_yields_an_error_event(self) -> None:
+        handler = LlmHandler(_CONFIG)
+        stream = _FakeStream([_chat_line("ok"), "{not json"])
+        open_mock = MagicMock(return_value=stream)
+
+        with patch.object(httpx.AsyncClient, "stream", open_mock):
+            events = [event async for event in handler.chat_stream(_MESSAGES)]
+
+        assert events[-1] == {"error": "Ollama returned malformed JSON", "model": "qwen3:4b"}
+
+    async def test_stream_ollama_error_line_yields_an_error_event(self) -> None:
+        handler = LlmHandler(_CONFIG)
+        stream = _FakeStream([json.dumps({"error": "model not found"})])
+        open_mock = MagicMock(return_value=stream)
+
+        with patch.object(httpx.AsyncClient, "stream", open_mock):
+            events = [event async for event in handler.chat_stream(_MESSAGES)]
+
+        assert events == [{"error": "model not found", "model": "qwen3:4b"}]
+
+    async def test_stream_connection_failure_yields_an_error_event(self) -> None:
+        handler = LlmHandler(_DEAD_PORT_CONFIG)
+        open_mock = MagicMock(side_effect=httpx.ConnectError("refused"))
+
+        with patch.object(httpx.AsyncClient, "stream", open_mock):
+            events = [event async for event in handler.chat_stream(_MESSAGES)]
+
+        assert len(events) == 1
+        assert "Ollama request failed" in events[0]["error"]
+
+    async def test_stream_rejects_bad_input_like_chat(self) -> None:
+        handler = LlmHandler(_CONFIG)
+
+        events = [event async for event in handler.chat_stream([])]
+
+        assert len(events) == 1
+        assert "non-empty list" in events[0]["error"]

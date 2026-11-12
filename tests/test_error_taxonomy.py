@@ -25,6 +25,7 @@ from starlette.testclient import TestClient
 import corpus_kb.api.research_http as research_http
 import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.query_handler as query_handler_module
+import corpus_kb.tools.ingest_reingest as ingest_reingest_tools
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools
 from corpus_kb.api._body import error_response
 from corpus_kb.api.http import create_http_app
@@ -362,6 +363,30 @@ def test_ingest_reembed_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(ingest_surface_tools, "ingest_reembed", unavailable)
     monkeypatch.setattr(research_http, "_pool", object())
     response = _client().post("/api/ingest/reembed", json={})
+    assert response.status_code == 503
+    assert response.json()["status"] == "unavailable"
+
+
+def test_ingest_reingest_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    """U3 (#202): the bulk re-embed route keeps the same 503 contract."""
+
+    async def unavailable(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "status": "unavailable",
+            "reason": "migration 022 not applied",
+            "dry_run": False,
+            "target_model": "qwen3-embedding:4b",
+            "target_dimensions": 2560,
+            "documents": 0,
+            "chunks": 0,
+            "embedded": 0,
+            "failed": 0,
+            "skipped_current": 0,
+        }
+
+    monkeypatch.setattr(ingest_reingest_tools, "ingest_reingest", unavailable)
+    monkeypatch.setattr(research_http, "_pool", object())
+    response = _client().post("/api/ingest/reingest", json={})
     assert response.status_code == 503
     assert response.json()["status"] == "unavailable"
 

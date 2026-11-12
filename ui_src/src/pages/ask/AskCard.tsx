@@ -6,8 +6,8 @@ import ErrorPanel from "../../components/ErrorPanel";
 import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
-import { callOp } from "../../api/client";
 import { getOp } from "../../api/ops";
+import { callOpStream } from "../../api/stream";
 import { useLongOp } from "../../hooks/useLongOp";
 import { strings } from "../../strings";
 import { loadHistory, saveHistory, type HistoryEntry } from "./askHistory";
@@ -25,22 +25,29 @@ import {
  * The ask action: one question, one cited answer. The wait runs through
  * useLongOp (elapsed time, stop waiting, honest unknown outcome), and
  * the honest empty/degraded states use the exact program strings.
- * The question history is client-only sessionStorage.
+ * The answer streams: grounded sentences land as they complete, and the
+ * settle receipt is the full envelope (citations, verify, sources), the
+ * same JSON envelope the non-streaming call returns. The question
+ * history is client-only sessionStorage.
  */
 export default function AskCard() {
   const [query, setQuery] = useState("");
   const [hint, setHint] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
+  // The streamed answer so far (grounded sentences only). The settled
+  // view below replaces it once the envelope lands.
+  const [streamText, setStreamText] = useState("");
   // The long-op closure reads the question from a ref: the value at
   // start time, not at render time.
   const queryRef = useRef("");
   const ask = useLongOp("ask", (signal) => {
     const op = getOp("ask");
-    return callOp<unknown>(op?.path ?? "", {
+    return callOpStream(op?.path ?? "", {
       method: "POST",
-      body: { query: queryRef.current },
+      body: { query: queryRef.current, stream: true },
       signal,
       timeoutMs: "none",
+      onDelta: (piece) => setStreamText((prev) => prev + piece),
     });
   });
 
@@ -61,6 +68,7 @@ export default function AskCard() {
     setHint("");
     queryRef.current = query.trim();
     cancelRequestedRef.current = false;
+    setStreamText("");
     const res = await ask.start();
     if (res.ok && !cancelRequestedRef.current) {
       const next = [
@@ -174,15 +182,23 @@ export default function AskCard() {
         </Button>
       </div>
       {hint !== "" && <StatusBanner kind="warn">{hint}</StatusBanner>}
-      {ask.running && (
+      {ask.running && streamText === "" && (
+        <Skeleton active title={false} paragraph={{ rows: 3 }} />
+      )}
+      {ask.running && streamText !== "" && (
         <div className="ui-stack">
-          <Skeleton active title={false} paragraph={{ rows: 3 }} />
-          <div className="ui-actions">
-            <StatusBanner kind="info">
-              {strings.runnerRunningElapsed.replace("{sec}", String(ask.elapsedSec))}
-            </StatusBanner>
-            <Button onClick={stopWaiting}>{strings.runnerCancelLabel}</Button>
-          </div>
+          <Card title={strings.citedAnswerTitle}>
+            <p className="ui-answer">{streamText}</p>
+          </Card>
+          <StatusBanner kind="info">{strings.askStreamingNote}</StatusBanner>
+        </div>
+      )}
+      {ask.running && (
+        <div className="ui-actions">
+          <StatusBanner kind="info">
+            {strings.runnerRunningElapsed.replace("{sec}", String(ask.elapsedSec))}
+          </StatusBanner>
+          <Button onClick={stopWaiting}>{strings.runnerCancelLabel}</Button>
         </div>
       )}
       {ask.cancelled && <StatusBanner kind="warn">{strings.runnerCancelled}</StatusBanner>}

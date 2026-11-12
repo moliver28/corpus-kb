@@ -12,6 +12,7 @@ to evidence-only with a note, never an error).
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from typing import Any
 
 import asyncpg
@@ -21,7 +22,7 @@ from corpus_kb.tools._uuid_input import uuid_arg
 from corpus_kb.tools.ingest_common import DEFAULT_TENANT_ID, load_config_or_pass
 from corpus_kb.utils.tracing import SPAN_ASK, span
 
-__all__ = ["ask"]
+__all__ = ["ask", "ask_stream"]
 
 
 async def ask(
@@ -79,6 +80,56 @@ async def ask(
             )
             payload = bundle.to_payload()
             return attach_trace_id(payload)
+        finally:
+            if own_pool is not None:
+                await own_pool.close()
+
+
+async def ask_stream(
+    query: str,
+    config: dict[str, Any] | None = None,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    k: int | None = None,
+    pg_pool: asyncpg.Pool | None = None,
+) -> AsyncGenerator[object, None]:
+    """Stream one grounded answer as delta events, ending with the envelope.
+
+    The streaming twin of :func:`ask` (issue #131): the SAME stack (the
+    caller's pool, per-call embedder and ``QueryHandler``, config-driven
+    judge) runs through ``compose_answer_stream`` and yields
+    ``AskStreamDelta`` events as grounded sentences complete, then one
+    ``AskStreamFinal`` carrying the SAME envelope payload ``ask`` returns.
+    Surfaces render the deltas; the envelope itself never changes shape.
+
+    Consume fully or close the generator: the generator owns the pool it
+    opened, and ``finally`` closes it on exhaust or ``aclose()``.
+    """
+    from corpus_kb.ask.streaming import compose_answer_stream
+    from corpus_kb.handlers.llm_handler import LlmHandler
+    from corpus_kb.handlers.query_handler import QueryHandler
+    from corpus_kb.rag import create_embedder
+
+    tenant = uuid_arg(tenant_id, "tenant_id")
+    cfg = load_config_or_pass(config)
+    with span(SPAN_ASK):
+        from corpus_kb.storage.connect import config_conn_str, open_pool_typed_store
+
+        own_pool: asyncpg.Pool | None = None
+        pool = pg_pool
+        if pool is None:
+            pool = own_pool = await open_pool_typed_store(config_conn_str(cfg))
+        try:
+            embedder = create_embedder(cfg, pool)
+            handler = QueryHandler(pool, embedder, config=cfg)
+            async for event in compose_answer_stream(
+                query,
+                handler,
+                LlmHandler(cfg),
+                judge=_resolve_judge(cfg),
+                tenant_id=tenant,
+                k=k,
+            ):
+                yield event
         finally:
             if own_pool is not None:
                 await own_pool.close()

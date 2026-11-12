@@ -15,6 +15,7 @@ from urllib.parse import unquote, urlsplit
 
 import asyncpg
 
+from corpus_kb._setup.migrate_admin_sql import owner_statement, schema_grant_statements
 from corpus_kb.errors import ConfigError
 
 _SESSION_SETTING_PATTERN = re.compile(r"^[A-Za-z0-9_.]+$")
@@ -40,10 +41,17 @@ def validate_session_settings(session_settings: dict[str, str] | None) -> None:
 async def apply_session_settings(
     conn: asyncpg.Connection, session_settings: dict[str, str] | None
 ) -> None:
-    """SET the requested session settings (work_mem and friends)."""
+    """Apply the requested session settings (work_mem and friends).
+
+    ``SET`` takes no bind parameters, so the values ride the
+    ``set_config`` function instead: the name and the value are bound,
+    and the allow-list check still runs first (the CLI validates before
+    dispatch). ``is_local`` false holds the setting for the whole
+    session, exactly like ``SET``.
+    """
     validate_session_settings(session_settings)
     for name, value in (session_settings or {}).items():
-        await conn.execute(f"SET {name} = '{value}'")
+        await conn.execute("SELECT set_config($1, $2, false)", name, value)
 
 
 async def refuse_025_with_embeddings(
@@ -69,11 +77,6 @@ async def refuse_025_with_embeddings(
             "Migration 025 discards them. "
             "Pass --reset-embeddings to accept, then re-embed the corpus."
         )
-
-
-def _quote_ident(role: str) -> str:
-    """One SQL identifier, quoted (role names may hold odd characters)."""
-    return '"' + role.replace('"', '""') + '"'
 
 
 def dsn_role(dsn: str) -> str:
@@ -130,28 +133,14 @@ async def hand_over_to_app_role(
     """
     if not app_role:
         return
-    role = _quote_ident(app_role)
     su_oid = await conn.fetchval("SELECT oid FROM pg_roles WHERE rolname = $1", superuser_role)
     app_oid = await conn.fetchval("SELECT oid FROM pg_roles WHERE rolname = $1", app_role)
     if su_oid and app_oid and su_oid != app_oid:
         for row in await conn.fetch(_SU_OBJECTS_SQL, su_oid):
             verb = _OWNER_VERBS[str(row["relkind"])]
-            await conn.execute(f"{verb} {row['obj']} OWNER TO {role}")
+            await conn.execute(owner_statement(verb, str(row["obj"]), app_role))
         for row in await conn.fetch(_SU_FUNCTIONS_SQL, su_oid):
-            await conn.execute(f"ALTER FUNCTION {row['obj']} OWNER TO {role}")
+            await conn.execute(owner_statement("ALTER FUNCTION", str(row["obj"]), app_role))
     for schema in ("public", "corpus"):
-        await conn.execute(f"GRANT USAGE ON SCHEMA {_quote_ident(schema)} TO {role}")
-        await conn.execute(
-            f"GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA {_quote_ident(schema)} TO {role}"
-        )
-        await conn.execute(
-            f"GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA {_quote_ident(schema)} TO {role}"
-        )
-        await conn.execute(
-            f"ALTER DEFAULT PRIVILEGES IN SCHEMA {_quote_ident(schema)} "
-            f"GRANT ALL ON TABLES TO {role}"
-        )
-        await conn.execute(
-            f"ALTER DEFAULT PRIVILEGES IN SCHEMA {_quote_ident(schema)} "
-            f"GRANT ALL ON SEQUENCES TO {role}"
-        )
+        for statement in schema_grant_statements(schema, app_role):
+            await conn.execute(statement)
