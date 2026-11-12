@@ -19,10 +19,13 @@ import asyncpg
 from corpus_kb.domain.models import SearchQuery
 from corpus_kb.handlers.query_acquire import ArmRun, arm_outcome, final_envelope, post_fusion
 from corpus_kb.handlers.query_integrity import SearchEnvelope, degraded_candidate_predicate
+from corpus_kb.handlers.query_multiquery import rewrite_legs
+from corpus_kb.handlers.query_rewrites import QueryRewriter
 from corpus_kb.handlers.query_search_pg import PostgresSearchBackend
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 from corpus_kb.rag.rerank_settings import RerankSettings
 from corpus_kb.rag.reranker import build_reranker, create_reranker
+from corpus_kb.research.multi_query_settings import MultiQuerySettings
 from corpus_kb.research.retrieval_settings import RetrievalSettings
 from corpus_kb.research.search_settings import HnswSettings
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
@@ -126,12 +129,19 @@ async def search_with_meta(
     self_query_parser: object | None,
     self_query_enabled: bool,
     query: SearchQuery,
+    multi_query_settings: MultiQuerySettings | None = None,
+    rewriter: QueryRewriter | None = None,
 ) -> SearchEnvelope:
     """Hybrid search with the degraded-honesty envelope attached.
 
     Byte-identical to the pre-split ``QueryHandler`` method: the envelope
     reports ``degraded_excluded`` and flips to ``degraded_empty`` (+ pinned
     remedy) when nothing was returned under degraded conditions.
+
+    Issue #136: with multi-query on, the rewrite legs run after the
+    primary outcome and their rows fuse with it; the envelope then carries
+    ``query_rewrites``. Off or degraded, the path is the single-query
+    pipeline with no extra envelope key.
     """
     with span(SPAN_QUERY):
         query = resolve_default_k(query, rerank_settings)
@@ -152,7 +162,15 @@ async def search_with_meta(
             reasons=reasons,
         )
         outcome = await arm_outcome(pool, search_backend, run, hnsw_settings)
-        final_results = await post_fusion(
-            reranker, rerank_settings, pool, retrieval_settings, outcome, run
+        rewrites, extra_outcomes = await rewrite_legs(
+            pool,
+            search_backend,
+            run,
+            hnsw_settings,
+            rewriter,
+            multi_query_settings or MultiQuerySettings(),
         )
-        return final_envelope(outcome, final_results, run)
+        final_results = await post_fusion(
+            reranker, rerank_settings, pool, retrieval_settings, outcome, run, extra_outcomes
+        )
+        return final_envelope(outcome, final_results, run, query_rewrites=rewrites or None)

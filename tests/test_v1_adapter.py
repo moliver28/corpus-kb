@@ -23,6 +23,15 @@ from starlette.testclient import TestClient
 import corpus_kb.rag as rag_module
 import corpus_kb.tools.ask_tools as ask_tools
 from corpus_kb.api.http import create_http_app
+from corpus_kb.ask.composer import (
+    NO_EVIDENCE,
+    STATUS_DEGRADED,
+    STATUS_EMPTY,
+    STATUS_SUCCESS,
+    AnswerBundle,
+)
+from corpus_kb.ask.streaming import AskStreamDelta as _Delta
+from corpus_kb.ask.streaming import AskStreamFinal as _Final
 
 _ANSWER = "Startup works in stages. [1]"
 _SOURCES = [
@@ -222,12 +231,47 @@ def test_chat_non_json_body_is_400(gate_on: None, monkeypatch: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# POST /v1/chat/completions — SSE streaming
+# POST /v1/chat/completions — SSE streaming over the ask delta events
 # ---------------------------------------------------------------------------
 
 
+def _bundle(
+    status: str = "success",
+    answer: str = _ANSWER,
+    sources: list[dict[str, Any]] | None = None,
+    note: str | None = None,
+) -> Any:
+    """The ask stream's terminal bundle (composer.AnswerBundle)."""
+    if status == STATUS_EMPTY:
+        return AnswerBundle(
+            STATUS_EMPTY, "", [], [], {"abstained": True}, "qwen3:4b", NO_EVIDENCE, {}
+        )
+    if status == STATUS_DEGRADED:
+        return AnswerBundle(
+            STATUS_DEGRADED, "", [], _SOURCES, {"abstained": True}, "qwen3:4b", note, {}
+        )
+    return AnswerBundle(
+        STATUS_SUCCESS,
+        answer,
+        [{"text": answer, "citations": [1]}],
+        _SOURCES if sources is None else sources,
+        {"abstained": True},
+        "qwen3:4b",
+        None,
+        {},
+    )
+
+
+def _stub_ask_stream(monkeypatch: Any, events: list[Any]) -> None:
+    async def stub(query: str, **kwargs: object) -> Any:
+        for event in events:
+            yield event
+
+    monkeypatch.setattr(ask_tools, "ask_stream", stub)
+
+
 def test_chat_stream_frames_are_valid_openai_chunks(gate_on: None, monkeypatch: Any) -> None:
-    _stub_ask(monkeypatch, _envelope(), {})
+    _stub_ask_stream(monkeypatch, [_Delta(_ANSWER), _Final(_bundle())])
 
     stream_response = _client().post("/v1/chat/completions", json={**_CHAT_BODY, "stream": True})
     assert stream_response.status_code == 200
@@ -257,6 +301,92 @@ def test_chat_stream_frames_are_valid_openai_chunks(gate_on: None, monkeypatch: 
     plain_content = plain_response.json()["choices"][0]["message"]["content"]
     assert "".join(contents) == plain_content
     assert plain_content.startswith(_ANSWER)
+
+
+def test_chat_stream_streams_deltas_before_the_sources_block(
+    gate_on: None, monkeypatch: Any
+) -> None:
+    """Sentence deltas stream as they complete; Sources lands at the end."""
+    _stub_ask_stream(monkeypatch, [_Delta(_ANSWER), _Final(_bundle())])
+
+    raw = _client().post("/v1/chat/completions", json={**_CHAT_BODY, "stream": True}).text
+
+    payloads = _sse_payloads(raw)
+    first_content = json.loads(payloads[0])["choices"][0]["delta"]["content"]
+    assert first_content == _ANSWER, "the first frame is the complete grounded sentence"
+    joined = "".join(
+        json.loads(payload)["choices"][0]["delta"].get("content", "") for payload in payloads[:-1]
+    )
+    assert "Sources:" in joined
+    assert joined.index(_ANSWER) < joined.index("Sources:")
+
+
+def test_chat_stream_empty_status_is_one_honest_frame(gate_on: None, monkeypatch: Any) -> None:
+    _stub_ask_stream(monkeypatch, [_Final(_bundle(status="empty"))])
+
+    raw = _client().post("/v1/chat/completions", json={**_CHAT_BODY, "stream": True}).text
+
+    payloads = _sse_payloads(raw)
+    frames = _chunk_frames(payloads)
+    contents = [frame["choices"][0]["delta"].get("content", "") for frame in frames[:-1]]
+    assert len(contents) == 1, "the empty status ships exactly one honest content frame"
+    assert "no evidence" in contents[0].lower()
+    assert frames[-1]["choices"][0]["finish_reason"] == "stop"
+
+
+def test_chat_stream_degraded_before_content_maps_to_503(gate_on: None, monkeypatch: Any) -> None:
+    note = "generation unavailable; returning evidence only"
+    _stub_ask_stream(monkeypatch, [_Final(_bundle(status="degraded", note=note))])
+
+    response = _client().post("/v1/chat/completions", json={**_CHAT_BODY, "stream": True})
+
+    assert response.status_code == 503
+    error = response.json()["error"]
+    assert "generation unavailable" in error["message"]
+    assert error["type"] == "service_unavailable"
+    # Byte-identical with the non-streaming degraded error body.
+    _stub_ask(monkeypatch, _envelope(status="degraded", note=note), {})
+    plain = _client().post("/v1/chat/completions", json=_CHAT_BODY)
+    assert response.text == plain.text
+
+
+def test_chat_stream_degraded_after_content_emits_openai_error_frame(
+    gate_on: None, monkeypatch: Any
+) -> None:
+    """A failure after content started is the mid-stream error convention."""
+    _stub_ask_stream(
+        monkeypatch,
+        [
+            _Delta("Startup works in stages. [1]"),
+            _Final(_bundle(status="degraded", note="generation unavailable")),
+        ],
+    )
+
+    raw = _client().post("/v1/chat/completions", json={**_CHAT_BODY, "stream": True}).text
+
+    payloads = _sse_payloads(raw)
+    assert payloads[-1] != "[DONE]", "a mid-stream failure never fakes a clean [DONE] end"
+    error_payload = json.loads(payloads[-1])
+    assert error_payload["error"]["type"] == "service_unavailable"
+    assert "generation unavailable" in error_payload["error"]["message"]
+    assert not any(p == "[DONE]" for p in payloads)
+
+
+def test_chat_stream_seam_crash_emits_internal_error_frame(gate_on: None, monkeypatch: Any) -> None:
+    """The belt-and-braces path: a raising seam becomes an error frame."""
+
+    async def broken(query: str, **kwargs: object) -> Any:
+        yield _Delta(text="Startup works in stages. [1]")
+        raise RuntimeError("seam exploded")
+
+    monkeypatch.setattr(ask_tools, "ask_stream", broken)
+
+    raw = _client().post("/v1/chat/completions", json={**_CHAT_BODY, "stream": True}).text
+
+    payloads = _sse_payloads(raw)
+    error_payload = json.loads(payloads[-1])
+    assert error_payload["error"]["type"] == "internal_error"
+    assert "seam exploded" in error_payload["error"]["message"]
 
 
 # ---------------------------------------------------------------------------

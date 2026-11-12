@@ -118,9 +118,17 @@ def _operation_object(op: Operation, method: str, route: str) -> dict[str, Any]:
     else:
         body_props = {p.name: _json_schema_type(p) for p in params}
         required = [p.name for p in params if p.required]
+        if op.multipart:
+            # The multipart rows take a multipart form: the required file
+            # field IS the request body, so the schema names it first.
+            body_props = {"file": {"type": "string", "format": "binary"}, **body_props}
+            required = ["file", *required]
+            content_type = "multipart/form-data"
+        else:
+            content_type = "application/json"
         body: dict[str, Any] = {
             "content": {
-                "application/json": {
+                content_type: {
                     "schema": {
                         "type": "object",
                         "properties": body_props,
@@ -129,12 +137,11 @@ def _operation_object(op: Operation, method: str, route: str) -> dict[str, Any]:
                 }
             }
         }
+        body_schema = body["content"][content_type]["schema"]
         if tenant:
-            body["content"]["application/json"]["schema"]["properties"]["tenant_id"] = (
-                _json_schema_type(tenant[0])
-            )
+            body_schema["properties"]["tenant_id"] = _json_schema_type(tenant[0])
         if required:
-            body["content"]["application/json"]["schema"]["required"] = required
+            body_schema["required"] = required
         obj["requestBody"] = body
     return obj
 

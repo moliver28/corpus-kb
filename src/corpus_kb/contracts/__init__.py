@@ -15,7 +15,9 @@ the analysis method register program's twelve method ops),
 ``contracts.catalogue_search_reads`` (the issue #182 search read pair),
 ``contracts.catalogue_calibrate`` (the issue #200 calibrate apply op),
 ``contracts.catalogue_coding`` (the issue #350 chunk-coding family),
-and ``contracts.catalogue_events`` (the issue #350 event-store health op).
+``contracts.catalogue_events`` (the issue #350 event-store health op),
+and ``contracts.catalogue_upload`` (the multipart upload op, HTTP-only
+by declared surface set — owner ruling 4a).
 This package assembles the FINAL catalogue: ``OPERATIONS`` is
 the tuple every consumer (the parity gate, ``corpus-kb operations``)
 iterates, so the test and the inventory can never diverge.
@@ -45,6 +47,7 @@ from corpus_kb.contracts.catalogue_search_reads import SEARCH_READ_OPERATIONS
 from corpus_kb.contracts.catalogue_statements import STATEMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_topics import TOPICS_OPERATIONS
 from corpus_kb.contracts.catalogue_tune import EXTRACTION_TUNE_OPERATIONS
+from corpus_kb.contracts.catalogue_upload import UPLOAD_OPERATIONS
 from corpus_kb.contracts.model import (
     DEFAULT_TENANT_ID,
     ERROR_MAP,
@@ -76,6 +79,7 @@ OPERATIONS: tuple[Operation, ...] = (
     *CALIBRATE_OPERATIONS,
     *CODING_OPERATIONS,
     *EVENTS_OPERATIONS,
+    *UPLOAD_OPERATIONS,
 )
 
 __all__ = [

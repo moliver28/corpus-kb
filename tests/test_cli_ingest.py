@@ -19,6 +19,7 @@ from starlette.testclient import TestClient
 from typer.testing import CliRunner
 
 from corpus_kb.cli import app
+from corpus_kb.errors import ConfigError
 from corpus_kb.ingest_watch import (
     HEALABLE_MARKERS,
     WatchOptions,
@@ -445,6 +446,111 @@ def test_cli_ingest_reembed_dedicated_command(
     result = runner.invoke(app, ["ingest-reembed", "--limit", "2", "--doc-id", "not-a-uuid"])
     assert result.exit_code == 0, result.output
     assert calls["limit"] == 2  # typer parsed the flag; the tool layer validates types
+
+
+# ---------------------------------------------------------------------------
+# reingest command (issue #202): exit codes, flags, width refusal
+# ---------------------------------------------------------------------------
+
+
+def _patch_reingest(
+    monkeypatch: pytest.MonkeyPatch, receipt: dict[str, object]
+) -> dict[str, object]:
+    calls: dict[str, object] = {}
+
+    async def fake_reingest(
+        pg_pool: object,
+        config: dict[str, object] | None = None,
+        tenant_id: str = TENANT,
+        project_id: str | None = None,
+        dry_run: bool = False,
+        batch_size: int = 128,
+    ) -> dict[str, object]:
+        calls.update({"project_id": project_id, "dry_run": dry_run, "batch_size": batch_size})
+        return receipt
+
+    monkeypatch.setattr("corpus_kb.tools.ingest_reingest.ingest_reingest", fake_reingest)
+    return calls
+
+
+def test_cli_ingest_reingest_exit_mapping(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_pool(monkeypatch)
+    base = {
+        "status": "success",
+        "dry_run": False,
+        "target_model": "new-model",
+        "target_dimensions": 4,
+        "documents": 1,
+        "chunks": 4,
+        "embedded": 3,
+        "failed": 1,
+        "skipped_current": 2,
+    }
+    _patch_reingest(monkeypatch, dict(base))
+    result = runner.invoke(app, ["ingest-reingest", "--json"])
+    assert result.exit_code == 1, result.output
+
+    _patch_reingest(monkeypatch, dict(base, failed=0))
+    result = runner.invoke(app, ["ingest-reingest"])
+    assert result.exit_code == 0, result.output
+
+    _patch_reingest(monkeypatch, dict(base, status="unavailable", reason="migration missing"))
+    result = runner.invoke(app, ["ingest-reingest"])
+    assert result.exit_code == 3, result.output
+
+
+def test_cli_ingest_reingest_flags_and_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_pool(monkeypatch)
+    calls = _patch_reingest(
+        monkeypatch,
+        {
+            "status": "success",
+            "dry_run": True,
+            "target_model": "new-model",
+            "target_dimensions": 4,
+            "documents": 1,
+            "chunks": 4,
+            "embedded": 0,
+            "failed": 0,
+            "skipped_current": 2,
+            "est_tokens": 250,
+        },
+    )
+    result = runner.invoke(
+        app,
+        ["ingest-reingest", "--dry-run", "--project-id", "not-validated-here", "--batch-size", "8"],
+    )
+    assert result.exit_code == 0, result.output
+    assert calls["dry_run"] is True
+    assert calls["batch_size"] == 8
+    assert "estimated tokens: 250" in result.output
+
+
+def test_cli_ingest_reingest_config_error_exits_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_pool(monkeypatch)
+
+    async def width_refusal(
+        pg_pool: object,
+        config: dict[str, object] | None = None,
+        tenant_id: str = TENANT,
+        project_id: str | None = None,
+        dry_run: bool = False,
+        batch_size: int = 128,
+    ) -> dict[str, object]:
+        raise ConfigError(
+            "Embedding width 2560 does not fit the embedding column (4 dimensions stored).",
+            remediation="Set embedding.dimensions to 4, then run again.",
+        )
+
+    monkeypatch.setattr("corpus_kb.tools.ingest_reingest.ingest_reingest", width_refusal)
+    result = runner.invoke(app, ["ingest-reingest"])
+    assert result.exit_code == 3, result.output
+    assert "does not fit" in result.output
+    assert "Set embedding.dimensions" in result.output
 
 
 def test_cli_ingest_status_command_json_and_unavailable(

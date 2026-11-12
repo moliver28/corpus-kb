@@ -45,26 +45,26 @@ def _as_text(value: object) -> str:
     return value if isinstance(value, str) else "" if value is None else str(value)
 
 
-def rrf_fuse(
-    lexical: Sequence[RowLike],
-    dense: Sequence[RowLike],
+def rrf_fuse_legs(
+    legs: Sequence[Sequence[RowLike]],
     *,
     k: int,
     rrf_k: int = 60,
 ) -> list[FusedRow]:
-    """Fuse the two retrieval legs exactly as corpus.rrf_fusion does.
+    """Fuse N ranked legs with the corpus.rrf_fusion formula (issue #136).
 
-    ``k`` caps the output after ordering (SQL ``LIMIT``; negative means no
-    cap, as in Postgres). ``rrf_k`` is the rank smoothing constant (SQL
-    default 60). Total order: fscore DESC, then chunk id ASC.
+    Multi-query fan-out only; the two-leg case is :func:`rrf_fuse`. Every
+    leg contributes ``1.0 / (rrf_k + rank)`` per position — the SQL
+    ``contributions`` UNION ALL with more branches, not a new algorithm.
+    Leg order is the caller's fixed order (the primary pair first, then
+    one pair per rewrite); every pass overwrites the attrs entry, so the
+    last leg wins metadata on overlap and, inside one leg, the last
+    position wins — the SQL attrs rule. Total order: fscore DESC, then
+    chunk id ASC.
     """
     scores: dict[UUID, float] = {}
     attrs: dict[UUID, tuple[str, str, UUID]] = {}
-    # Dense leg first, so a chunk present in both legs sums dense + lexical
-    # contributions in the SQL UNION ALL order. Every pass overwrites the
-    # attrs entry, so the later (lexical) leg wins and, inside one leg, the
-    # last position wins — exactly SQL ``ORDER BY cid, side ASC, ord DESC``.
-    for rows in (dense, lexical):
+    for rows in legs:
         for rank, row in enumerate(rows, start=1):
             cid = _as_uuid(row["chunk_id"])
             scores[cid] = scores.get(cid, 0.0) + 1.0 / (rrf_k + rank)
@@ -78,3 +78,22 @@ def rrf_fuse(
     # never leaks into the output.
     fused.sort(key=lambda row: (-row.score, row.chunk_id))
     return fused[:k] if k >= 0 else fused
+
+
+def rrf_fuse(
+    lexical: Sequence[RowLike],
+    dense: Sequence[RowLike],
+    *,
+    k: int,
+    rrf_k: int = 60,
+) -> list[FusedRow]:
+    """Fuse the two retrieval legs exactly as corpus.rrf_fusion does.
+
+    ``k`` caps the output after ordering (SQL ``LIMIT``; negative means no
+    cap, as in Postgres). ``rrf_k`` is the rank smoothing constant (SQL
+    default 60). Total order: fscore DESC, then chunk id ASC.
+    """
+    # Dense leg first, so a chunk present in both legs sums dense + lexical
+    # contributions in the SQL UNION ALL order and the lexical (later) leg
+    # wins the attrs on overlap.
+    return rrf_fuse_legs((dense, lexical), k=k, rrf_k=rrf_k)

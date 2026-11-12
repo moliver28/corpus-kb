@@ -446,6 +446,16 @@
     "required": []
   },
   {
+    "description": "Bulk re-embed for a model switch; dry-run plan, resume, ledger row.",
+    "id": "ingest-reingest",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/reingest",
+    "required": []
+  },
+  {
     "description": "Recent ingest_runs ledger entries + degraded-chunk counts (honest history).",
     "id": "ingest-status",
     "longRunning": false,
@@ -454,6 +464,18 @@
     "paramsKnown": false,
     "path": "/api/ingest/status",
     "required": []
+  },
+  {
+    "description": "Upload one file by multipart form (field name file); the receipt is the standard file-ingest envelope.",
+    "id": "ingest-upload",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/upload",
+    "required": [
+      "file"
+    ]
   },
   {
     "description": "Fetch (or crawl) a website and ingest its HTML pages.",
