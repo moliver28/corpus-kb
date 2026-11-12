@@ -26,13 +26,22 @@ class HttpError(Exception):
     """A user-facing HTTP failure (bad status or no connection)."""
 
 
-def validate_url(url: str) -> None:
-    """Refuse URLs that are not a plain http(s) service endpoint.
+def request_json(
+    url: str,
+    method: str = "GET",
+    payload: dict | list | None = None,
+    timeout: float = 120.0,
+) -> dict:
+    """Send one JSON request and return the parsed JSON body.
 
+    The URL checks run here, in the same body as the request, and refuse
+    anything that is not a plain http(s) endpoint before it starts: no
+    other schemes, no credentials, a named host, and a loopback host
+    name that must resolve to a loopback address. The base URL is
+    operator configuration, so a configured non-loopback host is legal.
     The checks mirror ``tests/live_services.py::loopback_service_url``
     in the engine repo; this module is stdlib-only, so the twin is
-    inlined here on purpose. http(s) only, no credentials, a named
-    host, and a loopback host name must resolve to a loopback address.
+    inlined here on purpose.
     """
     try:
         parsed = urllib.parse.urlsplit(url)
@@ -53,16 +62,6 @@ def validate_url(url: str) -> None:
         addresses = {info[4][0] for info in infos}
         if addresses - _LOOPBACK_ADDRESSES:
             raise HttpError(f"Refused URL {url!r}: a loopback name must resolve loopback.")
-
-
-def request_json(
-    url: str,
-    method: str = "GET",
-    payload: dict | list | None = None,
-    timeout: float = 120.0,
-) -> dict:
-    """Send one JSON request and return the parsed JSON body."""
-    validate_url(url)
     data = None
     headers = {"Accept": "application/json"}
     if payload is not None:
