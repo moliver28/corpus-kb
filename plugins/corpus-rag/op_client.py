@@ -14,13 +14,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-# The documented default endpoint is the local engine (http://127.0.0.1
-# plus the study port). The base URL is operator configuration, so a
-# configured non-loopback host is legal; everything else below is a hard
-# boundary checked before any bytes leave the process.
-_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
-_LOOPBACK_ADDRESSES = {"127.0.0.1", "::1"}
-
 
 class HttpError(Exception):
     """A user-facing HTTP failure (bad status or no connection)."""
@@ -39,35 +32,39 @@ def request_json(
     other schemes, no credentials, a named host, and a loopback host
     name that must resolve to a loopback address. The base URL is
     operator configuration, so a configured non-loopback host is legal.
-    The checks mirror ``tests/live_services.py::loopback_service_url``
-    in the engine repo; this module is stdlib-only, so the twin is
-    inlined here on purpose.
+    The request then goes to the URL rebuilt from the checked parts, so
+    the bytes on the wire cannot differ from what was validated. The
+    checks mirror ``tests/live_services.py::loopback_service_url`` in
+    the engine repo; this module is stdlib-only, so the twin is inlined
+    here on purpose.
     """
     try:
         parsed = urllib.parse.urlsplit(url)
     except ValueError as exc:
         raise HttpError(f"Refused URL {url!r}: it does not parse.") from exc
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme != "http" and parsed.scheme != "https":
         raise HttpError(f"Refused URL {url!r}: the scheme must be http or https.")
-    if parsed.username or parsed.password:
+    if parsed.username is not None or parsed.password is not None:
         raise HttpError(f"Refused URL {url!r}: it must not carry credentials.")
     host = (parsed.hostname or "").strip("[]").lower()
-    if not host:
+    if host == "":
         raise HttpError(f"Refused URL {url!r}: it names no host.")
-    if host in _LOOPBACK_HOSTS:
+    if host == "localhost" or host == "127.0.0.1" or host == "::1":
         try:
             infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
         except OSError as exc:
             raise HttpError(f"Cannot reach {url}: the host does not resolve.") from exc
-        addresses = {info[4][0] for info in infos}
-        if addresses - _LOOPBACK_ADDRESSES:
-            raise HttpError(f"Refused URL {url!r}: a loopback name must resolve loopback.")
+        for info in infos:
+            address = str(info[4][0])
+            if address != "127.0.0.1" and address != "::1":
+                raise HttpError(f"Refused URL {url!r}: a loopback name must resolve loopback.")
     data = None
     headers = {"Accept": "application/json"}
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
-    req = urllib.request.Request(url, data=data, method=method, headers=headers)
+    checked_url = urllib.parse.urlunsplit(parsed)
+    req = urllib.request.Request(checked_url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             body = resp.read().decode("utf-8")
