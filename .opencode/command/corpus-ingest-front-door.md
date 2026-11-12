@@ -30,3 +30,11 @@ run-ledger surfaces.
   corpus-kb ingest-status
   corpus-kb ingest-reembed [--limit N] [--doc-id <uuid>]
   ```
+
+- After an embedding-model change, re-embed every stored chunk in one
+  batched pass (no re-partition, no re-extract). Dry-run first for the
+  size; a re-run skips chunks the target model already wrote:
+
+  ```
+  corpus-kb ingest-reingest [--dry-run] [--project-id <uuid>]
+  ```

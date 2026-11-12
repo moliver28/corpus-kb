@@ -111,12 +111,13 @@ class ResearchCheck:
 
 
 def surface_parity_check() -> ResearchCheck:
-    """The U5/P7 MECE contract: every research/release surface reachable on
-    CLI + MCP + HTTP (the documented parity allowlist aside).
+    """The U5/P7 MECE contract: every surface complete on its declared
+    transports (each row's per-op surface set; the allowlist aside).
 
     Pure and offline: reads the surface registry + the parity contract; a
-    gap means a registered operation lost a transport (or a new one was
-    added incompletely). Never flips the doctor exit code (doctor contract).
+    gap means a registered operation lost a declared transport (or a new
+    one was added incompletely). Never flips the doctor exit code (doctor
+    contract).
     """
     from corpus_kb import surface_registry as registry
     from corpus_kb import surface_registry_parity as parity
@@ -127,14 +128,14 @@ def surface_parity_check() -> ResearchCheck:
     )
     if gaps:
         return ResearchCheck(
-            name="surface parity (cli+mcp+http)",
+            name="surface parity (declared transports)",
             status=STATUS_FAIL,
             detail=f"{len(gaps)} operation(s) missing transports: {'; '.join(gaps)}",
             fix="wire the missing transports or extend TRANSPORT_ALLOWLIST explicitly",
             doc=DOC_RECONCILIATION,
         )
     return ResearchCheck(
-        name="surface parity (cli+mcp+http)",
+        name="surface parity (declared transports)",
         status=STATUS_OK,
         detail=(
             f"all {len(registry.SURFACES)} operations covered "

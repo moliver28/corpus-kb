@@ -1,12 +1,14 @@
 """MECE consistency checks for surface_registry.SURFACES.
 
 Internal-consistency contract: every surface declares at least one
-transport, CLI paths resolve to real registered commands, MCP tool names
-are known to validate-configs, wrapper covers reference real surfaces, and
-names are unique. SINCE P7 (U5) full transport parity (cli+mcp+http) is
-ENFORCED against the live registry outside the documented
-``surface_registry_parity.TRANSPORT_ALLOWLIST`` (research-cycle: no HTTP
-by design; research-demo: CLI-only by design).
+transport, each row's declared surface set matches the fields it sets,
+CLI paths resolve to real registered commands, MCP tool names are known
+to validate-configs, wrapper covers reference real surfaces, and names
+are unique. SINCE P7 (U5) declared transport parity is ENFORCED against
+the live registry outside the documented
+``surface_registry_parity.TRANSPORT_ALLOWLIST``: the default row declares
+cli+mcp+http, and the one reduced row is the multipart upload
+(``ingest-upload``, HTTP-only by nature — owner ruling 4a).
 """
 
 from __future__ import annotations
@@ -48,6 +50,13 @@ def test_every_surface_declares_at_least_one_known_transport() -> None:
         )
 
 
+def test_declared_surface_set_matches_the_set_fields() -> None:
+    """The per-op ``surfaces`` field and the set fields tell one story."""
+    for surface in reg.SURFACES:
+        assert set(surface.surfaces) == _transports(surface), surface.name
+        assert set(surface.surfaces) <= KNOWN_TRANSPORTS, surface.name
+
+
 def test_surface_names_unique() -> None:
     names = [s.name for s in reg.SURFACES]
     assert len(names) == len(set(names)), "duplicate surface names"
@@ -70,6 +79,8 @@ def test_cli_paths_resolve_to_registered_commands() -> None:
         return {str(c.name) for c in registered}  # typer models expose .name
 
     for surface in reg.SURFACES:
+        if "cli" not in surface.surfaces:
+            continue  # HTTP-only rows carry no CLI path by declaration
         parts = surface.cli_path.split()
         assert len(parts) in (1, 2), f"{surface.name}: cli_path must be '<app> <cmd>'"
         if len(parts) == 1:
@@ -175,11 +186,23 @@ def test_parity_helper_lists_every_gap_not_just_the_first() -> None:
 
 
 def test_live_registry_full_transport_parity() -> None:
-    """Full-surface-parity wave: every operation is cli+mcp+http complete
-    with NO allowlist exceptions left behind. The allowlist mechanism stays
+    """Every operation is complete on its DECLARED transports, with NO
+    allowlist exceptions left behind. The allowlist mechanism stays
     available (empty) for a future honest exception; any entry in it must
     still match a real gap, and any gap must be documented."""
     assert TRANSPORT_ALLOWLIST == {}, "stale allowlist entries: remove them"
     assert surface_coverage_gaps(reg.SURFACES) == []
-    assert_full_surface_parity(reg.SURFACES)  # the raw contract now holds
+    assert_full_surface_parity(reg.SURFACES)  # must not raise
     assert_parity_outside_allowlist(reg.SURFACES)  # the documented path still runs
+
+
+def test_http_only_rows_are_declared_in_the_registry() -> None:
+    """The one reduced surface set today is the multipart upload (ruling 4a).
+
+    Pinned here so a second reduced row (or a silent widening of this one)
+    is a conscious registry change, never drift.
+    """
+    reduced = {
+        s.name: tuple(s.surfaces) for s in reg.SURFACES if set(s.surfaces) != KNOWN_TRANSPORTS
+    }
+    assert reduced == {"ingest-upload": ("http",)}

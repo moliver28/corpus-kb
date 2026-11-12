@@ -42,6 +42,10 @@ REASON_FILTER_EMPTY = "degraded-filter-active"
 # parses, not cross-encoder scores). Rides the existing reasons list so the
 # search envelope key-set stays pinned.
 REASON_RERANK_MODE_GENERATIVE = "rerank-mode-generative-binary"
+# Issue #136: multi-query rewriting was ON but produced no rewrites (the
+# rewriter LLM was unreachable, timed out, or gave no usable rewrites).
+# The search stays on the single-query path; this note is the honest trace.
+REASON_MULTI_QUERY_UNAVAILABLE = "multi-query-rewriter-unavailable"
 
 STATUS_SUCCESS = "success"
 STATUS_DEGRADED_EMPTY = "degraded_empty"
@@ -107,6 +111,12 @@ class SearchEnvelope:
     # cosine top-k). Guaranteed envelope key; empty until the
     # analysis-embed-meta op has built aggregates.
     meta_hits: list[dict[str, object]] = field(default_factory=list)
+    # Issue #136: the multi-query rewrites actually used, in fusion order.
+    # None unless retrieval.multi_query is on AND the rewriter produced
+    # variants — so the flag-off envelope stays byte-identical. When set,
+    # the key is the honest receipt that multi-query fusion ran
+    # (contracts/envelopes.py MULTI_QUERY_KEYS).
+    query_rewrites: list[str] | None = None
 
 
 def is_all_zero(vector: list[float] | None) -> bool:
@@ -136,6 +146,7 @@ def finalize_envelope(
     vector_index_note: str | None = None,
     lexical_index_note: str | None = None,
     meta_hits: list[dict[str, object]] | None = None,
+    query_rewrites: list[str] | None = None,
 ) -> SearchEnvelope:
     """Build the final envelope: degraded_empty iff empty results + reasons.
 
@@ -166,6 +177,7 @@ def finalize_envelope(
             vector_index_note=vector_index_note,
             lexical_index_note=lexical_index_note,
             meta_hits=meta_out,
+            query_rewrites=query_rewrites,
         )
     return SearchEnvelope(
         status=STATUS_SUCCESS,
@@ -177,6 +189,7 @@ def finalize_envelope(
         vector_index_note=vector_index_note,
         lexical_index_note=lexical_index_note,
         meta_hits=meta_out,
+        query_rewrites=query_rewrites,
     )
 
 
@@ -200,6 +213,11 @@ def envelope_to_payload(envelope: SearchEnvelope) -> dict[str, object]:
     }
     if envelope.remedy is not None:
         payload["remedy"] = envelope.remedy
+    if envelope.query_rewrites:
+        # Issue #136 receipt: the rewrites actually used. The key appears
+        # ONLY when multi-query fusion ran, so the flag-off payload shape
+        # is unchanged (the *_index_note contract shape).
+        payload["query_rewrites"] = list(envelope.query_rewrites)
     if envelope.vector_index_note is not None:
         payload["vector_index_note"] = envelope.vector_index_note
     if envelope.lexical_index_note is not None:

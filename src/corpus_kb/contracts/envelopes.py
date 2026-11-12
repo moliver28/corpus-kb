@@ -48,6 +48,14 @@ SEARCH_ENVELOPE = (
     "meta_hits",
 )
 
+# Issue #136 multi-query retrieval (retrieval.multi_query, default OFF):
+# ``query_rewrites`` appears on the search envelope ONLY when the flag is
+# on and the rewriter produced variants. Value: the rewrites actually used,
+# in fusion order — the honest receipt that multi-query fusion ran. The
+# ask family carries the same receipt INSIDE ``result`` (its top-level
+# key-set is unchanged), so only the search row declares an extra here.
+MULTI_QUERY_KEYS = frozenset({"query_rewrites"})
+
 # Declared additive HTTP/socket wrapper over the shared envelope: the
 # command handler attaches the audit aggregate to successful ingests and
 # deletes. ``event_sourcing_error`` appears only when the audit write

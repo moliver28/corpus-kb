@@ -155,6 +155,15 @@ def test_tool_route_bodies_are_merged() -> None:
         assert entry["optional"] == list(route.optional), route.path
 
 
+def test_upload_entry_declares_the_multipart_file_field() -> None:
+    """The multipart upload row is not a JSON tool route: the manifest names
+    its one required form field honestly (ruling 4a)."""
+    manifest = {str(e["path"]): e for e in build_manifest(REPO)}
+    entry = manifest["/api/ingest/upload"]
+    assert entry["required"] == ["file"]
+    assert entry["optional"] == []
+
+
 def test_generated_ops_table_lists_every_manifest_entry() -> None:
     """The TypeScript op table has one row per manifest id, same method."""
     entries = build_manifest(REPO)

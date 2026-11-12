@@ -6,13 +6,17 @@ stays the source of truth; every test here pins one mirrored behavior:
 SQL default constant 60, per-chunk score summation across legs, the
 lexical-side-wins metadata rule, and the total order fscore DESC then
 chunk id ASC. All offline — no Postgres, no Ollama.
+
+The N-leg entry point ``rrf_fuse_legs`` (issue #136 multi-query) shares
+the same formula: the two-leg function delegates to it, and the tests at
+the bottom pin the N-leg sums, metadata rule, and two-leg equivalence.
 """
 
 from __future__ import annotations
 
 from uuid import UUID, uuid5
 
-from corpus_kb.handlers.query_fusion import rrf_fuse
+from corpus_kb.handlers.query_fusion import rrf_fuse, rrf_fuse_legs
 
 # Fixed namespace so tiebreaker keys are stable across runs (same trick as
 # tests/test_query_determinism.py).
@@ -145,3 +149,57 @@ def test_custom_rrf_k_matches_sql_constant_swap() -> None:
     cid = _cid("k60")
     fused = rrf_fuse([_row(cid)], [], k=10, rrf_k=42)
     assert fused[0].score == 1.0 / 43
+
+
+# ============================================================================
+# Issue #136: the N-leg entry point behind multi-query fusion
+# ============================================================================
+
+
+def test_legs_two_leg_call_matches_rrf_fuse() -> None:
+    """rrf_fuse(lexical, dense) is exactly rrf_fuse_legs((dense, lexical))."""
+    ids = [_cid(f"eq{i}") for i in range(3)]
+    dense = [_row(ids[2]), _row(ids[1])]
+    lexical = [_row(ids[0], text="lex"), _row(ids[1], text="lex")]
+    one = rrf_fuse(lexical, dense, k=10)
+    two = rrf_fuse_legs((dense, lexical), k=10)
+    assert one == two
+
+
+def test_legs_sum_every_leg_position() -> None:
+    """N legs: a chunk hit at rank 1 in each scores 3/(rrf_k + 1)."""
+    hit, other = _cid("n-hit"), _cid("n-other")
+    legs = (
+        [_row(hit)],  # rewrite 1 dense
+        [_row(hit, text="l1")],  # rewrite 1 lexical
+        [_row(hit, text="l2")],  # rewrite 2 lexical
+        [_row(other)],  # a chunk only rewrite 2 saw
+    )
+    fused = rrf_fuse_legs(legs, k=10)
+    by_id = {r.chunk_id: r for r in fused}
+    assert by_id[UUID(hit)].score == 3.0 / 61
+    assert by_id[UUID(other)].score == 1.0 / 61
+    assert by_id[UUID(hit)].text == "l2"  # the LAST leg wins metadata
+
+
+def test_legs_rank_stays_inside_each_leg() -> None:
+    """Ranks never run across legs: leg 2's rank-1 hit contributes 1/61,
+    not 1/(60 + len(leg1) + 1) — the SQL UNION ALL shape."""
+    first = [_row(_cid(f"a{i}")) for i in range(150)]  # ranks 1..150
+    legs = (first, [_row(_cid("b-top"))])
+    fused = rrf_fuse_legs(legs, k=300)
+    by_id = {r.chunk_id: r for r in fused}
+    assert by_id[UUID(_cid("b-top"))].score == 1.0 / 61
+
+
+def test_legs_total_order_and_k_cap() -> None:
+    """Same total order (fscore DESC, chunk id ASC) and LIMIT over N legs."""
+    ids = [_cid(f"n{i}") for i in range(3)]
+    legs = (
+        [_row(ids[2]), _row(ids[1])],
+        [_row(ids[0]), _row(ids[1])],
+    )
+    fused = rrf_fuse_legs(legs, k=2)
+    assert [r.chunk_id for r in fused] == [UUID(ids[1]), UUID(min(ids[0], ids[2], key=UUID))]
+    # ids[1] fuses both legs (1/62 + 1/62); ids[0] and ids[2] tie at 1/61.
+    assert fused[0].score == 1.0 / 62 + 1.0 / 62
