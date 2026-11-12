@@ -84,7 +84,7 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
     changes = body.get("changes")
     rows = list(changes) if isinstance(changes, list) else []
     for row in rows:
-        mark = "" if row.get("changed") else "  (already applied)"
+        mark = _change_mark(row) if row.get("changed") else "  (already applied)"
         print(f"  {row.get('key')}: {row.get('current')} -> {row.get('proposed')}{mark}")
     print(f"config: {body.get('config_path')}")
     applied = int(body.get("applied_count", 0) or 0)
@@ -93,3 +93,13 @@ def _emit(result: dict[str, object], json_output: bool) -> None:
     else:
         pending = sum(1 for row in rows if row.get("changed"))
         print("nothing to apply" if pending == 0 else f"{pending} change(s) to apply (use --write)")
+
+
+def _change_mark(row: dict[str, object]) -> str:
+    """The honest suffix for one changed row: say when a line was not replaced."""
+    edit = str(row.get("edit", "none"))
+    if edit == "inserted":
+        return "  (no replace: a new line was added; an old line may remain)"
+    if edit == "created":
+        return "  (new block)"
+    return ""

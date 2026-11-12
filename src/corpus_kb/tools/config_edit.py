@@ -18,7 +18,7 @@ from pathlib import Path
 
 import yaml
 
-__all__ = ["apply_keys_to_text", "write_atomic"]
+__all__ = ["apply_keys_to_text", "apply_keys_tracked", "write_atomic"]
 
 
 def write_atomic(config_path: Path, text: str) -> None:
@@ -33,18 +33,36 @@ def apply_keys_to_text(text: str, updates: Mapping[str, object]) -> str:
 
     Two-level keys (``analysis.routing.margin``) edit inside the nested
     block, creating it when missing. Deeper chains have no allow-listed
-    key today and refuse loudly instead of guessing.
+    key today and refuse loudly instead of guessing. For the per-key
+    replace report, use :func:`apply_keys_tracked`.
+    """
+    new_text, _ = apply_keys_tracked(text, updates)
+    return new_text
+
+
+def apply_keys_tracked(text: str, updates: Mapping[str, object]) -> tuple[str, dict[str, str]]:
+    """Set each dot-path key and report what each edit did to the text.
+
+    Returns the new text plus one outcome per dot path: ``replaced``
+    when the edit rewrote the existing line in place, ``inserted`` when
+    a fresh line went into an existing block (a no-replace edit — an
+    old line may remain in the file), and ``created`` when the edit
+    built the whole containing block. Deterministic for one text and
+    one update set.
     """
     lines = text.splitlines(keepends=True)
+    edits: dict[str, str] = {}
     for dot_path in sorted(updates):
         parts = dot_path.split(".")
         if len(parts) == 2:
-            lines = _set_block_key(lines, parts[0], parts[1], updates[dot_path])
+            lines = _set_block_key(lines, parts[0], parts[1], updates[dot_path], edits, dot_path)
         elif len(parts) == 3:
-            lines = _set_nested_key(lines, parts[0], parts[1], parts[2], updates[dot_path])
+            lines = _set_nested_key(
+                lines, parts[0], parts[1], parts[2], updates[dot_path], edits, dot_path
+            )
         else:
             raise ValueError(f"config_edit: unsupported dot path {dot_path!r}.")
-    return "".join(lines)
+    return "".join(lines), edits
 
 
 def _scalar_token(value: object) -> str:
@@ -57,20 +75,36 @@ def _scalar_token(value: object) -> str:
     return str(dumped).splitlines()[0]
 
 
-def _set_block_key(lines: list[str], block: str, key: str, value: object) -> list[str]:
+def _set_block_key(
+    lines: list[str],
+    block: str,
+    key: str,
+    value: object,
+    edits: dict[str, str],
+    dot_path: str,
+) -> list[str]:
     """One key set inside one top-level block: replace, insert, or append."""
     head_idx = _block_header(lines, block)
     if head_idx is None:
+        edits[dot_path] = "created"
         result = list(lines)
         if result and not result[-1].endswith("\n"):
             result[-1] += "\n"
         result.append(f"{block}:\n  {key}: {_scalar_token(value)}\n")
         return result
     end = _block_end(lines, head_idx)
-    return _set_key_in_block(lines, head_idx, end, key, value)
+    return _set_key_in_block(lines, head_idx, end, key, value, edits, dot_path)
 
 
-def _set_nested_key(lines: list[str], top: str, mid: str, key: str, value: object) -> list[str]:
+def _set_nested_key(
+    lines: list[str],
+    top: str,
+    mid: str,
+    key: str,
+    value: object,
+    edits: dict[str, str],
+    dot_path: str,
+) -> list[str]:
     """One leaf inside a two-level chain: replace, insert, or build it.
 
     The walk reuses the top-level helpers at each level: a missing
@@ -82,6 +116,7 @@ def _set_nested_key(lines: list[str], top: str, mid: str, key: str, value: objec
     token = _scalar_token(value)
     head_idx = _block_header(lines, top)
     if head_idx is None:
+        edits[dot_path] = "created"
         result = list(lines)
         if result and not result[-1].endswith("\n"):
             result[-1] += "\n"
@@ -90,6 +125,7 @@ def _set_nested_key(lines: list[str], top: str, mid: str, key: str, value: objec
     end = _block_end(lines, head_idx)
     mid_idx = _child_header(lines, head_idx, end, mid)
     if mid_idx is None:
+        edits[dot_path] = "created"
         indent = _member_indent(lines, head_idx, end)
         return [
             *lines[:end],
@@ -97,7 +133,7 @@ def _set_nested_key(lines: list[str], top: str, mid: str, key: str, value: objec
             *lines[end:],
         ]
     mid_end = _child_block_end(lines, mid_idx, end)
-    return _set_key_in_block(lines, mid_idx, mid_end, key, value)
+    return _set_key_in_block(lines, mid_idx, mid_end, key, value, edits, dot_path)
 
 
 def _block_header(lines: list[str], block: str) -> int | None:
@@ -139,12 +175,21 @@ def _child_block_end(lines: list[str], header: int, limit: int) -> int:
 
 
 def _set_key_in_block(
-    lines: list[str], head_idx: int, end: int, key: str, value: object
+    lines: list[str],
+    head_idx: int,
+    end: int,
+    key: str,
+    value: object,
+    edits: dict[str, str],
+    dot_path: str,
 ) -> list[str]:
     """One key set inside one already-located block: replace or insert.
 
     The key pattern anchors to the block's member column, so a deeper
-    same-named key inside a grandchild block never matches first.
+    same-named key inside a grandchild block never matches first. A
+    missed anchor inserts a fresh line and reports ``inserted``: the
+    operator must see the no-replace outcome, because a hand-edited
+    line at a non-uniform indent may remain in the file.
     """
     token = _scalar_token(value)
     indent = _member_indent(lines, head_idx, end)
@@ -152,6 +197,7 @@ def _set_key_in_block(
     for i in range(head_idx + 1, end):
         line = lines[i].rstrip("\n")
         if key_re.match(line):
+            edits[dot_path] = "replaced"
             comment = _trailing_comment(line)
             newline = lines[i][len(line) :]
             return [
@@ -159,6 +205,7 @@ def _set_key_in_block(
                 f"{indent}{key}: {token}{comment}{newline}",
                 *lines[i + 1 :],
             ]
+    edits[dot_path] = "inserted"
     return [*lines[:end], f"{indent}{key}: {token}\n", *lines[end:]]
 
 

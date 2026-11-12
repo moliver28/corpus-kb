@@ -596,3 +596,20 @@ def test_check_profile_lock_fails_on_missing_hash(tmp_path: Path) -> None:
     lock.write_text(json.dumps({"chosen": "baseline"}), encoding="utf-8")
     with pytest.raises(ValidationError, match="profile_sha256"):
         check_profile_lock(profile, lock)
+
+
+def test_lockfile_reads_the_public_reranker_helper() -> None:
+    """The reranker helper is public and lockfile never names the private one.
+
+    ``write_routing_lock`` resolves the same reranker flag as the sweep
+    (issue #341): one public helper in ``eval.calibrate``, no private
+    cross-module import.
+    """
+    import inspect
+
+    from corpus_kb.eval import calibrate as calibrate_module
+    from corpus_kb.eval import lockfile as lockfile_module
+
+    assert callable(calibrate_module.reranker_active)
+    assert not hasattr(calibrate_module, "_reranker_active")
+    assert "_reranker_active" not in inspect.getsource(lockfile_module)

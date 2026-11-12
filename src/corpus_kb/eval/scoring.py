@@ -25,6 +25,7 @@ from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 
 __all__ = [
     "ROUTING_DEGRADED_REFUSAL",
+    "ROUTING_EMPTY_EXPECTED_REFUSAL",
     "CandidateScore",
     "EngineFactory",
     "IngestedDoc",
@@ -166,6 +167,13 @@ ROUTING_DEGRADED_REFUSAL = (
     "numbers would be fake. Bring the embedder up and retry."
 )
 
+# A golden row with no expected method has no accuracy to score against,
+# so the primary metric is not definable for it (issue #341).
+ROUTING_EMPTY_EXPECTED_REFUSAL = (
+    "a golden row lists no expected method, so the sweep cannot score it. "
+    "Give every routing golden row at least one expected method."
+)
+
 
 def route_family(
     golden: Sequence[RoutingGoldenRow],
@@ -178,10 +186,14 @@ def route_family(
 
     The routing sweep's scorer (mirrors ``score_candidate`` for the
     ingest family): one candidate is one ``(threshold, margin)`` point.
-    One recipe maps to the router settings block it names.
+    One recipe maps to the router settings block it names. A row with no
+    expected method refuses the whole sweep: the primary metric reads the
+    first expected method, so an empty row has nothing to score against.
     """
     from corpus_kb.analysis.question_router import route_question
 
+    if any(not record.expected_method_ids for record in golden):
+        return [], [], ROUTING_EMPTY_EXPECTED_REFUSAL
     scored: list[CandidateScore] = []
     query_rows: list[QueryScore] = []
     settings: dict[str, object] = {}
