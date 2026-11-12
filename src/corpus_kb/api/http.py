@@ -150,6 +150,7 @@ from corpus_kb.api.routes_queue import (
     queue_enqueue_route,
     queue_status_route,
 )
+from corpus_kb.api.routes_reingest import ingest_reingest_route
 from corpus_kb.api.routes_search import (
     embed_text,
     query_sql,
@@ -197,6 +198,8 @@ def create_http_app() -> FastAPI:
         # Stage-5 ingest front door: status + reembed surfaces.
         Route("/api/ingest/status", ingest_status_route, methods=["GET"]),
         Route("/api/ingest/reembed", ingest_reembed_route, methods=["POST"]),
+        # U3 (#202): the bulk re-embed front door for model switches.
+        Route("/api/ingest/reingest", ingest_reingest_route, methods=["POST"]),
         # Wave 4 topics layer.
         Route("/api/topics/build", topics_build_route, methods=["POST"]),
         Route("/api/topics", topics_list_route, methods=["GET"]),
