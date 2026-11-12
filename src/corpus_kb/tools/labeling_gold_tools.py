@@ -33,12 +33,9 @@ import numpy as np
 
 from ..errors import ValidationError
 from .ingest_common import DEFAULT_TENANT_ID
+from .labeling_seams import load_labels, tables_present
 
 __all__ = ["MAX_GOLD_FILE_BYTES", "labeling_gold_check"]
-
-# The labeled-corpus read bound (the engine's read-batch scale; the
-# gold check needs the FULL built population for an honest prevalence).
-LABEL_READ_LIMIT = 200_000
 
 # A gold dev set is a small audited sample by design; this cap keeps a
 # runaway file from being parsed as one (one MiB is generous).
@@ -48,19 +45,10 @@ _UNAVAILABLE_REASON = "labeling tables absent (migration 028 not applied)"
 _UNAVAILABLE_REMEDY = "run corpus-kb setup"
 _GOLD_REMEDY = "Pass gold_file: a JSON object that maps built chunk ids to label names."
 
-
-async def _load_labels(pg_pool: asyncpg.Pool, tenant_id: str) -> list[dict[str, object]]:
-    """The label seam: the labeling store's built labels (tests fake it)."""
-    from corpus_kb.labeling.writer import read_labels
-
-    return await read_labels(pg_pool, tenant_id, LABEL_READ_LIMIT)
-
-
-async def _tables_present(pg_pool: asyncpg.Pool) -> bool:
-    """The store seam (tests substitute fakes here)."""
-    from corpus_kb.labeling.writer import labeling_tables_present
-
-    return await labeling_tables_present(pg_pool)
+# Module seam names: tests patch these per handler. The bodies live once
+# in labeling_seams.
+_load_labels = load_labels
+_tables_present = tables_present
 
 
 async def labeling_gold_check(

@@ -83,7 +83,7 @@ jobs:
         run: deptry src/
 
       - name: Complexity ratchet (xenon)
-        run: xenon src/ --max-absolute C --max-average B
+        run: xenon src/ scripts/ --max-absolute C --max-average B
 
       # Schema parity across both migration sets (storage portability
       # program, issue #127, zero-drift rule 10). sqlglot is static-only;
@@ -92,9 +92,10 @@ jobs:
         run: python scripts/schema_parity_gate.py
 
       # Size ratchet (PR-F, zero-drift rule 10): PLR0915 count and src/
-      # files over the 250-line soft limit, against the checked-in
-      # baselines in scripts/quality-baselines.json. Growth fails the
-      # PR; shrink passes, so dedup PRs land without touching this gate.
+      # + scripts/ files over the 250-line soft limit, against the
+      # checked-in baselines in scripts/quality-baselines.json. Growth
+      # fails the PR; shrink passes, so dedup PRs land without touching
+      # this gate.
       - name: Size ratchet (PLR0915 + 250-line files)
         run: poe size-ratchet
 
