@@ -31,11 +31,7 @@ ENTRY_POINT_GROUP = "corpus_kb.ingestion_strategies"
 
 
 class UnknownStrategyError(ValidationError):
-    """A strategy name (explicit override or config mapping) is not registered.
-
-    The base is ValidationError (owner ruling, issue #307): a strategy
-    typo is caller input, so it answers 400 / -32602 / CLI exit 1.
-    """
+    """A strategy name (explicit override or config mapping) is not registered; caller input."""
 
 
 _REGISTRY: dict[str, IngestionStrategy] = {}
