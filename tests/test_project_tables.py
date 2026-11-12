@@ -50,6 +50,12 @@ def test_raw_table_name_validates_and_maps_hyphens() -> None:
         raw_table_name("")
     with pytest.raises(ValidationError):
         raw_table_name("notes; DROP TABLE users")
+    # Hostile slugs aimed at the drop path: a slug with a quote, a
+    # semicolon, or a comment never reaches a SQL statement.
+    with pytest.raises(ValidationError):
+        raw_table_name('x"); DROP TABLE users; --')
+    with pytest.raises(ValidationError):
+        raw_table_name('meet"ing-notes')
 
 
 async def test_provision_creates_table_and_registry_row(duckdb_with_registry) -> None:

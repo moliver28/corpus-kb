@@ -236,8 +236,12 @@ async def test_evidence_view_is_two_tenant_safe(research_pool) -> None:
     # test_ingest_integrity precedent of self-granting what the leg needs).
     conn = await research_pool.acquire()
     try:
-        await conn.execute(f"GRANT SELECT ON research_signals TO {RLS_PROBE_ROLE}")
-        await conn.execute(f"SET ROLE {RLS_PROBE_ROLE}")
+        # The role name is fixed by tests/research_db.py. The statements
+        # below are static text. The guard fails loudly if the role is
+        # ever renamed, so the literals cannot drift from the fixture.
+        assert RLS_PROBE_ROLE == "corpus_rls_probe"
+        await conn.execute("GRANT SELECT ON research_signals TO corpus_rls_probe")
+        await conn.execute("SET ROLE corpus_rls_probe")
         try:
             blocked = await conn.fetchval(
                 "SELECT count(*) FROM research_signals WHERE tenant_id = ANY($1::uuid[])",
