@@ -1,0 +1,158 @@
+{
+  "python": "3.11.5",
+  "packages": {
+    "corpus-kb": "0.1.0",
+    "gliner2": "2.1.0",
+    "gliner": "0.2.29",
+    "torch": "2.15.0+cpu"
+  },
+  "candidate": {
+    "backend": "gliner",
+    "model": "fastino/gliner2-large-v1",
+    "revision": "main",
+    "min_span_confidence": 0.35,
+    "spans": 912
+  },
+  "baseline": {
+    "backend": "ml",
+    "mode": "zero_shot",
+    "spans": 919
+  },
+  "gold_docs": 40,
+  "gold_spans": 912,
+  "seed": 42,
+  "resamples": 10000,
+  "scores": {
+    "candidate_micro": {
+      "tp": 912,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0
+    },
+    "baseline_micro": {
+      "tp": 912,
+      "fp": 6,
+      "fn": 0,
+      "precision": 0.9934640522875817,
+      "recall": 1.0,
+      "f1": 0.9967213114754099
+    },
+    "candidate_per_type": {
+      "date": {
+        "tp": 22,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "location": {
+        "tp": 52,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "money": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "organization": {
+        "tp": 139,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "person": {
+        "tp": 54,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "product": {
+        "tp": 639,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "baseline_per_type": {
+      "date": {
+        "tp": 22,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "location": {
+        "tp": 52,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "money": {
+        "tp": 6,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "organization": {
+        "tp": 139,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "person": {
+        "tp": 54,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "product": {
+        "tp": 639,
+        "fp": 6,
+        "fn": 0,
+        "precision": 0.9906976744186047,
+        "recall": 1.0,
+        "f1": 0.9953271028037384
+      }
+    }
+  },
+  "bootstrap": {
+    "delta_f1": 0.003278688524590123,
+    "ci_low": 0.0,
+    "ci_high": 0.006382978723404209,
+    "resamples": 10000,
+    "seed": 42
+  },
+  "gate": {
+    "promoted": false,
+    "reasons": [
+      "PASS absolute: micro F1 1.0000, floor 0.80, baseline 0.9967, margin 0.02",
+      "FAIL relative: micro F1 1.0000, floor 0.80, baseline 0.9967, margin 0.02"
+    ]
+  },
+  "runtime_seconds": 3.9
+}
