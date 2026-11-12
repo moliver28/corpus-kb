@@ -9,12 +9,50 @@ Stdlib only.
 from __future__ import annotations
 
 import json
+import socket
 import urllib.error
+import urllib.parse
 import urllib.request
+
+# The documented default endpoint is the local engine (http://127.0.0.1
+# plus the study port). The base URL is operator configuration, so a
+# configured non-loopback host is legal; everything else below is a hard
+# boundary checked before any bytes leave the process.
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1"}
+_LOOPBACK_ADDRESSES = {"127.0.0.1", "::1"}
 
 
 class HttpError(Exception):
     """A user-facing HTTP failure (bad status or no connection)."""
+
+
+def validate_url(url: str) -> None:
+    """Refuse URLs that are not a plain http(s) service endpoint.
+
+    The checks mirror ``tests/live_services.py::loopback_service_url``
+    in the engine repo; this module is stdlib-only, so the twin is
+    inlined here on purpose. http(s) only, no credentials, a named
+    host, and a loopback host name must resolve to a loopback address.
+    """
+    try:
+        parsed = urllib.parse.urlsplit(url)
+    except ValueError as exc:
+        raise HttpError(f"Refused URL {url!r}: it does not parse.") from exc
+    if parsed.scheme not in ("http", "https"):
+        raise HttpError(f"Refused URL {url!r}: the scheme must be http or https.")
+    if parsed.username or parsed.password:
+        raise HttpError(f"Refused URL {url!r}: it must not carry credentials.")
+    host = (parsed.hostname or "").strip("[]").lower()
+    if not host:
+        raise HttpError(f"Refused URL {url!r}: it names no host.")
+    if host in _LOOPBACK_HOSTS:
+        try:
+            infos = socket.getaddrinfo(host, None, proto=socket.IPPROTO_TCP)
+        except OSError as exc:
+            raise HttpError(f"Cannot reach {url}: the host does not resolve.") from exc
+        addresses = {info[4][0] for info in infos}
+        if addresses - _LOOPBACK_ADDRESSES:
+            raise HttpError(f"Refused URL {url!r}: a loopback name must resolve loopback.")
 
 
 def request_json(
@@ -24,6 +62,7 @@ def request_json(
     timeout: float = 120.0,
 ) -> dict:
     """Send one JSON request and return the parsed JSON body."""
+    validate_url(url)
     data = None
     headers = {"Accept": "application/json"}
     if payload is not None:
