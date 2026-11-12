@@ -75,7 +75,10 @@ class Operation:
     envelope on every surface (op-specific partial-state keys are extra).
     ``http_extra``/``socket_extra`` declare the additive keys a surface may
     carry over the shared envelope (undeclared extras are drift; the parity
-    gate fails on them).
+    gate fails on them). An op may declare fewer than all four surfaces
+    (a per-op surface set; the multipart upload is HTTP-only by nature).
+    ``multipart`` marks an HTTP surface whose POST body is a multipart
+    form with a required ``file`` field, not a JSON object.
     """
 
     name: str
@@ -88,6 +91,7 @@ class Operation:
     http_extra: frozenset[str] = frozenset()
     socket_extra: frozenset[str] = frozenset()
     exit_codes: tuple[int, ...] | None = None
+    multipart: bool = False
 
 
 @dataclass(frozen=True)
