@@ -27,8 +27,13 @@ Per operation the gate asserts:
 Sync rules (program standard 2, registry-first): a catalogue row without
 legs (or legs without a row) fails ``test_catalogue_and_legs_agree``, and
 rows whose operation exists in ``surface_registry`` must byte-match its
-CLI path, MCP tool name, and HTTP route. Ops that cannot run hermetically
-live in the catalogue's ``SKIPPED_OPERATIONS`` with an honest reason.
+declared columns (CLI path, MCP tool name, HTTP route). Ops that cannot
+run hermetically live in the catalogue's ``SKIPPED_OPERATIONS`` with an
+honest reason. One declared exemption class exists: an operation whose
+catalogue row declares a REDUCED surface set (the multipart upload is
+HTTP-only by nature — ruling 4a). The gates read each row's declared
+surface kinds, so a missing non-declared leg is DECLARED-EXEMPT, never a
+silent skip: the row itself carries the declaration.
 
 Fully offline: the DB layer is stubbed at the same seams
 tests/test_ingest_integrity.py and tests/test_search_honesty.py use; the
@@ -367,6 +372,31 @@ async def _shared_ingest_file(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.tools.ingest_tools import ingest_file
 
     return await ingest_file(str(ctx["file_path"]), ctx["pool"], config=ctx["config"])
+
+
+class _FakeUploadSource:
+    """One uploaded file in memory (the tools' UploadSource protocol shape)."""
+
+    def __init__(self, name: str, content_type: str, data: bytes) -> None:
+        self.filename = name
+        self.content_type = content_type
+        self.size = len(data)
+        self._data = data
+
+    async def read(self, size: int = -1) -> bytes:
+        chunk = self._data if size < 0 else self._data[:size]
+        self._data = b"" if size < 0 else self._data[len(chunk) :]
+        return chunk
+
+
+async def _shared_ingest_upload(ctx: dict[str, Any]) -> dict[str, Any]:
+    from corpus_kb.tools.ingest_upload_tools import ingest_upload
+
+    # The route passes NO config: the ambient config is the upload path's
+    # real contract (the multipart form carries no config block), so the
+    # shared leg makes the same call and both legs answer one envelope.
+    source = _FakeUploadSource("parity.txt", "text/plain", TEXT_BODY.encode())
+    return await ingest_upload(source, ctx["pool"])
 
 
 async def _shared_ingest_directory(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -1047,6 +1077,19 @@ def _get(path: str, params: dict[str, Any]) -> Any:
     return spec
 
 
+def _post_multipart(path: str, filename: str, content: str) -> Any:
+    """One multipart-form POST leg (the upload route's shape)."""
+
+    def spec(ctx: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "method": "post_multipart",
+            "path": path,
+            "files": {"file": (filename, content, "text/plain")},
+        }
+
+    return spec
+
+
 @dataclass(frozen=True)
 class _Leg:
     """The invocation plan for one catalogue operation."""
@@ -1116,6 +1159,13 @@ LEGS: dict[str, _Leg] = {
         _post("/api/ingest/url", {"url": "https://parity.example.com"}),
         _sock("ingest_url", {"url": "https://parity.example.com"}),
         _mcp({"url": "https://parity.example.com"}),
+    ),
+    # Multipart upload (ruling 4a): the catalogue row declares HTTP only,
+    # so the leg pair is shared + http alone — the missing cli/socket/mcp
+    # legs are DECLARED-EXEMPT, not skips (see test_catalogue_and_legs_agree).
+    "ingest_upload": _Leg(
+        _shared_ingest_upload,
+        _post_multipart("/api/ingest/upload", "parity.txt", TEXT_BODY),
     ),
     "ingest_status": _Leg(
         _shared_ingest_status,
@@ -2562,14 +2612,20 @@ def test_catalogue_and_legs_agree() -> None:
     skip_names = {skip.name for skip in SKIPPED_OPERATIONS}
     assert not op_names & skip_names, "an op cannot be both tested and skipped"
     assert set(LEGS) == op_names, f"catalogue/legs drift: {sorted(op_names ^ set(LEGS))}"
+    declared_kinds = {"cli", "http", "mcp", "socket"}
     for op in OPERATIONS:
-        # Full surface parity: every catalogue operation declares all four
-        # surfaces and carries a leg for each one that runs envelopes.
+        # Declared surface parity: every operation carries a leg for each
+        # surface KIND its row declares. A row may declare a reduced set
+        # (the multipart upload is HTTP-only by nature); the exemption
+        # lives in the row, so a missing non-declared leg is declared-
+        # exempt, never a silent skip.
         kinds = {surface.kind for surface in op.surfaces}
-        assert kinds == {"cli", "http", "mcp", "socket"}, (
-            f"{op.name} must declare all four surfaces (has {sorted(kinds)})"
+        assert kinds <= declared_kinds, (
+            f"{op.name} declares unknown surface kinds {sorted(kinds - declared_kinds)}"
         )
-        assert LEGS[op.name].socket is not None, f"{op.name} needs a socket leg"
+        assert "http" in kinds, f"{op.name} must declare the HTTP surface"
+        if "socket" in kinds:
+            assert LEGS[op.name].socket is not None, f"{op.name} needs a socket leg"
         # Every catalogue MCP surface gets an MCP leg (and only those do) —
         # the MCP server is generated from the same rows.
         has_surface = bool(surfaces_of(op, "mcp"))
@@ -2580,7 +2636,13 @@ def test_catalogue_and_legs_agree() -> None:
 
 
 def test_catalogue_matches_surface_registry() -> None:
-    """Rows whose op exists in surface_registry must byte-match its columns."""
+    """Rows whose op exists in surface_registry must byte-match its columns.
+
+    The comparison reads each registry row's DECLARED surface set: a
+    declared transport byte-matches the catalogue surface; an undeclared
+    transport must have NO catalogue surface (the multipart upload's
+    HTTP-only row is the live example).
+    """
     from corpus_kb.surface_registry import SURFACES
 
     registry = {surface.name.replace("-", "_"): surface for surface in SURFACES}
@@ -2589,12 +2651,22 @@ def test_catalogue_matches_surface_registry() -> None:
         surface = registry.get(op.name)
         if surface is None:
             continue
+        declared = set(getattr(surface, "surfaces", None) or ("cli", "mcp", "http"))
         mcp = surfaces_of(op, "mcp")
         cli = surfaces_of(op, "cli")
         http = surfaces_of(op, HTTP)
-        assert mcp and mcp[0].route == surface.mcp_tool, op.name
-        assert cli and cli[0].route == surface.cli_path, op.name
-        assert http and http[0].route == surface.http_route, op.name
+        if "mcp" in declared:
+            assert mcp and mcp[0].route == surface.mcp_tool, op.name
+        if "cli" in declared:
+            assert cli and cli[0].route == surface.cli_path, op.name
+        if "http" in declared:
+            assert http and http[0].route == surface.http_route, op.name
+        if "mcp" not in declared:
+            assert not mcp, op.name
+        if "cli" not in declared:
+            assert not cli, op.name
+        if "http" not in declared:
+            assert not http, op.name
         checked.append(op.name)
     # The check must stay meaningful: these pinned rows prove it ran.
     assert {
@@ -2661,6 +2733,9 @@ def test_catalogue_matches_surface_registry() -> None:
         "coding_status",
         "coding_export",
         "events_summary",
+        # Ruling 4a: the HTTP-only upload row byte-matches on its declared
+        # surface (the empty cli/mcp registry fields are exempt).
+        "ingest_upload",
     } <= set(checked)
 
 
@@ -2700,6 +2775,8 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
     client: TestClient = ctx["client"]
     if spec["method"] == "post":
         response = client.post(spec["path"], json=spec.get("json"))
+    elif spec["method"] == "post_multipart":
+        response = client.post(spec["path"], files=spec["files"])
     elif spec["method"] == "delete":
         response = client.delete(spec["path"])
     else:

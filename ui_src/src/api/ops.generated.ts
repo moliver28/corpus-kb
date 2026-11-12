@@ -51,6 +51,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "ingest-directory": { path: "/api/ingest/directory", method: "POST", longRunning: true },
   "ingest-reembed": { path: "/api/ingest/reembed", method: "POST", longRunning: false },
   "ingest-status": { path: "/api/ingest/status", method: "GET", longRunning: false },
+  "ingest-upload": { path: "/api/ingest/upload", method: "POST", longRunning: false },
   "ingest-url": { path: "/api/ingest/url", method: "POST", longRunning: true },
   "labeling-list": { path: "/api/labeling", method: "GET", longRunning: false },
   "labeling-build": { path: "/api/labeling/build", method: "POST", longRunning: true },

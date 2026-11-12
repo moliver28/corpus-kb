@@ -35,6 +35,10 @@ class Surface(NamedTuple):
     mcp_tool: str
     description: str
     http_route: str | None = None  # set for every surface outside the parity allowlist
+    # The transports this operation declares, as a per-op surface set. The
+    # default is full parity (cli+mcp+http); an HTTP-by-nature operation
+    # declares the smaller set and stays exempt from the others (ruling 4a).
+    surfaces: tuple[str, ...] = ("cli", "mcp", "http")
 
 
 SURFACES: tuple[Surface, ...] = (
@@ -214,6 +218,21 @@ SURFACES: tuple[Surface, ...] = (
         mcp_tool="ingest_url",
         description="Fetch (or crawl) a website and ingest its HTML pages.",
         http_route="/api/ingest/url",
+    ),
+    # Multipart upload (owner ruling 4a, 2026-11-12): HTTP by nature. The
+    # browser posts multipart form data; the JSON side of the SAME pipeline
+    # stays ingest-file (CLI/MCP/socket), so this row declares an HTTP-only
+    # surface set instead of wrapping the pipeline in a JSON sibling.
+    Surface(
+        name="ingest-upload",
+        cli_path="",
+        mcp_tool="",
+        description=(
+            "Upload one file by multipart form (field name file); the "
+            "receipt is the standard file-ingest envelope."
+        ),
+        http_route="/api/ingest/upload",
+        surfaces=("http",),
     ),
     # -- lifecycle UI ops (UI SPA Task 5b, issue #176): demo load + doctor ---
     Surface(
