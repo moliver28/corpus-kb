@@ -50,6 +50,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "events-summary": { path: "/api/events/summary", method: "GET", longRunning: false },
   "ingest-directory": { path: "/api/ingest/directory", method: "POST", longRunning: true },
   "ingest-reembed": { path: "/api/ingest/reembed", method: "POST", longRunning: false },
+  "ingest-reingest": { path: "/api/ingest/reingest", method: "POST", longRunning: false },
   "ingest-status": { path: "/api/ingest/status", method: "GET", longRunning: false },
   "ingest-upload": { path: "/api/ingest/upload", method: "POST", longRunning: false },
   "ingest-url": { path: "/api/ingest/url", method: "POST", longRunning: true },

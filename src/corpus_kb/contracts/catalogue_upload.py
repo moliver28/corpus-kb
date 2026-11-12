@@ -12,7 +12,8 @@ All strings are plain English (ASD-STE100).
 
 from __future__ import annotations
 
-from corpus_kb.contracts.catalogue import _INGEST_EXTRA, _TENANT
+from corpus_kb.contracts.catalogue import _TENANT
+from corpus_kb.contracts.catalogue_ingest import _INGEST_EXTRA
 from corpus_kb.contracts.envelopes import INGEST_ENVELOPE
 from corpus_kb.contracts.model import HTTP, Operation, ParamSpec, SurfaceSpec
 
