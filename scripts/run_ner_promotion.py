@@ -3,10 +3,21 @@
 Usage (repo root, installed package; worktree checkouts need
 PYTHONPATH=<worktree>/src so ``corpus_kb`` resolves to the worktree):
 
-    python scripts/run_ner_promotion.py --gold GOLD.jsonl --out report.json \
-        [--predictions predictions.jsonl] [--seed 42] [--resamples 10000]
+    python scripts/run_ner_promotion.py extract --system candidate \
+        --gold GOLD.jsonl --predictions candidate.jsonl
+    python scripts/run_ner_promotion.py extract --system baseline \
+        --gold GOLD.jsonl --predictions baseline.jsonl
+    python scripts/run_ner_promotion.py score --gold GOLD.jsonl \
+        --candidate-predictions candidate.jsonl \
+        --baseline-predictions baseline.jsonl --out report.json \
+        [--seed 42] [--resamples 10000]
 
-Both systems run over every gold document:
+Extraction and scoring are separate stages ON PURPOSE: each system runs
+in its own process, so the two GLiNER-class models never share memory
+(two resident copies have segfaulted under Windows), and the scoring
+stage needs no torch at all.
+
+Systems:
 
 * candidate: ``extraction.backend: gliner`` (GLiNER2, opt-in)
 * baseline:  ``extraction.backend: ml`` (the shipped default chain)
@@ -126,29 +137,68 @@ def _both_configs(config: dict[str, object]) -> tuple[dict[str, object], dict[st
     return candidate, baseline
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--gold", required=True, help="Gold JSONL path (stays local)")
-    parser.add_argument("--out", required=True, help="Sanitized report JSON path")
-    parser.add_argument("--predictions", help="Per-span predictions JSONL (stays local)")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--resamples", type=int, default=10_000)
-    parser.add_argument("--limit", type=int, default=0, help="First N docs only (0 = all)")
-    args = parser.parse_args()
+def _write_predictions(path: str, gold: list[GoldDoc], spans: dict[str, list[GoldSpan]]) -> None:
+    """Per-doc spans for one system: one JSON object per gold doc."""
+    with Path(path).open("w", encoding="utf-8") as f:
+        for doc in gold:
+            f.write(
+                json.dumps(
+                    {
+                        "doc_id": doc.doc_id,
+                        "spans": [dataclasses.asdict(s) for s in spans[doc.doc_id]],
+                    }
+                )
+                + "\n"
+            )
 
+
+def _read_predictions(path: str) -> dict[str, list[GoldSpan]]:
+    """Inverse of ``_write_predictions`` for the torch-free score stage."""
+    spans: dict[str, list[GoldSpan]] = {}
+    with Path(path).open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            raw = json.loads(line)
+            doc_id = str(raw["doc_id"])
+            spans[doc_id] = [
+                GoldSpan(start=int(s["start"]), end=int(s["end"]), label=str(s["label"]))
+                for s in raw.get("spans", [])
+            ]
+    return spans
+
+
+def _run_extract(args: argparse.Namespace) -> int:
     gold = load_gold(args.gold)
     if args.limit:
         gold = gold[: args.limit]
     if not gold:
         print("ERROR: the gold set is empty")
         return 1
-
     config = dict(load_config())
     candidate_cfg, baseline_cfg = _both_configs(config)
+    system_cfg = candidate_cfg if args.system == "candidate" else baseline_cfg
     started = time.perf_counter()
-    candidate, cand_skipped = _predict(create_extractor(candidate_cfg), gold, candidate_cfg)
-    baseline, base_skipped = _predict(create_extractor(baseline_cfg), gold, baseline_cfg)
+    spans, skipped = _predict(create_extractor(system_cfg), gold, system_cfg)
+    _write_predictions(args.predictions, gold, spans)
+    total = sum(len(v) for v in spans.values())
+    print(
+        f"system={args.system} docs={len(gold)} spans={total} "
+        f"skipped_entities={skipped} runtime={round(time.perf_counter() - started, 1)}s"
+    )
+    print(f"predictions: {args.predictions}")
+    return 0
 
+
+def _run_score(args: argparse.Namespace) -> int:
+    gold = load_gold(args.gold)
+    if not gold:
+        print("ERROR: the gold set is empty")
+        return 1
+    started = time.perf_counter()
+    candidate = _read_predictions(args.candidate_predictions)
+    baseline = _read_predictions(args.baseline_predictions)
     cand_report = score_corpus(gold, candidate)
     base_report = score_corpus(gold, baseline)
     bootstrap = paired_bootstrap(
@@ -156,11 +206,9 @@ def main() -> int:
     )
     gate = promotion_gate(cand_report.micro.f1, base_report.micro.f1)
     seconds = round(time.perf_counter() - started, 1)
-
-    extraction_block = candidate_cfg["extraction"]
-    gliner_block = (
-        extraction_block["gliner"] if isinstance(extraction_block.get("gliner"), dict) else {}
-    )
+    config = dict(load_config())
+    extraction_block = config.get("extraction")
+    gliner_block = extraction_block.get("gliner", {}) if isinstance(extraction_block, dict) else {}
     report: dict[str, object] = {
         "python": platform.python_version(),
         "packages": {
@@ -168,17 +216,15 @@ def main() -> int:
         },
         "candidate": {
             "backend": "gliner",
-            "model": gliner_block.get("model"),
-            "revision": gliner_block.get("revision"),
+            "model": gliner_block.get("model") if isinstance(gliner_block, dict) else None,
+            "revision": gliner_block.get("revision") if isinstance(gliner_block, dict) else None,
             "min_span_confidence": 0.35,
             "spans": sum(len(v) for v in candidate.values()),
-            "skipped_entities": cand_skipped,
         },
         "baseline": {
             "backend": "ml",
             "mode": "zero_shot",
             "spans": sum(len(v) for v in baseline.values()),
-            "skipped_entities": base_skipped,
         },
         "gold_docs": len(gold),
         "gold_spans": sum(len(doc.spans) for doc in gold),
@@ -202,20 +248,6 @@ def main() -> int:
         "runtime_seconds": seconds,
     }
     Path(args.out).write_text(json.dumps(report, indent=2), encoding="utf-8")
-    if args.predictions:
-        with Path(args.predictions).open("w", encoding="utf-8") as f:
-            for doc in gold:
-                for system, spans in (("candidate", candidate), ("baseline", baseline)):
-                    f.write(
-                        json.dumps(
-                            {
-                                "doc_id": doc.doc_id,
-                                "system": system,
-                                "spans": [dataclasses.asdict(s) for s in spans[doc.doc_id]],
-                            }
-                        )
-                        + "\n"
-                    )
 
     def _f1(side: str, micro: Scored) -> str:
         return f"{side}: P={micro.precision:.3f} R={micro.recall:.3f} F1={micro.f1:.4f}"
@@ -233,6 +265,30 @@ def main() -> int:
         print(f"  {reason}")
     print(f"report: {args.out}")
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = parser.add_subparsers(dest="stage", required=True)
+
+    extract = sub.add_parser("extract", help="Run one system over the gold set")
+    extract.add_argument("--system", choices=["candidate", "baseline"], required=True)
+    extract.add_argument("--gold", required=True, help="Gold JSONL path (stays local)")
+    extract.add_argument("--predictions", required=True, help="Per-span JSONL output (stays local)")
+    extract.add_argument("--limit", type=int, default=0, help="First N docs only (0 = all)")
+
+    score = sub.add_parser("score", help="Score two prediction files and apply the gate")
+    score.add_argument("--gold", required=True, help="Gold JSONL path (stays local)")
+    score.add_argument("--candidate-predictions", required=True)
+    score.add_argument("--baseline-predictions", required=True)
+    score.add_argument("--out", required=True, help="Sanitized report JSON path")
+    score.add_argument("--seed", type=int, default=42)
+    score.add_argument("--resamples", type=int, default=10_000)
+
+    args = parser.parse_args()
+    if args.stage == "extract":
+        return _run_extract(args)
+    return _run_score(args)
 
 
 if __name__ == "__main__":
