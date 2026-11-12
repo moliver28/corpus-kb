@@ -29,13 +29,11 @@ Extend `MethodRecord` with fields grounded in how the literature states conditio
 | `statistical_rigor` | descriptive, inferential_null, inferential_calibrated | calibration literature |
 | `cost_tier` | interactive, batch | cascade economics |
 | `question_phrases` | 5-10 seed reference utterances per method; embedding centroid material | semantic-router reference sets |
-| `assumptions` | statistical conditions plus what breaks when violated | metric-family conditions |
-| `null_calibration` | null model, sample size, correction family | permutation-null guardrails |
 | `failure_modes` | observed failures, cited | metric-family caveats |
 | `scope_limits` | when manual close reading wins | Baden et al. 2022 |
-| `cost_scale` | complexity class plus practical ceiling | metric families |
 | `suggests` | follow-up question templates | Snowy/Foresight next-question pattern |
-| `evidence_citation` | source URL, tier, year | evidence field |
+
+The register ships 10 routing fields at version 3.0.0. `cost_scale` and `evidence_citation` left the schema at 2.0.0. `assumptions` folded into `robustness_caveat`, and `null_calibration` folded into `validation_required`, at 3.0.0.
 
 `scripts/gen_method_register_docs.py` extends to render the new columns; `poe gen` stays the drift gate. The core vocabularies live beside the models in `method_register.py`; the six routing vocabularies and the routing checks live in `method_register_routing.py`.
 

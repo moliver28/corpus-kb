@@ -513,8 +513,6 @@ evidence_basis
 statistical_rigor
 cost_tier
 question_phrases
-assumptions
-null_calibration
 failure_modes
 scope_limits
 suggests
