@@ -31,6 +31,7 @@ from .ingest_common import (
     load_config_or_pass,
     run_pipeline,
 )
+from .ingest_reingest import ingest_reingest
 from .ingest_store import as_gateway, gateway_backend
 from .ingest_surface_tools import ingest_reembed, ingest_status
 from .ingest_url_tools import ingest_url
@@ -40,6 +41,7 @@ __all__ = [
     "ingest_directory",
     "ingest_file",
     "ingest_reembed",
+    "ingest_reingest",
     "ingest_status",
     "ingest_text",
     "ingest_url",

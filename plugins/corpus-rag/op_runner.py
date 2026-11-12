@@ -86,9 +86,7 @@ def validate(op_row: dict, name: str, args: dict) -> None:
         known = ", ".join(sorted(params)) or "(none)"
         raise OpError(f"Unknown argument(s) for op '{name}': {', '.join(unknown)}. Known: {known}.")
     missing = [
-        pname
-        for pname, param in params.items()
-        if param.get("required") and pname not in args
+        pname for pname, param in params.items() if param.get("required") and pname not in args
     ]
     if missing:
         raise OpError(f"Missing required argument(s) for op '{name}': {', '.join(missing)}.")
@@ -110,9 +108,7 @@ def build_request(op_row: dict, args: dict) -> tuple[str, str, dict | None]:
         if placeholder not in remaining:
             raise OpError(f"Route {route} needs a value for '{placeholder}'.")
         value = remaining.pop(placeholder)
-        route = route.replace(
-            "{" + placeholder + "}", urllib.parse.quote(str(value), safe="")
-        )
+        route = route.replace("{" + placeholder + "}", urllib.parse.quote(str(value), safe=""))
     if method == "GET":
         pairs = {k: v for k, v in remaining.items() if v is not None}
         query = urllib.parse.urlencode(pairs, doseq=True)
@@ -157,6 +153,12 @@ def run_op(
     args = expand_home(args)
     method, route, payload = build_request(op_row, args)
     effective = timeout if timeout is not None else timeout_for(name)
+    base_host = urllib.parse.urlsplit(base_url).hostname
+    allowed = frozenset({base_host}) if base_host else None
     return op_client.request_json(
-        base_url.rstrip("/") + route, method=method, payload=payload, timeout=effective
+        base_url.rstrip("/") + route,
+        method=method,
+        payload=payload,
+        timeout=effective,
+        allowed_hosts=allowed,
     )

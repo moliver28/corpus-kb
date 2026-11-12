@@ -17,8 +17,12 @@ Documented protocol deviations from the OpenAI wire format (see also
     "code"}}`` — NOT the house ``{status, error, error_type}`` envelope
     (api/_body.py). These routes therefore bypass ``@route_errors``.
   * ``usage`` is omitted everywhere: token counts are not tracked yet.
-  * SSE streaming is honest: the ask answer is generated in full first,
-    then emitted as small delta frames. No token-level streaming exists.
+  * SSE streaming (issue #131): ``stream: true`` streams the grounded
+    answer as ``chat.completion.chunk`` frames WHILE it generates (TTFT
+    below total generation time), then the Sources block, then
+    ``[DONE]``. A degraded envelope before the first content frame keeps
+    the 503 retryable shape; a failure after content started emits the
+    OpenAI mid-stream error frame and stops — never a fake completion.
   * A ``degraded`` ask envelope (generation unavailable) answers 503 —
     the retryable-service shape — with the note as the error message.
   * ``temperature`` is accepted but ignored: generation runs at
@@ -29,6 +33,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from typing import Any
 from uuid import uuid4
 
 from pydantic import ValidationError
@@ -37,18 +42,17 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from corpus_kb.api._v1_wire import (
+    SSE_MEDIA_TYPE,
     ChatCompletionRequest,
     EmbeddingsRequest,
     completion_content,
     json_body,
     last_user_query,
     openai_error,
-    sse_frames,
+    sse_body,
     validation_error,
 )
 from corpus_kb.config import load_config
-
-_SSE_MEDIA_TYPE = "text/event-stream"
 
 # ---------------------------------------------------------------------------
 # Route handlers (tool imports INSIDE the bodies — the house test seam)
@@ -78,6 +82,8 @@ async def chat_completions(request: Request) -> Response:
     llm_section = cfg.get("llm")
     default_model = str(llm_section.get("model", "")) if isinstance(llm_section, dict) else ""
     model = payload.model or default_model
+    if payload.stream:
+        return await _chat_stream_response(query, cfg, model)
     try:
         envelope = await ask_tool(query, config=cfg)
     except Exception as exc:  # ask never raises by contract; belt and braces
@@ -93,12 +99,6 @@ async def chat_completions(request: Request) -> Response:
             note = str(result.get("note", "") or note)
         return openai_error(503, note, "service_unavailable", "service_unavailable")
     content = completion_content(envelope)
-    if payload.stream:
-        return StreamingResponse(
-            sse_frames(content, model),
-            media_type=_SSE_MEDIA_TYPE,
-            headers={"Cache-Control": "no-cache"},
-        )
     return JSONResponse(
         {
             "id": f"chatcmpl-{uuid4()}",
@@ -113,6 +113,41 @@ async def chat_completions(request: Request) -> Response:
                 }
             ],
         }
+    )
+
+
+async def _chat_stream_response(query: str, cfg: dict[str, Any], model: str) -> Response:
+    """``stream: true``: SSE over the ask operation's delta events.
+
+    The route awaits the FIRST event so a degraded envelope before any
+    content keeps the 503 retryable shape (the same byte-identical error
+    response the non-streaming path returns). Anything else streams:
+    content frames as grounded sentences complete, then the Sources
+    block, then ``[DONE]`` (see ``_v1_wire.sse_body``).
+    """
+    from corpus_kb.ask.composer import STATUS_DEGRADED
+    from corpus_kb.ask.streaming import AskStreamFinal
+    from corpus_kb.tools.ask_tools import ask_stream as ask_stream_tool
+
+    events = ask_stream_tool(query, config=cfg)
+    try:
+        first = await anext(events, None)
+    except Exception as exc:  # ask_stream never raises by contract; belt and braces
+        await events.aclose()
+        return openai_error(500, f"internal error: {exc}", "internal_error", "internal_error")
+    if first is None:
+        await events.aclose()
+        return openai_error(
+            500, "internal error: bad ask stream", "internal_error", "internal_error"
+        )
+    if isinstance(first, AskStreamFinal) and first.bundle.status == STATUS_DEGRADED:
+        await events.aclose()
+        note = str(first.bundle.note or "generation unavailable")
+        return openai_error(503, note, "service_unavailable", "service_unavailable")
+    return StreamingResponse(
+        sse_body(events, first, model),
+        media_type=SSE_MEDIA_TYPE,
+        headers={"Cache-Control": "no-cache"},
     )
 
 

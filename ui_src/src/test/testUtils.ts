@@ -7,7 +7,13 @@ import { createElement } from "react";
 import type { ReactNode } from "react";
 import { vi } from "vitest";
 
-export type MinimalResponse = { status: number; text: () => Promise<string> };
+export type MinimalResponse = {
+  status: number;
+  text: () => Promise<string>;
+  /** Present on SSE stubs; the plain JSON stubs leave it undefined. */
+  headers?: { get: (name: string) => string | null };
+  body?: ReadableStream<Uint8Array>;
+};
 export type Call = { method: string; url: string; body: string };
 export type Route = { method: string; path: string; reply: MinimalResponse };
 
@@ -17,6 +23,34 @@ export const calls: Call[] = [];
 /** One JSON response with an HTTP status (the common stub answer). */
 export function respond(status: number, body: unknown): MinimalResponse {
   return { status, text: async () => JSON.stringify(body) };
+}
+
+/**
+ * One SSE response whose frames arrive as separate stream chunks (the
+ * streaming tests assert on the INCREMENTAL rendering between chunks).
+ * Each entry is one full SSE frame, ending in its blank line.
+ */
+export function respondSSE(frames: string[], pauseMs = 10): MinimalResponse {
+  const encoder = new TextEncoder();
+  let index = 0;
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (index >= frames.length) {
+        controller.close();
+        return;
+      }
+      controller.enqueue(encoder.encode(frames[index]));
+      index += 1;
+      // One macrotask per frame: the test can observe partial answers.
+      return new Promise((resolve) => setTimeout(resolve, pauseMs));
+    },
+  });
+  return {
+    status: 200,
+    headers: { get: (name: string) => (name === "content-type" ? "text/event-stream" : null) },
+    text: async () => frames.join(""),
+    body,
+  };
 }
 
 /** Route every fetch through the route table; record each call. */

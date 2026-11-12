@@ -142,6 +142,7 @@ export interface Strings {
   errorCopied: string;
   askTitle: string;
   askBody: string;
+  askStreamingNote: string;
   askQueryLabel: string;
   askAction: string;
   askQueryRequired: string;
