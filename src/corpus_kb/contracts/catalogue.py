@@ -19,6 +19,7 @@ from corpus_kb.contracts.envelopes import (
     AGGREGATE_EXTRA,
     DEDUP_KEYS,
     INGEST_ENVELOPE,
+    MULTI_QUERY_KEYS,
     SEARCH_ENVELOPE,
     TEXTBOOK_KEYS,
     TITLE_KEYS,
@@ -204,6 +205,10 @@ CORE_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/search", "POST"),
             SurfaceSpec(SOCKET, "search"),
         ),
+        # Issue #136: the multi-query receipt key, legal on every surface
+        # when retrieval.multi_query is on (default OFF keeps it absent).
+        http_extra=MULTI_QUERY_KEYS,
+        socket_extra=MULTI_QUERY_KEYS,
         exit_codes=(0, 1, 2, 3),
     ),
     Operation(

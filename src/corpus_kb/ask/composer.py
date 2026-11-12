@@ -71,19 +71,26 @@ class AnswerBundle:
     model: str
     note: str | None
     degraded_excluded: dict[str, object]
+    # Issue #136: the multi-query rewrites actually used (the honest
+    # receipt that fusion ran). Emitted under ``result`` only when set, so
+    # the flag-off ask payload shape is unchanged.
+    query_rewrites: list[str] | None = None
 
     def to_payload(self) -> dict[str, object]:
         """The uniform envelope: ``{status, result, degraded_excluded}``."""
+        result: dict[str, object] = {
+            "answer": self.answer,
+            "sentences": [dict(sentence) for sentence in self.sentences],
+            "sources": [dict(source) for source in self.sources],
+            "verify": dict(self.verify),
+            "model": self.model,
+            "note": self.note,
+        }
+        if self.query_rewrites:
+            result["query_rewrites"] = list(self.query_rewrites)
         return {
             "status": self.status,
-            "result": {
-                "answer": self.answer,
-                "sentences": [dict(sentence) for sentence in self.sentences],
-                "sources": [dict(source) for source in self.sources],
-                "verify": dict(self.verify),
-                "model": self.model,
-                "note": self.note,
-            },
+            "result": result,
             "degraded_excluded": dict(self.degraded_excluded),
         }
 
@@ -229,21 +236,41 @@ async def compose_answer(
         current.set_attribute(ATTR_ROW_COUNT, len(envelope.results))
     sources = evidence_blocks(envelope.results)
     degraded = envelope.degraded_excluded.to_dict()
+    # Issue #136 receipt: the multi-query rewrites, when the flag ran.
+    rewrites = envelope.query_rewrites
     model = _model_name(llm)
     if not sources:
-        return AnswerBundle(STATUS_EMPTY, "", [], sources, _abstain(), model, NO_EVIDENCE, degraded)
+        return AnswerBundle(
+            STATUS_EMPTY, "", [], sources, _abstain(), model, NO_EVIDENCE, degraded, rewrites
+        )
     with span(SPAN_ASK_GENERATE) as current:
         text, gen_model, failed = await _generate(llm, question, sources)
         current.set_attribute(ATTR_MODEL, gen_model)
     model = gen_model or model
     if failed:
         return AnswerBundle(
-            STATUS_DEGRADED, "", [], sources, _abstain(), model, GENERATION_UNAVAILABLE, degraded
+            STATUS_DEGRADED,
+            "",
+            [],
+            sources,
+            _abstain(),
+            model,
+            GENERATION_UNAVAILABLE,
+            degraded,
+            rewrites,
         )
     sentences = cite_sentences(text, len(sources))
     if not sentences:
         return AnswerBundle(
-            STATUS_DEGRADED, "", [], sources, _abstain(), model, NO_CITABLE_SENTENCES, degraded
+            STATUS_DEGRADED,
+            "",
+            [],
+            sources,
+            _abstain(),
+            model,
+            NO_CITABLE_SENTENCES,
+            degraded,
+            rewrites,
         )
     answer = " ".join(str(sentence["text"]) for sentence in sentences)
     with span(SPAN_ASK_VERIFY) as current:
@@ -264,4 +291,5 @@ async def compose_answer(
         model,
         None,
         degraded,
+        rewrites,
     )
