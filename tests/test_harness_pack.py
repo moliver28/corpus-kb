@@ -101,11 +101,12 @@ def test_wrapper_bodies_are_invocation_guidance_only() -> None:
 
 def test_every_surface_has_cli_and_mcp_name_in_lockstep() -> None:
     for surface in reg.SURFACES:
-        assert surface.cli_path
-        if not surface.mcp_tool:
-            # r13: research-demo is CLI-ONLY - the ONLY row allowed an empty
-            # MCP-tool field (a demo tool would red validate-configs).
-            assert surface.name == "research-demo", surface.name
+        if "cli" in surface.surfaces:
+            assert surface.cli_path
+        if "mcp" not in surface.surfaces:
+            # ruling 4a: a row may declare a smaller surface set; a row with
+            # no declared MCP transport keeps an empty MCP-tool field
+            # (ingest-upload is HTTP-only; a demo tool would red validate-configs).
             continue
         # r9 tool-name lockstep: every registry MCP tool is autoApprove-valid.
         assert surface.mcp_tool in validate_configs.VALID_TOOL_NAMES, surface.mcp_tool
