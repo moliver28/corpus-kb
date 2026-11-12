@@ -219,7 +219,7 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Validate: Compare representations and grouping settings. Review boundary cases. Use feedback if available. Compare mean silhouette against a permutation null before trusting the group count.
   - Claim only: Exploratory groups with examples and distances.
   - Do not claim: Do not claim semantic similarity equals the similarity the research question needs.
-  - Cautions: Embedding similarity must reflect the similarity the question needs; a stable-looking group can reflect topic, style, speaker, or document format. Bias: Majority patterns and embedding training data shape the group structure.
+  - Cautions: Embedding similarity must reflect the similarity the question needs. A stable-looking group can reflect topic, style, speaker, or document format. Bias: Majority patterns and embedding training data shape the group structure.
   - Routing axes: task `discovery`, comparison `none`, output `cluster_map`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Convexity bias flattens non-round clusters; imbalance hides minority groups.
   - Limits: Exploratory groups only; semantic similarity is not research similarity.
@@ -307,7 +307,7 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Validate: Assess improvement per annotation effort. Compare each round against random sampling on the same budget.
   - Claim only: Annotation-order recommendations with the strategy recorded.
   - Do not claim: Do not claim the selection strategy always beats random sampling.
-  - Cautions: Task and label sets must stay stable and annotators stay consistent; uncertainty sampling can chase difficult or noisy cases, not representative ones. Bias: Selected annotation data need not match corpus prevalence.
+  - Cautions: Task and label sets must stay stable and annotators stay consistent. Uncertainty sampling can chase difficult or noisy cases, not representative ones. Bias: Selected annotation data need not match corpus prevalence.
   - Routing axes: task `prediction`, comparison `none`, output `ranked_list`, evidence `labels`, rigor `inferential_calibrated`, cost tier `batch`.
   - Watch for: Uncertainty sampling chases noisy cases, not representative ones.
   - Limits: Annotation ordering only; the strategy need not beat random sampling.
@@ -340,7 +340,7 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Validate: Check known relevant passages, missed evidence, and question variants.
   - Claim only: Evidence lists for stated questions, with scores by type.
   - Do not claim: Do not read retrieval scores as answer truth.
-  - Cautions: Queries must match the evidence wording and the index must stay current; performance can change across retrieval tasks and domains. Bias: Questions and ranking models decide which evidence becomes visible.
+  - Cautions: Queries must match the evidence wording and the index must stay current. Performance can change across retrieval tasks and domains. Bias: Questions and ranking models decide which evidence becomes visible.
   - Routing axes: task `discovery`, comparison `none`, output `ranked_list`, evidence `vector`, rigor `descriptive`, cost tier `interactive`.
   - Watch for: Question wording and reranker choice decide which evidence becomes visible.
   - Limits: Evidence lists only; retrieval scores are not answer truth.
@@ -362,7 +362,7 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Validate: Define types and boundary rules. Label a span-level test set. Tune the model or thresholds.
   - Claim only: Span inventories for the declared entity types.
   - Do not claim: Do not assume two matching names are the same entity.
-  - Cautions: Type descriptions must match the corpus and boundaries must follow declared rules; unfamiliar terms and domain shift can reduce performance. Bias: Type definitions and training data can favor familiar names or entity forms.
+  - Cautions: Type descriptions must match the corpus and boundaries must follow declared rules. Unfamiliar terms and domain shift can reduce performance. Bias: Type definitions and training data can favor familiar names or entity forms.
   - Routing axes: task `representation`, comparison `none`, output `graph`, evidence `graph`, rigor `descriptive`, cost tier `batch`.
   - Watch for: Entity boundaries, unfamiliar terms, and domain shift cut performance.
   - Limits: Span inventories only; matching names are not the same entity.
@@ -373,7 +373,7 @@ Register version: 3.0.0. Source: the research document named in `config/analysis
   - Validate: Define the construct. Label and test each category, including neutral or uncertain cases.
   - Claim only: Screening flags for evaluative language under the defined construct.
   - Do not claim: Do not infer a participant's internal state without further evidence.
-  - Cautions: The construct must be defined and expression must map to its categories; mixed, indirect, and code-mixed language need task-specific tests. Bias: Expression style can be mistaken for an emotional state.
+  - Cautions: The construct must be defined and expression must map to its categories. Mixed, indirect, and code-mixed language need task-specific tests. Bias: Expression style can be mistaken for an emotional state.
   - Routing axes: task `measurement`, comparison `none`, output `statistic`, evidence `labels`, rigor `inferential_calibrated`, cost tier `interactive`.
   - Watch for: Indirect, mixed, and code-mixed language need task-specific tests.
   - Limits: Screening flags only; not a participant's internal state.
