@@ -8,6 +8,7 @@ reads (``_extractor_name``, ``_extract_entities_flag``).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
@@ -70,17 +71,24 @@ def _build_langextract(config: dict[str, object], pool: asyncpg.Pool | None) -> 
 async def _run_extract(
     extractor: Extractor, chunks: list[Chunk], ontology: Ontology, source_document_id: str
 ) -> _Extraction:
-    """One sync extraction call, wrapped to fit the uniform rung loop."""
-    return extractor.extract(chunks, ontology, source_document_id)
+    """One sync extraction call, offloaded to a worker thread.
+
+    This seam runs blocking sync code: GLiNER2 forward passes and LangExtract
+    LLM calls. On the event loop they stalled every concurrent MCP and HTTP
+    request for the whole pass (issue #86, audit finding L8). A worker thread
+    keeps the loop free. Exceptions propagate unchanged, so the fallback
+    chain below behaves exactly as before.
+    """
+    return await asyncio.to_thread(extractor.extract, chunks, ontology, source_document_id)
 
 
 async def _run_pgml(
     extractor: Extractor, chunks: list[Chunk], ontology: Ontology, source_document_id: str
 ) -> _Extraction:
-    """PostgresML extracts in the database when possible; others run sync."""
+    """PostgresML extracts in the database when possible; others run off loop."""
     if isinstance(extractor, PgmlExtractor):
         return await extractor.aextract(chunks, ontology, source_document_id)
-    return extractor.extract(chunks, ontology, source_document_id)
+    return await asyncio.to_thread(extractor.extract, chunks, ontology, source_document_id)
 
 
 # The fallback chain, in order. The langextract rung serves every backend
@@ -211,6 +219,7 @@ async def extract_with_fallback(
 
     from ..extraction import RegexExtractor
 
+    # The regex floor stays on the loop: pure-regex scans are millisecond work.
     fallback = RegexExtractor()
     entities, relations, stats = fallback.extract(chunks, ontology, source_document_id)
     if failures:

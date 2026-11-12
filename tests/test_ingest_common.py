@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -515,6 +517,86 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
         assert stats.backend == "langextract"
     finally:
         extraction_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+        ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+
+
+async def test_extract_with_fallback_offloads_slow_sync_backend_off_the_loop() -> None:
+    """A slow sync backend runs in a worker thread, not on the event loop.
+
+    Issue #86 (audit L8): a GLiNER2 forward pass on the loop stalled every
+    concurrent request. A marker coroutine is queued while the fake gliner
+    rung blocks; the worker thread records whether the loop ran it. On-loop
+    execution can only record "blocked" and fails the test.
+    """
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology = load_ontology(_ONTOLOGY_PATH)
+    started = threading.Event()
+    loop_ran_marker = threading.Event()
+    observed: dict[str, str] = {}
+
+    class _SlowGliner:
+        extractor_id = "gliner"
+
+        def extract(
+            self, chunks: list[Chunk], ont: Any, source_document_id: str
+        ) -> tuple[list[Entity], list[Any], ExtractStats]:
+            started.set()
+            if loop_ran_marker.wait(timeout=5):
+                observed["loop"] = "responsive"
+            else:
+                observed["loop"] = "blocked"
+            return (
+                [
+                    Entity(
+                        name="Acme",
+                        entity_type="Org",
+                        source_type="text",
+                        source_document_id=source_document_id,
+                        chunk_id=chunks[0].chunk_id,
+                        confidence=None,
+                        extractor_id="gliner",
+                        metadata={},
+                    )
+                ],
+                [],
+                ExtractStats(backend="gliner", requested_entities=1, kept_entities=1),
+            )
+
+    import corpus_kb.tools.ingest_extract as ingest_module
+
+    original_create_extractor = ingest_module.create_extractor
+    ingest_module.create_extractor = lambda config, pool=None: _SlowGliner()  # type: ignore[assignment]
+    try:
+
+        async def _concurrent_request() -> None:
+            # Yield first: on-loop execution blocks the loop before this fires.
+            await asyncio.sleep(0.05)
+            loop_ran_marker.set()
+
+        marker_task = asyncio.create_task(_concurrent_request())
+        task = asyncio.create_task(
+            extract_with_fallback(
+                [chunk],
+                ontology,
+                "doc-gliner",
+                {"graph": {"extractor": "gliner"}},
+                pool=_FakePoolNoConn(),
+            )
+        )
+        for _ in range(300):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.01)
+        assert started.is_set(), "the gliner rung never started"
+        entities, _relations, extractor_id, _stats = await asyncio.wait_for(task, timeout=30)
+        assert extractor_id == "gliner"
+        assert len(entities) == 1
+        assert observed["loop"] == "responsive", (
+            "the event loop was blocked for the whole extraction pass"
+        )
+        await asyncio.wait_for(marker_task, timeout=5)
+    finally:
+        loop_ran_marker.set()
         ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
 
 
