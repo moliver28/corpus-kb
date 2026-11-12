@@ -254,3 +254,31 @@ Follow-ups filed at close: ASR / web-crawl / slides / PII / Splink as future
 strategy modules; `qa_context_in_fts` retrieval eval; GLiNER2 promotion
 decision (needs eval numbers on the real corpus); qwen3-embedding switch;
 #17 full transactional store.
+
+## Addendum (R4 upload manifest row, 2026-11-12, owner ruling 4a)
+
+The multipart upload endpoint (`/api/ingest/upload`) gains its registry row
+(`ingest-upload`) and its catalogue row (`ingest_upload`,
+`contracts/catalogue_upload.py`) with a DECLARED HTTP-only surface set
+(`surfaces=("http",)`). Multipart form upload is an HTTP shape by nature;
+the JSON side of the SAME pipeline stays `ingest-file` (CLI/MCP/socket),
+so no JSON sibling was wrapped around it.
+
+Enablement (registry-first, rule 2):
+
+- `Surface` gains a per-op surface set field (`surfaces`, default
+  cli+mcp+http), and `surface_registry_parity.surface_coverage_gaps` reads
+  it: a declared transport with an unset field, an undeclared transport
+  with a set field, and an unknown declared name are all gaps.
+- `TRANSPORT_ALLOWLIST` stays EMPTY: the declared per-op surface set is
+  the primary mechanism; the allowlist remains the documented-exception
+  fallback.
+- The parity gates (`tests/test_surface_parity_deep.py`) read each
+  catalogue row's declared surface kinds, so the missing non-declared legs
+  are DECLARED-EXEMPT, never silent skips. The upload op runs the shared
+  + HTTP legs (multipart POST form).
+- `Operation` gains a `multipart` flag; the OpenAPI export declares the
+  `multipart/form-data` body with the required binary `file` field. The
+  UI manifest entry names the same required form field. No MCP tool name
+  was registered (`VALID_TOOL_NAMES` unchanged).
+- The doctor check is now "surface parity (declared transports)".

@@ -456,6 +456,18 @@
     "required": []
   },
   {
+    "description": "Upload one file by multipart form (field name file); the receipt is the standard file-ingest envelope.",
+    "id": "ingest-upload",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/upload",
+    "required": [
+      "file"
+    ]
+  },
+  {
     "description": "Fetch (or crawl) a website and ingest its HTML pages.",
     "id": "ingest-url",
     "longRunning": true,
