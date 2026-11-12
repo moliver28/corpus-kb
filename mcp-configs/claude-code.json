@@ -31,6 +31,7 @@
         "sync_database",
         "ingest_status",
         "ingest_reembed",
+        "ingest_reingest",
         "topics_build",
         "topics_list",
         "topics_trends",

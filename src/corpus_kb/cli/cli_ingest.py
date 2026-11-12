@@ -31,6 +31,7 @@ from corpus_kb.cli._plumbing import _VALIDATE_OPT, ValidateMode, validate_kwargs
 from corpus_kb.cli.cli_ingest_views import (
     print_ingest_result,
     print_reembed_summary,
+    print_reingest_receipt,
     print_status_report,
 )
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as TENANT_DEFAULT
@@ -48,10 +49,11 @@ INGEST_EXIT_CONFIG = 3
 
 
 def register(app: typer.Typer) -> None:
-    """Attach the four top-level ingest commands to the main Typer app."""
+    """Attach the five top-level ingest commands to the main Typer app."""
     app.command("ingest")(ingest)
     app.command("ingest-status")(ingest_status)
     app.command("ingest-reembed")(ingest_reembed)
+    app.command("ingest-reingest")(ingest_reingest)
     app.command("ingest-url")(ingest_url_command)
 
 
@@ -228,6 +230,40 @@ async def _status_flow(limit: int, json_output: bool, project_id: str | None = N
         print_status_report(report)
     status = str(report.get("status"))
     return INGEST_EXIT_CONFIG if status in ("unavailable", "error") else INGEST_EXIT_OK
+
+
+async def _reingest_flow(
+    project_id: str | None, dry_run: bool, batch_size: int, json_output: bool
+) -> int:
+    from corpus_kb.errors import ConfigError
+    from corpus_kb.tools.ingest_reingest import ingest_reingest
+
+    cfg = _load_config()
+    pool = await _open_pool(cfg)
+    try:
+        receipt = await ingest_reingest(
+            pool,
+            cfg,
+            TENANT_DEFAULT,
+            project_id=project_id,
+            dry_run=dry_run,
+            batch_size=batch_size,
+        )
+    except ConfigError as exc:
+        print(f"ERROR: {exc}")
+        print(f"Fix: {exc.remediation}")
+        return INGEST_EXIT_CONFIG
+    finally:
+        await pool.close()
+    if json_output:
+        print(json.dumps(receipt, indent=2, default=str))
+    else:
+        print_reingest_receipt(receipt)
+    status = str(receipt.get("status", "error"))
+    if status in ("unavailable", "error"):
+        return INGEST_EXIT_CONFIG
+    failed = receipt.get("failed", 0)
+    return INGEST_EXIT_PARTIAL if isinstance(failed, int) and failed else INGEST_EXIT_OK
 
 
 async def _ingest_url_flow(
@@ -434,3 +470,27 @@ def ingest_reembed(
     3 configuration error (migration missing, bad --doc-id, database down).
     """
     return _run_sync(lambda: _reembed_flow(limit, doc_id, json_output))
+
+
+def ingest_reingest(
+    project_id: str | None = typer.Option(
+        None, "--project-id", help="Limit to one project's documents (UUID)"
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run", help="Count only: documents, chunks, estimated tokens"
+    ),
+    batch_size: int = typer.Option(128, "--batch-size", min=1, help="Chunks embedded per batch"),
+    json_output: bool = typer.Option(False, "--json", help="Machine-readable JSON output"),
+) -> int:
+    """Re-embed stored chunks after an embedding-model change.
+
+    Skips re-partition and re-extract: reads the stored chunks, embeds
+    them with the CURRENT config, and upserts the vectors. A re-run
+    skips chunks this model already wrote (resume). Start with --dry-run
+    to size the job.
+
+    Exit codes: 0 ok (or nothing to do), 1 partial (some chunks failed),
+    3 configuration error (width mismatch, migration missing, database
+    down, bad --project-id).
+    """
+    return _run_sync(lambda: _reingest_flow(project_id, dry_run, batch_size, json_output))
