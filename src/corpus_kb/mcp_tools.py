@@ -86,12 +86,12 @@ REGISTRY_TOOL_FUNCTIONS: dict[str, str] = {
     "notebook_uncoded": "corpus_kb.tools.notebook_tools:notebook_uncoded_tool",
     "notebook_overlap": "corpus_kb.tools.notebook_tools:notebook_overlap_tool",
     "research_cycle": "corpus_kb.tools.cycle_tools:research_cycle",
-    # UI SPA Task 5b (issue #176): the lifecycle UI ops. The wrappers bind
-    # the ONE handler each surface already routes through — the doctor
-    # snapshot the HTTP /api/doctor route serves, and the demo loader the
-    # CLI demo-kb command and POST /api/demo/load share.
+    # UI SPA Task 5b (issue #176): the lifecycle UI ops. The wrapper binds
+    # the ONE handler the surface already routes through — the doctor
+    # snapshot the HTTP /api/doctor route serves. The demo loader moved to
+    # the catalogue leg (momus F8 close-out: the demo_load row owns its
+    # envelope contract now).
     "doctor": "corpus_kb.tools.doctor_tools:doctor_snapshot",
-    "demo_load": "corpus_kb.demo_kb:load_demo_kb",
     # UI SPA Task 5b (spec B2): the lifecycle read lists the Review and
     # Codebook screens consume — the SAME functions the GET routes serve.
     "projects_list": "corpus_kb.tools.lifecycle_read_tools:projects_list",
