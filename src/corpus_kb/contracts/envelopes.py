@@ -83,3 +83,13 @@ TITLE_KEYS = frozenset({"title"})
 # cache_misses, pages, warning_count}. The default envelope stays
 # byte-identical.
 TEXTBOOK_KEYS = frozenset({"textbook"})
+
+# Per-run token accounting (issue #198): the ``token_usage`` key appears
+# ONLY when a backend reported usage during the run. Today that is the
+# Ollama embedder (its embed responses carry a prompt token count); pgml,
+# the local late-chunking stack, and the fake embedder report nothing, so
+# their envelopes keep the byte-identical shape. Value:
+# {"embed": {"provider", "embedded_texts", "cached_texts"}}, plus
+# "prompt_tokens" when the provider reported one. Extractor and reranker
+# sections stay absent until a backend reports them.
+TOKEN_KEYS = frozenset({"token_usage"})

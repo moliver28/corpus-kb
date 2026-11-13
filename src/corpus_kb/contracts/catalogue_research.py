@@ -17,7 +17,7 @@ SYNCHRONOUS long-running calls on http/mcp/socket, exactly like the CLI.
 
 from __future__ import annotations
 
-from corpus_kb.contracts.envelopes import VALIDATION_KEYS
+from corpus_kb.contracts.envelopes import TOKEN_KEYS, VALIDATION_KEYS
 from corpus_kb.contracts.model import (
     CLI,
     DEFAULT_TENANT_ID,
@@ -62,8 +62,8 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/research/ingest-transcript", "POST"),
             SurfaceSpec(SOCKET, "research_ingest_transcript"),
         ),
-        http_extra=VALIDATION_KEYS,
-        socket_extra=VALIDATION_KEYS,
+        http_extra=VALIDATION_KEYS | TOKEN_KEYS,
+        socket_extra=VALIDATION_KEYS | TOKEN_KEYS,
     ),
     Operation(
         name="research_ingest",
@@ -84,8 +84,8 @@ RESEARCH_OPERATIONS: tuple[Operation, ...] = (
             SurfaceSpec(HTTP, "/api/research/ingest", "POST"),
             SurfaceSpec(SOCKET, "research_ingest"),
         ),
-        http_extra=VALIDATION_KEYS,
-        socket_extra=VALIDATION_KEYS,
+        http_extra=VALIDATION_KEYS | TOKEN_KEYS,
+        socket_extra=VALIDATION_KEYS | TOKEN_KEYS,
     ),
     Operation(
         name="coding_run",

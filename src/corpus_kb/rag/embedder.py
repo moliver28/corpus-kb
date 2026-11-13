@@ -28,6 +28,7 @@ from corpus_kb.storage.gateway import SqlGateway
 from ..config import load_config
 from ..errors import ConfigError
 from ..utils.deterministic import HashRandom
+from .embedder_usage import EmbedUsage
 from .model_profiles import native_dimensions
 
 logger = logging.getLogger(__name__)
@@ -122,6 +123,12 @@ class OllamaEmbedder:
 
         self._client = Client(host=self.base_url, timeout=EMBED_TIMEOUT_SECONDS)
         self._cache: OrderedDict[str, list[float]] = OrderedDict()
+        # Per-call usage accounting (issue #198): ``last_usage`` is the
+        # snapshot of the most recent embed_batch call; ``_api_prompt_tokens``
+        # carries the response's prompt token count of the last API call
+        # (None when the API was not called or reported nothing).
+        self.last_usage: EmbedUsage | None = None
+        self._api_prompt_tokens: int | None = None
 
     def embed(self, text: str) -> list[float]:
         """Return a single embedding vector for ``text``."""
@@ -130,6 +137,7 @@ class OllamaEmbedder:
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for ``texts``, using the cache and batching."""
         if not texts:
+            self.last_usage = None
             return []
 
         keys = [_sha256_key(text) for text in texts]
@@ -145,15 +153,33 @@ class OllamaEmbedder:
                 missing.append((idx, texts[idx]))
 
         if not missing:
+            # Every text was a cache hit: the backend was not called, so it
+            # reported no token count (issue #198).
+            self.last_usage = EmbedUsage(
+                prompt_tokens=None, embedded_texts=0, cached_texts=len(texts)
+            )
             return results
 
         missing_texts = [text for _, text in missing]
         batch_size = max(1, self.batch_size)
         batched_results: list[list[float]] = []
+        reported: list[int | None] = []
 
         for start in range(0, len(missing_texts), batch_size):
             batch = missing_texts[start : start + batch_size]
             batched_results.extend(self._embed_batch(batch))
+            reported.append(self._api_prompt_tokens)
+
+        # All-or-nothing honesty: one unreported API call hides the total —
+        # a partial sum would fake precision (issue #198).
+        tokens: int | None = None
+        if all(count is not None for count in reported):
+            tokens = sum(count for count in reported if count is not None)
+        self.last_usage = EmbedUsage(
+            prompt_tokens=tokens,
+            embedded_texts=len(missing),
+            cached_texts=len(texts) - len(missing),
+        )
 
         for (idx, text), vector in zip(missing, batched_results, strict=True):
             key = _sha256_key(text)
@@ -205,6 +231,9 @@ class OllamaEmbedder:
                 )
 
     def _embed_batch(self, texts: list[str]) -> list[list[float]]:
+        # The snapshot reader reads this after the call; reset first so a
+        # failed call can never leak the previous batch's count.
+        self._api_prompt_tokens = None
         try:
             request_dimensions = self._request_dimensions()
             if request_dimensions is not None:
@@ -228,6 +257,9 @@ class OllamaEmbedder:
             )
             return [[0.0] * self.dimensions for _ in texts]
 
+        # Honest usage accounting (issue #198): keep what the response
+        # reported; a missing count stays None (unknown, not zero).
+        self._api_prompt_tokens = response.prompt_eval_count
         vectors = [list(vector) for vector in response.embeddings]
         self._validate_returned_width(vectors)
         return vectors

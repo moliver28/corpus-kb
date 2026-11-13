@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -87,6 +87,102 @@ class TestOllamaEmbedderCache:
 
         assert vector_a == vector_b
         assert mock_embed.call_count == 1
+
+
+class TestOllamaEmbedderUsage:
+    """Per-call usage snapshots (issue #198): report what Ollama reports."""
+
+    def test_last_usage_starts_none(self) -> None:
+        assert OllamaEmbedder(_FAKE_CONFIG).last_usage is None
+
+    def test_snapshot_reports_prompt_tokens_and_text_counts(self) -> None:
+        embedder = OllamaEmbedder(_FAKE_CONFIG)
+
+        def _respond(**kwargs: object) -> EmbedResponse:
+            inputs = cast("list[str]", kwargs["input"])
+            return EmbedResponse(
+                embeddings=[[0.1] * embedder.dimensions for _ in inputs], prompt_eval_count=42
+            )
+
+        embedder._client.embed = MagicMock(side_effect=_respond)
+
+        embedder.embed_batch(["a", "b", "c"])
+
+        assert embedder.last_usage is not None
+        assert embedder.last_usage.prompt_tokens == 42
+        assert embedder.last_usage.embedded_texts == 3
+        assert embedder.last_usage.cached_texts == 0
+
+    def test_snapshot_sums_prompt_tokens_across_sub_batches(self) -> None:
+        config: dict[str, object] = {
+            "embedding": {
+                "provider": "ollama",
+                "model": "nomic-embed-text",
+                "base_url": "http://localhost:11434",
+                "batch_size": 2,
+                "dimensions": 768,
+            }
+        }
+        embedder = OllamaEmbedder(config)
+        counts = iter([10, 15])
+
+        def _respond(**kwargs: object) -> EmbedResponse:
+            inputs = cast("list[str]", kwargs["input"])
+            return EmbedResponse(
+                embeddings=[[0.1] * embedder.dimensions for _ in inputs],
+                prompt_eval_count=next(counts),
+            )
+
+        embedder._client.embed = MagicMock(side_effect=_respond)
+        embedder.embed_batch(["a", "b", "c"])
+
+        assert embedder.last_usage is not None
+        assert embedder.last_usage.prompt_tokens == 25
+        assert embedder.last_usage.embedded_texts == 3
+
+    def test_snapshot_counts_cache_hits_and_drops_token_count(self) -> None:
+        embedder = OllamaEmbedder(_FAKE_CONFIG)
+
+        def _respond(**kwargs: object) -> EmbedResponse:
+            inputs = cast("list[str]", kwargs["input"])
+            return EmbedResponse(
+                embeddings=[[0.1] * embedder.dimensions for _ in inputs], prompt_eval_count=42
+            )
+
+        mock_embed = MagicMock(side_effect=_respond)
+        embedder._client.embed = mock_embed
+
+        embedder.embed_batch(["a", "b"])
+        embedder.embed_batch(["a", "b"])
+
+        assert mock_embed.call_count == 1
+        assert embedder.last_usage is not None
+        assert embedder.last_usage.prompt_tokens is None
+        assert embedder.last_usage.embedded_texts == 0
+        assert embedder.last_usage.cached_texts == 2
+
+    def test_snapshot_has_no_token_count_when_api_omits_it(self) -> None:
+        embedder = OllamaEmbedder(_FAKE_CONFIG)
+        fake_response = EmbedResponse(embeddings=[[0.1] * embedder.dimensions])
+        embedder._client.embed = MagicMock(return_value=fake_response)
+
+        embedder.embed_batch(["a"])
+
+        assert embedder.last_usage is not None
+        assert embedder.last_usage.prompt_tokens is None
+        assert embedder.last_usage.embedded_texts == 1
+        assert embedder.last_usage.cached_texts == 0
+
+    def test_snapshot_has_no_token_count_on_connection_failure(self) -> None:
+        embedder = OllamaEmbedder(_DEAD_PORT_CONFIG)
+
+        vectors = embedder.embed_batch(["a", "b"])
+
+        assert all(v == [0.0] * embedder.dimensions for v in vectors)
+        assert embedder.last_usage is not None
+        assert embedder.last_usage.prompt_tokens is None
+        assert embedder.last_usage.embedded_texts == 2
+        assert embedder.last_usage.cached_texts == 0
 
 
 class TestOllamaEmbedderDegradation:
