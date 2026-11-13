@@ -368,6 +368,24 @@ describe("DocumentsCard", () => {
     ).toBe(true);
   });
 
+  it("keeps the drawer open on Details after a restored deep link", async () => {
+    const docId = documentsOk.response.body.result[0].doc_id;
+    stubFetch(analyzeRoutes());
+    render(<DocumentsCard />, {
+      wrapper: makeWrapper(true, [`/?analyze=${docId}`]),
+    });
+    expect(await screen.findByText(strings.reviewAnalyzeTitle)).toBeTruthy();
+    // The reload path never ran the Analyze row action, so only the URL
+    // holds the row. The tab switch must keep that row, not close.
+    fireEvent.click(screen.getByRole("tab", { name: strings.reviewDetailsTab }));
+    // The same document's Details panel renders inside the open drawer.
+    expect(await screen.findByText("energy")).toBeTruthy();
+    expect(
+      screen.getByRole("tab", { name: strings.reviewDetailsTab }).getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
   it("keeps a param for a row outside the served window absent", async () => {
     stubFetch(analyzeRoutes());
     render(<DocumentsCard />, {

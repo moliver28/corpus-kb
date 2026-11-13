@@ -72,6 +72,12 @@ export default function DocumentsCard() {
   }
 
   function changePanel(next: DrawerPanel): void {
+    // A restored deep link never ran openAnalyze, so the URL row is the
+    // only holder. Seed the manual state from it BEFORE the param clears,
+    // or the drawer would close instead of landing on Details.
+    if (paramRow !== undefined) {
+      setManualDetail(paramRow);
+    }
     setManualPanel(next);
     if (next === "details") {
       setAnalyzeParam(null);
