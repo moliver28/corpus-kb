@@ -18,6 +18,11 @@ const Release = lazy(() => import("./pages/Release"));
 // The Map (Phase-2 Wave 6): a domain view, not a lifecycle stage.
 // @xyflow/react rides ONLY this chunk (the ui-import-graph gate).
 const Map = lazy(() => import("./pages/Map"));
+const Chat = lazy(() => import("./pages/Chat"));
+
+// The Chat (Phase-2 Wave 7): a domain view. @ant-design/x rides ONLY
+// this chunk (the ui-import-graph gate). The rail entry lands with the
+// real page (step 7).
 
 /** A stage whose screen has not landed yet — one honest placeholder.
     Plain markup keeps antd's Card out of the shell chunk. */
@@ -81,6 +86,7 @@ function StageShell() {
               <Route path="/scale" element={<Scale />} />
               <Route path="/release" element={<Release />} />
               <Route path="/map" element={<Map />} />
+              <Route path="/chat" element={<Chat />} />
               {/* Stages without screens yet (Tasks 6-7) land above this
                   catch-all; until then each shows the same placeholder. */}
               <Route path="*" element={<StagePlaceholder />} />

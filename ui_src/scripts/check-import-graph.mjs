@@ -25,16 +25,16 @@ export const LIB_PACKAGES = ["@xyflow/react", "@dagrejs/dagre"];
 
 // Wave 7: the @ant-design/x family rides the lazy Chat chunk ONLY.
 // The chat rules mirror the map family: the prefixes are the lazy Chat
-// module set, the marker is the X runtime string observed in a real
-// build (re-pin from the build if upstream renames it), and the
-// zero-import guard switches ON in the same commit as the first X
-// import — before that commit there is nothing to leak, and a lying
-// scan would fail the whole tree for no reason. The vitest pins all
-// three once the import lands.
+// module set, the marker is X's cssinjs style-layer name observed in a
+// real build — it lands in exactly one chunk, the lazy Chat chunk
+// (re-pin from the build if upstream renames it) — and the
+// zero-import guard is ON now that the import exists. The vitest pins
+// the prefix and package lists; the marker + guard pin is the dep
+// commit itself.
 export const CHAT_ALLOWED_PREFIXES = ["pages/Chat.tsx", "pages/chat/"];
 export const CHAT_PACKAGES = ["@ant-design/x", "@ant-design/x-markdown", "@ant-design/x-sdk"];
-export const CHAT_MARKER = null; // pinned from the first real build in the dep commit
-export const CHAT_REQUIRE_IMPORTS = false;
+export const CHAT_MARKER = "antdx";
+export const CHAT_REQUIRE_IMPORTS = true;
 
 const uiRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const srcDir = join(uiRoot, "src");
