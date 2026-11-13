@@ -140,7 +140,8 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # nine issue #350 coding + events ops, and the #202 bulk re-embed
     # (ingest_reingest). Rows whose catalogue names already exist (the
     # derived-analysis, graph-read/write, and upload rows) add nothing.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 108
+    # +1 for the Phase-2 Wave 6 Map edge read (list_relations).
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 109
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:
