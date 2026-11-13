@@ -24,12 +24,13 @@ const PAGE_SIZE = 50;
  * shared server-window seam (hooks/useServerWindow), not in this card.
  *
  * The NLP deep link rides the hash query (`#/review?analyze=<doc_id>`,
- * the useQueryParam seam): the Analyze row action writes it, a reload
- * or a shared link restores it, and closing the drawer clears it — the
- * drawer state stays coherent. The drawer state is DERIVED while the
- * param names a row of the served window (no effect, no drift): a param
- * for a row outside the window reads as absent, so a stale id can never
- * open a wrong drawer.
+ * the useQueryParam seam): the Analyze row action writes it, closing
+ * the drawer clears it, and a reload or a shared link restores it while
+ * the named row sits in the served window — the drawer state stays
+ * coherent. The drawer state is DERIVED while the param names a row of
+ * the served window (no effect, no drift): a param for a row outside
+ * the window reads as absent, so a stale id can never open a wrong
+ * drawer.
  */
 export default function DocumentsCard() {
   const navigate = useNavigate();
