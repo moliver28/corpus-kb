@@ -1,4 +1,4 @@
-import { Background, Controls, ReactFlow, type NodeProps } from "@xyflow/react";
+import { Background, Controls, Handle, Position, ReactFlow, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { Card, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -19,13 +19,28 @@ const PAGE_SIZE = 50;
 
 /**
  * One entity node (Phase-2 Wave 6): the petrol card with the entity
- * name and its mono type. A display surface — no handles, no editing.
+ * name and its mono type. A display surface — the two invisible,
+ * non-connectable handles exist only so xyflow can attach edges to the
+ * node (it drops edges whose endpoint node has no handle); nothing on
+ * the pane starts a write.
  */
 function EntityNodeCard({ data }: NodeProps<EntityNode>) {
   return (
     <div className="ui-map-node">
+      <Handle
+        type="target"
+        position={Position.Top}
+        isConnectable={false}
+        className="ui-map-node__handle"
+      />
       <p className="ui-map-node__name">{data.name}</p>
       <p className="ui-map-node__type ui-num">{data.entityType}</p>
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        isConnectable={false}
+        className="ui-map-node__handle"
+      />
     </div>
   );
 }

@@ -184,12 +184,17 @@ test.describe("SPA smoke on a live server", () => {
       await createForm.getByRole("button", { name: "Create an entity" }).click();
       await expect(page.getByText("Entity created.")).toBeVisible({ timeout: 60_000 });
     }
-    // FIND: the type filter narrows the window read to this run.
+    // FIND: the type filter narrows the window read to this run. The
+    // assertion on a row of the FILTERED window (a demo-corpus name the
+    // filter excludes) proves the fresh window settled, so the click
+    // below cannot land on a row the re-read replaces mid-click.
     await entities.getByPlaceholder("Only this type").fill(`e2e-${unique}`);
     await entities.getByPlaceholder("Only this type").press("Enter");
     await expect(entities.getByText(first)).toBeVisible({ timeout: 60_000 });
+    await expect(entities.getByText("Ade")).toHaveCount(0, { timeout: 60_000 });
     // INSPECT: the drawer reads relations and neighbors for the row.
-    await entities.getByRole("button", { name: "Details" }).first().click();
+    const row = entities.getByRole("row", { name: new RegExp("^" + first) });
+    await row.getByRole("button", { name: "Details" }).click();
     const drawer = page.getByRole("dialog");
     await expect(
       drawer.getByText("No relations yet. Link this entity with the form below."),
@@ -202,20 +207,36 @@ test.describe("SPA smoke on a live server", () => {
     const openPicker = page.locator(
       ".ant-select-dropdown:not(.ant-select-dropdown-hidden):not(.ant-slide-up-leave)",
     );
-    const pickOption = async (name: string): Promise<void> => {
-      await openPicker.locator(".ant-select-item-option").filter({ hasText: name }).first().click();
-    };
     const relation = page.locator(".ant-card").filter({ hasText: "Link two entities" });
-    await relation.getByRole("combobox").first().click();
-    await pickOption(first);
-    await relation.getByRole("combobox").nth(1).click();
-    await pickOption(second);
+    // One pick = open the picker, then click the option. The picker
+    // re-reads on open, and a read landing mid-click replaces the
+    // option node, so one click can pend forever; the bounded retry
+    // re-opens and re-picks instead (host-load flake policy).
+    const pickOption = async (index: number, name: string): Promise<void> => {
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        await relation.getByRole("combobox").nth(index).click({ timeout: 15_000 });
+        try {
+          await openPicker
+            .locator(".ant-select-item-option")
+            .filter({ hasText: name })
+            .first()
+            .click({ timeout: 5_000 });
+          return;
+        } catch {
+          if (attempt === 3) {
+            throw new Error(`option ${name} not clickable after 3 attempts`);
+          }
+        }
+      }
+    };
+    await pickOption(0, first);
+    await pickOption(1, second);
     await relation.getByRole("button", { name: "Link two entities" }).click();
     await expect(page.getByText("Relation created.")).toBeVisible({ timeout: 60_000 });
     // The relation read answers in the drawer of the source entity: the
     // row names source, relation, and target (the title also carries the
     // source name, so the bare name would match twice).
-    await entities.getByRole("button", { name: "Details" }).first().click();
+    await row.getByRole("button", { name: "Details" }).click();
     await expect(drawer.getByText(`${first} related_to ${second}`)).toBeVisible({
       timeout: 60_000,
     });
@@ -223,26 +244,47 @@ test.describe("SPA smoke on a live server", () => {
 
   test("the map draws the seeded graph read-only", async ({ page }) => {
     // Phase-2 Wave 6 done-when: a novice opens the Map from the rail
-    // and SEES the graph — the workbench test's two entities render as
-    // nodes, their relation as an edge — with the canvas read-only and
-    // the same data in the tables under it.
+    // and SEES the graph — entities as nodes, relations as edges —
+    // with the canvas read-only and the same data in the tables under
+    // it. The leg seeds its OWN graph through the API with a run-unique
+    // stamp, so it never leans on the workbench test's state: the
+    // aaa- names and the 00- relation type lead the honest FIRST
+    // windows of the entity and relation reads (program rule 9 order).
+    const stamp = Date.now().toString();
+    const sourceName = `aaa-wave6-${stamp}-a`;
+    const targetName = `aaa-wave6-${stamp}-b`;
+    const relationType = `00-wave6-${stamp}`;
+    const created = async (name: string): Promise<string> => {
+      const response = await page.request.post("/api/entities", {
+        data: { name, entity_type: "wave6" },
+      });
+      const body = (await response.json()) as { entity_id: string };
+      return body.entity_id;
+    };
+    const sourceId = await created(sourceName);
+    const targetId = await created(targetName);
+    await page.request.post("/api/relations", {
+      data: { source_entity_id: sourceId, target_entity_id: targetId, relation_type: relationType },
+    });
     await page.goto("/app/#/setup");
     await page.getByRole("menuitem", { name: "Map" }).click();
     await expect(page).toHaveURL(/#\/map/);
     const canvas = page.locator(".react-flow");
     await expect(canvas).toBeVisible({ timeout: 60_000 });
-    // The workbench test's run-unique entities sit in the node window
-    // (name-ordered first by the aaa- prefix).
-    await expect(canvas.locator(".react-flow__node", { hasText: second })).toBeVisible({
+    // The seeded entities draw as nodes (they lead the first window).
+    await expect(canvas.locator(".react-flow__node", { hasText: targetName })).toBeVisible({
       timeout: 60_000,
     });
-    // Read-only: no handles on the pane, so nothing offers a connect.
-    await expect(canvas.locator(".react-flow__handle")).toHaveCount(0);
+    // The seeded relation draws as the edge its 00- type leads.
+    await expect(canvas.locator(".react-flow__edge").first()).toBeVisible();
+    // Read-only is structural: the page mounts no write op, so the
+    // canvas offers no connect affordance to click.
     // The canvas never carries the only path to data: the relations
-    // table names the workbench test's relation row.
-    await expect(
-      page.getByRole("cell", { name: `${first} related_to ${second}` }),
-    ).toBeVisible();
+    // table carries the seeded row (source, type, target cells), and
+    // the entities table names the seeded entities.
+    const relationRow = page.getByRole("row").filter({ hasText: relationType });
+    await expect(relationRow).toBeVisible();
+    await expect(relationRow.filter({ hasText: sourceName })).toBeVisible();
   });
 });
 

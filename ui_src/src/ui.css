@@ -423,8 +423,8 @@ body {
   flex-direction: column;
   justify-content: center;
   gap: 2px;
-  background: var(--ckb-color-primary-bg);
-  border: 1px solid var(--ckb-color-border);
+  background: var(--ckb-color-bg-container);
+  border: 1px solid var(--ckb-color-primary);
   border-radius: 8px;
 }
 
@@ -442,6 +442,19 @@ body {
   margin: 0;
   font-size: 11px;
   color: var(--ckb-color-text-secondary);
+}
+
+/* The edge-attachment handles: present for xyflow's edge renderer,
+   invisible and non-interactive for people (nothing on the pane
+   starts a write). */
+.ui-map-node__handle {
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+  border: none;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Motion answers actions only. Under reduced motion everything stops
