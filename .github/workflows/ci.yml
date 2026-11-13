@@ -102,6 +102,16 @@ jobs:
               - 'tests/test_retrieval*.py'
               - 'tests/test_query_fusion.py'
               - 'tests/test_u32_mrl_gating.py'
+              # The ingest pipeline surface: ingest status flips to partial
+              # when the embedder degrades to zero vectors, so pipeline and
+              # strategy changes keep the live leg.
+              - 'src/corpus_kb/tools/ingest_common.py'
+              - 'src/corpus_kb/ingestion/**'
+              - 'src/corpus_kb/partitioning.py'
+              # These Postgres-backed ingest integration tests assert success
+              # status, which needs a live embedder.
+              - 'tests/test_ingest*.py'
+              - 'tests/test_integration_e2e.py'
 
   # ─────────────────────────────────────────────────────────────────────
   # Lint: ruff check + format check (fast, ~10s, no deps needed)
