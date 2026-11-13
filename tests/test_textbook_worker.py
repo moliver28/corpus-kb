@@ -1,18 +1,19 @@
 """Tests for the persistent parser worker (issue #270).
 
 The process boundary is patched at the ``_start_worker`` seam inside
-``textbook_worker``, so no test starts a real child worker here. The
-fakes script each worker response, so the tests pin reuse, recycle,
-crash, timeout, and worker-reported-failure paths, plus the
-determinism contract: a reused window carries the same items the
-per-window child ships, and the built chunks do not change with reuse
-on or off. One opt-in live check runs a real docling child when the
-``[docling]`` extra is installed and skips like the other
-optional-extra tests when it is not.
+``textbook_worker``, so the reuse, recycle, crash, timeout, and
+worker-reported-failure paths run against fakes. The fakes script each
+worker response, and the tests pin the determinism contract: a reused
+window carries the same items the per-window child ships, and the
+built chunks do not change with reuse on or off. Two tests start a
+real child: one bounded smoke test (a spawned worker serves a request
+and stops clean, no optional extra), and one opt-in live docling check
+that skips like the other optional-extra tests when it is absent.
 """
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from pathlib import Path
 from queue import Empty
@@ -20,16 +21,20 @@ from typing import ClassVar
 
 import pytest
 
+from corpus_kb.errors import ValidationError
 from corpus_kb.ingestion.base import ChunkPlan, SourceProfile
 from corpus_kb.ingestion.strategies import (
     textbook,
+    textbook_child,
     textbook_subprocess,
     textbook_windows,
     textbook_worker,
 )
 from corpus_kb.ingestion.strategies.textbook import TEXTBOOK_STRATEGY_NAME, TextbookStrategy
+from corpus_kb.ingestion.strategies.textbook_child import _worker_main
 from corpus_kb.ingestion.strategies.textbook_docling import PageItem
 from corpus_kb.ingestion.strategies.textbook_worker import (
+    _collect_response,
     _WorkerHandle,
     parse_window_with_worker,
 )
@@ -148,6 +153,73 @@ def _parse(start: int, end: int, timeout_s: float = 5.0, **kwargs: object) -> li
 # ---------------------------------------------------------------------------
 # Reuse, recycle, crash, timeout, and failure paths
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# The worker loop driven in-process (no child process; CI coverage)
+# ---------------------------------------------------------------------------
+
+
+class _LoopQueue:
+    """Queue double for the worker loop: scripted requests, recorded rows."""
+
+    def __init__(self, requests: list[object]) -> None:
+        self._requests = list(requests)
+        self.rows: list[object] = []
+
+    def get(self, block: bool = True, timeout: float | None = None) -> object:
+        del block, timeout
+        if not self._requests:
+            return None  # the loop's stop sentinel
+        return self._requests.pop(0)
+
+    def put(self, rows: object) -> None:
+        self.rows.append(rows)
+
+    def close(self) -> None:
+        self.closed = True
+
+
+def test_worker_main_serves_requests_until_the_stop_sentinel(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One loop pass per request; ``None`` stops the served worker."""
+
+    def fake_rows(
+        pdf: str, start: int, end: int, structured: bool = False
+    ) -> list[dict[str, object]]:
+        del pdf, structured
+        return [{"page": start, "label": "text", "text": "body"}]
+
+    monkeypatch.setitem(textbook_child._WINDOW_ROW_FACTORIES, "docling", fake_rows)
+    requests = _LoopQueue([("b.pdf", 1, 2, False), ("b.pdf", 3, 4, True), None])
+    payload = _LoopQueue([])
+    _worker_main("docling", requests, payload)
+    assert payload.rows == [
+        [{"page": 1, "label": "text", "text": "body"}],
+        [{"page": 3, "label": "text", "text": "body"}],
+    ]
+
+
+def test_worker_main_ships_none_rows_for_a_raising_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A window that raises ships ``None`` rows and the loop keeps serving."""
+
+    def boom(pdf: str, start: int, end: int, structured: bool = False) -> list[dict[str, object]]:
+        del pdf, structured
+        raise RuntimeError("parse failed")
+
+    monkeypatch.setitem(textbook_child._WINDOW_ROW_FACTORIES, "docling", boom)
+    payload = _LoopQueue([])
+    _worker_main("docling", _LoopQueue([("b.pdf", 1, 2, False), None]), payload)
+    assert payload.rows == [None]
+
+
+def test_worker_main_rejects_a_foreign_parser() -> None:
+    """No parser ever borrows another parser's worker loop."""
+    with pytest.raises(ValidationError, match="no child rows factory"):
+        _worker_main("tesseract", _LoopQueue([None]), _LoopQueue([]))
 
 
 def test_one_worker_serves_every_window(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -413,6 +485,28 @@ def _two_page_pdf(path: Path) -> Path:
     )
     path.write_bytes(bytes(out))
     return path
+
+
+def test_a_real_spawned_worker_serves_one_request_and_stops_clean() -> None:
+    """Bounded smoke test: a real spawned child serves and stops on the sentinel.
+
+    The request names a file that cannot parse in the child, so the
+    worker ships ``None`` rows (its stderr note lands in the test log)
+    and stays alive; the sentinel then stops it with exit code 0. This
+    is the one spawn test that runs everywhere; the module docstring
+    lists it beside the opt-in live check.
+    """
+    handle = textbook_worker._start_worker("docling")
+    try:
+        handle.requests.put(("b.pdf", 1, 2, False))
+        delivered, rows = _collect_response(handle, time.monotonic() + 120)
+        assert delivered and rows is None  # the child reported the failed window
+        assert handle.proc.exitcode is None  # the worker survived it
+        handle.requests.put(None)  # the stop sentinel
+        handle.proc.join(60)
+        assert handle.proc.exitcode == 0  # the loop ended clean
+    finally:
+        textbook_worker._discard_worker("docling", handle)
 
 
 def test_live_docling_worker_serves_two_windows_from_one_process(tmp_path: Path) -> None:
