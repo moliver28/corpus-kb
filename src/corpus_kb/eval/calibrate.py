@@ -32,7 +32,7 @@ from corpus_kb.eval.scoring import CandidateScore, EngineFactory, QueryScore, sc
 from corpus_kb.eval.stats import compare_all
 from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 
-__all__ = ["CalibrationResult", "run_calibration"]
+__all__ = ["CalibrationResult", "reranker_active", "run_calibration"]
 
 
 @dataclass(frozen=True)
@@ -209,7 +209,7 @@ def _compare_and_lock(
         min_queries=spec.min_queries,
         outcome="success",
         proposed_overrides=winner_overrides,
-        reranker_active=_reranker_active(cfg, winner_overrides),
+        reranker_active=reranker_active(cfg, winner_overrides),
     )
     if lock_path is not None:
         lock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -228,8 +228,13 @@ def _compare_and_lock(
     )
 
 
-def _reranker_active(cfg: Mapping[str, object], overrides: Mapping[str, object]) -> bool:
-    """Whether the winner's recipe resolves to an enabled reranker."""
+def reranker_active(cfg: Mapping[str, object], overrides: Mapping[str, object]) -> bool:
+    """Whether the winner's recipe resolves to an enabled reranker.
+
+    Public on purpose: ``eval.lockfile.write_routing_lock`` resolves the
+    same flag for the routing lock, so both modules read this one helper
+    (issue #341 retired the private cross-module import).
+    """
     from corpus_kb.eval.recipes import apply_overrides
     from corpus_kb.rag.rerank_settings import load_rerank_settings
 

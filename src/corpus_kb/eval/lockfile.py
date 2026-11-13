@@ -160,7 +160,9 @@ def write_routing_lock(
     ``sweep: "routing"`` and ``metric``. Enforcement reads only
     ``profile_sha256``, so the marks never break the apply flow.
     """
-    from corpus_kb.eval.calibrate import _reranker_active
+    # Lazy import: calibrate reads build_lock from this module lazily too,
+    # so neither module loads the other at import time.
+    from corpus_kb.eval.calibrate import reranker_active
     from corpus_kb.profiles.calibrate_spec import CalibrateSpec
 
     if profile_name is None or profile_sha256 is None:
@@ -191,7 +193,7 @@ def write_routing_lock(
         min_queries=min_queries,
         outcome="success",
         proposed_overrides=winner_overrides,
-        reranker_active=_reranker_active(cfg, winner_overrides),
+        reranker_active=reranker_active(cfg, winner_overrides),
     )
     lock["sweep"] = "routing"
     lock["metric"] = "primary accuracy"
