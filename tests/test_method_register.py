@@ -141,7 +141,7 @@ def register() -> MethodRegister:
 
 
 def test_loads_with_defaults_and_header(register: MethodRegister) -> None:
-    assert register.register_version == "2.0.0"
+    assert register.register_version == "3.0.0"
     assert register.source_document.title
     assert register.source_document.path_note
     assert len(register.selection_rules) == 4
@@ -184,7 +184,7 @@ def test_packaged_fallback_when_repo_file_missing(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     register = load_method_register({})
-    assert register.register_version == "2.0.0"
+    assert register.register_version == "3.0.0"
     assert len(register.methods) == 30
 
 
@@ -566,8 +566,6 @@ ROUTING_FIELD_NAMES = (
     "statistical_rigor",
     "cost_tier",
     "question_phrases",
-    "assumptions",
-    "null_calibration",
     "failure_modes",
     "scope_limits",
     "suggests",
@@ -609,7 +607,7 @@ def test_routing_vocab_tuples_are_pinned() -> None:
 
 
 def _routing_record() -> dict[str, Any]:
-    """One valid record carrying all 12 routing fields."""
+    """One valid record carrying all 10 routing fields."""
     record = _valid_record()
     record.update(
         {
@@ -620,8 +618,6 @@ def _routing_record() -> dict[str, Any]:
             "statistical_rigor": "descriptive",
             "cost_tier": "interactive",
             "question_phrases": ["What words come up most often in these documents?"],
-            "assumptions": "Document boundaries and filtering stay fixed.",
-            "null_calibration": "None; review the top terms by hand.",
             "failure_modes": "Repeated boilerplate can outrank meaningful terms.",
             "scope_limits": "Distinctive wording only; themes need reading.",
             "suggests": ["Which top terms look meaningless here?", "What rare words rank high?"],
@@ -698,7 +694,8 @@ def test_suggests_reject_duplicates() -> None:
 
 
 def test_dropped_routing_fields_rejected() -> None:
-    """cost_scale and evidence_citation left the schema at 2.0.0 (extra=forbid)."""
+    """cost_scale and evidence_citation left the schema at 2.0.0, and
+    assumptions and null_calibration left it at 3.0.0 (extra=forbid)."""
     record = _mutate(_routing_record(), cost_scale="One sparse scan over the corpus; CPU only.")
     with pytest.raises(ValueError, match="cost_scale"):
         MethodRegister.model_validate(_single_register(record))
@@ -707,6 +704,18 @@ def test_dropped_routing_fields_rejected() -> None:
         evidence_citation="https://example.org/tfidf (Documentation 2024)",
     )
     with pytest.raises(ValueError, match="evidence_citation"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(
+        _routing_record(),
+        assumptions="Document boundaries and filtering stay fixed.",
+    )
+    with pytest.raises(ValueError, match="assumptions"):
+        MethodRegister.model_validate(_single_register(record))
+    record = _mutate(
+        _routing_record(),
+        null_calibration="None; review the top terms by hand.",
+    )
+    with pytest.raises(ValueError, match="null_calibration"):
         MethodRegister.model_validate(_single_register(record))
 
 
@@ -744,5 +753,5 @@ def test_routing_axes_populated_on_every_row(register: MethodRegister) -> None:
 
 
 def test_register_version_bumped_for_routing_schema(register: MethodRegister) -> None:
-    """The slimmed routing schema bumps the register to 2.0.0 (W2 caches per version)."""
-    assert register.register_version == "2.0.0"
+    """The folded 10-field routing schema bumps the register to 3.0.0 (W2 caches per version)."""
+    assert register.register_version == "3.0.0"

@@ -91,8 +91,6 @@ class MethodRecord(BaseModel):
     statistical_rigor: str | None = None
     cost_tier: str | None = None
     question_phrases: list[str] | None = None
-    assumptions: str | None = None
-    null_calibration: str | None = None
     failure_modes: str | None = None
     scope_limits: str | None = None
     suggests: list[str] | None = None

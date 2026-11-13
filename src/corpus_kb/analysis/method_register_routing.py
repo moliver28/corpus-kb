@@ -1,6 +1,6 @@
 """Routing vocabularies and validation for the analysis method register.
 
-The question-routing program adds six controlled vocabularies and twelve
+The question-routing program adds six controlled vocabularies and ten
 optional routing fields to each ``MethodRecord`` row. This module holds the
 routing words and the checks behind them; the register model calls
 :func:`validate_routing_axes` after its core vocabulary checks. No pydantic

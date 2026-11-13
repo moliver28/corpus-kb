@@ -40,8 +40,6 @@ def _full_method() -> dict[str, Any]:
         "statistical_rigor": "descriptive",
         "cost_tier": "interactive",
         "question_phrases": ["What words come up most often across these documents?"],
-        "assumptions": "Document boundaries stay fixed.",
-        "null_calibration": "None; terms are reviewed by hand.",
         "failure_modes": "Boilerplate can outrank meaningful terms.",
         "scope_limits": "Distinctive wording only.",
         "suggests": ["Which top terms look meaningless here?"],
@@ -74,9 +72,9 @@ def test_routing_lines_render_full_block() -> None:
     lines = gen._routing_lines(_full_method())
     assert lines[0].startswith("  - Routing axes: task `discovery`")
     assert "cost tier `interactive`" in lines[0]
-    assert "  - Ask it:" in lines[5]
-    assert lines[7].startswith("  - Evidence: https://example.org/tfidf (Documentation)")
-    assert len(lines) == 8
+    assert "  - Ask it:" in lines[3]
+    assert lines[5].startswith("  - Evidence: https://example.org/tfidf (Documentation)")
+    assert len(lines) == 6
 
 
 def test_routing_lines_evidence_uses_annotated_primary_source() -> None:
