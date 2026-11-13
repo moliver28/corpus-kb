@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getEntry } from "../../api/manifest";
 import { strings } from "../../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../../test/testUtils";
 import type { MinimalResponse } from "../../test/testUtils";
 import chunksOk from "../../test/fixtures/chunks-ok-200.json";
-import DrawerAnalyze from "./DrawerAnalyze";
+import DrawerAnalyze, { METHOD_OPS } from "./DrawerAnalyze";
 
 /**
  * The drawer's NLP panel (Phase-2 Wave 5): the chunk window read scopes
@@ -155,5 +156,17 @@ describe("DrawerAnalyze", () => {
     stubFetch(chunkRoutes(respond(200, { status: "success", result: [{ nope: true }] })));
     render(<DrawerAnalyze docId={DOC_ID} />, { wrapper: makeWrapper() });
     expect(await screen.findByText(strings.unreadableResponse)).toBeTruthy();
+  });
+
+  it("carries no longRunning picker op, so the plain run path is the whole story", () => {
+    // The manifest classification pin (Wave-5 review): the dead long-run
+    // branch was dropped from RunPane because NO picker op is longRunning.
+    // If this pin fails, a long op joined the picker — bring the long-run
+    // path back (useLongOp + LongOpControls, the OpRunner pattern).
+    for (const method of METHOD_OPS) {
+      const op = getEntry(method.opId);
+      expect(op, method.opId).toBeTruthy();
+      expect(op?.longRunning, method.opId).toBe(false);
+    }
   });
 });

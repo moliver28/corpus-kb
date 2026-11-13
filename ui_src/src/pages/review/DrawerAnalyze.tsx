@@ -1,15 +1,10 @@
 import { Button, Typography } from "antd";
-import { useEffect, useRef, useState } from "react";
-import { callOp } from "../../api/client";
-import { getEntry } from "../../api/manifest";
-import { statusOpFor } from "../../api/ops";
+import { useEffect, useState } from "react";
 import type { OpResult } from "../../api/types";
 import ErrorPanel from "../../components/ErrorPanel";
 import LabeledField from "../../components/LabeledField";
-import LongOpControls from "../../components/LongOpControls";
 import OpBody from "../../components/OpBody";
 import ReceiptCard from "../../components/ReceiptCard";
-import { useLongOp } from "../../hooks/useLongOp";
 import { useOp } from "../../hooks/useOp";
 import { useRowRead } from "../../hooks/useRowRead";
 import { strings } from "../../strings";
@@ -18,8 +13,14 @@ import { isChunksEnvelope } from "./shapes";
 /** Chunk rows asked for in one read; one extra row answers "more exist". */
 const CHUNK_WINDOW = 50;
 
-/** The manifest method ops that take chunk_ids (the panel's picker). */
-const METHOD_OPS: readonly { opId: string; label: string }[] = [
+/**
+ * The manifest method ops that take chunk_ids (the panel's picker).
+ * Exported for the manifest classification test: NO picker op is
+ * longRunning today, so RunPane's plain run path is the whole story.
+ * When a long op joins the picker, bring the long-run path back
+ * (useLongOp + LongOpControls, the OpRunner pattern).
+ */
+export const METHOD_OPS: readonly { opId: string; label: string }[] = [
   { opId: "sentiment-screen", label: strings.analyzeOpSentiment },
   { opId: "nli-classify", label: strings.analyzeOpNli },
   { opId: "lexical-classify", label: strings.analyzeOpLexical },
@@ -53,26 +54,14 @@ function ResultView({
 
 /**
  * One scoped run: the picked method over the record's chunk ids. The
- * body is built here (never hand-typed JSON); a longRunning op waits
- * through the long path with its honest controls. key={opId} remounts
- * this pane on a method switch, so no receipt or loading state from the
+ * body is built here (never hand-typed JSON). key={opId} remounts this
+ * pane on a method switch, so no receipt or loading state from the
  * previous op can leak into it (the OpRunner rule).
  */
 function RunPane({ opId, ids }: { opId: string; ids: string[] }) {
   const simple = useOp(opId);
-  const op = getEntry(opId);
-  const bodyRef = useRef<unknown>({});
   const [labelsText, setLabelsText] = useState("");
   const [labelsError, setLabelsError] = useState("");
-  const long = useLongOp(opId, (signal) => {
-    const current = getEntry(opId);
-    return callOp<unknown>(current?.path ?? "", {
-      method: current?.method,
-      body: bodyRef.current,
-      signal,
-      timeoutMs: "none",
-    });
-  }, statusOpFor(opId));
 
   /** The scoped body, or null when a required field failed inline. */
   function buildBody(): Record<string, unknown> | null {
@@ -92,22 +81,12 @@ function RunPane({ opId, ids }: { opId: string; ids: string[] }) {
     return body;
   }
 
-  async function runSimple(): Promise<void> {
+  async function run(): Promise<void> {
     const body = buildBody();
     if (body === null) return;
-    bodyRef.current = body;
     await simple.run(body);
   }
 
-  async function runLong(): Promise<void> {
-    const body = buildBody();
-    if (body === null) return;
-    bodyRef.current = body;
-    await long.start();
-  }
-
-  const running = simple.running || long.running;
-  const settled = long.result ?? simple.result;
   return (
     <div className="ui-stack">
       {opId === "nli-classify" && (
@@ -120,24 +99,13 @@ function RunPane({ opId, ids }: { opId: string; ids: string[] }) {
         />
       )}
       <div className="ui-actions">
-        {op?.longRunning ? (
-          <Button type="primary" loading={running} onClick={() => void runLong()}>
-            {strings.runnerRunLabel}
-          </Button>
-        ) : (
-          <Button type="primary" loading={simple.running} onClick={() => void runSimple()}>
-            {strings.runnerRunLabel}
-          </Button>
-        )}
+        <Button type="primary" loading={simple.running} onClick={() => void run()}>
+          {strings.runnerRunLabel}
+        </Button>
       </div>
-      <LongOpControls op={long} onRetry={() => void runLong()} />
-      {settled !== null && (
+      {simple.result !== null && (
         <div className="ui-stack-gap-lg">
-          <ResultView
-            result={settled}
-            onRetry={op?.longRunning ? () => void runLong() : () => void runSimple()}
-            opId={opId}
-          />
+          <ResultView result={simple.result} onRetry={() => void run()} opId={opId} />
         </div>
       )}
     </div>
