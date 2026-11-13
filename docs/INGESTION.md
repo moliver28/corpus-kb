@@ -659,7 +659,7 @@ not change. `textbook.worker_max_windows` (default 32) recycles the
 worker after that many windows, so no worker grows without bound.
 `textbook.worker_idle_ttl_s` (default 600) stops a worker that served
 no window for that many seconds. The check runs when the next window
-asks for the worker, so an idle server does not hold a loaded parser
+asks for the worker. An idle server then does not hold a loaded parser
 child forever. One parse runs at a time for each parser, so two callers
 never share one worker. A
 crash or a timeout still drops only the current window to pypdf; the
