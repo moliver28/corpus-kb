@@ -35,4 +35,15 @@ ignore = [
     # repo Python floor reaches 3.11.5 or the lock drops the <3.11.5
     # branch.
     "GHSA-mmhr-3c5m-f64f",
+    # soupsieve: GHSA-7g44-g9rc-x53w (CVE-2026-126193, medium) and
+    # GHSA-6655-6qjp-jx7x (CVE-2026-126191, high). Both hit soupsieve
+    # 2.10 on the python_full_version < '3.11.5' lock fork. Every fixed
+    # release (3.0.2 and later) needs Python >= 3.11.5. The repo floor
+    # is >=3.11, so no lockfile edit can resolve them. The uv resolver
+    # and PyPI metadata prove it; evidence lives in
+    # .zcode/agent-tasks/pr-soupsieve-cve-report.md. The owner decision
+    # is tracked in issue #418. DELETE both rows when the floor
+    # decision lands.
+    "GHSA-6655-6qjp-jx7x",
+    "GHSA-7g44-g9rc-x53w",
 ]
