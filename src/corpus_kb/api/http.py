@@ -84,6 +84,12 @@ from corpus_kb.api.routes_beliefs import (
     beliefs_predict_route,
     beliefs_timeline_route,
 )
+from corpus_kb.api.routes_chat import (
+    chat_status,
+    create_chat_session,
+    list_chat_sessions,
+    send_chat_message,
+)
 from corpus_kb.api.routes_classification import (
     classification_build_route,
     classification_list_route,
@@ -267,6 +273,14 @@ def create_http_app() -> FastAPI:
         Route("/api/embed", embed_text, methods=["POST"]),
         # UX Wave 1 ask operation: the grounded answer front door.
         Route("/api/ask", ask, methods=["POST"]),
+        # Phase-2 Wave 7 chat: the streaming session surface. NON-MANIFEST
+        # ([D2], runtime-config sanction): config-gated by chat.enabled —
+        # a disabled feature answers the typed ConfigError, never 404.
+        # Never a surface-catalogue row; SERVER_AUTO_APPROVE untouched.
+        Route("/api/chat/sessions", create_chat_session, methods=["POST"]),
+        Route("/api/chat/sessions", list_chat_sessions, methods=["GET"]),
+        Route("/api/chat/sessions/{sid}/messages", send_chat_message, methods=["POST"]),
+        Route("/api/chat/status", chat_status, methods=["GET"]),
         # UI SPA Task 5a: the demo slice — sample corpus load for investors.
         Route("/api/demo/load", demo_load, methods=["POST"]),
         Route("/api/coding/embed-codebook", coding_embed_codebook, methods=["POST"]),

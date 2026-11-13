@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from typing import Protocol
 
 from corpus_kb.chat.events import ChatEvent
@@ -39,7 +39,7 @@ class AgentClient(Protocol):
 
 
 TurnStream = Callable[
-    [AgentClient, str, list[dict[str, str]]],
+    [AgentClient, str, list[dict[str, str]], int | None],
     AsyncIterator[ChatEvent],
 ]
 
@@ -69,8 +69,13 @@ class ChatSession:
         self._closed = False
         self.last_activity = time.monotonic()
 
-    async def send(self, text: str) -> AsyncIterator[ChatEvent]:
-        """Run one turn. A second send while one runs is a typed conflict."""
+    async def send(self, text: str, k: int | None = None) -> AsyncGenerator[ChatEvent, None]:
+        """Run one turn. A second send while one runs is a typed conflict.
+
+        ``k`` is the per-message retrieval width; the claude rung ignores
+        it (the agent sizes its own tool calls), the ollama rung passes
+        it to the evidence step.
+        """
         if self._closed:
             raise ConflictError("This chat session is closed. Start a new session.")
         if self._lock.locked():
@@ -78,7 +83,7 @@ class ChatSession:
         async with self._lock:
             self.touch()
             try:
-                async for event in self._turn_stream(self._client, text, self.history):
+                async for event in self._turn_stream(self._client, text, self.history, k):
                     yield event
             finally:
                 self.touch()

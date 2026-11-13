@@ -35,7 +35,10 @@ def turn_stream(stderr_lines: list[str]) -> TurnStream:
     """The message-to-event adapter for one session's turns."""
 
     async def turn(
-        client: AgentClient, text: str, history: list[dict[str, str]]
+        client: AgentClient,
+        text: str,
+        history: list[dict[str, str]],
+        k: int | None,
     ) -> AsyncIterator[ChatEvent]:
         from claude_agent_sdk import CLIConnectionError, ProcessError
 

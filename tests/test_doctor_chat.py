@@ -93,9 +93,7 @@ class TestEnabledRows:
         pin = tmp_path / "pin"
         pin.mkdir()
         soon = (datetime.now(UTC) + timedelta(days=1)).isoformat()
-        (pin / ".credentials.json").write_text(
-            json.dumps({"expiresAt": soon}), encoding="utf-8"
-        )
+        (pin / ".credentials.json").write_text(json.dumps({"expiresAt": soon}), encoding="utf-8")
         statuses = _statuses(config)
         assert statuses["chat login expiry"] == "warn"
 
@@ -104,9 +102,7 @@ class TestEnabledRows:
         pin = tmp_path / "pin"
         pin.mkdir()
         later = (datetime.now(UTC) + timedelta(days=30)).isoformat()
-        (pin / ".credentials.json").write_text(
-            json.dumps({"expiresAt": later}), encoding="utf-8"
-        )
+        (pin / ".credentials.json").write_text(json.dumps({"expiresAt": later}), encoding="utf-8")
         assert _statuses(config)["chat login expiry"] == "ok"
 
     def test_unreadable_expiry_degrades_to_info(self, tmp_path: Path) -> None:

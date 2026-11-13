@@ -167,7 +167,9 @@ class TestSessionDiscipline:
     def test_second_send_while_busy_conflicts(self) -> None:
         release = asyncio.Event()
 
-        async def slow_turn(client: object, text: str, history: list[dict[str, str]]) -> object:
+        async def slow_turn(
+            client: object, text: str, history: list[dict[str, str]], k: int | None
+        ) -> object:
             yield ChatDelta("a")
             await release.wait()
             yield ChatEnvelope(

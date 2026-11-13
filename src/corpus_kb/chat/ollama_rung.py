@@ -83,7 +83,10 @@ def _turn_stream(
     """The ask-machinery turn: retrieve, stream grounded deltas, receipt."""
 
     async def turn(
-        client: AgentClient, text: str, history: list[dict[str, str]]
+        client: AgentClient,
+        text: str,
+        history: list[dict[str, str]],
+        k: int | None,
     ) -> AsyncIterator[ChatEvent]:
         from corpus_kb.ask.steps import retrieve_evidence
         from corpus_kb.handlers.llm_handler import LlmHandler
@@ -94,7 +97,7 @@ def _turn_stream(
         embedder = create_embedder(config, pg_pool)
         handler = QueryHandler(pg_pool, embedder, config=config)
         _envelope, sources, _degraded = await retrieve_evidence(
-            text, handler, DEFAULT_TENANT_UUID, None
+            text, handler, DEFAULT_TENANT_UUID, k
         )
         if not sources:
             yield ChatDelta("No evidence matched the question in the corpus.")

@@ -21,14 +21,12 @@ __all__ = ["ChatSettings", "create_session", "get_manager", "read_chat_settings"
 _MANAGER: ChatManager | None = None
 
 
-async def create_session(
-    config: dict[str, object],
-    pg_pool: asyncpg.Pool,
-    resume: str | None = None,
-) -> ChatSession:
-    """Build and register one session on the configured rung."""
-    from corpus_kb.chat import claude_rung, ollama_rung
+def enabled_rung(config: dict[str, object]) -> str:
+    """The configured rung, refusing while chat is off or unwired.
 
+    One truth for every surface: the routes call this BEFORE any pool
+    work, so a disabled feature costs no connection attempt.
+    """
     settings = read_chat_settings(config)
     if not settings.enabled:
         raise ConfigError(
@@ -40,9 +38,22 @@ async def create_session(
             "The anthropic-api chat rung is not wired yet. Use claude-agent-sdk or ollama.",
             remediation="Set chat.backend to claude-agent-sdk or ollama.",
         )
-    if settings.backend == "claude-agent-sdk":
+    return settings.backend
+
+
+async def create_session(
+    config: dict[str, object],
+    pg_pool: asyncpg.Pool,
+    resume: str | None = None,
+) -> ChatSession:
+    """Build and register one session on the configured rung."""
+    from corpus_kb.chat import claude_rung, ollama_rung
+
+    settings = read_chat_settings(config)
+    backend = enabled_rung(config)
+    if backend == "claude-agent-sdk":
         session = await claude_rung.build_session(settings, config, pg_pool, resume)
-    elif settings.backend == "ollama":
+    elif backend == "ollama":
         session = ollama_rung.build_session(settings, config, pg_pool, resume)
     else:
         raise ConfigError(
