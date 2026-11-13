@@ -34,9 +34,10 @@ async def relations_list(
     Delegates to ``QueryHandler.handle_list_relations`` — the same call
     GET /api/graph/relations makes. Rows are ordered ``(relation_type,
     source_entity_id, target_entity_id, relation_id)`` and carry both
-    endpoint names. Counts ride the shared window-count guard, so every
-    surface answers the typed validation error for a bad ``limit`` or
-    ``offset``. Envelope: ``{"status", "result"}``.
+    endpoint names. The shared window-count guard (``tools._count_input``)
+    owns the >=1 rule on MCP, socket, and CLI. HTTP is the one surface
+    that accepts ``limit=0`` and answers an empty window (the entity
+    window read shares that split). Envelope: ``{"status", "result"}``.
     """
     from corpus_kb.domain.models import ListRelationsQuery
     from corpus_kb.handlers.query_handler import QueryHandler
