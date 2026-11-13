@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
-import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import { calls, clearCalls, makeWrapper, respond, respondSSE, stubFetch } from "../test/testUtils";
 import type { MinimalResponse } from "../test/testUtils";
 import askDegraded from "../test/fixtures/ask-degraded-200.json";
 import askEmpty from "../test/fixtures/ask-empty-200.json";
@@ -174,6 +174,71 @@ describe("Ask page", () => {
     expect(screen.getAllByText(/Outage interview 1/).length).toBeGreaterThan(0);
     const sent = calls.find((c) => c.url.includes("/api/notebook/ask"));
     expect(sent?.body).toContain('"retrieval_only":true');
+  });
+
+  it("streams the answer incrementally, then the settled view lands", async () => {
+    // The SSE transport: content frames first, the ask.envelope frame as
+    // the settle receipt, then [DONE]. Between chunks the partial answer
+    // must be visible WITHOUT the settled badge (that would fake a check
+    // that has not run yet).
+    const body = askSuccess.response.body;
+    const chunkFrame = (text: string): string =>
+      `data: ${JSON.stringify({
+        id: "chatcmpl-stream-test",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "test-model",
+        choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+      })}\n\n`;
+    const envelopeFrame = `data: ${JSON.stringify({
+      id: "chatcmpl-stream-test",
+      object: "ask.envelope",
+      created: 1,
+      model: "test-model",
+      envelope: body,
+    })}\n\n`;
+    const sentences = body.result.sentences.map((s: { text: string }) => s.text);
+    stubFetch([
+      {
+        method: "POST",
+        path: "/api/ask",
+        reply: respondSSE([
+          chunkFrame(sentences[0]),
+          chunkFrame(sentences[1]),
+          envelopeFrame,
+          "data: [DONE]\n\n",
+        ]),
+      },
+    ]);
+    render(<Ask />, { wrapper: makeWrapper() });
+    await askQuestion("what does the grid plan do?");
+
+    // First chunk: sentence 1 is on screen before the check settles.
+    expect(await screen.findByText(sentences[0])).toBeTruthy();
+    expect(screen.queryByText(strings.verifyLabelVerified)).toBeNull();
+    expect(screen.getByText(strings.askStreamingNote)).toBeTruthy();
+
+    // The envelope frame lands the settled view: same answer, badge on.
+    expect(await screen.findByText(strings.verifyLabelVerified)).toBeTruthy();
+    expect(screen.getAllByText(/grid-brief\.md/).length).toBeGreaterThan(0);
+    expect(window.sessionStorage.getItem("corpus-kb:ask-history")).toContain(
+      "what does the grid plan do?",
+    );
+  });
+
+  it("falls back to the JSON envelope when the reply is not a stream", async () => {
+    // A JSON reply to a stream request (old server, stripping proxy) is
+    // the honest fallback path — the same envelope rendering as before.
+    stubFetch(askRoutes(respond(200, askSuccess.response.body)));
+    render(<Ask />, { wrapper: makeWrapper() });
+    await askQuestion("what does the grid plan do?");
+    expect(
+      await screen.findByText(
+        "The grid plan adds storage. Storage smooths evening peaks [1] [2].",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText(strings.verifyLabelVerified)).toBeTruthy();
+    expect(screen.queryByText(strings.askStreamingNote)).toBeNull();
   });
 
   it("wires the verify tab with no gap banner", async () => {

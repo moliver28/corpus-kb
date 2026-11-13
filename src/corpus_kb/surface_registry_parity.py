@@ -2,15 +2,17 @@
 
 ``surface_registry.SURFACES`` is the ONE source of truth for the
 research/coding command surfaces. This helper states the END-STATE contract:
-every operation must be reachable on every declared transport (CLI / MCP /
-HTTP). Since the full-surface-parity wave the registry is complete: every
-surface carries cli + mcp + http, so :func:`assert_full_surface_parity`
-holds against the live registry with NO exceptions.
+every operation must be complete on every transport it DECLARES (CLI / MCP /
+HTTP). Each ``Surface`` row carries a per-op surface set (``surfaces``);
+the default is the full trio, so every pre-existing row stays cli+mcp+http
+complete and :func:`assert_full_surface_parity` holds against the live
+registry. The one declared exception today is the multipart upload row
+(``ingest-upload``, HTTP-only by nature — ruling 4a).
 
-The :data:`TRANSPORT_ALLOWLIST` mechanism stays (an empty dict) so the
-documented-exception pattern remains available: if a future surface
-genuinely cannot serve a transport, add it here with an honest reason and
-switch the enforcement back to :func:`assert_parity_outside_allowlist`.
+The :data:`TRANSPORT_ALLOWLIST` mechanism stays (an empty dict) as the
+documented-exception fallback: if a surface genuinely cannot serve a
+transport it declares, add it here with an honest reason and switch the
+enforcement to :func:`assert_parity_outside_allowlist`.
 
 STRICTLY STDLIB-ONLY, mirroring ``surface_registry.py``: zero ``corpus_kb``
 or third-party imports, so path-based loaders can use both modules together.
@@ -20,10 +22,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-# Documented exceptions to full transport parity (surface name -> transports
-# it is ALLOWED to miss). EMPTY since the full-surface-parity wave: every
-# research/coding surface is cli+mcp+http complete (research-cycle and
-# research-demo gained their http+mcp legs as synchronous calls).
+# The transports a row declares by default (full parity), and the Surface
+# field each transport must set.
+DEFAULT_TRANSPORTS: tuple[str, ...] = ("cli", "mcp", "http")
+_TRANSPORT_FIELDS: dict[str, str] = {
+    "cli": "cli_path",
+    "mcp": "mcp_tool",
+    "http": "http_route",
+}
+
+# Documented exceptions to declared transport parity (surface name ->
+# transports it is ALLOWED to miss). EMPTY: the per-op ``surfaces`` set is
+# the primary declaration; this fallback stays for a future honest gap.
 TRANSPORT_ALLOWLIST: dict[str, frozenset[str]] = {}
 
 
@@ -35,41 +45,63 @@ def _surface_field(surface: object, name: str) -> object:
     return getattr(surface, name, None)
 
 
+def _declared_transports(surface: object) -> tuple[str, ...]:
+    """The surface's declared transport set (the full trio when unset)."""
+    declared = getattr(surface, "surfaces", None)
+    if not declared:
+        return DEFAULT_TRANSPORTS
+    return tuple(declared)
+
+
 def surface_coverage_gaps(
     registry: Sequence[object],
     allowlist: dict[str, frozenset[str]] | None = None,
 ) -> list[str]:
-    """Describe every registry entry missing a transport it is not allowed to miss.
+    """Describe every registry entry incomplete on its declared transports.
 
     Returns one human-readable string per incomplete surface (empty list =
-    full parity outside the allowlist). A surface "counts" on a transport
-    when the corresponding field is set: ``cli_path`` (CLI), ``mcp_tool``
-    (MCP), ``http_route`` (HTTP). With ``allowlist`` (``TRANSPORT_ALLOWLIST``
-    shape), a missing transport listed for that surface is an accepted
-    exception, not a gap; a missing transport NOT in its entry still is.
+    every surface complete within its declared set). A surface "counts" on
+    a transport when the corresponding field is set: ``cli_path`` (CLI),
+    ``mcp_tool`` (MCP), ``http_route`` (HTTP). Three findings are gaps:
+    a declared transport with an unset field, an undeclared transport with
+    a set field (the row over-declares), and an unknown declared name.
+    With ``allowlist`` (``TRANSPORT_ALLOWLIST`` shape), a missing transport
+    listed for that surface is an accepted exception, not a gap.
     """
     gaps: list[str] = []
     for surface in registry:
         name = str(_surface_field(surface, "name") or "<unnamed>")
         allowed = (allowlist or {}).get(name) or frozenset()
-        missing: list[str] = []
-        for transport, field_name in (
-            ("cli", "cli_path"),
-            ("mcp", "mcp_tool"),
-            ("http", "http_route"),
-        ):
-            if not _surface_field(surface, field_name) and transport not in allowed:
-                missing.append(transport)
+        declared = _declared_transports(surface)
+        parts: list[str] = []
+        missing = [
+            transport
+            for transport in declared
+            if transport not in _TRANSPORT_FIELDS
+            or (
+                not _surface_field(surface, _TRANSPORT_FIELDS[transport])
+                and transport not in allowed
+            )
+        ]
         if missing:
-            gaps.append(f"{name}: missing {', '.join(missing)}")
+            parts.append(f"missing {', '.join(missing)}")
+        undeclared = [
+            f"{transport} set but not declared"
+            for transport in DEFAULT_TRANSPORTS
+            if transport not in declared and _surface_field(surface, _TRANSPORT_FIELDS[transport])
+        ]
+        parts.extend(undeclared)
+        if parts:
+            gaps.append(f"{name}: {', '.join(parts)}")
     return gaps
 
 
 def assert_full_surface_parity(registry: Sequence[object]) -> None:
-    """Raise :class:`SurfaceParityError` if any surface lacks a transport.
+    """Raise :class:`SurfaceParityError` if any surface misses a declared transport.
 
-    The error lists EVERY incomplete operation (MECE: no partial failures
-    hide behind the first).
+    "Full parity" means complete within each surface's declared transport
+    set. The error lists EVERY incomplete operation (MECE: no partial
+    failures hide behind the first).
     """
     gaps = surface_coverage_gaps(registry)
     if gaps:

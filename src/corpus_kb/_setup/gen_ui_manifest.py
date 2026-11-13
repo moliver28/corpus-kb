@@ -17,6 +17,10 @@ Sources (exactly two, zero-drift rule 1):
   * ``corpus_kb.api.research_http.tool_routes()`` for the required/optional
     body keys (imported lazily; the registry load stays dependency-free).
 
+One declared exception: the multipart upload route is not a JSON tool
+route, so its required form field (``file``) is named in
+:data:`MULTIPART_BODY_KEYS` below — the third input this one row needs.
+
 Usage:
     python src/corpus_kb/_setup/gen_ui_manifest.py [--check] [--project-root PATH]
 
@@ -119,6 +123,14 @@ def _tool_route_bodies() -> dict[str, tuple[tuple[str, ...], tuple[str, ...]]]:
     return {route.path: (route.required, route.optional) for route in tool_routes()}
 
 
+# The multipart upload route (registry row ingest-upload) is not a JSON
+# tool route: its one required form field is the file itself. The route
+# table above cannot express it, so the multipart shape lives here.
+MULTIPART_BODY_KEYS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "/api/ingest/upload": (("file",), ()),
+}
+
+
 def build_manifest(project_root: Path) -> list[dict[str, object]]:
     """One manifest entry per registry surface that declares an http_route."""
     reg = load_registry(project_root)
@@ -127,7 +139,9 @@ def build_manifest(project_root: Path) -> list[dict[str, object]]:
     for surface in reg.SURFACES:
         if not surface.http_route:
             continue
-        required, optional = bodies.get(surface.http_route, ((), ()))
+        required, optional = bodies.get(
+            surface.http_route, MULTIPART_BODY_KEYS.get(surface.http_route, ((), ()))
+        )
         entries.append(
             {
                 "id": surface.name,

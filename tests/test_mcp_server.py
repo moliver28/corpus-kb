@@ -133,10 +133,11 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # +1 for the question front door (analysis_route, routing wave 3),
     # +9 for the issue #350 coding + events ops (embed_codebook, pool,
     # code_batch, reliability, calibrate_floors, saturation, status,
-    # export, events_summary) == 99. The set under the pin is the
-    # catalogue/registry UNION, so a tool added without a row (or dropped
-    # without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 99
+    # export, events_summary),
+    # +1 for the #202 bulk re-embed (ingest_reingest) == 100. The set under
+    # the pin is the catalogue/registry UNION, so a tool added without a row
+    # (or dropped without one) fails here too.
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 100
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:
