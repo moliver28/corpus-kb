@@ -20,12 +20,13 @@ The UMAP-reduced space is only HDBSCAN's input — never the assignment space.
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 
-from ._inductive_types import HdbscanModelLike, import_hdbscan, import_umap
+from ._inductive_types import HdbscanModelLike, UmapModuleLike, import_hdbscan, import_umap
 
 UMAP_RANDOM_STATE = 42
 UMAP_TRANSFORM_SEED = 42
@@ -78,6 +79,17 @@ class ClusterResult:
     min_samples: int
 
 
+def _umap_has_compatibility_layout(umap_mod: UmapModuleLike) -> bool:
+    """True when the installed umap declares compatibility_layout (0.6+).
+
+    umap 0.6 changed the default layout pipeline: unset keeps the 0.5.x
+    pipeline and emits a FutureWarning; True keeps it silently. umap
+    0.5.x predates the parameter entirely — it IS the 0.5.x pipeline,
+    so the kwarg must not reach it (a TypeError there).
+    """
+    return "compatibility_layout" in inspect.signature(umap_mod.UMAP).parameters
+
+
 def cluster_embeddings(
     vectors: list[list[float]],
     *,
@@ -100,19 +112,32 @@ def cluster_embeddings(
     umap_mod = import_umap()
     # n_neighbors must not exceed n-1 (umap truncates with a UserWarning
     # on small-N corpora; clamping here is the same behavior, silent).
-    reducer = umap_mod.UMAP(
-        n_neighbors=min(UMAP_N_NEIGHBORS, max(n - 1, 2)),
-        n_components=n_components,
-        metric=METRIC,
-        # random_state pins umap to serial anyway; saying so here skips its
-        # "n_jobs overridden" UserWarning.
-        n_jobs=1,
-        random_state=random_state,
-        transform_seed=transform_seed,
+    if _umap_has_compatibility_layout(umap_mod):
         # umap 0.6 changed the default layout pipeline. True keeps the
-        # 0.5.x pipeline, so stored clusters stay stable.
-        compatibility_layout=True,
-    )
+        # 0.5.x pipeline, so stored clusters stay stable, and it
+        # silences the 0.6 FutureWarning (the warnings ceiling is 0).
+        reducer = umap_mod.UMAP(
+            n_neighbors=min(UMAP_N_NEIGHBORS, max(n - 1, 2)),
+            n_components=n_components,
+            metric=METRIC,
+            # random_state pins umap to serial anyway; saying so here
+            # skips its "n_jobs overridden" UserWarning.
+            n_jobs=1,
+            random_state=random_state,
+            transform_seed=transform_seed,
+            compatibility_layout=True,
+        )
+    else:
+        # umap 0.5.x (the lock's pin) predates the parameter. Omitting
+        # the kwarg selects the same 0.5.x pipeline.
+        reducer = umap_mod.UMAP(
+            n_neighbors=min(UMAP_N_NEIGHBORS, max(n - 1, 2)),
+            n_components=n_components,
+            metric=METRIC,
+            n_jobs=1,
+            random_state=random_state,
+            transform_seed=transform_seed,
+        )
     reduced = reducer.fit_transform(matrix)
 
     hdbscan_mod = import_hdbscan()
