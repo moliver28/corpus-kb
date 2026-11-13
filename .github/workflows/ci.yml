@@ -83,7 +83,7 @@ jobs:
         run: deptry src/
 
       - name: Complexity ratchet (xenon)
-        run: xenon src/ --max-absolute C --max-average B
+        run: xenon src/ scripts/ --max-absolute C --max-average B
 
       # Schema parity across both migration sets (storage portability
       # program, issue #127, zero-drift rule 10). sqlglot is static-only;
@@ -92,9 +92,10 @@ jobs:
         run: python scripts/schema_parity_gate.py
 
       # Size ratchet (PR-F, zero-drift rule 10): PLR0915 count and src/
-      # files over the 250-line soft limit, against the checked-in
-      # baselines in scripts/quality-baselines.json. Growth fails the
-      # PR; shrink passes, so dedup PRs land without touching this gate.
+      # + scripts/ files over the 250-line soft limit, against the
+      # checked-in baselines in scripts/quality-baselines.json. Growth
+      # fails the PR; shrink passes, so dedup PRs land without touching
+      # this gate.
       - name: Size ratchet (PLR0915 + 250-line files)
         run: poe size-ratchet
 
@@ -719,9 +720,24 @@ jobs:
         # proof) fail loudly instead, which is the honest signal.
         continue-on-error: true
         run: |
-          ollama pull nomic-embed-text
-          ollama pull qwen3-embedding:4b
-          ollama pull qwen3-embedding:8b-q8_0
+          # Three attempts per model with a pause: the Ollama registry
+          # occasionally answers 503 mid-pull, and a failed pull leaves the
+          # suite an up-but-model-less server whose 404s herd dozens of
+          # unrelated tests red.
+          for model in nomic-embed-text qwen3-embedding:4b qwen3-embedding:8b-q8_0; do
+            pulled=false
+            for attempt in 1 2 3; do
+              if ollama pull "$model"; then
+                pulled=true
+                break
+              fi
+              echo "pull $model failed (attempt $attempt/3); pausing before retry"
+              sleep 15
+            done
+            if [ "$pulled" != true ]; then
+              echo "::warning::ollama pull $model failed after 3 attempts"
+            fi
+          done
 
       - name: Verify Ollama
         run: |
@@ -1041,9 +1057,24 @@ jobs:
       - name: Pull embedding models
         continue-on-error: true
         run: |
-          ollama pull nomic-embed-text
-          ollama pull qwen3-embedding:4b
-          ollama pull qwen3-embedding:8b-q8_0
+          # Three attempts per model with a pause: the Ollama registry
+          # occasionally answers 503 mid-pull, and a failed pull leaves the
+          # suite an up-but-model-less server whose 404s herd dozens of
+          # unrelated tests red.
+          for model in nomic-embed-text qwen3-embedding:4b qwen3-embedding:8b-q8_0; do
+            pulled=false
+            for attempt in 1 2 3; do
+              if ollama pull "$model"; then
+                pulled=true
+                break
+              fi
+              echo "pull $model failed (attempt $attempt/3); pausing before retry"
+              sleep 15
+            done
+            if [ "$pulled" != true ]; then
+              echo "::warning::ollama pull $model failed after 3 attempts"
+            fi
+          done
 
       - name: Verify Ollama
         run: |

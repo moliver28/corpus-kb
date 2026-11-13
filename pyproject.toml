@@ -629,12 +629,14 @@ help = "deptry unused/missing dependency scan (config in [tool.deptry])"
 # pinned; absolute C now passes):
 #   W7+: fix the C blocks above B -> max-absolute B (the end state).
 # max-average B is the current-passing mean; any broad complexity
-# regression trips it. NOTE for future editors: no percent sign in this
-# file — radon (xenon's engine) parses pyproject via configparser and
-# rejects percent characters.
+# regression trips it. Scope covers src/ AND scripts/ (the worst blocks
+# lived in scripts/ before PR chore/gates-scripts-hygiene decomposed
+# them). NOTE for future editors: no percent sign in this file — radon
+# (xenon's engine) parses pyproject via configparser and rejects percent
+# characters.
 [tool.poe.tasks.complexity]
-cmd = "xenon src/ --max-absolute C --max-average B"
-help = "Xenon complexity gate (ratchet to --max-absolute B; see comment above)"
+cmd = "xenon src/ scripts/ --max-absolute C --max-average B"
+help = "Xenon complexity gate over src/ and scripts/ (ratchet to --max-absolute B; see comment above)"
 
 # Needs coverage data first: run ``poe test-cov`` to generate coverage.xml,
 # then ``poe cover-diff``. Kept out of ``verify`` because the plain test

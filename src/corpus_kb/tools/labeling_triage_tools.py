@@ -39,6 +39,7 @@ import numpy as np
 from ..analysis.vectors import VectorSpace
 from ..coding.label_triage import OK, label_triage, logistic_fold_predictor
 from .ingest_common import DEFAULT_TENANT_ID
+from .labeling_seams import load_labels, tables_present
 from .labeling_triage_ops import (
     _TRIAGE_SEED,
     _UNAVAILABLE_REASON,
@@ -57,9 +58,6 @@ from .labeling_triage_ops import (
 
 __all__ = ["labeling_triage"]
 
-# The labeled-corpus read bound (the engine's read-batch scale).
-LABEL_READ_LIMIT = 200_000
-
 
 async def _load_vectors(
     pg_pool: asyncpg.Pool, tenant_id: str, config: dict[str, object] | None
@@ -70,18 +68,10 @@ async def _load_vectors(
     return await load_tenant_vectors(pg_pool, tenant_id, config)
 
 
-async def _load_labels(pg_pool: asyncpg.Pool, tenant_id: str) -> list[dict[str, object]]:
-    """The label seam: the labeling store's built labels (tests fake it)."""
-    from corpus_kb.labeling.writer import read_labels
-
-    return await read_labels(pg_pool, tenant_id, LABEL_READ_LIMIT)
-
-
-async def _tables_present(pg_pool: asyncpg.Pool) -> bool:
-    """The store seam (tests substitute fakes here)."""
-    from corpus_kb.labeling.writer import labeling_tables_present
-
-    return await labeling_tables_present(pg_pool)
+# Module seam names: tests patch these per handler. The bodies live once
+# in labeling_seams.
+_load_labels = load_labels
+_tables_present = tables_present
 
 
 async def labeling_triage(

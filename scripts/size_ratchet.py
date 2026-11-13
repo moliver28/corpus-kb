@@ -3,9 +3,9 @@
 The gate counts two things and compares them with the checked-in
 baselines in ``scripts/quality-baselines.json``:
 
-1. ``PLR0915`` findings (ruff ``too-many-statements``) over ``src/`` and
-   ``tests/``.
-2. Files over the 250-line soft limit under ``src/``.
+1. ``PLR0915`` findings (ruff ``too-many-statements``) over ``src/``,
+   ``scripts/``, and ``tests/``.
+2. Files over the 250-line soft limit under ``src/`` and ``scripts/``.
 
 A count above its baseline fails the build. A count at or below the
 baseline passes, so the in-flight dedup PRs land without touching this
@@ -26,6 +26,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BASELINES_PATH = ROOT / "scripts" / "quality-baselines.json"
 LINE_LIMIT = 250
+# Scanned source roots: the package, the gate/generator scripts, and the
+# tests (scripts/ joined the scan when its worst blocks were decomposed).
+SCAN_ROOTS = ("src", "scripts", "tests")
+LONG_ROOTS = ("src", "scripts")
 
 
 def _load_baselines() -> dict[str, int | float]:
@@ -37,14 +41,13 @@ def _load_baselines() -> dict[str, int | float]:
 
 
 def _count_plr0915() -> int:
-    """Return the number of ruff PLR0915 findings over src/ and tests/."""
+    """Return the number of ruff PLR0915 findings over the scan roots."""
     command = [
         sys.executable,
         "-m",
         "ruff",
         "check",
-        "src/",
-        "tests/",
+        *SCAN_ROOTS,
         "--select",
         "PLR0915",
         "--output-format",
@@ -73,16 +76,17 @@ def _count_plr0915() -> int:
 
 
 def _count_files_over_limit() -> int:
-    """Return how many src/ Python files pass the 250-line soft limit."""
+    """Return how many scanned Python files pass the 250-line soft limit."""
     over: list[Path] = []
-    for path in sorted((ROOT / "src").rglob("*.py")):
-        if "__pycache__" in path.parts:
-            continue
-        with path.open("r", encoding="utf-8", errors="replace") as handle:
-            lines = sum(1 for _ in handle)
-        if lines > LINE_LIMIT:
-            over.append(path)
-            print(f"  over {LINE_LIMIT} lines: {path.relative_to(ROOT)} ({lines})")
+    for root in LONG_ROOTS:
+        for path in sorted((ROOT / root).rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            with path.open("r", encoding="utf-8", errors="replace") as handle:
+                lines = sum(1 for _ in handle)
+            if lines > LINE_LIMIT:
+                over.append(path)
+                print(f"  over {LINE_LIMIT} lines: {path.relative_to(ROOT)} ({lines})")
     return len(over)
 
 
@@ -112,7 +116,9 @@ def main() -> int:
         )
         failed = True
     if not failed:
-        print("Size ratchet: PASS (report-only ratchet; baselines in scripts/quality-baselines.json)")
+        print(
+            "Size ratchet: PASS (report-only ratchet; baselines in scripts/quality-baselines.json)"
+        )
     return 1 if failed else 0
 
 

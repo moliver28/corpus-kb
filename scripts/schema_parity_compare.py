@@ -43,6 +43,14 @@ class Drift:
 def compare_states(pg: SchemaState, duck: SchemaState) -> list[Drift]:
     """Diff the two folded states. Deterministic order (rule 9)."""
     out: list[Drift] = []
+    _compare_top_tables(pg, duck, out)
+    _compare_top_indexes(pg, duck, out)
+    _compare_top_sequences(pg, duck, out)
+    return out
+
+
+def _compare_top_tables(pg: SchemaState, duck: SchemaState, out: list[Drift]) -> None:
+    """One Drift per table present on only one side; twins go deeper."""
     for name in sorted(set(pg.tables) | set(duck.tables)):
         p, d = pg.tables.get(name), duck.tables.get(name)
         if p is None or d is None:
@@ -61,6 +69,10 @@ def compare_states(pg: SchemaState, duck: SchemaState) -> list[Drift]:
             )
             continue
         _compare_table(name, p, d, out)
+
+
+def _compare_top_indexes(pg: SchemaState, duck: SchemaState, out: list[Drift]) -> None:
+    """One Drift per non-unique index role present on only one side."""
     for role in sorted(set(pg.indexes) | set(duck.indexes)):
         if role[2]:  # unique indexes compare through the per-table unique set
             continue
@@ -80,6 +92,10 @@ def compare_states(pg: SchemaState, duck: SchemaState) -> list[Drift]:
                 "",
             )
         )
+
+
+def _compare_top_sequences(pg: SchemaState, duck: SchemaState, out: list[Drift]) -> None:
+    """One Drift per top-level sequence present on only one side."""
     for seq in sorted(set(pg.sequences) | set(duck.sequences)):
         if seq in pg.sequences and seq in duck.sequences:
             continue
@@ -96,11 +112,17 @@ def compare_states(pg: SchemaState, duck: SchemaState) -> list[Drift]:
                 "",
             )
         )
-    return out
 
 
 def _compare_table(name: str, p: TableSpec, d: TableSpec, out: list[Drift]) -> None:
     """Column, PK, unique, FK, and sequence comparison for one table."""
+    _compare_columns(name, p, d, out)
+    _compare_table_constraints(name, p, d, out)
+    _compare_table_sequences(name, p, d, out)
+
+
+def _compare_columns(name: str, p: TableSpec, d: TableSpec, out: list[Drift]) -> None:
+    """Column presence, type, nullability, and default comparison."""
     for col in sorted(set(p.columns) | set(d.columns)):
         pc, dc = p.columns.get(col), d.columns.get(col)
         if pc is None or dc is None:
@@ -148,6 +170,10 @@ def _compare_table(name: str, p: TableSpec, d: TableSpec, out: list[Drift]) -> N
                     dc.origin.where(),
                 )
             )
+
+
+def _compare_table_constraints(name: str, p: TableSpec, d: TableSpec, out: list[Drift]) -> None:
+    """PK, unique-set, and FK comparison for one table."""
     if p.primary_key != d.primary_key:
         out.append(
             Drift(
@@ -188,6 +214,10 @@ def _compare_table(name: str, p: TableSpec, d: TableSpec, out: list[Drift]) -> N
                 d.origin.where(),
             )
         )
+
+
+def _compare_table_sequences(name: str, p: TableSpec, d: TableSpec, out: list[Drift]) -> None:
+    """Per-column sequence comparison for one table."""
     for col in sorted(set(p.sequences) | set(d.sequences)):
         ps, ds = p.sequences.get(col, ""), d.sequences.get(col, "")
         if ps != ds:
