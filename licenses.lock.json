@@ -540,9 +540,9 @@
   },
   {
     "name": "opentelemetry-api",
-    "version": "1.45.1",
+    "version": "1.45.2",
     "license": "Apache-2.0",
-    "homepage": "https://pypi.org/project/opentelemetry-api/1.45.1/",
+    "homepage": "https://pypi.org/project/opentelemetry-api/1.45.2/",
     "licenseTextUrl": "https://opensource.org/licenses/Apache-2.0"
   },
   {
