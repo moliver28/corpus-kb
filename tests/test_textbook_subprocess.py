@@ -4,7 +4,8 @@ The process boundary is patched at the ``_start_child`` seam inside
 ``textbook_subprocess``, so no test starts a real child process. The
 remaining sections cover the window-cache cap (issue #221), the
 onnxruntime/docling conflict warning (issue #220), and the settings
-parsing for the three new ``textbook:`` keys — all pure and fast.
+parsing for the ``textbook:`` keys — all pure and fast. The persistent
+worker seam itself is tested in ``test_textbook_worker.py``.
 """
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ import pytest
 import corpus_kb.ingestion.strategies.textbook_pages as textbook_pages
 from corpus_kb.ingestion.strategies.textbook_cache import prune_window_cache
 from corpus_kb.ingestion.strategies.textbook_pages import PageItem
-from corpus_kb.ingestion.strategies.textbook_settings import settings_from
+from corpus_kb.ingestion.strategies.textbook_settings import WorkerPolicy, settings_from
 from corpus_kb.ingestion.strategies.textbook_subprocess import (
     _items_from_rows,
     parse_window_in_subprocess,
@@ -371,3 +372,21 @@ def test_settings_parse_the_structured_output_flag() -> None:
     assert on.structured_output is True
     junk = settings_from({"textbook": {"structured_output": 1}})  # ints are not flags here
     assert junk.structured_output is False
+
+
+def test_settings_parse_the_worker_keys() -> None:
+    settings = settings_from({"textbook": {"worker_reuse": False, "worker_max_windows": 8}})
+    assert settings.worker_reuse is False
+    assert settings.worker_max_windows == 8
+
+
+def test_settings_worker_keys_keep_defaults_on_junk() -> None:
+    settings = settings_from({"textbook": {"worker_reuse": 1, "worker_max_windows": 0}})
+    assert settings.worker_reuse is True
+    assert settings.worker_max_windows == 32
+
+
+def test_worker_policy_carries_the_settings() -> None:
+    settings = settings_from({"textbook": {"worker_reuse": False, "worker_max_windows": 4}})
+    assert settings.worker_policy() == WorkerPolicy(reuse=False, max_windows=4)
+    assert settings_from(None).worker_policy() == WorkerPolicy()

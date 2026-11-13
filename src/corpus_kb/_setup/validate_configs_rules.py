@@ -1,8 +1,7 @@
 """Per-block rule helpers for the runtime ``config.yaml`` checks.
 
 Each helper owns the when-present enum/range/shape rules for one config
-block (contextualize, topics, textbook, queue, reranking, retrieval
-knobs) and the backend-mix refusals. ``validate_configs_runtime.py``
+block and the backend-mix refusals. ``validate_configs_runtime.py``
 composes them.
 """
 
@@ -185,6 +184,10 @@ def _max_hops_errors(hops: object) -> list[str]:
     return []
 
 
+def _number_out_of_range(value: Any, floor: int) -> bool:
+    return isinstance(value, bool) or not isinstance(value, (int, float)) or value < floor
+
+
 def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
     """Enum + positive-int rules for the ``textbook`` block (Wave 1)."""
     errors: list[str] = []
@@ -194,17 +197,18 @@ def _textbook_block_errors(textbook: dict[str, Any]) -> list[str]:
         errors.append(f"textbook.parser: must be one of ({parsers}), got {parser!r}")
     for key in ("min_pages", "window_pages"):
         value = textbook.get(key)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        if _number_out_of_range(value, 1):
             errors.append(f"textbook.{key}: must be a positive int, got {value!r}")
     timeout = textbook.get("window_timeout_s")
-    if timeout is not None and (
-        isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0
-    ):
+    if timeout is not None and _number_out_of_range(timeout, 1):
         errors.append(f"textbook.window_timeout_s: must be a positive number, got {timeout!r}")
+    max_windows = textbook.get("worker_max_windows")
+    if max_windows is not None and _number_out_of_range(max_windows, 1):
+        errors.append(f"textbook.worker_max_windows: must be a positive int, got {max_windows!r}")
     cap = textbook.get("cache_max_mb")
-    if cap is not None and (isinstance(cap, bool) or not isinstance(cap, int) or cap < 0):
+    if cap is not None and _number_out_of_range(cap, 0):
         errors.append(f"textbook.cache_max_mb: must be a non-negative int, got {cap!r}")
-    for key in ("window_subprocess", "structured_output", "citations"):
+    for key in ("window_subprocess", "structured_output", "citations", "worker_reuse"):
         flag = textbook.get(key)
         if flag is not None and not isinstance(flag, bool):
             errors.append(f"textbook.{key}: must be a bool, got {flag!r}")
@@ -215,8 +219,7 @@ def _queue_block_errors(queue: dict[str, Any]) -> list[str]:
     """Positive-number rules for the ``queue`` worker knobs (Wave 1)."""
     errors: list[str] = []
     for key in ("poll_seconds", "stale_lease_seconds", "max_attempts"):
-        value = queue.get(key)
-        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        if _number_out_of_range(value := queue.get(key), 1):
             errors.append(f"queue.{key}: must be a positive int, got {value!r}")
     return errors
 

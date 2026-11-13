@@ -23,10 +23,10 @@ Degrade paths, never a crash: without a parser's extra (``docling``,
 ``ocr-vl`` for the paddle challenger) the strategy warns once and
 parses windows with pypdf only; without the ``[scan]`` extra, or below
 ``min_pages``, it falls back to the default plan. A heavy parser can
-crash the process on scanned pages, so each of its windows parses in a
-spawned child when ``window_subprocess`` is set; the parent only probes
-the module spec, never imports the parser. A crashed, timed-out, or
-wrapper-failed window takes the pypdf path (issue #219). The window
+crash the process on scanned pages, so each window parses in a spawned
+child when ``window_subprocess`` is set; the parent never imports the
+parser. One loaded worker serves the windows by default (#270), so the
+model loads once. A lost window takes the pypdf path (issue #219). The window
 cache evicts its oldest files past ``cache_max_mb``. Every parsed
 window leaves a :class:`WindowOutcome` (parser, cache hit, warnings)
 whose fold becomes the conditional ``textbook`` envelope key.

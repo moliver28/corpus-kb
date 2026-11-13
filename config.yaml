@@ -104,7 +104,12 @@ ingestion:
 # under the repo's data dir convention (~/.corpus-kb). window_subprocess
 # parses each heavy window in a child process, so a scanned-page crash
 # cannot kill the worker (issue #219); the window then falls back to
-# pypdf after window_timeout_s. cache_max_mb caps the window cache in
+# pypdf after window_timeout_s. worker_reuse keeps one loaded parser
+# worker child alive across windows and documents, so the model loads
+# once per worker, not once per window (issue #270); false restores one
+# child per window. worker_max_windows recycles that worker after the
+# given window count, so no worker grows without bound. cache_max_mb
+# caps the window cache in
 # MiB and evicts the oldest files first; 0 disables the cap (issue #221).
 # structured_output keeps rich page structure (heading level, page box,
 # table markdown) in the parsed windows; false keeps the plain text.
@@ -118,6 +123,8 @@ textbook:
   cache_dir: ~/.corpus-kb/textbook-cache
   window_subprocess: true
   window_timeout_s: 3600.0
+  worker_reuse: true
+  worker_max_windows: 32
   cache_max_mb: 2048
   structured_output: false
   citations: false

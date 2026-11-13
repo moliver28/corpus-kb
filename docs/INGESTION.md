@@ -650,6 +650,17 @@ kills only that child. The window falls back to pypdf, the run
 continues, and the fallback text caches under the pypdf key.
 `textbook.window_timeout_s` (default 3600) bounds one window.
 
+**Worker reuse.** A new child pays the parser model load every time,
+and that load dominates the Docling CPU path. With
+`textbook.worker_reuse: true` (the default), one worker child stays
+alive across windows and documents. The model then loads once per
+worker. The worker speaks the same page rows, so the parsed items do
+not change. `textbook.worker_max_windows` (default 32) recycles the
+worker after that many windows, so no worker grows without bound. A
+crash or a timeout still drops only the current window to pypdf; the
+next window spawns a fresh worker. Set `worker_reuse: false` to go
+back to one child per window.
+
 **Scan-tier timing.** Scanned pages are slow. Docling's OCR tier takes
 31 to 70 seconds per page. A 912-page scan is a job of hours. Size the
 window timeout for that pace. The ingest queue drains one book at a

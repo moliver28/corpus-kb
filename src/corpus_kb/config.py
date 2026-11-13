@@ -583,7 +583,9 @@ def get_default_config() -> dict[str, object]:
         # evicts the oldest window-cache files past the cap (issue #221).
         # structured_output keeps rich page structure in the windows.
         # citations writes a plain page + section citation into each
-        # chunk's metadata.
+        # chunk's metadata. worker_reuse keeps one loaded parser worker
+        # child alive across windows (issue #270); worker_max_windows
+        # recycles that worker after the given window count.
         "textbook": {
             "min_pages": 120,
             "window_pages": 50,
@@ -591,6 +593,8 @@ def get_default_config() -> dict[str, object]:
             "cache_dir": "~/.corpus-kb/textbook-cache",
             "window_subprocess": True,
             "window_timeout_s": 3600.0,
+            "worker_reuse": True,
+            "worker_max_windows": 32,
             "cache_max_mb": 2048,
             "structured_output": False,
             "citations": False,
