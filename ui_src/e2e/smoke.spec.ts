@@ -135,19 +135,29 @@ test.describe("SPA smoke on a live server", () => {
     // chunked documents); keyphrase extraction runs ungated on the
     // throwaway host, so the receipt is the full success word (the demo
     // config disables the sentiment screen — its honest no-run note is
-    // covered by the drawer unit tests).
-    await expect(drawer.getByText(/chunks of this document/).first()).toBeVisible({
-      timeout: 60_000,
-    });
+    // covered by the drawer unit tests). Both scope wordings are honest:
+    // all-chunks, or the capped first-N window.
+    await expect(
+      drawer.getByText(/chunks of this document|The runs use the first/).first(),
+    ).toBeVisible({ timeout: 60_000 });
     await drawer.getByRole("button", { name: "Keyphrase extraction" }).click();
     await drawer.getByRole("button", { name: "Run", exact: true }).click();
     // Every settled headline is honest: the receipt word for a run that
-    // finished whole, or the not-success line when it did not.
+    // finished whole, or the not-success line when it did not. A GREEN
+    // run proves more than "settled": the success word, plus at least one
+    // rendered phrase row in the raw envelope (an empty keyphrases list
+    // on the demo corpus is a real failure, never a pass).
     await expect(
       drawer
-        .getByText(/^(Done|Nothing to show|Finished, with gaps|Partly done|No answer given|The server finished without success)$/)
+        .getByText(
+          /^(Done|Nothing to show|Finished, with gaps|Partly done|No answer given|The server finished without success\. Read its note:)$/,
+        )
         .first(),
     ).toBeVisible({ timeout: 120_000 });
+    await expect(drawer.getByText("Done", { exact: true })).toBeVisible();
+    const raw = drawer.locator(".ui-json pre");
+    await drawer.locator(".ui-json summary").click();
+    await expect(raw).toContainText('"phrase"');
   });
 
   test("the graph workbench creates, finds, inspects, and links an entity", async ({
