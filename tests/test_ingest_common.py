@@ -12,7 +12,7 @@ import pytest
 from corpus_kb.extraction.pgml_backend import PgmlExtractor
 from corpus_kb.extraction.protocol import ExtractStats
 from corpus_kb.extraction.regex_backend import RegexExtractor
-from corpus_kb.ontology import load_ontology
+from corpus_kb.ontology import Ontology, load_ontology
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.tools.ingest_common import (
     _extract_entities_flag,
@@ -24,7 +24,7 @@ from corpus_kb.tools.ingest_common import (
     load_config_or_pass,
     ontology,
 )
-from corpus_kb.utils.models import Chunk, Document, Entity
+from corpus_kb.utils.models import Chunk, Document, Entity, Relation
 
 _ONTOLOGY_PATH = (
     Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
@@ -613,6 +613,44 @@ async def test_extract_with_fallback_unknown_extractor_raises() -> None:
             {"graph": {"extractor": "bogus"}},
             pool=_FakePoolNoConn(),
         )
+
+
+@pytest.mark.asyncio
+async def test_run_pgml_offloads_non_pgml_extractor_to_thread() -> None:
+    """_run_pgml runs a non-Pgml extractor through the same worker-thread seam."""
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology_model = load_ontology(_ONTOLOGY_PATH)
+
+    class _Plain:
+        extractor_id = "langextract"
+
+        def extract(
+            self, chunks: list[Chunk], ontology: Ontology, source_document_id: str
+        ) -> tuple[list[Entity], list[Relation], ExtractStats]:
+            return (
+                [
+                    Entity(
+                        name="Acme",
+                        entity_type="Org",
+                        source_type="text",
+                        source_document_id=source_document_id,
+                        chunk_id=chunks[0].chunk_id,
+                        confidence=None,
+                        extractor_id="langextract",
+                        metadata={},
+                    )
+                ],
+                [],
+                ExtractStats(backend="langextract", requested_entities=1, kept_entities=1),
+            )
+
+    import corpus_kb.tools.ingest_extract as ingest_module
+
+    entities, _relations, stats = await ingest_module._run_pgml(
+        _Plain(), [chunk], ontology_model, "d1"
+    )
+    assert [entity.name for entity in entities] == ["Acme"]
+    assert stats.kept_entities == 1
 
 
 def test_extractor_name_defaults_to_ml() -> None:

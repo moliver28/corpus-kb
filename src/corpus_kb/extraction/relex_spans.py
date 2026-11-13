@@ -14,7 +14,6 @@ from typing import Any
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity
 from .gliner_backend import _map_mention_type
-from .protocol import OntologyViolationError
 
 #: Endpoints link to the best entity overlapping at least this fraction
 #: of the smaller span.
@@ -111,10 +110,7 @@ def pseudo_entity(
     spans whose ontology type degrades to Concept stay scorable.
     """
     hint = span[3].lower() if span[3] else "person"
-    try:
-        entity_type = _map_mention_type(hint, ontology)
-    except OntologyViolationError:
-        entity_type = ontology.entity_types[0]
+    entity_type = _map_mention_type(hint, ontology)
     return Entity(
         name=span[2],
         entity_type=entity_type,
