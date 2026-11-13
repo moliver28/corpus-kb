@@ -7,6 +7,7 @@ no test ever downloads weights.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -14,6 +15,7 @@ import pytest
 from corpus_kb.extraction.gliner_backend import GlinerExtractor
 from corpus_kb.extraction.ml_backend import MLExtractor, extraction_mode
 from corpus_kb.extraction.relex_backend import RelexExtractor
+from corpus_kb.extraction.relex_spans import as_float, field, link, side_dict, span
 from corpus_kb.ontology import Ontology
 from corpus_kb.utils.models import Chunk, Entity, Relation
 
@@ -27,7 +29,9 @@ def build_ontology() -> Ontology:
 
 
 class _FakeGliner2Model:
-    def extract_entities(self, text: str, schema: dict[str, str]) -> dict[str, list[object]]:
+    def extract_entities(
+        self, text: str, schema: dict[str, str], **kwargs: object
+    ) -> dict[str, object]:
         return {
             "person": [{"text": "Elena", "start": 0, "end": 5, "score": 0.92, "label": "person"}]
         }
@@ -41,22 +45,43 @@ class _FakeGliner2Module:
 
 
 class _FakeRelexModel:
+    """Real gliner 0.2.29 shape: (entities, relations) with typed heads."""
+
     def predict_relations(
         self,
         text: str,
-        labels: list[tuple[str, str]],
-        entities: list[str] | None = None,
+        labels: object,
+        relations: list[str],
         threshold: float = 0.5,
-    ) -> list[object]:
+        relation_threshold: float | None = None,
+    ) -> tuple[list[object], list[object]]:
         assert labels
-        return [
-            {
-                "head": {"text": "Elena", "start": 0, "end": 5, "label": "person"},
-                "tail": {"text": "ice cream", "start": 18, "end": 28, "label": "product"},
-                "label": "likes",
-                "score": 0.88,
-            }
-        ]
+        assert relations
+        return (
+            [
+                {"text": "Elena", "start": 0, "end": 5, "label": "person", "score": 0.99},
+                {
+                    "text": "ice cream",
+                    "start": 18,
+                    "end": 28,
+                    "label": "product",
+                    "score": 0.99,
+                },
+            ],
+            [
+                {
+                    "head": {"text": "Elena", "start": 0, "end": 5, "type": "person"},
+                    "tail": {
+                        "text": "ice cream",
+                        "start": 18,
+                        "end": 28,
+                        "type": "product",
+                    },
+                    "relation": "likes",
+                    "score": 0.88,
+                }
+            ],
+        )
 
 
 class _FakeGlinerModule:
@@ -150,6 +175,75 @@ def test_relex_unknown_relation_type_is_dropped_honestly() -> None:
     _entities, relations, stats = extractor.extract([_chunk()], ontology, "doc-1")
     assert relations == []
     assert stats.dropped_by_other == 1
+
+
+def test_relex_standalone_pass_emits_pseudo_entities_for_both_endpoints() -> None:
+    """Without supplied entities, both triplet endpoints become pseudo entities."""
+    extractor = RelexExtractor()
+    entities, relations, stats = extractor.extract([_chunk()], build_ontology(), "doc-1")
+
+    assert stats.kept_relations == 1
+    assert len(entities) == 2
+    assert all(entity.metadata["pseudo"] is True for entity in entities)
+    assert {entity.metadata["gliner_type"] for entity in entities} == {"person", "product"}
+    assert any("standalone pass emitted 2 span entities" in note for note in stats.notes)
+    relation = relations[0]
+    assert {relation.source_entity_id, relation.target_entity_id} == {
+        entity.entity_id for entity in entities
+    }
+
+
+# ---------------------------------------------------------------------------
+# relex span helpers (relex_spans.py)
+# ---------------------------------------------------------------------------
+
+
+def test_field_reads_object_attributes_and_defaults_to_none() -> None:
+    class _Payload:
+        score = 0.9
+
+    assert field(_Payload(), "score") == 0.9
+    assert field(_Payload(), "missing") is None
+
+
+def test_as_float_returns_zero_for_non_numeric_values() -> None:
+    assert as_float(7) == 7.0
+    assert as_float(0.5) == 0.5
+    assert as_float("0.9") == 0.0
+    assert as_float(None) == 0.0
+
+
+def test_side_dict_handles_dict_none_and_object_shapes() -> None:
+    payload = {"start": 0, "end": 5}
+    assert side_dict(payload) is payload
+    assert side_dict(None) == {}
+    attribute_side = SimpleNamespace(start=1, end=4, text="Acme", type="company")
+    assert side_dict(attribute_side) == {"start": 1, "end": 4, "text": "Acme", "type": "company"}
+
+
+def test_span_handles_none_incomplete_and_attribute_shapes() -> None:
+    assert span(None) is None
+    assert span({"start": 0}) is None
+    attribute_span = SimpleNamespace(start=1, end=4, text="Acme", label="org")
+    assert span(attribute_span) == (1, 4, "Acme", "org")
+
+
+def test_link_skips_candidates_without_span_coordinates() -> None:
+    def _entity(start: int | None, end: int | None) -> Entity:
+        return Entity(
+            name="Elena",
+            entity_type="PERSON",
+            source_type="text",
+            source_document_id="doc-1",
+            chunk_id="c1",
+            source_start_char=start,
+            source_end_char=end,
+        )
+
+    unpositioned = _entity(None, None)
+    positioned = _entity(0, 5)
+    linked = link((0, 5, "Elena", "person"), [unpositioned, positioned])
+    assert linked is positioned
 
 
 def test_gliner_extractor_loads_faked_model() -> None:

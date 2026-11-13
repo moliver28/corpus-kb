@@ -586,3 +586,15 @@ route_question
 # coding ops CLI (cli_coding_ops.py, issue #350): typer command callback
 # bound by its decorator; vulture sees no direct caller.
 calibrate_floors
+
+# PR #389 (GLiNER kwarg surface): the extraction Protocols in
+# _gliner_types.py and _gliner2_types.py mirror the real gliner/gliner2
+# keyword APIs (predict_relations, extract_entities,
+# batch_extract_entities). The libraries consume these as keywords, so
+# vulture sees no name read.
+include_spans
+include_confidence
+flat_ner
+adjacency_threshold
+relation_threshold
+multi_label
