@@ -46,6 +46,9 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         # Phase-2 Wave 5: the chunk window read (tools/chunk_read_tools.py);
         # r9: the registry row joined in bfd8d32, the name belongs here too.
         "chunks_list",
+        # Phase-2 Wave 6: the Map's edge window read
+        # (tools/relation_read_tools.py).
+        "list_relations",
         # Phase-2 Wave 2: the tag/metadata write ops (tools/tag_tools.py).
         "add_tag",
         "tag_document",

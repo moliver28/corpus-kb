@@ -231,4 +231,26 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         exit_codes=(0, 1, 3),
     ),
+    # -- Phase-2 Wave 6: the Map's edge window read. Read-only window
+    #    read over the graph relations table; the registry id is the UI
+    #    manifest id (relations-list). ------------------------------------
+    Operation(
+        name="list_relations",
+        family="graph",
+        description="List graph relations, one type-ordered window with endpoint names.",
+        handler="corpus_kb.tools.relation_read_tools:relations_list",
+        params=(
+            ParamSpec("limit", default=100),
+            ParamSpec("offset", default=0),
+            _TENANT,
+        ),
+        envelope_keys=("status", "result"),
+        surfaces=(
+            SurfaceSpec(MCP, "list_relations"),
+            SurfaceSpec(CLI, "list-relations"),
+            SurfaceSpec(HTTP, "/api/graph/relations", "GET"),
+            SurfaceSpec(SOCKET, "list_relations"),
+        ),
+        exit_codes=(0, 1, 3),
+    ),
 )

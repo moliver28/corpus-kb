@@ -34,6 +34,8 @@ from corpus_kb.domain.models import (
     ListDocumentChunksQuery,
     ListDocumentsQuery,
     ListEntitiesQuery,
+    ListRelationsQuery,
+    RelationListResult,
     SearchContextQuery,
     SearchQuery,
     SearchResult,
@@ -201,6 +203,14 @@ class QueryHandler:
     ) -> list[DocumentChunkResult]:
         """List one document's chunks, one window (Phase-2 Wave 5)."""
         return await query_crud_reads.list_document_chunks(
+            cast("asyncpg.Pool | SqlGateway", self._pool), query
+        )
+
+    async def handle_list_relations(
+        self, query: ListRelationsQuery
+    ) -> list[RelationListResult]:
+        """List graph relations, one window (Phase-2 Wave 6 Map)."""
+        return await query_crud_reads.list_relations(
             cast("asyncpg.Pool | SqlGateway", self._pool), query
         )
 

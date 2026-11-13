@@ -566,6 +566,16 @@
     "required": []
   },
   {
+    "description": "List graph relations, one type-ordered window (read-only).",
+    "id": "list-relations",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/relations",
+    "required": []
+  },
+  {
     "description": "List one entity's relations (read-only).",
     "id": "get-entity-relations",
     "longRunning": false,

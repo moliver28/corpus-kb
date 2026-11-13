@@ -165,3 +165,21 @@ async def get_entity_relations(request: Request) -> JSONResponse:
         limit=limit,
     )
     return JSONResponse({"status": "success", "result": results})
+
+
+@route_errors
+async def list_relations(request: Request) -> JSONResponse:
+    """GET /api/graph/relations — list relations, one window (Wave 6 Map)."""
+    from corpus_kb.domain.models import ListRelationsQuery
+    from corpus_kb.handlers.query_handler import get_query_handler
+
+    query = ListRelationsQuery(
+        tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
+        limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
+        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
+    )
+    handler = get_query_handler()
+    results = await handler.handle_list_relations(query)
+    return JSONResponse(
+        {"status": "success", "result": [r.model_dump(mode="json") for r in results]}
+    )

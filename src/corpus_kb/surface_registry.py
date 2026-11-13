@@ -735,6 +735,15 @@ SURFACES: tuple[Surface, ...] = (
         description="List one entity's relations (read-only).",
         http_route="/api/graph/relations/{entity_id}",
     ),
+    # -- Phase-2 Wave 6: the Map's edge window read. Read-only: safe to
+    #    serve from every surface; NEVER a write-op row. --------------------
+    Surface(
+        name="list-relations",
+        cli_path="list-relations",
+        mcp_tool="list_relations",
+        description="List graph relations, one type-ordered window (read-only).",
+        http_route="/api/graph/relations",
+    ),
     Surface(
         name="graph-neighbors",
         cli_path="graph-neighbors",

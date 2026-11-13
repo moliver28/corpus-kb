@@ -40,6 +40,7 @@ _ACTIVE = "corpus_kb.tools.active_learn_tools"
 _MEMBED = "corpus_kb.tools.meta_embed_tools"
 _ASK = "corpus_kb.tools.ask_tools"
 _GRAPH = "corpus_kb.tools.graph_read_tools"
+_RELATION = "corpus_kb.tools.relation_read_tools"
 _SEARCH = "corpus_kb.tools.search_tools"
 _VERSIONING = "corpus_kb.tools.versioning_tools"
 
@@ -244,6 +245,16 @@ _SPECS: dict[str, _Spec] = {
             _Opt("entity_types", "raw"),
             _Opt("limit", "int", 100),
         ),
+    ),
+    # -- Phase-2 Wave 6: the Map's edge window read. Counts ride raw on
+    #    purpose: the shared window-count guard (tools._count_input) owns
+    #    the canonical rule, so every surface answers the same typed
+    #    message. ---------------------------------------------------------
+    "list_relations": _Spec(
+        _RELATION,
+        "relations_list",
+        positional=(),
+        opts=(_Opt("limit", "raw"), _Opt("offset", "raw")),
     ),
 }
 

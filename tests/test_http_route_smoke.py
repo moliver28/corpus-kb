@@ -439,6 +439,15 @@ _HANDLER_ROUTES = [
         id="GET /api/graph/relations/{entity_id}",
     ),
     pytest.param(
+        "GET",
+        "/api/graph/relations",
+        "query",
+        "handle_list_relations",
+        "dumpable_list",
+        {},
+        id="GET /api/graph/relations",
+    ),
+    pytest.param(
         "POST", "/api/tags", "tag", "handle_add_tag", "dict", {"name": "t"}, id="POST /api/tags"
     ),
     pytest.param(

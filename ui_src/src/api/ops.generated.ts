@@ -62,6 +62,7 @@ export const OPS: Readonly<Record<string, OpDescriptor>> = {
   "add-entity": { path: "/api/entities", method: "POST", longRunning: false },
   "events-summary": { path: "/api/events/summary", method: "GET", longRunning: false },
   "graph-neighbors": { path: "/api/graph/neighbors", method: "POST", longRunning: false },
+  "list-relations": { path: "/api/graph/relations", method: "GET", longRunning: false },
   "get-entity-relations": { path: "/api/graph/relations/{entity_id}", method: "GET", longRunning: false },
   "search-graph": { path: "/api/graph/search", method: "POST", longRunning: false },
   "graph-traverse": { path: "/api/graph/traverse", method: "POST", longRunning: false },

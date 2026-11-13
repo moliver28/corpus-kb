@@ -140,6 +140,14 @@ class ListDocumentChunksQuery(BaseModel):
     offset: int = 0
 
 
+class ListRelationsQuery(BaseModel):
+    """List graph relations, one window (Phase-2 Wave 6 Map)."""
+
+    tenant_id: UUID = Field(default=DEFAULT_TENANT_ID)
+    limit: int = 100
+    offset: int = 0
+
+
 class SearchSimilarQuery(BaseModel):
     """Find chunks similar to a given chunk via vector distance."""
 
@@ -223,6 +231,18 @@ class DocumentChunkResult(BaseModel):
     chunk_type: str | None = None
     start_line: int | None = None
     end_line: int | None = None
+
+
+class RelationListResult(BaseModel):
+    """One relation row in the relations-list window (Wave 6 Map)."""
+
+    relation_id: UUID
+    source_entity_id: UUID
+    target_entity_id: UUID
+    relation_type: str
+    weight: float
+    source_name: str
+    target_name: str
 
 
 class EntityResult(BaseModel):

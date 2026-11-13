@@ -513,6 +513,15 @@
     "required": []
   },
   {
+    "id": "list-relations",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/graph/relations",
+    "required": []
+  },
+  {
     "id": "get-entity-relations",
     "longRunning": false,
     "method": "GET",

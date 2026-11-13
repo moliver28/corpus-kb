@@ -81,6 +81,8 @@ GET_SURFACE_NAMES = frozenset(
         # relations read answers GET by entity id; the entity list window).
         "get-entity-relations",
         "list-entities",
+        # Phase-2 Wave 6: the Map's edge window read.
+        "list-relations",
         # Issue #350: the coding status read and the event-store health read.
         "coding-status",
         "events-summary",
