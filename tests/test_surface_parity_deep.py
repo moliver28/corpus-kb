@@ -2984,6 +2984,76 @@ async def test_envelope_parity(op: Operation, parity_env: dict[str, Any]) -> Non
 
 
 # ---------------------------------------------------------------------------
+# Wave-5 review P2: one bad window count answers the SAME typed failure on
+# all four surfaces. The shared tool guard (tools/_count_input) defines the
+# canonical rule: limit >= 1, offset >= 0, both inside the int8 range.
+# ---------------------------------------------------------------------------
+
+
+def _bad_count_cases(kind: str, cases: list[tuple[object, str]]) -> Any:
+    return [pytest.param(kind, raw, message, id=f"{kind}-{raw}") for raw, message in cases]
+
+
+@pytest.mark.parametrize(
+    ("kind", "raw", "message"),
+    _bad_count_cases(
+        "limit",
+        [
+            (-5, "limit must be at least 1."),
+            (0, "limit must be at least 1."),
+            (2**63, "limit is out of range."),
+        ],
+    )
+    + _bad_count_cases("offset", [(-1, "offset must not be negative.")]),
+)
+async def test_chunks_list_bad_count_parity(
+    kind: str, raw: object, message: str, parity_env: dict[str, Any]
+) -> None:
+    ctx = parity_env
+    from corpus_kb.errors import ValidationError
+    from corpus_kb.tools.chunk_read_tools import chunks_list
+
+    params: dict[str, Any] = {"doc_id": DOC_ID, kind: raw}
+
+    # Shared tool layer: the guard raises the taxonomy error.
+    with pytest.raises(ValidationError) as raised:
+        await chunks_list(ctx["pool"], DOC_ID, config=ctx["config"], **{kind: raw})
+    assert str(raised.value) == message
+
+    # HTTP: the same typed 400 with the same message.
+    client: TestClient = ctx["client"]
+    response = client.get(f"/api/documents/{DOC_ID}/chunks", params={kind: str(raw)})
+    assert response.status_code == 400, response.text
+    assert response.json()["error_type"] == "validation_error"
+    assert response.json()["error"] == message
+
+    # Socket: the same -32602 with the same message.
+    server: JSONRPCServer = ctx["server"]
+    rpc = await server._process_request(
+        json.dumps({"jsonrpc": "2.0", "id": 1, "method": "chunks_list", "params": params})
+    )
+    assert rpc["error"]["code"] == -32602, rpc
+    assert rpc["error"]["message"] == message
+
+    # MCP: the tool call FAILS as a tool error (the guard's typed class
+    # fired in the tool layer). The SDK wraps a non-ToolError crash into
+    # its generic "Error executing tool" text, so the message itself does
+    # not cross this wire — the class, not the text, is the MCP answer.
+    from mcp.client._memory import InMemoryTransport
+    from mcp.client.session import ClientSession
+
+    transport = InMemoryTransport(ctx["mcp_server"])
+    async with (
+        transport as (read_stream, write_stream),
+        ClientSession(read_stream, write_stream) as session,
+    ):
+        await session.initialize()
+        result = await session.call_tool("chunks_list", params)
+    assert result.is_error, result.content
+    assert "chunks_list" in result.content[0].text
+
+
+# ---------------------------------------------------------------------------
 # Issue #349: the SQL query route refuses writes, on every surface
 # ---------------------------------------------------------------------------
 

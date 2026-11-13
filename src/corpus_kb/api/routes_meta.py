@@ -33,14 +33,17 @@ async def list_document_chunks(request: Request) -> JSONResponse:
 
     Phase-2 Wave 5: the drawer's NLP panel scopes its analysis runs to
     these chunk ids. Rows ride the ingest order (chunk_index, chunk_id).
+    Counts ride the shared window-count guard (tools._count_input), so
+    the HTTP arm answers the same typed rule the other surfaces answer.
     """
     from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.tools._count_input import limit_arg, offset_arg
 
     query = ListDocumentChunksQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
         doc_id=UUID(request.path_params.get("doc_id", "")),
-        limit=opt_int(request.query_params.get("limit"), 100, name="limit"),
-        offset=opt_int(request.query_params.get("offset"), 0, name="offset"),
+        limit=limit_arg(request.query_params.get("limit")),
+        offset=offset_arg(request.query_params.get("offset")),
     )
     handler = get_query_handler()
     results = await handler.handle_list_document_chunks(query)
