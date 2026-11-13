@@ -343,7 +343,9 @@ async def _deny_at_ingest(fresh_research_app: str, drop: str, tenant: UUID) -> N
 async def test_explicit_rerun_of_denied_stage_reprompts(
     fresh_research_app: str, tmp_path: Path
 ) -> None:
-    drop = _drop_dir(tmp_path, (TRANSCRIPTS[0],))
+    # The full corpus (like the acceptance test): the inductive pass must
+    # land pending proposals, so the promotion gate is the next honest stop.
+    drop = _drop_dir(tmp_path, TRANSCRIPTS)
     await _deny_at_ingest(fresh_research_app, drop, TENANT_F)
 
     asked: list[str] = []
@@ -375,7 +377,7 @@ async def test_explicit_rerun_of_denied_stage_reprompts(
 async def test_implicit_rerun_keeps_the_denial_skip(
     fresh_research_app: str, tmp_path: Path
 ) -> None:
-    drop = _drop_dir(tmp_path, (TRANSCRIPTS[0],))
+    drop = _drop_dir(tmp_path, TRANSCRIPTS)
     await _deny_at_ingest(fresh_research_app, drop, TENANT_G)
 
     async def approve(stage: str) -> bool:
