@@ -236,6 +236,7 @@ The windowed large-PDF strategy ([INGESTION.md](INGESTION.md),
 | `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |
 | `worker_reuse` | `true` | In child mode, keep one loaded parser worker alive across windows and documents. The model then loads once per worker, not once per window. `false` restores one child per window |
 | `worker_max_windows` | `32` | Windows one parser worker serves before the parent stops it and spawns a fresh one. This recycles the worker, so no worker grows without bound |
+| `worker_idle_ttl_s` | `600.0` | Seconds an idle parser worker stays alive. The parent checks this when the next window asks, so an idle server sheds its loaded parser children instead of holding them forever |
 | `structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows |
 | `citations` | `false` | Write a plain-English `citation` string (true pages, section title) into each chunk's metadata |
 
