@@ -15,6 +15,9 @@ const Graph = lazy(() => import("./pages/Graph"));
 const Codebook = lazy(() => import("./pages/Codebook"));
 const Scale = lazy(() => import("./pages/Scale"));
 const Release = lazy(() => import("./pages/Release"));
+// The Map (Phase-2 Wave 6): a domain view, not a lifecycle stage.
+// @xyflow/react rides ONLY this chunk (the ui-import-graph gate).
+const Map = lazy(() => import("./pages/Map"));
 
 /** A stage whose screen has not landed yet — one honest placeholder.
     Plain markup keeps antd's Card out of the shell chunk. */
@@ -39,6 +42,9 @@ const STAGES: RailStage[] = [
   { key: "graph", label: strings.stageGraph },
   { key: "codebook", label: strings.stageCodebook },
   { key: "release", label: strings.stageRelease },
+  // The domain view rides after the lifecycle stages (D7: the rail
+  // encodes the lifecycle; the Map is a view over graph data).
+  { key: "map", label: strings.stageMap },
 ];
 
 function StageShell() {
@@ -74,6 +80,7 @@ function StageShell() {
               <Route path="/codebook" element={<Codebook />} />
               <Route path="/scale" element={<Scale />} />
               <Route path="/release" element={<Release />} />
+              <Route path="/map" element={<Map />} />
               {/* Stages without screens yet (Tasks 6-7) land above this
                   catch-all; until then each shows the same placeholder. */}
               <Route path="*" element={<StagePlaceholder />} />

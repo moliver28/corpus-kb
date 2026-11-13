@@ -4,6 +4,7 @@ import { strings as askTable, type AskStrings } from "./ask";
 import { strings as codebookTable, type CodebookStrings } from "./codebook";
 import { strings as graphTable, type GraphStrings } from "./graph";
 import { strings as ingestTable, type IngestStrings } from "./ingest";
+import { strings as mapTable, type MapStrings } from "./map";
 import { strings as releaseTable, type ReleaseStrings } from "./release";
 import { strings as reviewTable, type ReviewStrings } from "./review";
 import { strings as scaleTable, type ScaleStrings } from "./scale";
@@ -18,6 +19,7 @@ export interface Strings
   extends AppStrings,
     SetupStrings,
     IngestStrings,
+    MapStrings,
     ReviewStrings,
     ScaleStrings,
     AskStrings,
@@ -30,6 +32,7 @@ export const strings: Strings = {
   ...appTable,
   ...setupTable,
   ...ingestTable,
+  ...mapTable,
   ...reviewTable,
   ...scaleTable,
   ...askTable,

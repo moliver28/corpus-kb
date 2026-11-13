@@ -107,6 +107,7 @@ export interface AppStrings {
   stageCodebook: string;
   stageGraph: string;
   stageIngest: string;
+  stageMap: string;
   stagePlaceholderBody: string;
   stagePlaceholderTitle: string;
   stageRelease: string;

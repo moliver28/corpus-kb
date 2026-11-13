@@ -406,6 +406,44 @@ body {
   text-decoration: underline;
 }
 
+/* Map (Phase-2 Wave 6): the read-only graph canvas and its petrol
+   entity nodes. Heights are fixed so ReactFlow has a sized viewport. */
+.ui-map-canvas {
+  height: 420px;
+  border: 1px solid var(--ckb-color-border-secondary);
+  border-radius: 8px;
+}
+
+.ui-map-node {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  background: var(--ckb-color-primary-bg);
+  border: 1px solid var(--ckb-color-border);
+  border-radius: 8px;
+}
+
+.ui-map-node__name {
+  margin: 0;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ckb-color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-map-node__type {
+  margin: 0;
+  font-size: 11px;
+  color: var(--ckb-color-text-secondary);
+}
+
 /* Motion answers actions only. Under reduced motion everything stops
    here; antd's JS motion token turns off with it (theme.ts). */
 @media (prefers-reduced-motion: reduce) {

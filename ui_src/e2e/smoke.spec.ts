@@ -160,6 +160,12 @@ test.describe("SPA smoke on a live server", () => {
     await expect(raw).toContainText('"phrase"');
   });
 
+  // The workbench pair (aaa- prefix sorts first, so both entities sit
+  // in every first window the Map reads).
+  const unique = Date.now().toString();
+  const first = `aaa-e2e-${unique}-a`;
+  const second = `aaa-e2e-${unique}-b`;
+
   test("the graph workbench creates, finds, inspects, and links an entity", async ({
     page,
   }) => {
@@ -167,9 +173,6 @@ test.describe("SPA smoke on a live server", () => {
     // (P1-2) make every step answer in seconds; a hung step now costs
     // three minutes, not the suite-wide 15 (P3-5).
     test.setTimeout(180_000);
-    const unique = Date.now().toString();
-    const first = `aaa-e2e-${unique}-a`;
-    const second = `aaa-e2e-${unique}-b`;
     await page.goto("/app/#/graph");
     const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
     const createForm = page.locator(".ant-card").filter({ hasText: "Create an entity" });
@@ -217,12 +220,36 @@ test.describe("SPA smoke on a live server", () => {
       timeout: 60_000,
     });
   });
+
+  test("the map draws the seeded graph read-only", async ({ page }) => {
+    // Phase-2 Wave 6 done-when: a novice opens the Map from the rail
+    // and SEES the graph — the workbench test's two entities render as
+    // nodes, their relation as an edge — with the canvas read-only and
+    // the same data in the tables under it.
+    await page.goto("/app/#/setup");
+    await page.getByRole("menuitem", { name: "Map" }).click();
+    await expect(page).toHaveURL(/#\/map/);
+    const canvas = page.locator(".react-flow");
+    await expect(canvas).toBeVisible({ timeout: 60_000 });
+    // The workbench test's run-unique entities sit in the node window
+    // (name-ordered first by the aaa- prefix).
+    await expect(canvas.locator(".react-flow__node", { hasText: second })).toBeVisible({
+      timeout: 60_000,
+    });
+    // Read-only: no handles on the pane, so nothing offers a connect.
+    await expect(canvas.locator(".react-flow__handle")).toHaveCount(0);
+    // The canvas never carries the only path to data: the relations
+    // table names the workbench test's relation row.
+    await expect(
+      page.getByRole("cell", { name: `${first} related_to ${second}` }),
+    ).toBeVisible();
+  });
 });
 
 test.describe("accessibility (axe-core)", () => {
   // The whole shell: the ask page scans its focusable citation list,
   // setup/review/codebook their dense tables and forms.
-  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook", "#/graph"]) {
+  for (const stage of ["#/ingest", "#/analyze", "#/release", "#/scale", "#/ask", "#/setup", "#/review", "#/codebook", "#/graph", "#/map"]) {
     test(`no critical or serious violations on ${stage}`, async ({ page }) => {
       await page.goto(`/app/${stage}`);
       // Wait for the stage's first card, not a fixed sleep.

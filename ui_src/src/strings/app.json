@@ -102,6 +102,7 @@
   "stageCodebook": "Codebook",
   "stageGraph": "Graph",
   "stageIngest": "Ingest",
+  "stageMap": "Map",
   "stagePlaceholderBody": "This stage arrives with the next update. Use Setup to load data first.",
   "stagePlaceholderTitle": "Not built yet",
   "stageRelease": "Release",
