@@ -13,9 +13,9 @@ degraded run whose tie the fallback resolved shows envelope status
 describes the run, the note describes how the intent resolved, and the
 chips ride the resolved intent.
 
-Both builders are pure: register lookups and dataclass reshapes only —
-no embedder, no LLM, no config. Stable key order keeps the bytes
-deterministic for the golden snapshot.
+Both builders are pure: register lookups, the rubric join, and
+dataclass reshapes only — no embedder, no LLM, no config. Stable key
+order keeps the bytes deterministic for the golden snapshot.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from ..analysis.method_register import (
     MethodRecord,
     MethodRegister,
 )
+from ..analysis.method_register_rubric import rank_methods
 from ..analysis.question_intent import QuestionIntent
 from ..analysis.question_router import RouteResult
 from .analysis_route_suggestions import attach_suggestions
@@ -86,26 +87,48 @@ def _ranked_rows(question: str, ranked: list[MethodRecommendation]) -> list[dict
     return rows
 
 
+def _rubric_reason(register: MethodRegister, method_id: str) -> str:
+    """The rubric's ``rank_reason`` for this id (the ONE rubric, full join).
+
+    The router caps its rubric join at five, so a row outside the cap
+    still needs its reason from a full join. Same register, same bytes.
+    """
+    for recommendation in rank_methods(register):
+        if recommendation.id == method_id:
+            return recommendation.rank_reason
+    raise KeyError(method_id)  # unreachable: the id came from this register
+
+
 def build_envelope(
     question: str, register: MethodRegister, result: RouteResult
 ) -> dict[str, object]:
     """The shared envelope: stable key order, deterministic bytes."""
-    envelope: dict[str, object] = {
-        "status": "degraded" if result.degraded else result.status,
-        "intent": result.intent.to_envelope(),
-        "ranked": _ranked_rows(question, result.ranked),
-    }
-    if result.intent.status == "ambiguous":
-        envelope["interpretations"] = result.intent.readings[:_READINGS_CAP]
-    # The chips ride the CHOSEN method (the score winner), looked up in
-    # the register by id: ``ranked`` is rubric-ordered, score-blind, and
-    # capped at five, so the winner can sit outside it (the no-phrase-
-    # hit pool is every phrased row).
+    ranked = _ranked_rows(question, result.ranked)
     chosen = (
         record_for(register, result.intent.method_id)
         if result.intent.method_id is not None
         else None
     )
+    if chosen is not None and all(row["method_id"] != chosen.id for row in ranked):
+        # The capped rubric list dropped the score winner (the no-phrase-
+        # hit pool is every phrased row). The chosen method gets its row
+        # after the capped five: the rubric-order claim for the first
+        # rows stays honest, and the resolved answer always shows its
+        # method with a name, a why, and a run hint. The why follows the
+        # top-row rule: the matched phrase when one hits, the rubric's
+        # rank_reason otherwise.
+        matched = _matched_phrase(question, chosen)
+        why = matched if matched is not None else _rubric_reason(register, chosen.id)
+        ranked.append(_row(chosen, why))
+    envelope: dict[str, object] = {
+        "status": "degraded" if result.degraded else result.status,
+        "intent": result.intent.to_envelope(),
+        "ranked": ranked,
+    }
+    if result.intent.status == "ambiguous":
+        envelope["interpretations"] = result.intent.readings[:_READINGS_CAP]
+    # The chips ride the same chosen record, so the appended row and
+    # the chips can never disagree about the chosen method.
     attach_suggestions(envelope, chosen)
     envelope["trace"] = asdict(result.trace)
     return envelope

@@ -10,10 +10,12 @@ the converter. A missing extra warns once and the book degrades to
 pypdf.
 
 ``parse_one_docling_window`` runs one window: in a spawned child when
-``window_subprocess`` is set, else one converter call. A crashed,
-timed-out, or wrapper-failed window takes the pypdf path (issue #219).
-Both seams append their warnings to the caller's window list, so each
-window's notes travel with its outcome.
+``window_subprocess`` is set, else one converter call. In child mode
+the persistent worker (:mod:`textbook_worker`, issue #270) serves the
+windows, so the parser's model loads once. A crashed, timed-out, or
+wrapper-failed window takes the pypdf path (issue #219). Both seams
+append their warnings to the caller's window list, so each window's
+notes travel with its outcome.
 """
 
 from __future__ import annotations
@@ -79,6 +81,7 @@ def parse_one_docling_window(
                 end,
                 settings.window_timeout_s,
                 settings.structured_output,
+                worker=settings.worker_policy(),
             )
         except Exception:
             items = None  # a wrapper failure must not kill the run

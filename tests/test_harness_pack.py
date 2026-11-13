@@ -80,9 +80,12 @@ def test_active_wrappers_after_p7() -> None:
         "corpus-contradictions-screen",
         "corpus-sentiment-screen",
         "corpus-active-learn-next",
+        # Issue #350: the chunk-coding ops card + the event-store health read.
+        "corpus-coding-ops",
+        "corpus-events",
     ]
     assert [w.name for w in reg.WRAPPERS if w.planned] == []
-    assert len(reg.WRAPPERS) == 26
+    assert len(reg.WRAPPERS) == 28
 
 
 def test_wrapper_bodies_are_invocation_guidance_only() -> None:
@@ -98,13 +101,15 @@ def test_wrapper_bodies_are_invocation_guidance_only() -> None:
 
 def test_every_surface_has_cli_and_mcp_name_in_lockstep() -> None:
     for surface in reg.SURFACES:
-        assert surface.cli_path
-        if not surface.mcp_tool:
-            # r13: research-demo is CLI-ONLY - the ONLY row allowed an empty
-            # MCP-tool field (a demo tool would red validate-configs).
-            assert surface.name == "research-demo", surface.name
+        # Honor each row's DECLARED surface set (#385, ruling 4a): an
+        # HTTP-only row (e.g. ingest-upload) carries no CLI path and no
+        # MCP-tool name to assert.
+        if "cli" in surface.surfaces:
+            assert surface.cli_path, surface.name
+        if "mcp" not in surface.surfaces:
             continue
         # r9 tool-name lockstep: every registry MCP tool is autoApprove-valid.
+        assert surface.mcp_tool, surface.name
         assert surface.mcp_tool in validate_configs.VALID_TOOL_NAMES, surface.mcp_tool
 
 

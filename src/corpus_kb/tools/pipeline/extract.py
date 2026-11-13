@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, cast
+from uuid import uuid4
 
 import asyncpg
 
@@ -61,9 +62,27 @@ async def _stage_extract_entities(
                 f"extraction_cache: {len(cached_hits)} of {len(chunks)} chunks served from cache",
             )
         if cached_hits:
-            for hit_entities, hit_relations in cached_hits.values():
+            # A cache hit stores extraction OUTPUT, not database state. The
+            # payload carries the ids of the run that filled the cache; that
+            # run's chunks and relation rows may be gone (a document delete
+            # strands relations with a NULL chunk link). Replay must behave
+            # like fresh extraction: bind to the CURRENT chunk id and mint a
+            # fresh relation id, or the insert hits relations_pkey against a
+            # stranded row or relations_chunk_id_fkey against a dead chunk
+            # (issue #360). Entity ids stay payload-level: store_entities
+            # upserts and remaps them below.
+            current_ids = {chunk.chunk_hash: chunk.chunk_id for chunk in chunks}
+            for chunk_hash, (hit_entities, hit_relations) in cached_hits.items():
                 entities = hit_entities + entities
-                relations = hit_relations + relations
+                relations = [
+                    relation.model_copy(
+                        update={
+                            "relation_id": str(uuid4()),
+                            "chunk_id": current_ids.get(chunk_hash, relation.chunk_id),
+                        }
+                    )
+                    for relation in hit_relations
+                ] + relations
         if entities:
             entity_id_map = await ingest_sink.store_entities(entities)
             # The dedup keeps the canonical entity row; re-point the

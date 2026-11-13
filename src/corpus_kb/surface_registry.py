@@ -35,6 +35,10 @@ class Surface(NamedTuple):
     mcp_tool: str
     description: str
     http_route: str | None = None  # set for every surface outside the parity allowlist
+    # The transports this operation declares, as a per-op surface set. The
+    # default is full parity (cli+mcp+http); an HTTP-by-nature operation
+    # declares the smaller set and stays exempt from the others (ruling 4a).
+    surfaces: tuple[str, ...] = ("cli", "mcp", "http")
 
 
 SURFACES: tuple[Surface, ...] = (
@@ -200,6 +204,13 @@ SURFACES: tuple[Surface, ...] = (
         description="Re-embed degraded (zero-vector) chunks once the provider is back.",
         http_route="/api/ingest/reembed",
     ),
+    Surface(
+        name="ingest-reingest",
+        cli_path="ingest-reingest",
+        mcp_tool="ingest_reingest",
+        description="Bulk re-embed for a model switch; dry-run plan, resume, ledger row.",
+        http_route="/api/ingest/reingest",
+    ),
     # -- pipeline ingest ops (UI SPA Task 5a): the manifest gap closed -------
     Surface(
         name="ingest-directory",
@@ -214,6 +225,21 @@ SURFACES: tuple[Surface, ...] = (
         mcp_tool="ingest_url",
         description="Fetch (or crawl) a website and ingest its HTML pages.",
         http_route="/api/ingest/url",
+    ),
+    # Multipart upload (owner ruling 4a, 2026-11-12): HTTP by nature. The
+    # browser posts multipart form data; the JSON side of the SAME pipeline
+    # stays ingest-file (CLI/MCP/socket), so this row declares an HTTP-only
+    # surface set instead of wrapping the pipeline in a JSON sibling.
+    Surface(
+        name="ingest-upload",
+        cli_path="",
+        mcp_tool="",
+        description=(
+            "Upload one file by multipart form (field name file); the "
+            "receipt is the standard file-ingest envelope."
+        ),
+        http_route="/api/ingest/upload",
+        surfaces=("http",),
     ),
     # -- lifecycle UI ops (UI SPA Task 5b, issue #176): demo load + doctor ---
     Surface(
@@ -737,6 +763,79 @@ SURFACES: tuple[Surface, ...] = (
         description="Add one relation between two entities.",
         http_route="/api/relations",
     ),
+    # -- chunk-coding ops (issue #350): the six routes the plugin reached
+    #    only by hard-coded HTTP posts, plus the two reads it built by
+    #    hand (status from four SQL queries, export from hand-written SQL).
+    #    The three embedding/pooling/batching rows are long ops (minutes
+    #    on a real corpus; the UI manifest pins the same ids). -----------
+    Surface(
+        name="coding-embed-codebook",
+        cli_path="coding embed-codebook",
+        mcp_tool="coding_embed_codebook",
+        description="Validate, embed, and load one codebook; answers its version id.",
+        http_route="/api/coding/embed-codebook",
+    ),
+    Surface(
+        name="coding-pool",
+        cli_path="coding pool",
+        mcp_tool="coding_pool",
+        description="Run pooling (keyword hits, similarity) and coverage reconciliation.",
+        http_route="/api/coding/pool",
+    ),
+    Surface(
+        name="coding-code-batch",
+        cli_path="coding code-batch",
+        mcp_tool="coding_code_batch",
+        description="Code a batch of (chunk, code) cells with confidence routing.",
+        http_route="/api/coding/code-batch",
+    ),
+    Surface(
+        name="coding-reliability",
+        cli_path="coding reliability",
+        mcp_tool="coding_reliability",
+        description="Sample the coded corpus and compute alpha/kappa reliability.",
+        http_route="/api/coding/reliability",
+    ),
+    Surface(
+        name="coding-calibrate-floors",
+        cli_path="coding calibrate-floors",
+        mcp_tool="coding_calibrate_floors",
+        description="Calibrate one code's pool/residual floors from labeled chunks.",
+        http_route="/api/coding/calibrate-floors",
+    ),
+    Surface(
+        name="coding-saturation",
+        cli_path="coding saturation",
+        mcp_tool="coding_saturation",
+        description="Report the ISR saturation signal and the batch stop rule.",
+        http_route="/api/coding/saturation",
+    ),
+    Surface(
+        name="coding-status",
+        cli_path="coding status",
+        mcp_tool="coding_status",
+        description="Corpus counts, saturation ratio, coverage by disposition, routes.",
+        http_route="/api/coding/status",
+    ),
+    Surface(
+        name="coding-export",
+        cli_path="coding export",
+        mcp_tool="coding_export",
+        description="Accepted codes joined with chunk text and document source, as rows.",
+        http_route="/api/coding/export",
+    ),
+    # -- event-store health (issue #350): one op replaces the plugin's four
+    #    SQL queries and its direct read of the DuckDB events sidecar. ----
+    Surface(
+        name="events-summary",
+        cli_path="events",
+        mcp_tool="events_summary",
+        description=(
+            "Event counts by topic, latest notification id, checkpoints, "
+            "dead letters, recent ingest runs (read-only)."
+        ),
+        http_route="/api/events/summary",
+    ),
 )
 
 # --------------------------------------------------------------------------
@@ -979,6 +1078,14 @@ run-ledger surfaces.
   ```
   corpus-kb ingest-status
   corpus-kb ingest-reembed [--limit N] [--doc-id <uuid>]
+  ```
+
+- After an embedding-model change, re-embed every stored chunk in one
+  batched pass (no re-partition, no re-extract). Dry-run first for the
+  size; a re-run skips chunks the target model already wrote:
+
+  ```
+  corpus-kb ingest-reingest [--dry-run] [--project-id <uuid>]
   ```
 """
 
@@ -1323,6 +1430,64 @@ _ACTIVE_LEARN_BODY = _amr_body(
     claims="annotation-order recommendations with the strategy recorded.",
 )
 
+# -- Chunk-coding ops (issue #350): the six routes the plugin reached only
+#    through hard-coded HTTP posts, plus the status and export reads. ----
+_CODING_OPS_BODY = """# corpus-coding-ops — the chunk-coding operations
+
+Deductive coding over stored chunks: load a codebook, pool candidates,
+code batches, measure reliability, calibrate floors, watch saturation.
+
+- Load and embed a codebook JSON file (answers its codebook version id):
+
+  ```
+  corpus-kb coding embed-codebook <codebook.json>
+  ```
+
+- Run pooling and coverage reconciliation for one codebook version:
+
+  ```
+  corpus-kb coding pool --codebook-version-id <uuid>
+  ```
+
+- Code a batch of cells. The cells file holds a JSON list of
+  {"chunk_id": ..., "code_ids": [...]} entries:
+
+  ```
+  corpus-kb coding code-batch --cells <cells.json> [--batch-id <id>]
+  ```
+
+- Reliability, floors, saturation, and the read ops (all flags via
+  --help):
+
+  ```
+  corpus-kb coding reliability
+  corpus-kb coding calibrate-floors <labels.json>
+  corpus-kb coding saturation [--batch-id <id>]
+  corpus-kb coding status
+  corpus-kb coding export [--format csv]
+  ```
+
+- embed-codebook, pool, and code-batch are long ops: they can run for
+  minutes on a real corpus.
+"""
+
+_EVENTS_BODY = """# corpus-events — event-store health
+
+One read over the event store, the projection checkpoints, the dead
+letters, and the recent ingest runs.
+
+```
+corpus-kb events [--json]
+```
+
+- Event counts by topic and the latest notification id come from the
+  event store: the Postgres table, or the SQLite sidecar on the duckdb
+  backend. The engine resolves the store; do not open store files.
+- Checkpoints, dead letters, and the last five ingest runs are scoped
+  to one tenant.
+- All flags: `corpus-kb events --help`
+"""
+
 WRAPPERS: tuple[Wrapper, ...] = (
     Wrapper(
         name="corpus-ingest",
@@ -1401,7 +1566,7 @@ WRAPPERS: tuple[Wrapper, ...] = (
         description="Top-level ingest front door: files/dirs, watch auto-heal, status, reembed",
         argument_hint="<path> [--watch] [--source-type <strategy>] [--reembed]",
         body=_FRONT_DOOR_BODY,
-        covers=("ingest-status", "ingest-reembed"),
+        covers=("ingest-status", "ingest-reembed", "ingest-reingest"),
     ),
     Wrapper(
         name="corpus-topics",
@@ -1549,6 +1714,35 @@ WRAPPERS: tuple[Wrapper, ...] = (
         body=_ACTIVE_LEARN_BODY,
         covers=("active-learn-next",),
     ),
+    # -- Chunk-coding ops (issue #350): one card for the eight coding ops ---
+    Wrapper(
+        name="corpus-coding-ops",
+        title="corpus-coding-ops",
+        description=(
+            "Chunk-coding ops: codebook load, pool, batch, reliability, "
+            "floors, saturation, status, export"
+        ),
+        argument_hint="<file> | --codebook-version-id <uuid> | --cells <file>",
+        body=_CODING_OPS_BODY,
+        covers=(
+            "coding-embed-codebook",
+            "coding-pool",
+            "coding-code-batch",
+            "coding-reliability",
+            "coding-calibrate-floors",
+            "coding-saturation",
+            "coding-status",
+            "coding-export",
+        ),
+    ),
+    Wrapper(
+        name="corpus-events",
+        title="corpus-events",
+        description="Event-store health: topics, notification id, checkpoints, dead letters, runs",
+        argument_hint="[--json]",
+        body=_EVENTS_BODY,
+        covers=("events-summary",),
+    ),
 )
 
 ACTIVE_WRAPPERS: tuple[Wrapper, ...] = tuple(w for w in WRAPPERS if not w.planned)
@@ -1581,9 +1775,11 @@ SERVER_AUTO_APPROVE: tuple[str, ...] = (
     "get_metadata",
     "query_document_stats",
     "sync_database",
-    # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py)
+    # Stage-5 ingest front door surfaces (tools/ingest_surface_tools.py,
+    # tools/ingest_reingest.py for the #202 bulk re-embed)
     "ingest_status",
     "ingest_reembed",
+    "ingest_reingest",
     # Wave 4 topics layer (tools/topics_tools.py)
     "topics_build",
     "topics_list",

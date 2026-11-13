@@ -386,6 +386,10 @@ MountableApp
 # n_jobs=1 explicitly (skips umap's "n_jobs overridden" warning). The real
 # library consumes it as a keyword, so vulture sees no name read.
 n_jobs
+# compatibility_layout: both UMAP Protocols grew the keyword for umap-learn
+# 0.6. Call sites pass True to keep the 0.5.x layout pipeline. The real
+# library consumes it as a keyword, so vulture sees no name read.
+compatibility_layout
 
 # Corpus analysis program (analysis/settings.py, Wave 0 skeleton): the
 # typed-reader field the WP-3 engine reads (the seed floor) and the
@@ -509,8 +513,6 @@ evidence_basis
 statistical_rigor
 cost_tier
 question_phrases
-assumptions
-null_calibration
 failure_modes
 scope_limits
 suggests
@@ -580,3 +582,19 @@ CALIBRATE
 # scans src only and sees no caller in either case.
 ranked_method_ids
 route_question
+
+# coding ops CLI (cli_coding_ops.py, issue #350): typer command callback
+# bound by its decorator; vulture sees no direct caller.
+calibrate_floors
+
+# PR #389 (GLiNER kwarg surface): the extraction Protocols in
+# _gliner_types.py and _gliner2_types.py mirror the real gliner/gliner2
+# keyword APIs (predict_relations, extract_entities,
+# batch_extract_entities). The libraries consume these as keywords, so
+# vulture sees no name read.
+include_spans
+include_confidence
+flat_ner
+adjacency_threshold
+relation_threshold
+multi_label

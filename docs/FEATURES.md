@@ -189,6 +189,8 @@ Activation is capability-checked and honest — late chunking runs only when all
 
 Otherwise the run uses pooled embeddings and the ingest result says so. `embedding_mode` records `"late-chunking"` or `"pooled"` (shown on the CLI as `embedding:`). `embedding_note` names the exact condition that fell back. Some chunk vectors cannot be located in the document text, or lack source spans. Those vectors pool individually rather than silently pool an unrelated region.
 
+Ingest receipts can state the run's token spend. The `token_usage` key appears only when a backend reports its spend. Today that is the Ollama embedder: its embed responses carry a prompt token count. The section reads `{"embed": {"provider", "embedded_texts", "cached_texts", "prompt_tokens"}}`. `embedded_texts` counts texts sent to the provider; `cached_texts` counts texts served from the embedder cache. `prompt_tokens` appears only when the provider reported a total for every call it made. pgml embeddings run inside the database and report nothing; late-chunking runs on the local stack and reports nothing. Those runs carry no `token_usage` key. The key never invents a zero.
+
 ---
 
 ## LlamaIndex RAG backend

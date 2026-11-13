@@ -74,6 +74,11 @@ All tunable values live in `config.yaml` at the project root. Environment variab
 | `matryoshka_dim` | `1024` | Front-slice width for the matryoshka arm |
 | `candidate_multiplier` | `8` | Matryoshka candidate fan-out (candidates = k * multiplier) |
 | `self_query.*` | (block) | Predicate parser sub-settings |
+| `multi_query.enabled` | `false` | Multi-query rewriting (issue #136): rewrite the query into diverse rewrites and fuse all legs through the RRF fusion. Opt-in: expansion has limited benefit for precise numerical queries. A down rewriter means the single-query path plus a degraded note |
+| `multi_query.variants` | `3` | Rewrite count (1-10). Fusion runs (variants + 1) x 2 ranked lists; latency is one LLM call plus one extra retrieval pass per rewrite |
+| `multi_query.model` | `qwen3:4b` | Chat model for the rewriter |
+| `multi_query.base_url` | `http://localhost:11434` | Ollama API URL for the rewriter |
+| `multi_query.timeout_seconds` | `8` | Timeout for the rewriter call |
 | `hnsw.*` | (block) | `m`/`ef_construction` (index DDL, mirrored by migration 025) plus the scan trio |
 
 ### `reranking`
@@ -229,6 +234,8 @@ The windowed large-PDF strategy ([INGESTION.md](INGESTION.md),
 | `window_pages` | `50` | Pages per parse window; one Docling call per window |
 | `parser` | `docling` | The page parser: `docling`, `paddle-vl`, or `pypdf`. `paddle-vl` is the PaddleOCR-VL challenger; it needs the `[ocr-vl]` extra and parses page text only today |
 | `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |
+| `worker_reuse` | `true` | In child mode, keep one loaded parser worker alive across windows and documents. The model then loads once per worker, not once per window. `false` restores one child per window |
+| `worker_max_windows` | `32` | Windows one parser worker serves before the parent stops it and spawns a fresh one. This recycles the worker, so no worker grows without bound |
 | `structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows |
 | `citations` | `false` | Write a plain-English `citation` string (true pages, section title) into each chunk's metadata |
 
@@ -262,6 +269,8 @@ clears the threshold and beats the runner-up by the margin.
 | Key | Default | Description |
 |-----|---------|-------------|
 | `confidence_threshold` | `0.55` | The top score must reach this value to resolve |
+| `fallback_log_path` | `analysis_routing_fallbacks.jsonl` | JSONL audit file for unresolved routes. The default is a relative path: it resolves against the server process working directory. Use an absolute path for services |
+| `llm_fallback_enabled` | `false` | Send ambiguous routes to the LLM handler. A fallback call inherits the LLM timeout (120 s default; `CORPUS_KB_LLM_TIMEOUT_S` tunes it) |
 | `margin` | `0.10` | The top score must beat the runner-up score by this much |
 
 This block is not the top-level `routing:` block. The top-level block
@@ -282,6 +291,9 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_GRAPH_BACKEND` | `graph.backend` | `load_config` |
 | `CORPUS_KB_TRANSPORT` | `server.transport` | `load_config` |
 | `CORPUS_KB_PORT` | `server.port` | `load_config` |
+| `CORPUS_KB_SOCKET_PATH` | `server.socket_path` (JSON-RPC socket file; POSIX) | `load_config` |
+| `CORPUS_KB_CONFIG_OVERLAY` | (no config key; `os.pathsep`-split overlay YAML paths, deep-merged in order after the main file, before env overrides) | `config.load_config` |
+| `CORPUS_KB_SUPERUSER_DSN` | (no config key; superuser DSN for `corpus-kb migrate --superuser-dsn` and `corpus-kb quickstart --superuser-dsn`) | `cli.cli_migrate`, `_setup.quickstart` |
 | `CORPUS_KB_OPENAI_COMPAT` | `server.openai_compat` | `load_config` |
 | `CORPUS_KB_OTLP_ENDPOINT` | `observability.otlp_endpoint` | `load_config` |
 | `CORPUS_KB_LLM_TIMEOUT_S` | `llm.timeout_s` (seconds per chat/generate call, default 120) | `load_config`, `handlers.llm_handler` |
@@ -289,7 +301,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_INSTALL_POSTGRES_IMAGE` | `installer.postgres_image` | `corpus-kb setup` image pull/verify (`_setup.install`) |
 | `CORPUS_KB_INSTALL_VERIFY_IMAGE_SIGNATURE` | `installer.verify_image_signature` | `corpus-kb setup` image verify (`_setup.install`) |
 | `CORPUS_KB_SNAPSHOT_PERIOD` | (no config key; aggregate snapshot interval, default 100) | `domain.application` |
-| `CORPUS_KB_TEST_DB` | (no config key; throwaway test DB name, default `corpus_kb_t11_test`) | `tests/research_db.py` |
+| `CORPUS_KB_TEST_DB` | (no config key; throwaway test DB name, default is per-process `corpus_kb_t11_<pid>_test`) | `tests/research_db.py` |
 | `CORPUS_KB_TEXTBOOK_GOLDEN_DIR` | (no config key; overrides the golden-bench corpus directory, see `eval/golden_fetch.py`) | `eval/golden_fetch.py` |
 | `CORPUS_KB_UI_OPEN` | (no config key; set to `0` to keep the server from opening a browser tab) | `server_wiring.browser_open_enabled` |
 
@@ -347,15 +359,38 @@ Schema changes are managed through idempotent SQL migrations in `src/corpus_kb/m
 # Run migrations. Native-Postgres path (port 5432). The bundled compose
 # stack publishes 5433 instead — see OPERATIONS.md, "Ports".
 export CORPUS_KB_DATABASE_URL=postgresql://corpus_user:corpus_pass@localhost:5432/corpus_kb
-python src/corpus_kb/_setup/migrate.py
+corpus-kb migrate
 
-# Or use the installer (compose path; no export needed)
-corpus-kb setup
+# List what would run, apply nothing
+corpus-kb migrate --dry-run
+
+# Machine-readable report
+corpus-kb migrate --json
 ```
+
+`python src/corpus_kb/_setup/migrate.py` still works (it reads `CORPUS_KB_DATABASE_URL`). The installer (`corpus-kb setup`, compose path) runs migrations for you.
 
 Re-running is safe — already-applied migrations are skipped.
 
 On the DuckDB backend the same runner applies `src/corpus_kb/migrations_duckdb/`. It tracks them in the database file's own `schema_migrations` table. `corpus-kb setup --backend duckdb` runs it for you.
+
+#### Migrate flags for large or locked-down studies
+
+```bash
+# Session settings for heavy migrations (migration 015's dedupe is
+# quadratic on large studies; 0.6.0 needed work_mem=1GB)
+corpus-kb migrate --work-mem 1GB --maintenance-work-mem 1GB
+
+# Run privileged steps as a superuser, then hand ownership and grants
+# to the app role (the user in the configured DSN)
+corpus-kb migrate --superuser-dsn postgresql://postgres:...@localhost:5432/corpus_kb
+
+# Accept that migration 025 discards embeddings stored in the old
+# vector column (the model changed; re-embed after the run)
+corpus-kb migrate --reset-embeddings
+```
+
+`--superuser-dsn` also reads `CORPUS_KB_SUPERUSER_DSN`. Without it, migrations run as the configured role.
 
 ### Projection tables
 

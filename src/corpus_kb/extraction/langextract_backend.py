@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from pathlib import Path
 from typing import Any, cast
@@ -11,13 +10,14 @@ from typing import Any, cast
 from ..ontology import Ontology
 from ..utils.models import Chunk, Entity, Relation
 from ._langextract_types import (
-    Extraction,
     LangExtractModule,
     NormalizedExtraction,
-    build_examples,
+    _load_fixture,
+    _normalize_extraction,
     build_prompt_description,
     import_langextract,
 )
+from .icl_synthesis import few_shot_examples
 from .protocol import ExtractStats, OntologyViolationError, Timer
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,9 @@ class LangExtractExtractor:
 
     ``langextract`` is imported lazily so a bare install can still import
     this module. Recorded fixtures are keyed by ``sha256(chunk.text)`` so
-    CI runs deterministically without live LLM calls.
+    CI runs deterministically without live LLM calls. On a live call the
+    few-shot examples are synthesized from the ontology itself
+    (``icl_synthesis``), and the receipt lands in ``stats.notes``.
     """
 
     extractor_id: str = "langextract"
@@ -94,6 +96,9 @@ class LangExtractExtractor:
         self.live_fallback = live_fallback
         self._extra_examples = extra_examples or []
         self._lx: LangExtractModule | None = None
+        # Receipt for the few-shot examples used on the last live call;
+        # None when every chunk in a run was served from fixtures.
+        self._icl_note: str | None = None
 
     def extract(
         self,
@@ -108,6 +113,7 @@ class LangExtractExtractor:
         endpoints or the per-chunk cap is tallied in the returned stats.
         """
         timer = Timer(self.extractor_id)
+        self._icl_note = None
         entities: list[Entity] = []
         relations: list[Relation] = []
         requested_entities = 0
@@ -146,6 +152,7 @@ class LangExtractExtractor:
             dropped_by_cap=dropped_relations_by_cap,
             dropped_by_other=dropped_entities_other + dropped_relations_other,
             duration_ms=timer.elapsed_ms(),
+            notes=(self._icl_note,) if self._icl_note else (),
         )
         return entities, relations, stats
 
@@ -233,11 +240,13 @@ class LangExtractExtractor:
 
         if self._lx is None:
             self._lx = import_langextract()
+        batch, note = few_shot_examples(ontology)
+        self._icl_note = note
+        examples = _convert_extra(self._lx, [*batch, *self._extra_examples])
         result = self._lx.extract(
             text_or_documents=text,
             prompt_description=build_prompt_description(ontology),
-            examples=build_examples(self._lx, ontology)
-            + _convert_extra(self._lx, self._extra_examples),
+            examples=examples,
         )
         docs = result if isinstance(result, list) else [result]
         return [_normalize_extraction(extraction) for doc in docs for extraction in doc.extractions]
@@ -245,68 +254,6 @@ class LangExtractExtractor:
 
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-def _load_fixture(path: Path) -> list[NormalizedExtraction]:
-    extractions: list[NormalizedExtraction] = []
-    with path.open() as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            raw = cast(dict[str, Any], json.loads(line))
-
-            cls = raw.get("extraction_class")
-            extraction_text = raw.get("extraction_text")
-            if not isinstance(cls, str) or not isinstance(extraction_text, str):
-                continue
-
-            interval_raw = raw.get("char_interval")
-            start: int | None = None
-            end: int | None = None
-            if isinstance(interval_raw, dict):
-                interval = cast(dict[str, Any], interval_raw)
-                start_raw = interval.get("start_pos")
-                end_raw = interval.get("end_pos")
-                if isinstance(start_raw, int) and not isinstance(start_raw, bool):
-                    start = start_raw
-                if isinstance(end_raw, int) and not isinstance(end_raw, bool):
-                    end = end_raw
-
-            conf_raw = raw.get("confidence")
-            confidence = (
-                float(conf_raw)
-                if isinstance(conf_raw, (int, float)) and not isinstance(conf_raw, bool)
-                else None
-            )
-
-            attrs_raw = raw.get("attributes")
-            attributes = attrs_raw if isinstance(attrs_raw, dict) else None
-
-            extractions.append(
-                NormalizedExtraction(
-                    extraction_class=cls,
-                    extraction_text=extraction_text,
-                    start_pos=start,
-                    end_pos=end,
-                    confidence=confidence,
-                    attributes=attributes,
-                )
-            )
-    return extractions
-
-
-def _normalize_extraction(extraction: Extraction) -> NormalizedExtraction:
-    interval = extraction.char_interval
-    attributes = getattr(extraction, "attributes", None)
-    return NormalizedExtraction(
-        extraction_class=extraction.extraction_class,
-        extraction_text=extraction.extraction_text,
-        start_pos=interval.start_pos if interval else None,
-        end_pos=interval.end_pos if interval else None,
-        confidence=None,
-        attributes=attributes if isinstance(attributes, dict) else None,
-    )
 
 
 MAX_RELATIONS_PER_CHUNK = 10

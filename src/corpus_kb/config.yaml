@@ -8,6 +8,16 @@ server:
   # Gates the OpenAI-compatible /v1 adapter (POST /v1/chat/completions,
   # POST /v1/embeddings, GET /v1/models).
   openai_compat: true
+  # JSON-RPC socket file (POSIX). Empty = derive from the port:
+  # /tmp/corpus-kb.sock on the default port 8010, else
+  # /tmp/corpus-kb-<port>.sock (issue #348: one path per study server,
+  # so a second server never takes the first one over). Windows ignores
+  # the path and uses socket_port below.
+  socket_path: ""
+  # JSON-RPC TCP port (Windows only). 0 = derive: 8011 when the server
+  # port is 8010, else port + 1000. Study ports count up from 8010, so
+  # port + 1 would clash with the next study.
+  socket_port: 0
 
 embedding:
   # ollama serves the 4B embedder; pgml cannot host a model of this size.
@@ -96,7 +106,12 @@ ingestion:
 # under the repo's data dir convention (~/.corpus-kb). window_subprocess
 # parses each heavy window in a child process, so a scanned-page crash
 # cannot kill the worker (issue #219); the window then falls back to
-# pypdf after window_timeout_s. cache_max_mb caps the window cache in
+# pypdf after window_timeout_s. worker_reuse keeps one loaded parser
+# worker child alive across windows and documents, so the model loads
+# once per worker, not once per window (issue #270); false restores one
+# child per window. worker_max_windows recycles that worker after the
+# given window count, so no worker grows without bound. cache_max_mb
+# caps the window cache in
 # MiB and evicts the oldest files first; 0 disables the cap (issue #221).
 # structured_output keeps rich page structure (heading level, page box,
 # table markdown) in the parsed windows; false keeps the plain text.
@@ -110,6 +125,8 @@ textbook:
   cache_dir: ~/.corpus-kb/textbook-cache
   window_subprocess: true
   window_timeout_s: 3600.0
+  worker_reuse: true
+  worker_max_windows: 32
   cache_max_mb: 2048
   structured_output: false
   citations: false
@@ -165,6 +182,19 @@ retrieval:
   candidate_multiplier: 8
   self_query:
     enabled: true
+    model: qwen3:4b
+    base_url: http://localhost:11434
+    timeout_seconds: 8
+  # Issue #136 multi-query rewriting, OFF by default: query expansion has
+  # limited benefit for precise numerical queries, so the corpus owner
+  # opts in. On, one LLM call rewrites the query into `variants` diverse
+  # rewrites (a paraphrase, sub-questions, a keyword variant) and their
+  # legs fuse with the original's through the existing RRF fusion. The
+  # rewriter fails open: a down model means the single-query path with a
+  # degraded note.
+  multi_query:
+    enabled: false
+    variants: 3
     model: qwen3:4b
     base_url: http://localhost:11434
     timeout_seconds: 8

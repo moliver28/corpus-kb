@@ -468,7 +468,7 @@ def test_subprocess_crash_falls_back_and_caches_under_pypdf(
     _patch_docling_present(monkeypatch, present=True)  # the spec gate passes; the child fails
     monkeypatch.setattr(
         _SUBPROCESS_TARGET,
-        lambda pdf, parser, start, end, timeout_s, structured=False: None,
+        lambda pdf, parser, start, end, timeout_s, structured=False, worker=None: None,
     )
     cache_dir = tmp_path / "cache"
     config = _config(1, 2, str(cache_dir))
@@ -496,9 +496,10 @@ def test_subprocess_payload_feeds_the_docling_cache(
         end: int,
         timeout_s: float,
         structured: bool = False,
+        worker: object | None = None,
     ) -> list[PageItem]:
         assert parser == "docling"  # the dispatch names the child target
-        del pdf, timeout_s, structured
+        del pdf, timeout_s, structured, worker
         return [PageItem(page, "text", f"shipped page {page}") for page in range(start, end + 1)]
 
     monkeypatch.setattr(_SUBPROCESS_TARGET, _wrapper)
@@ -735,7 +736,9 @@ def test_structured_subprocess_window_ships_and_caches_rich(
         end: int,
         timeout_s: float,
         structured: bool = False,
+        worker: object | None = None,
     ) -> list[PageItem]:
+        del worker
         seen["structured"] = structured
         seen["parser"] = parser
         return [

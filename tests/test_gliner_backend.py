@@ -27,14 +27,18 @@ _ONTOLOGY_PATH = (
 
 
 class _FakeGlinerModel:
-    """Returns canned schema payloads; records the schema it was given."""
+    """Returns canned schema payloads; records the schema and call flags."""
 
     def __init__(self, buckets: dict[str, list[object]]) -> None:
         self._buckets = buckets
         self.seen_schema: dict[str, str] | None = None
+        self.seen_kwargs: dict[str, object] | None = None
 
-    def extract_entities(self, text: str, schema: dict[str, str]) -> dict[str, list[object]]:
+    def extract_entities(
+        self, text: str, schema: dict[str, str], **kwargs: object
+    ) -> dict[str, object]:
         self.seen_schema = schema
+        self.seen_kwargs = dict(kwargs)
         return self._buckets
 
 
@@ -195,6 +199,61 @@ def test_extract_passes_one_line_definitions_as_schema() -> None:
     assert all(isinstance(desc, str) and desc for desc in model.seen_schema.values())
 
 
+def test_extract_reads_real_gliner2_payload_shape() -> None:
+    """Real gliner2 2.1.0 payloads: 'entities' wrapper, bucket-key labels.
+
+    Span dicts carry no 'label' of their own and use 'confidence', so the
+    bucket key must become the span label or every mention maps to Concept.
+    """
+    buckets: dict[str, object] = {
+        "entities": {
+            "person": [{"text": "Alice", "start": 0, "end": 5, "confidence": 0.93}],
+            "organization": [{"text": "Acme", "start": 14, "end": 18, "confidence": 0.91}],
+        }
+    }
+    extractor = _extractor_with(buckets)
+    ontology = load_ontology(_ONTOLOGY_PATH)
+
+    entities, _relations, stats = extractor.extract([_chunk(_TEXT)], ontology, "doc-g")
+
+    assert [e.name for e in entities] == ["Alice", "Acme"]
+    assert entities[0].entity_type == "Person"
+    assert entities[1].entity_type == "Org"
+    assert entities[0].metadata["gliner_type"] == "person"
+    assert entities[0].confidence == pytest.approx(0.93)
+    assert stats.kept_entities == 2
+
+
+def test_extract_pins_threshold_and_span_flags_on_the_model_call() -> None:
+    """gliner2 2.1.0 needs span flags for offsets; the threshold is ours."""
+    model = _FakeGlinerModel({})
+    extractor = GlinerExtractor()
+    extractor._model = model
+    ontology = load_ontology(_ONTOLOGY_PATH)
+
+    extractor.extract([_chunk(_TEXT)], ontology, "doc-g")
+
+    assert model.seen_kwargs is not None
+    assert model.seen_kwargs["include_spans"] is True
+    assert model.seen_kwargs["include_confidence"] is True
+    assert model.seen_kwargs["threshold"] == MIN_SPAN_CONFIDENCE
+
+
+def test_extract_reads_gliner2_confidence_key_over_score_fallback() -> None:
+    """gliner2 2.1.0 payloads carry 'confidence'; 'score' stays accepted."""
+    buckets: dict[str, list[object]] = {
+        "person": [{"text": "Alice", "start": 0, "end": 5, "confidence": 0.9, "label": "person"}],
+    }
+    extractor = _extractor_with(buckets)
+    ontology = load_ontology(_ONTOLOGY_PATH)
+
+    entities, _relations, stats = extractor.extract([_chunk(_TEXT)], ontology, "doc-g")
+
+    assert len(entities) == 1
+    assert entities[0].confidence == pytest.approx(0.9)
+    assert stats.dropped_by_confidence == 0
+
+
 # ---------------------------------------------------------------------------
 # Batch fast path + equivalence gate (Wave 1 throughput)
 # ---------------------------------------------------------------------------
@@ -208,16 +267,18 @@ class _BatchingGlinerModel:
         self._drift = drift
         self.batch_calls = 0
 
-    def extract_entities(self, text: str, schema: dict[str, str]) -> dict[str, list[object]]:
-        return {"person": [dict(self._spans[hash(text) % len(self._spans)])]}
+    def extract_entities(
+        self, text: str, schema: dict[str, str], **kwargs: object
+    ) -> dict[str, object]:
+        return {"entities": {"person": [dict(self._spans[hash(text) % len(self._spans)])]}}
 
     def batch_extract_entities(
-        self, texts: list[str], schema: dict[str, str]
-    ) -> list[dict[str, list[object]]]:
+        self, texts: list[str], schema: dict[str, str], **kwargs: object
+    ) -> list[dict[str, object]]:
         self.batch_calls += 1
         results = [self.extract_entities(t, schema) for t in texts]
         if self._drift:
-            results[0]["person"][0]["score"] = 0.99  # drifted confidence
+            results[0]["entities"]["person"][0]["score"] = 0.99  # drifted confidence
         return results
 
 

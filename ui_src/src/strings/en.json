@@ -187,6 +187,7 @@
   "boundaryBody": "Copy the diagnostics for your report, then retry.",
   "askTitle": "Ask your corpus",
   "askBody": "One question in, a cited answer out. Every sentence points at its source.",
+  "askStreamingNote": "The answer streams while the model writes it. Sources and checks land at the end.",
   "askQueryLabel": "Question",
   "askAction": "Ask",
   "askQueryRequired": "Type a question first.",

@@ -13,6 +13,13 @@
 # the storage portability program (issue #127, rule 20): ubuntu carries the
 # Postgres service container (Linux-only), windows/macos run without it.
 #
+# Ollama install/pull steps are path-gated: the `changes` job detects
+# embedding-surface changes and the test legs + ui-e2e skip the install,
+# pull, and verify steps when nothing changed (the suite's documented
+# degraded zero-vector mode). The warning-ratchet leg keeps pulls
+# UNCONDITIONAL: its pytest_warnings ceiling was measured with models
+# pulled, so an unpulled env is not a proven-identical measurement.
+#
 # Wave-4 quality gates (PR-F) add audit-deps (dependency CVEs over the
 # committed uv.lock), dup-check (jscpd duplication over src/), and
 # gen-drift (generated artifacts must be current). The lint job also runs
@@ -36,6 +43,76 @@ env:
   OLLAMA_MODEL: "nomic-embed-text"
 
 jobs:
+  # ─────────────────────────────────────────────────────────────────────
+  # Changes: path filter that gates the Ollama install/pull/verify steps
+  # (owner directive: skip ollama pulls unless the PR touches the
+  # embedding surface). Err toward inclusion: a false "skip" costs test
+  # fidelity, a false "run" only costs minutes.
+  # ─────────────────────────────────────────────────────────────────────
+  changes:
+    name: "changes (embedding-surface path gate)"
+    runs-on: ubuntu-latest
+    # pull-requests: read is what paths-filter needs to list the PR's
+    # changed files through the API (dorny/paths-filter v3 contract).
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      ollama_code: ${{ steps.filter.outputs.ollama_code }}
+    steps:
+      # Full history: paths-filter resolves push-event diffs against the
+      # before commit locally; pull-request events go through the API.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect embedding-surface changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            ollama_code:
+              # The workflow itself: gate wiring or step changes must
+              # re-run the pulls so the gated steps stay exercised.
+              - '.github/workflows/ci.yml'
+              # The embedding/LLM surface: embedders (OllamaEmbedder with
+              # the zero-vector fallback, late chunking), embedder
+              # selection, rerankers, model profiles.
+              - 'src/corpus_kb/rag/**'
+              # The research-embed boundary the live qwen3 proof drives.
+              - 'src/corpus_kb/projections/research/_embed.py'
+              # Embedding defaults: packaged config, root runtime config
+              # (ui-e2e boots the server from it), config loader env vars.
+              - 'src/corpus_kb/config.yaml'
+              - 'config.yaml'
+              - 'src/corpus_kb/config.py'
+              # Ollama/llama deps, extras, pytest env, poe targets.
+              - 'pyproject.toml'
+              # The pinned warning-ratchet measurement env: the measure
+              # script and the pytest_warnings/coverage baselines.
+              - 'scripts/warning_ratchet.py'
+              - 'scripts/quality-baselines.json'
+              # Embedding-touching test modules: embedder contracts,
+              # rerankers, late chunking, the live qwen3 proof, retrieval
+              # surfaces, RRF hybrid fusion, MRL gating.
+              - 'tests/test_embedder*.py'
+              - 'tests/test_rerank*.py'
+              - 'tests/*late*chunk*.py'
+              - 'tests/test_research_embed_live.py'
+              - 'tests/test_retrieval*.py'
+              - 'tests/test_query_fusion.py'
+              - 'tests/test_u32_mrl_gating.py'
+              # The ingest pipeline surface: ingest status flips to partial
+              # when the embedder degrades to zero vectors, so pipeline and
+              # strategy changes keep the live leg.
+              - 'src/corpus_kb/tools/ingest_common.py'
+              - 'src/corpus_kb/ingestion/**'
+              - 'src/corpus_kb/partitioning.py'
+              # These Postgres-backed ingest integration tests assert success
+              # status, which needs a live embedder.
+              - 'tests/test_ingest*.py'
+              - 'tests/test_integration_e2e.py'
+
   # ─────────────────────────────────────────────────────────────────────
   # Lint: ruff check + format check (fast, ~10s, no deps needed)
   # ─────────────────────────────────────────────────────────────────────
@@ -83,7 +160,7 @@ jobs:
         run: deptry src/
 
       - name: Complexity ratchet (xenon)
-        run: xenon src/ --max-absolute C --max-average B
+        run: xenon src/ scripts/ --max-absolute C --max-average B
 
       # Schema parity across both migration sets (storage portability
       # program, issue #127, zero-drift rule 10). sqlglot is static-only;
@@ -92,9 +169,10 @@ jobs:
         run: python scripts/schema_parity_gate.py
 
       # Size ratchet (PR-F, zero-drift rule 10): PLR0915 count and src/
-      # files over the 250-line soft limit, against the checked-in
-      # baselines in scripts/quality-baselines.json. Growth fails the
-      # PR; shrink passes, so dedup PRs land without touching this gate.
+      # + scripts/ files over the 250-line soft limit, against the
+      # checked-in baselines in scripts/quality-baselines.json. Growth
+      # fails the PR; shrink passes, so dedup PRs land without touching
+      # this gate.
       - name: Size ratchet (PLR0915 + 250-line files)
         run: poe size-ratchet
 
@@ -449,6 +527,10 @@ jobs:
   #   Windows: OllamaSetup.exe /S with 120s timeout + continue-on-error
   #            (silent installer often hangs on GitHub Actions Windows runners)
   #
+  # All Ollama steps in the test legs are path-gated on embedding-surface
+  # changes (the `changes` job). On untouched PRs the steps are skipped
+  # and the suite runs in its documented degraded zero-vector mode.
+  #
   # Windows-specific fixes:
   #   - python-magic-bin installed to fix "access violation" crash from
   #     the `magic` library (unstructured dependency needs libmagic binary)
@@ -472,7 +554,7 @@ jobs:
   ui-e2e:
     name: "ui-e2e (spa smoke + axe on a live server)"
     runs-on: ubuntu-latest
-    needs: [ui, test-ubuntu]
+    needs: [changes, ui, test-ubuntu]
     # 35 minutes: the runner boots the stack, embeds the demo corpus, and
     # runs the Playwright smoke. The ask leg degrades fast (closed-port LLM),
     # so no model generation time is budgeted here.
@@ -550,17 +632,24 @@ jobs:
         run: pnpm -C ui_src exec playwright install --with-deps chromium
 
       - name: Install Ollama (Ubuntu)
+        # Path-gated (embedding-surface changes only). Without it this
+        # job degrades exactly like the pytest suite: the demo load falls
+        # back to zero-vector embeddings and the ask accepts the honest
+        # degraded answer (its LLM endpoint points at a closed port).
+        if: needs.changes.outputs.ollama_code == 'true'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
 
       - name: Pull models for the smoke
+        # Path-gated (embedding-surface changes only).
         # The committed config embeds with qwen3-embedding:4b and the ask
         # pipeline generates with qwen3:4b; pull BOTH so the demo load
         # makes real vectors and the ask renders real citations. If a
         # pull fails, the ask degrades to the evidence list and this
         # REQUIRED job fails — the honest signal.
+        if: needs.changes.outputs.ollama_code == 'true'
         run: |
           ollama pull qwen3-embedding:4b
           ollama pull qwen3:4b
@@ -580,7 +669,7 @@ jobs:
   test-ubuntu:
     name: "test (ubuntu, postgres service)"
     runs-on: ubuntu-latest
-    needs: [validate-configs]
+    needs: [changes, validate-configs]
 
     services:
       postgres:
@@ -699,6 +788,8 @@ jobs:
           PY
 
       - name: Cache Ollama models
+        # Path-gated: pointless to restore when nothing below pulls.
+        if: needs.changes.outputs.ollama_code == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.ollama/models
@@ -708,22 +799,46 @@ jobs:
           key: ollama-nomic-embed-text-qwen3-4b-qwen3-8b-${{ runner.os }}
 
       - name: Install Ollama (Ubuntu)
+        # Path-gated (embedding-surface changes only). Skipped steps mean
+        # the suite runs in its documented degraded zero-vector mode: the
+        # requires_ollama legs skip and the embedder falls back.
+        if: needs.changes.outputs.ollama_code == 'true'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve > /tmp/ollama.log 2>&1 &
           sleep 5
 
       - name: Pull embedding models
+        # Path-gated (embedding-surface changes only).
         # continue-on-error: tests that can degrade to zero-vector fallback
         # still run when a pull fails; live-model tests (research embed
         # proof) fail loudly instead, which is the honest signal.
+        if: needs.changes.outputs.ollama_code == 'true'
         continue-on-error: true
         run: |
-          ollama pull nomic-embed-text
-          ollama pull qwen3-embedding:4b
-          ollama pull qwen3-embedding:8b-q8_0
+          # Three attempts per model with a pause: the Ollama registry
+          # occasionally answers 503 mid-pull, and a failed pull leaves the
+          # suite an up-but-model-less server whose 404s herd dozens of
+          # unrelated tests red.
+          for model in nomic-embed-text qwen3-embedding:4b qwen3-embedding:8b-q8_0; do
+            pulled=false
+            for attempt in 1 2 3; do
+              if ollama pull "$model"; then
+                pulled=true
+                break
+              fi
+              echo "pull $model failed (attempt $attempt/3); pausing before retry"
+              sleep 15
+            done
+            if [ "$pulled" != true ]; then
+              echo "::warning::ollama pull $model failed after 3 attempts"
+            fi
+          done
 
       - name: Verify Ollama
+        # Path-gated: this loop exists only to confirm the install/pull
+        # steps above, which are skipped on non-embedding PRs.
+        if: needs.changes.outputs.ollama_code == 'true'
         run: |
           for i in {1..10}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -755,7 +870,7 @@ jobs:
   test-cross:
     name: "test (${{ matrix.os }})"
     runs-on: ${{ matrix.os }}
-    needs: [validate-configs]
+    needs: [changes, validate-configs]
     env:
       # No Postgres service exists on these runners; requiring tests probe
       # this URL, find it unreachable, and auto-skip.
@@ -808,17 +923,21 @@ jobs:
         run: brew install libmagic
 
       - name: Cache Ollama models (Windows)
-        if: runner.os == 'Windows'
+        # Path-gated (embedding-surface changes only): no pull below on a
+        # skipped gate, so the restore is pointless.
+        if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
         uses: actions/cache@v4
         with:
           path: ${{ format('{0}\ollama\models', env.APPDATA) }}
           key: ollama-${{ env.OLLAMA_MODEL }}-${{ runner.os }}
 
       - name: Install Ollama (macOS)
+        # Path-gated (embedding-surface changes only). Skipped steps mean
+        # the suite runs in its documented degraded zero-vector mode.
         # brew install is used instead of curl | sh because the install.sh
         # script fails on GitHub Actions macOS runners (exit code 1).
         # See RCA: .omo/plans/ci-rca.md
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && needs.changes.outputs.ollama_code == 'true'
         run: |
           brew install ollama
           ollama serve > /tmp/ollama.log 2>&1 &
@@ -833,7 +952,8 @@ jobs:
         # The 120s Wait-Process timeout prevents indefinite hangs. If the
         # installer hasn't finished in 2 minutes, we kill it and proceed.
         # GITHUB_PATH is set so subsequent steps can find ollama.exe.
-        if: runner.os == 'Windows'
+        # Path-gated (embedding-surface changes only).
+        if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
         continue-on-error: true
         shell: powershell
         run: |
@@ -858,14 +978,18 @@ jobs:
           }
 
       - name: Pull embedding model
+        # Path-gated (embedding-surface changes only).
         # continue-on-error: true because ollama may not be installed
         # (Windows install may have failed). Tests use zero-vector
         # fallback when the model is unavailable.
+        if: needs.changes.outputs.ollama_code == 'true'
         continue-on-error: true
         run: ollama pull ${{ env.OLLAMA_MODEL }}
 
       - name: Verify Ollama (macOS)
-        if: runner.os == 'macOS'
+        # Path-gated: this loop exists only to confirm the install/pull
+        # steps above, which are skipped on non-embedding PRs.
+        if: runner.os == 'macOS' && needs.changes.outputs.ollama_code == 'true'
         run: |
           for i in {1..10}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -877,9 +1001,11 @@ jobs:
           done
 
       - name: Verify Ollama (Windows)
+        # Path-gated: this loop exists only to confirm the install/pull
+        # steps above, which are skipped on non-embedding PRs.
         # continue-on-error: true — if Ollama isn't running, tests
         # proceed in degraded mode (zero-vector embeddings)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
         continue-on-error: true
         shell: powershell
         run: |
@@ -1041,9 +1167,24 @@ jobs:
       - name: Pull embedding models
         continue-on-error: true
         run: |
-          ollama pull nomic-embed-text
-          ollama pull qwen3-embedding:4b
-          ollama pull qwen3-embedding:8b-q8_0
+          # Three attempts per model with a pause: the Ollama registry
+          # occasionally answers 503 mid-pull, and a failed pull leaves the
+          # suite an up-but-model-less server whose 404s herd dozens of
+          # unrelated tests red.
+          for model in nomic-embed-text qwen3-embedding:4b qwen3-embedding:8b-q8_0; do
+            pulled=false
+            for attempt in 1 2 3; do
+              if ollama pull "$model"; then
+                pulled=true
+                break
+              fi
+              echo "pull $model failed (attempt $attempt/3); pausing before retry"
+              sleep 15
+            done
+            if [ "$pulled" != true ]; then
+              echo "::warning::ollama pull $model failed after 3 attempts"
+            fi
+          done
 
       - name: Verify Ollama
         run: |

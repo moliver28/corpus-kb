@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from corpus_kb.projections.research._common import (
+    drop_derived_rows,
     event_payload,
     lookup_turn_texts,
     opt_str,
@@ -81,6 +82,13 @@ class ExchangeProjector:
                 str(payload.get("source", "")),
                 opt_str(payload.get("file_hash")),
             )
+            if payload.get("replace"):
+                # Re-ingest drop (issue #363, close-out F-2): the Reingested
+                # event is the guaranteed-first event of a reused stream, so
+                # a re-parse that yields zero turns still clears the old
+                # derived rows. TurnsParsed keeps honoring the batch-carried
+                # marker that pre-F-2 streams used.
+                await drop_derived_rows(conn, tenant_id, payload["aggregate_id"])
 
     async def on_turns_parsed(self, notification: Any) -> None:
         payload = event_payload(notification)
@@ -92,6 +100,8 @@ class ExchangeProjector:
         texts = await lookup_turn_texts(self._store, tenant_id, shas)
 
         async with self._store.transaction(str(tenant_id)) as conn:
+            if payload.get("replace"):
+                await drop_derived_rows(conn, tenant_id, doc_id)
             # The Ingested stage stored project_id on the documents row;
             # TurnsParsed carries no metadata, so resolve it there — together
             # with the deterministic-prefix context (todo-12, v5 5.2).

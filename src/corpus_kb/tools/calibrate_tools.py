@@ -13,7 +13,11 @@ profile target is containment-checked with ``safe_profile_path``. A
 ``--dry-run`` (the default) computes the diff and writes nothing.
 
 The write is a targeted text edit: only the changed lines move, so
-comments and formatting in the user's config.yaml survive.
+comments and formatting in the user's config.yaml survive. Every change
+row carries an ``edit`` outcome — ``replaced``, ``inserted`` (a
+no-replace edit: a fresh line went in and an old line may remain),
+``created`` (the containing block is new), or ``none`` (nothing to
+change) — so the operator sees a missed text anchor (issue #341).
 """
 
 from __future__ import annotations
@@ -26,7 +30,7 @@ from typing import Any, cast
 import yaml
 
 from corpus_kb.errors import ConfigError, ValidationError
-from corpus_kb.tools.config_edit import apply_keys_to_text, write_atomic
+from corpus_kb.tools.config_edit import apply_keys_tracked, write_atomic
 
 __all__ = ["calibrate_apply"]
 
@@ -85,14 +89,15 @@ async def calibrate_apply(
     merged = apply_overrides(file_config, proposed)
     changes = _diff(file_config, merged, sorted(proposed))
     applied_count = 0
-    if write:
-        dirty: dict[str, object] = {
-            str(row["key"]): row["proposed"] for row in changes if row["changed"]
-        }
-        if dirty:
-            # The edit reuses the SAME text the diff came from, so the
-            # diff and the write can never disagree.
-            new_text = apply_keys_to_text(config_text, dirty)
+    edits: dict[str, str] = {}
+    dirty = {str(row["key"]): row["proposed"] for row in changes if row["changed"]}
+    if dirty:
+        # The edit runs on the SAME text the diff came from, so the
+        # diff, the receipt, and the write can never disagree. The dry
+        # run edits nothing on disk, but it still reports what each
+        # edit would do to the file text.
+        new_text, edits = apply_keys_tracked(config_text, dirty)
+        if write:
             try:
                 write_atomic(config_path, new_text)
             except OSError as exc:
@@ -105,6 +110,8 @@ async def calibrate_apply(
                     ),
                 ) from exc
             applied_count = len(dirty)
+    for row in changes:
+        row["edit"] = edits.get(str(row["key"]), "none")
     return {
         "status": "success",
         "result": {

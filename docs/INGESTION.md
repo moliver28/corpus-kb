@@ -650,6 +650,17 @@ kills only that child. The window falls back to pypdf, the run
 continues, and the fallback text caches under the pypdf key.
 `textbook.window_timeout_s` (default 3600) bounds one window.
 
+**Worker reuse.** A new child pays the parser model load every time,
+and that load dominates the Docling CPU path. With
+`textbook.worker_reuse: true` (the default), one worker child stays
+alive across windows and documents. The model then loads once per
+worker. The worker speaks the same page rows, so the parsed items do
+not change. `textbook.worker_max_windows` (default 32) recycles the
+worker after that many windows, so no worker grows without bound. A
+crash or a timeout still drops only the current window to pypdf; the
+next window spawns a fresh worker. Set `worker_reuse: false` to go
+back to one child per window.
+
 **Scan-tier timing.** Scanned pages are slow. Docling's OCR tier takes
 31 to 70 seconds per page. A 912-page scan is a job of hours. Size the
 window timeout for that pace. The ingest queue drains one book at a
@@ -976,6 +987,11 @@ cleanly.
 | `retrieval.self_query.model` | `qwen3:4b` | Chat model for self-query parsing |
 | `retrieval.self_query.base_url` | `http://localhost:11434` | Ollama API URL for self-query |
 | `retrieval.self_query.timeout_seconds` | `8` | Timeout for self-query LLM calls |
+| `retrieval.multi_query.enabled` | `false` | Multi-query rewriting (issue #136): one LLM call rewrites the query into diverse rewrites; all legs fuse through the RRF fusion. Off by default — expansion has limited benefit for precise numerical queries. A down rewriter degrades to the single-query path with a note |
+| `retrieval.multi_query.variants` | `3` | Rewrite count (1-10); fusion runs (variants + 1) x 2 ranked lists |
+| `retrieval.multi_query.model` | `qwen3:4b` | Chat model for the rewriter |
+| `retrieval.multi_query.base_url` | `http://localhost:11434` | Ollama API URL for the rewriter |
+| `retrieval.multi_query.timeout_seconds` | `8` | Timeout for rewriter LLM calls |
 | `retrieval.hnsw.m` | `16` | HNSW index m (migration 025 DDL; doctor warns on drift) |
 | `retrieval.hnsw.ef_construction` | `128` | HNSW index `ef_construction` (same) |
 | `retrieval.hnsw.iterative_scan` | `strict_order` | Transaction-local pgvector iterative scan mode (off/relaxed_order/strict_order; needs pgvector >= 0.8) |
@@ -1091,3 +1107,15 @@ test runs without calling the LLM API.
 
 Contextual retrieval uses the same fixture pattern with plain-text `.txt`
 files in `contextual.fixture_dir`.
+
+### Synthesized few-shot examples
+
+On a live call, the langextract backend builds its few-shot examples from
+the ontology itself (`extraction/icl_synthesis.py`). Each relation type
+gets one synthetic entity-pair example. The same ontology content always
+produces the same prompt. A cache keyed on an ontology hash reuses the
+examples across runs. A degenerate batch falls back to a static example
+set. The extract stats carry a receipt note that says which path produced
+the examples: built, reused, or static. Recorded fixtures bypass the
+examples entirely, so the fixture files never change when the prompt
+logic changes.

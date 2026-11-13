@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from corpus_kb.extraction.pgml_backend import PgmlExtractor
 from corpus_kb.extraction.protocol import ExtractStats
 from corpus_kb.extraction.regex_backend import RegexExtractor
-from corpus_kb.ontology import load_ontology
+from corpus_kb.ontology import Ontology, load_ontology
 from corpus_kb.rag.embedder import OllamaEmbedder
 from corpus_kb.tools.ingest_common import (
     _extract_entities_flag,
@@ -22,7 +24,7 @@ from corpus_kb.tools.ingest_common import (
     load_config_or_pass,
     ontology,
 )
-from corpus_kb.utils.models import Chunk, Document, Entity
+from corpus_kb.utils.models import Chunk, Document, Entity, Relation
 
 _ONTOLOGY_PATH = (
     Path(__file__).resolve().parent.parent / "src" / "corpus_kb" / "config" / "ontology.yaml"
@@ -272,6 +274,71 @@ async def test_embed_chunks_success_returns_ok_tuple() -> None:
         assert error is not None
 
 
+async def test_embed_chunks_meta_records_ollama_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Ollama embedder reports its spend; meta carries the typed section."""
+    from unittest.mock import MagicMock
+
+    from ollama._types import EmbedResponse
+
+    import corpus_kb.tools.ingest_embed as ingest_embed
+    from corpus_kb.rag.embedder import OllamaEmbedder as _Ollama
+
+    config: dict[str, object] = {
+        "embedding": {
+            "provider": "ollama",
+            "model": "nomic-embed-text",
+            "dimensions": 768,
+            "base_url": "http://localhost:11434",
+            "batch_size": 32,
+        }
+    }
+    embedder = _Ollama(config)
+
+    def _respond(**kwargs: object) -> EmbedResponse:
+        inputs = cast("list[str]", kwargs["input"])
+        return EmbedResponse(embeddings=[[0.5] * 768 for _ in inputs], prompt_eval_count=37)
+
+    embedder._client.embed = MagicMock(side_effect=_respond)
+    monkeypatch.setattr(ingest_embed, "create_embedder", lambda cfg, pool=None: embedder)
+    chunks = [
+        Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text"),
+        Chunk(chunk_id="c2", document_id="d1", text="world", source_type="text"),
+    ]
+    meta: dict[str, object] = {}
+
+    degraded, error = await embed_chunks(chunks, config, meta=meta)
+
+    assert (degraded, error) == (False, None)
+    assert meta["token_usage"] == {
+        "embed": {
+            "provider": "ollama",
+            "embedded_texts": 2,
+            "cached_texts": 0,
+            "prompt_tokens": 37,
+        }
+    }
+
+
+async def test_embed_chunks_pgml_records_no_usage() -> None:
+    """pgml reports no spend: meta carries no token_usage (honest absence)."""
+    conn = _FakePgmlConn()
+    chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
+    meta: dict[str, object] = {}
+
+    degraded, error = await embed_chunks(
+        chunks,
+        _pgml_ingest_config(),
+        pool=_FakePool(conn),  # type: ignore[arg-type]
+        meta=meta,
+    )
+
+    assert degraded is False
+    assert error is None
+    assert "token_usage" not in meta
+
+
 # ---------------------------------------------------------------------------
 # _extractor_name
 # ---------------------------------------------------------------------------
@@ -518,6 +585,86 @@ async def test_extract_with_fallback_langextract_success_honors_id() -> None:
         ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
 
 
+async def test_extract_with_fallback_offloads_slow_sync_backend_off_the_loop() -> None:
+    """A slow sync backend runs in a worker thread, not on the event loop.
+
+    Issue #86 (audit L8): a GLiNER2 forward pass on the loop stalled every
+    concurrent request. A marker coroutine is queued while the fake gliner
+    rung blocks; the worker thread records whether the loop ran it. On-loop
+    execution can only record "blocked" and fails the test.
+    """
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology = load_ontology(_ONTOLOGY_PATH)
+    started = threading.Event()
+    loop_ran_marker = threading.Event()
+    observed: dict[str, str] = {}
+
+    class _SlowGliner:
+        extractor_id = "gliner"
+
+        def extract(
+            self, chunks: list[Chunk], ont: Any, source_document_id: str
+        ) -> tuple[list[Entity], list[Any], ExtractStats]:
+            started.set()
+            if loop_ran_marker.wait(timeout=5):
+                observed["loop"] = "responsive"
+            else:
+                observed["loop"] = "blocked"
+            return (
+                [
+                    Entity(
+                        name="Acme",
+                        entity_type="Org",
+                        source_type="text",
+                        source_document_id=source_document_id,
+                        chunk_id=chunks[0].chunk_id,
+                        confidence=None,
+                        extractor_id="gliner",
+                        metadata={},
+                    )
+                ],
+                [],
+                ExtractStats(backend="gliner", requested_entities=1, kept_entities=1),
+            )
+
+    import corpus_kb.tools.ingest_extract as ingest_module
+
+    original_create_extractor = ingest_module.create_extractor
+    ingest_module.create_extractor = lambda config, pool=None: _SlowGliner()  # type: ignore[assignment]
+    try:
+
+        async def _concurrent_request() -> None:
+            # Yield first: on-loop execution blocks the loop before this fires.
+            await asyncio.sleep(0.05)
+            loop_ran_marker.set()
+
+        marker_task = asyncio.create_task(_concurrent_request())
+        task = asyncio.create_task(
+            extract_with_fallback(
+                [chunk],
+                ontology,
+                "doc-gliner",
+                {"graph": {"extractor": "gliner"}},
+                pool=_FakePoolNoConn(),
+            )
+        )
+        for _ in range(300):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.01)
+        assert started.is_set(), "the gliner rung never started"
+        entities, _relations, extractor_id, _stats = await asyncio.wait_for(task, timeout=30)
+        assert extractor_id == "gliner"
+        assert len(entities) == 1
+        assert observed["loop"] == "responsive", (
+            "the event loop was blocked for the whole extraction pass"
+        )
+        await asyncio.wait_for(marker_task, timeout=5)
+    finally:
+        loop_ran_marker.set()
+        ingest_module.create_extractor = original_create_extractor  # type: ignore[assignment]
+
+
 async def test_extract_with_fallback_unknown_extractor_raises() -> None:
     """An unsupported extractor name propagates as ValueError, not silent regex."""
     chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
@@ -531,6 +678,44 @@ async def test_extract_with_fallback_unknown_extractor_raises() -> None:
             {"graph": {"extractor": "bogus"}},
             pool=_FakePoolNoConn(),
         )
+
+
+@pytest.mark.asyncio
+async def test_run_pgml_offloads_non_pgml_extractor_to_thread() -> None:
+    """_run_pgml runs a non-Pgml extractor through the same worker-thread seam."""
+    chunk = Chunk(chunk_id="c1", document_id="d1", text="Acme Inc", source_type="text")
+    ontology_model = load_ontology(_ONTOLOGY_PATH)
+
+    class _Plain:
+        extractor_id = "langextract"
+
+        def extract(
+            self, chunks: list[Chunk], ontology: Ontology, source_document_id: str
+        ) -> tuple[list[Entity], list[Relation], ExtractStats]:
+            return (
+                [
+                    Entity(
+                        name="Acme",
+                        entity_type="Org",
+                        source_type="text",
+                        source_document_id=source_document_id,
+                        chunk_id=chunks[0].chunk_id,
+                        confidence=None,
+                        extractor_id="langextract",
+                        metadata={},
+                    )
+                ],
+                [],
+                ExtractStats(backend="langextract", requested_entities=1, kept_entities=1),
+            )
+
+    import corpus_kb.tools.ingest_extract as ingest_module
+
+    entities, _relations, stats = await ingest_module._run_pgml(
+        _Plain(), [chunk], ontology_model, "d1"
+    )
+    assert [entity.name for entity in entities] == ["Acme"]
+    assert stats.kept_entities == 1
 
 
 def test_extractor_name_defaults_to_ml() -> None:

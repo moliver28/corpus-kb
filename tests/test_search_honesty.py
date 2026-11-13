@@ -899,8 +899,12 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
     # The storage-portability program added database.backend, graph.max_hops,
     # and the two DuckDB-side retrieval knobs (docs/research/
     # storage-portability-program.md §3).
+    # Issue #348 added the per-server socket keys (server.socket_path and
+    # server.socket_port).
     assert {
         "extraction.backend": str,
+        "server.socket_path": str,
+        "server.socket_port": int,
         "embedding.mrl_trained": bool,
         "embedding.late_chunking": bool,
         "embedding.query_instruction": bool,
@@ -982,6 +986,10 @@ def test_runtime_config_keys_declare_stage3_key() -> None:
         "textbook.window_subprocess": bool,
         "textbook.window_timeout_s": float,
         "textbook.cache_max_mb": int,
+        # Persistent parser worker (issue #270): reuse flag + recycle cap
+        # (the positive-int rule lives in _textbook_block_errors).
+        "textbook.worker_reuse": bool,
+        "textbook.worker_max_windows": int,
         # Rich-structure flag (textbook program W1-B).
         "textbook.structured_output": bool,
         # Citation flag (textbook program W2-B).

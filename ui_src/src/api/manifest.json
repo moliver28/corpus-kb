@@ -270,6 +270,42 @@
     "required": []
   },
   {
+    "id": "coding-calibrate-floors",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/calibrate-floors",
+    "required": []
+  },
+  {
+    "id": "coding-code-batch",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/code-batch",
+    "required": []
+  },
+  {
+    "id": "coding-embed-codebook",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/embed-codebook",
+    "required": []
+  },
+  {
+    "id": "coding-export",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/export",
+    "required": []
+  },
+  {
     "id": "coding-inductive",
     "longRunning": true,
     "method": "POST",
@@ -279,6 +315,24 @@
     ],
     "paramsKnown": false,
     "path": "/api/coding/inductive",
+    "required": []
+  },
+  {
+    "id": "coding-pool",
+    "longRunning": true,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/pool",
+    "required": []
+  },
+  {
+    "id": "coding-reliability",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/reliability",
     "required": []
   },
   {
@@ -295,6 +349,24 @@
     "required": [
       "codebook_version_id"
     ]
+  },
+  {
+    "id": "coding-saturation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/saturation",
+    "required": []
+  },
+  {
+    "id": "coding-status",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/coding/status",
+    "required": []
   },
   {
     "id": "conflicts-list",
@@ -423,6 +495,15 @@
     "required": []
   },
   {
+    "id": "events-summary",
+    "longRunning": false,
+    "method": "GET",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/events/summary",
+    "required": []
+  },
+  {
     "id": "graph-neighbors",
     "longRunning": false,
     "method": "POST",
@@ -477,6 +558,15 @@
     "required": []
   },
   {
+    "id": "ingest-reingest",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/reingest",
+    "required": []
+  },
+  {
     "id": "ingest-status",
     "longRunning": false,
     "method": "GET",
@@ -484,6 +574,17 @@
     "paramsKnown": false,
     "path": "/api/ingest/status",
     "required": []
+  },
+  {
+    "id": "ingest-upload",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/ingest/upload",
+    "required": [
+      "file"
+    ]
   },
   {
     "id": "ingest-url",

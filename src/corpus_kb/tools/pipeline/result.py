@@ -87,6 +87,12 @@ def _stage_result_dict(
     result["embedding_mode"] = str(embed_meta.get("embedding_mode", POOLED_MODE))
     if embed_meta.get("embedding_note") is not None:
         result["embedding_note"] = embed_meta["embedding_note"]
+    # Per-run token accounting (issue #198): the section appears ONLY when
+    # a backend reported its spend (today: the Ollama embedder). A backend
+    # that reports nothing keeps the envelope byte-identical.
+    token_usage = embed_meta.get("token_usage")
+    if token_usage is not None:
+        result["token_usage"] = token_usage
     if empty_reason is not None:
         result["empty_reason"] = empty_reason
     if title is not None:

@@ -137,3 +137,55 @@ async def test_ask_wires_the_judge_only_when_enabled(
 async def test_ask_is_async_callable() -> None:
     """Interface guard: the shared entry stays awaitable for every surface."""
     assert asyncio.iscoroutinefunction(ask_tools.ask)
+
+
+# ---------------------------------------------------------------------------
+# ask_stream — the streaming twin (issue #131): same stack, delta events
+# ---------------------------------------------------------------------------
+
+
+async def test_ask_stream_yields_events_over_the_callers_pool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import inspect
+
+    seen: dict[str, object] = {}
+    pool = _FakePool()
+    pools = _patch_world(monkeypatch, {})
+
+    async def _spy(question: str, handler: object, llm: object, **kwargs: object) -> object:
+        seen["judge"] = kwargs.get("judge")
+        seen["tenant_id"] = kwargs.get("tenant_id")
+        yield "delta-event"
+        yield "final-event"
+
+    monkeypatch.setattr("corpus_kb.ask.streaming.compose_answer_stream", _spy)
+
+    events = [event async for event in ask_tools.ask_stream("q", config={}, pg_pool=pool)]
+
+    assert events == ["delta-event", "final-event"]
+    assert _CapturingHandler.last_pool is pool, "the caller's pool is the retrieval pool"
+    assert pools == [pool]
+    assert seen["judge"] is None, "judge stays off unless judge.enabled (the ask rule)"
+    assert inspect.isasyncgenfunction(ask_tools.ask_stream)
+
+
+async def test_ask_stream_wires_the_judge_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    async def _spy(question: str, handler: object, llm: object, **kwargs: object) -> object:
+        seen["judge"] = kwargs.get("judge")
+        yield "final-event"
+
+    _patch_world(monkeypatch, {})
+    monkeypatch.setattr("corpus_kb.ask.streaming.compose_answer_stream", _spy)
+    monkeypatch.setattr("corpus_kb.rag.judge.OllamaJudge", _SentinelJudge)
+
+    _ = [
+        event
+        async for event in ask_tools.ask_stream(
+            "q", config={"judge": {"enabled": True}}, pg_pool=_FakePool()
+        )
+    ]
+
+    assert isinstance(seen["judge"], _SentinelJudge)

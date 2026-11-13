@@ -30,7 +30,12 @@ def make_dev_repo(tmp_path: Path) -> Path:
 
 
 def clear_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("CORPUS_KB_REPO", "CORPUS_KB_STATE_DIR"):
+    for name in (
+        "CORPUS_KB_REPO",
+        "CORPUS_KB_STATE_DIR",
+        "CLAUDE_PLUGIN_DATA",
+        "CLAUDE_PLUGIN_OPTION_ENGINE_ROOT",
+    ):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -101,3 +106,36 @@ def test_cli_none_when_engine_missing(tmp_path: Path, monkeypatch: pytest.Monkey
     monkeypatch.setenv("PATH", "")
     mod = load()
     assert mod.engine_cli(tmp_path / "missing") is None
+
+
+def test_user_config_engine_root_wins(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The engine_root userConfig (CLAUDE_PLUGIN_OPTION_ENGINE_ROOT) is the
+    first step of the resolution chain (issue #351)."""
+    clear_env(monkeypatch)
+    option_repo = tmp_path / "option-checkout"
+    option_repo.mkdir()
+    env_repo = tmp_path / "env-checkout"
+    env_repo.mkdir()
+    monkeypatch.setenv("CORPUS_KB_REPO", str(env_repo))
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_ENGINE_ROOT", str(option_repo))
+    mod = load()
+    assert mod.engine_root(plugin_root=Path("/unused")) == option_repo
+
+
+def test_user_config_engine_root_ignored_when_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clear_env(monkeypatch)
+    monkeypatch.setenv("CLAUDE_PLUGIN_OPTION_ENGINE_ROOT", str(tmp_path / "not-there"))
+    plugin = make_dev_repo(tmp_path)
+    mod = load()
+    assert mod.engine_root(plugin_root=plugin) == plugin.parent.parent
+
+
+def test_plugin_data_dir_env_then_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    clear_env(monkeypatch)
+    mod = load()
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "plugin-data"))
+    assert mod.plugin_data_dir() == tmp_path / "plugin-data"
+    monkeypatch.delenv("CLAUDE_PLUGIN_DATA")
+    assert mod.plugin_data_dir() == Path.home() / ".corpus-kb" / "plugin"

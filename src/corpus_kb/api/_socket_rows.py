@@ -9,7 +9,9 @@ module holds no behavior.
 from __future__ import annotations
 
 from corpus_kb.api._socket_rows_chunks import CHUNK_SPECS
+from corpus_kb.api._socket_rows_coding import CODING_SPECS, EVENTS_SPECS
 from corpus_kb.api._socket_rows_entities import ENTITY_SPECS
+from corpus_kb.api._socket_rows_reingest import REINGEST_SPECS
 from corpus_kb.api._socket_rows_tags import TAG_SPECS
 from corpus_kb.api._socket_specs import _Opt, _Spec
 
@@ -250,3 +252,6 @@ _SPECS: dict[str, _Spec] = {
 _SPECS.update(TAG_SPECS)
 _SPECS.update(ENTITY_SPECS)
 _SPECS.update(CHUNK_SPECS)
+_SPECS.update(CODING_SPECS)
+_SPECS.update(EVENTS_SPECS)
+_SPECS.update(REINGEST_SPECS)  # U3 (#202): split module keeps this file small

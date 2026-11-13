@@ -70,8 +70,6 @@ _ROUTING_AXES_FIELDS = (
 )
 
 _ROUTING_PROSE_FIELDS = (
-    ("Assumes", "assumptions"),
-    ("Null check", "null_calibration"),
     ("Watch for", "failure_modes"),
     ("Limits", "scope_limits"),
 )

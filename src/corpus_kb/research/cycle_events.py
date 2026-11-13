@@ -21,6 +21,7 @@ EVENT_GATE_RAISED = "gate_raised"
 EVENT_CYCLE_HALTED = "cycle_halted"
 EVENT_AWAITING_APPROVAL = "awaiting_approval"
 EVENT_APPROVAL_DENIED = "approval_denied"
+EVENT_APPROVAL_REPROMPTED = "approval_reprompted"
 EVENT_CYCLE_COMPLETED = "cycle_completed"
 
 EVENT_NAMES: frozenset[str] = frozenset(
@@ -33,6 +34,7 @@ EVENT_NAMES: frozenset[str] = frozenset(
         EVENT_CYCLE_HALTED,
         EVENT_AWAITING_APPROVAL,
         EVENT_APPROVAL_DENIED,
+        EVENT_APPROVAL_REPROMPTED,
         EVENT_CYCLE_COMPLETED,
     }
 )
@@ -46,6 +48,7 @@ EVENT_REQUIRED: dict[str, tuple[str, ...]] = {
     EVENT_CYCLE_HALTED: ("run_id", "gate", "exit_code", "action"),
     EVENT_AWAITING_APPROVAL: ("run_id", "stage"),
     EVENT_APPROVAL_DENIED: ("run_id", "stage"),
+    EVENT_APPROVAL_REPROMPTED: ("run_id", "stage"),
     EVENT_CYCLE_COMPLETED: ("run_id", "stages"),
 }
 
@@ -119,5 +122,7 @@ def render_event(event: dict[str, object]) -> None:
         print(f"action: {event.get('action')} (exit {event.get('exit_code')})")
     elif name == EVENT_APPROVAL_DENIED:
         print(guide_copy.CYCLE_APPROVAL_DENIED)
+    elif name == EVENT_APPROVAL_REPROMPTED:
+        print(guide_copy.CYCLE_APPROVAL_REPROMPTED)
     elif name == EVENT_CYCLE_COMPLETED:
         print(guide_copy.CYCLE_OUTRO)

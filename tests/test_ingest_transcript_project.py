@@ -51,6 +51,14 @@ def _wire_handler(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[obje
         del pool, tenant_id, force
         return IngestDecision(path, "sha256abc", skipped=False, source_type="txt")
 
+    async def fake_last_doc(pool: object, tenant_id: object, path: Path) -> None:
+        del pool, tenant_id, path
+        return None
+
+    async def fake_source_doc(pool: object, tenant_id: object, source: str) -> None:
+        del pool, tenant_id, source
+        return None
+
     class _NoopSink:
         def __init__(self, store: object, tenant_id: object) -> None:
             del store, tenant_id
@@ -64,6 +72,8 @@ def _wire_handler(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> tuple[obje
 
     app = _RecordingApp()
     monkeypatch.setattr(rh, "plan_file", fake_plan)
+    monkeypatch.setattr(rh, "ledger_last_doc_id", fake_last_doc)
+    monkeypatch.setattr(rh, "documents_source_doc_id", fake_source_doc)
     monkeypatch.setattr(
         rh, "parse_transcript", lambda path: parse_transcript_text("Moderator: Hello.\nAlice: Hi.")
     )

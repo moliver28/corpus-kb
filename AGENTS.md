@@ -8,7 +8,7 @@ Single source tree; **all new code goes in `src/corpus_kb/`**. Commands below ru
 - `tests/` — root-level pytest suite
 - `config.yaml` — root runtime config
 - `src/corpus_kb/migrations/` — idempotent SQL migrations
-- `scripts/` — backward-compat shims
+- `scripts/` — live gate/tooling scripts: schema parity, size/warning ratchets, coverage floor, UI licenses/E2E, generators, benchmarks; only `install.py` is a deprecation shim (see CLI)
 - `src/corpus_kb/_setup/` — installer, migration runner, config validator
 - `ui_src/` — TypeScript SPA source (React 19 + `antd` 6, `pnpm`)
 - `src/corpus_kb/ui_dist/` — built SPA assets served at `/app/`
@@ -50,6 +50,8 @@ Gate order: lint (`ruff check src/ tests/`, no deps) → type-check (`pyright sr
 
 Ollama install per OS (exact commands + rationale in ci.yml comments). Ubuntu: official install script (reliable). macOS: `brew install ollama` (install script fails on runners). Windows: `OllamaSetup.exe /S` + 120s timeout + `continue-on-error: true` (installer often hangs → degraded zero-vector mode).
 
+Path gate: the `changes` job (dorny/paths-filter) skips the Ollama install/pull/verify steps in the three test legs and ui-e2e unless the PR touches the embedding surface (ci.yml, `src/corpus_kb/rag/**`, `projections/research/_embed.py`, both config.yamls, `config.py`, `pyproject.toml`, warning-ratchet script + baselines, the embedder/reranker/late-chunk/retrieval/MRL test modules). Untouched PRs run the suite in degraded zero-vector mode. The warning-ratchet leg keeps pulls unconditional: its pytest_warnings ceiling was measured with models pulled.
+
 Windows fixes: `python-magic-bin` (libmagic DLL for the `magic` module in unstructured; fixes access-violation crash). `continue-on-error` on Ollama install/pull/verify. `timeout-minutes: 30` on the ubuntu test leg, `40` on windows/macos (hung Ollama connects; PR #189 raised the ubuntu cap with suite-run rationale).
 
 ## Repo Structure & Ownership
@@ -64,13 +66,13 @@ All active code under `src/corpus_kb/`:
 - `chunking/` — shared chunk primitives (`unstructured_chunker.py`, `hierarchy*.py`); strategy chunking lives in `ingestion/strategies/`: `code.py` + `ast_chunks.py` (tree-sitter AST behind the optional `[code]` extra), `markdown_sections.py` (heading boundaries), `default.py` (unstructured partition + `chunk_elements`).
 - `storage/` — `SqlGateway` seam (`gateway.py`: `PostgresGateway` thin wrapper, `DuckDbGateway` single-writer file driver); graph stores `PostgresGraphStore` (asyncpg + RLS), `AgeGraphStore`, `DuckDbGraphStore`, `LlamaIndexPostgresBackend`, `RagBackend` Protocol. Engine = `database.backend` (`postgres` default, `duckdb` local single-user); guide `docs/STORAGE-BACKENDS.md`, DuckDB mirrors in `migrations_duckdb/`.
 - `rag/` — `OllamaEmbedder` (SHA256 cache, zero-vector fallback), `PgmlEmbedder`, `Reranker`. Hybrid lexical+vector search is SQL-side (`corpus.rrf_fusion`, migration 006) via `handlers/query_handler.py` (`QueryHandler`) + `research/retrieval.py`; no `HybridSearcher` class. Late chunking: `embedders/late_chunk.py` + `late_chunk_core.py` (full-doc forward pass, chunk-span pooling), gated by `embedder_selection.py` (`embedding.late_chunking` + `latechunk` extra + `qwen3-embedding*` model); pooled fallback recorded as `embedding_mode`/`embedding_note` in the ingest result.
-- `ingestion/` — pluggable strategy registry, the ONE pipeline seam: `base.py` (`ChunkPlan`, `validate_plan`), `registry.py` (explicit > config map > detection > default), `strategies/` (`default`, `transcript`, `pptx_structure` slide-level, `web_structure` heading-section).
+- `ingestion/` — pluggable strategy registry, the ONE pipeline seam: `base.py` (`ChunkPlan`, `validate_plan`), `registry.py` (explicit > config map > detection > default). `strategies/` holds the built-ins: `default`, `pptx_structure` (slide-level), `transcript`, `web_structure` (heading-section), `code`, `markdown_sections`, `survey`, `textbook`. Third-party plugins join through an entry-point group.
 - `profiles/` — one authored YAML per corpus; blocks support `validate:` and `calibrate:` (guide `docs/research/HARNESS-PLAYBOOKS.md`). The calibrate sweep (#211) scores a family of up to eight query-time recipe candidates, Holm-corrected. Outcomes are `success`, `no_significant_winner`, and `insufficient_data`; only `success` writes the lock. Issue #187's single-candidate gap is closed. The author → measure → apply walk-through is `docs/VALIDATION.md`.
 - `web/` — website ingestion: `fetch.py` (httpx + robots.txt + size/content-type caps + same-domain BFS crawl), `metadata.py` (OG/Twitter/JSON-LD/canonical), `sections.py` (element→section chunking), `settings.py` (`web:` config → `WebFetchConfig`). Entry: `tools/ingest_url_tools.py` (`ingest_url`; MCP/HTTP/socket/CLI `ingest-url`).
 - `tools/` — MCP tools; `ingest_common.py` = pipeline orchestrator (partition → chunk → embed → extract → store); `ingest_tools.py` = thin MCP wrapper.
-- `extraction/` — pluggable ontology extractor: `protocol.py`, `regex_backend.py`, `langextract_backend.py`, `pgml_backend.py`, `bert_backend.py`.
+- `extraction/` — pluggable ontology extractor: `protocol.py`; backends `regex_backend.py`, `langextract_backend.py`, `pgml_backend.py`, `gliner_backend.py` (GLiNER2 NER), `relex_backend.py` (GLiNER-Relex relations), `ml_backend.py` (mode-gated composite). Selectable `extraction.backend` values, registry `EXTRACTION_BACKENDS` in `extraction/__init__.py`: `regex`, `langextract`, `pgml`, `gliner`, `ml`. Relation cap `MAX_RELATIONS_PER_CHUNK = 10` lives in `langextract_backend.py`.
 - `_setup/` — `install.py` (full-stack installer), `migrate.py`, `validate_configs.py`, `check_ci.py`.
-- `migrations/` — `001_corpus_schema.sql` … `006_rrf_fusion.sql`.
+- `migrations/` — numbered idempotent SQL migrations, applied in order by `_setup/migrate.py`; destructive steps carry `rollback_*.sql` mirrors. See the directory for the current set — do not hard-code counts. DuckDB mirrors live in `migrations_duckdb/` (own numbering); `poe schema-parity` gates parity between the sets.
 - `config/ontology.yaml` — entity/relation type vocabulary.
 - `mcp-configs/` — per-editor MCP configs (`claude-code.json`, `cursor.json`, `codex.json`, all legacy `"mcpServers"` key). Root `opencode.json` (OpenCode) uses the `"mcp"` key — **never `mcpServers` in OpenCode format**. Configs launch the MCP stdio server (`mcp_server.py`, `corpus-kb --transport stdio`); `validate_configs.py` checks their consistency.
 
@@ -107,7 +109,7 @@ Runtime overrides of `config.yaml`, auto-merged by `corpus_kb.config.load_config
 | `CORPUS_KB_TRANSPORT` | `server.transport` |
 | `CORPUS_KB_PORT` | `server.port` |
 
-Definitive 16-variable table: `docs/ADMIN.md`; code truth: `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS`; `corpus-kb doctor` warns on set-but-unread `CORPUS_KB_*` vars. Every `CORPUS_KB_*` var must be consumed — no dead mappings. Ingestion/extraction config is `config.yaml` only: `ingestion.strategies`, `ingestion.default`, `extraction.backend`, `extraction.gliner.*`, `retrieval.exclude_degraded`, `retrieval.qa_context_in_fts` (current v2 keys; `search.*` stays as an accepted legacy alias) — no env override; guide `docs/INGESTION.md` (Ingestion strategies section).
+Full table: `docs/ADMIN.md` (Environment variables). Code truth: `corpus_kb.config.KNOWN_CORPUS_KB_ENV_VARS` — that registry is definitive when counts drift; `corpus-kb doctor` warns on set-but-unread `CORPUS_KB_*` vars. Every `CORPUS_KB_*` var must be consumed — no dead mappings. Ingestion/extraction config is `config.yaml` only: `ingestion.strategies`, `ingestion.default`, `extraction.backend`, `extraction.gliner.*`, `retrieval.exclude_degraded`, `retrieval.qa_context_in_fts` (current v2 keys; `search.*` stays as an accepted legacy alias) — no env override; guide `docs/INGESTION.md` (Ingestion strategies section).
 
 Config-default lockstep (issue #246): `get_default_config()` and the PACKAGED `src/corpus_kb/config.yaml` must agree leaf-for-leaf. Any new or changed default lands in both files in the same PR. Enforced by `poe validate-configs` (skips where `corpus_kb` is not importable) plus `tests/test_config_lockstep.py`; the root `config.yaml` is a user-owned runtime file and is exempt.
 
@@ -115,7 +117,7 @@ Config-default lockstep (issue #246): `get_default_config()` and the PACKAGED `s
 
 Contract: abstract `GraphStore` in `storage/graph_store.py`; subclass it and implement all `@abstractmethod` methods (all async). Reference implementations: `PostgresGraphStore` (asyncpg + RLS, recursive CTE BFS), `AgeGraphStore` (Apache AGE openCypher `MATCH` when `graph.backend: age`). **Do not modify MCP graph tools** — they call the interface, not the implementation.
 
-`PostgresGraphStore`: transactional writes via `@asynccontextmanager transaction()` (all graph writes atomic). Provenance tables (documents, chunks) with FK enforcement. Batch ops (`batch_add_entities`, `batch_add_relations`) with application-level validation. Relation cap `MAX_RELATIONS_PER_CHUNK = 10`.
+`PostgresGraphStore`: transactional writes via `@asynccontextmanager transaction()` (all graph writes atomic). Provenance tables (documents, chunks) with FK enforcement. Batch ops (`batch_add_entities`, `batch_add_relations`) with application-level validation.
 
 ## Branch & Commit Conventions
 
@@ -141,9 +143,7 @@ Defined in [docs/research/harness-zero-drift-program.md](docs/research/harness-z
 
 ## Known Issues (check open GitHub issues before fixing)
 
-- #17 (HIGH FEATURE) — zero-data-loss shutdown/restart with transactional ingest. Not implemented.
-- #31 (MEDIUM FEATURE) — BERT/transformer NER. Partial via `extraction/bert_backend.py`.
-- #2 (MEDIUM TASK) — PyPI publish. Not implemented.
+No standing entries. The former list is closed on GitHub: #17 (zero-data-loss shutdown/restart), #31 (transformer NER), #2 (PyPI publish). Check the tracker (`gh issue list`) for current open issues before you plan or fix.
 
 ## Repository Map
 

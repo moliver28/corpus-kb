@@ -14,7 +14,11 @@ the analysis method register program's twelve method ops),
 ``contracts.catalogue_queue`` (the textbook program's ingest queue),
 ``contracts.catalogue_search_reads`` (the issue #182 search read pair),
 ``contracts.catalogue_calibrate`` (the issue #200 calibrate apply op),
-and ``contracts.catalogue_versioning`` (the Phase-2 Wave 3 stats pair).
+``contracts.catalogue_coding`` (the issue #350 chunk-coding family),
+``contracts.catalogue_events`` (the issue #350 event-store health op),
+``contracts.catalogue_upload`` (the multipart upload op, HTTP-only
+by declared surface set — owner ruling 4a), and
+``contracts.catalogue_versioning`` (the Phase-2 Wave 3 stats pair).
 This package assembles the FINAL catalogue: ``OPERATIONS`` is
 the tuple every consumer (the parity gate, ``corpus-kb operations``)
 iterates, so the test and the inventory can never diverge.
@@ -28,8 +32,10 @@ from corpus_kb.contracts.catalogue_ask import ASK_OPERATIONS
 from corpus_kb.contracts.catalogue_beliefs import BELIEFS_OPERATIONS
 from corpus_kb.contracts.catalogue_calibrate import CALIBRATE_OPERATIONS
 from corpus_kb.contracts.catalogue_classification import CLASSIFICATION_OPERATIONS
+from corpus_kb.contracts.catalogue_coding import CODING_OPERATIONS
 from corpus_kb.contracts.catalogue_conflicts import CONFLICTS_OPERATIONS
 from corpus_kb.contracts.catalogue_documents import DOCUMENTS_OPERATIONS
+from corpus_kb.contracts.catalogue_events import EVENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_labeling import LABELING_OPERATIONS
 from corpus_kb.contracts.catalogue_project import PROJECT_OPERATIONS
 from corpus_kb.contracts.catalogue_queue import QUEUE_OPERATIONS
@@ -43,6 +49,7 @@ from corpus_kb.contracts.catalogue_statements import STATEMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_tags import TAGS_OPERATIONS
 from corpus_kb.contracts.catalogue_topics import TOPICS_OPERATIONS
 from corpus_kb.contracts.catalogue_tune import EXTRACTION_TUNE_OPERATIONS
+from corpus_kb.contracts.catalogue_upload import UPLOAD_OPERATIONS
 from corpus_kb.contracts.catalogue_versioning import VERSIONING_OPERATIONS
 from corpus_kb.contracts.model import (
     DEFAULT_TENANT_ID,
@@ -74,6 +81,9 @@ OPERATIONS: tuple[Operation, ...] = (
     *PROJECT_OPERATIONS,
     *SEARCH_READ_OPERATIONS,
     *CALIBRATE_OPERATIONS,
+    *CODING_OPERATIONS,
+    *EVENTS_OPERATIONS,
+    *UPLOAD_OPERATIONS,
     *VERSIONING_OPERATIONS,
 )
 

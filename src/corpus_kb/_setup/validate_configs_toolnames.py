@@ -74,6 +74,8 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         # -- ingest front door (Stage 5, tools/ingest_surface_tools.py) ------
         "ingest_status",
         "ingest_reembed",
+        # -- #202 bulk re-embed (tools/ingest_reingest.py) -------------------
+        "ingest_reingest",
         # -- pipeline ingest ops (UI SPA Task 5a): catalogue-registered MCP
         #    tools that gained surface_registry rows (manifest longRunning) --
         "ingest_directory",
@@ -142,6 +144,17 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "beliefs_timeline",
         "beliefs_predict",
         "beliefs_compare",
+        # -- chunk-coding ops (issue #350, tools/coding_tools.py) ------------
+        "coding_embed_codebook",
+        "coding_pool",
+        "coding_code_batch",
+        "coding_reliability",
+        "coding_calibrate_floors",
+        "coding_saturation",
+        "coding_status",
+        "coding_export",
+        # -- event-store health (issue #350, tools/events_tools.py) ----------
+        "events_summary",
     }
 )
 

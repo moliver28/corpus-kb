@@ -8,8 +8,8 @@ import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField"
 import LongOpControls from "../../components/LongOpControls";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
-import { callOp } from "../../api/client";
 import { getOp } from "../../api/ops";
+import { callOpStream } from "../../api/stream";
 import { useLongOp } from "../../hooks/useLongOp";
 import { strings } from "../../strings";
 import { loadHistory, saveHistory, type HistoryEntry } from "./askHistory";
@@ -27,23 +27,30 @@ import {
  * The ask action: one question, one cited answer. The wait runs through
  * useLongOp (elapsed time, stop waiting, honest unknown outcome), and
  * the honest empty/degraded states use the exact program strings.
- * The question history is client-only sessionStorage.
+ * The answer streams: grounded sentences land as they complete, and the
+ * settle receipt is the full envelope (citations, verify, sources), the
+ * same JSON envelope the non-streaming call returns. The question
+ * history is client-only sessionStorage.
  */
 export default function AskCard() {
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
   const [history, setHistory] = useState<HistoryEntry[]>(loadHistory);
   const { rootRef, flag } = useFirstErrorFocus();
+  // The streamed answer so far (grounded sentences only). The settled
+  // view below replaces it once the envelope lands.
+  const [streamText, setStreamText] = useState("");
   // The long-op closure reads the question from a ref: the value at
   // start time, not at render time.
   const queryRef = useRef("");
   const ask = useLongOp("ask", (signal) => {
     const op = getOp("ask");
-    return callOp<unknown>(op?.path ?? "", {
+    return callOpStream(op?.path ?? "", {
       method: "POST",
-      body: { query: queryRef.current },
+      body: { query: queryRef.current, stream: true },
       signal,
       timeoutMs: "none",
+      onDelta: (piece) => setStreamText((prev) => prev + piece),
     });
   });
 
@@ -65,6 +72,7 @@ export default function AskCard() {
     setError("");
     queryRef.current = query.trim();
     cancelRequestedRef.current = false;
+    setStreamText("");
     const res = await ask.start();
     if (res.ok && !cancelRequestedRef.current) {
       const next = [
@@ -185,7 +193,17 @@ export default function AskCard() {
           {strings.askAction}
         </Button>
       </div>
-      {ask.running && <Skeleton active title={false} paragraph={{ rows: 3 }} />}
+      {ask.running && streamText === "" && (
+        <Skeleton active title={false} paragraph={{ rows: 3 }} />
+      )}
+      {ask.running && streamText !== "" && (
+        <div className="ui-stack">
+          <Card title={strings.citedAnswerTitle}>
+            <p className="ui-answer">{streamText}</p>
+          </Card>
+          <StatusBanner kind="info">{strings.askStreamingNote}</StatusBanner>
+        </div>
+      )}
       <LongOpControls op={ask} onRetry={retry} onCancel={stopWaiting} />
       {resultView}
       <div className="ui-heading-row">

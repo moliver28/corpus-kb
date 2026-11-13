@@ -34,6 +34,7 @@ import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.handlers.tag_handler as tag_handler_module
 import corpus_kb.handlers.versioning_handler as versioning_handler_module
 import corpus_kb.tools.ask_tools as ask_tools
+import corpus_kb.tools.ingest_reingest as ingest_reingest_tools
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools
 import corpus_kb.tools.versioning_tools as versioning_tools_module
 from corpus_kb.api.http import create_http_app
@@ -544,6 +545,14 @@ _INGEST_TOOL_ROUTES = [
         ingest_surface_tools,
         "ingest_reembed",
         id="POST /api/ingest/reembed",
+    ),
+    pytest.param(
+        "POST",
+        "/api/ingest/reingest",
+        {},
+        ingest_reingest_tools,
+        "ingest_reingest",
+        id="POST /api/ingest/reingest",
     ),
 ]
 

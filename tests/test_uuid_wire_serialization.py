@@ -151,7 +151,7 @@ async def test_sql_query_rows_are_json_safe(monkeypatch: pytest.MonkeyPatch) -> 
             ]
 
     @asynccontextmanager
-    async def _fake_tenant_connection(pool: object, tenant: str):
+    async def _fake_tenant_connection(pool: object, tenant: str, *, readonly: bool = False):
         yield _FakeConn()
 
     monkeypatch.setattr(query_crud, "tenant_connection", _fake_tenant_connection)

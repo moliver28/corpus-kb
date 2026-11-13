@@ -2,6 +2,7 @@
 export interface AskStrings {
   askTitle: string;
   askBody: string;
+  askStreamingNote: string;
   askQueryLabel: string;
   askAction: string;
   askQueryRequired: string;

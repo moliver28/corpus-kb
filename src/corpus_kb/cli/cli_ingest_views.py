@@ -61,6 +61,37 @@ def print_reembed_summary(summary: dict[str, object]) -> None:
         print(f"    remedy: {summary['remedy']}")
 
 
+def print_reingest_receipt(receipt: dict[str, object]) -> None:
+    """The bulk re-embed receipt: the plan, the work, and the honesty keys."""
+    status = str(receipt.get("status", "error"))
+    print(
+        f"reingest: {status} documents={receipt.get('documents', 0)} "
+        f"chunks={receipt.get('chunks', 0)} embedded={receipt.get('embedded', 0)} "
+        f"failed={receipt.get('failed', 0)} "
+        f"skipped-current={receipt.get('skipped_current', 0)}"
+    )
+    print(
+        f"    target: {receipt.get('target_model', '?')} "
+        f"at {receipt.get('target_dimensions', '?')} dimensions"
+    )
+    if receipt.get("dry_run"):
+        print(f"    dry run, estimated tokens: {receipt.get('est_tokens', 0)}")
+    if receipt.get("run_id") is not None:
+        print(f"    ledger run: {receipt['run_id']}")
+    if receipt.get("embedding_mode") is not None:
+        print(f"    embedding: {receipt['embedding_mode']}")
+    if receipt.get("embedding_note") is not None:
+        print(f"    embedding note: {receipt['embedding_note']}")
+    if receipt.get("warning"):
+        print(f"    warning: {receipt['warning']}")
+    for error in string_list(receipt.get("errors")):
+        print(f"    error: {error}")
+    if receipt.get("reason"):
+        print(f"    reason: {receipt['reason']}")
+    if receipt.get("remedy"):
+        print(f"    remedy: {receipt['remedy']}")
+
+
 def print_status_report(report: dict[str, object]) -> None:
     """The status surface for humans: degraded counts + the run ledger."""
     if str(report.get("status")) == "unavailable":

@@ -65,6 +65,7 @@ Pinecone
 Pleiss
 PostgreSQL
 Postgres
+Preprint
 Priya
 Qual
 RLS
@@ -209,3 +210,8 @@ sqlglot
 dataclasses
 docling
 ZCode
+Milstein
+Fleiss
+DSNs
+journaled
+userConfig

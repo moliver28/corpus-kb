@@ -5,6 +5,7 @@ Six idempotent steps take a fresh clone to a first successful search:
   1. preflight — Ollama reachable (report version), configured DSN probed
   2. postgres  — resolve a reachable DSN: configured, then --dsn, then
      the localhost:5432 twin, then provisioning via --superuser-dsn
+     (or the CORPUS_KB_SUPERUSER_DSN environment variable)
   3. schema    — storage/schema.sql plus numbered migrations (the ONE
      implementation shared with the test harness)
   4. write-back— persist the adopted DSN into the local config.yaml
@@ -21,8 +22,12 @@ config readers live in ``quickstart_types``.
 
 from __future__ import annotations
 
+import os
+
 from corpus_kb._setup.db_provision import DsnParts, fallback_dsn, parse_dsn
 from corpus_kb._setup.quickstart_types import (
+    DOCKER_HINTS,
+    NO_DOCKER_HINTS,
     STATE_FAIL,
     STATE_FIX,
     STATE_OK,
@@ -48,6 +53,11 @@ class QuickstartRunner:
         self.outcome = QuickstartOutcome()
         self._configured = runtime_dsn(deps.config)
         self._adopted: str | None = None
+        # Provisioning takes --superuser-dsn, or CORPUS_KB_SUPERUSER_DSN when
+        # the flag is absent (issue #364); the flag wins, empty env is absent.
+        self._superuser_dsn = (
+            opts.superuser_dsn or os.environ.get("CORPUS_KB_SUPERUSER_DSN") or None
+        )
 
     async def run(self) -> int:
         """Run every step; return 0 when nothing failed, else 1."""
@@ -115,8 +125,8 @@ class QuickstartRunner:
             return
         parts = parse_dsn(dsn)
         provisionable = probe.database_missing or probe.auth_failed
-        if provisionable and self._opts.superuser_dsn is not None:
-            await self._provision_and_adopt(dsn, parts, self._opts.superuser_dsn)
+        if provisionable and self._superuser_dsn is not None:
+            await self._provision_and_adopt(dsn, parts, self._superuser_dsn)
             return
         twin = fallback_dsn(parts)
         if not provisionable and twin != dsn and (await self._deps.pg_probe(twin)).ok:
@@ -129,14 +139,8 @@ class QuickstartRunner:
 
     def _hints(self) -> tuple[str, ...]:
         if self._deps.docker_available():
-            return (
-                "Docker is available: run `corpus-kb setup` to start the compose stack,",
-                "then re-run `corpus-kb quickstart`.",
-            )
-        return (
-            "Install Postgres, pass --dsn, or run `corpus-kb setup` with Docker.",
-            "To provision a missing role/database, pass --superuser-dsn.",
-        )
+            return DOCKER_HINTS
+        return NO_DOCKER_HINTS
 
     async def _provision_and_adopt(self, dsn: str, parts: DsnParts, superuser: str) -> None:
         report = await self._deps.provision(superuser, parts)

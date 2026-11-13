@@ -32,8 +32,16 @@ async def _respond(
     handler: Callable[..., Awaitable[dict[str, Any]]],
     kwargs: dict[str, Any],
 ) -> JSONResponse:
-    """One handler call + the shared status mapping (the family rule)."""
-    result = await handler(await _pool(), **kwargs)
+    """One handler call + the shared status mapping (the family rule).
+
+    The startup config rides along on every call: a config.yaml knob
+    must behave the same on HTTP as on MCP and the CLI (issue #325).
+    Every catalogue handler accepts the house ``config`` parameter, so
+    the pass-through is uniform; handlers that read no config ignore it.
+    """
+    from corpus_kb.config import load_config
+
+    result = await handler(await _pool(), config=load_config(), **kwargs)
     status_code = 503 if result.get("status") == "unavailable" else 200
     return JSONResponse(result, status_code=status_code)
 

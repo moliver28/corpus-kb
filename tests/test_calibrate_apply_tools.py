@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 from corpus_kb.cli import app
 from corpus_kb.errors import ConfigError, ValidationError
 from corpus_kb.tools.calibrate_tools import calibrate_apply
-from corpus_kb.tools.config_edit import apply_keys_to_text
+from corpus_kb.tools.config_edit import apply_keys_to_text, apply_keys_tracked
 
 runner = CliRunner()
 
@@ -80,8 +80,20 @@ async def test_dry_run_leaves_config_byte_identical(world: dict[str, Path]) -> N
         "mode": "dry_run",
         "config_path": str(world["config"]),
         "changes": [
-            {"key": "reranking.enabled", "current": None, "proposed": True, "changed": True},
-            {"key": "retrieval.rrf_k", "current": 60, "proposed": 10, "changed": True},
+            {
+                "key": "reranking.enabled",
+                "current": None,
+                "proposed": True,
+                "changed": True,
+                "edit": "created",
+            },
+            {
+                "key": "retrieval.rrf_k",
+                "current": 60,
+                "proposed": 10,
+                "changed": True,
+                "edit": "replaced",
+            },
         ],
         "applied_count": 0,
     }
@@ -419,8 +431,15 @@ async def test_routing_lock_dry_run_diffs_the_nested_leaves(
             "current": 0.55,
             "proposed": 0.45,
             "changed": True,
+            "edit": "replaced",
         },
-        {"key": "analysis.routing.margin", "current": 0.10, "proposed": 0.05, "changed": True},
+        {
+            "key": "analysis.routing.margin",
+            "current": 0.10,
+            "proposed": 0.05,
+            "changed": True,
+            "edit": "replaced",
+        },
     ]
 
 
@@ -517,3 +536,104 @@ def test_apply_to_text_edits_only_the_exact_column_key() -> None:
         "      confidence_threshold: 9\n"
         "    confidence_threshold: 0.45\n"
     )
+
+
+# ---------------------------------------------------------------------------
+# The per-key edit report (issue #341): the no-replace outcome is visible
+# ---------------------------------------------------------------------------
+
+
+def test_apply_keys_tracked_reports_a_no_replace_insert() -> None:
+    """A key at a deeper indent than the member column is not replaced.
+
+    The anchor reads the block's member column, so a hand-edited deeper
+    line never matches: the edit inserts a fresh line, the stale line
+    stays, and the receipt says ``inserted``.
+    """
+    text = "analysis:\n  routing:\n    deeper:\n      confidence_threshold: 9\n    margin: 0.10\n"
+    new_text, edits = apply_keys_tracked(text, {"analysis.routing.confidence_threshold": 0.45})
+    assert edits == {"analysis.routing.confidence_threshold": "inserted"}
+    assert "      confidence_threshold: 9\n" in new_text  # the stale line stays
+    assert "    confidence_threshold: 0.45\n" in new_text  # the fresh line is live
+
+
+def test_apply_keys_tracked_reports_replaced_and_created() -> None:
+    """One report per key: the in-place edit and the fresh block differ."""
+    new_text, edits = apply_keys_tracked(
+        CONFIG_TEXT, {"retrieval.rrf_k": 10, "reranking.enabled": True}
+    )
+    assert edits == {"retrieval.rrf_k": "replaced", "reranking.enabled": "created"}
+    assert "  rrf_k: 10  # fusion constant\n" in new_text
+    assert "reranking:\n  enabled: true\n" in new_text
+
+
+NO_REPLACE_CONFIG_TEXT = (
+    "# user config\n"
+    "analysis:\n"
+    "  routing:\n"
+    "    deeper:\n"
+    "      confidence_threshold: 9\n"
+    "    margin: 0.10\n"
+)
+
+
+@pytest.fixture
+def no_replace_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Path]:
+    """One profile + routing lock over a config whose target key sits deeper.
+
+    The lock carries the same margin value the file already has, so one
+    row is a real change (insert) and one row needs no edit at all.
+    """
+    profiles = tmp_path / "profiles"
+    profiles.mkdir()
+    (profiles / "parity.yaml").write_text(PROFILE_YAML, encoding="utf-8")
+    _write_lock(
+        profiles,
+        chosen="t045_m05",
+        proposed_overrides={
+            "analysis.routing.confidence_threshold": 0.45,
+            "analysis.routing.margin": 0.10,
+        },
+    )
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(NO_REPLACE_CONFIG_TEXT, encoding="utf-8")
+
+    from corpus_kb import config as config_module
+
+    monkeypatch.setattr(config_module, "config_file_path", lambda: config_path)
+    monkeypatch.setattr(config_module, "load_config", lambda: {"profiles": {"dir": str(profiles)}})
+    return {"profiles": profiles, "config": config_path}
+
+
+async def test_no_replace_edit_shows_in_the_change_rows(
+    no_replace_world: dict[str, Path],
+) -> None:
+    """The dry run reports the insert; the untouched row reports ``none``."""
+    before = no_replace_world["config"].read_bytes()
+    envelope = await calibrate_apply("parity")
+    assert no_replace_world["config"].read_bytes() == before
+    changes = envelope["result"]["changes"]
+    assert isinstance(changes, list)
+    rows = [dict(row) for row in changes]
+    assert rows[0]["edit"] == "inserted"  # the confidence_threshold insert
+    assert rows[1]["edit"] == "none"  # the margin value already matches
+
+
+async def test_no_replace_write_keeps_the_stale_line(
+    no_replace_world: dict[str, Path],
+) -> None:
+    """The write inserts the fresh line; the receipt and file agree."""
+    envelope = await calibrate_apply("parity", write=True)
+    body = envelope["result"]
+    assert body["applied_count"] == 1
+    text = no_replace_world["config"].read_text(encoding="utf-8")
+    assert "      confidence_threshold: 9\n" in text  # the stale line stays
+    assert "    confidence_threshold: 0.45\n" in text  # the parsed value is live
+
+
+def test_cli_receipt_marks_a_no_replace_edit(no_replace_world: dict[str, Path]) -> None:
+    """The plain receipt says when a line was not replaced."""
+    result = runner.invoke(app, ["calibrate", "apply", "parity"])
+    assert result.exit_code == 0, result.output
+    assert "no replace" in result.output
+    assert "(already applied)" in result.output

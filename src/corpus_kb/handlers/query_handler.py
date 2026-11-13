@@ -45,8 +45,10 @@ from corpus_kb.domain.models import (
 from corpus_kb.errors import DependencyMissingError
 from corpus_kb.handlers import query_crud, query_crud_reads, query_pipeline, query_stages
 from corpus_kb.handlers.query_integrity import SearchEnvelope
+from corpus_kb.handlers.query_multiquery import build_rewriter
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 from corpus_kb.rag.rerank_settings import load_rerank_settings
+from corpus_kb.research.multi_query_settings import load_multi_query_settings
 from corpus_kb.research.retrieval_settings import load_retrieval_settings
 from corpus_kb.research.search_settings import HnswSettings, load_hnsw_settings
 from corpus_kb.storage.gateway import SqlGateway
@@ -102,6 +104,10 @@ class QueryHandler:
         # U48/P6: the ingest-side hierarchy keys are owned by the pipeline;
         # the query-time expand_to_parent arm lives on retrieval settings.
         self._hnsw_settings: HnswSettings = load_hnsw_settings(self._config)
+        # Issue #136: multi-query rewriting (retrieval.multi_query,
+        # default OFF); the rewriter builds only when the flag is on.
+        self._multi_query_settings = load_multi_query_settings(self._config)
+        self._rewriter = build_rewriter(self._multi_query_settings)
 
     async def handle_search(self, query: SearchQuery) -> list[SearchResult]:
         """Hybrid search: self-query filtering -> vector (matryoshka two-tier or
@@ -127,6 +133,8 @@ class QueryHandler:
             self_query_parser=self._self_query_parser,
             self_query_enabled=self._self_query_enabled,
             query=query,
+            multi_query_settings=self._multi_query_settings,
+            rewriter=self._rewriter,
         )
 
     def _resolve_default_k(self, query: SearchQuery) -> SearchQuery:

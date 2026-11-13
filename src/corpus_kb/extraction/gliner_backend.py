@@ -118,7 +118,7 @@ class GlinerExtractor:
         dropped_by_other = 0
         active = [chunk for chunk in chunks if chunk.text and chunk.text.strip()]
         if self._predictor is None:
-            self._predictor = GlinerPredictor(model, self._schema)
+            self._predictor = GlinerPredictor(model, self._schema, threshold=MIN_SPAN_CONFIDENCE)
         span_sets = self._predictor.predict([chunk.text for chunk in active])
         for chunk, spans in zip(active, span_sets, strict=False):
             text = chunk.text

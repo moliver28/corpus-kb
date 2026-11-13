@@ -16,7 +16,7 @@ from math import isfinite
 from typing import Any, overload
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 # Re-export of the canonical tenant sentinel (corpus_kb.contracts.model):
 # route modules import it from here, so the public name stays stable.
@@ -211,12 +211,17 @@ def error_response(
 
 
 def route_errors(
-    fn: Callable[[Request], Awaitable[JSONResponse]],
-) -> Callable[[Request], Awaitable[JSONResponse]]:
-    """Run one route through the single error path (zero-drift rule 4)."""
+    fn: Callable[[Request], Awaitable[Response]],
+) -> Callable[[Request], Awaitable[Response]]:
+    """Run one route through the single error path (zero-drift rule 4).
+
+    The handler may return ``Response`` (a transport variant may stream,
+    like POST /api/ask with ``stream: true``); JSON envelopes stay
+    JSONResponse.
+    """
 
     @wraps(fn)
-    async def wrapper(request: Request) -> JSONResponse:
+    async def wrapper(request: Request) -> Response:
         try:
             return await fn(request)
         except Exception as exc:

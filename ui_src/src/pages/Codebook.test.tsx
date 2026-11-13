@@ -171,15 +171,21 @@ describe("Codebook page", () => {
     }
   });
 
-  it("marks the unwired pipeline steps honestly", async () => {
+  it("hides the not-wired banners now that every coding op is registered", async () => {
     stubFetch(codebookRoutes());
     render(<Codebook />, { wrapper: makeWrapper() });
-    expect(await screen.findByText(strings.codebookEmbedNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.codebookPoolNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.codebookBatchNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.codebookCalibrateNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.codebookReliabilityNotWired)).toBeTruthy();
-    expect(screen.getByText(strings.codebookSaturationNotWired)).toBeTruthy();
+    // Wave #350 registered all six coding pipeline ops; each honest
+    // banner upgrades itself away the moment its op joins the manifest.
+    // If a regeneration drops an op, its banner returns and this fails.
+    expect(
+      await screen.findByText(strings.codebookProjectsLine.replace("{count}", "1")),
+    ).toBeTruthy();
+    expect(screen.queryByText(strings.codebookEmbedNotWired)).toBeNull();
+    expect(screen.queryByText(strings.codebookPoolNotWired)).toBeNull();
+    expect(screen.queryByText(strings.codebookBatchNotWired)).toBeNull();
+    expect(screen.queryByText(strings.codebookCalibrateNotWired)).toBeNull();
+    expect(screen.queryByText(strings.codebookReliabilityNotWired)).toBeNull();
+    expect(screen.queryByText(strings.codebookSaturationNotWired)).toBeNull();
   });
 
 

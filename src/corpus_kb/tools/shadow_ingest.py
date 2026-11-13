@@ -11,13 +11,9 @@ shadow-row writes live in ``shadow_writer.ShadowIngestWriter``:
 * embed the retrieval levels and slice them to the migration-016 vector
   contract (1024 dims), then hand tree + vectors to the writer.
 
-The v1 ``chunks``/``chunks_vectors`` rows stay the LIVE search corpus and
-are never read or written here; every failure mode of the shadow write is
-isolated by the caller (``ingest_common.run_pipeline`` logs and continues).
-Shadow vectors follow the migration-016 contract: exactly 1024 dims (MRL-
-sliced from >=1024-d embeddings, never padded); models below 1024 dims —
-e.g. the default nomic-embed-text (768d) — skip the shadow VECTORS honestly
-(the returned note says so) while the shadow TEXT rows still land.
+The shared row and vector contracts — the live-path isolation rule and
+the 1024-dim shadow-vector rule — are documented once in the
+``shadow_writer`` module docstring.
 """
 
 from __future__ import annotations

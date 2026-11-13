@@ -130,20 +130,17 @@ async def test_every_declared_mcp_tool_is_registered() -> None:
     # +4 for the #182 read ops (search_similar, search_context,
     # get_document_tags, get_metadata),
     # +1 for the #200 calibrate apply op (calibrate_apply),
-    # +4 for the Phase-2 Wave 2 tag/metadata writes (add_tag, tag_document,
-    # untag_document, set_metadata),
-    # +2 for the Phase-2 Wave 3 stats pair (stats, document_stats; the nine
-    # derived-analysis registry rows name tools the catalogue already
-    # registered, so they add nothing to the union),
-    # +1 for the question front door (analysis_route, routing wave 3),
-    # +3 for the per-project raw table ops (project_provision, project_list,
-    # project_drop; Track C)
-    # +1 for the Phase-2 Wave 4 entity read (list_entities; the four §5.1
-    # graph reads and the two graph writes name tools the catalogue already
-    # registered, so they add nothing to the union)
-    # == 97. The set under the pin is the catalogue/registry UNION, so a
-    # tool added without a row (or dropped without one) fails here too.
-    assert len(registered) == len(catalogue_mcp | registry_mcp) == 97
+    # The set under the pin is the catalogue/registry UNION, so a tool
+    # added without a row (or dropped without one) fails here too. The
+    # merged line counts both parents' additions: the tag/metadata writes
+    # (add_tag, tag_document, untag_document, set_metadata), the stats
+    # pair (stats, document_stats), the question front door
+    # (analysis_route), the per-project raw table ops (project_provision,
+    # project_list, project_drop), the entity read (list_entities), the
+    # nine issue #350 coding + events ops, and the #202 bulk re-embed
+    # (ingest_reingest). Rows whose catalogue names already exist (the
+    # derived-analysis, graph-read/write, and upload rows) add nothing.
+    assert len(registered) == len(catalogue_mcp | registry_mcp) == 108
 
 
 async def test_exclude_set_stays_empty_or_reasoned() -> None:

@@ -132,6 +132,47 @@ async def ledger_doc_id(pool: Store, tenant_id: UUID, path: Path, sha: str) -> U
     return UUID(str(row["doc_id"]))
 
 
+async def ledger_last_doc_id(pool: Store, tenant_id: UUID, path: Path) -> UUID | None:
+    """The document id the ledger currently names for this path, or None.
+
+    Path-scoped, ANY content (unlike :func:`ledger_doc_id`, which compares
+    the hash): the reuse probe behind in-place re-ingest (issue #363). A
+    changed file still belongs to the same source stream, so the previous
+    doc id is what the handler rehydrates.
+    """
+    async with tenant_connection(pool, tenant_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT doc_id FROM ingested_files WHERE tenant_id = $1 AND path = $2",
+            str(tenant_id),
+            str(path),
+        )
+    if row is None or row["doc_id"] is None:
+        return None
+    return UUID(str(row["doc_id"]))
+
+
+async def documents_source_doc_id(pool: Store, tenant_id: UUID, source: str) -> UUID | None:
+    """The research transcript document keyed on this resolved source, or None.
+
+    Read-side fallback for the reuse probe (issue #370). Pre-#366 ledger
+    rows can key a non-resolved path spelling. The documents row keys the
+    resolved source. The parser filter keeps the probe on the research
+    transcript path. Corpus documents keep their own aggregates.
+    """
+    async with tenant_connection(pool, tenant_id) as conn:
+        row = await conn.fetchrow(
+            "SELECT doc_id FROM documents "
+            "WHERE tenant_id = $1 AND source = $2 "
+            "AND source_type = 'transcript' "
+            "AND parser_name = 'research.transcript_parser'",
+            str(tenant_id),
+            source,
+        )
+    if row is None or row["doc_id"] is None:
+        return None
+    return UUID(str(row["doc_id"]))
+
+
 def turn_text_shas(turns_text: list[str]) -> list[str]:
     return [text_sha256(normalize_turn_text(t)) for t in turns_text]
 
@@ -143,6 +184,10 @@ async def plan_file(
     force: bool = False,
 ) -> IngestDecision:
     """Decide whether a file needs (re)ingestion: file-hash ledger first."""
+    # ONE IDENTITY PER SOURCE: the ledger keys the RESOLVED path, so two
+    # spellings of one file (relative vs absolute, .. segments) probe and
+    # write the same row (issue #363, close-out F-1).
+    path = path.resolve()
     sha = file_sha256(path)
     if not force:
         seen_sha, _, _ = await ledger_state(pool, tenant_id, path)

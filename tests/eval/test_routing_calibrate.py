@@ -241,6 +241,28 @@ async def test_routing_sweep_refuses_degraded_phrase_mode(tmp_path: Path) -> Non
     assert result.reason is not None and "zero-vector" in result.reason
 
 
+async def test_routing_sweep_refuses_empty_expected_row(tmp_path: Path) -> None:
+    """A row with no expected method has no accuracy to score; honest refusal.
+
+    The scorer reads the first expected method id (issue #341), so an
+    empty row refuses the whole sweep before any routing runs.
+    """
+    golden = (
+        RoutingGoldenRow(question=_CLUSTER_QUESTION, expected_method_ids=("05",)),
+        RoutingGoldenRow(question=_TIE_QUESTION, expected_method_ids=()),
+    )
+    result = await run_routing_calibration(
+        golden=golden,
+        register=_register(),
+        embedder=_SplitEmbedder(),
+        cfg=_CFG,
+        golden_sha256=_golden_sha(),
+        min_queries=2,
+    )
+    assert result.status == "insufficient_data"
+    assert result.reason is not None and "expected method" in result.reason
+
+
 async def test_routing_sweep_empty_golden_refuses(tmp_path: Path) -> None:
     result = await run_routing_calibration(
         golden=(),

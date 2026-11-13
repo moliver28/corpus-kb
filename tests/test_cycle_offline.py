@@ -33,12 +33,14 @@ def test_event_names_and_required_fields_pinned() -> None:
                 "cycle_halted",
                 "awaiting_approval",
                 "approval_denied",
+                "approval_reprompted",
                 "cycle_completed",
             }
         )
         == ev.EVENT_NAMES
     )
     assert ev.EVENT_REQUIRED["cycle_halted"] == ("run_id", "gate", "exit_code", "action")
+    assert ev.EVENT_REQUIRED["approval_reprompted"] == ("run_id", "stage")
 
 
 def test_cycle_event_validates_known_and_unknown() -> None:
@@ -233,6 +235,29 @@ def test_resume_point_from_checkpoint_kinds() -> None:
     assert state.resume_point({"checkpoint": {}}) == (None, None)
 
 
+def test_resume_point_explicit_rerun_clears_a_denial() -> None:
+    """Issue 306: an explicit re-run starts AT the denied stage (ask again)."""
+    denied = {"checkpoint": {"kind": "approval_denied", "stage": "deductive"}}
+    # Explicit (retry_denied): resume after the PREDECESSOR, so the chain
+    # starts at the denied stage and its boundary asks again.
+    assert state.resume_point(denied, retry_denied=True) == ("inductive", None)
+    assert cycle_mod.stages_after("inductive")[0] == "deductive"
+    # First stage denied: the predecessor is None, so the full chain re-runs.
+    first = {"checkpoint": {"kind": "approval_denied", "stage": "ingest"}}
+    assert state.resume_point(first, retry_denied=True) == (None, None)
+    assert cycle_mod.stages_after(None)[0] == "ingest"
+    # Last stage denied: resume after report, so notebook is the one stage.
+    last = {"checkpoint": {"kind": "approval_denied", "stage": "notebook"}}
+    assert state.resume_point(last, retry_denied=True) == ("report", None)
+    # Implicit (default): the denial holds, the skip stays.
+    assert state.resume_point(denied) == ("deductive", None)
+    # Gate halts and completions never clear, whatever the flag says.
+    halt = {"checkpoint": {"kind": "gate_halt", "gate": "codebook_promotion", "stage": "ingest"}}
+    assert state.resume_point(halt, retry_denied=True) == ("ingest", "codebook_promotion")
+    done = {"checkpoint": {"kind": "cycle_complete"}}
+    assert state.resume_point(done, retry_denied=True) == (None, None)
+
+
 def test_halted_gate_respects_halt_set_and_suppression() -> None:
     findings = [
         gates.GateFinding("drift_alarm", "r1"),
@@ -244,6 +269,43 @@ def test_halted_gate_respects_halt_set_and_suppression() -> None:
     assert halt is None
     halt = cycle_mod._halted_gate(findings, frozenset({"codebook_promotion"}), None)
     assert halt is not None and halt.gate == "codebook_promotion"
+
+
+# ---------------------------------------------------------------------------
+# Issue 306 (ruling 2a): explicit re-run clears a denial; the watch is
+# implicit and never does.
+# ---------------------------------------------------------------------------
+
+
+def test_cycle_options_default_treats_a_run_as_explicit() -> None:
+    """A direct run_cycle call is a human invocation: denials re-prompt."""
+    assert cycle_mod.CycleOptions().retry_denied is True
+
+
+async def test_watch_rearms_stay_implicit_and_never_clear_denials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The watch arms itself, so it forces retry_denied=False (issue 306)."""
+    seen: dict[str, object] = {}
+
+    async def fake_run_cycle(pool: Any, tenant: Any, **kwargs: Any) -> int:
+        seen.update(kwargs)
+        return 0
+
+    async def one_pending(pool: Any, tenant: Any, directory: Any) -> int:
+        return 1
+
+    monkeypatch.setattr(cycle_mod, "run_cycle", fake_run_cycle)
+    monkeypatch.setattr(state, "pending_files", one_pending)
+    code = await state.watch_cycle(
+        cast(Any, object()),
+        cast(Any, "00000000-0000-0000-0000-000000000001"),
+        "unused",
+        max_arms=1,
+        json_output=True,
+    )
+    assert code == 0
+    assert seen.get("retry_denied") is False
 
 
 # ---------------------------------------------------------------------------

@@ -7,16 +7,18 @@ GLiNER-Relex checkpoint (Stepanov et al. 2026). Entities come from
 so this module imports cleanly without torch and pyright checks against
 the Protocols below, never the real package.
 
-API assumption (pinned): ``gliner >= 0.2`` exposes
-``GLiNER.from_pretrained(model_id)`` returning a model whose
-``predict_relations(text, labels, entities=..., threshold=...)`` takes
-``labels`` as ``(head_label, relation_label)`` pairs and returns a list
-of relation triplets. Triplets carry head and tail spans, the relation
-label, and a score. Triplet shapes are normalized defensively in
-``relex_backend`` — mapping-like and attribute-like objects are both
-accepted. If the installed gliner deviates, the raised exception
-propagates to ``extract_with_fallback``, which records it honestly and
-falls back. No silent success is possible.
+API assumption (verified against gliner 0.2.29 on 2026-11-12):
+``gliner >= 0.2`` exposes ``GLiNER.from_pretrained(model_id)`` returning
+a model whose ``predict_relations(text, labels, relations, ...,
+threshold, relation_threshold)`` takes ``labels`` as a mapping
+``{entity_label: description}`` and ``relations`` as relation names, and
+returns a tuple ``(entities, relations)``. Each relation carries ``head``
+and ``tail`` span dicts keyed ``type``, the relation name under
+``relation``, and a ``score``. ``relex_backend._predict`` bridges this
+into the backend's own triplet shape (mapping-like and attribute-like
+objects stay accepted). If the installed gliner deviates, the raised
+exception propagates to ``extract_with_fallback``, which records it
+honestly and falls back. No silent success is possible.
 """
 
 from __future__ import annotations
@@ -50,10 +52,14 @@ class RelexModel(Protocol):
     def predict_relations(
         self,
         text: str,
-        labels: list[tuple[str, str]],
-        entities: list[str] | None = None,
+        labels: object,
+        relations: list[str],
+        flat_ner: bool = True,
         threshold: float = 0.5,
-    ) -> list[object]: ...
+        adjacency_threshold: float | None = None,
+        relation_threshold: float | None = None,
+        multi_label: bool = False,
+    ) -> tuple[list[object], list[object]]: ...
 
 
 class GlinerFactory(Protocol):

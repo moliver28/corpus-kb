@@ -3,7 +3,9 @@
 The router module owns the decision; this module owns the vector math:
 the phrase-material fingerprint, the per-register centroid cache, and
 the small deterministic helpers (mean, unit-norm, cosine). Kept separate
-so the decision logic stays under the 250-line soft limit.
+so the decision logic stays under the 250-line soft limit. This module
+also owns the ``RoutingEmbedder`` protocol the router and this module
+share, so the import between them stays one-way (CodeQL triage).
 
 The cache key binds the register version AND the phrase material AND the
 vector width AND the embedder model name, so a version bump, an edited
@@ -14,11 +16,19 @@ are computed on demand, one method at a time.
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from corpus_kb.analysis.method_register import MethodRegister
-    from corpus_kb.analysis.question_router import RoutingEmbedder
+
+
+class RoutingEmbedder(Protocol):
+    """The one embedder call this router makes (the query-router call)."""
+
+    def embed(self, text: str) -> list[float]:
+        """Return one embedding vector for the text."""
+        ...
+
 
 _CENTROID_CACHE: dict[tuple[str, str, int, str], dict[str, list[float]]] = {}
 

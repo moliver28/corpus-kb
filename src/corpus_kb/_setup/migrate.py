@@ -6,8 +6,10 @@ Backend-dispatched on the DSN scheme (storage portability program):
   ``corpus_kb/migrations_duckdb/`` (the full schema mirror, 000..029)
   through a synchronous duckdb connection and tracks applied files in
   that file's own ``schema_migrations`` table.
-- anything else is a Postgres DSN. The Postgres path applies
-  ``corpus_kb/migrations/`` through asyncpg, exactly as before.
+- anything else is a Postgres DSN. ``migrate_postgres.py`` applies
+  ``corpus_kb/migrations/`` through asyncpg, with the issue #348 admin
+  knobs (dry run, session settings, superuser handover, the migration-025
+  embeddings guard — see ``migrate_admin.py``).
 
 Each runner owns its tracking table; both sort files lexicographically,
 apply unapplied files inside a transaction, and are no-ops when re-run.
@@ -20,7 +22,13 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-import asyncpg
+from corpus_kb._setup.migrate_postgres import (  # noqa: F401 — historical import surface
+    applied_migrations,
+    ensure_migrations_table,
+    prepare_age_session,
+    run_postgres_migrations,
+)
+from corpus_kb._setup.migrate_report import MigrateReport
 
 if TYPE_CHECKING:
     import duckdb
@@ -73,12 +81,13 @@ def _applied_duckdb_migrations(con: duckdb.DuckDBPyConnection) -> set[str]:
     return {row[0] for row in rows}
 
 
-def run_duckdb_migrations(dsn: str) -> None:
+def run_duckdb_migrations(dsn: str, dry_run: bool = False) -> MigrateReport:
     """Run all unapplied DuckDB migrations against the file in ``dsn``.
 
     Synchronous: the DuckDB client is synchronous (program doc section 2).
     Each migration runs inside one transaction together with its
     ``schema_migrations`` insert, so a failure leaves nothing recorded.
+    ``dry_run`` lists the applied and pending names and applies nothing.
     """
     import importlib.resources as resources
 
@@ -88,7 +97,7 @@ def run_duckdb_migrations(dsn: str) -> None:
     with resources.as_file(ref) as migration_dir:
         if not migration_dir.exists():
             logger.warning("DuckDB migrations directory not found: %s", migration_dir)
-            return
+            return MigrateReport("duckdb")
 
         sql_files = sorted(
             p
@@ -101,6 +110,9 @@ def run_duckdb_migrations(dsn: str) -> None:
         try:
             _ensure_duckdb_migrations_table(con)
             done = _applied_duckdb_migrations(con)
+            pending = [f.name for f in sql_files if f.name not in done]
+            if dry_run:
+                return MigrateReport("duckdb", sorted(done), pending, [], True)
 
             for sql_file in sql_files:
                 if sql_file.name in done:
@@ -121,95 +133,48 @@ def run_duckdb_migrations(dsn: str) -> None:
                     con.execute("ROLLBACK")
                     raise
             logger.info("DuckDB migrations complete")
+            return MigrateReport("duckdb", sorted(done), pending, pending, False)
         finally:
             con.close()
 
 
 # ---------------------------------------------------------------------------
-# Postgres backend (unchanged path)
+# Dispatch
 # ---------------------------------------------------------------------------
 
 
-async def prepare_age_session(conn: asyncpg.Connection) -> bool:
-    """Put a live connection into the session state AGE DDL needs.
+async def run_migrations(
+    connection_string: str,
+    *,
+    superuser_dsn: str | None = None,
+    session_settings: dict[str, str] | None = None,
+    reset_embeddings: bool = False,
+    dry_run: bool = False,
+) -> MigrateReport:
+    """Run all unapplied migrations in order on the backend the DSN names.
 
-    Apache AGE resolves its graphid_ops operator class through the caller's
-    search_path (apache/age#2504), so migration 004 fails without this
-    ritual even when the extension is installed. ag_catalog sits LAST on
-    the path on purpose: unqualified migration DDL must keep creating in
-    ``public``, while the opclass, cypher() and agtype still resolve
-    through the path. Returns False when the AGE shared library is
-    absent or the role may not load it, leaving the connection untouched.
+    Issue #348 admin knobs:
+
+    - ``dry_run``: report the applied and pending names, apply nothing.
+    - ``session_settings``: SET on the migration session before the heavy
+      migrations run (0.6.0 needed ``work_mem=1GB`` for migration 015's
+      quadratic ``NOT IN`` dedupe on large studies).
+    - ``superuser_dsn``: run the pending migrations as that role, then
+      hand ownership and grants to the app role (the user in
+      ``connection_string``) — the 0.6.0 plugin-SQL behavior, so every
+      client gets it.
+    - ``reset_embeddings``: accept the migration-025 data decision that
+      discards embeddings stored in the old ``vector`` column.
     """
-    try:
-        await conn.execute("LOAD 'age'")
-    except (asyncpg.UndefinedFileError, asyncpg.InsufficientPrivilegeError):
-        return False
-    await conn.execute('SET search_path = "$user", public, ag_catalog')
-    return True
-
-
-async def ensure_migrations_table(conn: asyncpg.Connection) -> None:
-    """Create the schema_migrations tracking table if it does not exist."""
-    await conn.execute(
-        """
-        CREATE SCHEMA IF NOT EXISTS corpus;
-        CREATE TABLE IF NOT EXISTS corpus.schema_migrations (
-            filename TEXT PRIMARY KEY,
-            applied_at TIMESTAMPTZ DEFAULT now()
-        );
-        """
-    )
-
-
-async def applied_migrations(conn: asyncpg.Connection) -> set[str]:
-    """Return the set of migration filenames already applied."""
-    rows = await conn.fetch("SELECT filename FROM corpus.schema_migrations ORDER BY filename")
-    return {row["filename"] for row in rows}
-
-
-async def run_migrations(connection_string: str) -> None:
-    """Run all unapplied migrations in order on the backend the DSN names."""
     if connection_string.startswith("duckdb:"):
-        await asyncio.to_thread(run_duckdb_migrations, connection_string)
-        return
-
-    import importlib.resources as resources
-
-    ref = resources.files("corpus_kb") / "migrations"
-    with resources.as_file(ref) as migration_dir:
-        if not migration_dir.exists():
-            logger.warning("Migrations directory not found: %s", migration_dir)
-            return
-
-        sql_files = sorted(
-            p
-            for p in migration_dir.iterdir()
-            if p.is_file() and p.suffix == ".sql" and re.match(r"^\d+_", p.name)
-        )
-
-        conn = await asyncpg.connect(connection_string)
-        try:
-            await prepare_age_session(conn)
-            await ensure_migrations_table(conn)
-            done = await applied_migrations(conn)
-
-            for sql_file in sql_files:
-                if sql_file.name in done:
-                    logger.info("Migration already applied: %s", sql_file.name)
-                    continue
-
-                sql = sql_file.read_text(encoding="utf-8")
-                async with conn.transaction():
-                    logger.info("Applying migration: %s", sql_file.name)
-                    await conn.execute(sql)
-                    await conn.execute(
-                        "INSERT INTO corpus.schema_migrations (filename) VALUES ($1)",
-                        sql_file.name,
-                    )
-            logger.info("Migrations complete")
-        finally:
-            await conn.close()
+        return await asyncio.to_thread(run_duckdb_migrations, connection_string, dry_run)
+    return await run_postgres_migrations(
+        connection_string,
+        superuser_dsn=superuser_dsn,
+        session_settings=session_settings,
+        reset_embeddings=reset_embeddings,
+        dry_run=dry_run,
+    )
 
 
 async def main() -> None:

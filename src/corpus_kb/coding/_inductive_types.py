@@ -70,6 +70,7 @@ class UmapModuleLike(Protocol):
         n_jobs: int = ...,
         random_state: int = ...,
         transform_seed: int = ...,
+        compatibility_layout: bool = ...,
     ) -> UmapModelLike: ...
 
 

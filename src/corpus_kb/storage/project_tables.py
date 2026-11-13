@@ -24,7 +24,7 @@ import asyncpg
 
 from corpus_kb.errors import NotFoundError, ValidationError
 from corpus_kb.storage.gateway import SqlGateway, as_gateway, gateway_backend
-from corpus_kb.storage.project_tables_sql import raw_columns_for, rls_statements
+from corpus_kb.storage.project_tables_sql import drop_statement, raw_columns_for, rls_statements
 from corpus_kb.storage.sql_ident import check_identifier, quoted_identifier
 from corpus_kb.storage.tenant_conn import tenant_connection
 
@@ -186,7 +186,7 @@ async def drop_project_table(
         if await _table_exists(conn, backend, table):
             count = await conn.fetchval(f"SELECT COUNT(*) FROM {quoted}")
             dropped_rows = int(count or 0)
-            await conn.execute(f"DROP TABLE IF EXISTS {quoted}")
+            await conn.execute(drop_statement(table))
         await conn.execute(f"DELETE FROM {_REGISTRY_TABLE} WHERE id = $1", registry_id)
     return {"table": table, "dropped_rows": dropped_rows}
 

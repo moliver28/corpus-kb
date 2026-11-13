@@ -42,6 +42,8 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     # (graph.extractor is the accepted legacy alias — see
     # corpus_kb.extraction.extraction_backend_name).
     "extraction.backend": str,
+    "server.socket_path": str,
+    "server.socket_port": int,
     "embedding.mrl_trained": bool,
     "embedding.late_chunking": bool,
     "embedding.query_instruction": bool,
@@ -126,6 +128,12 @@ RUNTIME_CONFIG_KEYS: dict[str, type] = {
     "textbook.window_subprocess": bool,
     "textbook.window_timeout_s": float,
     "textbook.cache_max_mb": int,
+    # Persistent parser worker (issue #270): worker_reuse keeps one
+    # loaded parser child alive across windows; worker_max_windows
+    # recycles it after that many windows (the positive-int rule lives
+    # in _textbook_block_errors).
+    "textbook.worker_reuse": bool,
+    "textbook.worker_max_windows": int,
     # Rich-structure flag (textbook program W1-B): keeps level, page
     # boxes, and table markdown in the parsed windows.
     "textbook.structured_output": bool,

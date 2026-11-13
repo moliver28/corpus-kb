@@ -131,7 +131,13 @@ describe("statusOpFor", () => {
   const LONG_OP_STATUS: Record<string, string | null> = {
     "analyze-run": null,
     "classification-build": null,
+    // The issue #350 coding long ops (master): like the rest of the
+    // coding family, they write no ingest_runs ledger row, so no
+    // status poll exists for them.
+    "coding-code-batch": null,
+    "coding-embed-codebook": null,
     "coding-inductive": null,
+    "coding-pool": null,
     "coding-run": null,
     "demo-load": "ingest-status",
     "ingest-directory": "ingest-status",

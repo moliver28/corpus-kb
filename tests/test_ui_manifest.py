@@ -163,6 +163,11 @@ def test_long_running_flags_match_the_spec() -> None:
             "ingest-directory",
             "ingest-url",
             "demo-load",
+            # Issue #350: the chunk-coding ops that embed, pool, or code a
+            # batch can run minutes on a real corpus.
+            "coding-embed-codebook",
+            "coding-pool",
+            "coding-code-batch",
         }
     )
     flagged = {str(e["id"]) for e in build_manifest(REPO) if e["longRunning"]}
@@ -178,6 +183,15 @@ def test_tool_route_bodies_are_merged() -> None:
         entry = manifest[route.path]
         assert entry["required"] == list(route.required), route.path
         assert entry["optional"] == list(route.optional), route.path
+
+
+def test_upload_entry_declares_the_multipart_file_field() -> None:
+    """The multipart upload row is not a JSON tool route: the manifest names
+    its one required form field honestly (ruling 4a)."""
+    manifest = {str(e["path"]): e for e in build_manifest(REPO)}
+    entry = manifest["/api/ingest/upload"]
+    assert entry["required"] == ["file"]
+    assert entry["optional"] == []
 
 
 def test_generated_ops_table_lists_every_manifest_entry() -> None:

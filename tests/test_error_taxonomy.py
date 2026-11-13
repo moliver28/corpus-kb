@@ -25,6 +25,7 @@ from starlette.testclient import TestClient
 import corpus_kb.api.research_http as research_http
 import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.query_handler as query_handler_module
+import corpus_kb.tools.ingest_reingest as ingest_reingest_tools
 import corpus_kb.tools.ingest_surface_tools as ingest_surface_tools
 from corpus_kb.api._body import error_response
 from corpus_kb.api.http import create_http_app
@@ -41,6 +42,7 @@ from corpus_kb.errors import (
     NotFoundError,
     QuestionTooShortError,
     ValidationError,
+    WriteRefusedError,
     error_status,
 )
 
@@ -49,6 +51,7 @@ TAXONOMY = [
     ValidationError,
     QuestionTooShortError,
     NoMethodMatchesError,
+    WriteRefusedError,
     NotFoundError,
     ConflictError,
     DatabaseUnavailableError,
@@ -364,6 +367,30 @@ def test_ingest_reembed_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch)
     assert response.json()["status"] == "unavailable"
 
 
+def test_ingest_reingest_unavailable_maps_to_503(monkeypatch: pytest.MonkeyPatch) -> None:
+    """U3 (#202): the bulk re-embed route keeps the same 503 contract."""
+
+    async def unavailable(*_args: object, **_kwargs: object) -> dict[str, object]:
+        return {
+            "status": "unavailable",
+            "reason": "migration 022 not applied",
+            "dry_run": False,
+            "target_model": "qwen3-embedding:4b",
+            "target_dimensions": 2560,
+            "documents": 0,
+            "chunks": 0,
+            "embedded": 0,
+            "failed": 0,
+            "skipped_current": 0,
+        }
+
+    monkeypatch.setattr(ingest_reingest_tools, "ingest_reingest", unavailable)
+    monkeypatch.setattr(research_http, "_pool", object())
+    response = _client().post("/api/ingest/reingest", json={})
+    assert response.status_code == 503
+    assert response.json()["status"] == "unavailable"
+
+
 # ---------------------------------------------------------------------------
 # research_http._respond: payload statuses become honest codes
 # ---------------------------------------------------------------------------
@@ -645,12 +672,22 @@ async def test_load_run_wrong_aggregate_type_raises_validation(
 
 
 def test_command_handler_requires_a_pool_for_ingest() -> None:
+    """No pool AND no gateway stays a 500 InternalError with the new text."""
     from corpus_kb.handlers.command_handler import CommandHandler
 
     handler = CommandHandler(pool=None, gateway=None)
-    with pytest.raises(InternalError, match="requires an asyncpg") as excinfo:
+    with pytest.raises(InternalError, match="pool or a gateway for ingest") as excinfo:
         handler._require_pool()
     _assert_triple(excinfo.value, 500, -32603, 1)
+
+
+def test_command_handler_ingest_falls_back_to_the_gateway() -> None:
+    """DuckDB wiring passes the gateway only; ingest must read it."""
+    from corpus_kb.handlers.command_handler import CommandHandler
+
+    gateway = cast(Any, object())
+    handler = CommandHandler(pool=None, gateway=gateway)
+    assert handler._require_pool() is gateway
 
 
 async def test_command_handler_delete_needs_a_pool_or_gateway() -> None:
@@ -695,10 +732,9 @@ def test_domain_error_rebases_speak_the_taxonomy() -> None:
 
     Each base keeps the class's effective wire triple, so every raise site
     behind the class moves to the taxonomy with zero envelope change.
-    UnknownStrategyError is deliberately NOT here: its name is unmapped on
-    master (500/internal_error), and a ValidationError rebase would flip
-    reachable unknown-strategy paths to 400 — deferred pending owner
-    sign-off (see the get_strategy pin below).
+    UnknownStrategyError is not here either by choice: its rebase moves
+    its wire triple (500 to 400), so it ships alone, owner-approved
+    (issue #307 — see the get_strategy test below).
     """
     from corpus_kb.ingestion.strategies.textbook_docling import _MalformedRowError
     from corpus_kb.rag.embedders._latechunk_types import LateChunkDependencyError
@@ -715,20 +751,48 @@ def test_domain_error_rebases_speak_the_taxonomy() -> None:
     _assert_triple(WebFetchError("x"), 500, -32603, 1)
 
 
-async def test_get_strategy_unknown_name_keeps_the_master_wire() -> None:
-    """UnknownStrategyError stays on the ValueError base (issue #229 deferral).
+async def test_get_strategy_unknown_name_answers_the_validation_triple() -> None:
+    """UnknownStrategyError rides ValidationError (issue #307, owner ruling).
 
-    The class name has no ERROR_MAP row, so an escaped failure keeps the
-    master wire: the 500/internal_error envelope and socket -32603. The
-    candidate ValidationError rebase (400/-32602, a client-fault
-    classification) needs explicit owner sign-off — tracked as a deferral.
+    The #229 deferral got owner sign-off on 2026-11-12: a strategy typo
+    is caller input, so an escaped failure answers 400 / validation_error
+    and socket -32602 through the typed class attributes. The class name
+    keeps no ERROR_MAP row — instances answer as taxonomy classes.
     """
     from corpus_kb.ingestion.registry import UnknownStrategyError, get_strategy
 
     with pytest.raises(UnknownStrategyError, match="Valid strategies") as excinfo:
         get_strategy("not-a-strategy")
-    assert not isinstance(excinfo.value, CorpusError)
-    assert error_status("UnknownStrategyError") == 500
+    assert isinstance(excinfo.value, CorpusError)
+    assert excinfo.value.error_type == "validation_error"
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+def test_error_response_unknown_strategy_answers_validation_error() -> None:
+    """HTTP: a strategy typo answers 400 with the validation_error name."""
+    from corpus_kb.ingestion.registry import UnknownStrategyError
+
+    response = error_response(UnknownStrategyError("Unknown ingestion strategy 'bogus'."))
+    assert response.status_code == 400
+    assert _body_of(response) == {
+        "status": "error",
+        "error": "Unknown ingestion strategy 'bogus'.",
+        "error_type": "validation_error",
+    }
+
+
+def test_cli_error_exit_unknown_strategy_answers_exit_one(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI: a strategy typo exits 1 with the inherited remediation line."""
+    from corpus_kb import cli as cli_module
+    from corpus_kb.ingestion.registry import UnknownStrategyError
+
+    code = cli_module._cli_error_exit(UnknownStrategyError("Unknown ingestion strategy 'bogus'."))
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR: Unknown ingestion strategy 'bogus'." in out
+    assert "Fix the request fields." in out
 
 
 def test_register_strategy_rejects_a_nameless_strategy() -> None:

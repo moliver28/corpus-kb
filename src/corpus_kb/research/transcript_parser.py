@@ -1,10 +1,10 @@
 """Speaker-turn recovery from transcript files (todo-11 (d), v5 §2).
 
-txt first-class ("Speaker: text" lines); vtt/srt (timestamp blocks, optional
-speaker cue), csv (speaker,text columns — header-sniffed), docx via the
-existing unstructured partitioner with txt-style line recovery afterwards.
-Unknown formats fall back to txt line parsing and are flagged
-parse_quality=unverified.
+txt first-class ("Speaker: text" lines, bold labels like "**P1:** text"
+included); vtt/srt (timestamp blocks, optional speaker cue), csv
+(speaker,text columns — header-sniffed), docx via the existing unstructured
+partitioner with txt-style line recovery afterwards. Unknown formats fall
+back to txt line parsing and are flagged parse_quality=unverified.
 """
 
 from __future__ import annotations
@@ -17,7 +17,13 @@ from pathlib import Path
 
 from corpus_kb.domain.transcript import TurnSpec
 
-SPEAKER_LINE = re.compile(r"^\s*([A-Z0-9][\w .'\-]{0,60}?)\s*:\s*(.+)$")
+# "Speaker: text", with optional bold markers around the label, the colon,
+# or both: "P1: hi", "**P1:** hi", "**P1**: hi". A "**" after the colon
+# counts as a closing bold marker only when whitespace or the line end
+# follows, so text that itself starts with bold keeps its markers.
+SPEAKER_LINE = re.compile(
+    r"^\s*(?:\*\*)?([A-Z0-9][\w .'\-]{0,60}?)\s*(?:\*\*)?\s*:\s*(?:\*\*(?=\s|$))?(.+)$"
+)
 VTT_CUE_TIME = re.compile(r"^\s*(\d{1,2}:)?\d{2}:\d{2}[.,]\d{3}\s*-->\s*")
 VTT_SPEAKER = re.compile(r"<v\s+([^>]+)>")
 SRT_BLOCK_ID = re.compile(r"^\d+$")

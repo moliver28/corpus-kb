@@ -29,13 +29,11 @@ Extend `MethodRecord` with fields grounded in how the literature states conditio
 | `statistical_rigor` | descriptive, inferential_null, inferential_calibrated | calibration literature |
 | `cost_tier` | interactive, batch | cascade economics |
 | `question_phrases` | 5-10 seed reference utterances per method; embedding centroid material | semantic-router reference sets |
-| `assumptions` | statistical conditions plus what breaks when violated | metric-family conditions |
-| `null_calibration` | null model, sample size, correction family | permutation-null guardrails |
 | `failure_modes` | observed failures, cited | metric-family caveats |
 | `scope_limits` | when manual close reading wins | Baden et al. 2022 |
-| `cost_scale` | complexity class plus practical ceiling | metric families |
 | `suggests` | follow-up question templates | Snowy/Foresight next-question pattern |
-| `evidence_citation` | source URL, tier, year | evidence field |
+
+The register ships 10 routing fields at version 3.0.0. `cost_scale` and `evidence_citation` left the schema at 2.0.0. `assumptions` folded into `robustness_caveat`, and `null_calibration` folded into `validation_required`, at 3.0.0.
 
 `scripts/gen_method_register_docs.py` extends to render the new columns; `poe gen` stays the drift gate. The core vocabularies live beside the models in `method_register.py`; the six routing vocabularies and the routing checks live in `method_register_routing.py`.
 
@@ -60,7 +58,7 @@ The resolved intent feeds the existing `rank_methods` rubric as constraints. Rou
 New op `analysis_route` (handler in `src/corpus_kb/tools/`, thin adapters everywhere, per the one-handler rule):
 
 - Input: `question` (free text), optional expert overrides (method id, axes).
-- Envelope (amended in wave 3, post W2 review): `{status: resolved|ambiguous|degraded, intent, ranked: [{method_id, name, why, run_hint}], interpretations?, trace}`. The envelope `status` carries exactly three values: `resolved`, `ambiguous`, `degraded`. The router outcome `insufficient` never reaches the envelope: the op layer raises `no_method_matches` for it. `degraded` is flagged by the envelope status AND visible as `intent.note == "degraded"`. The ambiguous ladder in degraded mode is keyed off `intent.status == "ambiguous"`, not the envelope status: `interpretations` are present exactly when the intent is ambiguous, degraded or not, and the op layer caps them at three. `run_hint` carries the op name plus params so the UI `onRunMethod` bridge starts the real analysis; `run_hint.op` may be null, which means the method runs with people outside the app, and the UI renders a human-led note for it. `ranked` rows come from the rubric join (cap five); an expert override puts the chosen method first and sets its `why` to "Set by the analyst." A decided intent also adds `suggestions`: up to three verbatim follow-up questions from the chosen row's `suggests` metadata. Presence rides the intent: `status == "resolved"` and a chosen method id. Degraded answers keep their chips. Ambiguous answers have none.
+- Envelope (amended in wave 3, post W2 review): `{status: resolved|ambiguous|degraded, intent, ranked: [{method_id, name, why, run_hint}], interpretations?, trace}`. The envelope `status` carries exactly three values: `resolved`, `ambiguous`, `degraded`. The router outcome `insufficient` never reaches the envelope: the op layer raises `no_method_matches` for it. `degraded` is flagged by the envelope status AND visible as `intent.note == "degraded"`. The ambiguous ladder in degraded mode is keyed off `intent.status == "ambiguous"`, not the envelope status: `interpretations` are present exactly when the intent is ambiguous, degraded or not, and the op layer caps them at three. `run_hint` carries the op name plus params so the UI `onRunMethod` bridge starts the real analysis; `run_hint.op` may be null, which means the method runs with people outside the app, and the UI renders a human-led note for it. `ranked` rows come from the rubric join (cap five); when the score winner sits outside that cap, the envelope appends one row for it after the capped five, so the chosen method always has a row (its `why` follows the top-row rule: the matched phrase when one hits, the rubric reason otherwise); an expert override puts the chosen method first and sets its `why` to "Set by the analyst." A decided intent also adds `suggestions`: up to three verbatim follow-up questions from the chosen row's `suggests` metadata. Presence rides the intent: `status == "resolved"` and a chosen method id. Degraded answers keep their chips. Ambiguous answers have none.
 - Catalogue row, parity leg, surface registry row, `poe gen`, error rows in `ERROR_MAP` (`question_too_short`, `no_method_matches`) — the standard zero-drift checklist.
 
 `analysis_select_method` stays unchanged for expert direct use.

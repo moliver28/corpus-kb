@@ -195,6 +195,12 @@ class SearchResult(BaseModel):
     end_line: int | None = None
     chunk_index: int | None = None
     heading_path: list[str] | None = None
+    # Issue #271: the textbook strategy's chunk-metadata keys, exposed to
+    # search consumers. The strategy writes ``citation`` (a plain-English
+    # page citation) and a sorted ``units`` list; both stay None for any
+    # chunk without that metadata.
+    citation: str | None = None
+    units: list[str] | None = None
 
 
 class DocumentResult(BaseModel):

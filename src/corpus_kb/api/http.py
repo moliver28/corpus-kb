@@ -92,9 +92,11 @@ from corpus_kb.api.routes_coding import (
     coding_calibrate_floors,
     coding_code_batch,
     coding_embed_codebook,
+    coding_export_route,
     coding_pool,
     coding_reliability,
     coding_saturation,
+    coding_status_route,
 )
 from corpus_kb.api.routes_conflicts import (
     conflicts_list_route,
@@ -102,6 +104,7 @@ from corpus_kb.api.routes_conflicts import (
     conflicts_scan_route,
 )
 from corpus_kb.api.routes_demo import demo_load
+from corpus_kb.api.routes_events import events_summary_route
 from corpus_kb.api.routes_graph import (
     add_entity,
     add_relation,
@@ -149,6 +152,7 @@ from corpus_kb.api.routes_queue import (
     queue_enqueue_route,
     queue_status_route,
 )
+from corpus_kb.api.routes_reingest import ingest_reingest_route
 from corpus_kb.api.routes_search import (
     embed_text,
     query_sql,
@@ -197,6 +201,8 @@ def create_http_app() -> FastAPI:
         # Stage-5 ingest front door: status + reembed surfaces.
         Route("/api/ingest/status", ingest_status_route, methods=["GET"]),
         Route("/api/ingest/reembed", ingest_reembed_route, methods=["POST"]),
+        # U3 (#202): the bulk re-embed front door for model switches.
+        Route("/api/ingest/reingest", ingest_reingest_route, methods=["POST"]),
         # Wave 4 topics layer.
         Route("/api/topics/build", topics_build_route, methods=["POST"]),
         Route("/api/topics", topics_list_route, methods=["GET"]),
@@ -268,6 +274,10 @@ def create_http_app() -> FastAPI:
         Route("/api/coding/reliability", coding_reliability, methods=["POST"]),
         Route("/api/coding/calibrate-floors", coding_calibrate_floors, methods=["POST"]),
         Route("/api/coding/saturation", coding_saturation, methods=["POST"]),
+        # Issue #350: the two coding reads + the event-store health read.
+        Route("/api/coding/status", coding_status_route, methods=["GET"]),
+        Route("/api/coding/export", coding_export_route, methods=["POST"]),
+        Route("/api/events/summary", events_summary_route, methods=["GET"]),
         Route("/api/documents", list_documents, methods=["GET"]),
         Route("/api/documents/{doc_id}/chunks", list_document_chunks, methods=["GET"]),
         Route("/api/entities", list_entities, methods=["GET"]),

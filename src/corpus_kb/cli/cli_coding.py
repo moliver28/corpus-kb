@@ -30,6 +30,13 @@ from corpus_kb.cli.cli_lifecycle_reads import register_coding as register_reads 
 
 register_reads(coding_app, codebook_app)
 
+# Issue #350: the eight chunk-coding ops (embed-codebook, pool,
+# code-batch, reliability, calibrate-floors, saturation, status, export)
+# — each a thin adapter over the ONE shared tool function.
+from corpus_kb.cli.cli_coding_ops import register_ops  # noqa: E402
+
+register_ops(coding_app)
+
 
 @coding_app.command("run")
 def coding_run(

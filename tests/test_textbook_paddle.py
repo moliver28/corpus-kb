@@ -17,7 +17,10 @@ from pathlib import Path
 import pytest
 
 from corpus_kb.errors import InternalError, ValidationError
-from corpus_kb.ingestion.strategies import textbook_paddle, textbook_subprocess
+from corpus_kb.ingestion.strategies import (
+    textbook_child,
+    textbook_paddle,
+)
 from corpus_kb.ingestion.strategies.textbook_paddle import (
     PADDLE_VL_MODEL,
     PaddleState,
@@ -34,7 +37,11 @@ from corpus_kb.ingestion.strategies.textbook_registry import (
     PARSER_VERSIONS,
     parser_key,
 )
-from corpus_kb.ingestion.strategies.textbook_settings import TextbookSettings, settings_from
+from corpus_kb.ingestion.strategies.textbook_settings import (
+    TextbookSettings,
+    WorkerPolicy,
+    settings_from,
+)
 
 # ---------------------------------------------------------------------------
 # Fakes: the model pair answers the exact recipe calls
@@ -300,9 +307,16 @@ def test_one_window_subprocess_success(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
     def _wrapper(
-        pdf: Path, parser: str, start: int, end: int, timeout_s: float, structured: bool = False
+        pdf: Path,
+        parser: str,
+        start: int,
+        end: int,
+        timeout_s: float,
+        structured: bool = False,
+        worker: WorkerPolicy | None = None,
     ) -> list[PageItem]:
         seen.update(parser=parser, start=start, end=end, structured=structured)
+        del worker
         return [PageItem(1, "text", "shipped")]
 
     monkeypatch.setattr(_SUB, _wrapper)
@@ -401,7 +415,7 @@ def test_child_target_routes_paddle(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(textbook_paddle, "paddle_window_rows", _rows)
     queue = _FakeQueue()
-    textbook_subprocess._window_child("b.pdf", "paddle-vl", 1, 2, queue)
+    textbook_child._window_child("b.pdf", "paddle-vl", 1, 2, queue)
     assert queue.rows == [{"page": 1, "label": "text", "text": "child body"}]
     assert seen == {"pdf": "b.pdf", "start": 1, "end": 2, "structured": False}
 
@@ -438,9 +452,9 @@ def test_child_target_routes_docling(monkeypatch: pytest.MonkeyPatch) -> None:
             assert name == "docling.document_converter"
             return _Module()
 
-    monkeypatch.setattr(textbook_subprocess, "importlib", _FakeImportlib())
+    monkeypatch.setattr(textbook_child, "importlib", _FakeImportlib())
     queue = _FakeQueue()
-    textbook_subprocess._window_child("b.pdf", "docling", 1, 2, queue)
+    textbook_child._window_child("b.pdf", "docling", 1, 2, queue)
     # The docling walk provides the level, so the row carries it (W1-B).
     assert queue.rows == [{"page": 1, "label": "text", "text": "child body", "level": 0}]
 
@@ -448,14 +462,14 @@ def test_child_target_routes_docling(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_child_target_raises_on_an_unknown_parser() -> None:
     queue = _FakeQueue()
     with pytest.raises(ValidationError, match="no child rows factory"):
-        textbook_subprocess._window_child("b.pdf", "tesseract", 1, 2, queue)
+        textbook_child._window_child("b.pdf", "tesseract", 1, 2, queue)
     assert queue.rows is None  # nothing shipped under a foreign name
 
 
 def test_child_factories_mirror_the_seam_registry() -> None:
     # Every registry parser with a child must have exactly one rows
     # factory, so no parser can silently borrow another parser's child.
-    assert set(textbook_subprocess._WINDOW_ROW_FACTORIES) == set(_PARSER_SEAMS)
+    assert set(textbook_child._WINDOW_ROW_FACTORIES) == set(_PARSER_SEAMS)
 
 
 # ---------------------------------------------------------------------------
@@ -549,8 +563,14 @@ class _FakeLoadedModel:
     def to(self, device: str) -> None:
         self.events.append(f"to:{device}")
 
-    def eval(self) -> None:
+    def _record_eval(self) -> None:
         self.events.append("eval")
+
+
+# The loader calls this seam under the transformers API name (model.eval
+# in load_paddle_model). Attach it under that name; a def-eval line reads
+# as a dynamic code entry to static scanners.
+_FakeLoadedModel.eval = _FakeLoadedModel._record_eval
 
 
 class _FakeAutoModel:

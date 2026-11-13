@@ -94,11 +94,15 @@ async def _nli_classify(params: dict[str, Any], tenant_id: str) -> dict[str, Any
 
 async def _analysis_select_method(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.api.research_http import research_pool
+    from corpus_kb.config import load_config
     from corpus_kb.tools.method_select_tools import analysis_select_method
 
     task = params.get("task_description")
+    # The startup config rides along: the register path must behave the
+    # same on the socket as on MCP and the CLI.
     return await analysis_select_method(
         await research_pool(),
+        config=load_config(),
         tenant_id=tenant_id,
         task_description="" if task is None else str(task),
         output_family=opt_str(params.get("output_family")),

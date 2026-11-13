@@ -366,9 +366,84 @@ async def test_suggestions_survive_a_fallback_pool_bigger_than_the_ranked_cap(
         cast("dict[str, object]", row)["method_id"]
         for row in cast("list[dict[str, object]]", result["ranked"])
     ]
-    assert ranked_ids == ["01", "02", "03", "04", "05"]
-    assert "06" not in ranked_ids
+    assert ranked_ids == ["01", "02", "03", "04", "05", "06"]
+    assert ranked_ids.count("06") == 1
     assert result["suggestions"] == cluster_suggests
+
+
+async def test_resolved_winner_always_has_a_row_in_ranked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The chosen method keeps a ranked row even when the cap drops it.
+
+    No phrase hits, so the fallback pool is every phrased row (six). The
+    rubric sorts 01-05 into the capped list; the embedding scores pick
+    06. The resolved answer's method can never be absent from ``ranked``:
+    the envelope appends its row after the capped five, and the first
+    five stay in rubric order. With no phrase hit, the appended why is
+    the rubric reason — a name is never a reason.
+    """
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _SplitEmbedder())
+    register = _register(
+        *[
+            _record(id_, f"Filler method {id_}", [_FILLER_PHRASES[id_][0], _FILLER_PHRASES[id_][1]])
+            for id_ in ("01", "02", "03", "04", "05")
+        ],
+        _record(
+            "06",
+            "Cluster method",
+            [
+                "Which cluster count fits these interviews?",
+                "How stable are the themes across runs?",
+            ],
+        ),
+    )
+    monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
+    result = await _run(question="I want a cluster breakdown of my interview notes.", config={})
+    assert result["status"] == "resolved"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["method_id"] == "06"
+    ranked = cast("list[dict[str, object]]", result["ranked"])
+    ranked_ids = [str(row["method_id"]) for row in ranked]
+    assert ranked_ids == ["01", "02", "03", "04", "05", "06"]
+    winner = ranked[-1]
+    assert winner["name"] == "Cluster method"
+    assert winner["run_hint"] == {"op": None, "params": {}}
+    rubric_reason = next(rec for rec in rank_methods(register) if rec.id == "06").rank_reason
+    assert winner["why"] == rubric_reason
+
+
+async def test_winner_row_why_carries_the_matched_phrase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An appended winner states its matched phrase, like the top row.
+
+    The question contains one authored phrase of every row, so all six
+    ride the candidate set as hits. The embedding scores pick 06 (its
+    only phrase is the cluster-flavored one); the rubric cap drops it.
+    The appended row's why is the phrase 06 matched, verbatim.
+    """
+    monkeypatch.setattr(analysis_route_tools, "_router_embedder", lambda _cfg: _SplitEmbedder())
+    winner_phrase = "Which cluster count fits these interviews?"
+    register = _register(
+        *[
+            _record(id_, f"Filler method {id_}", [_FILLER_PHRASES[id_][0]])
+            for id_ in ("01", "02", "03", "04", "05")
+        ],
+        _record("06", "Cluster method", [winner_phrase]),
+    )
+    monkeypatch.setattr(analysis_route_tools, "load_method_register", lambda _cfg: register)
+    question = " ".join([_FILLER_PHRASES[id_][0] for id_ in ("01", "02", "03", "04", "05")])
+    question = f"{question} {winner_phrase}"
+    result = await _run(question=question, config={})
+    assert result["status"] == "resolved"
+    intent = cast("dict[str, object]", result["intent"])
+    assert intent["method_id"] == "06"
+    ranked = cast("list[dict[str, object]]", result["ranked"])
+    ranked_ids = [str(row["method_id"]) for row in ranked]
+    assert ranked_ids[:5] == ["01", "02", "03", "04", "05"]
+    assert ranked_ids[-1] == "06"
+    assert ranked[-1]["why"] == winner_phrase
 
 
 async def test_ambiguous_envelope_omits_suggestions(monkeypatch: pytest.MonkeyPatch) -> None:

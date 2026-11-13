@@ -5,7 +5,8 @@ database; schema_parity_compare diffs two states. sqlglot is STATIC
 ANALYSIS ONLY here (storage portability program, OSS table). DO-block
 bodies get a best-effort inner fold: plain ALTER TABLE statements are
 parsed and applied; EXECUTE-format dynamic SQL stays out of reach and
-shows up as drift unless the gate allowlist declares it.
+shows up as drift unless the gate allowlist declares it. Column,
+constraint, and ALTER-action folding live in schema_parity_alter.
 """
 
 from __future__ import annotations
@@ -15,15 +16,13 @@ import re
 from pathlib import Path
 
 import sqlglot
+from schema_parity_alter import fold_alter, fold_column, fold_table_constraints
 from schema_parity_model import (
-    ColumnSpec,
     IndexSpec,
     Origin,
     SchemaState,
     SequenceSpec,
     TableSpec,
-    normalize_default,
-    normalize_type,
 )
 from schema_parity_sql import SchemaParityError, split_statements
 from sqlglot import exp
@@ -31,68 +30,7 @@ from sqlglot.errors import ParseError, TokenError
 
 logging.getLogger("sqlglot").setLevel(logging.CRITICAL)
 
-_NOT_NULL_CONSTRAINT = re.compile(r"^(.+)_not_null$", re.IGNORECASE)
 _INNER_ALTER = re.compile(r"\bALTER\s+TABLE[^;]+;", re.IGNORECASE)
-
-
-def _schema_cols(node: exp.Expression) -> tuple[str, ...]:
-    """Column tuple of a PRIMARY KEY / UNIQUE constraint (Schema of names)."""
-    this = node.args.get("this")
-    if isinstance(this, exp.Schema):
-        return tuple(e.name for e in this.expressions)
-    return ()
-
-
-def _ref_target(ref: exp.Expression) -> tuple[str, tuple[str, ...]]:
-    """(table, cols) of a REFERENCES clause; table may be Schema-wrapped."""
-    this = ref.args.get("this")
-    table = this.this if isinstance(this, exp.Schema) else this
-    cols = tuple(e.name for e in ref.args.get("expressions") or [])
-    return (table.name if isinstance(table, exp.Table) else "", cols)
-
-
-def _fold_column(table: TableSpec, col: exp.ColumnDef, at: Origin) -> None:
-    name = col.name
-    raw_type = col.args["kind"].sql() if col.args.get("kind") else "UNKNOWN"
-    nullable = True
-    default = ""
-    sequences: list[str] = []
-    for con in col.args.get("constraints") or []:
-        kind = con.kind
-        if isinstance(kind, exp.NotNullColumnConstraint):
-            nullable = False
-        elif isinstance(kind, exp.DefaultColumnConstraint):
-            default = normalize_default(kind.this.sql())
-            match = re.search(r"nextval\('([^']+)'", default)
-            if match:
-                # A nextval default IS the sequence backing; it is compared
-                # as a sequence, not as a default (pg serial has none).
-                default = ""
-                sequences.append(match.group(1))
-        elif isinstance(kind, exp.GeneratedAsIdentityColumnConstraint):
-            sequences.append(f"{table.name}_{name}_seq")
-        elif isinstance(kind, exp.Reference):
-            table.fks[(name,)] = _ref_target(kind)
-    if raw_type.strip().upper() in ("SERIAL", "BIGSERIAL", "SMALLSERIAL"):
-        # pg SERIAL implies a <table>_<col>_seq sequence behind the int.
-        sequences.append(f"{table.name}_{name}_seq")
-    table.columns[name] = ColumnSpec(
-        type=normalize_type(raw_type), nullable=nullable, default=default, origin=at
-    )
-    for seq in sequences:
-        table.sequences[name] = seq
-
-
-def _fold_table_constraints(node: exp.Expression, table: TableSpec) -> None:
-    """Fold PK / UNIQUE / FK constraints found anywhere inside node."""
-    for pk in node.find_all(exp.PrimaryKey):
-        table.primary_key = _schema_cols(pk)
-    for uq in node.find_all(exp.UniqueColumnConstraint):
-        table.uniques.add(tuple(sorted(_schema_cols(uq))))
-    for fk in node.find_all(exp.ForeignKey):
-        target = _ref_target(fk.args["reference"])
-        cols = tuple(sorted(e.name for e in fk.args.get("expressions") or []))
-        table.fks[cols] = target
 
 
 def _table_of_create(node: exp.Create) -> str:
@@ -105,8 +43,8 @@ def _fold_create(node: exp.Create, state: SchemaState, at: Origin) -> None:
     if node.kind == "TABLE":
         table = TableSpec(name=_table_of_create(node), origin=at)
         for col in node.find_all(exp.ColumnDef):
-            _fold_column(table, col, at)
-        _fold_table_constraints(node, table)
+            fold_column(table, col, at)
+        fold_table_constraints(node, table)
         state.tables[table.name] = table
     elif node.kind == "SEQUENCE":
         named = node.find(exp.Table)
@@ -146,46 +84,6 @@ def _plain_index(node: exp.Create, at: Origin) -> IndexSpec | None:
     )
 
 
-def _fold_alter(node: exp.Alter, state: SchemaState, at: Origin) -> None:
-    named = node.find(exp.Table)
-    table = state.tables.get(named.name if named else "")
-    if table is None:
-        raise SchemaParityError(f"{at.where()}: ALTER has no folded CREATE TABLE")
-    for action in node.args.get("actions") or []:
-        if isinstance(action, exp.ColumnDef):
-            _fold_column(table, action, at)
-        elif isinstance(action, exp.AlterColumn):
-            target = action.args.get("this")
-            col_name = target.name if target is not None else ""
-            if action.args.get("dtype") is not None and col_name in table.columns:
-                table.columns[col_name].type = normalize_type(action.args["dtype"].sql())
-                table.columns[col_name].origin = at
-            elif action.args.get("allow_null") is not None and col_name in table.columns:
-                table.columns[col_name].nullable = bool(action.args["allow_null"])
-                table.columns[col_name].origin = at
-        elif isinstance(action, exp.RenameColumn):
-            old, new = action.args["this"].name, action.args["to"].name
-            if old in table.columns:
-                table.columns[new] = table.columns.pop(old)
-                table.columns[new].origin = at
-        elif isinstance(action, exp.Drop):
-            for dropped in action.args.get("expressions") or []:
-                dropped_name = dropped.name
-                if action.args.get("kind") == "COLUMN" and dropped_name in table.columns:
-                    del table.columns[dropped_name]
-                elif match := _NOT_NULL_CONSTRAINT.match(dropped_name):
-                    col_name = match.group(1)
-                    if col_name in table.columns:
-                        # House convention: <col>_not_null names a NOT NULL
-                        # constraint; dropping it clears the column flag.
-                        table.columns[col_name].nullable = True
-                        table.columns[col_name].origin = at
-        else:
-            # ADD CONSTRAINT (AddConstraint) and friends: the constraint
-            # nodes sit under the action, wherever the dialect put them.
-            _fold_table_constraints(action, table)
-
-
 def _fold_do_body(text: str, dialect: str, state: SchemaState, at: Origin) -> None:
     """Best-effort fold of plain ALTER TABLE statements inside a DO block.
 
@@ -204,7 +102,7 @@ def _fold_do_body(text: str, dialect: str, state: SchemaState, at: Origin) -> No
             # skip, not a gate failure.
             continue
         if isinstance(inner, exp.Alter):
-            _fold_alter(inner, state, at)
+            fold_alter(inner, state, at)
 
 
 def _index_name(node: exp.Create) -> str:
@@ -269,7 +167,7 @@ def fold_file(path: Path, dialect: str, display: str, state: SchemaState) -> Sch
             elif isinstance(node, exp.Create):
                 _fold_create(node, state, at)
             elif isinstance(node, exp.Alter):
-                _fold_alter(node, state, at)
+                fold_alter(node, state, at)
             elif isinstance(node, exp.Drop):
                 _fold_drop(node, state, at)
             elif isinstance(node, exp.Command) and text.lstrip()[:2].upper() == "DO":

@@ -222,6 +222,14 @@ pip install --force-reinstall --no-deps python-magic-bin==0.4.14
 
 Run the check again after the repair. CI is not exposed: it installs `python-magic-bin` by hand on the Windows leg.
 
+### macOS: install libmagic
+
+On macOS, `unstructured` needs libmagic for file-type detection. Without it, more file types show as unknown, and `test_http_ingest_file_is_binary_safe` fails. Install it with Homebrew:
+
+```bash
+brew install libmagic
+```
+
 ## Running tests
 
 ```bash
@@ -236,6 +244,20 @@ pytest --cov=corpus_kb --cov-report=term-missing
 ```
 
 Tests that need Ollama degrade to the zero-vector fallback when it is down. The suite then runs without a model server. Tests that need Unstructured `hi_res` mode are skipped on Windows because detectron2 is unavailable.
+
+The research-suite throwaway database gets a per-process name by default. Two pytest sessions can then run at once, and neither drops the other's database. Set `CORPUS_KB_TEST_DB` to pin one shared name on purpose (see `tests/research_db.py`).
+
+### Local test database
+
+The Postgres test legs use two roles. The app role connects with `CORPUS_KB_DATABASE_URL`. The admin role creates the throwaway databases and extensions; it defaults to `postgres`/`postgres` (the CI service image settings). On a local server with different roles, export the three variables before the run:
+
+```bash
+export POSTGRES_SUPERUSER="$(whoami)"
+export POSTGRES_SUPERUSER_PASSWORD=""
+export CORPUS_KB_DATABASE_URL="postgresql://$(whoami)@localhost:5432/corpus_kb_test"
+```
+
+Homebrew Postgres makes your OS user the superuser and has no `postgres` role. Use the export above on it. When the admin role cannot log in, the gated tests now skip with a reason that names these variables. As an alternative, run the CI Postgres image locally; it needs no environment variables.
 
 ## Conventions
 

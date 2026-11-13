@@ -19,11 +19,31 @@ from ..rag.embedder_selection import (
     late_chunking_requested,
     select_ingest_embedder,
 )
+from ..rag.embedder_usage import embed_usage_section
 from ..utils.models import Chunk
 from .ingest_cfg import _nested_dict
 
 if TYPE_CHECKING:
     import asyncpg
+
+
+def _record_embed_usage(
+    meta: dict[str, object] | None,
+    provider: str,
+    embedder: object,
+) -> None:
+    """Write the serving embedder's usage snapshot into ``meta`` (issue #198).
+
+    Only an embedder that publishes a snapshot (today: OllamaEmbedder)
+    produces the section; a backend that reports nothing leaves ``meta``
+    untouched, so the receipt key stays honestly absent.
+    """
+    if meta is None:
+        return
+    usage = getattr(embedder, "last_usage", None)
+    if usage is None:
+        return
+    meta["token_usage"] = {"embed": embed_usage_section(usage, provider)}
 
 
 def _all_zero(vectors: list[list[float]]) -> bool:
@@ -129,12 +149,15 @@ async def _embed_with_fallback(
     plan: IngestEmbeddingPlan | None,
     chunks: list[Chunk],
     texts: list[str],
+    meta: dict[str, object] | None = None,
 ) -> tuple[bool, str | None]:
     """Pooled embedding with the zero-vector fallback chain.
 
     When the primary returns zero-vectors (the embedder-failure marker), the
     ``embedding.fallback_provider`` embedder is tried; its vectors win when
-    real. Every branch assigns SOME vectors before reporting.
+    real. Every branch assigns SOME vectors before reporting. The usage
+    section (issue #198) is attributed to the provider whose vectors were
+    kept — only a reporting embedder produces one.
     """
     embedding_cfg = _nested_dict(config, "embedding")
     provider_value = embedding_cfg.get("provider")
@@ -148,6 +171,7 @@ async def _embed_with_fallback(
         fallback_provider = fallback_value if isinstance(fallback_value, str) else "ollama"
         if fallback_provider == provider:
             _assign_embeddings(chunks, vectors)
+            _record_embed_usage(meta, provider, embedder)
             return (
                 True,
                 f"Connection failed: {type(embedder).__name__} returned zero vectors",
@@ -160,12 +184,14 @@ async def _embed_with_fallback(
         fallback_vectors = await aembed_batch(fallback_embedder, texts)
         if fallback_vectors and not _all_zero(fallback_vectors):
             _assign_embeddings(chunks, fallback_vectors)
+            _record_embed_usage(meta, fallback_provider, fallback_embedder)
             return (
                 True,
                 f"Connection failed: {provider} returned zero vectors; "
                 f"embeddings produced by fallback {fallback_provider}",
             )
         _assign_embeddings(chunks, vectors)
+        _record_embed_usage(meta, provider, embedder)
         return (
             True,
             f"Connection failed: {provider} and fallback "
@@ -173,6 +199,7 @@ async def _embed_with_fallback(
         )
 
     _assign_embeddings(chunks, vectors)
+    _record_embed_usage(meta, provider, embedder)
     return False, None
 
 
@@ -206,8 +233,10 @@ async def embed_chunks(
     via ``embed_document_chunks`` against the document (every chunk vector
     pools token states that saw the whole document); chunks lacking spans
     embed pooled with a per-chunk note. ``meta``, when given, receives
-    ``"embedding_mode"`` always and ``"embedding_note"`` whenever a fallback
-    note exists, so callers can surface the decision on the run result.
+    ``"embedding_mode"`` always, ``"embedding_note"`` whenever a fallback
+    note exists, and ``"token_usage"`` when the serving embedder reported
+    its spend (issue #198), so callers can surface the decision on the run
+    result.
     """
     try:
         if not chunks:
@@ -226,7 +255,7 @@ async def embed_chunks(
                 meta["embedding_note"] = note
 
         texts = [(text_override or {}).get(str(chunk.chunk_id), chunk.text) for chunk in chunks]
-        return await _embed_with_fallback(config, pool, plan, chunks, texts)
+        return await _embed_with_fallback(config, pool, plan, chunks, texts, meta)
     except Exception as exc:
         return True, f"{type(exc).__name__}: {exc}"
 

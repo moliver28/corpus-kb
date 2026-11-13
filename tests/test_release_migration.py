@@ -14,6 +14,7 @@ tenant-scoped FK guard; the partial unique index (one released row per
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -27,7 +28,9 @@ MIGRATION = REPO / "src" / "corpus_kb" / "migrations" / "019_codebook_releases.s
 ROLLBACK = REPO / "src" / "corpus_kb" / "migrations" / "rollback_019_codebook_releases.sql"
 BASE_DSN = "postgresql://corpus_user:corpus_pass@localhost:5432"
 SUPER_DSN = f"{BASE_DSN}/postgres"
-DB_NAME = "corpus_kb_m019_test"
+# Per-process name: two live sessions sharing one fixed name force-drop
+# each other's database mid-run (issue #327, the research_db.py precedent).
+DB_NAME = f"corpus_kb_m019_{os.getpid() % 100000}_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
 TABLES = (
     "codebook_releases",

@@ -44,6 +44,7 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     "validation_error": (400, -32602, 1),
     "question_too_short": (400, -32602, 1),
     "no_method_matches": (400, -32602, 1),
+    "write_refused": (400, -32602, 1),
     "payload_too_large": (413, -32602, 1),
     "unsupported_media_type": (415, -32602, 1),
     "not_found": (404, -32001, 1),
@@ -63,6 +64,8 @@ ERROR_MAP: dict[str, tuple[int, int, int]] = {
     "ConnectionError": (503, -32003, 3),
     "OSError": (503, -32003, 3),
     "TimeoutError": (503, -32003, 3),
+    # unstructured raises this when no parser matches the input file.
+    "UnsupportedFileFormatError": (415, -32602, 1),
     # asyncpg class names surfaced through legacy envelopes.
     "CannotConnectNowError": (503, -32003, 3),
     "ConnectionDoesNotExistError": (503, -32003, 3),
@@ -148,6 +151,18 @@ class NoMethodMatchesError(CorpusError):
     error_type = "no_method_matches"
     http_status, socket_code, cli_exit = ERROR_MAP["no_method_matches"]
     remediation = "Try other words, or pick a method with analysis-select-method."
+
+
+class WriteRefusedError(CorpusError):
+    """The statement is not a read, or the call carries more than one.
+
+    Raised by the SQL query route's statement gate (issue #349) before any
+    connection opens, so a refused statement never changes a row.
+    """
+
+    error_type = "write_refused"
+    http_status, socket_code, cli_exit = ERROR_MAP["write_refused"]
+    remediation = "Send one SELECT or WITH statement. The route cannot change data."
 
 
 class PayloadTooLargeError(CorpusError):

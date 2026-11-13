@@ -82,12 +82,22 @@ class Document(Aggregate):
         self.chunk_count += chunk_count
 
     @event("TurnsParsed")
-    def add_turn_batch(self, tenant_id: UUID, turns: list[dict[str, object]]) -> None:
+    def add_turn_batch(
+        self,
+        tenant_id: UUID,
+        turns: list[dict[str, object]],
+        replace: bool = False,
+    ) -> None:
         """Record one BATCH of parsed transcript turns (todo-11 (a)).
 
         Payloads carry text_sha256 refs + speaker/role, never full turn text
         (the text lives in the immutable content-addressed store). Batches are
         capped so no single event can blow the payload budget.
+
+        ``replace`` rides the FIRST batch of a re-transcription (issue #363):
+        the projector drops the document's derived unit and exchange rows
+        before it stores this batch, so the re-parse replaces the old rows
+        exactly — including any tail beyond the new seq range.
         """
         if not 0 < len(turns) <= 50:
             raise ValueError(f"turn batch must be 1..50 turns, got {len(turns)}")
@@ -96,6 +106,35 @@ class Document(Aggregate):
                 raise ValueError("turn payload missing text_sha256 reference")
             turn["tenant_id"] = str(tenant_id)
         self.turn_count = getattr(self, "turn_count", 0) + len(turns)
+
+    @event("Reingested")
+    def reingest(
+        self,
+        tenant_id: UUID,
+        source: str,
+        source_type: str,
+        file_size: int | None,
+        file_hash: str | None,
+        metadata: dict[str, object],
+        replace: bool = False,
+    ) -> None:
+        """Re-state the document facts on a re-ingest of the same source.
+
+        One stream per source (issue #363): the reused aggregate appends this
+        fact so the documents read row carries the new parse's facts (hash,
+        size, metadata) without a second row or a second stream.
+
+        ``replace=True`` marks a re-transcription (close-out F-2): the
+        projector drops the document's derived rows on THIS event, so the
+        marker does not depend on a TurnsParsed batch existing — a re-parse
+        that yields zero turns still clears the old units. Older streams
+        without the field default to False (no drop).
+        """
+        self.source = source
+        self.source_type = source_type
+        self.file_size = file_size
+        self.file_hash = file_hash
+        self.metadata = metadata
 
     @event("ExchangesLinked")
     def add_exchange_batch(self, tenant_id: UUID, exchanges: list[dict[str, object]]) -> None:

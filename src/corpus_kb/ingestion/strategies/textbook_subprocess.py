@@ -6,135 +6,43 @@ heavy window (docling, paddle-vl) parses in its own spawned child. A
 crash or a timeout kills only the child; the caller falls back to pypdf
 for that one window and the run continues.
 
-The child imports the parser itself and ships plain page dicts back
-over a queue, so the payload stays small and pickles without parser
-types. Parent and child share one item-extraction rule per parser
-(``items_from_convert_result`` for docling, ``paddle_window_rows`` for
-paddle-vl), so an isolated window carries the same items an in-process
-window would.
+Two child surfaces share this module's parent side. The default
+persistent worker (:mod:`textbook_worker`, issue #270) loads the
+parser once and serves window after window. With reuse off, this
+module's own spawn-per-window path runs instead: one child per window,
+the exact isolation issue #219 shipped. Both surfaces speak the plain
+page rows of :mod:`textbook_child`, so the payload stays small and
+pickles without parser types, and both share one item-extraction rule
+per parser with the in-process path.
 
-Tests patch :func:`_start_child` (the spawn seam), never ``multiprocessing``
-itself, so no test starts a real child process.
+Tests patch :func:`_start_child` (the spawn seam of the per-window
+path), never ``multiprocessing`` itself, so no test starts a real
+child process.
 """
 
 from __future__ import annotations
 
-import importlib
 import multiprocessing
 import pickle
 import time
-from collections.abc import Callable
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 from queue import Empty
-from typing import Protocol
 
-from corpus_kb.errors import ValidationError
-
-from .textbook_docling import (
-    PageItem,
-    items_from_convert_result,
-    page_row,
-    rich_fields_from_row,
+from .textbook_child import (
+    PayloadQueue,
+    WindowPayload,
+    _window_child,
 )
-
-#: One parsed page as a plain dict: ``page``, ``label``, ``text``, plus
-#: the rich keys when the parse set them.
-PageRow = dict[str, object]
-
-#: The child-to-parent payload: one row per parsed page item.
-WindowPayload = list[PageRow]
-
-#: Poll cadence for the payload queue and the exit check (seconds).
-_POLL_SECONDS = 0.2
-
-#: Grace period for the child's exit after it ships its payload.
-_REAP_SECONDS = 2.0
-
-#: Seconds a terminated child gets before the parent kills it.
-_KILL_GRACE_SECONDS = 5.0
-
-
-class PayloadQueue(Protocol):
-    """The slice of ``multiprocessing.Queue`` this module uses."""
-
-    def get(self, block: bool = True, timeout: float | None = None) -> WindowPayload: ...
-
-    def put(self, rows: WindowPayload, /) -> None: ...
-
-    def close(self) -> None: ...
-
-
-def _stop(proc: BaseProcess) -> None:
-    """Terminate the child; kill it when it ignores the term signal.
-
-    A child stuck inside native scanner code can ignore SIGTERM, so a
-    plain join after terminate can hang forever on POSIX. The kill
-    escalation bounds that wait.
-    """
-    proc.terminate()
-    proc.join(_KILL_GRACE_SECONDS)
-    if proc.is_alive():
-        proc.kill()
-    proc.join()
-
-
-def _docling_window_rows(
-    pdf_path: str, start: int, end: int, structured: bool = False
-) -> list[dict[str, object]]:
-    """One docling window as rows; the docling import stays in the child."""
-    module = importlib.import_module("docling.document_converter")
-    converter = module.DocumentConverter()
-    result = converter.convert(source=pdf_path, page_range=(start, end))
-    return [page_row(item) for item in items_from_convert_result(result, structured)]
-
-
-def _paddle_window_rows(
-    pdf_path: str, start: int, end: int, structured: bool = False
-) -> list[dict[str, object]]:
-    """One paddle-vl window as rows (the paddle module owns the parse).
-
-    A sibling import, not a module-level one: this module owns the
-    wrapper, the paddle module owns the parse, and each imports the
-    other only inside its own edge.
-    """
-    from .textbook_paddle import paddle_window_rows
-
-    return paddle_window_rows(pdf_path, start, end, structured)
-
-
-#: One rows factory per registry parser that parses in a child. The
-#: invariant ``set(_WINDOW_ROW_FACTORIES) == set(_PARSER_SEAMS)`` is
-#: pinned in the tests, so a fourth registry parser cannot silently
-#: fall into another parser's child.
-_WINDOW_ROW_FACTORIES: dict[str, Callable[[str, int, int, bool], list[dict[str, object]]]] = {
-    "docling": _docling_window_rows,
-    "paddle-vl": _paddle_window_rows,
-}
-
-
-def _window_child(
-    pdf_path: str,
-    parser: str,
-    start: int,
-    end: int,
-    payload: PayloadQueue,
-    structured: bool = False,
-) -> None:
-    """Child target: import the parser here, parse one window, ship dicts.
-
-    The parser import stays inside the factory; the parent only probes
-    the module spec, so a full import never runs there. An import-time
-    crash exits the child nonzero instead of taking the worker down. An
-    uncaught error exits nonzero; the parent reads the exit code, never
-    a traceback over the queue. ``structured`` turns on the rich item
-    fields in the shipped rows (a no-op for paddle-vl today). An
-    unknown parser raises: no parser ever borrows another's rows.
-    """
-    factory = _WINDOW_ROW_FACTORIES.get(parser)
-    if factory is None:
-        raise ValidationError(f"no child rows factory for parser {parser!r}")
-    payload.put(factory(pdf_path, start, end, structured))
+from .textbook_docling import PageItem
+from .textbook_settings import WorkerPolicy
+from .textbook_worker import (
+    _POLL_SECONDS,
+    _REAP_SECONDS,
+    _items_from_rows,
+    _stop,
+    parse_window_with_worker,
+)
 
 
 def _start_child(
@@ -158,18 +66,32 @@ def _start_child(
 
 
 def parse_window_in_subprocess(
-    pdf_path: Path, parser: str, start: int, end: int, timeout_s: float, structured: bool = False
+    pdf_path: Path,
+    parser: str,
+    start: int,
+    end: int,
+    timeout_s: float,
+    structured: bool = False,
+    worker: WorkerPolicy | None = None,
 ) -> list[PageItem] | None:
     """One window in a spawned child; ``None`` on crash, timeout, or no payload.
 
-    The loop drains the queue and checks the exit code in short polls, so
-    a large payload never blocks the join. Past the deadline the child is
-    terminated and the caller falls back. A delivered payload is the
-    success signal: a child that dies after shipping its rows still
-    counts. A crash without a payload, a broken flush, or a timeout all
-    return ``None``. ``parser`` picks the child target; ``structured``
-    passes through to the child.
+    A ``worker`` policy with ``reuse`` on routes the window to the
+    persistent worker (:func:`parse_window_with_worker`), which keeps
+    one loaded child across windows (issue #270). Without it, this
+    path spawns one child for this window only. The loop drains the
+    queue and checks the exit code in short polls, so a large payload
+    never blocks the join. Past the deadline the child is terminated
+    and the caller falls back. A delivered payload is the success
+    signal: a child that dies after shipping its rows still counts. A
+    crash without a payload, a broken flush, or a timeout all return
+    ``None``. ``parser`` picks the child target; ``structured`` passes
+    through to the child.
     """
+    if worker is not None and worker.reuse:
+        return parse_window_with_worker(
+            pdf_path, parser, start, end, timeout_s, structured, worker.max_windows
+        )
     proc, payload = _start_child(str(pdf_path), parser, start, end, structured)
     deadline = time.monotonic() + timeout_s
     rows: WindowPayload | None = None
@@ -200,36 +122,3 @@ def parse_window_in_subprocess(
     if rows is None:
         return None
     return _items_from_rows(rows)
-
-
-def _items_from_rows(rows: WindowPayload) -> list[PageItem]:
-    """PageItems from the child's dicts; malformed rows are skipped.
-
-    A malformed rich value marks the whole row bad, the same shape rule
-    the window cache applies.
-    """
-    items: list[PageItem] = []
-    for row in rows:
-        if not isinstance(row, dict):
-            continue  # a corrupt payload row skips, never fails the window
-        page = row.get("page")
-        label = row.get("label")
-        text = row.get("text")
-        if isinstance(page, bool) or not isinstance(page, int):
-            continue
-        if not isinstance(label, str) or not isinstance(text, str):
-            continue
-        rich = rich_fields_from_row(row)
-        if rich is None:
-            continue
-        items.append(
-            PageItem(
-                page,
-                label,
-                text,
-                level=rich.level,
-                table_markdown=rich.table_markdown,
-                bbox=rich.bbox,
-            )
-        )
-    return items

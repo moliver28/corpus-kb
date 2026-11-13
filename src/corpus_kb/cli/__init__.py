@@ -163,6 +163,7 @@ register_ask_command(app)
 # and imports corpus_kb.cli nowhere, so these imports stay acyclic.
 from corpus_kb.cli.cli_chunk_reads import register as register_chunk_read_commands  # noqa: E402
 from corpus_kb.cli.cli_entity_reads import register as register_entity_read_commands  # noqa: E402
+from corpus_kb.cli.cli_events import register as register_events_command  # noqa: E402
 from corpus_kb.cli.cli_graph import register as register_graph_commands  # noqa: E402
 from corpus_kb.cli.cli_graph_hops import register as register_graph_hops_commands  # noqa: E402
 from corpus_kb.cli.cli_ingest_text import register as register_ingest_text_command  # noqa: E402
@@ -171,6 +172,7 @@ from corpus_kb.cli.cli_quickstart import register as register_quickstart  # noqa
 from corpus_kb.cli.cli_tag_writes import register as register_tag_write_commands  # noqa: E402
 from corpus_kb.cli.cli_tags import register as register_tag_commands  # noqa: E402
 
+register_events_command(app)
 register_graph_commands(app)
 register_chunk_read_commands(app)
 register_entity_read_commands(app)
@@ -304,11 +306,29 @@ def setup(
 
 
 @app.command("doctor")
-def doctor() -> int:
-    """Read-only system diagnostics."""
+def doctor(
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Print one machine-readable report (checks + resolved config values)",
+    ),
+) -> int:
+    """Read-only system diagnostics.
+
+    Exits 3 when the configured database is unreachable (issue #348);
+    warnings keep exit 0.
+    """
     from corpus_kb._setup.install import main as install_main
 
-    return install_main(["doctor"])
+    argv = ["doctor"]
+    if json_output:
+        argv.append("--json")
+    code = install_main(argv)
+    # Honest exit: typer ignores plain int returns, so non-zero must raise
+    # (the cli_ingest._finish rule).
+    if code:
+        raise typer.Exit(code=code)
+    return 0
 
 
 @app.command()

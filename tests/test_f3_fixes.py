@@ -203,6 +203,44 @@ async def test_cli_approve_accept_continues(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 # ---------------------------------------------------------------------------
+# Issue 306 (ruling 2a): a cleared denial re-asks, and the ask is on the
+# receipt trail (approval_reprompted) before the decision.
+# ---------------------------------------------------------------------------
+
+
+async def _deny_boundary_events(reprompt: bool) -> list[str]:
+    from corpus_kb.research import cycle_events as ev
+
+    async def deny(_stage: str) -> bool:
+        return False
+
+    recorder = ev.CycleRecorder(json_output=True)
+    handler = _FakeHandler()
+    code = await cycle_render.approval(
+        recorder,
+        handler,
+        _fake_stack(),
+        UUID(int=1),
+        UUID(int=2),
+        "deductive",
+        deny,
+        reprompt=reprompt,
+    )
+    assert code == gates.EXIT_APPROVAL_DENIED
+    return [str(event["event"]) for event in recorder.events]
+
+
+async def test_reprompt_boundary_lands_the_event_before_the_ask() -> None:
+    names = await _deny_boundary_events(reprompt=True)
+    assert names == ["approval_reprompted", "approval_denied"]
+
+
+async def test_plain_boundary_emits_no_reprompt_event() -> None:
+    names = await _deny_boundary_events(reprompt=False)
+    assert names == ["approval_denied"]
+
+
+# ---------------------------------------------------------------------------
 # F-6: an all-noise inductive pass prints honest guidance
 # ---------------------------------------------------------------------------
 

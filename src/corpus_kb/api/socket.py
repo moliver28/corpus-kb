@@ -20,7 +20,9 @@ Every ``CorpusError`` subclass answers its own ``socket_code`` (issue
 The method table lives in ``api/socket_ops.py``: one arm per catalogue
 operation, core arms ported from the old dispatch chain plus generated
 arms over the shared HTTP tool-route table. This module owns the server:
-connection handling, request parsing, and the error mapping.
+connection handling, request parsing, and the error mapping. The
+per-server ENDPOINT (resolution + liveness probe, issue #348) lives in
+``api/socket_target.py``.
 """
 
 from __future__ import annotations
@@ -34,7 +36,8 @@ from pathlib import Path
 from typing import Any
 
 from corpus_kb.api.socket_ops import MethodNotFoundError
-from corpus_kb.errors import CorpusError
+from corpus_kb.api.socket_target import _probe_live
+from corpus_kb.errors import ConflictError, CorpusError
 
 logger = logging.getLogger(__name__)
 
@@ -51,33 +54,64 @@ else:
 
 
 class JSONRPCServer:
-    """JSON-RPC 2.0 server over Unix socket / named pipe."""
+    """JSON-RPC 2.0 server over Unix socket / named pipe.
 
-    def __init__(self, socket_path: str = DEFAULT_SOCKET_PATH) -> None:
+    ``socket_path`` is the resolved endpoint from
+    :func:`corpus_kb.api.socket_target.resolve_socket_target`: a unix
+    socket file path (POSIX) or a TCP port number (Windows).
+    """
+
+    def __init__(self, socket_path: str | int = DEFAULT_SOCKET_PATH) -> None:
         self._socket_path = socket_path
         self._running = False
         self._server: asyncio.AbstractServer | None = None
 
     async def start(self) -> None:
-        """Start listening for connections."""
+        """Start listening for connections.
+
+        Before touching an existing endpoint the server probes it: when
+        another server answers, start raises ``ConflictError`` with one
+        clear line (issue #348) — it never takes a live socket over.
+        """
         self._running = True
 
         if sys.platform == "win32":
             # Windows named pipe — use asyncio with a custom protocol
-            logger.info("Socket server starting on named pipe: %s", self._socket_path)
             # For Windows, we use a TCP socket on localhost as fallback
-            # since named pipes in asyncio require platform-specific code
-            self._server = await asyncio.start_server(
-                self._handle_client, host="127.0.0.1", port=8011
-            )
+            # since named pipes in asyncio require platform-specific code.
+            # The resolved target is that TCP port (int); a bare str here
+            # is the legacy default construction and keeps port 8011.
+            port = self._socket_path if isinstance(self._socket_path, int) else 8011
+            if await _probe_live(port):
+                raise ConflictError(
+                    f"Another Corpus-KB server is already listening on TCP port {port}. "
+                    "Stop it, or run this server on a different --port."
+                )
+            logger.info("Socket server starting on TCP port: %d", port)
+            try:
+                self._server = await asyncio.start_server(
+                    self._handle_client, host="127.0.0.1", port=port
+                )
+            except OSError as exc:
+                raise ConflictError(
+                    f"Cannot listen on TCP port {port}: {exc}. "
+                    "Stop the program that holds it, or run on a different --port."
+                ) from exc
         else:
             # Unix socket
-            socket_path = Path(self._socket_path)
+            socket_path = Path(str(self._socket_path))
             if socket_path.exists():
+                if await _probe_live(str(socket_path)):
+                    raise ConflictError(
+                        f"Another Corpus-KB server is already listening on {socket_path}. "
+                        "Stop it, or run this server on a different --port."
+                    )
+                # No live server answered: the file is stale wreckage from
+                # a crashed process. Safe to remove and rebind.
                 socket_path.unlink()
             logger.info("Socket server starting on: %s", self._socket_path)
             self._server = await asyncio.start_unix_server(
-                self._handle_client, path=self._socket_path
+                self._handle_client, path=str(socket_path)
             )
 
         logger.info("Socket server listening")
@@ -167,7 +201,7 @@ def _error(code: int, message: str, req_id: Any = None) -> dict[str, Any]:
 _socket_server: JSONRPCServer | None = None
 
 
-def get_socket_server(socket_path: str = DEFAULT_SOCKET_PATH) -> JSONRPCServer:
+def get_socket_server(socket_path: str | int = DEFAULT_SOCKET_PATH) -> JSONRPCServer:
     global _socket_server
     if _socket_server is None:
         _socket_server = JSONRPCServer(socket_path)

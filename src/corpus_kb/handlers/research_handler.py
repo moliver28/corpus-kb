@@ -21,20 +21,25 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import asyncpg
+from eventsourcing.application import AggregateNotFoundError
+from eventsourcing.persistence import IntegrityError
 
 from corpus_kb.config import load_config
 from corpus_kb.domain.aggregates import Document
 from corpus_kb.domain.application import get_app
 from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
-from corpus_kb.errors import NotFoundError, ValidationError
+from corpus_kb.errors import ConflictError, CorpusError, NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
+from corpus_kb.rag.embedder_usage import UsageTally, embed_usage_section
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
+    documents_source_doc_id,
+    ledger_last_doc_id,
     plan_file,
     scan_path,
 )
@@ -47,6 +52,9 @@ from corpus_kb.tools.ingest_store import PostgresIngestStore
 from corpus_kb.tools.pipeline.research_units import research_document
 from corpus_kb.tools.pipeline.sinks import UnitSink
 from corpus_kb.tools.pipeline.validate import resolve_mode, validate_document
+
+if TYPE_CHECKING:
+    from corpus_kb.rag.embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +84,7 @@ class ResearchHandler:
         self._embed_fn = embed_fn
         self._dsn = dsn
         self._default_embed_fn: Callable[[str], list[float]] | None | None = None
+        self._default_embedder: OllamaEmbedder | None = None
 
     @property
     def app(self):
@@ -102,10 +111,36 @@ class ResearchHandler:
             from corpus_kb.rag.embedder import OllamaEmbedder, create_embedder
 
             embedder = create_embedder()
-            self._default_embed_fn = (
-                embedder.embed if isinstance(embedder, OllamaEmbedder) else None
-            )
+            if isinstance(embedder, OllamaEmbedder):
+                # Keep the instance: the usage tally (issue #198) reads the
+                # per-call snapshot off it after each embed.
+                self._default_embedder = embedder
+                self._default_embed_fn = embedder.embed
         return self._default_embed_fn
+
+    def _link_embed_tallied(self) -> tuple[Callable[[str], list[float]] | None, UsageTally]:
+        """The link embed fn plus the run's usage tally (issue #198).
+
+        The wrapper reads the embedder's per-call snapshot right after each
+        embed. ``link_exchanges`` is synchronous (no await points), so one
+        file's embeds never interleave with another task's: the per-file
+        attribution is exact. An injected ``embed_fn`` carries no snapshot —
+        the tally stays empty and the receipt key stays honestly absent.
+        """
+        tally = UsageTally()
+        base = self._link_embed()
+        embedder = self._default_embedder
+        if base is None or embedder is None:
+            return base, tally
+
+        def _embed(text: str) -> list[float]:
+            vectors = base(text)
+            usage = embedder.last_usage
+            if usage is not None:
+                tally.add(usage)
+            return vectors
+
+        return _embed, tally
 
     async def ingest_transcript(
         self,
@@ -132,6 +167,11 @@ class ResearchHandler:
         file_path = Path(path)
         if not file_path.exists():
             raise NotFoundError(path)
+        # ONE IDENTITY PER SOURCE (issue #363, close-out F-1): resolve ONCE
+        # here. The ledger probe, the ledger write, and the documents upsert
+        # all key on this string, so two spellings of one file share one
+        # aggregate instead of minting a phantom stream.
+        file_path = file_path.resolve()
         decision = await plan_file(self._pool, tenant_id, file_path, force=force)
         if decision.skipped:
             return {
@@ -164,7 +204,8 @@ class ResearchHandler:
         if mode != "off":
             validation_report = validate_document(canonical, mode)
         role_mapping = map_roles(parsed.turns)
-        exchanges = link_exchanges(parsed.turns, embed=self._link_embed())
+        embed_fn, usage_tally = self._link_embed_tallied()
+        exchanges = link_exchanges(parsed.turns, embed=embed_fn)
 
         texts_by_sha: dict[str, str] = {
             str(chunk.chunk_id): chunk.text for chunk in canonical.chunks
@@ -172,30 +213,70 @@ class ResearchHandler:
         sink = UnitSink(self._pool, tenant_id)
         await sink.store_turn_texts(texts_by_sha, media_type=parsed.source_type)
 
-        doc = Document(
-            tenant_id=tenant_id,
-            source=str(file_path.resolve()),
-            source_type="transcript",
-            file_size=file_path.stat().st_size,
-            file_hash=decision.file_sha256,
-            metadata={
-                "project_id": str(project_id) if project_id else None,
-                "title": title or file_path.stem,
-                "source_hash": decision.file_sha256,
-                "parser_name": "research.transcript_parser",
-                "parser_version": "1",
-                "parser_format": parsed.format_name,
-                "parse_quality": parsed.parse_quality,
-                "project_name": title or file_path.stem,
-                "role_basis": speaker_role_basis(parsed.turns),
-                "role_mapping": role_mapping,
-            },
-        )
+        metadata: dict[str, Any] = {
+            "project_id": str(project_id) if project_id else None,
+            "title": title or file_path.stem,
+            "source_hash": decision.file_sha256,
+            "parser_name": "research.transcript_parser",
+            "parser_version": "1",
+            "parser_format": parsed.format_name,
+            "parse_quality": parsed.parse_quality,
+            "project_name": title or file_path.stem,
+            "role_basis": speaker_role_basis(parsed.turns),
+            "role_mapping": role_mapping,
+        }
+        # ONE STREAM PER SOURCE (issue #363): the ledger's previous doc id
+        # names the aggregate this path already owns. Reuse it, so the
+        # documents row, the child rows, and the ledger agree on one id.
+        # Minting a second aggregate orphans the new copy into the DLQ and
+        # re-points the ledger at a phantom id. Mint only on a first ingest,
+        # or when the ledger names a stream the event store lost.
+        previous_doc_id = await ledger_last_doc_id(self._pool, tenant_id, file_path)
+        if previous_doc_id is None:
+            # FALLBACK (issue #370): a pre-#366 ledger row can key a
+            # non-resolved spelling, while the documents row keys the
+            # resolved source. Reuse that document id, so the stale row
+            # cannot mint a phantom stream. The probe only matches the
+            # research transcript rows this path owns.
+            previous_doc_id = await documents_source_doc_id(self._pool, tenant_id, str(file_path))
+        doc = self._reused_document(previous_doc_id) if previous_doc_id is not None else None
+        if doc is None:
+            doc = Document(
+                tenant_id=tenant_id,
+                source=str(file_path.resolve()),
+                source_type="transcript",
+                file_size=file_path.stat().st_size,
+                file_hash=decision.file_sha256,
+                metadata=metadata,
+            )
+        else:
+            # The replace marker rides the Reingested event (close-out F-2):
+            # it is the guaranteed-first event of a reused stream, so the
+            # projector drops the old derived rows even when the new parse
+            # yields zero turns and emits no TurnsParsed batch.
+            doc.reingest(
+                tenant_id=tenant_id,
+                source=str(doc.source),
+                source_type="transcript",
+                file_size=file_path.stat().st_size,
+                file_hash=decision.file_sha256,
+                metadata=metadata,
+                replace=True,
+            )
         for batch in _batches(parsed.turns, MAX_TURNS_PER_EVENT):
-            doc.add_turn_batch(tenant_id=tenant_id, turns=[turn.to_payload() for turn in batch])
+            doc.add_turn_batch(
+                tenant_id=tenant_id,
+                turns=[turn.to_payload() for turn in batch],
+            )
         for batch in _batches(exchanges, MAX_EXCHANGES_PER_EVENT):
             doc.add_exchange_batch(tenant_id=tenant_id, exchanges=[e.to_payload() for e in batch])
-        self.app.save(doc)
+        try:
+            self.app.save(doc)
+        except IntegrityError as exc:
+            # Concurrent re-ingest of one source: the second save hits the
+            # stream-version conflict (close-out F-3). Map it through the
+            # taxonomy instead of surfacing a raw 500-class failure.
+            raise _save_conflict() from exc
 
         await sink.record_ledger(
             file_path,
@@ -217,6 +298,12 @@ class ResearchHandler:
         # research path): the result dict IS the run metadata Wave 7 reads.
         if validation_report is not None:
             result["validation"] = validation_report
+        # Per-run token accounting (issue #198): the link embeds' spend,
+        # only when the embedder reported it — otherwise the key stays
+        # absent, never an invented zero. The tally arms only for
+        # OllamaEmbedder, so the provider name is exact here.
+        if usage_tally.usage is not None:
+            result["token_usage"] = {"embed": embed_usage_section(usage_tally.usage, "ollama")}
         return result
 
     async def ingest_path(
@@ -238,7 +325,7 @@ class ResearchHandler:
                 )
             except Exception as exc:
                 logger.warning("ingest failed for %s: %s", file_path, exc)
-                return {"status": "error", "path": str(file_path), "error": str(exc)}
+                return _error_entry(file_path, exc)
 
         results = await gather_bounded(files, _ingest_one, concurrency)
         return {
@@ -381,9 +468,51 @@ class ResearchHandler:
             raise ValidationError(f"aggregate {run_id} is not a CodingRun")
         return run
 
+    def _reused_document(self, doc_id: UUID) -> Document | None:
+        """Rehydrate the Document stream the ledger names, or None to mint.
+
+        None covers a ledger row whose stream the event store does not hold
+        (the pre-fix phantom ids, issue #363): the caller then mints a new
+        document, exactly like a first ingest.
+        """
+        try:
+            aggregate = self.app.repository.get(doc_id)
+        except AggregateNotFoundError:
+            logger.warning(
+                "The ledger names document %s, but its event stream is missing. "
+                "Ingest makes a new document.",
+                doc_id,
+            )
+            return None
+        return aggregate if isinstance(aggregate, Document) else None
+
 
 def _batches(items: list, size: int) -> list[list]:
     return [items[i : i + size] for i in range(0, len(items), size)]
+
+
+def _save_conflict() -> ConflictError:
+    """The taxonomy conflict for a lost same-source save race (close-out F-3)."""
+    return ConflictError(
+        "Another ingest of this source saved first. Retry the ingest.",
+        remediation="Wait for the running ingest to finish. Then try again.",
+    )
+
+
+def _error_entry(file_path: Path, exc: Exception) -> dict[str, Any]:
+    """One batch error entry; one file's failure never aborts the batch.
+
+    A raw stream-version conflict maps to the taxonomy's ConflictError.
+    That is the same mapping the single-file path applies (issue #371).
+    Typed failures carry their taxonomy class in ``error_type``. Other
+    failures keep the plain entry shape.
+    """
+    if isinstance(exc, IntegrityError):
+        exc = _save_conflict()
+    entry: dict[str, Any] = {"status": "error", "path": str(file_path), "error": str(exc)}
+    if isinstance(exc, CorpusError):
+        entry["error_type"] = exc.error_type
+    return entry
 
 
 _handler = SingletonSlot[ResearchHandler]("ResearchHandler requires an asyncpg pool")

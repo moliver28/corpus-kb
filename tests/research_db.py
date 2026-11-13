@@ -33,9 +33,11 @@ _SUPERUSER = os.environ.get("POSTGRES_SUPERUSER", "postgres")
 _SUPERUSER_PASSWORD = os.environ.get("POSTGRES_SUPERUSER_PASSWORD", "postgres")
 
 BASE_DSN = f"postgresql://{_PG_USER}:{_PG_PASSWORD}@{_PG_HOST}:{_PG_PORT}"
-# Overridable so two sessions running live tests at once stop force-dropping
-# each other's throwaway database (set CORPUS_KB_TEST_DB per session).
-DB_NAME = os.environ.get("CORPUS_KB_TEST_DB", "corpus_kb_t11_test")
+# Per-process by default: concurrent pytest sessions used to share ONE fixed
+# name, and a session's create/teardown force-drop removed the other's
+# database mid-run (issue #327). The pid suffix gives every session its own
+# throwaway database; set CORPUS_KB_TEST_DB to pin one shared name on purpose.
+DB_NAME = os.environ.get("CORPUS_KB_TEST_DB") or f"corpus_kb_t11_{os.getpid() % 100000}_test"
 DSN = f"{BASE_DSN}/{DB_NAME}"
 TEST_TENANT = "00000000-0000-0000-0000-000000000002"
 

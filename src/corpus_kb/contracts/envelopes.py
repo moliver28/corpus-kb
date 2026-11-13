@@ -48,6 +48,14 @@ SEARCH_ENVELOPE = (
     "meta_hits",
 )
 
+# Issue #136 multi-query retrieval (retrieval.multi_query, default OFF):
+# ``query_rewrites`` appears on the search envelope ONLY when the flag is
+# on and the rewriter produced variants. Value: the rewrites actually used,
+# in fusion order — the honest receipt that multi-query fusion ran. The
+# ask family carries the same receipt INSIDE ``result`` (its top-level
+# key-set is unchanged), so only the search row declares an extra here.
+MULTI_QUERY_KEYS = frozenset({"query_rewrites"})
+
 # Declared additive HTTP/socket wrapper over the shared envelope: the
 # command handler attaches the audit aggregate to successful ingests and
 # deletes. ``event_sourcing_error`` appears only when the audit write
@@ -75,3 +83,13 @@ TITLE_KEYS = frozenset({"title"})
 # cache_misses, pages, warning_count}. The default envelope stays
 # byte-identical.
 TEXTBOOK_KEYS = frozenset({"textbook"})
+
+# Per-run token accounting (issue #198): the ``token_usage`` key appears
+# ONLY when a backend reported usage during the run. Today that is the
+# Ollama embedder (its embed responses carry a prompt token count); pgml,
+# the local late-chunking stack, and the fake embedder report nothing, so
+# their envelopes keep the byte-identical shape. Value:
+# {"embed": {"provider", "embedded_texts", "cached_texts"}}, plus
+# "prompt_tokens" when the provider reported one. Extractor and reranker
+# sections stay absent until a backend reports them.
+TOKEN_KEYS = frozenset({"token_usage"})

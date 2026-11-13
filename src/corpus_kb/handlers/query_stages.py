@@ -22,8 +22,9 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 from corpus_kb.domain.models import SearchResult
-from corpus_kb.handlers.query_fusion import FusedRow, RowLike, rrf_fuse
+from corpus_kb.handlers.query_fusion import FusedRow, RowLike, rrf_fuse_legs
 from corpus_kb.handlers.query_integrity import REASON_RERANK_MODE_GENERATIVE
+from corpus_kb.handlers.query_result_meta import citation_and_units
 from corpus_kb.rag.rerank_settings import RerankSettings
 from corpus_kb.rag.reranker import RERANK_MODE_GENERATIVE_BINARY
 from corpus_kb.research.retrieval_settings import RetrievalSettings
@@ -44,38 +45,40 @@ from corpus_kb.utils.tracing import (
 logger = logging.getLogger(__name__)
 
 
-def fuse_arm_rows(outcome: SearchOutcome, k: int, rrf_k: int) -> list[SearchResult]:
-    """RRF fusion + provenance re-attach over the backend's raw arm rows.
+def fuse_outcome_legs(outcomes: Sequence[SearchOutcome], k: int, rrf_k: int) -> list[SearchResult]:
+    """RRF fusion + provenance re-attach over one or more backend outcomes.
 
-    The fusion is engine-neutral (storage-portability §6: both backends
-    fuse through handlers/query_fusion.py) and deliberately stays in one
-    reviewable place — this function is the determinism pin region of the
-    result stages; the engine arms live behind the SearchBackend seam.
+    Issue #136 multi-query: one outcome per retrieved query (the primary
+    first, then one per rewrite); the legs fuse in that fixed order through
+    the engine-neutral N-leg port (handlers/query_fusion.py
+    rrf_fuse_legs). Single-outcome runs take the same path with one pair,
+    which is byte-identical to the two-leg rrf_fuse call. This function is
+    the determinism pin region of the result stages; the engine arms live
+    behind the SearchBackend seam.
     """
     with span(SPAN_RRF_FUSION, **{ATTR_RRF_K: rrf_k}) as current:
-        # asyncpg.Record satisfies the fusion's RowLike surface at
-        # runtime; the cast mirrors the SqlExecutor/ParentPool seams
-        # (asyncpg's overloaded __getitem__ defeats structural checks).
-        fused_rows = rrf_fuse(
-            lexical=cast("Sequence[RowLike]", outcome.lexical_rows),
-            dense=cast("Sequence[RowLike]", outcome.vector_rows),
-            k=k,
-            rrf_k=rrf_k,
-        )
+        # Dense leg first per outcome, so a chunk present in both legs of
+        # one outcome sums dense + lexical contributions in the SQL UNION
+        # ALL order and the lexical (later) leg wins the attrs on overlap.
+        legs: list[Sequence[RowLike]] = []
+        for outcome in outcomes:
+            legs.append(cast("Sequence[RowLike]", outcome.vector_rows))
+            legs.append(cast("Sequence[RowLike]", outcome.lexical_rows))
+        fused_rows = rrf_fuse_legs(legs, k=k, rrf_k=rrf_k)
         current.set_attribute(ATTR_FUSED_COUNT, len(fused_rows))
 
     # Re-attach provenance (file_path/start_line/...) from the raw
     # vector/FTS rows — the fusion carries only the five fused columns,
-    # so provenance must be joined back by chunk_id.
+    # so provenance must be joined back by chunk_id. First outcome wins.
     provenance: dict[str, dict[str, Any]] = {}
-    for row in outcome.vector_rows:
-        provenance.setdefault(str(row["chunk_id"]), dict(row))
-    for row in outcome.lexical_rows:
-        provenance.setdefault(str(row["chunk_id"]), dict(row))
+    for outcome in outcomes:
+        for row in (*outcome.vector_rows, *outcome.lexical_rows):
+            provenance.setdefault(str(row["chunk_id"]), dict(row))
 
     def _to_result(row: FusedRow) -> SearchResult:
         meta = provenance.get(str(row.chunk_id), {})
         heading = meta.get("heading_path")
+        citation, units = citation_and_units(meta.get("metadata"))
         return SearchResult(
             chunk_id=row.chunk_id,
             text=row.text,
@@ -87,6 +90,8 @@ def fuse_arm_rows(outcome: SearchOutcome, k: int, rrf_k: int) -> list[SearchResu
             end_line=meta.get("end_line"),
             chunk_index=meta.get("chunk_index"),
             heading_path=json.loads(heading) if heading else None,
+            citation=citation,
+            units=units,
         )
 
     fused_results = [_to_result(row) for row in fused_rows]
@@ -96,6 +101,15 @@ def fuse_arm_rows(outcome: SearchOutcome, k: int, rrf_k: int) -> list[SearchResu
     # permute between runs.
     fused_results.sort(key=lambda r: (-r.score, r.chunk_id))
     return fused_results
+
+
+def fuse_arm_rows(outcome: SearchOutcome, k: int, rrf_k: int) -> list[SearchResult]:
+    """RRF fusion over one backend outcome (the pre-multi-query shape).
+
+    Delegate to :func:`fuse_outcome_legs` with the primary outcome alone —
+    one pair of legs takes the same code path, so the pin-region behavior
+    (span, fusion math, provenance, total order) is unchanged."""
+    return fuse_outcome_legs([outcome], k, rrf_k)
 
 
 async def post_fuse(
