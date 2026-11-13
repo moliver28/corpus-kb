@@ -113,18 +113,10 @@ def _ollama_available() -> bool:
     The probe rides the tests/live_services.py guard: a base that is not a
     loopback service answers "not available" (skip), never a remote hit.
     """
-    import httpx
+    from tests.live_services import loopback_probe_status
 
-    from tests.live_services import loopback_service_url
-
-    probe_url = loopback_service_url(_ollama_base_url(), "/api/version")
-    if probe_url is None:
-        return False
-    try:
-        response = httpx.get(probe_url, timeout=2.0)
-    except Exception:
-        return False
-    return response.status_code == 200
+    status = loopback_probe_status(_ollama_base_url(), "/api/version", timeout=2.0)
+    return status == 200
 
 
 def _ollama_skip_reason() -> str:

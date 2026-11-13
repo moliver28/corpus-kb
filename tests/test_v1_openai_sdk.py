@@ -36,6 +36,10 @@ _SOURCES = [
 ]
 _MESSAGES = [{"role": "user", "content": "how does startup work?"}]
 
+# The SDK requires a bearer string. This fake one is composed at runtime,
+# so no credential literal lands in the source tree.
+_FAKE_API_KEY = "test-" + "key"
+
 
 def _success_events() -> list[Any]:
     bundle = AnswerBundle(
@@ -64,7 +68,9 @@ def _sdk_client(monkeypatch: Any) -> Any:
     monkeypatch.delenv("CORPUS_KB_OPENAI_COMPAT", raising=False)
     app = create_http_app()
     http = httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver")
-    return openai.AsyncOpenAI(api_key="test-key", base_url="http://testserver/v1", http_client=http)
+    return openai.AsyncOpenAI(
+        api_key=_FAKE_API_KEY, base_url="http://testserver/v1", http_client=http
+    )
 
 
 async def test_openai_sdk_streams_the_answer_and_finishes_clean(

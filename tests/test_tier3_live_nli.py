@@ -16,9 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import json
 import os
-import urllib.request
 
 import pytest
 
@@ -50,31 +48,23 @@ def _model_available() -> bool:
 
 
 def _one_generate_answers() -> bool:
-    from tests.live_services import loopback_service_url
+    from tests.live_services import loopback_probe_status
 
     # The guard keeps the probe on the local dev server; None means skip.
-    url = loopback_service_url(_OLLAMA_BASE, "/api/generate")
-    if url is None:
-        return False
-    body = json.dumps(
-        {
+    status = loopback_probe_status(
+        _OLLAMA_BASE,
+        "/api/generate",
+        method="POST",
+        payload={
             "model": _MODEL,
             "prompt": "Reply with one word: ENTAIL",
             "stream": False,
             "think": False,
             "options": {"num_predict": 4},
-        }
-    ).encode("utf-8")
-    request = urllib.request.Request(
-        url,
-        data=body,
-        headers={"Content-Type": "application/json"},
+        },
+        timeout=30,
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return response.status == 200
-    except OSError:
-        return False
+    return status == 200
 
 
 def test_live_nli_smoke_judges_and_clusters():
