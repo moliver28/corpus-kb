@@ -1,5 +1,6 @@
 import { strings as analyzeTable, type AnalyzeStrings } from "./analyze";
 import { strings as appTable, type AppStrings } from "./app";
+import { strings as chatTable, type ChatStrings } from "./chat";
 import { strings as askTable, type AskStrings } from "./ask";
 import { strings as codebookTable, type CodebookStrings } from "./codebook";
 import { strings as graphTable, type GraphStrings } from "./graph";
@@ -17,6 +18,7 @@ import { strings as setupTable, type SetupStrings } from "./setup";
 // stages reference belongs in app.
 export interface Strings
   extends AppStrings,
+    ChatStrings,
     SetupStrings,
     IngestStrings,
     MapStrings,
@@ -30,6 +32,7 @@ export interface Strings
 
 export const strings: Strings = {
   ...appTable,
+  ...chatTable,
   ...setupTable,
   ...ingestTable,
   ...mapTable,

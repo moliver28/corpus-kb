@@ -108,6 +108,7 @@ export interface AppStrings {
   stageGraph: string;
   stageIngest: string;
   stageMap: string;
+  stageChat: string;
   stagePlaceholderBody: string;
   stagePlaceholderTitle: string;
   stageRelease: string;

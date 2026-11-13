@@ -50,6 +50,8 @@ const STAGES: RailStage[] = [
   // The domain view rides after the lifecycle stages (D7: the rail
   // encodes the lifecycle; the Map is a view over graph data).
   { key: "map", label: strings.stageMap },
+  // The chat view (Wave 7) rides after the graph domain view.
+  { key: "chat", label: strings.stageChat },
 ];
 
 function StageShell() {

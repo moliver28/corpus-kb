@@ -103,6 +103,7 @@
   "stageGraph": "Graph",
   "stageIngest": "Ingest",
   "stageMap": "Map",
+  "stageChat": "Chat",
   "stagePlaceholderBody": "This stage arrives with the next update. Use Setup to load data first.",
   "stagePlaceholderTitle": "Not built yet",
   "stageRelease": "Release",
