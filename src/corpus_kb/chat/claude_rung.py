@@ -1,0 +1,204 @@
+"""The claude-agent-sdk rung: the owner's Claude subscription.
+
+Session contract ([D3]-[D5]):
+- env refusal at session start for every auth variable that outranks the
+  subscription login (verified against the authentication precedence
+  list, 2026-11-13) — never a silent billing-path switch, never env
+  scrubbing;
+- deny-by-default tooling: ``strict_mcp_config`` plus the one corpus
+  server, the one pre-approved tool, the disallowed built-ins, and a
+  ``can_use_tool`` backstop that denies anything unlisted;
+- ``setting_sources=[]`` — no filesystem settings load (None would load
+  ALL sources; the SDK reference is explicit);
+- the work-account pin via ``CLAUDE_CONFIG_DIR`` and a stable ``cwd``.
+
+Every ``claude_agent_sdk`` import is lazy (inside functions), so base
+installs never import the SDK.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import TYPE_CHECKING
+from uuid import uuid4
+
+import asyncpg
+
+from corpus_kb.chat.agent_tools import build_corpus_mcp_server
+from corpus_kb.chat.claude_stream import turn_stream as _turn_stream
+from corpus_kb.chat.session import ChatSession
+from corpus_kb.chat.settings import ChatSettings, resolved_claude_config_dir, resolved_data_dir
+from corpus_kb.errors import ConfigError, DependencyMissingError, InternalError
+
+if TYPE_CHECKING:
+    from claude_agent_sdk import ClaudeAgentOptions
+    from claude_agent_sdk.types import PermissionResult
+
+__all__ = ["PRECEDENCE_ENV_VARS", "build_session", "env_refusal", "list_transcripts"]
+
+# [D4]: every variable that outranks the subscription login (rank 7).
+# Verified live 2026-11-13: cloud-provider variables rank 1,
+# ANTHROPIC_AUTH_TOKEN rank 2, ANTHROPIC_API_KEY rank 3. Any of the five
+# silently re-routes billing away from the subscription.
+PRECEDENCE_ENV_VARS: tuple[str, ...] = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "CLAUDE_CODE_USE_BEDROCK",
+    "CLAUDE_CODE_USE_VERTEX",
+    "CLAUDE_CODE_USE_FOUNDRY",
+)
+
+_CORPUS_TOOL_WIRE_NAME = "mcp__corpus__search"
+
+
+def env_refusal(environ: dict[str, str] | None = None) -> str | None:
+    """The [D4] refusal text when a higher-ranking auth variable is set.
+
+    Session-start only, never load time: a stray variable must not break
+    doctor or CLI reads for commands that do not chat.
+    """
+    import os
+
+    env = os.environ if environ is None else environ
+    present = [name for name in PRECEDENCE_ENV_VARS if env.get(name)]
+    if not present:
+        return None
+    return " ".join(
+        f"{name} is set. It outranks the subscription login. Unset it "
+        "for this server, or set chat.backend to anthropic-api or ollama."
+        for name in present
+    )
+
+
+async def list_transcripts(
+    config: dict[str, object], limit: int | None = None, offset: int = 0
+) -> list[dict[str, object]]:
+    """The CLI's own session store, newest first ([D9]; no second store).
+
+    The sync helper runs in a thread; it reads the transcripts the
+    pinned ``cwd`` produced, so resume stays stable.
+    """
+    import asyncio
+
+    from claude_agent_sdk import list_sessions as sdk_list_sessions
+
+    directory = str(resolved_data_dir(config))
+
+    def _read() -> list[object]:
+        return list(sdk_list_sessions(directory=directory, limit=limit, offset=offset))
+
+    rows = await asyncio.to_thread(_read)
+    return [
+        {
+            "session_id": str(getattr(row, "session_id", "")),
+            "summary": str(getattr(row, "summary", "")),
+            "last_modified": getattr(row, "last_modified", 0),
+            "first_prompt": getattr(row, "first_prompt", None),
+        }
+        for row in rows
+    ]
+
+
+async def build_session(
+    settings: ChatSettings,
+    config: dict[str, object],
+    pg_pool: asyncpg.Pool,
+    resume: str | None = None,
+) -> ChatSession:
+    """Create one claude-rung session: connect, then return it."""
+    refusal = env_refusal()
+    if refusal is not None:
+        raise ConfigError(
+            refusal,
+            remediation="Unset the named variables. Then restart the server.",
+        )
+    from claude_agent_sdk import ClaudeSDKClient
+
+    stderr_lines: list[str] = []
+    session_id = resume or str(uuid4())
+    options = _build_options(
+        settings, config, pg_pool, stderr_lines.append, session_id=session_id, resume=resume
+    )
+    client = ClaudeSDKClient(options)
+    try:
+        await client.connect()
+    except Exception as exc:
+        raise _spawn_error(exc) from exc
+    return ChatSession(
+        session_id=session_id,
+        backend="claude-agent-sdk",
+        client=client,
+        turn_stream=_turn_stream(stderr_lines),
+        ttl_s=settings.session_ttl_s,
+    )
+
+
+def _spawn_error(exc: Exception) -> Exception:
+    """Map the SDK spawn failures onto the taxonomy."""
+    from claude_agent_sdk import CLIConnectionError, CLINotFoundError, ProcessError
+
+    if isinstance(exc, CLINotFoundError):
+        return DependencyMissingError(
+            "The Claude Code CLI is missing. Install Claude Code, then try again.",
+            remediation=("Install Claude Code natively, or set chat.claude.cli_path. Then retry."),
+        )
+    if isinstance(exc, (CLIConnectionError, ProcessError)):
+        return InternalError(str(exc))
+    return InternalError(str(exc))
+
+
+def _pinned_env(settings: ChatSettings) -> dict[str, str]:
+    """The pin env, merged over the inherited env by the transport."""
+    env = {"CLAUDE_CONFIG_DIR": str(resolved_claude_config_dir(settings))}
+    if settings.claude.oauth_token:
+        env["CLAUDE_CODE_OAUTH_TOKEN"] = settings.claude.oauth_token
+    return env
+
+
+async def _deny_backstop(
+    tool_name: str,
+    tool_input: dict[str, object],
+    _context: object | None = None,
+) -> PermissionResult:
+    """The [D5] backstop: the corpus read or nothing.
+
+    ``allowed_tools`` auto-approval never reaches this callback; it fires
+    only for calls that would otherwise prompt — and it denies every
+    name except the one corpus read.
+    """
+    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+
+    if tool_name == _CORPUS_TOOL_WIRE_NAME:
+        return PermissionResultAllow(updated_input=tool_input)
+    return PermissionResultDeny(message="Chat may read the corpus and nothing else.")
+
+
+def _build_options(
+    settings: ChatSettings,
+    config: dict[str, object],
+    pg_pool: asyncpg.Pool,
+    on_stderr: Callable[[str], None],
+    session_id: str,
+    resume: str | None,
+) -> ClaudeAgentOptions:
+    """``ClaudeAgentOptions`` exactly per [D5]; the SDK imports lazily."""
+    from claude_agent_sdk import ClaudeAgentOptions as _Options
+
+    return _Options(
+        cwd=str(resolved_data_dir(config)),
+        env=_pinned_env(settings),
+        model=settings.claude.model or None,
+        max_turns=settings.claude.max_turns,
+        allowed_tools=list(settings.claude.allowed_tools),
+        disallowed_tools=list(settings.claude.disallowed_tools),
+        strict_mcp_config=True,
+        setting_sources=[],
+        mcp_servers={"corpus": build_corpus_mcp_server(pg_pool, config)},
+        can_use_tool=_deny_backstop,
+        include_partial_messages=True,
+        stderr=on_stderr,
+        resume=resume,
+        # A fresh session carries the server-generated id, so the create
+        # route knows the transcript id before the first turn.
+        session_id=None if resume else session_id,
+    )
