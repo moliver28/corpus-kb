@@ -5,6 +5,17 @@ carries a prompt token count) publishes a per-call ``EmbedUsage`` snapshot
 on the embedder instance. Embedders whose backend reports nothing (pgml,
 the local late-chunking stack, the fake embedder) publish none — callers
 treat the absence as "unknown", never as zero.
+
+Confinement contract (momus F9): a usage receipt is exact only while one
+embedder instance serves one caller at a time. Ingest holds this by
+construction — ``embedder_selection`` builds one embedder per document.
+Research link embeds hold it by discipline — ``link_exchanges`` runs
+synchronous embeds on the event loop, so one file's embeds never
+interleave with another task's. A memoized or shared instance must never
+cross a ``to_thread`` boundary while a tally is open: a thread switch
+there can move another caller's spend into this receipt, and no cheap
+reader can undo that. ``OllamaEmbedder.pop_usage`` is the take-and-clear
+reader; plain ``last_usage`` reads stay legal for single-reader paths.
 """
 
 from __future__ import annotations
@@ -67,6 +78,14 @@ def embed_usage_section(usage: EmbedUsage, provider: str) -> dict[str, Any]:
 
     ``prompt_tokens`` appears only when the provider reported a total.
     Key order is fixed, so the serialized receipt is deterministic.
+
+    Degraded-run counting choice (momus F9): a degraded call still
+    counts its texts. The embedder answered zero vectors, so the chunks
+    hold no usable vectors — but the run did hand those texts to the
+    embed stage. ``embedded_texts`` counts them and ``prompt_tokens``
+    stays absent; the envelope's ``embedding_mode``/``embedding_note``
+    carry the degraded signal, so the receipt never needs a second
+    marker.
     """
     section: dict[str, Any] = {
         "provider": provider,
