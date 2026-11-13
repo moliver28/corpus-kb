@@ -139,7 +139,7 @@ Defined in [docs/research/harness-zero-drift-program.md](docs/research/harness-z
 8. **Run the gates through poe.** `poe lint`, `poe types`, `poe verify`, `poe gen`. CI runs the same targets — local bypasses get caught. Wave 4 adds `poe validation-gate` (ingest validators + mode semantics + determinism; ci.yml / validation-gate).
 9. **Deterministic output.** Query/search results stably ordered with tiebreakers; harnesses must be able to snapshot them.
 10. **Every new gate needs three things:** a `poe` target, a CI job calling it, and a map row (+ a line here). A local-only gate is not a gate. Landed under this rule: `plugin-manifest` (issue 331 M3; `poe plugin-manifest`, ci.yml / plugin-manifest; manifest structure + version lockstep). It also covers `plugin-tests` (issue 331 rebuild; `poe plugin-tests`, ci.yml / plugin-tests; stdlib suite under `plugins/corpus-rag/tests/`).
-11. **UI SPA gates (D17).** `ui-lint`, `ui-test`, `ui-build` (includes the bundle budget), `ui-licenses`, `ui-manifest` (wired into `poe gen`), `ui-e2e` (Playwright smoke + axe on a live throwaway server). Each needs a `poe` target, a CI job, and a map row per rule 10.
+11. **UI SPA gates (D17).** `ui-lint`, `ui-test`, `ui-build` (includes the bundle budget), `ui-licenses`, `ui-manifest` (wired into `poe gen`), `ui-e2e` (Playwright smoke + axe on a live throwaway server), `ui-import-graph` (Phase-2 Wave 6: the lazy-Map law — `@xyflow/react`/`@dagrejs/dagre` importable only under `pages/map/` + `pages/Map.tsx`, never in the entry closure). Each needs a `poe` target, a CI job, and a map row per rule 10.
 
 ## Known Issues (check open GitHub issues before fixing)
 
