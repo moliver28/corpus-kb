@@ -124,12 +124,23 @@ def test_unknown_explicit_strategy_error_lists_valid() -> None:
         resolve_strategy("text", "x.txt", "hello", CFG_EMPTY, strategy_override="bogus")
     assert "default" in str(excinfo.value)
     assert "transcript" in str(excinfo.value)
+    # Issue #307: the typo class rides ValidationError's wire triple.
+    assert (excinfo.value.http_status, excinfo.value.socket_code, excinfo.value.cli_exit) == (
+        400,
+        -32602,
+        1,
+    )
 
 
 def test_unknown_config_mapped_strategy_is_loud() -> None:
     cfg: dict[str, object] = {"ingestion": {"strategies": {"transcript": "bogus"}}}
-    with pytest.raises(UnknownStrategyError, match="bogus"):
+    with pytest.raises(UnknownStrategyError, match="bogus") as excinfo:
         resolve_strategy("transcript", "interview.txt", TRANSCRIPT_TEXT, cfg)
+    assert (excinfo.value.http_status, excinfo.value.socket_code, excinfo.value.cli_exit) == (
+        400,
+        -32602,
+        1,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -510,7 +521,7 @@ async def test_run_pipeline_unknown_override_raises(monkeypatch: pytest.MonkeyPa
     pool = _patch_stores(monkeypatch)
     from corpus_kb.tools.ingest_common import run_pipeline
 
-    with pytest.raises(UnknownStrategyError, match="Valid strategies"):
+    with pytest.raises(UnknownStrategyError, match="Valid strategies") as excinfo:
         await run_pipeline(
             TRANSCRIPT_TEXT,
             "text",
@@ -519,6 +530,12 @@ async def test_run_pipeline_unknown_override_raises(monkeypatch: pytest.MonkeyPa
             pool,
             strategy_name="bogus",
         )
+    # Issue #307: the raise rides ValidationError's wire triple per surface.
+    assert (excinfo.value.http_status, excinfo.value.socket_code, excinfo.value.cli_exit) == (
+        400,
+        -32602,
+        1,
+    )
 
 
 # ---------------------------------------------------------------------------

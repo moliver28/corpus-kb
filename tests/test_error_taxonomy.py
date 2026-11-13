@@ -732,10 +732,9 @@ def test_domain_error_rebases_speak_the_taxonomy() -> None:
 
     Each base keeps the class's effective wire triple, so every raise site
     behind the class moves to the taxonomy with zero envelope change.
-    UnknownStrategyError is deliberately NOT here: its name is unmapped on
-    master (500/internal_error), and a ValidationError rebase would flip
-    reachable unknown-strategy paths to 400 — deferred pending owner
-    sign-off (see the get_strategy pin below).
+    UnknownStrategyError is not here either by choice: its rebase moves
+    its wire triple (500 to 400), so it ships alone, owner-approved
+    (issue #307 — see the get_strategy test below).
     """
     from corpus_kb.ingestion.strategies.textbook_docling import _MalformedRowError
     from corpus_kb.rag.embedders._latechunk_types import LateChunkDependencyError
@@ -752,20 +751,48 @@ def test_domain_error_rebases_speak_the_taxonomy() -> None:
     _assert_triple(WebFetchError("x"), 500, -32603, 1)
 
 
-async def test_get_strategy_unknown_name_keeps_the_master_wire() -> None:
-    """UnknownStrategyError stays on the ValueError base (issue #229 deferral).
+async def test_get_strategy_unknown_name_answers_the_validation_triple() -> None:
+    """UnknownStrategyError rides ValidationError (issue #307, owner ruling).
 
-    The class name has no ERROR_MAP row, so an escaped failure keeps the
-    master wire: the 500/internal_error envelope and socket -32603. The
-    candidate ValidationError rebase (400/-32602, a client-fault
-    classification) needs explicit owner sign-off — tracked as a deferral.
+    The #229 deferral got owner sign-off on 2026-11-12: a strategy typo
+    is caller input, so an escaped failure answers 400 / validation_error
+    and socket -32602 through the typed class attributes. The class name
+    keeps no ERROR_MAP row — instances answer as taxonomy classes.
     """
     from corpus_kb.ingestion.registry import UnknownStrategyError, get_strategy
 
     with pytest.raises(UnknownStrategyError, match="Valid strategies") as excinfo:
         get_strategy("not-a-strategy")
-    assert not isinstance(excinfo.value, CorpusError)
-    assert error_status("UnknownStrategyError") == 500
+    assert isinstance(excinfo.value, CorpusError)
+    assert excinfo.value.error_type == "validation_error"
+    _assert_triple(excinfo.value, 400, -32602, 1)
+
+
+def test_error_response_unknown_strategy_answers_validation_error() -> None:
+    """HTTP: a strategy typo answers 400 with the validation_error name."""
+    from corpus_kb.ingestion.registry import UnknownStrategyError
+
+    response = error_response(UnknownStrategyError("Unknown ingestion strategy 'bogus'."))
+    assert response.status_code == 400
+    assert _body_of(response) == {
+        "status": "error",
+        "error": "Unknown ingestion strategy 'bogus'.",
+        "error_type": "validation_error",
+    }
+
+
+def test_cli_error_exit_unknown_strategy_answers_exit_one(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """CLI: a strategy typo exits 1 with the inherited remediation line."""
+    from corpus_kb import cli as cli_module
+    from corpus_kb.ingestion.registry import UnknownStrategyError
+
+    code = cli_module._cli_error_exit(UnknownStrategyError("Unknown ingestion strategy 'bogus'."))
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "ERROR: Unknown ingestion strategy 'bogus'." in out
+    assert "Fix the request fields." in out
 
 
 def test_register_strategy_rejects_a_nameless_strategy() -> None:

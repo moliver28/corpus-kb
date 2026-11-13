@@ -107,6 +107,22 @@ async def test_taxonomy_failure_logs_at_class_level(
     assert "any_method" in records[0].getMessage()
 
 
+async def test_unknown_strategy_error_answers_validation_code(monkeypatch: Any) -> None:
+    """Issue #307: the strategy-typo class rides ValidationError's -32602."""
+    from corpus_kb.ingestion.registry import UnknownStrategyError
+
+    async def fail(method: str, params: dict[str, Any]) -> dict[str, Any]:
+        raise UnknownStrategyError("Unknown ingestion strategy 'bogus'.")
+
+    monkeypatch.setattr(socket_ops_module, "dispatch", fail)
+
+    raw = json.dumps({"jsonrpc": "2.0", "id": 7, "method": "any_method", "params": {}})
+    response = await _call(raw)
+
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == "Unknown ingestion strategy 'bogus'."
+
+
 async def test_socket_unknown_method_stays_32601() -> None:
     """A method with no arm answers -32601, never -32603."""
     raw = json.dumps({"jsonrpc": "2.0", "id": 4, "method": "no_such_method", "params": {}})
