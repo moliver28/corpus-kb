@@ -831,6 +831,15 @@ help = "Build the SPA into src/corpus_kb/ui_dist/ (Vite, base /app/)"
 cmd = "pnpm -C ui_src run check-bundle"
 help = "UI initial-route bundle budget gate (350 kB gzip)"
 
+[tool.poe.tasks.ui-import-graph]
+# Phase-2 Wave 6 (rule 10 triple: poe target + ci.yml ui step +
+# enforcement-map row). Proves the lazy-Map law: @xyflow/react and
+# @dagrejs/dagre are imported ONLY in the Map module set, and no built
+# chunk carrying the xyflow runtime marker sits in the entry closure —
+# the map libraries contribute 0 kB to the initial route.
+cmd = "node ui_src/scripts/check-import-graph.mjs"
+help = "Import-graph gate: map libraries stay out of the entry chunk"
+
 [tool.poe.tasks.ui-e2e]
 # SPA Playwright smoke + axe scan against a REAL throwaway server
 # (Task 9): scripts/ui_e2e.py boots corpus-kb on a scratch database

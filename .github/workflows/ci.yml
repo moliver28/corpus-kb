@@ -501,6 +501,8 @@ jobs:
 
       - name: UI bundle size gate
         run: poe ui-bundle
+      - name: UI import-graph gate (map libraries stay lazy)
+        run: poe ui-import-graph
       - name: UI licenses allowlist
         run: poe ui-licenses
 
