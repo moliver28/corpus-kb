@@ -248,9 +248,9 @@ _SPECS: dict[str, _Spec] = {
     ),
     # -- Phase-2 Wave 6: the Map's edge window read. Counts ride raw on
     #    purpose: the shared window-count guard (tools._count_input) owns
-    #    the >=1 rule on MCP, socket, and CLI. HTTP is the one surface
-    #    that accepts limit=0 and answers an empty window (the entity
-    #    window read shares that split). ----------------------------------
+    #    the >=1 rule on MCP, socket, and CLI. HTTP alone accepts limit=0
+    #    and answers an empty window. Entity reads differ: MCP, socket,
+    #    and HTTP accept limit=0 there; only the CLI has min 1. ----------
     "list_relations": _Spec(
         _RELATION,
         "relations_list",

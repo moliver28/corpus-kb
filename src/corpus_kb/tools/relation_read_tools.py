@@ -36,8 +36,10 @@ async def relations_list(
     source_entity_id, target_entity_id, relation_id)`` and carry both
     endpoint names. The shared window-count guard (``tools._count_input``)
     owns the >=1 rule on MCP, socket, and CLI. HTTP is the one surface
-    that accepts ``limit=0`` and answers an empty window (the entity
-    window read shares that split). Envelope: ``{"status", "result"}``.
+    that accepts ``limit=0`` and answers an empty window. The entity
+    window read does not share that split: it accepts ``limit=0`` on
+    MCP, socket, and HTTP, and only its CLI option has a minimum of 1.
+    Envelope: ``{"status", "result"}``.
     """
     from corpus_kb.domain.models import ListRelationsQuery
     from corpus_kb.handlers.query_handler import QueryHandler

@@ -1,17 +1,28 @@
 """Shared window-count guard for the window reads (Wave-5 review P2).
 
-THE CANONICAL RULE, one rule for every surface: a window read's
-``limit`` is a whole number of at least 1, its ``offset`` a whole
-number of at least 0, and both stay inside the Postgres int8 bind
-range. A break raises the taxonomy ``ValidationError``, so HTTP
-answers 400, the socket answers -32602, the MCP tool call fails as an
-``is_error`` result (the installed SDK drops the message itself — the
-parity test pins this), and the CLI exits 1 — never a raw database
-``LIMIT`` error.
+THE RULE: a window read's ``limit`` is a whole number of at least 1,
+its ``offset`` a whole number of at least 0, and both stay inside the
+Postgres int8 bind range. A break raises the taxonomy
+``ValidationError``: the socket answers -32602, the MCP tool call fails
+as an ``is_error`` result (the installed SDK drops the message itself —
+the parity test pins this), the CLI exits 1, and an HTTP route that
+calls the guard answers 400 — never a raw database ``LIMIT`` error.
+
+The rule covers a surface only where that surface's path calls this
+guard. The true split, read by read:
+
+- Document chunks: all four surfaces. The tool calls the guard for
+  MCP, socket, and CLI. The HTTP route calls it directly.
+- Relations: MCP, socket, and CLI, through ``relations_list``. The HTTP
+  route builds its query with ``opt_int``, so HTTP accepts ``limit=0``
+  and answers an empty window.
+- Entities: the guard is not on this path. MCP passes ``limit`` raw.
+  Socket and HTTP coerce it with ``opt_int``. All three accept
+  ``limit=0``.
 
 The CLI's typer options (``--limit`` min 1, ``--offset`` min 0) reject
-the same values one step earlier; this guard is the backstop that
-keeps all four surfaces (HTTP, socket, MCP, CLI) on the one rule.
+the same values one step earlier on all three reads. On the entity
+read they are the only check.
 """
 
 from __future__ import annotations
