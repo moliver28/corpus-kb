@@ -50,6 +50,8 @@ Gate order: lint (`ruff check src/ tests/`, no deps) → type-check (`pyright sr
 
 Ollama install per OS (exact commands + rationale in ci.yml comments). Ubuntu: official install script (reliable). macOS: `brew install ollama` (install script fails on runners). Windows: `OllamaSetup.exe /S` + 120s timeout + `continue-on-error: true` (installer often hangs → degraded zero-vector mode).
 
+Path gate: the `changes` job (dorny/paths-filter) skips the Ollama install/pull/verify steps in the three test legs and ui-e2e unless the PR touches the embedding surface (ci.yml, `src/corpus_kb/rag/**`, `projections/research/_embed.py`, both config.yamls, `config.py`, `pyproject.toml`, warning-ratchet script + baselines, the embedder/reranker/late-chunk/retrieval/MRL test modules). Untouched PRs run the suite in degraded zero-vector mode. The warning-ratchet leg keeps pulls unconditional: its pytest_warnings ceiling was measured with models pulled.
+
 Windows fixes: `python-magic-bin` (libmagic DLL for the `magic` module in unstructured; fixes access-violation crash). `continue-on-error` on Ollama install/pull/verify. `timeout-minutes: 30` on the ubuntu test leg, `40` on windows/macos (hung Ollama connects; PR #189 raised the ubuntu cap with suite-run rationale).
 
 ## Repo Structure & Ownership

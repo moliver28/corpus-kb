@@ -5,15 +5,14 @@ optional routing fields to each ``MethodRecord`` row. This module holds the
 routing words and the checks behind them; the register model calls
 :func:`validate_routing_axes` after its core vocabulary checks. No pydantic
 here: the register model owns the schema, this module owns the routing
-content. The wave-2 question router reads the tuples directly.
+content. The wave-2 question router reads the tuples directly. The
+``RoutingAxesRecord`` protocol spells the field surface the checks read,
+so this module imports nothing from the register model (CodeQL triage).
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from corpus_kb.analysis.method_register import MethodRecord
+from typing import Protocol
 
 TASK_TYPES = ("representation", "discovery", "measurement", "prediction", "causal_inference")
 COMPARISON_STRUCTURES = (
@@ -43,7 +42,20 @@ MAX_SUGGESTS = 3
 MAX_SUGGEST_WORDS = 20
 
 
-def validate_routing_axes(record: MethodRecord) -> None:
+class RoutingAxesRecord(Protocol):
+    """The routing-field surface ``validate_routing_axes`` reads."""
+
+    task_type: str | None
+    comparison_structure: str | None
+    output_form: str | None
+    evidence_basis: str | None
+    statistical_rigor: str | None
+    cost_tier: str | None
+    question_phrases: list[str] | None
+    suggests: list[str] | None
+
+
+def validate_routing_axes(record: RoutingAxesRecord) -> None:
     """Validate the optional routing fields. A ``None`` value always passes."""
     for field_name, allowed in ROUTING_VOCAB_FIELDS.items():
         value = getattr(record, field_name)

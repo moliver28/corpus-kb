@@ -17,12 +17,12 @@ register, same output — always.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Protocol
 
 from corpus_kb.analysis.method_register import MethodRecommendation, MethodRegister
 from corpus_kb.analysis.method_register_rubric import rank_methods
 from corpus_kb.analysis.question_intent import QuestionIntent
 from corpus_kb.analysis.question_router_centroids import (
+    RoutingEmbedder,
     centroids_for,
     cosine,
     phrase_scores,
@@ -42,14 +42,6 @@ TOP_SCORE_ROWS = 10
 TOP_READINGS = 3
 RANKED_CAP = 5
 DEGRADED_NOTE = "degraded"
-
-
-class RoutingEmbedder(Protocol):
-    """The one embedder call this router makes (the query-router call)."""
-
-    def embed(self, text: str) -> list[float]:
-        """Return one embedding vector for the text."""
-        ...
 
 
 @dataclass

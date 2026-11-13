@@ -95,6 +95,7 @@ UserService handles authentication.
 class TestIngestTools:
     """Test ingest tools with entity extraction."""
 
+    @pytest.mark.requires_ollama
     @pytest.mark.asyncio
     async def test_ingest_text_markdown_with_entities(self, pg_pool) -> None:
         markdown_text = """# Authentication System
@@ -123,6 +124,7 @@ Tokens are cached for performance.
         assert "entities" in result
         assert isinstance(result["entities"], dict)
 
+    @pytest.mark.requires_ollama
     @pytest.mark.asyncio
     async def test_ingest_text_with_entity_extraction_disabled(self, pg_pool) -> None:
         markdown_text = "# MyService\nA service."
@@ -164,6 +166,7 @@ Tokens are cached for performance.
         assert isinstance(message, str)
         assert "Invalid source_type" in message
 
+    @pytest.mark.requires_ollama
     @pytest.mark.asyncio
     async def test_reingest_unchanged(self, pg_pool) -> None:
         """Re-ingesting the same unchanged source should skip, not duplicate rows.
@@ -215,6 +218,7 @@ Tokens are cached for performance.
             )
             assert rows[0]["cnt"] == 1
 
+    @pytest.mark.requires_ollama
     @pytest.mark.asyncio
     async def test_ingest_changed_file(self, pg_pool) -> None:
         """Ingesting changed content under the same source should upsert."""
@@ -259,6 +263,7 @@ Tokens are cached for performance.
         assert isinstance(first_chunk_count, int)
         assert second_chunk_count != first_chunk_count or second_chunk_count > 0
 
+    @pytest.mark.requires_ollama
     @pytest.mark.asyncio
     async def test_delete_source(self, pg_pool) -> None:
         """Deleting a document should remove it from Postgres."""
