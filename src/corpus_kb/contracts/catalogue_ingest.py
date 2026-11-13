@@ -19,6 +19,7 @@ from corpus_kb.contracts.envelopes import (
     INGEST_ENVELOPE,
     TEXTBOOK_KEYS,
     TITLE_KEYS,
+    TOKEN_KEYS,
     VALIDATION_KEYS,
 )
 from corpus_kb.contracts.model import (
@@ -37,9 +38,9 @@ _TENANT = ParamSpec("tenant_id", default=DEFAULT_TENANT_ID)
 # Additive HTTP/socket key sets for the ingest rows. The aggregate rows add
 # the audit aggregate; the directory row wraps per-file envelopes instead.
 _AGGREGATE_INGEST_EXTRA = (
-    AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS | TEXTBOOK_KEYS
+    AGGREGATE_EXTRA | VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS | TEXTBOOK_KEYS | TOKEN_KEYS
 )
-_INGEST_EXTRA = VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS | TEXTBOOK_KEYS
+_INGEST_EXTRA = VALIDATION_KEYS | DEDUP_KEYS | TITLE_KEYS | TEXTBOOK_KEYS | TOKEN_KEYS
 
 INGEST_OPERATIONS: tuple[Operation, ...] = (
     Operation(
@@ -139,8 +140,8 @@ INGEST_OPERATIONS: tuple[Operation, ...] = (
             _TENANT,
         ),
         envelope_keys=("status", "pages", "total_documents"),
-        http_extra=VALIDATION_KEYS,
-        socket_extra=VALIDATION_KEYS,
+        http_extra=VALIDATION_KEYS | TOKEN_KEYS,
+        socket_extra=VALIDATION_KEYS | TOKEN_KEYS,
         surfaces=(
             SurfaceSpec(MCP, "ingest_url"),
             SurfaceSpec(CLI, "ingest-url"),

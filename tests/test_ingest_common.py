@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -272,6 +272,71 @@ async def test_embed_chunks_success_returns_ok_tuple() -> None:
         assert error is None
     else:
         assert error is not None
+
+
+async def test_embed_chunks_meta_records_ollama_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Ollama embedder reports its spend; meta carries the typed section."""
+    from unittest.mock import MagicMock
+
+    from ollama._types import EmbedResponse
+
+    import corpus_kb.tools.ingest_embed as ingest_embed
+    from corpus_kb.rag.embedder import OllamaEmbedder as _Ollama
+
+    config: dict[str, object] = {
+        "embedding": {
+            "provider": "ollama",
+            "model": "nomic-embed-text",
+            "dimensions": 768,
+            "base_url": "http://localhost:11434",
+            "batch_size": 32,
+        }
+    }
+    embedder = _Ollama(config)
+
+    def _respond(**kwargs: object) -> EmbedResponse:
+        inputs = cast("list[str]", kwargs["input"])
+        return EmbedResponse(embeddings=[[0.5] * 768 for _ in inputs], prompt_eval_count=37)
+
+    embedder._client.embed = MagicMock(side_effect=_respond)
+    monkeypatch.setattr(ingest_embed, "create_embedder", lambda cfg, pool=None: embedder)
+    chunks = [
+        Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text"),
+        Chunk(chunk_id="c2", document_id="d1", text="world", source_type="text"),
+    ]
+    meta: dict[str, object] = {}
+
+    degraded, error = await embed_chunks(chunks, config, meta=meta)
+
+    assert (degraded, error) == (False, None)
+    assert meta["token_usage"] == {
+        "embed": {
+            "provider": "ollama",
+            "embedded_texts": 2,
+            "cached_texts": 0,
+            "prompt_tokens": 37,
+        }
+    }
+
+
+async def test_embed_chunks_pgml_records_no_usage() -> None:
+    """pgml reports no spend: meta carries no token_usage (honest absence)."""
+    conn = _FakePgmlConn()
+    chunks = [Chunk(chunk_id="c1", document_id="d1", text="hello", source_type="text")]
+    meta: dict[str, object] = {}
+
+    degraded, error = await embed_chunks(
+        chunks,
+        _pgml_ingest_config(),
+        pool=_FakePool(conn),  # type: ignore[arg-type]
+        meta=meta,
+    )
+
+    assert degraded is False
+    assert error is None
+    assert "token_usage" not in meta
 
 
 # ---------------------------------------------------------------------------

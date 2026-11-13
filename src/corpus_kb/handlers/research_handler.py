@@ -21,7 +21,7 @@ import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID
 
 import asyncpg
@@ -35,6 +35,7 @@ from corpus_kb.domain.codebook import CodebookVersion
 from corpus_kb.domain.coding import CodingAssignment, CodingRun
 from corpus_kb.errors import ConflictError, CorpusError, NotFoundError, ValidationError
 from corpus_kb.handlers._singleton import SingletonSlot
+from corpus_kb.rag.embedder_usage import UsageTally, embed_usage_section
 from corpus_kb.research.batching import gather_bounded
 from corpus_kb.research.dynamic_ingest import (
     documents_source_doc_id,
@@ -51,6 +52,9 @@ from corpus_kb.tools.ingest_store import PostgresIngestStore
 from corpus_kb.tools.pipeline.research_units import research_document
 from corpus_kb.tools.pipeline.sinks import UnitSink
 from corpus_kb.tools.pipeline.validate import resolve_mode, validate_document
+
+if TYPE_CHECKING:
+    from corpus_kb.rag.embedder import OllamaEmbedder
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +84,7 @@ class ResearchHandler:
         self._embed_fn = embed_fn
         self._dsn = dsn
         self._default_embed_fn: Callable[[str], list[float]] | None | None = None
+        self._default_embedder: OllamaEmbedder | None = None
 
     @property
     def app(self):
@@ -106,10 +111,36 @@ class ResearchHandler:
             from corpus_kb.rag.embedder import OllamaEmbedder, create_embedder
 
             embedder = create_embedder()
-            self._default_embed_fn = (
-                embedder.embed if isinstance(embedder, OllamaEmbedder) else None
-            )
+            if isinstance(embedder, OllamaEmbedder):
+                # Keep the instance: the usage tally (issue #198) reads the
+                # per-call snapshot off it after each embed.
+                self._default_embedder = embedder
+                self._default_embed_fn = embedder.embed
         return self._default_embed_fn
+
+    def _link_embed_tallied(self) -> tuple[Callable[[str], list[float]] | None, UsageTally]:
+        """The link embed fn plus the run's usage tally (issue #198).
+
+        The wrapper reads the embedder's per-call snapshot right after each
+        embed. ``link_exchanges`` is synchronous (no await points), so one
+        file's embeds never interleave with another task's: the per-file
+        attribution is exact. An injected ``embed_fn`` carries no snapshot —
+        the tally stays empty and the receipt key stays honestly absent.
+        """
+        tally = UsageTally()
+        base = self._link_embed()
+        embedder = self._default_embedder
+        if base is None or embedder is None:
+            return base, tally
+
+        def _embed(text: str) -> list[float]:
+            vectors = base(text)
+            usage = embedder.last_usage
+            if usage is not None:
+                tally.add(usage)
+            return vectors
+
+        return _embed, tally
 
     async def ingest_transcript(
         self,
@@ -173,7 +204,8 @@ class ResearchHandler:
         if mode != "off":
             validation_report = validate_document(canonical, mode)
         role_mapping = map_roles(parsed.turns)
-        exchanges = link_exchanges(parsed.turns, embed=self._link_embed())
+        embed_fn, usage_tally = self._link_embed_tallied()
+        exchanges = link_exchanges(parsed.turns, embed=embed_fn)
 
         texts_by_sha: dict[str, str] = {
             str(chunk.chunk_id): chunk.text for chunk in canonical.chunks
@@ -266,6 +298,12 @@ class ResearchHandler:
         # research path): the result dict IS the run metadata Wave 7 reads.
         if validation_report is not None:
             result["validation"] = validation_report
+        # Per-run token accounting (issue #198): the link embeds' spend,
+        # only when the embedder reported it — otherwise the key stays
+        # absent, never an invented zero. The tally arms only for
+        # OllamaEmbedder, so the provider name is exact here.
+        if usage_tally.usage is not None:
+            result["token_usage"] = {"embed": embed_usage_section(usage_tally.usage, "ollama")}
         return result
 
     async def ingest_path(
