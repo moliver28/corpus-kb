@@ -652,6 +652,19 @@ jobs:
       - name: Install Playwright chromium
         run: pnpm -C ui_src exec playwright install --with-deps chromium
 
+      - name: Cache Ollama models
+        # Path-gated: pointless to restore when nothing below pulls.
+        # Own key, not the test legs' key: actions/cache keys are
+        # first-saver-wins, and this job's model set (qwen3-embedding:4b
+        # plus qwen3:4b) differs from the test legs' three embedding
+        # models. The cache kills the two 2.5 GB registry pulls on
+        # every gated run (zero-drift F5).
+        if: needs.changes.outputs.ollama_code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-ui-e2e-qwen3-embedding-4b-qwen3-4b-${{ runner.os }}
+
       - name: Install Ollama (Ubuntu)
         # Path-gated (embedding-surface changes only). Without it this
         # job degrades exactly like the pytest suite: the demo load falls
@@ -668,11 +681,23 @@ jobs:
         # (zero-drift F2): ask-LLM surface changes (handlers/,
         # research/, the e2e driver itself) now re-arm these pulls,
         # not only embedding-surface changes.
-        # The committed config embeds with qwen3-embedding:4b and the ask
-        # pipeline generates with qwen3:4b; pull BOTH so the demo load
-        # makes real vectors and the ask renders real citations. If a
-        # pull fails, the ask degrades to the evidence list and this
-        # REQUIRED job fails — the honest signal.
+        #
+        # What each model does here, honestly (zero-drift F5):
+        # qwen3-embedding:4b (the shipped config default) gives the
+        # demo preload real vectors. qwen3:4b is the ask pipeline's
+        # generation model, but this job's ask leg points llm.base_url
+        # at a closed port (scripts/ui_e2e.py write_llm_override), so
+        # generation NEVER runs in this job — the ask always renders
+        # the degraded evidence list, by design. No green run of this
+        # job certifies the citation path.
+        #
+        # Failure and skip semantics: this step has no
+        # continue-on-error, so a failed pull fails the job for real.
+        # But a SKIPPED pull (gate off) passes: the smoke then accepts
+        # the fully degraded outcome (zero-vector demo load,
+        # evidence-list ask) as a green run. The gate map row in
+        # docs/research/harness-zero-drift-program.md states the rule:
+        # a skipped REQUIRED run is INVALID, not a pass.
         if: needs.changes.outputs.ollama_code == 'true'
         run: |
           ollama pull qwen3-embedding:4b
