@@ -47,7 +47,10 @@ _EXTENSION_PACKAGES: dict[str, tuple[str, list[str]]] = {
     "Darwin": ("brew", ["apache-age", "postgresml"]),
 }
 
-SETUP_REQUIRED_MODELS = ("nomic-embed-text", "qwen3:4b")
+# The shipped embedder (qwen3-embedding:4b fills the halfvec(2560)
+# schema column; nomic-embed-text is 768d and every insert fails) plus
+# the default chat model.
+SETUP_REQUIRED_MODELS = ("qwen3-embedding:4b", "qwen3:4b")
 
 ExtensionMap = dict[str, tuple[bool, str]]
 
