@@ -1,6 +1,6 @@
 import { Button, Card, Typography } from "antd";
 import { useRef, useState } from "react";
-import { strings } from "../strings";
+import { strings } from "../strings/analyze";
 import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
 import AdvisorCard from "./analyze/AdvisorCard";

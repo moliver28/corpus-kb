@@ -93,8 +93,9 @@ land in this document first, before any implementation.
 2. **Hygiene rules extend to TypeScript.** The 250-line file limit
    and the ASD-STE100 plain English rule now apply to both languages.
    The ban on `any` and `@ts-ignore` mirrors the Python
-   `type: ignore` ban. A new `pytest -m ste` file checks
-   `ui_src/src/strings/en.json`.
+   `type: ignore` ban. A `pytest -m ste` file checks the SPA string
+   tables — per-stage `ui_src/src/strings/<stage>.json` files since
+   Phase-2 Wave 6 (the entry chunk carries only `app.json`).
 3. **Five new gate rows.** Each gate gets a `poe` target, a CI job, a
    map row, and an `AGENTS.md` line per rule 10. The rows below follow
    the CI enforcement map format. `ui-build` includes the bundle

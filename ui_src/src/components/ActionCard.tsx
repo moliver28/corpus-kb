@@ -12,7 +12,7 @@ import type { OpResult } from "../api/types";
 import { useCopy } from "../hooks/useCopy";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 /** One dormant-feature notice: the exact config key + a YAML snippet. */
 interface DormantHint {
   configKey: string;

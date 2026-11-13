@@ -1,42 +1,50 @@
-// Graph-stage vocabulary (Phase-2 Wave 4): the entities table, the
-// entity drawer, and the two create forms.
+// The graph stage vocabulary. Phase-2 Wave 6 string
+// split: this table rides this stage's lazy chunk; keys two or
+// more stages reference ride the app (shell) table.
+import tableJson from "./graph.json";
+import { strings as appTable, type AppStrings } from "./app";
+
 export interface GraphStrings {
-  stageGraph: string;
-  graphTitle: string;
   graphBody: string;
-  graphEntitiesTitle: string;
-  graphEntitiesEmpty: string;
-  graphFilterLabel: string;
+  graphColumnActions: string;
   graphColumnId: string;
   graphColumnName: string;
   graphColumnType: string;
-  graphColumnActions: string;
-  graphDetails: string;
-  graphDrawerMetadataTitle: string;
-  graphDrawerEmptyMeta: string;
-  graphDrawerRelationsTitle: string;
-  graphDrawerNeighborsTitle: string;
-  graphRelationsEmpty: string;
-  graphNeighborsEmpty: string;
-  graphRelationRow: string;
-  graphCreateTitle: string;
   graphCreateBody: string;
+  graphCreateSaved: string;
+  graphCreateTitle: string;
+  graphDetails: string;
+  graphDrawerEmptyMeta: string;
+  graphDrawerMetadataTitle: string;
+  graphDrawerNeighborsTitle: string;
+  graphDrawerRelationsTitle: string;
+  graphEntitiesEmpty: string;
+  graphEntitiesTitle: string;
   graphEntityNameLabel: string;
   graphEntityTypeLabel: string;
-  graphCreateSaved: string;
+  graphFilterLabel: string;
   graphNameRequired: string;
-  graphTypeRequired: string;
-  graphRelationTitle: string;
-  graphRelationBody: string;
-  graphSourceLabel: string;
-  graphTargetLabel: string;
-  graphRelationTypeLabel: string;
-  graphRelationSaved: string;
-  graphSourceRequired: string;
-  graphTargetRequired: string;
-  graphRelationTypeRequired: string;
-  graphPickerEmpty: string;
+  graphNeighborsEmpty: string;
   graphPickerCapped: string;
-  graphPickerSearchCapped: string;
+  graphPickerEmpty: string;
   graphPickerNoMatch: string;
+  graphPickerSearchCapped: string;
+  graphRelationBody: string;
+  graphRelationRow: string;
+  graphRelationSaved: string;
+  graphRelationTitle: string;
+  graphRelationTypeLabel: string;
+  graphRelationTypeRequired: string;
+  graphRelationsEmpty: string;
+  graphSourceLabel: string;
+  graphSourceRequired: string;
+  graphTargetLabel: string;
+  graphTargetRequired: string;
+  graphTitle: string;
+  graphTypeRequired: string;
 }
+
+export const strings: AppStrings & GraphStrings = {
+  ...appTable,
+  ...tableJson,
+};

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 type BannerKind = "info" | "ok" | "warn" | "error";
 

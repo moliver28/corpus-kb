@@ -6,7 +6,7 @@ import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField"
 import OpBody from "../../components/OpBody";
 import ReceiptCard from "../../components/ReceiptCard";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/codebook";
 
 /**
  * The notebook views (spec F9): evidence for one code, uncoded units,

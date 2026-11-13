@@ -10,7 +10,7 @@ import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useCopy } from "../../hooks/useCopy";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import { excludedCount, isSearchEnvelope, type SearchRow } from "./shapes";
 import { SEARCH_PAGE_SIZE, columnsOf, searchExpandable } from "./searchColumns";
 

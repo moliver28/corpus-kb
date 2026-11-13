@@ -5,7 +5,7 @@
 import type { Citation } from "../../components/CitedAnswer";
 import type { VerifySummary } from "../../api/verify";
 import type { EvidenceItem } from "./EvidenceList";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 
 /** One cited answer sentence (research/notebook.py cite_sentences). */
 interface Sentence {

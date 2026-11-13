@@ -6,7 +6,7 @@ import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField"
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import { envelopeNote, isGoldEnvelope, rangeText } from "./labelingShapes";
 import type { GoldRow } from "./labelingShapes";
 

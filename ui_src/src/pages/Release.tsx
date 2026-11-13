@@ -1,7 +1,7 @@
 import { Card, Typography } from "antd";
 import type { ReactNode } from "react";
 import { useState } from "react";
-import { strings } from "../strings";
+import { strings } from "../strings/release";
 import IdFormCard from "../components/IdFormCard";
 import type { FormField } from "../components/IdFormCard";
 import type { OpResult } from "../api/types";

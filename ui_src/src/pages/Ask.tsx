@@ -1,5 +1,5 @@
 import { Button, Card } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/ask";
 import { useQueryParam } from "../hooks/useQueryParam";
 import AskCard from "./ask/AskCard";
 import NotebookCard from "./ask/NotebookCard";

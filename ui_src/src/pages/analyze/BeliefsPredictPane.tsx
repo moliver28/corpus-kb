@@ -5,7 +5,7 @@ import { useCallback, useState } from "react";
 import { percentText } from "../../api/format";
 import OpBody from "../../components/OpBody";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import { isPredictEnvelope } from "./beliefsShapes";
 import TripleInputs from "./BeliefsTripleInputs";
 

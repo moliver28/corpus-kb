@@ -1,5 +1,5 @@
 import { Card } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import type { OpResult } from "../api/types";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";

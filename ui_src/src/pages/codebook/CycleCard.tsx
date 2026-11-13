@@ -10,7 +10,7 @@ import UnavailablePanel from "../../components/UnavailablePanel";
 import { callOp } from "../../api/client";
 import { getOp, statusOpFor } from "../../api/ops";
 import { useLongOp } from "../../hooks/useLongOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/codebook";
 
 interface CycleEnvelope {
   status: string;

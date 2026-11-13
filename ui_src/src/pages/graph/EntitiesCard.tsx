@@ -5,7 +5,7 @@ import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { windowPagerTotal } from "../../hooks/useServerWindow";
 import type { ServerWindow } from "../../hooks/useServerWindow";
-import { strings } from "../../strings";
+import { strings } from "../../strings/graph";
 import type { EntityRow } from "./shapes";
 import EntityDrawer from "./EntityDrawer";
 

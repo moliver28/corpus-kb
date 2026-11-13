@@ -9,7 +9,7 @@ import UnavailablePanel from "../../components/UnavailablePanel";
 import { sendMultipart } from "../../api/client";
 import { runtimeConfig } from "../../api/runtimeConfig";
 import type { OpResult } from "../../api/types";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 
 // The multipart upload route is not a JSON op, so it has no op-manifest
 // row (screens must not change the registry). The path mirrors the

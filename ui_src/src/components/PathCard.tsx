@@ -12,7 +12,7 @@ import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 interface PathCardProps {
   title: string;

@@ -3,7 +3,7 @@ import { useState } from "react";
 import ConfirmGate from "../../components/ConfirmGate";
 import LabeledField from "../../components/LabeledField";
 import { useFormWrite } from "../../hooks/useFormWrite";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import type { ConflictRow } from "./conflictsShapes";
 
 const VERDICTS = ["conflict", "revision", "dismissed"] as const;

@@ -9,7 +9,7 @@ import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/scale";
 
 /** One diff row of the lock's proposed overrides (calibrate_tools._diff). */
 interface ChangeRow {

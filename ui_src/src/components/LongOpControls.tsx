@@ -1,6 +1,6 @@
 import { Button } from "antd";
 import type { LongOp } from "../hooks/useLongOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import StatusBanner from "./StatusBanner";
 
 /**

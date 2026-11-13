@@ -1,4 +1,4 @@
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 /** Collapsible pretty-printed JSON (the raw envelope, never the headline). */
 export default function JsonViewer({ value }: { value: unknown }) {

@@ -1,6 +1,6 @@
 import { Button } from "antd";
 import pkg from "../../package.json";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import type { OpResult } from "../api/types";
 import { useCopy } from "../hooks/useCopy";
 import JsonViewer from "./JsonViewer";

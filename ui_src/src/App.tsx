@@ -3,7 +3,7 @@ import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "r
 import { Layout, Spin } from "antd";
 import DeskRail from "./components/DeskRail";
 import type { RailStage } from "./components/DeskRail";
-import { strings } from "./strings";
+import { strings } from "./strings/app";
 
 // One lazy chunk per stage, so one stage never loads another's code.
 const Setup = lazy(() => import("./pages/Setup"));

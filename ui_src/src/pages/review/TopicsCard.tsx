@@ -7,7 +7,7 @@ import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import { isTopicsEnvelope, topicRows } from "./shapes";
 
 /**

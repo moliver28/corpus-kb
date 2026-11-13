@@ -5,7 +5,7 @@ import { usePoll } from "../hooks/usePoll";
 import { runsOf } from "../pages/scale/runFilter";
 import { envelopeResult, isDoctorResult } from "../pages/setup/doctor";
 import type { DoctorResult } from "../pages/setup/doctor";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 /** One rail row of the stage sequence (the shell's route keys). */
 export interface RailStage {

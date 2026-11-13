@@ -8,7 +8,7 @@ import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
 import { useOp } from "../hooks/useOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 // The payload guards ride with the shared card (a component never
 // imports stage code): the ingest-status degraded block and the honest

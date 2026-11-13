@@ -9,7 +9,7 @@ import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { getOp } from "../../api/ops";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import QuestionRouteCard from "./QuestionRouteCard";
 import {
   isAdvisorEnvelope,

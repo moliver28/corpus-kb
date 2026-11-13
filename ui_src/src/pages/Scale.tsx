@@ -12,7 +12,7 @@ import StatusBanner from "../components/StatusBanner";
 import { usePoll } from "../hooks/usePoll";
 import type { Poll } from "../hooks/usePoll";
 import { useQueryParam } from "../hooks/useQueryParam";
-import { strings } from "../strings";
+import { strings } from "../strings/scale";
 import CalibrateApplyCard from "./scale/CalibrateApplyCard";
 import ResearchDemoCard from "./scale/ResearchDemoCard";
 import { filterRuns, projectOptions, runsOf } from "./scale/runFilter";

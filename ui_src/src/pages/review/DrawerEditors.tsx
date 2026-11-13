@@ -3,7 +3,7 @@ import { useState } from "react";
 import LabeledField from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import { useFormWrite } from "../../hooks/useFormWrite";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import { tagColor } from "./shapes";
 import type { TagRow } from "./shapes";
 

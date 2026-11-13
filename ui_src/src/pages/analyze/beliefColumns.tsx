@@ -4,7 +4,7 @@
 // the strings lockstep; numbers render mono via .ui-num.
 import type { ColumnsType } from "antd/es/table";
 import { percentText } from "../../api/format";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import type { BeliefRow, EraRow } from "./beliefsShapes";
 
 export const CURRENT_COLUMNS: ColumnsType<BeliefRow> = [

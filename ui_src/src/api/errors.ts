@@ -1,6 +1,6 @@
 // Outcome classification (spec D.3): one envelope + HTTP status -> one Kind.
-// User-facing words come from strings/en.json like every other surface.
-import { strings } from "../strings";
+// User-facing words come from the strings tables like every other surface.
+import { strings } from "../strings/app";
 import type { OpResult } from "./types";
 
 const FAILED: ReadonlySet<string> = new Set(["error", "failed"]);

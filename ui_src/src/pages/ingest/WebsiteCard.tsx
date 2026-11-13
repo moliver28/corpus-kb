@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import { useState } from "react";
 import PathCard from "../../components/PathCard";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 
 /**
  * The website ingest: one address, with the crawl toggle that walks

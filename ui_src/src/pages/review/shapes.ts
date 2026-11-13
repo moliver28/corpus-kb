@@ -3,7 +3,7 @@
 // or unknown payload on the honest fallback path (DoctorCard pattern)
 // instead of crashing the screen.
 import type { TopicRow } from "../../components/TopicsTable";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 
 /** One coding assignment row (tools/lifecycle_read_tools.py). */
 export interface AssignmentRow {

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import { CURRENT_COLUMNS } from "./beliefColumns";
 import { isBeliefsEnvelope, type BeliefRow } from "./beliefsShapes";
 

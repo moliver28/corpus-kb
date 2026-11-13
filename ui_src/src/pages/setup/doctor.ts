@@ -2,7 +2,7 @@
 // SPA reads only these fields; anything else stays in the JsonViewer.
 // The typeguard keeps a drifted or unknown payload on the honest
 // fallback path (review focus 5) instead of crashing the screen.
-import { strings } from "../../strings";
+import { strings } from "../../strings/setup";
 
 /** One doctor probe row, exactly as the server sends it. */
 interface DoctorCheck {

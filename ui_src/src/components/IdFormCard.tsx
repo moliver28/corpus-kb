@@ -8,7 +8,7 @@ import ErrorPanel from "./ErrorPanel";
 import OpBody from "./OpBody";
 import ReceiptCard from "./ReceiptCard";
 import { useOp } from "../hooks/useOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 export interface FormField {
   key: string;

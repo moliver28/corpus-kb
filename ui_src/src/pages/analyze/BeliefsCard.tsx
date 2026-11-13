@@ -1,5 +1,5 @@
 import { Card, Tabs, Typography } from "antd";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import BeliefsComparePane from "./BeliefsComparePane";
 import BeliefsCurrentPane from "./BeliefsCurrentPane";
 import BeliefsPredictPane from "./BeliefsPredictPane";

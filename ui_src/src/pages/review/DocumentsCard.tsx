@@ -7,7 +7,7 @@ import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
 import { useQueryParam } from "../../hooks/useQueryParam";
 import { useServerWindow } from "../../hooks/useServerWindow";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import DocumentDetailDrawer from "./DocumentDetailDrawer";
 import type { DrawerPanel } from "./DocumentDetailDrawer";
 import DocumentsTable from "./DocumentsTable";

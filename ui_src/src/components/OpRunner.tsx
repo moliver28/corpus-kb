@@ -5,7 +5,7 @@ import { unknownOpResult } from "../api/errors";
 import { getEntry } from "../api/manifest";
 import { statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import { useLongOp } from "../hooks/useLongOp";
 import { useOp } from "../hooks/useOp";
 import ConfirmGate from "./ConfirmGate";

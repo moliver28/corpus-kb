@@ -157,7 +157,8 @@ CI enforcement map in
 
 - `ui_src/src/` — the app: `api/` (client, ops table, runtime config),
   `components/` (shared cards), `pages/<Stage>/` (one folder per
-  stage), `strings/en.json` (every user-visible word).
+  stage), `strings/<stage>.json` (the user-visible words; each stage's
+  table rides its own lazy chunk, `app.json` rides the shell).
 - `ui_src/e2e/` — the Playwright smoke and the axe scan.
 - `ui_src/scripts/` — the bundle gate and the manifest copy.
 - `src/corpus_kb/ui_dist/` — the build output the server serves.
@@ -179,8 +180,10 @@ zero vectors; the ask accepts the honest degraded answer.
 
 ## Conventions
 
-- Every user-visible word lives in `strings/en.json`; the interface in
-  `strings/index.ts` pins the shape. Plain English, short sentences.
+- Every user-visible word lives in one `strings/<stage>.json`; the
+  interface in the matching `strings/<stage>.ts` pins its shape (a key
+  two stages reference belongs in `app`). `strings/index.ts` is the
+  tests-only full union. Plain English, short sentences.
 - New ops come from the manifest (`ops.generated.ts`); screens gate
   missing ops behind honest not-wired banners that self-upgrade.
 - Long-running ops run behind confirm gates with elapsed time, cancel,
@@ -208,7 +211,7 @@ zero vectors; the ask accepts the honest degraded answer.
 | Release execute says Blocked | Required gates fail without a waiver | the refusal lists them by name | Fix the gates or waive with a justification |
 | Build fails on the license gate | New dependency with a disallowed license | `ui_licenses.lock.json` diff | Replace the dependency |
 | `poe gen` leaves a diff in CI | Manifest or harness pack stale | CI diff | Run `poe gen`, commit |
-| `pytest -m ste` fails on UI strings | Sentence too long or hard word | test output names the key | Shorten the string in `en.json` |
+| `pytest -m ste` fails on UI strings | Sentence too long or hard word | test output names the key | Shorten the string in its `strings/<stage>.json` |
 | Bundle gate fails | A chunk or the initial route over budget | the gate prints per-chunk kB | Drop the heaviest usage or split chunks; never delete the check |
 
 ## Maintainability scorecard

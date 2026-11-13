@@ -5,7 +5,7 @@ import ErrorPanel from "./ErrorPanel";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";
 import UnavailablePanel from "./UnavailablePanel";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 /** The drift block: the honest warn plus the raw JSON, one click deep. */
 export function DriftView({ data }: { data: unknown }): ReactNode {

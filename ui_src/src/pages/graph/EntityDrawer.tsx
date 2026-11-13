@@ -2,7 +2,7 @@ import { Descriptions, Drawer, Typography } from "antd";
 import { useCallback, useEffect } from "react";
 import OpBody from "../../components/OpBody";
 import { useRowRead } from "../../hooks/useRowRead";
-import { strings } from "../../strings";
+import { strings } from "../../strings/graph";
 import { isNeighborsEnvelope, isRelationsEnvelope } from "./shapes";
 import type { EntityRow } from "./shapes";
 

@@ -7,7 +7,7 @@ import JsonViewer from "../../components/JsonViewer";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/setup";
 import { allChecks, dimsBelowResearchWidth, envelopeResult, isDoctorResult, stateWord } from "./doctor";
 import type { CheckRow, DoctorResult } from "./doctor";
 

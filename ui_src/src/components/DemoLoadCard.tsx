@@ -9,7 +9,7 @@ import { callOp } from "../api/client";
 import { getOp, statusOpFor } from "../api/ops";
 import type { OpResult } from "../api/types";
 import { useLongOp } from "../hooks/useLongOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 /**
  * The sample-knowledge action: the demo-load op behind a confirm gate.

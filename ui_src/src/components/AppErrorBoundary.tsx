@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import pkg from "../../package.json";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import { useCopy } from "../hooks/useCopy";
 import JsonViewer from "./JsonViewer";
 import StatusBanner from "./StatusBanner";

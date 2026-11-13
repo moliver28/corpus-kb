@@ -1,5 +1,5 @@
 import { Card } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/setup";
 import DemoLoadCard from "../components/DemoLoadCard";
 import StatsStrip from "../components/StatsStrip";
 import DoctorCard from "./setup/DoctorCard";

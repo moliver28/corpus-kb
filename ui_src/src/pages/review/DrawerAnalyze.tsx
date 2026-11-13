@@ -7,7 +7,7 @@ import OpBody from "../../components/OpBody";
 import ReceiptCard from "../../components/ReceiptCard";
 import { useOp } from "../../hooks/useOp";
 import { useRowRead } from "../../hooks/useRowRead";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import { isChunksEnvelope } from "./shapes";
 
 /** Chunk rows asked for in one read; one extra row answers "more exist". */

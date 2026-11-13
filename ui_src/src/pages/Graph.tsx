@@ -1,6 +1,6 @@
 import { Card } from "antd";
 import { useState } from "react";
-import { strings } from "../strings";
+import { strings } from "../strings/graph";
 import { useServerWindow } from "../hooks/useServerWindow";
 import EntitiesCard from "./graph/EntitiesCard";
 import { CreateEntityCard, CreateRelationCard } from "./graph/CreateCards";

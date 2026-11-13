@@ -1,5 +1,5 @@
 import { Table, Tag, type TableProps } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 export interface TopicRow {
   id: string;

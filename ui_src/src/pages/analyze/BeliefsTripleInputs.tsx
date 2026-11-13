@@ -1,7 +1,7 @@
 // One subject/relation/object input group shared by the Beliefs card's
 // timeline and predict panes: three labeled boxes and the run button.
 import { Button, Input } from "antd";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 
 /** One subject/relation/object triple input group. */
 export default function TripleInputs({

@@ -11,7 +11,7 @@ import UnavailablePanel from "../../components/UnavailablePanel";
 import { getOp } from "../../api/ops";
 import { callOpStream } from "../../api/stream";
 import { useLongOp } from "../../hooks/useLongOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import { loadHistory, saveHistory, type HistoryEntry } from "./askHistory";
 import EvidenceList from "./EvidenceList";
 import {

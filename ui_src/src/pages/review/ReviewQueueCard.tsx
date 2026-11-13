@@ -8,7 +8,7 @@ import LabeledField from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import AssignmentsTable from "./AssignmentsTable";
 import OverrideForm from "./OverrideForm";
 import { isAssignmentsEnvelope } from "./shapes";

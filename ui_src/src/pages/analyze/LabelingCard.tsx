@@ -5,7 +5,7 @@ import { dateText } from "../../api/format";
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import LabelingGoldPanel from "./LabelingGoldPanel";
 import LabelingTriagePanel from "./LabelingTriagePanel";
 import { isLabelsEnvelope, isLfsEnvelope } from "./labelingShapes";

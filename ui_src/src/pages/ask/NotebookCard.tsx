@@ -7,7 +7,7 @@ import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField"
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import EvidenceList from "./EvidenceList";
 import ProjectField from "./ProjectField";
 import { isNotebookEnvelope, notebookEvidence, notebookSentences } from "./shapes";

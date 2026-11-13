@@ -3,7 +3,7 @@ import type { ColumnsType } from "antd/es/table";
 import { dateText } from "../../api/format";
 import ConfirmGate from "../../components/ConfirmGate";
 import { windowPagerTotal } from "../../hooks/useServerWindow";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import type { DocumentRow } from "./shapes";
 
 /**

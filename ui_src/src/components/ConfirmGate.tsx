@@ -1,6 +1,6 @@
 import { Button, Modal } from "antd";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 /**
  * The gate props split on the opener: with a trigger the caller owns

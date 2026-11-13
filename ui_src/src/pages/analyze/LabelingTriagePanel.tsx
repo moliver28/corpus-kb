@@ -4,7 +4,7 @@ import { percentText } from "../../api/format";
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import { envelopeNote, isTriageEnvelope } from "./labelingShapes";
 import type { TriageRow } from "./labelingShapes";
 

@@ -2,7 +2,7 @@ import { Card } from "antd";
 import { useId, useState } from "react";
 import type { VerifySummary } from "../api/verify";
 import BadgeLine from "./BadgeLine";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 export interface Citation {
   text: string;

@@ -9,7 +9,7 @@ import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField"
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import { scoreText } from "./shapes";
 import { abstainedOf, isVerifyEnvelope, type ClaimVerdictRow } from "./verifyShapes";
 

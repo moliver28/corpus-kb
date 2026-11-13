@@ -2,7 +2,7 @@ import { Tag } from "antd";
 import { useCallback, useEffect, type ReactNode } from "react";
 import OpBody from "./OpBody";
 import { useOp } from "../hooks/useOp";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import {
   isDocumentStatsEnvelope,
   isStatsEnvelope,

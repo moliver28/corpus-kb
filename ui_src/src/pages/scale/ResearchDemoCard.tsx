@@ -9,7 +9,7 @@ import JsonViewer from "../../components/JsonViewer";
 import LongOpControls from "../../components/LongOpControls";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
-import { strings } from "../../strings";
+import { strings } from "../../strings/scale";
 
 /** The demo receipt (tools/demo_tools.py research_demo). */
 interface DemoEnvelope {

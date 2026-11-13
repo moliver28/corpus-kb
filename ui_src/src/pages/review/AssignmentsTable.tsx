@@ -1,7 +1,7 @@
 import { Button, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { percentText } from "../../api/format";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import { reviewStateWord } from "./shapes";
 import type { AssignmentRow } from "./shapes";
 

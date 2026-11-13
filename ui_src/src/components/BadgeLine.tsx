@@ -1,7 +1,7 @@
 import { Tag } from "antd";
 import { BADGE_THRESHOLDS } from "../api/thresholds.generated";
 import { verifyBadge, type BadgeLabel, type VerifySummary } from "../api/verify";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 import StatusBanner from "./StatusBanner";
 
 const LABELS: Record<BadgeLabel, string> = {

@@ -1,6 +1,6 @@
 import { Button, Popconfirm, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 import type { QueueEntry } from "../../api/queue";
 
 /** The statuses a cancel may still stop (queue_tools.py queue_cancel). */

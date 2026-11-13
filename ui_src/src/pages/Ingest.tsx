@@ -1,5 +1,5 @@
 import { Button, Card } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/ingest";
 import { useQueryParam } from "../hooks/useQueryParam";
 import DemoLoadCard from "../components/DemoLoadCard";
 import DirectoryCard from "../components/DirectoryCard";

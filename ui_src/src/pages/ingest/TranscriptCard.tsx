@@ -1,5 +1,5 @@
 import PathCard from "../../components/PathCard";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 
 /**
  * The transcript ingest: one transcript file on the server, run through

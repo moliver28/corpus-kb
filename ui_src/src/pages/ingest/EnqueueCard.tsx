@@ -6,7 +6,7 @@ import type { OpResult } from "../../api/types";
 import ErrorPanel from "../../components/ErrorPanel";
 import LabeledField, { useFirstErrorFocus } from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ingest";
 
 /**
  * The enqueue form (one server-side file, idempotent per content hash):

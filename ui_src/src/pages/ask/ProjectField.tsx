@@ -6,7 +6,7 @@ import LabeledField from "../../components/LabeledField";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import { isProjectsEnvelope } from "./shapes";
 
 /** The read window; a full window says more projects may exist. */

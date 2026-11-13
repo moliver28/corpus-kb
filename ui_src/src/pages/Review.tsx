@@ -1,5 +1,5 @@
 import { Card } from "antd";
-import { strings } from "../strings";
+import { strings } from "../strings/review";
 import DegradedCard from "../components/DegradedCard";
 import StatsStrip from "../components/StatsStrip";
 import DocumentsCard from "./review/DocumentsCard";

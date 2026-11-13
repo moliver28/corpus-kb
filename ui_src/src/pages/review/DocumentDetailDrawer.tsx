@@ -2,7 +2,7 @@ import { Descriptions, Drawer, Tabs, Typography } from "antd";
 import { useCallback, useEffect } from "react";
 import OpBody from "../../components/OpBody";
 import { useRowRead } from "../../hooks/useRowRead";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 import { isMetadataEnvelope, isTagsEnvelope, metadataText } from "./shapes";
 import type { MetadataRow, DocumentRow } from "./shapes";
 import { MetadataEditor, TagEditor } from "./DrawerEditors";

@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import { useState } from "react";
 import LabeledField from "../../components/LabeledField";
-import { strings } from "../../strings";
+import { strings } from "../../strings/review";
 
 /**
  * The override form, inline under the queue (no modal): the note stays

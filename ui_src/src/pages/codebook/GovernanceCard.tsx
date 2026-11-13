@@ -6,7 +6,7 @@ import ReceiptCard from "../../components/ReceiptCard";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/codebook";
 
 interface TrafficLight {
   level: unknown;

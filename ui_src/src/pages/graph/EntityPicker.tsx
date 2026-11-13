@@ -4,7 +4,7 @@ import ErrorPanel from "../../components/ErrorPanel";
 import StatusBanner from "../../components/StatusBanner";
 import UnavailablePanel from "../../components/UnavailablePanel";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/graph";
 import { isEntitiesEnvelope } from "./shapes";
 
 /** The picker window; a full window says more entities may exist. */

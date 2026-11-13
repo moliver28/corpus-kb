@@ -7,7 +7,7 @@ import { percentText } from "../../api/format";
 import OpBody from "../../components/OpBody";
 import StatusBanner from "../../components/StatusBanner";
 import { useOp } from "../../hooks/useOp";
-import { strings } from "../../strings";
+import { strings } from "../../strings/analyze";
 import { ERA_COLUMNS } from "./beliefColumns";
 import { isTimelineEnvelope, type EraRow } from "./beliefsShapes";
 import TripleInputs from "./BeliefsTripleInputs";

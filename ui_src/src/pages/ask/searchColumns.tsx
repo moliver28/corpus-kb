@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import type { ReactNode } from "react";
-import { strings } from "../../strings";
+import { strings } from "../../strings/ask";
 import { scoreText, type SearchRow } from "./shapes";
 
 /**

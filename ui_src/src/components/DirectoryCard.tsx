@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import { useState } from "react";
 import PathCard from "./PathCard";
-import { strings } from "../strings";
+import { strings } from "../strings/app";
 
 /**
  * The bulk folder walk: one folder on the server, subfolders on or off.

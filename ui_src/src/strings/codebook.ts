@@ -1,64 +1,73 @@
-// Codebook-stage vocabulary: pre-flight, coding steps, promotion, notebook
-// views, governance, and the research cycle.
+// The codebook stage vocabulary. Phase-2 Wave 6 string
+// split: this table rides this stage's lazy chunk; keys two or
+// more stages reference ride the app (shell) table.
+import tableJson from "./codebook.json";
+import { strings as appTable, type AppStrings } from "./app";
+
 export interface CodebookStrings {
-  codebookTitle: string;
-  codebookBody: string;
-  codebookPreFlightTitle: string;
-  codebookPreFlightBody: string;
-  codebookProjectsLine: string;
-  codebookVersionsHeading: string;
-  codebookVersionsNone: string;
-  codebookDimsHeading: string;
-  codebookDimsNone: string;
-  codebookStepsTitle: string;
-  codebookInductiveTitle: string;
-  codebookInductiveBody: string;
-  codebookRunTitle: string;
-  codebookRunBody: string;
-  codebookVersionLabel: string;
-  codebookVersionRequired: string;
-  codebookNotWiredTitle: string;
-  codebookEmbedNotWired: string;
-  codebookPoolNotWired: string;
   codebookBatchNotWired: string;
+  codebookBody: string;
   codebookCalibrateNotWired: string;
-  codebookReliabilityNotWired: string;
-  codebookSaturationNotWired: string;
-  codebookPromoteTitle: string;
-  codebookPromoteBody: string;
-  codebookPromoteAction: string;
-  codebookPromoteModalTitle: string;
-  codebookPromoteNameLabel: string;
-  codebookPromoteDefinitionLabel: string;
-  codebookPromoteNameRequired: string;
-  codebookPromoteDefinitionRequired: string;
-  codebookPromoteDuplicate: string;
-  codebookPromoteDone: string;
-  codebookProposalsNone: string;
-  codebookGovernanceActions: string;
   codebookColumnLabel: string;
   codebookColumnUnits: string;
-  codebookNotebookTitle: string;
-  codebookEvidenceTitle: string;
+  codebookCycleAction: string;
+  codebookCycleAwaiting: string;
+  codebookCycleBody: string;
+  codebookCycleCompleted: string;
+  codebookCycleDenied: string;
+  codebookCycleGate: string;
+  codebookCycleHalted: string;
+  codebookCycleStopped: string;
+  codebookCycleTitle: string;
+  codebookCycleUnavailable: string;
+  codebookDimsHeading: string;
+  codebookDimsNone: string;
+  codebookEmbedNotWired: string;
   codebookEvidenceCodeLabel: string;
   codebookEvidenceRequired: string;
-  codebookUncodedTitle: string;
-  codebookUncodedBody: string;
-  codebookOverlapTitle: string;
-  codebookOverlapBody: string;
-  codebookGovernanceTitle: string;
+  codebookEvidenceTitle: string;
+  codebookGovernanceActions: string;
   codebookGovernanceBody: string;
   codebookGovernanceStale: string;
-  codebookLevelNovice: string;
+  codebookGovernanceTitle: string;
+  codebookInductiveBody: string;
+  codebookInductiveTitle: string;
   codebookLevelExpert: string;
-  codebookCycleTitle: string;
-  codebookCycleBody: string;
-  codebookCycleAction: string;
-  codebookCycleCompleted: string;
-  codebookCycleUnavailable: string;
-  codebookCycleHalted: string;
-  codebookCycleAwaiting: string;
-  codebookCycleDenied: string;
-  codebookCycleStopped: string;
-  codebookCycleGate: string;
+  codebookLevelNovice: string;
+  codebookNotWiredTitle: string;
+  codebookNotebookTitle: string;
+  codebookOverlapBody: string;
+  codebookOverlapTitle: string;
+  codebookPoolNotWired: string;
+  codebookPreFlightBody: string;
+  codebookPreFlightTitle: string;
+  codebookProjectsLine: string;
+  codebookPromoteAction: string;
+  codebookPromoteBody: string;
+  codebookPromoteDefinitionLabel: string;
+  codebookPromoteDefinitionRequired: string;
+  codebookPromoteDone: string;
+  codebookPromoteDuplicate: string;
+  codebookPromoteModalTitle: string;
+  codebookPromoteNameLabel: string;
+  codebookPromoteNameRequired: string;
+  codebookPromoteTitle: string;
+  codebookProposalsNone: string;
+  codebookReliabilityNotWired: string;
+  codebookRunBody: string;
+  codebookRunTitle: string;
+  codebookSaturationNotWired: string;
+  codebookStepsTitle: string;
+  codebookTitle: string;
+  codebookUncodedBody: string;
+  codebookUncodedTitle: string;
+  codebookVersionLabel: string;
+  codebookVersionRequired: string;
+  codebookVersionsHeading: string;
+  codebookVersionsNone: string;
 }
+
+export const strings: AppStrings & CodebookStrings = {
+  ...appTable,
+  ...tableJson,
+};
