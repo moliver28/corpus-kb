@@ -75,6 +75,21 @@ async def _seed_graph(pool, run: str) -> list[UUID]:
     ids = [uuid4() for _ in range(3)]
     names = [f"aaa-{run}-a", f"aaa-{run}-b", f"aaa-{run}-c"]
     async with tenant_connection(pool, TENANT) as conn:
+        # The shared test database keeps rows between runs, and earlier
+        # runs of this test carry the same 00- prefix. Clear this
+        # family first, so the window order has exactly one owner.
+        if is_gateway(pool):
+            await conn.execute("DELETE FROM relations WHERE relation_type LIKE '00-%'")
+            await conn.execute("DELETE FROM entities WHERE name LIKE 'aaa-%'")
+        else:
+            await conn.execute(
+                "DELETE FROM relations WHERE tenant_id = $1 AND relation_type LIKE '00-%'",
+                str(TENANT),
+            )
+            await conn.execute(
+                "DELETE FROM entities WHERE tenant_id = $1 AND name LIKE 'aaa-%'",
+                str(TENANT),
+            )
         for entity_id, name in zip(ids, names, strict=True):
             await conn.execute(entity_sql, str(entity_id), str(TENANT), name, "concept")
         # Two relations with DIFFERENT types. The types carry the run

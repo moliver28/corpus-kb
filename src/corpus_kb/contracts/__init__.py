@@ -36,6 +36,7 @@ from corpus_kb.contracts.catalogue_coding import CODING_OPERATIONS
 from corpus_kb.contracts.catalogue_conflicts import CONFLICTS_OPERATIONS
 from corpus_kb.contracts.catalogue_documents import DOCUMENTS_OPERATIONS
 from corpus_kb.contracts.catalogue_events import EVENTS_OPERATIONS
+from corpus_kb.contracts.catalogue_graph import GRAPH_OPERATIONS
 from corpus_kb.contracts.catalogue_labeling import LABELING_OPERATIONS
 from corpus_kb.contracts.catalogue_project import PROJECT_OPERATIONS
 from corpus_kb.contracts.catalogue_queue import QUEUE_OPERATIONS
@@ -65,6 +66,7 @@ from corpus_kb.contracts.model import (
 OPERATIONS: tuple[Operation, ...] = (
     *CORE_OPERATIONS,
     *DOCUMENTS_OPERATIONS,
+    *GRAPH_OPERATIONS,
     *TAGS_OPERATIONS,
     *RELEASE_OPERATIONS,
     *RESEARCH_OPERATIONS,

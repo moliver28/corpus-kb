@@ -45,7 +45,13 @@ from corpus_kb.domain.models import (
     VerifyAnswerResult,
 )
 from corpus_kb.errors import DependencyMissingError
-from corpus_kb.handlers import query_crud, query_crud_reads, query_pipeline, query_stages
+from corpus_kb.handlers import (
+    query_crud,
+    query_crud_reads,
+    query_graph_reads,
+    query_pipeline,
+    query_stages,
+)
 from corpus_kb.handlers.query_integrity import SearchEnvelope
 from corpus_kb.handlers.query_multiquery import build_rewriter
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
@@ -210,7 +216,7 @@ class QueryHandler:
         self, query: ListRelationsQuery
     ) -> list[RelationListResult]:
         """List graph relations, one window (Phase-2 Wave 6 Map)."""
-        return await query_crud_reads.list_relations(
+        return await query_graph_reads.list_relations(
             cast("asyncpg.Pool | SqlGateway", self._pool), query
         )
 
