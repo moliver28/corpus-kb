@@ -23,7 +23,7 @@ pyright src/                                     # type-check (pyright — NOT m
 python src/corpus_kb/_setup/validate_configs.py  # validate MCP configs pre-push
 python scripts/schema_parity_gate.py             # schema parity, both migration sets (sqlglot, static; poe schema-parity)
 python src/corpus_kb/_setup/validate_profiles.py # profile gate: schema + strategy/template/seeds cross-refs (poe validate-profiles)
-python -m pytest tests/ -v --tb=short --durations=10   # tests (Ollama up, nomic-embed-text pulled)
+python -m pytest tests/ -v --tb=short --durations=10   # tests (Ollama up, qwen3-embedding:4b pulled)
 pytest --cov=corpus_kb --cov-report=term-missing      # coverage
 ```
 
@@ -46,7 +46,7 @@ Build: setuptools (not hatch/poetry), packages in `src/`. Lint/type-check tools:
 
 ## CI (`.github/workflows/ci.yml`)
 
-Gate order: lint (`ruff check src/ tests/`, no deps) → type-check (`pyright src/`, project deps installed) → validate-configs (command above) → test (ubuntu/windows/macos: Ollama + `python -m pytest tests/` from repo root).
+The CI gate set: lint (ruff), type-check (pyright), config/profile validation, dependency audit, duplication and size ceilings, generated-artifact drift, UI build + Playwright smoke, cross-OS tests (ubuntu/windows/macos: Ollama + `python -m pytest tests/` from repo root), a pytest-warnings ceiling, and plugin manifest/tests jobs. A path filter arms the live-Ollama legs only when the source paths they cover change. Each gate has a `poe` target and an enforcement-map row. The authoritative map lives in `docs/research/harness-zero-drift-program.md`; check it when you add a gate, not this summary.
 
 Ollama install per OS (exact commands + rationale in ci.yml comments). Ubuntu: official install script (reliable). macOS: `brew install ollama` (install script fails on runners). Windows: `OllamaSetup.exe /S` + 120s timeout + `continue-on-error: true` (installer often hangs → degraded zero-vector mode).
 
@@ -149,4 +149,4 @@ No standing entries. The former list is closed on GitHub: #17 (zero-data-loss sh
 
 No `codemap.md` — orient via the structure section above + `docs/DEVELOPMENT.md`.
 
-Default embedding model `nomic-embed-text` (768d); upgradeable to `qwen3-embedding:8b-q8_0` (4096d); PostgresML (`pgml`) for in-database embeddings.
+Default embedding model `qwen3-embedding:4b` (2560d — the fixed `halfvec(2560)` schema width). `nomic-embed-text` (768d) cannot insert into the shipped schema, and `qwen3-embedding:8b-q8_0` (4096d) needs a schema migration first; the model↔schema matrix is in `docs/ADMIN.md`. PostgresML (`pgml`) can serve smaller embedders in-database, but not this one.
