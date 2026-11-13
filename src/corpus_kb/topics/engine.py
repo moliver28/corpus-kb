@@ -28,6 +28,7 @@ calls it directly (an offline operator command, not a request path).
 from __future__ import annotations
 
 import importlib
+import inspect
 import json
 import logging
 from dataclasses import dataclass, field
@@ -441,6 +442,16 @@ def _merge_values(
     return merged
 
 
+def _umap_has_compatibility_layout(umap_module: UmapModule) -> bool:
+    """True when the installed umap declares compatibility_layout (0.6+).
+
+    umap 0.5.x (the lock's pin) predates the parameter entirely — it IS
+    the 0.5.x pipeline, so the kwarg must not reach it (a TypeError
+    there).
+    """
+    return "compatibility_layout" in inspect.signature(umap_module.UMAP).parameters
+
+
 def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapInstance:
     """The deterministic UMAP instance (random state pinned at 42).
 
@@ -448,18 +459,42 @@ def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapI
     corpora); the cluster-inspect path passes a clamped value so tiny
     samples never trip umap's truncation warning.
     """
+    has_layout_kwarg = _umap_has_compatibility_layout(umap_module)
     if n_neighbors is None:
+        if has_layout_kwarg:
+            # umap 0.6 changed the default layout pipeline. True keeps the
+            # 0.5.x pipeline, so stored topics stay stable, and it
+            # silences the 0.6 FutureWarning (the warnings ceiling is 0).
+            return umap_module.UMAP(
+                random_state=UMAP_RANDOM_STATE,
+                n_components=5,
+                min_dist=0.0,
+                metric="cosine",
+                # random_state pins umap to serial anyway; saying so here
+                # skips its "n_jobs overridden" UserWarning.
+                n_jobs=1,
+                compatibility_layout=True,
+            )
+        # umap 0.5.x (the lock's pin) predates the parameter. Omitting
+        # the kwarg selects the same 0.5.x pipeline.
         return umap_module.UMAP(
             random_state=UMAP_RANDOM_STATE,
             n_components=5,
             min_dist=0.0,
             metric="cosine",
-            # random_state pins umap to serial anyway; saying so here skips
-            # its "n_jobs overridden" UserWarning.
             n_jobs=1,
-            # umap 0.6 changed the default layout pipeline. True keeps the
-            # 0.5.x pipeline, so stored topics stay stable.
+        )
+    if has_layout_kwarg:
+        # umap 0.6 changed the default layout pipeline. True keeps the
+        # 0.5.x pipeline, so inspect output stays stable.
+        return umap_module.UMAP(
+            random_state=UMAP_RANDOM_STATE,
+            n_neighbors=n_neighbors,
+            n_components=5,
+            min_dist=0.0,
+            metric="cosine",
             compatibility_layout=True,
+            n_jobs=1,
         )
     return umap_module.UMAP(
         random_state=UMAP_RANDOM_STATE,
@@ -467,9 +502,6 @@ def _make_umap(umap_module: UmapModule, n_neighbors: int | None = None) -> UmapI
         n_components=5,
         min_dist=0.0,
         metric="cosine",
-        # umap 0.6 changed the default layout pipeline. True keeps the
-        # 0.5.x pipeline, so inspect output stays stable.
-        compatibility_layout=True,
         n_jobs=1,
     )
 
