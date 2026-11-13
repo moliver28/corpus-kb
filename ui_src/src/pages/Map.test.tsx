@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
-import { clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
+import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
 import Map from "./Map";
 import { layoutEntities, relationEdges } from "./map/layout";
 import type { RelationListRow } from "./map/shapes";
@@ -124,13 +124,18 @@ describe("Map stage", () => {
     expect(screen.getByText("Delta")).toBeTruthy();
   });
 
-  it("keeps the canvas read-only (no handles, no drag)", async () => {
+  it("keeps the canvas read-only: the page writes nothing", async () => {
     stubFetch([entityRoute(), relationRoute()]);
     render(<Map />, { wrapper: makeWrapper() });
     await waitFor(() => expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0));
-    // nodesConnectable={false} hides every handle; nothing on the pane
-    // starts a write op (the page never mounts a write hook).
-    expect(document.querySelector(".react-flow__handle")).toBeNull();
+    // The invisible attachment handles render (xyflow drops edges
+    // whose endpoint node has no handle). Edge DOM itself needs the
+    // browser's node measurement (jsdom's stub never measures), so the
+    // rendered edge is pinned by the e2e smoke. Read-only is
+    // structural: the page mounts no write op, so the whole render
+    // history carries GET calls only.
+    expect(document.querySelectorAll(".react-flow__handle").length).toBe(6);
+    expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
   it("names the honest entity cap when the server holds one more", async () => {
