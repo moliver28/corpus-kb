@@ -115,6 +115,7 @@ async def clean_db(db_conn):
 class TestE2EIntegration:
     """End-to-end integration tests across all 3 protocols."""
 
+    @pytest.mark.requires_ollama
     @pytest.mark.asyncio
     async def test_ingest_file_creates_document(self, clean_db, db_conn, db_pool):
         """Test 1: Ingest a file → verify document appears in Postgres."""
