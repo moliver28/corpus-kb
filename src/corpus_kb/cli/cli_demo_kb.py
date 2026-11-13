@@ -28,7 +28,10 @@ def register(app: typer.Typer) -> None:
 
 
 def _print_receipt(envelope: dict[str, object]) -> None:
-    """The human receipt: one line per file, then the totals."""
+    """The human receipt: one line per file, then the totals.
+
+    A degraded load adds two lines: what is missing, and the repair.
+    """
     result = envelope.get("result")
     result_dict = result if isinstance(result, dict) else {}
     ingested = result_dict.get("ingested")
@@ -44,6 +47,9 @@ def _print_receipt(envelope: dict[str, object]) -> None:
     for name in skipped_list:
         print(f"[SKIP] {name}: unchanged")
     print(f"ingested {len(ingested_list)}, skipped {len(skipped_list)}")
+    if result_dict.get("degraded") is True:
+        print("DEGRADED: some chunks have no usable vectors. Text search still works.")
+        print("Repair: start Ollama, then run corpus-kb ingest --reembed")
 
 
 def _failures_line(envelope: dict[str, object]) -> str:
