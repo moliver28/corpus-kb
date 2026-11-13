@@ -650,10 +650,10 @@ kills only that child. The window falls back to pypdf, the run
 continues, and the fallback text caches under the pypdf key.
 `textbook.window_timeout_s` (default 3600) bounds one window.
 
-**Worker reuse.** A new child pays the parser's model load every time,
+**Worker reuse.** A new child pays the parser model load every time,
 and that load dominates the Docling CPU path. With
 `textbook.worker_reuse: true` (the default), one worker child stays
-alive across windows and documents, so the model loads once per
+alive across windows and documents. The model then loads once per
 worker. The worker speaks the same page rows, so the parsed items do
 not change. `textbook.worker_max_windows` (default 32) recycles the
 worker after that many windows, so no worker grows without bound. A
