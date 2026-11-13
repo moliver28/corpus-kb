@@ -337,6 +337,9 @@ async def _deny_at_ingest(fresh_research_app: str, drop: str, tenant: UUID) -> N
     assert checkpoint["stage"] == "ingest"
 
 
+@pytest.mark.skipif(
+    not _INDUCTIVE_EXTRA, reason="the inductive extra (umap-learn) is not installed"
+)
 async def test_explicit_rerun_of_denied_stage_reprompts(
     fresh_research_app: str, tmp_path: Path
 ) -> None:
@@ -366,6 +369,9 @@ async def test_explicit_rerun_of_denied_stage_reprompts(
     assert checkpoint["gate"] == "codebook_promotion"
 
 
+@pytest.mark.skipif(
+    not _INDUCTIVE_EXTRA, reason="the inductive extra (umap-learn) is not installed"
+)
 async def test_implicit_rerun_keeps_the_denial_skip(
     fresh_research_app: str, tmp_path: Path
 ) -> None:
