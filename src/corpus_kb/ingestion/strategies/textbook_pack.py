@@ -12,7 +12,8 @@ sorted ``units`` metadata key, so today that list is always
 ``["table"]``. Figures and formulas join the list when their detection
 lands. Units ride the ``structured_output`` flag (a unit needs the rich
 parse), and they live in chunk metadata, the same durable channel as
-``citation`` — they never surface in search results.
+``citation`` — the search family re-attaches both keys to each
+SearchResult (issue #271).
 
 Pure stdlib; no I/O and no parser imports.
 """

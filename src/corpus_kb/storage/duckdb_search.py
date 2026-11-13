@@ -61,7 +61,8 @@ META_ARM_K = 5
 # Mirrors of handlers.query_vector_arms fragments (pinned by tests).
 SELECT_LIST = (
     "chunks.chunk_id, chunks.text, chunks.doc_id, documents.source, chunks.file_path,"
-    " chunks.start_line, chunks.end_line, chunks.chunk_index, chunks.heading_path"
+    " chunks.start_line, chunks.end_line, chunks.chunk_index, chunks.heading_path,"
+    " chunks.metadata"
 )
 DEDUP_PREDICATE = "AND chunks.tombstoned_at IS NULL AND chunks.superseded_at IS NULL"
 
