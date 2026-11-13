@@ -66,9 +66,12 @@ const ariaLabelConfig = {
 /**
  * The Map stage (Phase-2 Wave 6): the Desk's read-only graph view. Two
  * window reads from the one server-window seam — entities (nodes) and
- * relations (edges) — no poll loops, no writes. The canvas never
- * carries the only path to data: the same two windows render as tables
- * under it, so screen readers and axe scan the plain tables.
+ * relations (edges) — no poll loops, no writes. Read-only is total:
+ * dragging and connecting are off, and deleteKeyCode is null because
+ * xyflow's Backspace default would delete the selected drawn node.
+ * The canvas never carries the only path to data: the same two
+ * windows render as tables under it, so screen readers and axe scan
+ * the plain tables.
  */
 export default function Map() {
   const entityWin = useServerWindow<EntityRow, { status: string; result: EntityRow[] }>(
@@ -140,6 +143,7 @@ export default function Map() {
                   nodeTypes={nodeTypes}
                   nodesDraggable={false}
                   nodesConnectable={false}
+                  deleteKeyCode={null}
                   elementsSelectable
                   ariaLabelConfig={ariaLabelConfig}
                   fitView
