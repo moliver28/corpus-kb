@@ -255,7 +255,7 @@ def _write_pdf(path: Path, page_texts: list[str], outline: list[int] | None = No
     for text in page_texts:
         writer.append(PdfReader(io.BytesIO(_page_pdf_bytes(text))))
     for page_index in outline or []:
-        writer.add_outline_item(f"Chapter {page_index}", page_index)
+        writer.add_outline_item(title=f"Chapter {page_index}", page_number=page_index)
     with path.open("wb") as handle:
         writer.write(handle)
     return path

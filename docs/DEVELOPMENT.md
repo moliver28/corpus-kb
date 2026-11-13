@@ -261,7 +261,7 @@ Homebrew Postgres makes your OS user the superuser and has no `postgres` role. U
 
 ## Conventions
 
-- Python 3.11+ only.
+- Python 3.11.5+ only.
 - Use `from __future__ import annotations` in every file.
 - Absolute imports (`from corpus_kb.xxx import ...`); never `from src.`.
 - Internal models are dataclasses, not Pydantic (`Ontology` is the exception).

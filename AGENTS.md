@@ -83,7 +83,7 @@ Absolute package imports everywhere under `src/corpus_kb/` (e.g. `from corpus_kb
 ## Data Model Conventions
 
 - Internal models are `@dataclass`, not `pydantic.BaseModel` (`utils/models.py`); exception: `Ontology` (`ontology.py`, Pydantic validation).
-- Every file: `from __future__ import annotations`. **No `type: ignore`. No `Any` where a real type works.** Python 3.11+ only.
+- Every file: `from __future__ import annotations`. **No `type: ignore`. No `Any` where a real type works.** Python 3.11.5+ only.
 - 250-line soft limit on source files — split past it.
 - TypeScript (`ui_src/`) mirrors these rules: 250-line soft limit, no `any`, no `@ts-ignore`. Plain English strings live in `ui_src/src/strings/en.json`; `pytest -m ste` checks them.
 

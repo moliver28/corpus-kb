@@ -24,19 +24,33 @@ test.describe("SPA smoke on a live server", () => {
   test("ask answers with citations and an honest badge (degraded accepted)", async ({ page }) => {
     await page.goto("/app/#/ask");
     await expect(page.getByText("Ask your corpus").first()).toBeVisible();
-    await page.getByPlaceholder("Question").fill("How does ingestion work?");
+    // The question must be servable through BOTH retrieval arms: on the
+    // no-Ollama leg only the lexical arm runs (plainto_tsquery ANDs the
+    // terms), so every content word has to appear in the sample corpus.
+    // "How does ingestion work?" holds "work", which no chunk has, and
+    // honestly answered `empty` there (issue #414).
+    await page.getByPlaceholder("Question").fill("What is ingestion?");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
-    // Two honest outcomes, both accepted: a cited answer (with one of the
-    // three badge words), or the degraded note when the CPU runner cannot
-    // generate inside the server's LLM budget. The ask page states the
-    // degraded note as "Answer generation is unavailable." — never a crash,
-    // never a silent wrong answer.
+    // Three honest outcomes, all terminal: a cited answer (with one of the
+    // three badge words), the degraded note when the CPU runner cannot
+    // generate inside the server's LLM budget, or the empty-corpus note.
+    // The ask page states the degraded note as "Answer generation is
+    // unavailable." and the empty-corpus note as "No evidence matched
+    // this question." — never a crash, never a silent wrong answer.
     const cited = page.getByText("Cited sentences");
     const degraded = page.getByText("Answer generation is unavailable");
-    await expect(cited.or(degraded)).toBeVisible({ timeout: 840_000 });
+    const noEvidence = page.getByText("No evidence matched this question");
+    await expect(cited.or(degraded).or(noEvidence)).toBeVisible({ timeout: 840_000 });
     if (await cited.isVisible()) {
       await expect(page.getByText(/^(verified|partial|not verified)$/).first()).toBeVisible();
       await expect(page.getByText("Claim support:").first()).toBeVisible();
+    }
+    if (await noEvidence.isVisible()) {
+      // An empty corpus is honest but not the demo contract: end the test
+      // here with the reason, not at the 14-minute expectation window.
+      throw new Error(
+        "The ask found no evidence for this question. Check the demo preload receipt and the corpus contents.",
+      );
     }
   });
 

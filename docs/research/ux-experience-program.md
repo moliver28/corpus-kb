@@ -183,7 +183,7 @@ zero new daemons. Browser auto-open on `start` when the extra is present.
 | DeepEval 4.3.1, Apache-2.0 | **Chosen.** Official Ollama integration (offline, no key), metrics match the pipeline exactly (faithfulness, answer relevancy, contextual precision/recall/relevancy), golden-set `Synthesizer`, pytest-native. 32 deps; `openai` is a hard dep (offline-safe; note in deptry). |
 | Ragas 0.4.3, Apache-2.0 | Works with Ollama via LangChain wrappers, but drags ~50 deps including the full LangChain stack. Optional import path only if its knowledge-graph test-set generation is wanted later. |
 | TruLens 2.15.0, MIT | Snowflake-maintained, active; wrapper glue for Ollama; OTel overlap with D3. Keep as watchlist. |
-| Giskard 3.0.1 | Requires Python >=3.12 — conflicts with the repo's 3.11 floor. Excluded. |
+| Giskard 3.0.1 | Requires Python >=3.12 — conflicts with the repo's 3.11.5 floor. Excluded. |
 | promptfoo | MIT, good rubric model, but Node CLI. Violates G6. Excluded. README claims "part of OpenAI" (unverified date). |
 | arize-phoenix-evals 3.9.2 | **Elastic-2.0 now.** Excluded from any extra. |
 
