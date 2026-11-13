@@ -1,11 +1,13 @@
-"""Typed Protocol wrappers for the optional ``langextract`` package."""
+"""Typed wrappers, normalization, and fixture IO for ``langextract``."""
 
 from __future__ import annotations
 
 import importlib
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, cast, runtime_checkable
+from pathlib import Path
+from typing import Any, Protocol, cast, runtime_checkable
 
 from ..ontology import Ontology
 
@@ -89,58 +91,64 @@ def build_prompt_description(ontology: Ontology) -> str:
     )
 
 
-def build_examples(lx: LangExtractModule, ontology: Ontology) -> list[object]:
-    """Build a few example documents from the ontology."""
-    examples: list[object] = []
-    for entity_type in ontology.entity_types[:2]:
-        extraction = lx.data.Extraction(
-            extraction_class=entity_type,
-            extraction_text=f"Example{entity_type}",
-            char_interval=lx.data.CharInterval(start_pos=0, end_pos=10),
-        )
-        examples.append(
-            lx.data.ExampleData(
-                text=f"Example of {entity_type}.",
-                extractions=[extraction],
-            )
-        )
+def _normalize_extraction(extraction: Extraction) -> NormalizedExtraction:
+    interval = extraction.char_interval
+    attributes = getattr(extraction, "attributes", None)
+    return NormalizedExtraction(
+        extraction_class=extraction.extraction_class,
+        extraction_text=extraction.extraction_text,
+        start_pos=interval.start_pos if interval else None,
+        end_pos=interval.end_pos if interval else None,
+        confidence=None,
+        attributes=attributes if isinstance(attributes, dict) else None,
+    )
 
-    if ontology.relation_types and len(ontology.entity_types) >= 2:
-        subject_type, object_type = ontology.entity_types[0], ontology.entity_types[1]
-        relation_type = ontology.relation_types[0]
-        subject_text = f"Example{subject_type}"
-        object_text = f"Example{object_type}"
-        example_text = f"{subject_text} relates to {object_text}."
-        subject_extraction = lx.data.Extraction(
-            extraction_class=subject_type,
-            extraction_text=subject_text,
-            char_interval=lx.data.CharInterval(start_pos=0, end_pos=len(subject_text)),
-        )
-        object_start = example_text.index(object_text)
-        object_extraction = lx.data.Extraction(
-            extraction_class=object_type,
-            extraction_text=object_text,
-            char_interval=lx.data.CharInterval(
-                start_pos=object_start, end_pos=object_start + len(object_text)
-            ),
-        )
-        relation_extraction = lx.data.Extraction(
-            extraction_class=relation_type,
-            extraction_text="relates to",
-            attributes={
-                "subject": subject_text,
-                "object": object_text,
-                "confidence": 0.9,
-            },
-        )
-        examples.append(
-            lx.data.ExampleData(
-                text=example_text,
-                extractions=[
-                    subject_extraction,
-                    object_extraction,
-                    relation_extraction,
-                ],
+
+def _load_fixture(path: Path) -> list[NormalizedExtraction]:
+    """Read one recorded ``<sha256>.jsonl`` fixture into extractions."""
+    extractions: list[NormalizedExtraction] = []
+    with path.open() as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            raw = cast(dict[str, Any], json.loads(line))
+
+            cls = raw.get("extraction_class")
+            extraction_text = raw.get("extraction_text")
+            if not isinstance(cls, str) or not isinstance(extraction_text, str):
+                continue
+
+            interval_raw = raw.get("char_interval")
+            start: int | None = None
+            end: int | None = None
+            if isinstance(interval_raw, dict):
+                interval = cast(dict[str, Any], interval_raw)
+                start_raw = interval.get("start_pos")
+                end_raw = interval.get("end_pos")
+                if isinstance(start_raw, int) and not isinstance(start_raw, bool):
+                    start = start_raw
+                if isinstance(end_raw, int) and not isinstance(end_raw, bool):
+                    end = end_raw
+
+            conf_raw = raw.get("confidence")
+            confidence = (
+                float(conf_raw)
+                if isinstance(conf_raw, (int, float)) and not isinstance(conf_raw, bool)
+                else None
             )
-        )
-    return examples
+
+            attrs_raw = raw.get("attributes")
+            attributes = attrs_raw if isinstance(attrs_raw, dict) else None
+
+            extractions.append(
+                NormalizedExtraction(
+                    extraction_class=cls,
+                    extraction_text=extraction_text,
+                    start_pos=start,
+                    end_pos=end,
+                    confidence=confidence,
+                    attributes=attributes,
+                )
+            )
+    return extractions
