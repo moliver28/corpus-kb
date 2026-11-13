@@ -141,7 +141,10 @@ export default function DocumentDetailDrawer({
           {
             key: "analyze",
             label: strings.reviewAnalyzeTab,
-            children: row !== null ? <DrawerAnalyze docId={row.doc_id} /> : null,
+            // key={doc_id}: a docId change under a mounted panel remounts
+            // the pane, so no stale receipt from the previous document can
+            // survive (the same rule as RunPane's key={opId}).
+            children: row !== null ? <DrawerAnalyze key={row.doc_id} docId={row.doc_id} /> : null,
           },
         ]}
       />
