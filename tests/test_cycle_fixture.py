@@ -67,6 +67,8 @@ CYCLE_QUESTION = "What barriers make food shopping hard for residents?"
 TENANT_X = UUID("00000000-0000-0000-0000-00000000c7a1")
 TENANT_D = UUID("00000000-0000-0000-0000-00000000c7d4")
 TENANT_E = UUID("00000000-0000-0000-0000-00000000c7e5")
+TENANT_F = UUID("00000000-0000-0000-0000-00000000c7f6")
+TENANT_G = UUID("00000000-0000-0000-0000-00000000c7f7")
 PROJECT_X = uuid5(NAMESPACE_URL, "cycle-test/food-access")
 
 
@@ -314,6 +316,87 @@ async def test_on_mode_deny_stops_clean(fresh_research_app: str, tmp_path: Path)
     checkpoint = await _last_checkpoint(fresh_research_app, TENANT_D)
     assert checkpoint["kind"] == "approval_denied"
     assert checkpoint["stage"] == "ingest"
+
+
+# ---------------------------------------------------------------------------
+# Issue 306 (ruling 2a): explicit re-run of a denied stage re-prompts; an
+# implicit re-run keeps the skip.
+# ---------------------------------------------------------------------------
+
+
+async def _deny_at_ingest(fresh_research_app: str, drop: str, tenant: UUID) -> None:
+    async def deny(stage: str) -> bool:
+        return False
+
+    code, out = await _run_cycle(
+        fresh_research_app, tenant, mode="on", ingest_dir=drop, halt_on=[], approve=deny
+    )
+    assert code == 20, out
+    checkpoint = await _last_checkpoint(fresh_research_app, tenant)
+    assert checkpoint["kind"] == "approval_denied"
+    assert checkpoint["stage"] == "ingest"
+
+
+@pytest.mark.skipif(
+    not _INDUCTIVE_EXTRA, reason="the inductive extra (umap-learn) is not installed"
+)
+async def test_explicit_rerun_of_denied_stage_reprompts(
+    fresh_research_app: str, tmp_path: Path
+) -> None:
+    # The full corpus (like the acceptance test): the inductive pass must
+    # land pending proposals, so the promotion gate is the next honest stop.
+    drop = _drop_dir(tmp_path, TRANSCRIPTS)
+    await _deny_at_ingest(fresh_research_app, drop, TENANT_F)
+
+    asked: list[str] = []
+
+    async def approve(stage: str) -> bool:
+        asked.append(stage)
+        return True
+
+    code, out = await _run_cycle(
+        fresh_research_app, TENANT_F, mode="on", ingest_dir=drop, halt_on=[], approve=approve
+    )
+    # The denial is cleared, the denied stage re-runs, its boundary asks
+    # again, and approval moves the flow past it (the promotion gate is the
+    # next honest stop on this one-transcript corpus).
+    assert code == GATE_EXIT_CODES["codebook_promotion"], out
+    assert asked == ["ingest"], "the boundary must ask again for the denied stage"
+    assert guide_copy.CYCLE_REPROMPT_RESUME.split("{stage}")[0] + "ingest" in out
+    assert guide_copy.CYCLE_APPROVAL_REPROMPTED in out
+    assert "Resuming after stage:" not in out, "the plain resume hint must not mask the re-run"
+    assert "--- ingest ---" in out and "--- inductive ---" in out
+    checkpoint = await _last_checkpoint(fresh_research_app, TENANT_F)
+    assert checkpoint["kind"] == "gate_halt"
+    assert checkpoint["gate"] == "codebook_promotion"
+
+
+@pytest.mark.skipif(
+    not _INDUCTIVE_EXTRA, reason="the inductive extra (umap-learn) is not installed"
+)
+async def test_implicit_rerun_keeps_the_denial_skip(
+    fresh_research_app: str, tmp_path: Path
+) -> None:
+    drop = _drop_dir(tmp_path, TRANSCRIPTS)
+    await _deny_at_ingest(fresh_research_app, drop, TENANT_G)
+
+    async def approve(stage: str) -> bool:
+        return True
+
+    code, out = await _run_cycle(
+        fresh_research_app,
+        TENANT_G,
+        mode="on",
+        ingest_dir=drop,
+        halt_on=[],
+        approve=approve,
+        retry_denied=False,
+    )
+    assert code == GATE_EXIT_CODES["codebook_promotion"], out
+    assert "--- ingest ---" not in out, "the implicit re-run must skip the denied stage"
+    assert "--- inductive ---" in out
+    assert guide_copy.CYCLE_APPROVAL_REPROMPTED not in out
+    assert guide_copy.CYCLE_REPROMPT_RESUME.split("{stage}")[0] not in out
 
 
 # ---------------------------------------------------------------------------

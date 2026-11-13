@@ -14,6 +14,13 @@ by re-running it after acting on the gate (promote, or consciously
 skip), so a resumed run never re-halts on the SAME gate at the SAME
 checkpoint.
 
+An ``approval_denied`` checkpoint holds the flow for implicit re-runs
+(the watch keeps the skip). An explicit re-run (issue 306, owner ruling
+2a) clears the denial: the denied stage runs again and the on-mode
+boundary asks for a decision again (``approval_reprompted`` event).
+Every surface invocation (CLI, MCP/HTTP/socket) is explicit; only the
+watch re-arms itself.
+
 Modes: ``in`` executes exactly ONE stage; ``on`` executes one stage then
 waits for explicit approval; ``out`` runs unattended except at the
 configured halt gates. ``codebook_promotion`` is HARD-FLOORED
@@ -57,19 +64,11 @@ from corpus_kb.research.cycle_stages import (
     stage_notebook,
     stage_report,
 )
-from corpus_kb.research.cycle_state import _last_cycle_run, resume_point
+from corpus_kb.research.cycle_state import STAGES, _last_cycle_run, resume_point, stages_after
 from corpus_kb.research.monitoring import Alarm, alarms_from_findings
 from corpus_kb.storage.gateway import SqlGateway
 
-STAGES: tuple[str, ...] = ("ingest", "inductive", "deductive", "keywords", "report", "notebook")
 MODES: frozenset[str] = frozenset({"in", "on", "out"})
-
-
-def stages_after(stage: str | None) -> tuple[str, ...]:
-    """Stages remaining when the last completed stage was ``stage``."""
-    if stage not in STAGES:
-        return STAGES
-    return STAGES[STAGES.index(stage) + 1 :]
 
 
 def _halted_gate(
@@ -196,17 +195,26 @@ async def _start_run(
     *,
     json_output: bool,
     guide: bool,
-) -> tuple[Any, Any, tuple[Any, ...], str, str | None, str | None]:
+    retry_denied: bool = True,
+) -> tuple[Any, Any, tuple[Any, ...], str, str | None, str | None, str | None]:
     """Open the coding run: resume point, stack, recorder, banners.
 
-    Returns (recorder, handler, stack, run_id, resume_after, suppressed).
-    Emits EVENT_CYCLE_STARTED and the guide/resume banners (when not
-    json_output), and catches projections up after a human pause.
+    Returns (recorder, handler, stack, run_id, resume_after, suppressed,
+    reprompt_stage). ``reprompt_stage`` is set only when this explicit
+    run cleared an approval denial (issue 306): the chain starts AT that
+    stage and its boundary asks again. Emits EVENT_CYCLE_STARTED and the
+    guide/resume banners (when not json_output), and catches projections
+    up after a human pause.
     """
     recorder = CycleRecorder(json_output=json_output)
     last = await _last_cycle_run(pool, tenant_id)
-    resume_after, suppressed = resume_point(last)
+    resume_after, suppressed = resume_point(last, retry_denied=retry_denied)
     resume_from = str(last["run_id"]) if last else None
+    checkpoint = dict(last["checkpoint"]) if last else {}
+    denied_stage = (
+        str(checkpoint.get("stage")) if str(checkpoint.get("kind")) == "approval_denied" else None
+    )
+    reprompt_stage = denied_stage if retry_denied and denied_stage in STAGES else None
     reader, handler, _embedder, _projection, _docs, _embeds = build_stack(
         pool, cfg, str((cfg.get("database") or {}).get("connection_string", ""))
     )
@@ -225,16 +233,18 @@ async def _start_run(
         print(guide_copy.CYCLE_TITLE)
         print(guide_copy.CYCLE_INTRO)
         print(f"docs: {guide_copy.CYCLE_DOC}")
-    if resume_after and resume_from and not json_output:
+    if reprompt_stage and not json_output:
+        print(guide_copy.CYCLE_REPROMPT_RESUME.format(stage=reprompt_stage, run_id=resume_from))
+    elif resume_after and resume_from and not json_output:
         print(guide_copy.CYCLE_RESUME_HINT.format(stage=resume_after, run_id=resume_from))
-    if resume_after:
+    if resume_after or reprompt_stage:
         # The human acted between runs (promote, review) through surfaces
         # that advance projections; re-read the world before continuing so
         # stage reads (e.g. the latest codebook version) see their actions.
         from corpus_kb.research.cycle_render import catch_up_all
 
         await catch_up_all(stack, tenant_id)
-    return recorder, handler, stack, run_id, resume_after, suppressed
+    return recorder, handler, stack, run_id, resume_after, suppressed, reprompt_stage
 
 
 def _print_stage_view(stage: str, receipt: dict[str, Any], json_output: bool) -> None:
@@ -291,6 +301,7 @@ async def _post_stage_mode_stop(
     codebook_version_id: UUID | None,
     json_output: bool,
     approve: Callable[[str], Awaitable[bool]] | None,
+    reprompt: bool = False,
 ) -> int | None:
     """Mode-specific stop after a completed stage (exit code, or None to continue).
 
@@ -298,7 +309,9 @@ async def _post_stage_mode_stop(
     the proposal itself is event-sourced through the app; a failed proposal
     lands its receipt on the stage checkpoint, same kind/stage — resume
     semantics unchanged — instead of vanishing with the process (F4)).
-    ``on``: ask the human between stages; stop when they say so.
+    ``on``: ask the human between stages; stop when they say so. A cleared
+    denial (``reprompt``, issue 306) lands an ``approval_reprompted``
+    event before the ask.
     """
     if mode == "in":
         proposal = await _propose_alarms(
@@ -315,7 +328,9 @@ async def _post_stage_mode_stop(
         handler.stop_coding_run(tenant_id, UUID(run_id))
         return 0
     if mode == "on":
-        return await approval(recorder, handler, stack, tenant_id, UUID(run_id), stage, approve)
+        return await approval(
+            recorder, handler, stack, tenant_id, UUID(run_id), stage, approve, reprompt=reprompt
+        )
     return None
 
 
@@ -339,6 +354,7 @@ class CycleOptions:
     approve: Callable[[str], Awaitable[bool]] | None = None
     cfg: dict[str, Any] | None = None
     allow_draft: bool = False
+    retry_denied: bool = True  # explicit run: clear a denial, ask again (issue 306)
 
 
 @dataclass
@@ -352,6 +368,7 @@ class _CycleSession:
     resume_after: str | None
     suppressed: str | None
     halt_set: frozenset[str]
+    reprompt_stage: str | None  # cleared denial (issue 306): this boundary asks again
     alarms: list[Alarm] = field(default_factory=list)  # U25: alarms across stages
 
 
@@ -370,8 +387,15 @@ async def run_cycle(
     approve: Callable[[str], Awaitable[bool]] | None = None,
     cfg: dict[str, Any] | None = None,
     allow_draft: bool = False,
+    retry_denied: bool = True,
 ) -> int:
-    """Run the research cycle in one posture; returns the process exit code."""
+    """Run the research cycle in one posture; returns the process exit code.
+
+    ``retry_denied`` marks the re-run as explicit (issue 306): an
+    approval-denied stage runs again and its boundary asks again. The
+    watch passes False — its arms are automatic and never clear a
+    denial.
+    """
     return await _run_cycle(
         pool,
         tenant_id,
@@ -387,6 +411,7 @@ async def run_cycle(
             approve=approve,
             cfg=cfg,
             allow_draft=allow_draft,
+            retry_denied=retry_denied,
         ),
     )
 
@@ -410,13 +435,14 @@ async def _run_cycle(
     configured = options.halt_on if options.halt_on is not None else _configured_halt_on(config)
     halt_set = effective_halt_on(configured)
 
-    recorder, handler, stack, run_id, resume_after, suppressed = await _start_run(
+    recorder, handler, stack, run_id, resume_after, suppressed, reprompt_stage = await _start_run(
         pool,
         tenant_id,
         config,
         options.mode,
         json_output=options.json_output,
         guide=options.guide,
+        retry_denied=options.retry_denied,
     )
     session = _CycleSession(
         recorder=recorder,
@@ -426,6 +452,7 @@ async def _run_cycle(
         resume_after=resume_after,
         suppressed=suppressed,
         halt_set=halt_set,
+        reprompt_stage=reprompt_stage,
     )
     for stage in stages_after(session.resume_after):
         stop = await _advance_stage(stage, pool, session, tenant_id, options, cfg)
@@ -496,6 +523,7 @@ async def _advance_stage(
         codebook_version_id=options.codebook_version_id,
         json_output=options.json_output,
         approve=options.approve,
+        reprompt=stage == session.reprompt_stage,
     )
 
 
