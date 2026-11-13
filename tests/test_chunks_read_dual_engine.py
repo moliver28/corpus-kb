@@ -1,9 +1,10 @@
 """The Phase-2 Wave 5 chunks-list read on BOTH engines (D2 parity).
 
-One flow — seed one document with four chunks (one tombstoned), read
-the window through the SAME shared tool function every surface routes
-through, page it, and check the tombstone stays out — runs against the
-DuckDB file gateway AND the Postgres pool. The seed rides
+One flow — seed one document with five chunks (one tombstoned, one
+superseded), read the window through the SAME shared tool function
+every surface routes through, page it, and check both dead rows stay
+out — runs against the DuckDB file gateway AND the Postgres pool. The
+seed rides
 ``tenant_connection`` (the same scope the reads use), so the Postgres
 leg sits inside the RLS tenant config and the DuckDB leg inside the
 gateway's transaction scope. Postgres skips cleanly when the database
@@ -55,7 +56,7 @@ def pool(request: pytest.FixtureRequest):
 
 
 async def _seed_document_with_chunks(pool, doc_id: UUID, run: str) -> list[UUID]:
-    """One documents row plus four chunks (index 2 tombstoned)."""
+    """One documents row plus five chunks (index 2 tombstoned, 4 superseded)."""
     if is_gateway(pool):
         doc_sql = (
             "INSERT INTO documents (doc_id, tenant_id, source, source_type)"
@@ -63,7 +64,7 @@ async def _seed_document_with_chunks(pool, doc_id: UUID, run: str) -> list[UUID]
         )
         chunk_sql = (
             "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text,"
-            " tombstoned_at) VALUES (?, ?, ?, ?, ?, ?)"
+            " tombstoned_at, superseded_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
         )
     else:
         doc_sql = (
@@ -72,17 +73,20 @@ async def _seed_document_with_chunks(pool, doc_id: UUID, run: str) -> list[UUID]
         )
         chunk_sql = (
             "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text,"
-            " tombstoned_at) VALUES ($1, $2, $3, $4, $5, $6)"
+            " tombstoned_at, superseded_at) VALUES ($1, $2, $3, $4, $5, $6, $7)"
         )
     async with tenant_connection(pool, TENANT) as conn:
         await conn.execute(doc_sql, str(doc_id), str(TENANT), f"wave5-{run}.md", "markdown")
         ids = []
-        for index in range(4):
+        for index in range(5):
             chunk_id = uuid4()
             ids.append(chunk_id)
-            # Chunk 2 stands in for removed source content: the read must
-            # leave it out of every window.
+            # Chunk 2 stands in for removed source content; chunk 4 stands
+            # in for dedup-replaced text. The active-chunk rule (migration
+            # 007) is both NULL, so the read must leave both out of every
+            # window.
             tombstoned = datetime(2026, 1, 1, tzinfo=UTC) if index == 2 else None
+            superseded = datetime(2026, 1, 2, tzinfo=UTC) if index == 4 else None
             await conn.execute(
                 chunk_sql,
                 str(chunk_id),
@@ -91,6 +95,7 @@ async def _seed_document_with_chunks(pool, doc_id: UUID, run: str) -> list[UUID]
                 index,
                 f"chunk {index} for {run}",
                 tombstoned,
+                superseded,
             )
     return ids
 
@@ -103,7 +108,7 @@ async def test_chunks_list_window_order_and_tombstone_on_both_engines(pool) -> N
     ids = await _seed_document_with_chunks(pool, doc_id, run)
 
     # The full window answers in ingest order; the tombstoned chunk
-    # (index 2) never answers.
+    # (index 2) and the superseded chunk (index 4) never answer.
     listed = await chunks_list(pool, str(doc_id), limit=100, offset=0)
     assert listed["status"] == "success"
     assert [row["chunk_index"] for row in listed["result"]] == [0, 1, 3]

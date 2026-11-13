@@ -109,13 +109,16 @@ async def list_document_chunks(
     The order is the ingest order: ``(chunk_index, chunk_id)`` — the
     index is unique per document (the table's UNIQUE constraint), so two
     reads of one window answer in one total order (program rule 9).
-    Tombstoned chunks (the source content was removed) do not answer:
-    the NLP panel scopes its runs to live chunks.
+    Only ACTIVE chunks answer: the migration-007 rule is
+    ``tombstoned_at IS NULL AND superseded_at IS NULL`` (removed source
+    text and dedup-replaced text both stay out), so the NLP panel scopes
+    its runs to live chunks.
     """
     sql = """
         SELECT chunk_id, doc_id, chunk_index, text, chunk_type, start_line, end_line
         FROM chunks
-        WHERE tenant_id = $1 AND doc_id = $2 AND tombstoned_at IS NULL
+        WHERE tenant_id = $1 AND doc_id = $2
+          AND tombstoned_at IS NULL AND superseded_at IS NULL
         ORDER BY chunk_index ASC, chunk_id ASC
         LIMIT $3 OFFSET $4
         """
