@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { strings } from "../strings";
 import { calls, clearCalls, makeWrapper, respond, stubFetch } from "../test/testUtils";
@@ -124,17 +124,30 @@ describe("Map stage", () => {
     expect(screen.getByText("Delta")).toBeTruthy();
   });
 
-  it("keeps the canvas read-only: the page writes nothing", async () => {
+  it("keeps the canvas read-only: keys delete nothing and the page writes nothing", async () => {
     stubFetch([entityRoute(), relationRoute()]);
     render(<Map />, { wrapper: makeWrapper() });
     await waitFor(() => expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0));
     // The invisible attachment handles render (xyflow drops edges
     // whose endpoint node has no handle). Edge DOM itself needs the
     // browser's node measurement (jsdom's stub never measures), so the
-    // rendered edge is pinned by the e2e smoke. Read-only is
-    // structural: the page mounts no write op, so the whole render
-    // history carries GET calls only.
+    // rendered edge is pinned by the e2e smoke.
     expect(document.querySelectorAll(".react-flow__handle").length).toBe(6);
+    // Read-only is behavioral too: xyflow adds the `draggable` class to
+    // a node wrapper only when the canvas lets nodes move, so its
+    // absence here is the DOM proof of nodesDraggable={false}.
+    expect(document.querySelectorAll(".react-flow__node.draggable").length).toBe(0);
+    // The interaction probe: select a node, press the delete keys —
+    // Delete, and xyflow's Backspace default. The canvas applies no
+    // selection or deletion changes (controlled nodes, no change
+    // handler), and deleteKeyCode={null} mutes the keyboard delete, so
+    // all three drawn nodes survive every probe untouched.
+    fireEvent.click(document.querySelector(".react-flow__node") as Element);
+    fireEvent.keyDown(document.querySelector(".react-flow__node") as Element, { key: "Enter", code: "Enter" });
+    fireEvent.keyDown(document, { key: "Delete", code: "Delete" });
+    fireEvent.keyDown(document, { key: "Backspace", code: "Backspace" });
+    expect(document.querySelectorAll(".react-flow__node").length).toBe(3);
+    // The whole render history carries GET calls only.
     expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
   });
 
