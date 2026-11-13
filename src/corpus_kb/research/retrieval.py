@@ -33,6 +33,7 @@ import asyncpg
 
 from corpus_kb.config import load_config
 from corpus_kb.projections.research._embed import ResearchEmbedder
+from corpus_kb.research.child_citations import _child_citations
 from corpus_kb.research.citations import Citation, _citations, _meeting_windows, _to_parents
 from corpus_kb.research.conn import SqlConn, Store, dialect_of, tenant_scope
 from corpus_kb.research.fts_duckdb import ensure_research_fts
@@ -161,21 +162,32 @@ async def research_search(
 
     Ranking runs through :func:`ranked_children` (the one rank seam); this
     function adds the small-to-big parent expansion, the citation fields,
-    and the parent-level rerank. ``hnsw_settings`` (U20) defaults to the
-    ``search.hnsw.*`` config block; ``retrieval_settings`` (U45/U21)
-    defaults to the ``search.*`` block. DuckDB runs the exact-scan twins
-    in ``research/retrieval_duckdb.py`` (no pgvector, no SQL fusion; the
+    and the parent-level rerank. ``retrieval.expand_to_parent`` (default
+    true) gates the expansion: off, each ranked child renders as its own
+    citation row (:func:`_child_citations`); ranking and rerank are
+    unchanged. ``hnsw_settings`` (U20) defaults to the ``search.hnsw.*``
+    config block; ``retrieval_settings`` (U45/U21) defaults to the
+    ``retrieval.*`` block. DuckDB runs the exact-scan twins in
+    ``research/retrieval_duckdb.py`` (no pgvector, no SQL fusion; the
     pure rrf_fuse port fuses instead).
     """
+    settings = (
+        retrieval_settings
+        if retrieval_settings is not None
+        else load_retrieval_settings(load_config())
+    )
     fused = await ranked_children(
-        store, embedder, q, hnsw_settings=hnsw_settings, retrieval_settings=retrieval_settings
+        store, embedder, q, hnsw_settings=hnsw_settings, retrieval_settings=settings
     )
     children = _children_from_fused(fused)
     duck = dialect_of(store).is_duckdb
     async with tenant_scope(store, q.tenant_id) as conn:
-        windows = await _meeting_windows(conn, children, duck)
-        parents = _to_parents(children, windows)
-        citations = await _citations(conn, parents, windows, duck)
+        if settings.expand_to_parent:
+            windows = await _meeting_windows(conn, children, duck)
+            parents = _to_parents(children, windows)
+            citations = await _citations(conn, parents, windows, duck)
+        else:
+            citations = await _child_citations(conn, children, duck)
 
     if reranker is not None and q.rerank and citations:
         citations = await _rerank(q.query, citations, reranker)
