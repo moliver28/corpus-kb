@@ -44,6 +44,19 @@ def _connection_string(cfg: dict[str, Any]) -> str:
     return os.environ.get("CORPUS_KB_DATABASE_URL", "") or str(db_cfg.get("connection_string", ""))
 
 
+def _chat_section(cfg: dict[str, Any]) -> dict[str, object]:
+    """The chat rows (doctor_chat owns the probes; this is assembly)."""
+    from corpus_kb._setup.doctor_chat import chat_checks
+    from corpus_kb.chat.settings import read_chat_settings
+
+    settings = read_chat_settings(cfg)
+    return {
+        "enabled": settings.enabled,
+        "backend": settings.backend,
+        "checks": _check_dicts(chat_checks(cfg)),
+    }
+
+
 async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any]:
     """Run every doctor probe and return the read-only envelope.
 
@@ -157,5 +170,8 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
             "env": dict(asdict(env)),
             "research_checks": [] if research is None else _check_dicts(research),
             "storage_checks": _check_dicts(storage),
+            # Chat (Phase-2 Wave 7): the same rows the CLI doctor prints;
+            # dormant chat reports INFO rows, never a nag.
+            "chat": _chat_section(cfg),
         },
     }
