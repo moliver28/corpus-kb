@@ -21,11 +21,10 @@ from corpus_kb._setup.migrate_admin import (
     hand_over_to_app_role,
     refuse_025_with_embeddings,
 )
+from corpus_kb._setup.migrate_report import MigrateReport
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from corpus_kb._setup.migrate import MigrateReport
 
 logger = logging.getLogger(__name__)
 
@@ -78,8 +77,6 @@ async def run_postgres_migrations(
 ) -> MigrateReport:
     """The Postgres path: plan, guard, then apply (superuser-aware)."""
     import importlib.resources as resources
-
-    from corpus_kb._setup.migrate import MigrateReport
 
     ref = resources.files("corpus_kb") / "migrations"
     with resources.as_file(ref) as migration_dir:
