@@ -24,6 +24,7 @@ from typing import Any, cast
 from corpus_kb.domain.models import SearchResult
 from corpus_kb.handlers.query_fusion import FusedRow, RowLike, rrf_fuse_legs
 from corpus_kb.handlers.query_integrity import REASON_RERANK_MODE_GENERATIVE
+from corpus_kb.handlers.query_result_meta import citation_and_units
 from corpus_kb.rag.rerank_settings import RerankSettings
 from corpus_kb.rag.reranker import RERANK_MODE_GENERATIVE_BINARY
 from corpus_kb.research.retrieval_settings import RetrievalSettings
@@ -77,6 +78,7 @@ def fuse_outcome_legs(outcomes: Sequence[SearchOutcome], k: int, rrf_k: int) -> 
     def _to_result(row: FusedRow) -> SearchResult:
         meta = provenance.get(str(row.chunk_id), {})
         heading = meta.get("heading_path")
+        citation, units = citation_and_units(meta.get("metadata"))
         return SearchResult(
             chunk_id=row.chunk_id,
             text=row.text,
@@ -88,6 +90,8 @@ def fuse_outcome_legs(outcomes: Sequence[SearchOutcome], k: int, rrf_k: int) -> 
             end_line=meta.get("end_line"),
             chunk_index=meta.get("chunk_index"),
             heading_path=json.loads(heading) if heading else None,
+            citation=citation,
+            units=units,
         )
 
     fused_results = [_to_result(row) for row in fused_rows]

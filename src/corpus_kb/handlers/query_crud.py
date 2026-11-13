@@ -43,6 +43,7 @@ from corpus_kb.domain.models import (
     SearchSimilarQuery,
 )
 from corpus_kb.handlers.query_integrity import degraded_candidate_predicate
+from corpus_kb.handlers.query_result_meta import citation_and_units
 from corpus_kb.storage.duckdb_gateway import DuckDbGateway
 from corpus_kb.storage.duckdb_similar import similar_rows
 from corpus_kb.storage.gateway import SqlGateway, is_gateway
@@ -142,7 +143,7 @@ async def search_similar(
             )
             SELECT c.chunk_id, c.text, c.doc_id, d.source,
                    c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path,
-                   candidate.score AS score
+                   c.metadata, candidate.score AS score
             FROM candidate
             JOIN chunks c ON candidate.candidate_chunk_id = c.chunk_id
             JOIN documents d ON c.doc_id = d.doc_id
@@ -157,23 +158,28 @@ async def search_similar(
         return _similar_results(rows)
 
 
+def _row_result(row: Any, score: Any) -> SearchResult:
+    """Row -> SearchResult mapping shared by the similar and context arms."""
+    citation, units = citation_and_units(row.get("metadata"))
+    return SearchResult(
+        chunk_id=row["chunk_id"],
+        text=row["text"],
+        score=score,
+        source=row["source"],
+        doc_id=row["doc_id"],
+        file_path=row["file_path"],
+        start_line=row["start_line"],
+        end_line=row["end_line"],
+        chunk_index=row["chunk_index"],
+        heading_path=json.loads(row["heading_path"]) if row["heading_path"] else None,
+        citation=citation,
+        units=units,
+    )
+
+
 def _similar_results(rows: list[Any]) -> list[SearchResult]:
     """Row -> SearchResult mapping shared by both engine arms."""
-    return [
-        SearchResult(
-            chunk_id=row["chunk_id"],
-            text=row["text"],
-            score=row["score"],
-            source=row["source"],
-            doc_id=row["doc_id"],
-            file_path=row["file_path"],
-            start_line=row["start_line"],
-            end_line=row["end_line"],
-            chunk_index=row["chunk_index"],
-            heading_path=json.loads(row["heading_path"]) if row["heading_path"] else None,
-        )
-        for row in rows
-    ]
+    return [_row_result(row, row["score"]) for row in rows]
 
 
 async def search_context(
@@ -208,7 +214,8 @@ async def _expand_context(
         context = await reader.fetch(
             """
             SELECT c.chunk_id, c.text, c.doc_id, d.source, 0.0 AS score,
-                   c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path
+                   c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path,
+                   c.metadata
             FROM chunks c
             JOIN documents d ON c.doc_id = d.doc_id
             WHERE c.doc_id = (SELECT doc_id FROM chunks WHERE chunk_id = $1)
@@ -228,18 +235,5 @@ async def _expand_context(
             query.context_chunks,
         )
         for row in context:
-            expanded.append(
-                SearchResult(
-                    chunk_id=row["chunk_id"],
-                    text=row["text"],
-                    score=0.0,
-                    source=row["source"],
-                    doc_id=row["doc_id"],
-                    file_path=row["file_path"],
-                    start_line=row["start_line"],
-                    end_line=row["end_line"],
-                    chunk_index=row["chunk_index"],
-                    heading_path=json.loads(row["heading_path"]) if row["heading_path"] else None,
-                )
-            )
+            expanded.append(_row_result(row, 0.0))
     return expanded

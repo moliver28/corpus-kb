@@ -50,7 +50,7 @@ WITH candidate AS MATERIALIZED (
 )
 SELECT c.chunk_id, c.text, c.doc_id, d.source,
        c.file_path, c.start_line, c.end_line, c.chunk_index, c.heading_path,
-       (1 - candidate.dist) AS score
+       c.metadata, (1 - candidate.dist) AS score
 FROM candidate
 JOIN chunks c ON candidate.candidate_chunk_id = c.chunk_id
 JOIN documents d ON c.doc_id = d.doc_id

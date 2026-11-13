@@ -47,7 +47,8 @@ logger = logging.getLogger(__name__)
 # corpus_kb/rag/self_query.py ALLOWED_COLUMNS), so every arm must join these
 # tables under their real names for those predicates to resolve.
 PROVENANCE_COLS = (
-    "chunks.file_path, chunks.start_line, chunks.end_line, chunks.chunk_index, chunks.heading_path"
+    "chunks.file_path, chunks.start_line, chunks.end_line, chunks.chunk_index,"
+    " chunks.heading_path, chunks.metadata"
 )
 SELECT_LIST = f"chunks.chunk_id, chunks.text, chunks.doc_id, documents.source, {PROVENANCE_COLS}"
 DEDUP_PREDICATE = "AND chunks.tombstoned_at IS NULL AND chunks.superseded_at IS NULL"
