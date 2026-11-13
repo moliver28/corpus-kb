@@ -799,9 +799,9 @@
   },
   {
     "name": "soupsieve",
-    "version": "3.0.4",
+    "version": "4.1",
     "license": "MIT",
-    "homepage": "https://pypi.org/project/soupsieve/3.0.4/",
+    "homepage": "https://pypi.org/project/soupsieve/4.1/",
     "licenseTextUrl": "https://opensource.org/licenses/MIT"
   },
   {
