@@ -132,17 +132,20 @@ test.describe("SPA smoke on a live server", () => {
     const drawer = page.getByRole("dialog");
     await expect(drawer.getByText("Analyze this document")).toBeVisible();
     // The chunk window read pre-fills the scope (the demo corpus carries
-    // chunked documents), then the sentiment screen answers inline —
-    // the receipt, or its honest no-run note, stays inside the drawer.
+    // chunked documents); keyphrase extraction runs ungated on the
+    // throwaway host, so the receipt is the full success word (the demo
+    // config disables the sentiment screen — its honest no-run note is
+    // covered by the drawer unit tests).
     await expect(drawer.getByText(/chunks of this document/).first()).toBeVisible({
       timeout: 60_000,
     });
+    await drawer.getByRole("button", { name: "Keyphrase extraction" }).click();
     await drawer.getByRole("button", { name: "Run", exact: true }).click();
     // Every settled headline is honest: the receipt word for a run that
-    // finished whole, the panel copy when the server cannot run it.
+    // finished whole, or the not-success line when it did not.
     await expect(
       drawer
-        .getByText(/^(Done|Nothing to show|Finished, with gaps|Partly done|No answer given|Not available right now)$/)
+        .getByText(/^(Done|Nothing to show|Finished, with gaps|Partly done|No answer given|The server finished without success)$/)
         .first(),
     ).toBeVisible({ timeout: 120_000 });
   });
