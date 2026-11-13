@@ -145,7 +145,7 @@ def _write_pdf(
     writer = PdfWriter()
     writer.append(reader)
     for title, page_index in bookmarks or []:
-        writer.add_outline_item(title, page_index)
+        writer.add_outline_item(title=title, page_number=page_index)
     with path.open("wb") as handle:
         writer.write(handle)
     return path
