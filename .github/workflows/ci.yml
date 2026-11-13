@@ -40,7 +40,15 @@ concurrency:
 
 env:
   PYTHON_VERSION: "3.11"
-  OLLAMA_MODEL: "nomic-embed-text"
+  # The cross-OS pull must serve the model the shipped config requests:
+  # embedding.model = qwen3-embedding:4b (config.yaml). The old value,
+  # nomic-embed-text, is 768-dim and the shipped halfvec(2560) column
+  # rejects every one of its vectors (docs/ADMIN.md, SQLSTATE 22000) —
+  # so the old pull could never serve a live embed, and gate-on runs on
+  # windows/macos silently degraded to zero vectors. The model is 2.5
+  # GB; the per-OS caches below keep the pull a cache hit after the
+  # first run.
+  OLLAMA_MODEL: "qwen3-embedding:4b"
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────
@@ -972,11 +980,27 @@ jobs:
       - name: Cache Ollama models (Windows)
         # Path-gated (embedding-surface changes only): no pull below on a
         # skipped gate, so the restore is pointless.
+        # The key is a sanitized literal, not env.OLLAMA_MODEL: the
+        # model tag carries a colon, and the key changed from the
+        # nomic-embed-text name on purpose (zero-drift F3) — the old
+        # caches hold a model the schema cannot ingest, so they must
+        # miss once and be replaced with the shipped 2560-dim model.
         if: runner.os == 'Windows' && needs.changes.outputs.ollama_code == 'true'
         uses: actions/cache@v4
         with:
           path: ${{ format('{0}\ollama\models', env.APPDATA) }}
-          key: ollama-${{ env.OLLAMA_MODEL }}-${{ runner.os }}
+          key: ollama-qwen3-embedding-4b-${{ runner.os }}
+
+      - name: Cache Ollama models (macOS)
+        # Same rationale as the Windows cache: the 2.5 GB qwen3 pull is
+        # a cache hit after the first gated run, so the leg stays fast.
+        # The models dir on macOS is ~/.ollama/models (same layout the
+        # ubuntu test leg caches).
+        if: runner.os == 'macOS' && needs.changes.outputs.ollama_code == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.ollama/models
+          key: ollama-qwen3-embedding-4b-${{ runner.os }}
 
       - name: Install Ollama (macOS)
         # Path-gated (embedding-surface changes only). Skipped steps mean
@@ -1026,6 +1050,13 @@ jobs:
 
       - name: Pull embedding model
         # Path-gated (embedding-surface changes only).
+        # Assertion (zero-drift F3): this pull must name the model the
+        # shipped config actually requests — embedding.model =
+        # qwen3-embedding:4b (config.yaml), whose 2560-dim output
+        # matches the shipped halfvec(2560) column. nomic-embed-text
+        # (the old value) cannot insert into that column at all
+        # (docs/ADMIN.md), so gate-on cross-OS runs used to embed
+        # nothing but zero vectors while staying green.
         # continue-on-error: true because ollama may not be installed
         # (Windows install may have failed). Tests use zero-vector
         # fallback when the model is unavailable.
