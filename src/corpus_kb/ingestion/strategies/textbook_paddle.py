@@ -238,6 +238,7 @@ def parse_one_paddle_window(
                 end,
                 settings.window_timeout_s,
                 settings.structured_output,
+                worker=settings.worker_policy(),
             )
         except Exception:
             items = None  # a wrapper failure must not kill the run

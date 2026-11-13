@@ -25,8 +25,10 @@ parses windows with pypdf only; without the ``[scan]`` extra, or below
 ``min_pages``, it falls back to the default plan. A heavy parser can
 crash the process on scanned pages, so each of its windows parses in a
 spawned child when ``window_subprocess`` is set; the parent only probes
-the module spec, never imports the parser. A crashed, timed-out, or
-wrapper-failed window takes the pypdf path (issue #219). The window
+the module spec, never imports the parser. One loaded worker child
+serves the windows by default (issue #270), so the parser's model
+loads once. A crashed, timed-out, or wrapper-failed window takes the
+pypdf path (issue #219). The window
 cache evicts its oldest files past ``cache_max_mb``. Every parsed
 window leaves a :class:`WindowOutcome` (parser, cache hit, warnings)
 whose fold becomes the conditional ``textbook`` envelope key.

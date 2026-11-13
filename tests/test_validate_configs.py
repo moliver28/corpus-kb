@@ -744,6 +744,8 @@ class TestRuntimeTextbookKeys:
     def test_textbook_keys_declared(self):
         assert RUNTIME_CONFIG_KEYS["textbook.window_subprocess"] is bool
         assert RUNTIME_CONFIG_KEYS["textbook.window_timeout_s"] is float
+        assert RUNTIME_CONFIG_KEYS["textbook.worker_reuse"] is bool
+        assert RUNTIME_CONFIG_KEYS["textbook.worker_max_windows"] is int
         assert RUNTIME_CONFIG_KEYS["textbook.cache_max_mb"] is int
         assert RUNTIME_CONFIG_KEYS["textbook.structured_output"] is bool
         assert RUNTIME_CONFIG_KEYS["textbook.citations"] is bool
@@ -754,6 +756,8 @@ class TestRuntimeTextbookKeys:
             assert validate_runtime_config(cfg) == [], name
             assert cfg["textbook"]["window_subprocess"] is True, name
             assert cfg["textbook"]["window_timeout_s"] == 3600.0, name
+            assert cfg["textbook"]["worker_reuse"] is True, name
+            assert cfg["textbook"]["worker_max_windows"] == 32, name
             assert cfg["textbook"]["cache_max_mb"] == 2048, name
             assert cfg["textbook"]["structured_output"] is False, name
             assert cfg["textbook"]["citations"] is False, name
@@ -807,6 +811,26 @@ class TestRuntimeTextbookKeys:
         assert ok == []
         bad = validate_configs._textbook_block_errors({**block, "citations": "yes"})
         assert any("textbook.citations: must be a bool" in e for e in bad)
+
+    def test_worker_reuse_flag_rules(self):
+        block = {"min_pages": 120, "window_pages": 50}
+        ok = validate_configs._textbook_block_errors({**block, "worker_reuse": False})
+        assert ok == []
+        bad = validate_configs._textbook_block_errors({**block, "worker_reuse": "yes"})
+        assert any("textbook.worker_reuse: must be a bool" in e for e in bad)
+
+    def test_worker_max_windows_rules(self):
+        block = {"min_pages": 120, "window_pages": 50}
+        ok = validate_configs._textbook_block_errors({**block, "worker_max_windows": 8})
+        assert ok == []
+        bad = validate_configs._textbook_block_errors({**block, "worker_max_windows": 0})
+        assert any("textbook.worker_max_windows: must be a positive int" in e for e in bad)
+
+    def test_mistyped_worker_max_windows_rejected_by_type_map(self):
+        config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")
+        config["textbook"]["worker_max_windows"] = "many"
+        errors = validate_runtime_config(config)
+        assert any("key 'textbook.worker_max_windows' must be int" in e for e in errors)
 
     def test_mistyped_citations_rejected_by_type_map(self):
         config = validate_configs.load_yaml(ROOT / "src/corpus_kb/config.yaml")

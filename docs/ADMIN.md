@@ -234,6 +234,8 @@ The windowed large-PDF strategy ([INGESTION.md](INGESTION.md),
 | `window_pages` | `50` | Pages per parse window; one Docling call per window |
 | `parser` | `docling` | The page parser: `docling`, `paddle-vl`, or `pypdf`. `paddle-vl` is the PaddleOCR-VL challenger; it needs the `[ocr-vl]` extra and parses page text only today |
 | `cache_dir` | `~/.corpus-kb/textbook-cache` | The parsed-window cache root, keyed by parser version, file SHA-256, and window index |
+| `worker_reuse` | `true` | In child mode, keep one loaded parser worker alive across windows and documents, so the model loads once per worker, not once per window. `false` restores one child per window |
+| `worker_max_windows` | `32` | Windows one parser worker serves before the parent stops it and spawns a fresh one, so no worker grows without bound |
 | `structured_output` | `false` | Keep rich page structure (heading level, page box, table markdown) in the parsed windows |
 | `citations` | `false` | Write a plain-English `citation` string (true pages, section title) into each chunk's metadata |
 
