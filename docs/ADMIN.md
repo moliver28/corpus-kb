@@ -304,6 +304,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 | `CORPUS_KB_TEST_DB` | (no config key; throwaway test DB name, default is per-process `corpus_kb_t11_<pid>_test`) | `tests/research_db.py` |
 | `CORPUS_KB_TEXTBOOK_GOLDEN_DIR` | (no config key; overrides the golden-bench corpus directory, see `eval/golden_fetch.py`) | `eval/golden_fetch.py` |
 | `CORPUS_KB_UI_OPEN` | (no config key; set to `0` to keep the server from opening a browser tab) | `server_wiring.browser_open_enabled` |
+| `CORPUS_KB_CHAT_CLAUDE_OAUTH_TOKEN` | `chat.claude.oauth_token` (the long-lived token from `claude setup-token`; never stored in a file) | `load_config`, `chat.claude_rung`, `_setup.doctor_chat` |
 
 ### Embedding dimensions and the vector schema
 
