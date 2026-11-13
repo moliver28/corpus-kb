@@ -1,10 +1,12 @@
-// Import-graph gate (Phase-2 Wave 6, zero-drift rule 10): the graph
-// map libraries stay out of the initial route. Two checks:
-//   1. SOURCE: @xyflow/react and @dagrejs/dagre are imported ONLY in
-//      the lazy Map module set (pages/Map.tsx + pages/map/).
+// Import-graph gate (Phase-2 Wave 6, zero-drift rule 10; Wave 7 extends
+// it to the chat packages): the heavy libraries stay out of the initial
+// route. Two checks per library family:
+//   1. SOURCE: the packages are imported ONLY in the family's lazy
+//      module set (map: pages/Map.tsx + pages/map/; chat: pages/Chat.tsx
+//      + pages/chat/).
 //   2. BUILT OUTPUT: the entry route set (the same closure walk the
-//      bundle gate uses) holds no chunk carrying the xyflow runtime
-//      marker — the map libraries physically never reach a first visit.
+//      bundle gate uses) holds no chunk carrying the family's runtime
+//      marker — the libraries physically never reach a first visit.
 // Wired as `poe ui-import-graph` and a ci.yml / ui step. The source
 // scan and the closure walk are exported for
 // check-import-graph.test.mjs (vitest, rides `poe ui-test`): its
@@ -20,6 +22,19 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const ALLOWED_PREFIXES = ["pages/Map.tsx", "pages/map/"];
 export const LIB_MARKER = "react-flow__node";
 export const LIB_PACKAGES = ["@xyflow/react", "@dagrejs/dagre"];
+
+// Wave 7: the @ant-design/x family rides the lazy Chat chunk ONLY.
+// The chat rules mirror the map family: the prefixes are the lazy Chat
+// module set, the marker is the X runtime string observed in a real
+// build (re-pin from the build if upstream renames it), and the
+// zero-import guard switches ON in the same commit as the first X
+// import — before that commit there is nothing to leak, and a lying
+// scan would fail the whole tree for no reason. The vitest pins all
+// three once the import lands.
+export const CHAT_ALLOWED_PREFIXES = ["pages/Chat.tsx", "pages/chat/"];
+export const CHAT_PACKAGES = ["@ant-design/x", "@ant-design/x-markdown", "@ant-design/x-sdk"];
+export const CHAT_MARKER = null; // pinned from the first real build in the dep commit
+export const CHAT_REQUIRE_IMPORTS = false;
 
 const uiRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const srcDir = join(uiRoot, "src");
@@ -98,18 +113,34 @@ function staticImports(name, assets) {
   return found;
 }
 
-function main() {
+function markedChunks(assets, marker) {
+  return assets.filter((name) => {
+    try {
+      return readFileSync(join(distAssets, name), "utf-8").includes(marker);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/** One family's two checks; answers true when it failed. */
+function checkFamily(family, assets, routeSet) {
   let failed = false;
 
   // -- 1. Source scan ------------------------------------------------------
-  const { offenders, importsSeen } = scanSource(srcDir);
-  if (importsSeen === 0) {
-    console.error("check-import-graph: no source file imports the map libraries — the scan is lying. Fix the marker list.");
+  const { offenders, importsSeen } = scanSource(srcDir, {
+    allowedPrefixes: family.allowed,
+    libPackages: family.packages,
+  });
+  if (importsSeen === 0 && family.requireImports) {
+    console.error(
+      `check-import-graph: no source file imports ${family.friendly} — the scan is lying. Fix the marker list.`,
+    );
     failed = true;
   }
   if (offenders.length > 0) {
     console.error(
-      "check-import-graph: the map libraries are imported outside the lazy Map module:",
+      `check-import-graph: ${family.friendly} are imported outside ${family.home}:`,
     );
     for (const rel of offenders) {
       console.error(`  ${rel}`);
@@ -118,6 +149,37 @@ function main() {
   }
 
   // -- 2. Built-output scan ------------------------------------------------
+  if (family.marker === null) {
+    // A family with no import yet: nothing to pin, nothing to leak.
+    return failed;
+  }
+  const marked = markedChunks(assets, family.marker);
+  if (marked.length === 0 && family.requireImports) {
+    console.error(
+      `check-import-graph: no built chunk carries the ${family.key} marker — the library never built. ` +
+        "Run the build; if the marker string changed upstream, update the marker constant before trusting this gate.",
+    );
+    failed = true;
+  }
+  const inRoute = marked.filter((name) => routeSet.has(name));
+  if (inRoute.length > 0) {
+    console.error(
+      `check-import-graph: ${family.key} chunks leaked into the initial route:`,
+    );
+    for (const name of inRoute) {
+      console.error(`  ${name}`);
+    }
+    failed = true;
+  }
+  console.log(
+    `check-import-graph: ${family.friendly} stay in ${marked.length} lazy chunk(s) outside the route.`,
+  );
+  return failed;
+}
+
+function main() {
+  let failed = false;
+
   const assets = readdirSync(distAssets).filter((n) => n.endsWith(".js") || n.endsWith(".css"));
   let entry = null;
   try {
@@ -134,35 +196,37 @@ function main() {
 
   const routeSet = walkClosure(entry, (name) => staticImports(name, assets));
 
-  const marked = assets.filter((name) => {
-    try {
-      return readFileSync(join(distAssets, name), "utf-8").includes(LIB_MARKER);
-    } catch {
-      return false;
+  const families = [
+    {
+      key: "xyflow",
+      friendly: "the map libraries",
+      home: "the lazy Map module",
+      packages: LIB_PACKAGES,
+      allowed: ALLOWED_PREFIXES,
+      marker: LIB_MARKER,
+      requireImports: true,
+    },
+    {
+      key: "chat",
+      friendly: "the chat packages",
+      home: "the lazy Chat module",
+      packages: CHAT_PACKAGES,
+      allowed: CHAT_ALLOWED_PREFIXES,
+      marker: CHAT_MARKER,
+      requireImports: CHAT_REQUIRE_IMPORTS,
+    },
+  ];
+  for (const family of families) {
+    if (checkFamily(family, assets, routeSet)) {
+      failed = true;
     }
-  });
-  if (marked.length === 0) {
-    console.error(
-      "check-import-graph: no built chunk carries the xyflow marker — the map library never built. " +
-        "Run the build; if the marker string changed upstream, update LIB_MARKER before trusting this gate.",
-    );
-    failed = true;
-  }
-  const inRoute = marked.filter((name) => routeSet.has(name));
-  if (inRoute.length > 0) {
-    console.error("check-import-graph: xyflow chunks leaked into the initial route:");
-    for (const name of inRoute) {
-      console.error(`  ${name}`);
-    }
-    failed = true;
   }
 
   if (failed) {
     process.exit(1);
   }
   console.log(
-    `check-import-graph: the map libraries stay in ${marked.length} lazy chunk(s); ` +
-      `the initial route (${routeSet.size} chunks) is clean.`,
+    `check-import-graph: the initial route (${routeSet.size} chunks) is clean.`,
   );
 }
 
