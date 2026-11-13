@@ -201,11 +201,16 @@ test.describe("SPA smoke on a live server", () => {
     // FIND: the type filter narrows the window read to this run. The
     // assertion on a row of the FILTERED window (a demo-corpus name the
     // filter excludes) proves the fresh window settled, so the click
-    // below cannot land on a row the re-read replaces mid-click.
+    // below cannot land on a row the re-read replaces mid-click. The
+    // count check polls the TABLE rows only: the pick targets a table
+    // row, and hidden demo names outside the table (stale picker state
+    // on a loaded host) are not part of the settlement proof.
     await entities.getByPlaceholder("Only this type").fill(`e2e-${unique}`);
     await entities.getByPlaceholder("Only this type").press("Enter");
     await expect(entities.getByText(first)).toBeVisible({ timeout: 60_000 });
-    await expect(entities.getByText("Ade")).toHaveCount(0, { timeout: 60_000 });
+    await expect(entities.getByRole("row", { name: /^Ade/ })).toHaveCount(0, {
+      timeout: 60_000,
+    });
     // INSPECT: the drawer reads relations and neighbors for the row.
     const row = entities.getByRole("row", { name: new RegExp("^" + first) });
     await row.getByRole("button", { name: "Details" }).click();
