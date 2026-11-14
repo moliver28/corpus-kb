@@ -25,5 +25,6 @@
   "mapOutsideNote": "{count} relations in this window touch entities outside the window. They are not drawn.",
   "mapRelationsEmpty": "No relations sit in this window. Link entities in the Graph stage.",
   "mapRelationsTitle": "Relations",
-  "mapTitle": "Graph map"
+  "mapTitle": "Graph map",
+  "mapWorkbenchLink": "Edit entities in the graph workbench."
 }

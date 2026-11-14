@@ -31,6 +31,7 @@ export interface MapStrings {
   mapRelationsEmpty: string;
   mapRelationsTitle: string;
   mapTitle: string;
+  mapWorkbenchLink: string;
 }
 
 export const strings: AppStrings & MapStrings = {

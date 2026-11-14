@@ -273,6 +273,85 @@ test.describe("SPA smoke on a live server", () => {
     });
   });
 
+  test("the drawer edits an entity, removes its relation, deletes the entity", async ({
+    page,
+  }) => {
+    // The Wave-8 U/D arms ride the workbench pair above: the run's
+    // first/second entities and their relation already exist. Update
+    // through the drawer form, remove the relation behind its
+    // Popconfirm, then delete the entity behind ConfirmGate — and the
+    // window re-reads reflect every write (read-your-writes).
+    test.setTimeout(180_000);
+    const renamed = `${first}-renamed`;
+    await page.goto("/app/#/graph");
+    const entities = page.locator(".ant-card").filter({ hasText: "Entities" });
+    await entities.getByPlaceholder("Only this type").fill(`e2e-${unique}`);
+    await entities.getByPlaceholder("Only this type").press("Enter");
+    const row = entities.getByRole("row", { name: new RegExp("^" + first) });
+    await expect(row).toBeVisible({ timeout: 60_000 });
+    await row.getByRole("button", { name: "Details" }).click();
+    const drawer = page.getByRole("dialog");
+    await expect(drawer.getByText(`${first} related_to ${second}`)).toBeVisible({
+      timeout: 60_000,
+    });
+    // UPDATE: the drawer form saves through the update-entity op; the
+    // form stays open and its banner names the save.
+    await drawer.getByRole("button", { name: "Edit the entity" }).click();
+    const form = drawer.locator('[data-testid="entity-edit-form"]');
+    await form.getByPlaceholder("Name").fill(renamed);
+    await form.getByRole("button", { name: "Save changes" }).click();
+    await expect(form.getByText("Entity updated.")).toBeVisible({ timeout: 60_000 });
+    await drawer.getByRole("button", { name: "Cancel", exact: true }).click();
+    // The table (the re-read window) shows the new name.
+    await expect(
+      entities.getByRole("row", { name: new RegExp("^" + renamed) }),
+    ).toBeVisible({ timeout: 60_000 });
+    // DELETE RELATION: single-record destructive — Popconfirm, portal.
+    await expect(drawer.getByText(`${renamed} related_to ${second}`)).toBeVisible({
+      timeout: 60_000,
+    });
+    await drawer.getByRole("button", { name: "Remove this relation?" }).click();
+    const popover = page.locator(".ant-popover:not(.ant-popover-hidden)");
+    await popover.getByRole("button", { name: "Remove this relation?" }).click();
+    await expect(drawer.getByText("Relation removed.")).toBeVisible({ timeout: 60_000 });
+    await expect(
+      drawer.getByText("No relations yet. Link this entity with the form below."),
+    ).toBeVisible({ timeout: 60_000 });
+    // DELETE ENTITY: irreversible and cascading — ConfirmGate names the
+    // cascade count the drawer actually shows (0 here: the relation is
+    // already gone). The drawer closes; the ok banner reports the
+    // server's honest count; the row leaves the re-read window.
+    await drawer.getByRole("button", { name: "Delete this entity?" }).click();
+    await expect(
+      page.getByText("The drawer shows 0 relations."),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Run it" }).click();
+    await expect(page.getByText("Entity deleted. 0 relations removed.")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(entities.getByText(renamed)).toHaveCount(0);
+    // A graph read reflects the delete: the filtered window holds the
+    // sibling only.
+    await expect(entities.getByText(second)).toBeVisible();
+  });
+
+  test("the map links honestly into the workbench and lands on #/graph", async ({ page }) => {
+    // The Wave-8 Map arm: exactly one cross-link into the workbench;
+    // the canvas itself never gains editing (read-only is structural).
+    await page.goto("/app/#/map");
+    const link = page.getByRole("link", { name: "Edit entities in the graph workbench." });
+    await expect(link).toBeVisible({ timeout: 60_000 });
+    await expect(page.locator(".react-flow")).toBeVisible({ timeout: 60_000 });
+    await link.click();
+    await expect(page).toHaveURL(/#\/graph/);
+    // The create form's primary button (the card title carries the same
+    // words, so the role scopes the strict match).
+    await expect(page.getByRole("button", { name: "Create an entity" })).toBeVisible({
+      timeout: 60_000,
+    });
+  });
+
   test("the map draws the seeded graph read-only", async ({ page }) => {
     // Phase-2 Wave 6 done-when: a novice opens the Map from the rail
     // and SEES the graph — entities as nodes, relations as edges —

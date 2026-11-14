@@ -364,3 +364,160 @@ describe("Graph stage", () => {
     expect(write?.body).toContain('"target_entity_id":"00000000-0000-0000-0000-00000001wner"');
   });
 });
+
+describe("Graph stage writes (Wave 8)", () => {
+  const alphaId = "00000000-0000-0000-0000-00000000ower";
+  const relationId = "00000000-0000-0000-0000-0000000000r1";
+
+  async function openDrawer(): Promise<HTMLElement> {
+    render(<Graph />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getByText("Alpha")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole("button", { name: strings.graphDetails })[0]!);
+    return await screen.findByRole("dialog");
+  }
+
+  it("edits the entity through the drawer form; the table shows the new name", async () => {
+    const posts: { url: string; body: string }[] = [];
+    let saved = false;
+    stubFetchImpl((url: string | URL, init?: { method?: string; body?: unknown }) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const target = String(url);
+      const body = String(init?.body ?? "");
+      if (method === "POST" && target.includes("/update")) {
+        posts.push({ url: target, body });
+        saved = true;
+        return Promise.resolve(respond(200, {
+          status: "success", entity_id: alphaId, name: "Alpha Renamed", entity_type: "concept",
+        }));
+      }
+      if (method === "GET" && target.includes("/api/entities")) {
+        // After the save the window re-read answers the renamed row.
+        const rows = saved
+          ? [{ ...entitiesOk.result[0]!, name: "Alpha Renamed" }]
+          : entitiesOk.result;
+        return Promise.resolve(respond(200, { status: "success", result: rows }));
+      }
+      return Promise.resolve(respond(200, { status: "success", result: [] }));
+    });
+    const drawer = await openDrawer();
+    fireEvent.click(within(drawer).getByRole("button", { name: strings.graphEditTitle }));
+    const form = await within(drawer).findByTestId("entity-edit-form");
+    const nameField = within(form).getByLabelText(`${strings.graphEntityNameLabel} *`);
+    await act(async () => {
+      fireEvent.change(nameField, { target: { value: "Alpha Renamed" } });
+    });
+    fireEvent.click(within(form).getByRole("button", { name: strings.graphEditSave }));
+    // The form stays open; its ok banner names the save.
+    await waitFor(() => expect(within(form).getByText(strings.graphEditSaved)).toBeTruthy());
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!.url).toContain(alphaId);
+    expect(posts[0]!.body).toContain('"name":"Alpha Renamed"');
+    // The page window re-read after the ok write shows the new name.
+    await waitFor(() => expect(screen.getByText("Alpha Renamed")).toBeTruthy());
+  });
+
+  it("removes a relation behind its Popconfirm and the list reflects it", async () => {
+    const relationRow = {
+      relation_id: relationId,
+      relation_type: "related_to",
+      weight: 1,
+      source_entity_id: alphaId,
+      target_entity_id: "00000000-0000-0000-0000-00000001wner",
+      source_name: "Alpha",
+      target_name: "Beta",
+    };
+    let deleted = false;
+    stubFetchImpl((url: string | URL, init?: { method?: string; body?: unknown }) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const target = String(url);
+      if (method === "POST" && target.includes(`/api/relations/${relationId}/delete`)) {
+        deleted = true;
+        return Promise.resolve(respond(200, {
+          status: "success", relation_id: relationId, deleted: true,
+        }));
+      }
+      if (method === "GET" && target.includes("/api/entities")) {
+        return Promise.resolve(respond(200, { status: "success", result: entitiesOk.result }));
+      }
+      if (method === "GET" && target.includes("/api/graph/relations/")) {
+        return Promise.resolve(
+          respond(200, { status: "success", result: deleted ? [] : [relationRow] }),
+        );
+      }
+      return Promise.resolve(respond(200, { status: "success", result: [] }));
+    });
+    const drawer = await openDrawer();
+    await waitFor(() => expect(within(drawer).getByText("Alpha related_to Beta")).toBeTruthy());
+    fireEvent.click(within(drawer).getByRole("button", { name: strings.graphRelationDeleteTitle }));
+    const popover = await document.querySelector(".ant-popover:not(.ant-popover-hidden)");
+    expect(popover).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(
+        Array.from(popover!.querySelectorAll("button")).find(
+          (b) => b.textContent === strings.graphRelationDeleteTitle,
+        )!,
+      );
+    });
+    await waitFor(() =>
+      expect(within(drawer).getByText(strings.graphRelationDeleted)).toBeTruthy(),
+    );
+    await waitFor(() =>
+      expect(within(drawer).queryByText("Alpha related_to Beta")).toBeNull(),
+    );
+  });
+
+  it("deletes the entity through ConfirmGate; the drawer closes and the row leaves", async () => {
+    const posts: string[] = [];
+    let deleted = false;
+    stubFetchImpl((url: string | URL, init?: { method?: string; body?: unknown }) => {
+      const method = (init?.method ?? "GET").toUpperCase();
+      const target = String(url);
+      if (method === "POST" && target.includes("/delete")) {
+        posts.push(target);
+        deleted = true;
+        return Promise.resolve(respond(200, {
+          status: "success", entity_id: alphaId, relations_removed: 2,
+        }));
+      }
+      if (method === "GET" && target.includes("/api/entities")) {
+        // After the delete the window re-read answers the shrunken rows.
+        const rows = deleted ? [entitiesOk.result[1]] : entitiesOk.result;
+        return Promise.resolve(respond(200, { status: "success", result: rows }));
+      }
+      if (method === "GET" && target.includes("/api/graph/relations/")) {
+        return Promise.resolve(respond(200, {
+          status: "success",
+          result: [
+            {
+              relation_id: relationId,
+              relation_type: "related_to",
+              weight: 1,
+              source_entity_id: alphaId,
+              target_entity_id: "00000000-0000-0000-0000-00000001wner",
+              source_name: "Alpha",
+              target_name: "Beta",
+            },
+          ],
+        }));
+      }
+      return Promise.resolve(respond(200, { status: "success", result: [] }));
+    });
+    const drawer = await openDrawer();
+    await waitFor(() => expect(within(drawer).getByText("Alpha related_to Beta")).toBeTruthy());
+    fireEvent.click(within(drawer).getByRole("button", { name: strings.graphEntityDeleteTitle }));
+    // The gate names the cascade count the drawer actually shows (1).
+    const dialog = await screen.findByText(
+      strings.graphEntityDeleteBody.replace("{count}", "1"),
+    );
+    expect(dialog).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: strings.confirmConfirm }));
+    // The drawer closes; the ok banner reports the server's cascade count.
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByText(strings.graphEntityDeleted.replace("{count}", "2"))).toBeTruthy(),
+    );
+    await waitFor(() => expect(screen.queryByText("Alpha")).toBeNull());
+    expect(posts).toHaveLength(1);
+    expect(posts[0]!).toContain(alphaId);
+  });
+});

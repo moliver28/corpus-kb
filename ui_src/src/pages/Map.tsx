@@ -1,6 +1,6 @@
 import { Background, Controls, Handle, Position, ReactFlow, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Card, Table, Typography } from "antd";
+import { Button, Card, Table, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo } from "react";
 import OpBody from "../components/OpBody";
@@ -119,6 +119,11 @@ export default function Map() {
     <div className="ui-stack">
       <Card title={strings.mapTitle}>
         <p>{strings.mapBody}</p>
+        {/* The one honest cross-link into the workbench (Phase-2 Wave 8):
+            the canvas itself stays read-only — no in-canvas editing. */}
+        <Button type="link" href="#/graph">
+          {strings.mapWorkbenchLink}
+        </Button>
       </Card>
       <Card title={strings.mapCanvasHint}>
         <OpBody

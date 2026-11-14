@@ -18,10 +18,16 @@ export interface GraphStrings {
   graphDrawerMetadataTitle: string;
   graphDrawerNeighborsTitle: string;
   graphDrawerRelationsTitle: string;
+  graphEditSave: string;
+  graphEditSaved: string;
+  graphEditTitle: string;
   graphEntitiesEmpty: string;
   graphEntitiesTitle: string;
   graphEntityNameLabel: string;
   graphEntityTypeLabel: string;
+  graphEntityDeleteBody: string;
+  graphEntityDeleteTitle: string;
+  graphEntityDeleted: string;
   graphFilterLabel: string;
   graphNameRequired: string;
   graphNeighborsEmpty: string;
@@ -30,10 +36,15 @@ export interface GraphStrings {
   graphPickerNoMatch: string;
   graphPickerSearchCapped: string;
   graphRelationBody: string;
+  graphRelationDeleteBody: string;
+  graphRelationDeleteTitle: string;
+  graphRelationDeleted: string;
+  graphRelationEditTitle: string;
   graphRelationRow: string;
   graphRelationSaved: string;
   graphRelationTitle: string;
   graphRelationTypeLabel: string;
+  graphRelationUpdated: string;
   graphRelationTypeRequired: string;
   graphRelationsEmpty: string;
   graphSourceLabel: string;
@@ -41,6 +52,7 @@ export interface GraphStrings {
   graphTargetLabel: string;
   graphTargetRequired: string;
   graphTitle: string;
+  graphWeightLabel: string;
   graphTypeRequired: string;
 }
 

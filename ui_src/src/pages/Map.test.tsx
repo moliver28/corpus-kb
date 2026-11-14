@@ -124,6 +124,17 @@ describe("Map stage", () => {
     expect(screen.getByText("Delta")).toBeTruthy();
   });
 
+  it("links honestly into the graph workbench; the canvas starts no write", async () => {
+    // Wave 8: the one cross-link INTO the workbench. The canvas itself
+    // never gains editing — this link is the whole write surface.
+    stubFetch([entityRoute(), relationRoute()]);
+    render(<Map />, { wrapper: makeWrapper() });
+    await waitFor(() => expect(screen.getAllByText("Alpha").length).toBeGreaterThan(0));
+    const link = screen.getByRole("link", { name: strings.mapWorkbenchLink });
+    expect(link.getAttribute("href")).toBe("#/graph");
+    expect(document.querySelector(".react-flow")).toBeTruthy();
+  });
+
   it("keeps the canvas read-only: keys delete nothing and the page writes nothing", async () => {
     stubFetch([entityRoute(), relationRoute()]);
     render(<Map />, { wrapper: makeWrapper() });

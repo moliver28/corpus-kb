@@ -495,6 +495,24 @@
     "required": []
   },
   {
+    "id": "delete-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities/{entity_id}/delete",
+    "required": []
+  },
+  {
+    "id": "update-entity",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/entities/{entity_id}/update",
+    "required": []
+  },
+  {
     "id": "events-summary",
     "longRunning": false,
     "method": "GET",
@@ -806,6 +824,24 @@
     "optional": [],
     "paramsKnown": false,
     "path": "/api/relations",
+    "required": []
+  },
+  {
+    "id": "delete-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations/{relation_id}/delete",
+    "required": []
+  },
+  {
+    "id": "update-relation",
+    "longRunning": false,
+    "method": "POST",
+    "optional": [],
+    "paramsKnown": false,
+    "path": "/api/relations/{relation_id}/update",
     "required": []
   },
   {

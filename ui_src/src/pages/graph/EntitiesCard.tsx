@@ -10,14 +10,23 @@ import type { EntityRow } from "./shapes";
 import EntityDrawer from "./EntityDrawer";
 
 /**
- * The graph entities table (Phase-2 Wave 4): one window of the
- * server's pages (the window state lives on the page; this card is its
- * view), a type filter that rides every window read, and the
- * per-entity drawer. IDs carry the tabular figures the tokens pin.
+ * The graph entities table (Phase-2 Wave 4; Wave 8 adds the Edit
+ * action and the delete banner): one window of the server's pages (the
+ * window state lives on the page; this card is its view), a type
+ * filter that rides every window read, and the per-entity drawer.
+ * IDs carry the tabular figures the tokens pin.
  */
-export default function EntitiesCard({ win }: { win: ServerWindow<EntityRow> }) {
+export default function EntitiesCard({
+  win,
+  onWrite,
+}: {
+  win: ServerWindow<EntityRow>;
+  /** The page's after-write: the window re-reads, the epoch bumps. */
+  onWrite: () => void;
+}) {
   const [typeDraft, setTypeDraft] = useState("");
   const [detail, setDetail] = useState<EntityRow | null>(null);
+  const [deletedBanner, setDeletedBanner] = useState("");
 
   const columns: ColumnsType<EntityRow> = [
     {
@@ -40,9 +49,20 @@ export default function EntitiesCard({ win }: { win: ServerWindow<EntityRow> }) 
       title: strings.graphColumnActions,
       key: "actions",
       render: (_value: unknown, row: EntityRow) => (
-        <Button size="small" onClick={() => setDetail(row)}>
-          {strings.graphDetails}
-        </Button>
+        <div className="ui-actions">
+          <Button size="small" onClick={() => setDetail(row)}>
+            {strings.graphDetails}
+          </Button>
+          <Button
+            size="small"
+            onClick={() => {
+              setDeletedBanner("");
+              setDetail(row);
+            }}
+          >
+            {strings.graphEditTitle}
+          </Button>
+        </div>
       ),
     },
   ];
@@ -77,6 +97,7 @@ export default function EntitiesCard({ win }: { win: ServerWindow<EntityRow> }) 
             placeholder={strings.graphFilterLabel}
           />
         </div>
+        {deletedBanner !== "" && <StatusBanner kind="ok">{deletedBanner}</StatusBanner>}
         <OpBody result={win.result} ok={win.okEnvelope} retry={win.refresh} opId="list-entities">
           {win.rows.length === 0 ? (
             <StatusBanner kind="info">{strings.graphEntitiesEmpty}</StatusBanner>
@@ -97,7 +118,18 @@ export default function EntitiesCard({ win }: { win: ServerWindow<EntityRow> }) 
           )}
         </OpBody>
       </div>
-      <EntityDrawer row={detail} onClose={() => setDetail(null)} />
+      <EntityDrawer
+        row={detail}
+        onClose={() => setDetail(null)}
+        onWritten={onWrite}
+        onEntityDeleted={(relationsRemoved) => {
+          setDetail(null);
+          setDeletedBanner(
+            strings.graphEntityDeleted.replace("{count}", String(relationsRemoved)),
+          );
+          onWrite();
+        }}
+      />
     </Card>
   );
 }

@@ -36,7 +36,7 @@ export default function Graph() {
       <Card title={strings.graphTitle}>
         <p>{strings.graphBody}</p>
       </Card>
-      <EntitiesCard win={win} />
+      <EntitiesCard win={win} onWrite={afterWrite} />
       <CreateEntityCard refresh={afterWrite} />
       <CreateRelationCard refresh={afterWrite} reloadKey={writeEpoch} />
     </div>
