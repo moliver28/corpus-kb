@@ -1315,10 +1315,11 @@ jobs:
           done
 
       - name: Warning ratchet (suite at or below the ceiling)
-        # 40 min matches the cross legs: the suite runs without coverage
-        # here, but the inductive extras add umap/hdbscan wheels and the
-        # job re-runs the whole suite.
-        timeout-minutes: 40
+        # 50 min: the inductive extras add umap/hdbscan wheels and the job
+        # re-runs the whole suite; the measured run finished at 39:54, so a
+        # 40 min cap failed on runner variance after the gate itself passed
+        # (PR #431 close-out). Same raise-with-rationale move as PR #189.
+        timeout-minutes: 50
         env:
           PYTHONUNBUFFERED: "1"
         run: poe warning-ratchet
