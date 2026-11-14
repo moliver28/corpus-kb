@@ -26,22 +26,4 @@ ignore = [
     "GHSA-m462-7rxw-wvpg",
     "GHSA-rfpc-qcw5-3pc4",
     "GHSA-v4x8-3wr5-3wq8",
-    # soupsieve 2.10 (the python_full_version < '3.11.5' lock branch
-    # only; the >= '3.11.5' branch holds 4.1), three advisories, one
-    # reason: every fix line (3.0.2 for the two 2026-11-13 rows below,
-    # 4.0.0 for GHSA-mmhr-3c5m-f64f) needs Python >= 3.11.5, while the
-    # repo supports >= 3.11, so the narrow branch cannot take any fix
-    # today. DELETE all three rows when the repo Python floor reaches
-    # 3.11.5 or the lock drops the < 3.11.5 branch.
-    "GHSA-7g44-g9rc-x53w",
-    "GHSA-6655-6qjp-jx7x",
-    # soupsieve: GHSA-mmhr-3c5m-f64f (CVE-2026-126190, high). The fix
-    # is in soupsieve 4.0.0; the lock now holds 4.1 on the python
-    # >=3.11.5 branch. The python_full_version < '3.11.5' branch still
-    # holds soupsieve 2.10, and it stays vulnerable. soupsieve 4.x
-    # needs Python >= 3.11.5, while this repo supports >=3.11, so that
-    # narrow range cannot take the fix today. DELETE this row when the
-    # repo Python floor reaches 3.11.5 or the lock drops the <3.11.5
-    # branch.
-    "GHSA-mmhr-3c5m-f64f",
 ]

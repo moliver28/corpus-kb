@@ -40,7 +40,7 @@ programmatically if you want the real methods, and say so in any write-up.
 
 ## How to run
 
-From the repo root (any machine with Python 3.11+; no services required):
+From the repo root (any machine with Python 3.11.5+; no services required):
 
 ```bash
 python scripts/bench_gatos_baseline.py                    # JSON to stdout

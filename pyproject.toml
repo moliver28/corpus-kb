@@ -3,7 +3,7 @@ name = "corpus-kb"
 version = "0.1.0"
 description = "Local end-to-end RAG system with MCP interface for agentic code editors"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11.5"
 # SPDX license expression (PEP 639). Replaces the legacy { text = "MIT" }
 # table form; the matching "License :: OSI Approved :: MIT License" classifier
 # is intentionally absent because PyPI/PEP 639 treat license classifiers as
@@ -37,7 +37,7 @@ dependencies = [
     # Wave 5): the AST code chunker imports them lazily behind the file-type
     # gate, so base installs no longer carry them (deptry ratchet closed).
     "pydantic>=2.0",
-    # TypeIs (gateway seam narrowing) is 3.13+ stdlib; the repo floor is 3.11.
+    # TypeIs (gateway seam narrowing) is 3.13+ stdlib; the repo floor is 3.11.5.
     "typing-extensions>=4.10",
     "rich>=13.0",
     # unstructured[md]: the md extra ships the `markdown` package that
