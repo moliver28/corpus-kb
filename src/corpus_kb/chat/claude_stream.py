@@ -40,7 +40,11 @@ def turn_stream(stderr_lines: list[str]) -> TurnStream:
         history: list[dict[str, str]],
         k: int | None,
     ) -> AsyncIterator[ChatEvent]:
-        from claude_agent_sdk import CLIConnectionError, ProcessError
+        import importlib
+
+        sdk = importlib.import_module("claude_agent_sdk")
+        cli_error = sdk.CLIConnectionError
+        process_error = sdk.ProcessError
 
         citations: list[ChatCitation] = []
         pending_envelope: ChatEnvelope | None = None
@@ -52,7 +56,7 @@ def turn_stream(stderr_lines: list[str]) -> TurnStream:
                         pending_envelope = event
                     else:
                         yield event
-        except (CLIConnectionError, ProcessError) as exc:
+        except (cli_error, process_error) as exc:
             raise InternalError(str(exc)) from exc
         for line in stderr_lines:
             yield ChatWarning(line)

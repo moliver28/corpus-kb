@@ -72,7 +72,9 @@ def _find_cli() -> tuple[bool, str]:
             return True, f"claude on PATH answered: {probe.stdout.strip()[:80]}"
         return False, "claude is on PATH but --version failed."
     try:
-        import claude_agent_sdk  # noqa: F401  # the SDK extra
+        import importlib
+
+        importlib.import_module("claude_agent_sdk")  # the SDK extra
     except ImportError:
         return False, "No claude on PATH, and the [chat] extra is not installed."
     if _arm64_windows():

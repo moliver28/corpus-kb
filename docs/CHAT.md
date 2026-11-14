@@ -1,7 +1,7 @@
 # Chat
 
-Chat (Phase-2 Wave 7) lets you ask questions about your corpus from the
-desk rail and get a streaming, cited answer. This page is the owner's
+Chat (Phase-2 Wave 7) answers questions about your corpus. It streams a
+cited answer, and the desk rail opens it. This page is the owner's
 setup and the rung contract.
 
 ## The rungs
@@ -75,16 +75,15 @@ doctor` names this fix when the probe fails.
 Deny-by-default: the agent sees exactly one tool,
 `mcp__corpus__search`, a read-only search over your corpus. The
 auto-allowed read-only file tools (Read, Glob, Grep, LS, NotebookRead)
-and every write, shell, and web tool are denied by name, and a
-per-call hook denies anything outside the allow list — including a
-call no rule would have prompted for. Chat writes nothing to the
-corpus.
+are denied by name. So are every write, shell, and web tool. A per-call
+hook denies anything outside the allow list, including a call no rule
+would have prompted for. Chat writes nothing to the corpus.
 
 ## Sessions
 
 `chat.max_sessions` (default 1) caps live sessions; one Claude session
 holds about 1 GiB RAM. An idle session closes after
-`chat.session_ttl_s` (default 1800 s); the transcript stays on disk
+`chat.session_ttl_s` (default 1800 s). The transcript stays on disk
 under the pinned working directory (`installer.data_dir`), and the
 Sessions list resumes it. Stop is a client abort: the server
 interrupts the run, drains the receipt, and closes.
@@ -105,6 +104,6 @@ policy page that can move. Each release:
    refusal list must name exactly the variables ranked above the
    subscription login.
 
-Live-verified 2026-11-13: the carve-out held, conditions: unmodified
+Live check on 2026-11-13: the carve-out held. Conditions: an unmodified
 binary, no auth-method removal, no login intermediation, per-user
 credentials.

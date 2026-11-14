@@ -156,8 +156,8 @@ CI enforcement map in
 ## Layout
 
 - `ui_src/src/` — the app: `api/` (client, ops table, runtime config),
-  `components/` (shared cards), `pages/<Stage>/` (one folder per
-  stage), `strings/<stage>.json` (the user-visible words; each stage's
+  `components/` (shared cards), and `pages/<Stage>/` (one folder per
+  stage). `strings/<stage>.json` carries the user-visible words; each stage's
   table rides its own lazy chunk, `app.json` rides the shell).
 - `ui_src/e2e/` — the Playwright smoke and the axe scan.
 - `ui_src/scripts/` — the bundle gate and the manifest copy.
@@ -180,9 +180,9 @@ zero vectors; the ask accepts the honest degraded answer.
 
 ## Conventions
 
-- Every user-visible word lives in one `strings/<stage>.json`; the
-  interface in the matching `strings/<stage>.ts` pins its shape (a key
-  two stages reference belongs in `app`). `strings/index.ts` is the
+- Every user-visible word lives in one `strings/<stage>.json`. The
+  matching `strings/<stage>.ts` interface pins its shape. A key that two
+  stages reference belongs in `app`. `strings/index.ts` is the
   tests-only full union. Plain English, short sentences.
 - New ops come from the manifest (`ops.generated.ts`); screens gate
   missing ops behind honest not-wired banners that self-upgrade.

@@ -59,8 +59,7 @@ async def _seed_document_with_chunks(pool, doc_id: UUID, run: str) -> list[UUID]
     """One documents row plus five chunks (index 2 tombstoned, 4 superseded)."""
     if is_gateway(pool):
         doc_sql = (
-            "INSERT INTO documents (doc_id, tenant_id, source, source_type)"
-            " VALUES (?, ?, ?, ?)"
+            "INSERT INTO documents (doc_id, tenant_id, source, source_type) VALUES (?, ?, ?, ?)"
         )
         chunk_sql = (
             "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text,"
@@ -68,8 +67,7 @@ async def _seed_document_with_chunks(pool, doc_id: UUID, run: str) -> list[UUID]
         )
     else:
         doc_sql = (
-            "INSERT INTO documents (doc_id, tenant_id, source, source_type)"
-            " VALUES ($1, $2, $3, $4)"
+            "INSERT INTO documents (doc_id, tenant_id, source, source_type) VALUES ($1, $2, $3, $4)"
         )
         chunk_sql = (
             "INSERT INTO chunks (chunk_id, tenant_id, doc_id, chunk_index, text,"

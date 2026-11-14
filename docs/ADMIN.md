@@ -310,7 +310,7 @@ Every `CORPUS_KB_*` variable the code reads. `corpus-kb doctor` warns when a set
 ### Chat
 
 Chat ships OFF (`chat.enabled: false`). The default rung
-(`claude-agent-sdk`) bills the owner's Claude subscription and runs for
+(`claude-agent-sdk`) bills the owner's Claude subscription. It runs for
 one owner on one machine only: a non-loopback `server.host` or
 `chat.single_owner: false` is refused at load. Use `ollama` for a
 shared server; the `anthropic-api` rung refuses at session start until

@@ -224,7 +224,7 @@ Run the check again after the repair. CI is not exposed: it installs `python-mag
 
 ### macOS: install libmagic
 
-On macOS, `unstructured` needs libmagic for file-type detection. Without it, more file types show as unknown, and `test_http_ingest_file_is_binary_safe` fails. Install it with Homebrew:
+On macOS, `unstructured` needs libmagic for file-type detection. Without it, more file types show as unknown. Then `test_http_ingest_file_is_binary_safe` fails. Install it with Homebrew:
 
 ```bash
 brew install libmagic

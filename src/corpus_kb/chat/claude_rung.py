@@ -14,14 +14,16 @@ Session contract ([D3]-[D5]):
   ALL sources; the SDK reference is explicit);
 - the work-account pin via ``CLAUDE_CONFIG_DIR`` and a stable ``cwd``.
 
-Every ``claude_agent_sdk`` import is lazy (inside functions), so base
-installs never import the SDK.
+Every ``claude_agent_sdk`` import is lazy (``importlib`` at call time),
+so base installs never import the SDK — and the import edge stays
+invisible to static resolution, so pyright passes without the extra
+(the ``ast_chunks`` contract for optional extras).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING
+from typing import Any
 from uuid import uuid4
 
 import asyncpg
@@ -32,11 +34,27 @@ from corpus_kb.chat.session import ChatSession
 from corpus_kb.chat.settings import ChatSettings, resolved_claude_config_dir, resolved_data_dir
 from corpus_kb.errors import ConfigError, DependencyMissingError, InternalError
 
-if TYPE_CHECKING:
-    from claude_agent_sdk import ClaudeAgentOptions
-    from claude_agent_sdk.types import HookContext, HookInput, HookJSONOutput, PermissionResult
-
 __all__ = ["PRECEDENCE_ENV_VARS", "build_session", "env_refusal", "list_transcripts"]
+
+
+def _sdk_module() -> Any:
+    """The SDK module, resolved at call time (the ``[chat]`` extra contract).
+
+    ``importlib`` on purpose: the extra is optional and CI never installs
+    it, so the import edge must stay invisible to static resolution (the
+    ``ast_chunks`` contract). A missing extra answers the typed
+    dependency error, never a bare ``ImportError``.
+    """
+    import importlib
+
+    try:
+        return importlib.import_module("claude_agent_sdk")
+    except ImportError as exc:
+        raise DependencyMissingError(
+            "The chat extra is not installed. Install corpus-kb with the chat extra.",
+            remediation='Install the extra: pip install -e ".[chat]". Then restart the server.',
+        ) from exc
+
 
 # [D4]: every variable that outranks the subscription login (rank 7).
 # Verified live 2026-11-13: cloud-provider variables rank 1,
@@ -86,13 +104,8 @@ async def list_transcripts(
     """
     import asyncio
 
-    try:
-        from claude_agent_sdk import list_sessions as sdk_list_sessions
-    except ImportError as exc:
-        raise DependencyMissingError(
-            "The chat extra is not installed. Install corpus-kb with the chat extra.",
-            remediation='Install the extra: pip install -e ".[chat]". Then restart the server.',
-        ) from exc
+    sdk = _sdk_module()
+    sdk_list_sessions = sdk.list_sessions
 
     directory = str(resolved_data_dir(config))
 
@@ -124,14 +137,14 @@ async def build_session(
             refusal,
             remediation="Unset the named variables. Then restart the server.",
         )
-    from claude_agent_sdk import ClaudeSDKClient
+    sdk = _sdk_module()
 
     stderr_lines: list[str] = []
     session_id = resume or str(uuid4())
     options = _build_options(
         settings, config, pg_pool, stderr_lines.append, session_id=session_id, resume=resume
     )
-    client = ClaudeSDKClient(options)
+    client = sdk.ClaudeSDKClient(options)
     try:
         await client.connect()
     except Exception as exc:
@@ -147,14 +160,14 @@ async def build_session(
 
 def _spawn_error(exc: Exception) -> Exception:
     """Map the SDK spawn failures onto the taxonomy."""
-    from claude_agent_sdk import CLIConnectionError, CLINotFoundError, ProcessError
+    sdk = _sdk_module()
 
-    if isinstance(exc, CLINotFoundError):
+    if isinstance(exc, sdk.CLINotFoundError):
         return DependencyMissingError(
             "The Claude Code CLI is missing. Install Claude Code, then try again.",
             remediation=("Install Claude Code natively, or set chat.claude.cli_path. Then retry."),
         )
-    if isinstance(exc, (CLIConnectionError, ProcessError)):
+    if isinstance(exc, (sdk.CLIConnectionError, sdk.ProcessError)):
         return InternalError(str(exc))
     return InternalError(str(exc))
 
@@ -171,7 +184,7 @@ async def _deny_backstop(
     tool_name: str,
     tool_input: dict[str, object],
     _context: object | None = None,
-) -> PermissionResult:
+) -> object:
     """The [D5] backstop: the corpus read or nothing.
 
     ``allowed_tools`` auto-approval never reaches this callback; it fires
@@ -179,18 +192,18 @@ async def _deny_backstop(
     name except the one corpus read. The ``PreToolUse`` hook
     (:func:`_tool_gate`) is the gate that also sees auto-allowed calls.
     """
-    from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
+    sdk = _sdk_module()
 
     if tool_name == _CORPUS_TOOL_WIRE_NAME:
-        return PermissionResultAllow(updated_input=tool_input)
-    return PermissionResultDeny(message="Chat may read the corpus and nothing else.")
+        return sdk.PermissionResultAllow(updated_input=tool_input)
+    return sdk.PermissionResultDeny(message="Chat may read the corpus and nothing else.")
 
 
 async def _tool_gate(
-    input_data: HookInput,
+    input_data: dict[str, object],
     _tool_use_id: str | None,
-    _context: HookContext,
-) -> HookJSONOutput:
+    _context: object,
+) -> dict[str, object]:
     """The [D5] per-call gate: the corpus read or a hook deny.
 
     The SDK's own reference names this as the gate that fires for EVERY
@@ -218,12 +231,11 @@ def _build_options(
     on_stderr: Callable[[str], None],
     session_id: str,
     resume: str | None,
-) -> ClaudeAgentOptions:
+) -> object:
     """``ClaudeAgentOptions`` exactly per [D5]; the SDK imports lazily."""
-    from claude_agent_sdk import ClaudeAgentOptions as _Options
-    from claude_agent_sdk import HookMatcher as _HookMatcher
+    sdk = _sdk_module()
 
-    return _Options(
+    return sdk.ClaudeAgentOptions(
         cwd=str(resolved_data_dir(config)),
         env=_pinned_env(settings),
         cli_path=settings.claude.cli_path or None,
@@ -238,7 +250,7 @@ def _build_options(
         hooks={
             # The per-call gate ([D5]): fires for every call, including
             # the auto-allowed ones. on_failure="block" fails closed.
-            "PreToolUse": [_HookMatcher(matcher=None, hooks=[_tool_gate], on_failure="block")]
+            "PreToolUse": [sdk.HookMatcher(matcher=None, hooks=[_tool_gate], on_failure="block")]
         },
         include_partial_messages=True,
         stderr=on_stderr,

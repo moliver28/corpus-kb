@@ -46,11 +46,7 @@ def _tables() -> dict[str, dict[str, str]]:
 
 def _pairs() -> list[str]:
     """Stable ``table::key`` ids, one per string across every table."""
-    return [
-        f"{table}::{key}"
-        for table in sorted(_tables())
-        for key in sorted(_tables()[table])
-    ]
+    return [f"{table}::{key}" for table in sorted(_tables()) for key in sorted(_tables()[table])]
 
 
 def _string_of(pair: str) -> str:

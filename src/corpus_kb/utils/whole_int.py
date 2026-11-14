@@ -22,9 +22,7 @@ INT8_MAX = 9223372036854775807
 INT8_MIN = -9223372036854775808
 
 
-def coerce_whole_int(
-    raw: object, default: int | None, *, name: str = "value"
-) -> int | None:
+def coerce_whole_int(raw: object, default: int | None, *, name: str = "value") -> int | None:
     """Coerce one JSON count. Absent answers the default; junk raises.
 
     Whole numbers, whole floats, and digit strings pass. Any other value

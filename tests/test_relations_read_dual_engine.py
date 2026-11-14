@@ -56,8 +56,7 @@ async def _seed_graph(pool, run: str) -> list[UUID]:
     """Three entities, two relations; return the two relation ids."""
     if is_gateway(pool):
         entity_sql = (
-            "INSERT INTO entities (entity_id, tenant_id, name, entity_type)"
-            " VALUES (?, ?, ?, ?)"
+            "INSERT INTO entities (entity_id, tenant_id, name, entity_type) VALUES (?, ?, ?, ?)"
         )
         relation_sql = (
             "INSERT INTO relations (relation_id, tenant_id, source_entity_id,"
@@ -65,8 +64,7 @@ async def _seed_graph(pool, run: str) -> list[UUID]:
         )
     else:
         entity_sql = (
-            "INSERT INTO entities (entity_id, tenant_id, name, entity_type)"
-            " VALUES ($1, $2, $3, $4)"
+            "INSERT INTO entities (entity_id, tenant_id, name, entity_type) VALUES ($1, $2, $3, $4)"
         )
         relation_sql = (
             "INSERT INTO relations (relation_id, tenant_id, source_entity_id,"

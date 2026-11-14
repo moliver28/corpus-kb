@@ -13,16 +13,13 @@ never import it, mirroring the ``[code]`` extra pattern.
 
 from __future__ import annotations
 
+import importlib
 import json
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import asyncpg
 
 from corpus_kb.chat.events import ChatCitation
-
-if TYPE_CHECKING:
-    from claude_agent_sdk import SdkMcpTool
-    from claude_agent_sdk.types import McpSdkServerConfig
 
 __all__ = [
     "build_corpus_mcp_server",
@@ -74,28 +71,33 @@ def citations_from_sources(sources: list[dict[str, object]]) -> list[ChatCitatio
     return [_citation(source) for source in sources]
 
 
-def build_corpus_tool(pg_pool: asyncpg.Pool, config: dict[str, object] | None) -> SdkMcpTool[Any]:
-    """The decorated ``SdkMcpTool``; the SDK imports lazily."""
-    from claude_agent_sdk import ToolAnnotations, tool
+def build_corpus_tool(pg_pool: asyncpg.Pool, config: dict[str, object] | None) -> Any:
+    """The decorated ``SdkMcpTool``; the SDK resolves at call time.
+
+    ``importlib`` on purpose (the ``ast_chunks`` contract): the extra is
+    optional and CI never installs it, so the import edge stays invisible
+    to static resolution.
+    """
+    sdk = importlib.import_module("claude_agent_sdk")
 
     async def handler(args: dict[str, Any]) -> dict[str, object]:
         return await _search_handler(pg_pool, config, args)
 
-    return tool(
+    return sdk.tool(
         _TOOL_NAME,
         _TOOL_DESCRIPTION,
         _SEARCH_INPUT_SCHEMA,
-        annotations=ToolAnnotations(readOnlyHint=True),
+        annotations=sdk.ToolAnnotations(readOnlyHint=True),
     )(handler)
 
 
-def build_corpus_mcp_server(
-    pg_pool: asyncpg.Pool, config: dict[str, object] | None
-) -> McpSdkServerConfig:
+def build_corpus_mcp_server(pg_pool: asyncpg.Pool, config: dict[str, object] | None) -> Any:
     """The in-process MCP server holding the one read tool."""
-    from claude_agent_sdk import create_sdk_mcp_server
+    sdk = importlib.import_module("claude_agent_sdk")
 
-    return create_sdk_mcp_server(_CORPUS_SERVER_NAME, tools=[build_corpus_tool(pg_pool, config)])
+    return sdk.create_sdk_mcp_server(
+        _CORPUS_SERVER_NAME, tools=[build_corpus_tool(pg_pool, config)]
+    )
 
 
 async def _search_handler(

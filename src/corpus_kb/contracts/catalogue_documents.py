@@ -84,5 +84,5 @@ DOCUMENTS_OPERATIONS: tuple[Operation, ...] = (
         ),
         http_extra=AGGREGATE_EXTRA,
         exit_codes=(0, 1, 3),
-    )
+    ),
 )

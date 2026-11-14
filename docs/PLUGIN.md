@@ -243,7 +243,7 @@ corpus-rag use interview-study
 | `plugin-doctor [--bundle]` | Plugin health: versions, hook files, trigger file, folder state, this folder's last 10 hook errors. Exit 0 only when hooks and triggers are good. `--bundle` writes a redacted JSON file for a bug report. |
 | `status`, `connect`, `engine install` | Kept from 0.7.x; `status` is per study now, `connect` prints one MCP entry per study. |
 | `uxr consent [-p]` | Report the setup consent answer. Exit 1 means local only. Unknown means local only. |
-| `uxr ingest-plan --spec UX1-N.spec.json [-p]` | Store the study and its question ids, keyed by a 16-char SHA-256 of the spec. Ids: RQn by position, Hn from the label prefix, An by position. |
+| `uxr ingest-plan --spec UX1-N.spec.json [-p]` | Store the study and its question ids. The key is the spec's 16-char SHA-256. Ids: RQn by position, Hn from the label prefix, An by position. |
 | `uxr classify --dir <path> [--roster F] [--staff F] [-p]` | Sort files into `participant_session`, `internal_meeting`, `plan`, `derived`, `excluded`, `unmatched`. No model call. `unmatched` files go to the researcher; never guessed. |
 | `uxr confirm-classes '<json>'\|@file [-p]` | Store confirmed classes. Only `participant_session` and `internal_meeting` reach the source list. |
 | `uxr stubs --dir <path> [-p]` | Write `sources/corpus/<slug>.md` per source so `[S:slug]` cites resolve. Never overwrite. |
@@ -409,7 +409,7 @@ a prior "declined" choice carries over.
 
 New and changed files in a watch folder queue in
 `<folder>/.claude/corpus-pending.jsonl`. The queue holds one line per
-path, skips repeats by path and mtime, and is guarded by a `.lock`. A transcript routes to
+path. It skips repeats by path and mtime. A `.lock` guards it. A transcript routes to
 `research_ingest_transcript` and then `ingest_file`, so it reaches the
 research tables and plain search. Other files route to `queue_enqueue`.
 
