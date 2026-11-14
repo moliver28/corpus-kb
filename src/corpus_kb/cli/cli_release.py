@@ -63,7 +63,7 @@ def release_assess_cmd(
     codebook_version_id: str = typer.Option(
         ...,
         "--codebook-version-id",
-        help="Version UUID. corpus-kb codebook list prints the versions",
+        help="Version UUID. corpus-kb codebook list prints the versions.",
     ),
     profile: str = typer.Option(None, "--profile", help="Release profile (default from config)"),
     run_id: str = typer.Option(None, "--run-id", help="Research run UUID (reliability evidence)"),
@@ -83,7 +83,7 @@ def release_request_cmd(
     codebook_version_id: str = typer.Option(
         ...,
         "--codebook-version-id",
-        help="Version UUID. corpus-kb codebook list prints the versions",
+        help="Version UUID. corpus-kb codebook list prints the versions.",
     ),
     creator: str = typer.Option(..., "--creator", help="Who opens the draft"),
     codebook_id: str = typer.Option(None, "--codebook-id", help="Codebook UUID (default: version)"),
@@ -104,7 +104,7 @@ def release_review_cmd(
     codebook_version_id: str = typer.Option(
         ...,
         "--codebook-version-id",
-        help="Version UUID. corpus-kb codebook list prints the versions",
+        help="Version UUID. corpus-kb codebook list prints the versions.",
     ),
     release_id: str = typer.Option(..., "--release-id", help="Release UUID"),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable payload"),
@@ -123,7 +123,7 @@ def release_execute_cmd(
     codebook_version_id: str = typer.Option(
         ...,
         "--codebook-version-id",
-        help="Version UUID. corpus-kb codebook list prints the versions",
+        help="Version UUID. corpus-kb codebook list prints the versions.",
     ),
     release_id: str = typer.Option(..., "--release-id", help="Draft release UUID"),
     approver: str = typer.Option(..., "--approver", help="Human approver (required)"),
@@ -149,7 +149,7 @@ def release_status_cmd(
     codebook_version_id: str = typer.Option(
         ...,
         "--codebook-version-id",
-        help="Version UUID. corpus-kb codebook list prints the versions",
+        help="Version UUID. corpus-kb codebook list prints the versions.",
     ),
     json_output: bool = typer.Option(False, "--json", help="Machine-readable payload"),
 ) -> int:
@@ -167,7 +167,7 @@ def release_compare_cmd(
     codebook_version_id: str = typer.Option(
         ...,
         "--codebook-version-id",
-        help="Version UUID. corpus-kb codebook list prints the versions",
+        help="Version UUID. corpus-kb codebook list prints the versions.",
     ),
     old_release_id: str = typer.Option(..., "--old-release-id", help="Release A UUID (older)"),
     new_release_id: str = typer.Option(..., "--new-release-id", help="Release B UUID (newer)"),

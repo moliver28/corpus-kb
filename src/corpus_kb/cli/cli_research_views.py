@@ -35,7 +35,7 @@ def research_evidence(
     project_id: str = typer.Option(
         None,
         "--project-id",
-        help="Restrict to one project. corpus-kb research projects prints the list",
+        help="Restrict to one project. corpus-kb research projects prints the list.",
     ),
     version_id: str = typer.Option(
         None,
@@ -109,7 +109,7 @@ def research_uncoded(
     project_id: str = typer.Option(
         None,
         "--project-id",
-        help="Restrict to one project. corpus-kb research projects prints the list",
+        help="Restrict to one project. corpus-kb research projects prints the list.",
     ),
     version_id: str = typer.Option(
         None,
@@ -164,7 +164,7 @@ def research_overlap(
     project_id: str = typer.Option(
         None,
         "--project-id",
-        help="Restrict to one project. corpus-kb research projects prints the list",
+        help="Restrict to one project. corpus-kb research projects prints the list.",
     ),
     version_id: str = typer.Option(
         None,
