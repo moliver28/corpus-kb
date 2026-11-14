@@ -216,6 +216,7 @@ def _build_options(
     return _Options(
         cwd=str(resolved_data_dir(config)),
         env=_pinned_env(settings),
+        cli_path=settings.claude.cli_path or None,
         model=settings.claude.model or None,
         max_turns=settings.claude.max_turns,
         allowed_tools=list(settings.claude.allowed_tools),

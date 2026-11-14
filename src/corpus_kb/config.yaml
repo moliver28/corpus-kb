@@ -356,6 +356,9 @@ chat:
   claude:
     # The work-account pin: a Claude login apart from any personal one.
     config_dir: ~/.claude-corpus
+    # The Claude Code CLI path. Empty = the SDK finds claude on PATH or
+    # its bundled binary; set it when neither exists (ARM64 Windows).
+    cli_path: ""
     # Empty = the Claude CLI default model.
     model: ""
     max_turns: 20

@@ -29,6 +29,7 @@ class ClaudeRungSettings:
     """The claude-agent-sdk rung's leaves."""
 
     config_dir: str
+    cli_path: str
     model: str
     max_turns: int
     allowed_tools: list[str]
@@ -117,6 +118,7 @@ def read_chat_settings(config: dict[str, object]) -> ChatSettings:
         session_ttl_s=_int(chat, "session_ttl_s", 1800),
         claude=ClaudeRungSettings(
             config_dir=_str(claude_raw, "config_dir", "~/.claude-corpus"),
+            cli_path=_str(claude_raw, "cli_path"),
             model=_str(claude_raw, "model"),
             max_turns=_int(claude_raw, "max_turns", 20),
             allowed_tools=_str_list(claude_raw, "allowed_tools"),

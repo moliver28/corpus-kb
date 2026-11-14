@@ -1005,6 +1005,10 @@ def get_default_config() -> dict[str, object]:
             "session_ttl_s": 1800,
             "claude": {
                 "config_dir": "~/.claude-corpus",
+                # The Claude Code CLI path. Empty = the SDK finds claude
+                # on PATH or its bundled binary; set it when neither
+                # exists (the ARM64-Windows case).
+                "cli_path": "",
                 "model": "",
                 "max_turns": 20,
                 "allowed_tools": ["mcp__corpus__search"],

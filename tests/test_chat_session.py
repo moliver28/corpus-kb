@@ -298,6 +298,9 @@ class TestClaudeRungGuards:
         assert list(options.mcp_servers) == ["corpus"]
         assert options.allowed_tools == ["mcp__corpus__search"]
         assert "Bash" in options.disallowed_tools
+        # The cli_path knob ships empty (SDK discovery) and rides the
+        # options when set — the doctor's ARM64-Windows fix is real.
+        assert options.cli_path is None
         # [D5]: the auto-allowed read-only built-ins are denied by name,
         # and the per-call hook gate is wired fail-closed.
         for read_only in ("Read", "Glob", "Grep", "LS", "NotebookRead"):
@@ -344,6 +347,19 @@ class TestClaudeRungGuards:
             assert "corpus" in output["permissionDecisionReason"]
         no_opinion = asyncio.run(claude_rung._tool_gate(_probe("mcp__corpus__search"), "t1", {}))
         assert no_opinion == {}
+
+    def test_cli_path_knob_reaches_the_sdk_options(self) -> None:
+        settings = read_chat_settings({"chat": {"claude": {"cli_path": "C:/bin/claude.exe"}}})
+        assert settings.claude.cli_path == "C:/bin/claude.exe"
+        options = claude_rung._build_options(
+            settings,
+            {},
+            pg_pool=None,
+            on_stderr=lambda line: None,
+            session_id="00000000-0000-0000-0000-000000000003",
+            resume=None,
+        )
+        assert options.cli_path == "C:/bin/claude.exe"
 
     def test_sdk_not_imported_by_package_import(self) -> None:
         code = (
