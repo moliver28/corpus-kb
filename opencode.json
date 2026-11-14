@@ -3,7 +3,7 @@
   "mcp": {
     "corpus-kb": {
       "type": "local",
-      "description": "Local RAG system — search, ingest, knowledge graph, SQL queries over your code and documents",
+      "description": "Local knowledge base for files, transcripts, and code. Search, ingest, and analyze on your own machine.",
       "command": [
         "corpus-kb",
         "--transport",

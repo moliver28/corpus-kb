@@ -60,14 +60,17 @@ SURFACES: tuple[Surface, ...] = (
         name="coding-run",
         cli_path="coding run",
         mcp_tool="coding_run",
-        description="Deductive run (v5 §8): three-view scoring, calibrated tau, conformal.",
+        description=(
+            "Deductive run: score text against a fixed codebook; "
+            "calibrated thresholds; claim sizes."
+        ),
         http_route="/api/coding/run",
     ),
     Surface(
         name="coding-inductive",
         cli_path="coding inductive",
         mcp_tool="inductive_run",
-        description="Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
+        description="Inductive pass: summaries, theme clusters, proposed codes.",
         http_route="/api/coding/inductive",
     ),
     Surface(
@@ -81,7 +84,9 @@ SURFACES: tuple[Surface, ...] = (
         name="research-report",
         cli_path="research report",
         mcp_tool="research_report",
-        description="Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3.",
+        description=(
+            "Governance report: coverage, coding overlap, agreement between coders, gate checks."
+        ),
         http_route="/api/research/report",
     ),
     Surface(
@@ -1630,8 +1635,8 @@ ACTIVE_WRAPPERS: tuple[Wrapper, ...] = tuple(w for w in WRAPPERS if not w.planne
 # (check_agent_configs compares descriptions across editors).
 SERVER_NAME = "corpus-kb"
 SERVER_DESCRIPTION = (
-    "Local RAG system \u2014 search, ingest, knowledge graph, "
-    "SQL queries over your code and documents"
+    "Local knowledge base for files, transcripts, and code. "
+    "Search, ingest, and analyze on your own machine."
 )
 SERVER_COMMAND = "corpus-kb"
 SERVER_ARGS: tuple[str, ...] = ("--transport", "stdio")
