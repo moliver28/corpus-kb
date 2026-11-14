@@ -7,6 +7,10 @@ of error strings (empty = valid):
   - Cursor (mcpServers key, command as string + args, no autoApprove)
   - ZCode (mcp.servers key, command as string + args, no autoApprove)
 
+The Cursor and ZCode bodies live in ``validate_configs_noapprove`` (the
+two formats without autoApprove; 250-line rule) and are re-imported
+here, so every import path keeps working.
+
 Codex configs reuse the Claude Code validator (same mcpServers +
 autoApprove shape — the copy-template for Codex CLI users).
 """
@@ -17,10 +21,21 @@ from typing import Any
 
 try:
     # Package context (installed checkout, tests).
+    from corpus_kb._setup.validate_configs_noapprove import (
+        _validate_cursor_tool,
+        _validate_zcode_tool,
+        validate_cursor_config,
+        validate_zcode_config,
+    )
     from corpus_kb._setup.validate_configs_toolnames import _auto_approve_errors
 except ImportError:  # pragma: no cover - script context (CI validate job)
     import importlib as _importlib
 
+    _noapprove = _importlib.import_module("validate_configs_noapprove")
+    _validate_cursor_tool = _noapprove._validate_cursor_tool
+    _validate_zcode_tool = _noapprove._validate_zcode_tool
+    validate_cursor_config = _noapprove.validate_cursor_config
+    validate_zcode_config = _noapprove.validate_zcode_config
     _toolnames = _importlib.import_module("validate_configs_toolnames")
     _auto_approve_errors = _toolnames._auto_approve_errors
 
@@ -177,153 +192,5 @@ def _validate_claude_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]
     errors.extend(
         _auto_approve_errors(prefix, tool_config.get("autoApprove"), with_valid_list=False)
     )
-
-    return errors
-
-
-# ---------------------------------------------------------------------------
-# Cursor format validator
-# ---------------------------------------------------------------------------
-
-
-def validate_cursor_config(config: dict[str, Any]) -> list[str]:
-    """Validate a Cursor format config (mcpServers key, no autoApprove).
-
-    Required structure:
-        {
-            "mcpServers": {
-                "<tool-name>": {
-                    "name": "...",
-                    "description": "...",
-                    "command": "executable",          # MUST be string
-                    "args": ["arg1", ...],
-                    "env": {},
-                    # autoApprove is NOT used by Cursor
-                }
-            }
-        }
-
-    Returns a list of error strings (empty = valid).
-    """
-    errors: list[str] = []
-
-    if not isinstance(config, dict):
-        return ["Config must be a JSON object"]
-
-    if "mcpServers" not in config:
-        errors.append("Missing required 'mcpServers' key for Cursor format")
-        return errors
-
-    servers = config["mcpServers"]
-    if not isinstance(servers, dict) or not servers:
-        errors.append("'mcpServers' must be a non-empty object")
-        return errors
-
-    for tool_name, tool_config in servers.items():
-        prefix = f"mcpServers.{tool_name}"
-        errors.extend(_validate_cursor_tool(prefix, tool_config))
-
-    return errors
-
-
-def _validate_cursor_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]:
-    """Validate a single tool entry within Cursor mcpServers."""
-    errors: list[str] = []
-
-    if not isinstance(tool_config, dict):
-        return [f"{prefix}: tool config must be an object"]
-
-    # Cursor requires: name, description, command, args, env
-    # autoApprove is NOT required (Cursor doesn't use it)
-    for field in ("name", "description", "command", "args", "env"):
-        if field not in tool_config:
-            errors.append(f"{prefix}: missing required field '{field}'")
-
-    # command must be a string
-    command = tool_config.get("command")
-    if command is not None and not isinstance(command, str):
-        errors.append(
-            f"{prefix}: 'command' must be a string (e.g. 'corpus-kb'), got {type(command).__name__}"
-        )
-
-    return errors
-
-
-# ---------------------------------------------------------------------------
-# ZCode format validator
-# ---------------------------------------------------------------------------
-
-
-def validate_zcode_config(config: dict[str, Any]) -> list[str]:
-    """Validate a ZCode format config (mcp.servers key).
-
-    Required structure:
-        {
-            "mcp": {
-                "servers": {
-                    "<tool-name>": {
-                        "name": "...",
-                        "description": "...",
-                        "command": "executable",      # MUST be string
-                        "args": ["arg1", ...],
-                        "env": {},
-                        # autoApprove is NOT used by ZCode
-                    }
-                }
-            }
-        }
-
-    ZCode reads the nested ``mcp.servers`` envelope from its config files;
-    a top-level ``mcpServers`` key is only the ``.agents/mcp.json``
-    fallback, not the shape this template publishes.
-
-    Returns a list of error strings (empty = valid).
-    """
-    errors: list[str] = []
-
-    if not isinstance(config, dict):
-        return ["Config must be a JSON object"]
-
-    mcp = config.get("mcp")
-    if not isinstance(mcp, dict) or "servers" not in mcp:
-        errors.append("Missing required 'mcp.servers' key for ZCode format")
-        return errors
-
-    if "mcpServers" in config:
-        errors.append(
-            "Found 'mcpServers' key — that is the fallback file shape; use nested 'mcp.servers'"
-        )
-
-    servers = mcp["servers"]
-    if not isinstance(servers, dict) or not servers:
-        errors.append("'mcp.servers' must be a non-empty object")
-        return errors
-
-    for tool_name, tool_config in servers.items():
-        prefix = f"mcp.servers.{tool_name}"
-        errors.extend(_validate_zcode_tool(prefix, tool_config))
-
-    return errors
-
-
-def _validate_zcode_tool(prefix: str, tool_config: dict[str, Any]) -> list[str]:
-    """Validate a single server entry within ZCode mcp.servers."""
-    errors: list[str] = []
-
-    if not isinstance(tool_config, dict):
-        return [f"{prefix}: tool config must be an object"]
-
-    # ZCode requires: name, description, command, args, env
-    # autoApprove is NOT required (ZCode doesn't use it)
-    for field in ("name", "description", "command", "args", "env"):
-        if field not in tool_config:
-            errors.append(f"{prefix}: missing required field '{field}'")
-
-    # command must be a string
-    command = tool_config.get("command")
-    if command is not None and not isinstance(command, str):
-        errors.append(
-            f"{prefix}: 'command' must be a string (e.g. 'corpus-kb'), got {type(command).__name__}"
-        )
 
     return errors
