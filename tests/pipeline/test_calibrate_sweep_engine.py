@@ -10,6 +10,7 @@ import asyncpg
 import pytest
 
 from corpus_kb.tools.pipeline.calibrate_sweep_engine import ScratchTenantEngine, tenant_for
+from tests.live_embed import live_embed_dimensions, live_embed_model
 
 _CFG: dict[str, object] = {"database": {"backend": "postgres"}}
 
@@ -33,13 +34,15 @@ async def test_duckdb_backend_opens_the_gateway(tmp_path: Path) -> None:
             "backend": "duckdb",
             "connection_string": f"duckdb:///{(tmp_path / 'sweep.duckdb').as_posix()}",
         },
-        # CI pulls nomic-embed-text only; the packaged default (qwen3) 404s
-        # there and the open() probe would raise instead of degrade. The
-        # dimensions travel with the model (768) so the probe validates.
+        # Name the model this leg actually pulled (zero-drift F3
+        # follow-up): derive it, never hardcode it. A stale hardcoded
+        # name 404s and the open() probe would raise instead of
+        # degrade. The dimensions travel with the model so the probe
+        # validates.
         "embedding": {
             "provider": "ollama",
-            "model": "nomic-embed-text",
-            "dimensions": 768,
+            "model": live_embed_model(),
+            "dimensions": live_embed_dimensions(),
         },
     }
     engine = ScratchTenantEngine(cfg, tenant_for("starter", "a" * 64), min_overlap=0.5)

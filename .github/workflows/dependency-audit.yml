@@ -1,9 +1,14 @@
-# Weekly dependency audit (PR-F, zero-drift rule 10).
+# Weekly dependency audit + float canary (PR-F and zero-drift F4).
 #
 # The PR-time audit-deps job lives in ci.yml; this workflow re-runs the
 # SAME poe target on a schedule so new CVEs in an unchanged lockfile are
-# caught between PRs. Manual runs: workflow_dispatch.
-name: Dependency audit (weekly)
+# caught between PRs. deps-canary is the drift detector on the other
+# side of the locked-installs ruling (2026-11-13): CI installs are
+# lock-pinned, so this workflow runs the UNLOCKED float weekly and
+# probes it against the upstream-coupled surfaces. Both jobs are
+# INFORMATIONAL: they never run on PRs, they are allowed to be red, and
+# they gate nothing. Manual runs: workflow_dispatch.
+name: Dependency audit and canary (weekly)
 
 on:
   schedule:
@@ -34,3 +39,55 @@ jobs:
       # written justifications live in uv.toml ([audit]).
       - name: Dependency CVE audit
         run: poe audit-deps
+
+  deps-canary:
+    name: "deps-canary (weekly upstream drift detector, informational)"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+        # No pip cache on purpose: the floating resolution IS the
+        # probe. A cached resolution would re-test what the lock
+        # already knows.
+
+      - name: Fresh unlocked install (the float)
+        # Deliberately UNLOCKED — this is the drift detector half of
+        # the locked-installs ruling (zero-drift F4). The PR legs run
+        # the lock; this job runs what latest-stable resolves today,
+        # so a breaking release of any direct or transitive dependency
+        # shows up here BEFORE it can ambush a lock refresh. The extra
+        # set mirrors the PR test legs (dev+duckdb).
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,duckdb]"
+
+      - name: Record the floating resolution
+        run: pip freeze > canary-float.txt
+
+      - name: Upload the floating resolution
+        # Attach the exact version set so a red run names its suspects:
+        # the fix is a lock-refresh PR that bumps the broken pin.
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-float
+          path: canary-float.txt
+
+      - name: Drift probe (upstream-coupled suite slice)
+        # A fast slice over the surfaces coupled to the most volatile
+        # upstream libraries: partitioning/chunking (unstructured),
+        # PDF/textbook parsing (pypdf — the #417 specimen: pypdf 6.x
+        # removed positional add_outline_item args and arrived through
+        # the float), and the demo corpus. No Postgres service here, so
+        # database-backed tests auto-skip exactly as on the windows
+        # leg. timeout-minutes keeps a hung import from idling the job.
+        timeout-minutes: 20
+        run: |
+          python -m pytest tests/test_ingest.py tests/test_ingest_common.py \
+            tests/test_chunk_hierarchy.py tests/test_textbook_scan.py \
+            tests/test_textbook_strategy.py tests/test_demo_offline.py \
+            tests/ingestion -q --tb=short
