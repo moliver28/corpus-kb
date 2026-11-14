@@ -161,7 +161,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "What words come up most often across these documents?" / "Which terms stand out as unusual in this corpus?" / "Show the most distinctive wording in the collection."
   - Follow-ups: "Which top terms look meaningless here?" / "What rare words rank surprisingly high?" / "How does filtering change the ranked list?"
   - Evidence: https://scikit-learn.org/1.5/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html (Documentation)
-  - Table: `phrase` (text), `score` (number, `tfidf`). Order: `-score`, `phrase`. Round to 6 places.
+  - Table: `phrase` (text), `score` (number, tfidf). Order: `-score`, `phrase`. Round to 6 places.
   - Ties: Equal scores order by phrase ascending.
   - Shares divide by `screened_count`.
 - **06 — Embedding-based keyphrase extraction (KeyBERT)** (op: `keyphrases_extract`). Create document previews, search suggestions, and candidate descriptors.
@@ -266,7 +266,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Group similar comments together so I can review them." / "Cluster the embeddings and show example records per group." / "How can I organize thousands of records into groups?"
   - Follow-ups: "Which records sit between two groups?" / "How do groups change with different settings?" / "What makes each group's examples similar?"
   - Evidence: https://aclanthology.org/2026.nlp4dh-1.36.pdf (Workshop 2026)
-  - Table: `cluster_id` (integer), `size` (integer), `exemplar_chunk_ids` (`id_list`). Order: `-size`, `cluster_id`.
+  - Table: `cluster_id` (integer), `size` (integer), `exemplar_chunk_ids` (id_list). Order: `-size`, `cluster_id`.
   - Ties: Equal sizes order by cluster id ascending.
   - Shares divide by `screened_count`.
   - Caveats: Structure (sizes, noise, exemplars) is deterministic on one machine; coordinates are never claimed.
@@ -302,7 +302,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Label this record from its nearest labeled neighbors." / "Which known examples support each predicted category?" / "I want predictions that show their supporting examples."
   - Follow-ups: "Which predictions rest on weak neighbor support?" / "Where are labeled examples sparse?" / "Which records get the most disagreement among neighbors?"
   - Evidence: https://aclanthology.org/D19-1410/ (Conference 2019)
-  - Table: `chunk_id` (id), `label` (text), `votes` (`object_list`), `neighbor_ids` (`id_list`). Order: `chunk_id`.
+  - Table: `chunk_id` (id), `label` (text), `votes` (object_list), `neighbor_ids` (id_list). Order: `chunk_id`.
   - Ties: Predictions order by chunk id ascending.
   - Shares divide by `screened_count`.
 - **15 — TF-IDF with logistic regression or linear SVM** (op: `lexical_classify`). Set a reproducible classification baseline before a more expensive model.
@@ -364,7 +364,7 @@ Register version: 3.2.0. Source: the research document named in `config/analysis
   - Ask it: "Test candidate labels before any labeled data exists." / "Does this text support the statement my label makes?" / "Score records against written label descriptions."
   - Follow-ups: "Which label statements overlap too much?" / "Where does negation flip the verdict?" / "Which categories need labeled examples next?"
   - Evidence: https://aclanthology.org/D19-1404/ (Conference 2019)
-  - Table: `chunk_id` (id), `label` (text), `entailment_score` (number, verdict score), `scores` (`object_list`). Order: `chunk_id`. Round to 6 places.
+  - Table: `chunk_id` (id), `label` (text), `entailment_score` (number, verdict score), `scores` (object_list). Order: `chunk_id`. Round to 6 places.
   - Ties: Score ties pick the alphabetically first label.
   - Shares divide by `screened_count`.
   - Caveats: The score is a three-way verdict map, not a calibrated probability.

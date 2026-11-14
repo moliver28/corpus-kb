@@ -628,3 +628,8 @@ DEMO_KEYS
 # the SPA shapes; vulture sees the attribute as never read in Python.
 chunk_type
 source_name
+
+# The query singleton reset (the query_wiring split): the test-only reset
+# mirrors reset_graph_handler; vulture scans src only, so the tests' use
+# is outside its reach.
+reset_query_handler
