@@ -107,11 +107,34 @@ def test_human_output_ranks_hits_with_flat_snippets(
     rank, sep, rest = lines[0].partition(". ")
     assert (rank, sep) == ("1", ". ")
     assert rest.startswith("[0.87] ")
-    assert rest.startswith(f"[0.87] {DOC_ID} :: first line second line ")
+    # The document's source (its readable name) prints beside the id.
+    assert rest.startswith(f"[0.87] notes.md ({DOC_ID}) :: first line second line ")
     snippet = rest.split(" :: ", 1)[1]
     assert "\n" not in snippet
     assert len(snippet) <= 160
     assert snippet.endswith("...")
+
+
+def test_hit_without_source_falls_back_to_file_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hit = dict(_HIT, source="", file_path="transcripts/interview01.docx")
+    fake = _RecordingSearch(dict(_SUCCESS, result=[hit]))
+    _patch_world(monkeypatch, fake)
+    result = runner.invoke(app, ["search", "startup"])
+    assert result.exit_code == 0, result.output
+    assert f"[0.87] transcripts/interview01.docx ({DOC_ID}) ::" in result.output
+
+
+def test_hit_without_any_label_prints_the_bare_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    hit = dict(_HIT, source="", file_path=None)
+    fake = _RecordingSearch(dict(_SUCCESS, result=[hit]))
+    _patch_world(monkeypatch, fake)
+    result = runner.invoke(app, ["search", "startup"])
+    assert result.exit_code == 0, result.output
+    assert f"[0.87] {DOC_ID} ::" in result.output
 
 
 def test_empty_result_prints_no_results(monkeypatch: pytest.MonkeyPatch) -> None:
