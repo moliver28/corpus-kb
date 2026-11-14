@@ -496,7 +496,17 @@ async def run_all(services: dict[str, Any]) -> None:
 
 
 async def shutdown(services: dict[str, Any]) -> None:
-    """Graceful shutdown: close pools, stop projections."""
+    """Graceful shutdown: close chat sessions, pools, stop projections."""
+    # Chat (Wave 7): a registered session holds a ~1 GiB CLI subprocess.
+    # Interrupt every live turn, then disconnect — the subprocess must
+    # never outlive the app.
+    import corpus_kb.chat as chat_core
+    from corpus_kb.chat.session import ChatManager
+
+    manager = chat_core.get_manager()
+    if isinstance(manager, ChatManager):
+        for sid in await manager.close_all():
+            logger.info("Closed chat session %s", sid)
     pool = services["pool"]
     if isinstance(pool, asyncpg.Pool):
         await pool.close()

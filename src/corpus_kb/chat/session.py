@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import suppress
 from typing import Protocol
 
 from corpus_kb.chat.events import ChatEvent
@@ -173,3 +174,19 @@ class ChatManager:
         for sid in expired:
             await self.close(sid)
         return expired
+
+    async def close_all(self) -> list[str]:
+        """Interrupt and close every session; return their ids.
+
+        The server's shutdown path calls this so no rung subprocess
+        outlives the app: the interrupt stops a live turn, the close
+        disconnects the client (which kills the CLI subprocess).
+        """
+        ids = list(self._sessions)
+        for sid in ids:
+            session = self._sessions.get(sid)
+            if session is not None:
+                with suppress(Exception):
+                    await session.interrupt()
+            await self.close(sid)
+        return ids

@@ -300,6 +300,24 @@ class TestSessionDiscipline:
         assert asyncio.run(manager.close("sid-1")) is True
         assert asyncio.run(manager.close("sid-1")) is False
 
+    def test_close_all_interrupts_and_closes_every_session(self) -> None:
+        # The shutdown contract: interrupt every live turn, disconnect
+        # every client — no rung subprocess outlives the manager.
+        manager = ChatManager(max_sessions=2, ttl_s=1800)
+        first = _claude_session([])
+        second = _claude_session([], session_id="sid-2")
+        asyncio.run(manager.create(first))
+        asyncio.run(manager.create(second))
+        closed = asyncio.run(manager.close_all())
+        assert sorted(closed) == ["sid-1", "sid-2"]
+        for session in (first, second):
+            client = session._client
+            assert isinstance(client, FakeAgentClient)
+            assert client.interrupts == 1
+            assert client.closed is True
+        assert manager.get("sid-1") is None
+        assert manager.get("sid-2") is None
+
 
 class TestClaudeRungGuards:
     def test_env_refusal_lists_the_variable(self) -> None:

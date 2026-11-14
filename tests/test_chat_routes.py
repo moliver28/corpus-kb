@@ -514,6 +514,22 @@ class TestCreateRoute:
         assert second.status_code == 409
 
 
+class TestShutdown:
+    def test_shutdown_closes_chat_sessions(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from corpus_kb import server_wiring
+
+        session = _session()
+        manager = ChatManager(max_sessions=1, ttl_s=1800)
+        asyncio.run(manager.create(session))
+        monkeypatch.setattr(chat_core, "_MANAGER", manager)
+        asyncio.run(server_wiring.shutdown({"pool": None, "gateway": None}))
+        client = session._client
+        assert isinstance(client, FakeClient)
+        assert client.interrupts == 1
+        assert client.closed is True
+        assert manager.get("s1") is None
+
+
 async def _fake_pool() -> object:
     return None
 
