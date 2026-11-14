@@ -28,6 +28,10 @@ The SPA build generates the minified bundles in `src/corpus_kb/ui_dist/assets/`.
 
 A `typing.Protocol` method stub has one body token: `...`. CodeQL rule `py/ineffectual-statement` flags that token as a dead statement. The token is the standard spelling of an empty method stub. This class is a false positive. Evidence: alert 1174, `py/ineffectual-statement`, at `src/corpus_kb/tools/analysis_route_fallback.py:62`.
 
+### The mimosa scope policy
+
+The committed `.mimosa/security-policy.json` file sets the mimosa scan scope (issue #397). It lists the paths the scanner skips. Each path there matches a false-positive class in this doc. The policy does not cover the untriaged textbook worker findings. Those stay visible until an owner triages them.
+
 ## Import-cycle alerts
 
 CodeQL flags module import cycles at two levels.
