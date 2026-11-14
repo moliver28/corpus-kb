@@ -2,15 +2,11 @@
 
 The register YAML (``analysis.method_register_path``, default
 ``config/analysis_methods.yaml``) is the single source of truth. It
-carries the owner's research document as data: identity, ordinal, and
-descriptive axes per method. Descriptive axes are surfaced verbatim;
-they are never scored (the document forbids invented ratings).
-
-Import ``rank_methods`` from ``method_register_rubric`` and
-``load_method_register`` from ``method_register_loader``; this module
-holds the schema models and the vocabularies. Routing, progression, and
-table-contract checks live in ``method_register_routing``,
-``method_register_progression``, and ``method_register_tables``.
+carries the owner's research document as data. Descriptive axes are
+surfaced verbatim; they are never scored (the document forbids
+invented ratings). Import ``rank_methods`` from
+``method_register_rubric``; the routing, progression, and table
+checks live in their own modules.
 """
 
 from __future__ import annotations
