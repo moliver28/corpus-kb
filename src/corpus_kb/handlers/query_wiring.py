@@ -49,9 +49,14 @@ def get_query_handler(pool: asyncpg.Pool | SqlGateway | None = None) -> Any:
                 "The query handler is not initialized.",
                 remediation="Start the server (corpus-kb serve), or pass a store to the caller.",
             )
-        from corpus_kb.handlers.query_handler import QueryHandler
+        # importlib on purpose: the handler imports this module (the
+        # accessors), so a static class import would close a cycle.
+        import importlib
 
-        _query_handler = QueryHandler(pool)
+        handler_cls = importlib.import_module(
+            "corpus_kb.handlers.query_handler"
+        ).QueryHandler
+        _query_handler = handler_cls(pool)
     return _query_handler
 
 

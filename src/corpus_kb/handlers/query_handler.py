@@ -15,7 +15,7 @@ pin region, post-fuse rerank, parent expansion). This module keeps the
 delegates, and the singleton.
 
 Usage:
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
     handler = get_query_handler()
     results = await handler.handle_search(SearchQuery(query="test", k=10))
 """
@@ -53,12 +53,6 @@ from corpus_kb.handlers import (
     query_wiring,
 )
 from corpus_kb.handlers.query_integrity import SearchEnvelope
-from corpus_kb.handlers.query_wiring import (
-    get_query_handler as get_query_handler,
-)
-from corpus_kb.handlers.query_wiring import (
-    set_query_handler as set_query_handler,
-)
 from corpus_kb.rag.embedder import OllamaEmbedder, PgmlEmbedder
 from corpus_kb.storage.gateway import SqlGateway
 from corpus_kb.storage.search_backend import SearchBackend

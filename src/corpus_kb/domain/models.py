@@ -13,17 +13,11 @@ from pydantic import BaseModel, Field
 
 from corpus_kb.contracts.model import DEFAULT_TENANT_ID as _DEFAULT_TENANT_ID_STR
 
-# ============================================================================
-# Default tenant (single-tenant placeholder); the canonical sentinel string
-# lives in corpus_kb.contracts.model — this module exposes it as a UUID.
-# ============================================================================
-
+# The canonical sentinel string lives in corpus_kb.contracts.model.
 DEFAULT_TENANT_ID = UUID(_DEFAULT_TENANT_ID_STR)
 
 
-# ============================================================================
-# Commands
-# ============================================================================
+# -- Commands ---------------------------------------------------------
 
 
 class DomainCommand(BaseModel):
@@ -87,9 +81,7 @@ class DeleteDocumentCommand(DomainCommand):
     doc_id: UUID
 
 
-# ============================================================================
-# Queries
-# ============================================================================
+# -- Queries ----------------------------------------------------------
 
 
 class SearchQuery(BaseModel):
@@ -185,59 +177,47 @@ class RoutedQuery(BaseModel):
     k: int | None = None
 
 
-# ============================================================================
-# Results
-# ============================================================================
+# -- Results ----------------------------------------------------------
 
 
-class SearchResult(BaseModel):
-    """A single search hit."""
-
-    chunk_id: UUID
-    text: str
-    score: float
-    source: str
-    doc_id: UUID
-    file_path: str | None = None
-    start_line: int | None = None
-    end_line: int | None = None
-    chunk_index: int | None = None
-    heading_path: list[str] | None = None
-    # Issue #271: the textbook strategy's chunk-metadata keys, exposed to
-    # search consumers. The strategy writes ``citation`` (a plain-English
-    # page citation) and a sorted ``units`` list; both stay None for any
-    # chunk without that metadata.
-    citation: str | None = None
-    units: list[str] | None = None
+# -- Results (re-exported from domain/results.py, the 250-line rule) --
 
 
-class DocumentResult(BaseModel):
-    """Document metadata in list responses."""
-
-    doc_id: UUID
-    source: str
-    source_type: str
-    chunk_count: int
-    created_at: str
-
-
-class DocumentChunkResult(BaseModel):
-    """One chunk of one document in the chunks-list window (Wave 5)."""
-
-    chunk_id: UUID
-    doc_id: UUID
-    chunk_index: int
-    text: str
-    chunk_type: str | None = None
-    start_line: int | None = None
-    end_line: int | None = None
-
-
-# The tail result models moved to ``domain/results.py`` (the 250-line
-# rule); the re-exports keep every existing import path byte-identical.
 from corpus_kb.domain.results import ClaimVerdict as ClaimVerdict  # noqa: E402
+from corpus_kb.domain.results import DocumentChunkResult as DocumentChunkResult  # noqa: E402
+from corpus_kb.domain.results import DocumentResult as DocumentResult  # noqa: E402
 from corpus_kb.domain.results import EntityResult as EntityResult  # noqa: E402
 from corpus_kb.domain.results import RelationListResult as RelationListResult  # noqa: E402
 from corpus_kb.domain.results import RouteDecision as RouteDecision  # noqa: E402
 from corpus_kb.domain.results import RoutedResult as RoutedResult  # noqa: E402
+from corpus_kb.domain.results import SearchResult as SearchResult  # noqa: E402
 from corpus_kb.domain.results import VerifyAnswerResult as VerifyAnswerResult  # noqa: E402
+
+__all__ = [
+    "AddEntityCommand",
+    "AddRelationCommand",
+    "ClaimVerdict",
+    "DeleteDocumentCommand",
+    "DocumentChunkResult",
+    "DocumentResult",
+    "DomainCommand",
+    "EntityResult",
+    "IngestDirectoryCommand",
+    "IngestFileCommand",
+    "IngestTextCommand",
+    "ListDocumentChunksQuery",
+    "ListDocumentsQuery",
+    "ListEntitiesQuery",
+    "ListRelationsQuery",
+    "RelationListResult",
+    "RouteDecision",
+    "RoutedQuery",
+    "RoutedResult",
+    "SQLQuery",
+    "SearchContextQuery",
+    "SearchQuery",
+    "SearchResult",
+    "SearchSimilarQuery",
+    "VerifyAnswerQuery",
+    "VerifyAnswerResult",
+]

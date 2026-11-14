@@ -174,10 +174,10 @@ class _RecordingQueryHandler:
 
 
 def _install_query_handler(monkeypatch: Any) -> _RecordingQueryHandler:
-    import corpus_kb.handlers.query_handler as query_handler_module
+    import corpus_kb.handlers.query_wiring as query_wiring_module
 
     handler = _RecordingQueryHandler()
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda: handler)
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda: handler)
     return handler
 
 

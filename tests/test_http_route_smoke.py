@@ -27,8 +27,8 @@ import corpus_kb.api.research_http as research_http
 import corpus_kb.handlers.coding_handler as coding_handler_module
 import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.graph_handler as graph_handler_module
-import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.query_integrity as query_integrity_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.handlers.tag_handler as tag_handler_module
@@ -222,7 +222,7 @@ class _Seam:
 
 _SEAMS = {
     "command": _Seam(command_handler_module, "get_command_handler", CommandHandler),
-    "query": _Seam(query_handler_module, "get_query_handler", QueryHandler),
+    "query": _Seam(query_wiring_module, "get_query_handler", QueryHandler),
     "router": _Seam(router_handler_module, "get_router_handler", RouterHandler),
     "graph": _Seam(graph_handler_module, "get_graph_handler", GraphHandler),
     "tag": _Seam(tag_handler_module, "get_tag_handler", TagHandler),

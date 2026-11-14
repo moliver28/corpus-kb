@@ -36,7 +36,7 @@ async def list_document_chunks(request: Request) -> JSONResponse:
     Counts ride the shared window-count guard (tools._count_input), so
     the HTTP arm answers the same typed rule the other surfaces answer.
     """
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
     from corpus_kb.tools._count_input import limit_arg, offset_arg
 
     query = ListDocumentChunksQuery(
@@ -55,7 +55,7 @@ async def list_document_chunks(request: Request) -> JSONResponse:
 @route_errors
 async def list_documents(request: Request) -> JSONResponse:
     """GET /api/documents — list documents with pagination."""
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     query = ListDocumentsQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),
@@ -72,7 +72,7 @@ async def list_documents(request: Request) -> JSONResponse:
 @route_errors
 async def list_entities(request: Request) -> JSONResponse:
     """GET /api/entities — list entities, optionally filtered by type."""
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     query = ListEntitiesQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),

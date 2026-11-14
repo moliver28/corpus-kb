@@ -105,7 +105,8 @@ async def _wire_handlers(cfg: dict[str, Any], gateway: Any) -> _Handlers:
     """
     from corpus_kb.handlers.command_handler import get_command_handler
     from corpus_kb.handlers.idempotency import IdempotencyChecker, set_idempotency_checker
-    from corpus_kb.handlers.query_handler import QueryHandler, set_query_handler
+    from corpus_kb.handlers.query_handler import QueryHandler
+    from corpus_kb.handlers.query_wiring import set_query_handler
     from corpus_kb.rag.embedder import create_embedder
     from corpus_kb.rag.judge import OllamaJudge
     from corpus_kb.rag.reranker import build_reranker

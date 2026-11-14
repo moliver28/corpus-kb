@@ -486,6 +486,8 @@ def _ollama_session(llm: _FakeLlm, monkeypatch: pytest.MonkeyPatch) -> ChatSessi
     monkeypatch.setattr("corpus_kb.ask.steps.retrieve_evidence", fake_retrieve)
     return ollama_rung.build_session(_settings(), {}, pg_pool=None, resume=None)
 
+
+class TestOllamaTurns:
     def test_completed_turn_receipts_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Sentences carry the [1] marker so the grounded emitter keeps them.
         llm = _FakeLlm(

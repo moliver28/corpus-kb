@@ -132,8 +132,8 @@ async def _analysis_route(params: dict[str, Any], tenant_id: str) -> dict[str, A
 
 async def _search(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import SearchQuery
-    from corpus_kb.handlers.query_handler import get_query_handler
     from corpus_kb.handlers.query_integrity import envelope_to_payload
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     query = SearchQuery(
         tenant_id=UUID(tenant_id),
@@ -168,7 +168,7 @@ async def _query(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
 
 async def _list_documents(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import ListDocumentsQuery
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     query = ListDocumentsQuery(
         tenant_id=UUID(tenant_id),
@@ -194,8 +194,8 @@ async def _add_entity(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
 
 async def _verify_answer(params: dict[str, Any], tenant_id: str) -> dict[str, Any]:
     from corpus_kb.domain.models import VerifyAnswerQuery
-    from corpus_kb.handlers.query_handler import get_query_handler
     from corpus_kb.handlers.query_integrity import attach_trace_id
+    from corpus_kb.handlers.query_wiring import get_query_handler
     from corpus_kb.utils.tracing import SPAN_VERIFY_ANSWER, span
 
     query = VerifyAnswerQuery(

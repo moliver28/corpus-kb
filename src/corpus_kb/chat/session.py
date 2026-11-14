@@ -28,15 +28,20 @@ __all__ = ["AgentClient", "ChatManager", "ChatSession", "TurnStream"]
 class AgentClient(Protocol):
     """The only client surface ``session.py`` touches."""
 
-    async def connect(self) -> None: ...
+    async def connect(self) -> None:
+        pass
 
-    async def query(self, prompt: str) -> None: ...
+    async def query(self, prompt: str) -> None:
+        pass
 
-    def receive_response(self) -> AsyncIterator[object]: ...
+    async def receive_response(self) -> AsyncIterator[object]:
+        yield None  # pragma: no cover - the bare yield marks the generator
 
-    async def interrupt(self) -> None: ...
+    async def interrupt(self) -> None:
+        pass
 
-    async def disconnect(self) -> None: ...
+    async def disconnect(self) -> None:
+        pass
 
 
 TurnStream = Callable[

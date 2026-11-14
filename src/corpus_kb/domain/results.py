@@ -64,3 +64,50 @@ class RoutedResult(BaseModel):
 
     decision: RouteDecision
     results: list[dict[str, object]]
+
+
+class SearchResult(BaseModel):
+    """A single search hit."""
+
+    chunk_id: UUID
+    text: str
+    score: float
+    source: str
+    doc_id: UUID
+    file_path: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+    chunk_index: int | None = None
+    heading_path: list[str] | None = None
+    # Issue #271: the textbook strategy's chunk-metadata keys, exposed to
+    # search consumers. The strategy writes ``citation`` (a plain-English
+    # page citation) and a sorted ``units`` list; both stay None for any
+    # chunk without that metadata.
+    citation: str | None = None
+    units: list[str] | None = None
+
+
+class DocumentResult(BaseModel):
+    """Document metadata in list responses."""
+
+    doc_id: UUID
+    source: str
+    source_type: str
+    chunk_count: int
+    created_at: str
+
+
+class DocumentChunkResult(BaseModel):
+    """One chunk of one document in the chunks-list window (Wave 5)."""
+
+    chunk_id: UUID
+    doc_id: UUID
+    chunk_index: int
+    text: str
+    chunk_type: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
+
+
+# The tail result models moved to ``domain/results.py`` (the 250-line
+# rule); the re-exports keep every existing import path byte-identical.

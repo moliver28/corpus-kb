@@ -171,7 +171,7 @@ async def get_entity_relations(request: Request) -> JSONResponse:
 async def list_relations(request: Request) -> JSONResponse:
     """GET /api/graph/relations — list relations, one window (Wave 6 Map)."""
     from corpus_kb.domain.models import ListRelationsQuery
-    from corpus_kb.handlers.query_handler import get_query_handler
+    from corpus_kb.handlers.query_wiring import get_query_handler
 
     query = ListRelationsQuery(
         tenant_id=UUID(request.query_params.get("tenant_id", DEFAULT_TENANT_ID)),

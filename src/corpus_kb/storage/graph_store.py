@@ -78,7 +78,7 @@ class GraphStore(ABC):
         fresh Entity, or None when the ID is unknown. A (tenant, name,
         entity_type) collision with a DIFFERENT entity raises ConflictError.
         """
-        ...
+        pass
 
     @abstractmethod
     async def delete_entity(self, entity_id: str) -> int | None:
@@ -87,7 +87,7 @@ class GraphStore(ABC):
         Returns the number of relations removed, or None when the entity
         was already absent. The delete is idempotent for callers.
         """
-        ...
+        pass
 
     @abstractmethod
     async def update_relation(self, relation: Relation) -> Relation | None:
@@ -96,12 +96,12 @@ class GraphStore(ABC):
         new triple; delete and re-create. The UPDATE statement never writes
         chunk_id, confidence, extractor_id, model_version, or prompt_version
         (provenance). Returns the fresh Relation, or None when unknown."""
-        ...
+        pass
 
     @abstractmethod
     async def delete_relation(self, relation_id: str) -> bool:
         """Delete one relation by ID. True when a row was removed."""
-        ...
+        pass
 
     async def batch_add_entities(self, entities: list[Entity]) -> list[str]:
         """Add multiple entities to the graph.

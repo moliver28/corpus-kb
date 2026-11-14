@@ -18,8 +18,8 @@ from starlette.testclient import TestClient
 
 import corpus_kb.api.research_http as research_http_module
 import corpus_kb.handlers.graph_handler as graph_handler_module
-import corpus_kb.handlers.query_handler as query_handler_module
 import corpus_kb.handlers.query_integrity as query_integrity_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.tools.cluster_tools as cluster_tools_module
 import corpus_kb.tools.statements_tools as statements_tools_module
@@ -75,7 +75,7 @@ class _FakeGraphHandler:
 
 def _install_http(monkeypatch: Any) -> tuple[TestClient, _FakeQueryHandler]:
     query_handler = _FakeQueryHandler()
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda: query_handler)
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda: query_handler)
     monkeypatch.setattr(router_handler_module, "get_router_handler", lambda: _FakeRouterHandler())
     # The param contract is what this file pins; the real envelope
     # serialization is the flagship gate's job (test_surface_parity_deep).

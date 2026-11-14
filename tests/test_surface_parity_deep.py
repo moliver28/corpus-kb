@@ -63,7 +63,7 @@ import corpus_kb.handlers.command_handler as command_handler_module
 import corpus_kb.handlers.delete_audit as delete_audit_module
 import corpus_kb.handlers.graph_handler as graph_handler_module
 import corpus_kb.handlers.llm_handler as llm_handler_module
-import corpus_kb.handlers.query_handler as query_handler_module
+import corpus_kb.handlers.query_wiring as query_wiring_module
 import corpus_kb.handlers.release_handlers as release_handlers_module
 import corpus_kb.handlers.router_handler as router_handler_module
 import corpus_kb.handlers.tag_handler as tag_handler_module
@@ -858,7 +858,7 @@ async def _shared_query(ctx: dict[str, Any]) -> dict[str, Any]:
 async def _shared_verify(ctx: dict[str, Any]) -> dict[str, Any]:
     from corpus_kb.domain.models import VerifyAnswerQuery
 
-    result = await query_handler_module.get_query_handler().handle_verify_answer(
+    result = await query_wiring_module.get_query_handler().handle_verify_answer(
         VerifyAnswerQuery(answer="parity answer", chunk_ids=[])
     )
     return {"status": "success", "result": result.model_dump(mode="json")}
@@ -2560,7 +2560,7 @@ def parity_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any
     ) -> dict[str, Any]:
         return {"status": "success", "key": key, "value": value}
 
-    monkeypatch.setattr(query_handler_module, "get_query_handler", fake_query_handler)
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", fake_query_handler)
     monkeypatch.setattr(QueryHandler, "handle_search_with_meta", canned_search)
     monkeypatch.setattr(QueryHandler, "handle_verify_answer", canned_verify)
     monkeypatch.setattr(QueryHandler, "handle_list_documents", canned_list_documents)
@@ -3272,14 +3272,14 @@ async def test_sql_route_write_refusal_on_http_and_socket(
         assert body["error"]
 
     # The socket surface answers the same failure class with its ONE code.
-    import corpus_kb.handlers.query_handler as query_handler_module
+    import corpus_kb.handlers.query_wiring as query_wiring_module
     from corpus_kb.errors import ERROR_MAP, WriteRefusedError
 
     class _Refuser:
         async def handle_verify_answer(self, _query: object) -> object:
             raise WriteRefusedError("The SQL route accepts read statements only.")
 
-    monkeypatch.setattr(query_handler_module, "get_query_handler", lambda *a, **k: _Refuser())
+    monkeypatch.setattr(query_wiring_module, "get_query_handler", lambda *a, **k: _Refuser())
     server: JSONRPCServer = parity_env["server"]
     rpc = await server._process_request(
         json.dumps({"jsonrpc": "2.0", "id": 1, "method": "verify_answer", "params": {}})
