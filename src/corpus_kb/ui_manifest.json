@@ -337,7 +337,7 @@
     "required": []
   },
   {
-    "description": "Inductive pass (v5 §9): summaries, UMAP/HDBSCAN clusters, proposed codes.",
+    "description": "Inductive pass: summaries, theme clusters, proposed codes.",
     "id": "coding-inductive",
     "longRunning": true,
     "method": "POST",
@@ -370,7 +370,7 @@
     "required": []
   },
   {
-    "description": "Deductive run (v5 §8): three-view scoring, calibrated tau, conformal.",
+    "description": "Deductive run: score text against a fixed codebook; calibrated thresholds; claim sizes.",
     "id": "coding-run",
     "longRunning": true,
     "method": "POST",
@@ -1093,7 +1093,7 @@
     ]
   },
   {
-    "description": "Governance report (v5 §11/13/14): exhaustiveness, overlap, IRR, G3.",
+    "description": "Governance report: coverage, coding overlap, agreement between coders, gate checks.",
     "id": "research-report",
     "longRunning": false,
     "method": "POST",

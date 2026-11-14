@@ -11,11 +11,12 @@ loaded BY PATH (stdlib-only, never a package member), and
 ``research_http.tool_routes()`` for the body keys (lazy import). One
 declared exception: the multipart upload row names its ``file`` form
 field in :data:`MULTIPART_BODY_KEYS` below.
+>>>>>>> origin/master
 
 Usage:
     python src/corpus_kb/_setup/gen_ui_manifest.py [--check] [--project-root PATH]
 
-Exit code 0 = in sync (or written), 1 = drift detected.
+Exit code 0 = in sync (or written), 1 = drift. Methods: gen_method_register_docs.
 """
 
 from __future__ import annotations
@@ -27,9 +28,12 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+from corpus_kb._setup.gen_ui_manifest_methods import build_method_entries
 from corpus_kb._setup.gen_ui_manifest_render import (
+    METHODS_TS_REL,
     OPS_TS_REL,
     THRESHOLDS_TS_REL,
+    render_methods_ts,
     render_ops_ts,
     render_thresholds_ts,
 )
@@ -195,6 +199,7 @@ def artifacts(project_root: Path) -> dict[Path, str]:
         BUNDLED_MANIFEST_REL: bundled_json,
         OPS_TS_REL: render_ops_ts(entries),
         THRESHOLDS_TS_REL: render_thresholds_ts(),
+        METHODS_TS_REL: render_methods_ts(build_method_entries(project_root)),
     }
 
 

@@ -1,5 +1,5 @@
-import { Button, Card, Typography } from "antd";
-import { useRef, useState } from "react";
+import { Button, Card, Spin, Typography } from "antd";
+import { Suspense, lazy, useRef, useState } from "react";
 import { strings } from "../strings/analyze";
 import { OPS } from "../api/ops";
 import OpRunner from "../components/OpRunner";
@@ -11,6 +11,11 @@ import ConflictsCard from "./analyze/ConflictsCard";
 import LabelingCard from "./analyze/LabelingCard";
 import NotWiredCard from "../components/NotWiredCard";
 import StatementsCard from "./analyze/StatementsCard";
+
+// The progression rail rides its own lazy chunk (React.lazy): its
+// generated register table and labels load only on this stage, so the
+// entry and landing bundles keep the gzip budget headroom.
+const ProgressionRail = lazy(() => import("../components/progression/ProgressionRail"));
 
 /** The honest not-wired rows for the analysis families (op id, line).
  * Phase-2 Wave 3 wired the statements, conflicts, and beliefs families;
@@ -111,6 +116,9 @@ export default function Analyze() {
           runnerHeading.current?.focus();
         }}
       />
+      <Suspense fallback={<Spin />}>
+        <ProgressionRail />
+      </Suspense>
       <Card
         title={
           <span ref={runnerHeading} tabIndex={-1}>

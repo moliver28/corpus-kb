@@ -12,6 +12,13 @@ argument-hint: "--label <label> ... [--limit N] [--model <tag>]"
 4. Budget the calibration effort (moderate) and autonomy (automated_with_audit).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `intermediate`.
+- Teaches: `classification`.
+- Run first: a running Ollama NLI model (`corpus-kb setup` pulls it).
+- Next step: method 04, dictionary or rule-based classification (`labeling-build`), to act on the pilot labels.
+
 ## Run
 
   ```

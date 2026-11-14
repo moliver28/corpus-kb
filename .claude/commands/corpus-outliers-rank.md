@@ -12,6 +12,11 @@ argument-hint: "[--k N] [--limit N]"
 4. Budget the calibration effort (moderate) and autonomy (human_in_loop).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `novice`.
+- Teaches: `vector_similarity`.
+
 ## Run
 
   ```

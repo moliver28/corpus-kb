@@ -5,9 +5,12 @@ shows ``intent.note == "degraded"``; the ambiguous ladder rides
 ``intent.status == "ambiguous"`` (degraded or not), so
 ``interpretations`` appear exactly then. A decided answer carries
 ``suggestions``: up to three verbatim next questions from the chosen
-method's register row. An expert override forces ``resolved`` with
-``intent.note == "expert_override"``; its suggestions ride the override
-record. Routing W5's flag-on LLM fallback is the one note exception: a
+method's register row. A resolved answer also carries ``next_methods``
+(novice-UX W3c): up to three chain rows derived from the chosen
+record's ``next:`` ids, easiest first; every other status carries
+``[]``. An expert override forces ``resolved`` with
+``intent.note == "expert_override"``; its suggestions and chain ride the
+override record. Routing W5's flag-on LLM fallback is the one note exception: a
 degraded run whose tie the fallback resolved shows envelope status
 ``degraded`` with ``intent.note == "llm_fallback"`` — the status
 describes the run, the note describes how the intent resolved, and the
@@ -30,6 +33,7 @@ from ..analysis.method_register import (
 from ..analysis.method_register_rubric import rank_methods
 from ..analysis.question_intent import QuestionIntent
 from ..analysis.question_router import RouteResult
+from .analysis_route_next import attach_next_methods
 from .analysis_route_suggestions import attach_suggestions
 
 __all__ = ["build_envelope", "build_override_envelope", "record_for"]
@@ -130,18 +134,24 @@ def build_envelope(
     # The chips ride the same chosen record, so the appended row and
     # the chips can never disagree about the chosen method.
     attach_suggestions(envelope, chosen)
+    attach_next_methods(envelope, register, chosen)
     envelope["trace"] = asdict(result.trace)
     return envelope
 
 
 def build_override_envelope(
-    question: str, result: RouteResult, record: MethodRecord
+    question: str,
+    register: MethodRegister,
+    result: RouteResult,
+    record: MethodRecord,
 ) -> dict[str, object]:
     """The override envelope: the chosen method first, status ``resolved``.
 
     The trace stays the automatic pass, so the audit shows what the
     cascade scored before the analyst chose. The intent claims no router
     confidence: the analyst decided, so ``confidence`` stays at ``0.0``.
+    The register rides along so the next-step chain derives from the
+    override record with the same rules as the automatic path.
     """
     rest = [rec for rec in result.ranked if rec.id != record.id][: _RANKED_CAP - 1]
     rows = [_row(record, _OVERRIDE_WHY)]
@@ -153,8 +163,9 @@ def build_override_envelope(
         "ranked": rows,
     }
     # The override forced the intent resolved with this method's id, so
-    # the chips ride the override record's own suggestions.
+    # the chips and the chain ride the override record.
     attach_suggestions(envelope, record)
+    attach_next_methods(envelope, register, record)
     envelope["trace"] = asdict(result.trace)
     return envelope
 

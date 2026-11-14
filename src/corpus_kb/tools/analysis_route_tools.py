@@ -141,10 +141,12 @@ async def analysis_route(
 ) -> dict[str, object]:
     """Route one plain-language question to an analysis method.
 
-    Returns ``{status, intent, ranked, trace}``; an ambiguous intent adds
-    ``interpretations``, and a decided intent adds ``suggestions`` from
-    the chosen method. Status is ``resolved``, ``ambiguous``, or
-    ``degraded``. Deterministic: same question, same register, same bytes.
+    Returns ``{status, intent, ranked, next_methods, trace}``; an
+    ambiguous intent adds ``interpretations``, and a decided intent adds
+    ``suggestions`` from the chosen method. ``next_methods`` carries the
+    chosen row's register chain on a resolved answer and ``[]``
+    otherwise. Status is ``resolved``, ``ambiguous``, or ``degraded``.
+    Deterministic: same question, same register, same bytes.
     """
     del pg_pool, tenant_id  # accepted for the house signature; reads no database
     _check_question(question)
@@ -154,7 +156,7 @@ async def analysis_route(
     settings = dict(mapping_section(mapping_section(cfg, "analysis"), "routing")) or None
     result = route_question(question, register, _router_embedder(cfg), settings)
     if override is not None:
-        return build_override_envelope(question, result, override)
+        return build_override_envelope(question, register, result, override)
     if result.status == "insufficient":
         raise NoMethodMatchesError(_NO_MATCH_MESSAGE)
     if result.status == "ambiguous":

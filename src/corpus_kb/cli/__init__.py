@@ -231,7 +231,10 @@ def _root(
         help="Print the version and exit",
     ),
 ) -> None:
-    """Corpus-KB: local RAG knowledge base for AI code editors."""
+    """Corpus-KB: a local knowledge base with cited answers.
+
+    Built for researchers and AI code editors.
+    """
     if transport is not None:
         if transport != "stdio":
             # The root --transport flag serves ONE purpose: the mcp-configs/
@@ -383,7 +386,9 @@ app.add_typer(calibrate_app, name="calibrate")
 
 def _review_command(decision: str):
     def _cmd(
-        assignment_id: str = typer.Argument(..., help="CodingAssignment aggregate UUID"),
+        assignment_id: str = typer.Argument(
+            ..., help="Coding assignment UUID. corpus-kb coding assignments prints the list."
+        ),
         reviewer: str = typer.Option(..., "--reviewer", help="Reviewer identity"),
         note: str = typer.Option(
             "", "--note", help="Decision note (link fixes describe the change)"

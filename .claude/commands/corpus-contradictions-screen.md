@@ -12,6 +12,12 @@ argument-hint: "[--candidate-k N] [--limit N] [--model <tag>]"
 4. Budget the calibration effort (moderate) and autonomy (human_in_loop).
 5. Read the cautions. Run. Then do the validation step.
 
+## Progression (the register's ladder)
+
+- Difficulty: `intermediate`.
+- Teaches: `contradiction_detection`, `vector_similarity`.
+- Run first: method 23, hybrid retrieval with reranking (`search`), for comparable candidates.
+
 ## Run
 
   ```

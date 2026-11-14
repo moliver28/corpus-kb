@@ -3,7 +3,9 @@
 Text mode must surface the ambiguity ladder (method id + why per
 reading), so the "re-run with your pick" instruction is followable:
 the printed ids are exactly what ``--method-id`` accepts. A decided
-answer also prints the chosen method's next questions, verbatim.
+answer also prints the chosen method's next questions, verbatim, and
+its next-method chain as ``try next`` lines (the ``corpus-kb`` run
+command, then the why).
 """
 
 from __future__ import annotations
@@ -47,8 +49,9 @@ def test_text_mode_lists_the_reading_ids(capsys: pytest.CaptureFixture[str]) -> 
     assert "  readings:" in out
     assert "- 05 (Cluster method)" in out
     assert "- 01 (Codebook method)" in out
-    # Ambiguous: no method is chosen, so no next questions either.
+    # Ambiguous: no method is chosen, so no next questions and no chain.
     assert "next questions:" not in out
+    assert "try next:" not in out
 
 
 def test_text_mode_resolved_has_no_readings_block(capsys: pytest.CaptureFixture[str]) -> None:
@@ -108,3 +111,61 @@ def test_json_mode_prints_the_envelope_verbatim(capsys: pytest.CaptureFixture[st
     _route_emit(_AMBIGUOUS, json_output=True)
     out = capsys.readouterr().out
     assert '"status": "ambiguous"' in out
+
+
+_NEXT_METHODS: dict[str, object] = {
+    "status": "resolved",
+    "intent": {"status": "resolved", "note": None},
+    "ranked": [
+        {
+            "method_id": "04",
+            "name": "Label build",
+            "why": "How do I build labels for my interviews?",
+            "run_hint": {"op": "label_build", "params": {}},
+        }
+    ],
+    "interpretations": [],
+    "suggestions": ["Which labels cover speaker turns?"],
+    "next_methods": [
+        {
+            "method_id": "13",
+            "title": "Centroid classify",
+            "why": "Build on this method with Centroid classify (novice level).",
+            "run": "corpus-kb centroids-classify",
+        },
+        {
+            "method_id": "14",
+            "title": "Neighbor classify",
+            "why": "Build on this method with Neighbor classify (novice level).",
+            "run": "corpus-kb neighbors-classify",
+        },
+    ],
+    "trace": {"mode": "phrase", "threshold": 0.55, "margin": 0.1, "scores": []},
+}
+
+
+def test_text_mode_resolved_prints_the_next_method_chain(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A decided answer prints its chain: one run command + why per row."""
+    _route_emit(_NEXT_METHODS, json_output=False)
+    out = capsys.readouterr().out
+    assert "  try next:" in out
+    assert (
+        "- corpus-kb centroids-classify: Build on this method with "
+        "Centroid classify (novice level)." in out
+    )
+    assert "- corpus-kb neighbors-classify: Build on this method with" in out
+
+
+def test_text_mode_empty_next_methods_prints_no_try_next_block(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Honest empties: an empty chain or a missing key prints no block."""
+    _route_emit(dict(_NEXT_METHODS, next_methods=[]), json_output=False)
+    assert "try next:" not in capsys.readouterr().out
+    _route_emit({"status": "degraded", "next_methods": []}, json_output=False)
+    assert "try next:" not in capsys.readouterr().out
+    stripped = {key: value for key, value in _NEXT_METHODS.items() if key != "next_methods"}
+    _route_emit(stripped, json_output=False)
+    assert "try next:" not in capsys.readouterr().out

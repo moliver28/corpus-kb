@@ -76,11 +76,15 @@ def soft_checks(cli: str | None, soft: list[dict]) -> None:
     pulled = False
     if model:
         pulled = any(name == model or name.startswith(f"{model}:") for name in models)
+    # The shipped engine default (config.yaml / doctor truth); the stale
+    # nomic-embed-text name made the fix command pull a model the engine
+    # does not configure.
+    default_model = "qwen3-embedding:4b"
     soft.append(
         row(
             "embedding model",
             pulled if model else bool(models),
-            f"Pull the model: `ollama pull {model or 'nomic-embed-text'}`.",
+            f"Pull the model: `ollama pull {model or default_model}`.",
             model or "no model configured",
         )
     )

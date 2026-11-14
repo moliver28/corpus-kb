@@ -205,7 +205,7 @@ zero vectors; the ask accepts the honest degraded answer.
 | Ask returns a degraded answer | Generation or Ollama unavailable | `corpus-kb doctor` | Start Ollama, pull the configured model. The answer shows sources without generation — that is designed |
 | Analysis card shows "disabled" | Feature flag off | the card shows the config key and remedy | Set the key in `config.yaml`, restart |
 | Missing extra (`topics`, `latechunk`) | Optional extra not installed | the card shows the remedy | `pip install 'corpus-kb[topics]'` |
-| Research screens say embeddings unavailable | Embedder down, or dims under 1024 | Setup screen | Pull `qwen3-embedding:8b-q8_0`; set `embedding.model` and `embedding.dimensions` |
+| Research screens say embeddings unavailable | Embedder down, or dims under 1024 | Setup screen | Run `corpus-kb doctor`; it prints the exact pull and the dimension fix |
 | Upload fails with a size error | `ui.spa.max_upload_mb` too low | [ADMIN.md](ADMIN.md) | Raise the key or ingest by folder path |
 | Long operation seems stuck | Synchronous work still running | "Check status" polls the ledger | Wait; do not resubmit |
 | Release execute says Blocked | Required gates fail without a waiver | the refusal lists them by name | Fix the gates or waive with a justification |

@@ -115,6 +115,7 @@ async def test_neighbors_no_labels_is_empty(monkeypatch: pytest.MonkeyPatch) -> 
     out = await neighbor_tools.neighbors_classify(None, None, "t")
     assert out["status"] == "empty"
     assert out["reason"] and out["remedy"]
+    assert "method 04" in str(out["remedy"])
     assert out["predictions"] == []
     assert out["screened_count"] == 5
 
@@ -194,6 +195,7 @@ async def test_centroids_no_labels_is_empty(monkeypatch: pytest.MonkeyPatch) -> 
     out = await centroid_tools.centroids_classify(None, None, "t")
     assert out["status"] == "empty"
     assert out["reason"] and out["remedy"]
+    assert "method 04" in str(out["remedy"])
     assert out["predictions"] == []
     assert out["screened_count"] == 7
 

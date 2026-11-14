@@ -2,15 +2,11 @@
 
 The register YAML (``analysis.method_register_path``, default
 ``config/analysis_methods.yaml``) is the single source of truth. It
-carries the owner's research document as data: identity, ordinal, and
-descriptive axes per method. Descriptive axes are surfaced verbatim;
-they are never scored (the document forbids invented ratings).
-
-Import ``rank_methods`` from ``method_register_rubric``, and
-``load_method_register`` from ``method_register_loader``; this module
-holds the schema models and the vocabularies. Routing vocabularies and
-checks live in ``method_register_routing``. The wave-2 handler and the
-UI both call the one rubric.
+carries the owner's research document as data. Descriptive axes are
+surfaced verbatim; they are never scored (the document forbids
+invented ratings). Import ``rank_methods`` from
+``method_register_rubric``; the routing, progression, and table
+checks live in their own modules.
 """
 
 from __future__ import annotations
@@ -20,7 +16,12 @@ from typing import Self
 
 from pydantic import BaseModel, field_validator, model_validator
 
+from corpus_kb.analysis.method_register_progression import (
+    validate_progression_fields,
+    validate_progression_graph,
+)
 from corpus_kb.analysis.method_register_routing import validate_routing_axes
+from corpus_kb.analysis.method_register_tables import OutputTable, validate_table_fields
 
 PARADIGMS = ("supervised", "weak_supervision", "unsupervised", "zero_shot", "human_led")
 EVIDENCE_LABELS = ("direct", "model_based", "preset_composition", "human_judgment")
@@ -95,6 +96,19 @@ class MethodRecord(BaseModel):
     scope_limits: str | None = None
     suggests: list[str] | None = None
 
+    # Progression axes (novice-UX program, wave 1). All optional; the
+    # difficulty rungs, the teaching concepts, and the graph checks live
+    # in ``method_register_progression``.
+    difficulty: str | None = None
+    concepts: list[str] | None = None
+    prerequisites: list[str] | None = None
+    next: list[str] | None = None
+
+    # Table contract (novice-UX program, wave 2). Optional; the column
+    # types, the order keys, and the content checks live in
+    # ``method_register_tables``.
+    output_table: OutputTable | None = None
+
     @field_validator("id")
     @classmethod
     def _id_shape(cls, value: str) -> str:
@@ -158,6 +172,18 @@ class MethodRecord(BaseModel):
         validate_routing_axes(self)
         return self
 
+    @model_validator(mode="after")
+    def _progression_fields(self) -> Self:
+        """Progression-field checks; runs after the routing checks."""
+        validate_progression_fields(self)
+        return self
+
+    @model_validator(mode="after")
+    def _table_fields(self) -> Self:
+        """Table-contract checks; runs after the progression checks."""
+        validate_table_fields(self)
+        return self
+
 
 class SourceDocument(BaseModel):
     """The research document the register was transcribed from."""
@@ -205,6 +231,12 @@ class MethodRegister(BaseModel):
         duplicated = sorted({one for one in ids if ids.count(one) > 1})
         if duplicated:
             raise ValueError(f"methods: ids must be unique. duplicated: {duplicated}.")
+        return self
+
+    @model_validator(mode="after")
+    def _progression_graph(self) -> Self:
+        """Register-level progression checks: known link ids, no cycles."""
+        validate_progression_graph(self.methods)
         return self
 
 

@@ -166,6 +166,26 @@ VALID_TOOL_NAMES: frozenset[str] = frozenset(
         "coding_export",
         # -- event-store health (issue #350, tools/events_tools.py) ----------
         "events_summary",
+        # -- graph/beliefs/conflicts/statements reads (W3c auto-approve
+        #    derivation brought these catalogue ops into host lists) -------
+        "beliefs_compare",
+        "beliefs_predict",
+        "beliefs_timeline",
+        "beliefs_current",
+        "conflicts_list",
+        "conflicts_scan",
+        "conflicts_resolve",
+        "statements_list",
+        "statements_timeline",
+        "query",
+        # -- catalogue write/ingest ops the W3c classification names (the
+        #    master allowlist covers every live MCP tool, safe or not) -----
+        "add_entity",
+        "add_relation",
+        "analysis_embed_meta",
+        "extraction_tune",
+        "ingest_text",
+        "ingest_file",
     }
 )
 

@@ -30,6 +30,7 @@ EXPECTED_ARTIFACTS = (
     "ui_src/src/api/manifest.json",
     "ui_src/src/api/ops.generated.ts",
     "ui_src/src/api/thresholds.generated.ts",
+    "ui_src/src/api/methods.generated.ts",
 )
 
 

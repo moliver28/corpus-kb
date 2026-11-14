@@ -117,6 +117,19 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
     storage = await storage_checks(cfg, conn_str, postgres_ok)
     env = env_var_check()
 
+    # Novice journey (W3): ONE probe behind both doctor surfaces (the CLI
+    # prints the same checks). They ride the existing research_checks list —
+    # no new envelope keys, read-only, never a wrong suggestion.
+    from corpus_kb._setup.doctor_engine import database_reachable, resolved_backend
+    from corpus_kb._setup.doctor_journey import journey_checks
+
+    journey = await journey_checks(
+        cfg,
+        conn_str,
+        database_reachable(resolved_backend(cfg), postgres_ok, storage),
+        ollama_ok,
+    )
+
     # Structured embedding facts (issue #183) + the reranker's active
     # state, straight from config — the SPA's System-ready strip reads
     # these fields, so they must not hide inside check detail strings.
@@ -168,7 +181,8 @@ async def doctor_snapshot(config: dict[str, Any] | None = None) -> dict[str, Any
                 "model": rerank.model,
             },
             "env": dict(asdict(env)),
-            "research_checks": [] if research is None else _check_dicts(research),
+            "research_checks": ([] if research is None else _check_dicts(research))
+            + _check_dicts(journey),
             "storage_checks": _check_dicts(storage),
             # Chat (Phase-2 Wave 7): the same rows the CLI doctor prints;
             # dormant chat reports INFO rows, never a nag.
